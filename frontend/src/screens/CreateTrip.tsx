@@ -42,7 +42,7 @@ import { useAppBack } from '../state/nav-state';
 import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
 import { useDerivedField } from '../lib/useDerivedField';
-import { prefersReducedMotion } from '../lib/motion';
+import { prefersReducedMotion, readDurationMs } from '../lib/motion';
 import { useToast } from '../ui/Toast';
 import { IconPicker } from '../ui/IconPicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
@@ -53,6 +53,7 @@ import {
   CONTROL_ICON,
   DEFAULT_TRIP_ICON,
   DEVICE_LOCALE,
+  EASE_ARRIVE,
   TRIP_BIRTH,
 } from '../constants';
 import { todayInTz } from '../lib/time';
@@ -326,7 +327,11 @@ function Birth({
   children: React.ReactNode;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const [flight, setFlight] = useState(0);
+  // The card's measured resting offset from the top of `.app`, and what it was on the
+  // previous phase — the two halves of the FLIP.
+  const [cardTop, setCardTop] = useState<number | null>(null);
+  const lastTopRef = useRef<number | null>(null);
+  const lastPhaseRef = useRef<Phase>(phase);
   // Beats land independently so a skip can land them all at once.
   const [chrome, setChrome] = useState(false);
   const [board, setBoard] = useState(false);
@@ -340,33 +345,71 @@ function Birth({
     setRunning(false);
   }, []);
 
-  // Measure the two slots and hand the delta to CSS. Both bodies carry the same
-  // horizontal padding, so the card's WIDTH never changes and the flight is one
-  // axis — which is why this is a transform rather than an animation of `top`.
-  // `useLayoutEffect` so the offset is set before the browser paints the card.
-  useLayoutEffect(() => {
+  // ── Where the card sits, and how it gets there (FIXED, session 191) ─────────
+  //
+  // The card is absolutely positioned, so its resting `top` has to be MEASURED from
+  // whichever slot the current phase owns. The first build measured only the DELTA
+  // between the two slots and took the base position from an invented
+  // `--birth-card-top: 118px` — because the born slot does not exist during the form
+  // phase, so there was nothing to measure against. A device screenshot showed the
+  // result immediately: the card floated over the destination and date fields, because
+  // 118px is not where anything is.
+  //
+  // So the position is measured every phase, and the travel is FLIP: capture the top
+  // before the phase change, let React lay the new phase out, then play the difference
+  // as a transform. That needs no second slot to exist early, no invented constant, and
+  // it survives a form whose height changes as fields fill in.
+  const measureTop = useCallback(() => {
     const root = rootRef.current;
-    if (!root) return;
-    const measure = () => {
-      const form = root.querySelector<HTMLElement>('[data-slot="form"]');
-      const born = root.querySelector<HTMLElement>('[data-slot="born"]');
-      if (!form || !born) return;
-      setFlight(form.getBoundingClientRect().top - born.getBoundingClientRect().top);
+    if (!root) return null;
+    const slot = root.querySelector<HTMLElement>(
+      `[data-slot="${phase === 'born' ? 'born' : 'form'}"]`,
+    );
+    if (!slot) return null;
+    return slot.getBoundingClientRect().top - root.getBoundingClientRect().top;
+  }, [phase]);
+
+  useLayoutEffect(() => {
+    const apply = () => {
+      const top = measureTop();
+      if (top == null) return;
+      setCardTop(top);
+      // FLIP: the previous phase's top is where the card visibly was, so play the
+      // difference to zero. Only across a real phase change — a re-measure inside one
+      // phase (a date error appearing) must move the card, not animate it.
+      const from = lastTopRef.current;
+      lastTopRef.current = top;
+      const card = rootRef.current?.querySelector<HTMLElement>('.birth-card');
+      if (
+        !card?.animate ||
+        from == null ||
+        phase === lastPhaseRef.current ||
+        prefersReducedMotion() ||
+        Math.abs(from - top) < 1
+      ) {
+        lastPhaseRef.current = phase;
+        return;
+      }
+      lastPhaseRef.current = phase;
+      card.animate([{ transform: `translateY(${from - top}px)` }, { transform: 'none' }], {
+        duration: readDurationMs('--t-deliberate'),
+        easing: EASE_ARRIVE,
+        fill: 'none',
+      });
     };
-    measure();
-    // The form's height changes as fields fill in (a date error appears, a
-    // timezone note shows), so the flight has to be re-measured rather than read
-    // once — otherwise the card starts its travel from a stale position.
+    apply();
+    // The form's height changes as fields fill in (a date error appears, a timezone note
+    // shows), so the resting position is re-measured rather than read once.
     //
     // Guarded rather than shimmed in tests: jsdom has no `ResizeObserver`, and the
-    // one-shot `measure()` above is the part that matters for correctness. Without
-    // the observer the flight is simply measured once, which is also the honest
-    // fallback anywhere else the API is missing.
+    // one-shot measurement above is the part correctness depends on.
     if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
+    const root = rootRef.current;
+    if (!root) return;
+    const ro = new ResizeObserver(apply);
     ro.observe(root);
     return () => ro.disconnect();
-  }, [phase]);
+  }, [phase, measureTop]);
 
   // The sequence. Reduced motion lands the END STATE immediately — a user who asked
   // for less motion did not ask for a different outcome (ADR-0140 §5).
@@ -395,7 +438,8 @@ function Birth({
       data-chrome={chrome ? 'warm' : undefined}
       data-board={board ? 'on' : undefined}
       data-content={content ? 'in' : undefined}
-      style={{ '--flight': `${flight}px` } as React.CSSProperties}
+      data-placed={cardTop == null ? undefined : ''}
+      style={{ '--card-top': cardTop == null ? undefined : `${cardTop}px` } as React.CSSProperties}
     >
       {children}
       {trip && <BornBody trip={trip} onDone={onDone} />}

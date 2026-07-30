@@ -1963,10 +1963,12 @@
 .birth-card {
   position: absolute;
   z-index: 4;
-  /* Anchored at the BORN position; the form phase offsets it by `--flight`. Its
-     inline edges track the body padding, which both bodies share. */
+  /* Rests at its MEASURED offset (`--card-top`, set from JS per phase) — never at a
+     guessed one. Hidden until the first measurement lands, because a card painted at
+     0 before then is a card briefly over the header. Its inline edges track the body
+     padding, which both bodies share, so only the vertical position is computed. */
   inset-inline: 20px;
-  top: calc(var(--birth-head, 66px) + var(--birth-card-top, 118px));
+  top: var(--card-top);
   box-sizing: border-box;
   border: 1.5px dashed var(--soft-line);
   background: repeating-linear-gradient(-45deg, var(--card) 0 9px, var(--screen) 9px 18px);
@@ -1975,17 +1977,21 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  transform: translateY(var(--flight, 0px));
+  /* The travel is a WAAPI FLIP (CreateTrip.tsx), not a CSS transition — the distance is
+     only knowable after the new phase has laid out. Only the COMMIT animates here. */
   transition:
-    transform var(--t-deliberate) var(--ease-arrive),
     border-color var(--t-deliberate) var(--ease-standard),
     background var(--t-deliberate) var(--ease-standard),
     box-shadow var(--t-deliberate) var(--ease-standard);
 }
+/* Nothing to show until the position is known — a card painted before the first
+   measurement is a card briefly sitting over the header. */
+.birth:not([data-placed]) .birth-card {
+  visibility: hidden;
+}
 /* Committed. The dashed→solid is not decoration: ADR-0011's grammar means
    "provisional → committed", and this is the frame the trip stops being a draft. */
 .birth[data-birth='born'] .birth-card {
-  transform: none;
   border-style: solid;
   border-color: var(--line);
   background: var(--card);

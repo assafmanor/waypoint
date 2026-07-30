@@ -648,6 +648,11 @@ export const LIST_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
  *  the tear plays before the handoff — so the whole thing between a successful join and
  *  landing in the trip is their sum. Short on purpose: this is the beat between
  *  deciding and arriving, not a set piece of its own. */
+/** `--ease-arrive` as a literal, for the Web Animations API — which takes a value, not a
+ *  CSS variable. Same pairing as `LIST_MOVE_EASING` beside the reveal's duration; keep
+ *  the two in step with `tokens.css`. */
+export const EASE_ARRIVE = 'cubic-bezier(0.22, 1.16, 0.36, 1)';
+
 export const JOIN_PASS = {
   STAMP_MS: 420,
   TEAR_MS: 420,
