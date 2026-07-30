@@ -725,7 +725,10 @@ export const t = {
       membersSub: 'מחכים רק לך',
       joinButton: 'הצטרפות לטיול',
       joinError: 'ההצטרפות נכשלה · אפשר לנסות שוב',
-      joinBlocked: 'הוסרת מהטיול הזה · אפשר לבקש ממנהל הטיול להוסיף אותך מחדש.',
+      // DELIBERATELY NO "you were removed" string (owner, 2026-07-31). A blocked join
+      // renders the same refused pass, with the same words, as an invalid code — naming
+      // the block would disclose a roster decision to someone who is no longer a member.
+      // If this line ever comes back, that is the reason it should not.
       note: 'תוך שנייה אתה בפנים · מתחברים עם החשבון האישי, והכול נפתח מיד',
     },
     switcher: {

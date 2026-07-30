@@ -45,48 +45,58 @@ test.describe('trip birth (ADR-0142)', () => {
 
   test('every beat of the born screen reaches its end state', async ({ page }) => {
     await bootIntoCreate(page);
-    await page
-      .locator('.dest-trigger, .birth-form input')
-      .first()
-      .click()
-      .catch(() => {});
-    // Fill the three inputs the schema needs. The destination picker is a search sheet, so
-    // the form is driven the way a person drives it.
+
+    // The destination is behind a search sheet — the reason this test shipped skipped.
+    // Driven the way a person drives it: open, type past the min-chars floor, pick the
+    // prediction. Both halves are our own relays, so no Google and no key (see the
+    // fixture in boot.ts).
+    await page.locator('.dest-trigger').click();
+    await page.locator('.pp-search').fill('יפן');
+    await page.locator('.pp-result').first().click();
+    await expect(page.locator('.dest-trigger')).toContainText('יפן');
+
     await page.locator('.birth-form input[type="date"]').nth(0).fill('2026-09-12');
     await page.locator('.birth-form input[type="date"]').nth(1).fill('2026-09-23');
     await page.locator('.title-input').fill(CREATED_TRIP.name);
-    await page.evaluate(() => {
-      // The destination is the one field behind a Places sheet; setting it directly keeps
-      // this spec hermetic (no Google), which is the same trade the Map specs make.
-      const el = document.querySelector<HTMLElement>('.dest-trigger');
-      el?.click();
-    });
-    const cta = page.locator('.create-btn');
-    // Only assert the sequence if the form could actually be completed; the destination
-    // sheet is out of this spec's scope, so skip rather than assert a half-truth.
-    if (await cta.isDisabled()) test.skip(true, 'destination picker needs its own fixture');
 
+    const cta = page.locator('.create-btn');
+    // The CTA arming IS the assertion that the form completed — ADR-0142 §3 made that a
+    // visible state, so the test can rely on it rather than re-deriving completeness.
+    await expect(cta).toHaveAttribute('data-armed', '');
+    await expect(cta).toBeEnabled();
     await cta.click();
-    // THE REGRESSION: `.birth-arr` has `opacity: 0` as its base and its keyframe declared
-    // only a `from`, so with `forwards` the implicit `to` was that same 0 — the entire born
-    // screen stayed invisible. Wait for the last beat, then require every piece VISIBLE.
-    await expect(page.locator('.birth[data-content="in"]')).toBeAttached({ timeout: 5000 });
+
+    // THE REGRESSION this file exists for: `.birth-arr` has `opacity: 0` as its base and
+    // its keyframe declared only a `from`, so with `forwards` the implicit `to` was that
+    // same 0 — the entire born screen stayed invisible while 1809 unit tests passed.
     await page.waitForFunction(
       () => {
         const els = [...document.querySelectorAll('.birth-arr')];
         return els.length > 3 && els.every((el) => +getComputedStyle(el).opacity > 0.99);
       },
       undefined,
-      { timeout: 5000 },
+      { timeout: 6000 },
     );
-    // The board is the payoff, so it specifically must be lit rather than merely present.
+
+    // The board is the payoff, so it must be LIT rather than merely present.
     expect(await page.locator('.birth-board').evaluate((el) => +getComputedStyle(el).opacity)).toBe(
       1,
     );
-    // And the committed card must not have landed on the hero it sits below.
-    expect(
-      overlaps(await box(page.locator('.birth-card')), await box(page.locator('.born-hero'))),
-    ).toBe(false);
+    // Its flaps carry the trip's own departure — honest content, not a decorative string.
+    await expect(page.locator('.birth-flap')).toHaveCount(3);
+    await expect(page.locator('.birth-flap').nth(1)).toContainText(CREATED_TRIP.name);
+
+    // The committed card must land on its BORN slot and cover nothing — the other bug a
+    // device found, in the phase the first fix never probed.
+    const card = await box(page.locator('.birth-card'));
+    const slot = await box(page.locator('[data-slot="born"]'));
+    expect(Math.abs(card.top - slot.top)).toBeLessThan(1);
+    expect(overlaps(card, await box(page.locator('.born-hero')))).toBe(false);
+    expect(overlaps(card, await box(page.locator('.birth-board')))).toBe(false);
+
+    // And the skip layer must be gone once the sequence settled, or it sits over the
+    // invite box swallowing the tap that copies the link.
+    await expect(page.locator('.birth-skip')).toHaveCount(0);
   });
 });
 

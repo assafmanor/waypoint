@@ -216,11 +216,50 @@ export const CREATED_TRIP = {
   icon: '🇯🇵',
 };
 
-/** Land on `/new`, signed in with no trips, with `POST /trips` and the invite ready.
- *  Covers ADR-0142's birth sequence — the one thing jsdom cannot see, since it loads no
- *  CSS and reports every rect as zero. */
+/** The destination-picker fixture (session 191).
+ *
+ *  The picker is the one creation field behind a search sheet, which is why the birth
+ *  sequence's e2e beat test shipped skipped. Both halves are OUR OWN backend relays
+ *  (`/destinations/search` and `/destinations/resolve`, ADR-0113 §4) rather than Google
+ *  directly, so mocking them is exact and needs no key — the same trade the Map specs
+ *  make for the trip-scoped search.
+ *
+ *  Note there is a second, genuinely Google-free path in the product: `pp-name-only`
+ *  ("use as typed"). A spec could drive that and stay hermetic with no fixture at all —
+ *  but it exercises the branch that leaves the structured fields EMPTY, so it would not
+ *  prove the picker's normal path works. Both are worth having; this mocks the normal one.
+ */
+export const DESTINATION_PREDICTION = {
+  googlePlaceId: 'ChIJ-japan',
+  primaryText: 'יפן',
+  secondaryText: 'Japan',
+};
+const DESTINATION_RESOLVED = {
+  googlePlaceId: 'ChIJ-japan',
+  name: 'יפן',
+  countryCode: 'JP',
+  lat: 36.2,
+  lng: 138.25,
+  timezone: 'Asia/Tokyo',
+};
+
+async function mockDestinationPicker(page: Page): Promise<void> {
+  await page.route(
+    (u) => u.pathname === '/destinations/search',
+    (r) => r.fulfill({ json: [DESTINATION_PREDICTION] }),
+  );
+  await page.route(
+    (u) => u.pathname === '/destinations/resolve',
+    (r) => r.fulfill({ json: DESTINATION_RESOLVED }),
+  );
+}
+
+/** Land on `/new`, signed in with no trips, with the destination picker, `POST /trips`
+ *  and the invite all ready. Covers ADR-0142's birth sequence — the one thing jsdom
+ *  cannot see, since it loads no CSS and reports every rect as zero. */
 export async function bootIntoCreate(page: Page): Promise<void> {
   await mockAuth(page);
+  await mockDestinationPicker(page);
   await page.route(
     (u) => u.pathname === '/trips',
     (r) =>
