@@ -1,118 +1,49 @@
 <!doctype html>
-<!-- A PLACE IS MADE, AND NAMED, ON THE CANVAS — v1 (2026-07-30).
-     Phase 6(b) + 6(c) of the Maps & Places epic, the epic's last feature work, plus the
-     naming/renaming capability the owner asked for on top of it. Promotes ADR-0147.
-     A DESIGN SURFACE, not an illustration.
-
-     ═══════════════════════════════════════════════════════════════════════
-     WHAT IS BEING DESIGNED, AND WHY IT IS ONE THING AND NOT THREE
-     ═══════════════════════════════════════════════════════════════════════
-
-     Three gestures arrive at the same place, and the first pass at this treated them as
-     three features:
-
-       6b · A LONG PRESS on the canvas background drops a pin. It yields a coordinate and
-            NOTHING ELSE — no name, no `place_id`, no reverse geocode (paid, skipped). So
-            the place arrives NAMELESS, and naming it is the confirm.
-       6c · A TAP ON ONE OF GOOGLE'S OWN SIGHTS (ADR-0125 §6 re-enabled them) arrives as a
-            map click carrying a `place_id`, on a thing you are already looking at. It has
-            no name in our hand either — naming it before the confirm is a Place Details
-            call, i.e. paying to browse, which is the exact spend that blocked Phase 6a for
-            three weeks.
-       NEW · RENAMING an existing place. `רמן נאגי` is Google's label; `הרמן ליד המלון` is
-            yours.
-
-     ┌─────────────────────────────────────────────────────────────────────┐
-     │ THE UNIFYING DECISION: a place's NAME is the user's, and naming and  │
-     │ renaming are ONE ACT in three states — the field just starts empty,   │
-     │ empty-and-Google-will-fill-it, or pre-filled.                        │
-     └─────────────────────────────────────────────────────────────────────┘
-
-     AND IT IS NOT A NEW POLICY — IT IS AN EXISTING ONE GETTING A SURFACE. This is the
-     find that made the feature coherent rather than bolted on:
-     `places.service.ts`'s `enrichExisting` writes `googlePlaceId`, `address`, `lat`,
-     `lng`, `timezone` — and DELIBERATELY NOT `name`. So a place whose name you authored
-     keeps it even when Google enriches the row with coordinates. `createEnriched`'s own
-     comment says the other half out loud: "A fresh pick has no user-authored name, so it
-     takes Google's displayName." **"Your name outranks Google's" is already how this
-     system behaves, implemented as an absence.** Rename is not a new rule; it is the
-     missing way in to a rule the backend has always kept.
-
-     ═══════════════════════════════════════════════════════════════════════
-     THE HARD PART, AND IT IS NOT THE FIELD — IT IS WHERE THE AFFORDANCE HANGS
-     ═══════════════════════════════════════════════════════════════════════
-
-     Every obvious slot on this row is already spent, and all three are MEASURED
-     rejections rather than opinions:
-
-       • `.map-right` IS A COLUMN. ADR-0134 §5: a verb ADDED beside `נווט` costs HEIGHT,
-         which is why `בחירה` REPLACES it under an errand and the row stays 73px.
-       • A TRAILING CONTROL ON THE NAME LINE WRAPS. ADR-0121's session-148 amendment
-         measured it: it took `Ichiran Ramen` to two lines at 390px and a long Hebrew
-         builder title to five at 360px. That measurement is why the map way-in became
-         the category BADGE — an element that already existed.
-       • THE WAY-IN FOOTER ALREADY HELD THIS ARGUMENT. ADR-0135 §1 is the owner
-         rejecting a second entry in that grey box: "two entries in the same grey box
-         read as a command menu."
-
-     §D draws all three so the cost is visible rather than asserted.
-
-     ═══════════════════════════════════════════════════════════════════════
-     THE ANSWER: SELECTION ALREADY REVEALS WHAT YOU CAN DO WITH A PLACE
-     ═══════════════════════════════════════════════════════════════════════
-
-     The row has no free slot WHILE UNSELECTED. But a selected row is a different
-     object: ADR-0121 §8 reveals `.map-refs` inside it, ADR-0135 §1 hung a create in that
-     block's footer, and ADR-0139 hung the settle verbs on its reference rows. The
-     pattern the tab already runs is **selection reveals the verbs**.
-
-     So the rename affordance is REVEALED BY SELECTION, and costs an unselected row
-     exactly nothing — which is the whole of the measured constraint.
-
-     And the naming step is not a menu and not a sheet:
-
-     ┌─────────────────────────────────────────────────────────────────────┐
-     │ NAMING A PLACE IS A FIELD WHERE THE NAME IS. `.map-t` swaps the name  │
-     │ for an input, in place. New pin: empty. Google's sight: empty, and    │
-     │ Google fills it on confirm. Existing place: pre-filled.               │
-     └─────────────────────────────────────────────────────────────────────┘
-
-     Three reasons that beats a `⋯` → sheet, and the third is the decisive one:
-
-       1 · ONE GRAMMAR. 6b's brand-new pin has to be named by a field somewhere. If
-           rename were a sheet, the app would say "naming is inline when the place is new
-           and a modal when it is not" — two grammars for one act, which is the exact
-           drift `SettleControl` was extracted to undo (ADR-0139: the four axes those
-           three hand-rolled affordances drifted on were the VOCABULARY, not the sizes).
-       2 · THE SUBJECT IS THE CONTROL. No "which thing am I renaming?" — the text you are
-           fixing is the text you tapped. It is also the platform idiom (Files, Notion,
-           Google Maps' own label).
-       3 · BOTH HOSTS FOR FREE, WITH NO SECOND CALL SITE. `screens/Map.tsx` renders the
-           canvas card as `renderRow(…)(cardUsage)` — the card IS the row. So a field
-           inside the row's `.map-t` appears in the sheet's list AND on the canvas card
-           with no second implementation, which is precisely the owner's "from map search
-           and the map pane". Rule 8 answered by construction rather than by discipline.
-
-     ═══════════════════════════════════════════════════════════════════════
-     WHAT THIS FILE CANNOT ANSWER
-     ═══════════════════════════════════════════════════════════════════════
-
-     Whether a long press survives Google's own tiles on a real phone. The canvas here is
-     faked (a CSS grid), so the gesture is simulated by a press-and-hold on a div. That is
-     ADR-0131 §9's flagged device-pass item and it is the one that could BLOCK rather than
-     tune. Everything about the CARD, the FIELD and the AFFORDANCE is real css and can be
-     judged here.
--->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>מקום נוצר ומקבל שם על הקנבס — v1</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>הטופס על הקנבס — נראות מלאה, וכל דרך החוצה</title>
+
+    <!--
+      WHY THIS FILE EXISTS
+      ════════════════════
+
+      Two reports off a real phone, on the form ADR-0147 shipped:
+
+        1. "We must have total visibility. see how it's handled for search etc."
+           — the screenshot shows the form's TOP HALF off screen while its ביטול and
+           הוספה למדף survive. That is the worst possible way for a form to fail: the
+           ACTIONS live and the CONTENT dies, so you can commit a form you cannot read.
+
+        2. "while on the form, clicking outside of it should close it and deselect."
+
+      The first report names search as the thing that gets it right, and it does:
+      ADR-0132 §2 takes the header and the tab bar off screen while the query field is
+      open, because on a layout viewport that RESIZES for the keyboard the split is the
+      only flexible region and absorbs the entire loss. The form pops a keyboard too —
+      it `autoFocus`es — and never asked for that.
+
+      SO THE OBVIOUS FIX IS "GIVE THE FORM THE RECLAIM TOO", AND THE MEASUREMENT SAYS
+      THAT IS HALF A FIX. Every number in §B is read from the live DOM of the frames
+      below, through the app's real stylesheets. The card is 223px (243 with a hint);
+      the reclaim buys 122px; at the `half` stop with an Android keyboard the canvas
+      goes from 18px to 140px — still 83px short. And at the `full` stop the room is
+      NEGATIVE by construction, which is a state ADR-0147 argued could not arise and
+      then created itself when it added the pencil.
+
+      So this file is not "add the reclaim". It is: ONE GUARANTEE, then TWO LEVERS.
+
+      APP-CSS: the frames render the shipped stylesheets, and the form markup below is
+      the real `MapPlaceForm` output, copied from a render of the component rather than
+      re-typed. Re-run `node mockups/tools/inline-app-css.mjs` after touching any of them.
+    -->
     <link
       href="https://fonts.googleapis.com/css2?family=Secular+One&family=Assistant:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
       rel="stylesheet"
     />
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/choice-grid.css, ui/domain/map-pane.css, ui/primitives/snap-sheet.css, screens/map.css -->
+
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/choice-grid.css, ui/primitives/field.css, ui/domain/map-pane.css, ui/primitives/snap-sheet.css, screens/map.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -7350,6 +7281,66 @@ body {
   }
 }
 
+/* ═══ ui/primitives/field.css — generated, do not edit here ═══ */
+/* One field shell (U-05). Token-based (Wave-0), logical properties only for RTL.
+   Neutral chrome: the control border/background stay neutral; a focused control
+   picks up teal (design-language: teal = location, but reused app-wide as the
+   input focus hue), and the error slot uses --miss. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.field input,
+.field textarea,
+.field select {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.field textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.field-error {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--miss);
+}
+
+/* The hint slot — the error slot's quiet peer. Muted and regular-weight, so a note
+   about an empty field cannot be mistaken for something blocking the save. */
+.field-hint {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 /* ═══ ui/domain/map-pane.css — generated, do not edit here ═══ */
 /* The rendered map pane + its pins (ADR-0121 §5/§6/§12). Ported from
    mockups/map-embedded-v1.html's PHASE-6 DELTA block, which was written against
@@ -9730,7 +9721,18 @@ body {
 </style>
 
     <style>
-      /* ═══ mk-* : MOCKUP CHROME ONLY. Not a proposal for anything. ═══ */
+      /* ═══════════════════════════════════════════════════════════════════
+         MOCKUP-ONLY MECHANICS. Not a proposal for anything.
+         The phone frame, the two keyboard models and the safe-area modelling are
+         LIFTED FROM `map-google-pins-v1.html`, which is the file that established
+         that there are two models at all (ADR-0132 §2). Same apparatus, so the
+         numbers in this file are comparable with the ones in that ADR's table.
+         ═══════════════════════════════════════════════════════════════════ */
+      html,
+      body {
+        height: auto;
+        min-height: 100%;
+      }
       body {
         margin: 0;
         background: #cfd4dd;
@@ -9738,21 +9740,21 @@ body {
         color: var(--ink);
       }
       .mk-wrap {
-        max-width: 1180px;
+        max-width: 1320px;
         margin: 0 auto;
-        padding: 24px 16px 64px;
+        padding: 24px 16px 80px;
       }
       .mk-h {
         font-family: 'Secular One', sans-serif;
         font-size: 22px;
-        margin: 28px 0 6px;
+        margin: 34px 0 6px;
       }
       .mk-sub {
         font-size: 13px;
-        opacity: 0.72;
+        opacity: 0.74;
         margin: 0 0 14px;
-        line-height: 1.6;
-        max-width: 74ch;
+        line-height: 1.65;
+        max-width: 78ch;
       }
       .mk-row {
         display: flex;
@@ -9760,55 +9762,14 @@ body {
         gap: 22px;
         align-items: flex-start;
       }
-      .mk-phone {
-        /* The real card reads `--sheet-h` + `--map-attr-h` to clear the sheet and Google's
-           attribution (`screens/map.css`). The mockup supplies the same two so the shipped
-           rule positions the card rather than a mockup override. */
-        --sheet-h: 300px;
-        --map-attr-h: 22px;
-        width: 390px;
-        height: 700px;
-        border-radius: 38px;
-        background: var(--screen);
-        overflow: hidden;
-        position: relative;
-        box-shadow: 0 18px 44px rgba(14, 23, 41, 0.3);
-        flex: 0 0 auto;
-      }
-      .mk-phone.narrow {
-        width: 360px;
-      }
-      .mk-phone.mk-mini {
-        width: 268px;
-        height: 300px;
-        border-radius: 26px;
-        --sheet-h: 0px;
-      }
-      /* A thumb, so a sequence frame shows the GESTURE and not only its result. */
-      .mk-thumb {
-        position: absolute;
-        width: 34px;
-        height: 34px;
-        margin: -17px 0 0 -17px;
-        border-radius: 50%;
-        background: rgba(22, 35, 61, 0.22);
-        box-shadow: inset 0 0 0 1.5px rgba(22, 35, 61, 0.3);
-        pointer-events: none;
-      }
-      .mk-cap {
-        font-size: 11.5px;
-        text-align: center;
-        opacity: 0.7;
-        margin-top: 6px;
-      }
       .mk-note {
         background: var(--card);
         border-radius: 16px;
         padding: 14px 16px;
         font-size: 13px;
-        line-height: 1.65;
-        max-width: 42ch;
-        flex: 1 1 320px;
+        line-height: 1.68;
+        max-width: 46ch;
+        flex: 1 1 340px;
         box-shadow: 0 2px 10px rgba(14, 23, 41, 0.08);
       }
       .mk-note h4 {
@@ -9816,13 +9777,14 @@ body {
         font-size: 14.5px;
         margin: 0 0 8px;
       }
-      .mk-note h4 + p {
-        margin-top: 0;
-      }
       .mk-note p {
         margin: 0 0 9px;
       }
-      .mk-note code {
+      .mk-note p:last-child {
+        margin-bottom: 0;
+      }
+      code,
+      .mk-mono {
         font-family: 'JetBrains Mono', monospace;
         font-size: 11.5px;
         background: var(--screen);
@@ -9836,1301 +9798,1325 @@ body {
       .mk-verdict.no {
         border-color: var(--miss);
       }
+      .mk-verdict.warn {
+        border-color: var(--amber, #d79b34);
+      }
+      .mk-cap {
+        font-size: 11.5px;
+        text-align: center;
+        opacity: 0.72;
+        margin-top: 6px;
+        max-width: 30ch;
+      }
       .mk-toggle {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
-        margin: 0 0 14px;
+        margin: 0 0 8px;
+        align-items: center;
+      }
+      .mk-toggle .lbl {
+        font-size: 11.5px;
+        opacity: 0.6;
+        margin-inline-end: 2px;
       }
       .mk-toggle button {
         font: inherit;
-        font-size: 12.5px;
-        padding: 7px 13px;
+        font-size: 12px;
+        padding: 6px 12px;
         border-radius: 999px;
         border: 1px solid rgba(22, 35, 61, 0.18);
         background: var(--card);
         color: var(--ink);
         cursor: pointer;
       }
-      .mk-toggle button[aria-pressed='true'] {
+      .mk-toggle button.on {
         background: var(--ink);
         color: #fff;
         border-color: var(--ink);
       }
 
-      /* The faked canvas — a look reference for the cloud-styled quiet base, never a
-         rendering. A real map needs the browser key the human step gates. */
+      /* THE DEVICE. The frame is the device and `.app` is the viewport, which is what
+         lets the two keyboard models differ by one rule (below). */
+      .mk-phone {
+        width: var(--mk-w, 390px);
+        height: var(--mk-h, 844px);
+        border-radius: 34px;
+        overflow: hidden;
+        position: relative;
+        background: var(--screen);
+        box-shadow: 0 18px 44px rgba(14, 23, 41, 0.3);
+        flex: 0 0 auto;
+      }
+      .mk-phone .app {
+        height: 100%;
+      }
+      /* ANDROID RESIZES THE LAYOUT VIEWPORT — the shell gets less height and the keyboard
+         occupies the rest. iOS leaves the viewport alone and the keyboard OVERLAYS it,
+         which is the default here. Assuming there is only one model is the mistake
+         ADR-0131 §2 made and ADR-0132 corrected. */
+      .mk-phone[data-kb='android'] .app {
+        height: calc(100% - var(--mk-kb-h, 336px));
+      }
+      .mk-kb {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        height: var(--mk-kb-h, 336px);
+        z-index: 30;
+        background: linear-gradient(180deg, #d3d6dd, #c7cbd4);
+        border-top: 1px solid #a9aeba;
+        display: grid;
+        place-items: center;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #4b5566;
+      }
+      .mk-kb[hidden] {
+        display: none !important;
+      }
+      /* The faked canvas — a look reference for the quiet cloud style, never a rendering. */
       .mk-canvas {
         position: absolute;
         inset: 0;
         background:
-          linear-gradient(rgba(233, 236, 240, 0.55), rgba(233, 236, 240, 0.55)),
+          linear-gradient(rgba(233, 236, 240, 0.5), rgba(233, 236, 240, 0.5)),
           repeating-linear-gradient(0deg, #dfe3e8 0 1px, transparent 1px 34px),
           repeating-linear-gradient(90deg, #dfe3e8 0 1px, transparent 1px 34px), #eceee9;
       }
-      .mk-canvas::after {
-        content: '';
+      /* THE LIVE READOUT — every number in this file comes from here, not from prose.
+         `room` is what the card actually has: the split, minus the controls row it must
+         clear, minus the sheet, minus Google's attribution and its gap. */
+      .mk-meas {
         position: absolute;
-        inset: 0;
-        background:
-          radial-gradient(circle at 22% 66%, #dbe7e4 0 62px, transparent 63px),
-          linear-gradient(112deg, transparent 40%, #cfe0e6 40.6%, #cfe0e6 46%, transparent 46.6%);
-      }
-      /* Google's own sight icon — achromatic, per ADR-0125 §6's "grey pin = a thing that
-         exists, coloured pin = a thing on your trip". */
-      .mk-goog {
-        position: absolute;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 2px;
-        background: none;
-        border: 0;
-        padding: 0;
-        cursor: pointer;
-        font: inherit;
-      }
-      .mk-goog i {
-        width: 15px;
-        height: 15px;
-        border-radius: 50%;
-        background: #c9ccd4;
-        border: 2px solid #fff;
-        box-shadow: 0 1px 3px rgba(14, 23, 41, 0.28);
-      }
-      .mk-goog span {
-        font-size: 9.5px;
-        color: #6a7284;
-        text-shadow:
-          0 0 3px #fff,
-          0 0 3px #fff;
-        white-space: nowrap;
-      }
-      /* The press-and-hold target standing in for Google's tiles. */
-      .mk-holdpad {
-        position: absolute;
-        inset: 0;
-        background: none;
-        border: 0;
-        padding: 0;
-        cursor: crosshair;
-        -webkit-tap-highlight-color: transparent;
-      }
-      .mk-holdring {
-        position: absolute;
-        width: 46px;
-        height: 46px;
-        margin: -23px 0 0 -23px;
-        border-radius: 50%;
-        border: 2px solid var(--teal);
-        opacity: 0;
-        pointer-events: none;
-      }
-      .mk-holdring.live {
-        animation: mkHold 500ms linear forwards;
-      }
-      /* Frozen mid-gesture, for the sequence frame: an animation that ends at opacity 0
-         shows nothing in a still. */
-      .mk-holdring.mk-still {
-        opacity: 0.9;
-        transform: scale(0.7);
-      }
-      @keyframes mkHold {
-        from {
-          opacity: 0.9;
-          transform: scale(0.35);
-        }
-        to {
-          opacity: 0;
-          transform: scale(1);
-        }
-      }
-
-      /* ═══════════════════════════════════════════════════════════════════
-         THE DELTA — the genuinely new css, written in the app's own `map-*`
-         naming so this block reads as the diff for `screens/map.css`.
-         Everything above the generated block is the app's; everything here is
-         the proposal.
-         ═══════════════════════════════════════════════════════════════════ */
-
-      /* 1 · THE RENAME AFFORDANCE. Revealed by selection, so an unselected row pays
-         nothing — which is the whole of the measured constraint. Neutral ink, never a
-         semantic hue: renaming is not a time, a place or a status (ADR-0028 / rule 4). */
-      .map-rename {
-        display: none;
-        position: relative;
-        flex: 0 0 auto;
-        /* 22px of LAYOUT, 44px of TARGET (below). Measuring the first draft caught both
-           reasons this shape is needed: a 44px box grew the selected row by 4px, and the
-           negative inline margin that was absorbing it pulled the button OVER the
-           ellipsis-truncated name. `settle-control.css` records the app's other trade —
-           a sub-floor control is fine when the ROW's own target is the remaining width,
-           "the same trade ListRow's kebab already makes" — and it does not apply here,
-           because this row's tap frames the place. So the target is the control's own. */
-        width: 16px;
-        height: 16px;
-        align-items: center;
-        justify-content: center;
-        background: none;
-        border: 0;
-        padding: 0;
-        color: var(--muted);
-        cursor: pointer;
-        border-radius: 8px;
-      }
-      .map-rename::after {
-        /* ADR-0017's 44×44 floor, taken out of the layout entirely. */
-        content: '';
-        position: absolute;
-        inset: -14px;
-      }
-      .place.selected .map-rename {
-        display: inline-flex;
-      }
-      .map-rename .icon {
-        width: 14px;
-        height: 14px;
-        display: block;
-      }
-      .map-rename:active {
-        transform: scale(var(--press-scale, 0.97));
-      }
-      /* The name yields its width rather than wrapping — a long name truncates exactly as
-         it does today, and the control is pinned after it. */
-      .map-t {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        min-width: 0;
-      }
-      .map-t .map-name {
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      /* 2 · THE FIELD, WHERE THE NAME IS. One element for three states: a new pin (empty),
-         a Google sight (empty + a hint that Google will fill it), an existing place
-         (pre-filled). Radius 12 = the inner-element step; body type, because it holds the
-         same string the name did. */
-      .map-namefield {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        width: 100%;
-        /* A grid child's default `min-width: auto` is what let the ✓/✕ overflow the card's
-           edge on the 268px frame — caught by rendering, not by reading. The row must be
-           allowed to shrink, and the INPUT is what yields (below). */
-        min-width: 0;
-      }
-      .map-namefield input {
-        flex: 1 1 auto;
-        min-width: 0;
-        font: inherit;
-        font-size: 14.5px;
-        font-weight: 600;
-        padding: 8px 10px;
-        border-radius: 12px;
-        border: 1px solid rgba(22, 35, 61, 0.22);
-        background: var(--card);
-        color: var(--ink);
-      }
-      .map-namefield input:focus-visible {
-        outline: 2px solid var(--teal);
-        outline-offset: 1px;
-      }
-      .map-nameok,
-      .map-namecancel {
-        flex: 0 0 auto;
-        width: 40px;
-        height: 40px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 12px;
-        border: 0;
-        cursor: pointer;
-      }
-      .map-nameok {
-        background: var(--cta);
-        color: var(--cta-text);
-      }
-      .map-nameok:disabled {
-        opacity: 0.45;
-        cursor: default;
-      }
-      .map-namecancel {
-        background: var(--screen);
-        color: var(--ink);
-      }
-      .map-nameok .icon,
-      .map-namecancel .icon {
-        width: 17px;
-        height: 17px;
-      }
-
-      /* 3 · THE DRAFT CARD. `.map-placecard` is already "the row wherever the sheet cannot
-         show it" (ADR-0122 §7) and a place that does not exist yet is the sharpest case:
-         it has NO row at any stop, which is also why this variant is not gated on the
-         `map` stop the way the selection card is. */
-      .map-draft {
-        display: grid;
-        gap: 8px;
-        /* The SURFACE. `.map-placecard` is positioning only — the card look comes from its
-           `.place` child, which a draft has no business being (it is not a row; there is no
-           row yet). So the draft variant borrows `.place`'s exact surface values and
-           `.map-placecard .place`'s exact floating shadow rather than inventing a third
-           card: same ground, same 16px radius, same hairline, same elevation. Rendering
-           this against the real sheets is what showed the first pass had no card at all. */
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 16px;
-        padding: 11px 12px;
-        box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
-      }
-      .map-draft-title {
-        margin: 0;
-        font-family: 'Secular One', sans-serif;
-        font-size: 14.5px;
-      }
-      /* A pending name is a real state, because the name arrives over the network. */
-      .map-draft-spin {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        border: 1.5px solid var(--muted);
-        border-top-color: transparent;
-        animation: mkSpin 700ms linear infinite;
-        vertical-align: -1px;
-      }
-      @keyframes mkSpin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .map-draft-spin {
-          animation: none;
-        }
-      }
-      .map-draft-hint,
-      .map-draft-coords {
-        margin: 0;
-        font-size: 11px;
-        color: var(--muted);
-      }
-      .map-draft-acts {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      /* The icon row. `IconPicker` is the real control (`AddIdea` already uses it for this
-         same object) — these chips stand in for it at its own scale. */
-      .map-draft-icons {
+        z-index: 40;
+        inset-inline: 6px;
+        top: 6px;
         display: flex;
         gap: 5px;
         flex-wrap: wrap;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 9.5px;
+        pointer-events: none;
       }
-      .map-draft-ic {
-        width: 36px;
-        height: 36px;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        background: var(--card);
-        font-size: 17px;
-        line-height: 1;
-        cursor: pointer;
+      .mk-meas span {
+        background: rgba(14, 23, 41, 0.82);
+        color: #fff;
+        border-radius: 5px;
+        padding: 2px 5px;
       }
-      .map-draft-ic.on {
-        border-color: var(--ink);
-        box-shadow: inset 0 0 0 1px var(--ink);
+      .mk-meas span.bad {
+        background: var(--miss);
       }
-      .map-draft-acts .map-addmaybe {
-        margin-inline-start: auto;
+      .mk-meas span.ok {
+        background: #1f7a5a;
       }
-
-      /* 3b · `hidden` MUST BE RE-ASSERTED over an explicit `display`, and finding this is
-         what rendering against the real css is for: `.map-draft` sets `display: grid` and
-         `.map-namefield` sets `display: flex`, and BOTH beat the `hidden` attribute's own
-         `display: none` — so the first render showed the draft card, the Google card and the
-         rename field all at once. `screens/map.css` already carries exactly this rule for
-         `.map-placecard`; the two new flex/grid containers need it for the same reason. */
-      .map-placecard[hidden],
-      .map-draft[hidden],
-      .map-namefield[hidden],
-      .map-t[hidden] {
-        display: none;
-      }
-
-      /* 3c · WHILE THE NAME IS BEING EDITED, `.map-right` STANDS DOWN. Distance and `נווט`
-         are not the task while you are fixing a name, and the row has no width to spare —
-         the same derived-affordance rule ADR-0134 §4 used to make `נווט` absent under an
-         errand rather than squeezing a second verb in beside it. */
-      .place.renaming .map-right {
-        display: none;
-      }
-
-      /* 3d · A search result's row badge — the ring silhouette in list form, so the row and
-         the canvas say the same thing about the same object (ADR-0132 §6). */
-      .map-res-badge {
-        flex: 0 0 auto;
-        width: 34px;
-        height: 34px;
-        border-radius: 50%;
-        display: grid;
-        place-items: center;
-        background: var(--card);
-        border: 2px solid var(--ink);
-        color: var(--ink);
-        font-size: 15px;
-      }
-
-      /* 4 · THE DROPPED PIN, before it is saved. Soft grammar, because it IS provisional —
-         ADR-0011's dashed vocabulary, reused rather than a new colour. */
-      .map-pin.pending .pin-b {
-        border-style: dashed;
+      /* A hairline showing where the card's box actually ends, including off screen. */
+      .mk-ghostbox {
+        position: absolute;
+        z-index: 25;
+        inset-inline: 8px;
+        border: 1px dashed var(--miss);
+        border-radius: 16px;
+        pointer-events: none;
         opacity: 0.85;
+      }
+      .mk-ghostbox::after {
+        content: attr(data-label);
+        position: absolute;
+        top: -9px;
+        inset-inline-start: 10px;
+        background: var(--miss);
+        color: #fff;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 9px;
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+
+      /* A compact stand-in for the shell's header + day strip, at the real heights the
+         reclaim is worth: `.header` pays `14px + safe-top`, `.nav` pays `9px + safe-bottom`. */
+      .mk-header {
+        background: var(--ink);
+        color: #fff;
+        padding: calc(14px + var(--safe-top, 0px)) 14px 12px;
+        font-size: 12px;
+      }
+      .mk-header .r1 {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .mk-header .r1 b {
+        background: var(--amber, #d79b34);
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 5px 14px;
+      }
+      .mk-header .r1 i {
+        opacity: 0.6;
+        font-style: normal;
+        padding: 5px 14px;
+      }
+      .mk-header .r2 {
+        text-align: center;
+        font-family: 'Secular One', sans-serif;
+        font-size: 17px;
+        margin-bottom: 8px;
+      }
+      .mk-header .r3 {
+        display: flex;
+        gap: 5px;
+        justify-content: center;
+      }
+      .mk-header .r3 u {
+        text-decoration: none;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 7px 9px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+      }
+      .mk-header .r3 u.on {
+        background: var(--amber, #d79b34);
+        color: var(--ink);
+      }
+      .mk-nav {
+        background: var(--card);
+        border-top: 1px solid var(--line);
+        display: flex;
+        padding: 7px 0 calc(9px + var(--safe-bottom, 0px));
+      }
+      .mk-nav i {
+        flex: 1;
+        text-align: center;
+        font-style: normal;
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .mk-nav i.on {
+        color: var(--ink);
+        font-weight: 700;
+      }
+      /* THE RECLAIM, as it actually ships (ADR-0132 §2/§3): `display: none` on both
+         chrome nodes, and the safe-area insets move to the body — which is the half
+         that has no visible symptom on a device without a notch. */
+      .mk-app[data-chrome='reclaimed'] .mk-header,
+      .mk-app[data-chrome='reclaimed'] .mk-nav {
+        display: none;
+      }
+      .mk-app[data-chrome='reclaimed'] .mk-body {
+        padding-block: var(--safe-top, 0px) var(--safe-bottom, 0px);
+      }
+      .mk-app {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+      .mk-body {
+        flex: 1;
+        min-height: 0;
+        position: relative;
+        overflow: hidden;
+      }
+      .mk-split {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      /* The controls row the card must clear — the shipped 46px, drawn so the card's
+         top boundary is visible rather than asserted. */
+      .mk-ctl {
+        position: absolute;
+        z-index: 6;
+        inset-inline: 8px;
+        top: 8px;
+        height: 46px;
+        display: flex;
+        gap: 7px;
+        align-items: center;
+      }
+      .mk-ctl b,
+      .mk-ctl i {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 11.5px;
+        font-style: normal;
+        font-weight: 700;
+        color: var(--muted);
+        box-shadow: 0 2px 8px rgba(14, 23, 41, 0.1);
+      }
+      .mk-ctl i {
+        flex: 1;
+      }
+      .mk-attr {
+        position: absolute;
+        z-index: 6;
+        bottom: var(--sheet-h, 0px);
+        inset-inline-start: 0;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        padding-inline: 8px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #5f6673;
+        background: rgba(255, 255, 255, 0.72);
+      }
+      .mk-sheet {
+        position: absolute;
+        inset-inline: 0;
+        bottom: 0;
+        height: var(--sheet-h, 52px);
+        background: var(--card);
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -6px 18px rgba(14, 23, 41, 0.12);
+        overflow: hidden;
+        z-index: 7;
+      }
+      .mk-sheet .grab {
+        width: 44px;
+        height: 4px;
+        border-radius: 3px;
+        background: var(--line);
+        margin: 9px auto 8px;
+      }
+      .mk-sheet .strip {
+        display: flex;
+        justify-content: space-between;
+        padding: 0 12px 10px;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+
+      /* ═══════════════════════════════════════════════════════════════════
+         THE DELTA — the genuinely new CSS, written in the app's own `map-*`
+         naming so this block reads as the diff for `screens/map.css`.
+         ═══════════════════════════════════════════════════════════════════ */
+
+      /* 1 · THE GUARANTEE: the card is BOUNDED by the room it has, its title and its
+         actions are PINNED, and only the middle scrolls. This is the one change that makes
+         "total visibility" true by construction instead of true-when-the-numbers-work-out —
+         every other lever below only buys pixels, and pixels run out on the smallest target.
+
+         It is also not a new pattern: `EventForm` and `BookingSheet` are both a scrolling
+         body with pinned `FormActions` and a `scrollIntoView` on focus, which is exactly how
+         every other form in this app survives a keyboard. The place form is the only one that
+         did not, because it was designed as a CARD and cards do not scroll. It can be both. */
+      .map-draft {
+        /* `--map-card-room` is set by the screen from the same three numbers the card's
+           `bottom` already uses, so the card can never be taller than the space it is
+           anchored in. Absent (a wide screen, no keyboard) it falls back to no limit. */
+        max-height: var(--map-card-room, none);
+        /* The grid becomes three rows: pinned head, scrolling middle, pinned foot. */
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        overflow: hidden;
+      }
+      .map-draft-scroll {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        display: grid;
+        gap: 8px;
+        /* The scrolled edge is a fade rather than a rule: a hard line here would read as a
+           second card boundary inside the card (`.choice-grid.pills` already uses this
+           exact mask for the same reason). */
+        -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 6px);
+        mask-image: linear-gradient(to bottom, transparent 0, black 6px);
+      }
+      /* 2 · WHAT IS PINNED, and the choice is not arbitrary. While the keyboard is up the
+         questions on screen are "what am I naming", "what have I typed" and "how do I get
+         out". Those three are the head and the foot. The pills and the coordinates are the
+         two things you cannot act on while typing anyway — the same derived-affordance
+         reasoning that takes `נווט` off a row under an errand (ADR-0134 §4). */
+      .map-draft > .field {
+        /* the head: label + name row + hint */
+      }
+      .map-draft > .map-draft-acts {
+        /* the foot */
+      }
+
+      /* 3 · THE SECOND LEVER: while the form is open the SHEET STANDS DOWN to its `map`
+         stop. This is the biggest single win — 233px at 390×844 against the chrome
+         reclaim's 122 — and at the `full` stop it is not an optimisation but a
+         CORRECTION: `room` there is NEGATIVE, so the pencil on a row at `full` opens a
+         form that cannot be drawn at all.
+
+         ADR-0147 rejected normalising the sheet ("it takes away the list you were
+         reading"). That rejection was made with no keyboard in the room — and the list
+         you were reading is already behind one. */
+      .mk-app[data-normalise='on'] .mk-sheet,
+      .mk-app[data-normalise='on'] .mk-attr {
+        transition: none;
+      }
+
+      /* 4 · THE THIRD LEVER: the chrome reclaim, which already exists and which the form
+         never asked for. Nothing new here at all — see `.mk-app[data-chrome]` above, which
+         is the shipped rule copied. What IS new is the trigger: the state is called
+         `queryOpen`, which names the CAUSE, and the shell only ever needed the WANT. */
+
+      /* 5 · THE BACKDROP, which is the dismissal half of the report. It is invisible and it
+         is not a scrim: a scrim would say "the map is disabled", and the map is the thing
+         you are naming a point on — you must be able to see it. Its only job is to be the
+         thing an outside tap lands on, so that ONE handler serves the ✕, the system back,
+         Escape and the tap (the rule `frontend/CLAUDE.md` states, and the one the shipped
+         form breaks). */
+      .map-draft-outside {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: none;
+        border: 0;
+        padding: 0;
+        cursor: default;
       }
     </style>
   </head>
   <body>
     <div class="mk-wrap">
-      <h1 class="mk-h" style="font-size: 26px">מקום נוצר — ומקבל שם — על הקנבס</h1>
+      <h1 class="mk-h" style="font-size: 26px">הטופס על הקנבס — נראות מלאה, וכל דרך החוצה</h1>
       <p class="mk-sub">
-        Phase 6(b) + 6(c) + השמות. שלוש מחוות, אקט אחד: <strong>שם של מקום הוא של המשתמש</strong>.
-        הקנבס והמדף מרנדרים את אותה שורה, ולכן השדה מגיע לשניהם בלי מימוש שני.
+        שלושה דיווחים מטלפון אמיתי על הטופס ש‑ADR-0147 שלח:
+        <strong>"חייבת להיות נראות מלאה — תראה איך זה מטופל בחיפוש"</strong>, ו<strong>"הקשה מחוץ
+        לטופס צריכה לסגור אותו ולבטל את הבחירה"</strong>. הראשון נראה כמו באג אחד והוא שלושה, וה<em>מדידה</em>
+        היא מה שמפריד ביניהם.
       </p>
 
-      <!-- ═══════════════ §A THE THREE FLOWS ═══════════════ -->
-      <h2 class="mk-h">§A · ארבע הדרכים, טופס אחד</h2>
+      <!-- ═══════════════ §A THE BUG, REPRODUCED ═══════════════ -->
+      <h2 class="mk-h">§A · הבאג, משוחזר — ומה בדיוק נכשל</h2>
       <p class="mk-sub">
-        לחצו ארוכות על הקנבס · הקישו על אתר של גוגל (העיגול האפור) · הוסיפו תוצאת חיפוש · או בחרו
-        מקום קיים והקישו על העיפרון שליד השם. <strong>בארבעת המקרים אותו טופס</strong> — שם · סמל ·
-        קטגוריה — וכל מה שמשתנה הוא מה שמלא מראש ומה שהכותרת אומרת.
+        משמאל: מה שהמשתמש צילם. הכרטיס עוגן ל<strong>תחתית</strong> של ה‑split וגדל
+        <strong>כלפי מעלה</strong>; כשה‑split מתכווץ בגלל המקלדת, אלמנט שעוגן לתחתית וגבוה
+        מהמכל שלו גולש למעלה ו<strong>נחתך</strong>. מה ששורד הן הפעולות; מה שנעלם הוא התוכן —
+        כלומר אפשר לאשר טופס שאי אפשר לקרוא. זה הכי גרוע מבין כל אופני הכישלון.
       </p>
+      <div class="mk-toggle" id="ctlA">
+        <span class="lbl">מסך</span>
+        <button data-size="390">390×844</button>
+        <button data-size="360">360×640</button>
+        <span class="lbl" style="margin-inline-start: 10px">מקלדת</span>
+        <button data-kb="off">אין</button>
+        <button data-kb="android">אנדרואיד (מכווצת)</button>
+        <button data-kb="ios">iOS (מכסה)</button>
+        <span class="lbl" style="margin-inline-start: 10px">עצירת המדף</span>
+        <button data-stop="map">map</button>
+        <button data-stop="half">half</button>
+        <button data-stop="full">full</button>
+        <span class="lbl" style="margin-inline-start: 10px">חריצי בטיחות</span>
+        <button data-safe="none">ללא</button>
+        <button data-safe="notch">notch 24/24</button>
+      </div>
+      <div class="mk-row" id="rowA"></div>
+
+      <!-- ═══════════════ §B THE MEASUREMENT ═══════════════ -->
+      <h2 class="mk-h">§B · המדידה, ולמה "לתת לטופס את ה‑reclaim" הוא חצי תיקון</h2>
       <p class="mk-sub">
-        <strong>וזה מחייב שהטופס יהיה הכרטיס ולא שדה בתוך השורה.</strong> הגרסה הראשונה החליפה את
-        השם בשדה <em>בתוך</em> השורה, וזה היה אלגנטי כל עוד הטופס היה שם בלבד; עם סמל וקטגוריה אין
-        לזה מקום בשורה. אז הטופס הוא תמיד הכרטיס, והעיפרון בשורה הוא רק הדרך אליו — מה שגם משאיר
-        את הדרך פתוחה משני המאכסנים, כי הכרטיס עצמו הוא פלט של <code>renderRow</code> (§E).
+        כל מספר כאן נקרא מה‑DOM החי של המסגרות למעלה, דרך ה‑CSS האמיתי. הכרטיס הוא
+        <strong>223px</strong> (‏243 כשיש רמז). <code>room</code> הוא מה שיש לו: ה‑split, פחות
+        שורת הפקדים שהוא חייב לפנות (46+8), פחות המדף, פחות הייחוס של גוגל (22+8).
       </p>
-      <div class="mk-toggle" id="flowToggle">
-        <button type="button" data-flow="idle" aria-pressed="true">מצב רגיל</button>
-        <button type="button" data-flow="drop">אחרי לחיצה ארוכה</button>
-        <button type="button" data-flow="goog">אחרי הקשה על אתר בגוגל</button>
-        <button type="button" data-flow="googWait">⟨חלופה⟩ עם שם מגוגל · בדרך</button>
-        <button type="button" data-flow="googPre">⟨חלופה⟩ עם שם מגוגל · הגיע</button>
-        <button type="button" data-flow="googMine">אתר בגוגל · כבר בטיול</button>
-        <button type="button" data-flow="result">הוספת תוצאת חיפוש</button>
-        <button type="button" data-flow="rename">שינוי שם למקום קיים</button>
+      <div class="mk-row">
+        <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
+          <table
+            id="tblB"
+            style="width: 100%; border-collapse: collapse; font-size: 12.5px; line-height: 1.5"
+          ></table>
+          <p style="margin-top: 12px">
+            <strong>ולכן הכותרת של הקובץ הזה:</strong> ה‑reclaim מחזיר 122px, הכרטיס צריך 223,
+            ובעצירת <code>half</code> עם מקלדת אנדרואיד ה‑<code>room</code> עובר מ‑18 ל‑140 —
+            <strong>עדיין חסרים 83</strong>. ב‑360×640 חסרים 157. וב‑<code>full</code> ה‑room הוא
+            <strong>שלילי</strong>.
+          </p>
+        </div>
       </div>
       <div class="mk-row">
-        <div>
-          <div class="mk-phone" id="phone">
-            <div class="mk-canvas"></div>
-            <button class="mk-holdpad" id="holdpad" aria-label="לחיצה ארוכה על הקנבס"></button>
-            <div class="mk-holdring" id="holdring"></div>
-
-            <button class="mk-goog" style="top: 176px; inset-inline-start: 92px" id="googPin">
-              <i></i><span>מקדש סנסו-ג׳י</span>
-            </button>
-            <button class="mk-goog" style="top: 250px; inset-inline-start: 232px">
-              <i></i><span>גן אואנו</span>
-            </button>
-
-            <!-- A trip pin, in the app's real markup + real map-pane.css. -->
-            <div
-              class="map-pin"
-              style="position: absolute; top: 300px; inset-inline-start: 150px"
-              id="tripPin"
-            >
-              <span class="pin-b cat-food"><span class="pin-g">🍜</span></span>
-            </div>
-            <!-- 6b's marker: OUR dashed pin, because a long press lands on bare canvas and
-                 nothing else marks the spot. Soft grammar = provisional (ADR-0011). -->
-            <div class="map-pin pending" id="draftPin" style="position: absolute; display: none">
-              <span class="pin-b cat-leisure"><span class="pin-g">📍</span></span>
-            </div>
-            <!-- 6c's marker: the app's own RING, and NOT a pin. Rendering the first pass
-                 caught our pending pin drawn ON TOP of Google's grey icon — two markers for
-                 one place, the exact mess ADR-0125 §6 refused. A ring is already this app's
-                 word for "a Google-sourced candidate that is not yours yet" (ADR-0132 §6: a
-                 different KIND of object gets a different SILHOUETTE, not a rung on the pin
-                 ladder), so the tapped sight is ringed and Google's icon keeps saying what
-                 it is. Reuse, and semantically exact. -->
-            <div
-              class="map-result selected"
-              id="draftRing"
-              style="position: absolute; display: none"
-              aria-hidden="true"
-            ></div>
-
-            <!-- THE FORM. ONE card, four sources. Only `title`, what is pre-filled, and
-                 whether there is a vet link differ — the fields never do. -->
-            <div class="map-placecard map-draft" id="cardForm" hidden>
-              <span class="map-draft-title" id="formTitle">מה יש כאן?</span>
-              <!-- THE REAL `IconPicker` — the same control events, bookings and the trip use
-                   (owner, 2026-07-30). It is a single 44px chip with a caret that opens a
-                   searchable panel, NOT an inline row: my first pass drew a 6-chip stand-in
-                   "at its own scale", which is exactly the drift rule 8 exists to stop. Using
-                   the real one also SHRINKS the form — one chip instead of a six-wide row —
-                   and it sits on the name's line rather than below it. -->
-              <div class="map-namefield">
-                <div class="icon-picker">
-                  <!-- The glyph shown is the DERIVED one until a human picks (see §C): with
-                       `טבע` selected this is `iconForCategory('nature')`. -->
-                  <button type="button" class="icon-chip" id="formIcon" aria-haspopup="true" aria-expanded="false" aria-label="בחירת סמל">
-                    📍
-                  </button>
-                </div>
-                <input id="formName" placeholder="שם המקום" dir="auto" />
-              </div>
-              <!-- ALL NINE `EVENT_CATEGORY` values with their real `t.event.categories`
-                   labels — including `other` (כללי), which already exists. The first pass drew
-                   five and invented one ("ביקור"); `sightseeing` is אתרים. `other` sits LAST
-                   because it is the fallback, not a peer. -->
-              <div class="choice-grid pills compact" role="group" aria-label="קטגוריה">
-                <button type="button" class="choice-pill">אוכל</button>
-                <button type="button" class="choice-pill">אתרים</button>
-                <button type="button" class="choice-pill on">טבע</button>
-                <button type="button" class="choice-pill">פעילות</button>
-                <button type="button" class="choice-pill">לינה</button>
-                <button type="button" class="choice-pill">תחבורה</button>
-                <button type="button" class="choice-pill">קניות</button>
-                <button type="button" class="choice-pill">מעשי</button>
-                <button type="button" class="choice-pill">כללי</button>
-              </div>
-              <p class="map-draft-coords" id="formMeta" dir="auto">35.7148, 139.7967</p>
-              <p class="map-draft-hint" id="formHint" hidden>גוגל ישלים את השם בהוספה</p>
-              <p class="map-draft-hint" id="formWait" hidden>
-                <span class="map-draft-spin" aria-hidden="true"></span> מביא את השם מגוגל…
-              </p>
-              <p class="map-draft-hint" id="formFree" hidden>המקום כבר בטיול · השם שלכם, בלי קריאה</p>
-              <div class="map-draft-acts">
-                <a
-                  class="map-res-out"
-                  id="formVet"
-                  href="#"
-                  aria-label="פתיחה בגוגל מפות"
-                  title="פתיחה בגוגל מפות"
-                  hidden
-                >
-                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4 11 13M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg>
-                </a>
-                <button type="button" class="map-gbtn" data-close>ביטול</button>
-                <button type="button" class="map-addmaybe" id="formOk">הוספה למדף</button>
-              </div>
-            </div>
-
-            <!-- The sheet, at `half`. Real snap-sheet + map css. -->
-            <div
-              class="wp-snapsheet"
-              style="position: absolute; inset-inline: 0; bottom: 0; height: 300px"
-            >
-              <div class="wp-snapsheet-top">
-                <span class="wp-snapsheet-grabline" aria-hidden="true"></span>
-              </div>
-              <div class="wp-snapsheet-body">
-                <div class="map-sheet-scroll" style="padding: 0 14px 14px">
-                  <div
-                    class="place selected"
-                    id="rowSel"
-                    role="button"
-                    tabindex="0"
-                    aria-pressed="true"
-                  >
-                    <div class="map-badge cat-food" data-order="2">🍜</div>
-                    <div class="map-main">
-                      <div class="map-t">
-                        <span class="map-name" id="selName">רמן נאגי</span>
-                        <!-- THE AFFORDANCE. Selection reveals it; an unselected row pays
-                             nothing, which is the measured constraint. -->
-                        <button
-                          type="button"
-                          class="map-rename"
-                          id="renameBtn"
-                          aria-label="שינוי שם"
-                        >
-                          <svg
-                            class="icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path
-                              d="M12 20h9M16.4 3.6a2.12 2.12 0 0 1 3 3L7.5 18.5l-4.2 1.2 1.2-4.2Z"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                      <div class="map-m">
-                        <span class="map-tag time" dir="auto">מחר</span>
-                        <span class="map-tag">Kabukicho, Shinjuku</span>
-                        <span class="map-tag rate" dir="auto">★ 4.6</span>
-                      </div>
-                    </div>
-                    <div class="map-right">
-                      <span class="map-dist" dir="auto">1.2 ק״מ</span>
-                      <a class="map-navbtn">נווט</a>
-                    </div>
-                  </div>
-                  <div class="place" role="button" tabindex="0">
-                    <div class="map-badge cat-leisure" data-order="1">⛩️</div>
-                    <div class="map-main">
-                      <div class="map-t"><span class="map-name">מקדש סנסו-ג׳י</span></div>
-                      <div class="map-m"><span class="map-tag">Asakusa</span></div>
-                    </div>
-                  </div>
-                  <div class="place" role="button" tabindex="0">
-                    <div class="map-badge cat-lodging" data-order="3">🏨</div>
-                    <div class="map-main">
-                      <div class="map-t"><span class="map-name">מלון שינג׳וקו</span></div>
-                      <div class="map-m"><span class="map-tag mbadge">על המדף</span></div>
-                    </div>
-                  </div>
-                  <!-- Google's half of the sheet: an unsaved result, in the app's own
-                       grammar. Its add is the FOURTH source into the same form. -->
-                  <div class="map-grouphead">מגוגל</div>
-                  <div class="place" id="resultRow" role="button" tabindex="0">
-                    <div class="map-res-badge" aria-hidden="true">◎</div>
-                    <div class="map-main">
-                      <div class="map-t"><span class="map-name">Ichiran Ramen Shinjuku</span></div>
-                      <div class="map-m"><span class="map-tag">Kabukicho, Shinjuku</span></div>
-                    </div>
-                    <div class="map-right">
-                      <button type="button" class="map-addmaybe" id="resultAdd">אולי</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <p class="mk-cap">390×844 · הקנבס מדומה</p>
-        </div>
-
         <div class="mk-note">
-          <h4>שדה אחד, שלושה מצבים</h4>
+          <h4>המצב שפספסתי כשבניתי</h4>
           <p>
-            <strong>סיכה חדשה</strong> — ריק. הקואורדינטות מתחתיו הן אישור, לא הוראה: הכרטיס יושב על
-            הנקודה והמצלמה כבר מסגרה אותה. אין כתובת בכוונה — reverse geocode הוא בתשלום.
+            ADR-0147 §5 כתב: <em>"בפועל המחווה יכולה להתחיל רק על קנבס גלוי, ולכן ב‑full זה לא
+            קורה"</em>. זה נכון לשתי מחוות הקנבס ו<strong>לא נכון לעיפרון</strong> — שאותו ADR
+            הוסיף בעצמו. העיפרון יושב על <em>שורה במדף</em>, וב‑<code>full</code> המדף הוא כמעט כל
+            המסך.
           </p>
           <p>
-            <strong>אתר של גוגל</strong> — ריק, ו<em>גוגל</em> ימלא. אין לנו את השם ביד: לשאול אותו
-            לפני האישור זה קריאת Details, כלומר לשלם כדי לדפדף. התווית של גוגל <em>היא</em> התצוגה
-            המקדימה — היא מצוירת מתחת לאצבע — והקישור החינמי החוצה הוא הדרך לוודא לפני שמשלמים.
-          </p>
-          <p><strong>מקום קיים</strong> — מלא מראש. אותו שדה, אותו מקום במסך.</p>
-          <div class="mk-verdict">
-            <p style="margin: 0">
-              <strong>למה לא תפריט <code>⋯</code> ‏→ ‏sheet לשינוי שם?</strong> כי מקום חדש חייב
-              טופס בכל מקרה — שם, סמל וקטגוריה. אם שינוי־שם היה sheet נפרד, האפליקציה הייתה אומרת
-              "מקום נוצר בכרטיס ונערך במודאל" — שתי דקדוקים לאקט אחד, בדיוק הסחיפה
-              ש‏<code>SettleControl</code> נוצר כדי לבטל. טופס אחד, ארבעה מקורות.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══════════════ §B THE LONG PRESS, END TO END ═══════════════ -->
-      <h2 class="mk-h">§B · הלחיצה הארוכה, מקצה לקצה</h2>
-      <p class="mk-sub">
-        המחווה החינמית לגמרי: בלי session, בלי Details, ובלי reverse geocode. ארבעה שלבים — ומה
-        שחשוב הוא הרביעי: המקום <em>מופיע ברשימה</em>, וזה לא מובן מאליו.
-        <strong>ADR-0112: מקום ללא הפניה הוא cache-only ולא היה נרשם בכלל</strong>, ולכן ההפלה חייבת
-        ליצור גם רעיון לא־מסווג — בדיוק זה ש<code>＋ אולי</code> יוצר, עם ה־toast וה־undo שלו.
-      </p>
-      <div class="mk-row" style="gap: 14px">
-        <!-- 1 · THE PRESS -->
-        <div>
-          <div class="mk-phone mk-mini">
-            <div class="mk-canvas"></div>
-            <div class="mk-holdring mk-still" style="top: 150px; inset-inline-start: 150px"></div>
-            <div class="mk-thumb" style="top: 150px; inset-inline-start: 150px"></div>
-          </div>
-          <p class="mk-cap">1 · אצבע נחה על קנבס ריק (500ms)</p>
-        </div>
-        <!-- 2 · DROPPED, NAMELESS -->
-        <div>
-          <div class="mk-phone mk-mini">
-            <div class="mk-canvas"></div>
-            <div
-              class="map-pin pending"
-              style="position: absolute; top: 116px; inset-inline-start: 136px"
-            >
-              <span class="pin-b cat-leisure"><span class="pin-g">📍</span></span>
-            </div>
-            <div class="map-placecard map-draft">
-              <span class="map-draft-title">מה יש כאן?</span>
-              <div class="map-namefield">
-                <input placeholder="שם המקום" dir="auto" />
-                <button type="button" class="map-nameok" disabled aria-label="הוספה">
-                  <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.4"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M5 12.6l4.7 4.7L19 7.4" />
-                  </svg>
-                </button>
-                <button type="button" class="map-namecancel" aria-label="ביטול">
-                  <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <p class="map-draft-coords" dir="auto">35.7148, 139.7967</p>
-            </div>
-          </div>
-          <p class="mk-cap">2 · סיכה מקווקוות — עוד לא נשמרה · השדה ריק</p>
-        </div>
-        <!-- 3 · NAMED -->
-        <div>
-          <div class="mk-phone mk-mini">
-            <div class="mk-canvas"></div>
-            <div
-              class="map-pin pending"
-              style="position: absolute; top: 116px; inset-inline-start: 136px"
-            >
-              <span class="pin-b cat-leisure"><span class="pin-g">📍</span></span>
-            </div>
-            <div class="map-placecard map-draft">
-              <span class="map-draft-title">מה יש כאן?</span>
-              <div class="map-namefield">
-                <input value="הספסל עם הנוף" dir="auto" />
-                <button type="button" class="map-nameok" aria-label="הוספה">
-                  <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.4"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M5 12.6l4.7 4.7L19 7.4" />
-                  </svg>
-                </button>
-                <button type="button" class="map-namecancel" aria-label="ביטול">
-                  <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <p class="map-draft-coords" dir="auto">35.7148, 139.7967</p>
-            </div>
-          </div>
-          <p class="mk-cap">3 · שם מוקלד · האישור נחמש</p>
-        </div>
-        <!-- 4 · LANDED -->
-        <div>
-          <div class="mk-phone mk-mini" style="--sheet-h: 0px">
-            <div class="mk-canvas"></div>
-            <div class="map-pin" style="position: absolute; top: 116px; inset-inline-start: 136px">
-              <span class="pin-b cat-leisure"><span class="pin-g">📍</span></span>
-            </div>
-            <div
-              class="wp-snapsheet"
-              style="position: absolute; inset-inline: 0; bottom: 0; height: 128px"
-            >
-              <div class="wp-snapsheet-top">
-                <span class="wp-snapsheet-grabline" aria-hidden="true"></span>
-              </div>
-              <div class="wp-snapsheet-body">
-                <div class="map-sheet-scroll" style="padding: 0 12px">
-                  <div class="place" role="button" tabindex="0">
-                    <div class="map-badge cat-leisure">📍</div>
-                    <div class="map-main">
-                      <div class="map-t"><span class="map-name">הספסל עם הנוף</span></div>
-                      <div class="map-m">
-                        <span class="map-tag mbadge">על המדף</span>
-                        <span class="map-tag">ללא יום</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <p class="mk-cap">4 · סיכה מלאה · שורה עם <code>על המדף</code></p>
-        </div>
-
-        <div class="mk-note" style="flex: 1 1 100%; max-width: 100%">
-          <h4>מה שהרצף הזה מוכיח, ומה שהוא לא יכול</h4>
-          <p>
-            <strong>הסיכה מקווקוות בשלבים 2–3 ומלאה ב‑4.</strong> זה לא קישוט: דקדוק רך/קשה הוא הכלל
-            השני בחשיבותו אחרי הצבע (design-language), ו״עוד לא נשמר״ הוא בדיוק
-            <em>provisional</em>. אף צבע חדש לא נוצר.
-          </p>
-          <p>
-            <strong>ובלי קטגוריה הסיכה יורשת את גוון ה<code>leisure</code></strong> — כי
-            <code>place-usage.ts</code> נותן ל״כל ההפניות לא־מסווגות״ בדיוק את זה. וזו הבעיה שמובילה
-            ל§C: על משטח שכל הדקדוק שלו הוא ״צבע = קטגוריה״, סיכה ירוקה עבור מסעדה היא
-            <em>מידע שגוי</em>, לא ניטרליות.
-          </p>
-          <p>
-            <strong>אין כתובת, בכוונה.</strong> reverse geocode הוא בתשלום, וזו קריאה שנרשמה ונדחתה
-            (ADR-0131 §9). הקואורדינטות הן האישור שהסיכה נפלה איפה שהאצבע הייתה.
+            <code>room(full) = split − (split − 46) − 84 = <strong>−38</strong></code> — קבוע, בלי
+            קשר למסך ובלי קשר למקלדת. כלומר הקשה על העיפרון בעצירה העליונה
+            <strong>פותחת טופס שאי אפשר לצייר</strong>.
           </p>
           <div class="mk-verdict no">
-            <p style="margin: 0">
-              <strong>ומה שהקובץ הזה לא יכול לענות:</strong> אם לחיצה ארוכה בכלל שורדת את האריחים של
-              גוגל על טלפון אמיתי. כאן היא מדומה על <code>div</code>. ADR-0131 §9 סימן את זה כפריט
-              של מעבר־המכשיר, והוא היחיד באשכול ש<strong>יכול לחסום</strong> ולא רק לכייל.
+            <p>
+              זה מה שהופך את <strong>לוור 2</strong> (המדף נסוג) מאופטימיזציה ל<strong>תיקון</strong>:
+              אין כמות מקום שתפתור עצירה שבה המקום הוא שלילי מראש.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>שלוש כשלים, לא אחד</h4>
+          <p>
+            <strong>1 · האפליקציה לא נתנה מקום שהיא כבר יודעת לתת.</strong> ‏<code>CHROME_RECLAIMED</code>
+            קיים; החיפוש מבקש אותו, הטופס לא.
+          </p>
+          <p>
+            <strong>2 · כרטיס שעוגן לתחתית וגדל למעלה נחתך למעלה.</strong> זה לא נפתר בעוד מקום —
+            זה נפתר בכך שהכרטיס <em>יודע</em> כמה מקום יש לו.
+          </p>
+          <p>
+            <strong>3 · אין משטח שההקשה "בחוץ" נוחתת עליו</strong> (‏§E).
+          </p>
+          <div class="mk-verdict">
+            <p>
+              שלושתם באים משורש אחד: הטופס תוכנן כ<strong>כרטיס</strong>, ומתנהג כמו כרטיס — אבל
+              הוא <strong>טופס</strong>, והוא היחיד באפליקציה שלא נושא את מה שכל טופס אחר כאן
+              נושא מול מקלדת.
             </p>
           </div>
         </div>
       </div>
 
-      <!-- ═══════════════ §C ONE FORM, FOUR SOURCES ═══════════════ -->
-      <h2 class="mk-h">§C · טופס אחד, ארבעה מקורות — ומה הוא מחזיק חוץ מהשם</h2>
+      <!-- ═══════════════ §C THE PROPOSAL ═══════════════ -->
+      <h2 class="mk-h">§C · ההצעה — ערובה אחת, ואז שני מנופים</h2>
       <p class="mk-sub">
-        אם גם תוצאת חיפוש מגוגל נכנסת לאותו טופס, יש <strong>ארבעה</strong> מקורות ואקט אחד: לחיצה
-        ארוכה · אתר של גוגל · תוצאת חיפוש · שינוי שם למקום קיים.
+        הסדר חשוב. הערובה היא מה שהופך "נראות מלאה" ל<em>נכון מבנית</em>; המנופים רק קונים
+        פיקסלים, ופיקסלים נגמרים על המסך הקטן.
       </p>
-      <div class="mk-row">
-        <div>
-          <div class="mk-phone" style="height: 500px; --sheet-h: 0px">
-            <div class="mk-canvas"></div>
-            <div class="map-placecard map-draft">
-              <span class="map-draft-title">מה יש כאן?</span>
-              <div class="map-namefield">
-                <div class="icon-picker">
-                  <button type="button" class="icon-chip open" aria-haspopup="true" aria-expanded="true" aria-label="בחירת סמל">
-                    🌇
-                  </button>
-                </div>
-                <input value="הספסל עם הנוף" dir="auto" />
-              </div>
-              <!-- The panel the chip opens, drawn OPEN so the grid can be judged. It keeps the
-                   app's own `position: absolute` — it FLOATS over the card and the canvas rather
-                   than expanding the form, which is what the shipped `.icon-panel` does and what
-                   the first pass got wrong by drawing it static. -->
-              <div class="icon-panel" role="dialog" aria-label="בחירת סמל">
-                <div class="icon-panel-head"><span class="lbl">בחירת סמל</span></div>
-                <div class="icon-search"><input placeholder="חיפוש סמל" dir="auto" /></div>
-                <div class="icon-grid-scroll">
-                  <div class="icon-grid">
-                    <button type="button" class="icon-cell sel">🌇</button>
-                    <button type="button" class="icon-cell">📍</button>
-                    <button type="button" class="icon-cell">🍜</button>
-                    <button type="button" class="icon-cell">⛩️</button>
-                    <button type="button" class="icon-cell">☕</button>
-                    <button type="button" class="icon-cell">🏨</button>
-                    <button type="button" class="icon-cell">🚆</button>
-                    <button type="button" class="icon-cell">🌲</button>
-                  </div>
-                </div>
-              </div>
-              <!-- ALL NINE `EVENT_CATEGORY` values with their real `t.event.categories`
-                   labels — including `other` (כללי), which already exists. The first pass drew
-                   five and invented one ("ביקור"); `sightseeing` is אתרים. `other` sits LAST
-                   because it is the fallback, not a peer. -->
-              <div class="choice-grid pills compact" role="group" aria-label="קטגוריה">
-                <button type="button" class="choice-pill">אוכל</button>
-                <button type="button" class="choice-pill">אתרים</button>
-                <button type="button" class="choice-pill on">טבע</button>
-                <button type="button" class="choice-pill">פעילות</button>
-                <button type="button" class="choice-pill">לינה</button>
-                <button type="button" class="choice-pill">תחבורה</button>
-                <button type="button" class="choice-pill">קניות</button>
-                <button type="button" class="choice-pill">מעשי</button>
-                <button type="button" class="choice-pill">כללי</button>
-              </div>
-              <p class="map-draft-coords" dir="auto">35.7148, 139.7967</p>
-              <div class="map-draft-acts">
-                <button type="button" class="map-gbtn">ביטול</button>
-                <button type="button" class="map-addmaybe">הוספה למדף</button>
-              </div>
-            </div>
-          </div>
-          <p class="mk-cap">הטופס המלא — שם · סמל · קטגוריה</p>
-        </div>
+      <div class="mk-toggle" id="ctlC">
+        <span class="lbl">מסך</span>
+        <button data-size="390">390×844</button>
+        <button data-size="360">360×640</button>
+        <span class="lbl" style="margin-inline-start: 10px">מקלדת</span>
+        <button data-kb="off">אין</button>
+        <button data-kb="android">אנדרואיד</button>
+        <button data-kb="ios">iOS</button>
+      </div>
+      <div class="mk-row" id="rowC"></div>
 
+      <div class="mk-row">
         <div class="mk-note">
-          <h4>למקום אין קטגוריה ואין סמל. בדקתי במודל.</h4>
+          <h4>1 · הערובה: הכרטיס חסום, הראש והרגל מוצמדים</h4>
           <p>
-            <code>Place</code> מחזיק
-            <code>googlePlaceId · name · address · lat · lng · timezone · rating</code> —
-            <strong>ואין בו לא קטגוריה ולא סמל</strong>. הגוון של הסיכה נגזר תמיד מה<em>הפניה</em>:
-            <code>place-usage.ts</code> לוקח את איחוד הקטגוריות של מה שמפנה אליו, וכשאין אחת הסיכה
-            יוצאת <code>leisure</code>.
+            הכרטיס מקבל <code>max-height: var(--map-card-room)</code> — מאותם שלושה מספרים
+            שה‑<code>bottom</code> שלו כבר משתמש בהם — ונחלק לשלוש: <strong>ראש מוצמד</strong>
+            (הכותרת, שהיא גם ה‑label, והשדה), <strong>אמצע גולל</strong> (הקטגוריות והנקודה),
+            <strong>רגל מוצמדת</strong> (ביטול והאישור).
           </p>
           <p>
-            <strong>מה שכן מחזיק את שניהם הוא <code>MaybeItem</code></strong> —
-            <code>icon String?</code> ו‑<code>category EventCategory?</code>, ו‑
-            <code>verbs.addMaybe(title, { icon, category })</code> כבר מקבל אותם. כלומר הטופס יכול
-            לכתוב את שניהם <em>בלי עמודה חדשה ובלי מיגרציה</em> — על הרעיון שנוצר בכל מקרה.
+            <strong>ולמה דווקא אלה מוצמדים:</strong> בזמן שהמקלדת למעלה השאלות על המסך הן "מה אני
+            מכנה", "מה הקלדתי" ו"איך יוצאים". הקטגוריות והקואורדינטות הן בדיוק שני הדברים שאי אפשר
+            לפעול עליהם בזמן הקלדה — אותו כלל של פקד־נגזר ש<code>נווט</code> נעלם לפיו תחת שליחות
+            (ADR-0134 §4).
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>וזה לא דפוס חדש.</strong> <code>EventForm</code> ו‑<code>BookingSheet</code>
+              הם בדיוק זה: גוף גולל, <code>FormActions</code> מוצמדות, ו‑<code>scrollIntoView</code>
+              על פוקוס. הטופס הזה הוא היחיד באפליקציה שלא נושא את זה — כי הוא צויר ככרטיס. הוא יכול
+              להיות שניהם.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>2 · המדף נסוג ל‑<code>map</code> כל עוד הטופס פתוח</h4>
+          <p>
+            הרווח הכי גדול: <strong>+233px</strong> ב‑390×844, מול 122 של ה‑reclaim. ובעצירת
+            <code>full</code> זה לא רווח אלא <strong>תנאי</strong> — בלעדיו העיפרון פותח שום דבר.
+          </p>
+          <p>
+            <strong>ADR-0147 דחה את זה</strong> ("זה לוקח את הרשימה שקראת"). הדחייה נכתבה
+            <em>בלי מקלדת בחדר</em>. הרשימה שקראת כבר מוסתרת ממילא, והמדף חוזר לעצירה שממנה בא
+            כשהטופס נסגר — כלומר לא נלקח כלום, רק נדחה.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>הוכרע (הבעלים): תמיד, ומכל מצב.</strong> פתיחת הטופס מנרמלת את המדף
+              ל‑<code>map</code> — בין אם היית ב‑<code>half</code>, ברשימה המלאה, או
+              <strong>בתצוגת החיפוש</strong>. לא "רק כשאין מקום".
+            </p>
+            <p style="margin-top: 8px">
+              <strong>ומה שנופל מזה חינם:</strong> "המדף נסוג" מפסיק להיות התנהגות מיוחדת של
+              הטופס והופך ל<em>אותו אקט</em> כמו הקשה על <code>רשימה / מפה</code>. אין עצירה
+              שלישית לנהל, אין שאלה "לאן חוזרים", אין תנועה חדשה — והמקום של הכרטיס הופך
+              ל<strong>קבוע לכל מסך</strong> במקום פונקציה של שבר נגרר. זה מה שהופך את הערובה
+              של §1 לתקציב שאפשר לתכנן מולו.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>3 · הכרום יורד — והשם של המצב הוא הדליפה</h4>
+          <p>
+            <strong>הוכרע (הבעלים): כשהמקלדת עולה, הכותרת העליונה וכפתורי הניווט התחתונים
+            יורדים.</strong> וזה בדיוק ה‑reclaim הקיים (ADR-0132 §2/§3), כלומר אפס מנגנון חדש.
+          </p>
+          <div class="mk-verdict warn">
+            <p style="margin: 0">
+              <strong>אבל הטריגר הוא "הטופס פתוח", לא "המקלדת למעלה" — וזו לא קפדנות.</strong>
+              הקשה על צ׳יפ קטגוריה מוציאה את הפוקוס מהשדה, כלומר <em>המקלדת נסגרת</em>. אם הכרום
+              קשור למקלדת ממש, הכותרת והניווט <strong>קופצים חזרה</strong>, הכרטיס נפרס מחדש, והם
+              נעלמים שוב ברגע שנוגעים בשדה — זו בדיוק ה"נשימה" שנדחתה ב⟨חלופה⟩ למעלה, רק על
+              המעטפת, שם היא גרועה יותר.
+            </p>
+          </div>
+          <p style="margin-top: 9px">
+            "לאורך הטופס" הוא <strong>מכיל</strong> את "כל עוד המקלדת למעלה", ולא מהבהב. וזה גם
+            לא עולה כלום כשהמקלדת סגורה: בעצירת <code>map</code> הטופס צריך 243 ויש לו 372 עם
+            הכרום למטה ו‑564 איתו — שניהם נכנסים, אז אין סיבה להחזיר אותו באמצע.
+          </p>
+          <p>
+            <code>queryOpen</code> מתאר את ה<strong>סיבה</strong>, ולמעטפת אף פעם לא היה אכפת אלא
+            מה<strong>רצון</strong>. ‏ADR-0132 §2 אומר את זה במפורש: <em>"המעטפת מקבלת מידע שהמשטח
+            רוצה את הכרום בחזרה, לא מה המשטח עושה"</em> — והשם סותר את המשפט הזה.
+          </p>
+          <p>
+            אז לא <code>queryOpen || formOpen</code> ב‑<code>App.tsx</code> (זה עותק מקביל שני,
+            בדיוק מה שכלל 8 אוסר) אלא <strong>הכללה של הקיים</strong>: מצב אחד במשמעות "משטח על
+            הטאב הזה מבקש את הכרום", ששני המשטחים כותבים אליו.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              ‏ADR-0132 §3 מזכיר גם למה זה לא רק נוחות: החריצים עוברים ל‑body יחד עם הכרום, ובלי
+              זה שדה הטופס נכנס <em>מתחת למגרעת</em>. וב‑360×640 הייחוס של גוגל לא נכנס בכלל —
+              ‏ADR-0106 §B הוא כלל, לא העדפה.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="mk-h">§C3 · "אני לא רוצה להרשות את זה" — ולכן הטופס נכנס, ולא נגלל</h2>
+      <p class="mk-sub">
+        הגרסה הראשונה של §C הציעה גלילה כתשובה ל‑39px שחסרו ב‑360×640 מול מקלדת אנדרואיד.
+        <strong>הבעלים דחה את זה</strong> — "חלק מהטופס חתוך, זה לא אמור לקרות ואני לא רוצה
+        להרשות את זה" — וזו הדחייה הנכונה: גלילה בתוך כרטיס של 204px היא לא נראות מלאה, היא
+        רשות לחתוך. אז נמצאו הפיקסלים במקום להתיר את החיתוך.
+      </p>
+      <div class="mk-row">
+        <div class="mk-note">
+          <h4>‏−20px · שורה שקטה אחת, לא שתיים</h4>
+          <p>
+            הכרטיס נשא <em>שני</em> טורי־טקסט מושתקים זה מעל זה — הרמז ("גוגל ישלים את השם") ושורת
+            הנקודה/הכתובת. יחד: 44px מתוך 243, על שתי פסוקיות קצרות ש<strong>מעולם לא שתיהן נשאו
+            משקל בבת אחת</strong>: לסיכה שהופלה אין כתובת בכלל, ולאתר שהוקש טבעת מתחת לאצבע כבר
+            אמרה איפה הוא.
+          </p>
+          <p>
+            אז שורה אחת, בחריץ ה‑<code>hint</code> של <code>Field</code> שכבר קיים: לסיכה — הנקודה;
+            לאתר — מי ימלא את השם; לתוצאה ולשינוי־שם — הכתובת. הכרטיס הפך ל‑<strong>223px לכל
+            מקור</strong>, כלומר מספר אחד לתכנן מולו.
+          </p>
+          <div class="mk-verdict">
+            <p>וזה שיפור בלי קשר למקלדת: שתי שורות שקטות שמתחרות זו עם זו גרועות מאחת.</p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>‏+52px · המדף נסוג <em>לגמרי</em>, לא רק ל‑<code>map</code></h4>
+          <p>
+            בעצירת <code>map</code> המדף הוא לא יותר מהרצועה שלו: ידית, <code>רשימה / מפה</code>,
+            <code>קרוב עכשיו</code> — מעל רשימה שאי אפשר לראות. <strong>אף אחד מהם אינו המשימה</strong>
+            בזמן שמכנים נקודה, וה־toggle שבתוכו אף <em>סותר</em> טופס שהרגע העביר אותך לקנבס.
+          </p>
+          <p>
+            אז הגובה עובר לקנבס: <code>display: none</code> ולא רצועה בגובה 0 עם תוכן חתוך — אותו
+            נימוק שבו ADR-0132 §2 בחר <code>display:none</code> לכרום, כולל היציאה מסדר ה‑tab.
+            ‏<code>sheetView</code> נשאר <code>map</code> מתחת, ולכן העצירה שנדחתה חוזרת בסגירה.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              יחד: <strong>223 צריך, 256 יש</strong> במקרה הגרוע — 33px עודף. הערובה של §1 נשארת
+              כ<strong>רצפה</strong>, לא כתשובה: היא מבטיחה שאם מכשיר שלא נמדד יהיה צר מדי, זה
+              יתנהג כגלילה ולא כחיתוך.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>נמדד, על הכרטיס שנשלח</h4>
+          <p>
+            ‏12 מצבים: ‏360×640 · 390×844 · 411×914 · 430×932, כל אחד מול <em>אין מקלדת</em>,
+            <em>אנדרואיד</em> ו‑<em>iOS</em>, עם חריצי בטיחות בכל המסכים שבאמת יש בהם כאלה. בכולם:
+            הכרטיס במלוא 223px, הכותרת והפעולות על המסך, <strong>ואין גלילה</strong>.
           </p>
           <div class="mk-verdict no">
-            <p style="margin: 0 0 8px">
-              <strong>יש החלטה מתועדת נגד בורר קטגוריה בדיוק כאן</strong>, ואני לא עוקף אותה בשקט:
-              <code>AddIdea</code> נושא <code>IconPicker</code> ו<em>במכוון</em> בלי קטגוריה —
-              "רעיון על המדף הוא רשימה מהירה … בורר קטגוריה מלא בהוספה־מהירה הוא מסורבל, וקטגוריה
-              היא לא חובה לאולי. היא נתפסת כשהרעיון הופך לאירוע" (session 76, ADR-0109 §11).
-            </p>
-            <p style="margin: 0">
-              <strong>ולמה המפה עשויה להיות שונה:</strong> שם קטגוריה היא מטא־דאטה בלתי־נראית.
-              <em>כאן היא הגוון של הסיכה.</em> בלי בחירה, סיכה של מסעדה יוצאת ירוקה — ועל משטח
-              שהדקדוק שלו הוא "צבע = קטגוריה" זה מידע שגוי, לא היעדר מידע.
-            </p>
-          </div>
-        </div>
-
-        <div class="mk-note">
-          <h4>קטגוריה מניעה את הסמל, עד שאדם אומר אחרת</h4>
-          <p>
-            הוכרע (הבעלים): <strong>אם לא נבחר סמל, בחירת קטגוריה קובעת סמל ברירת־מחדל</strong> —
-            בדיוק כמו באירועים והזמנות — <em>והמשתמש יכול לשנות</em>.
-          </p>
-          <p>
-            <strong>והמכניזם קיים ואין מה להמציא:</strong> <code>lib/useDerivedField.ts</code>,
-            שחולץ בדיוק בגלל שהיו <em>חמישה</em> זוגות <code>*Touched</code> מגולפים ביד
-            (<code>EventForm</code>'s <code>iconTouched</code>/<code>kindTouched</code>/
-            <code>bookedTouched</code> ו‑<code>BookingSheet</code>'s שניים). אז זה שלוש שורות:
-          </p>
-          <p style="font-family: 'JetBrains Mono', monospace; font-size: 11px; direction: ltr; text-align: left; background: var(--screen); padding: 8px 10px; border-radius: 8px">
-            const icon = useDerivedField(DEFAULT_MAYBE_ICON,<br />
-            &nbsp;&nbsp;{ initiallyTouched: Boolean(place?.icon) })<br /><br />
-            onCategory: icon.redrive(iconForCategory(next))<br />
-            onPick:&nbsp;&nbsp;&nbsp;&nbsp; icon.set(glyph)
-          </p>
-          <div class="mk-verdict">
-            <p style="margin: 0">
-              <strong>ו‑<code>initiallyTouched</code> הוא מה שמכסה את שינוי־השם:</strong> מקום
-              שכבר נושא סמל נחשב "אדם בחר", ולכן הקשה על קטגוריה <em>לא</em> תדרוס אותו. זה בדיוק
-              מה ש‑<code>EventForm</code> עושה לאירוע קיים, וההערה בקובץ קוראת לזה
-              "the load-bearing case".
-            </p>
-          </div>
-        </div>
-
-        <div class="mk-note">
-          <h4>היררכיית הסמלים — ותיקון אחד</h4>
-          <p>
-            הזיכרון היה הפוך, וכדאי לדעת לפני שבונים על זה. השרשרת שנשלחה היא
-            <code>chosenIcon(event?.icon) ?? BOOKING_TYPE_ICON[booking.type]</code> — כלומר
-            <strong>בחירה מכוונת של האירוע המקושר גוברת על גליף הסוג של ההזמנה</strong>, לא להיפך.
-          </p>
-          <p>
-            <code>constants.ts</code> גם מתעד את העידון שזה דרש: <em>ברירת מחדל היא לא בחירה</em>.
-            <code>📌</code> נחשב בחירה והאפיל על ✈️, ולכן <code>chosenIcon</code> מחזיר
-            <code>undefined</code> על placeholder כדי שה‑<code>??</code> ימשיך לרוץ.
-          </p>
-          <p>
-            <strong>והאינטואיציה "מקום בתחתית" מתאימה לעיקרון האמיתי של השרשרת</strong>: הבחירה
-            המכוונת בהיקף הקרוב ביותר גוברת, ומקום הוא ההיקף הרחוק ביותר. כלומר —
-          </p>
-          <p
-            style="
-              font-family: 'JetBrains Mono', monospace;
-              font-size: 11px;
-              direction: ltr;
-              text-align: left;
-              background: var(--screen);
-              padding: 8px 10px;
-              border-radius: 8px;
-            "
-          >
-            chosenIcon(event.icon)<br />
-            ?? BOOKING_TYPE_ICON[booking.type]<br />
-            ?? chosenIcon(place.icon) &nbsp;← הוכרע<br />
-            ?? iconForCategory(category)<br />
-            ?? DEFAULT
-          </p>
-          <div class="mk-verdict">
-            <p style="margin: 0 0 8px">
-              <strong>הוכרע (הבעלים, 2026-07-30): <code>Place.icon</code> אמיתי</strong> — עמודה
-              חדשה ומיגרציה, במודע. השיקול שהוכרע לטובתו: הסמל הוא של <em>המקום</em>, ולכן הוא חייב
-              לשרוד מחיקה של הרעיון שדרכו הוא נכתב. האלטרנטיבה (הסמל על
-              <code>MaybeItem</code> הקיים, אפס מיגרציה) מאבדת אותו בדיוק שם.
-            </p>
-            <p style="margin: 0">
-              <strong>ותוצאה אחת שנרשמת כאן כי היא רחבה מהפיצ׳ר:</strong> זה
-              <strong>פוסל מאגר מקומות גלובלי</strong> חוצה־טיולים. סמל שהמשתמש בחר הוא דאטה של
-              הטיול, לא של הישות שגוגל מתארת — ולכן <code>Place</code> נשאר מה שהוא היום, שורה
-              בתוך טיול (<code>@@unique([tripId, googlePlaceId])</code>), ולא רשומה משותפת שרק
-              מוטבת מקאש. אם מישהו יציע קאש כזה בעתיד, זו הסיבה שהוא לא יעבוד.
-            </p>
-          </div>
-        </div>
-
-        <div class="mk-note">
-          <h4>תוצאת חיפוש → אותו טופס</h4>
-          <p>
-            היום <code>addResult</code> מדף מיד, בלי טופס. להעביר אותו לכאן זה
-            <strong>שינוי בהתנהגות שנשלחה</strong> (ADR-0131 §11: "נבחר → מדף"), ולכן נרשם כתיקון
-            ולא מוברח. הרווח: המקום נכנס עם שם וסמל שאתם בחרתם במקום שם של גוגל שצריך לתקן אחר כך.
-          </p>
-          <div class="mk-verdict">
-            <p style="margin: 0">
-              המלצה: הטופס נפתח ל<strong>כל</strong> המקורות אבל <em>מלא מראש</em> כשיש שם, כך
-              שההקשה השלישית היא רק לתקן — ומי שלא רוצה לתקן, מאשר.
-            </p>
-          </div>
-        </div>
-      </div>
-      <!-- ═══════════════ §C THE PLACEMENTS THAT COST ═══════════════ -->
-      <h2 class="mk-h">§D · שלושת המקומות שנפסלו, במידות</h2>
-      <p class="mk-sub">
-        לא דעות — מדידות שכבר נרשמו. מימין לשמאל: מה קורה לשורה אם הפקד נכנס לעמודה, לשורת השם, או
-        לכותרת התחתונה של בלוק הכניסה.
-      </p>
-      <div class="mk-row">
-        <div>
-          <div class="mk-phone narrow" style="height: 300px">
-            <div style="padding: 14px; background: var(--screen); height: 100%">
-              <p class="mk-cap" style="text-align: start; margin: 0 0 8px">
-                א׳ · <code>⋯</code> בתוך <code>.map-right</code>
-              </p>
-              <div class="place">
-                <div class="map-badge cat-food" data-order="2">🍜</div>
-                <div class="map-main">
-                  <div class="map-t"><span class="map-name">רמן נאגי</span></div>
-                  <div class="map-m"><span class="map-tag">Kabukicho</span></div>
-                </div>
-                <div class="map-right">
-                  <span class="map-dist" dir="auto">1.2 ק״מ</span>
-                  <a class="map-navbtn">נווט</a>
-                  <button type="button" class="map-gbtn" style="min-height: 34px">⋯</button>
-                </div>
-              </div>
-              <p class="mk-cap" style="text-align: start; margin: 10px 0 8px">
-                ב׳ · פקד בסוף שורת השם
-              </p>
-              <div class="place">
-                <div class="map-badge cat-food" data-order="2">🍜</div>
-                <div class="map-main">
-                  <div class="map-t" style="display: block">
-                    <span class="map-name">Ichiran Ramen Shinjuku</span>
-                    <button type="button" class="map-gbtn" style="min-height: 30px">
-                      שינוי שם
-                    </button>
-                  </div>
-                  <div class="map-m"><span class="map-tag">Kabukicho</span></div>
-                </div>
-                <div class="map-right"><a class="map-navbtn">נווט</a></div>
-              </div>
-            </div>
-          </div>
-          <p class="mk-cap">360px — הרוחב שבו נמדדה הגלישה</p>
-        </div>
-
-        <div class="mk-note">
-          <h4>שלוש דחיות מתועדות</h4>
-          <p>
-            <strong>א׳ · העמודה.</strong> <code>.map-right</code> היא עמודה, ולכן פקד
-            <em>נוסף</em> ליד <code>נווט</code> עולה <strong>גובה</strong> — ADR-0134 §5 מדד את זה,
-            וזו הסיבה ש<code>בחירה</code> <em>מחליף</em> את <code>נווט</code> תחת שליחות והשורה
-            נשארת 73px.
-          </p>
-          <p>
-            <strong>ב׳ · שורת השם.</strong> התיקון של session 148 מדד: פקד עוקב לקח את
-            <code>Ichiran Ramen</code> לשתי שורות ב‑390px, וכותרת עברית ארוכה לחמש ב‑360px. זו בדיוק
-            הסיבה שהכניסה למפה הפכה ל<em>תג הקטגוריה</em> — אלמנט שכבר היה שם.
-          </p>
-          <p>
-            <strong>ג׳ · כותרת בלוק הכניסה.</strong> ADR-0135 §1 הוא הבעלים דוחה כניסה שנייה באותה
-            תיבה אפורה: "שתי כניסות באותה תיבה אפורה נקראות כתפריט פקודות".
-          </p>
-          <div class="mk-verdict">
-            <p style="margin: 0">
-              <strong>ולכן: הבחירה חושפת.</strong> שורה <em>לא</em> נבחרת לא משלמת כלום — וזה כל
-              האילוץ. שורה נבחרת היא כבר אובייקט אחר: היא חושפת את <code>.map-refs</code> (ADR-0121
-              §8), נושאת יצירה בכותרת התחתונה (ADR-0135 §1) ואת פקדי הסימון על שורות ההפניה
-              (ADR-0139). הדפוס קיים.
+            <p>
+              <strong>ומה שזה לא:</strong> זו בדיקת <em>גיאומטריה</em> על ה‑CSS שנשלח, לא מעבר על
+              הקנבס. jsdom מדווח כל מלבן כאפס, ובלי מפתח דפדפן גם ה‑e2e מקבל את הטאב בלי לוח — כך
+              שהמספרים כאן נמדדו על הכרטיס האמיתי בתוך גיאומטריית ה‑split האמיתית, וזה מה שהם
+              מכסים.
             </p>
           </div>
         </div>
       </div>
 
-      <!-- ═══════════════ §C ONE ROW, TWO HOSTS ═══════════════ -->
-      <h2 class="mk-h">§E · שורה אחת, שני מאכסנים</h2>
-      <p class="mk-sub">
-        <code>screens/Map.tsx</code> מרנדר את כרטיס הקנבס בתור
-        <code>renderRow(…)(cardUsage)</code> — הכרטיס <em>הוא</em> השורה. לכן שדה בתוך
-        <code>.map-t</code> מופיע גם ברשימה וגם על הקנבס בלי מימוש שני, וזה בדיוק "מחיפוש המפה
-        ומחלונית המפה".
-      </p>
-      <div class="mk-row">
-        <div>
-          <div class="mk-phone" style="height: 420px; --sheet-h: 0px">
-            <div class="mk-canvas"></div>
-            <div class="map-placecard">
-              <div class="place selected" style="background: none; border: 0; padding: 0">
-                <div class="map-badge cat-food" data-order="2">🍜</div>
-                <div class="map-main">
-                  <div class="map-namefield">
-                    <input value="הרמן ליד המלון" dir="auto" />
-                    <button type="button" class="map-nameok" aria-label="שמירה">
-                      <svg
-                        class="icon"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.4"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M5 12.6l4.7 4.7L19 7.4" />
-                      </svg>
-                    </button>
-                    <button type="button" class="map-namecancel" aria-label="ביטול">
-                      <svg
-                        class="icon"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                      >
-                        <path d="M6 18 18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div class="map-m"><span class="map-tag">Kabukicho, Shinjuku</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <p class="mk-cap">אותו טופס, על הקנבס (stop = <code>map</code>)</p>
-        </div>
-        <div class="mk-note">
-          <h4>מה זה קונה</h4>
-          <p>
-            אפס קוד כפול, ואפס החלטה על "איפה עוד". השם הוא של המשתמש בשני המאכסנים כי יש שורה אחת.
-          </p>
-          <p>
-            <strong>וזו לא מדיניות חדשה.</strong> <code>enrichExisting</code> בבק־אנד כותב
-            <code>googlePlaceId</code>, <code>address</code>, <code>lat</code>, <code>lng</code>,
-            <code>timezone</code> — ו<strong>לא</strong> את <code>name</code>. כלומר שם שהמשתמש כתב
-            שורד העשרה של גוגל <em>כבר היום</em>. שינוי־שם רק נותן משטח לכלל שהבק־אנד תמיד שמר.
-          </p>
-          <div class="mk-verdict">
-            <p style="margin: 0">
-              ולכן <strong>כל מקום</strong> ניתן לשינוי שם, גם כזה שגוגל נתן לו שם — אחרת אותה שורה
-              הייתה ניתנת לעריכה או לא לפי מאיפה היא הגיעה.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <!-- ═══════════════ §D THE BUDGET ═══════════════ -->
-      <h2 class="mk-h">§F · מה זה מוציא מהתקציב</h2>
+      <h3 class="mk-h" style="font-size: 17px">⟨חלופה⟩ — מנוף שנשקל ולא נבחר</h3>
       <div class="mk-row">
         <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
           <p>
-            <strong>צבע — כלום.</strong> הפקד ניטרלי (<code>--muted</code> לעיפרון,
-            <code>--cta</code> לאישור). מתן שם הוא לא זמן, לא מקום ולא סטטוס, ולכן לא ענבר, לא
-            טורקיז ולא <code>--ok</code>/<code>--miss</code> (ADR-0028 / כלל 4).
+            <strong>שהקטגוריות ייעלמו כשהמקלדת עולה.</strong> קונה 43px ולא נדרש יותר אחרי §C3.
+            <strong>נדחה גם לגופו:</strong> זה מזיז תוכן מתחת לאצבע בכל פוקוס ובלור — והמקלדת
+            ב‑iOS נפתחת ונסגרת הרבה — כך שהכרטיס "נושם". אותו נימוק בדיוק שבו הטריגר של הכרום הוא
+            "הטופס פתוח" ולא "המקלדת למעלה" (§C3 למעלה): מצב יציב עדיף על מצב מדויק־ומהבהב.
+          </p>
+        </div>
+      </div>
+
+
+      <!-- ═══════════════ §C2 ENTRY STATES ═══════════════ -->
+      <h2 class="mk-h">§C2 · מאיפה שהיית — ולאן הטופס מעביר אותך</h2>
+      <p class="mk-sub">
+        <strong>הוכרע (הבעלים):</strong> פתיחת הטופס מנרמלת את המדף ל‑<code>map</code>
+        <em>מכל מצב</em> — מפה רגילה, <code>half</code>, רשימה מלאה, או תצוגת חיפוש — ו<strong>הכרום
+        יורד</strong>: הכותרת העליונה וכפתורי הניווט התחתונים. כל זוג כאן הוא "לפני" ו"אחרי"
+        מאותו בונה מסגרות, עם המספרים החיים.
+      </p>
+      <div class="mk-row" id="rowC2"></div>
+      <div class="mk-row">
+        <div class="mk-note">
+          <h4>למה "תמיד" ולא "רק כשצריך"</h4>
+          <p>
+            כי אז "המדף נסוג" מפסיק להיות התנהגות מיוחדת של הטופס והופך ל<strong>אותו אקט</strong>
+            שההקשה על <code>רשימה / מפה</code> כבר עושה. אין עצירה שלישית לנהל, אין תנועה חדשה,
+            ואין תנאי שצריך לכייל.
           </p>
           <p>
-            <strong>אלמנט רועש — כלום.</strong> אין משטח חדש שצף: <code>.map-placecard</code> קיים,
-            ו‑ADR-0126 §1 כבר שולט בחריץ הצף היחיד.
+            <strong>וזה גם מה שהופך את התקציב לקבוע:</strong> אחרי הכלל הזה ה‑<code>room</code>
+            של הכרטיס הוא מספר אחד לכל מסך — ‏372px ב‑390 ו‑204px ב‑360 (אנדרואיד) — במקום
+            פונקציה של שבר נגרר. לערובה של §1 יש סוף‑סוף מול מה לתכנן.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              והדחייה של ADR-0147 נענית ולא נדרסת: "זה לוקח את הרשימה שקראת" — <strong>המדף חוזר
+              לעצירה שממנה בא</strong> כשהטופס נסגר, ולכן שום דבר לא נלקח, רק נדחה.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>החיפוש — ולמה הוא המקרה שמוכיח את הכלל</h4>
+          <p>
+            תוצאת חיפוש היא <em>המקור הרביעי</em>, כלומר זה לא מצב היפותטי אלא נתיב מתוכנן: אתה
+            בחיפוש, מקיש <code>＋ אולי</code>, והטופס נפתח. גם שם — <code>map</code>.
           </p>
           <p>
-            <strong>גובה — כלום כשלא נבחר</strong>, וזה האילוץ שנמדד. השם נחתך ב‑ellipsis כמו היום
-            במקום לגלוש.
+            <strong>ושדה החיפוש נשאר פתוח.</strong> הטופס הוא שלב <em>בתוך</em> החיפוש עבור המקור
+            הזה; לסגור את השאילתה יאבד אותה ויאלץ להקליד מחדש. התוצאות פשוט יורדות אל מתחת
+            לכרטיס, שם הן ממילא.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>ושימו לב מה זה אומר על הדיווח המקורי:</strong> בחיפוש הכרום <em>כבר</em> יורד
+              (‏<code>queryOpen</code>), ולכן הנתיב הזה לא נשבר. כלומר "בחיפוש זה מטופל" נכון —
+              והטופס פשוט לא ביקש את אותו הדבר.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════ §D THE MATRIX ═══════════════ -->
+      <h2 class="mk-h">§D · כל המצבים — מקור × עצירה × מקלדת</h2>
+      <p class="mk-sub">
+        הבקשה הייתה "כל אחד מהמצבים האלה (בטח פספסתי כמה)". זו הרשימה המלאה, וכל תא מסומן לפי
+        ה‑<code>room</code> החי שלו אחרי ההצעה.
+      </p>
+      <div class="mk-row">
+        <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
+          <table
+            id="tblD"
+            style="width: 100%; border-collapse: collapse; font-size: 12.5px; line-height: 1.5"
+          ></table>
+        </div>
+      </div>
+      <div class="mk-row">
+        <div class="mk-note">
+          <h4>מצבים שאינם גודל — ונבדקו בנפרד</h4>
+          <p>
+            <strong>בורר הסמל פתוח.</strong> הפאנל צף ואינו מרחיב את הכרטיס — אבל הוא נפתח
+            <em>מתחת</em> לשבב, ומעל מקלדת יש לו פחות מקום מהכרטיס עצמו. הוא נמדד בנפרד למטה.
           </p>
           <p>
-            <strong>אייקונים, לא אמוג׳י</strong> — העיפרון הוא <code>Icon</code> אמיתי
-            (ADR-0138), ובורר הסמל הוא <code>IconPicker</code> של האפליקציה, לא העתק. יעד המגע
-            44px (ADR-0017), והשדה נושא <code>dir="auto"</code> כי הוא מחזיק טקסט של המשתמש
-            (ADR-0118). <strong>ובורר הסמל צף</strong> ולא מרחיב את הטופס.
+            <strong>שגיאת כתיבה.</strong> מוסיפה שורה ל<em>ראש</em> המוצמד — כלומר היא תמיד נראית,
+            וזה נכון: הודעת שגיאה שנגללת החוצה היא הודעה שלא נמסרה.
           </p>
           <p>
-            <strong>מחוות — ‏6b חינם לגמרי</strong> (בלי session, בלי Details, בלי reverse geocode);
-            <strong>6c משלם פעם אחת, על האישור</strong> — "חמוש בכוונה, לא בפתיחה" (ADR-0115 §1).
+            <strong>שליחות פעילה.</strong> הכותרת התחתונה של השליחות תופסת גובה מעל הכרטיס; זה
+            עוד מקרה שבו <code>room</code> קטן ולכן נמדד ולא הונח.
+          </p>
+          <p>
+            <strong>אופליין.</strong> אין קנבס, ולכן אין טופס — נעדר, לא מושבת (ADR-0121 §11).
+          </p>
+        </div>
+        <div>
+          <div class="mk-phone" id="phonePanel"></div>
+          <p class="mk-cap">בורר הסמל מעל מקלדת — הפאנל צף, אבל צריך למדוד לאן</p>
+        </div>
+      </div>
+
+      <!-- ═══════════════ §E DISMISSAL ═══════════════ -->
+      <h2 class="mk-h">§E · כל דרך החוצה — ובקשה שהיא בעצם כלל שהופר</h2>
+      <p class="mk-sub">
+        <strong>"הקשה מחוץ לטופס צריכה לסגור אותו ולבטל את הבחירה".</strong> זו לא בקשה לפיצ׳ר —
+        זה כלל כתוב ב‑<code>frontend/CLAUDE.md</code> שהמימוש שלי הפר:
+        <em>"אם אפשר לסגור משטח בכלל, הסגירה הזו נמצאת בערימת ה‑back… פקד סגירה, רקע או הקשה
+        בחוץ, Escape והמחווה של אנדרואיד — כולם חייבים להריץ את <strong>אותה פונקציה</strong>"</em>.
+      </p>
+      <div class="mk-row">
+        <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
+          <table
+            style="width: 100%; border-collapse: collapse; font-size: 12.5px; line-height: 1.55"
+          >
+            <tr style="text-align: start; border-bottom: 1px solid var(--line)">
+              <th style="text-align: start; padding: 6px 8px">הדרך החוצה</th>
+              <th style="text-align: start; padding: 6px 8px">היום</th>
+              <th style="text-align: start; padding: 6px 8px">מוצע</th>
+              <th style="text-align: start; padding: 6px 8px">ומה נשאר אחריה</th>
+            </tr>
+            <tr>
+              <td style="padding: 6px 8px"><code>ביטול</code></td>
+              <td style="padding: 6px 8px; color: #1f7a5a">✓</td>
+              <td style="padding: 6px 8px">ללא שינוי</td>
+              <td style="padding: 6px 8px">הסימון נעלם; הבחירה כפי שהייתה</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 8px">back של המערכת</td>
+              <td style="padding: 6px 8px; color: #1f7a5a">✓ (‏<code>useBackLayer</code>)</td>
+              <td style="padding: 6px 8px">ללא שינוי</td>
+              <td style="padding: 6px 8px">אותו דבר — כי אותה פונקציה</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 8px">Escape</td>
+              <td style="padding: 6px 8px; color: #1f7a5a">✓ (דרך הערימה)</td>
+              <td style="padding: 6px 8px">ללא שינוי</td>
+              <td style="padding: 6px 8px">אותו דבר</td>
+            </tr>
+            <tr style="background: color-mix(in srgb, var(--miss) 7%, transparent)">
+              <td style="padding: 6px 8px"><strong>הקשה על הקנבס</strong></td>
+              <td style="padding: 6px 8px; color: var(--miss)">✗ — מנקה בחירה, משאירה טופס</td>
+              <td style="padding: 6px 8px"><strong>סוגר ומבטל בחירה</strong></td>
+              <td style="padding: 6px 8px">קנבס נקי — אין כרטיס, אין סימון, אין בחירה</td>
+            </tr>
+            <tr style="background: color-mix(in srgb, var(--miss) 7%, transparent)">
+              <td style="padding: 6px 8px"><strong>הקשה על שורה במדף</strong></td>
+              <td style="padding: 6px 8px; color: var(--miss)">✗ — בוחר שורה, משאיר טופס</td>
+              <td style="padding: 6px 8px"><strong>סוגר, ואז בוחר</strong></td>
+              <td style="padding: 6px 8px">השורה נבחרת — מחווה אחת, כוונה אחת</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 8px">מעבר טאב / יציאה</td>
+              <td style="padding: 6px 8px; color: #1f7a5a">✓ (פירוק)</td>
+              <td style="padding: 6px 8px">ללא שינוי</td>
+              <td style="padding: 6px 8px">—</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 8px">מחווה חדשה על הקנבס</td>
+              <td style="padding: 6px 8px; color: #1f7a5a">✓ (טיוטה מחליפה טיוטה)</td>
+              <td style="padding: 6px 8px">ללא שינוי</td>
+              <td style="padding: 6px 8px">הטופס החדש; הישן נזרק</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      <div class="mk-row">
+        <div class="mk-note">
+          <h4>מה זה "בחוץ", ולמה לא scrim</h4>
+          <p>
+            "בחוץ" הוא <strong>כל דבר שאינו הכרטיס</strong>, ולכן זה משטח אחד שקוף מתחתיו ולא
+            רשימת מקרים לפי אלמנט. עותק שני של "מה נחשב בחוץ" הוא בדיוק איך שני משטחים מתפצלים.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>ובלי scrim.</strong> הצללה הייתה אומרת "המפה מושבתת" — והמפה היא הדבר שאתה
+              מסמן עליו נקודה. חייבים לראות אותה. המשטח קיים רק כדי ש<em>הקשה</em> תיפול עליו.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>והשאלה שהבקשה פותחת: טופס "מלוכלך"</h4>
+          <p>
+            הקשה מקרית על הקנבס יכולה לזרוק שם שהוקלד — ובמקרה של סיכה חדשה גם את הסיכה. אז:
+          </p>
+          <p>
+            <strong>נדחה — דיאלוג אישור.</strong> על כרטיס עם שדה אחד זו בדיוק הנודניקות
+            ש‑ADR-0109 §6 אוסר, ו<code>Modal</code> הוא לא מה שהמשטח הזה הוא.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>מומלץ:</strong> נסגר בלי אישור, <em>ואם משהו הוקלד</em> — toast עם
+              <code>ביטול פעולה</code> שמחזיר את הטופס כפי שהיה. זה הדקדוק שכל כתיבה באפליקציה
+              כבר משתמשת בו (<code>verbs</code> + toast + undo), אפס מנגנון חדש, ואפס נודניקות
+              במקרה הנפוץ (טופס ריק שנפתח בטעות).
+            </p>
+          </div>
+        </div>
+        <div>
+          <div class="mk-phone" id="phoneE"></div>
+          <p class="mk-cap">משטח ההקשה — שקוף, מתחת לכרטיס, מעל הקנבס</p>
+        </div>
+      </div>
+
+      <!-- ═══════════════ §G 6c REMOVED ═══════════════ -->
+      <h2 class="mk-h">§G · והמקור שהוסר — ‏6c</h2>
+      <div class="mk-row">
+        <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
+          <p>
+            <strong>הוכרע (הבעלים, על טלפון אמיתי):</strong> הקשה על אתר של גוגל <em>לא</em> פותחת
+            את הטופס. <em>"לפתוח טופס יצירת מקום על כל הקשה על הצעה של גוגל זה מעצבן מאוד — אני
+            מעדיף שנסיר את זה."</em>
+          </p>
+          <p>
+            צודק, ובגלל משהו ש‑ADR-0147 §4 לא שקל: הוא תכנן את ה<strong>אקט</strong> (הקשה מכוונת על
+            אתר שרוצים להוסיף) ולא את ה<strong>שכיחות</strong>. אייקוני האתרים של גוגל פזורים על כל
+            הקנבס, וההקשה עליהם קורית גם כשלא מתכוונים כלום — כך שטופס בכל הקשה כזו הוא רעש, לא
+            הצעה. <strong>וזה בדיוק מה שמעבר על מכשיר מגלה ומה שקובץ mockup לא יכול:</strong>
+            השכיחות אינה שרטוט.
+          </p>
+          <p>
+            <strong>מה שחוזר:</strong> ADR-0125 §6 <em>בלי התיקון</em> — הכרטיס של גוגל עונה להקשה,
+            והקישור שלו לגוגל מפות הוא רוב הטעם שבה. ה‑<code>event.stop()</code> שהשתיק אותו
+            הוסר, ולא הושאר בהערה.
+          </p>
+          <p>
+            <strong>ומה שהלך איתו,</strong> כי קוד מת גרוע מפיצ׳ר שהוסר: המקור <code>sight</code>,
+            ה<strong>מחווה היחידה בשלב שמשלמת</strong> (‏<code>resolvePlace</code> על האישור),
+            הטבעת כסמן טיוטה, <code>mapsPlaceIdUrl</code>, ‏<code>nameOptional</code> (שהתקיים רק
+            כי הקשה כזו קנתה שם מגוגל), והנתיב החינמי "אתר שכבר בטיול → שינוי שם". שינוי שם נשאר
+            על העיפרון, וזו הדרך היחידה אליו.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>ולכן הטופס הוא שלושה מקורות, לא ארבעה</strong> — והטענה לא נחלשת: זה עדיין
+              אקט אחד בשלושה מצבים, וההסרה אפילו מחדדת אותו, כי כל שלושת הנותרים הם משהו
+              ש<em>המשתמש ביקש</em> ולא משהו שקרה לו במקרה תוך כדי גלילה במפה.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════ §F BUDGET ═══════════════ -->
+      <h2 class="mk-h">§F · מה זה מוציא</h2>
+      <div class="mk-row">
+        <div class="mk-note" style="max-width: 100%; flex: 1 1 100%">
+          <p>
+            <strong>מנגנון חדש — כלום.</strong> ה‑reclaim קיים (ADR-0132 §2), גוף גולל עם פעולות
+            מוצמדות קיים (<code>EventForm</code>/<code>BookingSheet</code>), עצירות המדף קיימות,
+            toast+undo קיים, ו<code>useBackLayer</code> כבר רשום.
+          </p>
+          <p>
+            <strong>צבע — כלום.</strong> אין scrim, אין הדגשה, אין גוון חדש. הדהוי היחיד הוא
+            מסכת ה‑fade בקצה הגלילה, שהיא אותה מסכה ש<code>.choice-grid.pills</code> כבר נושאת.
+          </p>
+          <p>
+            <strong>תנועה — כלום חדש.</strong> המדף נע בין עצירות קיימות בתנועה שכבר יש לו.
+          </p>
+          <p>
+            <strong>מה כן משתנה בהתנהגות שנשלחה:</strong> ‏(1) המדף נסוג כשהטופס נפתח —
+            ‏ADR-0147 דחה את זה ולכן זה תיקון מתועד ולא הברחה; ‏(2) הקשה על הקנבס סוגרת טופס פתוח
+            במקום רק לנקות בחירה.
           </p>
         </div>
       </div>
     </div>
 
     <script>
-      // mk-* only: enough interaction to judge the flows. No app logic is modelled.
-      const $ = (id) => document.getElementById(id);
-      // One form, four sources. Everything that varies is data, which is the whole claim.
-      const SOURCES = {
-        drop: {
-          title: 'מה יש כאן?',
-          name: '',
-          meta: '35.7148, 139.7967',
-          hint: false,
-          vet: false,
-          ok: 'הוספה למדף',
-        },
-        // The tapped sight, in its three real states. The name is PREFILLED from Google
-        // (owner, 2026-07-30) — which costs one Place Details call at TAP time instead of at
-        // confirm time. Same mask the app already sends on every pick
-        // (`id,displayName,formattedAddress,location` = Pro tier, ADR-0111), so no new tier
-        // and no new mask: the call simply moves earlier.
-        googWait: {
-          title: 'המקום שסימנתם',
-          name: '',
-          meta: '35.7148, 139.7967',
-          hint: false,
-          vet: true,
-          ok: 'הוספה למדף',
-          waiting: true,
-        },
-        // CHOSEN: no name until the confirm, so an exploratory tap costs nothing.
-        goog: {
-          title: 'המקום שסימנתם',
-          name: '',
-          meta: '35.7148, 139.7967',
-          hint: true,
-          vet: true,
-          ok: 'הוספה למדף',
-        },
-        // ALTERNATIVE, kept because it is costed rather than rejected on taste: prefilling
-        // moves the SAME Pro-tier call earlier, to tap time.
-        googPre: {
-          title: 'המקום שסימנתם',
-          name: 'מקדש סנסו-ג׳י',
-          meta: 'Asakusa, Taito City',
-          hint: false,
-          vet: true,
-          ok: 'הוספה למדף',
-        },
-        // The FREE path, and it must be tried first: a sight the trip already owns needs no
-        // call at all — we have its name. The same "the trip answers first" rule ADR-0134 §1
-        // reconciled the errand with.
-        googMine: {
-          title: 'כבר בטיול',
-          name: 'רמן נאגי',
-          meta: 'Kabukicho, Shinjuku',
-          hint: false,
-          vet: false,
-          ok: 'שמירה',
-          free: true,
-        },
-        result: {
-          title: 'הוספה לטיול',
-          name: 'Ichiran Ramen Shinjuku',
-          meta: 'Kabukicho, Shinjuku',
-          hint: false,
-          vet: true,
-          ok: 'הוספה למדף',
-        },
-        rename: {
-          title: 'שם ופרטים',
-          name: 'רמן נאגי',
-          meta: 'Kabukicho, Shinjuku',
-          hint: false,
-          vet: false,
-          ok: 'שמירה',
-        },
-      };
-      const setFlow = (flow) => {
-        for (const b of document.querySelectorAll('#flowToggle button'))
-          b.setAttribute('aria-pressed', String(b.dataset.flow === flow));
-        const src = SOURCES[flow];
-        $('cardForm').hidden = !src;
-        // 6b is the only source with no marker of its own: a long press lands on bare
-        // canvas. Google's sight is RINGED (its own icon already names it), and a search
-        // result is already a ring on the canvas.
-        $('draftPin').style.display = flow === 'drop' ? 'block' : 'none';
-        const ringed = flow.startsWith('goog') || flow === 'result';
-        $('draftRing').style.display = ringed ? 'grid' : 'none';
-        if (flow === 'drop') place(196, 470);
-        if (flow.startsWith('goog')) ring(99, 183);
-        if (flow === 'result') ring(196, 300);
-        $('rowSel').classList.toggle('renaming', flow === 'rename');
-        if (!src) return;
-        $('formTitle').textContent = src.title;
-        $('formName').value = src.name;
-        $('formMeta').textContent = src.meta;
-        $('formHint').hidden = !src.hint;
-        $('formVet').hidden = !src.vet;
-        $('formOk').textContent = src.ok;
-        // The name arrives over the network, so the field cannot open prefilled
-        // synchronously — it opens PENDING and fills. Disabled while waiting, because a
-        // keystroke landing before the response would be overwritten by it.
-        const waiting = Boolean(src.waiting);
-        $('formName').disabled = waiting;
-        $('formName').placeholder = waiting ? 'שם המקום מגוגל…' : 'שם המקום';
-        $('formWait').hidden = !waiting;
-        $('formFree').hidden = !src.free;
-        $('formOk').disabled = waiting;
-        if (!waiting) setTimeout(() => $('formName').focus(), 40);
-      };
-      for (const b of document.querySelectorAll('#flowToggle button'))
-        b.addEventListener('click', () => setFlow(b.dataset.flow));
-      for (const b of document.querySelectorAll('[data-close]'))
-        b.addEventListener('click', () => setFlow('idle'));
+      /* ════════════════════════════════════════════════════════════════════
+         mk-* only. The frames are built from ONE builder so every variant is
+         the same DOM with different flags — a second hand-written frame is how
+         two "identical" states quietly stop being identical.
+         ════════════════════════════════════════════════════════════════════ */
 
-      // The long press, simulated on a div — the one thing this file genuinely cannot
-      // answer is whether it survives Google's own tiles (ADR-0131 §9's device-pass item).
-      let holdTimer = null;
-      const pad = $('holdpad');
-      const place = (x, y) => {
-        const pin = $('draftPin');
-        pin.style.top = y - 34 + 'px';
-        pin.style.insetInlineStart = x - 14 + 'px';
-      };
-      // The ring is centred on what it marks rather than tip-anchored like a pin.
-      const ring = (x, y) => {
-        const r = $('draftRing');
-        r.style.top = y - 14 + 'px';
-        r.style.insetInlineStart = x - 14 + 'px';
-      };
-      pad.addEventListener('pointerdown', (e) => {
-        const box = pad.getBoundingClientRect();
-        const x = e.clientX - box.left;
-        const y = e.clientY - box.top;
-        const r = $('holdring');
-        r.style.top = y + 'px';
-        r.style.insetInlineStart = x + 'px';
-        r.classList.remove('live');
-        void r.offsetWidth;
-        r.classList.add('live');
-        holdTimer = setTimeout(() => {
-          place(x, y);
-          setFlow('drop');
-        }, 500);
-      });
-      for (const ev of ['pointerup', 'pointercancel', 'pointerleave'])
-        pad.addEventListener(ev, () => holdTimer && clearTimeout(holdTimer));
+      // The real constants, from `frontend/src/constants.ts`. Named here so the readout
+      // is arithmetic over the shipped numbers rather than a guess.
+      const CONTROLS_H = 46; // MAP_CONTROLS_H
+      const FLOAT_GAP = 8; // MAP_FLOAT_GAP
+      const ATTR_H = 22; // MAP_ATTRIBUTION_H
+      const STRIP_H = 52; // MAP_SHEET_STRIP_H — also the `map` stop's whole height
+      // Approximated Hebrew system keyboards, per width. The real numbers are a
+      // device-pass question; what this file settles is the SHAPE of the two models.
+      const KB = { 390: 336, 360: 300 };
 
-      $('googPin').addEventListener('click', () => setFlow('goog'));
-      $('resultAdd').addEventListener('click', (e) => {
-        e.stopPropagation();
-        setFlow('result');
+      // The shipped `MapPlaceForm` markup, copied from a render of the component rather
+      // than re-typed — the tallest variant (a tapped sight, which carries the hint).
+      const FORM = `<div class="field"><label class="field-label">המקום שסימנתם</label><div class="map-draft-name"><div class="icon-picker"><button type="button" class="icon-chip" aria-label="בחירת סמל">📍</button></div><input placeholder="שם המקום" /></div><p class="field-hint">גוגל ישלים את השם בהוספה</p></div><div class="category-pills"><div class="choice-grid pills" role="radiogroup" aria-label="קטגוריה"><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>תחבורה</span><span aria-hidden="true">✈️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>אוכל</span><span aria-hidden="true">🍽️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>לינה</span><span aria-hidden="true">🏨</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>אתרים</span><span aria-hidden="true">⛩️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>טבע</span><span aria-hidden="true">⛰️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>פעילות</span><span aria-hidden="true">🎫</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>קניות</span><span aria-hidden="true">🛍️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>מעשי</span><span aria-hidden="true">💊</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>כללי</span><span aria-hidden="true">📌</span></button></div></div><p class="map-draft-meta" dir="auto">35.7148, 139.7967</p>`;
+      // Rows in the sheet, so a "before" frame shows what the stop it is at is actually FOR —
+      // a `map` stop that shows nothing and a `half` that shows three rows are the whole
+      // difference the normalise rule is spending.
+      const ROW = (icon, hue, name, meta) =>
+        `<div class="place"><div class="map-badge cat-${hue}">${icon}</div><div class="map-main"><div class="map-t"><span class="map-name">${name}</span></div><div class="map-m"><span class="map-tag">${meta}</span></div></div></div>`;
+      const SHEET_ROWS = `<div class="map-sheet-scroll" style="padding:0 12px">${ROW('🍜', 'food', 'רמן נאגי', 'Kabukicho')}${ROW('⛩️', 'leisure', 'מקדש סנסו-ג׳י', 'Asakusa')}${ROW('🏨', 'lodging', 'מלון שינג׳וקו', 'על המדף')}</div>`;
+      const SHEET_RESULTS = `<div class="map-sheet-scroll" style="padding:0 12px"><div class="map-grouphead">מגוגל</div>${ROW('◎', 'leisure', 'Ichiran Ramen', 'Shinjuku')}${ROW('◎', 'leisure', 'Ramen Nagi', 'Kabukicho')}</div>`;
+
+      const ACTS = `<div class="map-draft-acts"><a class="map-res-out" href="#" aria-label="פתיחה בגוגל מפות"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4 11 13M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg></a><button type="button" class="map-gbtn">ביטול</button><button type="button" class="map-addmaybe">הוספה למדף</button></div>`;
+
+      const SAFE = { none: [0, 0], notch: [24, 24] };
+
+      /**
+       * One frame. `fix` selects which of the proposal's parts are on, so §A and §C are
+       * the same builder with different flags rather than two drawings that can drift.
+       *   fix.bound     — the card knows its room, head and foot pinned, middle scrolls
+       *   fix.normalise — the sheet stands down to `map` while the form is open
+       *   fix.reclaim   — the chrome comes off, and the safe insets move with it
+       *   fix.outside   — the transparent dismissal surface (drawn tinted here to be seen)
+       */
+      function frame(host, opts) {
+        const {
+          size = 390,
+          kb = 'off',
+          stop = 'half',
+          safe = 'none',
+          fix = {},
+          panel,
+          form = true,
+          search = false,
+        } = opts;
+        const h = size === 360 ? 640 : 844;
+        const kbH = KB[size];
+        const [st, sb] = SAFE[safe];
+        host.className = 'mk-phone';
+        host.style.setProperty('--mk-w', size + 'px');
+        host.style.setProperty('--mk-h', h + 'px');
+        host.style.setProperty('--mk-kb-h', kbH + 'px');
+        host.style.setProperty('--safe-top', st + 'px');
+        host.style.setProperty('--safe-bottom', sb + 'px');
+        host.dataset.kb = kb;
+
+        const effStop = fix.normalise ? 'map' : stop;
+        host.innerHTML = `
+          <div class="mk-app app" data-chrome="${fix.reclaim ? 'reclaimed' : ''}">
+            <div class="mk-header">
+              <div class="r1"><i>✎ תכנן</i><b>טיול ◎</b></div>
+              <div class="r2">רק בילבי 🇮🇱</div>
+              <div class="r3"><u>31</u><u class="on">30</u><u>29</u><u>28</u><u>27</u></div>
+            </div>
+            <div class="mk-body">
+              <div class="mk-split">
+                <div class="mk-canvas"></div>
+                ${fix.outside ? '<button class="map-draft-outside" style="background:rgba(0,120,255,.07)"></button>' : ''}
+                <div class="mk-ctl">${
+                  search
+                    ? '<i style="flex:1;color:var(--ink)">רמן ⌫</i>'
+                    : '<b>כל הימים</b><b>סינון</b><i>חיפוש…</i>'
+                }</div>
+                ${form ? `<div class="map-placecard"><div class="map-draft">${fix.bound ? `<div class="map-draft-scroll">${FORM}</div>` : FORM}${ACTS}</div></div>` : ''}
+                <div class="mk-attr">Google · Terms</div>
+                <div class="mk-sheet"><div class="grab"></div><div class="strip"><span>רשימה / מפה</span><span>קרוב עכשיו</span></div>${
+                  search ? SHEET_RESULTS : SHEET_ROWS
+                }</div>
+              </div>
+              <div class="mk-meas"></div>
+              <div class="mk-ghostbox" hidden></div>
+            </div>
+            <div class="mk-nav"><i>בית</i><i class="on">מפה</i><i>אינדקס</i><i>יום-יום</i></div>
+          </div>
+          <div class="mk-kb" ${kb === 'off' ? 'hidden' : ''}>מקלדת המערכת · ${kbH}px</div>`;
+
+        // Two passes: lay out with the stop resolved against the real split height, then
+        // read the room back and hand it to the card. That is the same order the screen
+        // will run in — the split's height is not knowable until the chrome has resolved.
+        const body = host.querySelector('.mk-body');
+        const split = host.querySelector('.mk-split');
+        const card = host.querySelector('.map-placecard');
+        const draft = host.querySelector('.map-draft');
+        const hasCard = Boolean(card && draft);
+        const splitH = split.getBoundingClientRect().height;
+        const sheetH =
+          effStop === 'map' ? STRIP_H : effStop === 'half' ? Math.round(splitH * 0.56) : splitH - CONTROLS_H;
+        split.style.setProperty('--sheet-h', sheetH + 'px');
+        host.querySelector('.mk-sheet').style.height = sheetH + 'px';
+        host.querySelector('.mk-attr').style.bottom = sheetH + 'px';
+
+        // THE TWO PLATFORMS NEED TWO DIFFERENT BOTTOMS, and this is the finding that only
+        // showed once the table was drawn. On ANDROID the viewport already shrank, so the
+        // sheet is the bottom boundary and `room` describes reality. On iOS the viewport did
+        // NOT shrink: the card lays out perfectly and the keyboard is drawn OVER it, so every
+        // layout number looks healthy while the card is invisible. That is the same shape as
+        // ADR-0132 §4's iOS attribution failure — "the harder of the two to notice".
+        //
+        // So the card's bottom anchor clears whichever is higher, the sheet or the keyboard.
+        // `kbInset` is 0 on Android by construction (the viewport paid it already).
+        const kbInset = kb === 'ios' ? kbH : 0;
+        const bottomAnchor = fix.clearKb
+          ? Math.max(sheetH + ATTR_H + FLOAT_GAP, kbInset + FLOAT_GAP)
+          : sheetH + ATTR_H + FLOAT_GAP;
+        if (hasCard) card.style.bottom = bottomAnchor + 'px';
+        // `room` — between the controls row the card must clear and its own bottom anchor.
+        const room = Math.round(splitH - (CONTROLS_H + FLOAT_GAP) - bottomAnchor);
+        if (hasCard && fix.bound) draft.style.setProperty('--map-card-room', Math.max(0, room) + 'px');
+        if (!hasCard) {
+          host.querySelector('.mk-meas').innerHTML = `<span>room ${room}</span>`;
+          return { room, need: 0, visible: 0, fits: true, splitH: Math.round(splitH), sheetH };
+        }
+
+        if (panel) {
+          const chip = host.querySelector('.icon-chip');
+          chip.classList.add('open');
+          chip.insertAdjacentHTML(
+            'afterend',
+            `<div class="icon-panel" role="dialog" aria-label="בחירת סמל"><div class="icon-panel-head"><span class="lbl">בחירת סמל</span></div><div class="icon-search"><input placeholder="חיפוש סמל" /></div><div class="icon-grid-scroll"><div class="icon-grid">${['📍','🍜','⛩️','☕','🏨','🚆','🌲','🎫','🛍️','💊','✈️','🏛️'].map((g) => `<button type="button" class="icon-cell">${g}</button>`).join('')}</div></div></div>`,
+          );
+        }
+
+        // The readout, and the honest bit: `need` is the card's own natural height, which
+        // is measured rather than asserted — remove `max-height` for one frame to read it.
+        const prevMax = draft.style.maxHeight;
+        draft.style.maxHeight = 'none';
+        const need = Math.round(draft.getBoundingClientRect().height);
+        draft.style.maxHeight = prevMax;
+        // **What is SEEN** — the card's box intersected with the device area above the
+        // keyboard. On Android this equals the laid-out height; on iOS it is the number that
+        // differs, and it is the whole reason this row of the table stopped lying.
+        const drawn = Math.min(Math.max(0, room), need);
+        const cardTopFromSplitBottom = bottomAnchor + drawn;
+        const seen = Math.round(
+          Math.max(0, Math.min(cardTopFromSplitBottom, drawn + bottomAnchor - kbInset) - Math.max(0, bottomAnchor - kbInset - drawn) - Math.max(0, kbInset - bottomAnchor)),
+        );
+        const visible = Math.max(0, Math.min(drawn, bottomAnchor + drawn - kbInset));
+        const clipped = Math.max(0, need - Math.max(0, room));
+        const fits = room >= need && visible >= need;
+        host.querySelector('.mk-meas').innerHTML =
+          `<span>room ${room}</span><span>need ${need}</span>` +
+          `<span class="${visible >= need ? 'ok' : 'bad'}">נראה ${Math.round(visible)}</span>` +
+          (fix.bound
+            ? `<span class="${room >= 150 ? 'ok' : 'bad'}">גלילה ${Math.max(0, need - room)}px</span>`
+            : `<span class="${fits ? 'ok' : 'bad'}">${fits ? 'נכנס' : 'חסר ' + Math.max(clipped, need - Math.round(visible)) + 'px'}</span>`);
+
+        // Where the card's box really ends, including off screen — the point of §A.
+        const ghost = host.querySelector('.mk-ghostbox');
+        if (!fix.bound && !fits) {
+          const bodyBox = body.getBoundingClientRect();
+          const cardBox = card.getBoundingClientRect();
+          ghost.hidden = false;
+          ghost.style.top = Math.round(cardBox.bottom - bodyBox.top - need) + 'px';
+          ghost.style.height = need + 'px';
+          ghost.dataset.label = `הכרטיס באמת ${need}px`;
+        }
+        return { room, need, visible: Math.round(visible), fits, splitH: Math.round(splitH), sheetH };
+      }
+
+      // ── §A ────────────────────────────────────────────────────────────────
+      const stateA = { size: 390, kb: 'android', stop: 'half', safe: 'none' };
+      function renderA() {
+        const row = document.getElementById('rowA');
+        row.innerHTML = `<div><div class="mk-phone" id="pA1"></div><p class="mk-cap">כמו שנשלח — <code>room</code> קטן מהכרטיס, והכרטיס נחתך <strong>מלמעלה</strong></p></div>
+          <div class="mk-note"><h4>מה בדיוק רואים</h4>
+          <p>המסגרת האדומה המקווקוות היא איפה שהכרטיס <em>באמת</em> נגמר. הכותרת, השדה, הקטגוריות
+          והנקודה נמצאים שם — מחוץ למסך — ורק שורת הפעולות בתוך התחום.</p>
+          <p><strong>וזה קורה בשני מודלים של מקלדת אבל לא באותה דרך:</strong> באנדרואיד ה‑viewport
+          <em>מתכווץ</em> וה‑split סופג את כל ההפסד; ב‑iOS ה‑viewport לא זז והמקלדת
+          <em>מכסה</em> — כלומר המספרים נראים תקינים והכרטיס בכל זאת מוסתר. השני קשה יותר לשים לב
+          אליו, וזה בדיוק מה ש‑ADR-0132 §4 מצא לגבי הייחוס של גוגל.</p>
+          <div class="mk-verdict no"><p>החליפו ל‑<code>full</code> למעלה: שם ה‑<code>room</code>
+          שלילי <em>גם בלי מקלדת</em>. זה המצב שהעיפרון פותח, והוא לא היה בתכנון.</p></div></div>`;
+        const r = frame(document.getElementById('pA1'), stateA);
+        renderB(r);
+      }
+      for (const b of document.querySelectorAll('#ctlA button')) {
+        b.addEventListener('click', () => {
+          for (const k of ['size', 'kb', 'stop', 'safe'])
+            if (b.dataset[k] !== undefined) stateA[k] = k === 'size' ? +b.dataset[k] : b.dataset[k];
+          syncA();
+          renderA();
+        });
+      }
+      function syncA() {
+        for (const b of document.querySelectorAll('#ctlA button')) {
+          const k = ['size', 'kb', 'stop', 'safe'].find((k) => b.dataset[k] !== undefined);
+          b.classList.toggle('on', String(stateA[k]) === b.dataset[k]);
+        }
+      }
+
+      // ── §B · the table, computed by really laying every combination out ───
+      function renderB() {
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:absolute;left:-99999px;top:0';
+        document.body.append(probe);
+        const rows = [];
+        for (const size of [390, 360]) {
+          for (const kb of ['off', 'android', 'ios']) {
+            for (const stop of ['map', 'half', 'full']) {
+              const kept = frame(probe, { size, kb, stop, fix: {} });
+              const claimed = frame(probe, { size, kb, stop, fix: { reclaim: true } });
+              const both = frame(probe, {
+                size,
+                kb,
+                stop,
+                fix: { reclaim: true, normalise: true, clearKb: true },
+              });
+              rows.push({ size, kb, stop, kept, claimed, both });
+            }
+          }
+        }
+        probe.remove();
+        // The cell reports what is SEEN, not what was laid out — which is the only column
+        // that tells the truth on both platforms at once.
+        const cell = (v, need) =>
+          `<td style="padding:5px 8px;font-family:'JetBrains Mono',monospace;color:${v.visible >= need ? '#1f7a5a' : 'var(--miss)'}">` +
+          `<span title="נראה">${v.visible}</span>` +
+          (v.visible !== v.room
+            ? `<span style="opacity:.55" title="נפרס"> (${v.room} נפרס)</span>`
+            : '') +
+          `</td>`;
+        const need = rows[0].kept.need;
+        document.getElementById('tblB').innerHTML =
+          `<tr style="border-bottom:1px solid var(--line)">
+             <th style="text-align:start;padding:6px 8px">מסך</th>
+             <th style="text-align:start;padding:6px 8px">מקלדת</th>
+             <th style="text-align:start;padding:6px 8px">עצירה</th>
+             <th style="text-align:start;padding:6px 8px">כמו שנשלח</th>
+             <th style="text-align:start;padding:6px 8px">+ reclaim</th>
+             <th style="text-align:start;padding:6px 8px">ההצעה המלאה</th>
+           </tr>` +
+          rows
+            .map(
+              (r) =>
+                `<tr style="border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)">
+                   <td style="padding:5px 8px">${r.size}</td>
+                   <td style="padding:5px 8px">${{ off: 'אין', android: 'אנדרואיד', ios: 'iOS' }[r.kb]}</td>
+                   <td style="padding:5px 8px"><code>${r.stop}</code></td>
+                   ${cell(r.kept, need)}${cell(r.claimed, need)}${cell(r.both, need)}
+                 </tr>`,
+            )
+            .join('') +
+          `<tr><td colspan="6" style="padding:8px;font-size:12px;opacity:.75">
+             המספר הוא <strong>מה שנראה</strong>; אחריו, בהיר, ה‑<code>room</code> שנפרס — והם נפרדים
+             רק ב‑iOS, כי שם המקלדת <em>מכסה</em> במקום לכווץ. ירוק = ‏<code>${need}px</code> ומעלה,
+             כלומר הטופס כולו על המסך. אדום = יש מה לגלול, ועם הערובה של §C זו גלילה ולא חיתוך.
+             <strong>שימו לב לשורות ה‑iOS בעמודה השמאלית:</strong> בלי הלוור הרביעי הן נראו תקינות
+             לגמרי — ‏<code>room</code> מלא — והכרטיס היה מתחת למקלדת.
+           </td></tr>`;
+        renderD(rows, need);
+      }
+
+      // ── §C · the proposal, side by side with the same flags ───────────────
+      const stateC = { size: 390, kb: 'android' };
+      function renderC() {
+        const row = document.getElementById('rowC');
+        row.innerHTML = ['kept', 'reclaim', 'all']
+          .map(
+            (k, i) =>
+              `<div><div class="mk-phone" id="pC${i}"></div><p class="mk-cap">${
+                ['כמו שנשלח', '+ reclaim בלבד — עדיין חסר', '+ ערובה + מדף נסוג'][i]
+              }</p></div>`,
+          )
+          .join('');
+        frame(document.getElementById('pC0'), { ...stateC, stop: 'half', fix: {} });
+        frame(document.getElementById('pC1'), { ...stateC, stop: 'half', fix: { reclaim: true } });
+        frame(document.getElementById('pC2'), {
+          ...stateC,
+          stop: 'half',
+          fix: { reclaim: true, normalise: true, bound: true },
+        });
+      }
+      for (const b of document.querySelectorAll('#ctlC button')) {
+        b.addEventListener('click', () => {
+          for (const k of ['size', 'kb'])
+            if (b.dataset[k] !== undefined) stateC[k] = k === 'size' ? +b.dataset[k] : b.dataset[k];
+          for (const x of document.querySelectorAll('#ctlC button')) {
+            const kk = ['size', 'kb'].find((k) => x.dataset[k] !== undefined);
+            x.classList.toggle('on', String(stateC[kk]) === x.dataset[kk]);
+          }
+          renderC();
+        });
+      }
+
+      // ── §D · the matrix, coloured by the room AFTER the proposal ──────────
+      function renderD(rows, need) {
+        const SOURCES = [
+          ['לחיצה ארוכה', 'map', 'הקנבס הגלוי — העצירה שבה המחווה אפשרית'],
+          ['אתר של גוגל', 'map', 'אותו דבר'],
+          ['תוצאת חיפוש', 'half', 'מגיע משורה במדף, ולכן המדף פתוח'],
+          ['שינוי שם (עיפרון)', 'full', 'העיפרון על שורה — והמדף יכול להיות בכל עצירה'],
+        ];
+        const at = (stop, kb, size, which) =>
+          rows.find((r) => r.stop === stop && r.kb === kb && r.size === size)[which].room;
+        const box = (v) =>
+          `<span style="font-family:'JetBrains Mono',monospace;color:${v >= need ? '#1f7a5a' : v <= 0 ? 'var(--miss)' : '#b06a12'}">${v}</span>`;
+        document.getElementById('tblD').innerHTML =
+          `<tr style="border-bottom:1px solid var(--line)">
+             <th style="text-align:start;padding:6px 8px">מקור</th>
+             <th style="text-align:start;padding:6px 8px">עצירה אופיינית</th>
+             <th style="text-align:start;padding:6px 8px">היום · 390 + מקלדת</th>
+             <th style="text-align:start;padding:6px 8px">אחרי · 390</th>
+             <th style="text-align:start;padding:6px 8px">אחרי · 360</th>
+             <th style="text-align:start;padding:6px 8px">הערה</th>
+           </tr>` +
+          SOURCES.map(
+            ([name, stop, note]) =>
+              `<tr style="border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)">
+                 <td style="padding:5px 8px"><strong>${name}</strong></td>
+                 <td style="padding:5px 8px"><code>${stop}</code></td>
+                 <td style="padding:5px 8px">${box(at(stop, 'android', 390, 'kept'))}</td>
+                 <td style="padding:5px 8px">${box(at(stop, 'android', 390, 'both'))}</td>
+                 <td style="padding:5px 8px">${box(at(stop, 'android', 360, 'both'))}</td>
+                 <td style="padding:5px 8px;font-size:11.5px;opacity:.8">${note}</td>
+               </tr>`,
+          ).join('') +
+          `<tr><td colspan="6" style="padding:8px;font-size:12px;opacity:.75">
+             שימו לב לשורה האחרונה: היום, בעצירה <code>full</code>, ה‑<code>room</code> שלילי גם בלי מקלדת —
+             ולכן העיפרון פותח טופס שלא ניתן לצייר. זה לא "צפוף", זה <strong>לא קיים</strong>.
+           </td></tr>`;
+      }
+
+      // ── §C2 · four entry states, each as before → after ───────────────────
+      // The SAME builder for both halves of every pair, so "before" and "after" cannot
+      // drift into two drawings that merely look related.
+      const ENTRIES = [
+        ['מפה רגילה', { stop: 'map' }, 'כבר שם — ורק הכרום יורד'],
+        ['half', { stop: 'half' }, 'העצירה שבצילום המקורי'],
+        ['רשימה מלאה', { stop: 'full' }, '‏room שלילי לפני — זה מה שהעיפרון פותח'],
+        ['תצוגת חיפוש', { stop: 'half', search: true }, 'המקור הרביעי; השאילתה נשארת'],
+      ];
+      function renderC2() {
+        const row = document.getElementById('rowC2');
+        row.innerHTML = ENTRIES.map(
+          ([name, , note], i) =>
+            `<div style="flex:0 0 auto">
+               <div style="display:flex;gap:10px">
+                 <div><div class="mk-phone" id="pE${i}a"></div><p class="mk-cap">לפני · ${name}</p></div>
+                 <div><div class="mk-phone" id="pE${i}b"></div><p class="mk-cap">אחרי · <code>map</code> + כרום יורד</p></div>
+               </div>
+               <p class="mk-cap" style="max-width:none;margin-top:2px;opacity:.6">${note}</p>
+             </div>`,
+        ).join('');
+        ENTRIES.forEach(([, entry], i) => {
+          // BEFORE: where the user was — the sheet at its stop, chrome on, no form, and no
+          // keyboard, because nothing has focused yet.
+          frame(document.getElementById(`pE${i}a`), {
+            size: 390,
+            kb: 'off',
+            stop: entry.stop,
+            search: entry.search,
+            form: false,
+            // The search view already reclaims today (`queryOpen`), which is exactly why
+            // that one path never broke — drawn, so the claim is visible.
+            fix: { reclaim: Boolean(entry.search) },
+          });
+          // AFTER: the form is open, so the sheet is at `map`, the chrome is down, and the
+          // keyboard is up because the name field autofocuses.
+          frame(document.getElementById(`pE${i}b`), {
+            size: 390,
+            kb: 'android',
+            stop: entry.stop,
+            search: entry.search,
+            fix: { reclaim: true, normalise: true, bound: true, clearKb: true },
+          });
+        });
+      }
+      renderC2();
+
+      // ── the two single frames ─────────────────────────────────────────────
+      frame(document.getElementById('phonePanel'), {
+        size: 390,
+        kb: 'android',
+        stop: 'half',
+        fix: { reclaim: true, normalise: true, bound: true },
+        panel: true,
       });
-      $('renameBtn').addEventListener('click', () => setFlow('rename'));
-      setFlow('idle');
+      frame(document.getElementById('phoneE'), {
+        size: 390,
+        kb: 'off',
+        stop: 'half',
+        fix: { reclaim: false, normalise: true, bound: true, outside: true },
+      });
+
+      syncA();
+      renderA();
+      renderC();
     </script>
   </body>
 </html>

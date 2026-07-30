@@ -394,7 +394,7 @@ function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => v
 function Shell() {
   // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
   const { tab, goToTab } = useTripTab();
-  const { allDays, queryOpen } = useMapScope();
+  const { allDays, chromeReclaimed: mapWantsChrome } = useMapScope();
   const [rosterOpen, setRosterOpen] = useState(false);
   // The roster's own data. The header already renders the cluster from `users`; the
   // sheet needs the memberships too, for each person's role and joined date.
@@ -485,13 +485,18 @@ function Shell() {
   // offline (or without the build config) the tab is the ordinary scrolling list it
   // has always been, so it keeps the ordinary body.
   const fullBleed = tab === 'map' && mapPaneAvailable({ offline: offlineNow });
-  // THE CHROME RECLAIM (ADR-0132 §2). While the Map's query field is open the header
-  // and the tab bar come off screen: on a layout viewport that RESIZES for the keyboard
-  // (Android) the split is the only flexible region, so it absorbs the whole loss — 43px
-  // of canvas at 390×844, and at 360×640 a pane too short to lay out Google's attribution
-  // at all (ADR-0106 §B). Gated on the tab for the same reason `fullBleed` is: the state
-  // lives above the shell so the header can read it, and only this tab spends it.
-  const chromeReclaimed = tab === 'map' && queryOpen;
+  // THE CHROME RECLAIM (ADR-0132 §2). While a surface on the Map tab wants the room, the
+  // header and the tab bar come off screen: on a layout viewport that RESIZES for the
+  // keyboard (Android) the split is the only flexible region, so it absorbs the whole loss —
+  // 43px of canvas at 390×844, and at 360×640 a pane too short to lay out Google's
+  // attribution at all (ADR-0106 §B). Gated on the tab for the same reason `fullBleed` is:
+  // the state lives above the shell so the header can read it, and only this tab spends it.
+  //
+  // **Two surfaces want it and there is still one condition here**, because the Map derives
+  // it from both of its own states and pushes one boolean (ADR-0148). A `queryOpen ||
+  // formOpen` at this line would be the second parallel copy of that composition, in the one
+  // place that must not know which surface is asking.
+  const chromeReclaimed = tab === 'map' && mapWantsChrome;
 
   return (
     <AppShell

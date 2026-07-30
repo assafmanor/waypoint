@@ -32,3 +32,4 @@ mockups/map-make-a-place-v1.html
 # validated offline (developers.google.com is unreachable from sandboxed sessions).
 # Reformatting a vendored file would hide any drift from Google's own copy.
 docs/design/map-styles/cbms-json-schema.json
+mockups/map-form-visibility-v1.html

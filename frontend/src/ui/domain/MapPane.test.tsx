@@ -165,7 +165,7 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       areaSorted={props.areaSorted ?? false}
       onAreaSort={props.onAreaSort ?? vi.fn()}
       onLocate={props.onLocate ?? vi.fn()}
-      cardOpen={props.cardOpen}
+      cardReserve={props.cardReserve}
       me={props.me}
       connector={props.connector}
       defaultCentre={props.defaultCentre}
@@ -672,7 +672,7 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     withCard.box = { width: 390, height: 517 };
     withCard.viewport = WIDE;
     mapStub.current = withCard;
-    paint({ pins: two, cardOpen: true });
+    paint({ pins: two, cardReserve: 160 });
     expect(withCard.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
   });
 

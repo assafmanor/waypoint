@@ -203,11 +203,11 @@
    edge and leaves the hatch, which is `.soft`'s own distinguishing mark (ADR-0130 §3's two
    axes: colour-vs-grey primary, hatch as confirmation).
 
-   A TAPPED SIGHT gets no pin at all — Google has already drawn its own icon there, so ours
-   would be two markers for one place, the exact mess ADR-0125 §6 refused. It gets `.map-result`
-   instead: a ring is already this app's word for "a Google-sourced candidate that is not yours
-   yet" (ADR-0132 §6 — a different KIND of object gets a different SILHOUETTE, not another rung
-   on the pin ladder). */
+   THE OTHER TWO SOURCES GET NO MARKER AT ALL, because each already has one: a search result is
+   a ring in `results` and a renamed place has its own selected pin, so a second marker on either
+   would draw one place twice — the exact mess ADR-0125 §6 refused. (A third source, a tap on one
+   of Google's own sights, took a `.map-result` ring for that reason until ADR-0148 §6 removed the
+   source; the variant went with it rather than being left for a caller that no longer exists.) */
 .map-pin.pending .pin-b {
   border-style: dashed;
   border-color: var(--soft-line);

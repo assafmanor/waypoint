@@ -42,12 +42,19 @@ export interface MapPlaceFormSpec {
    *  paying to browse — the exact spend that blocked Phase 6a for three weeks). Prefilled
    *  wherever a name is already in our hand, so the third tap is only to correct it. */
   name: string;
-  /** The line under the fields: the point for a bare coordinate, the address once there is
-   *  one. Confirmation, not instruction — the card sits on the spot and the camera framed it. */
-  meta: string;
-  /** A quiet note under the field: who is going to fill the name, or that this one is free.
-   *  `Field`'s hint slot, whose stated job is exactly "what leaving this empty costs". */
-  hint?: string;
+  /** **The ONE quiet line under the field**, in `Field`'s hint slot — whichever of the two
+   *  things this source has to say is worth a line:
+   *
+   *  - a dropped pin has only its **point**, which is confirmation that the pin fell where the
+   *    finger was (there is no address on purpose: a reverse geocode is paid, ADR-0147 §7);
+   *  - a tapped sight says **who fills the name**, and its coordinates add nothing a ring under
+   *    your finger has not already said;
+   *  - a result or a rename says the **address**.
+   *
+   *  It was two rows — a hint and a `.map-draft-meta` — which is 44px of a 243px card spent on
+   *  two short muted clauses that were never both load-bearing at once (ADR-0148 §1). Two
+   *  competing quiet lines is also just worse than one. */
+  note?: string;
   /** The glyph a human has already chosen for this place. **Its presence is
    *  `initiallyTouched`**, which is the whole of rename's special-casing: a place that already
    *  carries a glyph counts as chosen, so tapping a category will not stomp it. */
@@ -60,14 +67,12 @@ export interface MapPlaceFormSpec {
   vetUrl?: string;
   /** The confirm's word: an add, or a save. */
   confirmLabel: string;
-  /** Whether an empty name may be submitted. **True only for a tapped sight we have not paid
-   *  to name**, whose confirm buys Google's label — everywhere else an empty name would write
-   *  a nameless place. */
-  nameOptional?: boolean;
 }
 
 export interface MapPlaceFormValue {
-  /** Trimmed. Empty only where `nameOptional` allowed it, meaning "let Google name it". */
+  /** Trimmed, and never empty: every remaining source either types a name or arrives with one.
+   *  A `nameOptional` escape existed for the tapped sight, whose confirm bought Google's label,
+   *  and went with that source (ADR-0148 §6). */
   name: string;
   /** The glyph in force — derived from the category until a human picked one. */
   icon: string;
@@ -127,7 +132,7 @@ export function MapPlaceForm({
     });
 
   const trimmed = name.trim();
-  const submittable = !busy && (trimmed !== '' || spec.nameOptional === true);
+  const submittable = !busy && trimmed !== '';
   const confirm = () => {
     if (!submittable) return;
     onConfirm({ name: trimmed, icon: icon.value, iconTouched: icon.touched, category });
@@ -135,7 +140,7 @@ export function MapPlaceForm({
 
   return (
     <div className="map-draft">
-      <Field label={spec.title} htmlFor={nameId} hint={spec.hint} error={error}>
+      <Field label={spec.title} htmlFor={nameId} hint={spec.note} error={error}>
         <div className="map-draft-name">
           {/* THE APP'S OWN PICKER, not a row of chips at "its own scale" — a single 44px chip
               whose panel FLOATS over the card rather than expanding it, which is what the
@@ -170,7 +175,19 @@ export function MapPlaceForm({
           />
         </div>
       </Field>
-      {/* ALL NINE `EventCategory` values, from the ONE options list `EventForm` and the shelf's
+      {/* **WHAT SCROLLS, AND WHY THESE TWO** (ADR-0148 §1). The card is bounded by the room it
+          actually has, so something has to give when the keyboard takes the rest — and the
+          choice is not arbitrary. While you are typing, the questions on screen are "what am I
+          naming", "what have I typed" and "how do I get out": that is the `Field` above and the
+          actions below, and they stay PINNED. The categories and the point are the two things
+          you cannot act on while typing anyway, which is the same derived-affordance reasoning
+          that takes `נווט` off a row under an errand (ADR-0134 §4).
+          Nothing is hidden — it is pushed out of a window with a way back to it, which is what
+          "total visibility" actually asks for. Every other form in this app already works this
+          way (`EventForm`/`BookingSheet`: a scrolling body with pinned `FormActions`); this one
+          did not, because it was drawn as a card. It can be both. */}
+      <div className="map-draft-scroll">
+        {/* ALL NINE `EventCategory` values, from the ONE options list `EventForm` and the shelf's
           add already read (`EVENT_CATEGORY_OPTIONS`) — so `other` (כללי) is present and last
           because the enum puts it there, not because this surface chose an order.
           **Here the category is not invisible metadata: it is the pin's HUE.** That is why the
@@ -178,24 +195,22 @@ export function MapPlaceForm({
           (ADR-0109 §11) — without a choice a restaurant's pin comes out `leisure` green, which
           on a surface whose entire grammar is "colour = category" is wrong information rather
           than absent information. */}
-      <div className="category-pills">
-        <ChoiceGrid
-          layout="pills"
-          options={EVENT_CATEGORY_OPTIONS}
-          value={category}
-          onChange={(next) => {
-            setCategory(next);
-            // `redrive` answers with the value now in force — derived, or whatever a human
-            // already set — so the report reads the truth rather than a `useState` React has
-            // not flushed yet. That return value is exactly why the hook has one.
-            report({ category: next, icon: icon.redrive(iconForCategory(next)) });
-          }}
-          ariaLabel={t.map.make.categoryLabel}
-        />
+        <div className="category-pills">
+          <ChoiceGrid
+            layout="pills"
+            options={EVENT_CATEGORY_OPTIONS}
+            value={category}
+            onChange={(next) => {
+              setCategory(next);
+              // `redrive` answers with the value now in force — derived, or whatever a human
+              // already set — so the report reads the truth rather than a `useState` React has
+              // not flushed yet. That return value is exactly why the hook has one.
+              report({ category: next, icon: icon.redrive(iconForCategory(next)) });
+            }}
+            ariaLabel={t.map.make.categoryLabel}
+          />
+        </div>
       </div>
-      <p className="map-draft-meta" dir="auto">
-        {spec.meta}
-      </p>
       <div className="map-draft-acts">
         {spec.vetUrl && (
           <a

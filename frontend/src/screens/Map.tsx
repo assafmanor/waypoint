@@ -58,7 +58,6 @@ import {
   mapsDayRouteUrl,
   coordLabel,
   mapsDirectionsUrl,
-  mapsPlaceIdUrl,
   mapsPredictionUrl,
   nextDestination,
 } from '../lib/places';
@@ -92,6 +91,7 @@ import { shortTitleText } from '../lib/route-title';
 import { useClock } from '../lib/useClock';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { useGeolocation } from '../lib/useGeolocation';
+import { useKeyboardInset } from '../lib/useKeyboardInset';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import {
   CATEGORY_PIN_HUE,
@@ -99,6 +99,7 @@ import {
   DOT_SEPARATOR,
   MAP_ATTRIBUTION_H,
   MAP_CONTROLS_H,
+  MAP_FLOAT_GAP,
   MAP_PIN,
   MAP_ROW_DISCLOSURE,
   MAP_SHEET_ORDER,
@@ -181,10 +182,9 @@ export function MapView() {
     zoneEvidence,
     usingCachedSnapshot,
     // Both of the canvas's make-a-place paths write through these (ADR-0147 §6): a dropped
-    // pin is a `createPlace` with coordinates and no `googlePlaceId`, a tapped Google sight
-    // is the same `resolvePlace` a search result picks with. Neither is a search, so neither
-    // goes through `usePlaceSearch` — its session, its debounce and its dedup are all about
-    // a query, and a canvas gesture has none.
+    // pin is a `createPlace` with coordinates and no `googlePlaceId`, and a rename is an
+    // `updatePlace`. Neither is a search, so neither goes through `usePlaceSearch` — its
+    // session, its debounce and its dedup are all about a query, and a canvas gesture has none.
     indexVerbs,
   } = useTrip();
   const { mode } = useMode();
@@ -211,7 +211,7 @@ export function MapView() {
     clearFocus,
     locationOffered,
     markLocationOffered,
-    setQueryOpen,
+    setChromeReclaimed,
     errand,
     errandResult,
   } = useMapScope();
@@ -364,11 +364,6 @@ export function MapView() {
   // A tapped ring. Its own state rather than `selectedId`, because a result has no
   // `placeId` — there is no row for it yet, which is the whole point of it.
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
-  useEffect(() => {
-    setQueryOpen(queryFieldOpen);
-    // Leaving the tab must give the chrome back, since the state outlives this screen.
-    return () => setQueryOpen(false);
-  }, [queryFieldOpen, setQueryOpen]);
   // A query is LIVE, as opposed to the field merely being open. Everything downstream
   // keys on this: the list's predicate, the pin filter, the aside promotion (§4), and
   // the two readers that ask "is this pin's row absent from the list?".
@@ -1170,6 +1165,11 @@ export function MapView() {
   // ONE RULE covers both directions: **a tap never takes away the surface it was made
   // on** (ADR-0122 §7, which revises the pin-tap raise session 136 shipped).
   const select = (placeId: string, opts: { fromRow?: boolean } = {}) => {
+    // **SELECTING SOMETHING ELSE CLOSES THE FORM.** A row tap is a different intent — it names
+    // a place — so it is not swallowed and it is not trapped: the form closes and the tap does
+    // what it came to do. One gesture, one intent. `closeDraftOnSelect` rather than a call to
+    // `cancelDraft` because `select` is declared above the draft state it would reach into.
+    closeDraftOnSelect.current();
     setSelectedId(placeId);
     // ONE selection on the canvas. A ring and a pin can both be selected only if nothing
     // clears the other, and at the map extreme that would raise two cards on top of each
@@ -1454,34 +1454,35 @@ export function MapView() {
   const addOrNameResult = useRef<(result: PlaceResult) => void>(() => {});
   addOrNameResult.current = (result) => {
     if (pendingErrand) void addResult(result);
-    else openDraft.current({ kind: 'result', result });
+    else
+      openDraft.current(
+        { kind: 'result', result },
+        // A Text Search result arrives WITH its location (ADR-0132 §7), so there is always
+        // something to frame — except for the coordless match our own text found.
+        result.lat != null && result.lng != null ? { lat: result.lat, lng: result.lng } : undefined,
+      );
   };
   const onResultAdd = useCallback((result: PlaceResult) => addOrNameResult.current(result), []);
 
-  // ── MAKING AND NAMING A PLACE: FOUR SOURCES, ONE FORM (ADR-0147) ───────────────────
-  // A long press on the canvas · a tap on one of Google's own sights · a search result's add ·
-  // the pencil on a selected row. **They are one act — a place's NAME is the user's** — and
-  // they differ only in how the `Place` is obtained, which is exactly what `MapDraft`'s
-  // discriminant names. Everything after that is shared: one form, one authored write, one
-  // destination branch.
+  // ── MAKING AND NAMING A PLACE: THREE SOURCES, ONE FORM (ADR-0147) ──────────────────
+  // A long press on the canvas · a search result's add · the pencil on a selected row. **They
+  // are one act — a place's NAME is the user's** — and they differ only in how the `Place` is
+  // obtained, which is exactly what `MapDraft`'s discriminant names. Everything after that is
+  // shared: one form, one authored write, one destination branch.
+  //
+  // A fourth shipped and was removed: a tap on one of Google's own sights opened this form, and
+  // a form on every POI tap is noise (ADR-0148 §6). Google's own card answers that tap, which is
+  // ADR-0125 §6 unamended — and it took the phase's only paid gesture with it.
   type MapDraft =
     /** 6b. A bare coordinate and nothing else: no name, no `place_id`, no reverse geocode
-     *  (paid, and refused — ADR-0131 §9). The name is typed, and it is the only source where
-     *  the confirm cannot proceed without one. */
+     *  (paid, and refused — ADR-0131 §9). The name is typed. */
     | { kind: 'drop'; at: LatLng }
-    /** 6c. A coordinate AND a `place_id`, on a thing you are already looking at. The name is
-     *  Google's, bought by ONE Place Details call on the confirm — never on the tap, which is
-     *  ADR-0115 §1's "armed by intent, not by opening" read literally. */
-    | { kind: 'sight'; at: LatLng; googlePlaceId: string }
     /** A Text Search result's `＋ אולי`. Free to resolve (the search already returned the name,
      *  the address and the point, ADR-0132 §7), and prefilled, so the form is only a chance to
      *  correct the label before it enters the trip. */
     | { kind: 'result'; result: PlaceResult }
-    /** A place the trip already has — reached by the pencil, or by tapping a Google sight the
-     *  trip already owns, which is the FREE path and must be tried first: we have its name, so
-     *  there is nothing to buy ("the trip answers first", ADR-0134 §1). `viaSight` only changes
-     *  the words. */
-    | { kind: 'rename'; place: Place; viaSight?: boolean };
+    /** A place the trip already has, reached by the pencil on its selected row. */
+    | { kind: 'rename'; place: Place };
 
   const [draft, setDraft] = useState<MapDraft | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -1493,6 +1494,66 @@ export function MapView() {
     icon: DEFAULT_PLACE_ICON,
   });
 
+  // **A TAP OUTSIDE THE FORM CLOSES IT — the same function every other way out runs.**
+  // `frontend/CLAUDE.md` is explicit: a cancel control, a backdrop or outside tap, Escape and
+  // the Android gesture must all run one handler, and the shipped form bound three of the four.
+  //
+  // The canvas tap IS the outside tap, so there is no backdrop to add: it already means "I am
+  // done with what was selected" and it is already the place card's own dismissal (ADR-0122 §7).
+  // No scrim either — a scrim would say the map is disabled, and the map is the thing you are
+  // naming a point on, so you must be able to see it.
+  //
+  // A latest-ref because `cancelDraft` is declared below with the draft state it owns.
+  const dismissAll = useRef<() => void>(() => {});
+  /** Just the form, for a gesture that means something else and must still go through (a row
+   *  tap). Distinct from `dismissAll`, which is the OUTSIDE tap and clears the selection too. */
+  const closeDraftOnSelect = useRef<() => void>(() => {});
+  const onOutsideTap = useCallback(() => dismissAll.current(), []);
+
+  // ── WHAT THE CARD IS OCCUPYING, **MEASURED** (ADR-0148 §3) ─────────────────────────
+  // `mapFitPadding`'s `bottomReservePx` is what keeps a fit from putting a pin under the
+  // card, and its own comment says it must be "a live number rather than a constant because
+  // the card comes and goes on a tap". The caller passed `MAP_CARD_RESERVE_H` — a constant
+  // sized for a selected `.place` row — and the form is nearly twice that, so the pin you had
+  // just dropped landed **behind the form naming it**.
+  //
+  // **That is the fourth time this repo has written a landing position as a constant** (the
+  // three in `frontend/CLAUDE.md`: ADR-0142's card top, ADR-0143's stamp offset, the trip
+  // handoff's target). So it is measured, and measured for BOTH cards rather than special-
+  // cased for the form — one number, from the element that is actually there.
+  //
+  // Safe to measure here, and the distinction matters: this feeds the camera through a
+  // latest-**ref** (`bottomReserveRef`), never `--sheet-h`, so it cannot put a layout read on
+  // the per-second render — which is the constraint `MAP_CARD_BODY_H`'s comment was about.
+  // The iOS half of the visibility fix — see `useKeyboardInset`. 0 wherever the platform
+  // resized the viewport for the keyboard, which is every case the layout already handled.
+  const keyboardInset = useKeyboardInset();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardReserve, setCardReserve] = useState(0);
+  const measureCardReserve = useRef<() => void>(() => {});
+  measureCardReserve.current = () => {
+    const box = cardRef.current?.getBoundingClientRect().height ?? 0;
+    setCardReserve(box > 0 ? Math.ceil(box) + MAP_ATTRIBUTION_H + MAP_FLOAT_GAP : 0);
+  };
+  useEffect(() => {
+    measureCardReserve.current();
+    // The card's height changes with its content — a hint line appears, an error shows, the
+    // bounded form is capped by a stop change — so it is re-measured rather than read once.
+    // Guarded rather than shimmed: jsdom has no `ResizeObserver`, and the one-shot read above
+    // is the part correctness depends on (the same trade `CreateTrip` makes).
+    if (typeof ResizeObserver === 'undefined') return;
+    const el = cardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => measureCardReserve.current());
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+
+  /** The stop the sheet was at when the form opened, so closing it gives that back. This is
+   *  what makes normalising a DEFERRAL rather than a loss — ADR-0147 rejected standing the
+   *  sheet down because "it takes away the list you were reading", and it no longer does. */
+  const stopBeforeDraft = useRef<MapSheetView | null>(null);
+
   const openDraft = useRef<(next: MapDraft, frameAt?: LatLng) => void>(() => {});
   openDraft.current = (next, frameAt) => {
     // **EXACTLY ONE CARD ON THIS CANVAS** (ADR-0125 §6, ADR-0122 §7). A canvas gesture lands
@@ -1501,20 +1562,70 @@ export function MapView() {
     // what is selected (a row's pencil, a result's add), so they keep it: the row stays lit
     // and the ring stays filled under the form. The card slot is kept single by gating the
     // other two cards on `!draft` instead, which says it where it is true.
-    if (next.kind === 'drop' || next.kind === 'sight') clearSelection();
+    if (next.kind === 'drop') clearSelection();
     setDraft(next);
     setDraftFailed(false);
     setDraftLook({
       icon: placeGlyph({ icon: next.kind === 'rename' ? next.place.icon : undefined }, undefined),
     });
-    // Frame it once, so the place you just made is the place you are looking at (§5).
-    if (frameAt) setFramePlace({ ...frameAt });
+    // **THE FORM IMPLIES THE `map` STOP, FROM EVERY ORIGIN** (ADR-0148 §2). Not "when the room
+    // is short": always, so standing the sheet down stops being a special behaviour of the
+    // form and becomes the same act as tapping `רשימה / מפה`. It is also a CORRECTION rather
+    // than an optimisation — at `full` the card's room is negative by construction, so the
+    // pencil on a row up there used to open a form that could not be drawn at all.
+    if (sheetView !== MAP_SHEET_VIEW.map) stopBeforeDraft.current = sheetView;
+    setSheetView(MAP_SHEET_VIEW.map);
+    // **AND THE PIN MUST BE VISIBLE, NOT MERELY CENTRED** (§3). Deferred a frame for two
+    // reasons that need the same wait: the split has just been given the sheet's height back,
+    // and the card has not been laid out yet — so framing now would fit against a canvas that
+    // no longer exists and reserve a card height nobody has measured. `requestAnimationFrame`
+    // is this screen's existing idiom for exactly that (`onResultTap`'s scroll).
+    if (frameAt) {
+      const at = { ...frameAt };
+      requestAnimationFrame(() => {
+        measureCardReserve.current();
+        setFramePlace(at);
+      });
+    }
   };
+
+  // **ONE DERIVATION, ONE PUSH** (ADR-0148). Both of this tab's keyboard-bearing surfaces
+  // want the header and the tab bar off screen, and the shell must not learn which — so the
+  // screen ORs its own two states here rather than the shell doing it at the read site.
+  //
+  // The form's trigger is deliberately **the form being open**, not the keyboard literally.
+  // Tapping a category pill takes focus off the name field, so the keyboard drops — and a
+  // keyboard-literal trigger would pop the chrome back, re-lay-out the card, and remove it
+  // again on the next touch of the field. That is the "form breathes" failure already
+  // rejected for the pills themselves, moved up to the shell where it is worse. Holding it
+  // for the form's whole life CONTAINS "while the keyboard is up" and never flickers — and it
+  // costs nothing when the keyboard is down, because at the `map` stop the form needs 243px
+  // and has 372 with the chrome off.
+  useEffect(() => {
+    setChromeReclaimed(queryFieldOpen || draft != null);
+    // Leaving the tab must give the chrome back, since the state outlives this screen.
+    return () => setChromeReclaimed(false);
+  }, [queryFieldOpen, draft, setChromeReclaimed]);
 
   const cancelDraft = useCallback(() => {
     setDraft(null);
     setDraftFailed(false);
+    // The sheet goes back to the stop it came from: nothing was taken, only deferred.
+    if (stopBeforeDraft.current) setSheetView(stopBeforeDraft.current);
+    stopBeforeDraft.current = null;
   }, []);
+
+  // The one handler, now that both halves exist. Order matters only in that the form is the
+  // nearer surface: closing it also restores the stop it deferred.
+  dismissAll.current = () => {
+    if (draft) cancelDraft();
+    clearSelection();
+  };
+  closeDraftOnSelect.current = () => {
+    // A RENAME is about the row you are selecting, so re-selecting must not close its own form
+    // out from under it — that is `beginRename` → `select` in one gesture.
+    if (draft && draft.kind !== 'rename') cancelDraft();
+  };
 
   // **BACK CLOSES THE FORM.** It is a state this mounted screen enters and leaves with a
   // visible cancel, which is the shape `frontend/CLAUDE.md` names as needing a deliberate
@@ -1533,23 +1644,6 @@ export function MapView() {
   // they are absent rather than disabled (ADR-0121 §11).
   const holdCanvas = useCallback((at: LatLng) => openDraft.current({ kind: 'drop', at }, at), []);
 
-  // **THE TRIP ANSWERS FIRST** (ADR-0134 §1): a sight the trip already owns needs no Google
-  // call at all, because we already have its name — so that tap is a rename, not a purchase.
-  // The free path has to be tried before the paid one, and this is where.
-  const ownedSight = useRef<(googlePlaceId: string) => MapDraft | undefined>(() => undefined);
-  ownedSight.current = (googlePlaceId) => {
-    const place = places.find((p) => p.googlePlaceId === googlePlaceId);
-    return place ? { kind: 'rename', place, viaSight: true } : undefined;
-  };
-  const tapGooglePlace = useCallback(
-    (googlePlaceId: string, at: LatLng) =>
-      openDraft.current(
-        ownedSight.current(googlePlaceId) ?? { kind: 'sight', at, googlePlaceId },
-        at,
-      ),
-    [],
-  );
-
   // The pencil (ADR-0147 §3). Any place is renameable — including one Google named — because
   // otherwise the same row would be editable or not depending on where it came from, and the
   // backend has preserved a user-authored name over Google's since long before there was a way
@@ -1557,7 +1651,11 @@ export function MapView() {
   const beginRename = useRef<(placeId: string) => void>(() => {});
   beginRename.current = (placeId) => {
     const place = placeById.get(placeId);
-    if (place) openDraft.current({ kind: 'rename', place });
+    // Framed like every other source (§3): the pencil can be tapped from a row you cannot
+    // see the pin of — at `full` you cannot see the canvas at all — so the place you are
+    // renaming has to come into view with its form. A coordless Place-lite frames nothing,
+    // exactly as its row's tap does.
+    if (place) openDraft.current({ kind: 'rename', place }, placePoint(place));
   };
 
   // The confirm. Every source ends in the same two steps — **obtain the place, then write what
@@ -1583,31 +1681,18 @@ export function MapView() {
         cancelDraft();
         return;
       }
-      let placeId: string;
-      let title: string;
-      if (draft.kind === 'sight') {
-        // **The only spend on this surface**, and it is one call on an explicit confirm.
-        // Google mints the row and names it, so what the human authored is written over it —
-        // which makes a tapped sight exactly the rename case, one step later.
-        const resolved = await indexVerbs.resolvePlace({ googlePlaceId: draft.googlePlaceId });
-        const named = await applyAuthored.current(resolved, value);
-        placeId = named.id;
-        title = named.name;
-      } else {
-        // Free, and deliberately so: no session, no Details, no reverse geocode (§3). The name
-        // and the icon ride along on the create, so a dropped pin never exists un-authored and
-        // there is nothing to write over afterwards.
-        title = value.name;
-        placeId = await indexVerbs.createPlace({
-          name: value.name,
-          lat: draft.at.lat,
-          lng: draft.at.lng,
-          icon: value.iconTouched ? value.icon : undefined,
-        });
-      }
+      // A dropped pin, and it is FREE: no session, no Details, no reverse geocode (ADR-0147
+      // §3). The name and the icon ride along on the create, so it never exists un-authored and
+      // there is nothing to write over afterwards.
+      const placeId = await indexVerbs.createPlace({
+        name: value.name,
+        lat: draft.at.lat,
+        lng: draft.at.lng,
+        icon: value.iconTouched ? value.icon : undefined,
+      });
       cancelDraft();
       landPlace.current(placeId, {
-        title,
+        title: value.name,
         icon: authoredIcon(value),
         category: value.category,
       });
@@ -1619,38 +1704,23 @@ export function MapView() {
   };
 
   // ── THE SPOT THE OPEN FORM IS ABOUT (ADR-0147 §5) ─────────────────────────────
-  // Only the two CANVAS sources need one, and they need different silhouettes:
-  //
-  //   • a long press landed on bare canvas, so nothing else says where it went — OUR pin,
-  //     dashed because it is provisional, in the hue the form's category pills are choosing;
-  //   • a tapped sight already has Google's own icon under it, so our PIN would be two markers
-  //     for one place (the mess ADR-0125 §6 refused) — it gets the RING, which is already this
-  //     app's word for a Google-sourced candidate that is not yours yet (ADR-0132 §6).
-  //
-  // The other two need nothing: a renamed place has its own selected pin, and a search result
-  // is already a ring in `results` above. Drawing a second marker on either would say the same
-  // thing twice.
-  const draftMarkerNow: MapDraftMarker | null = !hasMap
-    ? null
-    : draft?.kind === 'drop'
+  // **Only the long press needs one.** It lands on bare canvas, so nothing else says where it
+  // went: OUR pin, dashed because it is provisional (ADR-0011's soft grammar reused rather than
+  // a new colour), in the hue the form's category pills are choosing. The other two need nothing
+  // — a renamed place has its own selected pin, and a search result is already a ring in
+  // `results` above — so a second marker on either would say the same thing twice.
+  const draftMarkerNow: MapDraftMarker | null =
+    hasMap && draft?.kind === 'drop'
       ? {
           ...draft.at,
           hue: draftLook.category ? CATEGORY_PIN_HUE[draftLook.category] : 'leisure',
           glyph: draftLook.icon,
         }
-      : draft?.kind === 'sight'
-        ? { ...draft.at, ringed: true }
-        : null;
+      : null;
   // The same content-key memo as `pins`/`results`, and needed for the same reason: an inline
   // `{ lat, lng }` in the JSX undoes the pane's memo silently (§4/§6).
   const draftMarkerKey = draftMarkerNow
-    ? [
-        draftMarkerNow.lat,
-        draftMarkerNow.lng,
-        draftMarkerNow.ringed,
-        draftMarkerNow.hue,
-        draftMarkerNow.glyph,
-      ].join('|')
+    ? [draftMarkerNow.lat, draftMarkerNow.lng, draftMarkerNow.hue, draftMarkerNow.glyph].join('|')
     : '';
   const draftMarker = useMemo(() => draftMarkerNow, [draftMarkerKey]);
 
@@ -2270,7 +2340,7 @@ export function MapView() {
       ? usageIndex.get(selectedId)
       : undefined;
   const placeCard = cardUsage && (
-    <div className="map-placecard">
+    <div className="map-placecard" ref={cardRef}>
       {renderRow({
         forceDay: !inDayScope(cardUsage),
         onFrame: frameSelected,
@@ -2290,7 +2360,7 @@ export function MapView() {
   // the selection card is. In practice the gesture can only start on visible canvas, so at
   // `full` it never arises.
   //
-  // **Everything that varies between the four sources is DATA**, which is the design's whole
+  // **Everything that varies between the three sources is DATA**, which is the design's whole
   // claim: this function is the only place that knows which source is which, and the form
   // itself knows none of it (`MapPlaceForm`).
   const draftSpec = (): MapPlaceFormSpec => {
@@ -2302,27 +2372,9 @@ export function MapView() {
           name: '',
           // Deliberately the point and not an address: a reverse geocode is paid (§7), and the
           // camera has already framed the spot, so the coordinates are confirmation that the
-          // pin fell where the finger was. `measure` keeps the numeric run an LTR island in
+          // pin fell where the finger was. `coordLabel` keeps the numeric run an LTR island in
           // the RTL flow (ADR-0118).
-          meta: coordLabel(at),
-          confirmLabel: t.map.make.add,
-        };
-      }
-      case 'sight': {
-        const s = draft as Extract<MapDraft, { kind: 'sight' }>;
-        return {
-          title: t.map.make.googleTitle,
-          // Empty ON PURPOSE, and the hint says who fills it: naming a tapped sight before the
-          // confirm is a Place Details call, i.e. paying to browse — the exact spend that
-          // blocked Phase 6a for three weeks. Google's own label is already drawn under the
-          // finger, which is the preview.
-          name: '',
-          meta: coordLabel(s.at),
-          hint: t.map.make.googleHint,
-          nameOptional: true,
-          // The FREE vet (ADR-0115 §2), and the only source that needs one: a dropped pin was
-          // your own choice of spot, and the other two already carry a name.
-          vetUrl: mapsPlaceIdUrl(s.googlePlaceId, s.at),
+          note: coordLabel(at),
           confirmLabel: t.map.make.add,
         };
       }
@@ -2331,7 +2383,7 @@ export function MapView() {
         return {
           title: t.map.make.resultTitle,
           name: result.primaryText,
-          meta: result.secondaryText ?? '',
+          note: result.secondaryText,
           vetUrl: mapsPredictionUrl(result),
           confirmLabel: t.map.make.add,
         };
@@ -2340,12 +2392,9 @@ export function MapView() {
         const r = draft as Extract<MapDraft, { kind: 'rename' }>;
         const usage = usageIndex.get(r.place.id);
         return {
-          // Reached by the pencil, or by tapping a sight the trip already owns — which is the
-          // free path, so it says so rather than looking like an add that happens to be quiet.
-          title: r.viaSight ? t.map.make.googleTitle : t.map.make.renameTitle,
-          hint: r.viaSight ? t.map.make.ownedHint : undefined,
+          title: t.map.make.renameTitle,
           name: r.place.name,
-          meta: r.place.address ?? '',
+          note: r.place.address,
           icon: r.place.icon,
           // The category the referencing entities agree on, so the pills open where the place
           // already is. It is not written back on a rename — a `Place` has no category and the
@@ -2358,7 +2407,7 @@ export function MapView() {
     }
   };
   const draftCard = draft && (
-    <div className="map-placecard">
+    <div className="map-placecard" ref={cardRef}>
       <MapPlaceForm
         // **The form is reset by its KEY.** Every field in it is local state seeded from the
         // spec, so a second draft has to be a second instance — which is how a `useState` form
@@ -2396,7 +2445,7 @@ export function MapView() {
       ? research.predictions.find((r) => r.googlePlaceId === selectedResultId)
       : undefined;
   const resultCard = cardResult && (
-    <div className="map-placecard">
+    <div className="map-placecard" ref={cardRef}>
       <ResultRow
         result={cardResult}
         selected
@@ -2605,11 +2654,24 @@ export function MapView() {
       // canvas happens to carry for another reason, which is precisely the drift the §4
       // split exists to prevent.
       data-choosing={pendingErrand ? 'place' : undefined}
+      // Pairs with `--sheet-h: 0` above: the height goes to the canvas and the sheet's own
+      // node stands down, rather than being a 0px sliver with its contents clipped.
+      data-form={draft ? 'open' : undefined}
       style={
         {
           // The pane is sized to the area the SNAPPED sheet leaves visible, so Google's
           // attribution stays visible and a drag costs no relayout (ADR-0121 §5).
-          '--sheet-h': stopHeightCss(MAP_SHEET_STOPS[sheetView]),
+          // **WHILE THE FORM IS OPEN THE SHEET IS NOT SHOWN AT ALL** (ADR-0148 §2), which is one
+          // step past normalising to `map` and is what makes the whole form fit with no
+          // scrolling on every target. At `map` the sheet is nothing but its own 52px strip —
+          // a grab handle, `רשימה / מפה` and `קרוב עכשיו` — over a list you cannot see. None of
+          // that is the task while you are naming a point, and the view toggle in it actively
+          // contradicts a form that just moved you to the canvas: the same derived-affordance
+          // rule that takes `נווט` off a row under an errand (ADR-0134 §4).
+          //
+          // `sheetView` is still `map` underneath, so the stop the form deferred is restored on
+          // close and nothing about the sheet's own state is touched.
+          '--sheet-h': draft ? '0px' : stopHeightCss(MAP_SHEET_STOPS[sheetView]),
           // Written from the TS constants, never measured: this screen re-renders every
           // second, so a layout read here is the anti-pattern `frontend/CLAUDE.md`
           // names. `--map-controls-h` is the same number `mapFitPadding`'s top is
@@ -2618,6 +2680,12 @@ export function MapView() {
           '--map-controls-h': `${MAP_CONTROLS_H}px`,
           '--snap-top-h': `${MAP_SHEET_STRIP_H}px`,
           '--map-attr-h': `${MAP_ATTRIBUTION_H}px`,
+          // **What the keyboard is covering that the layout does not know about** (ADR-0148 §4).
+          // 0 on Android, where the viewport resized and `--sheet-h` above already describes
+          // reality; the keyboard's height on iOS, where it does not. Only the card's `bottom`
+          // reads it, so it never touches the pane's size and cannot cost a relayout of the
+          // canvas — and it changes on a focus, not on the clock.
+          '--map-kb-h': `${keyboardInset}px`,
           // The pin's size, as the RULE rather than a number (ADR-0123): a `clamp()` the
           // browser resolves against the pane's own height (`container-type: size` in
           // `map-pane.css`), so the pins answer the canvas the sheet's stop leaves — and
@@ -2649,19 +2717,21 @@ export function MapView() {
           setSignal={cameraSignal}
           defaultCentre={defaultCentre}
           onSelectPin={selectPin}
-          onCanvasTap={clearSelection}
+          onCanvasTap={onOutsideTap}
           onViewChange={onViewSettled}
           areaCount={areaCount}
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
           framePlace={framePlace}
-          cardOpen={cardUsage != null || cardResult != null || draft != null}
+          // The MEASURED reserve, not "a card is open": the constant it replaced was sized
+          // for a selected row and the form is nearly twice that, which put a freshly
+          // dropped pin behind the form naming it (ADR-0148 §3).
+          cardReserve={cardReserve}
           // Both make-a-place gestures (ADR-0147). Stable identities via latest-refs, like
           // every other handler this memoized pane takes — an inline arrow here would
           // re-diff every marker once a second (§7, ADR-0121 §4).
           onHoldCanvas={holdCanvas}
-          onTapGooglePlace={tapGooglePlace}
           draftMarker={draftMarker}
         />
         {draftCard}

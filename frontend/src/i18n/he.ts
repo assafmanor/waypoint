@@ -131,9 +131,6 @@ export const t = {
     make: {
       // A long press: nothing is known about the spot but where it is, so the title asks.
       dropTitle: 'מה יש כאן?',
-      // A tapped sight: Google's own label is already drawn under your finger, so the title
-      // states which one rather than repeating a name we would have to pay to learn.
-      googleTitle: 'המקום שסימנתם',
       // A search result — it has a name already, so this is the add, not an interrogation.
       resultTitle: 'הוספה לטיול',
       // A place the trip already has, whether Google named it or you did.
@@ -142,11 +139,6 @@ export const t = {
       namePlaceholder: 'שם המקום',
       categoryLabel: 'קטגוריה',
       iconLabel: 'בחירת סמל',
-      // Only where the name is genuinely Google's to supply: an empty field on a tapped sight
-      // is filled by the Details call the confirm pays for (ADR-0147 §4).
-      googleHint: 'גוגל ישלים את השם בהוספה',
-      // The tapped sight the trip already owns: we have its name, so there is nothing to buy.
-      ownedHint: 'המקום כבר בטיול · השם שלכם, בלי קריאה',
       add: 'הוספה למדף',
       save: 'שמירה',
       cancel: 'ביטול',
