@@ -225,15 +225,25 @@ Subtle fades on view change; pulsing "live" blip; countdown/clock tick. Respects
 
 New motion picks from a small ramp instead of inventing values — the same discipline as the type ramp and color budget. Wired in `tokens.css`:
 
-| Token               | Value                      | Used for                                              |
-| ------------------- | -------------------------- | ----------------------------------------------------- |
-| `--t-quick`         | 140ms                      | Nav settle, toggles, hovers, focus                    |
-| `--t-base`          | 240ms                      | Tab cross-fade, toast, ripple bar, sheets             |
-| `--t-deliberate`    | 400ms                      | Return-gesture slide (ADR-0035); Trip→Plan stand-down |
-| `--t-cinematic`     | 600ms                      | Plan→Trip going-live — **the only cinematic moment**  |
-| `--ease-standard`   | `cubic-bezier(.2,0,0,1)`   | Default / entrances / hue melts                       |
-| `--ease-exit`       | `cubic-bezier(.4,0,1,1)`   | Exits — toast out, glow extinguishing                 |
-| `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)` | The glow ignite                                       |
+| Token               | Value                          | Used for                                                                            |
+| ------------------- | ------------------------------ | ----------------------------------------------------------------------------------- |
+| `--t-quick`         | 140ms                          | Nav settle, toggles, hovers, focus                                                  |
+| `--t-base`          | 240ms                          | Tab cross-fade, toast, ripple bar, sheets                                           |
+| `--t-deliberate`    | 400ms                          | Return-gesture slide (ADR-0035); Trip→Plan stand-down                               |
+| `--t-cinematic`     | 600ms                          | Plan→Trip going-live — **the only cinematic moment**                                |
+| `--ease-standard`   | `cubic-bezier(.2,0,0,1)`       | Default / entrances / hue melts                                                     |
+| `--ease-exit`       | `cubic-bezier(.4,0,1,1)`       | Exits — toast out, glow extinguishing                                               |
+| `--ease-emphasized` | `cubic-bezier(.16,1,.3,1)`     | The glow ignite                                                                     |
+| `--ease-arrive`     | `cubic-bezier(.22,1.16,.36,1)` | The only **overshooting** easing — an arriving object that must _settle_ (ADR-0140) |
+| `--stagger-step`    | 40ms                           | One step of a staggered entrance; cap the multiplier ~5 so a long list never drags  |
+| `--dir`             | −1 (RTL) / 1 (LTR)             | The inline axis's PHYSICAL sign — `translateX(calc(var(--dir) * …))`                |
+| `--press-scale`     | 0.97                           | Press feedback on a control                                                         |
+| `--press-scale-lg`  | 0.985                          | Press feedback on a card- or full-width-sized surface                               |
+| `--route-offset`    | 28px                           | How far an arriving shell screen travels                                            |
+
+The three original easings are all monotone, which is why `--ease-arrive` was added rather than reused: an object that should come to rest had nothing to come to rest _with_, so it stopped dead. Use it for entrances of real objects — a sheet, a card, a stamp — never for an exit (leaving does not overshoot) and never for a colour or opacity ramp.
+
+**Timing an animation from JS reads the token, never a literal** — `lib/motion.ts`'s `motionDurationMs`, which answers **0** both under reduced motion and when the token is unreadable. Any state that exists only _during_ an animation has to resolve when there is no animation, or it outlives its reason (ADR-0140 §5).
 
 **Budget rule:** exactly one `--t-cinematic` moment exists in the product — the Plan→Trip switch. Spending "cinematic" elsewhere devalues it, same discipline as amber / teal / violet. Motion mirrors "one loud element": everything else stays quick and quiet.
 
@@ -259,6 +269,22 @@ Two kinds of change, two mechanisms, both in the same primitive:
 
 - **Rows entering and leaving** — a row that stops matching shrinks and fades in place; one that starts matching comes back with a small per-row stagger (`--t-base`, `--ease-standard`, capped so a long list doesn't drag). This covers filters, search, and scope changes (the Map's `כל הימים` and the day strip's own day), which are predicates over the full set rather than a different list.
 - **Rows moving** — a re-order (the Map's `קרוב עכשיו`) changes only positions, so there is nothing to collapse or expand: each moved row slides from where it was to where it now is (FLIP, same duration and easing).
+
+### Overlays arrive and leave (ADR-0140)
+
+Every overlay animates in **and out**, from the one `Modal` primitive — scrim and card on separate channels, one keyframe pair per channel played `reverse` to leave, and the exit briefer than the entrance (`--t-quick` out, `--t-base` in) because you have already decided to leave. Each variant arrives the way its shape implies: a **sheet** rises from the edge it came from, a **dialog** has no edge so it is summoned in place, and **`full`** replaces a screen so it arrives like one, from the inline-end edge.
+
+The exit hangs off `onClose`, which is already the single owner of leaving (ADR-0103 §2) — never a second close path. An in-card `✕`/`ביטול` takes the wrapped close via `Modal`'s children-as-function, or it snaps.
+
+### A tap is answered (ADR-0140)
+
+The mobile tap-flash is killed app-wide, so **every** tappable owes its own acknowledgement — and one element-level rule provides it rather than each surface remembering. Two steps, because the ratio is what should read as constant, not the transform: `--press-scale` for controls, `--press-scale-lg` for card- and full-width-sized surfaces, which override the var rather than writing a transform. Scale rather than colour, so it composes with the board, paper, amber tints and violet chrome without a per-surface table and without spending from the semantic budget.
+
+### A shell route arrives with a direction (ADR-0140)
+
+Forward and back must not look the same, or the motion carries no information. The direction rides `location.state` (stamped by a back that moves) — never read from history, which ADR-0090 forbids. Forward arrives from the inline-**end** edge (the platform push, mirrored: LTR from the right, RTL from the left); back from inline-start. Because `translateX` has no logical form, the sign comes from the one `--dir` token, so both directions share one set of keyframes instead of a mirrored copy each.
+
+Scoped to **pathname** changes, so an in-trip tab switch keeps `.body`'s fade and never gets two animations at once. It is an offset and a fade rather than a full-width push, because the outgoing screen is already unmounted — the receding half is deferred, with the cost stated in the ADR.
 
 ## Accessibility: non-color redundancy
 

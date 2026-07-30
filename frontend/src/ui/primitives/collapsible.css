@@ -10,7 +10,7 @@
   transition: transform 0.12s ease;
 }
 .wp-collapse-toggle:active {
-  transform: scale(0.95);
+  transform: scale(var(--press-scale));
 }
 
 /* max-height + opacity, never display:none, so a reveal/hide reads as motion

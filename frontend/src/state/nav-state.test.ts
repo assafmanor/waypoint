@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest';
 import {
   RESET_TO_HOME_AFTER_HIDDEN_MS,
   backSlides,
+  navDirectionFrom,
+  NAV_DIR,
   correctionForUncancelableBack,
   daySelectTarget,
   needsBackGuard,
@@ -154,6 +156,40 @@ describe('backSlides — which actions move to a new screen (gesture animation)'
     expect(backSlides({ kind: 'close-overlay' })).toBe(false);
     expect(backSlides({ kind: 'arm-exit' })).toBe(false);
     expect(backSlides({ kind: 'none' })).toBe(false);
+  });
+});
+
+describe("navDirectionFrom — the shell transition's direction (ADR-0140)", () => {
+  it('reads a back stamp off the router entry', () => {
+    expect(navDirectionFrom({ navDir: NAV_DIR.BACK })).toBe(NAV_DIR.BACK);
+  });
+
+  // Every ordinary navigate() in the app stamps nothing, so forward has to be what
+  // "no information" means — otherwise adding the transition would have needed a
+  // change at every call site.
+  it('defaults to forward for anything unstamped', () => {
+    expect(navDirectionFrom(undefined)).toBe(NAV_DIR.FORWARD);
+    expect(navDirectionFrom(null)).toBe(NAV_DIR.FORWARD);
+    expect(navDirectionFrom({})).toBe(NAV_DIR.FORWARD);
+  });
+
+  // Anything can push a history entry, so the reader may not assume our own shape is
+  // there — a string state or a foreign key must not throw or read as a back.
+  it('tolerates a state it did not write', () => {
+    expect(navDirectionFrom('somebody else')).toBe(NAV_DIR.FORWARD);
+    expect(navDirectionFrom({ navDir: 'sideways' })).toBe(NAV_DIR.FORWARD);
+    expect(navDirectionFrom({ other: 1 })).toBe(NAV_DIR.FORWARD);
+  });
+
+  // The direction source and the slide predicate must stay in step: every action that
+  // MOVES is stamped, and the ones that stay put never navigate at all.
+  it('covers exactly the actions backSlides calls moving', () => {
+    const moving = [
+      { kind: 'to-home' },
+      { kind: 'to', path: '/trips' },
+      { kind: 'exit-trip' },
+    ] as const;
+    expect(moving.every(backSlides)).toBe(true);
   });
 });
 

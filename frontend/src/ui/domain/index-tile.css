@@ -18,7 +18,7 @@
   transition: transform 0.12s ease;
 }
 .wp-idx-tile:active {
-  transform: scale(0.97);
+  transform: scale(var(--press-scale-lg));
 }
 .wp-idx-tile:focus-visible {
   outline: 2px solid var(--cta);

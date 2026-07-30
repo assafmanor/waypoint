@@ -177,6 +177,120 @@ describe('Modal', () => {
   });
 });
 
+// The exit (ADR-0140). Every test above closes SYNCHRONOUSLY and that is the real
+// contract in jsdom: with no stylesheet the duration token is unreadable, and
+// `motionDurationMs` treats "no readable duration" as "no animation is running", so
+// the close does not wait. These tests make the token readable to exercise the other
+// branch — the one that actually ships.
+describe('Modal exit animation', () => {
+  afterEach(() => {
+    cleanup();
+    document.documentElement.style.removeProperty('--t-quick');
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** jsdom resolves inline custom properties through getComputedStyle, so this is
+   *  enough to make the primitive believe a stylesheet is present. */
+  const withDuration = (ms: number) =>
+    document.documentElement.style.setProperty('--t-quick', `${ms}ms`);
+
+  const openSheet = (onClose: () => void) =>
+    render(
+      wrapNav(
+        <Modal variant="sheet" ariaLabel="m" onClose={onClose}>
+          <button>inner</button>
+        </Modal>,
+      ),
+    );
+
+  it('marks the overlay closing and defers onClose until the exit has played', () => {
+    vi.useFakeTimers();
+    withDuration(140);
+    const onClose = vi.fn();
+    openSheet(onClose);
+
+    fireEvent.click(document.querySelector('.modal-overlay')!);
+    // The caller has NOT been told yet — it unmounts us on onClose, which is exactly
+    // why calling it first meant nothing ever animated out.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.querySelector('.modal-overlay')!.classList).toContain('is-closing');
+
+    vi.advanceTimersByTime(139);
+    expect(onClose).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes once when several exits land during the animation', () => {
+    vi.useFakeTimers();
+    withDuration(140);
+    const onClose = vi.fn();
+    openSheet(onClose);
+
+    const overlay = document.querySelector('.modal-overlay')!;
+    fireEvent.click(overlay);
+    // A second backdrop tap and an Escape while the card is already leaving. Without
+    // the idempotence guard each would restart the exit and re-queue the close.
+    fireEvent.click(overlay);
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    vi.advanceTimersByTime(500);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onClose after unmounting mid-exit', () => {
+    vi.useFakeTimers();
+    withDuration(140);
+    const onClose = vi.fn();
+    const { unmount } = openSheet(onClose);
+
+    fireEvent.click(document.querySelector('.modal-overlay')!);
+    unmount();
+    vi.advanceTimersByTime(500);
+    // The pending timer is cleared, so a caller that tore the overlay down for its
+    // own reasons is never called back about a close it did not ask for.
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // The correctness half of ADR-0140: App.css kills the animation under reduced
+  // motion, so a timer that still waited for it would hold a dismissed overlay on
+  // screen — mounted, opaque, and holding focus — for 140ms of nothing.
+  it('closes instantly under prefers-reduced-motion, with no closing state', () => {
+    withDuration(140);
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('prefers-reduced-motion'),
+      media: q,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    const onClose = vi.fn();
+    openSheet(onClose);
+
+    fireEvent.click(document.querySelector('.modal-overlay')!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives children the same animated close, so an in-card control matches a back', () => {
+    vi.useFakeTimers();
+    withDuration(140);
+    const onClose = vi.fn();
+    render(
+      wrapNav(
+        <Modal variant="dialog" ariaLabel="m" onClose={onClose}>
+          {(close) => <button onClick={close}>ביטול</button>}
+        </Modal>,
+      ),
+    );
+
+    fireEvent.click(screen.getByText('ביטול'));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.querySelector('.modal-overlay')!.classList).toContain('is-closing');
+    vi.advanceTimersByTime(140);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('Sheet (thin wrapper over Modal, unchanged behavior)', () => {
   afterEach(() => cleanup());
 

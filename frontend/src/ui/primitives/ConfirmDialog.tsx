@@ -41,24 +41,30 @@ export function ConfirmDialog({
 }) {
   return (
     <Modal variant="dialog" ariaLabel={title} onClose={onCancel}>
-      <div className="confirm" data-tone={tone}>
-        <div className="confirm-heading">
-          {icon != null && <span aria-hidden="true">{icon}</span>}
-          {title}
-        </div>
-        {body != null && <p className="confirm-text">{body}</p>}
-        {children}
-        {confirmLabel != null && (
-          <div className="confirm-actions">
-            <button type="button" className="confirm-confirm" onClick={onConfirm}>
-              {confirmLabel}
-            </button>
-            <button type="button" className="confirm-cancel" onClick={onCancel}>
-              {cancelLabel ?? t.common.cancel}
-            </button>
+      {/* `close` rather than `onCancel` on the cancel button, so cancelling plays the
+          same exit as a backdrop tap or a back (ADR-0140). Confirming is deliberately
+          NOT wrapped: it is a different outcome, and its own consequence — a toast, a
+          removed row, a navigation — is the feedback. */}
+      {(close) => (
+        <div className="confirm" data-tone={tone}>
+          <div className="confirm-heading">
+            {icon != null && <span aria-hidden="true">{icon}</span>}
+            {title}
           </div>
-        )}
-      </div>
+          {body != null && <p className="confirm-text">{body}</p>}
+          {children}
+          {confirmLabel != null && (
+            <div className="confirm-actions">
+              <button type="button" className="confirm-confirm" onClick={onConfirm}>
+                {confirmLabel}
+              </button>
+              <button type="button" className="confirm-cancel" onClick={close}>
+                {cancelLabel ?? t.common.cancel}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

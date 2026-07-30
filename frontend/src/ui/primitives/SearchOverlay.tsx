@@ -55,45 +55,50 @@ export function SearchOverlay({
 
   return (
     <Modal variant="full" ariaLabel={title} onClose={onClose} initialFocusRef={inputRef}>
-      <div className="search-overlay">
-        <div className="search-overlay-bar mode-chrome" data-mode={mode}>
-          <button
-            type="button"
-            className="chrome-ghost-btn"
-            onClick={onClose}
-            aria-label={backAria}
-          >
-            <NavArrow variant="back" />
-          </button>
-          <span className="search-overlay-title">{title}</span>
-          {contextLabel && (
-            <span className="chrome-chip search-overlay-context">{contextLabel}</span>
-          )}
-        </div>
-
-        <div className="search-overlay-field">
-          <Icon name="search" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            placeholder={placeholder}
-            onChange={(e) => onQueryChange(e.target.value)}
-          />
-          {query && (
+      {/* The visible back control takes the overlay's animated close, so leaving via
+          the arrow looks the same as leaving via a system back (ADR-0140) — the same
+          "one dismissal, one path" rule that governs the back stack itself. */}
+      {(close) => (
+        <div className="search-overlay">
+          <div className="search-overlay-bar mode-chrome" data-mode={mode}>
             <button
               type="button"
-              className="clear"
-              aria-label={clearLabel}
-              onClick={() => onQueryChange('')}
+              className="chrome-ghost-btn"
+              onClick={close}
+              aria-label={backAria}
             >
-              <Icon name="close" />
+              <NavArrow variant="back" />
             </button>
-          )}
-        </div>
+            <span className="search-overlay-title">{title}</span>
+            {contextLabel && (
+              <span className="chrome-chip search-overlay-context">{contextLabel}</span>
+            )}
+          </div>
 
-        <div className="search-overlay-results">{children}</div>
-      </div>
+          <div className="search-overlay-field">
+            <Icon name="search" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              placeholder={placeholder}
+              onChange={(e) => onQueryChange(e.target.value)}
+            />
+            {query && (
+              <button
+                type="button"
+                className="clear"
+                aria-label={clearLabel}
+                onClick={() => onQueryChange('')}
+              >
+                <Icon name="close" />
+              </button>
+            )}
+          </div>
+
+          <div className="search-overlay-results">{children}</div>
+        </div>
+      )}
     </Modal>
   );
 }
