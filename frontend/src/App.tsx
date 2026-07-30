@@ -21,6 +21,7 @@ import {
   settingsPath,
   shouldResetToHomeOnResume,
   useCloseAllOverlays,
+  navDirectionFrom,
   useMarkInsideTrip,
   useTripBackGuard,
   useTripTab,
@@ -674,25 +675,39 @@ export function AuthGate() {
 }
 
 function AppRoutes() {
+  // The shell's route transition (ADR-0140). Every full-screen `.app` surface —
+  // /login, the zero state, /new, the born screen, /join, /trips, both settings
+  // screens — used to hard-cut, because `.body`'s fade only covers in-trip TAB
+  // content. Tapping `טיול חדש` into an instant motionless swap was most of why the
+  // first run read as flat.
+  //
+  // Keyed on `pathname`, deliberately not on the whole location: a query-only change
+  // is an in-trip tab switch, which already has `.body`'s fade and must not get a
+  // second animation on top of it. So the same key that replays the animation is
+  // also what scopes it to shell navigation — no route list to keep in sync.
+  const location = useLocation();
+  const navDir = navDirectionFrom(location.state);
   // Suspense boundary for the lazily-loaded route screens (F-07). The fallback is
   // the same boot screen the gate already uses, so a chunk fetch reads as booting.
   return (
     <Suspense fallback={<BootScreen />}>
-      <Routes>
-        <Route element={<AuthGate />}>
-          <Route path="login" element={<Login />} />
-          <Route path="trips" element={<AllTripsRoute />} />
-          <Route path="new" element={<CreateTrip />} />
-          <Route path="join/:token" element={<JoinTrip />} />
-          <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
-          {/* Your own settings + its picture page (ADR-0133). User-scoped, so
+      <div className="route-shell" data-nav={navDir} key={location.pathname}>
+        <Routes>
+          <Route element={<AuthGate />}>
+            <Route path="login" element={<Login />} />
+            <Route path="trips" element={<AllTripsRoute />} />
+            <Route path="new" element={<CreateTrip />} />
+            <Route path="join/:token" element={<JoinTrip />} />
+            <Route path="trip/:id/settings" element={<TripSettingsRoute />} />
+            {/* Your own settings + its picture page (ADR-0133). User-scoped, so
               deliberately NOT nested under a trip — the thing they edit is you, and
               they must be reachable with no trip at all. */}
-          <Route path="settings" element={<UserSettings />} />
-          <Route path="settings/picture" element={<UserPicture />} />
-          <Route path="*" element={<RootSurface />} />
-        </Route>
-      </Routes>
+            <Route path="settings" element={<UserSettings />} />
+            <Route path="settings/picture" element={<UserPicture />} />
+            <Route path="*" element={<RootSurface />} />
+          </Route>
+        </Routes>
+      </div>
     </Suspense>
   );
 }

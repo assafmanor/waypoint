@@ -1804,6 +1804,57 @@
     opacity var(--switch-dur, var(--t-base)) var(--ease-standard);
 }
 
+/* ============================================================
+   The shell's route transition (ADR-0140). Every full-screen `.app` surface used
+   to hard-cut: `.body`'s fade covers in-trip TAB content only, so /login, the zero
+   state, /new, the born screen, /join, /trips and both settings screens arrived
+   with no entrance at all.
+
+   DIRECTION-AWARE, because forward and back looking the same carries no
+   information — the direction comes from `location.state` (ADR-0090: never from
+   history), stamped by `runStructural` on a back that moves.
+
+   RTL rides the ONE `--dir` sign in tokens.css: `translateX` has no logical form,
+   and in RTL the inline-end edge is the LEFT one, so a forward arrival travels
+   negative. Forward comes from inline-end (the platform push, mirrored), back from
+   inline-start.
+
+   AN OFFSET AND A FADE, NOT A FULL-WIDTH PUSH — and that is a real limit, not a
+   taste call. A full-width push needs the OUTGOING screen to stay mounted and
+   recede under the arriving one, and React has already unmounted it by the time
+   this runs. Keeping it would mean a transition group holding two route subtrees
+   at once, which for this app means two trip shells alive together: two WS
+   subscriptions, two clocks, two snapshot fetches. Not worth it for one animation.
+   Without the outgoing node a full-width travel would reveal empty background, so
+   the arrival is a short offset that fades — the same idiom as `.body`'s existing
+   fade + 6px, scaled up and given a direction. The receding half is deferred.
+
+   `--t-base`, not the `--t-deliberate` the design brief guessed: 400ms is right for
+   a full-width travel and sluggish for a 28px one.
+
+   No `animation-fill-mode`: the final keyframe must leave NO transform behind, or
+   the wrapper would permanently establish a containing block for every
+   `position: fixed` descendant under it.
+   ============================================================ */
+.route-shell[data-nav='forward'] {
+  animation: route-in-fwd var(--t-base) var(--ease-standard);
+}
+.route-shell[data-nav='back'] {
+  animation: route-in-back var(--t-base) var(--ease-standard);
+}
+@keyframes route-in-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * var(--route-offset)));
+  }
+}
+@keyframes route-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * -1 * var(--route-offset)));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation: none !important;

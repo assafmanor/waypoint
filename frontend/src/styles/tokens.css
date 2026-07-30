@@ -176,6 +176,11 @@
      teal = location, violet = plan) on chrome. Scale composes with every surface. */
   --press-scale: 0.97; /* controls: buttons, chips, icon buttons, nav items */
   --press-scale-lg: 0.985; /* surfaces: cards, tiles, full-width rows and CTAs */
+
+  /* How far an arriving shell screen travels (ADR-0140). Small on purpose — see the
+     route-transition block in App.css for why this is an offset rather than the
+     full-width push the design brief drew. */
+  --route-offset: 28px;
 }
 
 /* The one place a direction is named. Must stay OUTSIDE the `:root` block above:

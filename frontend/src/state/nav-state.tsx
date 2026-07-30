@@ -191,6 +191,30 @@ export function backSlides(action: BackAction): boolean {
   return action.kind === 'to-home' || action.kind === 'to' || action.kind === 'exit-trip';
 }
 
+/** Which way the shell's route transition travels (ADR-0140).
+ *
+ *  Forward and back must NOT look the same, or the motion carries no information and
+ *  becomes decoration you learn to ignore. Direction is therefore a real fact that
+ *  has to come from somewhere — and per ADR-0090 that somewhere is never history:
+ *  nothing may read `history.length` or traverse to find out where it is.
+ *
+ *  So it rides the navigation itself, in the router's own `location.state`. A back
+ *  that moves to another screen (`backSlides`) stamps it; every ordinary
+ *  `navigate(...)` in the app stamps nothing and therefore reads as forward, which
+ *  is the correct default and needs no call-site changes. Carrying it on the entry
+ *  rather than in a ref is also what makes it survive a re-render and Strict Mode's
+ *  double-invoke, both of which would drop a consume-once flag. */
+export const NAV_DIR = { FORWARD: 'forward', BACK: 'back' } as const;
+export type NavDir = (typeof NAV_DIR)[keyof typeof NAV_DIR];
+
+/** Read the direction off a `location.state`, defaulting to forward. Tolerates the
+ *  state being absent, null, or some other shape entirely — anything can push an
+ *  entry, so this may not assume our own key is there. */
+export function navDirectionFrom(state: unknown): NavDir {
+  const dir = (state as { navDir?: unknown } | null)?.navDir;
+  return dir === NAV_DIR.BACK ? NAV_DIR.BACK : NAV_DIR.FORWARD;
+}
+
 /** The correction applied when the platform delivered a structural system-back
  *  NON-cancelable, so the interceptor could not `preventDefault` it. Under the
  *  activation gate a consecutive system-back (no interaction between presses) grants
@@ -321,17 +345,22 @@ const NavContext = createContext<NavContextValue | null>(null);
  *  is the other half — exhaustive over `BackAction`, so a new kind cannot slip through as a
  *  silent no-op and get "fixed" later by reaching for `history.back()`. */
 function runStructural(navigate: NavigateFunction, action: BackAction): void {
+  // Every navigation here is a back that MOVES (`backSlides` is exactly this set), so
+  // each one stamps the direction for the shell's route transition (ADR-0140). The
+  // stamp lives on the navigation rather than in a flag the shell polls, so it cannot
+  // arrive a frame late or be consumed by the wrong render.
+  const back = { state: { navDir: NAV_DIR.BACK } };
   switch (action.kind) {
     case 'to-home':
-      navigate('/', { replace: true });
+      navigate('/', { replace: true, ...back });
       break;
     case 'to':
-      navigate(action.path, { replace: true });
+      navigate(action.path, { replace: true, ...back });
       break;
     // The one deliberate push: leaving a trip is not a lateral move, so it earns an entry
     // (the asymmetry session 170's audit flagged as #4 and left standing).
     case 'exit-trip':
-      navigate(EXIT_TRIP_TO);
+      navigate(EXIT_TRIP_TO, back);
       break;
     // Resolved by `runBack` without any navigation at all — peeling a layer, arming the
     // leave confirm, or a root where back is a no-op.
