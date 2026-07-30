@@ -77,7 +77,13 @@ import {
   type PinOutcome,
   type PinTier,
 } from '../lib/map-pins';
-import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from '../lib/map-camera';
+import {
+  countPointsInBounds,
+  pointInBounds,
+  type LatLng,
+  type MapArrival,
+  type MapBounds,
+} from '../lib/map-camera';
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs, type AddMaybeOptions } from '../state/verbs';
@@ -1194,8 +1200,8 @@ export function MapView() {
       // the one case where you cannot see the place, and at `full` there is no canvas at
       // all. So the tap's SOURCE decides, and the sheet moves first (above) so the
       // framing does not happen behind the list. A fresh object every time, because
-      // `framePlace` is spent once and the same row may be tapped twice.
-      if (point) setFramePlace({ ...point });
+      // an arrival is spent once and the same row may be tapped twice.
+      if (point) setArrival({ at: point, frame: true });
       // AND THE BLOCK IT JUST OPENED IS SCROLLED INTO VIEW (ADR-0135 §8). Selection reveals
       // a way-in block plus its footer under the row, and the block already overflows the
       // `half` sheet on a 360 with two references — 186px against a 153px scroller, as
@@ -1329,7 +1335,7 @@ export function MapView() {
     setSelectedResultId(result.googlePlaceId);
     if (result.lat == null || result.lng == null) return;
     setSheetView((view) => (view === MAP_SHEET_VIEW.half ? view : MAP_SHEET_VIEW.half));
-    setFramePlace({ lat: result.lat, lng: result.lng });
+    setArrival({ at: { lat: result.lat, lng: result.lng }, frame: true });
   };
   const selectResultRow = useCallback((result: PlaceResult) => onResultRowTap.current(result), []);
 
@@ -1580,11 +1586,19 @@ export function MapView() {
     // and the card has not been laid out yet — so framing now would fit against a canvas that
     // no longer exists and reserve a card height nobody has measured. `requestAnimationFrame`
     // is this screen's existing idiom for exactly that (`onResultTap`'s scroll).
+    //
+    // **AND A LONG PRESS PANS, IT DOES NOT ZOOM** (owner, on a phone: _"when long clicking to
+    // add a new place it zooms in and pans to it — in these cases I don't want a zoom"_). This
+    // is ADR-0129 §1's rule reaching the case that needs it most: a drop names a PIXEL you are
+    // looking at, so being zoomed for it is the same "inconvenient" that rule took off a pin
+    // tap. The pan stays, because it is what clears the pin from under the form. The other two
+    // sources still frame — a row's place may be off screen, or not drawn at all.
     if (frameAt) {
       const at = { ...frameAt };
+      const frame = next.kind !== 'drop';
       requestAnimationFrame(() => {
         measureCardReserve.current();
-        setFramePlace(at);
+        setArrival({ at, frame });
       });
     }
   };
@@ -1779,23 +1793,25 @@ export function MapView() {
   // `מפה` on an EventCard / BookingDetail routes here focused on a place (§8).
   // Consumed once, and it widens to all-days when the place is not in the day it
   // landed on — otherwise the action would point at something the scope hides.
-  // A place the camera has been asked to FRAME — the two intents that mean "take me to
-  // this one" (ADR-0129 §1): an arrival from `מפה`, and the place card's badge. Held in
-  // state rather than read from `focusPlaceId`, which is consumed in this same pass: the
-  // camera may not be sized for several more, and dropping the focus in between is
-  // exactly what made an arrival land on the day's frame. The camera spends it once, and
-  // a fresh object each time is what lets the same place be re-framed on a second tap.
-  const [framePlace, setFramePlace] = useState<LatLng | null>(null);
+  // Somewhere the camera has been asked to GO, and whether that may zoom (`MapArrival`).
+  // `frame: true` is the two intents that mean "take me to this one" (ADR-0129 §1): an
+  // arrival from `מפה`, and the place card's badge. Held in state rather than read from
+  // `focusPlaceId`, which is consumed in this same pass: the camera may not be sized for
+  // several more, and dropping the focus in between is exactly what made an arrival land
+  // on the day's frame. The camera spends it once, and a fresh object each time is what
+  // lets the same place be asked for again on a second tap.
+  const [arrival, setArrival] = useState<MapArrival | null>(null);
   const frameSelected = useCallback(() => {
     const point = selectedId ? placePoint(placeById.get(selectedId) ?? {}) : null;
-    if (point) setFramePlace({ ...point });
+    if (point) setArrival({ at: point, frame: true });
   }, [selectedId, placeById]);
   useEffect(() => {
     if (!focusPlaceId) return;
     const usage = usageIndex.get(focusPlaceId);
     if (usage && !usage.days.some((d) => d.date === activeDate)) setAllDays(true);
     setSelectedId(focusPlaceId);
-    setFramePlace(placePoint(placeById.get(focusPlaceId) ?? {}) ?? null);
+    const at = placePoint(placeById.get(focusPlaceId) ?? {});
+    setArrival(at ? { at, frame: true } : null);
     clearFocus();
   }, [focusPlaceId, usageIndex, placeById, activeDate, setAllDays, clearFocus]);
 
@@ -2723,7 +2739,7 @@ export function MapView() {
           areaSorted={areaSorted}
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
-          framePlace={framePlace}
+          arrival={arrival}
           // The MEASURED reserve, not "a card is open": the constant it replaced was sized
           // for a selected row and the form is nearly twice that, which put a freshly
           // dropped pin behind the form naming it (ADR-0148 §3).

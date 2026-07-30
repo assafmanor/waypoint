@@ -218,6 +218,10 @@ vi.mock('../ui/domain/MapPane', () => ({
       outcome?: 'done' | 'skipped';
       transition?: string;
     }[];
+    const arrivalProp = props.arrival as {
+      at: { lat: number; lng: number };
+      frame: boolean;
+    } | null;
     return (
       <div data-pane>
         {/* The canvas background: tapping it clears the selection (ADR-0122 §7). The real
@@ -272,14 +276,14 @@ vi.mock('../ui/domain/MapPane', () => ({
         <button data-locate onClick={() => (props.onLocate as () => void)()}>
           locate
         </button>
-        {/* What the camera was asked to FRAME (ADR-0134 §6). A row tap sets it; a pin or
-            ring tap must not — that is the whole split, so the suite has to see it. */}
+        {/* Where the camera was asked to GO (ADR-0134 §6). A row tap sets it; a pin or
+            ring tap must not — that is the whole split, so the suite has to see it. And
+            `data-arrival` is the INTENT beside it, because since ADR-0148 §3's amendment a
+            drop asks for a PAN and everything else asks for a frame: "it moved" and "it
+            zoomed" are two claims, and only the pair can catch a drop that zooms. */}
         <span
-          data-frame={
-            props.framePlace
-              ? `${(props.framePlace as { lat: number }).lat},${(props.framePlace as { lng: number }).lng}`
-              : ''
-          }
+          data-frame={arrivalProp ? `${arrivalProp.at.lat},${arrivalProp.at.lng}` : ''}
+          data-arrival={arrivalProp ? (arrivalProp.frame ? 'frame' : 'pan') : ''}
         />
         {/* `data-aside` and `data-amber` exist because ADR-0131 §4 split the subordinate
             RATIO from the paint, so the suite has to see them apart: a query withdraws
@@ -421,6 +425,9 @@ const draftMarker = () =>
   (document.querySelector('[data-draftmarker]') as HTMLElement).dataset.draftmarker;
 /** What the camera was last asked to bring into view. */
 const framed = () => (document.querySelector('[data-frame]') as HTMLElement).dataset.frame;
+/** `frame` = a fit (zoom included), `pan` = centred at the zoom you are at, '' = nothing
+ *  asked for. The drop is the only source that asks for a pan (ADR-0148 §3's amendment). */
+const arrivalKind = () => (document.querySelector('[data-arrival]') as HTMLElement).dataset.arrival;
 const tapAreaSort = () => fireEvent.click(document.querySelector('[data-areasort]')!);
 const tapLocate = () => fireEvent.click(document.querySelector('[data-locate]')!);
 const areaSortOn = () => document.querySelector('[data-areasort]')!.getAttribute('data-on');
@@ -2256,9 +2263,15 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       // sheet's height back and the card has not been laid out, so framing synchronously would
       // fit against a canvas that no longer exists. So every case here waits a frame — and that
       // wait is the assertion's own subject as much as the coordinates are.
+      //
+      // **AND ONE OF THE THREE DELIBERATELY DOES NOT ZOOM** (owner, on a phone: a long press
+      // "zooms in and pans to it — in these cases I don't want a zoom"). A drop names a pixel
+      // already on screen, so it asks for a pan; a row's place may be off screen or not drawn
+      // at all, so those still frame. `kind` is asserted beside `at` because "it moved" and
+      // "it zoomed" are two claims, and the point alone cannot tell them apart.
       it('every source brings the place it is about into view', async () => {
-        const cases: { name: string; open: () => void; at: string }[] = [
-          { name: 'a long press', open: holdCanvas, at: '35.7148,139.7967' },
+        const cases: { name: string; open: () => void; at: string; kind: string }[] = [
+          { name: 'a long press', open: holdCanvas, at: '35.7148,139.7967', kind: 'pan' },
           {
             name: 'a search result',
             open: () => {
@@ -2269,6 +2282,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
               );
             },
             at: '35.69,139.7',
+            kind: 'frame',
           },
           {
             name: 'the pencil',
@@ -2283,6 +2297,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
             },
             // `museum`'s own coordinates — a rename brings the place it is renaming into view.
             at: '35.6,139.6',
+            kind: 'frame',
           },
         ];
         for (const c of cases) {
@@ -2295,6 +2310,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
           c.open();
           await nextFrame();
           expect(framed(), `${c.name} framed nothing`).toBe(c.at);
+          expect(arrivalKind(), `${c.name} asked for the wrong move`).toBe(c.kind);
         }
       });
 
@@ -3503,11 +3519,11 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       const card = openCard();
       const badge = card.querySelector('.map-badge')!;
       fireEvent.click(badge);
-      const first = paneProps.current.framePlace;
-      expect(first).toEqual({ lat: 35.6, lng: 139.6 });
+      const first = paneProps.current.arrival;
+      expect(first).toEqual({ at: { lat: 35.6, lng: 139.6 }, frame: true });
       fireEvent.click(badge);
-      expect(paneProps.current.framePlace).toEqual(first);
-      expect(paneProps.current.framePlace).not.toBe(first);
+      expect(paneProps.current.arrival).toEqual(first);
+      expect(paneProps.current.arrival).not.toBe(first);
     });
 
     // And the selection itself sends nothing: a pin tap is a pan, decided in the camera.
@@ -3515,7 +3531,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       seed();
       render(wrap(<MapView />));
       fireEvent.click(pin('museum')!);
-      expect(paneProps.current.framePlace).toBeNull();
+      expect(paneProps.current.arrival).toBeNull();
     });
   });
 

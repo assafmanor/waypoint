@@ -25,7 +25,7 @@ import {
 } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
-import type { LatLng, MapBounds } from '../../lib/map-camera';
+import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
 import { MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
 import { TUNE, tune } from '../../lib/dev-tuning';
@@ -241,13 +241,14 @@ export interface MapPaneProps {
   /** The readout was tapped: order the in-view places first. The intent lives in the
    *  SCREEN, like `sortByDistance` — nothing about it reaches the map instance. */
   onAreaSort: () => void;
-  /** A place the camera has been asked to **frame** — either of the two intents that
-   *  mean "take me to this one" (ADR-0129 §1): an arrival via `מפה` on an event or a
-   *  booking, and the place card's own badge. It OWNS the next framing rather than being
-   *  panned on top of one, which is what stops the opening fit overwriting it (ADR-0127
-   *  §3), and it is spent once. A selection on its own does NOT come through here — that
-   *  pans and never zooms. */
-  framePlace?: LatLng | null;
+  /** Somewhere the camera has been **asked to go**, and whether that may zoom — see
+   *  `MapArrival`. `frame: true` is either of the two intents that mean "take me to this
+   *  one" (ADR-0129 §1): an arrival via `מפה` on an event or a booking, and the place
+   *  card's own badge. `frame: false` is a form opening on a point you are already looking
+   *  at (ADR-0148 §3). Either way it OWNS the next framing rather than being panned on top
+   *  of one, which is what stops the opening fit overwriting it (ADR-0127 §3), and it is
+   *  spent once. A selection on its own does NOT come through here. */
+  arrival?: MapArrival | null;
   /** The place card is up, so a fit reserves the band it occupies (ADR-0128 §2). A
    *  boolean rather than a height: the number belongs in `constants.ts` with the rest of
    *  the card's geometry, not in the screen. */
@@ -312,7 +313,7 @@ function MapPaneInner({
   areaSorted,
   onAreaSort,
   onLocate,
-  framePlace,
+  arrival,
   cardReserve,
   onHoldCanvas,
   draftMarker,
@@ -406,7 +407,7 @@ function MapPaneInner({
           areaSorted={areaSorted}
           onAreaSort={onAreaSort}
           onLocate={onLocate}
-          framePlace={framePlace}
+          arrival={arrival}
           cardReserve={cardReserve}
           onHoldCanvas={onHoldCanvas}
           gestureTapRef={gestureTapRef}
@@ -668,7 +669,7 @@ function MapCameraControls({
   areaSorted,
   onAreaSort,
   onLocate,
-  framePlace,
+  arrival,
   cardReserve,
   onHoldCanvas,
   gestureTapRef,
@@ -682,7 +683,8 @@ function MapCameraControls({
   areaSorted: boolean;
   onAreaSort: () => void;
   onLocate: () => void;
-  framePlace?: LatLng | null;
+  /** See `MapPaneProps` — the pane hands it straight to the camera. */
+  arrival?: MapArrival | null;
   cardReserve?: number;
   /** The long press lives here rather than beside `PinDensity` for the same reason the
    *  drag zoom does: it must drive THIS camera's pane, and the recogniser that owns it is
@@ -719,7 +721,7 @@ function MapCameraControls({
   } = useMapCamera(map, {
     points,
     setSignal,
-    framePlace,
+    arrival,
     focusContext: resultPoints,
     // The card's band, so a fit does not put a pin under it (ADR-0128 §2). The hook
     // reads it through a ref, so this changing on a tap re-pads the NEXT fit without

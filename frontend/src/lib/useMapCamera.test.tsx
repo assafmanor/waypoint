@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useMapCamera, type MapCamera } from './useMapCamera';
-import { mapFitPadding, type LatLng, type MapBounds } from './map-camera';
+import { mapFitPadding, type LatLng, type MapArrival, type MapBounds } from './map-camera';
 import { MAP_ZOOM } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
@@ -132,23 +132,27 @@ interface CameraProps {
   map: FakeMap | null;
   pts: readonly LatLng[];
   signal: string;
-  framePlace: LatLng | null;
+  arrival: MapArrival | null;
   bottomReserve?: number;
   focusContext?: readonly LatLng[];
 }
+
+/** An arrival that FRAMES — the `מפה` / card-badge intent, and what every case here but
+ *  the panning one means (ADR-0129 §1). */
+const framing = (at: LatLng): MapArrival => ({ at, frame: true });
 
 function mount(
   fake: FakeMap | null,
   points: readonly LatLng[],
   setSignal = 'day',
-  arrival: LatLng | null = null,
+  arrival: MapArrival | null = null,
 ) {
   return renderHook<MapCamera, CameraProps>(
-    ({ map, pts, signal, framePlace, bottomReserve, focusContext }) =>
+    ({ map, pts, signal, arrival: owed, bottomReserve, focusContext }) =>
       useMapCamera(map ? asMap(map) : null, {
         points: pts,
         setSignal: signal,
-        framePlace,
+        arrival: owed,
         bottomReserve,
         focusContext,
       }),
@@ -157,7 +161,7 @@ function mount(
         map: fake,
         pts: points,
         signal: setSignal,
-        framePlace: arrival,
+        arrival,
       },
     },
   );
@@ -225,7 +229,7 @@ describe('the opening framing (session 134 — the map opened on the whole world
     const view = mount(map, []);
     expect(map.fits).toHaveLength(0);
 
-    view.rerender({ map, pts: DAY, signal: 'day', framePlace: null });
+    view.rerender({ map, pts: DAY, signal: 'day', arrival: null });
     expect(map.fits).toHaveLength(1);
   });
 
@@ -259,7 +263,7 @@ describe('later framings answer controls, and only when they owe you something',
 
     // Now framed on the day; a chip narrows to somewhere outside that view.
     map.bounds = { north: 36, south: 35, east: 140, west: 139 };
-    view.rerender({ map, pts: [KYOTO], signal: 'day|food', framePlace: null });
+    view.rerender({ map, pts: [KYOTO], signal: 'day|food', arrival: null });
     expect(map.center).toEqual(KYOTO);
   });
 
@@ -277,7 +281,7 @@ describe('later framings answer controls, and only when they owe you something',
     map.bounds = { north: 40, south: 30, east: 145, west: 130 };
     // …and a chip narrows to two places in one neighbourhood.
     const neighbourhood = [TOKYO, { lat: 35.69, lng: 139.77 }];
-    view.rerender({ map, pts: neighbourhood, signal: 'day|food', framePlace: null });
+    view.rerender({ map, pts: neighbourhood, signal: 'day|food', arrival: null });
 
     expect(map.fits).toHaveLength(framed + 1);
     expect(map.fits.at(-1)!.bounds).toEqual({
@@ -294,7 +298,7 @@ describe('later framings answer controls, and only when they owe you something',
     const view = mount(map, DAY);
 
     map.bounds = { north: 40, south: 30, east: 145, west: 130 };
-    view.rerender({ map, pts: [TOKYO], signal: 'day|food', framePlace: null });
+    view.rerender({ map, pts: [TOKYO], signal: 'day|food', arrival: null });
     // A zero-area extent fills nothing, so it can never read as "already framed".
     expect(map.center).toEqual(TOKYO);
     expect(map.zoom).toBe(MAP_ZOOM.PLACE);
@@ -307,7 +311,7 @@ describe('later framings answer controls, and only when they owe you something',
     const framed = map.fits.length;
 
     map.bounds = { north: 36, south: 34, east: 141, west: 134 }; // holds both pins
-    view.rerender({ map, pts: DAY, signal: 'day|food', framePlace: null });
+    view.rerender({ map, pts: DAY, signal: 'day|food', arrival: null });
     // This is what removes "tap אוכל, the map lurches across the city".
     expect(map.fits).toHaveLength(framed);
   });
@@ -321,8 +325,8 @@ describe('later framings answer controls, and only when they owe you something',
     const framed = map.fits.length;
     const where = { ...map.center };
 
-    view.rerender({ map, pts: [...DAY], signal: 'day', framePlace: null }); // new array, same signal
-    view.rerender({ map, pts: [...DAY], signal: 'day', framePlace: null });
+    view.rerender({ map, pts: [...DAY], signal: 'day', arrival: null }); // new array, same signal
+    view.rerender({ map, pts: [...DAY], signal: 'day', arrival: null });
     expect(map.fits).toHaveLength(framed);
     expect(map.center).toEqual(where);
   });
@@ -331,7 +335,7 @@ describe('later framings answer controls, and only when they owe you something',
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(null, DAY);
-    view.rerender({ map, pts: DAY, signal: 'day', framePlace: null });
+    view.rerender({ map, pts: DAY, signal: 'day', arrival: null });
     expect(map.fits).toHaveLength(1);
   });
 });
@@ -413,7 +417,7 @@ describe('focus and re-centre', () => {
     it('frames the PLACE, not the day’s extent', () => {
       const map = new FakeMap();
       map.bounds = WORLD;
-      mount(map, DAY, 'day', TOKYO);
+      mount(map, DAY, 'day', framing(TOKYO));
       const fitted = map.fits.at(-1)!.bounds;
       expect(isPlaceFrame(fitted)).toBe(true);
       expect(centreOf(fitted).lat).toBeCloseTo(TOKYO.lat, 6);
@@ -432,17 +436,17 @@ describe('focus and re-centre', () => {
       // at all, so it is the only neighbour there is.
       const bareMap = new FakeMap();
       bareMap.bounds = WORLD;
-      mount(bareMap, [], 'day', TOKYO);
+      mount(bareMap, [], 'day', framing(TOKYO));
       const withoutContext = bareMap.fits.at(-1)!.bounds;
 
       const ctxMap = new FakeMap();
       ctxMap.bounds = WORLD;
       renderHook<MapCamera, CameraProps>(
-        ({ map: m, pts, signal, framePlace, focusContext }) =>
+        ({ map: m, pts, signal, arrival: owed, focusContext }) =>
           useMapCamera(m ? asMap(m) : null, {
             points: pts,
             setSignal: signal,
-            framePlace,
+            arrival: owed,
             focusContext,
           }),
         {
@@ -450,7 +454,7 @@ describe('focus and re-centre', () => {
             map: ctxMap,
             pts: [],
             signal: 'day',
-            framePlace: TOKYO,
+            arrival: framing(TOKYO),
             focusContext: [{ lat: TOKYO.lat + 0.004, lng: TOKYO.lng }],
           },
         },
@@ -473,7 +477,7 @@ describe('focus and re-centre', () => {
       map.bounds = null; // not rendered yet: no fit is possible
       const view = mount(map, DAY);
       expect(map.fits).toHaveLength(0);
-      view.rerender({ map, pts: DAY, signal: 'day', framePlace: TOKYO });
+      view.rerender({ map, pts: DAY, signal: 'day', arrival: framing(TOKYO) });
       map.settle();
       expect(isPlaceFrame(map.fits.at(-1)!.bounds)).toBe(true);
     });
@@ -485,10 +489,43 @@ describe('focus and re-centre', () => {
       map.bounds = WORLD;
       const view = mount(map, DAY);
       expect(isPlaceFrame(map.fits.at(-1)!.bounds)).toBe(false); // the day's extent
-      view.rerender({ map, pts: DAY, signal: 'all', framePlace: KYOTO });
+      view.rerender({ map, pts: DAY, signal: 'all', arrival: framing(KYOTO) });
       const fitted = map.fits.at(-1)!.bounds;
       expect(isPlaceFrame(fitted)).toBe(true);
       expect(centreOf(fitted).lat).toBeCloseTo(KYOTO.lat, 6);
+    });
+
+    // **A PANNING arrival: the other half of ADR-0129 §1** (ADR-0148 §3's amendment, on the
+    // owner's report that a long press "zooms in and pans to it — in these cases I don't want
+    // a zoom"). A drop names a pixel already on screen, so it centres at the zoom you are at:
+    // the camera moves, and `fitBounds` — which is what would change the zoom — is never
+    // called. Both halves are asserted, because "it panned" and "it did not zoom" are two
+    // different claims and only the pair rules out a fit that happened to land nearby.
+    it('an arrival with `frame: false` PANS at the zoom it is at, and never fits', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      const view = mount(map, DAY);
+      const fits = map.fits.length;
+      const zoom = map.zoom;
+
+      view.rerender({ map, pts: DAY, signal: 'day', arrival: { at: KYOTO, frame: false } });
+      expect(map.fits).toHaveLength(fits);
+      expect(map.zoom).toBe(zoom);
+      expect(map.center.lat).toBeCloseTo(KYOTO.lat, 6);
+      expect(map.center.lng).toBeCloseTo(KYOTO.lng, 6);
+    });
+
+    // …and it is the same channel, so it owns the next framing exactly as a framing one does:
+    // the pan must not be overwritten by a fit that was going to happen anyway.
+    it('a panning arrival that lands before the map is sized still wins', () => {
+      const map = new FakeMap();
+      map.bounds = null;
+      const view = mount(map, DAY);
+      expect(map.fits).toHaveLength(0);
+      view.rerender({ map, pts: DAY, signal: 'day', arrival: { at: KYOTO, frame: false } });
+      map.settle();
+      expect(map.fits).toHaveLength(0);
+      expect(map.center.lat).toBeCloseTo(KYOTO.lat, 6);
     });
 
     // Spent once: a later control change is an ordinary re-frame, not a second
@@ -496,10 +533,14 @@ describe('focus and re-centre', () => {
     it('it is spent once — a later control change re-frames the SET', () => {
       const map = new FakeMap();
       map.bounds = WORLD;
-      const view = mount(map, DAY, 'day', TOKYO);
+      // The SAME arrival object, re-passed — which is what "spent" means here: a fresh one
+      // is a fresh ask (it is how tapping the same row twice re-frames it), so re-creating it
+      // would prove nothing about spending.
+      const owed = framing(TOKYO);
+      const view = mount(map, DAY, 'day', owed);
       expect(isPlaceFrame(map.fits.at(-1)!.bounds)).toBe(true);
       map.bounds = { north: 36, south: 35.5, east: 140, west: 139.5 };
-      view.rerender({ map, pts: DAY, signal: 'all', framePlace: TOKYO });
+      view.rerender({ map, pts: DAY, signal: 'all', arrival: owed });
       expect(isPlaceFrame(map.fits.at(-1)!.bounds)).toBe(false);
     });
   });
@@ -515,7 +556,7 @@ describe('focus and re-centre', () => {
     const where = { ...map.center };
 
     // A pin tap: the card opens, so the reserve appears — with no signal change.
-    view.rerender({ map, pts: DAY, signal: 'day', framePlace: null, bottomReserve: 160 });
+    view.rerender({ map, pts: DAY, signal: 'day', arrival: null, bottomReserve: 160 });
     expect(map.fits).toHaveLength(framed);
     expect(map.center).toEqual(where);
 

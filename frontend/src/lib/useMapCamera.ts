@@ -44,6 +44,7 @@ import {
   type CameraAt,
   type CameraTarget,
   type LatLng,
+  type MapArrival,
   type MapBounds,
 } from './map-camera';
 import {
@@ -107,13 +108,18 @@ export function useMapCamera(
     /** Changes exactly when a control changed the SET on purpose. A string, so a
      *  new array identity from a clock tick is not mistaken for a new set. */
     setSignal: string;
-    /** A place the camera has been **asked to frame**, from either of the two intents
-     *  that mean "take me to this one": an arrival via `מפה` on an event or a booking
-     *  (ADR-0121 §8), or the place card's own badge (ADR-0129 §1). It **owns the next
-     *  framing** — a rule about which intent wins rather than a guard bolted onto the
-     *  fit (ADR-0127 §3) — and it is spent once. */
-    framePlace?: LatLng | null;
-    /** Extra points that count as "what is around here" for a `framePlace`, without
+    /** Somewhere the camera has been **asked to go**, and whether that may zoom: an
+     *  arrival via `מפה` on an event or a booking (ADR-0121 §8), the place card's own
+     *  badge, or a form opening on a point (ADR-0148 §3). It **owns the next framing** —
+     *  a rule about which intent wins rather than a guard bolted onto the fit
+     *  (ADR-0127 §3) — and it is spent once.
+     *
+     *  **`frame: false` is not a lesser frame, it is the other half of ADR-0129 §1.** A
+     *  long press names a pixel you are looking at, so zooming for it is the same
+     *  "inconvenient" that rule removed from a pin tap: you did not ask to be taken
+     *  anywhere. The pan still happens, because the form has to be clear of the pin. */
+    arrival?: MapArrival | null;
+    /** Extra points that count as "what is around here" for an `arrival`, without
      *  being points the camera FITS (ADR-0134 §7). The unsaved Google results are the
      *  only caller: choosing between five cafés, the useful context is the other
      *  candidates — but a ring must never pull a fit, because a query moving the camera
@@ -127,7 +133,7 @@ export function useMapCamera(
     bottomReserve?: number;
   },
 ): MapCamera {
-  const { points, setSignal, framePlace, focusContext, bottomReserve = 0 } = opts;
+  const { points, setSignal, arrival, focusContext, bottomReserve = 0 } = opts;
   // Latest-ref: the effect below is keyed on the signal alone, so it must read
   // the current points rather than close over the ones from the render that
   // happened to change the signal.
@@ -143,9 +149,9 @@ export function useMapCamera(
   bottomReserveRef.current = bottomReserve;
   const focusContextRef = useRef(focusContext);
   focusContextRef.current = focusContext;
-  /** The arrival focus this camera still owes, and the identity it was claimed from. */
-  const owedFrame = useRef<LatLng | null>(null);
-  const lastFramePlace = useRef<LatLng | null | undefined>(undefined);
+  /** The arrival this camera still owes, and the identity it was claimed from. */
+  const owedFrame = useRef<MapArrival | null>(null);
+  const lastArrival = useRef<MapArrival | null | undefined>(undefined);
 
   /** The frame handle of the move in flight, so a new move cancels the old one rather
    *  than fighting it. */
@@ -222,10 +228,14 @@ export function useMapCamera(
   /** Where a "look at this place" move should end up. `zoom` `null` keeps the current
    *  one, which is what makes a pin tap a pure pan (ADR-0129 §1). */
   const moveTo = useCallback(
-    (point: LatLng, zoom: number | null) => {
+    // Reports whether it moved, for the same reason `apply` does: a map with no zoom yet
+    // has not rendered, and a panning arrival must be retried on `idle` rather than
+    // recorded as a move that never happened.
+    (point: LatLng, zoom: number | null): boolean => {
       const current = going.current?.zoom ?? map?.getZoom();
-      if (current == null) return;
+      if (current == null) return false;
       easeTo({ center: point, zoom: zoom ?? current });
+      return true;
     },
     [map, easeTo],
   );
@@ -308,9 +318,9 @@ export function useMapCamera(
     // would drop it on exactly the slow arrivals this exists to fix. Claimed on an
     // identity change rather than on truthiness, or every later framing would re-read
     // the same arrival and centre on it forever.
-    if (framePlace !== lastFramePlace.current) {
-      lastFramePlace.current = framePlace;
-      if (framePlace) owedFrame.current = framePlace;
+    if (arrival !== lastArrival.current) {
+      lastArrival.current = arrival;
+      if (arrival) owedFrame.current = arrival;
     }
     const openingFrame = !framed.current;
     const run = () => {
@@ -322,11 +332,12 @@ export function useMapCamera(
       const owed = owedFrame.current;
       if (owed) {
         owedFrame.current = null;
-        // Framed WITH what is around it, not at a fixed zoom (ADR-0129 §2): a place with
-        // neighbours 200m away and one alone in a valley want different frames, and a
-        // constant cannot tell them apart. It goes through the ordinary fit, so it
-        // inherits the padding, the card reserve and the `MAX_FIT` cap.
-        framed.current = frameOnRef.current(owed);
+        // A framing arrival goes WITH what is around it, not to a fixed zoom (ADR-0129 §2):
+        // a place with neighbours 200m away and one alone in a valley want different
+        // frames, and a constant cannot tell them apart. It goes through the ordinary fit,
+        // so it inherits the padding, the card reserve and the `MAX_FIT` cap. A panning
+        // one keeps the zoom you are at and only centres — same path a pin tap takes.
+        framed.current = owed.frame ? frameOnRef.current(owed.at) : moveTo(owed.at, null);
         return framed.current;
       }
       const moved = apply(pointsRef.current, openingFrame ? null : readMapBounds(map));
@@ -349,9 +360,9 @@ export function useMapCamera(
     return () => listener.remove();
     // `setSignal` is the control dependency; re-running on `points` identity would
     // re-frame on every clock tick. `hasPoints` covers pins arriving after the map,
-    // and `framePlace` is what lets an arrival claim the frame whenever it lands —
-    // before the map is sized, or after the fit already took it.
-  }, [map, apply, moveTo, setSignal, hasPoints, framePlace]);
+    // and `arrival` is what lets one claim the frame whenever it lands — before the map
+    // is sized, or after the fit already took it.
+  }, [map, apply, moveTo, setSignal, hasPoints, arrival]);
 
   const reframe = useCallback(
     (candidates: readonly LatLng[]) => {

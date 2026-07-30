@@ -200,6 +200,17 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   handoff's target. Measure the destination element, and assert the aim against its
   settled box in an e2e spec — jsdom reports every rect as zero, so this whole class of
   bug is invisible to the unit suite by construction.
+- **Reusing a component onto a surface unlike the ones it grew up on, and inheriting its
+  DEFAULTS with it.** Three reports in one evening on the Map's place card, and none was a
+  defect in the card (ADR-0148's second amendment): `IconPicker`'s panel opens **below** its
+  trigger, which is right in a form that scrolls under a header and off-screen in a card
+  anchored to the canvas's bottom; the camera's arrival **zoomed**, which is right for a row
+  whose pin you cannot see and wrong for a pixel you just pressed; `autoFocus` opens the
+  keyboard, which is right in a form you navigated to and a flicker at the end of a gesture
+  that ends with a finger lifting. The reuse was correct in all three — what needed asking was
+  **what each default was answering**. When a shared component lands somewhere new, fix the
+  assumption inside it (measured placement, intent in the value) rather than overriding it at
+  the new host, or the next host inherits the same wrong default.
 - Handing a `memo`ized component a **fresh object or function each render** on a
   screen that re-renders on the clock. `screens/Map.tsx` ticks every second, and
   `MapPane` holds a live `google.maps.Map` where a needless re-diff of every
