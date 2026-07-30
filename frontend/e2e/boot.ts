@@ -185,6 +185,90 @@ export async function bootIntoTrip(
   );
 }
 
+/** The auth half of `bootIntoTrip`, on its own — the two first-run surfaces need a signed-in
+ *  user but NOT a trip, and duplicating these two routes in each spec is how the harness
+ *  starts to rot (rule 8). */
+async function mockAuth(page: Page, memberships: unknown[] = []): Promise<void> {
+  await page.route(
+    (u) => u.pathname.endsWith('/auth/refresh'),
+    (r) => r.fulfill({ json: { accessToken: 'test-token' } }),
+  );
+  await page.route(
+    (u) => u.pathname === '/me',
+    (r) => r.fulfill({ json: { user: USER, memberships } }),
+  );
+  await page.route(
+    (u) => u.pathname === '/trips',
+    (r) =>
+      r.request().resourceType() === 'document' || r.request().method() === 'POST'
+        ? r.continue()
+        : r.fulfill({ json: [] }),
+  );
+}
+
+/** The trip a creation run produces. Dates fixed so the board's flapped row is assertable. */
+export const CREATED_TRIP = {
+  ...TRIP,
+  name: 'יפן · ספטמבר',
+  destination: 'יפן',
+  startDate: '2026-09-12',
+  endDate: '2026-09-23',
+  icon: '🇯🇵',
+};
+
+/** Land on `/new`, signed in with no trips, with `POST /trips` and the invite ready.
+ *  Covers ADR-0142's birth sequence — the one thing jsdom cannot see, since it loads no
+ *  CSS and reports every rect as zero. */
+export async function bootIntoCreate(page: Page): Promise<void> {
+  await mockAuth(page);
+  await page.route(
+    (u) => u.pathname === '/trips',
+    (r) =>
+      r.request().method() === 'POST'
+        ? r.fulfill({ json: CREATED_TRIP })
+        : r.request().resourceType() === 'document'
+          ? r.continue()
+          : r.fulfill({ json: [] }),
+  );
+  await page.route(
+    (u) => u.pathname === `/trips/${CREATED_TRIP.id}/invite`,
+    (r) => r.fulfill({ json: { inviteUrl: '/join/7Kq2mB' } }),
+  );
+  await page.goto('/new');
+}
+
+/** The public invite preview a `/join/:code` visit reads. */
+export const INVITE_PREVIEW = {
+  tripId: 't1',
+  tripName: 'יפן · ספטמבר',
+  destination: 'יפן',
+  startDate: '2026-09-12',
+  endDate: '2026-09-23',
+  memberCount: 4,
+  icon: '🇯🇵',
+};
+
+/** Land on `/join/:code`. `expired` drives ADR-0143 §5's refused pass. */
+export async function bootIntoJoin(
+  page: Page,
+  opts: { code?: string; expired?: boolean } = {},
+): Promise<void> {
+  const code = opts.code ?? '7Kq2mB';
+  await mockAuth(page);
+  await page.route(
+    (u) => u.pathname === `/invites/${code}`,
+    (r) =>
+      opts.expired
+        ? r.fulfill({ status: 410, json: { message: 'INVITE_EXPIRED', error: 'Gone' } })
+        : r.fulfill({ json: INVITE_PREVIEW }),
+  );
+  await page.route(
+    (u) => u.pathname === `/trips/join/${code}`,
+    (r) => r.fulfill({ json: { ...MEMBERSHIP, tripId: 't1' } }),
+  );
+  await page.goto(`/join/${code}`);
+}
+
 export const TRIP_ID = 't1';
 
 /** One hotel booking with **no place**, plus a place the trip already owns and an event that
