@@ -12,9 +12,18 @@
 //
 // The preview renders first regardless of auth state, no eager redirect
 // (AuthGate in App.tsx carries an explicit exception for this route). For an
-// anonymous visitor the CTA reads "Continue with Google": tapping it saves
-// this path as the deep-link intent and starts OAuth; AuthGate resumes here
-// afterwards, CTA now reading "Join" — still one explicit tap, not automatic.
+// anonymous visitor the CTA reads "Continue with Google": tapping it saves this path as
+// the deep-link intent and starts OAuth; AuthGate resumes here afterwards, CTA now
+// reading "Join".
+//
+// **THE RETURN DOES NOT AUTO-JOIN** (owner's device pass, 2026-07-31 — ADR-0143 §8).
+// It used to: a `joinJoinIntent` flag set before leaving was consumed on the way back and
+// fired the join for you, on the reading that tapping "Continue with Google" WAS the
+// confirmation (ADR-0024). On a device that reads as "I logged in and was silently put
+// into a trip" — the invitation, which is the whole point of this screen, flashes past
+// unread. So the return lands on the pass with the CTA now saying "Join", and the tap
+// that joins is a tap you make while looking at what you are joining. The
+// `saveJoinIntent`/`consumeJoinIntent` pair went with it rather than being left dead.
 //
 // An authed visitor already in this trip is redirected straight in (ADR-0067):
 // GET /invites/:code now returns tripId, so we can match it against memberships
@@ -35,7 +44,7 @@ import {
   isRemovedFromTripError,
   joinTrip,
 } from '../lib/api';
-import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
+import { saveIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
 import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, GLYPH, JOIN_PASS, MS_PER_DAY } from '../constants';
@@ -141,19 +150,10 @@ export function JoinTrip() {
     return () => clearTimeout(id);
   }, [outcome, navigate]);
 
-  // Auto-complete the join when we return here authed *and* the pending-join
-  // flag is set — i.e. the user reached login by tapping "Continue with Google"
-  // on this preview, so the confirm already happened (ADR-0024). A fresh authed
-  // visit (no flag) still shows the Join button. Gated on preview-ready so a
-  // join failure falls back to the normal preview + retry state.
-  useEffect(() => {
-    if (load.status !== 'ready' || authStatus !== 'authed') return;
-    if (consumeJoinIntent() === token) void doJoin();
-  }, [load.status, authStatus, token, doJoin]);
-
   const onCta = () => {
     if (authStatus !== 'authed') {
-      saveJoinIntent(token);
+      // Only the deep-link intent, so `AuthGate` brings us back to THIS pass. There is
+      // deliberately no "and then join" flag — see the header note.
       saveIntent(`/join/${token}`);
       login();
       return;
