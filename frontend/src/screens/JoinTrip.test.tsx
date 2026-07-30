@@ -40,7 +40,7 @@ vi.mock('../lib/api', () => ({
   fetchInvitePreview: (...a: unknown[]) => fetchInvitePreview(...a),
   joinTrip: (...a: unknown[]) => joinTrip(...a),
   isInviteExpiredError: (e: unknown) => (e as { expired?: boolean })?.expired === true,
-  isRemovedFromTripError: () => false,
+  isRemovedFromTripError: (e: unknown) => (e as { blocked?: boolean })?.blocked === true,
 }));
 
 import { JoinTrip } from './JoinTrip';
@@ -173,6 +173,30 @@ describe('JoinTrip — the pass, its stamp and its tear (ADR-0143)', () => {
     );
     expect(screen.getByText(t.shell.join.expired)).toBeTruthy();
     // …and no CTA: there is nothing to join.
+    expect(document.querySelector('.join-cta')).toBeNull();
+  });
+
+  // A BLOCKED join must be INDISTINGUISHABLE from a dead link (owner, 2026-07-31).
+  // Naming the block would tell someone who is no longer a member that the group made a
+  // decision about them — a roster fact they have no standing to learn. This is the test
+  // that keeps a well-meaning "be more helpful here" change from re-disclosing it.
+  it('shows a blocked join exactly as it shows an invalid link', async () => {
+    await openPass();
+    joinTrip.mockRejectedValue({ blocked: true });
+    await act(async () => {
+      fireEvent.click(screen.getByText(t.shell.join.joinButton));
+    });
+
+    expect(land().hasAttribute('data-refused')).toBe(true);
+    expect(document.querySelector('.ticket-stamp.is-refused')?.textContent).toBe(
+      t.shell.join.stampRefused,
+    );
+    // The SAME words as an invalid code, and nothing naming a removal.
+    expect(screen.getByText(t.shell.join.invalid)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/הוסרת|הוסר/);
+    // The invitation pass and its CTA are gone — the server said no, so there is nothing
+    // left to accept, and a second attempt would only re-ask the same question.
+    expect(document.querySelector('.ticket-avatars')).toBeNull();
     expect(document.querySelector('.join-cta')).toBeNull();
   });
 

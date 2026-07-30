@@ -184,7 +184,11 @@
 }
 
 /* ── StatusBanner — inline status/offline/stale message ───────────────────── */
+/* A banner appears for something the user should notice — calmly. It used to blink into
+   existence, which on a surface that is usually about connectivity reads as an alarm.
+   It settles in from the top edge instead (ADR-0140's Journey 4). */
 .fb-banner {
+  animation: fb-banner-in var(--t-base) var(--ease-arrive) both;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -256,8 +260,32 @@
   /* Icon rides on font-size (1em) → a 19px cloud. */
   font-size: 19px;
 }
+/* ── The badge RESOLVES (ADR-0140's Journey 4) ───────────────────────────────
+   An optimistic write settling is a moment the user is trusting: they made a change,
+   the app said "pending", and the server agreed. That transition was a silent glyph
+   swap. It now lands — a single settle on the synced state, never a loop, because this
+   marks a transition rather than decorating a status.
+
+   Deliberately NOT on `pending`: a pulse there would read as the app straining, and
+   `--sync-pending` is the neutral by design (ADR-0080 keeps sync state non-colour-coded).
+   And not on `failed` either — a failure needs the eye, not a flourish; the review sheet
+   is what asks for action. */
 .sync-badge-synced {
   color: var(--sync-synced);
+  animation: sync-settle var(--t-base) var(--ease-arrive);
+}
+@keyframes sync-settle {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 .sync-badge-pending {
   color: var(--sync-pending);
@@ -442,5 +470,16 @@
   .fb-boot-dots,
   .fb-boot-seg {
     animation: none;
+  }
+}
+
+@keyframes fb-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }

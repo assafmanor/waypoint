@@ -161,7 +161,14 @@ export function JoinTrip() {
     void doJoin();
   };
 
-  const refused = load.status === 'invalid' || load.status === 'expired';
+  // A BLOCKED join is indistinguishable from a dead link, on purpose (ADR-0143 §5,
+  // corrected by the owner 2026-07-31). Naming the block would tell someone who is no
+  // longer a member that the group made a decision about them — a roster fact they have
+  // no standing to learn — and "this link no longer works, ask for a new one" is both
+  // true and equally actionable either way. So `joinBlocked` renders the same refused
+  // pass with the same words as an invalid code, and the server stays the only place that
+  // knows which it was.
+  const refused = load.status === 'invalid' || load.status === 'expired' || joinBlocked;
 
   return (
     <div
@@ -222,16 +229,24 @@ export function JoinTrip() {
       {load.status === 'loading' && <PassSkeleton />}
       {refused && (
         <RefusedPass
-          reason={load.status === 'expired' ? t.shell.join.expired : t.shell.join.invalid}
+          reason={
+            // `expired` is the one refusal that may say more: a finished trip is a fact
+            // about the TRIP, not about the person asking. A block borrows the neutral
+            // invalid-code wording precisely so it cannot be told apart from one.
+            load.status === 'expired' ? t.shell.join.expired : t.shell.join.invalid
+          }
         />
       )}
       {load.status === 'offline' && <p className="join-status">{t.shell.join.offline}</p>}
 
-      {load.status === 'ready' && <Ready preview={load.preview} outcome={outcome} />}
+      {/* `!refused` matters for the BLOCKED case: the server only says so on the join
+          attempt, so `load.status` is still `ready` and the invitation pass would render
+          underneath the refusal. */}
+      {load.status === 'ready' && !refused && <Ready preview={load.preview} outcome={outcome} />}
 
       {/* No CTA once the pass is stamped: the outcome is playing, and a tappable
           "join" over a pass that has already been accepted is a second join. */}
-      {load.status === 'ready' && !outcome && (
+      {load.status === 'ready' && !outcome && !refused && (
         <div className="join-cta">
           <button className="join-cta-btn" onClick={onCta} disabled={offline || joining}>
             {authStatus === 'authed' ? (
@@ -248,7 +263,6 @@ export function JoinTrip() {
             <p className="join-note">{offline ? t.shell.login.offline : t.shell.join.note}</p>
           )}
           {joinError && <p className="join-error">{t.shell.join.joinError}</p>}
-          {joinBlocked && <p className="join-error">{t.shell.join.joinBlocked}</p>}
         </div>
       )}
     </div>

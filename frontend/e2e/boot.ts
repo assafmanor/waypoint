@@ -185,6 +185,129 @@ export async function bootIntoTrip(
   );
 }
 
+/** The auth half of `bootIntoTrip`, on its own — the two first-run surfaces need a signed-in
+ *  user but NOT a trip, and duplicating these two routes in each spec is how the harness
+ *  starts to rot (rule 8). */
+async function mockAuth(page: Page, memberships: unknown[] = []): Promise<void> {
+  await page.route(
+    (u) => u.pathname.endsWith('/auth/refresh'),
+    (r) => r.fulfill({ json: { accessToken: 'test-token' } }),
+  );
+  await page.route(
+    (u) => u.pathname === '/me',
+    (r) => r.fulfill({ json: { user: USER, memberships } }),
+  );
+  await page.route(
+    (u) => u.pathname === '/trips',
+    (r) =>
+      r.request().resourceType() === 'document' || r.request().method() === 'POST'
+        ? r.continue()
+        : r.fulfill({ json: [] }),
+  );
+}
+
+/** The trip a creation run produces. Dates fixed so the board's flapped row is assertable. */
+export const CREATED_TRIP = {
+  ...TRIP,
+  name: 'יפן · ספטמבר',
+  destination: 'יפן',
+  startDate: '2026-09-12',
+  endDate: '2026-09-23',
+  icon: '🇯🇵',
+};
+
+/** The destination-picker fixture (session 191).
+ *
+ *  The picker is the one creation field behind a search sheet, which is why the birth
+ *  sequence's e2e beat test shipped skipped. Both halves are OUR OWN backend relays
+ *  (`/destinations/search` and `/destinations/resolve`, ADR-0113 §4) rather than Google
+ *  directly, so mocking them is exact and needs no key — the same trade the Map specs
+ *  make for the trip-scoped search.
+ *
+ *  Note there is a second, genuinely Google-free path in the product: `pp-name-only`
+ *  ("use as typed"). A spec could drive that and stay hermetic with no fixture at all —
+ *  but it exercises the branch that leaves the structured fields EMPTY, so it would not
+ *  prove the picker's normal path works. Both are worth having; this mocks the normal one.
+ */
+export const DESTINATION_PREDICTION = {
+  googlePlaceId: 'ChIJ-japan',
+  primaryText: 'יפן',
+  secondaryText: 'Japan',
+};
+const DESTINATION_RESOLVED = {
+  googlePlaceId: 'ChIJ-japan',
+  name: 'יפן',
+  countryCode: 'JP',
+  lat: 36.2,
+  lng: 138.25,
+  timezone: 'Asia/Tokyo',
+};
+
+async function mockDestinationPicker(page: Page): Promise<void> {
+  await page.route(
+    (u) => u.pathname === '/destinations/search',
+    (r) => r.fulfill({ json: [DESTINATION_PREDICTION] }),
+  );
+  await page.route(
+    (u) => u.pathname === '/destinations/resolve',
+    (r) => r.fulfill({ json: DESTINATION_RESOLVED }),
+  );
+}
+
+/** Land on `/new`, signed in with no trips, with the destination picker, `POST /trips`
+ *  and the invite all ready. Covers ADR-0142's birth sequence — the one thing jsdom
+ *  cannot see, since it loads no CSS and reports every rect as zero. */
+export async function bootIntoCreate(page: Page): Promise<void> {
+  await mockAuth(page);
+  await mockDestinationPicker(page);
+  await page.route(
+    (u) => u.pathname === '/trips',
+    (r) =>
+      r.request().method() === 'POST'
+        ? r.fulfill({ json: CREATED_TRIP })
+        : r.request().resourceType() === 'document'
+          ? r.continue()
+          : r.fulfill({ json: [] }),
+  );
+  await page.route(
+    (u) => u.pathname === `/trips/${CREATED_TRIP.id}/invite`,
+    (r) => r.fulfill({ json: { inviteUrl: '/join/7Kq2mB' } }),
+  );
+  await page.goto('/new');
+}
+
+/** The public invite preview a `/join/:code` visit reads. */
+export const INVITE_PREVIEW = {
+  tripId: 't1',
+  tripName: 'יפן · ספטמבר',
+  destination: 'יפן',
+  startDate: '2026-09-12',
+  endDate: '2026-09-23',
+  memberCount: 4,
+  icon: '🇯🇵',
+};
+
+/** Land on `/join/:code`. `expired` drives ADR-0143 §5's refused pass. */
+export async function bootIntoJoin(
+  page: Page,
+  opts: { code?: string; expired?: boolean } = {},
+): Promise<void> {
+  const code = opts.code ?? '7Kq2mB';
+  await mockAuth(page);
+  await page.route(
+    (u) => u.pathname === `/invites/${code}`,
+    (r) =>
+      opts.expired
+        ? r.fulfill({ status: 410, json: { message: 'INVITE_EXPIRED', error: 'Gone' } })
+        : r.fulfill({ json: INVITE_PREVIEW }),
+  );
+  await page.route(
+    (u) => u.pathname === `/trips/join/${code}`,
+    (r) => r.fulfill({ json: { ...MEMBERSHIP, tripId: 't1' } }),
+  );
+  await page.goto(`/join/${code}`);
+}
+
 export const TRIP_ID = 't1';
 
 /** One hotel booking with **no place**, plus a place the trip already owns and an event that

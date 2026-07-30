@@ -1047,6 +1047,8 @@
   position: relative;
 }
 .join-ticket {
+  /* Shared by the stamp and the gutter it sits in (see `.ticket-stamp`). */
+  --stamp-w: 88px;
   background: linear-gradient(180deg, var(--board-2), var(--board));
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 20px;
@@ -2389,12 +2391,31 @@
    You are ADMITTED. Rotated and slightly off-square, because a stamp is applied by a
    hand rather than laid out by a grid. `--ok` from the status mini-palette, NOT teal:
    teal means location (ADR-0028's budget) and being admitted is a status. */
+/* The stamp gets RESERVED SPACE rather than a guessed offset. `top: 58px` was the third
+   invented number in this pass, and the e2e spec caught it on its first run: it landed on
+   `.ticket-name`, so you could not read what you had just joined. A gutter opens on the
+   top half when the pass is stamped, the text reflows into what is left, and an overlap
+   becomes impossible instead of merely unlikely. The one-off reflow is fine — it happens
+   on a deliberate beat, not while reading. */
+.join-land[data-outcome] .ticket-top,
+.join-refused .ticket-top {
+  /* ONE number governs both the gutter and the stamp, so they cannot drift apart. A
+     hand-picked 96px gutter beside a content-sized stamp overlapped the name by ~8px —
+     the e2e spec's second catch, and the same guessing habit in a new place. */
+  padding-inline-end: calc(var(--stamp-w) + 2 * var(--space-3));
+  transition: padding-inline-end var(--t-quick) var(--ease-standard);
+}
 .ticket-stamp {
+  --stamp-w: 88px;
   position: absolute;
   z-index: 3;
-  /* Clear of the trip's name — you must still be able to read what you just joined. */
-  top: 58px;
-  inset-inline-end: 16px;
+  /* Sized rather than content-sized, because the gutter is derived from this width. */
+  inline-size: var(--stamp-w);
+  text-align: center;
+  /* Anchored into that gutter, on the top half — the part that stays with you when the
+     pass tears. */
+  top: 34px;
+  inset-inline-end: 14px;
   border: 2.5px solid var(--ok);
   color: var(--ok);
   border-radius: var(--radius-8);
@@ -2554,7 +2575,6 @@
 .ticket-stamp.is-refused {
   border-color: var(--miss);
   color: var(--miss);
-  top: 52px;
 }
 .refused-name {
   opacity: 0.5;

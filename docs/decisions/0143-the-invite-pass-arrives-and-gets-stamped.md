@@ -105,6 +105,39 @@ It counts in **integer steps to a whole number**, so what runs up is the value i
 rather than a float being rounded for display, and it always **ends exactly on the
 target** — a partial value left on screen would report a date the trip does not have.
 
+### 7. A blocked join is indistinguishable from a dead link
+
+This ADR originally argued the reverse — that a removed member must **not** get the same
+treatment as an expired link, because one mark for both would be "the app declining to say
+which". The owner corrected it, and the correction is right: **declining to say which is
+exactly the point.** Naming the block tells someone who is no longer a member that the
+group made a decision about them, which is a roster fact they have no standing to learn.
+
+So a blocked join renders the same refused pass, with the **same words**, as an invalid
+code: "this link is no longer valid, ask for a new one" — true either way, and actionable
+either way. The disclosing string is deleted rather than left unused, with a comment where
+it lived saying why it must not come back.
+
+**Expired stays distinct, and that is not an inconsistency.** Three cases, and only one is
+about the person asking:
+
+| case        | what it means                            | about whom   |
+| ----------- | ---------------------------------------- | ------------ |
+| **invalid** | the code never existed — typo, bad paste | nobody       |
+| **expired** | the code was real, the trip has ended    | the **trip** |
+| **blocked** | the code is live, but not for **you**    | **you**      |
+
+Only `blocked` needs cover, and it hides inside `invalid` — the most common benign case,
+and the one whose advice a blocked user can actually act on. Collapsing `expired` in too
+would leak nothing but would give advice that **cannot work**: invites die with the trip
+(ADR-0067), so "ask for a new link" is a dead end dressed as a next step.
+
+**The limit, stated:** a blocked user can still infer by comparing with someone who opens
+the same live link and sees the ticket. That is the ceiling of this kind of masking without
+lying considerably harder, and it is not worth chasing. Also note the refusal **stamp**
+reads `פג תוקף` for all three — mildly inaccurate for an invalid code, and deliberately so,
+because one stamp is what makes the block hide.
+
 ## Consequences
 
 - The anonymous Google detour is now **visible**. It auto-joins on return via
@@ -117,10 +150,8 @@ target** — a partial value left on screen would report a date the trip does no
 
 ## What this ADR does not settle
 
-- **The removed-member case.** ADR-0067's `TripBlock` (an admin kicked you) must **not**
-  reuse the expiry stamp: the same mark for "the link aged out" and "you were removed"
-  would be the app declining to say which. It currently still renders as a `join-error`
-  line under the CTA. Its own copy and treatment is a follow-up.
+- ~~The removed-member case~~ — **decided, and the opposite way round (owner,
+  2026-07-31). See §7.**
 - **Whether the count-up should run on a re-open.** It is charming once and possibly
   fussy every time you revisit the link. It currently runs per mount.
 - **The device pass.** As with ADR-0142, nothing here has been watched running: the build
