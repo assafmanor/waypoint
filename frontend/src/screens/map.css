@@ -532,7 +532,12 @@
      the label, plus the name row and its hint or error) and the foot is the actions — the three
      things a keyboard must never take: what am I naming, what have I typed, how do I get out. */
   grid-template-rows: auto minmax(0, 1fr) auto;
-  overflow: hidden;
+  /* **AND IT DOES NOT CLIP.** An `overflow: hidden` here is the obvious companion to a bounded
+     card and it was wrong: `IconPicker`'s panel is an ANCHORED panel (ADR-0144) that leaves its
+     host's box by design, so the card cut it to a 50px sliver — and cut it in a way no rect can
+     see, since a clipped element still lays out exactly where it always did (ADR-0132 §4's
+     lesson, on a new surface). The middle row owns its own scrolling and the corners are the
+     card's own border-radius, so there was nothing for this to do but that. */
   gap: 8px;
   background: var(--card);
   border: 1px solid var(--line);
