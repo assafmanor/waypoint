@@ -441,7 +441,7 @@ export function BookingSheet({
 
           <div className="bs-caption">
             <span>
-              ✨ {t.index.form.autoCaption}{' '}
+              <Icon name="sparkle" /> {t.index.form.autoCaption}{' '}
               <span className="cat-readout">{t.index.bookingType[type]}</span>
             </span>
             {icon.touched && (
@@ -478,7 +478,9 @@ export function BookingSheet({
                   onFind={findPlace('toPlaceId', t.index.form.destLabel)}
                 />
               </div>
-              <div className="bs-route-hint">📍 {t.index.form.routeHint}</div>
+              <div className="bs-route-hint">
+                <Icon name="pin" /> {t.index.form.routeHint}
+              </div>
             </Field>
           )}
 
@@ -584,7 +586,7 @@ export function BookingSheet({
               </Field>
               <div className="bs-wifi">
                 <div className="bs-wifi-head">
-                  📶 {t.index.sheet.wifiTitle}
+                  <Icon name="wifi" /> {t.index.sheet.wifiTitle}
                   <span className="bs-hint"> · {t.index.sheet.wifiHotelOnly}</span>
                 </div>
                 <div className="bs-row2">

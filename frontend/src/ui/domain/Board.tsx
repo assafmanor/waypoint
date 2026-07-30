@@ -185,7 +185,7 @@ export function Board(props: BoardProps) {
                   className="tp-plane"
                   style={{ insetInlineStart: `${transit.progress * 100}%` }}
                 >
-                  ✈️
+                  <Icon name="flight" />
                 </div>
               </div>
               <div className="tp-ends">

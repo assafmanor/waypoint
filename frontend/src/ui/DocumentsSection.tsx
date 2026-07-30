@@ -62,7 +62,11 @@ export function DocumentsSection() {
 
       {isEmpty && (
         <div className="empty-card doc">
-          <div className="ei">{DOCUMENT_TYPE_ICON.passport}</div>
+          {/* Not `DOCUMENT_TYPE_ICON.passport`: that is one document's badge, and
+              borrowing it here made an empty SECTION announce itself as a passport. */}
+          <div className="ei" aria-hidden="true">
+            <Icon name="documents" />
+          </div>
           <div className="et">{t.docs.emptyTitle}</div>
           <div className="es">{t.docs.emptyBody}</div>
           <button type="button" className="ea" onClick={() => setUploading(true)}>

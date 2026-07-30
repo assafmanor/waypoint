@@ -257,3 +257,65 @@ would go stale the moment someone genuinely picked the pin, and would be wrong f
 every row written before today — asking "is this glyph a placeholder" needs no
 migration. The accepted cost is that deliberately choosing `📌`/`💡` now reads as
 choosing nothing, which is the right trade while they are the defaults.
+
+## Third amendment (2026-08-02) — the empty-state carve-out was wrong, and the guard could not have caught it
+
+Owner, with two screenshots (the Index's documents card and the Map's list pane):
+_"i noticed that you missed a few emoji removals."_
+
+**The first amendment carved out exactly what the screenshots point at.** It ended
+"what stays emoji is per-entity badges, trip identity, empty-state _illustrations_,
+and the warmth in copy" — and one commit later `Map.tsx`'s `listBody` disproved it.
+Four `EmptyState`s sit in a single ternary there; two pass `<Icon name="search" />`
+and two passed `"🗺️"` / `"🗓️"`. That is the same failure the first amendment was
+written about (Home's three emoji beside one SVG compass), in the file the
+amendment shipped beside. **The carve-out is withdrawn**: an empty state is chrome
+the app draws, not content it holds. What stays emoji is now per-entity badges,
+trip identity, and warmth in copy.
+
+The Index card was worse than a carve-out. It drew `DOCUMENT_TYPE_ICON.passport` —
+a **content enum borrowed as decoration**, so an empty section announced itself as
+a passport, and at 26px `📕` reads as a pink block.
+
+### The guard was a denylist built from the sweep it was meant to outlive
+
+`CONTROL_EMOJI` enumerated the twenty glyphs the first pass had just replaced. It
+can therefore only catch a **regression** of those, never a miss — 📕 🗺️ 🗓️ 📍 📖
+📄 🎫 👥 ✨ 📶 ★ were never on it, so CI was green the whole time.
+
+**The JSXText half is now positional.** Any emoji written directly into markup
+fails, with no list to maintain:
+
+> Content flows in from entity data or a named constant. A glyph typed straight
+> into the JSX is decoration by construction.
+
+That test cannot go stale, and it earned its keep immediately: run once, it found
+**four more** nobody had spotted by reading — `★` before a Google rating, `✨` on
+the booking form's derived-value caption, `📶` on its Wi-Fi heading, and `⎣` on the
+Day view's concurrent cluster. That last one is the arrow-glyph bug verbatim:
+U+23A3 is a bracket **piece** meant for stacking multi-line math delimiters, so
+Assistant has no glyph for it and the substitute sits below the baseline.
+
+The **expression** half stays a denylist (`{e.icon ?? …}`, `icon={BOOKING_TYPE_ICON[b.type]}`),
+because content legitimately flows through expressions and only the known control
+glyphs are wrong there.
+
+Making the rule exemption-free needed two literals named at their source instead:
+`DEFAULT_PLACE_ICON` (📍 for a place with no category — three copies, one of them
+in the research list) and four `GLYPH` entries for the `/join` boarding pass, which
+stays deliberately playful. Naming them is the point rather than a workaround —
+it is §2's "split the vocabulary at its source", applied to the last holdouts.
+
+### Consequences
+
+- `Icon` gains `flight` · `hotel` · `members` · `archive` · `star` · `sparkle` ·
+  `bracket`. No `passport`: `documents` already replaced 🛂.
+- `EmptyState` gains `size="pane"` for a state that owns a region rather than
+  sitting in a list's flow — the owner's call on the Map, where a 30px mark centred
+  in a tall sheet reads as a loading artefact. Only the icon grows; copy stays one
+  size, so an empty pane never shouts louder than a full one.
+- `.fb-empty-icon` is `--muted` now. A colour emoji carried its own palette; a
+  monochrome mark at full `--ink` competes with the title beneath it.
+- The plane is authored **nose-left** and the bracket **opening left**, for the
+  reason `exit` is authored mirrored: forward and inward are leftward in RTL, and
+  this app has no LTR mode to transform back to.

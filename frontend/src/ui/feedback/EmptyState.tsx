@@ -10,15 +10,21 @@ export function EmptyState({
   title,
   body,
   action,
+  size = 'md',
 }: {
   // Decorative — announced content lives in title/body, so the icon is hidden.
   icon?: ReactNode;
   title: string;
   body?: ReactNode;
   action?: FeedbackAction;
+  /** `'pane'` for an empty state that owns a whole region rather than sitting in a
+   *  list's flow (owner, 2026-08-02, on the Map's list pane). A 30px mark centred in
+   *  a tall empty sheet reads as a loading artefact; the pane needs an illustration
+   *  scaled to it. Only the icon grows — copy stays at one size everywhere. */
+  size?: 'md' | 'pane';
 }) {
   return (
-    <div className="fb-empty">
+    <div className={size === 'pane' ? 'fb-empty fb-empty-pane' : 'fb-empty'}>
       {icon != null && (
         <div className="fb-empty-icon" aria-hidden="true">
           {icon}

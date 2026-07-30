@@ -25,18 +25,21 @@ import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
 import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 
-const CHECK_ICON: Record<CheckId, string> = {
-  flights: '✈️',
-  lodging: '🏨',
-  itinerary: '📅',
-  documents: '🛂',
-  group: '👥',
+// `IconName`, not glyphs: the collapsed summary row renders these pills directly
+// beside its own `<Icon name="check" />`, so the emoji version was five emoji and
+// one SVG sharing a flex row — the sibling test in design-language.md.
+const CHECK_ICON: Record<CheckId, IconName> = {
+  flights: 'flight',
+  lodging: 'hotel',
+  itinerary: 'calendar',
+  documents: 'documents',
+  group: 'members',
 };
 
 interface ChecklistRow {
-  icon: string;
+  icon: IconName;
   title: string;
   meta: string;
   /** Documents row: the per-traveller passport indicator (filled = uploaded). */
@@ -251,7 +254,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             const row = rowFor(check);
             return (
               <div className="chk-row" key={check.id}>
-                <div className="chk-ic">{row.icon}</div>
+                <div className="chk-ic">
+                  <Icon name={row.icon} />
+                </div>
                 <div className="chk-main">
                   <div className="chk-t">{row.title}</div>
                   <div className="chk-m">
@@ -289,7 +294,8 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               </span>
               {completedChecks.map((check) => (
                 <span className="pill" key={check.id}>
-                  {CHECK_ICON[check.id]} {t.planHome.checklist.summaryLabels[check.id]}
+                  <Icon name={CHECK_ICON[check.id]} />{' '}
+                  {t.planHome.checklist.summaryLabels[check.id]}
                 </span>
               ))}
             </div>
@@ -299,7 +305,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               const row = rowFor(check);
               return (
                 <div className="chk-row" key={check.id}>
-                  <div className="chk-ic">{row.icon}</div>
+                  <div className="chk-ic">
+                    <Icon name={row.icon} />
+                  </div>
                   <div className="chk-main">
                     <div className="chk-t">{row.title}</div>
                     <div className="chk-m">{row.meta}</div>

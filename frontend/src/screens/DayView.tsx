@@ -278,7 +278,7 @@ export function DayView() {
       {readOnly && (
         <div className="archive-banner">
           <span className="ab-ic" aria-hidden="true">
-            📖
+            <Icon name="archive" />
           </span>
           <span className="ab-main">
             {heading} · {t.day.archiveTag}
@@ -568,7 +568,7 @@ function GroupNode({ group, depth, ctx }: { group: TimeGroup; depth: number; ctx
       <div className="cluster">
         <div className="cluster-head">
           <span className="brk" aria-hidden="true">
-            ⎣
+            <Icon name="bracket" />
           </span>{' '}
           {t.day.concurrent} ·{' '}
           <span className="win" dir="auto">
