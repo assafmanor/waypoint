@@ -36,7 +36,10 @@ one.
   ⋯ menu," check `ListRow`/`RowManageSheet` — it's the generic managed-list
   row + kebab-menu shape already reused across bookings, documents, and
   members; a fourth managed list extends it rather than growing a new
-  bespoke row component.
+  bespoke row component. Same for "was this done or skipped?": that is
+  `SettleControl`, whose `prompt`/`sheet`/`compact` densities serve the day
+  card, Plan's archive chooser and the Map's reference row — a fourth host
+  adds a density, and the words/marks/hues are not its to choose.
 - **A list that filters, searches, scopes, or re-orders** — `lib/filter-reveal.ts`
   (`revealRows` + your predicate) through `ui/primitives/RevealList` (ADR-0120).
   Every control that changes the list is animated: rows leaving/arriving collapse
@@ -167,6 +170,15 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
 - Three divergent confirm-dialog implementations instead of one variant-driven
   `ConfirmDialog` (ADR-0079) — if you're about to write a second confirm
   prompt, its variant belongs on the existing one.
+- The same shape one layer up, and it ran for three sessions before anyone
+  counted: three hand-rolled settle affordances, which drifted on **four**
+  axes before `SettleControl` collected them (ADR-0139's Consequences) — a
+  ✓ with a mark beside a skip with none, `--ok` with no `--miss`, `היינו`
+  (a record) beside `דלג` (an instruction), and two different focus rings.
+  Note what all four are: they are the **vocabulary**, not the sizes, so
+  every test on those surfaces stayed green the whole time. When you copy a
+  small widget "because the geometry is different", the geometry is the part
+  that was fine.
 - Per-entity-type `if`/`else` in a change-apply or cache-mirror function
   instead of extending the `CACHE_CHANNELS`-style registry (ADR-0094).
 - A bare string literal for a reducer action type / sync state / outbox verb /

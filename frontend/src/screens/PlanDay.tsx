@@ -106,7 +106,7 @@ import { NavArrow } from '../ui/NavArrow';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { TitleLabel } from '../ui/TitleLabel';
-import { RowActionList, type RowAction } from '../ui/domain';
+import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
 import { MaybeCard } from '../ui/domain/MaybeCard';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
@@ -1829,26 +1829,17 @@ export function BuilderRow({
       )}
       {settle && settleOpen && (
         <Sheet title={t.planDay.settleTitle(event.title)} onClose={() => setSettleOpen(false)}>
-          <div className="settle-choose">
-            <button
-              className="settle-yes"
-              onClick={() => {
-                setSettleOpen(false);
-                settle.onDone();
-              }}
-            >
-              <Icon name="check" /> {t.actions.wasThere}
-            </button>
-            <button
-              className="settle-skip"
-              onClick={() => {
-                setSettleOpen(false);
-                settle.onSkip();
-              }}
-            >
-              {t.actions.skip}
-            </button>
-          </div>
+          <SettleControl
+            variant="sheet"
+            onDone={() => {
+              setSettleOpen(false);
+              settle.onDone();
+            }}
+            onSkip={() => {
+              setSettleOpen(false);
+              settle.onSkip();
+            }}
+          />
         </Sheet>
       )}
     </div>

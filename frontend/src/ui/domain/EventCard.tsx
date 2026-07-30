@@ -22,6 +22,7 @@ import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
 import { PlaceBadge } from './PlaceBadge';
+import { SettleControl } from './SettleControl';
 import { t } from '../../i18n/he';
 import './event-card.css';
 
@@ -231,15 +232,7 @@ export function EventCard(props: EventCardProps) {
           {titleBlock}
           {timeBlock}
         </div>
-        <div className="wp-event-settle">
-          <span className="wp-event-settle-q">{t.day.settleAsk}</span>
-          <button type="button" className="wp-event-settle-yes" onClick={onDone}>
-            <Icon name="check" /> {t.actions.wasThere}
-          </button>
-          <button type="button" className="wp-event-settle-skip" onClick={onSkip}>
-            {t.actions.skip}
-          </button>
-        </div>
+        <SettleControl variant="prompt" onDone={() => onDone?.()} onSkip={() => onSkip?.()} />
       </div>
     );
   }

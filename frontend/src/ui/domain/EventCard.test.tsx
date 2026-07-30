@@ -101,7 +101,7 @@ describe('EventCard', () => {
     const { container } = render(
       wrapNav(<EventCard {...base} phase="passed" onDone={onDone} onSkip={onSkip} />),
     );
-    expect(container.querySelector('.wp-event-settle')).toBeTruthy();
+    expect(container.querySelector('.wp-settle.prompt')).toBeTruthy();
     // The settle card doesn't expand (no toggle button face).
     expect(container.querySelector('.wp-event-face.static')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.actions.wasThere) }));

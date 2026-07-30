@@ -1236,8 +1236,8 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         // settled — a Booking carries no `EVENT_STATUS`, so the absence needs no rule.
         const kinds = refs.map((r) => r.querySelector('.map-ref-kind')?.textContent);
         expect(kinds).toEqual([t.map.refs.booking, t.map.refs.event]);
-        expect(refs[0].querySelector('.map-settle')).toBeNull();
-        expect(refs[1].querySelector('.map-settle')).toBeTruthy();
+        expect(refs[0].querySelector('.wp-settle')).toBeNull();
+        expect(refs[1].querySelector('.wp-settle')).toBeTruthy();
       });
 
       it('marks done through the shipped verb, with the event it names', () => {
@@ -1247,7 +1247,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         ];
         render(wrap(<MapView />));
         fireEvent.click(row('cafe')!);
-        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.map-sbtn.done')!);
+        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.wp-settle-btn.done')!);
         expect(verbs.done).toHaveBeenCalledTimes(1);
         expect(verbs.done.mock.calls[0][0]).toMatchObject({ id: 'e1' });
         expect(verbs.skip).not.toHaveBeenCalled();
@@ -1265,7 +1265,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         ];
         render(wrap(<MapView />));
         fireEvent.click(row('shrine')!);
-        fireEvent.click(settleRow('shrine', 'מקדש').querySelector('.map-sbtn.skip')!);
+        fireEvent.click(settleRow('shrine', 'מקדש').querySelector('.wp-settle-btn.skip')!);
         expect(verbs.skip).toHaveBeenCalledTimes(1);
         expect(verbs.skip.mock.calls[0][0]).toMatchObject({ id: 'e1' });
       });
@@ -1287,13 +1287,13 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         render(wrap(<MapView />));
         fireEvent.click(row('cafe')!);
         const settled = settleRow('cafe', 'קפה');
-        expect(settled.querySelector('.map-sbtn.done')).toBeNull();
-        expect(settled.querySelector('.map-sbtn.skip')).toBeNull();
+        expect(settled.querySelector('.wp-settle-btn.done')).toBeNull();
+        expect(settled.querySelector('.wp-settle-btn.skip')).toBeNull();
         // In the row's OWN tag vocabulary, not a third one.
-        expect(settled.querySelector('.map-settle .map-tag.ok')?.textContent).toContain(
+        expect(settled.querySelector('.wp-settle .wp-settle-tag.ok')?.textContent).toContain(
           t.event.didThis,
         );
-        fireEvent.click(settled.querySelector('.map-settle .map-sbtn')!);
+        fireEvent.click(settled.querySelector('.wp-settle .wp-settle-btn')!);
         expect(verbs.restore).toHaveBeenCalledTimes(1);
         expect(verbs.restore.mock.calls[0][0]).toMatchObject({ id: 'e1' });
       });
@@ -1317,7 +1317,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         const aheadRow = settleRow('ahead', 'ערב');
         expect(aheadRow.className).not.toContain('asking');
         // Available, though — a human may close tonight's dinner at 11:00 (ADR-0117 §2).
-        expect(aheadRow.querySelector('.map-sbtn.done')).toBeTruthy();
+        expect(aheadRow.querySelector('.wp-settle-btn.done')).toBeTruthy();
       });
 
       // `refs` is passed when a row is SELECTED and `renderRow` serves both hosts, so this is
@@ -1331,7 +1331,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         render(wrap(<MapView />));
         fireEvent.click(listButton(t.map.allDays));
         fireEvent.click(row('cafe')!);
-        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.map-sbtn.done')!);
+        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.wp-settle-btn.done')!);
         expect(verbs.done).toHaveBeenCalledTimes(1);
       });
 
@@ -1344,7 +1344,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         ];
         render(wrap(<MapView />));
         fireEvent.click(row('cafe')!);
-        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.map-sbtn.done')!);
+        fireEvent.click(settleRow('cafe', 'קפה').querySelector('.wp-settle-btn.done')!);
         // Still on the Map, with the block still open on the same place — the settle did not
         // also fire the row's own `onOpen`, which navigates to the day.
         expect(row('cafe')!.querySelector('.map-refs')).toBeTruthy();
