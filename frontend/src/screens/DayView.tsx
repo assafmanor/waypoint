@@ -59,7 +59,7 @@ import {
   type DayEntry,
   type TransitionEntry,
 } from '../lib/day-entries';
-import { CODE_PREFIX, DAY_NOON, MS_PER_DAY } from '../constants';
+import { CODE_PREFIX, DAY_NOON, DEFAULT_STAY_ICON, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -308,7 +308,7 @@ export function DayView() {
           {middleStays.map((e) => (
             <div className="ambient" key={e.id}>
               <span className="ai" aria-hidden="true">
-                {e.icon ?? '🏨'}
+                {e.icon ?? DEFAULT_STAY_ICON}
               </span>
               <span className="an">{e.title}</span>
               <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>
