@@ -256,10 +256,6 @@ export const t = {
     // The way through from a place to the entity that put it in the trip
     // (ADR-0121 §8). Labelled in the reference's own words, so the control says
     // where it goes rather than a generic "details".
-    // Settling an event from the Map (ADR-0139). The two verbs reuse the day view's own
-    // words (`actions.wasThere` / `event.skipped`) so the surfaces cannot drift; only the
-    // undo needs naming, and it says what it undoes rather than "בטל".
-    settle: { undo: 'ביטול הסימון' },
     refs: {
       booking: 'הזמנה',
       event: 'אירוע',
@@ -1089,8 +1085,15 @@ export const t = {
     stepMinutes: (minutes: number) => `${minutes} דק׳`,
     onWay: 'בדרך',
     done: 'סיימנו',
-    // Affirmative settle on a passed event — the "we did this" record (ADR-0043).
+    // THE SETTLE PAIR (ADR-0043/0044/0139), shared by all three of `SettleControl`'s
+    // densities. Both halves are records of what happened, not instructions: the skip
+    // side reuses `event.skipped` ('דילגנו'), because the pair `היינו` / `דלג` mixed a
+    // record with an imperative and read as "yes, or move it along".
     wasThere: 'היינו',
+    // What the undo takes back, said as what it undoes rather than a bare "בטל".
+    undoSettle: 'ביטול הסימון',
+    // The row-menu / action-row verb, which IS an instruction ("skip this one") — not the
+    // settle pair's other half.
     skip: 'דלג',
     swap: 'החלף',
     scheduleToDay: 'שבץ ליום',

@@ -34,3 +34,6 @@ export type { ListRowProps, RowAction, BadgeTone } from './ListRow';
 
 export { ChangeFeed } from './ChangeFeed';
 export type { ChangeFeedProps } from './ChangeFeed';
+
+export { SettleControl } from './SettleControl';
+export type { SettleOutcome, SettleVariant } from './SettleControl';

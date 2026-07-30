@@ -476,13 +476,6 @@
   opacity: 0.8;
 }
 
-/* The "we were there" affirmative in a settle chooser (ADR-0043/0044): green
-   record accent, shared by the Plan-mode archive settle sheet. */
-.settle-yes {
-  border-color: rgba(60, 154, 107, 0.4) !important;
-  color: var(--ok) !important;
-}
-
 /* Past-day archive (ADR-0029/0040): a calm read-only banner + a slightly cooled,
    desaturated list. No now-line (a day that's over has no "now"). */
 .day-list.archive {
@@ -1822,27 +1815,9 @@
   padding: 2px 6px;
   border-radius: 6px;
 }
-/* The unresolved-settle chooser (○ → "היינו / דלג") in a bottom sheet. */
-.settle-choose {
-  display: flex;
-  gap: 9px;
-}
-.settle-choose button {
-  flex: 1;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  border-radius: 10px;
-  padding: 11px;
-  cursor: pointer;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-}
-.settle-choose button:focus-visible {
-  outline: 2.5px solid var(--plan);
-  outline-offset: 2px;
-}
+/* The unresolved-settle chooser (○ → "היינו / דילגנו") in a bottom sheet is the shared
+   control's `sheet` density — `ui/domain/settle-control.css`, including the violet focus
+   ring, which is now the mode's rule rather than this chooser's own. */
 
 /* gap chip between events — fill-a-gap is a plan action (violet) */
 .gap {

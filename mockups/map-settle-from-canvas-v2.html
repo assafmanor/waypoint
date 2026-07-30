@@ -3188,58 +3188,10 @@ body {
   background: color-mix(in srgb, var(--amber) 16%, transparent);
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--amber) 42%, transparent);
 }
-.map-settle {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-/* 32×32 inside a 40px row: under ADR-0017's 44px floor on its own, which is why the pair
-   sits at the END of a row whose own target is all the remaining width — the same trade
-   `ListRow`'s kebab already makes. On the device-pass list.
-   The two stay NEUTRAL until touched: amber is time and commitment (rule 4), so it belongs
-   on the row making the time claim and not on two status controls. */
-.map-sbtn {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--card);
-  color: var(--muted);
-  cursor: pointer;
-}
-.map-sbtn .icon {
-  width: 17px;
-  height: 17px;
-}
-.map-sbtn.done:hover,
-.map-sbtn.done:focus-visible {
-  color: var(--ok);
-  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
-}
-.map-sbtn.skip:hover,
-.map-sbtn.skip:focus-visible {
-  color: var(--miss);
-  border-color: color-mix(in srgb, var(--miss) 45%, transparent);
-}
-/* SETTLED: the outcome states itself in the row's OWN tag vocabulary (`.map-tag.ok`/`.miss`,
-   the same words and hues the meta line and the pin already use), and the only verb left is
-   to undo it. Which is also why every event is settleable rather than only the passed ones:
-   gating the controls on "passed and unanswered" would delete this undo the instant it was
-   earned. */
-.map-settle .map-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.map-settle .map-tag .icon {
-  width: 12px;
-  height: 12px;
-}
+/* The cluster itself is the shared control's `compact` density (`ui/domain/settle-control.css`),
+   which is where its 32×32 geometry, its hold-the-hues-until-touched rule and its settled tag
+   now live. What stays here is the ROW's half of the design: the amber wash above, which is what
+   does the asking so the buttons don't have to. */
 .map-ref .map-ref-kind {
   color: var(--muted);
   font-weight: 500;
