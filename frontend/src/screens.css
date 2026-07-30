@@ -2853,7 +2853,7 @@
   background: color-mix(in srgb, var(--ink) 6%, transparent);
 }
 .index .back-icon-btn:active {
-  transform: scale(0.93);
+  transform: scale(var(--press-scale));
 }
 .index .idx-head-title {
   font-family: var(--font-head);
@@ -2933,7 +2933,7 @@
   height: 15px;
 }
 .index .search-icon-btn:active {
-  transform: scale(0.9);
+  transform: scale(var(--press-scale));
 }
 
 /* Past-bookings toggle (ADR-0098 §2, mirrors ADR-0061's chk-toggle). Colored

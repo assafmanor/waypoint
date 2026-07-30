@@ -6,7 +6,7 @@
   cursor: pointer;
 }
 .sync-failed-summary:active {
-  transform: translateY(1px);
+  transform: scale(var(--press-scale));
 }
 
 /* SyncReviewSheet — the U-04 dead-letter review/retry list (ADR-0080). Tokens
@@ -100,7 +100,7 @@
   cursor: pointer;
 }
 .sync-review-retry:active {
-  transform: translateY(1px);
+  transform: scale(var(--press-scale));
 }
 
 .sync-review-discard {
@@ -115,7 +115,7 @@
   cursor: pointer;
 }
 .sync-review-discard:active {
-  transform: translateY(1px);
+  transform: scale(var(--press-scale));
 }
 
 .sync-review-discard-all {

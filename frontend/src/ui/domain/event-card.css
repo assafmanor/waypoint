@@ -50,6 +50,9 @@
 
 /* Face — the tappable header (a toggle button; the settle variant is a div). */
 .wp-event-face {
+  /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
+     the control value this reads as collapsing rather than as pressed. */
+  --press-scale: var(--press-scale-lg);
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -136,7 +139,7 @@
   outline-offset: 2px;
 }
 .wp-event-check.btn:active {
-  transform: scale(0.92);
+  transform: scale(var(--press-scale));
 }
 .wp-event-check.btn::after {
   content: '';

@@ -90,11 +90,9 @@
      travel is negative. One sign here, read as
      `translateX(calc(var(--dir) * 100%))`, is what lets the route transition and
      the `full` overlay share ONE set of keyframes instead of a mirrored copy each.
-     `[dir='ltr']` below flips it; nothing else may hard-code a direction. */
+     The `[dir='ltr']` override sits after this whole block; nothing else may
+     hard-code a direction. */
   --dir: -1;
-}
-[dir='ltr'] {
-  --dir: 1;
 
   --font-head: 'Secular One', sans-serif;
   --font-body: 'Assistant', sans-serif;
@@ -168,6 +166,25 @@
   --sync-synced: var(--ok);
   --sync-pending: var(--muted);
   --sync-failed: var(--miss);
+
+  /* Press feedback (ADR-0140). Two steps, and the RATIO is what should read as
+     constant — not the transform. A 44px icon button at 0.985 is invisible; a
+     full-width card at 0.97 reads as collapsing rather than as pressed.
+     Scale rather than colour on purpose: the app presses on a dark glowing board,
+     paper cards, amber tints and violet chrome, so a colour press-state would need
+     a per-surface table AND would spend from the semantic budget (amber = time,
+     teal = location, violet = plan) on chrome. Scale composes with every surface. */
+  --press-scale: 0.97; /* controls: buttons, chips, icon buttons, nav items */
+  --press-scale-lg: 0.985; /* surfaces: cards, tiles, full-width rows and CTAs */
+}
+
+/* The one place a direction is named. Must stay OUTSIDE the `:root` block above:
+   splitting `:root` to hold this is what put the spacing, type and press tokens
+   behind an `[dir='ltr']` selector during the build of ADR-0140 — in an RTL app
+   that silently unset half the token layer, and a `scale(var(--press-scale))`
+   resolving to nothing is how it was caught. */
+[dir='ltr'] {
+  --dir: 1;
 }
 
 * {
@@ -178,6 +195,29 @@
      tappable surface has its own :active / hover / focus-visible feedback,
      so this only removes the crude default overlay, not the affordance. */
   -webkit-tap-highlight-color: transparent;
+}
+
+/* …and here is the rule that makes the line above true (ADR-0140). It claimed
+   "every tappable surface has its own :active", which was the intent and not the
+   state: there were 16 `:active` rules in the whole frontend, spread across SEVEN
+   different values, so most controls acknowledged a tap with nothing at all.
+   Phone-primary (ADR-0017) makes that a correctness point rather than polish —
+   there is no hover state to fall back on, so for the frame before the target
+   appears the app had told the user nothing.
+
+   One element-level rule instead of a utility class, so reach is automatic and a
+   new button cannot forget to opt in; a large surface overrides `--press-scale`
+   rather than writing its own transform.
+
+   Deliberately NO `transition` here. A global `transition` declaration is a
+   shorthand and would clobber the per-component ones (`.trip-name-btn`'s
+   background melt, and others), so the press is instant in both directions —
+   which is also what the native highlight it replaced did, and what makes a tap
+   feel answered rather than eased into. */
+button:not(:disabled):not([aria-disabled='true']):active,
+[role='button']:not([aria-disabled='true']):active,
+summary:active {
+  transform: scale(var(--press-scale));
 }
 
 /* An armed drag (lib/useHoldToDrag.ts) turns selection off page-wide: the finger

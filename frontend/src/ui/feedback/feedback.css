@@ -73,7 +73,7 @@
   cursor: pointer;
 }
 .fb-empty-action:active {
-  transform: translateY(1px);
+  transform: scale(var(--press-scale));
 }
 
 /* ErrorState: --miss on the title marks the failure without borrowing amber. */
@@ -97,7 +97,7 @@
   cursor: pointer;
 }
 .fb-error-retry:active {
-  transform: translateY(1px);
+  transform: scale(var(--press-scale));
 }
 .fb-error-retry .icon {
   font-size: var(--text-h3);
@@ -236,7 +236,7 @@
   cursor: pointer;
 }
 .fb-banner-dismiss:active {
-  transform: translateY(1px);
+  transform: scale(var(--press-scale));
 }
 
 /* ── SyncBadge — per-entity sync marker (U-04, ADR-0080; cloud glyphs ADR-0091) ─

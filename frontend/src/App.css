@@ -601,6 +601,9 @@
   margin-top: 22px;
 }
 .zero-act {
+  /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
+     the control value this reads as collapsing rather than as pressed. */
+  --press-scale: var(--press-scale-lg);
   font: inherit;
   font-weight: 700;
   font-size: 14px;
@@ -859,6 +862,9 @@
   padding-top: 22px;
 }
 .create-btn {
+  /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
+     the control value this reads as collapsing rather than as pressed. */
+  --press-scale: var(--press-scale-lg);
   width: 100%;
   font: inherit;
   font-size: 14.5px;
@@ -1012,6 +1018,9 @@
   padding-top: 22px;
 }
 .plan-btn {
+  /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
+     the control value this reads as collapsing rather than as pressed. */
+  --press-scale: var(--press-scale-lg);
   width: 100%;
   font: inherit;
   font-size: 14.5px;
@@ -1235,6 +1244,9 @@
   position: relative;
 }
 .join-cta-btn {
+  /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
+     the control value this reads as collapsing rather than as pressed. */
+  --press-scale: var(--press-scale-lg);
   font: inherit;
   display: flex;
   align-items: center;
@@ -1551,6 +1563,9 @@
 
 /* shared paper row (בקרוב / הסתיים) */
 .trip-card {
+  /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
+     the control value this reads as collapsing rather than as pressed. */
+  --press-scale: var(--press-scale-lg);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1644,6 +1659,9 @@
    no now/next hero, so it reads as a prominent nav card, not the rationed
    departure board (ADR-0028). */
 .trip-hero {
+  /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
+     the control value this reads as collapsing rather than as pressed. */
+  --press-scale: var(--press-scale-lg);
   display: flex;
   align-items: center;
   gap: 13px;

@@ -129,7 +129,7 @@
   opacity: 0.85;
 }
 .choice-pill:active {
-  transform: scale(0.94);
+  transform: scale(var(--press-scale));
 }
 .choice-pill:focus-visible {
   outline: none;
