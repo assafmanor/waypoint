@@ -464,29 +464,57 @@ export const MAP_ZOOM = {
  *    same load-bearing threshold as `SNAP_DRAG_SLOP_PX` one layer along and for the same
  *    reason: a finger emits `pointermove` on a tap, so a gesture that commits on the
  *    first move cannot tell the two apart at all.
- *  - `SPAN_SHARE` — **a share of the pane's height per zoom level, not a px count.**
- *    ADR-0123 settled this argument for this surface: the pane's height moves by more
- *    than 2× between the `half` and `map` stops, so a flat px sensitivity would be twice
- *    as sensitive at one stop as at the other. 0.5 is ~250px on the ~501px canvas
- *    session 143 measured — about half that canvas per zoom level. **It was derived at
- *    0.18, reported too sensitive on the mockup, and set to 0.5 by the owner across two
- *    rounds** — do not "restore" the tighter number; it was arithmetic, this is a report.
+ *  - `PX_PER_LEVEL` / `MAX_SHARE` — **how far the finger travels for one zoom level, in
+ *    ABSOLUTE px, capped so a short canvas stays usable.** This started life as a pure
+ *    share of the pane's height and **that model was backwards** — see below, because the
+ *    mistake is more instructive than the number.
  *  - `MIN` / `MAX` — the fallback range when the map states no `minZoom`/`maxZoom`, which
  *    is the case here on purpose (ADR-0128 §1 clamps `MAX_FIT` *after* the fit rather
  *    than as the map's own `maxZoom`, precisely so the pinch stays unbounded). The
  *    gesture is then bounded exactly as the pinch is.
  *
- *  **Down zooms IN** (owner's call on the mockup, 2026-07-30). The design had reasoned its
- *  way to the opposite — this screen already says up means more, because dragging up grows
- *  the sheet (ADR-0122 §4) — and a finger overruled it. Pulling the map toward you brings
- *  it closer, and it is what Google's own Android gesture does. Recorded because the
- *  sheet-consistency argument is a good one that happens to be wrong here, so it will be
+ *  **Why sensitivity is NOT a share of the canvas, though a pin's size is** (device pass,
+ *  2026-07-30 — owner: _"the more space the map takes of the screen, the more the drag
+ *  feels slow"_). The first cut reasoned by analogy from ADR-0123 and it is a **false
+ *  analogy**, which is the part worth keeping:
+ *
+ *    • A pin's SIZE is a share of the canvas because a pin is a **visual** element
+ *      competing for canvas area — a bigger canvas should carry a proportionally bigger
+ *      pin.
+ *    • A drag's SENSITIVITY belongs to the **finger**, and a finger does not scale with
+ *      the canvas. A comfortable thumb stroke is the same distance whether the map is
+ *      243px tall or 501px.
+ *
+ *  So the share made the map extreme demand 250px per level against `half`'s 122px —
+ *  i.e. **the more map you gave it, the heavier it got**, which is exactly backwards from
+ *  the intuition that a taller canvas has "more room to drag".
+ *
+ *  `PX_PER_LEVEL` (120) is therefore a **calibrated** number, not a derived one: it is
+ *  `half`'s canvas on the owner's phone (~243px × 0.5 ≈ 122, rounded), the one stop that
+ *  felt right. `MAX_SHARE` (0.5) is only a **safety cap for short canvases** — at
+ *  360×640's 160px `half` pane (ADR-0126's measurement) a flat 120 would demand 75% of
+ *  the canvas per level and be *worse* than before, so there the cap binds and holds
+ *  today's behaviour. It binds below ~240px and nowhere above it.
+ *
+ *  **Down zooms IN** (owner's call on the mockup, 2026-07-30, and Google's Android page
+ *  documents the same mapping — slide up zooms out, slide down zooms in). The design had
+ *  reasoned its way to the opposite from this screen's own "up means more", since dragging
+ *  up grows the sheet (ADR-0122 §4). Recorded because that argument is good enough to be
  *  made again. */
 export const MAP_DRAG_ZOOM = {
-  TAP_GAP_MS: 300,
-  TAP_SLOP_PX: 24,
+  /** Raised 300 → 500 and 24 → 44 after the device pass reported the gesture sometimes
+   *  not being recognised at all, leaving Google to pan instead. A double-tap that
+   *  *keeps its finger down* is slower and sloppier than a double-click: the second press
+   *  is deliberate, so it lands later and further away. **44 is ADR-0017's touch floor**,
+   *  which makes it the principled number rather than a guessed one — two presses inside
+   *  one touch target's width are, by the app's own definition of a finger, in the same
+   *  place. Erring generous is right here: a false positive costs one unasked-for step
+   *  zoom, where a false negative costs the whole gesture. */
+  TAP_GAP_MS: 500,
+  TAP_SLOP_PX: 44,
   DRAG_SLOP_PX: 6,
-  SPAN_SHARE: 0.5,
+  PX_PER_LEVEL: 120,
+  MAX_SHARE: 0.5,
   MIN: 2,
   MAX: 21,
 } as const;

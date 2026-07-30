@@ -100,11 +100,39 @@ export const IDLE_DRAG_ZOOM: DragZoomState = {
   levels: 0,
 };
 
-/** How far the finger travels for one zoom level, as a share of the canvas it is on
- *  (§4 / ADR-0123). Floored, because a pane measured before layout would otherwise make
- *  the gesture infinitely sensitive rather than merely wrong. */
+/** How far the finger travels for one zoom level: **a calibrated absolute distance,
+ *  capped so a short canvas stays usable** (§4, corrected by the 2026-07-30 device pass).
+ *
+ *  It was a pure share of the pane's height, reasoned by analogy from ADR-0123, and the
+ *  analogy is false: **a pin's size is a share of the canvas because a pin competes for
+ *  canvas area, but a drag's sensitivity belongs to the finger, and a finger does not
+ *  scale with the canvas.** The share therefore made the map extreme demand 250px per
+ *  level against `half`'s 122px — the more map you gave it, the heavier it got, which is
+ *  exactly backwards. Reported as _"the more space the map takes of the screen, the more
+ *  the drag feels slow"_.
+ *
+ *  The cap binds only below ~240px, where a flat distance would ask for most of the
+ *  canvas in one stroke. Floored as well, because a pane measured before layout would
+ *  otherwise make the gesture infinitely sensitive rather than merely wrong. */
 export function zoomPerLevelPx(paneHeightPx: number): number {
-  return Math.max(paneHeightPx * MAP_DRAG_ZOOM.SPAN_SHARE, MIN_PER_LEVEL_PX);
+  return Math.max(
+    Math.min(MAP_DRAG_ZOOM.PX_PER_LEVEL, paneHeightPx * MAP_DRAG_ZOOM.MAX_SHARE),
+    MIN_PER_LEVEL_PX,
+  );
+}
+
+/** **The double-tap's step: one level in from wherever you are, and nothing else** (§2).
+ *
+ *  It is deliberately NOT `zoomStepIn`, and reusing that was a real regression rather than
+ *  an inelegance (device pass, 2026-07-30 — owner: _"a double zoom ... zooms in really a
+ *  lot (~city size), even when you're zoomed out to the whole globe"_). That function is
+ *  **locate's** ladder, whose `floor` exists so that "take me to me" lands at a readable
+ *  zoom — so from a globe view it returns the floor outright (`current < floor`) instead of
+ *  stepping. A double-tap makes no such promise: it means *a bit closer than this*, from
+ *  wherever this is. Capped at the gesture's own ceiling rather than locate's
+ *  `STEP_IN_MAX`, so a double-tap can reach as deep as a pinch can. */
+export function doubleTapZoom(current: number): number {
+  return Math.min(current + 1, MAP_DRAG_ZOOM.MAX);
 }
 
 /** A pane this short is not laid out; the value only has to be non-degenerate. */
@@ -234,4 +262,38 @@ export function reduceDragZoom(
     ...next,
     hasTap: event.type === DRAG_ZOOM_EVENT.UP && travelled < MAP_DRAG_ZOOM.TAP_SLOP_PX,
   });
+}
+
+/** A point in Google's own world-coordinate space (the 256×256 Mercator square at zoom 0),
+ *  which is what `Projection.fromLatLngToPoint` speaks. */
+export interface WorldPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * **Keep a screen point fixed while the zoom changes** (ADR-0145 §3, point-anchoring).
+ *
+ * **There is no Mercator in here, and that is the design.** This works in Google's own
+ * world-coordinate space, where the relationship between world units and screen px is a
+ * pure power of two — so the only arithmetic is a scale change. Every nonlinear part of the
+ * projection stays inside Google's `fromLatLngToPoint`/`fromPointToLatLng`, which is what
+ * keeps this clear of ADR-0129 §3's warning about re-deriving Google's projection maths:
+ * we are asking Google to project, not projecting ourselves.
+ *
+ * At zoom `z`, `screenPx = worldUnits × 2^z`. The tapped point's world position is
+ * `centre + offset / 2^from`, and we want it to remain at the same `offset` afterwards,
+ * i.e. `centre' = tap − offset / 2^to`. Subtracting gives the one line below.
+ *
+ * `offsetPx` is measured from the CANVAS CENTRE (+x inline-end, +y down). World-space `y`
+ * grows southward exactly as screen `y` grows downward, so neither axis is flipped.
+ */
+export function zoomAboutPoint(
+  centre: WorldPoint,
+  offsetPx: WorldPoint,
+  fromZoom: number,
+  toZoom: number,
+): WorldPoint {
+  const shift = 2 ** -fromZoom - 2 ** -toZoom;
+  return { x: centre.x + offsetPx.x * shift, y: centre.y + offsetPx.y * shift };
 }

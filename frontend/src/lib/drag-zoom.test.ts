@@ -11,12 +11,14 @@ import {
   DRAG_ZOOM_PHASE,
   IDLE_DRAG_ZOOM,
   dragZoomLimits,
+  doubleTapZoom,
+  zoomAboutPoint,
   reduceDragZoom,
   zoomPerLevelPx,
   type DragZoomEventType,
   type DragZoomState,
 } from './drag-zoom';
-import { MAP_DRAG_ZOOM } from '../constants';
+import { MAP_DRAG_ZOOM, MAP_ZOOM } from '../constants';
 
 const LIMITS = { perLevelPx: 100, min: 2, max: 21 };
 const AT = 14;
@@ -258,12 +260,39 @@ describe('reduceDragZoom — what Google gets and what we take', () => {
   });
 });
 
-describe('zoomPerLevelPx / dragZoomLimits', () => {
-  it('is a share of the canvas, so a stop change re-scales the gesture (ADR-0123)', () => {
-    // The two stops this epic actually measured. A flat px sensitivity would make the
-    // gesture twice as sensitive at one of them.
-    expect(zoomPerLevelPx(509)).toBeCloseTo(509 * MAP_DRAG_ZOOM.SPAN_SHARE);
-    expect(zoomPerLevelPx(243)).toBeCloseTo(243 * MAP_DRAG_ZOOM.SPAN_SHARE);
+describe('zoomPerLevelPx — the device pass corrected the MODEL, not the number', () => {
+  // THE BUG (2026-07-30): sensitivity was a share of the pane's height, so a taller canvas
+  // demanded MORE finger travel per level — 250px at the map extreme against 122px at
+  // `half`. Reported as "the more space the map takes of the screen, the more the drag
+  // feels slow". The three heights below are the ones this epic has actually measured.
+  const MAP_EXTREME = 501; // owner's phone, session 143
+  const HALF = 243; // 390x844 at the 0.56 sheet fraction
+  const SHORT_HALF = 160; // 360x640 at `half`, ADR-0126's measurement
+
+  it('NEVER gets heavier than the calibrated feel, however tall the canvas', () => {
+    // The property that would have caught it: no canvas, at any size, may demand MORE
+    // finger travel per level than the stop the owner calibrated on. A taller canvas
+    // getting lighter is fine (that is the cap); getting heavier is the bug.
+    for (let h = 100; h <= 1200; h += 50) {
+      expect(zoomPerLevelPx(h)).toBeLessThanOrEqual(MAP_DRAG_ZOOM.PX_PER_LEVEL);
+    }
+    // And the reported case specifically: the map extreme is no heavier than `half`.
+    expect(zoomPerLevelPx(MAP_EXTREME)).toBeLessThanOrEqual(zoomPerLevelPx(HALF));
+  });
+
+  it('holds `half`’s calibrated feel and applies it at the map extreme too', () => {
+    // `half` is the stop the owner calibrated on, so it is the one that must not move —
+    // and the map extreme now matches it instead of being 2x heavier.
+    expect(zoomPerLevelPx(HALF)).toBe(MAP_DRAG_ZOOM.PX_PER_LEVEL);
+    expect(zoomPerLevelPx(MAP_EXTREME)).toBe(MAP_DRAG_ZOOM.PX_PER_LEVEL);
+  });
+
+  it('caps on a SHORT canvas, so a flat distance cannot ask for most of it', () => {
+    // The cap is the only place the canvas still enters the calculation. At 160px a flat
+    // 120 would be 75% of the canvas per level — worse than before the fix, for the one
+    // device that could least afford it.
+    expect(zoomPerLevelPx(SHORT_HALF)).toBe(SHORT_HALF * MAP_DRAG_ZOOM.MAX_SHARE);
+    expect(zoomPerLevelPx(SHORT_HALF)).toBeLessThan(MAP_DRAG_ZOOM.PX_PER_LEVEL);
   });
 
   it('floors an unlaid-out pane rather than becoming infinitely sensitive', () => {
@@ -279,5 +308,68 @@ describe('zoomPerLevelPx / dragZoomLimits', () => {
       min: MAP_DRAG_ZOOM.MIN,
       max: MAP_DRAG_ZOOM.MAX,
     });
+  });
+});
+
+describe('doubleTapZoom — one level from wherever you are', () => {
+  // THE BUG (2026-07-30): this reused `zoomStepIn`, which is LOCATE's ladder. Its
+  // `current < floor` branch returns the floor outright, so a double-tap on a globe view
+  // jumped straight to city zoom (14) instead of stepping. Reported as "it really doesn't
+  // matter how zoomed out you are, it zooms in really a lot".
+  it('steps ONE level from a wide view instead of jumping to a readable zoom', () => {
+    expect(doubleTapZoom(MAP_ZOOM.WORLD)).toBe(MAP_ZOOM.WORLD + 1);
+    // The regression, named: locate's floor is PLACE, and a double-tap must not land there.
+    expect(doubleTapZoom(MAP_ZOOM.WORLD)).toBeLessThan(MAP_ZOOM.PLACE);
+  });
+
+  it('steps one level from anywhere else, and stops at the gesture’s own ceiling', () => {
+    expect(doubleTapZoom(14)).toBe(15);
+    // Locate stops at STEP_IN_MAX; a double-tap goes as deep as a pinch can.
+    expect(doubleTapZoom(MAP_ZOOM.STEP_IN_MAX)).toBe(MAP_ZOOM.STEP_IN_MAX + 1);
+    expect(doubleTapZoom(MAP_DRAG_ZOOM.MAX)).toBe(MAP_DRAG_ZOOM.MAX);
+    expect(doubleTapZoom(MAP_DRAG_ZOOM.MAX + 5)).toBe(MAP_DRAG_ZOOM.MAX);
+  });
+});
+
+describe('zoomAboutPoint — the tapped point stays put', () => {
+  // Pure scale arithmetic in Google's world space. The invariant is stated the way the
+  // derivation states it: the tapped point's world position must be reachable from the NEW
+  // centre at the NEW zoom using the SAME screen offset.
+  const invariant = (offset: { x: number; y: number }, from: number, to: number) => {
+    const centre = { x: 128, y: 128 };
+    const next = zoomAboutPoint(centre, offset, from, to);
+    const tapBefore = { x: centre.x + offset.x / 2 ** from, y: centre.y + offset.y / 2 ** from };
+    const tapAfter = { x: next.x + offset.x / 2 ** to, y: next.y + offset.y / 2 ** to };
+    expect(tapAfter.x).toBeCloseTo(tapBefore.x, 12);
+    expect(tapAfter.y).toBeCloseTo(tapBefore.y, 12);
+  };
+
+  it('holds for a tap off-centre in every quadrant, zooming in', () => {
+    for (const offset of [
+      { x: 120, y: 80 },
+      { x: -120, y: 80 },
+      { x: 120, y: -80 },
+      { x: -120, y: -80 },
+    ]) {
+      invariant(offset, 14, 15);
+    }
+  });
+
+  it('holds at a globe zoom and at a deep one, and when zooming OUT', () => {
+    invariant({ x: 100, y: -60 }, 2, 3);
+    invariant({ x: 100, y: -60 }, 19, 20);
+    invariant({ x: 100, y: -60 }, 15, 14);
+  });
+
+  it('moves the centre TOWARD the tap when zooming in', () => {
+    // Sign check, which is the one thing an invariant that holds symmetrically cannot catch:
+    // a flipped axis satisfies "stays put" against its own flipped derivation.
+    const next = zoomAboutPoint({ x: 128, y: 128 }, { x: 256, y: 256 }, 14, 15);
+    expect(next.x).toBeGreaterThan(128);
+    expect(next.y).toBeGreaterThan(128);
+  });
+
+  it('is a no-op for a tap dead centre', () => {
+    expect(zoomAboutPoint({ x: 128, y: 128 }, { x: 0, y: 0 }, 14, 15)).toEqual({ x: 128, y: 128 });
   });
 });

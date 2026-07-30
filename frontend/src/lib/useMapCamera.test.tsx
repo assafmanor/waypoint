@@ -83,6 +83,31 @@ class FakeMap {
     this.pans.push(center);
     this.center = center;
   }
+  /** Google's own documented Web Mercator, so the anchoring test exercises the REAL
+   *  round trip rather than a linear stand-in — a linear fake would pass while the shipped
+   *  code was wrong about latitude, which is the whole risk of this feature.
+   *  `hasProjection` false models a map that has not rendered yet. */
+  hasProjection = true;
+  getProjection() {
+    if (!this.hasProjection) return undefined;
+    const S = 256;
+    return {
+      fromLatLngToPoint: (ll: LatLng) => {
+        const siny = Math.min(Math.max(Math.sin((ll.lat * Math.PI) / 180), -0.9999), 0.9999);
+        return {
+          x: S / 2 + ll.lng * (S / 360),
+          y: S / 2 - 0.5 * Math.log((1 + siny) / (1 - siny)) * (S / (2 * Math.PI)),
+        };
+      },
+      fromPointToLatLng: (p: { x: number; y: number }) => {
+        const lng = (p.x - S / 2) / (S / 360);
+        const lat =
+          (2 * Math.atan(Math.exp(((S / 2 - p.y) * (2 * Math.PI)) / S)) - Math.PI / 2) *
+          (180 / Math.PI);
+        return { lat: () => lat, lng: () => lng };
+      },
+    } as unknown as google.maps.Projection;
+  }
   addListener(type: string, fn: () => void) {
     const set = this.handlers.get(type) ?? new Set();
     set.add(fn);
@@ -610,8 +635,7 @@ describe('the one-finger zoom’s two camera verbs (ADR-0145 §5/§2)', () => {
 
   it('stepZoomIn eases one level in about the current centre', () => {
     // The double-tap we take over from Google because intercepting the gesture suppressed
-    // its own (§2). It reuses the shipped ladder, so it lands where locate's repeat tap
-    // would — and it goes through the ease, unlike Google's, which could not be asked to.
+    // its own (§2). It goes through the ease, unlike Google's, which could not be asked to.
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(map, DAY);
@@ -622,13 +646,91 @@ describe('the one-finger zoom’s two camera verbs (ADR-0145 §5/§2)', () => {
     expect(map.center).toEqual(centre);
   });
 
-  it('stepZoomIn stops at the ladder’s ceiling rather than climbing forever', () => {
+  // THE REGRESSION, and worth reading as a lesson about this file: the two cases below
+  // used to be one test that asserted `MAP_ZOOM.STEP_IN_MAX` — i.e. it ENCODED the bug,
+  // and passed. `stepZoomIn` reused `zoomStepIn`, which is LOCATE's ladder: its
+  // `current < floor` branch returns the floor outright, so a double-tap from a globe view
+  // jumped to city zoom instead of stepping, and its ceiling capped a gesture that should
+  // reach as deep as a pinch. Only a device found it (owner, 2026-07-30).
+  it('steps ONE level from a wide view — it does not jump to locate’s floor', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.zoom = MAP_ZOOM.WORLD;
+    view.result.current.stepZoomIn();
+    expect(map.zoom).toBe(MAP_ZOOM.WORLD + 1);
+    expect(map.zoom).toBeLessThan(MAP_ZOOM.PLACE);
+  });
+
+  it('is not capped by locate’s ceiling — a double-tap goes as deep as a pinch', () => {
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(map, DAY);
     map.zoom = MAP_ZOOM.STEP_IN_MAX;
     view.result.current.stepZoomIn();
-    expect(map.zoom).toBe(MAP_ZOOM.STEP_IN_MAX);
+    expect(map.zoom).toBe(MAP_ZOOM.STEP_IN_MAX + 1);
+  });
+
+  // POINT ANCHORING (§3's amendment). Google's own double-click zoom anchored at the tapped
+  // point; suppressing it and centring instead was a downgrade the device pass caught. The
+  // assertion is the behaviour, not the arithmetic: the geography under the finger must not
+  // move. It runs through the fake's real Mercator, so a latitude error cannot hide.
+  it('anchors the step-zoom at the tapped point — the geography under the finger stays put', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    // After mount: the opening framing fits the day, so a camera set before it is discarded.
+    map.center = TOKYO;
+    map.zoom = 14;
+    const offset = { x: 120, y: -80 };
+
+    const proj = map.getProjection()!;
+    const screenOf = (at: LatLng, centre: LatLng, zoom: number) => {
+      const p = proj.fromLatLngToPoint(at)!;
+      const c = proj.fromLatLngToPoint(centre)!;
+      return { x: (p.x - c.x) * 2 ** zoom, y: (p.y - c.y) * 2 ** zoom };
+    };
+    // What is under the finger before the tap.
+    const worldUnderFinger = proj.fromPointToLatLng({
+      x: proj.fromLatLngToPoint(TOKYO)!.x + offset.x / 2 ** 14,
+      y: proj.fromLatLngToPoint(TOKYO)!.y + offset.y / 2 ** 14,
+    } as google.maps.Point)!;
+    const before = { lat: worldUnderFinger.lat(), lng: worldUnderFinger.lng() };
+
+    view.result.current.stepZoomIn(offset);
+
+    // Same screen offset after the move, at the new zoom.
+    const after = screenOf(before, map.center, map.zoom);
+    expect(after.x).toBeCloseTo(offset.x, 6);
+    expect(after.y).toBeCloseTo(offset.y, 6);
+    // And it really did zoom, and really did move off centre.
+    expect(map.zoom).toBe(15);
+    expect(map.center).not.toEqual(TOKYO);
+  });
+
+  it('degrades to centre-anchored when the map has no projection yet', () => {
+    // A map has no projection until it has rendered, and a double-tap before then must still
+    // zoom rather than throw or refuse.
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    map.hasProjection = false;
+    const view = mount(map, DAY);
+    map.center = TOKYO;
+    map.zoom = 14;
+    view.result.current.stepZoomIn({ x: 120, y: -80 });
+    expect(map.zoom).toBe(15);
+    expect(map.center).toEqual(TOKYO);
+  });
+
+  it('a centred tap does not move the centre', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.center = TOKYO;
+    map.zoom = 14;
+    view.result.current.stepZoomIn({ x: 0, y: 0 });
+    expect(map.center).toEqual(TOKYO);
+    expect(map.zoom).toBe(15);
   });
 
   it('neither verb touches a map that has no camera yet', () => {
