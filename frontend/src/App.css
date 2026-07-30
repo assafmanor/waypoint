@@ -1913,8 +1913,11 @@
 .birth-born {
   position: absolute;
   inset: 0;
-  /* Clears the shared header. */
-  top: var(--birth-head, 66px);
+  /* Clears the shared header, from its MEASURED height — `--head-h` is set from JS
+     alongside `--card-top`. The first build guessed `66px` here too; a guessed offset is
+     what put the birth card over the form's fields, and this one would drift the moment
+     the header wrapped or an offline badge appeared inside it. */
+  top: var(--head-h, 0px);
 }
 
 /* ── The form's assembly ──────────────────────────────────────────────────────
@@ -2083,12 +2086,29 @@
 }
 
 /* ── The born screen's content arrives ───────────────────────────────────────── */
+/* Hidden until its beat, so the born screen assembles rather than appearing whole. */
 .birth-arr {
   opacity: 0;
 }
 .birth[data-content='in'] .birth-arr {
-  animation: birth-in var(--t-base) var(--ease-arrive) forwards;
+  /* `birth-arrive`, NOT the form's `birth-in`. That keyframe declares only a `from`, so
+     its implicit `to` is the element's own computed style — which for `.birth-arr` is
+     `opacity: 0`. It therefore animated from invisible TO invisible, and the entire born
+     screen (hero, board, invite, CTAs) never appeared: the owner's device showed a lone
+     committed card on an empty screen. An animation whose target is hidden by default
+     must state its destination. */
+  animation: birth-arrive var(--t-base) var(--ease-arrive) forwards;
   animation-delay: calc(var(--i) * var(--stagger-step));
+}
+@keyframes birth-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── THE BOARD'S FIRST DEPARTURE ──────────────────────────────────────────────
@@ -2287,7 +2307,7 @@
 }
 .invite-box[data-copied] .cp {
   color: var(--ok);
-  animation: birth-in var(--t-quick) var(--ease-arrive);
+  animation: birth-arrive var(--t-quick) var(--ease-arrive);
 }
 
 /* ============================================================
