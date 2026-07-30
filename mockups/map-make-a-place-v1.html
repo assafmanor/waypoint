@@ -10032,7 +10032,9 @@ body {
                    and it sits on the name's line rather than below it. -->
               <div class="map-namefield">
                 <div class="icon-picker">
-                  <button type="button" class="icon-chip" aria-haspopup="true" aria-expanded="false" aria-label="בחירת סמל">
+                  <!-- The glyph shown is the DERIVED one until a human picks (see §C): with
+                       `טבע` selected this is `iconForCategory('nature')`. -->
+                  <button type="button" class="icon-chip" id="formIcon" aria-haspopup="true" aria-expanded="false" aria-label="בחירת סמל">
                     📍
                   </button>
                 </div>
@@ -10453,6 +10455,34 @@ body {
               <strong>ולמה המפה עשויה להיות שונה:</strong> שם קטגוריה היא מטא־דאטה בלתי־נראית.
               <em>כאן היא הגוון של הסיכה.</em> בלי בחירה, סיכה של מסעדה יוצאת ירוקה — ועל משטח
               שהדקדוק שלו הוא "צבע = קטגוריה" זה מידע שגוי, לא היעדר מידע.
+            </p>
+          </div>
+        </div>
+
+        <div class="mk-note">
+          <h4>קטגוריה מניעה את הסמל, עד שאדם אומר אחרת</h4>
+          <p>
+            הוכרע (הבעלים): <strong>אם לא נבחר סמל, בחירת קטגוריה קובעת סמל ברירת־מחדל</strong> —
+            בדיוק כמו באירועים והזמנות — <em>והמשתמש יכול לשנות</em>.
+          </p>
+          <p>
+            <strong>והמכניזם קיים ואין מה להמציא:</strong> <code>lib/useDerivedField.ts</code>,
+            שחולץ בדיוק בגלל שהיו <em>חמישה</em> זוגות <code>*Touched</code> מגולפים ביד
+            (<code>EventForm</code>'s <code>iconTouched</code>/<code>kindTouched</code>/
+            <code>bookedTouched</code> ו‑<code>BookingSheet</code>'s שניים). אז זה שלוש שורות:
+          </p>
+          <p style="font-family: 'JetBrains Mono', monospace; font-size: 11px; direction: ltr; text-align: left; background: var(--screen); padding: 8px 10px; border-radius: 8px">
+            const icon = useDerivedField(DEFAULT_MAYBE_ICON,<br />
+            &nbsp;&nbsp;{ initiallyTouched: Boolean(place?.icon) })<br /><br />
+            onCategory: icon.redrive(iconForCategory(next))<br />
+            onPick:&nbsp;&nbsp;&nbsp;&nbsp; icon.set(glyph)
+          </p>
+          <div class="mk-verdict">
+            <p style="margin: 0">
+              <strong>ו‑<code>initiallyTouched</code> הוא מה שמכסה את שינוי־השם:</strong> מקום
+              שכבר נושא סמל נחשב "אדם בחר", ולכן הקשה על קטגוריה <em>לא</em> תדרוס אותו. זה בדיוק
+              מה ש‑<code>EventForm</code> עושה לאירוע קיים, וההערה בקובץ קוראת לזה
+              "the load-bearing case".
             </p>
           </div>
         </div>
