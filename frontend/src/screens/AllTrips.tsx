@@ -13,7 +13,8 @@ import { useNavigate } from 'react-router-dom';
 import type { Trip } from '@waypoint/shared';
 import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
-import { useBackLayer } from '../state/nav-state';
+import { NAV_DIR, useBackLayer } from '../state/nav-state';
+import { beginTripHandoff } from '../lib/trip-handoff';
 import { useIsOffline } from '../lib/outbox';
 import { loadTripList } from '../lib/cache';
 import { tripChip, type TripChip } from '../lib/active-trip';
@@ -98,7 +99,11 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
   // (ADR-0090 keeps the snapshot to navigation facts). Gated on exactly what renders the
   // arrow, and bound to the same handler, so the two cannot drift apart again.
   const hasLiveTrip = (trips ?? []).some((trip) => tripChip(trip, now) === 'now');
-  const backToLiveTrip = () => navigate('/');
+  // Stamped BACK for the same reason `runStructural` stamps it (ADR-0140 §3): this is a
+  // back that moves, so it must recede rather than advance. It navigates here rather than
+  // through the resolver — "is there a live trip" is data only this screen has — which is
+  // exactly how it was left reading as a forward push.
+  const backToLiveTrip = () => navigate('/', { state: { navDir: NAV_DIR.BACK } });
   useBackLayer(() => {
     backToLiveTrip();
     return { remainsActive: false };
@@ -112,13 +117,19 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
   buckets.soon.sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
   buckets.past.sort((a, b) => (a.endDate > b.endDate ? -1 : 1));
 
-  const pick = (trip: Trip) => {
+  // Picking a trip carries its glyph into the shell's switcher pill (ADR-0140 §7). The
+  // handoff and the ordinary forward slide are ALTERNATIVES, never both: the shared
+  // element is already the answer to "where did this come from", and a translating shell
+  // would offset the rect the glyph is aiming at. So when it can't fly — reduced motion,
+  // a tile with no measurable box — the plain route transition plays instead.
+  const pick = (trip: Trip, card: HTMLElement) => {
     setTripId(trip.id);
-    navigate('/');
+    const flying = beginTripHandoff(card.querySelector('.flag'), trip.id);
+    navigate('/', flying ? { state: { navDir: NAV_DIR.HANDOFF } } : undefined);
   };
 
   const hero = (trip: Trip) => (
-    <button key={trip.id} className="trip-hero" onClick={() => pick(trip)}>
+    <button key={trip.id} className="trip-hero" onClick={(e) => pick(trip, e.currentTarget)}>
       <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
       <span className="main">
         <span className="t">{trip.name}</span>
@@ -134,7 +145,7 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
     <button
       key={trip.id}
       className={'trip-card' + (chip === 'past' ? ' is-past' : '')}
-      onClick={() => pick(trip)}
+      onClick={(e) => pick(trip, e.currentTarget)}
     >
       <span className="flag">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
       <span className="main">

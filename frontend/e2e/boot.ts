@@ -276,6 +276,56 @@ export async function bootIntoCreate(page: Page): Promise<void> {
   await page.goto('/new');
 }
 
+/** The all-trips list, with one trip of each shape the handoff has to work from: a live
+ *  trip (the indigo hero, a 52px tile) and an upcoming one (a paper row, 46px). Both carry
+ *  an explicit icon, since the glyph is the object that travels (ADR-0140 §7).
+ *
+ *  The live trip takes SHORT dates deliberately — the default 15-year range renders a day
+ *  strip of thousands of buttons, and this spec lands inside the trip. */
+export function twoTrips(): Record<string, unknown>[] {
+  const day = 24 * 60 * 60 * 1000;
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return [
+    { ...TRIP, ...shortLiveTripDates(), icon: '🗼' },
+    {
+      ...TRIP,
+      id: 't2',
+      name: 'ליסבון',
+      destination: 'Lisboa',
+      icon: '🛥️',
+      startDate: iso(today + 30 * day),
+      endDate: iso(today + 40 * day),
+    },
+  ];
+}
+
+/** Land on `/trips` with both list shapes rendered, and both trips openable. */
+export async function bootIntoAllTrips(page: Page): Promise<void> {
+  const trips = twoTrips();
+  await mockAuth(page, [MEMBERSHIP]);
+  await page.route(
+    (u) => u.pathname === '/trips',
+    (r) => (r.request().resourceType() === 'document' ? r.continue() : r.fulfill({ json: trips })),
+  );
+  for (const trip of trips) {
+    const id = trip.id as string;
+    await page.route(
+      (u) => u.pathname === `/trips/${id}/snapshot`,
+      (r) => r.fulfill({ json: { ...SNAPSHOT, trip } }),
+    );
+    await page.route(
+      (u) => u.pathname === `/trips/${id}/changes`,
+      (r) => r.fulfill({ json: [] }),
+    );
+  }
+  await page.addInitScript(
+    (me) => localStorage.setItem('wp_me', me as string),
+    JSON.stringify({ user: USER, memberships: [MEMBERSHIP] }),
+  );
+  await page.goto('/trips');
+}
+
 /** The public invite preview a `/join/:code` visit reads. */
 export const INVITE_PREVIEW = {
   tripId: 't1',

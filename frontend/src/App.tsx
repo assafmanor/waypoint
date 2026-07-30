@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Navigate,
   Outlet,
@@ -22,6 +22,7 @@ import {
   shouldResetToHomeOnResume,
   useCloseAllOverlays,
   navDirectionFrom,
+  type NavDir,
   useMarkInsideTrip,
   useTripBackGuard,
   useTripTab,
@@ -39,7 +40,8 @@ import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
-import { AppShell, BODY_FULLBLEED, CHROME_RECLAIMED } from './ui/layout';
+import { AppShell, BODY_FULLBLEED, CHROME_RECLAIMED, TripHandoffLayer } from './ui/layout';
+import { useTripHandoffTarget } from './lib/trip-handoff';
 import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
@@ -170,6 +172,10 @@ function Header({
     HTMLSpanElement,
     HTMLDivElement
   >(trip.name);
+  // The receiving end of the trip handoff (ADR-0140 §7): when this shell was reached by
+  // picking the trip out of the all-trips list, its glyph is already in the air, and the
+  // pill's own copy stays hidden until it lands.
+  const handoff = useTripHandoffTarget(trip.id);
   // The account avatar (ringed, opens the account sheet) already shows "me" —
   // the member cluster is everyone else, capped with a "+N" overflow bubble
   // (app-shell.md §6, PR #57).
@@ -234,7 +240,11 @@ function Header({
             onClick={onOpenSwitcher}
             aria-label={t.shell.switcher.title}
           >
-            <span className="trip-icon" aria-hidden="true">
+            <span
+              ref={handoff.ref}
+              className={'trip-icon' + (handoff.landing ? ' is-handoff' : '')}
+              aria-hidden="true"
+            >
               {trip.icon ?? DEFAULT_TRIP_ICON}
             </span>
             <span ref={tripNameRef} className="trip-name">
@@ -686,12 +696,11 @@ function AppRoutes() {
   // second animation on top of it. So the same key that replays the animation is
   // also what scopes it to shell navigation — no route list to keep in sync.
   const location = useLocation();
-  const navDir = navDirectionFrom(location.state);
   // Suspense boundary for the lazily-loaded route screens (F-07). The fallback is
   // the same boot screen the gate already uses, so a chunk fetch reads as booting.
   return (
     <Suspense fallback={<BootScreen />}>
-      <div className="route-shell" data-nav={navDir} key={location.pathname}>
+      <RouteShell key={location.pathname} arrivedAs={navDirectionFrom(location.state)}>
         <Routes>
           <Route element={<AuthGate />}>
             <Route path="login" element={<Login />} />
@@ -707,8 +716,30 @@ function AppRoutes() {
             <Route path="*" element={<RootSurface />} />
           </Route>
         </Routes>
-      </div>
+      </RouteShell>
     </Suspense>
+  );
+}
+
+/** The keyed wrapper the route transition plays on, and the reason it LATCHES its
+ *  direction (session 192).
+ *
+ *  How you arrived is a fact about the arrival, so it is captured once, at mount. Read
+ *  live it is a fact about the most recent `navigate` — and the trip's back guard pushes
+ *  a **same-URL** entry a beat after you enter a trip (ADR-0103), with no state and
+ *  therefore reading as forward. Same pathname means the same key, so nothing remounts;
+ *  but `data-nav` flipping is enough to start a *second* animation, and the shell slid
+ *  28px into a screen that had already arrived.
+ *
+ *  Invisible while every arrival was `forward` (the attribute never changed value), and
+ *  immediate once the handoff gave arrivals a second manner — which is why it surfaced
+ *  now and not when the transition shipped. */
+function RouteShell({ arrivedAs, children }: { arrivedAs: NavDir; children: ReactNode }) {
+  const [dir] = useState(arrivedAs);
+  return (
+    <div className="route-shell" data-nav={dir}>
+      {children}
+    </div>
   );
 }
 
@@ -761,6 +792,10 @@ export function App() {
             <ConfirmProvider>
               <OutboxAutoFlush />
               <AppRoutes />
+              {/* Outside AppRoutes on purpose: the glyph a trip pick puts in the air has
+                  to outlive both the list it came from and the boot screen that follows
+                  it (ADR-0140 §7). */}
+              <TripHandoffLayer />
               {import.meta.env.DEV && <DevTimeTravel />}
               {/* Nav-debug HUD, gated behind VITE_NAV_DEBUG (inert in production). */}
               <NavDebugHud />

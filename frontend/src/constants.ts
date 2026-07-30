@@ -641,6 +641,11 @@ export const FILTER_STAGGER_MAX_MS = 220;
 export const LIST_MOVE_MS = 240;
 export const LIST_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
+/** `--ease-arrive` as a literal, for the Web Animations API — which takes a value, not a
+ *  CSS variable. Same pairing as `LIST_MOVE_EASING` beside the reveal's duration; keep
+ *  the two in step with `tokens.css`. */
+export const EASE_ARRIVE = 'cubic-bezier(0.22, 1.16, 0.36, 1)';
+
 /** The invite pass's choreography (ADR-0143) — the stamp and the tear.
  *
  *  Same distinction as `TRIP_BIRTH`: these are SEQUENCE, not ramp values. `STAMP_MS`
@@ -648,14 +653,22 @@ export const LIST_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
  *  the tear plays before the handoff — so the whole thing between a successful join and
  *  landing in the trip is their sum. Short on purpose: this is the beat between
  *  deciding and arriving, not a set piece of its own. */
-/** `--ease-arrive` as a literal, for the Web Animations API — which takes a value, not a
- *  CSS variable. Same pairing as `LIST_MOVE_EASING` beside the reveal's duration; keep
- *  the two in step with `tokens.css`. */
-export const EASE_ARRIVE = 'cubic-bezier(0.22, 1.16, 0.36, 1)';
-
 export const JOIN_PASS = {
   STAMP_MS: 420,
   TEAR_MS: 420,
+} as const;
+
+/** The trip handoff (`lib/trip-handoff.ts`, ADR-0140 §7). The flight's own duration is
+ *  `--t-deliberate` off the ramp — these two are the parts the ramp cannot answer.
+ *
+ *  `STRAND_MS` bounds the WAIT, which is the one thing about this gesture nothing can
+ *  predict: the glyph is picked up before the trip shell exists, and how long that takes
+ *  is a boot fetch. `TILE_FADE` is the FRACTION of the flight the tile's fill takes to
+ *  dissolve — early enough that the last stretch of the travel is already the bare glyph
+ *  the pill will receive, late enough that the object visibly leaves the list as a tile. */
+export const TRIP_HANDOFF = {
+  STRAND_MS: 1200,
+  TILE_FADE: 0.6,
 } as const;
 
 /** A value that changes should be seen to change (`lib/useCountUp.ts`, ADR-0143).

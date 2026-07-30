@@ -203,8 +203,15 @@ export function backSlides(action: BackAction): boolean {
  *  `navigate(...)` in the app stamps nothing and therefore reads as forward, which
  *  is the correct default and needs no call-site changes. Carrying it on the entry
  *  rather than in a ref is also what makes it survive a re-render and Strict Mode's
- *  double-invoke, both of which would drop a consume-once flag. */
-export const NAV_DIR = { FORWARD: 'forward', BACK: 'back' } as const;
+ *  double-invoke, both of which would drop a consume-once flag.
+ *
+ *  `HANDOFF` is not a direction but a MANNER of arrival, and it rides the same key on
+ *  purpose: a second channel saying the same kind of thing about the same navigation is
+ *  the duplication rule 8 exists to prevent. It marks an arrival that brings its own
+ *  shared element (the trip handoff, ADR-0140 §7), which the shell must answer by not
+ *  translating — a screen sliding under a flying glyph is two answers to one question,
+ *  and an ancestor mid-transform also makes the landing target unmeasurable. */
+export const NAV_DIR = { FORWARD: 'forward', BACK: 'back', HANDOFF: 'handoff' } as const;
 export type NavDir = (typeof NAV_DIR)[keyof typeof NAV_DIR];
 
 /** Read the direction off a `location.state`, defaulting to forward. Tolerates the
@@ -212,7 +219,9 @@ export type NavDir = (typeof NAV_DIR)[keyof typeof NAV_DIR];
  *  entry, so this may not assume our own key is there. */
 export function navDirectionFrom(state: unknown): NavDir {
   const dir = (state as { navDir?: unknown } | null)?.navDir;
-  return dir === NAV_DIR.BACK ? NAV_DIR.BACK : NAV_DIR.FORWARD;
+  if (dir === NAV_DIR.BACK) return NAV_DIR.BACK;
+  if (dir === NAV_DIR.HANDOFF) return NAV_DIR.HANDOFF;
+  return NAV_DIR.FORWARD;
 }
 
 /** The correction applied when the platform delivered a structural system-back

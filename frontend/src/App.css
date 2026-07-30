@@ -182,6 +182,12 @@
   font-size: 22px;
   line-height: 1;
 }
+/* A handoff's glyph is still in the air (ADR-0140 §7) — a shared element that arrives
+   beside a copy of itself is just two glyphs. `visibility`, not `display`, because the
+   flight's landing rect is measured off this element while it is hidden. */
+.trip-icon.is-handoff {
+  visibility: hidden;
+}
 .trip-sub {
   color: #9daac8;
   font-size: 13px;
@@ -1781,6 +1787,19 @@
   from {
     opacity: 0;
     transform: translateX(calc(var(--dir) * -1 * var(--route-offset)));
+  }
+}
+/* An arrival that carries its own shared element (the trip handoff, ADR-0140 §7) fades
+   and does not travel. Two reasons, and the second is correctness, not taste: the glyph
+   flying above is already the answer to "where did this come from", and a transform on
+   this ancestor would offset the pill's measured rect — the glyph would land beside its
+   target rather than on it. */
+.route-shell[data-nav='handoff'] {
+  animation: route-in-fade var(--t-base) var(--ease-standard);
+}
+@keyframes route-in-fade {
+  from {
+    opacity: 0;
   }
 }
 

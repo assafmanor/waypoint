@@ -8,4 +8,5 @@ export { Section, type SectionProps } from './Section';
 export { Stack, Inline } from './Stack';
 export { StickyActionBar, type StickyActionBarProps } from './StickyActionBar';
 export { ResponsiveGrid, type ResponsiveGridProps } from './ResponsiveGrid';
+export { TripHandoffLayer } from './TripHandoffLayer';
 export type { Space, Align, Justify } from './shared';
