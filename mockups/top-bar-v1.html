@@ -3382,16 +3382,21 @@ button.wp-av:focus-visible {
         font-size: 11.5px;
         color: #94a3c6;
       }
+      /* The bezel is padding, so the FRAME has to be the screen plus it — sized
+         from JS as `screen + 16`. The first pass set the frame to 390 and left a
+         374px viewport, which made every width in the table 16px pessimistic and
+         truncated a name that fits on the device. */
       .mk-phone {
         position: relative;
-        width: 390px;
-        height: 780px;
+        width: 406px;
+        height: 860px;
         border-radius: 38px;
         border: 1px solid rgba(255, 255, 255, 0.16);
         background: #000;
         padding: 8px;
         box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.9);
-        transition: width 0.2s ease;
+        /* No width transition: `measure()` runs on the next frame, so an animating
+           frame is read mid-flight and every width in the table is a lie. */
       }
       .mk-screen {
         position: relative;
@@ -3401,6 +3406,13 @@ button.wp-av:focus-visible {
         overflow: hidden;
         background: var(--screen);
         isolation: isolate;
+        /* MOCKUP-ONLY: a notched phone's top inset. `--safe-top` is 0 in a desktop
+           browser, so without this BOTH headers render as if there were no notch —
+           and the faked status bar then sits ON the first row, which is what made
+           the sync badge look like it was colliding with the clock. Both frames pay
+           it identically, so the delta the table prints is unaffected; only the
+           absolute heights and the percentages become the ones a phone has. */
+        --safe-top: 44px;
       }
       /* MOCKUP-ONLY: `.app` ships `height: 100dvh`, which inside a frame would be
          the whole page. Confine it to the frame; nothing else about it changes. */
@@ -3448,6 +3460,7 @@ button.wp-av:focus-visible {
       .mk-filler {
         border-radius: var(--radius-16, 16px);
         background: var(--card);
+        color: var(--ink);
         border: 1px solid var(--line);
         padding: 14px;
         margin-bottom: 12px;
@@ -3478,6 +3491,64 @@ button.wp-av:focus-visible {
         color: var(--amber);
         font-size: 12px;
         font-weight: 700;
+      }
+      /* MOCKUP-ONLY: the faked Map tab — a canvas that owns its height and the list
+         sheet under it. Its only job is to show what the chrome leaves behind. */
+      .mk-map {
+        display: flex;
+        flex-direction: column;
+      }
+      .mk-canvas {
+        position: relative;
+        flex: 1 1 auto;
+        min-height: 0;
+        background:
+          radial-gradient(60% 45% at 30% 25%, #dfe7d8 0%, transparent 60%),
+          radial-gradient(50% 40% at 78% 70%, #e6ded0 0%, transparent 60%), #cfdce4;
+      }
+      .mk-pin {
+        position: absolute;
+        width: 15px;
+        height: 15px;
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        border: 1.5px solid rgba(255, 255, 255, 0.85);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.28);
+      }
+      .mk-attrib {
+        position: absolute;
+        inset-block-end: 4px;
+        inset-inline-start: 6px;
+        font-size: 9px;
+        color: #5c6675;
+      }
+      .mk-mapsheet {
+        flex: 0 0 auto;
+        background: var(--card);
+        color: var(--ink);
+        border-radius: 16px 16px 0 0;
+        padding: 6px 14px calc(70px + var(--safe-bottom));
+        box-shadow: 0 -8px 24px -14px rgba(14, 23, 41, 0.5);
+      }
+      .mk-grab {
+        display: block;
+        width: 36px;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--soft-line);
+        margin: 4px auto 8px;
+      }
+      .mk-maprow {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 9px 0;
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+      }
+      .mk-maprow span {
+        font-size: 11.5px;
+        color: var(--muted);
       }
       .mk-fold {
         position: absolute;
@@ -3644,6 +3715,41 @@ button.wp-av:focus-visible {
           opacity var(--t-quick) var(--ease-exit);
       }
 
+      /* ── The exit. A visible, conventional control at the leading edge, because
+         DISCOVERY is the reported problem and a menu cannot solve one: you have to
+         already know to tap it. This is also the visible twin of navigation the app
+         ALREADY has — the two-tap back out of trip Home (`shell.leaveTripHint`) —
+         which until now had no control at all. Reuses `.chrome-ghost-btn`'s
+         treatment, the shipped generalisation for an icon control on `.mode-chrome`. */
+      .hdr-out {
+        flex: 0 0 auto;
+        width: 36px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        background: none;
+        padding: 0;
+        color: #9daac8;
+        cursor: pointer;
+        margin-inline-start: -6px;
+      }
+      .hdr-out:hover {
+        color: #fff;
+      }
+      .hdr-out:focus-visible {
+        outline: 2.5px solid var(--teal);
+        outline-offset: -2px;
+        border-radius: 9px;
+      }
+      .hdr-out .icon {
+        width: 21px;
+        height: 21px;
+      }
+      .app[data-mode='plan'] .hdr-out {
+        color: var(--plan-deep);
+      }
+
       /* ── The trip chip. One control, and it is a MENU button, not a title that
          happens to navigate (ADR-0149 §2). */
       .hdr-trip {
@@ -3670,9 +3776,22 @@ button.wp-av:focus-visible {
         outline: 2.5px solid var(--teal);
         outline-offset: 2px;
       }
-      .hdr-trip .trip-icon {
+      /* The glyph gets a fixed box of its own, because the status badge hangs off
+         it. A badge on the CHIP's corner (the first pass) leaves the chip's box and
+         lands on whatever is above it — on a notched phone, the status bar's clock. */
+      .hdr-tripglyph {
+        position: relative;
+        flex: 0 0 auto;
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
         font-size: 20px;
+        line-height: 1;
       }
+      /* `useShrinkToFit` steps this down before the ellipsis ever runs. The shipped
+         pill ramps 26 → 15; a 17px pill needs its own floor, or the hook's default
+         minimum is ABOVE this design's starting size and never fires at all. */
       .hdr-trip-name {
         font-family: var(--font-head);
         font-size: 17px;
@@ -3695,15 +3814,15 @@ button.wp-av:focus-visible {
       }
       /* The "there is more than one of these" cue — absent on a single-trip
          account, because a control with no source is not drawn (ADR-0045). */
-      .hdr-trip .hdr-stack {
+      .hdr-tripglyph .hdr-stack {
         position: absolute;
-        inset-block-start: 6px;
-        inset-inline-start: 7px;
+        inset-block-start: 0;
+        inset-inline-start: 0;
         width: 15px;
         height: 15px;
         border-radius: 5px;
         border: 1.5px solid rgba(255, 255, 255, 0.3);
-        transform: translate(calc(var(--dir) * 4px), -4px);
+        transform: translate(calc(var(--dir) * 5px), -5px);
         pointer-events: none;
       }
 
@@ -3712,14 +3831,14 @@ button.wp-av:focus-visible {
          (ADR-0149 §5). Silent when everything is synced. */
       .hdr-trip-status {
         position: absolute;
-        inset-block-start: -3px;
-        inset-inline-start: -3px;
-        width: 19px;
-        height: 19px;
+        inset-block-end: -5px;
+        inset-inline-start: -6px;
+        width: 17px;
+        height: 17px;
         border-radius: 50%;
         display: grid;
         place-items: center;
-        font-size: 11px;
+        font-size: 10px;
         border: 2px solid var(--indigo);
         background: var(--muted);
         color: #fff; /* fixed: on-fill ink */
@@ -3741,6 +3860,19 @@ button.wp-av:focus-visible {
 
       /* ── The people stack. ONE control where the shipped bar has two adjacent
          circles doing different things (roster / account) — see ADR-0149 §3. */
+      .header.is-v2:has(.hdr-out) .hdr-trip {
+        padding-inline: 10px 8px;
+      }
+      /* With the exit drawn beside it, the caret is a menu hint rather than the
+         control carrying the promise — so it drops the filled circle and gives the
+         ~14px back to the name, which is what the exit cost. */
+      .header.is-v2:has(.hdr-out) .hdr-trip .hdr-caret {
+        background: none;
+        width: 14px;
+        height: 14px;
+        font-size: 10px;
+        opacity: 0.7;
+      }
       .hdr-people {
         flex: 0 0 auto;
         height: 44px;
@@ -3748,7 +3880,7 @@ button.wp-av:focus-visible {
         align-items: center;
         background: none;
         border: 0;
-        padding: 0 2px;
+        padding: 0;
         cursor: pointer;
         font: inherit;
         color: inherit;
@@ -3761,11 +3893,16 @@ button.wp-av:focus-visible {
       .hdr-people .avatars {
         margin-inline-end: 0;
       }
+      /* Three circles, total, and you are one of them. The shipped bar caps the
+         cluster at two OTHERS and then draws your avatar beside it, so a five-person
+         trip is four circles + a gear = 122px of a 358px row spent on three rare
+         controls — which is what was truncating the trip name. The stack is an
+         ENTRY POINT; the roster is the sheet it opens. */
       .hdr-people .av {
-        width: 28px;
-        height: 28px;
-        font-size: 11.5px;
-        margin-inline-start: -10px;
+        width: 26px;
+        height: 26px;
+        font-size: 11px;
+        margin-inline-start: -7px;
       }
       /* "You" leads the stack and keeps the ring; the overlap order puts you on
          top, so the ring is never clipped by the next avatar. */
@@ -3788,30 +3925,40 @@ button.wp-av:focus-visible {
         border-radius: var(--radius-999);
         background: rgba(255, 255, 255, 0.08);
       }
+      /* The button is the 44px tap target; the PILL is an inner box at 36px. The
+         first pass tried to get that from `background-clip: content-box` on the
+         button itself, which also strips the horizontal padding from the paint — so
+         the fill hugged the label and the icon sat half off it. The floor and the
+         visual weight are two boxes, and they have to be two elements. */
       .hdr-mode button {
+        display: grid;
+        place-items: center;
+        min-width: 44px;
+        height: 44px;
+        padding: 0;
+        border: 0;
+        background: none;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+      }
+      .hdr-mode .p {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 5px;
-        min-width: 44px;
-        height: 44px;
-        padding: 4px 10px;
-        border: 0;
-        background: none;
+        height: 36px;
+        min-width: 38px;
+        padding-inline: 10px;
         border-radius: var(--radius-999);
-        font: inherit;
         font-size: 12px;
         font-weight: 700;
         color: #93a2c4;
-        cursor: pointer;
-        /* The pill is painted on the CONTENT box, so it reads 36px tall while the
-           tappable box stays 44 — the floor met without a 44px-tall slab. */
-        background-clip: content-box;
         transition:
           background-color var(--t-quick) var(--ease-standard),
           color var(--t-quick) var(--ease-standard);
       }
-      .hdr-mode button span {
+      .hdr-mode button span span {
         max-width: 0;
         opacity: 0;
         overflow: hidden;
@@ -3820,23 +3967,32 @@ button.wp-av:focus-visible {
           max-width var(--t-base) var(--ease-standard),
           opacity var(--t-quick) var(--ease-standard);
       }
-      .hdr-mode button.on {
+      .hdr-mode button.on .p {
         background-color: var(--amber);
         color: #3a2405; /* fixed: dark ink on the amber fill */
       }
-      .hdr-mode button.on span {
+      .hdr-mode button.on .p span {
         max-width: 64px;
         opacity: 1;
       }
       .hdr-mode button:focus-visible {
         outline: 2.5px solid var(--amber);
         outline-offset: -2px;
+        border-radius: var(--radius-999);
       }
-      .header.is-v2[data-modelabel='icons'] .hdr-mode button.on span {
+      .header.is-v2[data-modelabel='icons'] .hdr-mode button.on .p span,
+      .header.is-v2[data-narrow] .hdr-mode button.on .p span {
         max-width: 0;
         opacity: 0;
       }
-      .app[data-mode='plan'] .hdr-mode button.on {
+      /* ↑ `[data-narrow]` is the MOCKUP's stand-in for `@media (max-width: 370px)`,
+         which cannot fire for a 360px frame inside a 1400px page. In the app it is
+         the media query, not an attribute. The rule itself is a measured finding,
+         not a preference: at 360 the row is arrow + chip + labelled mode + three
+         avatars, and the trip name lands at 33px — truncated on a name as short as
+         `רק בילבי`. Identity outranks a label whose meaning the chrome hue and the
+         drafting grid already carry twice over. */
+      .app[data-mode='plan'] .hdr-mode button.on .p {
         background-color: var(--plan);
         color: #fff; /* fixed: white on the plan-violet fill */
       }
@@ -3853,6 +4009,9 @@ button.wp-av:focus-visible {
       .hdr-strip-wrap {
         flex: 1 1 auto;
         min-width: 0;
+      }
+      .hdr-days .hdr-mode {
+        margin-inline-start: 8px;
       }
       .wp-daystrip.is-v2 {
         margin-top: 0;
@@ -3979,11 +4138,130 @@ button.wp-av:focus-visible {
         color: var(--ink);
       }
 
+      /* ── SHAPE 2 · "the bar comes apart" ────────────────────────────────────
+         The header keeps ONLY what the surface owns. On Home and the Index that is
+         nothing, so the chrome is 0 and the identity line rides the body. */
+      .header.is-v2.is-apart {
+        padding: var(--safe-top) var(--space-4) 0;
+      }
+      .header.is-v2.is-apart:empty {
+        display: none;
+      }
+      .header.is-v2.is-apart .hdr-days {
+        margin-top: 0;
+        padding-block: 6px 8px;
+      }
+      /* The body pays the inset the (absent) header stopped paying — the same move
+         `[data-chrome='reclaimed']` already makes in App.css. */
+      .body.is-apart-body {
+        padding-block-start: calc(14px + var(--safe-top)) !important;
+      }
+      /* The identity LINE: not a bar. No fill, no border — it is a title with two
+         controls beside it, and it scrolls away with the content it titles. */
+      .hdr-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 44px;
+        margin-bottom: 10px;
+      }
+      .hdr-trip.is-bare {
+        background: none;
+        border-color: transparent;
+        padding-inline: 0;
+      }
+      .hdr-trip.is-bare .hdr-trip-name {
+        font-size: 20px;
+      }
+      .hdr-trip.is-bare .hdr-caret {
+        background: none;
+        width: 14px;
+        height: 14px;
+        font-size: 10px;
+        opacity: 0.6;
+      }
+      .app[data-shape='apart'] .hdr-line {
+        color: var(--ink);
+      }
+      .app[data-shape='apart'] .hdr-line .hdr-out {
+        color: var(--muted);
+      }
+      .app[data-shape='apart'] .hdr-line .av {
+        border-color: var(--screen);
+      }
+      .app[data-shape='apart'] .hdr-line .av.more {
+        background: rgba(22, 35, 61, 0.08);
+        color: var(--muted);
+      }
+      .app[data-shape='apart'] .hdr-line .hdr-trip-status {
+        border-color: var(--screen);
+      }
+      /* On the Map there is no chrome at all: the identity line and the day axis
+         become canvas furniture, which is the vocabulary ADR-0126 already set for
+         this surface (things over the canvas grow sideways and leave it clear). */
+      .mk-float {
+        position: absolute;
+        inset-block-start: var(--safe-top);
+        inset-inline: 0;
+        z-index: 3;
+        padding: 8px 12px 0;
+      }
+      .mk-float .hdr-line {
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(10px);
+        border-radius: var(--radius-999);
+        padding-inline: 8px 10px;
+        margin-bottom: 8px;
+        box-shadow: 0 6px 18px -8px rgba(14, 23, 41, 0.45);
+        color: var(--ink);
+      }
+      .mk-float .hdr-line .hdr-out,
+      .mk-float .hdr-line .hdr-caret {
+        color: var(--muted);
+      }
+      .mk-float .hdr-line .hdr-trip-name {
+        font-size: 17px;
+      }
+      .hdr-days.is-floating {
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(10px);
+        border-radius: 14px;
+        padding: 4px 8px;
+        box-shadow: 0 6px 18px -8px rgba(14, 23, 41, 0.45);
+      }
+      .hdr-days.is-floating .wp-daypill {
+        background: rgba(22, 35, 61, 0.05);
+        color: var(--muted);
+      }
+      .hdr-days.is-floating .wp-daypill .n {
+        color: var(--ink);
+      }
+      .hdr-days.is-floating .wp-daypill.on {
+        background: var(--amber);
+        color: #3a2405;
+      }
+      .hdr-days.is-floating .wp-daypill.on .n {
+        color: #3a2405;
+      }
+      .hdr-days.is-floating .hdr-anchor .cap {
+        color: var(--muted);
+      }
+      .hdr-days.is-floating .hdr-anchor .num {
+        color: var(--ink);
+      }
+      .hdr-days.is-floating .wp-monthdiv i {
+        background: var(--line);
+      }
+      .hdr-days.is-floating .wp-monthdiv span {
+        color: var(--muted);
+      }
+
       /* ── The condense (option ⟨גלילה⟩, ADR-0149 §8). Row 1 rides up as the body
            scrolls; the trip glyph slots into the strip row so identity never
            leaves the chrome. A width transition on a fixed-size box — no reflow of
            anything below. */
       .hdr-minitrip {
+        position: relative;
         flex: 0 0 auto;
         width: 0;
         height: 44px;
@@ -4017,6 +4295,17 @@ button.wp-av:focus-visible {
         margin-inline-end: 6px;
         opacity: 1;
       }
+      /* The status badge follows identity into the condensed row — an exception
+         indicator that disappears when the chrome collapses is worse than none,
+         because "quiet" already means "everything saved". `overflow: hidden` (the
+         width transition needs it) is why this sits INSIDE the box, not on a corner. */
+      .hdr-minitrip .hdr-trip-status {
+        inset-block-end: 3px;
+        inset-inline-start: 1px;
+        width: 15px;
+        height: 15px;
+        font-size: 9px;
+      }
 
       /* ── Plan mode re-skin, the same two channels the shipped chrome uses. */
       .app[data-mode='plan'] .hdr-trip {
@@ -4032,7 +4321,7 @@ button.wp-av:focus-visible {
       .app[data-mode='plan'] .hdr-mode {
         background: var(--plan-tint);
       }
-      .app[data-mode='plan'] .hdr-mode button {
+      .app[data-mode='plan'] .hdr-mode .p {
         color: var(--muted);
       }
       .app[data-mode='plan'] .hdr-trip-status {
@@ -4133,6 +4422,13 @@ button.wp-av:focus-visible {
         (אופליין / יום שאינו היום) <b>דוחפות את הגוף כשהן מופיעות</b> — וזה בדיוק מה שמרגיש
         חובבני.
       </p>
+      <p class="mk-lede" style="margin-top: 12px">
+        ויש כאן <b>שתי הצעות, לא אחת</b>. <b>⟨שתי שורות⟩</b> דוחסת את הסרגל ולא נוגעת במודל
+        הניווט — 250px→160px בכל לשונית. <b>⟨הסרגל מתפרק⟩</b> שואלת אם צריך סרגל: רצועת הימים
+        חוזרת לשתי הלשוניות שמחזיקות יום, פקד המצב יורד לתפריט, ושורת הזהות נהיית כותרת שנגללת —
+        <b>44px בבית ובאינדקס, 0 במפה</b>. השנייה טובה יותר במספרים ומשנה יותר; שתיהן מצוירות
+        וניתנות להשוואה בפאנל.
+      </p>
 
       <div class="mk-rules">
         <span class="mk-rule">ענבר = זמן ומחויבות בלבד</span>
@@ -4226,25 +4522,36 @@ button.wp-av:focus-visible {
           </div>
 
           <div class="mk-card pick">
-            <span class="mk-tag yes">2 · השם הוא תפריט</span>
-            <h3>אף אחד לא מנחש ששם הטיול מוביל החוצה</h3>
+            <span class="mk-tag yes">2 · היציאה נראית</span>
+            <h3>אי אפשר לפתור גילוי במשהו שצריך להקיש עליו כדי לגלות</h3>
             <ul class="mk-list">
               <li>
-                השבב נפתח כ<b>תפריט</b> עם פריטים מנוסחים: <code>כל הטיולים</code>,
-                <code>הגדרות הטיול</code>, ומצב הסנכרון כשיש מה לומר.
+                <b>זו ההכרעה, וגרסה קודמת של הקובץ הזה פספסה אותה.</b> להפוך את השם לתפריט
+                משפר את ה<b>הבנה אחרי ההקשה</b> — אבל הבעיה שדווחה היא שאף אחד לא מקיש
+                מלכתחילה. חץ במקום כותרת-שהיא-כפתור לא דורש לגלות כלום.
               </li>
               <li>
-                זה <b>לא</b> מחזיר את מגירת המחליף ש-ADR-0033 §3 פסל: רשימת הטיולים נשארת
-                מסך אחד ויחיד (<code>/trips</code>) — התפריט הוא <b>פעולות</b>, לא רשימה שנייה.
+                לכן ברירת המחדל (<b>⟨חץ חזרה⟩</b>) היא <b>חץ בקצה המוביל</b> שהולך
+                ל-<code>/trips</code>. הוא עולה 36px של רוחב, והם קיימים בדיוק כי גלגל
+                השיניים ועיגול נוסף כבר ירדו מהשורה.
               </li>
               <li>
-                בונוס: המעבר לרשימת הטיולים מפסיק להיות החלפת מסך מלאה שמופעלת מהקשה על מה
-                שנראה ככותרת. זה בדיוק ה"קפיצה" שדווחה.
+                <b>וזה לא ניווט חדש — זה ניווט קיים שסוף סוף נראה.</b> האפליקציה כבר יוצאת
+                מהטיול בחזרה כפולה מ-Home (<code>shell.leaveTripHint</code>, ADR-0035 §1),
+                כלומר <code>/trips</code> כבר הוא ההורה המבני. עד היום פשוט לא היה לזה פקד.
               </li>
               <li>
-                חלופה מצוירת (<b>⟨ישיר⟩</b> בפאנל): להשאיר ניווט ישיר ולפתור רק את הרמז — סמל
-                <code>swap</code> במקום חץ, ועוד "קלף" מאחורי הדגל כשיש יותר מטיול אחד. שומר
-                הקשה, אבל מחזיר את גלגל השיניים לשורה.
+                <b>ואז השבב נעשה כן:</b> הקָרֶט שלו מפסיק להבטיח יציאה ופותח תפריט על
+                <b>הטיול הזה</b> — הגדרות, ומצב הסנכרון כשיש מה לומר. שני דברים שונים, שני
+                פקדים.
+              </li>
+              <li>
+                שתי חלופות עדיין מצוירות, כי הן זולות יותר ברוחב:
+                <b>⟨תפריט⟩</b> — בלי חץ, והפריט הראשון בתפריט הוא <code>כל הטיולים</code>
+                (לא מחזיר את מגירת המחליף ש-ADR-0033 §3 פסל: הרשימה נשארת מסך אחד, התפריט
+                הוא פעולות); <b>⟨ישיר⟩</b> — ניווט ישיר עם סמל <code>swap</code> ו"קלף"
+                מאחורי הדגל, שומר הקשה אבל מחזיר את גלגל השיניים לשורה. שתיהן עדיין דורשות
+                לנחש שהשם הוא פקד.
               </li>
             </ul>
           </div>
@@ -4336,17 +4643,38 @@ button.wp-av:focus-visible {
             </ul>
           </div>
 
-          <div class="mk-card">
-            <span class="mk-tag maybe">7 · אופציונלי</span>
-            <h3>כיווץ בגלילה</h3>
+          <div class="mk-card pick">
+            <span class="mk-tag yes">7 · המצב המכווץ</span>
+            <h3>גלילה מכווצת אותו, ומשטח יכול לבקש אותו כמנוחה</h3>
             <ul class="mk-list">
               <li>
-                בגלילה שורת הזהות עולה החוצה ודגל הטיול נכנס לקצה רצועת הימים. הכרום יורד
-                לשורה אחת — ראו <b>⟨גלילה⟩</b> בפאנל, וגם גלילה אמיתית בתוך המסגרת.
+                בגלילה שורת הזהות עולה החוצה ודגל הטיול נכנס לקצה רצועת הימים — הזהות לא
+                עוזבת את הכרום, והתג הפינתי נוסע איתה. הכרום יורד לשורה אחת.
               </li>
               <li>
-                <b>המחיר:</b> זו התנהגות תלוית-גלילה על גוף שכבר מצליב בין טאבים, ולשונית
-                המפה כבר תובעת את הכרום לעצמה (ADR-0132). זו הסיבה שזו אופציה ולא ברירת מחדל.
+                <b>ומשטח יכול לפתוח מכווץ, בלי שום מחווה.</b> זה לא קיצור דרך — זו הדרך
+                היחידה שהכלל בכלל חל על <b>המפה</b>: הגוף שלה הוא
+                <code>is-fullbleed</code>, כלומר <b>הוא לא נגלל</b>, ולכן טריגר-הגלילה לא
+                יכול לפעול שם לעולם. דווקא המשטח שהציר הדחוק שלו הוא <b>גובה</b>
+                (ADR-0121 §5 / ADR-0126) היה נשאר עם כרום מלא לנצח. הקישו
+                <b>⟨הלשונית · מפה⟩</b> ותראו מה זה שווה בקנבס.
+              </li>
+              <li>
+                <b>איך זה נאמר, ולא רק מה:</b> זה מודיפייר שלישי במשפחה ש-<code>AppShell</code>
+                כבר מחזיקה לצד <code>BODY_FULLBLEED</code> ו-<code>CHROME_RECLAIMED</code> —
+                המשטח אומר לקליפה <b>איזו פריסה הוא רוצה</b>, אף פעם לא <b>מה הוא עושה</b>
+                (זה בדיוק דגל-מצב-החיפוש ש-ADR-0101 פסל). כלומר תכונה של המשטח, לא רשימת
+                טאבים קשיחה בתוך הקליפה.
+              </li>
+              <li>
+                <b>ושלושה מצבים, לא שניים:</b> כרום מלא · מכווץ (המפה במנוחה) · נתבע לגמרי
+                (ADR-0132, כששדה החיפוש נפתח). המכווץ הוא המדרגה שהייתה חסרה באמצע.
+              </li>
+              <li>
+                <b>המחיר שנשאר:</b> הכיווץ בגלילה הוא עדיין התנהגות תלוית-גלילה על גוף
+                שמצליב בין טאבים. יש כאן היסטרזיס (48 להיכנס, 12 לצאת) ותנאי מרווח, כי
+                הגרסה הראשונה של הקובץ הזה <b>ריצדה</b> — הכיווץ משחרר 52px, מה שמבטל את
+                הגלילה שיצרה אותו. את זה אף מסגרת סטטית לא מראה.
               </li>
             </ul>
           </div>
@@ -4470,6 +4798,105 @@ button.wp-av:focus-visible {
         </div>
       </div>
 
+
+      <!-- ── shape 2 ──────────────────────────────────────────────────────── -->
+      <div class="mk-sec">
+        <h2>ההצעה השנייה: הסרגל מתפרק</h2>
+        <p class="mk-note">
+          שתי השורות למעלה מכווצות את הסרגל. ההצעה הזו <b>שואלת אם צריך סרגל</b>. שלוש
+          הטענות שלה כבר כתובות בקוד — הקובץ הזה רק מודד מה קורה כשלוקחים אותן ברצינות.
+          החליפו <b>⟨הצעה⟩</b> בפאנל, ועברו בין הלשוניות.
+        </p>
+
+        <div class="mk-grid2">
+          <div class="mk-card">
+            <h3>1 · רצועת הימים היא לא כרום</h3>
+            <p class="mk-note">
+              <code>DAY_SCOPED_TABS</code> ב-<code>nav-state.tsx</code> מכיל
+              <code>days</code> ו-<code>map</code> — <b>שתיים מארבע</b>. בבית ובאינדקס
+              הרצועה היא קיצור דרך ש<b>מנווט ללשונית אחרת</b>. כלומר ~52px מכל מסך
+              משולמים על פקד ששני מסכים מחזיקים. כאן היא נכנסת פנימה: בלשונית יום-יום
+              היא השורה הדביקה הראשונה, ובמפה היא <b>ריהוט קנבס</b> — אוצר מילים
+              ש-ADR-0126 כבר קבע למשטח הזה.
+            </p>
+          </div>
+          <div class="mk-card">
+            <h3>2 · פקד המצב לא פרופורציונלי</h3>
+            <p class="mk-note">
+              המצב <b>מתחלף לבד לפי תאריכים</b> (ADR-0016), הפקד קיים רק בחלון החי
+              (ADR-0040), והעקיפה היא <b>session-only</b> — <code>mode-state.tsx</code>
+              אומר במפורש "טעינה רעננה תמיד חוזרת לאוטומטי". על ה"הצצה" הזו הוא גובה
+              103px בשורה הכי צפופה באפליקציה, בזמן ש-design-language מבקש
+              <b>שני ערוצים</b> לזהות המצב — וגוון הכרום ורשת השרטוט הם בדיוק שניים.
+              כאן הוא יוצא מהכרום אל תפריט הטיול.
+            </p>
+          </div>
+          <div class="mk-card">
+            <h3>3 · שורת הזהות היא כותרת, לא סרגל</h3>
+            <p class="mk-note">
+              היא לא צריכה להיות דביקה. היא נוסעת בגוף ו<b>נגללת החוצה</b>, כמו כותרת של
+              דף — ולכן בשתי הלשוניות שאין להן יום אין כרום קבוע <b>בכלל</b>. וכשיש לה
+              את כל רוחב השורה, <b>שם באורך מקסימלי (18 תווים) נכנס ב-20px בלי להיחתך</b> —
+              מה ששתי השורות לא מצליחות לעשות ב-390.
+            </p>
+          </div>
+          <div class="mk-card pick">
+            <span class="mk-tag yes">נמדד</span>
+            <h3>כרום לפי לשונית</h3>
+            <div class="mk-measure" style="margin-top: 6px">
+              <table>
+                <tbody>
+                  <tr><th>לשונית</th><td>נשלח → שתי שורות → מתפרק</td></tr>
+                  <tr><th>בית</th><td class="win">250 → 160 → <b>44</b></td></tr>
+                  <tr><th>יום-יום</th><td class="win">250 → 160 → <b>102</b></td></tr>
+                  <tr><th>אינדקס</th><td class="win">250 → 160 → <b>44</b></td></tr>
+                  <tr><th>מפה</th><td class="win">250 → 108 → <b>0</b></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="mk-note" style="margin-top: 8px">
+              390×844 עם ניצה של 44px. ובבית ובאינדקס גם ה-44 <b>נגללים החוצה</b>, כלומר
+              בפועל 0 בזמן קריאה.
+            </p>
+          </div>
+          <div class="mk-card reject">
+            <span class="mk-tag no">מה זה שובר</span>
+            <h3>ולמה זו הצעה ולא המלצה</h3>
+            <ul class="mk-list">
+              <li>
+                <b>קפיצה בין ימים מהבית מתייקרת.</b> היום הרצועה בבית מקפיצה ליום אחר בהקשה
+                אחת. כאן צריך קודם להגיע ללשונית יום-יום. זה מודל ניווט שמשתנה, לא רק
+                פיקסלים.
+              </li>
+              <li>
+                <b>גובה הכרום מפסיק להיות אחיד בין לשוניות</b> (44 · 102 · 44 · 0). זה יכול
+                להיקרא כמשטחים עם אופי משלהם — או כחוסר יציבות. מכשיר.
+              </li>
+              <li>
+                <b>זהות המצב יורדת לשני ערוצים סבילים</b> (גוון + רשת) בלי הכדור. הכלל
+                מתקיים, אבל בקצה שלו.
+              </li>
+              <li>
+                <b>שם הטיול מפסיק להיות תמיד על המסך.</b> באפליקציה שנכנסים אליה בלינק זה
+                בדיוק מה שביקשנו לשמור — ולכן זה נגלל, לא נמחק.
+              </li>
+              <li>
+                <b>ו-<code>MAX_TRIP_NAME_LENGTH</code> מפסיק להיות מוצדק ב-18.</b> ההערה שלו
+                אומרת שהוא קיים "כדי לשמור את כדור המחליף בשורה אחת" ומצביעה על
+                app-shell.md §5. אם הכדור משתנה, המספר צריך להיבדק מחדש — לכאן או לכאן.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="mk-note" style="margin-top: 16px">
+          <b>וממצא על הקוד ששתי ההצעות חושפות, ואינו של אף אחת מהן:</b> הכותרת הנשלחת כבר
+          חותכת שם באורך מקסימלי ב-390. <code>useShrinkToFit</code> יורד עד רצפת 15px
+          ועדיין נחתך — כלומר ההבטחה ש-<code>MAX_TRIP_NAME_LENGTH</code> מנסח ("שורה אחת")
+          <b>כבר לא מתקיימת היום</b>, עם ארבעה עיגולים וגלגל שיניים בשורה. הטבלה מראה את זה
+          בכל מצב: הקישו <b>⟨שם הטיול · מקסימום⟩</b>.
+        </p>
+      </div>
       <!-- ── open ─────────────────────────────────────────────────────────── -->
       <div class="mk-sec">
         <h2>מה לא ניתן להכריע כאן</h2>
@@ -4545,7 +4972,10 @@ button.wp-av:focus-visible {
       const TRIP = {
         icon: '🇮🇱',
         shortName: 'רק בילבי',
-        longName: 'טיול הבוגרים של אוגוסט',
+        // Exactly MAX_TRIP_NAME_LENGTH (18, packages/shared/src/constants.ts) — the
+        // worst case the product can actually produce, and the cap's own comment
+        // says it exists "to keep the header switcher pill to one line".
+        longName: 'טיול הבוגרים ביוון',
         destination: 'ישראל',
         start: '2026-07-30',
         days: 10,
@@ -4570,11 +5000,27 @@ button.wp-av:focus-visible {
         party: 'group',
         name: 'short',
         screen: 390,
-        switcher: 'menu',
+        switcher: 'back',
         modelabel: 'label',
         live: 'live',
         condensed: 'rest',
+        tab: 'home',
+        modeslot: 'top',
+        shape: 'two',
       };
+      // A surface may ask for the condensed chrome as its RESTING state, with no
+      // gesture involved (ADR-0149 §8b). The Map is the first caller and the reason
+      // the rule exists: its body is `is-fullbleed`, so it never scrolls — the
+      // scroll trigger is structurally unavailable on the one surface whose scarce
+      // axis is height (ADR-0121 §5 / ADR-0126).
+      function condensedByDefault() {
+        return S.tab === 'map';
+      }
+      /** Day-scoped surfaces, verbatim from `state/nav-state.tsx`'s DAY_SCOPED_TABS.
+       *  The `apart` shape's whole argument rests on this set already existing: the
+       *  strip is a control belonging to two tabs, drawn on four. */
+      const DAY_SCOPED_TABS = new Set(['days', 'map']);
+      const apart = () => S.shape === 'apart';
 
       const CONTROLS = [
         {
@@ -4617,16 +5063,25 @@ button.wp-av:focus-visible {
           k: 'name',
           label: 'שם הטיול',
           opts: [
-            ['short', 'קצר'],
-            ['long', 'ארוך'],
+            ['short', 'קצר · 8'],
+            ['long', 'מקסימום · 18'],
           ],
         },
         {
           k: 'switcher',
           label: 'המעבר לטיולים',
           opts: [
+            ['back', 'חץ חזרה'],
             ['menu', 'תפריט'],
             ['direct', 'ישיר'],
+          ],
+        },
+        {
+          k: 'modeslot',
+          label: 'מיקום פקד המצב',
+          opts: [
+            ['top', 'שורת הזהות'],
+            ['days', 'שורת הימים'],
           ],
         },
         {
@@ -4643,6 +5098,24 @@ button.wp-av:focus-visible {
           opts: [
             ['live', 'בטיול'],
             ['before', 'לפני (ADR-0040)'],
+          ],
+        },
+        {
+          k: 'shape',
+          label: 'הצעה',
+          opts: [
+            ['two', 'שתי שורות'],
+            ['apart', 'הסרגל מתפרק'],
+          ],
+        },
+        {
+          k: 'tab',
+          label: 'הלשונית',
+          opts: [
+            ['home', 'בית'],
+            ['days', 'יום-יום'],
+            ['index', 'אינדקס'],
+            ['map', 'מפה'],
           ],
         },
         {
@@ -4828,16 +5301,118 @@ button.wp-av:focus-visible {
 </header>`;
       }
 
+      // The mode control, placeable in either row (option ⟨מיקום פקד המצב⟩). In the
+      // day row it survives the condense — which matters because the Map opens
+      // condensed, and a mode switch that is unreachable on a whole tab is a defect,
+      // not a density choice.
+      function modeControl() {
+        if (!showToggle()) return '';
+        return `<div class="hdr-mode" role="group" aria-label="מצב">
+      <button class="${S.mode === 'plan' ? 'on' : ''}"><span class="p">${icon('edit')}<span>תכנון</span></span></button>
+      <button class="${S.mode === 'trip' ? 'on' : ''}"><span class="p">${icon('navigate')}<span>טיול</span></span></button>
+    </div>`;
+      }
+
+      // ── SHAPE 2: the bar comes apart ──────────────────────────────────────
+      // Three claims, each of which the code already half-states:
+      //   · The day strip belongs to DAY_SCOPED_TABS, not to the chrome. On Home and
+      //     the Index it is a shortcut that navigates to ANOTHER tab — 52px of every
+      //     screen spent on a control two screens use.
+      //   · Mode is not a control you press. It auto-switches on dates (ADR-0016),
+      //     exists only in the live window (ADR-0040), and its override is
+      //     SESSION-ONLY (`mode-state.tsx`: "a fresh load is always back to auto").
+      //     Identity is carried by chrome hue + the drafting grid, which is the two
+      //     channels design-language actually requires. So it leaves the chrome for
+      //     the trip menu.
+      //   · The identity line is orientation, not a control surface, so it does not
+      //     need to be sticky. It rides in the body and scrolls away, the way a page
+      //     title does — which is why this shape has no persistent chrome at all on
+      //     the two tabs that do not own a day.
+      function identityLine() {
+        const all = party();
+        const me = all[0];
+        const others = all.slice(1);
+        const cap = others.length <= 2 ? 2 : 1;
+        const visible = others.slice(0, cap);
+        const overflow = others.length - cap;
+        const status =
+          S.net === 'ok'
+            ? ''
+            : `<span class="hdr-trip-status" data-state="${S.net}" role="status" aria-live="polite">` +
+              (S.net === 'offline' ? icon('offline') : S.net === 'pending' ? icon('sync') : icon('warn')) +
+              '</span>';
+        return `<div class="hdr-line">
+  <button class="hdr-out" aria-label="כל הטיולים">${backArrow()}</button>
+  <button class="hdr-trip is-bare" aria-haspopup="dialog" aria-label="תפריט הטיול">
+    <span class="hdr-tripglyph">${TRIP.icon}${status}</span>
+    <span class="hdr-trip-name">${tripName()}</span>
+    <span class="hdr-caret">${icon('caret', 'down')}</span>
+  </button>
+  <button class="hdr-people" aria-label="אנשים בטיול">
+    <span class="avatars">
+      ${overflow > 0 ? `<span class="av more">⁦+${overflow}⁩</span>` : ''}
+      ${visible.slice().reverse().map((x) => avatar(x)).join('')}
+      ${avatar(me, 'me wp-av-ring')}
+    </span>
+  </button>
+</div>`;
+      }
+
+      function stripOnly(floating) {
+        const sel = selectedDate();
+        const days = buildDays();
+        const offToday = S.mode === 'trip' && sel !== TRIP.today;
+        const cells = days
+          .map((d) => {
+            const div = d.month ? `<div class="wp-monthdiv"><i></i><span>${d.month}</span></div>` : '';
+            return (
+              div +
+              `<button class="${pillClass(d, sel)}"><span class="l">${d.letter}</span>` +
+              `<span class="n">${d.dayOfMonth}</span></button>`
+            );
+          })
+          .join('');
+        return `<div class="hdr-days${floating ? ' is-floating' : ''}">
+  <button class="hdr-anchor ${offToday ? 'is-back' : ''}">
+    <span class="progress" ${offToday ? 'data-off' : ''}>
+      <span class="cap">יום</span><span class="num">⁦${dayNumber(sel)}/${TRIP.days}⁩</span></span>
+    <span class="back" ${offToday ? '' : 'data-off'}>${backArrow()}היום</span>
+  </button>
+  <div class="hdr-strip-wrap"><div class="wp-daystrip is-v2" data-mode="${S.mode}">${cells}</div></div>
+</div>`;
+      }
+
       // ── the PROPOSED header ───────────────────────────────────────────────
       function headerAfter() {
+        if (apart()) {
+          // Map: no chrome at all. The canvas identifies the trip; the day axis is
+          // canvas furniture, which is a vocabulary this surface already has.
+          if (S.tab === 'map') return '';
+          const daysTab = DAY_SCOPED_TABS.has(S.tab);
+          return `<header class="header is-v2 is-apart mode-chrome" data-mode="${S.mode}">
+  ${daysTab ? stripOnly(false) : ''}
+</header>`;
+        }
+        return headerTwoRow();
+      }
+
+      function headerTwoRow() {
         const sel = selectedDate();
         const days = buildDays();
         const all = party();
         const me = all[0];
         const others = all.slice(1);
-        // You + up to two others; everyone past that is the overflow bubble.
-        const visible = others.slice(0, 2);
-        const overflow = others.length - visible.length;
+        // THREE circles total, you included — see the css note. Two others only when
+        // that is everyone; otherwise one other and a bubble, so the box never grows.
+        // At 360 it drops to TWO (you + the bubble), the second half of the same
+        // measured finding as the mode label: without it the name lands at 48px and
+        // still truncates `רק בילבי`. The stack is an entry point to the roster, so
+        // what it costs identity is the thing to trade, and the count stays honest
+        // because the bubble is recomputed rather than a member hidden with css.
+        const narrow = S.screen <= 370;
+        const cap = narrow ? (others.length <= 1 ? 1 : 0) : others.length <= 2 ? 2 : 1;
+        const visible = others.slice(0, cap);
+        const overflow = others.length - cap;
         const offToday = S.mode === 'trip' && sel !== TRIP.today;
 
         const status =
@@ -4846,6 +5421,8 @@ button.wp-av:focus-visible {
             : `<span class="hdr-trip-status" data-state="${S.net}" role="status" aria-live="polite">` +
               (S.net === 'offline' ? icon('offline') : S.net === 'pending' ? icon('sync') : icon('warn')) +
               '</span>';
+        const glyph = (extraStack) =>
+          `<span class="hdr-tripglyph">${TRIP.icon}${extraStack}${status}</span>`;
 
         const stripCells = days
           .map((d) => {
@@ -4859,30 +5436,26 @@ button.wp-av:focus-visible {
           .join('');
 
         return `
-<header class="header is-v2 mode-chrome${S.condensed === 'on' ? ' is-condensed' : ''}"
-        data-mode="${S.mode}" data-modelabel="${S.modelabel}">
+<header class="header is-v2 mode-chrome${S.condensed === 'on' || condensedByDefault() ? ' is-condensed' : ''}"
+        data-mode="${S.mode}" data-modelabel="${S.modelabel}" ${S.screen <= 370 ? 'data-narrow' : ''}>
   <div class="hdr-top">
-    <button class="hdr-trip" aria-haspopup="${S.switcher === 'menu' ? 'dialog' : 'false'}"
-            aria-label="${S.switcher === 'menu' ? 'תפריט הטיול' : 'החלפת טיול'}">
-      ${status}
-      <span class="trip-icon" aria-hidden="true">${TRIP.icon}</span>
-      ${S.switcher === 'direct' ? '<span class="hdr-stack" aria-hidden="true"></span>' : ''}
+    ${
+      S.switcher === 'back'
+        ? `<button class="hdr-out" aria-label="כל הטיולים">${backArrow()}</button>`
+        : ''
+    }
+    <button class="hdr-trip" aria-haspopup="${S.switcher === 'direct' ? 'false' : 'dialog'}"
+            aria-label="${S.switcher === 'direct' ? 'החלפת טיול' : 'תפריט הטיול'}">
+      ${glyph(S.switcher === 'direct' ? '<span class="hdr-stack" aria-hidden="true"></span>' : '')}
       <span class="hdr-trip-name">${tripName()}</span>
-      <span class="hdr-caret">${S.switcher === 'menu' ? icon('caret', 'down') : icon('swap')}</span>
+      <span class="hdr-caret">${S.switcher === 'direct' ? icon('swap') : icon('caret', 'down')}</span>
     </button>
     ${
       S.switcher === 'direct'
         ? `<button class="gear-btn" aria-label="הגדרות טיול">${icon('settings')}</button>`
         : ''
     }
-    ${
-      showToggle()
-        ? `<div class="hdr-mode" role="group" aria-label="מצב">
-      <button class="${S.mode === 'plan' ? 'on' : ''}">${icon('edit')}<span>תכנון</span></button>
-      <button class="${S.mode === 'trip' ? 'on' : ''}">${icon('navigate')}<span>טיול</span></button>
-    </div>`
-        : ''
-    }
+    ${S.modeslot === 'top' ? modeControl() : ''}
     <button class="hdr-people" aria-label="אנשים בטיול">
       <span class="avatars">
         ${overflow > 0 ? `<span class="av more">⁦+${overflow}⁩</span>` : ''}
@@ -4896,7 +5469,7 @@ button.wp-av:focus-visible {
     </button>
   </div>
   <div class="hdr-days">
-    <button class="hdr-minitrip" aria-label="תפריט הטיול" tabindex="${S.condensed === 'on' ? '0' : '-1'}">${TRIP.icon}</button>
+    <button class="hdr-minitrip" aria-label="${S.switcher === 'back' ? 'כל הטיולים' : 'תפריט הטיול'}" tabindex="${S.condensed === 'on' || condensedByDefault() ? '0' : '-1'}">${TRIP.icon}${status}</button>
     <button class="hdr-anchor ${offToday ? 'is-back' : ''}"
             aria-label="${offToday ? 'חזרה להיום' : `יום ${dayNumber(sel)} מתוך ${TRIP.days}`}">
       <span class="progress" ${offToday ? 'data-off' : ''}>
@@ -4907,13 +5480,29 @@ button.wp-av:focus-visible {
     <div class="hdr-strip-wrap">
       <div class="wp-daystrip is-v2" data-mode="${S.mode}">${stripCells}</div>
     </div>
+    ${S.modeslot === 'days' ? modeControl() : ''}
   </div>
 </header>`;
       }
 
-      function body(variant) {
+      function body(variant, isAfter) {
         const live = S.mode === 'trip';
-        return `<main class="body" style="padding:14px 14px 80px">
+        if (S.tab === 'map') return mapBody(isAfter);
+        // In `apart` the identity line rides the body, so it scrolls away — that is
+        // the claim, and a header that merely LOOKS short would not be making it.
+        const lead = isAfter && apart() ? identityLine() : '';
+        if (S.tab === 'index')
+          return `<main class="body${isAfter && apart() ? ' is-apart-body' : ''}" style="padding:14px 14px 80px">
+  ${lead}
+  ${Array.from({ length: 9 }, (_, i) => `<div class="mk-filler"><div class="l1" style="font-size:15px">הזמנה ${i + 1}</div><div class="l2">טיסה · אישור ⁦AB${1000 + i}⁩</div></div>`).join('')}
+</main>`;
+        if (S.tab === 'days')
+          return `<main class="body${isAfter && apart() ? ' is-apart-body' : ''}" style="padding:14px 14px 80px">
+  ${lead}
+  ${Array.from({ length: 8 }, (_, i) => `<div class="mk-filler"><div class="l1" style="font-size:15px">אירוע ${i + 1}</div><div class="l2">⁦${9 + i}:00⁩ · רך</div></div>`).join('')}
+</main>`;
+        return `<main class="body${isAfter && apart() ? ' is-apart-body' : ''}" style="padding:14px 14px 80px">
+  ${lead}
   <div class="mk-filler board">
     <div><span class="live">${live ? 'עכשיו' : 'בהכנה'}</span>
       <div class="l1" style="margin-top:8px">${live ? 'זמן חופשי' : 'רשימת הכנות'}</div>
@@ -4928,13 +5517,48 @@ button.wp-av:focus-visible {
     <div class="l2">נועה הוסיפה מסמך</div></div>
   <div class="mk-filler"><div class="l1" style="font-size:15px">${variant}</div>
     <div class="l2">תוכן ממלא, כדי שהמחיר של הכותרת ייראה מול משהו</div></div>
+  ${Array.from(
+    { length: 4 },
+    (_, i) => `<div class="mk-filler"><div class="l1" style="font-size:15px">כרטיס ${i + 1}</div>
+    <div class="l2">גלול כדי לראות את הכיווץ</div></div>`,
+  ).join('')}
+</main>`;
+      }
+
+      // The Map tab, roughly: a canvas that owns its own height plus the list sheet.
+      // Deliberately crude — what this frame is for is the CHROME above it and the
+      // canvas the chrome leaves behind, not the map.
+      function mapBody(isAfter) {
+        const pins = [
+          [64, 30, '--cat-food'],
+          [40, 52, '--cat-lodging'],
+          [72, 61, '--cat-transit'],
+          [26, 74, '--cat-leisure'],
+        ];
+        return `<main class="body is-fullbleed mk-map">
+  <div class="mk-canvas">
+    ${isAfter && apart() ? `<div class="mk-float">${identityLine()}${stripOnly(true)}</div>` : ''}
+    ${pins
+      .map(
+        ([x, y, hue]) =>
+          `<span class="mk-pin" style="inset-inline-start:${x}%;inset-block-start:${y}%;background:var(${hue})"></span>`,
+      )
+      .join('')}
+    <span class="mk-attrib">Google</span>
+  </div>
+  <div class="mk-mapsheet">
+    <span class="mk-grab"></span>
+    <div class="mk-maprow"><b>שוק הכרמל</b><span>אוכל · 12:30</span></div>
+    <div class="mk-maprow"><b>מלון פורט</b><span>לינה · צ׳ק-אין 15:00</span></div>
+    <div class="mk-maprow"><b>תחנת ההגנה</b><span>תחבורה</span></div>
+  </div>
 </main>`;
       }
 
       function nav() {
         const tabs = [
-          ['home', 'בית', true],
-          ['map', 'מפה', false],
+          ['home', 'בית', S.tab === 'home'],
+          ['map', 'מפה', S.tab === 'map'],
           ['cards', 'אינדקס', false],
           ['calendar', 'יום-יום', false],
         ];
@@ -4975,9 +5599,13 @@ button.wp-av:focus-visible {
   </div>
   <hr />
   ${statusRow}
-  <button class="hdr-menu-row">${icon('swap')}
+  ${
+    S.switcher === 'back'
+      ? ''
+      : `<button class="hdr-menu-row">${icon('swap')}
     <span><span class="lbl">כל הטיולים</span><span class="sub">יציאה לרשימה</span></span>
-    <span class="go">${backArrow()}</span></button>
+    <span class="go">${backArrow()}</span></button>`
+  }
   <button class="hdr-menu-row">${icon('settings')}
     <span><span class="lbl">הגדרות הטיול</span><span class="sub">תאריכים, חברים, הזמנות</span></span>
     <span class="go">${backArrow()}</span></button>
@@ -5016,18 +5644,43 @@ button.wp-av:focus-visible {
 </div>`;
       }
 
+      // A faithful port of `lib/useShrinkToFit.ts`: step the font down in whole px
+      // until the line fits, then let css ellipsis take whatever is left. Applied to
+      // BOTH frames — the shipped pill ramps 26 → 15 and the proposed one 17 → 13, and
+      // omitting it from the "before" would have flattered this design with a
+      // truncation the app does not actually have.
+      function shrinkToFit(el, maxPx, minPx) {
+        if (!el) return null;
+        let size = maxPx;
+        el.style.fontSize = size + 'px';
+        while (el.scrollWidth > el.clientWidth && size > minPx) {
+          size -= 1;
+          el.style.fontSize = size + 'px';
+        }
+        return { size, truncated: el.scrollWidth > el.clientWidth + 1 };
+      }
+
       // ── measure ───────────────────────────────────────────────────────────
       function measure() {
-        const b = document.querySelector('#app-before .header');
-        const a = document.querySelector('#app-after .header');
+        const beforeRoot = document.getElementById('app-before');
+        const afterRoot = document.getElementById('app-after');
+        const b = beforeRoot.querySelector('.header');
+        const a = afterRoot.querySelector('.header');
         const frameH = document.getElementById('phone-before').clientHeight - 16;
         const bh = Math.round(b.getBoundingClientRect().height);
-        const ah = Math.round(a.getBoundingClientRect().height);
-        const nameBox = a.querySelector('.hdr-trip-name');
+        // `apart` can have NO header node at all (the Map), which is the point of it
+        // — so this reads 0 rather than assuming one exists. The first pass threw
+        // here, which is exactly the state the shape exists to produce.
+        const ah = a ? Math.round(a.getBoundingClientRect().height) : 0;
+        // The identity line moves into the body in `apart`, so these are looked up on
+        // the APP root, never on the header.
+        const nameBox = afterRoot.querySelector('.hdr-trip-name');
+        const fitAfter = shrinkToFit(nameBox, apart() ? 20 : 17, 13);
+        const fitBefore = shrinkToFit(beforeRoot.querySelector('.trip-name'), 26, 15);
         const nameW = nameBox ? Math.round(nameBox.getBoundingClientRect().width) : 0;
-        const chip = a.querySelector('.hdr-trip');
+        const chip = afterRoot.querySelector('.hdr-trip');
         const chipW = chip ? Math.round(chip.getBoundingClientRect().width) : 0;
-        const truncated = nameBox ? nameBox.scrollWidth > nameBox.clientWidth + 1 : false;
+        const truncated = fitAfter ? fitAfter.truncated : false;
 
         // How many day pills are fully visible without scrolling, per design.
         const visiblePills = (root, sel) => {
@@ -5052,11 +5705,27 @@ button.wp-av:focus-visible {
             '',
             true,
           ],
-          ['רוחב שנותר לשם הטיול', `${nameW}px${truncated ? ' · נחתך' : ''}`, truncated ? 'bad' : ''],
+          ['רוחב שנותר לשם הטיול', `${nameW}px`, ''],
+          [
+            'השם אחרי shrink-to-fit · כפי שנשלח → האפיון',
+            `${fitBefore ? fitBefore.size : '-'}px${fitBefore && fitBefore.truncated ? ' · נחתך' : ''} → ` +
+              `${fitAfter ? fitAfter.size : '-'}px${truncated ? ' · נחתך' : ''}`,
+            truncated ? 'bad' : 'win',
+          ],
           ['רוחב השבב', `${chipW}px`, ''],
           [
+            `כרום בלשונית «${{ home: 'בית', days: 'יום-יום', index: 'אינדקס', map: 'מפה' }[S.tab]}»`,
+            `${bh}px → ${ah}px`,
+            'win',
+          ],
+          [
+            S.tab === 'map' ? 'קנבס שנשאר למפה' : 'גוף שנשאר לתוכן',
+            `${frameH - bh - 69}px → ${frameH - ah - 69}px`,
+            'win',
+          ],
+          [
             'גלולות יום גלויות בלי גלילה',
-            `${visiblePills(document.getElementById('app-before'), '.wp-daystrip')} → ${visiblePills(document.getElementById('app-after'), '.wp-daystrip')}`,
+            `${visiblePills(beforeRoot, '.wp-daystrip')} → ${visiblePills(afterRoot, '.wp-daystrip')}`,
             '',
           ],
         ];
@@ -5073,37 +5742,73 @@ button.wp-av:focus-visible {
 
         // The fold markers, drawn where each header actually ends.
         const place = (id, h) => {
-          document.getElementById(id).style.top = h + 'px';
+          const el = document.getElementById(id);
+          el.style.top = h + 'px';
+          el.style.display = h > 0 ? '' : 'none';
         };
         place('fold-before', bh);
         place('fold-after', ah);
         document.getElementById('cap-before').textContent = `· ${bh}px · חמש שורות`;
         document.getElementById('cap-after').textContent =
-          `· ${ah}px · ${S.condensed === 'on' ? 'מכווץ' : 'שתי שורות'}`;
+          `· ${ah}px · ` +
+          (apart()
+            ? ah === 0
+              ? 'בלי כרום'
+              : 'רק ציר הימים'
+            : afterRoot.querySelector('.header').classList.contains('is-condensed')
+              ? 'מכווץ'
+              : 'שתי שורות');
       }
 
       function render() {
         renderPanel();
+        // + the 8px bezel on each side, so the VIEWPORT is S.screen exactly.
         for (const p of ['phone-before', 'phone-after']) {
-          document.getElementById(p).style.width = S.screen + 'px';
+          document.getElementById(p).style.width = S.screen + 16 + 'px';
         }
         const before = document.getElementById('app-before');
         const after = document.getElementById('app-after');
         before.dataset.mode = S.mode;
         after.dataset.mode = S.mode;
-        before.innerHTML = headerBefore() + body('כפי שנשלח') + nav();
-        after.innerHTML = headerAfter() + body('האפיון') + nav();
+        after.dataset.shape = S.shape;
+        before.innerHTML = headerBefore() + body('כפי שנשלח', false) + nav();
+        after.innerHTML = headerAfter() + body('האפיון', true) + nav();
         document.getElementById('sheet-trip').innerHTML = tripMenu();
         document.getElementById('sheet-people').innerHTML = peopleSheet();
 
-        // Real scroll, not only a toggle: the condense is a behaviour, and a
-        // toggle would let it look better than it is.
+        // Real scroll, not only a toggle: the condense is a BEHAVIOUR, and a toggle
+        // would let it look better than it is. Two guards, and both exist because
+        // the first pass oscillated visibly:
+        //   · HYSTERESIS. One threshold means the state flips on the pixel it is
+        //     read at. Collapsing frees 52px of body, which on a short page removes
+        //     the very overflow that triggered it — so it expands, overflows, and
+        //     collapses again, forever. Condense at 48, release at 12.
+        //   · SLACK. Never condense when the page barely scrolls: the room it buys
+        //     is room the content did not need, and buying it costs the scroll.
+        // Both are the mockup earning its keep — neither is visible in a static frame.
         const scroller = after.querySelector('.body');
-        scroller.addEventListener('scroll', () => {
-          const on = scroller.scrollTop > 24;
-          after.querySelector('.header').classList.toggle('is-condensed', on || S.condensed === 'on');
-          requestAnimationFrame(measure);
-        });
+        const hdr = after.querySelector('.header');
+        let condensed = S.condensed === 'on';
+        let ticking = false;
+        scroller.addEventListener(
+          'scroll',
+          () => {
+            if (S.condensed === 'on' || condensedByDefault()) return;
+            const y = scroller.scrollTop;
+            const slack = scroller.scrollHeight - scroller.clientHeight;
+            if (!condensed && y > 48 && slack > 140) condensed = true;
+            else if (condensed && y < 12) condensed = false;
+            else return;
+            hdr.classList.toggle('is-condensed', condensed);
+            if (ticking) return;
+            ticking = true;
+            requestAnimationFrame(() => {
+              ticking = false;
+              measure();
+            });
+          },
+          { passive: true },
+        );
         requestAnimationFrame(measure);
       }
 
