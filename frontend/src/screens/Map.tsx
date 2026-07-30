@@ -23,7 +23,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   EVENT_STATUS,
-  iconForCategory,
   matchesAnyTerm,
   type Booking,
   type EventCategory,
@@ -57,7 +56,10 @@ import {
   liveToday,
   liveZoneContext,
   mapsDayRouteUrl,
+  coordLabel,
   mapsDirectionsUrl,
+  mapsPlaceIdUrl,
+  mapsPredictionUrl,
   nextDestination,
 } from '../lib/places';
 import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from '../lib/place-refs';
@@ -69,6 +71,7 @@ import {
   pinOutcome,
   pinSizeCss,
   pinTransition,
+  placeGlyph,
   placePinTier,
   placePoint,
   type PinContext,
@@ -78,7 +81,7 @@ import {
 import { countPointsInBounds, pointInBounds, type LatLng, type MapBounds } from '../lib/map-camera';
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
-import { useVerbs } from '../state/verbs';
+import { useVerbs, type AddMaybeOptions } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
 import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/nav-state';
@@ -111,7 +114,12 @@ import { AddLocationButton } from '../ui/primitives/PlacePicker';
 import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { ToggleChip } from '../ui/primitives/ToggleChip';
-import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
+import { MapPane, type MapDraftMarker, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
+import {
+  MapPlaceForm,
+  type MapPlaceFormSpec,
+  type MapPlaceFormValue,
+} from '../ui/domain/MapPlaceForm';
 import { DevMapTuner } from '../dev/DevMapTuner';
 import { PlaceResearch, ResultRow } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
@@ -156,9 +164,29 @@ interface RefEntry {
   };
 }
 
+/** The glyph to carry onto the created idea — a human's PICK only, so an untouched derivation
+ *  leaves `verbs.addMaybe` to supply the shelf's own default. Same rule as `Place.icon`'s write
+ *  below, stated once: a derived glyph is not a choice, and storing one stops the thing
+ *  following its category. */
+const authoredIcon = (value?: MapPlaceFormValue): string | undefined =>
+  value?.iconTouched ? value.icon : undefined;
+
 export function MapView() {
-  const { events, bookings, maybeItems, places, activeDate, zoneEvidence, usingCachedSnapshot } =
-    useTrip();
+  const {
+    events,
+    bookings,
+    maybeItems,
+    places,
+    activeDate,
+    zoneEvidence,
+    usingCachedSnapshot,
+    // Both of the canvas's make-a-place paths write through these (ADR-0147 §6): a dropped
+    // pin is a `createPlace` with coordinates and no `googlePlaceId`, a tapped Google sight
+    // is the same `resolvePlace` a search result picks with. Neither is a search, so neither
+    // goes through `usePlaceSearch` — its session, its debounce and its dedup are all about
+    // a query, and a canvas gesture has none.
+    indexVerbs,
+  } = useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
   const nowMs = useClock().getTime();
@@ -964,12 +992,7 @@ export function MapView() {
         lng: point.lng,
         hue: usage.pin.category ? CATEGORY_PIN_HUE[usage.pin.category] : 'leisure',
         // A ghost has no fill for a glyph to sit on, so it carries none.
-        glyph:
-          tier === PIN_TIER.ghost
-            ? ''
-            : usage.pin.category
-              ? iconForCategory(usage.pin.category)
-              : DEFAULT_PLACE_ICON,
+        glyph: tier === PIN_TIER.ghost ? '' : placeGlyph(place, usage.pin.category),
         tier,
         // WHICH KIND of behind-you it is (ADR-0117 §1 on the canvas). Derived from the
         // SAME context the tier is, so the grey and the mark can never describe two
@@ -1322,39 +1345,314 @@ export function MapView() {
     select(placeId, { fromRow: true });
   };
 
+  // ── WHERE A NEW PLACE LANDS — ONE COMPOSITION, EVERY SOURCE ────────────────────────
+  // FOUR SOURCES, THREE DESTINATIONS, AND THE INVOCATION DECIDES IT (ADR-0131 §11,
+  // ADR-0134 §3/§9). Under a ROW errand the pick already did the work — the hook enriched the
+  // row in place — so there is nothing to assign and nowhere to return: the tab clears the
+  // errand and SELECTS the row, which is now a real pin, so the answer is visible where the
+  // question was asked. Under a form errand the place is ASSIGNED and the tab returns, with no
+  // `MaybeItem` ("only choosing one place and not adding more and more places"). With no
+  // errand it goes to the shelf.
+  //
+  // **This is the one place that branch is written**, and the reason it is a function rather
+  // than three lines repeated per source: a search result's add and a canvas gesture's confirm
+  // reach the same three destinations, and a second copy is exactly the parallel-composition
+  // defect ADR-0094/0095 exist to undo. A fifth source is a call to this, not a fourth copy.
+  //
+  // A latest-ref because it reads `rowErrand`/`pendingErrand` and `select` closes over this
+  // render's `ownedResults`/`sheetView` — a `useCallback` would frame against a stale one.
+  const landPlace = useRef<(placeId: string, idea: AddMaybeOptions & { title: string }) => void>(
+    () => {},
+  );
+  landPlace.current = (placeId, idea) => {
+    if (rowErrand) finishRowErrand.current(placeId);
+    else if (pendingErrand) finishErrand(placeId);
+    else {
+      // A `Place` with no reference is cache-only and would not list at all (ADR-0112), so
+      // every add must also create one — the uncategorised `MaybeItem` that `＋ אולי` already
+      // creates, with its own toast and undo (ADR-0115 §3). The icon and category the form
+      // collected ride along on it: `verbs.addMaybe` already takes both, which is why the form
+      // can carry a category with no new column.
+      const { title, ...opts } = idea;
+      verbs.addMaybe(title, { ...opts, placeId });
+      select(placeId, { fromRow: true });
+    }
+  };
+
   // ADDING A RESULT — one path, whether it was tapped as a row or as a ring. Two steps,
   // both already built: resolve the place (which, for a Text Search result, spends
   // NOTHING — the search already returned the name, the address and the point, so the
-  // server skips Place Details, ADR-0132 §7), then reference it from an uncategorised
-  // idea, because a reference is what makes a place "in the trip" (ADR-0112). The row
+  // server skips Place Details, ADR-0132 §7), then land it through the branch above. The row
   // then flips to `כבר בטיול` and the ring disappears on its own: both read the same
   // derivation, so neither needs telling.
+  //
+  // **Outside an errand this is no longer where a result's add begins** — the `＋ אולי` control
+  // opens the form first, so the place arrives with the name and glyph you chose instead of
+  // Google's for you to correct later (ADR-0147 §4, amending ADR-0131 §11's "picked → shelf").
+  // Under an errand the control is `בחירה`, a different verb answering one question, and it
+  // still commits directly: this function is that path.
+  // WHAT A HUMAN AUTHORED, WRITTEN ONTO THE PLACE. The name and the glyph are the only two
+  // user-owned fields on a `Place`, and this is the one write for both — rename is this call
+  // and nothing else, and the three add paths make it when what was typed differs from what
+  // Google (or the existing row) already says. Skipped entirely when nothing differs, so an
+  // add that accepts the name as offered costs no second request.
+  const applyAuthored = useRef<(place: Place, value: MapPlaceFormValue) => Promise<Place>>(
+    async (place) => place,
+  );
+  applyAuthored.current = async (place, value) => {
+    const name = value.name === '' ? place.name : value.name;
+    const patch = {
+      ...(name !== place.name && { name }),
+      // **Only a PICK is stored**, never a glyph the category derived: storing a derived one
+      // would freeze the place's icon at whatever the category said that day, and it would then
+      // shadow the category from then on — the same defect `chosenIcon` exists to undo one
+      // layer down. `iconTouched` is the form telling us which it was.
+      ...(value.iconTouched && value.icon !== place.icon && { icon: value.icon }),
+    };
+    if (Object.keys(patch).length === 0) return place;
+    await indexVerbs.updatePlace(place.id, patch);
+    return { ...place, ...patch };
+  };
+
   const [addingResultId, setAddingResultId] = useState<string | null>(null);
   const [addResultFailed, setAddResultFailed] = useState(false);
   const addResult = useCallback(
-    async (result: PlaceResult) => {
+    async (result: PlaceResult, authored?: MapPlaceFormValue): Promise<boolean> => {
       setAddingResultId(result.googlePlaceId);
       setAddResultFailed(false);
       try {
         const place = await research.pick(result);
-        // FOUR SOURCES, THREE DESTINATIONS, AND THE INVOCATION DECIDES IT (ADR-0131 §11,
-        // ADR-0134 §3/§9). Under a ROW errand the pick already did the work — the hook
-        // enriched the row in place — so there is nothing to assign and nowhere to return:
-        // the tab clears the errand and SELECTS the row, which is now a real pin, so the
-        // answer is visible where the question was asked. Under a form errand the place is
-        // ASSIGNED and the tab returns, with no `MaybeItem` ("only choosing one place and
-        // not adding more and more places"). With no errand it goes to the shelf, unchanged.
-        if (rowErrand) finishRowErrand.current(place.id);
-        else if (pendingErrand) finishErrand(place.id);
-        else verbs.addMaybe(result.primaryText, { placeId: place.id });
+        // The name is the user's, so a name they typed is written over Google's — through the
+        // same one write rename uses, because it is the same act (ADR-0147).
+        const named = authored ? await applyAuthored.current(place, authored) : place;
+        landPlace.current(named.id, {
+          title: named.name,
+          icon: authoredIcon(authored),
+          category: authored?.category,
+        });
+        return true;
       } catch {
         setAddResultFailed(true);
+        return false;
       } finally {
         setAddingResultId(null);
       }
     },
-    [research.pick, verbs, rowErrand, pendingErrand, finishErrand],
+    [research.pick],
   );
+
+  // THE RESULT ROW'S TRAILING VERB, whichever host it is in. **Two verbs, and they are not the
+  // same act**, which is why this branches rather than always doing one thing:
+  //
+  //   • `＋ אולי` (no errand) OPENS THE FORM, so a place enters the trip with the name and glyph
+  //     you chose rather than Google's for you to correct later. That is a change to shipped
+  //     behaviour — ADR-0131 §11's "picked → shelf" — recorded in ADR-0147 §4 rather than
+  //     smuggled, and the gain is that all four sources really are one form.
+  //   • `בחירה` (under an errand) still commits DIRECTLY: the tab is answering one question, and
+  //     a naming form in the middle of choosing a place for a booking is not that question
+  //     ("only choosing one place and not adding more and more places", ADR-0134 §3).
+  const addOrNameResult = useRef<(result: PlaceResult) => void>(() => {});
+  addOrNameResult.current = (result) => {
+    if (pendingErrand) void addResult(result);
+    else openDraft.current({ kind: 'result', result });
+  };
+  const onResultAdd = useCallback((result: PlaceResult) => addOrNameResult.current(result), []);
+
+  // ── MAKING AND NAMING A PLACE: FOUR SOURCES, ONE FORM (ADR-0147) ───────────────────
+  // A long press on the canvas · a tap on one of Google's own sights · a search result's add ·
+  // the pencil on a selected row. **They are one act — a place's NAME is the user's** — and
+  // they differ only in how the `Place` is obtained, which is exactly what `MapDraft`'s
+  // discriminant names. Everything after that is shared: one form, one authored write, one
+  // destination branch.
+  type MapDraft =
+    /** 6b. A bare coordinate and nothing else: no name, no `place_id`, no reverse geocode
+     *  (paid, and refused — ADR-0131 §9). The name is typed, and it is the only source where
+     *  the confirm cannot proceed without one. */
+    | { kind: 'drop'; at: LatLng }
+    /** 6c. A coordinate AND a `place_id`, on a thing you are already looking at. The name is
+     *  Google's, bought by ONE Place Details call on the confirm — never on the tap, which is
+     *  ADR-0115 §1's "armed by intent, not by opening" read literally. */
+    | { kind: 'sight'; at: LatLng; googlePlaceId: string }
+    /** A Text Search result's `＋ אולי`. Free to resolve (the search already returned the name,
+     *  the address and the point, ADR-0132 §7), and prefilled, so the form is only a chance to
+     *  correct the label before it enters the trip. */
+    | { kind: 'result'; result: PlaceResult }
+    /** A place the trip already has — reached by the pencil, or by tapping a Google sight the
+     *  trip already owns, which is the FREE path and must be tried first: we have its name, so
+     *  there is nothing to buy ("the trip answers first", ADR-0134 §1). `viaSight` only changes
+     *  the words. */
+    | { kind: 'rename'; place: Place; viaSight?: boolean };
+
+  const [draft, setDraft] = useState<MapDraft | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftFailed, setDraftFailed] = useState(false);
+  // The form's value, MIRRORED so the canvas can draw it — the marker under a dropped pin
+  // carries the category's hue, and the category lives in the form. The form stays the owner
+  // and reports (`onValueChange`); this is a copy for rendering, never a second source.
+  const [draftLook, setDraftLook] = useState<{ icon: string; category?: EventCategory }>({
+    icon: DEFAULT_PLACE_ICON,
+  });
+
+  const openDraft = useRef<(next: MapDraft, frameAt?: LatLng) => void>(() => {});
+  openDraft.current = (next, frameAt) => {
+    // **EXACTLY ONE CARD ON THIS CANVAS** (ADR-0125 §6, ADR-0122 §7). A canvas gesture lands
+    // on something that is not ours, so it replaces the selection outright — which is also
+    // what every map app does when you tap something else. The other two sources are ABOUT
+    // what is selected (a row's pencil, a result's add), so they keep it: the row stays lit
+    // and the ring stays filled under the form. The card slot is kept single by gating the
+    // other two cards on `!draft` instead, which says it where it is true.
+    if (next.kind === 'drop' || next.kind === 'sight') clearSelection();
+    setDraft(next);
+    setDraftFailed(false);
+    setDraftLook({
+      icon: placeGlyph({ icon: next.kind === 'rename' ? next.place.icon : undefined }, undefined),
+    });
+    // Frame it once, so the place you just made is the place you are looking at (§5).
+    if (frameAt) setFramePlace({ ...frameAt });
+  };
+
+  const cancelDraft = useCallback(() => {
+    setDraft(null);
+    setDraftFailed(false);
+  }, []);
+
+  // **BACK CLOSES THE FORM.** It is a state this mounted screen enters and leaves with a
+  // visible cancel, which is the shape `frontend/CLAUDE.md` names as needing a deliberate
+  // layer: without one, a system back would leave the tab and throw away what was typed, while
+  // the ✕ two pixels away only closed the card. Gated on the form being up, so the
+  // `IconPicker`'s own layer (gated on its panel) lands above and back peels the panel first.
+  useBackLayer(() => {
+    cancelDraft();
+    return { remainsActive: false };
+  }, draft != null);
+
+  // The three props `MapPane` takes, `useCallback(…, [])` over the latest-ref above. The pane
+  // is memoized and this screen re-renders every second, so a fresh identity here re-diffs
+  // every marker — the anti-pattern `frontend/CLAUDE.md` lists as already fixed once.
+  // **Neither gesture needs an offline guard:** `hasMap` already withholds the whole pane, so
+  // they are absent rather than disabled (ADR-0121 §11).
+  const holdCanvas = useCallback((at: LatLng) => openDraft.current({ kind: 'drop', at }, at), []);
+
+  // **THE TRIP ANSWERS FIRST** (ADR-0134 §1): a sight the trip already owns needs no Google
+  // call at all, because we already have its name — so that tap is a rename, not a purchase.
+  // The free path has to be tried before the paid one, and this is where.
+  const ownedSight = useRef<(googlePlaceId: string) => MapDraft | undefined>(() => undefined);
+  ownedSight.current = (googlePlaceId) => {
+    const place = places.find((p) => p.googlePlaceId === googlePlaceId);
+    return place ? { kind: 'rename', place, viaSight: true } : undefined;
+  };
+  const tapGooglePlace = useCallback(
+    (googlePlaceId: string, at: LatLng) =>
+      openDraft.current(
+        ownedSight.current(googlePlaceId) ?? { kind: 'sight', at, googlePlaceId },
+        at,
+      ),
+    [],
+  );
+
+  // The pencil (ADR-0147 §3). Any place is renameable — including one Google named — because
+  // otherwise the same row would be editable or not depending on where it came from, and the
+  // backend has preserved a user-authored name over Google's since long before there was a way
+  // to type one.
+  const beginRename = useRef<(placeId: string) => void>(() => {});
+  beginRename.current = (placeId) => {
+    const place = placeById.get(placeId);
+    if (place) openDraft.current({ kind: 'rename', place });
+  };
+
+  // The confirm. Every source ends in the same two steps — **obtain the place, then write what
+  // the human authored onto it** — and every ADD then ends in the one destination branch
+  // (`landPlace`). Which of the four it was decides only the first step.
+  const commitDraft = useRef<(value: MapPlaceFormValue) => void>(() => {});
+  commitDraft.current = async (value) => {
+    if (!draft || savingDraft) return;
+    setSavingDraft(true);
+    setDraftFailed(false);
+    try {
+      if (draft.kind === 'result') {
+        // Its own path because the resolve is the research hook's (free, and it owns the
+        // row's busy/failed state), but it lands through the same branch as everything else.
+        if (await addResult(draft.result, value)) cancelDraft();
+        else setDraftFailed(true);
+        return;
+      }
+      if (draft.kind === 'rename') {
+        // No landing: the place is already in the trip, so there is nothing to reference and
+        // nowhere to return. Renaming is `applyAuthored` and nothing else.
+        await applyAuthored.current(draft.place, value);
+        cancelDraft();
+        return;
+      }
+      let placeId: string;
+      let title: string;
+      if (draft.kind === 'sight') {
+        // **The only spend on this surface**, and it is one call on an explicit confirm.
+        // Google mints the row and names it, so what the human authored is written over it —
+        // which makes a tapped sight exactly the rename case, one step later.
+        const resolved = await indexVerbs.resolvePlace({ googlePlaceId: draft.googlePlaceId });
+        const named = await applyAuthored.current(resolved, value);
+        placeId = named.id;
+        title = named.name;
+      } else {
+        // Free, and deliberately so: no session, no Details, no reverse geocode (§3). The name
+        // and the icon ride along on the create, so a dropped pin never exists un-authored and
+        // there is nothing to write over afterwards.
+        title = value.name;
+        placeId = await indexVerbs.createPlace({
+          name: value.name,
+          lat: draft.at.lat,
+          lng: draft.at.lng,
+          icon: value.iconTouched ? value.icon : undefined,
+        });
+      }
+      cancelDraft();
+      landPlace.current(placeId, {
+        title,
+        icon: authoredIcon(value),
+        category: value.category,
+      });
+    } catch {
+      setDraftFailed(true);
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  // ── THE SPOT THE OPEN FORM IS ABOUT (ADR-0147 §5) ─────────────────────────────
+  // Only the two CANVAS sources need one, and they need different silhouettes:
+  //
+  //   • a long press landed on bare canvas, so nothing else says where it went — OUR pin,
+  //     dashed because it is provisional, in the hue the form's category pills are choosing;
+  //   • a tapped sight already has Google's own icon under it, so our PIN would be two markers
+  //     for one place (the mess ADR-0125 §6 refused) — it gets the RING, which is already this
+  //     app's word for a Google-sourced candidate that is not yours yet (ADR-0132 §6).
+  //
+  // The other two need nothing: a renamed place has its own selected pin, and a search result
+  // is already a ring in `results` above. Drawing a second marker on either would say the same
+  // thing twice.
+  const draftMarkerNow: MapDraftMarker | null = !hasMap
+    ? null
+    : draft?.kind === 'drop'
+      ? {
+          ...draft.at,
+          hue: draftLook.category ? CATEGORY_PIN_HUE[draftLook.category] : 'leisure',
+          glyph: draftLook.icon,
+        }
+      : draft?.kind === 'sight'
+        ? { ...draft.at, ringed: true }
+        : null;
+  // The same content-key memo as `pins`/`results`, and needed for the same reason: an inline
+  // `{ lat, lng }` in the JSX undoes the pane's memo silently (§4/§6).
+  const draftMarkerKey = draftMarkerNow
+    ? [
+        draftMarkerNow.lat,
+        draftMarkerNow.lng,
+        draftMarkerNow.ringed,
+        draftMarkerNow.hue,
+        draftMarkerNow.glyph,
+      ].join('|')
+    : '';
+  const draftMarker = useMemo(() => draftMarkerNow, [draftMarkerKey]);
 
   // A pin tap, behind a stable identity. `MapPane` is memoized, so a handler
   // re-created every render would break the memo and re-diff every marker once a
@@ -1627,6 +1925,12 @@ export function MapView() {
           }
           onFrame={opts.onFrame}
           onChoose={opts.onChoose && (() => opts.onChoose!(usage.placeId))}
+          // Selected only, and never under an errand: the tab is then answering one question,
+          // and ADR-0134 §3 has the verbs CHANGE rather than accumulate — the same rule that
+          // takes `נווט` and the schedule verb off this row.
+          onRename={
+            selected && !pendingErrand ? () => beginRename.current(usage.placeId) : undefined
+          }
         />
       );
     };
@@ -1958,8 +2262,13 @@ export function MapView() {
   // and `full` the row is in the list and gets scrolled into view instead. Its body is
   // inert (no `onSelect`) — there is nowhere for a tap on it to go, and raising the
   // sheet from it would take away the map it is sitting on.
+  // `!draft` is where "exactly one card" is enforced (ADR-0125 §6): the make/rename form is
+  // ABOUT the selected place, so the selection deliberately survives opening it — and the card
+  // it would otherwise raise stands down instead of the selection being thrown away.
   const cardUsage =
-    sheetView === MAP_SHEET_VIEW.map && selectedId ? usageIndex.get(selectedId) : undefined;
+    sheetView === MAP_SHEET_VIEW.map && selectedId && !draft
+      ? usageIndex.get(selectedId)
+      : undefined;
   const placeCard = cardUsage && (
     <div className="map-placecard">
       {renderRow({
@@ -1974,6 +2283,106 @@ export function MapView() {
     </div>
   );
 
+  // THE FORM, HOSTED ON THE CANVAS (ADR-0147 §4). Same host as the two cards below, and a
+  // place that is not in the trip yet is the sharpest case of the rule that put them there —
+  // `.map-placecard` is "the row wherever the sheet cannot show it" (ADR-0122 §7) and this one
+  // has **no row at any stop**, which is also why it is NOT gated on the `map` stop the way
+  // the selection card is. In practice the gesture can only start on visible canvas, so at
+  // `full` it never arises.
+  //
+  // **Everything that varies between the four sources is DATA**, which is the design's whole
+  // claim: this function is the only place that knows which source is which, and the form
+  // itself knows none of it (`MapPlaceForm`).
+  const draftSpec = (): MapPlaceFormSpec => {
+    switch (draft!.kind) {
+      case 'drop': {
+        const { at } = draft as Extract<MapDraft, { kind: 'drop' }>;
+        return {
+          title: t.map.make.dropTitle,
+          name: '',
+          // Deliberately the point and not an address: a reverse geocode is paid (§7), and the
+          // camera has already framed the spot, so the coordinates are confirmation that the
+          // pin fell where the finger was. `measure` keeps the numeric run an LTR island in
+          // the RTL flow (ADR-0118).
+          meta: coordLabel(at),
+          confirmLabel: t.map.make.add,
+        };
+      }
+      case 'sight': {
+        const s = draft as Extract<MapDraft, { kind: 'sight' }>;
+        return {
+          title: t.map.make.googleTitle,
+          // Empty ON PURPOSE, and the hint says who fills it: naming a tapped sight before the
+          // confirm is a Place Details call, i.e. paying to browse — the exact spend that
+          // blocked Phase 6a for three weeks. Google's own label is already drawn under the
+          // finger, which is the preview.
+          name: '',
+          meta: coordLabel(s.at),
+          hint: t.map.make.googleHint,
+          nameOptional: true,
+          // The FREE vet (ADR-0115 §2), and the only source that needs one: a dropped pin was
+          // your own choice of spot, and the other two already carry a name.
+          vetUrl: mapsPlaceIdUrl(s.googlePlaceId, s.at),
+          confirmLabel: t.map.make.add,
+        };
+      }
+      case 'result': {
+        const { result } = draft as Extract<MapDraft, { kind: 'result' }>;
+        return {
+          title: t.map.make.resultTitle,
+          name: result.primaryText,
+          meta: result.secondaryText ?? '',
+          vetUrl: mapsPredictionUrl(result),
+          confirmLabel: t.map.make.add,
+        };
+      }
+      case 'rename': {
+        const r = draft as Extract<MapDraft, { kind: 'rename' }>;
+        const usage = usageIndex.get(r.place.id);
+        return {
+          // Reached by the pencil, or by tapping a sight the trip already owns — which is the
+          // free path, so it says so rather than looking like an add that happens to be quiet.
+          title: r.viaSight ? t.map.make.googleTitle : t.map.make.renameTitle,
+          hint: r.viaSight ? t.map.make.ownedHint : undefined,
+          name: r.place.name,
+          meta: r.place.address ?? '',
+          icon: r.place.icon,
+          // The category the referencing entities agree on, so the pills open where the place
+          // already is. It is not written back on a rename — a `Place` has no category and the
+          // referencing entity that does is ambiguous (`soleIdeaFor`'s recorded rule) — so
+          // here it is the ICON's driver, and the icon is what persists.
+          category: usage?.pin.category ?? undefined,
+          confirmLabel: t.map.make.save,
+        };
+      }
+    }
+  };
+  const draftCard = draft && (
+    <div className="map-placecard">
+      <MapPlaceForm
+        // **The form is reset by its KEY.** Every field in it is local state seeded from the
+        // spec, so a second draft has to be a second instance — which is how a `useState` form
+        // is reset without a synchronising effect. The discriminant plus the subject is the
+        // draft's identity.
+        key={`${draft.kind}:${
+          draft.kind === 'rename'
+            ? draft.place.id
+            : draft.kind === 'result'
+              ? draft.result.googlePlaceId
+              : `${draft.at.lat},${draft.at.lng}`
+        }`}
+        spec={draftSpec()}
+        busy={savingDraft}
+        error={
+          draftFailed ? (draft.kind === 'rename' ? t.map.make.saveFailed : t.map.make.failed) : null
+        }
+        onConfirm={(value) => commitDraft.current(value)}
+        onCancel={cancelDraft}
+        onValueChange={(value) => setDraftLook({ icon: value.icon, category: value.category })}
+      />
+    </div>
+  );
+
   // THE TAPPED RING, ON THE SAME CANVAS HOST (ADR-0132 §8, built session 166). Same rule as
   // the place card and the ghost row above — the row surfaces wherever the sheet cannot show
   // it — so it is `ResultRow` in `.map-placecard`, not a second grammar for a Google result.
@@ -1983,7 +2392,7 @@ export function MapView() {
   // of the two — it carries the day, the distance and the way in to every reference. So the
   // place we own wins, which is also the honest answer to "what is this": ours.
   const cardResult =
-    sheetView === MAP_SHEET_VIEW.map && selectedResultId && !cardUsage
+    sheetView === MAP_SHEET_VIEW.map && selectedResultId && !cardUsage && !draft
       ? research.predictions.find((r) => r.googlePlaceId === selectedResultId)
       : undefined;
   const resultCard = cardResult && (
@@ -1993,7 +2402,7 @@ export function MapView() {
         selected
         chooseMode={pendingErrand != null}
         busy={addingResultId === cardResult.googlePlaceId}
-        onAdd={() => addResult(cardResult)}
+        onAdd={() => onResultAdd(cardResult)}
       />
     </div>
   );
@@ -2085,7 +2494,7 @@ export function MapView() {
       onShow={selectResultRow}
       addingId={addingResultId}
       addFailed={addResultFailed}
-      onAdd={addResult}
+      onAdd={onResultAdd}
     />
   );
 
@@ -2247,8 +2656,15 @@ export function MapView() {
           onAreaSort={toggleAreaSort}
           onLocate={locateFromCanvas}
           framePlace={framePlace}
-          cardOpen={cardUsage != null || cardResult != null}
+          cardOpen={cardUsage != null || cardResult != null || draft != null}
+          // Both make-a-place gestures (ADR-0147). Stable identities via latest-refs, like
+          // every other handler this memoized pane takes — an inline arrow here would
+          // re-diff every marker once a second (§7, ADR-0121 §4).
+          onHoldCanvas={holdCanvas}
+          onTapGooglePlace={tapGooglePlace}
+          draftMarker={draftMarker}
         />
+        {draftCard}
         {placeCard}
         {resultCard}
         {geoPrompt}
@@ -2348,6 +2764,7 @@ function PlaceRow({
   onEnrich,
   onFrame,
   onChoose,
+  onRename,
 }: {
   usage: PlaceUsage;
   place: Place;
@@ -2409,9 +2826,16 @@ function PlaceRow({
   onChoose?: () => void;
   /** Open the picker to give a coordless Place-lite real coordinates. */
   onEnrich: () => void;
+  /** **Give this place your own name** (ADR-0147 §3). Present only while selected, which is
+   *  what makes it free: every other slot on this row is measured-spent, and a selected row is
+   *  already the object that reveals its verbs. */
+  onRename?: () => void;
 }) {
   const hue = usage.pin.category ? CATEGORY_PIN_HUE[usage.pin.category] : 'leisure';
-  const glyph = usage.pin.category ? iconForCategory(usage.pin.category) : DEFAULT_PLACE_ICON;
+  // The same one chain the pin reads (`placeGlyph`), so the row's badge and its pin can never
+  // disagree about which glyph this place shows — the property the list-first investment was
+  // for, and the reason a `??` chain here would be a second copy of the rule.
+  const glyph = placeGlyph(place, usage.pin.category);
   const isHard = usage.pin.commitment === 'hard';
   const isPureIdea = usage.isMaybe && !usage.isScheduled;
   const dirUrl = mapsDirectionsUrl(place);
@@ -2488,6 +2912,24 @@ function PlaceRow({
             <span className="map-lock" aria-hidden="true">
               <Icon name="lock" />
             </span>
+          )}
+          {/* REVEALED BY SELECTION, and that is the whole answer to where this hangs — CSS
+              shows it on `.place.selected`, so an unselected row pays nothing. An `Icon`, not
+              an emoji (ADR-0138); 16px of layout with a 44px `::after` target (ADR-0017), and
+              `stopPropagation` because the row's own tap frames the place. */}
+          {onRename && (
+            <button
+              type="button"
+              className="map-rename"
+              aria-label={t.map.make.rename}
+              title={t.map.make.rename}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename();
+              }}
+            >
+              <Icon name="edit" />
+            </button>
           )}
         </span>
         <span className="map-m">

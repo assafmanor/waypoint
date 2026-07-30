@@ -24,7 +24,7 @@ import {
   type PinTier,
 } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
-import { useDragZoom } from '../../lib/useDragZoom';
+import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
 import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
@@ -177,6 +177,28 @@ export interface MapResultPin {
   selected?: boolean;
 }
 
+/** **The spot the open form is about** (ADR-0147 §5) — a marker for a place that does not
+ *  exist yet, or one being renamed. Two silhouettes, and which one is not a style choice:
+ *
+ *  - a LONG PRESS lands on bare canvas, so nothing else marks where it went and it takes
+ *    **our own pin**, dashed because it is provisional (ADR-0011's soft grammar reused, not a
+ *    new colour) and in the category's hue, so choosing a category moves it;
+ *  - a TAPPED SIGHT and a search result already have a marker of Google's under them, so ours
+ *    would be two markers for one place — the exact mess ADR-0125 §6 refused. Those get the
+ *    app's own **ring** instead, which is already its word for "a Google-sourced candidate
+ *    that is not yours yet" (ADR-0132 §6: a different KIND of object gets a different
+ *    SILHOUETTE, not another rung on the pin ladder). */
+export interface MapDraftMarker {
+  lat: number;
+  lng: number;
+  /** Draw the ring rather than our pin — set wherever Google has already marked the spot. */
+  ringed?: boolean;
+  /** Pin variant only: the category's hue and glyph, so the marker under the form answers the
+   *  form's own category pills. */
+  hue?: PinHue;
+  glyph?: string;
+}
+
 export interface MapPaneProps {
   config: MapsConfig;
   pins: readonly MapPin[];
@@ -201,6 +223,19 @@ export interface MapPaneProps {
    *  the place card's own dismissal (ADR-0122 §7). Nothing registers with the back
    *  stack — the card is not an overlay, for the same reasons the sheet is not. */
   onCanvasTap: () => void;
+  /** A press held still on the canvas background: make a place here (ADR-0147 §1). Absent
+   *  — offline, or on the list-only path — the gesture is never armed at all, which is the
+   *  "absent, not disabled" rule the pane already follows for everything Google-shaped
+   *  (ADR-0121 §11). */
+  onHoldCanvas?: (at: LatLng) => void;
+  /** One of GOOGLE's own sight icons was tapped, carrying its `place_id` (ADR-0147 §4).
+   *  Google's own card is suppressed before this fires, so ours is the only one on the
+   *  canvas — which is how ADR-0125 §6's "never two cards" survives the tap becoming
+   *  ours. */
+  onTapGooglePlace?: (googlePlaceId: string, at: LatLng) => void;
+  /** The spot the open make/rename form is about. Memoized on a content key by the caller,
+   *  exactly like `pins` and `results` — same per-second-tick rule. */
+  draftMarker?: MapDraftMarker | null;
   /** The viewport settled: the `באזור` readout recomputes here and never during a
    *  pan (§9 — a number churning under a moving finger is noise). */
   onViewChange: (bounds: MapBounds | null) => void;
@@ -283,6 +318,9 @@ function MapPaneInner({
   onLocate,
   framePlace,
   cardOpen,
+  onHoldCanvas,
+  onTapGooglePlace,
+  draftMarker,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
   return (
@@ -321,6 +359,19 @@ function MapPaneInner({
           onClick={(event) => {
             const target = event.domEvent?.target as HTMLElement | null;
             if (target?.closest?.('.map-pin')) return;
+            // A GOOGLE sight, tapped (ADR-0147 §4). `stop()` suppresses Google's own info
+            // window, which is what lets OUR card answer the tap without §6's two cards ever
+            // existing at once — the owner's constraint was "not a mess", and clearing our
+            // selection was the means, not the end. The selection still clears; it is
+            // replaced by the new-place card rather than by nothing.
+            const placeId = event.detail.placeId;
+            const at = event.detail.latLng;
+            if (placeId && at && onTapGooglePlace) {
+              event.stop();
+              onCanvasTap();
+              onTapGooglePlace(placeId, at);
+              return;
+            }
             onCanvasTap();
           }}
         >
@@ -335,6 +386,7 @@ function MapPaneInner({
             />
           ))}
           {me && <MeMarker at={me} />}
+          {draftMarker && <DraftMarker marker={draftMarker} />}
           <DayConnector path={connector} />
         </Map>
         {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
@@ -357,6 +409,7 @@ function MapPaneInner({
           onLocate={onLocate}
           framePlace={framePlace}
           cardOpen={cardOpen}
+          onHoldCanvas={onHoldCanvas}
         />
       </APIProvider>
     </div>
@@ -545,6 +598,29 @@ const MeMarker = memo(function MeMarker({ at }: { at: LatLng }) {
 /** Above every pin: it is the one thing on the canvas that is not a place. */
 const ME_MARKER_Z = 1000;
 
+/** THE SPOT THE OPEN FORM IS ABOUT (ADR-0147 §5) — see {@link MapDraftMarker} for why one
+ *  source draws a pin and the others a ring. Inert: the form beneath it is the only thing that
+ *  acts on this point, so the marker says where and nothing else. */
+const DraftMarker = memo(function DraftMarker({ marker }: { marker: MapDraftMarker }) {
+  const at = { lat: marker.lat, lng: marker.lng };
+  return (
+    <AdvancedMarker position={at} zIndex={DRAFT_MARKER_Z}>
+      {marker.ringed ? (
+        <div className="map-result selected" aria-hidden="true" />
+      ) : (
+        <div className={`map-pin pending cat-${marker.hue ?? 'leisure'}`} aria-hidden="true">
+          <span className="pin-b">
+            <span className="pin-g">{marker.glyph}</span>
+          </span>
+        </div>
+      )}
+    </AdvancedMarker>
+  );
+});
+/** Under the device marker and over every place: the point you are naming is what you are
+ *  looking at, and nothing already on the trip should hide it. */
+const DRAFT_MARKER_Z = 950;
+
 /** The day's order as a dashed neutral line (§10). Dashed because a straight
  *  segment is not the route you will walk — drawing it solid would claim it is —
  *  which also leaves **solid + amber** unspent for a real Routes polyline later.
@@ -598,6 +674,7 @@ function MapCameraControls({
   onLocate,
   framePlace,
   cardOpen,
+  onHoldCanvas,
 }: {
   paneRef: RefObject<HTMLDivElement | null>;
   pins: readonly MapPin[];
@@ -610,6 +687,10 @@ function MapCameraControls({
   onLocate: () => void;
   framePlace?: LatLng | null;
   cardOpen?: boolean;
+  /** The long press lives here rather than beside `PinDensity` for the same reason the
+   *  drag zoom does: it must drive THIS camera's pane, and the recogniser that owns it is
+   *  the same one (ADR-0147 §1). */
+  onHoldCanvas?: (at: LatLng) => void;
 }) {
   const map = useMap(MAP_ID);
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
@@ -652,7 +733,11 @@ function MapCameraControls({
   // per render is fine and deliberate — the hook reads it through a latest-ref, because
   // this screen re-renders every second and re-running the gesture's effect is precisely
   // the bug session 116 spent a round on.
-  useDragZoom(map, { zoomTo, stepZoomIn }, paneRef);
+  // The long press that makes a place is the same recogniser's third phase, so it arrives
+  // here rather than as a second pipeline (ADR-0147 §1). A fresh callback per render is fine
+  // and deliberate for the same reason the object above is: the hook reads it through a
+  // latest-ref, because this screen re-renders every second.
+  useCanvasGestures(map, { zoomTo, stepZoomIn }, paneRef, onHoldCanvas);
 
   // Focus pans AND zooms in when the view is too far out to read the place (ADR-0127
   // §1, reversing §7's "focus never zooms" in the one direction that was protecting

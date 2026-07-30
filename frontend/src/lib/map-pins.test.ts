@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
+  EVENT_CATEGORY,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  iconForCategory,
   type Booking,
   type MaybeItem,
   type Place,
@@ -17,6 +19,7 @@ import {
   isAsidePin,
   isFramedByCamera,
   PIN_TIER,
+  placeGlyph,
   pinClearanceFor,
   pinHeightFor,
   pinSizeCss,
@@ -26,7 +29,7 @@ import {
   pinTransition,
   pinZIndex,
 } from './map-pins';
-import { MAP_PIN } from '../constants';
+import { DEFAULT_EVENT_ICON, DEFAULT_MAYBE_ICON, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 
 const DAY = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
@@ -921,5 +924,64 @@ describe('pinClearanceFor — what the camera has to keep clear', () => {
 
   it('tracks the pin, so it is smaller where the pin is at its floor', () => {
     expect(pinClearanceFor(AT_HALF)).toBeLessThan(pinClearanceFor(AT_MAP_STOP));
+  });
+});
+
+// ── THE GLYPH CHAIN'S BOTTOM TWO RUNGS (ADR-0147) ────────────────────────────────
+// `placeGlyph` exists because three surfaces read it — the pin, the list row and the canvas
+// card — and a `??` chain copied three times is three chances to disagree about what one place
+// looks like. So what is pinned here is the RULE, exhaustively over the enum and over the
+// glyph set, rather than three example values.
+describe('placeGlyph — a chosen glyph, else the category’s, else the place default', () => {
+  const CATEGORIES = Object.values(EVENT_CATEGORY);
+
+  // The property, and the only one that matters at this rung: a stored PICK always wins, for
+  // every category it could be competing with. A value test on one pair would pass with the
+  // operands swapped.
+  it('a chosen glyph beats every category’s default', () => {
+    for (const glyph of ['🍜', '⛩️', '🚆', '☕', '🏨']) {
+      expect(placeGlyph({ icon: glyph }, undefined)).toBe(glyph);
+      for (const category of CATEGORIES) {
+        expect(placeGlyph({ icon: glyph }, category)).toBe(glyph);
+      }
+    }
+  });
+
+  // Exhaustive on purpose: a tenth category added to the enum without a default icon would
+  // return `undefined` here, and a spot-check on three of the nine would not see it.
+  it('falls to the category’s own default for every category, and never to nothing', () => {
+    for (const category of CATEGORIES) {
+      expect(placeGlyph({}, category)).toBe(iconForCategory(category));
+      expect(placeGlyph({ icon: null }, category)).toBe(iconForCategory(category));
+      expect(placeGlyph({}, category)).toBeTruthy();
+    }
+  });
+
+  it('falls to the place default when nothing knows anything', () => {
+    expect(placeGlyph({}, undefined)).toBe(DEFAULT_PLACE_ICON);
+    expect(placeGlyph({ icon: undefined }, null)).toBe(DEFAULT_PLACE_ICON);
+    expect(placeGlyph({ icon: '' }, null)).toBe(DEFAULT_PLACE_ICON);
+  });
+
+  // **A DEFAULT IS NOT A PICK.** This is the refinement `chosenIcon` was extracted for — a
+  // stored `📌` shadowed ✈️ once — and reading `place.icon` raw instead of through it is how
+  // the same bug arrives at the place rung.
+  it('a stored PLACEHOLDER glyph does not shadow a category that says something', () => {
+    for (const placeholder of [DEFAULT_EVENT_ICON, DEFAULT_MAYBE_ICON]) {
+      expect(placeGlyph({ icon: placeholder }, EVENT_CATEGORY.FOOD)).toBe(
+        iconForCategory(EVENT_CATEGORY.FOOD),
+      );
+    }
+  });
+
+  // The property the three call sites exist for, stated as one: whatever a place carries, the
+  // row's badge and its pin resolve to the same string, because there is only one resolver.
+  it('answers identically for the same place however many surfaces ask', () => {
+    for (const icon of [undefined, '🍜', DEFAULT_MAYBE_ICON]) {
+      for (const category of [...CATEGORIES, undefined, null]) {
+        const first = placeGlyph({ icon }, category);
+        expect(placeGlyph({ icon }, category)).toBe(first);
+      }
+    }
   });
 });

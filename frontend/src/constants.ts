@@ -298,14 +298,22 @@ export const DRAG_EDGE_SCROLL_RELEASE_PX = 16;
  *  taller than its box, so without a floor the drag scrolls the strip, not the page. */
 export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
 
-/** Press-and-hold before a shelf card starts dragging (ADR-0116 §5, session-114):
- *  long enough that a scroll flick never arms a drag, short enough that a
+/** **What a long press IS, app-wide** — two consumers, one number. Originally the
+ *  press-and-hold before a shelf card starts dragging (ADR-0116 §5, session-114), and
+ *  since ADR-0147 §1 also the hold that drops a pin on the map canvas.
+ *
+ *  Long enough that a scroll flick never arms a drag, short enough that a
  *  deliberate hold doesn't feel stuck. Matched to Android's own long-press
  *  timeout (`ViewConfiguration.getLongPressTimeout()`, 500 ms) — the delay
- *  before the platform's long-press haptic fires on hold — so the drag arms
- *  right where the gesture already feels confirmed. `SLOP` is how far a
- *  finger may wander during the hold before we call it a scroll and give up
- *  the drag. */
+ *  before the platform's long-press haptic fires on hold — so the gesture arms
+ *  right where it already feels confirmed. `SLOP` is how far a
+ *  finger may wander during the hold before we call it a scroll (or, on the canvas, a
+ *  pan) and give up.
+ *
+ *  Shared rather than forked because the justification is the platform's, not the
+ *  surface's: a finger is a finger. If the device pass finds the canvas wants its own —
+ *  it competes with Google's pan, where the shelf competes with a scroll — that is when
+ *  it splits, and not before. */
 export const DRAG_HOLD_MS = 500;
 export const DRAG_HOLD_SLOP_PX = 8;
 /** How long the "swallow the click a completed drag fires" listener stays armed

@@ -8,8 +8,8 @@
 // `PlaceUsage` the list rows read, the same `comparePlacesBySchedule` order the
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
-import type { TripEvent } from '@waypoint/shared';
-import { MAP_PIN } from '../constants';
+import { iconForCategory, type EventCategory, type TripEvent } from '@waypoint/shared';
+import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
   comparePlacesBySchedule,
   isDayUsagePast,
@@ -405,6 +405,38 @@ export function pinSizeCss(): string {
  */
 export function pinClearanceFor(canvasHeightPx: number): number {
   return Math.ceil(pinHeightFor(canvasHeightPx) * (1 + MAP_PIN.TAG_RISE));
+}
+
+/**
+ * **The glyph a place shows** — on its pin, on its list row, and on its card, which is why
+ * it is one function and not three copies of a `??` chain (ADR-0147).
+ *
+ * It is the bottom two rungs of the app's icon resolution chain:
+ *
+ * ```
+ * chosenIcon(event.icon) ?? BOOKING_TYPE_ICON[booking.type]   ← the event/booking surfaces
+ * ?? chosenIcon(place.icon) ?? iconForCategory(category) ?? DEFAULT_PLACE_ICON   ← here
+ * ```
+ *
+ * **Note the direction, because intuition gets it backwards:** a linked event's *deliberate*
+ * pick beats the booking's type glyph, and a place sits under both — the deliberate choice at
+ * the NEAREST scope wins, and a place is the widest scope. A place surface never sees the
+ * upper rungs (there is no event in hand), so this is the whole chain for the Map.
+ *
+ * Through `chosenIcon`, so a stored placeholder does not shadow a category that actually says
+ * something — a *default* `📌` is not a pick, which is the refinement `constants.ts` records.
+ *
+ * @param category the category the REFERENCING entities agree on (`usage.pin.category`), or
+ *                 `undefined` when nothing categorises this place yet.
+ */
+export function placeGlyph(
+  place: { icon?: string | null },
+  category: EventCategory | null | undefined,
+): string {
+  return (
+    chosenIcon(place.icon ?? undefined) ??
+    (category ? iconForCategory(category) : DEFAULT_PLACE_ICON)
+  );
 }
 
 /** Where a place is, or `undefined` for a coordless Place-lite. The one check

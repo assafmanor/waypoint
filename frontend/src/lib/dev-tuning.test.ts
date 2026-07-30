@@ -17,7 +17,7 @@ import {
   zoomPerLevelPx,
   type DragZoomEventType,
   type DragZoomLimits,
-} from './drag-zoom';
+} from './canvas-gestures';
 import {
   clearTuning,
   setTuning,

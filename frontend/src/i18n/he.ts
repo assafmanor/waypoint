@@ -124,6 +124,36 @@ export const t = {
       // happening instead of leaving a bare header over an empty section.
       typeMore: 'הקלידו עוד כדי לחפש',
     },
+    // MAKING AND NAMING a place (ADR-0147). FOUR sources, ONE form — a long press on the
+    // canvas, a tap on one of Google's own sights, a search result's add, and renaming a place
+    // the trip already has. Only the TITLE, what is prefilled and the confirm's word differ;
+    // the fields never do, which is what keeps four sources from becoming four flows.
+    make: {
+      // A long press: nothing is known about the spot but where it is, so the title asks.
+      dropTitle: 'מה יש כאן?',
+      // A tapped sight: Google's own label is already drawn under your finger, so the title
+      // states which one rather than repeating a name we would have to pay to learn.
+      googleTitle: 'המקום שסימנתם',
+      // A search result — it has a name already, so this is the add, not an interrogation.
+      resultTitle: 'הוספה לטיול',
+      // A place the trip already has, whether Google named it or you did.
+      renameTitle: 'שם ופרטים',
+      nameLabel: 'שם',
+      namePlaceholder: 'שם המקום',
+      categoryLabel: 'קטגוריה',
+      iconLabel: 'בחירת סמל',
+      // Only where the name is genuinely Google's to supply: an empty field on a tapped sight
+      // is filled by the Details call the confirm pays for (ADR-0147 §4).
+      googleHint: 'גוגל ישלים את השם בהוספה',
+      // The tapped sight the trip already owns: we have its name, so there is nothing to buy.
+      ownedHint: 'המקום כבר בטיול · השם שלכם, בלי קריאה',
+      add: 'הוספה למדף',
+      save: 'שמירה',
+      cancel: 'ביטול',
+      rename: 'שינוי שם',
+      failed: 'ההוספה נכשלה · נסו שוב',
+      saveFailed: 'השמירה נכשלה · נסו שוב',
+    },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.
     // (`scopeAll` / `scopeDay` retired with `.map-scopehint` in ADR-0122 §2: the chip's

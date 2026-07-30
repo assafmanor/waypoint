@@ -230,6 +230,18 @@ export const placeSchema = z.object({
   lng: z.number().optional(),
   /** IANA zone resolved server-side from lat/lng once, at pick time (ADR-0107/0108). */
   timezone: z.string().optional(),
+  /** **The glyph a human chose for this place** (ADR-0147). The only user-authored field
+   *  here besides `name`, and it exists for the same reason: it must survive deleting the
+   *  idea it was written through, which an icon on `MaybeItem` would not.
+   *
+   *  It sits at the BOTTOM of the icon resolution chain — under a linked event's own pick
+   *  and under a booking's type glyph — because the deliberate choice at the nearest scope
+   *  wins and a place is the widest scope.
+   *
+   *  **And it is why a `Place` stays a row inside a trip.** A chosen icon is trip-scoped
+   *  data about a place, not a property of the entity Google describes, so a cross-trip
+   *  global place cache cannot hold it (ADR-0147's Consequences). */
+  icon: z.string().optional(),
   /** Google's aggregate rating (0–5) and its count, cached on the pick (ADR-0109 §9). */
   rating: z.number().optional(),
   userRatingsTotal: z.number().optional(),

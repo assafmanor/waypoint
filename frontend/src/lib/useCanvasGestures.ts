@@ -1,5 +1,5 @@
 // The one-finger zoom, applied (ADR-0145 §1/§2). The recogniser is pure and lives in
-// `drag-zoom.ts`; this is the imperative half that feeds it pointer events, takes the
+// `canvas-gestures.ts`; this is the imperative half that feeds it pointer events, takes the
 // finger off Google, and hands the result to the camera.
 //
 // **Why a capture-phase guard and not "both listen and the loser bails"** (ADR-0145 §2).
@@ -34,30 +34,53 @@ import {
   reduceDragZoom,
   type DragZoomEventType,
   type DragZoomState,
-} from './drag-zoom';
-import type { MapCamera } from './useMapCamera';
+} from './canvas-gestures';
+import { latLngAtOffset, type MapCamera } from './useMapCamera';
+import type { LatLng } from './map-camera';
+import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS } from '../constants';
 
 /** The two camera verbs this gesture needs, named as a slice of `MapCamera` so the hook
  *  can be tested against a two-method object instead of a whole camera. */
-export type DragZoomCamera = Pick<MapCamera, 'zoomTo' | 'stepZoomIn'>;
+export type CanvasGestureCamera = Pick<MapCamera, 'zoomTo' | 'stepZoomIn'>;
 
-export function useDragZoom(
+export function useCanvasGestures(
   map: google.maps.Map | null,
-  camera: DragZoomCamera,
+  camera: CanvasGestureCamera,
   paneRef: RefObject<HTMLElement | null>,
+  /** A press held still on the canvas background: drop a pin here (ADR-0147 §1/§2). The
+   *  point is already a coordinate — the pixel→`LatLng` conversion happens here, because
+   *  it needs the live map and the screen's callers must not learn about projections. */
+  onHold?: (at: LatLng) => void,
 ): void {
   // Latest-ref, and this is the scar that matters most here: `screens/Map.tsx` re-renders
   // every second on the clock, and session 116 lost a gesture to exactly this — a teardown
   // closed over a fresh object identity, so the cleanup ran on every re-render and cleared
   // the hold. The listeners below are attached ONCE and read everything through this.
-  const latest = useRef({ map, camera });
-  latest.current = { map, camera };
+  const latest = useRef({ map, camera, onHold });
+  latest.current = { map, camera, onHold };
 
   useEffect(() => {
     const pane = paneRef.current;
     if (!pane) return;
 
     let state: DragZoomState = IDLE_DRAG_ZOOM;
+    /** The long press's timer (ADR-0147 §1). A hold is the ABSENCE of events, so it is the
+     *  one input the recogniser cannot derive — this fires the synthetic `HOLD` that lets
+     *  it stay a pure table. Cleared by every other outcome of the press. */
+    let holdTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Disarms whatever click swallow is currently armed, so unmounting mid-gesture cannot
+     *  leave one listening on the next screen. */
+    let disarmSwallow: (() => void) | null = null;
+    const armSwallow = () => {
+      disarmSwallow?.();
+      disarmSwallow = armClickSwallow(() => {
+        disarmSwallow = null;
+      });
+    };
+    const clearHold = () => {
+      if (holdTimer) clearTimeout(holdTimer);
+      holdTimer = null;
+    };
     /** Do we own the finger right now? The suppressors read this and nothing else, so they
      *  are cheap on every event that is not ours — which is almost all of them. */
     let owned = false;
@@ -90,12 +113,26 @@ export function useDragZoom(
             y: y - (box.top + box.height / 2),
           });
           return true;
+        case DRAG_ZOOM_ACTION.DROP: {
+          // The press point, as a coordinate. Offsets are from the canvas CENTRE, the space
+          // the projection helper works in — the same convention `STEP` uses above, so the
+          // two gestures cannot disagree about which way is which.
+          const at =
+            live &&
+            latLngAtOffset(live, {
+              x: x - (box.left + box.width / 2),
+              y: y - (box.top + box.height / 2),
+            });
+          if (at) latest.current.onHold?.(at);
+          // A drop is followed by a release, which fires a `click` — and that click reaches
+          // `onCanvasTap`, which clears the selection, i.e. closes the card we just opened.
+          armSwallow();
+          // Not `true`: we never took the finger, so the suppressors must stay off. Google
+          // has been panning within the slop all along and that is correct.
+          return false;
+        }
         case DRAG_ZOOM_ACTION.SETTLE:
-          // A real drag ends in a `click`, retargeted to whatever the capture landed on.
-          // One document-level capture listener armed for exactly one click — session 116's
-          // fix, and `once` is the half that matters: a listener left armed would swallow
-          // the next genuine tap on the canvas.
-          document.addEventListener('click', swallow, { capture: true, once: true });
+          armSwallow();
           return true;
         default:
           return false;
@@ -106,8 +143,22 @@ export function useDragZoom(
       // Only the primary finger: a second one landing mid-gesture is a pinch, which is
       // Google's and must not be re-read as a new drag origin.
       if (!e.isPrimary || e.button > 0) return;
-      owned = feed(DRAG_ZOOM_EVENT.DOWN, e.clientX, e.clientY, e.timeStamp);
-      if (!owned) return;
+      clearHold();
+      const { clientX: x, clientY: y, timeStamp: t } = e;
+      owned = feed(DRAG_ZOOM_EVENT.DOWN, x, y, t);
+      if (!owned) {
+        // An unpaired press: not ours, so Google keeps the pan — but it MIGHT become a long
+        // press, which is the one gesture decided by time rather than by movement (ADR-0147
+        // §1). The timer's stamp is the press's own clock plus the hold, so the synthetic
+        // event carries the time it represents rather than a wall-clock read.
+        if (latest.current.onHold) {
+          holdTimer = setTimeout(() => {
+            holdTimer = null;
+            feed(DRAG_ZOOM_EVENT.HOLD, x, y, t + DRAG_HOLD_MS);
+          }, DRAG_HOLD_MS);
+        }
+        return;
+      }
       // Capture, so the gesture survives the finger leaving the pane — which is also what
       // keeps the sheet's own drag region from picking it up on the way past. Both drags
       // take capture at drag start, which is the whole of the arbitration between them
@@ -117,12 +168,20 @@ export function useDragZoom(
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      if (state.phase === DRAG_ZOOM_PHASE.IDLE) return;
+      if (state.phase === DRAG_ZOOM_PHASE.IDLE) {
+        // Only interesting while a hold is pending: the recogniser decides whether this
+        // move is a wander inside the slop or the pan that cancels the long press.
+        if (!holdTimer) return;
+        feed(DRAG_ZOOM_EVENT.MOVE, e.clientX, e.clientY, e.timeStamp);
+        if (!state.pressing) clearHold();
+        return;
+      }
       owned = feed(DRAG_ZOOM_EVENT.MOVE, e.clientX, e.clientY, e.timeStamp);
       if (owned) block(e);
     };
 
     const onPointerUp = (e: PointerEvent) => {
+      clearHold();
       const type = e.type === 'pointercancel' ? DRAG_ZOOM_EVENT.CANCEL : DRAG_ZOOM_EVENT.UP;
       const wasOurs = state.phase !== DRAG_ZOOM_PHASE.IDLE;
       feed(type, e.clientX, e.clientY, e.timeStamp);
@@ -137,6 +196,14 @@ export function useDragZoom(
       if (owned) block(e);
     };
 
+    // A long press asks the platform for a context menu, and on the canvas there is nothing
+    // for one to contain — so it is refused outright rather than while a gesture is live
+    // (ADR-0147 §1; ADR-0131 §9 flagged this as the thing a real device decides). Ungated on
+    // `owned` on purpose: the drop happens BEFORE the release, so a gated guard would come
+    // too late for the very gesture it exists for.
+    const denyContextMenu = (e: Event) => e.preventDefault();
+    pane.addEventListener('contextmenu', denyContextMenu);
+
     pane.addEventListener('pointerdown', onPointerDown, true);
     pane.addEventListener('pointermove', onPointerMove, true);
     pane.addEventListener('pointerup', onPointerUp, true);
@@ -146,6 +213,7 @@ export function useDragZoom(
     }
 
     return () => {
+      pane.removeEventListener('contextmenu', denyContextMenu);
       pane.removeEventListener('pointerdown', onPointerDown, true);
       pane.removeEventListener('pointermove', onPointerMove, true);
       pane.removeEventListener('pointerup', onPointerUp, true);
@@ -153,7 +221,8 @@ export function useDragZoom(
       for (const type of SUPPRESSED) {
         pane.removeEventListener(type, suppress, true);
       }
-      document.removeEventListener('click', swallow, true);
+      disarmSwallow?.();
+      clearHold();
     };
     // `map` and `camera` are read through the latest-ref on purpose — see it. Re-running
     // this effect is what session 116's bug WAS, so it must key on nothing that changes
@@ -184,3 +253,35 @@ function block(e: Event): void {
 }
 
 const swallow = (e: Event) => e.stopPropagation();
+
+/**
+ * Eat the ONE `click` a completed gesture fires, then disarm — by the click itself, or by a
+ * timeout if that click never comes.
+ *
+ * **The timeout is the half that was missing, and it is a real bug rather than belt-and-braces.**
+ * `SETTLE` gets away without it because a real drag reliably ends in a click; a long-press
+ * DROP does not, because this pipeline `preventDefault`s the touch stream that would have
+ * synthesised one. A stranded `once` listener then swallows the user's **next genuine tap** —
+ * which presents as "the thing I tapped didn't respond", e.g. a tap outside the `IconPicker`
+ * failing to close it, since that panel's own dismissal is a bubble-phase `click` on
+ * `document` and this guard stops propagation ahead of it.
+ *
+ * `useHoldToDrag` already carries exactly this fallback (`DRAG_CLICK_SWALLOW_MS`) with the
+ * same note — "a drop that generates no click at all would otherwise leave the listener armed
+ * for the user's next real tap". Copying the arm without the disarm is how the shelf's lesson
+ * got lost on the way to the canvas.
+ */
+function armClickSwallow(onDisarm: () => void): () => void {
+  const disarm = () => {
+    clearTimeout(timer);
+    document.removeEventListener('click', once, true);
+    onDisarm();
+  };
+  const once = (e: Event) => {
+    swallow(e);
+    disarm();
+  };
+  const timer = setTimeout(disarm, DRAG_CLICK_SWALLOW_MS);
+  document.addEventListener('click', once, true);
+  return disarm;
+}
