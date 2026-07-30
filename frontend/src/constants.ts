@@ -450,6 +450,47 @@ export const MAP_ZOOM = {
   WORLD: 2,
 } as const;
 
+/** **The one-finger zoom: a double-tap whose second finger stays down** (ADR-0145).
+ *
+ *  There is no flag for this. The Maps JS API's whole `MapOptions` surface carries no
+ *  one-finger-zoom option, `gestureHandling="greedy"` is documented as pan-or-zoom with
+ *  no gesture named beyond pinch and double-tap, and the owner confirmed on a device that
+ *  nothing happens today — so the gesture is built rather than enabled, the way MapLibre
+ *  and MapTiler build it. It is documented only for the Maps SDK for Android/iOS.
+ *
+ *  - `TAP_GAP_MS` / `TAP_SLOP_PX` — the double-tap window. Too wide and an unrelated
+ *    second tap arms the gesture; too narrow and it never fires. Device-pass tunable.
+ *  - `DRAG_SLOP_PX` — what separates "this is a drag" from "this is a double-tap". The
+ *    same load-bearing threshold as `SNAP_DRAG_SLOP_PX` one layer along and for the same
+ *    reason: a finger emits `pointermove` on a tap, so a gesture that commits on the
+ *    first move cannot tell the two apart at all.
+ *  - `SPAN_SHARE` — **a share of the pane's height per zoom level, not a px count.**
+ *    ADR-0123 settled this argument for this surface: the pane's height moves by more
+ *    than 2× between the `half` and `map` stops, so a flat px sensitivity would be twice
+ *    as sensitive at one stop as at the other. 0.5 is ~250px on the ~501px canvas
+ *    session 143 measured — about half that canvas per zoom level. **It was derived at
+ *    0.18, reported too sensitive on the mockup, and set to 0.5 by the owner across two
+ *    rounds** — do not "restore" the tighter number; it was arithmetic, this is a report.
+ *  - `MIN` / `MAX` — the fallback range when the map states no `minZoom`/`maxZoom`, which
+ *    is the case here on purpose (ADR-0128 §1 clamps `MAX_FIT` *after* the fit rather
+ *    than as the map's own `maxZoom`, precisely so the pinch stays unbounded). The
+ *    gesture is then bounded exactly as the pinch is.
+ *
+ *  **Down zooms IN** (owner's call on the mockup, 2026-07-30). The design had reasoned its
+ *  way to the opposite — this screen already says up means more, because dragging up grows
+ *  the sheet (ADR-0122 §4) — and a finger overruled it. Pulling the map toward you brings
+ *  it closer, and it is what Google's own Android gesture does. Recorded because the
+ *  sheet-consistency argument is a good one that happens to be wrong here, so it will be
+ *  made again. */
+export const MAP_DRAG_ZOOM = {
+  TAP_GAP_MS: 300,
+  TAP_SLOP_PX: 24,
+  DRAG_SLOP_PX: 6,
+  SPAN_SHARE: 0.5,
+  MIN: 2,
+  MAX: 21,
+} as const;
+
 /** **How much ground to show around a place you were sent to look at** (ADR-0129 §2).
  *  A fixed zoom cannot tell a dense district from an empty valley, so the span is
  *  derived from the distance to the nearest other pins and clamped both ways. In degrees

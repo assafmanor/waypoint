@@ -575,3 +575,67 @@ describe('the camera eases rather than portals (ADR-0129 §3)', () => {
     expect(map.moves).toHaveLength(1);
   });
 });
+
+describe('the one-finger zoom’s two camera verbs (ADR-0145 §5/§2)', () => {
+  it('zoomTo writes the zoom and NOTHING else — a drag zoom is not a pan', () => {
+    // §3's decision, asserted where it can actually be caught: the gesture is
+    // centre-anchored, so a frame of it must not move the centre. If point-anchoring is
+    // ever added, this is the test that will say so out loud rather than silently.
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    const centre = { ...map.center };
+    view.result.current.zoomTo(16.5);
+    expect(map.zoom).toBe(16.5);
+    expect(map.center).toEqual(centre);
+  });
+
+  it('zoomTo CANCELS an ease in flight instead of letting it notice (§5)', async () => {
+    // ADR-0129 §4's `sameCamera` check is what saves the app from a pinch it cannot
+    // intercept. This gesture it CAN, and within one frame the ease could still write
+    // after us — so the ease is killed outright. Without the cancel, the loop's next
+    // frame drags the zoom back toward its own target.
+    vi.stubGlobal('matchMedia', () => ({ matches: false }) as unknown as MediaQueryList);
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    map.fitResultZoom = 12;
+    const view = mount(map, DAY);
+    // An ease is now running toward the fit. Take the camera mid-flight.
+    view.result.current.zoomTo(19);
+    expect(map.zoom).toBe(19);
+    await new Promise((r) => setTimeout(r, 60));
+    // Still ours. A surviving loop would have overwritten this several frames ago.
+    expect(map.zoom).toBe(19);
+  });
+
+  it('stepZoomIn eases one level in about the current centre', () => {
+    // The double-tap we take over from Google because intercepting the gesture suppressed
+    // its own (§2). It reuses the shipped ladder, so it lands where locate's repeat tap
+    // would — and it goes through the ease, unlike Google's, which could not be asked to.
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    const centre = { ...map.center };
+    map.zoom = 14;
+    view.result.current.stepZoomIn();
+    expect(map.zoom).toBe(15);
+    expect(map.center).toEqual(centre);
+  });
+
+  it('stepZoomIn stops at the ladder’s ceiling rather than climbing forever', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.zoom = MAP_ZOOM.STEP_IN_MAX;
+    view.result.current.stepZoomIn();
+    expect(map.zoom).toBe(MAP_ZOOM.STEP_IN_MAX);
+  });
+
+  it('neither verb touches a map that has no camera yet', () => {
+    const view = mount(null, DAY);
+    expect(() => {
+      view.result.current.zoomTo(15);
+      view.result.current.stepZoomIn();
+    }).not.toThrow();
+  });
+});
