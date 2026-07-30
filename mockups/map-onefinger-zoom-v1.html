@@ -5596,11 +5596,14 @@ body {
       </p>
       <div class="dials">
         <div class="dial">
-          <label for="span">רגישות · <code>ZOOM_DRAG_SPAN_SHARE</code></label>
-          <output id="spanOut">0.50</output>
-          <input id="span" type="range" min="0.1" max="0.9" step="0.01" value="0.50" />
+          <label for="span">רגישות · <code>PX_PER_LEVEL</code></label>
+          <output id="spanOut">120px</output>
+          <input id="span" type="range" min="40" max="260" step="5" value="120" />
           <span class="hint">
-            חלק מגובה החלונית ששווה דרגת זום אחת. גדול יותר = פחות רגיש. היה 0.18 ודווח כרגיש מדי, ואז 0.30.
+            מרחק אצבע מוחלט לדרגת זום אחת - <strong>לא</strong> חלק מגובה החלונית. חלק היה
+            המודל הראשון והוא היה הפוך: הוא גרם לקנבס גדול לדרוש יותר תנועה (250px בקצה
+            המפה מול 122px ב-half), כלומר כמה שיותר מפה כך כבד יותר. אצבע לא מתרחבת עם
+            הקנבס. 120px הוא ה-half שכויל.
           </span>
         </div>
         <div class="dial">
@@ -5630,10 +5633,15 @@ body {
         מה שמונע את הנסיעה המתה שחסימת ה<em>יעד</em> הייתה מייצרת: גררו עשר דרגות מעל התקרה,
         חזרו דרגה אחת, ומחווה חסומת-יעד לא עושה כלום תשע דרגות.
         <br /><br />
+        <strong>המודל התוקן במעבר המכשיר (30.7):</strong> הרגישות הייתה <em>חלק</em> מגובה
+        החלונית, בהיסק מ-ADR-0123, וזאת אנלוגיה שגויה. גודל של סמן הוא חלק מהקנבס כי סמן
+        מתחרה על <em>שטח</em>; רגישות של גרירה שייכת ל<strong>אצבע</strong>, ואצבע לא
+        מתרחבת עם הקנבס. לכן קנבס גבוה יותר דרש יותר תנועה - הפוך מהאינטואיציה ש״יש יותר
+        מקום לגרור״. עכשיו: מרחק מכויל, עם תקרה שנכנסת רק מתחת ל-~240px.
+        <br /><br />
         <strong>אזהרה על הקנבס של הקובץ הזה:</strong> §A גבוה 260px ו-§C גבוה 214px, בעוד
-        הקנבס האמיתי בקצה המפה הוא ~501px. הרגישות היא <em>חלק</em>, אז אותו מספר כאן טוויצ׳י
-        יותר מאשר באפליקציה - ב-0.18 זה היה 47px לדרגה כאן מול 90px שם. כשמכיילים, הטבלה
-        למעלה היא המספר שקובע, לא התחושה בקובץ הזה.
+        הקנבס האמיתי בקצה המפה הוא ~501px - כך שהתקרה נכנסת כאן ולא שם. הטבלה למעלה היא
+        המספר שקובע, לא התחושה בקובץ הזה.
         <br /><br />
         <strong>ארבעה פריטים מצטרפים לשורת מעבר המכשיר של Phase 3</strong> ולא פותחים שורה
         חדשה: <code>ZOOM_DRAG_SPAN_SHARE</code>, ה<strong>כיוון</strong>,
@@ -5703,7 +5711,8 @@ body {
       const TAP_SLOP = 24;
       const DRAG_SLOP = 6;
 
-      let SPAN_SHARE = 0.5;
+      let PX_PER_LEVEL = 120;
+      const MAX_SHARE = 0.5;
       // DOWN zooms IN (owner's call, 2026-07-30) — pulling the map toward you brings it
       // closer, and it is Google's own Android direction. The design had reasoned its way
       // to the opposite from the sheet's "up means more"; a finger overruled it.
@@ -5723,7 +5732,10 @@ body {
         render(sim, layer, badge, z, null);
         new ResizeObserver(() => render(sim, layer, badge, z, anchor)).observe(sim);
 
-        const perLevel = () => Math.max(sim.getBoundingClientRect().height * SPAN_SHARE, 24);
+        // A CALIBRATED absolute distance, capped so a short canvas stays usable — not a
+        // share of the canvas, which made a taller canvas heavier (device pass, 30.7).
+        const perLevel = () =>
+          Math.max(Math.min(PX_PER_LEVEL, sim.getBoundingClientRect().height * MAX_SHARE), 24);
 
         sim.addEventListener('pointerdown', (e) => {
           const box = sim.getBoundingClientRect();
@@ -5781,8 +5793,10 @@ body {
 
         const end = (e) => {
           if (st === 'armed') {
-            // Released without moving: a legitimate double-tap. We blocked Google's, so
-            // we owe it — one eased step in, through the camera's own driver (§2).
+            // Released without moving: a legitimate double-tap. We blocked Google's, so we
+            // owe it — ONE level in from wherever we are (§2). It must not floor at a
+            // "readable" zoom: reusing locate's ladder made a double-tap on a globe view
+            // jump to city zoom (device pass, 30.7).
             z = Math.min(z + 1, 21);
             render(sim, layer, badge, z, anchor);
             o.log && o.log('kill', 'released in B → OUR step-zoom (we blocked google’s)');
@@ -5870,15 +5884,17 @@ body {
       const HEIGHTS = [
         ['509px', 'קצה המפה · 390×844 (ADR-0122)'],
         ['501px', 'הטלפון של הבעלים · סשן 143'],
-        ['243px', 'עצירת half · 390×844'],
+        ['243px', 'עצירת half · 390×844 — נקודת הכיול'],
+        ['160px', 'עצירת half · 360×640 — כאן התקרה נכנסת'],
       ];
       function dials() {
-        SPAN_SHARE = +spanIn.value;
-        spanOut.textContent = SPAN_SHARE.toFixed(2);
-        mtab.innerHTML = HEIGHTS.map(
-          ([h, src]) =>
-            `<tr><td class="n">${h}</td><td>${src}</td><td class="n">${Math.round(parseInt(h) * SPAN_SHARE)}px</td></tr>`,
-        ).join('');
+        PX_PER_LEVEL = +spanIn.value;
+        spanOut.textContent = PX_PER_LEVEL + 'px';
+        mtab.innerHTML = HEIGHTS.map(([h, src]) => {
+          const per = Math.round(Math.min(PX_PER_LEVEL, parseInt(h) * MAX_SHARE));
+          const capped = per < PX_PER_LEVEL ? ' <small>(תקרה)</small>' : '';
+          return `<tr><td class="n">${h}</td><td>${src}</td><td class="n">${per}px${capped}</td></tr>`;
+        }).join('');
         [A, B1, B2, C].forEach((s) => s.rerender());
       }
       spanIn.addEventListener('input', dials);

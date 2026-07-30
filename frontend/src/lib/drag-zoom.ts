@@ -100,11 +100,39 @@ export const IDLE_DRAG_ZOOM: DragZoomState = {
   levels: 0,
 };
 
-/** How far the finger travels for one zoom level, as a share of the canvas it is on
- *  (§4 / ADR-0123). Floored, because a pane measured before layout would otherwise make
- *  the gesture infinitely sensitive rather than merely wrong. */
+/** How far the finger travels for one zoom level: **a calibrated absolute distance,
+ *  capped so a short canvas stays usable** (§4, corrected by the 2026-07-30 device pass).
+ *
+ *  It was a pure share of the pane's height, reasoned by analogy from ADR-0123, and the
+ *  analogy is false: **a pin's size is a share of the canvas because a pin competes for
+ *  canvas area, but a drag's sensitivity belongs to the finger, and a finger does not
+ *  scale with the canvas.** The share therefore made the map extreme demand 250px per
+ *  level against `half`'s 122px — the more map you gave it, the heavier it got, which is
+ *  exactly backwards. Reported as _"the more space the map takes of the screen, the more
+ *  the drag feels slow"_.
+ *
+ *  The cap binds only below ~240px, where a flat distance would ask for most of the
+ *  canvas in one stroke. Floored as well, because a pane measured before layout would
+ *  otherwise make the gesture infinitely sensitive rather than merely wrong. */
 export function zoomPerLevelPx(paneHeightPx: number): number {
-  return Math.max(paneHeightPx * MAP_DRAG_ZOOM.SPAN_SHARE, MIN_PER_LEVEL_PX);
+  return Math.max(
+    Math.min(MAP_DRAG_ZOOM.PX_PER_LEVEL, paneHeightPx * MAP_DRAG_ZOOM.MAX_SHARE),
+    MIN_PER_LEVEL_PX,
+  );
+}
+
+/** **The double-tap's step: one level in from wherever you are, and nothing else** (§2).
+ *
+ *  It is deliberately NOT `zoomStepIn`, and reusing that was a real regression rather than
+ *  an inelegance (device pass, 2026-07-30 — owner: _"a double zoom ... zooms in really a
+ *  lot (~city size), even when you're zoomed out to the whole globe"_). That function is
+ *  **locate's** ladder, whose `floor` exists so that "take me to me" lands at a readable
+ *  zoom — so from a globe view it returns the floor outright (`current < floor`) instead of
+ *  stepping. A double-tap makes no such promise: it means *a bit closer than this*, from
+ *  wherever this is. Capped at the gesture's own ceiling rather than locate's
+ *  `STEP_IN_MAX`, so a double-tap can reach as deep as a pinch can. */
+export function doubleTapZoom(current: number): number {
+  return Math.min(current + 1, MAP_DRAG_ZOOM.MAX);
 }
 
 /** A pane this short is not laid out; the value only has to be non-degenerate. */

@@ -46,6 +46,7 @@ import {
   type LatLng,
   type MapBounds,
 } from './map-camera';
+import { doubleTapZoom } from './drag-zoom';
 import { prefersReducedMotion } from './motion';
 import { MAP_CAMERA_EASE, MAP_ZOOM } from '../constants';
 
@@ -403,17 +404,17 @@ export function useMapCamera(
   );
 
   /** The double-tap step-zoom, which is ours now only because intercepting the gesture
-   *  suppressed Google's (ADR-0145 §2). It reuses the existing ladder and the existing
-   *  ease, so it reads as the same object moving as every other camera change — which
-   *  Google's own double-click zoom never did (ADR-0129 §3's table). */
+   *  suppressed Google's (ADR-0145 §2). One level in from wherever the camera is — see
+   *  `doubleTapZoom`, and note that this deliberately does NOT reuse locate's `zoomStepIn`:
+   *  that ladder's floor turned a double-tap on a globe view into a jump to city zoom.
+   *  It goes through the existing ease, so it reads as the same object moving as every
+   *  other camera change — which Google's own double-click zoom never did (ADR-0129 §3). */
   const stepZoomIn = useCallback(() => {
     const centre = map?.getCenter();
     if (!map || !centre) return;
     const from = going.current?.zoom ?? map.getZoom();
-    easeTo({
-      center: { lat: centre.lat(), lng: centre.lng() },
-      zoom: zoomStepIn(from, MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX),
-    });
+    if (from == null) return;
+    easeTo({ center: { lat: centre.lat(), lng: centre.lng() }, zoom: doubleTapZoom(from) });
   }, [map, easeTo]);
 
   return { reframe, focus, frameOn, locate, zoomTo, stepZoomIn };

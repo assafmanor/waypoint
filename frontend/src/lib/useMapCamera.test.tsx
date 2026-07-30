@@ -610,8 +610,7 @@ describe('the one-finger zoom’s two camera verbs (ADR-0145 §5/§2)', () => {
 
   it('stepZoomIn eases one level in about the current centre', () => {
     // The double-tap we take over from Google because intercepting the gesture suppressed
-    // its own (§2). It reuses the shipped ladder, so it lands where locate's repeat tap
-    // would — and it goes through the ease, unlike Google's, which could not be asked to.
+    // its own (§2). It goes through the ease, unlike Google's, which could not be asked to.
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(map, DAY);
@@ -622,13 +621,29 @@ describe('the one-finger zoom’s two camera verbs (ADR-0145 §5/§2)', () => {
     expect(map.center).toEqual(centre);
   });
 
-  it('stepZoomIn stops at the ladder’s ceiling rather than climbing forever', () => {
+  // THE REGRESSION, and worth reading as a lesson about this file: the two cases below
+  // used to be one test that asserted `MAP_ZOOM.STEP_IN_MAX` — i.e. it ENCODED the bug,
+  // and passed. `stepZoomIn` reused `zoomStepIn`, which is LOCATE's ladder: its
+  // `current < floor` branch returns the floor outright, so a double-tap from a globe view
+  // jumped to city zoom instead of stepping, and its ceiling capped a gesture that should
+  // reach as deep as a pinch. Only a device found it (owner, 2026-07-30).
+  it('steps ONE level from a wide view — it does not jump to locate’s floor', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    map.zoom = MAP_ZOOM.WORLD;
+    view.result.current.stepZoomIn();
+    expect(map.zoom).toBe(MAP_ZOOM.WORLD + 1);
+    expect(map.zoom).toBeLessThan(MAP_ZOOM.PLACE);
+  });
+
+  it('is not capped by locate’s ceiling — a double-tap goes as deep as a pinch', () => {
     const map = new FakeMap();
     map.bounds = WORLD;
     const view = mount(map, DAY);
     map.zoom = MAP_ZOOM.STEP_IN_MAX;
     view.result.current.stepZoomIn();
-    expect(map.zoom).toBe(MAP_ZOOM.STEP_IN_MAX);
+    expect(map.zoom).toBe(MAP_ZOOM.STEP_IN_MAX + 1);
   });
 
   it('neither verb touches a map that has no camera yet', () => {
