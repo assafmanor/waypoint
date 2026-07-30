@@ -47,6 +47,31 @@ describe('Modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  // Escape is a back trigger with ONE owner (ADR-0103 §2). Before that, every open
+  // Modal added its own `document` listener and closed itself on Escape — and
+  // `stopPropagation` does not stop sibling listeners on the same target, so a
+  // nested prompt over a sheet took both down on a single press.
+  it('peels exactly one overlay on Escape when two are stacked', () => {
+    const closeOuter = vi.fn();
+    const closeInner = vi.fn();
+    render(
+      wrapNav(
+        <>
+          <Modal variant="sheet" ariaLabel="outer" onClose={closeOuter}>
+            <button>outer body</button>
+          </Modal>
+          <Modal variant="dialog" ariaLabel="inner" onClose={closeInner}>
+            <button>inner body</button>
+          </Modal>
+        </>,
+      ),
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // The one opened last is the one that goes; the sheet under it survives.
+    expect(closeInner).toHaveBeenCalledTimes(1);
+    expect(closeOuter).not.toHaveBeenCalled();
+  });
+
   it('closes on backdrop click but not on inner click', () => {
     const onClose = vi.fn();
     render(

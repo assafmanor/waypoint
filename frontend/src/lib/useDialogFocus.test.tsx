@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { useRef } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useDialogFocus } from './useDialogFocus';
 
-function Dialog({ onClose, trap }: { onClose: () => void; trap?: boolean }) {
+function Dialog({ trap }: { trap?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
-  useDialogFocus(ref, onClose, { trap });
+  useDialogFocus(ref, { trap });
   return (
     <div ref={ref} tabIndex={-1} role="dialog" aria-label="d">
       <button>first</button>
@@ -15,10 +15,10 @@ function Dialog({ onClose, trap }: { onClose: () => void; trap?: boolean }) {
   );
 }
 
-function DialogWithInitialFocus({ onClose }: { onClose: () => void }) {
+function DialogWithInitialFocus() {
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  useDialogFocus(ref, onClose, { initialFocusRef: inputRef });
+  useDialogFocus(ref, { initialFocusRef: inputRef });
   return (
     <div ref={ref} tabIndex={-1} role="dialog" aria-label="d">
       <input ref={inputRef} placeholder="search" />
@@ -30,27 +30,30 @@ describe('useDialogFocus', () => {
   afterEach(() => cleanup());
 
   it('moves focus to the dialog container on open (not the first field)', () => {
-    render(<Dialog onClose={() => {}} />);
+    render(<Dialog />);
     expect(document.activeElement).toBe(screen.getByRole('dialog'));
   });
 
   it('focuses initialFocusRef instead of the container when given (ADR-0101 search mode)', () => {
-    render(<DialogWithInitialFocus onClose={() => {}} />);
+    render(<DialogWithInitialFocus />);
     expect(document.activeElement).toBe(screen.getByPlaceholderText('search'));
   });
 
-  it('closes on Escape', () => {
-    const onClose = vi.fn();
-    render(<Dialog onClose={onClose} />);
+  // Escape is NOT this hook's job any more (ADR-0103 §2) — it is a back trigger
+  // owned by `useOverlay`, so the topmost LAYER decides what it peels rather than
+  // the dialog reaching past whatever is above it. Asserted in nav-state's tests.
+  it('ignores Escape, leaving it to the back stack', () => {
+    render(<Dialog />);
+    const dialog = screen.getByRole('dialog');
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(dialog).toBeTruthy();
   });
 
   it('restores focus to the opener on unmount', () => {
     const opener = document.createElement('button');
     document.body.appendChild(opener);
     opener.focus();
-    const { unmount } = render(<Dialog onClose={() => {}} />);
+    const { unmount } = render(<Dialog />);
     expect(document.activeElement).not.toBe(opener);
     unmount();
     expect(document.activeElement).toBe(opener);
@@ -58,7 +61,7 @@ describe('useDialogFocus', () => {
   });
 
   it('traps Tab within the dialog when trap is set', () => {
-    render(<Dialog onClose={() => {}} trap />);
+    render(<Dialog trap />);
     const [first, last] = screen.getAllByRole('button');
     last.focus();
     fireEvent.keyDown(document, { key: 'Tab' });
@@ -70,7 +73,7 @@ describe('useDialogFocus', () => {
   });
 
   it('does not trap Tab when trap is unset', () => {
-    render(<Dialog onClose={() => {}} />);
+    render(<Dialog />);
     const [, last] = screen.getAllByRole('button');
     last.focus();
     fireEvent.keyDown(document, { key: 'Tab' });

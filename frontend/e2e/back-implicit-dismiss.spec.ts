@@ -59,6 +59,18 @@ test.describe('the icon picker panel', () => {
     await expect(form(page)).toBeVisible();
   });
 
+  // ESCAPE IS THE SAME TRIGGER (ADR-0103 §2, built 2026-08-01). It used to call the
+  // form's own `onClose`, reaching past the panel's layer — so the keyboard threw away
+  // what you were typing where the pointer and the gesture both only closed the panel.
+  test('Escape closes it too, leaving the form open', async ({ page }) => {
+    await form(page).locator('button.icon-chip').first().click();
+    await expect(page.locator('.icon-panel')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.icon-panel')).toBeHidden();
+    await expect(form(page)).toBeVisible();
+  });
+
   // …and only the press after that closes the form, so the panel costs exactly one back.
   test('the next system back closes the form', async ({ page }) => {
     await form(page).locator('button.icon-chip').first().click();
@@ -85,6 +97,15 @@ test.describe('the time panel', () => {
     await expect(page.locator('.tp-backdrop')).toBeAttached();
 
     await systemBack(page);
+    await expect(page.locator('.tp-panel')).toBeHidden();
+    await expect(form(page)).toBeVisible();
+  });
+
+  test('Escape closes it too, leaving the form open', async ({ page }) => {
+    await form(page).locator('button.tp-field').first().click();
+    await expect(page.locator('.tp-panel')).toBeVisible();
+
+    await page.keyboard.press('Escape');
     await expect(page.locator('.tp-panel')).toBeHidden();
     await expect(form(page)).toBeVisible();
   });

@@ -100,10 +100,22 @@ gesture must all run the **same function** — bind them to one handler rather
 than writing a second one beside it. What obliges back is that the surface can
 be left, not that leaving it has a label.
 
-`Modal` already does this for you (`useOverlay(onClose)` is the same `onClose`
-its backdrop and Escape call), which covers every sheet, dialog, picker and
-confirm. Two shapes need a deliberate `useBackLayer` and are exactly where the
-app had diverged:
+`Modal` already does this for you — its backdrop, its Escape and its `useOverlay`
+registration all end up at the same place — which covers every sheet, dialog,
+picker and confirm.
+
+**Escape reaches that place through the back stack, not through `onClose`**
+(ADR-0103's 2026-08-01 amendment). The distinction only shows when a second layer
+sits above a Modal's own: `onClose` is _that dialog's_ dismissal, so Escape used to
+reach past the top layer and close the whole sheet where back peeled one step — and
+in a form with an `IconPicker`/`TimePicker` panel open, that meant Escape discarded
+what you had typed. `useEscapeAsBack` (called by `useOverlay`) runs the resolver
+instead, so whichever listener fires, the stack decides what peels. **Do not add an
+Escape handler to a new surface** — if it registers a layer, it already has one, and
+a second owner is the bug.
+
+Two shapes need a deliberate `useBackLayer` and are exactly where the app had
+diverged:
 
 - **A state a mounted screen enters and leaves** — the Map's disclosure row. The
   screen never unmounts, so it cannot express "there is something to peel" by

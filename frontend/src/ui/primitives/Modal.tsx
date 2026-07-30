@@ -56,7 +56,7 @@ export function Modal({
   //  - `full` does NOT trap either: it's a self-contained screen, not a modal
   //    dead-end, so Tab behaves like ordinary page content.
   const trapEnabled = trap ?? variant === 'dialog';
-  useDialogFocus(cardRef, onClose, { trap: trapEnabled, initialFocusRef });
+  useDialogFocus(cardRef, { trap: trapEnabled, initialFocusRef });
 
   const titleId = useId();
   const hasTitle = title != null && title !== '';
