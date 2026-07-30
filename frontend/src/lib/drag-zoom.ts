@@ -17,6 +17,7 @@
 //             double-tap and still owes a zoom.
 //   ZOOMING → the finger passed the slop. Committed.
 import { MAP_DRAG_ZOOM } from '../constants';
+import { TUNE, tune } from './dev-tuning';
 
 export const DRAG_ZOOM_PHASE = {
   IDLE: 'idle',
@@ -116,7 +117,10 @@ export const IDLE_DRAG_ZOOM: DragZoomState = {
  *  otherwise make the gesture infinitely sensitive rather than merely wrong. */
 export function zoomPerLevelPx(paneHeightPx: number): number {
   return Math.max(
-    Math.min(MAP_DRAG_ZOOM.PX_PER_LEVEL, paneHeightPx * MAP_DRAG_ZOOM.MAX_SHARE),
+    Math.min(
+      tune(TUNE.dragPxPerLevel, MAP_DRAG_ZOOM.PX_PER_LEVEL),
+      paneHeightPx * MAP_DRAG_ZOOM.MAX_SHARE,
+    ),
     MIN_PER_LEVEL_PX,
   );
 }
@@ -158,7 +162,7 @@ export function dragZoomLimits(
  *  now with one from a minute ago. */
 function isSecondTap(state: DragZoomState, event: DragZoomEvent): boolean {
   if (!state.hasTap) return false;
-  const withinTime = event.t - state.tapAt < MAP_DRAG_ZOOM.TAP_GAP_MS;
+  const withinTime = event.t - state.tapAt < tune(TUNE.dragTapGapMs, MAP_DRAG_ZOOM.TAP_GAP_MS);
   const withinSlop =
     Math.hypot(event.x - state.tapX, event.y - state.tapY) < MAP_DRAG_ZOOM.TAP_SLOP_PX;
   return withinTime && withinSlop;

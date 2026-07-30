@@ -28,6 +28,8 @@ import { useDragZoom } from '../../lib/useDragZoom';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
 import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
+import { TUNE, tune } from '../../lib/dev-tuning';
+import { DevMapProbe } from '../../dev/DevMapProbe';
 import { Icon, type IconName } from '../Icon';
 import { t } from '../../i18n/he';
 import './map-pane.css';
@@ -247,7 +249,8 @@ function PinDensity({ paneRef }: { paneRef: RefObject<HTMLDivElement | null> }) 
       const pane = paneRef.current;
       if (!pane) return;
       const zoom = map.getZoom();
-      if (zoom != null && zoom < MAP_ZOOM.DOT_BELOW) pane.dataset.pins = 'dot';
+      if (zoom != null && zoom < tune(TUNE.zoomDotBelow, MAP_ZOOM.DOT_BELOW))
+        pane.dataset.pins = 'dot';
       else delete pane.dataset.pins;
     };
     sync();
@@ -337,6 +340,11 @@ function MapPaneInner({
         {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
         <PinDensity paneRef={paneRef} />
+        {/* The device-pass panel's zoom readout (ADR-0146 §5). Deliberately `PinDensity`'s
+            shape and position: stateless, null-rendering, one listener — so it cannot
+            re-render this subtree, which is what keeps a dev tool clear of a marker
+            re-diff. Dropped entirely from a production build with the gate. */}
+        {import.meta.env.DEV && <DevMapProbe mapId={MAP_ID} />}
         <MapCameraControls
           paneRef={paneRef}
           pins={pins}
