@@ -343,6 +343,57 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     );
   });
 
+  // ── The phase word in the tag (ADR-0141) ────────────────────────────────────
+  it('a transition word OWNS the tag slot, and the cue it displaced joins the name', () => {
+    paint({
+      pins: [
+        pin({ placeId: 'hotel', order: 3, nowStop: true, transition: 'צ׳ק-אאוט' }),
+        pin({ placeId: 'ramen', order: 4, nextStop: true }),
+      ],
+    });
+    const hotel = document.querySelector('[aria-label^="hotel"]') as HTMLElement;
+    const tag = hotel.querySelector('.pin-tag')!;
+    // The word says what `עכשיו` said and one thing more, so it replaces it rather than
+    // stacking above it — one slot, one line.
+    expect(tag.textContent).toBe('צ׳ק-אאוט');
+    expect(document.querySelectorAll('.pin-tag')).toHaveLength(2);
+    // …and `עכשיו` is not lost, it MOVES: the dot and the pulse carry it visually, the
+    // accessible name carries it in words (the ADR-0137 §3 three-carriers arrangement).
+    expect(hotel.getAttribute('aria-label')).toBe(`hotel · ${t.map.happeningNow}`);
+    // With no bracketed end there is no word, so the two cues stay the fallback — which is
+    // what a restaurant reservation gets, and it is unchanged behaviour.
+    const ramen = document.querySelector('[aria-label="ramen"]') as HTMLElement;
+    expect(ramen.querySelector('.pin-tag')?.textContent).toBe(t.map.nextStop);
+    expect(ramen.getAttribute('aria-label')).toBe('ramen');
+  });
+
+  it('amber is only the two live cues; a planned edge is the neutral tag', () => {
+    paint({
+      pins: [
+        pin({ placeId: 'live', nowStop: true, transition: 'צ׳ק-אאוט' }),
+        pin({ placeId: 'next', nextStop: true, transition: 'המראה' }),
+        pin({ placeId: 'later', order: 5, transition: 'צ׳ק-אין' }),
+      ],
+    });
+    const tag = (id: string) =>
+      (document.querySelector(`[aria-label^="${id}"]`) as HTMLElement).querySelector('.pin-tag')!;
+    // The amber population does not grow: two pins carried it before this change and two
+    // carry it after (ADR-0028 / ADR-0105's "an accent, not a ground").
+    expect(tag('live').className).not.toContain('plain');
+    expect(tag('next').className).not.toContain('plain');
+    expect(tag('later').className).toContain('plain');
+    // The DOT is the live pin's alone — `nextStop` waits still, and a planned edge is not
+    // a claim about the clock at all.
+    expect(tag('live').className).toContain('live');
+    expect(tag('next').className).not.toContain('live');
+    expect(tag('later').className).not.toContain('live');
+  });
+
+  it('a pin with neither a word nor a cue renders no tag at all', () => {
+    paint({ pins: [pin({ placeId: 'a', order: 1 })] });
+    expect(document.querySelectorAll('.pin-tag')).toHaveLength(0);
+  });
+
   // Selection is a separate class so the two COMPOSE: a pin can be both the next
   // stop and the one you just tapped.
   it('selection composes with the amber cue rather than replacing it', () => {

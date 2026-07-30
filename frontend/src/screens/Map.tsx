@@ -68,6 +68,7 @@ import {
   PIN_TIER,
   pinOutcome,
   pinSizeCss,
+  pinTransition,
   placePinTier,
   placePoint,
   type PinContext,
@@ -892,6 +893,12 @@ export function MapView() {
     return currentDestination(events, bookings, places, nowMs)?.place.id;
   }, [mode, events, bookings, places, nowMs]);
 
+  // Declared up here rather than beside the row helpers that also read it: the pins need
+  // it too now (a place's transition word comes off the event that owns its day), and one
+  // lookup for both halves is the same reason they share every other derivation.
+  const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+  const eventLookup = useCallback((id: string) => eventById.get(id), [eventById]);
+
   // ── The pins (ADR-0121 §6) ────────────────────────────────────────────────
   // The number is the index in the scoped day sequence, computed over the whole
   // scoped set with NO clock — so neither a filter, nor near-me, nor the ticking
@@ -946,6 +953,10 @@ export function MapView() {
       const isMatch = searching && (matchesQuery(usage) || ownedResults.has(usage.placeId));
       if (!(searching ? isMatch : matchesPlaceFilter(usage, placeFilter))) continue;
       const tier = pinTier(usage);
+      // Hoisted out of the object because the phase word reads them too: an amber pin's
+      // word survives the day scope where every other pin's does not (see `transition`).
+      const isNext = nextStopId === usage.placeId && !isAsidePin(tier);
+      const isNow = nowStopId === usage.placeId && !isAsidePin(tier);
       pinsNow.push({
         placeId: usage.placeId,
         lat: point.lat,
@@ -981,8 +992,29 @@ export function MapView() {
         // at must not make one. Reading `tier` here rather than the flag above is the
         // whole distinction, and writing it as one query-aware predicate would have
         // changed five behaviours silently, two of them wrongly.
-        nextStop: nextStopId === usage.placeId && !isAsidePin(tier),
-        nowStop: nowStopId === usage.placeId && !isAsidePin(tier),
+        nextStop: isNext,
+        nowStop: isNow,
+        // WHICH TRANSITION IS NEXT HERE (ADR-0141) — the word the row's own meta line
+        // already leads with, so `צ׳ק-אאוט` stops being something only the list knows.
+        //
+        // THE DAY SCOPE GATES THE NEUTRAL ONE, and it is the screen's call for exactly the
+        // reason the number's is (ADR-0121 §6, session 146): all-days there is nothing on
+        // the pin saying which day the word belongs to, so two stays from two different
+        // days both read `צ׳ק-אין` — the same ambiguity that killed all-days renumbering.
+        // The measurement agreed twice over (a trip's worth of edges collides on a phone),
+        // but the ambiguity is the argument and the density is only the proof.
+        //
+        // AN AMBER PIN IS EXEMPT, and not as a courtesy: the ambiguity the gate exists to
+        // prevent cannot arise on it. It is by definition the one place that is happening
+        // now or next, so there is no question which day its word belongs to — and a live
+        // claim is about the clock, never about which day you happen to be looking at.
+        //
+        // An ASIDE pin is excluded for the reason it carries no amber either: it is not
+        // what you are looking at.
+        transition:
+          (scopedDate || isNext || isNow) && !isAsidePin(tier)
+            ? pinTransition(usage, pinCtx, eventLookup)
+            : undefined,
         selected: selectedId === usage.placeId,
         label: place.name,
       });
@@ -1007,6 +1039,9 @@ export function MapView() {
         p.aside,
         p.match,
         p.order,
+        // In the key because it is rendered text: a place settled, rescoped or re-edged
+        // while the tab is open changes the tag and nothing else about the pin.
+        p.transition,
         p.nextStop,
         p.nowStop,
         p.selected,
@@ -1401,7 +1436,6 @@ export function MapView() {
   // The time renders in the EVENT's own zone (ADR-0107), and each end of a booking
   // gets its own: a departure in its origin, an arrival in its destination.
   const zoneCtx = useMemo(() => liveZoneContext(nowMs, zoneEvidence), [nowMs, zoneEvidence]);
-  const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
 
   // A row rendered OUT of the day scope — a surfaced ghost, the canvas place card —
   // reads in all-days grammar, so it drops the scope everywhere that scope is asked

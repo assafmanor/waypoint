@@ -206,6 +206,7 @@ vi.mock('../ui/domain/MapPane', () => ({
       selected?: boolean;
       match?: boolean;
       outcome?: 'done' | 'skipped';
+      transition?: string;
     }[];
     return (
       <div data-pane>
@@ -264,6 +265,7 @@ vi.mock('../ui/domain/MapPane', () => ({
             data-selected={String(pin.selected ?? false)}
             data-match={String(pin.match ?? false)}
             data-outcome={pin.outcome ?? ''}
+            data-transition={pin.transition ?? ''}
             onClick={() => (props.onSelectPin as (id: string) => void)(pin.placeId)}
           >
             {pin.placeId}
@@ -803,6 +805,114 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     expect(byId('lunch').nextStop).toBeFalsy();
     expect(byId('museum').nextStop).toBe(true);
     expect(byId('museum').nowStop).toBeFalsy();
+  });
+
+  // The DAY-SCOPE GATE on the phase word (ADR-0141 §4), which is the screen's rule and not
+  // the lib's — so it is asserted in BOTH scopes, on the surface where the two renders
+  // genuinely differ (frontend CLAUDE.md).
+  it('a hotel-changing day tells its two stays apart by word, ahead of time', () => {
+    // Neither cue applies: the day is still ahead, so nothing is `עכשיו` and nothing is
+    // `behind`. This is precisely the case the Phase-4 follow-up left open.
+    setSimulatedNow(Date.parse(`${ACTIVE_DATE}T08:00:00Z`));
+    tripPlaces = [
+      place('outgoing'),
+      place('incoming', true, { lat: 35.7, lng: 139.7 }),
+      place('cafe', true, { lat: 35.71, lng: 139.71 }),
+    ];
+    tripEvents = [
+      event({
+        id: 'stay-a',
+        placeId: 'outgoing',
+        category: 'lodging',
+        icon: '🏨',
+        date: '2026-07-18',
+        endDate: ACTIVE_DATE,
+        startsAt: '2026-07-18T15:00:00Z',
+        endsAt: `${ACTIVE_DATE}T10:00:00Z`,
+      }),
+      event({
+        id: 'stay-b',
+        placeId: 'incoming',
+        category: 'lodging',
+        icon: '🏨',
+        date: ACTIVE_DATE,
+        endDate: NEXT_DAY,
+        startsAt: `${ACTIVE_DATE}T15:00:00Z`,
+        endsAt: `${NEXT_DAY}T10:00:00Z`,
+      }),
+      // The day's actual next stop, so NEITHER stay is cued — which is the whole point of
+      // the case. Without it the arriving stay is `nextDestination` and carries amber, i.e.
+      // the "covered twice over" live reading rather than the uncovered ahead-of-time one.
+      event({
+        id: 'breakfast',
+        placeId: 'cafe',
+        category: 'food',
+        startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+        endsAt: `${ACTIVE_DATE}T09:45:00Z`,
+      }),
+    ];
+    render(wrap(<MapView />));
+    // Same hue, same glyph, same tier — and now not the same word.
+    expect(pin('outgoing')!.getAttribute('data-transition')).toBe('צ׳ק-אאוט');
+    expect(pin('incoming')!.getAttribute('data-transition')).toBe('צ׳ק-אין');
+    // Neither is amber, so nothing about the budget moved to say it.
+    expect(pin('outgoing')!.getAttribute('data-amber')).toBe('');
+    expect(pin('incoming')!.getAttribute('data-amber')).toBe('');
+
+    // ALL-DAYS drops it: there is nothing on a pin saying which day the word belongs to,
+    // so two stays from two days would both read `צ׳ק-אין` — the same ambiguity that
+    // killed all-days renumbering, and the number goes with it.
+    fireEvent.click(listButton(t.map.allDays));
+    expect(pin('outgoing')!.getAttribute('data-transition')).toBe('');
+    expect(pin('incoming')!.getAttribute('data-transition')).toBe('');
+    expect(pin('outgoing')!.getAttribute('data-order')).toBe('');
+  });
+
+  it('the amber cues keep their word in all-days, because they are about the clock', () => {
+    // A two-endpoint transport booking, mid-flight: bracketed and NOT ambient (ADR-0063
+    // §5), so it can be `deriveNow`'s answer — a multi-day stay never can, being off the
+    // counted schedule. It also gives each end its own pin, which is what makes `edge`
+    // mean something: the origin is a departure, the destination an arrival.
+    setSimulatedNow(Date.parse(`${ACTIVE_DATE}T10:00:00Z`));
+    tripPlaces = [place('origin'), place('dest', true, { lat: 35.7, lng: 139.7 })];
+    tripBookings = [
+      {
+        id: 'bk',
+        tripId: 't1',
+        type: 'flight',
+        title: 'flight',
+        source: 'manual',
+        fromPlaceId: 'origin',
+        toPlaceId: 'dest',
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: 'u1',
+      } as Booking,
+    ];
+    tripEvents = [
+      event({
+        id: 'f',
+        bookingId: 'bk',
+        icon: '✈️',
+        category: 'transport',
+        startsAt: `${ACTIVE_DATE}T09:00:00Z`,
+        endsAt: `${ACTIVE_DATE}T12:00:00Z`,
+      }),
+    ];
+    render(wrap(<MapView />));
+    // Each end reads its own word, in the per-mode wording a flight earns.
+    expect(pin('origin')!.getAttribute('data-transition')).toBe('המראה');
+    expect(pin('dest')!.getAttribute('data-transition')).toBe('נחיתה');
+    expect(pin('origin')!.getAttribute('data-amber')).toBe('now');
+
+    fireEvent.click(listButton(t.map.allDays));
+    // The scope gate is on the NEUTRAL tag only — an amber pin is a claim about the clock,
+    // not about which day you are looking at, so it survives all-days with its word.
+    expect(pin('origin')!.getAttribute('data-amber')).toBe('now');
+    expect(pin('origin')!.getAttribute('data-transition')).toBe('המראה');
+    // …and the pin beside it, which carries no cue, loses its word with the scope.
+    expect(pin('dest')!.getAttribute('data-amber')).toBe('');
+    expect(pin('dest')!.getAttribute('data-transition')).toBe('');
   });
 
   // A mid-stay night is pinned at full strength now (ADR-0109's 2026-07-27
