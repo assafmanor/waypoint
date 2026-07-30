@@ -51,6 +51,12 @@ export function useCanvasGestures(
    *  point is already a coordinate — the pixel→`LatLng` conversion happens here, because
    *  it needs the live map and the screen's callers must not learn about projections. */
   onHold?: (at: LatLng) => void,
+  /** Set true for as long as a completed gesture's own `click` is still pending, so the pane
+   *  can refuse to read that click as a canvas tap. The DOM swallow below covers the event
+   *  stream; this covers **Google's own tap callback**, which is not an event stream at all
+   *  and so cannot be stopped by anything (see `armClickSwallow`). One arm, one disarm, two
+   *  channels — a second flag with its own lifetime is what would drift. */
+  gestureTapRef?: RefObject<boolean>,
 ): void {
   // Latest-ref, and this is the scar that matters most here: `screens/Map.tsx` re-renders
   // every second on the clock, and session 116 lost a gesture to exactly this — a teardown
@@ -73,10 +79,16 @@ export function useCanvasGestures(
     let disarmSwallow: (() => void) | null = null;
     const armSwallow = () => {
       disarmSwallow?.();
+      if (gestureTapRef) gestureTapRef.current = true;
       disarmSwallow = armClickSwallow(() => {
         disarmSwallow = null;
+        if (gestureTapRef) gestureTapRef.current = false;
       });
     };
+    /** A drop happened and the finger is STILL DOWN. The click to swallow is fired by the
+     *  release, which is an unbounded wait away — so the window opens there and not here
+     *  (ADR-0148's build-log amendment). */
+    let dropAwaitingRelease = false;
     const clearHold = () => {
       if (holdTimer) clearTimeout(holdTimer);
       holdTimer = null;
@@ -125,8 +137,10 @@ export function useCanvasGestures(
             });
           if (at) latest.current.onHold?.(at);
           // A drop is followed by a release, which fires a `click` — and that click reaches
-          // `onCanvasTap`, which clears the selection, i.e. closes the card we just opened.
-          armSwallow();
+          // `onCanvasTap`, which now dismisses the form as an outside tap (ADR-0148 §7). The
+          // window is opened by the RELEASE, below: a hold is held for as long as the user
+          // likes, so a swallow armed here has usually expired by the time the finger lifts.
+          dropAwaitingRelease = true;
           // Not `true`: we never took the finger, so the suppressors must stay off. Google
           // has been panning within the slop all along and that is correct.
           return false;
@@ -186,6 +200,13 @@ export function useCanvasGestures(
       const wasOurs = state.phase !== DRAG_ZOOM_PHASE.IDLE;
       feed(type, e.clientX, e.clientY, e.timeStamp);
       owned = false;
+      // The release of a press that dropped a pin: this is the event the `click` follows, so
+      // it is where the swallow's own clock starts. A cancel gets it too — it also ends the
+      // press, and whether a click follows is exactly what the timeout is for.
+      if (dropAwaitingRelease) {
+        dropAwaitingRelease = false;
+        armSwallow();
+      }
       if (wasOurs) block(e);
     };
 
@@ -270,6 +291,17 @@ const swallow = (e: Event) => e.stopPropagation();
  * same note — "a drop that generates no click at all would otherwise leave the listener armed
  * for the user's next real tap". Copying the arm without the disarm is how the shelf's lesson
  * got lost on the way to the canvas.
+ *
+ * **It is armed by the RELEASE, never by the gesture completing**, and for the long press
+ * those are not the same moment: a hold fires at `DRAG_HOLD_MS` with the finger still down,
+ * and this window is `DRAG_CLICK_SWALLOW_MS` long — so arming at the drop covered a click
+ * that had not happened yet and was gone by the time it did.
+ *
+ * **And it is only one of the two channels.** Google's map `click` is a callback it dispatches
+ * itself, not an event we can stop propagating, so the pane also refuses a canvas tap while
+ * this is armed (`gestureTapRef`). Same arm, same disarm, same timeout — the note at the top
+ * of this file, one step further: `stopPropagation` says nothing to another stream, and
+ * nothing at all to a subscription.
  */
 function armClickSwallow(onDisarm: () => void): () => void {
   const disarm = () => {

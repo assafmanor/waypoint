@@ -318,6 +318,10 @@ function MapPaneInner({
   draftMarker,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
+  // Is the tap Google is about to report the release of a gesture of OURS? Owned by
+  // `useCanvasGestures` and read below — a ref rather than state, because a re-render here
+  // re-diffs every marker on a map that ticks every second (ADR-0121 §4).
+  const gestureTapRef = useRef(false);
   return (
     <div className="map-pane" ref={paneRef}>
       <APIProvider apiKey={config.apiKey}>
@@ -357,9 +361,16 @@ function MapPaneInner({
           // Google suggestion is very annoying"_). So the `event.stop()` that suppressed
           // Google's info window is gone rather than left commented: §6 holds unamended,
           // Google's own card answers the tap, and its Maps link is most of the point of it.
+          //
+          // **A release that completed one of our own gestures is not a tap.** The long
+          // press's release lands here as an ordinary canvas tap, and since ADR-0148 §7 a
+          // canvas tap dismisses the form — so a drop opened the form and lifting the finger
+          // closed it again. The DOM-level swallow cannot cover this: what arrives here is
+          // Google's own callback, and a subscription is not a stream to stop propagating.
           onClick={(event) => {
             const target = event.domEvent?.target as HTMLElement | null;
             if (target?.closest?.('.map-pin')) return;
+            if (gestureTapRef.current) return;
             onCanvasTap();
           }}
         >
@@ -398,6 +409,7 @@ function MapPaneInner({
           framePlace={framePlace}
           cardReserve={cardReserve}
           onHoldCanvas={onHoldCanvas}
+          gestureTapRef={gestureTapRef}
         />
       </APIProvider>
     </div>
@@ -659,6 +671,7 @@ function MapCameraControls({
   framePlace,
   cardReserve,
   onHoldCanvas,
+  gestureTapRef,
 }: {
   paneRef: RefObject<HTMLDivElement | null>;
   pins: readonly MapPin[];
@@ -675,6 +688,9 @@ function MapCameraControls({
    *  drag zoom does: it must drive THIS camera's pane, and the recogniser that owns it is
    *  the same one (ADR-0147 §1). */
   onHoldCanvas?: (at: LatLng) => void;
+  /** Written by the recogniser, read by the canvas's own click handler above: the release of
+   *  a completed gesture must not be read as a tap. */
+  gestureTapRef: RefObject<boolean>;
 }) {
   const map = useMap(MAP_ID);
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
@@ -721,7 +737,7 @@ function MapCameraControls({
   // here rather than as a second pipeline (ADR-0147 §1). A fresh callback per render is fine
   // and deliberate for the same reason the object above is: the hook reads it through a
   // latest-ref, because this screen re-renders every second.
-  useCanvasGestures(map, { zoomTo, stepZoomIn }, paneRef, onHoldCanvas);
+  useCanvasGestures(map, { zoomTo, stepZoomIn }, paneRef, onHoldCanvas, gestureTapRef);
 
   // Focus pans AND zooms in when the view is too far out to read the place (ADR-0127
   // §1, reversing §7's "focus never zooms" in the one direction that was protecting

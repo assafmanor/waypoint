@@ -45,10 +45,19 @@ let root: Root;
 let host: HTMLDivElement;
 let pane: HTMLDivElement;
 const holds: LatLng[] = [];
+/** The pane's own half of the guard: Google reports a tap as a callback, which no
+ *  `stopPropagation` can reach, so the pane refuses one while this reads true. */
+let gestureTapRef: RefObject<boolean>;
 
-function Harness({ paneRef }: { paneRef: RefObject<HTMLElement | null> }) {
+function Harness({
+  paneRef,
+  gestureTapRef,
+}: {
+  paneRef: RefObject<HTMLElement | null>;
+  gestureTapRef: RefObject<boolean>;
+}) {
   const camera = useRef({ zoomTo: vi.fn(), stepZoomIn: vi.fn() }).current;
-  useCanvasGestures(fakeMap(), camera, paneRef, (at) => holds.push(at));
+  useCanvasGestures(fakeMap(), camera, paneRef, (at) => holds.push(at), gestureTapRef);
   return null;
 }
 
@@ -64,7 +73,8 @@ beforeEach(() => {
   document.body.appendChild(host);
   root = createRoot(host);
   const paneRef = { current: pane } as RefObject<HTMLElement | null>;
-  act(() => root.render(<Harness paneRef={paneRef} />));
+  gestureTapRef = { current: false };
+  act(() => root.render(<Harness paneRef={paneRef} gestureTapRef={gestureTapRef} />));
 });
 
 afterEach(() => {
@@ -120,19 +130,50 @@ describe('the long press', () => {
 });
 
 describe('the click swallow', () => {
-  it("eats the click a drop's own release fires, so the new card is not closed by it", () => {
+  /** A long press, ending with the finger LIFTED — which is the whole point: the click to
+   *  swallow is fired by the release, and a hold is held for as long as the user likes.
+   *  `held` is how long the finger stayed down after the pin dropped. */
+  const holdAndLift = (held = 0) => {
     press(250);
     act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+    if (held > 0) act(() => void vi.advanceTimersByTime(held));
+    lift(250);
+  };
+
+  it("eats the click a drop's own release fires, so the new card is not closed by it", () => {
+    holdAndLift();
     // The release's synthetic click — this one must NOT reach the screen, or `onCanvasTap`
-    // clears the selection and the card just opened disappears.
+    // dismisses the form that same press just opened (ADR-0148 §7).
     expect(tapReaches()).toBe(false);
   });
 
-  it('DISARMS after that one click, so the next genuine tap is untouched', () => {
+  it('is armed by the RELEASE, so a press held past the window still gets its click eaten', () => {
+    // The reported bug (owner, on a phone): "when I long click the form opens, then when I
+    // lift my finger it closes immediately." The swallow used to be armed at the DROP, which
+    // happens with the finger still down — so any lift more than `DRAG_CLICK_SWALLOW_MS`
+    // later arrived with the guard already expired. Every test here lifted instantly, so the
+    // one number that mattered was the one nothing exercised.
+    holdAndLift(DRAG_CLICK_SWALLOW_MS * 3);
+    expect(tapReaches()).toBe(false);
+  });
+
+  it("tells the pane to refuse Google's own tap for the same window, and only that window", () => {
+    // The second channel: what reaches `onCanvasTap` is a callback Google dispatches, not an
+    // event, so the listener above cannot cover it. One arm, one disarm, two channels.
     press(250);
     act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+    expect(gestureTapRef.current).toBe(false);
+    lift(250);
+    expect(gestureTapRef.current).toBe(true);
+    act(() => void vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS));
+    expect(gestureTapRef.current).toBe(false);
+  });
+
+  it('DISARMS after that one click, so the next genuine tap is untouched', () => {
+    holdAndLift();
     expect(tapReaches()).toBe(false);
     expect(tapReaches()).toBe(true);
+    expect(gestureTapRef.current).toBe(false);
   });
 
   it('disarms on a timeout when the release fires no click at all', () => {
@@ -140,17 +181,32 @@ describe('the click swallow', () => {
     // touch stream that would have synthesised the click, so on a real device the swallow can
     // be armed and never spent. Without the fallback it eats the user's next real tap — the
     // "tapping outside the icon picker does not close it" symptom.
-    press(250);
-    act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+    holdAndLift();
     act(() => void vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS));
     expect(tapReaches()).toBe(true);
   });
 
-  it('is disarmed by unmount, so it cannot reach the next screen', () => {
+  it('is not armed while the finger is still down', () => {
+    // There is nothing to guard yet, and arming early is precisely the bug above.
     press(250);
     act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+    expect(tapReaches()).toBe(true);
+  });
+
+  it('is armed by a CANCEL too, since that also ends the press', () => {
+    press(250);
+    act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+    pane.dispatchEvent(
+      new PointerEvent('pointercancel', { clientX: 100, clientY: 250, bubbles: true }),
+    );
+    expect(tapReaches()).toBe(false);
+  });
+
+  it('is disarmed by unmount, so it cannot reach the next screen', () => {
+    holdAndLift();
     act(() => root.unmount());
     expect(tapReaches()).toBe(true);
+    expect(gestureTapRef.current).toBe(false);
     // Re-mounted in `afterEach`'s place, so the teardown there stays valid.
     root = createRoot(host);
     act(() => root.render(<div />));
