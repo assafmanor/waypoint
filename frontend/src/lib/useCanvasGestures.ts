@@ -37,7 +37,7 @@ import {
 } from './canvas-gestures';
 import { latLngAtOffset, type MapCamera } from './useMapCamera';
 import type { LatLng } from './map-camera';
-import { DRAG_HOLD_MS } from '../constants';
+import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS } from '../constants';
 
 /** The two camera verbs this gesture needs, named as a slice of `MapCamera` so the hook
  *  can be tested against a two-method object instead of a whole camera. */
@@ -68,6 +68,15 @@ export function useCanvasGestures(
      *  one input the recogniser cannot derive — this fires the synthetic `HOLD` that lets
      *  it stay a pure table. Cleared by every other outcome of the press. */
     let holdTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Disarms whatever click swallow is currently armed, so unmounting mid-gesture cannot
+     *  leave one listening on the next screen. */
+    let disarmSwallow: (() => void) | null = null;
+    const armSwallow = () => {
+      disarmSwallow?.();
+      disarmSwallow = armClickSwallow(() => {
+        disarmSwallow = null;
+      });
+    };
     const clearHold = () => {
       if (holdTimer) clearTimeout(holdTimer);
       holdTimer = null;
@@ -117,18 +126,13 @@ export function useCanvasGestures(
           if (at) latest.current.onHold?.(at);
           // A drop is followed by a release, which fires a `click` — and that click reaches
           // `onCanvasTap`, which clears the selection, i.e. closes the card we just opened.
-          // Same one-shot capture swallow `SETTLE` uses, and for the same reason.
-          document.addEventListener('click', swallow, { capture: true, once: true });
+          armSwallow();
           // Not `true`: we never took the finger, so the suppressors must stay off. Google
           // has been panning within the slop all along and that is correct.
           return false;
         }
         case DRAG_ZOOM_ACTION.SETTLE:
-          // A real drag ends in a `click`, retargeted to whatever the capture landed on.
-          // One document-level capture listener armed for exactly one click — session 116's
-          // fix, and `once` is the half that matters: a listener left armed would swallow
-          // the next genuine tap on the canvas.
-          document.addEventListener('click', swallow, { capture: true, once: true });
+          armSwallow();
           return true;
         default:
           return false;
@@ -217,7 +221,7 @@ export function useCanvasGestures(
       for (const type of SUPPRESSED) {
         pane.removeEventListener(type, suppress, true);
       }
-      document.removeEventListener('click', swallow, true);
+      disarmSwallow?.();
       clearHold();
     };
     // `map` and `camera` are read through the latest-ref on purpose — see it. Re-running
@@ -249,3 +253,35 @@ function block(e: Event): void {
 }
 
 const swallow = (e: Event) => e.stopPropagation();
+
+/**
+ * Eat the ONE `click` a completed gesture fires, then disarm — by the click itself, or by a
+ * timeout if that click never comes.
+ *
+ * **The timeout is the half that was missing, and it is a real bug rather than belt-and-braces.**
+ * `SETTLE` gets away without it because a real drag reliably ends in a click; a long-press
+ * DROP does not, because this pipeline `preventDefault`s the touch stream that would have
+ * synthesised one. A stranded `once` listener then swallows the user's **next genuine tap** —
+ * which presents as "the thing I tapped didn't respond", e.g. a tap outside the `IconPicker`
+ * failing to close it, since that panel's own dismissal is a bubble-phase `click` on
+ * `document` and this guard stops propagation ahead of it.
+ *
+ * `useHoldToDrag` already carries exactly this fallback (`DRAG_CLICK_SWALLOW_MS`) with the
+ * same note — "a drop that generates no click at all would otherwise leave the listener armed
+ * for the user's next real tap". Copying the arm without the disarm is how the shelf's lesson
+ * got lost on the way to the canvas.
+ */
+function armClickSwallow(onDisarm: () => void): () => void {
+  const disarm = () => {
+    clearTimeout(timer);
+    document.removeEventListener('click', once, true);
+    onDisarm();
+  };
+  const once = (e: Event) => {
+    swallow(e);
+    disarm();
+  };
+  const timer = setTimeout(disarm, DRAG_CLICK_SWALLOW_MS);
+  document.addEventListener('click', once, true);
+  return disarm;
+}

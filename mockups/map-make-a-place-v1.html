@@ -10038,12 +10038,20 @@ body {
                 </div>
                 <input id="formName" placeholder="שם המקום" dir="auto" />
               </div>
+              <!-- ALL NINE `EVENT_CATEGORY` values with their real `t.event.categories`
+                   labels — including `other` (כללי), which already exists. The first pass drew
+                   five and invented one ("ביקור"); `sightseeing` is אתרים. `other` sits LAST
+                   because it is the fallback, not a peer. -->
               <div class="choice-grid pills compact" role="group" aria-label="קטגוריה">
                 <button type="button" class="choice-pill">אוכל</button>
-                <button type="button" class="choice-pill">טבע</button>
-                <button type="button" class="choice-pill">ביקור</button>
+                <button type="button" class="choice-pill">אתרים</button>
+                <button type="button" class="choice-pill on">טבע</button>
+                <button type="button" class="choice-pill">פעילות</button>
                 <button type="button" class="choice-pill">לינה</button>
                 <button type="button" class="choice-pill">תחבורה</button>
+                <button type="button" class="choice-pill">קניות</button>
+                <button type="button" class="choice-pill">מעשי</button>
+                <button type="button" class="choice-pill">כללי</button>
               </div>
               <p class="map-draft-coords" id="formMeta" dir="auto">35.7148, 139.7967</p>
               <p class="map-draft-hint" id="formHint" hidden>גוגל ישלים את השם בהוספה</p>
@@ -10171,10 +10179,10 @@ body {
           <p><strong>מקום קיים</strong> — מלא מראש. אותו שדה, אותו מקום במסך.</p>
           <div class="mk-verdict">
             <p style="margin: 0">
-              <strong>למה לא תפריט <code>⋯</code> ‏→ ‏sheet?</strong> כי סיכה חדשה חייבת שדה בכל
-              מקרה. אילו שינוי־שם היה sheet, האפליקציה הייתה אומרת "מתן שם הוא inline כשהמקום חדש,
-              ומודאלי כשהוא קיים" — שתי דקדוקים לאקט אחד, בדיוק הסחיפה ש‏<code>SettleControl</code>
-              נוצר כדי לבטל.
+              <strong>למה לא תפריט <code>⋯</code> ‏→ ‏sheet לשינוי שם?</strong> כי מקום חדש חייב
+              טופס בכל מקרה — שם, סמל וקטגוריה. אם שינוי־שם היה sheet נפרד, האפליקציה הייתה אומרת
+              "מקום נוצר בכרטיס ונערך במודאל" — שתי דקדוקים לאקט אחד, בדיוק הסחיפה
+              ש‏<code>SettleControl</code> נוצר כדי לבטל. טופס אחד, ארבעה מקורות.
             </p>
           </div>
         </div>
@@ -10374,9 +10382,11 @@ body {
                 </div>
                 <input value="הספסל עם הנוף" dir="auto" />
               </div>
-              <!-- The panel the chip opens, drawn open so it can be judged: the app's own
-                   searchable grid, unchanged. -->
-              <div class="icon-panel" role="dialog" aria-label="בחירת סמל" style="position: static; margin-top: 4px">
+              <!-- The panel the chip opens, drawn OPEN so the grid can be judged. It keeps the
+                   app's own `position: absolute` — it FLOATS over the card and the canvas rather
+                   than expanding the form, which is what the shipped `.icon-panel` does and what
+                   the first pass got wrong by drawing it static. -->
+              <div class="icon-panel" role="dialog" aria-label="בחירת סמל">
                 <div class="icon-panel-head"><span class="lbl">בחירת סמל</span></div>
                 <div class="icon-search"><input placeholder="חיפוש סמל" dir="auto" /></div>
                 <div class="icon-grid-scroll">
@@ -10392,12 +10402,20 @@ body {
                   </div>
                 </div>
               </div>
+              <!-- ALL NINE `EVENT_CATEGORY` values with their real `t.event.categories`
+                   labels — including `other` (כללי), which already exists. The first pass drew
+                   five and invented one ("ביקור"); `sightseeing` is אתרים. `other` sits LAST
+                   because it is the fallback, not a peer. -->
               <div class="choice-grid pills compact" role="group" aria-label="קטגוריה">
                 <button type="button" class="choice-pill">אוכל</button>
+                <button type="button" class="choice-pill">אתרים</button>
                 <button type="button" class="choice-pill on">טבע</button>
-                <button type="button" class="choice-pill">ביקור</button>
+                <button type="button" class="choice-pill">פעילות</button>
                 <button type="button" class="choice-pill">לינה</button>
                 <button type="button" class="choice-pill">תחבורה</button>
+                <button type="button" class="choice-pill">קניות</button>
+                <button type="button" class="choice-pill">מעשי</button>
+                <button type="button" class="choice-pill">כללי</button>
               </div>
               <p class="map-draft-coords" dir="auto">35.7148, 139.7967</p>
               <div class="map-draft-acts">
@@ -10630,7 +10648,7 @@ body {
               </div>
             </div>
           </div>
-          <p class="mk-cap">אותו שדה, על הקנבס (stop = <code>map</code>)</p>
+          <p class="mk-cap">אותו טופס, על הקנבס (stop = <code>map</code>)</p>
         </div>
         <div class="mk-note">
           <h4>מה זה קונה</h4>
@@ -10670,9 +10688,10 @@ body {
             במקום לגלוש.
           </p>
           <p>
-            <strong>אייקונים, לא אמוג׳י</strong> — עיפרון, ✓ ו‑✕ הם <code>Icon</code> אמיתיים
-            (ADR-0138). יעד המגע 44px (ADR-0017), והשדה נושא <code>dir="auto"</code> כי הוא מחזיק
-            טקסט של המשתמש (ADR-0118).
+            <strong>אייקונים, לא אמוג׳י</strong> — העיפרון הוא <code>Icon</code> אמיתי
+            (ADR-0138), ובורר הסמל הוא <code>IconPicker</code> של האפליקציה, לא העתק. יעד המגע
+            44px (ADR-0017), והשדה נושא <code>dir="auto"</code> כי הוא מחזיק טקסט של המשתמש
+            (ADR-0118). <strong>ובורר הסמל צף</strong> ולא מרחיב את הטופס.
           </p>
           <p>
             <strong>מחוות — ‏6b חינם לגמרי</strong> (בלי session, בלי Details, בלי reverse geocode);
