@@ -32,6 +32,7 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       data-mapid={String(props.mapId)}
       data-gestures={String(props.gestureHandling)}
       data-nodefaultui={String(props.disableDefaultUI)}
+      data-clickableicons={String(props.clickableIcons)}
       // The Maps API hands its click handler a wrapped event carrying the DOM one; the
       // pane reads that to tell a tap on the canvas from a tap on a pin, so the stub
       // has to pass it through in the same shape.
@@ -213,6 +214,10 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(map.dataset.nodefaultui).toBe('true');
     // The default demands two fingers inside a scrollable page (§12).
     expect(map.dataset.gestures).toBe('greedy');
+    // Google's sight labels are drawn and not tappable (ADR-0125 §6's 2026-07-30
+    // amendment). This is the whole of that decision, so it is asserted rather than
+    // left to the render nobody can see.
+    expect(map.dataset.clickableicons).toBe('false');
   });
 
   it('a pin reads the same cat-* hue vocabulary as the list badge', () => {
@@ -518,11 +523,12 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       expect(onCanvasTap).not.toHaveBeenCalled();
     });
 
-    // Google's own sight icons are visible again (ADR-0125 §6) and a tap on one arrives here
-    // as a map click carrying a `placeId`. It clears like any other, and that is the point:
-    // Google answers the tap with its own place card, ours renders on the same canvas at the
-    // `map` stop, and exempting the POI tap would stack the two.
-    it("a tap on one of GOOGLE's sight icons clears the selection, so two cards never stack", () => {
+    // Google's sight labels are drawn but not tappable (ADR-0125 §6's amendment), so a tap
+    // that lands on one is a tap on the canvas and nothing else — no `placeId`, no info
+    // window. The stub cannot withhold the id the way the real API does, so the assertion is
+    // the one that still means something at this seam: a tap CARRYING one is not special-cased.
+    // "Skip when `event.detail.placeId` is set" reads like a fix and has been the bug twice.
+    it('a canvas tap clears the selection whether or not it carries a placeId', () => {
       const onCanvasTap = vi.fn();
       paint({ onCanvasTap });
       nextTap.placeId = 'ChIJLU7jZClu5kcR4PcOOO6p3I0';

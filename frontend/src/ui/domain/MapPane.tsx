@@ -344,24 +344,28 @@ function MapPaneInner({
           // regression (ADR-0017). The pane is fixed, not inline content, so
           // one-finger pan is unambiguous; the sheet handle owns vertical drags.
           gestureHandling="greedy"
+          // **Google's POI labels are looked at, never tapped** (owner, 2026-07-30, on a
+          // real phone: _"I want to disable Google maps POI"_ — ADR-0125 §6's amendment).
+          // The labels themselves stay: ADR-0125 §6's curated sights set is a cloud style
+          // and untouched, so the Eiffel Tower is still drawn and still named. What goes is
+          // GOOGLE'S ANSWER to a tap on one — its info window, which lands on the same canvas
+          // band our place card owns and belongs to a product this one is not.
+          //
+          // Nothing needed the tap any more. It was ADR-0147 §4's free input for the
+          // "make a place from a sight" source, and ADR-0148 §6 removed that source; what
+          // remained was a tap whose whole effect was to open something we did not draw.
+          clickableIcons={false}
           onIdle={(event) => onViewChange(readMapBounds(event.map))}
           // A tap on the BACKGROUND clears the selection. An `AdvancedMarker` is a DOM
           // overlay, so a tap on a pin should not reach here at all — the guard is cheap
           // insurance against the one ordering that would matter, selecting a pin and
           // then immediately clearing it.
           //
-          // A tap on one of GOOGLE's sight icons (ADR-0125 §6) does land here, carrying a
-          // `placeId`, and it deliberately clears too: Google answers that tap with its own
-          // place card, and ours renders on the same canvas at the `map` stop, so keeping
-          // the selection would stack two cards. Replacing a selection when you tap
-          // something else is also what every map app does. So do NOT skip on
-          // `event.detail.placeId` — that reads like a fix and is the bug.
-          //
-          // **ADR-0147 §4 briefly made this tap open OUR form, and ADR-0148 §6 took it back
-          // out** (owner, on a real phone: _"opening a create place form for every hit on a
-          // Google suggestion is very annoying"_). So the `event.stop()` that suppressed
-          // Google's info window is gone rather than left commented: §6 holds unamended,
-          // Google's own card answers the tap, and its Maps link is most of the point of it.
+          // A tap on one of GOOGLE's sight labels (ADR-0125 §6) lands here as an ordinary
+          // canvas tap and clears, which is what it always did. What changed is that
+          // `clickableIcons={false}` above means it now arrives with **no `placeId`** and
+          // with no info window behind it — so the outcome the three previous passes were
+          // arguing about (two stacked cards) can no longer arise at all, from either end.
           //
           // **A release that completed one of our own gestures is not a tap.** The long
           // press's release lands here as an ordinary canvas tap, and since ADR-0148 §7 a
