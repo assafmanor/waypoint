@@ -641,6 +641,25 @@ export const FILTER_STAGGER_MAX_MS = 220;
 export const LIST_MOVE_MS = 240;
 export const LIST_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
+/** The invite pass's choreography (ADR-0143) — the stamp and the tear.
+ *
+ *  Same distinction as `TRIP_BIRTH`: these are SEQUENCE, not ramp values. `STAMP_MS`
+ *  is how long the stamp is left to read before the pass tears, and `TEAR_MS` how long
+ *  the tear plays before the handoff — so the whole thing between a successful join and
+ *  landing in the trip is their sum. Short on purpose: this is the beat between
+ *  deciding and arriving, not a set piece of its own. */
+export const JOIN_PASS = {
+  STAMP_MS: 420,
+  TEAR_MS: 420,
+} as const;
+
+/** A value that changes should be seen to change (`lib/useCountUp.ts`, ADR-0143).
+ *  Steps rather than a duration, because what runs up is an integer count. */
+export const COUNT_UP = {
+  STEPS: 14,
+  STEP_MS: 26,
+} as const;
+
 /** Trip birth's choreography (ADR-0142) — the offsets at which each beat STARTS,
  *  measured from the moment the server confirms the trip.
  *
