@@ -45,6 +45,14 @@ one.
   Every control that changes the list is animated: rows leaving/arriving collapse
   and reveal (so a row is hidden in place, never dropped from the array — count
   `countVisible(rows)`, not `rows.length`), and rows that merely move slide there.
+- **Motion timed from JS** — `lib/motion.ts` (`motionDurationMs`), never a literal and
+  never a raw `readDurationMs`. It answers **0** both under reduced motion and when the
+  token is unreadable, which is what keeps a state that only exists _during_ an
+  animation from outliving the animation (ADR-0140 §5). Overlay enter/exit, per-variant
+  arrival and the shell's route direction are all already in the primitives — a new
+  sheet, a new tappable and a new shell screen inherit their motion by existing. What a
+  new **large** surface must do is one line: `--press-scale: var(--press-scale-lg)`,
+  because the default step is the control one.
 - **`ui/feedback/`** — the empty/loading/error/status shell family (ADR-0078):
   `EmptyState`, `ErrorState`, `LoadingState`+`Skeleton`, `StatusBanner`,
   `SyncBadge`. A screen needing "no data yet" / "failed to load" / "offline"
@@ -156,6 +164,16 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   surface (ADR-0090); lint-blocked for a reason.
 - A bespoke empty/loading/error `<div>` per screen instead of the
   `ui/feedback/` family (ADR-0078).
+- A hand-picked `:active` transform, or a duration literal in a `setTimeout` that is
+  waiting for an animation. Both existed in quantity: seven different press values
+  across 16 rules, and a mode-switch timer whose token reader was private to
+  `App.tsx`. Press steps are `--press-scale`/`--press-scale-lg`, waits are
+  `motionDurationMs` (ADR-0140).
+- **Splitting the `:root` block in `tokens.css`** to add a variant selector. Done once
+  while building ADR-0140 and it put the fonts, spacing, type, radius, elevation and
+  press tokens behind `[dir='ltr']` — silently unset across an RTL app, with no test
+  able to see it. A variant block (`[dir='ltr']`, `[data-theme='dark']`) goes **after**
+  the `:root` block, never inside it.
 - A chip/search/scope control `.filter()`ing rows out of the array instead of the
   shared reveal (ADR-0120) — the Map jumped for two releases because the Index's
   motion was a one-off.
