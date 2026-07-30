@@ -91,6 +91,7 @@ import { useGeolocation } from '../lib/useGeolocation';
 import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
 import {
   CATEGORY_PIN_HUE,
+  DEFAULT_PLACE_ICON,
   DOT_SEPARATOR,
   MAP_ATTRIBUTION_H,
   MAP_CONTROLS_H,
@@ -956,7 +957,7 @@ export function MapView() {
             ? ''
             : usage.pin.category
               ? iconForCategory(usage.pin.category)
-              : '📍',
+              : DEFAULT_PLACE_ICON,
         tier,
         // WHICH KIND of behind-you it is (ADR-0117 §1 on the canvas). Derived from the
         // SAME context the tier is, so the grey and the mark can never describe two
@@ -1830,7 +1831,9 @@ export function MapView() {
   // screen at all.
   const geoPrompt = promptOpen && (
     <div className="map-geoprompt" role="group" aria-label={t.map.near.prompt.title}>
-      <div className="gt">📍 {t.map.near.prompt.title}</div>
+      <div className="gt">
+        <Icon name="pin" /> {t.map.near.prompt.title}
+      </div>
       <div className="gm">{t.map.near.prompt.body}</div>
       <div className="gbtns">
         <button type="button" className="map-gbtn primary" onClick={askForLocation}>
@@ -1982,7 +1985,12 @@ export function MapView() {
 
   const listBody =
     allUsages.length === 0 ? (
-      <EmptyState icon="🗺️" title={t.map.empty.title} body={t.map.empty.body} />
+      <EmptyState
+        size="pane"
+        icon={<Icon name="map" />}
+        title={t.map.empty.title}
+        body={t.map.empty.body}
+      />
     ) : searching ? (
       // ONE LIST, ONE EMPTINESS (owner, session 164). The two halves used to be two
       // sections with two headers and two empty states, and the result was the screenshot
@@ -2009,7 +2017,8 @@ export function MapView() {
         />
       ) : (
         <EmptyState
-          icon="🗓️"
+          size="pane"
+          icon={<Icon name="calendar" />}
           title={t.map.emptyDay.title}
           body={t.map.emptyDay.body}
           action={{ label: t.map.emptyDay.action, onClick: () => setAllDays(true) }}
@@ -2361,7 +2370,7 @@ function PlaceRow({
   onEnrich: () => void;
 }) {
   const hue = usage.pin.category ? CATEGORY_PIN_HUE[usage.pin.category] : 'leisure';
-  const glyph = usage.pin.category ? iconForCategory(usage.pin.category) : '📍';
+  const glyph = usage.pin.category ? iconForCategory(usage.pin.category) : DEFAULT_PLACE_ICON;
   const isHard = usage.pin.commitment === 'hard';
   const isPureIdea = usage.isMaybe && !usage.isScheduled;
   const dirUrl = mapsDirectionsUrl(place);
@@ -2467,7 +2476,7 @@ function PlaceRow({
           {isPureIdea && <span className="map-tag mbadge">{t.map.shelfTag}</span>}
           {place.rating != null && (
             <span className="map-tag rate" dir="auto">
-              ★ {place.rating.toFixed(1)}
+              <Icon name="star" /> {place.rating.toFixed(1)}
             </span>
           )}
         </span>

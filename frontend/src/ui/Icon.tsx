@@ -58,7 +58,17 @@ export type IconName =
   // Bottom nav (ADR-0138 §4 — the owner's call to cross this line).
   | 'home'
   | 'map'
-  | 'cards';
+  | 'cards'
+  // Empty states, banners and the Plan checklist (ADR-0138's 2026-08-02 amendment,
+  // which withdrew the "empty-state illustrations stay emoji" carve-out).
+  | 'flight'
+  | 'hotel'
+  | 'members'
+  | 'archive'
+  // Found by the positional guard, not by reading the screens.
+  | 'star'
+  | 'sparkle'
+  | 'bracket';
 type Dir = 'up' | 'right' | 'down' | 'left';
 
 // Cloud base shared by the three per-entity sync glyphs (SyncBadge, ADR-0080/0091).
@@ -231,8 +241,59 @@ const PATHS: Record<IconName, string> = {
   // COPY mark, and the Index is a directory, not a duplicate.
   cards:
     'M7.4 6.6V4.8a1.6 1.6 0 0 1 1.6-1.6h9.8a1.6 1.6 0 0 1 1.6 1.6v9.8a1.6 1.6 0 0 1-1.6 1.6h-1.8 M4.8 6.6h10.4a1.6 1.6 0 0 1 1.6 1.6v11a1.6 1.6 0 0 1-1.6 1.6H4.8a1.6 1.6 0 0 1-1.6-1.6v-11a1.6 1.6 0 0 1 1.6-1.6Z M6.6 11.2h7 M6.6 14.8h4.2',
+  // ── Empty states, banners, the Plan checklist. Replaces ✈️ 🏨 👥 📖, which the
+  // first sweep left standing behind a carve-out the code disproved (ADR-0138's
+  // 2026-08-02 amendment). No `passport` shape: `documents` above already replaces
+  // 🛂, so the Plan checklist's documents row reuses it rather than drawing a second
+  // ID mark.
+  //
+  // A plane in plan view, nose LEADING — authored pointing left because that is
+  // forward in an RTL layout, the same call `exit` makes above (authored mirrored,
+  // not transformed; this app has no LTR mode to flip back to). `Board`'s transit
+  // track slides this along at 13px as the flight progresses, so a nose-up plane
+  // would be flying sideways down the track.
+  //
+  // Filled, unlike its stroked neighbours: at 13px an outlined fuselage is two
+  // strokes a couple of pixels apart, which fills in and reads as a smudge. The
+  // silhouette is the shape doing the work here, as it is for `caret`.
+  flight:
+    'M2.6 12c0-1.1.9-2 2-2h5.2l4.4-6.4h2.9l-2.6 6.4h4.6l1.8-2.4h1.6l-1.2 4.4 1.2 4.4h-1.6l-1.8-2.4h-4.6l2.6 6.4h-2.9L9.8 14H4.6c-1.1 0-2-.9-2-2Z',
+  // A double bed — lodging. Deliberately not a building: `home` is already a
+  // roofline, and a hotel block at 14px is a rectangle with windows.
+  hotel:
+    'M2.8 19.6v-7.2a1.8 1.8 0 0 1 1.8-1.8h14.8a1.8 1.8 0 0 1 1.8 1.8v7.2 M4.6 10.6V6.8a1.8 1.8 0 0 1 1.8-1.8h11.2a1.8 1.8 0 0 1 1.8 1.8v3.8 M2.8 16h18.4',
+  // Two people. Replaces 👥 on the Plan checklist's group row and the landing's
+  // feature list — NOT `GLYPH.members`, which stays emoji because it is a unit
+  // inside a sentence (`5 👥`), not a mark on a surface.
+  //
+  // Two figures of EQUAL size, side by side — not the usual one-behind-the-other.
+  // Rendered at the 17px it ships at, the conventional version's back figure is a
+  // head plus a shoulder stub too short to join anything, and it reads as a stray
+  // `)` rather than a person. Two peers is also the truer picture: a trip is a
+  // handful of people with no hierarchy (`admin`/`peer`, ADR-0065).
+  members:
+    'M10.4 7.8a2.9 2.9 0 1 1-5.8 0 2.9 2.9 0 0 1 5.8 0 M12.4 20.4v-1.7a3.4 3.4 0 0 0-3.4-3.4H6a3.4 3.4 0 0 0-3.4 3.4v1.7 M19.4 7.8a2.9 2.9 0 1 1-5.8 0 2.9 2.9 0 0 1 5.8 0 M21.4 20.4v-1.7a3.4 3.4 0 0 0-3.4-3.4H15',
+  // A lidded box — the Day view's read-only past-day banner. Replaces 📖, which
+  // said "reading" where the banner says "this day is closed".
+  archive:
+    'M3.4 8.6h17.2 M5 8.6v10a1.6 1.6 0 0 0 1.6 1.6h10.8a1.6 1.6 0 0 0 1.6-1.6v-10 M4.2 3.8h15.6a.8.8 0 0 1 .8.8v3.2a.8.8 0 0 1-.8.8H4.2a.8.8 0 0 1-.8-.8V4.6a.8.8 0 0 1 .8-.8Z M10.2 12.6h3.6',
+  // ── These three the positional guard found; nobody had spotted them by reading.
+  // A Google rating's star. FILLED, because a rating star is solid everywhere it
+  // appears and an outline one reads as "not rated".
+  star: 'M12 2.8l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.65l-5.81 3.05 1.11-6.47-4.7-4.58 6.5-.95Z',
+  // Four-pointed sparkles — `BookingSheet`'s "we filled this in for you" caption
+  // (`useDerivedField`). A wand or a robot would both claim more than the app does:
+  // the value came from a rule, not from a model.
+  sparkle:
+    'M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5Z M17.8 14.4l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8Z',
+  // The bracket tying a cluster of concurrent events together (Day view). Replaces
+  // ⎣ U+23A3, a BRACKET-PIECE character meant for stacking multi-line math glyphs —
+  // Assistant has none, so it fell back to a substitute sitting below the baseline,
+  // which is the exact failure design-language.md names for raw arrows/carets.
+  // Authored opening to the LEFT: the cluster's rows sit to the trailing side in RTL.
+  bracket: 'M16.4 4.2h-4.8a2 2 0 0 0-2 2v11.6a2 2 0 0 0 2 2h4.8 M9.6 12H5.4',
 };
-const FILLED: ReadonlySet<IconName> = new Set(['caret']);
+const FILLED: ReadonlySet<IconName> = new Set(['caret', 'flight', 'star']);
 const ROTATE: Record<Dir, number> = { down: 0, left: 90, up: 180, right: 270 };
 
 export function Icon({

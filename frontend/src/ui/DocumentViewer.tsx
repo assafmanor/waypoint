@@ -297,7 +297,7 @@ export function DocumentViewer({
           ) : (
             <div className="doc-viewer-handoff">
               <div className="doc-viewer-handoff-ic" aria-hidden="true">
-                📄
+                <Icon name="documents" />
               </div>
               <p className="doc-viewer-msg">{t.docs.viewer.handoff}</p>
               <div className="doc-viewer-actions">

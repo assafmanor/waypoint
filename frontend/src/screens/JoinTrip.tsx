@@ -3,7 +3,7 @@
 // with an amber anticipation glow and a boarding-pass "ticket" preview card
 // (perforation, countdown-to-departure, playful anonymous avatars). The
 // public preview API returns only { tripName, destination, dates, memberCount }
-// (no member names), so the avatars are generic 🙂 placeholders, not real
+// (no member names), so the avatars are generic `GLYPH.anonAvatar` placeholders, not real
 // people — matching the mockup's intent.
 //
 // One tap to join, no settings step (Assaf, 2026-07-14): calendarSyncEnabled
@@ -36,7 +36,7 @@ import {
 import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
-import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, MS_PER_DAY } from '../constants';
+import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, GLYPH, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 
 type LoadState =
@@ -225,7 +225,7 @@ function Ready({ preview }: { preview: InvitePreview }) {
     <>
       <div className="join-hero">
         <h1>
-          {t.shell.join.heroTitle} <span className="hero-em">🎉</span>
+          {t.shell.join.heroTitle} <span className="hero-em">{GLYPH.celebrate}</span>
         </h1>
         <p>{t.shell.join.heroBody}</p>
       </div>
@@ -234,7 +234,9 @@ function Ready({ preview }: { preview: InvitePreview }) {
         <div className="join-ticket">
           <div className="ticket-top">
             <div className="ticket-head">
-              <span className="ticket-badge">✈️ {t.shell.join.ticketBadge}</span>
+              <span className="ticket-badge">
+                {GLYPH.boardingPass} {t.shell.join.ticketBadge}
+              </span>
               {daysUntilStart > 0 && (
                 <span className="ticket-countdown">
                   {startCount.prefix && <>{startCount.prefix} </>}
@@ -290,12 +292,14 @@ function Ready({ preview }: { preview: InvitePreview }) {
                   className="ticket-av"
                   style={{ background: AVATAR_COLORS[i % AVATAR_COLORS.length] }}
                 >
-                  🙂
+                  {GLYPH.anonAvatar}
                 </span>
               ))}
             </div>
             <div className="ticket-people">
-              <div className="ticket-members">{t.shell.join.members(preview.memberCount)} 👋</div>
+              <div className="ticket-members">
+                {t.shell.join.members(preview.memberCount)} {GLYPH.wave}
+              </div>
               <div className="ticket-sub">{t.shell.join.membersSub}</div>
             </div>
           </div>

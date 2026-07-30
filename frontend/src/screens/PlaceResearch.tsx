@@ -24,6 +24,7 @@ import type { PlaceResult } from '@waypoint/shared';
 import type { UsePlaceSearch } from '../lib/usePlaceSearch';
 import { mapsPredictionUrl } from '../lib/places';
 import { Skeleton, StatusBanner } from '../ui/feedback';
+import { DEFAULT_PLACE_ICON } from '../constants';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
 
@@ -154,7 +155,7 @@ export function ResultRow({
   const body = (
     <>
       <span className="map-badge result" aria-hidden="true">
-        📍
+        {DEFAULT_PLACE_ICON}
       </span>
       <span className="map-main">
         <span className="map-t">

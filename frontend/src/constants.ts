@@ -235,6 +235,25 @@ export const DOCUMENT_TYPE_ICON = {
 /** Icon for a manually added maybe-shelf idea (no icon picker yet). */
 export const DEFAULT_MAYBE_ICON = '💡';
 
+/** Glyph for a PLACE with no category — the Map's pins and list rows, and the
+ *  research results, which have no category until they are added. Distinct from
+ *  `DEFAULT_EVENT_ICON`: a place with nothing known about it is still somewhere on
+ *  a map (📍), where an uncategorised event is a note pinned to a day (📌).
+ *
+ *  Deliberately NOT in `PLACEHOLDER_ICONS` below: this one is derived at render
+ *  from `category == null` and never stored, so there is no stored pick for
+ *  `chosenIcon` to second-guess. */
+export const DEFAULT_PLACE_ICON = '📍';
+
+/** Glyph for an AMBIENT STAY drawn without its own icon — the multi-night backdrop
+ *  on Home's stay strip and both day surfaces (ADR-0054). Three call sites held this
+ *  literal; same reason `DEFAULT_PLACE_ICON` above has a name.
+ *
+ *  Not `BOOKING_TYPE_ICON.hotel`, though the glyph is the same today: an ambient span
+ *  need not come from a hotel booking at all, and reaching into that map would be the
+ *  content-enum-as-decoration mistake the empty documents card made. */
+export const DEFAULT_STAY_ICON = '🏨';
+
 /** The glyphs the app hands out when nobody has chosen one. Named as a SET, and
  *  read only through `chosenIcon` below. */
 const PLACEHOLDER_ICONS: ReadonlySet<string> = new Set([DEFAULT_EVENT_ICON, DEFAULT_MAYBE_ICON]);
@@ -701,6 +720,18 @@ export type TabId = (typeof TABS)[number]['id'];
  *  in `i18n/`. */
 export const GLYPH = {
   members: '👥',
+  /** The `/join` boarding-pass card (ADR-0024). These four are the app's one
+   *  deliberately playful surface and they stay emoji — a celebration, a wave and
+   *  a stand-in face are warmth, and the ✈️ is part of a ticket ILLUSTRATION, not a
+   *  mark on a control. They are named here rather than typed into the JSX so the
+   *  lint guard needs no exemption for that file: a glyph in the markup is
+   *  decoration by construction, and content comes from this vocabulary. */
+  celebrate: '🎉',
+  boardingPass: '✈️',
+  /** The preview API returns a member COUNT and no names, so the avatars stand in
+   *  for people the page is not allowed to show. */
+  anonAvatar: '🙂',
+  wave: '👋',
 } as const;
 
 /** Control icons — every one of these is drawn by `<Icon name={…} />`. The value

@@ -55,11 +55,8 @@ const COPY_GLYPH_SELECTORS = [
 // drawing verbs — and how two call sites came to pass an emoji as an inline
 // literal rather than through the shared constant that a sweep could find.
 //
-// Scoped three ways, each for a reason:
+// Scoped two ways, each for a reason:
 //
-//  - To the glyphs this app reached for as CONTROLS, never "any emoji". Category
-//    badges, trip identity, document types and the copy's warmth are content and
-//    must stay expressible — `GLYPH` in constants.ts is where they live.
 //  - To JSX. `constants.ts` and `i18n/` hold plain literals in `.ts` files; what
 //    matters is a glyph being RENDERED, the only place the distinction shows.
 //  - To non-test source (the block below carries `ignores` for tests). A fixture
@@ -69,6 +66,11 @@ const COPY_GLYPH_SELECTORS = [
 // every call site (a booking's ✈️, a document's 📕). The menu case — the one that
 // started this — is covered far better by the compiler, since `RowAction.icon` is
 // typed `IconName` and an emoji literal simply does not typecheck.
+//
+// This list is now the EXPRESSION half only; the JSXText half went positional in
+// the 2026-08-02 amendment (see `ANY_EMOJI` below, and why a denylist here could
+// never have caught the misses that prompted it).
+//
 // An ALTERNATION, not a character class — and that is load-bearing. These selector
 // regexes are compiled without the `u` flag, so `[📥📋…]` is a class of SURROGATE
 // HALVES: every one of these lives in the U+1F4xx block and shares the lead unit
@@ -78,10 +80,34 @@ const CONTROL_EMOJI = '(✏|🗑|📥|🔄|↩|👑|🚪|⬆|📷|🔗|📋|💬
 const CONTROL_EMOJI_MESSAGE =
   'Use <Icon name="…"> (ui/Icon) — this glyph is drawing a CONTROL, and emoji are content while icons are UI (design-language.md, ADR-0138). Content glyphs belong in constants.ts\'s GLYPH.';
 
+// The JSXText half is POSITIONAL, not a list (ADR-0138's 2026-08-02 amendment).
+// A denylist can only ever catch a regression of the glyphs already swept: the list
+// above was built FROM that sweep, so 📕 🗺️ 🗓️ 📍 📖 📄 🎫 👥 sat outside it and CI
+// stayed green while an empty state drew a pink book. What actually separates the two
+// kinds is not which glyph it is but WHERE it is written — content flows in from
+// entity data or a named constant, so a glyph typed straight into the markup is
+// decoration by construction. That test needs no list and cannot go stale.
+//
+// Kept as a denylist on the EXPRESSION half, where content legitimately flows
+// (`{e.icon ?? GLYPH.…}`, `icon={BOOKING_TYPE_ICON[b.type]}`): there, only the known
+// control glyphs are wrong.
+//
+// Matches astral emoji as a surrogate PAIR — these regexes compile without the `u`
+// flag, so a bare `[\uD800-\uDBFF]` class would match one half of every emoji and
+// half of nothing else. The BMP class beside it catches the dingbats and misc
+// symbols that need no pair (✈ U+2708, ⚠ U+26A0) plus the variation selector.
+const ANY_EMOJI =
+  '([\\uD800-\\uDBFF][\\uDC00-\\uDFFF]|[\\u2300-\\u23FF\\u2600-\\u27BF\\u2B00-\\u2BFF\\uFE0F])';
+const ANY_EMOJI_MESSAGE =
+  'No emoji typed directly into JSX. If it marks a control, use <Icon name="…"> (ui/Icon); if it is content, name it in constants.ts (GLYPH / *_TYPE_ICON) and render that — "emoji are content, icons are UI" (design-language.md, ADR-0138).';
+
 const CONTROL_EMOJI_SELECTORS = [
-  `JSXText[value=/${CONTROL_EMOJI}/]`,
-  `JSXExpressionContainer Literal[value=/${CONTROL_EMOJI}/]`,
-].map((selector) => ({ selector, message: CONTROL_EMOJI_MESSAGE }));
+  { selector: `JSXText[value=/${ANY_EMOJI}/]`, message: ANY_EMOJI_MESSAGE },
+  {
+    selector: `JSXExpressionContainer Literal[value=/${CONTROL_EMOJI}/]`,
+    message: CONTROL_EMOJI_MESSAGE,
+  },
+];
 
 // ADR-0118: in an RTL app, `dir="ltr"` on an element that renders Hebrew lays the
 // whole element out left-to-right, so the Hebrew reader meets the last logical word

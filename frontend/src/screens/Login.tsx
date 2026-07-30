@@ -6,6 +6,7 @@
 import { useAuth } from '../state/auth-state';
 import { useIsOffline } from '../lib/outbox';
 import { t } from '../i18n/he';
+import { Icon } from '../ui/Icon';
 
 export function Login() {
   const { login } = useAuth();
@@ -91,15 +92,21 @@ export function Login() {
 
       <div className="land-feats">
         <div className="feat">
-          <div className="fi">🎫</div>
+          <div className="fi">
+            <Icon name="ticket" />
+          </div>
           <div className="ft">{t.shell.login.featBookings}</div>
         </div>
         <div className="feat">
-          <div className="fi">🗺️</div>
+          <div className="fi">
+            <Icon name="map" />
+          </div>
           <div className="ft">{t.shell.login.featMap}</div>
         </div>
         <div className="feat">
-          <div className="fi">👥</div>
+          <div className="fi">
+            <Icon name="members" />
+          </div>
           <div className="ft">{t.shell.login.featSync}</div>
         </div>
       </div>

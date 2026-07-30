@@ -55,6 +55,7 @@ import {
   CODE_PREFIX,
   DAY_WINDOW,
   CONTROL_ICON,
+  DEFAULT_STAY_ICON,
   MINUTES_PER_DAY,
   MS_PER_DAY,
   QUICK_TILE_MAX_COLS,
@@ -339,7 +340,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       {stayNow && !stayDismissed && (
         <div className="stay-strip">
           <span className="ss-ic" aria-hidden="true">
-            {stayNow.icon ?? '🏨'}
+            {stayNow.icon ?? DEFAULT_STAY_ICON}
           </span>
           <span className="ss-txt">
             {t.glance.stayingPrefix}

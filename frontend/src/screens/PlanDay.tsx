@@ -87,6 +87,7 @@ import {
   CONTROL_ICON,
   DAY_NOON,
   DEFAULT_MAYBE_ICON,
+  DEFAULT_STAY_ICON,
   DOT_SEPARATOR,
   MS_PER_DAY,
   MINUTES_PER_HOUR,
@@ -761,7 +762,7 @@ export function PlanDay() {
             {middleStays.map((e) => (
               <div className="ambient" key={e.id}>
                 <span className="ai" aria-hidden="true">
-                  {e.icon ?? '🏨'}
+                  {e.icon ?? DEFAULT_STAY_ICON}
                 </span>
                 <span className="an">{e.title}</span>
                 <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>

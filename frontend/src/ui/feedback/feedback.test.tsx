@@ -33,6 +33,18 @@ describe('EmptyState', () => {
     const { container } = render(<EmptyState icon={<span>📭</span>} title="ריק" />);
     expect(container.querySelector('.fb-empty-icon')?.getAttribute('aria-hidden')).toBe('true');
   });
+
+  // `size="pane"` for an empty state that owns a region rather than sitting in a
+  // list's flow (ADR-0138's 2026-08-02 amendment). Only the icon grows, so the
+  // marker has to be on the SHELL — a per-icon class would not let CSS scale it.
+  it('marks a pane-sized empty state on the shell, and leaves the default alone', () => {
+    const { container } = render(<EmptyState size="pane" icon={<span />} title="ריק" />);
+    expect(container.querySelector('.fb-empty')?.className).toContain('fb-empty-pane');
+
+    cleanup();
+    const plain = render(<EmptyState icon={<span />} title="ריק" />);
+    expect(plain.container.querySelector('.fb-empty')?.className).not.toContain('fb-empty-pane');
+  });
 });
 
 describe('ErrorState', () => {

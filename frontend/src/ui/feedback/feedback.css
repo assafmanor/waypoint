@@ -16,10 +16,30 @@
   padding-inline: var(--space-5);
 }
 
+/* Muted since the slot went all-SVG (ADR-0138's 2026-08-02 amendment). A colour
+   emoji carried its own palette; a monochrome mark at full ink weight is a 30px
+   block of --ink competing with the title right under it. */
 .fb-empty-icon,
 .fb-error-icon {
   font-size: 30px;
   line-height: 1;
+  color: var(--muted);
+}
+
+/* An empty state that owns a whole pane (the Map's list sheet). The icon carries
+   the extra room on its own — growing the copy with it would make an empty pane
+   shout louder than a full one. Thinner stroke at this scale: `Icon` draws at a
+   fixed 2/24, which at 72px is a 6px slab. */
+.fb-empty-pane {
+  justify-content: center;
+  min-height: 55%;
+}
+.fb-empty-pane .fb-empty-icon {
+  font-size: 72px;
+  opacity: 0.55;
+}
+.fb-empty-pane .fb-empty-icon .icon {
+  stroke-width: 1.25;
 }
 
 .fb-empty-title,
