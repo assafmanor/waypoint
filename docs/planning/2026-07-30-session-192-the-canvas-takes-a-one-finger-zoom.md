@@ -12,6 +12,15 @@ The phase brief said session 145's finding was **search-level, not a read of the
 1. **`@types/google.maps@3.65.3`.** The whole `MapOptions` surface is 45 fields; the only input ones are `gestureHandling`, `disableDoubleClickZoom`, `scrollwheel`, `keyboardShortcuts`, `heading/tiltInteractionEnabled`. No flag.
 2. **The live reference**, read on a phone by the owner — `developers.google.com` is blocked by this sandbox's **egress policy** (a `CONNECT` 403 at the proxy, not Google bot-blocking; the proxy README's instruction for that class is to report it rather than route around it). The four `gestureHandling` values are byte-identical to the typings.
 3. **The device.** The owner tried the gesture on the shipped tab: nothing happens.
+4. **An independent web-access pass**, briefed to _falsify_ the claim rather than confirm it, which came back **CONFIRMED** against v3.65 weekly across the interaction guide, `MapOptions`, `MapElement`/`<gmp-map>`, `Map3DElement` and ~2 years of release notes.
+
+**Three precisions the falsify pass produced, all of which narrow a claim rather than widen it** — worth keeping because each is a way this session could have overstated its case:
+
+- **Google's web docs do contain the words "double-tap and hold … then drag the map"**, in the accessibility/instructional text of embedded live maps (including the cooperative sample). It is not a counter-example — it says _navigate_ and _drag_, never names zooming, and gives no vertical direction — but the honest claim is the narrower one: **Google does not document that sequence as a _zoom_ gesture in the Maps JavaScript API.** Anyone who searches this will hit that string.
+- **MapTiler inherits the handler rather than implementing it.** Its SDK extends MapLibre and its handler docs point at MapLibre's source. So it is one library's decision, not two libraries independently arriving at the same one — which is a slightly weaker version of the argument I had been making from it.
+- **The issue-tracker check is a non-finding, not a negative.** No feature request and no fixed issue were found, but the tracker's search is sign-in/JS-gated, so the honest strength is "not in the indexed pages". The long-open feature request would have been the single strongest artefact and we do not have it.
+
+**And one finding that closes a design question rather than the reconfirmation:** there is **no documented extension point for Google's gesture recogniser** — no handler interface, no custom-recogniser registration, no way to replace one native gesture while keeping the others, no cancellable low-level touch stream (`preventMapHitsAndGesturesFrom` only suppresses). The brief asked whether the arbitration belongs to "Google's handler, ours, or a capture-phase guard". **The first was never available**, which is why §2 is a forced move rather than a preference. The pass independently described the same implementation shape this session built.
 
 **Worth keeping: source 1 could not have settled this alone**, and reading it as if it could is the trap. A gesture Google already shipped would need no option, so _no flag_ is not _no gesture_ — the typings can only rule out an unshipped one. That is why the device test is the source that closed it, and why the ADR lists all three rather than the tidiest one.
 
@@ -27,7 +36,7 @@ The brief expected the central problem to be arbitrating against the sheet's dra
 
 Two numbers were derived, drawn, driven by the owner, and **reversed**:
 
-- **Direction.** The design reasoned its way to _up = in_ from a good argument — this screen already says up means more, because dragging up grows the sheet (ADR-0122 §4). A finger overruled it: **down zooms in**, which is also Google's own Android direction. Recorded rather than quietly flipped, because the sheet-consistency argument is sound enough that someone will make it again.
+- **Direction.** The design reasoned its way to _up = in_ from a good argument — this screen already says up means more, because dragging up grows the sheet (ADR-0122 §4). A finger overruled it: **down zooms in** — and the verification pass then found Google's Android page documenting exactly that mapping (_slide up → zoom out, slide down → zoom in_), so the feel-call and the reference agree. Recorded rather than quietly flipped, because the sheet-consistency argument is sound enough that someone will make it again.
 - **Sensitivity.** 0.18 (≈1/6 of the canvas, roughly Android's feel) → reported too sensitive → 0.30 → **0.5**, over two rounds.
 
 **One confound recorded in both the ADR and §D of the mockup**, because it will matter at the next re-tune: the mockup's canvases are 260px and 214px against ~501px shipped, and the sensitivity is a **share**, so the same constant is twitchier in that file than in the app. 0.5 is ~250px per level on the real canvas — about half its height. §D's table is what to calibrate against, not the feel of the file.
