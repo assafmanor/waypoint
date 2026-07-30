@@ -1,4 +1,4 @@
-# Session 192 — the canvas takes a one-finger zoom
+# Session 193 — the canvas takes a one-finger zoom
 
 **Date:** 2026-07-30
 **Branch:** `claude/canvas-one-finger-zoom-f7kdfl`

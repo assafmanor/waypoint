@@ -1,6 +1,6 @@
 # 0145 — The canvas takes a one-finger zoom: a double-tap that keeps its finger
 
-**Status:** Accepted — designed 2026-07-30 (session 192). Phase 9 of the map panel's third pass (#17).
+**Status:** Accepted — designed 2026-07-30 (session 193). Phase 9 of the map panel's third pass (#17).
 **Date:** 2026-07-30
 **Amends** [0121](0121-embedded-map-phase-6-design.md) §7 — "only an explicit control changes zoom" gains a gesture, and "a manual pan or zoom wins" gains its first case that this app writes itself rather than letting Google write.
 **Relates** [0122](0122-map-split-controls-over-the-canvas.md) §4 (the sheet's drag region — the gesture this one was expected to fight, and does not), [0129](0129-map-camera-moves-like-a-camera.md) §3/§4 (one camera driver; the ease standing down for a finger), [0128](0128-map-dot-tier-and-the-cards-camera-reserve.md) §1 (the dot tier keyed on zoom), [0123](0123-map-pin-size-is-a-share-of-the-canvas.md) (a canvas share as the unit of a tunable), [0098](0098-index-motion-and-reveal.md) §4 (reduced motion).
