@@ -200,6 +200,14 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   handoff's target. Measure the destination element, and assert the aim against its
   settled box in an e2e spec — jsdom reports every rect as zero, so this whole class of
   bug is invisible to the unit suite by construction.
+- **Reading a rect and calling it visibility.** An ancestor's `overflow: hidden` clips what
+  paints and changes **no rect at all**, so a geometry harness reports every number healthy
+  while the element is a sliver. It happened here twice in one evening: the Map card's own
+  `overflow: hidden` cut `IconPicker`'s anchored panel to 50px, and the twelve-state pass
+  measuring it said "fits" twelve times (ADR-0148's third amendment; ADR-0132 §4 is the same
+  shape on iOS). Before using the word, walk the ancestor chain and intersect the rect with
+  every box whose overflow is not `visible`. And note the companion rule: **a bounded card
+  that clips cannot host an anchored panel** — the panel leaves its host's box by design.
 - **Reusing a component onto a surface unlike the ones it grew up on, and inheriting its
   DEFAULTS with it.** Three reports in one evening on the Map's place card, and none was a
   defect in the card (ADR-0148's second amendment): `IconPicker`'s panel opens **below** its

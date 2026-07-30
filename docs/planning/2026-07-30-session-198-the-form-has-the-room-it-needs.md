@@ -117,3 +117,13 @@ _"When I long click the form opens (keyboard too), then when I lift my finger it
 - **The form opened a keyboard and immediately closed it.** `autoFocus`, removed. The gesture ends with a finger lifting, so a field focused during the press loses the focus to the release.
 
 **What they share is the useful part.** None is a defect in the form. All three are a **default that was correct where it was written** — a panel that opens downward, an arrival that zooms, a field that takes the focus — met by a surface that is bottom-anchored, opens on a point you chose, and arrives at the end of a gesture. Reusing a component (which rule 8 is right to insist on) means inheriting its assumptions about where it is; the reuse was still correct, and each of these was the assumption becoming visible. Worth remembering the next time a component moves to a surface unlike the ones it grew up on: ask what its defaults were answering, not just whether it renders.
+
+## 14. And the picker again — the wrong layer, found by a harness that lied
+
+_"Now the icon picker is too small. It should be the same size as in all other places and not cut off."_
+
+**§1's `overflow: hidden` on the card was clipping it to a 50px sliver.** An anchored panel leaves its host's box by design (ADR-0144); a bounded card that clips is the natural companion rule and it is incompatible with hosting one. Measuring the side and capping to the room were both real improvements, and neither could ever have fixed the report: the panel was not short, it was **painted short**.
+
+**The lesson is about the harness, not the CSS.** My twelve-state pass reported `fits / head OK / cats OK` in all twelve while the panel was cut in all twelve — because a clipped element still lays out exactly where it always did. Every number was honest; the thing was invisible. That is the same failure ADR-0132 §4 records for iOS, and I wrote it into the ADR two rounds ago as the finding a mockup could not see — and then measured the same way anyway. A geometry check has to walk the ancestor chain and intersect with every `overflow != visible` box before it may use the word "fits". The harness does now, and the panel paints at its full 311px in ten of twelve states.
+
+Also worth noting: no test can hold this. A CSS clip has no layout consequence, and jsdom has no layout — so the guard is the comment beside the rule, and saying that plainly is better than implying the suite covers it.
