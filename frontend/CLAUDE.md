@@ -187,6 +187,14 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   front-loaded progress: an `offset: 0.6` fires in the first fifth. If a value describes
   the **arrival**, capture it at mount; if a channel needs its own clock, give it its own
   animation.
+- **Arming a one-shot guard when the gesture completes rather than when the event it guards
+  will fire.** The canvas's click swallow was armed at the long press's **drop** — with the
+  finger still down — and expires in `DRAG_CLICK_SWALLOW_MS`, so the release's click arrived
+  unguarded and dismissed the form that press had just opened (ADR-0148's amendment). Start
+  the clock at the event before the one you are guarding, not at the decision. Its twin: the
+  guard was a `stopPropagation` on a DOM event, and what actually reached us was a callback
+  **Google dispatches** — this file's "one stream says nothing to another" is weaker than the
+  truth, which is that it says nothing at all to a subscription. Guard at the seam too.
 - **A landing position written as a constant instead of measured.** Three times now:
   ADR-0142's `--birth-card-top: 118px`, ADR-0143's `58px` stamp offset, and the trip
   handoff's target. Measure the destination element, and assert the aim against its

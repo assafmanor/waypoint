@@ -7,6 +7,7 @@
 // re-diff a marker. Whether any of it LOOKS right on a real canvas is a human step
 // on a machine with the browser key.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import '../../test/pointer-events';
 import type { ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
@@ -18,6 +19,11 @@ const idleHandlers: ((bounds: unknown) => void)[] = [];
 /* The `placeId` the next canvas click carries — Google sets it when the tap landed on one
    of ITS icons (a landmark, an attraction) rather than on empty canvas. */
 const nextTap: { placeId: string | null } = { placeId: null };
+/** Google's own tap handler, kept so a test can fire it the way Google does — as a CALL,
+ *  not as a DOM event. That distinction is the whole of the pane's gesture guard: a
+ *  `stopPropagation` reaches an event stream and cannot reach a subscription. */
+type CanvasClick = (e: { domEvent: unknown; detail: { placeId: string | null } }) => void;
+const googleTap: { fire: CanvasClick | undefined } = { fire: undefined };
 vi.mock('@vis.gl/react-google-maps', () => ({
   APIProvider: ({ children }: { children?: ReactNode }) => <div data-api>{children}</div>,
   Map: ({ children, ...props }: Record<string, unknown> & { children?: ReactNode }) => (
@@ -29,11 +35,11 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       // The Maps API hands its click handler a wrapped event carrying the DOM one; the
       // pane reads that to tell a tap on the canvas from a tap on a pin, so the stub
       // has to pass it through in the same shape.
+      ref={() => {
+        googleTap.fire = props.onClick as CanvasClick | undefined;
+      }}
       onClick={(event) =>
-        (
-          props.onClick as
-            ((e: { domEvent: unknown; detail: { placeId: string | null } }) => void) | undefined
-        )?.({
+        (props.onClick as CanvasClick | undefined)?.({
           domEvent: event.nativeEvent,
           detail: { placeId: nextTap.placeId },
         })
@@ -127,6 +133,18 @@ class FakeZoomMap {
     this.handlers.set(type, set);
     return { remove: () => set.delete(fn) };
   }
+  /** The gesture pipeline reads the zoom limits off the map and turns a pixel into a
+   *  coordinate through Google's OWN projection (ADR-0129 §3). Linear on purpose: the
+   *  geography is `canvas-gestures.test.ts`'s job, against the real Mercator. */
+  get() {
+    return undefined;
+  }
+  getProjection() {
+    return {
+      fromLatLngToPoint: (ll: { lat: number; lng: number }) => ({ x: ll.lng, y: ll.lat }),
+      fromPointToLatLng: (pt: { x: number; y: number }) => ({ lat: () => pt.y, lng: () => pt.x }),
+    };
+  }
   pinchTo(zoom: number) {
     this.zoom = zoom;
     this.handlers.get('zoom_changed')?.forEach((fn) => fn());
@@ -135,7 +153,7 @@ class FakeZoomMap {
 
 import { MapPane, type MapPin } from './MapPane';
 import { PIN_TIER } from '../../lib/map-pins';
-import { MAP_CONNECTOR, MAP_ZOOM } from '../../constants';
+import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS, MAP_CONNECTOR, MAP_ZOOM } from '../../constants';
 import { t } from '../../i18n/he';
 
 const CONFIG = { apiKey: 'k', mapId: 'waypoint-day' };
@@ -166,6 +184,7 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       onAreaSort={props.onAreaSort ?? vi.fn()}
       onLocate={props.onLocate ?? vi.fn()}
       cardReserve={props.cardReserve}
+      onHoldCanvas={props.onHoldCanvas}
       me={props.me}
       connector={props.connector}
       defaultCentre={props.defaultCentre}
@@ -509,6 +528,38 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       nextTap.placeId = 'ChIJLU7jZClu5kcR4PcOOO6p3I0';
       fireEvent.click(document.querySelector('[data-map]')!);
       expect(onCanvasTap).toHaveBeenCalledTimes(1);
+    });
+
+    // **The release of one of OUR gestures is not a tap** (ADR-0148's build-log amendment).
+    // Reported from a phone: a long press opened the form and lifting the finger closed it
+    // again, because since §7 a canvas tap dismisses the form. The seam is what this covers
+    // and it is why the test lives here rather than beside the recogniser: `useCanvasGestures`
+    // can only prove it armed the guard, and Google reports a tap by CALLING us — so the
+    // hook's `document` swallow never sees that channel at all.
+    it("ignores the tap Google reports for the long press's own release", () => {
+      vi.useFakeTimers();
+      const onCanvasTap = vi.fn();
+      const map = new FakeZoomMap();
+      mapStub.current = map;
+      paint({ onCanvasTap, onHoldCanvas: vi.fn() });
+      const pane = document.querySelector('.map-pane')!;
+      pane.dispatchEvent(
+        new PointerEvent('pointerdown', { clientX: 100, clientY: 200, bubbles: true, button: 0 }),
+      );
+      act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+      // Held well past the swallow's own window, which is the reported bug's shape: the guard
+      // is armed by the RELEASE, so how long the finger stays down cannot matter.
+      act(() => void vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS * 2));
+      pane.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 100, clientY: 200, bubbles: true, button: 0 }),
+      );
+      googleTap.fire?.({ domEvent: undefined, detail: { placeId: null } });
+      expect(onCanvasTap).not.toHaveBeenCalled();
+      // And only that one: the guard expires, so the next real tap on the canvas still lands.
+      act(() => void vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS));
+      googleTap.fire?.({ domEvent: undefined, detail: { placeId: null } });
+      expect(onCanvasTap).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
     });
   });
 

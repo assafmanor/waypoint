@@ -95,3 +95,17 @@ Each new test was verified against the un-fixed code: the sheet standing down an
 ## 11. Also cut: CSS I wrote and then could not justify
 
 A `data-atstart` scroll mask (nothing set the attribute) and a `[hidden]` re-assert carried over from the mockup's own gotcha — React renders the form conditionally, so that state cannot arise, and the app has no `[hidden]` rule anywhere. Both were dead on arrival. The mockup's lessons transfer; its **workarounds for being static HTML** do not.
+
+## 12. And one more from the phone, an hour later
+
+_"When I long click the form opens (keyboard too), then when I lift my finger it closes immediately."_
+
+§7's outside tap was right; its guard was not, in two independent ways.
+
+**The swallow was anchored to the wrong moment.** A completed gesture fires one `click`, and the pipeline armed the swallow for it at the **drop** — which happens with the finger still **down**. The window is 400ms. So any lift more than that after the form appeared arrived with the guard expired, and the click landed on `onCanvasTap`. It is armed by the **release** now, which is the event the click actually follows.
+
+**It was latent before §7, and only §7 could show it.** `onCanvasTap` used to only clear the selection — and a drop clears the selection itself, so the stray tap landed on an already-empty state and cost nothing anybody could see. Giving that one function a second job is what turned a dormant mis-anchoring into a form that closes when you let go. Worth remembering the next time "one function for every way out" adds a job to a handler: the handler's _old_ callers become the regression surface.
+
+**And swallowing a DOM event was never going to be enough.** What reaches `onCanvasTap` is a callback Google **dispatches**, not an event we can stop propagating. That is this file's own rule one step further: `stopPropagation` on one stream says nothing to another, and nothing at all to a subscription. So the pane refuses a canvas tap while the same guard is armed — one arm, one disarm, one timeout, two channels.
+
+**Every existing test for the swallow lifted the finger instantly**, so the one number that mattered was the one nothing exercised. That is §9's lesson twice in two days: the tests were green, thorough-looking, and blind in the same direction. The regression case holds the press for three windows, and the second channel is covered at the **seam** in `MapPane` rather than beside the recogniser — the hook can prove it armed the guard, and Google's channel does not exist from inside it.
