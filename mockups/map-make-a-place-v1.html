@@ -9847,6 +9847,27 @@ body {
         font-family: 'Secular One', sans-serif;
         font-size: 14.5px;
       }
+      /* A pending name is a real state, because the name arrives over the network. */
+      .map-draft-spin {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1.5px solid var(--muted);
+        border-top-color: transparent;
+        animation: mkSpin 700ms linear infinite;
+        vertical-align: -1px;
+      }
+      @keyframes mkSpin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .map-draft-spin {
+          animation: none;
+        }
+      }
       .map-draft-hint,
       .map-draft-coords {
         margin: 0;
@@ -9857,27 +9878,6 @@ body {
         display: flex;
         align-items: center;
         gap: 8px;
-      }
-      /* The icon row stands in for the real `IconPicker` (`AddIdea` already uses it on this
-         same object), at its own scale. */
-      .map-draft-icons {
-        display: flex;
-        gap: 5px;
-        flex-wrap: wrap;
-      }
-      .map-draft-ic {
-        width: 36px;
-        height: 36px;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        background: var(--card);
-        font-size: 17px;
-        line-height: 1;
-        cursor: pointer;
-      }
-      .map-draft-ic.on {
-        border-color: var(--ink);
-        box-shadow: inset 0 0 0 1px var(--ink);
       }
       /* The icon row. `IconPicker` is the real control (`AddIdea` already uses it for this
          same object) — these chips stand in for it at its own scale. */
@@ -9973,6 +9973,9 @@ body {
         <button type="button" data-flow="idle" aria-pressed="true">מצב רגיל</button>
         <button type="button" data-flow="drop">אחרי לחיצה ארוכה</button>
         <button type="button" data-flow="goog">אחרי הקשה על אתר בגוגל</button>
+        <button type="button" data-flow="googWait">⟨חלופה⟩ עם שם מגוגל · בדרך</button>
+        <button type="button" data-flow="googPre">⟨חלופה⟩ עם שם מגוגל · הגיע</button>
+        <button type="button" data-flow="googMine">אתר בגוגל · כבר בטיול</button>
         <button type="button" data-flow="result">הוספת תוצאת חיפוש</button>
         <button type="button" data-flow="rename">שינוי שם למקום קיים</button>
       </div>
@@ -10021,16 +10024,19 @@ body {
                  whether there is a vet link differ — the fields never do. -->
             <div class="map-placecard map-draft" id="cardForm" hidden>
               <span class="map-draft-title" id="formTitle">מה יש כאן?</span>
+              <!-- THE REAL `IconPicker` — the same control events, bookings and the trip use
+                   (owner, 2026-07-30). It is a single 44px chip with a caret that opens a
+                   searchable panel, NOT an inline row: my first pass drew a 6-chip stand-in
+                   "at its own scale", which is exactly the drift rule 8 exists to stop. Using
+                   the real one also SHRINKS the form — one chip instead of a six-wide row —
+                   and it sits on the name's line rather than below it. -->
               <div class="map-namefield">
+                <div class="icon-picker">
+                  <button type="button" class="icon-chip" aria-haspopup="true" aria-expanded="false" aria-label="בחירת סמל">
+                    📍
+                  </button>
+                </div>
                 <input id="formName" placeholder="שם המקום" dir="auto" />
-              </div>
-              <div class="map-draft-icons" role="group" aria-label="סמל">
-                <button type="button" class="map-draft-ic on">📍</button>
-                <button type="button" class="map-draft-ic">🌇</button>
-                <button type="button" class="map-draft-ic">🍜</button>
-                <button type="button" class="map-draft-ic">⛩️</button>
-                <button type="button" class="map-draft-ic">☕</button>
-                <button type="button" class="map-draft-ic">⋯</button>
               </div>
               <div class="choice-grid pills compact" role="group" aria-label="קטגוריה">
                 <button type="button" class="choice-pill">אוכל</button>
@@ -10041,6 +10047,10 @@ body {
               </div>
               <p class="map-draft-coords" id="formMeta" dir="auto">35.7148, 139.7967</p>
               <p class="map-draft-hint" id="formHint" hidden>גוגל ישלים את השם בהוספה</p>
+              <p class="map-draft-hint" id="formWait" hidden>
+                <span class="map-draft-spin" aria-hidden="true"></span> מביא את השם מגוגל…
+              </p>
+              <p class="map-draft-hint" id="formFree" hidden>המקום כבר בטיול · השם שלכם, בלי קריאה</p>
               <div class="map-draft-acts">
                 <a
                   class="map-res-out"
@@ -10357,15 +10367,30 @@ body {
             <div class="map-placecard map-draft">
               <span class="map-draft-title">מה יש כאן?</span>
               <div class="map-namefield">
+                <div class="icon-picker">
+                  <button type="button" class="icon-chip open" aria-haspopup="true" aria-expanded="true" aria-label="בחירת סמל">
+                    🌇
+                  </button>
+                </div>
                 <input value="הספסל עם הנוף" dir="auto" />
               </div>
-              <div class="map-draft-icons" role="group" aria-label="סמל">
-                <button type="button" class="map-draft-ic">📍</button>
-                <button type="button" class="map-draft-ic on">🌇</button>
-                <button type="button" class="map-draft-ic">🍜</button>
-                <button type="button" class="map-draft-ic">⛩️</button>
-                <button type="button" class="map-draft-ic">☕</button>
-                <button type="button" class="map-draft-ic">⋯</button>
+              <!-- The panel the chip opens, drawn open so it can be judged: the app's own
+                   searchable grid, unchanged. -->
+              <div class="icon-panel" role="dialog" aria-label="בחירת סמל" style="position: static; margin-top: 4px">
+                <div class="icon-panel-head"><span class="lbl">בחירת סמל</span></div>
+                <div class="icon-search"><input placeholder="חיפוש סמל" dir="auto" /></div>
+                <div class="icon-grid-scroll">
+                  <div class="icon-grid">
+                    <button type="button" class="icon-cell sel">🌇</button>
+                    <button type="button" class="icon-cell">📍</button>
+                    <button type="button" class="icon-cell">🍜</button>
+                    <button type="button" class="icon-cell">⛩️</button>
+                    <button type="button" class="icon-cell">☕</button>
+                    <button type="button" class="icon-cell">🏨</button>
+                    <button type="button" class="icon-cell">🚆</button>
+                    <button type="button" class="icon-cell">🌲</button>
+                  </div>
+                </div>
               </div>
               <div class="choice-grid pills compact" role="group" aria-label="קטגוריה">
                 <button type="button" class="choice-pill">אוכל</button>
@@ -10670,6 +10695,21 @@ body {
           vet: false,
           ok: 'הוספה למדף',
         },
+        // The tapped sight, in its three real states. The name is PREFILLED from Google
+        // (owner, 2026-07-30) — which costs one Place Details call at TAP time instead of at
+        // confirm time. Same mask the app already sends on every pick
+        // (`id,displayName,formattedAddress,location` = Pro tier, ADR-0111), so no new tier
+        // and no new mask: the call simply moves earlier.
+        googWait: {
+          title: 'המקום שסימנתם',
+          name: '',
+          meta: '35.7148, 139.7967',
+          hint: false,
+          vet: true,
+          ok: 'הוספה למדף',
+          waiting: true,
+        },
+        // CHOSEN: no name until the confirm, so an exploratory tap costs nothing.
         goog: {
           title: 'המקום שסימנתם',
           name: '',
@@ -10677,6 +10717,28 @@ body {
           hint: true,
           vet: true,
           ok: 'הוספה למדף',
+        },
+        // ALTERNATIVE, kept because it is costed rather than rejected on taste: prefilling
+        // moves the SAME Pro-tier call earlier, to tap time.
+        googPre: {
+          title: 'המקום שסימנתם',
+          name: 'מקדש סנסו-ג׳י',
+          meta: 'Asakusa, Taito City',
+          hint: false,
+          vet: true,
+          ok: 'הוספה למדף',
+        },
+        // The FREE path, and it must be tried first: a sight the trip already owns needs no
+        // call at all — we have its name. The same "the trip answers first" rule ADR-0134 §1
+        // reconciled the errand with.
+        googMine: {
+          title: 'כבר בטיול',
+          name: 'רמן נאגי',
+          meta: 'Kabukicho, Shinjuku',
+          hint: false,
+          vet: false,
+          ok: 'שמירה',
+          free: true,
         },
         result: {
           title: 'הוספה לטיול',
@@ -10704,9 +10766,10 @@ body {
         // canvas. Google's sight is RINGED (its own icon already names it), and a search
         // result is already a ring on the canvas.
         $('draftPin').style.display = flow === 'drop' ? 'block' : 'none';
-        $('draftRing').style.display = flow === 'goog' || flow === 'result' ? 'grid' : 'none';
+        const ringed = flow.startsWith('goog') || flow === 'result';
+        $('draftRing').style.display = ringed ? 'grid' : 'none';
         if (flow === 'drop') place(196, 470);
-        if (flow === 'goog') ring(99, 183);
+        if (flow.startsWith('goog')) ring(99, 183);
         if (flow === 'result') ring(196, 300);
         $('rowSel').classList.toggle('renaming', flow === 'rename');
         if (!src) return;
@@ -10716,7 +10779,16 @@ body {
         $('formHint').hidden = !src.hint;
         $('formVet').hidden = !src.vet;
         $('formOk').textContent = src.ok;
-        setTimeout(() => $('formName').focus(), 40);
+        // The name arrives over the network, so the field cannot open prefilled
+        // synchronously — it opens PENDING and fills. Disabled while waiting, because a
+        // keystroke landing before the response would be overwritten by it.
+        const waiting = Boolean(src.waiting);
+        $('formName').disabled = waiting;
+        $('formName').placeholder = waiting ? 'שם המקום מגוגל…' : 'שם המקום';
+        $('formWait').hidden = !waiting;
+        $('formFree').hidden = !src.free;
+        $('formOk').disabled = waiting;
+        if (!waiting) setTimeout(() => $('formName').focus(), 40);
       };
       for (const b of document.querySelectorAll('#flowToggle button'))
         b.addEventListener('click', () => setFlow(b.dataset.flow));
