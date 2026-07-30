@@ -10259,17 +10259,41 @@ body {
             <em>בלי מקלדת בחדר</em>. הרשימה שקראת כבר מוסתרת ממילא, והמדף חוזר לעצירה שממנה בא
             כשהטופס נסגר — כלומר לא נלקח כלום, רק נדחה.
           </p>
-          <div class="mk-verdict warn">
+          <div class="mk-verdict">
             <p>
-              <strong>החלטה פתוחה לבעלים:</strong> האם המדף נסוג <em>תמיד</em> כשהטופס נפתח, או רק
-              כשה‑<code>room</code> לא מספיק? "תמיד" עקבי וצפוי; "רק כשצריך" שומר על הרשימה
-              במסכים גדולים אבל הופך את התנועה של המדף ללא‑צפויה. <strong>ההמלצה: תמיד</strong> —
-              עקביות שווה יותר מרשימה שהמקלדת מכסה בין כה.
+              <strong>הוכרע (הבעלים): תמיד, ומכל מצב.</strong> פתיחת הטופס מנרמלת את המדף
+              ל‑<code>map</code> — בין אם היית ב‑<code>half</code>, ברשימה המלאה, או
+              <strong>בתצוגת החיפוש</strong>. לא "רק כשאין מקום".
+            </p>
+            <p style="margin-top: 8px">
+              <strong>ומה שנופל מזה חינם:</strong> "המדף נסוג" מפסיק להיות התנהגות מיוחדת של
+              הטופס והופך ל<em>אותו אקט</em> כמו הקשה על <code>רשימה / מפה</code>. אין עצירה
+              שלישית לנהל, אין שאלה "לאן חוזרים", אין תנועה חדשה — והמקום של הכרטיס הופך
+              ל<strong>קבוע לכל מסך</strong> במקום פונקציה של שבר נגרר. זה מה שהופך את הערובה
+              של §1 לתקציב שאפשר לתכנן מולו.
             </p>
           </div>
         </div>
         <div class="mk-note">
-          <h4>3 · ה‑reclaim — קיים, והשם שלו הוא הדליפה</h4>
+          <h4>3 · הכרום יורד — והשם של המצב הוא הדליפה</h4>
+          <p>
+            <strong>הוכרע (הבעלים): כשהמקלדת עולה, הכותרת העליונה וכפתורי הניווט התחתונים
+            יורדים.</strong> וזה בדיוק ה‑reclaim הקיים (ADR-0132 §2/§3), כלומר אפס מנגנון חדש.
+          </p>
+          <div class="mk-verdict warn">
+            <p style="margin: 0">
+              <strong>אבל הטריגר הוא "הטופס פתוח", לא "המקלדת למעלה" — וזו לא קפדנות.</strong>
+              הקשה על צ׳יפ קטגוריה מוציאה את הפוקוס מהשדה, כלומר <em>המקלדת נסגרת</em>. אם הכרום
+              קשור למקלדת ממש, הכותרת והניווט <strong>קופצים חזרה</strong>, הכרטיס נפרס מחדש, והם
+              נעלמים שוב ברגע שנוגעים בשדה — זו בדיוק ה"נשימה" שנדחתה ב⟨חלופה⟩ למעלה, רק על
+              המעטפת, שם היא גרועה יותר.
+            </p>
+          </div>
+          <p style="margin-top: 9px">
+            "לאורך הטופס" הוא <strong>מכיל</strong> את "כל עוד המקלדת למעלה", ולא מהבהב. וזה גם
+            לא עולה כלום כשהמקלדת סגורה: בעצירת <code>map</code> הטופס צריך 243 ויש לו 372 עם
+            הכרום למטה ו‑564 איתו — שניהם נכנסים, אז אין סיבה להחזיר אותו באמצע.
+          </p>
           <p>
             <code>queryOpen</code> מתאר את ה<strong>סיבה</strong>, ולמעטפת אף פעם לא היה אכפת אלא
             מה<strong>רצון</strong>. ‏ADR-0132 §2 אומר את זה במפורש: <em>"המעטפת מקבלת מידע שהמשטח
@@ -10300,6 +10324,57 @@ body {
             דוחפת אותו מחוץ לחלון, וזה מה שההבטחה "נראות מלאה" בעצם אומרת: לא "הכל על המסך" אלא
             <strong>"שום דבר לא נחתך בלי דרך להגיע אליו"</strong>.
           </p>
+        </div>
+      </div>
+
+
+      <!-- ═══════════════ §C2 ENTRY STATES ═══════════════ -->
+      <h2 class="mk-h">§C2 · מאיפה שהיית — ולאן הטופס מעביר אותך</h2>
+      <p class="mk-sub">
+        <strong>הוכרע (הבעלים):</strong> פתיחת הטופס מנרמלת את המדף ל‑<code>map</code>
+        <em>מכל מצב</em> — מפה רגילה, <code>half</code>, רשימה מלאה, או תצוגת חיפוש — ו<strong>הכרום
+        יורד</strong>: הכותרת העליונה וכפתורי הניווט התחתונים. כל זוג כאן הוא "לפני" ו"אחרי"
+        מאותו בונה מסגרות, עם המספרים החיים.
+      </p>
+      <div class="mk-row" id="rowC2"></div>
+      <div class="mk-row">
+        <div class="mk-note">
+          <h4>למה "תמיד" ולא "רק כשצריך"</h4>
+          <p>
+            כי אז "המדף נסוג" מפסיק להיות התנהגות מיוחדת של הטופס והופך ל<strong>אותו אקט</strong>
+            שההקשה על <code>רשימה / מפה</code> כבר עושה. אין עצירה שלישית לנהל, אין תנועה חדשה,
+            ואין תנאי שצריך לכייל.
+          </p>
+          <p>
+            <strong>וזה גם מה שהופך את התקציב לקבוע:</strong> אחרי הכלל הזה ה‑<code>room</code>
+            של הכרטיס הוא מספר אחד לכל מסך — ‏372px ב‑390 ו‑204px ב‑360 (אנדרואיד) — במקום
+            פונקציה של שבר נגרר. לערובה של §1 יש סוף‑סוף מול מה לתכנן.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              והדחייה של ADR-0147 נענית ולא נדרסת: "זה לוקח את הרשימה שקראת" — <strong>המדף חוזר
+              לעצירה שממנה בא</strong> כשהטופס נסגר, ולכן שום דבר לא נלקח, רק נדחה.
+            </p>
+          </div>
+        </div>
+        <div class="mk-note">
+          <h4>החיפוש — ולמה הוא המקרה שמוכיח את הכלל</h4>
+          <p>
+            תוצאת חיפוש היא <em>המקור הרביעי</em>, כלומר זה לא מצב היפותטי אלא נתיב מתוכנן: אתה
+            בחיפוש, מקיש <code>＋ אולי</code>, והטופס נפתח. גם שם — <code>map</code>.
+          </p>
+          <p>
+            <strong>ושדה החיפוש נשאר פתוח.</strong> הטופס הוא שלב <em>בתוך</em> החיפוש עבור המקור
+            הזה; לסגור את השאילתה יאבד אותה ויאלץ להקליד מחדש. התוצאות פשוט יורדות אל מתחת
+            לכרטיס, שם הן ממילא.
+          </p>
+          <div class="mk-verdict">
+            <p>
+              <strong>ושימו לב מה זה אומר על הדיווח המקורי:</strong> בחיפוש הכרום <em>כבר</em> יורד
+              (‏<code>queryOpen</code>), ולכן הנתיב הזה לא נשבר. כלומר "בחיפוש זה מטופל" נכון —
+              והטופס פשוט לא ביקש את אותו הדבר.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -10489,6 +10564,14 @@ body {
       // The shipped `MapPlaceForm` markup, copied from a render of the component rather
       // than re-typed — the tallest variant (a tapped sight, which carries the hint).
       const FORM = `<div class="field"><label class="field-label">המקום שסימנתם</label><div class="map-draft-name"><div class="icon-picker"><button type="button" class="icon-chip" aria-label="בחירת סמל">📍</button></div><input placeholder="שם המקום" /></div><p class="field-hint">גוגל ישלים את השם בהוספה</p></div><div class="category-pills"><div class="choice-grid pills" role="radiogroup" aria-label="קטגוריה"><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>תחבורה</span><span aria-hidden="true">✈️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>אוכל</span><span aria-hidden="true">🍽️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>לינה</span><span aria-hidden="true">🏨</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>אתרים</span><span aria-hidden="true">⛩️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>טבע</span><span aria-hidden="true">⛰️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>פעילות</span><span aria-hidden="true">🎫</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>קניות</span><span aria-hidden="true">🛍️</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>מעשי</span><span aria-hidden="true">💊</span></button><button type="button" role="radio" aria-checked="false" class="choice-pill"><span>כללי</span><span aria-hidden="true">📌</span></button></div></div><p class="map-draft-meta" dir="auto">35.7148, 139.7967</p>`;
+      // Rows in the sheet, so a "before" frame shows what the stop it is at is actually FOR —
+      // a `map` stop that shows nothing and a `half` that shows three rows are the whole
+      // difference the normalise rule is spending.
+      const ROW = (icon, hue, name, meta) =>
+        `<div class="place"><div class="map-badge cat-${hue}">${icon}</div><div class="map-main"><div class="map-t"><span class="map-name">${name}</span></div><div class="map-m"><span class="map-tag">${meta}</span></div></div></div>`;
+      const SHEET_ROWS = `<div class="map-sheet-scroll" style="padding:0 12px">${ROW('🍜', 'food', 'רמן נאגי', 'Kabukicho')}${ROW('⛩️', 'leisure', 'מקדש סנסו-ג׳י', 'Asakusa')}${ROW('🏨', 'lodging', 'מלון שינג׳וקו', 'על המדף')}</div>`;
+      const SHEET_RESULTS = `<div class="map-sheet-scroll" style="padding:0 12px"><div class="map-grouphead">מגוגל</div>${ROW('◎', 'leisure', 'Ichiran Ramen', 'Shinjuku')}${ROW('◎', 'leisure', 'Ramen Nagi', 'Kabukicho')}</div>`;
+
       const ACTS = `<div class="map-draft-acts"><a class="map-res-out" href="#" aria-label="פתיחה בגוגל מפות"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4 11 13M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg></a><button type="button" class="map-gbtn">ביטול</button><button type="button" class="map-addmaybe">הוספה למדף</button></div>`;
 
       const SAFE = { none: [0, 0], notch: [24, 24] };
@@ -10502,7 +10585,16 @@ body {
        *   fix.outside   — the transparent dismissal surface (drawn tinted here to be seen)
        */
       function frame(host, opts) {
-        const { size = 390, kb = 'off', stop = 'half', safe = 'none', fix = {}, panel } = opts;
+        const {
+          size = 390,
+          kb = 'off',
+          stop = 'half',
+          safe = 'none',
+          fix = {},
+          panel,
+          form = true,
+          search = false,
+        } = opts;
         const h = size === 360 ? 640 : 844;
         const kbH = KB[size];
         const [st, sb] = SAFE[safe];
@@ -10526,10 +10618,16 @@ body {
               <div class="mk-split">
                 <div class="mk-canvas"></div>
                 ${fix.outside ? '<button class="map-draft-outside" style="background:rgba(0,120,255,.07)"></button>' : ''}
-                <div class="mk-ctl"><b>כל הימים</b><b>סינון</b><i>חיפוש…</i></div>
-                <div class="map-placecard"><div class="map-draft">${fix.bound ? `<div class="map-draft-scroll">${FORM}</div>` : FORM}${ACTS}</div></div>
+                <div class="mk-ctl">${
+                  search
+                    ? '<i style="flex:1;color:var(--ink)">רמן ⌫</i>'
+                    : '<b>כל הימים</b><b>סינון</b><i>חיפוש…</i>'
+                }</div>
+                ${form ? `<div class="map-placecard"><div class="map-draft">${fix.bound ? `<div class="map-draft-scroll">${FORM}</div>` : FORM}${ACTS}</div></div>` : ''}
                 <div class="mk-attr">Google · Terms</div>
-                <div class="mk-sheet"><div class="grab"></div><div class="strip"><span>רשימה / מפה</span><span>קרוב עכשיו</span></div></div>
+                <div class="mk-sheet"><div class="grab"></div><div class="strip"><span>רשימה / מפה</span><span>קרוב עכשיו</span></div>${
+                  search ? SHEET_RESULTS : SHEET_ROWS
+                }</div>
               </div>
               <div class="mk-meas"></div>
               <div class="mk-ghostbox" hidden></div>
@@ -10545,6 +10643,7 @@ body {
         const split = host.querySelector('.mk-split');
         const card = host.querySelector('.map-placecard');
         const draft = host.querySelector('.map-draft');
+        const hasCard = Boolean(card && draft);
         const splitH = split.getBoundingClientRect().height;
         const sheetH =
           effStop === 'map' ? STRIP_H : effStop === 'half' ? Math.round(splitH * 0.56) : splitH - CONTROLS_H;
@@ -10565,10 +10664,14 @@ body {
         const bottomAnchor = fix.clearKb
           ? Math.max(sheetH + ATTR_H + FLOAT_GAP, kbInset + FLOAT_GAP)
           : sheetH + ATTR_H + FLOAT_GAP;
-        card.style.bottom = bottomAnchor + 'px';
+        if (hasCard) card.style.bottom = bottomAnchor + 'px';
         // `room` — between the controls row the card must clear and its own bottom anchor.
         const room = Math.round(splitH - (CONTROLS_H + FLOAT_GAP) - bottomAnchor);
-        if (fix.bound) draft.style.setProperty('--map-card-room', Math.max(0, room) + 'px');
+        if (hasCard && fix.bound) draft.style.setProperty('--map-card-room', Math.max(0, room) + 'px');
+        if (!hasCard) {
+          host.querySelector('.mk-meas').innerHTML = `<span>room ${room}</span>`;
+          return { room, need: 0, visible: 0, fits: true, splitH: Math.round(splitH), sheetH };
+        }
 
         if (panel) {
           const chip = host.querySelector('.icon-chip');
@@ -10779,6 +10882,53 @@ body {
              ולכן העיפרון פותח טופס שלא ניתן לצייר. זה לא "צפוף", זה <strong>לא קיים</strong>.
            </td></tr>`;
       }
+
+      // ── §C2 · four entry states, each as before → after ───────────────────
+      // The SAME builder for both halves of every pair, so "before" and "after" cannot
+      // drift into two drawings that merely look related.
+      const ENTRIES = [
+        ['מפה רגילה', { stop: 'map' }, 'כבר שם — ורק הכרום יורד'],
+        ['half', { stop: 'half' }, 'העצירה שבצילום המקורי'],
+        ['רשימה מלאה', { stop: 'full' }, '‏room שלילי לפני — זה מה שהעיפרון פותח'],
+        ['תצוגת חיפוש', { stop: 'half', search: true }, 'המקור הרביעי; השאילתה נשארת'],
+      ];
+      function renderC2() {
+        const row = document.getElementById('rowC2');
+        row.innerHTML = ENTRIES.map(
+          ([name, , note], i) =>
+            `<div style="flex:0 0 auto">
+               <div style="display:flex;gap:10px">
+                 <div><div class="mk-phone" id="pE${i}a"></div><p class="mk-cap">לפני · ${name}</p></div>
+                 <div><div class="mk-phone" id="pE${i}b"></div><p class="mk-cap">אחרי · <code>map</code> + כרום יורד</p></div>
+               </div>
+               <p class="mk-cap" style="max-width:none;margin-top:2px;opacity:.6">${note}</p>
+             </div>`,
+        ).join('');
+        ENTRIES.forEach(([, entry], i) => {
+          // BEFORE: where the user was — the sheet at its stop, chrome on, no form, and no
+          // keyboard, because nothing has focused yet.
+          frame(document.getElementById(`pE${i}a`), {
+            size: 390,
+            kb: 'off',
+            stop: entry.stop,
+            search: entry.search,
+            form: false,
+            // The search view already reclaims today (`queryOpen`), which is exactly why
+            // that one path never broke — drawn, so the claim is visible.
+            fix: { reclaim: Boolean(entry.search) },
+          });
+          // AFTER: the form is open, so the sheet is at `map`, the chrome is down, and the
+          // keyboard is up because the name field autofocuses.
+          frame(document.getElementById(`pE${i}b`), {
+            size: 390,
+            kb: 'android',
+            stop: entry.stop,
+            search: entry.search,
+            fix: { reclaim: true, normalise: true, bound: true, clearKb: true },
+          });
+        });
+      }
+      renderC2();
 
       // ── the two single frames ─────────────────────────────────────────────
       frame(document.getElementById('phonePanel'), {
