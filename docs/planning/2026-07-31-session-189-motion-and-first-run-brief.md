@@ -125,11 +125,20 @@ feels flat, before any per-element polish.
 
 What it needs is a **direction-aware** shell transition: forward (deeper) and back
 (returning) must not look the same, or the motion carries no information. This is
-where the repo's RTL discipline bites — "forward" is the inline **start** edge, not
-`left`, and the `dir="ltr"` / logical-property lesson in `frontend/CLAUDE.md` applies
-directly. It also has to compose with `resolveBack` (ADR-0090) rather than reading
-history, and with the mode switch's `data-switching` window so the two never run
-simultaneously.
+where the repo's RTL discipline bites. An arriving screen comes from the inline **end**
+edge — the platform push, mirrored: LTR enters from the right, so RTL enters from the
+**left**, and both are inline-end. And `translateX` is **physical** (there is no logical
+transform), so the sign has to come from one direction variable on the shell rather than
+a mirrored copy of every keyframe. This is the `dir="ltr"` / logical-property lesson in
+`frontend/CLAUDE.md`, in transform form. Drawn and proven both ways in
+`mockups/motion-primitives-v1.html`'s direction control.
+
+The pair is also deliberately **asymmetric**: the arriving screen travels the full width,
+the one you leave recedes ~22% and dims. A symmetric slide reads as a carousel; an
+asymmetric one reads as depth, which is what "deeper into the app" has to mean.
+
+It also has to compose with `resolveBack` (ADR-0090) rather than reading history, and with
+the mode switch's `data-switching` window so the two never run simultaneously.
 
 ### G3. Taps have no press feedback
 
