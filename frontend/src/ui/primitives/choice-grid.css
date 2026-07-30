@@ -144,3 +144,23 @@
   border-color: var(--ink);
   color: #fff;
 }
+
+/* Selection settles, same reasoning as `.wp-chip.on` (ADR-0140's Journey 4): the press
+   scale answers the tap, this answers the outcome. The card gets the gentler amount — it
+   is a large surface, and the ratio is what should read as constant (ADR-0140 §2). */
+.choice-pill.on {
+  animation: choice-settle var(--t-quick) var(--ease-arrive);
+}
+.choice-card.on {
+  animation: choice-settle-lg var(--t-quick) var(--ease-arrive);
+}
+@keyframes choice-settle {
+  50% {
+    transform: scale(1.05);
+  }
+}
+@keyframes choice-settle-lg {
+  50% {
+    transform: scale(1.015);
+  }
+}

@@ -210,6 +210,30 @@ branch is tested by making the token readable.
 - **The receding half** of §3, and whether `--ease-arrive`'s 1.16 is the right amount of
   overshoot on real hardware.
 
+### 6. Journey 4 — the small beats, added 2026-07-31 (session 191)
+
+Extensions of the rules above rather than new decisions, which is why they amend this ADR
+instead of getting one of their own. Each answers a **transition** the app was making
+silently:
+
+- **`SyncBadge` resolves.** An optimistic write settling is a moment the user is trusting —
+  they made a change, the app said "pending", the server agreed — and it was a silent glyph
+  swap. One settle on `synced`, never a loop. Deliberately **not** on `pending` (a pulse
+  there reads as the app straining, and ADR-0080 keeps sync state non-colour-coded on
+  purpose) and **not** on `failed` (a failure needs the eye, not a flourish; the review
+  sheet is what asks for action).
+- **`StatusBanner` arrives.** It blinked into existence, which on a surface usually about
+  connectivity reads as an alarm. It settles in from the top edge instead.
+- **A chip's selection settles.** `ToggleChip` and `ChoiceGrid`. Note this is a _different
+  fact_ from §2's press feedback: the press answers the **tap**, this answers the
+  **outcome**, and a chip can be pressed without becoming selected (tapping the one already
+  on). The card takes the gentler amount, because §2's ratio rule applies to any scale on a
+  large surface, not only to presses.
+- **A value that changes is seen to change** — `lib/useCountUp.ts`, introduced by
+  [ADR-0143](0143-the-invite-pass-arrives-and-gets-stamped.md) §6 for the invite countdown
+  and shared from the start for the rest of this class (day and member counts, Home's
+  glance figures).
+
 ## Build log
 
 **Session 190 (2026-07-31)** — built in the order the brief set out (G1 → G3 → G2), each

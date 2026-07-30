@@ -97,3 +97,16 @@
 .wp-chip.on .wp-chip-count {
   color: color-mix(in srgb, currentColor 80%, transparent);
 }
+
+/* The chip settles when it becomes selected (ADR-0140's Journey 4). The press scale
+   already answers the tap; this answers the OUTCOME, which is a different fact — a chip
+   can be pressed and not become selected (tapping the one already on). Keyed on the
+   selected state, so it fires exactly when the answer changes. */
+.wp-chip.on {
+  animation: chip-settle var(--t-quick) var(--ease-arrive);
+}
+@keyframes chip-settle {
+  50% {
+    transform: scale(1.05);
+  }
+}

@@ -280,6 +280,19 @@ The exit hangs off `onClose`, which is already the single owner of leaving (ADR-
 
 The mobile tap-flash is killed app-wide, so **every** tappable owes its own acknowledgement — and one element-level rule provides it rather than each surface remembering. Two steps, because the ratio is what should read as constant, not the transform: `--press-scale` for controls, `--press-scale-lg` for card- and full-width-sized surfaces, which override the var rather than writing a transform. Scale rather than colour, so it composes with the board, paper, amber tints and violet chrome without a per-surface table and without spending from the semantic budget.
 
+### A transition is answered, a status is not decorated (ADR-0140 §6)
+
+The small beats all answer the same question: **did something just change?** A sync badge
+resolving, a banner arriving, a chip becoming selected, a count reaching its value — each
+marks a transition, so each gets **one settle and never a loop**. A looping animation says
+"this is still happening", which is why the pulse is reserved for live (see "Pulse means
+live") and why `pending` and `failed` sync states deliberately stay still: a spinner on
+pending reads as strain, and a flourish on failure competes with the thing asking for
+action.
+
+Note the distinction from press feedback: a press answers the **tap**, a settle answers the
+**outcome**. A control can be pressed without its answer changing.
+
 ### A shell route arrives with a direction (ADR-0140)
 
 Forward and back must not look the same, or the motion carries no information. The direction rides `location.state` (stamped by a back that moves) — never read from history, which ADR-0090 forbids. Forward arrives from the inline-**end** edge (the platform push, mirrored: LTR from the right, RTL from the left); back from inline-start. Because `translateX` has no logical form, the sign comes from the one `--dir` token, so both directions share one set of keyframes instead of a mirrored copy each.
