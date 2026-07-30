@@ -6,19 +6,11 @@
 // (ADR-0101) — share all that machinery; only shape and position differ
 // (modal.css). `Sheet` is a thin wrapper over `variant="sheet"`; the
 // `.confirm-*`/`.event-form-*` families fold on in Wave 2.
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from 'react';
+import { useId, useRef, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useOverlay } from '../../state/nav-state';
 import { useDialogFocus } from '../../lib/useDialogFocus';
-import { motionDurationMs } from '../../lib/motion';
+import { useExitTransition } from '../../lib/useExitTransition';
 import './modal.css';
 
 export type ModalVariant = 'sheet' | 'dialog' | 'full';
@@ -59,38 +51,14 @@ export function Modal({
    *  call site has to extract an inner component just to read one.) */
   children: ReactNode | ((close: () => void) => ReactNode);
 }) {
-  // ── The exit (ADR-0140) ───────────────────────────────────────────────────
-  // `onClose` is ALREADY the one owner of leaving: the backdrop calls it, the
-  // overlay stack calls it on a back, and since #365 Escape is a back trigger that
-  // resolves through that same stack. So the exit animation is hung on that one
-  // path by wrapping it — this adds no second close route, which is the thing
-  // #365 removed and ADR-0103 §2 forbids re-creating.
-  //
-  // The wrapper plays the exit, THEN tells the caller. The caller unmounts us on
-  // `onClose`, so calling it first is precisely why nothing has ever animated out.
-  const [closing, setClosing] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  const beginClose = useCallback(() => {
-    // Idempotent: the backdrop, a second back and Escape can all land during the
-    // exit, and a re-entry would restart the animation on a card already leaving.
-    if (closeTimer.current !== undefined) return;
-    // No animation to wait for (reduced motion, or no stylesheet) means close NOW,
-    // synchronously — not on a 0ms timer. A dismissal that lands a macrotask later
-    // is a frame of a sheet the user already closed, and it would make every caller
-    // asynchronous for no benefit.
-    const wait = motionDurationMs('--t-quick');
-    if (wait === 0) {
-      onCloseRef.current();
-      return;
-    }
-    setClosing(true);
-    closeTimer.current = setTimeout(() => onCloseRef.current(), wait);
-  }, []);
-
-  useEffect(() => () => clearTimeout(closeTimer.current), []);
+  // ── The exit (ADR-0140 §1, mechanism extracted to `useExitTransition` in ADR-0144) ──
+  // `onClose` is ALREADY the one owner of leaving: the backdrop calls it, the overlay
+  // stack calls it on a back, and since #365 Escape is a back trigger that resolves
+  // through that same stack. So the exit is hung on that one path by wrapping it — this
+  // adds no second close route, which is the thing #365 removed and ADR-0103 §2 forbids
+  // re-creating. The wrapper plays the exit, THEN tells the caller; the caller unmounts
+  // us on `onClose`, which is precisely why calling it first meant nothing animated out.
+  const { closing, beginClose } = useExitTransition(onClose);
 
   // Register as the topmost overlay so a back trigger closes this before
   // touching structural navigation (ADR-0035 §4). The layer is peeled the moment

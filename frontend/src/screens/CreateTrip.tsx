@@ -332,6 +332,7 @@ function Birth({
   const [cardTop, setCardTop] = useState<number | null>(null);
   const lastTopRef = useRef<number | null>(null);
   const lastPhaseRef = useRef<Phase>(phase);
+  const [headHeight, setHeadHeight] = useState(0);
   // Beats land independently so a skip can land them all at once.
   const [chrome, setChrome] = useState(false);
   const [board, setBoard] = useState(false);
@@ -359,21 +360,30 @@ function Birth({
   // before the phase change, let React lay the new phase out, then play the difference
   // as a transform. That needs no second slot to exist early, no invented constant, and
   // it survives a form whose height changes as fields fill in.
-  const measureTop = useCallback(() => {
+  const measure = useCallback(() => {
     const root = rootRef.current;
     if (!root) return null;
+    const rootTop = root.getBoundingClientRect().top;
+    const head = root.querySelector<HTMLElement>('.birth-head');
     const slot = root.querySelector<HTMLElement>(
       `[data-slot="${phase === 'born' ? 'born' : 'form'}"]`,
     );
     if (!slot) return null;
-    return slot.getBoundingClientRect().top - root.getBoundingClientRect().top;
+    return {
+      cardTop: slot.getBoundingClientRect().top - rootTop,
+      // The born body is absolutely positioned, so it needs the header's REAL height —
+      // guessed, it drifts the moment the title wraps or the offline badge appears.
+      headHeight: head?.getBoundingClientRect().height ?? 0,
+    };
   }, [phase]);
 
   useLayoutEffect(() => {
     const apply = () => {
-      const top = measureTop();
-      if (top == null) return;
+      const m = measure();
+      if (m == null) return;
+      const top = m.cardTop;
       setCardTop(top);
+      setHeadHeight(m.headHeight);
       // FLIP: the previous phase's top is where the card visibly was, so play the
       // difference to zero. Only across a real phase change — a re-measure inside one
       // phase (a date error appearing) must move the card, not animate it.
@@ -409,7 +419,7 @@ function Birth({
     const ro = new ResizeObserver(apply);
     ro.observe(root);
     return () => ro.disconnect();
-  }, [phase, measureTop]);
+  }, [phase, measure]);
 
   // The sequence. Reduced motion lands the END STATE immediately — a user who asked
   // for less motion did not ask for a different outcome (ADR-0140 §5).
@@ -439,7 +449,12 @@ function Birth({
       data-board={board ? 'on' : undefined}
       data-content={content ? 'in' : undefined}
       data-placed={cardTop == null ? undefined : ''}
-      style={{ '--card-top': cardTop == null ? undefined : `${cardTop}px` } as React.CSSProperties}
+      style={
+        {
+          '--card-top': cardTop == null ? undefined : `${cardTop}px`,
+          '--head-h': `${headHeight}px`,
+        } as React.CSSProperties
+      }
     >
       {children}
       {trip && <BornBody trip={trip} onDone={onDone} />}
