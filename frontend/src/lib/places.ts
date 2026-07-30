@@ -12,6 +12,7 @@ import {
   type PlacePrediction,
   type TripEvent,
 } from '@waypoint/shared';
+import { ltrIsolate } from './bidi';
 import { deriveNow, eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from './time';
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
@@ -658,6 +659,26 @@ export function mapsPredictionUrl(prediction: PlacePrediction): string {
  *  along. Same builder, so there is one place that knows the URL shape. */
 export function mapsPlaceIdUrl(googlePlaceId: string, at: { lat: number; lng: number }): string {
   return mapsSearchUrl(`${at.lat},${at.lng}`, googlePlaceId);
+}
+
+/** **A point, for a human to read** — the confirmation line on a place that has coordinates and
+ *  no address, which is exactly what a pin dropped on the canvas is: a reverse geocode is paid
+ *  and refused (ADR-0147 §7), so the point itself is what says the pin fell where the finger
+ *  was.
+ *
+ *  The WHOLE pair is one LTR island (ADR-0118). Digits and the comma are all bidi-neutral, so
+ *  in the RTL flow there is no strong character to anchor them and the two numeric runs can
+ *  swap sides — the same class of defect that read `ק״מ 9`. It is not a `measure`: there is no
+ *  Hebrew unit here for the number to read in front of.
+ *
+ *  Four decimals ≈ 11 m, which is finer than a long press can aim and short enough to sit on
+ *  one line of a card. */
+export const COORD_LABEL_DECIMALS = 4;
+
+export function coordLabel(at: { lat: number; lng: number }): string {
+  return ltrIsolate(
+    `${at.lat.toFixed(COORD_LABEL_DECIMALS)}, ${at.lng.toFixed(COORD_LABEL_DECIMALS)}`,
+  );
 }
 
 /** Directions link for an event's resolved place (authority rule), or null when

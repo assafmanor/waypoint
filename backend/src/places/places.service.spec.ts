@@ -184,6 +184,99 @@ describe('PlacesService', () => {
     expect(detailsSpy).not.toHaveBeenCalled(); // validated before the paid call
   });
 
+  // ── ADR-0147: THE ZONE, AND THE TWO USER-AUTHORED FIELDS ────────────────────
+  // `resolveTimezone` used to be called only on the enriched path, because until the canvas
+  // could drop a pin the only place with coordinates came from Google. A pin dropped across a
+  // border would have landed with `timezone: null` and silently inherited the TRIP's zone
+  // (ADR-0107) — wrong for exactly the traveller who marks a spot there.
+  //
+  // Pinned as a PROPERTY over several real points rather than one: "Shibuya gives Asia/Tokyo"
+  // would also pass with the zone hard-coded, and the whole bug was a hard-coded fallback.
+  it('create() resolves the zone from the coordinates, wherever they are', async () => {
+    const tripId = await newTrip();
+    const points = [
+      { name: 'Shibuya', lat: 35.6595, lng: 139.7005, zone: 'Asia/Tokyo' },
+      { name: 'Paris', lat: 48.8584, lng: 2.2945, zone: 'Europe/Paris' },
+      { name: 'NYC', lat: 40.7484, lng: -73.9857, zone: 'America/New_York' },
+    ];
+    for (const point of points) {
+      const created = await service.create(tripId, DEV_USER, point);
+      expect(created.timezone, `${point.name} got the wrong zone`).toBe(point.zone);
+    }
+    // …and a name-only Place-lite has no coordinates, so it has no zone by definition.
+    const lite = await service.create(tripId, DEV_USER, { name: 'somewhere' });
+    expect(lite.timezone).toBeUndefined();
+  });
+
+  // Moving a place moves its zone with it — the same rule, from the other verb. Only when BOTH
+  // coordinates arrive: a partial update that renames says nothing about where the place is.
+  it('update() re-resolves the zone when a place moves, and leaves it alone otherwise', async () => {
+    const tripId = await newTrip();
+    const place = await service.create(tripId, DEV_USER, {
+      name: 'Shibuya',
+      lat: 35.6595,
+      lng: 139.7005,
+    });
+    expect(place.timezone).toBe('Asia/Tokyo');
+
+    const renamed = await service.update(tripId, place.id, DEV_USER, { name: 'הצומת' });
+    expect(renamed.timezone).toBe('Asia/Tokyo');
+
+    const moved = await service.update(tripId, place.id, DEV_USER, { lat: 48.8584, lng: 2.2945 });
+    expect(moved.timezone).toBe('Europe/Paris');
+  });
+
+  it('carries a chosen icon through create, update and list', async () => {
+    const tripId = await newTrip();
+    const created = await service.create(tripId, DEV_USER, { name: 'רמן נאגי', icon: '🍜' });
+    expect(created.icon).toBe('🍜');
+
+    const changed = await service.update(tripId, created.id, DEV_USER, { icon: '☕' });
+    expect(changed.icon).toBe('☕');
+
+    const [listed] = await service.list(tripId);
+    expect(listed.icon).toBe('☕');
+  });
+
+  // **THE POLICY ADR-0147 GAVE A SURFACE TO**, and it is implemented as an ABSENCE: what a
+  // human authored about a place outranks what Google says about it. `enrichExisting` adopts
+  // the id, address, coordinates and zone — and neither the name nor the icon. Adding a field
+  // to that `data` object hands it back to Google, so this is the test that notices.
+  it('enriching a place never overwrites the name or the icon a human authored', async () => {
+    const tripId = await newTrip();
+    const mine = await service.create(tripId, DEV_USER, {
+      name: 'הרמן ליד המלון',
+      icon: '🍜',
+    });
+
+    const enriched = await service.resolvePlace(tripId, DEV_USER, {
+      googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
+      sessionToken: 'tok-1',
+      enrichPlaceId: mine.id,
+    });
+
+    expect(enriched.id).toBe(mine.id);
+    // Google's half was adopted…
+    expect(enriched.googlePlaceId).toBe(SHIBUYA_DETAILS.googlePlaceId);
+    expect(enriched.address).toBe(SHIBUYA_DETAILS.address);
+    expect(enriched.timezone).toBe('Asia/Tokyo');
+    // …and the two user-authored fields survived it.
+    expect(enriched.name).toBe('הרמן ליד המלון');
+    expect(enriched.icon).toBe('🍜');
+  });
+
+  // A fresh pick has nothing authored, so it takes Google's name and carries no icon — the
+  // other half of the same rule, and what keeps the chain deriving from the category.
+  it('a place Google mints carries no icon, so its glyph keeps deriving', async () => {
+    const tripId = await newTrip();
+    const place = await service.resolvePlace(tripId, DEV_USER, {
+      googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
+      sessionToken: 'tok-1',
+    });
+    expect(place.name).toBe('Shibuya Crossing');
+    expect(place.icon).toBeUndefined();
+  });
+
   it('create() with an already-present googlePlaceId returns the existing row (dedup, not 404)', async () => {
     const tripId = await newTrip();
     const first = await service.create(tripId, DEV_USER, {

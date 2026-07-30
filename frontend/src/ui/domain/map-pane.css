@@ -191,6 +191,29 @@
   opacity: 0.62;
 }
 
+/* ── A PIN THAT IS NOT SAVED YET (ADR-0147 §5) ────────────────────────────────────
+   A long press marks its spot with OUR pin, because it lands on bare canvas and nothing else
+   is there to say where it went. It is provisional, and provisional is already a word this app
+   speaks: the dashed edge of ADR-0011's soft grammar, reused rather than a new colour — the
+   category hue stays, so choosing a category in the form changes the pin under it, which is
+   the whole argument for the form carrying one.
+
+   Deliberately NOT `.soft`: that class means "a shelf idea", a claim about what the place IS.
+   This one means "we have not written it yet", a claim about the pin — so it takes the dashed
+   edge and leaves the hatch, which is `.soft`'s own distinguishing mark (ADR-0130 §3's two
+   axes: colour-vs-grey primary, hatch as confirmation).
+
+   A TAPPED SIGHT gets no pin at all — Google has already drawn its own icon there, so ours
+   would be two markers for one place, the exact mess ADR-0125 §6 refused. It gets `.map-result`
+   instead: a ring is already this app's word for "a Google-sourced candidate that is not yours
+   yet" (ADR-0132 §6 — a different KIND of object gets a different SILHOUETTE, not another rung
+   on the pin ladder). */
+.map-pin.pending .pin-b {
+  border-style: dashed;
+  border-color: var(--soft-line);
+  opacity: 0.85;
+}
+
 /* ── AND WHAT HAPPENED THERE (ADR-0137) ───────────────────────────────────────────
    The tier above is the CLOCK's claim, one treatment for all three of ADR-0117's outcomes,
    so the canvas could not say whether a grey pin was somewhere we went, somewhere we

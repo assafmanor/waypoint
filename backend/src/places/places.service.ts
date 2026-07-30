@@ -37,6 +37,13 @@ export class PlacesService {
 
   async create(tripId: string, actorUserId: string, input: CreatePlaceInput): Promise<Place> {
     const id = input.id ?? randomUUID();
+    // THE ZONE IS RESOLVED FOR ANY CALLER THAT SUPPLIES COORDINATES, not only the enriched
+    // path (ADR-0147 §3). Until the canvas could drop a pin, the only place with coordinates
+    // came from Google, so `resolveTimezone` was called only in `resolvePlace` — and a place
+    // created straight from coordinates landed with `timezone: null`, which silently falls
+    // back to the trip's zone (ADR-0107). That is wrong for exactly the traveller who marks
+    // a spot across a border. Same helper, so there is one place that knows how.
+    const timezone = this.resolveTimezone(input.lat, input.lng);
     try {
       const { entity } = await this.changes.mutate({
         tripId,
@@ -44,7 +51,7 @@ export class PlacesService {
         entityType: ENTITY_TYPE.PLACE,
         entityId: id,
         action: 'create',
-        after: input,
+        after: { ...input, timezone },
         apply: (tx) =>
           tx.place.create({
             data: {
@@ -55,6 +62,8 @@ export class PlacesService {
               address: input.address,
               lat: input.lat,
               lng: input.lng,
+              timezone,
+              icon: input.icon,
               updatedBy: actorUserId,
             },
           }),
@@ -83,14 +92,20 @@ export class PlacesService {
     input: UpdatePlaceInput,
   ): Promise<Place> {
     const before = await this.requirePlace(tripId, placeId);
+    // Moving a place moves its zone with it — the same rule `create` above now follows, and
+    // for the same reason (ADR-0147 §3). Only when BOTH coordinates arrive: a partial update
+    // that names the place says nothing about where it is, and recomputing from one axis
+    // would be recomputing from nothing.
+    const moved = input.lat !== undefined && input.lng !== undefined;
+    const timezone = moved ? this.resolveTimezone(input.lat, input.lng) : undefined;
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
       entityType: ENTITY_TYPE.PLACE,
       entityId: placeId,
       action: 'update',
+      after: moved ? { ...input, timezone } : input,
       before: toPlaceDto(before),
-      after: input,
       apply: (tx) =>
         tx.place.update({
           where: { id: placeId },
@@ -100,6 +115,8 @@ export class PlacesService {
             ...(input.address !== undefined && { address: input.address }),
             ...(input.lat !== undefined && { lat: input.lat }),
             ...(input.lng !== undefined && { lng: input.lng }),
+            ...(input.icon !== undefined && { icon: input.icon }),
+            ...(moved && { timezone }),
             updatedBy: actorUserId,
           },
         }),
@@ -206,7 +223,13 @@ export class PlacesService {
   /** Adopt the Google id/coords/address/zone onto an existing coordless Place-lite (the
    *  "auto-enriches on next pick" flow, ADR-0106 §12 / ADR-0110 §1). The user's own
    *  name is preserved — ADR-0110 §1 adopts googlePlaceId/coords/timezone, not the
-   *  label the user typed. `before` is the already-scope-checked row from resolvePlace. */
+   *  label the user typed. `before` is the already-scope-checked row from resolvePlace.
+   *
+   *  **`name` and `icon` are omitted on purpose, and that omission is the whole policy
+   *  ADR-0147 gave a surface to: what a human authored about a place outranks what Google
+   *  says about it.** It was implemented here as an absence long before there was a way to
+   *  author either from the app. Adding a field to this `data` object hands it back to
+   *  Google — so anything user-authored stays out of it. */
   private async enrichExisting(
     tripId: string,
     actorUserId: string,

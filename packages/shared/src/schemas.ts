@@ -140,6 +140,11 @@ export const createPlaceSchema = z.object({
   address: z.string().optional(),
   lat: z.number().optional(),
   lng: z.number().optional(),
+  /** The glyph a human chose (ADR-0147). Writable on create because a pin dropped on the
+   *  canvas is named AND iconed in one form, and on update because renaming is that same
+   *  form reopened. `timezone` deliberately stays absent: the server resolves it from the
+   *  coordinates, and a client-supplied zone would be a second source of truth. */
+  icon: z.string().optional(),
 });
 export type CreatePlaceInput = z.infer<typeof createPlaceSchema>;
 

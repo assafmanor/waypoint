@@ -177,6 +177,28 @@ export interface MapResultPin {
   selected?: boolean;
 }
 
+/** **The spot the open form is about** (ADR-0147 §5) — a marker for a place that does not
+ *  exist yet, or one being renamed. Two silhouettes, and which one is not a style choice:
+ *
+ *  - a LONG PRESS lands on bare canvas, so nothing else marks where it went and it takes
+ *    **our own pin**, dashed because it is provisional (ADR-0011's soft grammar reused, not a
+ *    new colour) and in the category's hue, so choosing a category moves it;
+ *  - a TAPPED SIGHT and a search result already have a marker of Google's under them, so ours
+ *    would be two markers for one place — the exact mess ADR-0125 §6 refused. Those get the
+ *    app's own **ring** instead, which is already its word for "a Google-sourced candidate
+ *    that is not yours yet" (ADR-0132 §6: a different KIND of object gets a different
+ *    SILHOUETTE, not another rung on the pin ladder). */
+export interface MapDraftMarker {
+  lat: number;
+  lng: number;
+  /** Draw the ring rather than our pin — set wherever Google has already marked the spot. */
+  ringed?: boolean;
+  /** Pin variant only: the category's hue and glyph, so the marker under the form answers the
+   *  form's own category pills. */
+  hue?: PinHue;
+  glyph?: string;
+}
+
 export interface MapPaneProps {
   config: MapsConfig;
   pins: readonly MapPin[];
@@ -211,6 +233,9 @@ export interface MapPaneProps {
    *  canvas — which is how ADR-0125 §6's "never two cards" survives the tap becoming
    *  ours. */
   onTapGooglePlace?: (googlePlaceId: string, at: LatLng) => void;
+  /** The spot the open make/rename form is about. Memoized on a content key by the caller,
+   *  exactly like `pins` and `results` — same per-second-tick rule. */
+  draftMarker?: MapDraftMarker | null;
   /** The viewport settled: the `באזור` readout recomputes here and never during a
    *  pan (§9 — a number churning under a moving finger is noise). */
   onViewChange: (bounds: MapBounds | null) => void;
@@ -295,6 +320,7 @@ function MapPaneInner({
   cardOpen,
   onHoldCanvas,
   onTapGooglePlace,
+  draftMarker,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
   return (
@@ -360,6 +386,7 @@ function MapPaneInner({
             />
           ))}
           {me && <MeMarker at={me} />}
+          {draftMarker && <DraftMarker marker={draftMarker} />}
           <DayConnector path={connector} />
         </Map>
         {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
@@ -570,6 +597,29 @@ const MeMarker = memo(function MeMarker({ at }: { at: LatLng }) {
 });
 /** Above every pin: it is the one thing on the canvas that is not a place. */
 const ME_MARKER_Z = 1000;
+
+/** THE SPOT THE OPEN FORM IS ABOUT (ADR-0147 §5) — see {@link MapDraftMarker} for why one
+ *  source draws a pin and the others a ring. Inert: the form beneath it is the only thing that
+ *  acts on this point, so the marker says where and nothing else. */
+const DraftMarker = memo(function DraftMarker({ marker }: { marker: MapDraftMarker }) {
+  const at = { lat: marker.lat, lng: marker.lng };
+  return (
+    <AdvancedMarker position={at} zIndex={DRAFT_MARKER_Z}>
+      {marker.ringed ? (
+        <div className="map-result selected" aria-hidden="true" />
+      ) : (
+        <div className={`map-pin pending cat-${marker.hue ?? 'leisure'}`} aria-hidden="true">
+          <span className="pin-b">
+            <span className="pin-g">{marker.glyph}</span>
+          </span>
+        </div>
+      )}
+    </AdvancedMarker>
+  );
+});
+/** Under the device marker and over every place: the point you are naming is what you are
+ *  looking at, and nothing already on the trip should hide it. */
+const DRAFT_MARKER_Z = 950;
 
 /** The day's order as a dashed neutral line (§10). Dashed because a straight
  *  segment is not the route you will walk — drawing it solid would claim it is —

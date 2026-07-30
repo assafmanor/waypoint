@@ -465,6 +465,95 @@
   box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
 }
 
+/* ── THE FORM: FOUR SOURCES, ONE CARD (ADR-0147 §4) ──────────────────────────────
+   A long press, a tap on one of Google's own sights, a search result's add, and renaming a
+   place the trip already has all render THIS. Only the title, what is prefilled and the
+   confirm's word differ.
+
+   It is `.map-placecard`'s second occupant, and a place that is not in the trip yet is the
+   sharpest case of the rule that put the first one there — "the row wherever the sheet cannot
+   show it" (ADR-0122 §7) — because it has no row at ANY stop, which is also why this variant
+   is not gated on the `map` stop the way the selection card is.
+
+   THE SURFACE IS BORROWED, NOT INVENTED. `.map-placecard` is positioning only; the card look
+   comes from its `.place` child, which a draft has no business being (there is no row yet). So
+   this takes `.place`'s own ground, radius and hairline and `.map-placecard .place`'s floating
+   shadow rather than minting a third card. Rendering the first pass against the real
+   stylesheets is what showed it had no card at all. */
+.map-draft {
+  display: grid;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 11px 12px;
+  /* A large surface, so the press step is the large one (ADR-0140's one-line rule for a new
+     large surface — the default step is the control one). */
+  --press-scale: var(--press-scale-lg);
+}
+/* EVERY child, because a grid child defaults to `min-width: auto` and that is what pushed the
+   confirm row past the card's own edge on a 360px frame — caught by rendering the proposal
+   against these stylesheets, not by reading it. Stated once here rather than per child, so the
+   next row added to this card inherits the fix instead of rediscovering it. */
+.map-draft > * {
+  min-width: 0;
+}
+/* THE CARD'S HEADING IS THE NAME FIELD'S LABEL — one element, both jobs, because the heading
+   is the question the field answers. So it comes through `Field`'s label slot (a real
+   `<label for>`, with the hint and error slots that belong beside it) and only its TYPE is
+   restated here: display face and body size, because it is a card heading rather than the
+   caption `.field-label` is elsewhere. */
+.map-draft .field-label {
+  font-family: var(--font-head);
+  font-size: 14.5px;
+  color: var(--ink);
+}
+/* The name's row: the app's own `IconPicker` chip beside the field, on ONE line. The chip is a
+   single 44px control with a caret that opens a searchable panel which FLOATS (its
+   `.icon-panel` is already `position: absolute`), so the picker never expands the card. */
+.map-draft-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+/* Chrome, focus and padding all come from `.field input`. What is left is the two things this
+   input differs on: it YIELDS the row's width (so the chip beside it is never pushed out), and
+   it is set at the weight the name it replaces was drawn at. */
+.map-draft-name input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+/* The coordinates are CONFIRMATION, not instruction: the card sits on the spot and the camera
+   already framed it. A dropped pin carries no address on purpose — a reverse geocode is paid
+   (ADR-0147 §7) — so this line is the point itself, and an enriched place shows its address. */
+.map-draft-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.map-draft-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Confirm to the far end, so the cancel and the free vet link stay grouped at the start and
+   the one committing action is unambiguous. */
+.map-draft-acts .map-addmaybe {
+  margin-inline-start: auto;
+  min-height: 40px;
+  padding-inline: 16px;
+  font-size: 13px;
+}
+.map-draft-acts .map-res-out {
+  /* The vet link keeps its 44px geometry everywhere else; in this row it matches the two
+     buttons beside it rather than out-sizing them. */
+  min-width: 40px;
+  min-height: 40px;
+}
+
 /* Three objects on this surface come and go — the sort chip leaving at the map extreme,
    the card arriving on a pin tap, the pre-prompt arriving on intent — so they share ONE
    rule rather than growing three motion vocabularies on one canvas: a small rise and a
@@ -746,9 +835,75 @@
   color: var(--muted);
 }
 .map-name {
+  /* The name YIELDS width rather than wrapping, so the rename control below can be pinned
+     after it: a long name truncates exactly as it does today and the pencil stays put. An
+     `overflow: hidden` flex item already computes its automatic minimum size as zero, so this
+     is a statement of the requirement rather than a fix — it is what a reader would otherwise
+     have to re-derive before touching either rule. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── RENAMING IS REVEALED BY SELECTION (ADR-0147 §3) ─────────────────────────────
+   Every other slot on this row is spent, and all three rejections are MEASUREMENTS rather
+   than opinions: a `⋯` inside `.map-right` takes the row to 113px because that box is a
+   COLUMN (ADR-0134 §5 — which is why `בחירה` REPLACES `נווט` and the row stays 73px); a
+   control on the name line took `Ichiran Ramen` to two lines at 390px and a long Hebrew
+   title to five at 360px (ADR-0121's session-148 amendment, which is why the map way-in
+   became the category BADGE, an element that already existed); and ADR-0135 §1 is the owner
+   rejecting a second entry in the way-in footer, "two entries in the same grey box read as a
+   command menu".
+
+   An UNSELECTED row therefore pays nothing, which is the whole of the constraint — and a
+   selected row is already a different object: it reveals `.map-refs` (ADR-0121 §8), carries a
+   create in that block's footer (ADR-0135 §1) and the settle verbs on its reference rows
+   (ADR-0139). Selection revealing the verbs is the pattern this tab already runs.
+
+   Neutral ink, never a semantic hue: naming is not a time, a place or a status (ADR-0028,
+   root rule 4). */
+.map-rename {
+  display: none;
+  position: relative;
+  flex: 0 0 auto;
+  /* 16px of LAYOUT, 44px of TARGET (below), and measuring the first draft is what forced the
+     split: a 44px box grew the selected row by 4px, and the negative inline margin absorbing
+     that pulled the button OVER the ellipsis-truncated name. `settle-control.css` records the
+     app's other trade — a sub-floor control is acceptable when the ROW's own target is the
+     remaining width, "the same trade ListRow's kebab already makes" — and it does not apply
+     here, because this row's own tap FRAMES the place. So the target is the control's. */
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.map-rename::after {
+  /* ADR-0017's 44×44 floor, taken out of the layout entirely. */
+  content: '';
+  position: absolute;
+  inset: -14px;
+}
+.place.selected .map-rename {
+  display: inline-flex;
+}
+.map-rename .icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.map-rename:active {
+  transform: scale(var(--press-scale));
+}
+.map-rename:focus-visible {
+  outline: 2px solid var(--cta);
+  outline-offset: 2px;
 }
 .map-lock {
   font-size: 10px;

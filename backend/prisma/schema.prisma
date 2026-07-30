@@ -305,6 +305,10 @@ model Place {
   lat              Float?
   lng              Float?
   timezone         String? // IANA zone, resolved once server-side via geo-tz (ADR-0107/0108)
+  // The glyph a human chose for this place (ADR-0147). Bottom of the icon resolution chain,
+  // and the reason a Place stays trip-scoped rather than a shared cross-trip record: a chosen
+  // icon is data about this trip's view of the place, not about the entity Google describes.
+  icon             String?
   rating           Float? // Google aggregate rating 0–5 (ADR-0109 §9)
   userRatingsTotal Int? // count behind `rating`
   createdAt        DateTime @default(now())
