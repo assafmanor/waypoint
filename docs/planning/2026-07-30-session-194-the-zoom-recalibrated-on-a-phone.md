@@ -75,8 +75,10 @@ The owner's answer to whether the double-tap should anchor at the tapped point: 
 
 **The test is the behaviour, not the arithmetic.** The fake map gained Google's own documented Web Mercator, and the assertion is that _the geography under the finger does not move_. A linear stand-in would have passed while the shipped code was wrong about latitude — which is this feature's whole risk. The sign is asserted separately, since an invariant that holds symmetrically cannot catch a flipped axis. It also degrades: a map has no projection until it has rendered, and a double-tap before then still zooms, centred.
 
-## Still open
+## 4c. And the drag's anchor was affirmed, which closes the last open question
 
-**Whether the DRAG should also anchor at the tapped point.** The machinery now exists, so it is a small change rather than a design — but the argument against it is unchanged and is about the thumb, not the cost. Left alone deliberately; worth a look once the double-tap is on a phone.
+Raised at the end of 4b and answered immediately (owner: _"drag zoom should be anchored to the center as it was"_). **No code changed** — the drag was already centre-anchored, and `zoomTo` writing the zoom and nothing else is what guarantees it (the test is called _"a drag zoom is not a pan"_, and it fails the moment anyone adds an anchor term).
 
-1845+ unit tests green; `format` / `lint` / `typecheck` / `build` too.
+What changed is the **status** of that anchor: it was a reasoned default that a device had not contradicted, and it is now a call made with both behaviours in hand. Worth recording precisely because the file is otherwise a list of reasoned defaults that a phone overturned — **this is the one that survived contact**, and the reason it survived is that its argument was about the finger rather than about cost or elegance. §3's two anchors are now both settled, in opposite directions, for stated reasons.
+
+1852 unit tests / 130 files green; `format` / `lint` / `typecheck` / `build` too.
