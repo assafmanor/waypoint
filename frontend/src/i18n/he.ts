@@ -699,6 +699,14 @@ export const t = {
       planButton: 'לתכנון הטיול',
       laterButton: 'אשלח את הלינק אחר כך',
       laterToast: 'הלינק מחכה בהגדרות הטיול',
+      // Trip birth's board — its first departure is the trip itself (ADR-0142 §2).
+      boardLabel: 'לוח הטיול',
+      boardLive: 'הלוח דולק',
+      boardFirst: 'ההמראה הראשונה',
+      boardDays: (n: number) => `${n} ימים`,
+      // Names the tap target that lands the sequence. Never rendered as text — the
+      // skip layer is invisible by design, so this is its accessible name only.
+      skip: 'דילוג',
     },
     join: {
       loading: 'טוען הזמנה…',

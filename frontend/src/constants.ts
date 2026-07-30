@@ -563,7 +563,7 @@ export const MAP_CARD_RESERVE_H = MAP_ATTRIBUTION_H + MAP_FLOAT_GAP + MAP_CARD_B
  *
  * Session 190 looked at that day for the TAG rather than for the pin, and it is worth
  * knowing which half is now answered: a trip's worth of bracketed edges collides on a
- * phone, which is one of the two reasons ADR-0141 makes the neutral phase tag day-scoped.
+ * phone, which is one of the two reasons ADR-0142 makes the neutral phase tag day-scoped.
  * The `MAX_H` question above is untouched — that was measured at 40px pins, not at the cap.
  */
 export const MAP_PIN = {
@@ -584,7 +584,7 @@ export const MAP_PIN = {
    *  pin's tag beats losing the framing"). Every pin has a badge; only some carry a tag.
    *
    *  **The number this note used to give was measured on copy the app no longer shows**
-   *  (session 191, remeasured in Chromium for ADR-0141): 1.10x was `התחנה הבאה`, where the
+   *  (session 191, remeasured in Chromium for ADR-0142): 1.10x was `התחנה הבאה`, where the
    *  shipped `היעד הבא` reaches **0.88x** per side. Restated because the tag's content is
    *  no longer only those two words — a transition word now takes the slot — and the point
    *  of the note is that the widest tag stays outside the inset. The widest of the new
@@ -640,6 +640,30 @@ export const FILTER_STAGGER_MAX_MS = 220;
  *  the Web Animations API needs them as values, not as CSS vars. */
 export const LIST_MOVE_MS = 240;
 export const LIST_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
+
+/** Trip birth's choreography (ADR-0142) — the offsets at which each beat STARTS,
+ *  measured from the moment the server confirms the trip.
+ *
+ *  These are not ramp values and must not be read from `tokens.css`: each beat's own
+ *  duration comes from the ramp (`--t-deliberate` for the card and the chrome,
+ *  `--t-cinematic` for the board), while the numbers below are the *sequence* — when
+ *  one beat starts relative to another. Sequence is what makes the moment read as
+ *  grand; length alone just makes it slow.
+ *
+ *  They deliberately OVERLAP: the chrome starts warming before the card has finished
+ *  travelling, so the screen reads as one event resolving rather than four things
+ *  taking turns. `TOTAL_MS` is when the whole thing is settled — used only to disarm
+ *  the skip affordance, never to gate the outcome. */
+export const TRIP_BIRTH = {
+  /** The card travels and commits at 0 — it is the subject, so nothing precedes it. */
+  CHROME_MS: 300,
+  BOARD_MS: 650,
+  CONTENT_MS: 1150,
+  TOTAL_MS: 1450,
+  /** Per-flap delay for the board's first row settling into place. Three flaps, so
+   *  the row is done well inside the board's own power-on. */
+  FLAP_STEP_MS: 90,
+} as const;
 
 /** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
  *  free text, no structured country to derive a real flag from. */
