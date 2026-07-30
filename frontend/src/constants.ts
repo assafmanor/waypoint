@@ -729,7 +729,6 @@ export const AUTH_INTENT_STORAGE_KEY = 'wp_auth_intent';
 /** Invite token whose join should auto-complete after the login round-trip
  *  (T-042): tapping "Continue with Google" on the preview *is* the confirm,
  *  so the join finishes on resume without a redundant second tap (ADR-0024). */
-export const JOIN_INTENT_STORAGE_KEY = 'wp_join_intent';
 
 /** The mid-stay strip the user last dismissed, as "<tripId>:<eventId>:<date>"
  *  (ADR-0064 §A). Self-expiring: it suppresses the strip only while that exact

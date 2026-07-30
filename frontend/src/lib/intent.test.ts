@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consumeIntent, consumeJoinIntent, saveIntent, saveJoinIntent } from './intent';
+import { consumeIntent, saveIntent } from './intent';
 
 // No jsdom in this repo (see other lib/*.test.ts) — a plain Map-backed fake
 // standing in for the Storage interface is enough to exercise the logic.
@@ -36,20 +36,7 @@ describe('deep-link intent', () => {
   });
 });
 
-describe('join intent', () => {
-  it('round-trips a token and is one-shot', () => {
-    const storage = fakeStorage();
-    saveJoinIntent('tok-123', storage);
-    expect(consumeJoinIntent(storage)).toBe('tok-123');
-    expect(consumeJoinIntent(storage)).toBeNull();
-  });
-
-  it('is independent of the deep-link intent', () => {
-    const storage = fakeStorage();
-    saveIntent('/join/tok-123', storage);
-    saveJoinIntent('tok-123', storage);
-    // Consuming the deep-link intent must not clear the pending join.
-    consumeIntent(storage);
-    expect(consumeJoinIntent(storage)).toBe('tok-123');
-  });
-});
+/* The `join intent` suite lived here. It went with the helpers themselves (ADR-0143 §8):
+ * the return from Google no longer auto-joins, so there is no pending-join token to
+ * round-trip. `JoinTrip.test.tsx` covers what replaced it — the return lands on the pass
+ * and waits for a tap. */

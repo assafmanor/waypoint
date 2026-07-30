@@ -27,11 +27,7 @@ vi.mock('../state/auth-state', () => ({
     login: vi.fn(),
   }),
 }));
-vi.mock('../lib/intent', () => ({
-  consumeJoinIntent: () => null,
-  saveIntent: vi.fn(),
-  saveJoinIntent: vi.fn(),
-}));
+vi.mock('../lib/intent', () => ({ saveIntent: vi.fn() }));
 
 const fetchInvitePreview = vi.fn();
 const joinTrip = vi.fn();
@@ -174,6 +170,18 @@ describe('JoinTrip — the pass, its stamp and its tear (ADR-0143)', () => {
     expect(screen.getByText(t.shell.join.expired)).toBeTruthy();
     // …and no CTA: there is nothing to join.
     expect(document.querySelector('.join-cta')).toBeNull();
+  });
+
+  // THE DEVICE-PASS CORRECTION (ADR-0143 §8). The return from Google used to auto-join,
+  // which on a phone reads as "I logged in and was silently put into a trip" — the
+  // invitation flashes past unread. An authed arrival must now WAIT for the tap.
+  it('does not join on arrival — the invitation waits for a tap', async () => {
+    await openPass();
+    // Rendered, authed, preview ready, nothing tapped.
+    expect(joinTrip).not.toHaveBeenCalled();
+    expect(land().dataset.outcome).toBeUndefined();
+    // …and the CTA is there to be tapped, reading "join" rather than the Google line.
+    expect(screen.getByText(t.shell.join.joinButton)).toBeTruthy();
   });
 
   // A BLOCKED join must be INDISTINGUISHABLE from a dead link (owner, 2026-07-31).

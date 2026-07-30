@@ -25,6 +25,7 @@ import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 import { Avatar } from '../ui/primitives/Avatar';
 import { Icon } from '../ui/Icon';
+import { ZeroState } from './ZeroState';
 
 const NBSP = ' ';
 
@@ -147,6 +148,19 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
       </span>
     </button>
   );
+
+  // No trips at all → the ZERO STATE, which is the app's designed answer to exactly this
+  // (ADR-0024 §2: the dormant departure board plus the create/join pair). `/trips` used to
+  // render its own chrome around nothing — a header, a CTA and a grey void between them —
+  // because every bucket was empty so every section was skipped.
+  //
+  // Reusing that screen rather than giving this one an `EmptyState`: a second no-trips
+  // surface is the duplication ADRs 0078/0079/0094/0095 exist to undo, and the board being
+  // UNPOWERED is the thing trip birth later switches on (ADR-0142). Two of them would mean
+  // half the users never see the "before" of that pair.
+  //
+  // `trips === null` is still loading and must not read as empty.
+  if (trips?.length === 0) return <ZeroState onOpenAccount={onOpenAccount} />;
 
   return (
     <div className="app">
