@@ -86,6 +86,7 @@ import './screens.css';
 import { Avatar } from './ui/primitives/Avatar';
 import { RosterSheet } from './ui/RosterSheet';
 import { ltrIsolate } from './lib/bidi';
+import { readDurationMs } from './lib/motion';
 import { memberCluster } from './lib/member-cluster';
 const UserSettings = lazy(() => import('./screens/UserSettings'));
 const UserPicture = lazy(() => import('./screens/UserPicture'));
@@ -94,19 +95,6 @@ const UserPicture = lazy(() => import('./screens/UserPicture'));
 // mode-switch class, so we never clear it a frame early (which would snap the
 // chrome to its final colors mid-animation).
 const SWITCH_TAIL_MS = 80;
-
-// Read a CSS duration token (e.g. `--t-cinematic`) off :root as milliseconds, so
-// the switch's disarm timer follows tokens.css instead of duplicating its values.
-// Falls back to --t-base, then a literal, if the token is missing/unparseable.
-function readDurationMs(token: string): number {
-  if (typeof window === 'undefined') return 400;
-  const root = document.documentElement;
-  const read = (name: string) => getComputedStyle(root).getPropertyValue(name).trim();
-  const raw = read(token) || read('--t-base');
-  const n = parseFloat(raw);
-  if (!Number.isFinite(n)) return 400;
-  return raw.endsWith('ms') ? n : n * 1000; // tokens are ms, but tolerate `s`
-}
 
 // Map is designed later (T-002); it falls back here with a mode-emphasis
 // subtitle (T-019). Home/Day-by-day/Index are built for both modes.

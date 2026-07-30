@@ -7,16 +7,58 @@
    The old sheet, confirm, and event-form class families remain in screens.css
    until their consumers fold onto this primitive (Wave 2). */
 
+/* ── Arrival & departure (ADR-0140) ─────────────────────────────────────────
+   The scrim and the card animate on SEPARATE channels, and both animate in BOTH
+   directions. Before this the whole overlay carried one `opacity` keyframe, so
+   scrim and card cross-faded as a single flat image and the card never travelled —
+   a bottom sheet with no direction reads as a screenshot swap rather than as
+   something that came from the bottom of the screen. And there was no exit at all:
+   `Modal` unmounted its portal on the frame `onClose` ran, so every sheet, dialog,
+   picker and the search overlay SNAPPED shut. Enter-slow / exit-instant is the
+   single loudest "unfinished" tell an app can have, and it was app-wide.
+
+   `animation`, not `transition`, on purpose: an animation fires on mount with no
+   need to paint a closed state first and flip it a frame later, so there is no
+   double-rAF and no first-frame flash. `.is-closing` swaps in the reverse pair.
+
+   Exit is deliberately BRISKER than entrance (`--t-quick` vs `--t-base`): you have
+   already decided to leave, and matching the two makes dismissal feel sluggish.
+   The `.toast` in screens.css is the in-repo precedent for animating both ways off
+   a class — this is that shape, generalized into the primitive so all ~20 overlay
+   call sites inherit it (ADR-0096). */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(22, 35, 61, 0.45);
   display: flex;
   justify-content: center;
   /* Peer of the legacy .sheet-/.confirm-overlays (also z-index 20): a nested,
      body-portalled prompt paints above by DOM order, not a higher z-index. */
   z-index: 20;
-  animation: modal-fade var(--t-base) var(--ease-standard);
+}
+/* The scrim is a pseudo-element rather than the overlay's own background, because
+   the overlay is the CARD's ancestor: fading the overlay fades the card with it,
+   which is exactly the coupling being removed here. The backdrop click stays on
+   `.modal-overlay` itself, so hit-testing is unchanged. */
+.modal-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 35, 61, 0.45);
+  animation: modal-scrim-in var(--t-base) var(--ease-standard) both;
+}
+.modal-overlay.is-closing::before {
+  animation: modal-scrim-in var(--t-quick) var(--ease-exit) reverse both;
+}
+/* Paints above the scrim pseudo (which is drawn as the first child) and gives the
+   card its own compositing box for the transform. */
+.modal-card {
+  position: relative;
+}
+/* While the exit plays, the overlay is on screen but no longer a target — the
+   decision to close is already made, and a tap landing on a leaving sheet would
+   act on a surface the user has dismissed. */
+.modal-overlay.is-closing {
+  pointer-events: none;
 }
 
 /* sheet — bottom-anchored, full-width, rounded top (phone-first, ADR-0017). */
@@ -34,8 +76,37 @@
    there's nothing "outside" it to see or tap-dismiss to (see Modal.tsx's
    backdrop-click gate). Used today by `SearchOverlay`; reusable for any
    future full-screen mode. */
-.modal-overlay[data-variant='full'] {
+.modal-overlay[data-variant='full']::before {
   background: var(--screen);
+}
+
+/* Each variant arrives the way its SHAPE implies — the point of the split is that
+   there is something shape-specific to say, which one shared fade could not.
+   Entrances use `--ease-arrive` so the card settles rather than stopping dead;
+   exits use `--ease-exit`, which must never overshoot. */
+
+/* sheet — rises from the edge it came from. */
+.modal-overlay[data-variant='sheet'] .modal-card {
+  animation: modal-sheet-in var(--t-base) var(--ease-arrive) both;
+}
+.modal-overlay[data-variant='sheet'].is-closing .modal-card {
+  animation: modal-sheet-in var(--t-quick) var(--ease-exit) reverse both;
+}
+/* dialog — has no edge to come from, so it is summoned in place. A confirm that
+   slid in from somewhere would imply a location it does not have. */
+.modal-overlay[data-variant='dialog'] .modal-card {
+  animation: modal-dialog-in var(--t-base) var(--ease-arrive) both;
+}
+.modal-overlay[data-variant='dialog'].is-closing .modal-card {
+  animation: modal-dialog-in var(--t-quick) var(--ease-exit) reverse both;
+}
+/* full — REPLACES a screen, so it arrives like one: from the inline-end edge, the
+   same grammar as the shell's forward push, off the same `--dir` sign. */
+.modal-overlay[data-variant='full'] .modal-card {
+  animation: modal-full-in var(--t-base) var(--ease-standard) both;
+}
+.modal-overlay[data-variant='full'].is-closing .modal-card {
+  animation: modal-full-in var(--t-quick) var(--ease-exit) reverse both;
 }
 
 .modal-card {
@@ -84,11 +155,40 @@
   margin-block-end: var(--space-3);
 }
 
-@keyframes modal-fade {
+/* One keyframe pair per channel, each played forwards to enter and `reverse` to
+   leave — so an exit cannot drift out of sync with its entrance by being written
+   twice. */
+@keyframes modal-scrim-in {
   from {
     opacity: 0;
   }
   to {
     opacity: 1;
+  }
+}
+@keyframes modal-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes modal-full-in {
+  from {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+  to {
+    transform: none;
   }
 }

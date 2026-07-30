@@ -73,6 +73,28 @@
   --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* default / entrances / hue melts */
   --ease-exit: cubic-bezier(0.4, 0, 1, 1); /* exits — toast out, glow extinguishing */
   --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1); /* the glow ignite */
+  /* The only OVERSHOOTING easing (ADR-0140). The three above are monotone, so an
+     object that should *settle* — an arriving sheet, a punched notch, a stamp —
+     had nothing to settle with and stopped dead instead. Deliberately mild: 1.16
+     is a nudge past the mark, not a bounce. Entrances of real objects only; never
+     an exit (leaving does not overshoot) and never a colour or opacity ramp. */
+  --ease-arrive: cubic-bezier(0.22, 1.16, 0.36, 1);
+  /* One step for a staggered entrance (ADR-0140). Staggers existed in three
+     places with three hand-picked values; this is the unit they now multiply.
+     Cap the multiplier at the call site (~5) so a long list never drags — the
+     ADR-0120 reveal's own rule. */
+  --stagger-step: 40ms;
+  /* The sign of the inline axis, in PHYSICAL terms (ADR-0140). `translateX` has no
+     logical form, so a surface that should arrive from the inline-END edge cannot
+     express that in a transform — and in RTL inline-end is the LEFT edge, so the
+     travel is negative. One sign here, read as
+     `translateX(calc(var(--dir) * 100%))`, is what lets the route transition and
+     the `full` overlay share ONE set of keyframes instead of a mirrored copy each.
+     `[dir='ltr']` below flips it; nothing else may hard-code a direction. */
+  --dir: -1;
+}
+[dir='ltr'] {
+  --dir: 1;
 
   --font-head: 'Secular One', sans-serif;
   --font-body: 'Assistant', sans-serif;

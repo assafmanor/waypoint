@@ -6,10 +6,19 @@
 // (ADR-0101) — share all that machinery; only shape and position differ
 // (modal.css). `Sheet` is a thin wrapper over `variant="sheet"`; the
 // `.confirm-*`/`.event-form-*` families fold on in Wave 2.
-import { useId, useRef, type ReactNode, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { useOverlay } from '../../state/nav-state';
 import { useDialogFocus } from '../../lib/useDialogFocus';
+import { motionDurationMs } from '../../lib/motion';
 import './modal.css';
 
 export type ModalVariant = 'sheet' | 'dialog' | 'full';
@@ -40,11 +49,54 @@ export function Modal({
    *  case being a `'full'` search mode, where popping the keyboard immediately
    *  is the point (see `useDialogFocus`). Omit for the default container focus. */
   initialFocusRef?: RefObject<HTMLElement | null>;
-  children: ReactNode;
+  /** Children, or a function receiving the overlay's own **animated** close.
+   *
+   *  An in-card `✕` / `ביטול` that calls the caller's `onClose` directly bypasses
+   *  the exit and snaps — and that control is the most-used way out of a sheet, so
+   *  leaving it un-animated would make ADR-0140 half-true. Take the function form
+   *  and bind that control to the `close` it hands you, which is the same path the
+   *  backdrop, a back and Escape all take. (A function rather than a context so no
+   *  call site has to extract an inner component just to read one.) */
+  children: ReactNode | ((close: () => void) => ReactNode);
 }) {
+  // ── The exit (ADR-0140) ───────────────────────────────────────────────────
+  // `onClose` is ALREADY the one owner of leaving: the backdrop calls it, the
+  // overlay stack calls it on a back, and since #365 Escape is a back trigger that
+  // resolves through that same stack. So the exit animation is hung on that one
+  // path by wrapping it — this adds no second close route, which is the thing
+  // #365 removed and ADR-0103 §2 forbids re-creating.
+  //
+  // The wrapper plays the exit, THEN tells the caller. The caller unmounts us on
+  // `onClose`, so calling it first is precisely why nothing has ever animated out.
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const beginClose = useCallback(() => {
+    // Idempotent: the backdrop, a second back and Escape can all land during the
+    // exit, and a re-entry would restart the animation on a card already leaving.
+    if (closeTimer.current !== undefined) return;
+    // No animation to wait for (reduced motion, or no stylesheet) means close NOW,
+    // synchronously — not on a 0ms timer. A dismissal that lands a macrotask later
+    // is a frame of a sheet the user already closed, and it would make every caller
+    // asynchronous for no benefit.
+    const wait = motionDurationMs('--t-quick');
+    if (wait === 0) {
+      onCloseRef.current();
+      return;
+    }
+    setClosing(true);
+    closeTimer.current = setTimeout(() => onCloseRef.current(), wait);
+  }, []);
+
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
+
   // Register as the topmost overlay so a back trigger closes this before
-  // touching structural navigation (ADR-0035 §4).
-  useOverlay(onClose);
+  // touching structural navigation (ADR-0035 §4). The layer is peeled the moment
+  // back fires — only the pixels linger — so a back is never delayed or swallowed
+  // by the animation, and a second back during the exit reaches what is behind.
+  useOverlay(beginClose);
   const cardRef = useRef<HTMLDivElement>(null);
   // Trap default is variant-driven, and deliberately opposite per variant:
   //  - `dialog` traps: a centered dialog is a focus dead-end by design (a
@@ -70,9 +122,9 @@ export function Modal({
   // own explicit back control, so the backdrop click is disabled for it.
   return createPortal(
     <div
-      className="modal-overlay"
+      className={closing ? 'modal-overlay is-closing' : 'modal-overlay'}
       data-variant={variant}
-      onClick={variant === 'full' ? undefined : onClose}
+      onClick={variant === 'full' ? undefined : beginClose}
     >
       <div
         ref={cardRef}
@@ -89,7 +141,7 @@ export function Modal({
             {title}
           </div>
         )}
-        {children}
+        {typeof children === 'function' ? children(beginClose) : children}
       </div>
     </div>,
     document.body,
