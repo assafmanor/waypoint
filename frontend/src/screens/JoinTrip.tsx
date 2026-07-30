@@ -26,6 +26,8 @@ import { useAuth } from '../state/auth-state';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useIsOffline } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
+import { prefersReducedMotion } from '../lib/motion';
+import { useCountUp } from '../lib/useCountUp';
 import {
   ApiError,
   fetchInvitePreview,
@@ -36,7 +38,7 @@ import {
 import { consumeJoinIntent, saveIntent, saveJoinIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
-import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, GLYPH, MS_PER_DAY } from '../constants';
+import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, GLYPH, JOIN_PASS, MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 
 type LoadState =
@@ -62,6 +64,11 @@ export function JoinTrip() {
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState(false);
   const [joinBlocked, setJoinBlocked] = useState(false);
+  // The beat between deciding and arriving (ADR-0143): the pass is STAMPED, then it
+  // TEARS at the perforation it has always had, then it hands off to the trip. Before
+  // this, `joinTrip` resolving went straight to `navigate('/')` — the moment you were
+  // admitted was the one frame the screen did not show.
+  const [outcome, setOutcome] = useState<'stamped' | 'torn' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,7 +107,10 @@ export function JoinTrip() {
     try {
       const membership = await joinTrip(token);
       setTripId(membership.tripId);
-      navigate('/');
+      // The stamp lands on the SERVER'S success and never optimistically: a stamp
+      // that has to be un-stamped when the join fails is worse than no stamp, so the
+      // spinner covers the request and this only runs on a real membership.
+      setOutcome('stamped');
     } catch (err) {
       if (isRemovedFromTripError(err)) setJoinBlocked(true);
       else setJoinError(true);
@@ -108,6 +118,28 @@ export function JoinTrip() {
       setJoining(false);
     }
   }, [token, setTripId, navigate]);
+
+  // Stamp → tear → hand off. Reduced motion lands the handoff immediately rather than
+  // skipping the outcome: the join still happened, it just is not performed
+  // (ADR-0140 §5). The navigation is the LAST beat, so nothing races it.
+  //
+  // ONE timer per phase, chained — deliberately not both timers armed together from the
+  // `stamped` phase. That version stranded the user on a torn pass forever: advancing to
+  // `torn` re-runs this effect, and its cleanup cancelled the pending navigation before
+  // it could fire. A phase now only ever cancels its OWN pending step.
+  useEffect(() => {
+    if (!outcome) return;
+    if (prefersReducedMotion()) {
+      navigate('/');
+      return;
+    }
+    const stamped = outcome === 'stamped';
+    const id = setTimeout(
+      () => (stamped ? setOutcome('torn') : navigate('/')),
+      stamped ? JOIN_PASS.STAMP_MS : JOIN_PASS.TEAR_MS,
+    );
+    return () => clearTimeout(id);
+  }, [outcome, navigate]);
 
   // Auto-complete the join when we return here authed *and* the pending-join
   // flag is set — i.e. the user reached login by tapping "Continue with Google"
@@ -129,8 +161,15 @@ export function JoinTrip() {
     void doJoin();
   };
 
+  const refused = load.status === 'invalid' || load.status === 'expired';
+
   return (
-    <div className="app join-land">
+    <div
+      className="app join-land"
+      data-pass={load.status === 'ready' ? 'ready' : undefined}
+      data-outcome={outcome ?? undefined}
+      data-refused={refused ? '' : undefined}
+    >
       <div className="join-top">
         <div className="join-logo">Waypoint</div>
         {/* The Waypoint mark (see Login.tsx's .land-icon for the rationale) —
@@ -180,14 +219,19 @@ export function JoinTrip() {
         </svg>
       </div>
 
-      {load.status === 'loading' && <p className="join-status">{t.shell.join.loading}</p>}
-      {load.status === 'invalid' && <p className="join-status">{t.shell.join.invalid}</p>}
-      {load.status === 'expired' && <p className="join-status">{t.shell.join.expired}</p>}
+      {load.status === 'loading' && <PassSkeleton />}
+      {refused && (
+        <RefusedPass
+          reason={load.status === 'expired' ? t.shell.join.expired : t.shell.join.invalid}
+        />
+      )}
       {load.status === 'offline' && <p className="join-status">{t.shell.join.offline}</p>}
 
-      {load.status === 'ready' && <Ready preview={load.preview} />}
+      {load.status === 'ready' && <Ready preview={load.preview} outcome={outcome} />}
 
-      {load.status === 'ready' && (
+      {/* No CTA once the pass is stamped: the outcome is playing, and a tappable
+          "join" over a pass that has already been accepted is a second join. */}
+      {load.status === 'ready' && !outcome && (
         <div className="join-cta">
           <button className="join-cta-btn" onClick={onCta} disabled={offline || joining}>
             {authStatus === 'authed' ? (
@@ -211,14 +255,20 @@ export function JoinTrip() {
   );
 }
 
-function Ready({ preview }: { preview: InvitePreview }) {
+function Ready({ preview, outcome }: { preview: InvitePreview; outcome: string | null }) {
   const daysUntilStart = Math.ceil(
     (Date.parse(`${preview.startDate}T00:00:00Z`) - getNow()) / MS_PER_DAY,
   );
   const tripDays =
     Math.round((Date.parse(preview.endDate) - Date.parse(preview.startDate)) / MS_PER_DAY) + 1;
   const avatarCount = Math.min(preview.memberCount, MAX_AVATARS);
-  const startCount = countdownParts(daysUntilStart);
+  // The countdown counts UP to its value (ADR-0143): the number of days until you fly
+  // is the most emotive fact on this screen, and it arrived as static text.
+  // `countdownParts` may return a rounded month count far out, so the count-up runs on
+  // the days and the parts are derived from what it currently reads — the units stay
+  // correct at every step rather than being spliced onto a moving number.
+  const countedDays = useCountUp(daysUntilStart, daysUntilStart > 0);
+  const startCount = countdownParts(countedDays);
   const lengthCount = dayCount(tripDays);
 
   return (
@@ -232,6 +282,11 @@ function Ready({ preview }: { preview: InvitePreview }) {
 
       <div className="join-ticket-wrap">
         <div className="join-ticket">
+          {/* Deliberately NOT over the trip's name: a stamp lands on the blank part of
+              a pass, and here that is doubly required — you must still be able to read
+              what you just joined. `--ok`, not teal: teal means LOCATION (ADR-0028's
+              budget), and being admitted is a status. */}
+          {outcome && <span className="ticket-stamp">{t.shell.join.stamp}</span>}
           <div className="ticket-top">
             <div className="ticket-head">
               <span className="ticket-badge">
@@ -290,7 +345,14 @@ function Ready({ preview }: { preview: InvitePreview }) {
                 <span
                   key={i}
                   className="ticket-av"
-                  style={{ background: AVATAR_COLORS[i % AVATAR_COLORS.length] }}
+                  style={
+                    {
+                      background: AVATAR_COLORS[i % AVATAR_COLORS.length],
+                      // Per-avatar stagger index — they land one after another, so the
+                      // row reads as people arriving (ADR-0143).
+                      '--i': i,
+                    } as React.CSSProperties
+                  }
                 >
                   {GLYPH.anonAvatar}
                 </span>
@@ -306,5 +368,78 @@ function Ready({ preview }: { preview: InvitePreview }) {
         </div>
       </div>
     </>
+  );
+}
+
+/** Loading is the pass's own SHAPE (ADR-0143), not a paragraph.
+ *
+ *  A sentence on a dark screen reads as "something is happening somewhere"; the pass's
+ *  outline reads as "a pass is coming". Same reasoning as ADR-0105's content-shaped
+ *  skeletons — this is the one surface where the shape IS the message. */
+function PassSkeleton() {
+  return (
+    <>
+      <div className="join-hero join-hero-skel" aria-hidden="true">
+        <h1>
+          <span className="join-skel join-skel-title" />
+        </h1>
+        <span className="join-skel join-skel-sub" />
+      </div>
+      <div className="join-ticket-wrap" aria-hidden="true">
+        <div className="join-ticket join-ticket-skel">
+          <div className="ticket-top">
+            <span className="join-skel join-skel-badge" />
+            <span className="join-skel join-skel-name" />
+            <span className="join-skel join-skel-meta" />
+          </div>
+          <div className="ticket-perf">
+            <span className="notch start" />
+            <span className="notch end" />
+          </div>
+          <div className="ticket-bottom">
+            <span className="join-skel join-skel-av" />
+            <span className="join-skel join-skel-av" />
+            <span className="join-skel join-skel-av" />
+          </div>
+        </div>
+      </div>
+      {/* The status text stays for anyone who cannot see the shape. */}
+      <p className="join-status join-status-sr">{t.shell.join.loading}</p>
+    </>
+  );
+}
+
+/** An expired or revoked invite is a REJECTION (ADR-0067), and it should look like one.
+ *
+ *  It was a paragraph — and a paragraph on a loading screen reads as a loading state
+ *  that never resolved, not as a decision. The pass is drawn, struck through and
+ *  stamped, the anticipation glow drops out, and the next action is named.
+ *
+ *  The trip is deliberately NOT shown: the public preview call failed, so there is
+ *  nothing to draw. (The mockup drew the trip struck through, which assumed a preview
+ *  the API does not return for a dead code — the one thing the build had to correct.)
+ *  What the stamp still buys is the distinction the paragraph could not make: the
+ *  invitation was real and the LINK is what died, so the next step is "ask for a new
+ *  one" rather than "check the address". */
+function RefusedPass({ reason }: { reason: string }) {
+  return (
+    <div className="join-ticket-wrap join-refused">
+      <div className="join-ticket">
+        <span className="ticket-stamp is-refused">{t.shell.join.stampRefused}</span>
+        <div className="ticket-top">
+          <span className="ticket-badge">
+            {GLYPH.boardingPass} {t.shell.join.ticketBadge}
+          </span>
+          <div className="ticket-name refused-name">{t.shell.join.refusedTitle}</div>
+        </div>
+        <div className="ticket-perf">
+          <span className="notch start" />
+          <span className="notch end" />
+        </div>
+        <div className="ticket-bottom">
+          <p className="join-refused-text">{reason}</p>
+        </div>
+      </div>
+    </div>
   );
 }

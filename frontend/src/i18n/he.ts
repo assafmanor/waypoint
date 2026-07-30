@@ -710,6 +710,11 @@ export const t = {
     },
     join: {
       loading: 'טוען הזמנה…',
+      // The pass's stamp (ADR-0143). Short enough to read inside a rotated stamp on a
+      // dark ticket — a sentence would not fit and would not read as a stamp.
+      stamp: 'מצטרפים',
+      stampRefused: 'פג תוקף',
+      refusedTitle: 'ההזמנה כבר לא בתוקף',
       invalid: 'הלינק הזה כבר לא בתוקף. אפשר לבקש מהחבר שישלח לינק חדש.',
       expired: 'הטיול הזה כבר הסתיים · הלינק כבר לא פעיל.',
       offline: 'צריך חיבור לרשת כדי לטעון את ההזמנה',

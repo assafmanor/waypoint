@@ -1963,10 +1963,12 @@
 .birth-card {
   position: absolute;
   z-index: 4;
-  /* Anchored at the BORN position; the form phase offsets it by `--flight`. Its
-     inline edges track the body padding, which both bodies share. */
+  /* Rests at its MEASURED offset (`--card-top`, set from JS per phase) — never at a
+     guessed one. Hidden until the first measurement lands, because a card painted at
+     0 before then is a card briefly over the header. Its inline edges track the body
+     padding, which both bodies share, so only the vertical position is computed. */
   inset-inline: 20px;
-  top: calc(var(--birth-head, 66px) + var(--birth-card-top, 118px));
+  top: var(--card-top);
   box-sizing: border-box;
   border: 1.5px dashed var(--soft-line);
   background: repeating-linear-gradient(-45deg, var(--card) 0 9px, var(--screen) 9px 18px);
@@ -1975,17 +1977,21 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  transform: translateY(var(--flight, 0px));
+  /* The travel is a WAAPI FLIP (CreateTrip.tsx), not a CSS transition — the distance is
+     only knowable after the new phase has laid out. Only the COMMIT animates here. */
   transition:
-    transform var(--t-deliberate) var(--ease-arrive),
     border-color var(--t-deliberate) var(--ease-standard),
     background var(--t-deliberate) var(--ease-standard),
     box-shadow var(--t-deliberate) var(--ease-standard);
 }
+/* Nothing to show until the position is known — a card painted before the first
+   measurement is a card briefly sitting over the header. */
+.birth:not([data-placed]) .birth-card {
+  visibility: hidden;
+}
 /* Committed. The dashed→solid is not decoration: ADR-0011's grammar means
    "provisional → committed", and this is the frame the trip stops being a draft. */
 .birth[data-birth='born'] .birth-card {
-  transform: none;
   border-style: solid;
   border-color: var(--line);
   background: var(--card);
@@ -2282,4 +2288,264 @@
 .invite-box[data-copied] .cp {
   color: var(--ok);
   animation: birth-in var(--t-quick) var(--ease-arrive);
+}
+
+/* ============================================================
+   THE INVITE PASS (ADR-0143, mockups/motion-join-v1.html)
+
+   A boarding pass is an OBJECT. Objects arrive, and they get stamped. Every beat here
+   follows from that one sentence, which is why the strongest piece of visual writing in
+   the app needed no celebration vocabulary of its own — only permission to behave like
+   what it already looks like.
+
+   What shipped before: the preview resolved and the pass appeared fully formed, after a
+   bare <p> of status text; then `joinTrip` resolving went straight to `navigate('/')`.
+   The moment you were admitted was the one frame the screen did not show.
+   ============================================================ */
+
+/* The anticipation glow RAMPS with the pass. It was at full strength from the first
+   frame — warm before there was anything to be warm about — so the screen now warms
+   *because* of the invitation. It drops out entirely on a refusal. */
+.join-land::before {
+  opacity: 0.35;
+  transition: opacity var(--t-cinematic) var(--ease-emphasized);
+}
+.join-land[data-pass='ready']::before {
+  opacity: 1;
+}
+.join-land[data-refused]::before {
+  opacity: 0.06;
+}
+
+/* ── The pass arrives and SETTLES ─────────────────────────────────────────────
+   A whisper of rotation, the way a card handed to you settles. `--ease-arrive`'s
+   overshoot is what makes it settle rather than stop. */
+.join-land[data-pass='ready'] .join-ticket-wrap {
+  animation: pass-in var(--t-deliberate) var(--ease-arrive) both;
+  perspective: 900px;
+}
+@keyframes pass-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.97);
+  }
+}
+/* The notches PUNCH — they are holes, and a hole appears by being made. */
+.join-land[data-pass='ready'] .ticket-perf .notch {
+  animation: pass-punch var(--t-quick) var(--ease-arrive) both;
+}
+.join-land[data-pass='ready'] .ticket-perf .notch.start {
+  animation-delay: 300ms;
+}
+.join-land[data-pass='ready'] .ticket-perf .notch.end {
+  animation-delay: 360ms;
+}
+@keyframes pass-punch {
+  from {
+    transform: scale(0);
+  }
+  60% {
+    transform: scale(1.25);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+/* The avatars are the SENTENCE, not the decoration: "N people are already in" is the
+   social proof this screen runs on, and staggering them makes it read as people
+   ARRIVING rather than as a row that was always there. Same data, different claim. */
+.join-land[data-pass='ready'] .ticket-av {
+  animation: pass-av-in var(--t-base) var(--ease-arrive) both;
+  animation-delay: calc(400ms + var(--i, 0) * var(--stagger-step) * 2);
+}
+@keyframes pass-av-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4) translateY(6px);
+  }
+}
+
+/* ── THE STAMP ────────────────────────────────────────────────────────────────
+   You are ADMITTED. Rotated and slightly off-square, because a stamp is applied by a
+   hand rather than laid out by a grid. `--ok` from the status mini-palette, NOT teal:
+   teal means location (ADR-0028's budget) and being admitted is a status. */
+.ticket-stamp {
+  position: absolute;
+  z-index: 3;
+  /* Clear of the trip's name — you must still be able to read what you just joined. */
+  top: 58px;
+  inset-inline-end: 16px;
+  border: 2.5px solid var(--ok);
+  color: var(--ok);
+  border-radius: var(--radius-8);
+  padding: 4px 10px;
+  font-weight: 800;
+  font-size: var(--text-secondary);
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  animation: pass-stamp 260ms var(--ease-emphasized) both;
+}
+@keyframes pass-stamp {
+  from {
+    transform: rotate(-14deg) scale(2.4);
+    opacity: 0;
+  }
+  70% {
+    transform: rotate(-9deg) scale(0.96);
+    opacity: 1;
+  }
+  to {
+    transform: rotate(-9deg) scale(1);
+    opacity: 1;
+  }
+}
+/* The pass recoils under the stamp — the one bit of physics that sells it. */
+.join-land[data-outcome] .join-ticket {
+  animation: pass-recoil 300ms var(--ease-standard) both;
+}
+@keyframes pass-recoil {
+  0% {
+    transform: none;
+  }
+  22% {
+    transform: scale(0.982) translateY(2px);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* ── THE TEAR ─────────────────────────────────────────────────────────────────
+   Along the perforation the shipped CSS already draws (`.ticket-perf` + its two
+   notches). It had been sitting there as decoration promising an action, so tearing
+   along it costs no new element and redeems a detail the design already paid for.
+
+   Which half goes with you is the point: the TOP half carries the trip's identity, so
+   it is the half that rises into the handoff, and the stub — the people, the part a
+   gate agent keeps — is what leaves. Reversed, the motion says you were torn off. */
+.ticket-top,
+.ticket-bottom,
+.ticket-perf {
+  transition:
+    transform var(--t-deliberate) var(--ease-standard),
+    opacity var(--t-deliberate) var(--ease-standard);
+}
+.join-land[data-outcome='torn'] .ticket-bottom {
+  transform: translateY(18px) rotate(1.4deg);
+  opacity: 0;
+}
+.join-land[data-outcome='torn'] .ticket-perf {
+  opacity: 0;
+}
+/* The stub rises toward where the trip's own header will be — G2's route transition
+   then carries the rest of the handoff. */
+.join-land[data-outcome='torn'] .join-ticket-wrap {
+  transition: transform var(--t-deliberate) var(--ease-standard);
+  transform: translateY(-20px);
+}
+/* You cannot be congratulated and processed at the same time: the hero's invitation
+   copy leaves as the outcome plays. */
+.join-hero {
+  transition: opacity var(--t-base) var(--ease-exit);
+}
+.join-land[data-outcome] .join-hero {
+  opacity: 0;
+}
+
+/* ── Loading: the pass's own shape ────────────────────────────────────────────
+   Shares the shimmer with `ui/feedback`'s skeletons (ADR-0105) rather than inventing a
+   second one, but tuned for a DARK surface — the feedback family's is built for paper. */
+.join-ticket-skel {
+  opacity: 0.55;
+}
+.join-skel {
+  display: block;
+  border-radius: var(--radius-8);
+  background: linear-gradient(
+    90deg,
+    rgba(234, 240, 255, 0.07),
+    rgba(234, 240, 255, 0.16),
+    rgba(234, 240, 255, 0.07)
+  );
+  background-size: 200% 100%;
+  animation: join-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes join-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.join-skel-title {
+  height: 22px;
+  width: 72%;
+  margin-inline: auto;
+}
+.join-skel-sub {
+  height: 13px;
+  width: 54%;
+  margin: 10px auto 0;
+}
+.join-skel-badge {
+  height: 18px;
+  width: 96px;
+  border-radius: var(--radius-999);
+}
+.join-skel-name {
+  height: 20px;
+  width: 66%;
+  margin-top: 12px;
+}
+.join-skel-meta {
+  height: 13px;
+  width: 80%;
+  margin-top: 8px;
+}
+.join-skel-av {
+  height: 30px;
+  width: 30px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-inline-end: 6px;
+}
+.join-hero-skel h1 {
+  margin: 0;
+}
+/* The sentence stays for anyone who cannot see the shape — the shape is an
+   enhancement of the status, not a replacement for it. */
+.join-status-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── Refused ──────────────────────────────────────────────────────────────────
+   A rejection should look like one. The pass is drawn and stamped `פג תוקף`, and the
+   colour drains from the TRIP rather than from the card — desaturating the whole thing
+   was drawn first and turned the refusal stamp brown. */
+.join-refused .join-ticket {
+  animation: pass-in var(--t-base) var(--ease-standard) both;
+}
+.ticket-stamp.is-refused {
+  border-color: var(--miss);
+  color: var(--miss);
+  top: 52px;
+}
+.refused-name {
+  opacity: 0.5;
+  filter: saturate(0.2);
+  text-decoration: line-through 2px;
+  text-decoration-color: color-mix(in srgb, var(--miss) 75%, transparent);
+}
+.join-refused-text {
+  margin: 0;
+  font-size: var(--text-secondary);
+  line-height: var(--leading-normal);
+  /* fixed: the ticket is dark in both themes, so its dim ink stays put */
+  color: #93a2c4;
 }
