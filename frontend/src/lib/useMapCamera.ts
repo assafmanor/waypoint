@@ -70,6 +70,20 @@ export interface MapCamera {
   /** Frame a place together with what is around it — the arrival, and the place card's
    *  way in to its own pin (ADR-0129 §1/§2). Returns whether it moved. */
   frameOn: (point: LatLng) => boolean;
+  /** **The one-finger drag zoom's write** (ADR-0145 §5). Instant and centre-anchored: the
+   *  finger IS the animation, so there is nothing to ease — and it cancels any ease in
+   *  flight rather than letting ADR-0129 §4's check merely notice it, because within one
+   *  frame the ease could still write after us. The gesture tells the camera; the camera
+   *  does not guess.
+   *
+   *  It exists so the gesture is a CALLER of this hook rather than a second writer of the
+   *  camera, which is ADR-0129 §3's invariant. */
+  zoomTo: (zoom: number) => void;
+  /** One eased level in, about the current centre — the double-tap we take over from
+   *  Google because intercepting the gesture suppressed its own (ADR-0145 §2). Eased,
+   *  unlike `zoomTo`: this one is a discrete move the user asked for once, so it collapses
+   *  to a single `moveCamera` under reduced motion like every other (§7). */
+  stepZoomIn: () => void;
 }
 
 export function useMapCamera(
@@ -369,7 +383,40 @@ export function useMapCamera(
     [map, moveTo],
   );
 
-  return { reframe, focus, frameOn, locate };
+  /** **A manual, finger-driven zoom** (ADR-0145 §5). No ease and no `framed` bookkeeping:
+   *  the gesture is not a framing, it is the user taking the camera — and ADR-0121 §7's
+   *  "a manual pan or zoom wins until the next scope change" then holds with nothing
+   *  added, because that rule is implemented as an ABSENCE. The framing effect is keyed on
+   *  `setSignal`, a drag zoom does not change it, so no fit runs to fight the finger. */
+  const zoomTo = useCallback(
+    (zoom: number) => {
+      if (!map) return;
+      // Kill the ease OUTRIGHT rather than relying on its own stand-down check: that check
+      // is what saves us from a pinch we cannot intercept, but this gesture we can, and a
+      // frame already queued would otherwise write after us.
+      cancelAnimationFrame(raf.current);
+      going.current = null;
+      wrote.current = null;
+      map.moveCamera({ zoom });
+    },
+    [map],
+  );
+
+  /** The double-tap step-zoom, which is ours now only because intercepting the gesture
+   *  suppressed Google's (ADR-0145 §2). It reuses the existing ladder and the existing
+   *  ease, so it reads as the same object moving as every other camera change — which
+   *  Google's own double-click zoom never did (ADR-0129 §3's table). */
+  const stepZoomIn = useCallback(() => {
+    const centre = map?.getCenter();
+    if (!map || !centre) return;
+    const from = going.current?.zoom ?? map.getZoom();
+    easeTo({
+      center: { lat: centre.lat(), lng: centre.lng() },
+      zoom: zoomStepIn(from, MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX),
+    });
+  }, [map, easeTo]);
+
+  return { reframe, focus, frameOn, locate, zoomTo, stepZoomIn };
 }
 
 /** The map's camera as our own shape, or `null` before it has one. */

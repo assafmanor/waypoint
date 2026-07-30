@@ -24,6 +24,7 @@ import {
   type PinTier,
 } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
+import { useDragZoom } from '../../lib/useDragZoom';
 import type { LatLng, MapBounds } from '../../lib/map-camera';
 import type { MapsConfig } from '../../lib/map-config';
 import { MAP_CARD_RESERVE_H, MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
@@ -337,6 +338,7 @@ function MapPaneInner({
             but inside `<APIProvider>` so it can still reach the instance by id. */}
         <PinDensity paneRef={paneRef} />
         <MapCameraControls
+          paneRef={paneRef}
           pins={pins}
           results={results}
           me={me}
@@ -577,6 +579,7 @@ const DayConnector = memo(function DayConnector({ path }: { path?: readonly LatL
  *  focus, so it is read off the pin set rather than plumbed as a second prop: the
  *  screen already said which pin is selected. */
 function MapCameraControls({
+  paneRef,
   pins,
   results,
   me,
@@ -588,6 +591,7 @@ function MapCameraControls({
   framePlace,
   cardOpen,
 }: {
+  paneRef: RefObject<HTMLDivElement | null>;
   pins: readonly MapPin[];
   results: readonly MapResultPin[];
   me?: LatLng;
@@ -621,6 +625,8 @@ function MapCameraControls({
     focus,
     reframe,
     locate: locateCamera,
+    zoomTo,
+    stepZoomIn,
   } = useMapCamera(map, {
     points,
     setSignal,
@@ -631,6 +637,14 @@ function MapCameraControls({
     // re-running the framing effect — i.e. without moving the camera on a pin tap.
     bottomReserve: cardOpen ? MAP_CARD_RESERVE_H : 0,
   });
+
+  // **The one-finger zoom** (ADR-0145). It lives here rather than beside `PinDensity`
+  // because it must drive THIS camera: a second `useMapCamera` would be a second eased
+  // driver on one map, which is the invariant ADR-0129 §3 exists to hold. A fresh object
+  // per render is fine and deliberate — the hook reads it through a latest-ref, because
+  // this screen re-renders every second and re-running the gesture's effect is precisely
+  // the bug session 116 spent a round on.
+  useDragZoom(map, { zoomTo, stepZoomIn }, paneRef);
 
   // Focus pans AND zooms in when the view is too far out to read the place (ADR-0127
   // §1, reversing §7's "focus never zooms" in the one direction that was protecting
