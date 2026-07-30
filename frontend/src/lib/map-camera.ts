@@ -21,6 +21,7 @@ import {
   MAP_PIN,
   MAP_REFIT_FILL_SHARE,
 } from '../constants';
+import { TUNE, tune } from './dev-tuning';
 import { pinClearanceFor, pinHeightFor } from './map-pins';
 
 export interface LatLng {
@@ -112,9 +113,11 @@ export function boundsFillView(outer: MapBounds, inner: MapBounds): boolean {
   const outerLat = outer.north - outer.south;
   const outerLng = outer.east - outer.west;
   if (outerLat <= 0 || outerLng <= 0) return true;
+  // Read once, so the two axes are judged against the same share even if the device-pass
+  // panel moves it mid-evaluation (ADR-0146 §3).
+  const share = tune(TUNE.refitFillShare, MAP_REFIT_FILL_SHARE);
   return (
-    (inner.north - inner.south) / outerLat >= MAP_REFIT_FILL_SHARE ||
-    (inner.east - inner.west) / outerLng >= MAP_REFIT_FILL_SHARE
+    (inner.north - inner.south) / outerLat >= share || (inner.east - inner.west) / outerLng >= share
   );
 }
 

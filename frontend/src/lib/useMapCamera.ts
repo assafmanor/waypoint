@@ -49,6 +49,9 @@ import {
 import { doubleTapZoom, zoomAboutPoint, type WorldPoint } from './drag-zoom';
 import { prefersReducedMotion } from './motion';
 import { MAP_CAMERA_EASE, MAP_ZOOM } from '../constants';
+// The zoom ladder is the device pass's, so these three reads go through the dev accessor
+// (ADR-0146 §3). In a production build `tune` IS the identity — no override layer exists.
+import { TUNE, tune } from './dev-tuning';
 
 /** The live viewport as our own bounds shape, or `null` before the first idle. */
 export function readMapBounds(map: google.maps.Map | null): MapBounds | null {
@@ -243,7 +246,7 @@ export function useMapCamera(
       const instant = !framed.current;
       if (target.kind === 'centre') {
         // Never `fitBounds` a zero-area extent — it snaps to building level.
-        const to = { center: target.at, zoom: MAP_ZOOM.PLACE };
+        const to = { center: target.at, zoom: tune(TUNE.zoomPlace, MAP_ZOOM.PLACE) };
         if (instant) map.moveCamera(to);
         else easeTo(to);
         return true;
@@ -274,7 +277,7 @@ export function useMapCamera(
       if (fitted == null || !centre) return true;
       const to: CameraAt = {
         center: { lat: centre.lat(), lng: centre.lng() },
-        zoom: Math.min(fitted, MAP_ZOOM.MAX_FIT),
+        zoom: Math.min(fitted, tune(TUNE.zoomMaxFit, MAP_ZOOM.MAX_FIT)),
       };
       // Put the camera back where it was, then ease across it.
       if (!instant && before && beforeZoom != null) {
@@ -383,7 +386,11 @@ export function useMapCamera(
       // value, which is exactly the desynchronisation #20 was made stateless to avoid.
       moveTo(
         point,
-        zoomStepIn(going.current?.zoom ?? map?.getZoom(), MAP_ZOOM.PLACE, MAP_ZOOM.STEP_IN_MAX),
+        zoomStepIn(
+          going.current?.zoom ?? map?.getZoom(),
+          tune(TUNE.zoomPlace, MAP_ZOOM.PLACE),
+          tune(TUNE.zoomStepInMax, MAP_ZOOM.STEP_IN_MAX),
+        ),
       ),
     [map, moveTo],
   );

@@ -112,6 +112,7 @@ import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { ToggleChip } from '../ui/primitives/ToggleChip';
 import { MapPane, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
+import { DevMapTuner } from '../dev/DevMapTuner';
 import { PlaceResearch, ResultRow } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -2307,6 +2308,12 @@ export function MapView() {
             {sheetList}
           </div>
         </SnapSheet>
+        {/* The device-pass instrument (ADR-0146). A SIBLING, like everything else in this
+            split — wrapping `<MapPane>` would remount it, and a remount is billed
+            (ADR-0121 §4) — and it holds all of its state itself, so a stepper tap
+            re-renders the panel and nothing else. Dropped from a production build with
+            the gate, the way `App.tsx` mounts `DevTimeTravel`. */}
+        {import.meta.env.DEV && <DevMapTuner />}
       </div>
 
       {overlays}

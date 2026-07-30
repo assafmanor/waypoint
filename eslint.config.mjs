@@ -240,6 +240,27 @@ export default tseslint.config(
     },
   },
   {
+    // ADR-0146: the dev affordances (`DevTimeTravel`, the map's device-pass tuning panel)
+    // are English-only surfaces that never ship — `import.meta.env.DEV` gates every mount
+    // and a production build drops them with everything they import. They render inside the
+    // RTL document, so the panel's own content sets `dir="ltr"`: mirrored, a column of
+    // `− 14 +` steppers reads backwards and the emitted `MAP_ZOOM.PLACE: 14 → 13` block —
+    // which IS the sitting's deliverable — is unreadable. ADR-0118's hazard is a Hebrew
+    // number-and-unit token laid out LTR, and there is no Hebrew here for it to apply to.
+    // Layered after the blocks above so it drops BIDI_SELECTORS for this tree only;
+    // everything else (the clock, the glyph and emoji bans) still applies.
+    files: ['frontend/src/dev/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...CLOCK_SELECTORS,
+        ...RENDERED_GLYPH_SELECTORS,
+        ...CONTROL_EMOJI_SELECTORS,
+        ...BACK_TRAVERSAL_SELECTORS,
+      ],
+    },
+  },
+  {
     files: ['frontend/src/i18n/**/*.ts'],
     rules: {
       'no-restricted-syntax': [
