@@ -1937,3 +1937,422 @@
 /* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
    empty-day markers) moved into the DayStrip component, keyed off its own
    `[data-mode='plan']` (ui/domain/day-strip.css). */
+
+/* ============================================================
+   TRIP BIRTH (ADR-0141, mockups/motion-trip-birth-v1.html)
+
+   The creation form and the born screen are ONE `.app` root, so the moment is a
+   transition rather than a swap: one header that WARMS, one card that TRAVELS, and
+   a board that switches on. What ships before this was a React state swap with no
+   motion at all — the least animated moment in the product and the most significant.
+
+   Beat offsets live in `constants.ts` (`TRIP_BIRTH`) because they are SEQUENCE, not
+   ramp values; each beat's own duration comes from the ramp. They overlap on
+   purpose, so the screen reads as one event resolving rather than four things taking
+   turns.
+
+   No second `--t-cinematic` moment is spent: `--t-cinematic` appears once below, on
+   the board's power-on, which is the SAME asset the mode switch already plays —
+   one signature at the two moments a trip changes state (it is born; it goes live).
+   ============================================================ */
+
+/* Both bodies stack in the same box, so the card can travel between them without
+   either one's layout affecting the other. */
+.birth {
+  position: relative;
+}
+.birth-form,
+.birth-born {
+  /* The form recedes and the born screen arrives; while they overlap, only one is
+     interactive (`pointer-events` below). */
+  transition:
+    opacity var(--t-base) var(--ease-exit),
+    transform var(--t-base) var(--ease-exit);
+}
+/* The form does not cross-fade into another screen — it RESOLVES into one thing, so
+   it recedes slightly rather than sliding away. */
+.birth[data-birth='submitting'] .birth-form {
+  opacity: 0.5;
+  filter: saturate(0.6);
+  pointer-events: none;
+}
+.birth[data-birth='born'] .birth-form {
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+  pointer-events: none;
+  /* Out of the tab order the moment it stops being the screen you are on. */
+  visibility: hidden;
+}
+.birth-born {
+  position: absolute;
+  inset: 0;
+  /* Clears the shared header. */
+  top: var(--birth-head, 66px);
+}
+
+/* ── The form's assembly ──────────────────────────────────────────────────────
+   One `--stagger-step` per group. Short by design: it must be finished before a
+   fast typist reaches the first field, because the point is that the screen was
+   built, not that you waited for it. */
+.birth-in {
+  animation: birth-in var(--t-base) var(--ease-arrive) backwards;
+  animation-delay: calc(var(--i) * var(--stagger-step));
+}
+@keyframes birth-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ── The CTA arms ─────────────────────────────────────────────────────────────
+   The disabled→enabled flip is a real state change and the app's way of saying
+   "you're done" (U-13 gave it a reason; this gives it a beat). One pulse, not a
+   persistent glow — it marks the transition, it does not decorate the button. */
+.create-btn[data-armed] {
+  animation: birth-arm var(--t-base) var(--ease-arrive);
+  box-shadow: 0 8px 20px -12px rgba(14, 23, 41, 0.55);
+}
+@keyframes birth-arm {
+  50% {
+    transform: scale(1.025);
+  }
+}
+
+/* ── The shared card ──────────────────────────────────────────────────────────
+   ONE node for the whole sequence, positioned over whichever slot the phase owns.
+   Never inside either slot, so nothing reflows mid-flight; the slots only reserve
+   the space and are measured for `--flight`.
+
+   `--flight` is a single-axis delta because both bodies carry the same horizontal
+   padding — so this is a transform, not an animation of `top`/`width`, and it stays
+   on the compositor. */
+.birth-slot {
+  visibility: hidden;
+  pointer-events: none;
+  height: 72px;
+  margin-top: 24px;
+}
+.birth-card {
+  position: absolute;
+  z-index: 4;
+  /* Anchored at the BORN position; the form phase offsets it by `--flight`. Its
+     inline edges track the body padding, which both bodies share. */
+  inset-inline: 20px;
+  top: calc(var(--birth-head, 66px) + var(--birth-card-top, 118px));
+  box-sizing: border-box;
+  border: 1.5px dashed var(--soft-line);
+  background: repeating-linear-gradient(-45deg, var(--card) 0 9px, var(--screen) 9px 18px);
+  border-radius: 16px;
+  padding: 14px 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transform: translateY(var(--flight, 0px));
+  transition:
+    transform var(--t-deliberate) var(--ease-arrive),
+    border-color var(--t-deliberate) var(--ease-standard),
+    background var(--t-deliberate) var(--ease-standard),
+    box-shadow var(--t-deliberate) var(--ease-standard);
+}
+/* Committed. The dashed→solid is not decoration: ADR-0011's grammar means
+   "provisional → committed", and this is the frame the trip stops being a draft. */
+.birth[data-birth='born'] .birth-card {
+  transform: none;
+  border-style: solid;
+  border-color: var(--line);
+  background: var(--card);
+  box-shadow: var(--elevation-raised);
+}
+.birth-card .ic {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  flex: 0 0 auto;
+  transition: transform var(--t-base) var(--ease-arrive);
+}
+/* The card's one flourish: the flag settles as the trip becomes real. */
+.birth[data-birth='born'] .birth-card .ic {
+  transform: scale(1.12);
+}
+.birth-card .t {
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: var(--ink);
+}
+.birth-card .t .ghost {
+  color: var(--faint);
+}
+.birth-card .m {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.birth-card .tag {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  background: rgba(22, 35, 61, 0.06);
+  border-radius: 6px;
+  padding: 2px 7px;
+  transition:
+    opacity var(--t-base) var(--ease-exit),
+    transform var(--t-base) var(--ease-exit);
+}
+/* `טיוטה` leaves on the same beat the border goes solid — they are one statement. */
+.birth[data-birth='born'] .birth-card .tag {
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+/* ── The chrome warms ─────────────────────────────────────────────────────────
+   Indigo → the plan-mode paper. One header, so nothing cross-fades against a
+   second copy of itself. Colour only — mode identity rides temperature, never
+   luminance (design-language). */
+.birth-head {
+  transition:
+    background-color var(--t-deliberate) var(--ease-standard),
+    color var(--t-deliberate) var(--ease-standard),
+    border-color var(--t-deliberate) var(--ease-standard);
+  border-bottom: 1px solid transparent;
+}
+.birth[data-chrome='warm'] .birth-head {
+  background: var(--plan-tint);
+  color: var(--ink);
+  border-bottom-color: rgba(110, 89, 214, 0.18);
+}
+.birth[data-chrome='warm'] .new-title {
+  color: var(--ink);
+}
+.birth-head .back {
+  transition: opacity var(--t-base) var(--ease-exit);
+}
+.birth[data-birth='born'] .birth-head .back {
+  opacity: 0;
+  pointer-events: none;
+}
+.birth-pill {
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity var(--t-base) var(--ease-standard),
+    transform var(--t-base) var(--ease-arrive);
+}
+.birth[data-chrome='warm'] .birth-pill {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── The born screen's content arrives ───────────────────────────────────────── */
+.birth-arr {
+  opacity: 0;
+}
+.birth[data-content='in'] .birth-arr {
+  animation: birth-in var(--t-base) var(--ease-arrive) forwards;
+  animation-delay: calc(var(--i) * var(--stagger-step));
+}
+
+/* ── THE BOARD'S FIRST DEPARTURE ──────────────────────────────────────────────
+   The same object the zero state renders unpowered (`.board-off`) and Trip Home
+   renders live. This is that board being switched ON — which is why the payoff
+   needed no new celebration vocabulary, and why a confetti burst was rejected: the
+   board is already the one loud element on the screen. */
+.birth-board-wrap {
+  margin-top: 18px;
+}
+.birth-board {
+  position: relative;
+  background: linear-gradient(180deg, var(--board-2), var(--board));
+  border-radius: var(--radius-16);
+  padding: 13px;
+  overflow: hidden;
+  opacity: 0;
+}
+.birth[data-board='on'] .birth-board {
+  animation: birth-board-power var(--t-cinematic) var(--ease-emphasized) both;
+}
+/* Scale is tiny on purpose: the board is not bouncing in, it is being switched on,
+   and the LIGHT is what moves. */
+@keyframes birth-board-power {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  45% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* The amber glow igniting — the climax lands on the LIVE energy, not on brightness
+   (design-language: temperature & energy, never luminance). */
+.birth-board::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--radius-16);
+  pointer-events: none;
+}
+.birth[data-board='on'] .birth-board::after {
+  animation: birth-board-glow var(--t-cinematic) var(--ease-emphasized) 0.12s both;
+}
+@keyframes birth-board-glow {
+  from {
+    box-shadow: inset 0 0 0 1px rgba(233, 166, 60, 0);
+  }
+  to {
+    box-shadow:
+      inset 0 0 0 1px rgba(233, 166, 60, 0.42),
+      0 0 34px -12px rgba(233, 166, 60, 0.5);
+  }
+}
+.birth-board-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  /* fixed: the board is dark in both themes, so its light ink stays put */
+  color: #8fa0c4;
+  margin-bottom: 11px;
+}
+.birth-board-top .live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--amber);
+  font-weight: 700;
+}
+.birth-board-top .live i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+/* The pulse starts only once the board is lit — it means "live, right now"
+   (design-language "Pulse means live"), so it must not run over a dark board. */
+.birth[data-board='on'] .birth-board-top .live i {
+  animation: birth-pulse 2s infinite;
+  animation-delay: var(--t-cinematic);
+}
+@keyframes birth-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+/* The split-flap row. Honest content: a brand-new trip's first departure IS the
+   trip, so these settle into its start date, its name and its length. */
+.birth-flaps {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.birth-flap {
+  position: relative;
+  height: 22px;
+  border-radius: 4px;
+  background: rgba(234, 240, 255, 0.1);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  padding-inline: 6px;
+  transform-origin: center top;
+}
+.birth-flap:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.birth-flap > span {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--amber);
+  opacity: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Hebrew never sits in mono (design-language §Typography) — the trip's NAME is the
+   one flap carrying words rather than a number. */
+.birth-flap:nth-child(2) > span {
+  font-family: var(--font-body);
+  font-size: var(--text-secondary);
+  /* fixed: light ink on the always-dark board */
+  color: #eaf0ff;
+}
+.birth[data-board='on'] .birth-flap {
+  /* `steps()` is the point: a split-flap is DISCRETE. A smooth scaleY reads as a
+     sliding blind, not as flaps turning. */
+  animation: birth-flap-turn 260ms steps(4, end) both;
+  animation-delay: calc(220ms + var(--i) * var(--flap-step));
+}
+.birth[data-board='on'] .birth-flap > span {
+  animation: birth-flap-settle var(--t-quick) var(--ease-standard) both;
+  animation-delay: calc(400ms + var(--i) * var(--flap-step));
+}
+@keyframes birth-flap-turn {
+  0% {
+    transform: scaleY(1);
+    background: rgba(234, 240, 255, 0.1);
+  }
+  50% {
+    transform: scaleY(0.1);
+    background: rgba(234, 240, 255, 0.22);
+  }
+  100% {
+    transform: scaleY(1);
+    background: rgba(234, 240, 255, 0.07);
+  }
+}
+@keyframes birth-flap-settle {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── Skip ─────────────────────────────────────────────────────────────────────
+   Part of the design, not a setting: someone who just wants to start planning must
+   be able to land the whole thing with a tap. Mounted only while the sequence is
+   running, so it never sits over the invite box swallowing taps. */
+.birth-skip {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  /* It has no visual of its own, so it must not take the app-wide press scale. */
+  --press-scale: 1;
+}
+
+/* ── Copy the invite: confirm in place ───────────────────────────────────────
+   The toast says it happened; the box you tapped should say that you tapped it. */
+.invite-box {
+  transition:
+    border-color var(--t-base) var(--ease-standard),
+    background var(--t-base) var(--ease-standard);
+}
+.invite-box[data-copied] {
+  border-style: solid;
+  border-color: var(--ok);
+}
+.invite-box[data-copied] .cp {
+  color: var(--ok);
+  animation: birth-in var(--t-quick) var(--ease-arrive);
+}

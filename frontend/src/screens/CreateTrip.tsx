@@ -7,7 +7,26 @@
 // Creation doesn't drop straight into the trip (T-065): screen 2 of the
 // mockup (#s-born) is a beat to get the invite link in front of the creator
 // immediately — plan-violet chrome since it's already "inside" the new trip.
-import { useEffect, useState } from 'react';
+//
+// ── Trip birth (ADR-0141, mockups/motion-trip-birth-v1.html) ────────────────
+// The two screens are ONE component and one `.app` root, which is what lets the
+// moment be a transition rather than a swap. Three things depend on it:
+//
+//   • the draft card is a SHARED ELEMENT — one node that travels from its slot in
+//     the form to the born card's position and turns from the soft grammar to
+//     solid. Not two cards cross-fading: the card you were looking at is the card
+//     you end up with, and dashed→solid is ADR-0011's grammar meaning
+//     "provisional → committed" at the exact frame the trip stops being a draft;
+//   • the chrome WARMS indigo → plan-violet on one header, rather than one header
+//     replacing another;
+//   • the board POWERS ON. The zero state renders this same board unpowered
+//     (ADR-0024 §2) and Trip Home renders it live, so creation is the gap between
+//     them: the board's first departure. No new celebration vocabulary, and no
+//     second `--t-cinematic` moment — the same asset on a second trigger.
+//
+// The sequence is skippable by a tap, because a celebration you cannot interrupt
+// is a modal dialog wearing a costume.
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   createTripSchema,
@@ -23,18 +42,29 @@ import { useAppBack } from '../state/nav-state';
 import { createInvite, createTrip } from '../lib/api';
 import { suggestTripName } from '../lib/trip-name';
 import { useDerivedField } from '../lib/useDerivedField';
+import { prefersReducedMotion } from '../lib/motion';
 import { useToast } from '../ui/Toast';
 import { IconPicker } from '../ui/IconPicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
 import { Icon } from '../ui/Icon';
-import { MS_PER_DAY, CONTROL_ICON, DEFAULT_TRIP_ICON, DEVICE_LOCALE } from '../constants';
+import {
+  MS_PER_DAY,
+  CONTROL_ICON,
+  DEFAULT_TRIP_ICON,
+  DEVICE_LOCALE,
+  TRIP_BIRTH,
+} from '../constants';
 import { todayInTz } from '../lib/time';
 import { getNow } from '../lib/useClock';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 
 const DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Which beat of the birth sequence has landed. `form` and `submitting` are the
+ *  creation screen; everything from `born` on is the new trip. */
+type Phase = 'form' | 'submitting' | 'born';
 
 export function CreateTrip() {
   const navigate = useNavigate();
@@ -90,9 +120,13 @@ export function CreateTrip() {
     Boolean(startDate && endDate && endDate < startDate) || startInPast || endInPast;
   const canCreate = Boolean(destination && startDate && endDate && name.value && !datesInvalid);
 
+  const days =
+    startDate && endDate
+      ? Math.round((Date.parse(endDate) - Date.parse(startDate)) / MS_PER_DAY) + 1
+      : 0;
+
   let draftMeta: string = t.shell.newTrip.draftPending;
   if (destination && startDate && endDate && !datesInvalid) {
-    const days = Math.round((Date.parse(endDate) - Date.parse(startDate)) / MS_PER_DAY) + 1;
     draftMeta = t.shell.newTrip.draftMeta(destination, days);
   } else if (destination) {
     draftMeta = destination;
@@ -122,16 +156,28 @@ export function CreateTrip() {
     }
   };
 
-  if (createdTrip) return <Created trip={createdTrip} onDone={() => navigate('/')} />;
+  const phase: Phase = createdTrip ? 'born' : submitting ? 'submitting' : 'form';
 
   return (
-    <div className="app">
-      <header className="new-head">
+    <Birth
+      phase={phase}
+      trip={createdTrip}
+      icon={icon.value}
+      title={name.value}
+      meta={draftMeta}
+      onDone={() => navigate('/')}
+    >
+      <header className="new-head birth-head">
         <div className="new-head-row">
           <button className="back" onClick={goBack} aria-label={t.shell.newTrip.back}>
             <NavArrow variant="back" />
           </button>
-          <div className="new-title">{t.shell.newTrip.title}</div>
+          <div className="new-title">{createdTrip ? createdTrip.name : t.shell.newTrip.title}</div>
+          {/* The born screen is already INSIDE the trip, in Plan mode. The pill
+              arrives with the chrome rather than replacing a different header. */}
+          <span className="mode-pill birth-pill">
+            <Icon name="edit" /> {t.shell.created.modePill}
+          </span>
         </div>
         {offline && (
           <div className="offline-badge">
@@ -140,10 +186,15 @@ export function CreateTrip() {
         )}
       </header>
 
-      <main className="new-body">
-        <p className="new-lede">{t.shell.newTrip.lede}</p>
+      <main className="new-body birth-form">
+        {/* One `--i` step per group, so the form ASSEMBLES rather than appearing
+            whole — and it is finished before a fast typist reaches the first field
+            (ADR-0141 §1). The point is that it was built, not that you waited. */}
+        <p className="new-lede birth-in" style={{ '--i': 0 } as React.CSSProperties}>
+          {t.shell.newTrip.lede}
+        </p>
 
-        <div className="field">
+        <div className="field birth-in" style={{ '--i': 1 } as React.CSSProperties}>
           <label htmlFor="dest">{t.shell.newTrip.destLabel}</label>
           <DestinationPicker value={destination} onPick={handleDestination} />
           {destination && (
@@ -174,7 +225,7 @@ export function CreateTrip() {
           )}
         </div>
 
-        <div className="field">
+        <div className="field birth-in" style={{ '--i': 2 } as React.CSSProperties}>
           <label>{t.shell.newTrip.datesLabel}</label>
           <div className="date-row">
             <input
@@ -204,7 +255,7 @@ export function CreateTrip() {
           )}
         </div>
 
-        <div className="field">
+        <div className="field birth-in" style={{ '--i': 3 } as React.CSSProperties}>
           <label htmlFor="tripName">{t.shell.newTrip.nameLabel}</label>
           <div className="title-row">
             <IconPicker
@@ -225,24 +276,21 @@ export function CreateTrip() {
           <div className="hint">{t.shell.newTrip.nameHint}</div>
         </div>
 
-        <div className="draft" aria-hidden="true">
-          <div className="ic">{icon.value}</div>
-          <div>
-            <div className="t">
-              {name.value || <span className="ghost">{t.shell.newTrip.draftGhost}</span>}
-            </div>
-            <div className="m">{draftMeta}</div>
-          </div>
-          <span className="tag">{t.shell.newTrip.draftTag}</span>
-        </div>
+        {/* The shared card's slot in the form. It reserves the space; the card
+            itself is rendered once by `Birth` and positioned over whichever slot
+            the current phase owns. */}
+        <div className="birth-slot" data-slot="form" aria-hidden="true" />
 
-        <div className="new-cta">
+        <div className="new-cta birth-in" style={{ '--i': 4 } as React.CSSProperties}>
           {/* U-13: the CTA is always visible, disabled with a reason until the
-              form is complete, so a first-timer always sees the next step. */}
+              form is complete, so a first-timer always sees the next step. It also
+              ARMS when the form completes (ADR-0141 §1) — the disabled→enabled flip
+              is a real state change, and it is the app saying "you're done". */}
           <button
             className="create-btn"
             onClick={submit}
             disabled={!canCreate || offline || submitting}
+            data-armed={canCreate && !offline ? '' : undefined}
           >
             {t.shell.newTrip.createButton}
           </button>
@@ -251,6 +299,123 @@ export function CreateTrip() {
           <p className="new-note">{t.shell.newTrip.note}</p>
         </div>
       </main>
+    </Birth>
+  );
+}
+
+/** The birth choreography, and the one `.app` root both screens share.
+ *
+ *  It owns three things the two screens cannot own separately: the shared card's
+ *  flight (measured from the two slots), the beat timers, and the skip. The form is
+ *  passed as `children` so the whole creation screen above stays readable as a form. */
+function Birth({
+  phase,
+  trip,
+  icon,
+  title,
+  meta,
+  onDone,
+  children,
+}: {
+  phase: Phase;
+  trip: Trip | null;
+  icon: string;
+  title: string;
+  meta: string;
+  onDone: () => void;
+  children: React.ReactNode;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [flight, setFlight] = useState(0);
+  // Beats land independently so a skip can land them all at once.
+  const [chrome, setChrome] = useState(false);
+  const [board, setBoard] = useState(false);
+  const [content, setContent] = useState(false);
+  const [running, setRunning] = useState(false);
+
+  const land = useCallback(() => {
+    setChrome(true);
+    setBoard(true);
+    setContent(true);
+    setRunning(false);
+  }, []);
+
+  // Measure the two slots and hand the delta to CSS. Both bodies carry the same
+  // horizontal padding, so the card's WIDTH never changes and the flight is one
+  // axis — which is why this is a transform rather than an animation of `top`.
+  // `useLayoutEffect` so the offset is set before the browser paints the card.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const measure = () => {
+      const form = root.querySelector<HTMLElement>('[data-slot="form"]');
+      const born = root.querySelector<HTMLElement>('[data-slot="born"]');
+      if (!form || !born) return;
+      setFlight(form.getBoundingClientRect().top - born.getBoundingClientRect().top);
+    };
+    measure();
+    // The form's height changes as fields fill in (a date error appears, a
+    // timezone note shows), so the flight has to be re-measured rather than read
+    // once — otherwise the card starts its travel from a stale position.
+    //
+    // Guarded rather than shimmed in tests: jsdom has no `ResizeObserver`, and the
+    // one-shot `measure()` above is the part that matters for correctness. Without
+    // the observer the flight is simply measured once, which is also the honest
+    // fallback anywhere else the API is missing.
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [phase]);
+
+  // The sequence. Reduced motion lands the END STATE immediately — a user who asked
+  // for less motion did not ask for a different outcome (ADR-0140 §5).
+  useEffect(() => {
+    if (phase !== 'born') return;
+    if (prefersReducedMotion()) {
+      land();
+      return;
+    }
+    setRunning(true);
+    const ids = [
+      setTimeout(() => setChrome(true), TRIP_BIRTH.CHROME_MS),
+      setTimeout(() => setBoard(true), TRIP_BIRTH.BOARD_MS),
+      setTimeout(() => setContent(true), TRIP_BIRTH.CONTENT_MS),
+      setTimeout(() => setRunning(false), TRIP_BIRTH.TOTAL_MS),
+    ];
+    return () => ids.forEach(clearTimeout);
+  }, [phase, land]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="app birth"
+      data-mode={trip ? 'plan' : undefined}
+      data-birth={phase}
+      data-chrome={chrome ? 'warm' : undefined}
+      data-board={board ? 'on' : undefined}
+      data-content={content ? 'in' : undefined}
+      style={{ '--flight': `${flight}px` } as React.CSSProperties}
+    >
+      {children}
+      {trip && <BornBody trip={trip} onDone={onDone} />}
+      {/* ONE card for the whole sequence. It is never inside either slot, so
+          nothing reflows mid-flight. */}
+      <div className="birth-card" aria-hidden="true">
+        <div className="ic">{icon}</div>
+        <div>
+          <div className="t">
+            {title || <span className="ghost">{t.shell.newTrip.draftGhost}</span>}
+          </div>
+          <div className="m">{meta}</div>
+        </div>
+        <span className="tag">{t.shell.newTrip.draftTag}</span>
+      </div>
+      {/* Skippable by a tap anywhere, and only while the sequence is actually
+          running — afterwards this must not sit over the invite box swallowing taps. */}
+      {running && (
+        <button className="birth-skip" onClick={land} aria-label={t.shell.created.skip} />
+      )}
     </div>
   );
 }
@@ -258,11 +423,11 @@ export function CreateTrip() {
 type InviteState = { status: 'pending' } | { status: 'ready'; url: string } | { status: 'failed' };
 
 /** Screen 2 (mockup #s-born): the beat right after creation where the invite
- *  link goes in front of the creator. Plan-violet chrome — this is already
- *  inside the new trip, not part of the shell-chrome creation form above. */
-function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
+ *  link goes in front of the creator. */
+function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
   const showToast = useToast();
   const [invite, setInvite] = useState<InviteState>({ status: 'pending' });
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -286,62 +451,103 @@ function Created({ trip, onDone }: { trip: Trip; onDone: () => void }) {
     if (invite.status !== 'ready') return;
     void navigator.clipboard.writeText(invite.url);
     showToast(CONTROL_ICON.clipboard, t.shell.created.inviteCopied);
+    // Confirm IN PLACE as well as in the toast (ADR-0141 §3): the toast says it
+    // happened, the box you tapped should say that you tapped it.
+    setCopied(true);
   };
 
   return (
-    <div className="app" data-mode="plan">
-      <header className="born-head">
-        <div className="born-title">{trip.name}</div>
-        <span className="mode-pill">
-          <Icon name="edit" /> {t.shell.created.modePill}
-        </span>
-      </header>
-
-      <main className="born-body">
+    <main className="born-body birth-born">
+      <div className="birth-arr born-hero" style={{ '--i': 0 } as React.CSSProperties}>
         <div className="born-emoji">{t.shell.created.emoji}</div>
         <h1 className="born-h1">{t.shell.created.title}</h1>
         <p className="born-sub">{t.shell.created.sub}</p>
+      </div>
 
-        <div className="born-card">
-          <div className="ic">{trip.icon ?? DEFAULT_TRIP_ICON}</div>
-          <div>
-            <div className="t">{trip.name}</div>
-            <div className="m">{t.shell.newTrip.draftMeta(trip.destination, days)}</div>
-          </div>
+      {/* The shared card's destination slot. */}
+      <div className="birth-slot" data-slot="born" aria-hidden="true" />
+
+      <div className="birth-arr birth-board-wrap" style={{ '--i': 1 } as React.CSSProperties}>
+        <BirthBoard trip={trip} days={days} />
+      </div>
+
+      {invite.status === 'ready' && (
+        <div
+          className="invite-box birth-arr"
+          style={{ '--i': 2 } as React.CSSProperties}
+          onClick={copyInvite}
+          data-copied={copied ? '' : undefined}
+        >
+          <span className="code" dir="auto">
+            {invite.url}
+          </span>
+          <span className="lbl2">{t.shell.created.inviteLabel}</span>
+          <span className="cp">
+            <Icon name={copied ? CONTROL_ICON.done : CONTROL_ICON.clipboard} />
+          </span>
         </div>
+      )}
+      {invite.status === 'pending' && <p className="born-teach">{t.shell.created.invitePending}</p>}
+      {invite.status === 'failed' && <p className="born-teach">{t.shell.created.inviteFailed}</p>}
+      {invite.status === 'ready' && (
+        <p className="born-teach birth-arr" style={{ '--i': 3 } as React.CSSProperties}>
+          {t.shell.created.teach}
+        </p>
+      )}
 
-        {invite.status === 'ready' && (
-          <div className="invite-box" onClick={copyInvite}>
-            <span className="code" dir="auto">
-              {invite.url}
-            </span>
-            <span className="lbl2">{t.shell.created.inviteLabel}</span>
-            <span className="cp">
-              <Icon name="clipboard" />
-            </span>
-          </div>
-        )}
-        {invite.status === 'pending' && (
-          <p className="born-teach">{t.shell.created.invitePending}</p>
-        )}
-        {invite.status === 'failed' && <p className="born-teach">{t.shell.created.inviteFailed}</p>}
-        {invite.status === 'ready' && <p className="born-teach">{t.shell.created.teach}</p>}
+      <div className="born-cta birth-arr" style={{ '--i': 4 } as React.CSSProperties}>
+        <button className="plan-btn" onClick={onDone}>
+          {t.shell.created.planButton}
+        </button>
+        <button
+          className="later-btn"
+          onClick={() => {
+            showToast(CONTROL_ICON.done, t.shell.created.laterToast);
+            onDone();
+          }}
+        >
+          {t.shell.created.laterButton}
+        </button>
+      </div>
+    </main>
+  );
+}
 
-        <div className="born-cta">
-          <button className="plan-btn" onClick={onDone}>
-            {t.shell.created.planButton}
-          </button>
-          <button
-            className="later-btn"
-            onClick={() => {
-              showToast(CONTROL_ICON.done, t.shell.created.laterToast);
-              onDone();
-            }}
+/** The board's FIRST departure (ADR-0141 §2).
+ *
+ *  Deliberately the same object the zero state renders unpowered and Trip Home
+ *  renders live — so this is that board being switched on, not a new element that
+ *  happens to look like it. Its row is honest content: a brand-new trip's first
+ *  departure IS the trip, so the flaps settle into the start date, the trip's name
+ *  and how long it runs. Nothing decorative is being spelled out. */
+function BirthBoard({ trip, days }: { trip: Trip; days: number }) {
+  const flaps = [
+    trip.startDate.slice(5).replace('-', '.'),
+    trip.name,
+    t.shell.created.boardDays(days),
+  ];
+  return (
+    <section className="birth-board" aria-label={t.shell.created.boardLabel}>
+      <div className="birth-board-top">
+        <span className="live">
+          <i />
+          {t.shell.created.boardLive}
+        </span>
+        <span>{t.shell.created.boardFirst}</span>
+      </div>
+      <div className="birth-flaps" aria-hidden="true">
+        {flaps.map((text, i) => (
+          <span
+            key={i}
+            className="birth-flap"
+            style={
+              { '--i': i, '--flap-step': `${TRIP_BIRTH.FLAP_STEP_MS}ms` } as React.CSSProperties
+            }
           >
-            {t.shell.created.laterButton}
-          </button>
-        </div>
-      </main>
-    </div>
+            <span>{text}</span>
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }

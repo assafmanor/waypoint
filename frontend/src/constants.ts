@@ -641,6 +641,30 @@ export const FILTER_STAGGER_MAX_MS = 220;
 export const LIST_MOVE_MS = 240;
 export const LIST_MOVE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
 
+/** Trip birth's choreography (ADR-0141) — the offsets at which each beat STARTS,
+ *  measured from the moment the server confirms the trip.
+ *
+ *  These are not ramp values and must not be read from `tokens.css`: each beat's own
+ *  duration comes from the ramp (`--t-deliberate` for the card and the chrome,
+ *  `--t-cinematic` for the board), while the numbers below are the *sequence* — when
+ *  one beat starts relative to another. Sequence is what makes the moment read as
+ *  grand; length alone just makes it slow.
+ *
+ *  They deliberately OVERLAP: the chrome starts warming before the card has finished
+ *  travelling, so the screen reads as one event resolving rather than four things
+ *  taking turns. `TOTAL_MS` is when the whole thing is settled — used only to disarm
+ *  the skip affordance, never to gate the outcome. */
+export const TRIP_BIRTH = {
+  /** The card travels and commits at 0 — it is the subject, so nothing precedes it. */
+  CHROME_MS: 300,
+  BOARD_MS: 650,
+  CONTENT_MS: 1150,
+  TOTAL_MS: 1450,
+  /** Per-flap delay for the board's first row settling into place. Three flaps, so
+   *  the row is done well inside the board's own power-on. */
+  FLAP_STEP_MS: 90,
+} as const;
+
 /** Placeholder row icon on the all-trips list (ADR-0033) — `destination` is
  *  free text, no structured country to derive a real flag from. */
 export const DEFAULT_TRIP_ICON = '🧳';
