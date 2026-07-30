@@ -9925,6 +9925,21 @@ body {
         display: none;
       }
 
+      /* 3d · A search result's row badge — the ring silhouette in list form, so the row and
+         the canvas say the same thing about the same object (ADR-0132 §6). */
+      .map-res-badge {
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--card);
+        border: 2px solid var(--ink);
+        color: var(--ink);
+        font-size: 15px;
+      }
+
       /* 4 · THE DROPPED PIN, before it is saved. Soft grammar, because it IS provisional —
          ADR-0011's dashed vocabulary, reused rather than a new colour. */
       .map-pin.pending .pin-b {
@@ -9942,15 +9957,23 @@ body {
       </p>
 
       <!-- ═══════════════ §A THE THREE FLOWS ═══════════════ -->
-      <h2 class="mk-h">§A · שלוש הדרכים, שדה אחד</h2>
+      <h2 class="mk-h">§A · ארבע הדרכים, טופס אחד</h2>
       <p class="mk-sub">
-        לחצו ארוכות על הקנבס כדי להפיל סיכה · הקישו על אתר של גוגל (העיגול האפור) · או בחרו מקום
-        קיים והקישו על העיפרון שליד השם. שימו לב שבשלושת המקרים <em>אותו שדה באותו מקום</em>.
+        לחצו ארוכות על הקנבס · הקישו על אתר של גוגל (העיגול האפור) · הוסיפו תוצאת חיפוש · או בחרו
+        מקום קיים והקישו על העיפרון שליד השם. <strong>בארבעת המקרים אותו טופס</strong> — שם · סמל ·
+        קטגוריה — וכל מה שמשתנה הוא מה שמלא מראש ומה שהכותרת אומרת.
+      </p>
+      <p class="mk-sub">
+        <strong>וזה מחייב שהטופס יהיה הכרטיס ולא שדה בתוך השורה.</strong> הגרסה הראשונה החליפה את
+        השם בשדה <em>בתוך</em> השורה, וזה היה אלגנטי כל עוד הטופס היה שם בלבד; עם סמל וקטגוריה אין
+        לזה מקום בשורה. אז הטופס הוא תמיד הכרטיס, והעיפרון בשורה הוא רק הדרך אליו — מה שגם משאיר
+        את הדרך פתוחה משני המאכסנים, כי הכרטיס עצמו הוא פלט של <code>renderRow</code> (§E).
       </p>
       <div class="mk-toggle" id="flowToggle">
         <button type="button" data-flow="idle" aria-pressed="true">מצב רגיל</button>
         <button type="button" data-flow="drop">אחרי לחיצה ארוכה</button>
         <button type="button" data-flow="goog">אחרי הקשה על אתר בגוגל</button>
+        <button type="button" data-flow="result">הוספת תוצאת חיפוש</button>
         <button type="button" data-flow="rename">שינוי שם למקום קיים</button>
       </div>
       <div class="mk-row">
@@ -9994,70 +10017,43 @@ body {
               aria-hidden="true"
             ></div>
 
-            <!-- THE CARD. One host, three variants. -->
-            <div class="map-placecard map-draft" id="cardDraft" hidden>
-              <label class="map-draft-title" for="mkDraftName">מה יש כאן?</label>
+            <!-- THE FORM. ONE card, four sources. Only `title`, what is pre-filled, and
+                 whether there is a vet link differ — the fields never do. -->
+            <div class="map-placecard map-draft" id="cardForm" hidden>
+              <span class="map-draft-title" id="formTitle">מה יש כאן?</span>
               <div class="map-namefield">
-                <input id="mkDraftName" placeholder="שם המקום" dir="auto" />
-                <button type="button" class="map-nameok" id="mkDraftOk" disabled aria-label="הוספה">
-                  <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.4"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M5 12.6l4.7 4.7L19 7.4" />
-                  </svg>
-                </button>
-                <button type="button" class="map-namecancel" data-close aria-label="ביטול">
-                  <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <input id="formName" placeholder="שם המקום" dir="auto" />
               </div>
-              <p class="map-draft-coords" dir="auto">35.7148, 139.7967</p>
-            </div>
-
-            <div class="map-placecard map-draft" id="cardGoog" hidden>
-              <p class="map-draft-title">המקום שסימנתם</p>
-              <p class="map-draft-hint">גוגל ישלים את השם בהוספה</p>
+              <div class="map-draft-icons" role="group" aria-label="סמל">
+                <button type="button" class="map-draft-ic on">📍</button>
+                <button type="button" class="map-draft-ic">🌇</button>
+                <button type="button" class="map-draft-ic">🍜</button>
+                <button type="button" class="map-draft-ic">⛩️</button>
+                <button type="button" class="map-draft-ic">☕</button>
+                <button type="button" class="map-draft-ic">⋯</button>
+              </div>
+              <div class="choice-grid pills compact" role="group" aria-label="קטגוריה">
+                <button type="button" class="choice-pill">אוכל</button>
+                <button type="button" class="choice-pill">טבע</button>
+                <button type="button" class="choice-pill">ביקור</button>
+                <button type="button" class="choice-pill">לינה</button>
+                <button type="button" class="choice-pill">תחבורה</button>
+              </div>
+              <p class="map-draft-coords" id="formMeta" dir="auto">35.7148, 139.7967</p>
+              <p class="map-draft-hint" id="formHint" hidden>גוגל ישלים את השם בהוספה</p>
               <div class="map-draft-acts">
                 <a
                   class="map-res-out"
+                  id="formVet"
                   href="#"
                   aria-label="פתיחה בגוגל מפות"
                   title="פתיחה בגוגל מפות"
+                  hidden
                 >
-                  <svg
-                    class="icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M14 4h6v6M20 4 11 13M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"
-                    />
-                  </svg>
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4 11 13M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg>
                 </a>
                 <button type="button" class="map-gbtn" data-close>ביטול</button>
-                <button type="button" class="map-addmaybe">הוספה למדף</button>
+                <button type="button" class="map-addmaybe" id="formOk">הוספה למדף</button>
               </div>
             </div>
 
@@ -10106,42 +10102,6 @@ body {
                           </svg>
                         </button>
                       </div>
-                      <div class="map-namefield" id="selField" hidden>
-                        <input id="mkSelName" value="רמן נאגי" dir="auto" />
-                        <button type="button" class="map-nameok" id="mkSelOk" aria-label="שמירה">
-                          <svg
-                            class="icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.4"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="M5 12.6l4.7 4.7L19 7.4" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          class="map-namecancel"
-                          id="mkSelCancel"
-                          aria-label="ביטול"
-                        >
-                          <svg
-                            class="icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2.2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            aria-hidden="true"
-                          >
-                            <path d="M6 18 18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
                       <div class="map-m">
                         <span class="map-tag time" dir="auto">מחר</span>
                         <span class="map-tag">Kabukicho, Shinjuku</span>
@@ -10165,6 +10125,19 @@ body {
                     <div class="map-main">
                       <div class="map-t"><span class="map-name">מלון שינג׳וקו</span></div>
                       <div class="map-m"><span class="map-tag mbadge">על המדף</span></div>
+                    </div>
+                  </div>
+                  <!-- Google's half of the sheet: an unsaved result, in the app's own
+                       grammar. Its add is the FOURTH source into the same form. -->
+                  <div class="map-grouphead">מגוגל</div>
+                  <div class="place" id="resultRow" role="button" tabindex="0">
+                    <div class="map-res-badge" aria-hidden="true">◎</div>
+                    <div class="map-main">
+                      <div class="map-t"><span class="map-name">Ichiran Ramen Shinjuku</span></div>
+                      <div class="map-m"><span class="map-tag">Kabukicho, Shinjuku</span></div>
+                    </div>
+                    <div class="map-right">
+                      <button type="button" class="map-addmaybe" id="resultAdd">אולי</button>
                     </div>
                   </div>
                 </div>
@@ -10470,16 +10443,23 @@ body {
           >
             chosenIcon(event.icon)<br />
             ?? BOOKING_TYPE_ICON[booking.type]<br />
-            ?? chosenIcon(place.icon) &nbsp;← חדש<br />
+            ?? chosenIcon(place.icon) &nbsp;← הוכרע<br />
             ?? iconForCategory(category)<br />
             ?? DEFAULT
           </p>
-          <div class="mk-verdict no">
+          <div class="mk-verdict">
+            <p style="margin: 0 0 8px">
+              <strong>הוכרע (הבעלים, 2026-07-30): <code>Place.icon</code> אמיתי</strong> — עמודה
+              חדשה ומיגרציה, במודע. השיקול שהוכרע לטובתו: הסמל הוא של <em>המקום</em>, ולכן הוא חייב
+              לשרוד מחיקה של הרעיון שדרכו הוא נכתב. האלטרנטיבה (הסמל על
+              <code>MaybeItem</code> הקיים, אפס מיגרציה) מאבדת אותו בדיוק שם.
+            </p>
             <p style="margin: 0">
-              <strong>אבל <code>place.icon</code> הוא עמודה חדשה ומיגרציה</strong>, ולכן זו החלטה
-              ולא פרט: (i) הסמל יושב על <code>MaybeItem</code> הקיים — אפס מיגרציה, אבל מחיקת הרעיון
-              מאבדת את הסמל; (ii) <code>Place.icon</code> אמיתי — הסמל שורד לנצח ובדיוק בתחתית
-              ההיררכיה שתיארת, במחיר מיגרציה + צעד נוסף ב‑5 אתרי קריאה.
+              <strong>ותוצאה אחת שנרשמת כאן כי היא רחבה מהפיצ׳ר:</strong> זה
+              <strong>פוסל מאגר מקומות גלובלי</strong> חוצה־טיולים. סמל שהמשתמש בחר הוא דאטה של
+              הטיול, לא של הישות שגוגל מתארת — ולכן <code>Place</code> נשאר מה שהוא היום, שורה
+              בתוך טיול (<code>@@unique([tripId, googlePlaceId])</code>), ולא רשומה משותפת שרק
+              מוטבת מקאש. אם מישהו יציע קאש כזה בעתיד, זו הסיבה שהוא לא יעבוד.
             </p>
           </div>
         </div>
@@ -10680,22 +10660,63 @@ body {
     <script>
       // mk-* only: enough interaction to judge the flows. No app logic is modelled.
       const $ = (id) => document.getElementById(id);
-      const cards = { drop: $('cardDraft'), goog: $('cardGoog') };
+      // One form, four sources. Everything that varies is data, which is the whole claim.
+      const SOURCES = {
+        drop: {
+          title: 'מה יש כאן?',
+          name: '',
+          meta: '35.7148, 139.7967',
+          hint: false,
+          vet: false,
+          ok: 'הוספה למדף',
+        },
+        goog: {
+          title: 'המקום שסימנתם',
+          name: '',
+          meta: '35.7148, 139.7967',
+          hint: true,
+          vet: true,
+          ok: 'הוספה למדף',
+        },
+        result: {
+          title: 'הוספה לטיול',
+          name: 'Ichiran Ramen Shinjuku',
+          meta: 'Kabukicho, Shinjuku',
+          hint: false,
+          vet: true,
+          ok: 'הוספה למדף',
+        },
+        rename: {
+          title: 'שם ופרטים',
+          name: 'רמן נאגי',
+          meta: 'Kabukicho, Shinjuku',
+          hint: false,
+          vet: false,
+          ok: 'שמירה',
+        },
+      };
       const setFlow = (flow) => {
         for (const b of document.querySelectorAll('#flowToggle button'))
           b.setAttribute('aria-pressed', String(b.dataset.flow === flow));
-        cards.drop.hidden = flow !== 'drop';
-        cards.goog.hidden = flow !== 'goog';
+        const src = SOURCES[flow];
+        $('cardForm').hidden = !src;
+        // 6b is the only source with no marker of its own: a long press lands on bare
+        // canvas. Google's sight is RINGED (its own icon already names it), and a search
+        // result is already a ring on the canvas.
         $('draftPin').style.display = flow === 'drop' ? 'block' : 'none';
-        $('draftRing').style.display = flow === 'goog' ? 'grid' : 'none';
-        const renaming = flow === 'rename';
-        $('selField').hidden = !renaming;
-        $('rowSel').classList.toggle('renaming', renaming);
-        $('selName').parentElement.hidden = renaming;
+        $('draftRing').style.display = flow === 'goog' || flow === 'result' ? 'grid' : 'none';
         if (flow === 'drop') place(196, 470);
         if (flow === 'goog') ring(99, 183);
-        if (flow === 'drop') setTimeout(() => $('mkDraftName').focus(), 40);
-        if (renaming) setTimeout(() => $('mkSelName').focus(), 40);
+        if (flow === 'result') ring(196, 300);
+        $('rowSel').classList.toggle('renaming', flow === 'rename');
+        if (!src) return;
+        $('formTitle').textContent = src.title;
+        $('formName').value = src.name;
+        $('formMeta').textContent = src.meta;
+        $('formHint').hidden = !src.hint;
+        $('formVet').hidden = !src.vet;
+        $('formOk').textContent = src.ok;
+        setTimeout(() => $('formName').focus(), 40);
       };
       for (const b of document.querySelectorAll('#flowToggle button'))
         b.addEventListener('click', () => setFlow(b.dataset.flow));
@@ -10711,7 +10732,7 @@ body {
         pin.style.top = y - 34 + 'px';
         pin.style.insetInlineStart = x - 14 + 'px';
       };
-      // The ring is centred on Google's own icon rather than tip-anchored like a pin.
+      // The ring is centred on what it marks rather than tip-anchored like a pin.
       const ring = (x, y) => {
         const r = $('draftRing');
         r.style.top = y - 14 + 'px';
@@ -10721,12 +10742,12 @@ body {
         const box = pad.getBoundingClientRect();
         const x = e.clientX - box.left;
         const y = e.clientY - box.top;
-        const ring = $('holdring');
-        ring.style.top = y + 'px';
-        ring.style.insetInlineStart = x + 'px';
-        ring.classList.remove('live');
-        void ring.offsetWidth;
-        ring.classList.add('live');
+        const r = $('holdring');
+        r.style.top = y + 'px';
+        r.style.insetInlineStart = x + 'px';
+        r.classList.remove('live');
+        void r.offsetWidth;
+        r.classList.add('live');
         holdTimer = setTimeout(() => {
           place(x, y);
           setFlow('drop');
@@ -10734,20 +10755,13 @@ body {
       });
       for (const ev of ['pointerup', 'pointercancel', 'pointerleave'])
         pad.addEventListener(ev, () => holdTimer && clearTimeout(holdTimer));
-      pad.addEventListener('pointermove', (e) => {
-        if (e.buttons) return;
-      });
 
       $('googPin').addEventListener('click', () => setFlow('goog'));
+      $('resultAdd').addEventListener('click', (e) => {
+        e.stopPropagation();
+        setFlow('result');
+      });
       $('renameBtn').addEventListener('click', () => setFlow('rename'));
-      $('mkSelCancel').addEventListener('click', () => setFlow('idle'));
-      $('mkSelOk').addEventListener('click', () => {
-        $('selName').textContent = $('mkSelName').value || $('selName').textContent;
-        setFlow('idle');
-      });
-      $('mkDraftName').addEventListener('input', (e) => {
-        $('mkDraftOk').disabled = e.target.value.trim() === '';
-      });
       setFlow('idle');
     </script>
   </body>
