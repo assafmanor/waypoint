@@ -325,6 +325,23 @@ export const DRAG_CLICK_SWALLOW_MS = 400;
  *  merely passes over must not open. */
 export const DRAG_DAY_DWELL_MS = 700;
 
+/** ── AN ANCHORED PANEL'S PLACEMENT (ADR-0144) ────────────────────────────────────────
+ *  `IconPicker` opens below its trigger, which is right in a form that scrolls under a
+ *  header — and wrong in the Map's place card, which is anchored to the BOTTOM of the
+ *  canvas: the panel ran off the screen and the report was that it is cut off. So the
+ *  side is **measured** rather than assumed, and the panel is capped to the room it has.
+ *
+ *  `GAP` is the 6px the CSS already puts between trigger and panel and must stay in step
+ *  with it; `EDGE` is how close to the viewport's own edge a panel may come.
+ *
+ *  **There is deliberately no minimum height.** A floor was tried and it was the bug again:
+ *  on a 360×640 Android with the keyboard up neither side has 180px, so a floor made the
+ *  panel taller than the space and clipped its own title — which is the report, moved. The
+ *  cap is what the side HAS, and a short panel scrolls its grid (a region that already
+ *  scrolls) rather than being cut. */
+export const ICON_PANEL_GAP_PX = 6;
+export const ICON_PANEL_EDGE_PX = 8;
+
 /** The 5-hue Map pin/badge palette (ADR-0109 §3 / ADR-0110 §2). The `--cat-*`
  *  tokens carry the actual colours (styles/tokens.css); this is the hue key. */
 export type PinHue = 'food' | 'lodging' | 'transit' | 'leisure' | 'services';

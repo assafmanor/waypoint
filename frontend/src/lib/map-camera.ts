@@ -29,6 +29,18 @@ export interface LatLng {
   lng: number;
 }
 
+/** **Somewhere the camera has been asked to go, once, and how.** The two halves of
+ *  ADR-0129 §1 in one value: `frame: true` is the fit — the place among its neighbours,
+ *  zoom included — and `frame: false` is a pan at the zoom you are already at.
+ *
+ *  The intent rides IN the value rather than beside it as a second prop, because the two
+ *  must change together and a pair that has to stay in step is the fragility ADR-0121 §4's
+ *  memo rules exist to avoid. It is spent once, so a fresh object is what re-asks. */
+export interface MapArrival {
+  at: LatLng;
+  frame: boolean;
+}
+
 /** A viewport / extent, in the same shape `google.maps.LatLngBoundsLiteral` uses,
  *  so the hook hands it straight to `fitBounds` with no adapter. */
 export interface MapBounds {

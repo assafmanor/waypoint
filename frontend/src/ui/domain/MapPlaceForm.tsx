@@ -162,12 +162,19 @@ export function MapPlaceForm({
               typing, and a Latin name typed into it still reads left-to-right because bidi
               resolves the RUN, not the field (ADR-0118 — whose rule is against `dir="ltr"`,
               and whose "or no `dir`" is this). */}
+          {/* **AND NO `autoFocus`** (owner, on a phone: _"it starts by opening the keyboard and
+              immediately closing"_). The gesture that opens this form ends with a finger LIFTING
+              off the canvas, so a field focused during the press loses focus to the release: the
+              keyboard arrived and left in one motion, which reads as a glitch rather than as
+              help. It is the wrong default on its own terms too — the card is landing, the camera
+              is moving and the sheet is standing down, and taking half the screen during that is
+              the "form breathes" failure ADR-0148 §5 refuses one layer up. Tapping the field is
+              one tap, and it is the tap that means it. */}
           <input
             id={nameId}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={t.map.make.namePlaceholder}
-            autoFocus
             enterKeyHint="done"
             onKeyDown={(e) => {
               if (e.key === 'Enter') confirm();

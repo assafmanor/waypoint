@@ -241,6 +241,20 @@ describe('MapPlaceForm — the card’s chrome', () => {
     }
   });
 
+  // **AND IT DOES NOT TAKE THE FOCUS** (owner, on a phone: _"it starts by opening the keyboard
+  // and immediately closing"_). The gesture that opens this form ends with a finger lifting off
+  // the canvas, so a field focused during the press loses focus to the release — the keyboard
+  // arrived and left in one motion. It is also the wrong default while the card is landing, the
+  // camera is moving and the sheet is standing down. Asserted for all three sources, since an
+  // `autoFocus` is one word and would come back on any one of them.
+  it('does not take the focus, so no keyboard opens with the card', () => {
+    for (const title of [t.map.make.dropTitle, t.map.make.resultTitle, t.map.make.renameTitle]) {
+      cleanup();
+      mount({ title });
+      expect(document.activeElement, `${title} stole the focus`).toBe(document.body);
+    }
+  });
+
   it('shows the failure through the field’s own error slot, announced', () => {
     render(
       wrapNav(

@@ -8,7 +8,7 @@
 // Neutral chrome — selection is an ink fill, never a semantic hue (amber/teal/
 // violet stay reserved). Controlled: the host owns the value. Design ref:
 // mockups/event-item-icons-v1.html.
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   ICON_SET,
   flagFromCode,
@@ -18,6 +18,8 @@ import {
 } from '@waypoint/shared';
 import { useBackLayer } from '../state/nav-state';
 import { useExitTransition } from '../lib/useExitTransition';
+import { useKeyboardInset } from '../lib/useKeyboardInset';
+import { ICON_PANEL_EDGE_PX, ICON_PANEL_GAP_PX } from '../constants';
 import { t } from '../i18n/he';
 
 const ALL = 'all';
@@ -50,8 +52,44 @@ export function IconPicker({
   const [activeCat, setActiveCat] = useState<string>(ALL);
   const [query, setQuery] = useState('');
   const wrapRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const tripMode = destinations != null;
+  // The keyboard's overlap, because this panel's worst host is a form with the field
+  // focused — and on iOS the viewport does not shrink for it, so the room below is a lie
+  // unless something asks (ADR-0148 §4). Second consumer of the hook that ADR built.
+  const keyboardInset = useKeyboardInset();
+  /** Which side the panel opens to, and the room it has there. Measured on open, because
+   *  the answer is a property of WHERE THE TRIGGER IS: below is right in a scrolling form
+   *  and wrong in the Map's bottom-anchored card, and a per-host override would be the
+   *  same one-off twice (rule 8). `null` until measured, which renders the default. */
+  const [place, setPlace] = useState<{ up: boolean; room: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPlace(null);
+      return;
+    }
+    const wrap = wrapRef.current;
+    const panel = panelRef.current;
+    if (!wrap || !panel) return;
+    const box = wrap.getBoundingClientRect();
+    const floor = window.innerHeight - keyboardInset - ICON_PANEL_EDGE_PX;
+    const below = floor - box.bottom - ICON_PANEL_GAP_PX;
+    const above = box.top - ICON_PANEL_GAP_PX - ICON_PANEL_EDGE_PX;
+    // The panel's own height, read while it is still at its natural size — so the question
+    // is "does what I am drawing fit below", not "does some constant fit". Flip only when
+    // above is genuinely better: a panel that fits below stays below, which is what every
+    // other host of this component already gets right.
+    const wanted = panel.offsetHeight;
+    const up = below < wanted && above > below;
+    // Capped to what that side HAS, with no floor under it: a floor is how the first pass
+    // reintroduced the very clipping this fixes on the one target where neither side is
+    // generous (360×640 with a keyboard). Short is fine — the grid scrolls; cut is not.
+    setPlace({ up, room: Math.round(Math.max(up ? above : below, 0)) });
+    // Re-measured when the keyboard arrives or leaves: that is the one thing that changes
+    // the room WITHOUT closing the panel.
+  }, [open, keyboardInset]);
 
   // **THE PANEL IS A BACK LAYER** (owner, session 176: _"when there's an implicit way to go
   // back (closing a modal by tapping outside it for example) we should also treat system back
@@ -128,7 +166,12 @@ export function IconPicker({
 
       {open && (
         <div
-          className={closing ? 'icon-panel is-closing' : 'icon-panel'}
+          ref={panelRef}
+          className={(closing ? 'icon-panel is-closing' : 'icon-panel') + (place?.up ? ' up' : '')}
+          // The cap, so the panel can never be cut off on the side it chose — it grows from
+          // the trigger's edge and its grid scrolls, which is the shape the head/foot of the
+          // Map's own form already takes (ADR-0148 §1). Absent until measured.
+          style={place ? ({ '--icon-panel-room': `${place.room}px` } as CSSProperties) : undefined}
           id={panelId}
           role="dialog"
           aria-label={t.iconPicker.title}
