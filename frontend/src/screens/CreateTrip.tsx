@@ -8,7 +8,7 @@
 // mockup (#s-born) is a beat to get the invite link in front of the creator
 // immediately — plan-violet chrome since it's already "inside" the new trip.
 //
-// ── Trip birth (ADR-0141, mockups/motion-trip-birth-v1.html) ────────────────
+// ── Trip birth (ADR-0142, mockups/motion-trip-birth-v1.html) ────────────────
 // The two screens are ONE component and one `.app` root, which is what lets the
 // moment be a transition rather than a swap. Three things depend on it:
 //
@@ -189,7 +189,7 @@ export function CreateTrip() {
       <main className="new-body birth-form">
         {/* One `--i` step per group, so the form ASSEMBLES rather than appearing
             whole — and it is finished before a fast typist reaches the first field
-            (ADR-0141 §1). The point is that it was built, not that you waited. */}
+            (ADR-0142 §1). The point is that it was built, not that you waited. */}
         <p className="new-lede birth-in" style={{ '--i': 0 } as React.CSSProperties}>
           {t.shell.newTrip.lede}
         </p>
@@ -284,7 +284,7 @@ export function CreateTrip() {
         <div className="new-cta birth-in" style={{ '--i': 4 } as React.CSSProperties}>
           {/* U-13: the CTA is always visible, disabled with a reason until the
               form is complete, so a first-timer always sees the next step. It also
-              ARMS when the form completes (ADR-0141 §1) — the disabled→enabled flip
+              ARMS when the form completes (ADR-0142 §1) — the disabled→enabled flip
               is a real state change, and it is the app saying "you're done". */}
           <button
             className="create-btn"
@@ -451,7 +451,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
     if (invite.status !== 'ready') return;
     void navigator.clipboard.writeText(invite.url);
     showToast(CONTROL_ICON.clipboard, t.shell.created.inviteCopied);
-    // Confirm IN PLACE as well as in the toast (ADR-0141 §3): the toast says it
+    // Confirm IN PLACE as well as in the toast (ADR-0142 §3): the toast says it
     // happened, the box you tapped should say that you tapped it.
     setCopied(true);
   };
@@ -513,7 +513,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
   );
 }
 
-/** The board's FIRST departure (ADR-0141 §2).
+/** The board's FIRST departure (ADR-0142 §2).
  *
  *  Deliberately the same object the zero state renders unpowered and Trip Home
  *  renders live — so this is that board being switched on, not a new element that

@@ -109,11 +109,11 @@ describe('CreateTrip — the auto-suggested name and flag (ADR-0032/ADR-0038)', 
   });
 });
 
-// ── Trip birth (ADR-0141) ────────────────────────────────────────────────────
+// ── Trip birth (ADR-0142) ────────────────────────────────────────────────────
 // The CHOREOGRAPHY is what can be logically wrong: which beat has landed, whether a
 // skip lands all of them, and whether reduced motion still reaches the same outcome.
 // How it LOOKS is CSS and a human pass; these assert the state machine driving it.
-describe('CreateTrip — the birth sequence (ADR-0141)', () => {
+describe('CreateTrip — the birth sequence (ADR-0142)', () => {
   beforeEach(() => setSimulatedNow(NOW));
   afterEach(() => {
     setSimulatedNow(null);

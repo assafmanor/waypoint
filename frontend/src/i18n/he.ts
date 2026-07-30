@@ -699,7 +699,7 @@ export const t = {
       planButton: 'לתכנון הטיול',
       laterButton: 'אשלח את הלינק אחר כך',
       laterToast: 'הלינק מחכה בהגדרות הטיול',
-      // Trip birth's board — its first departure is the trip itself (ADR-0141 §2).
+      // Trip birth's board — its first departure is the trip itself (ADR-0142 §2).
       boardLabel: 'לוח הטיול',
       boardLive: 'הלוח דולק',
       boardFirst: 'ההמראה הראשונה',

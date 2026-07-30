@@ -813,49 +813,6 @@
 }
 
 /* the draft preview — soft grammar: provisional until created */
-.draft {
-  margin-top: 24px;
-  border: 1.5px dashed var(--soft-line);
-  background: repeating-linear-gradient(-45deg, var(--card) 0 9px, var(--screen) 9px 18px);
-  border-radius: 16px;
-  padding: 14px 15px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.draft .ic {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: var(--paper);
-  display: grid;
-  place-items: center;
-  font-size: 20px;
-  flex: 0 0 auto;
-}
-.draft .t {
-  font-family: var(--font-head);
-  font-size: 16px;
-  color: var(--ink);
-}
-.draft .t .ghost {
-  color: var(--faint);
-}
-.draft .m {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.draft .tag {
-  margin-inline-start: auto;
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--muted);
-  background: rgba(22, 35, 61, 0.06);
-  border-radius: 6px;
-  padding: 2px 7px;
-}
 
 .new-cta {
   margin-top: auto;
@@ -947,36 +904,6 @@
   font-size: 14px;
   margin-top: 6px;
   line-height: 1.55;
-}
-.born-card {
-  margin-top: 20px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  border-radius: 16px;
-  padding: 14px 15px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: start;
-}
-.born-card .ic {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  background: var(--paper);
-  display: grid;
-  place-items: center;
-  font-size: 20px;
-  flex: 0 0 auto;
-}
-.born-card .t {
-  font-family: var(--font-head);
-  font-size: 16px;
-}
-.born-card .m {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
 }
 .invite-box {
   display: flex;
@@ -1939,7 +1866,7 @@
    `[data-mode='plan']` (ui/domain/day-strip.css). */
 
 /* ============================================================
-   TRIP BIRTH (ADR-0141, mockups/motion-trip-birth-v1.html)
+   TRIP BIRTH (ADR-0142, mockups/motion-trip-birth-v1.html)
 
    The creation form and the born screen are ONE `.app` root, so the moment is a
    transition rather than a swap: one header that WARMS, one card that TRAVELS, and
