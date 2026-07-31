@@ -1,5 +1,4 @@
-// DayStrip — the header day-strip (design-language: DayStrip). Horizontal day
-// pills currently inline in App.tsx's Header. Today keeps an amber anchor
+// DayStrip — the header day-strip (design-language: DayStrip). Today keeps an amber anchor
 // wherever you browse (Trip mode); a selected past day is a neutral highlight, a
 // future day violet (plan-ahead); Plan mode has no "now", so selection is violet
 // and empty days show the dashed red-number gap marker. The pill-state logic
@@ -7,12 +6,18 @@
 // pre-derived by the caller (locale-aware). Touch targets ≥44px wide.
 //
 // Presentational only: days + selection + callback via props; no trip-state. The
-// day-scope ribbon under the strip stays in the header (it's not a pill).
+// anchor slot at the strip's leading edge stays in the header (it's not a pill).
+//
+// **The month is a divider between pills, not a row above them** (ADR-0149 §6).
+// It was a row of its own — ~22px, empty across most of its width — which is a
+// row of chrome bought for a caption; inline it also chunks a long trip visually.
+// The pill itself is exactly 44×44, weekday letter over the number, so the touch
+// floor is met by GEOMETRY rather than by padding around a smaller box.
 //
 // Auto-scroll: the selected pill is centered in the strip on mount and on every
 // selection change, mirroring DayView's now-line centering (ADR-0027/0043) so a
 // trip with many days-before never leaves the active pill clipped at the edge.
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { prefersReducedMotion } from '../../lib/motion';
 import './day-strip.css';
 
@@ -23,7 +28,8 @@ export interface DayStripDay {
   dayOfMonth: string;
   /** Narrow weekday letter (locale-derived by the caller). */
   letter: string;
-  /** Month name shown above the first pill of a new month; omit otherwise. */
+  /** Month name — drawn as a divider BEFORE the first pill of a new month; omit
+   *  otherwise. */
   monthLabel?: string;
   /** Plan-mode empty-day marker (dashed + red number). Ignored in Trip mode. */
   hasEvents?: boolean;
@@ -117,8 +123,13 @@ export function DayStrip({
   return (
     <div className="wp-daystrip" data-mode={mode}>
       {days.map((d) => (
-        <div key={d.date} className="wp-daypill-wrap">
-          {d.monthLabel && <span className="wp-month-label">{d.monthLabel}</span>}
+        <Fragment key={d.date}>
+          {d.monthLabel && (
+            <div className="wp-monthdiv" aria-hidden="true">
+              <i />
+              <span>{d.monthLabel}</span>
+            </div>
+          )}
           <button
             ref={d.date === selected ? selectedRef : undefined}
             type="button"
@@ -130,12 +141,12 @@ export function DayStrip({
             aria-pressed={d.date === selected && !allScope}
             data-day-pill={dragging ? d.date : undefined}
           >
-            {d.letter}
+            <span className="l">{d.letter}</span>
             <span className="n" dir="auto">
               {d.dayOfMonth}
             </span>
           </button>
-        </div>
+        </Fragment>
       ))}
     </div>
   );

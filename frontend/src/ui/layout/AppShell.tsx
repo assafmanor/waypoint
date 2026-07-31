@@ -1,4 +1,5 @@
-import type { Key, ReactNode } from 'react';
+import { useState, type Key, type ReactNode } from 'react';
+import { useCondenseOnScroll } from '../../lib/chrome-condense';
 import { cx } from './shared';
 
 /** The body modifier a surface passes as `bodyClassName` to own its own layout
@@ -15,6 +16,18 @@ export const BODY_FULLBLEED = 'is-fullbleed';
  *  `BODY_FULLBLEED` is: the shell is told what layout the surface wants, never what
  *  the surface is doing (which is the "search-mode flag" ADR-0101 refused). */
 export const CHROME_RECLAIMED = 'reclaimed';
+
+/** The `chrome` value a surface passes to open with **row 1 already lifted out** —
+ *  the layout layer's third surface-driven modifier (ADR-0149 §7; styled in
+ *  App.css). Chrome the body normally condenses by being scrolled, declared as a
+ *  resting state instead.
+ *
+ *  Its one consumer is the rendered Map, and it is not a shortcut there: that
+ *  body is `BODY_FULLBLEED`, so it **never scrolls**, which makes the scroll
+ *  trigger structurally unavailable on the one surface whose scarce axis is
+ *  height (ADR-0121 §5 / ADR-0126). Same rule as its two siblings — the shell is
+ *  told what layout the surface wants, never what the surface is doing. */
+export const CHROME_CONDENSED = 'condensed';
 
 export type AppShellProps = {
   /** Top chrome region — the in-trip `<Header>` (a `<header className="header">`). */
@@ -33,9 +46,12 @@ export type AppShellProps = {
   mode?: string;
   /** Mode-switch transition state, applied as `data-switching` (omitted when unset). */
   switching?: string;
-  /** Chrome state, applied as `data-chrome` (omitted when unset). `CHROME_RECLAIMED`
-   *  is the only value: the header and nav go off screen and the body pays the
-   *  safe-area insets they were paying (ADR-0132 §2/§3). Both slots stay MOUNTED. */
+  /** Chrome state a SURFACE declares, applied as `data-chrome` (omitted when unset).
+   *  `CHROME_RECLAIMED` takes the header and nav off screen with the body paying the
+   *  safe-area insets they were paying (ADR-0132 §2/§3); `CHROME_CONDENSED` opens
+   *  with the header's identity row already lifted out (ADR-0149 §7). Both slots stay
+   *  MOUNTED either way. Unset leaves the chrome to the body's own scroll, which
+   *  condenses it below. */
   chrome?: string;
   className?: string;
   /** Extra classes on `<main className="body">`. The one in use today is
@@ -65,15 +81,22 @@ export function AppShell({
   className,
   bodyClassName,
 }: AppShellProps) {
+  // Scrolling the body condenses the chrome (ADR-0149 §7). It lives HERE, not in
+  // the header, because the body is the thing being scrolled and this layer owns
+  // it — the header would have to reach out of itself to find the element. A
+  // surface's own declaration wins: `reclaimed` has no chrome left to condense,
+  // and `condensed` is already the answer.
+  const [bodyEl, setBodyEl] = useState<HTMLElement | null>(null);
+  const scrolledPast = useCondenseOnScroll(bodyEl);
   return (
     <div
       className={cx('app', className)}
       data-mode={mode}
       data-switching={switching}
-      data-chrome={chrome}
+      data-chrome={chrome ?? (scrolledPast ? CHROME_CONDENSED : undefined)}
     >
       {header}
-      <main className={cx('body', bodyClassName)} key={bodyKey}>
+      <main className={cx('body', bodyClassName)} key={bodyKey} ref={setBodyEl}>
         {children}
       </main>
       {nav}

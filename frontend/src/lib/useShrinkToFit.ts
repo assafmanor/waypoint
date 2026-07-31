@@ -34,11 +34,16 @@ function px(value: string): number {
 }
 
 /** The laid-out width of everything inside `el` — children included, since a
- *  Range over the contents spans them all. */
+ *  Range over the contents spans them all.
+ *
+ *  Optional-called because an environment with no layout engine (jsdom, and this
+ *  app's whole unit suite) does not implement it. Zero is the right answer there:
+ *  nothing is laid out, so nothing overflows, and the loop leaves the size alone
+ *  rather than shrinking to the floor against a measurement that does not exist. */
 function textWidth(el: HTMLElement): number {
   const range = document.createRange();
   range.selectNodeContents(el);
-  return range.getBoundingClientRect().width;
+  return range.getBoundingClientRect?.().width ?? 0;
 }
 
 /** The room the text has, in the same sub-pixel units. The rect is the border

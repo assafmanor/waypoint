@@ -40,7 +40,13 @@ import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
 import { ConfirmProvider } from './ui/ConfirmDialog';
-import { AppShell, BODY_FULLBLEED, CHROME_RECLAIMED, TripHandoffLayer } from './ui/layout';
+import {
+  AppShell,
+  BODY_FULLBLEED,
+  CHROME_CONDENSED,
+  CHROME_RECLAIMED,
+  TripHandoffLayer,
+} from './ui/layout';
 import { useTripHandoffTarget } from './lib/trip-handoff';
 import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
@@ -74,13 +80,14 @@ import { getNow, useClock } from './lib/useClock';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   DEFAULT_TRIP_ICON,
-  DOT_SEPARATOR,
   MS_PER_DAY,
   OUTBOX_RETRY_MS,
+  PEOPLE_STACK_CAP,
   TABS,
+  TRIP_NAME_FIT,
   type TabId,
 } from './constants';
-import { daysUntilStart, type Mode } from './lib/mode';
+import { type Mode } from './lib/mode';
 import { addDays, monthLabelFor } from './lib/time';
 import { liveToday } from './lib/places';
 import { t } from './i18n/he';
@@ -91,6 +98,7 @@ import { RosterSheet } from './ui/RosterSheet';
 import { ltrIsolate } from './lib/bidi';
 import { readDurationMs } from './lib/motion';
 import { memberCluster } from './lib/member-cluster';
+import { useNarrowScreen } from './lib/useMediaQuery';
 const UserSettings = lazy(() => import('./screens/UserSettings'));
 const UserPicture = lazy(() => import('./screens/UserPicture'));
 
@@ -123,39 +131,77 @@ function Placeholder({ tab, mode }: { tab: TabId; mode: Mode }) {
 // reachable mode — there's nothing to switch, and the departure board stays
 // scarce (ADR-0033). The countdown-to-departure lives on Plan Home's prep
 // dashboard (T-055), not here.
+//
+// **It rides the DAY row, and it is icons-only** (ADR-0149 §3). The position is
+// not about space: row 1 lifts out when the chrome condenses, and the Map opens
+// condensed, so a toggle in row 1 would be unreachable on a whole tab. Icons-only
+// is about weight rather than width — measured, it buys no extra day pill — and
+// mode identity still rides three channels (chrome hue, drafting grid, the fill's
+// position in the pill) where design-language requires two. The words stay as each
+// button's accessible name.
 function ModeToggle() {
   const { mode, phase, setOverride } = useMode();
   if (phase !== 'live') return null;
   return (
-    <div className="modebar">
-      <div className="toggle">
-        <button className={mode === 'plan' ? 'on' : ''} onClick={() => setOverride('plan')}>
-          <Icon name="edit" /> {t.mode.plan}
-        </button>
-        <button className={mode === 'trip' ? 'on' : ''} onClick={() => setOverride('trip')}>
-          <Icon name="navigate" /> {t.mode.trip}
-        </button>
-      </div>
+    <div className="hdr-mode" role="group" aria-label={t.mode.group}>
+      <button
+        className={mode === 'plan' ? 'on' : ''}
+        onClick={() => setOverride('plan')}
+        aria-label={t.mode.plan}
+        aria-pressed={mode === 'plan'}
+      >
+        <span className="p">
+          <Icon name="edit" />
+        </span>
+      </button>
+      <button
+        className={mode === 'trip' ? 'on' : ''}
+        onClick={() => setOverride('trip')}
+        aria-label={t.mode.trip}
+        aria-pressed={mode === 'trip'}
+      >
+        <span className="p">
+          <Icon name="navigate" />
+        </span>
+      </button>
     </div>
   );
 }
 
-function Header({
+// **The in-trip top bar, in two rows** (ADR-0149). It stacked five — a centred mode
+// bar, an identity row, a status region, the day strip and a day-scope ribbon — at
+// 250px resting and 321px off today, which is a third of the viewport before the
+// body starts. Now: row 1 answers "where am I and who is here", row 2 "which day",
+// at 160px in every state.
+//
+// Two of the things that read as clanky were layout, not animation: the ribbon
+// (42px) and the sync badges (~30px) were IN FLOW, so they pushed the body every
+// time they appeared. Neither does now — the ribbon became a fixed-width anchor
+// slot with two cross-faded states, and offline/pending became a badge positioned
+// on the trip glyph. Nothing in this header changes height.
+//
+// Exported for `Header.test.tsx` only — the trip shell is its one caller.
+export function Header({
   onSelectDay,
   onOpenSwitcher,
-  onOpenAccount,
-  onOpenRoster,
+  onOpenPeople,
   onOpenSettings,
   allScope,
+  otherTripCount = 0,
 }: {
   onSelectDay: (date: string) => void;
   onOpenSwitcher: () => void;
-  onOpenAccount: () => void;
-  onOpenRoster: () => void;
+  onOpenPeople: () => void;
   onOpenSettings: () => void;
   /** Map all-days scope is active (ADR-0110 §4): the strip drops its filled
    *  selection while still anchoring today. */
   allScope?: boolean;
+  /** How many OTHER trips this account has. Drives the deck cue and the `swap`
+   *  mark — absent at one trip, which is the common case: no deck, no swap,
+   *  nothing in the chrome suggesting anywhere else to be (ADR-0149 §2, the same
+   *  "no source, no control" rule as ADR-0045 / ADR-0109 §6). The chip itself
+   *  still navigates, so app-shell.md §5's single-trip path to `/trips` survives. */
+  otherTripCount?: number;
 }) {
   const { trip, users, zoneEvidence, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
@@ -168,22 +214,31 @@ function Header({
   // day-selector cue from mockups/plan-mode-v1.html — a gap to go fill. DayStrip
   // reads this per-day as `hasEvents`.
   const datesWithEvents = new Set(events.map((e) => e.date));
-  const { targetRef: tripNameRef, containerRef: tripNameWrapRef } = useShrinkToFit<
+  // The chip is the container, not a wrapper around it: its width comes from
+  // `flex: 1 1 0` against its siblings, never from its own content, so observing it
+  // can't feed back into the font-size it is being resized for. That is also what
+  // makes the negotiation the hook's comment describes actually happen — a member
+  // joining widens the stack, which narrows the chip, which re-fits the name.
+  const { targetRef: tripNameRef, containerRef: tripChipRef } = useShrinkToFit<
     HTMLSpanElement,
-    HTMLDivElement
-  >(trip.name);
+    HTMLButtonElement
+  >(trip.name, TRIP_NAME_FIT);
   // The receiving end of the trip handoff (ADR-0140 §7): when this shell was reached by
   // picking the trip out of the all-trips list, its glyph is already in the air, and the
-  // pill's own copy stays hidden until it lands.
+  // chip's own copy stays hidden until it lands. The chip is smaller than the pill it
+  // replaced, which changes nothing here — the landing rect is MEASURED off this element
+  // (`claimTripHandoff`), never written down.
   const handoff = useTripHandoffTarget(trip.id);
-  // The account avatar (ringed, opens the account sheet) already shows "me" —
-  // the member cluster is everyone else, capped with a "+N" overflow bubble
-  // (app-shell.md §6, PR #57).
-  const {
-    visible: visibleMembers,
-    overflow: overflowMembers,
-    show: showCluster,
-  } = memberCluster(users, me?.user.id);
+  // One stack, led by your own ring: the member cluster and the account avatar were
+  // two adjacent near-identical circles doing different things (ADR-0149 §4). It
+  // draws `stackCap` circles including you, so the co-members it can show is one
+  // fewer — and one fewer again on a narrow phone, where the row is tightest.
+  const stackCap = useNarrowScreen() ? PEOPLE_STACK_CAP.NARROW : PEOPLE_STACK_CAP.WIDE;
+  const { visible: visibleMembers, overflow: overflowMembers } = memberCluster(
+    users,
+    me?.user.id,
+    stackCap - 1,
+  );
   // `navigator.onLine` (T-013) misses cases like a hard reload where the boot
   // fetch itself fails but the browser's online flag never flips (some
   // environments' 'offline' event is unreliable) — usingCachedSnapshot (T-058)
@@ -227,19 +282,26 @@ function Header({
   // fact about the trip and the clock, not about which surface you're looking at:
   // switching to Plan mode to do some building must not change "now".
   const today = liveToday(now.getTime(), zoneEvidence);
-  // Day-scope context ribbon (ADR-0029/0043): only in Trip mode, only off today.
-  const dayScope =
-    mode === 'trip' && activeDate !== today ? (activeDate < today ? 'past' : 'future') : null;
+  // The anchor slot's two states (ADR-0149 §5, replacing ADR-0029/0043's ribbon):
+  // on today it reads the trip's progress, off it becomes the way back. Only in
+  // Trip mode — Plan mode has no "now" to return to.
+  const offToday = mode === 'trip' && activeDate !== today;
+  // Offline and pending resolve by themselves, so they stay a passive mark on the
+  // glyph (an exception indicator, silent when synced — ADR-0092). `failed` is the
+  // one sync state a person can act on and ADR-0080 requires a path to the
+  // dead-letter sheet that never clears, so it gets a real control instead: the
+  // chip navigates away, which means the badge cannot be that path.
+  const passiveSync = offline ? 'offline' : pendingCount > 0 ? 'pending' : null;
   return (
     <header className="header mode-chrome" data-mode={mode}>
-      <ModeToggle />
-      <div className="trip-row">
-        <div className="trip-name-wrap" ref={tripNameWrapRef}>
-          <button
-            className="trip-name-btn"
-            onClick={onOpenSwitcher}
-            aria-label={t.shell.switcher.title}
-          >
+      <div className="hdr-top">
+        <button
+          ref={tripChipRef}
+          className="hdr-trip"
+          onClick={onOpenSwitcher}
+          aria-label={t.shell.switcher.title}
+        >
+          <span className="trip-glyph">
             <span
               ref={handoff.ref}
               className={'trip-icon' + (handoff.landing ? ' is-handoff' : '')}
@@ -247,123 +309,143 @@ function Header({
             >
               {trip.icon ?? DEFAULT_TRIP_ICON}
             </span>
-            <span ref={tripNameRef} className="trip-name">
-              {trip.name}
-            </span>
-            <span className="chev">
-              <Icon name="caret" dir="down" />
-            </span>
-          </button>
-          <div className="trip-sub">
-            {trip.destination}
-            <span className="dot">{DOT_SEPARATOR}</span>
-            {(() => {
-              // Plan mode leads with the countdown to departure; once the trip
-              // has started (real or an override peeking at Plan) fall back to
-              // "day X of Y" — daysUntilStart is null then anyway.
-              const daysToGo = mode === 'plan' ? daysUntilStart(trip, now) : null;
-              return daysToGo === null
-                ? t.header.dayOf(dayNumber, total)
-                : t.header.leavingIn(daysToGo);
-            })()}
-          </div>
-        </div>
-        <div className="header-actions">
-          {/* A real control, not a `title` (ADR-0133 §9): hover is a desktop luxury
-              (root rule 6 / ADR-0017), and the cap left an inert `+N` hiding most of
-              the group. One tap now lists everyone, which is what makes the cap a
-              rendering detail again rather than a truncation.
-
-              ABSENT when you are the only member, not empty. The cluster renders
-              `others`, so on a solo trip it drew nothing — leaving an invisible ~8×44
-              tap target that opened a roster listing only you, which the account
-              avatar beside it already shows. Same rule as every other derived control
-              here: no source, no control (ADR-0045 / ADR-0109 §6). The party still
-              lives in trip settings, which is also where the invite is. */}
-          {showCluster && (
-            <button
-              className="avatars-btn"
-              onClick={onOpenRoster}
-              aria-label={t.settings.rosterOpen(users.length)}
-            >
-              <span className="avatars">
-                {overflowMembers.length > 0 && (
-                  /* `ltrIsolate` so the sign stays in front of the digits — bare
-                     `+{n}` rendered as `n+` in the RTL chrome (ADR-0118 / §10). */
-                  <span className="av more">{ltrIsolate(`+${overflowMembers.length}`)}</span>
-                )}
-                {visibleMembers.map((u) => (
-                  <Avatar key={u.id} person={u} size="inherit" className="av" />
-                ))}
+            {/* The deck: one card edge peeking behind the glyph. It says "there are
+                others like this one" — LATERAL, where a back arrow would say this
+                screen sits underneath something, which ADR-0033's landing rule
+                contradicts (a live trip opens directly). Visible without a tap,
+                which is the whole point: discovery cannot be fixed by something you
+                must tap to discover. */}
+            {otherTripCount > 0 && <span className="hdr-deck" aria-hidden="true" />}
+            {passiveSync && (
+              <span className="hdr-sync-badge" data-state={passiveSync} aria-hidden="true">
+                <Icon name={passiveSync === 'offline' ? 'offline' : 'sync'} />
               </span>
-            </button>
+            )}
+          </span>
+          <span ref={tripNameRef} className="trip-name">
+            {trip.name}
+          </span>
+          {otherTripCount > 0 && (
+            <span className="hdr-swap" aria-hidden="true">
+              <Icon name="swap" />
+            </span>
           )}
-          {me && (
-            <Avatar
-              person={me.user}
-              size="inherit"
-              className="av account-btn"
-              onClick={onOpenAccount}
-              label={t.shell.account.title}
-            />
-          )}
-          <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
-            <Icon name="settings" />
-          </button>
-        </div>
-      </div>
-      {/* Connectivity / sync status is a polite live region so a screen reader
-          announces going offline, queued writes, and failed syncs (F-10). */}
-      <div role="status" aria-live="polite">
-        {offline && (
-          <div className="offline-badge">
-            <Icon name="offline" /> {t.header.offlineNow}
-          </div>
-        )}
-        {pendingCount > 0 && (
-          <div className="offline-badge">
-            <Icon name="sync" /> {t.header.pendingSync(pendingCount)}
-          </div>
-        )}
-        {/* Persistent failed-summary → review/retry sheet (U-04, ADR-0080). Unlike
-            the old badge it never clears on a timer or tap-to-dismiss: it opens the
-            dead-letter sheet where each rejected write is retried or discarded, so a
-            rejected write can't silently vanish at the next resync. */}
+        </button>
+        {/* ADR-0080's persistent affordance, in its new position: a `--miss` control
+            that appears only when a write was rejected, and never clears on a timer
+            or a tap-to-dismiss. `--miss` because it is a status asking for action —
+            the one thing in this bar allowed a semantic hue of its own. */}
         {syncFailures.length > 0 && (
           <button
             type="button"
-            className="offline-badge sync-failed-summary"
+            className="hdr-syncfail"
             onClick={() => setSyncReviewOpen(true)}
+            aria-label={t.sync.summary(syncFailures.length)}
           >
-            <Icon name="warn" /> {t.sync.summary(syncFailures.length)}
+            <Icon name="warn" />
           </button>
         )}
-      </div>
-      {syncReviewOpen && <SyncReviewSheet onClose={() => setSyncReviewOpen(false)} />}
-      <DayStrip
-        days={days}
-        selected={activeDate}
-        today={today}
-        mode={mode}
-        onSelect={onSelectDay}
-        allScope={allScope}
-        dragging={dragging}
-        overDate={overDate}
-      />
-      {dayScope && (
+        <button className="gear-btn" onClick={onOpenSettings} aria-label={t.shell.stub.settings}>
+          <Icon name="settings" />
+        </button>
         <button
-          className={'day-context ' + dayScope}
-          onClick={() => onSelectDay(today)}
-          aria-label={t.header.backToToday}
+          className="hdr-people"
+          onClick={onOpenPeople}
+          aria-label={t.settings.rosterOpen(users.length)}
         >
-          <span className="dc-label">
-            {dayScope === 'past' ? t.header.pastDay : t.header.futureDay}
-          </span>
-          <span className="dc-back">
-            {t.header.backToToday} <NavArrow variant="back" />
+          <span className="avatars">
+            {overflowMembers.length > 0 && (
+              /* `ltrIsolate` so the sign stays in front of the digits — bare
+                 `+{n}` rendered as `n+` in the RTL chrome (ADR-0118 / §10). */
+              <span className="av more">{ltrIsolate(`+${overflowMembers.length}`)}</span>
+            )}
+            {visibleMembers.map((u) => (
+              <Avatar key={u.id} person={u} size="inherit" className="av" />
+            ))}
+            {me && <Avatar person={me.user} size="inherit" className="av is-me" />}
           </span>
         </button>
-      )}
+      </div>
+      {/* Connectivity / sync status stays a polite live region with exactly the
+          strings it had (F-10) — what moved is what gets PAINTED, not what gets
+          announced. It is visually hidden because the paint is now the badge on the
+          glyph and the `--miss` control above, neither of which can be in flow: in
+          flow is what made these push the body every time the network dropped. */}
+      <div role="status" aria-live="polite" className="visually-hidden">
+        {offline && <div>{t.header.offlineNow}</div>}
+        {pendingCount > 0 && <div>{t.header.pendingSync(pendingCount)}</div>}
+        {syncFailures.length > 0 && <div>{t.sync.summary(syncFailures.length)}</div>}
+      </div>
+      {syncReviewOpen && <SyncReviewSheet onClose={() => setSyncReviewOpen(false)} />}
+      <div className="hdr-days">
+        {/* Identity follows the condense into the day row (ADR-0149 §7): the glyph
+            and its badge slide in from the leading edge, so what the chrome says
+            about WHERE YOU ARE never disappears — an exception indicator that goes
+            quiet when the header collapses is worse than none, because quiet
+            already means "everything saved". Hidden with `visibility`, not just a
+            zero width, so a control nobody can see is also out of the tab order. */}
+        <button
+          className="hdr-minitrip"
+          onClick={onOpenSwitcher}
+          aria-label={t.shell.switcher.title}
+        >
+          <span className="trip-glyph">
+            <span aria-hidden="true">{trip.icon ?? DEFAULT_TRIP_ICON}</span>
+            {passiveSync && (
+              <span className="hdr-sync-badge" data-state={passiveSync} aria-hidden="true">
+                <Icon name={passiveSync === 'offline' ? 'offline' : 'sync'} />
+              </span>
+            )}
+          </span>
+        </button>
+        {/* The anchor slot — ONE fixed-width box with two states cross-faded in
+            place, where a 42px ribbon used to appear and disappear underneath the
+            strip. Both states are rendered so the box never resizes; only the
+            leaving one is inert. Off today it is a control, on today it is not,
+            which is why the tag switches with it rather than a disabled button. */}
+        {offToday ? (
+          <button
+            className="hdr-anchor is-back"
+            onClick={() => onSelectDay(today)}
+            aria-label={t.header.backToToday}
+          >
+            <span className="anchor-progress" aria-hidden="true" data-off>
+              <span className="cap">{t.header.dayCap}</span>
+              <span className="num">{ltrIsolate(t.header.dayProgress(dayNumber, total))}</span>
+            </span>
+            <span className="anchor-back">
+              <NavArrow variant="back" />
+              {t.header.todayShort}
+            </span>
+          </button>
+        ) : (
+          /* Not a control on today, and not labelled as one: `יום` over `3/10` is
+             what it says, and that reads correctly on its own. */
+          <div className="hdr-anchor">
+            <span className="anchor-progress">
+              <span className="cap">{t.header.dayCap}</span>
+              <span className="num">{ltrIsolate(t.header.dayProgress(dayNumber, total))}</span>
+            </span>
+            <span className="anchor-back" aria-hidden="true" data-off>
+              <NavArrow variant="back" />
+              {t.header.todayShort}
+            </span>
+          </div>
+        )}
+        <div className="hdr-strip-wrap">
+          <DayStrip
+            days={days}
+            selected={activeDate}
+            today={today}
+            mode={mode}
+            onSelect={onSelectDay}
+            allScope={allScope}
+            dragging={dragging}
+            overDate={overDate}
+          />
+        </div>
+        <ModeToggle />
+      </div>
     </header>
   );
 }
@@ -391,7 +473,7 @@ function Screen({ tab, onNavigate }: { tab: TabId; onNavigate: (tab: TabId) => v
 // (design-language mode identity: plan mode never uses amber) without every
 // component reading mode state. Needs its own component because App renders
 // ModeProvider itself and so can't call useMode.
-function Shell() {
+function Shell({ otherTripCount }: { otherTripCount: number }) {
   // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
   const { tab, goToTab } = useTripTab();
   const { allDays, chromeReclaimed: mapWantsChrome } = useMapScope();
@@ -497,6 +579,13 @@ function Shell() {
   // formOpen` at this line would be the second parallel copy of that composition, in the one
   // place that must not know which surface is asking.
   const chromeReclaimed = tab === 'map' && mapWantsChrome;
+  // …and THE CONDENSE AS A RESTING STATE (ADR-0149 §7), which is the same shape one
+  // step down: the rendered Map opens with row 1 already lifted out. Derived from
+  // `fullBleed` rather than from the tab, because that is the actual reason — a body
+  // that owns its own layout never scrolls, so the scroll trigger cannot reach the
+  // one surface whose scarce axis is height. The list-only Map (offline, or with no
+  // build config) is an ordinary scrolling body and condenses the ordinary way.
+  const chromeCondensed = fullBleed;
 
   return (
     <AppShell
@@ -504,15 +593,15 @@ function Shell() {
       switching={switching ?? undefined}
       bodyKey={tab}
       bodyClassName={fullBleed ? BODY_FULLBLEED : undefined}
-      chrome={chromeReclaimed ? CHROME_RECLAIMED : undefined}
+      chrome={chromeReclaimed ? CHROME_RECLAIMED : chromeCondensed ? CHROME_CONDENSED : undefined}
       header={
         <Header
           onSelectDay={onSelectDay}
           onOpenSwitcher={() => navigate('/trips')}
-          onOpenAccount={() => navigate(settingsPath(SETTINGS_FROM.HOME))}
-          onOpenRoster={() => setRosterOpen(true)}
+          onOpenPeople={() => setRosterOpen(true)}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
           allScope={tab === 'map' && allDays}
+          otherTripCount={otherTripCount}
         />
       }
       overlay={
@@ -521,6 +610,10 @@ function Shell() {
             members={members}
             users={users}
             myUserId={me?.user.id}
+            onOpenAccount={() => {
+              setRosterOpen(false);
+              navigate(settingsPath(SETTINGS_FROM.HOME));
+            }}
             onClose={() => setRosterOpen(false)}
           />
         )
@@ -628,7 +721,10 @@ function RootSurface() {
       <ModeProvider>
         <MapScopeProvider>
           <DragProvider>
-            <Shell />
+            {/* The deck cue's source (ADR-0149 §2). It comes from the list this
+                surface already loaded — offline-aware, and one fetch rather than a
+                second one inside the header. */}
+            <Shell otherTripCount={trips.length - 1} />
           </DragProvider>
         </MapScopeProvider>
       </ModeProvider>

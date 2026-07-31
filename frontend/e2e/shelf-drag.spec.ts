@@ -173,7 +173,7 @@ async function bodyBands(page: Page) {
  *  builder — so the mode toggle comes first, then the day tab. Both screens are
  *  lazy chunks, hence waiting on the builder rather than the click. */
 async function openPlanDayBuilder(page: Page) {
-  await page.locator('.modebar .toggle button', { hasText: 'תכנון' }).click();
+  await page.getByRole('button', { name: 'תכנון', exact: true }).click();
   await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
   await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
   // Generous: the day builder is a lazy chunk, and under the dev server several

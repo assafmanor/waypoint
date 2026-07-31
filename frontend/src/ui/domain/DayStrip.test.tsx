@@ -63,7 +63,10 @@ describe('DayStrip', () => {
     expect(onSelect).toHaveBeenCalledWith('2026-07-20');
   });
 
-  it('renders the month label above the first pill of a new month', () => {
+  // ADR-0149 §6: the month stopped being a row above the pills and became a divider
+  // between them — so it sits BEFORE the first pill of its month in the strip's own
+  // flow, and it is decorative (every pill already carries its date).
+  it('renders the month as a divider before the first pill of a new month', () => {
     const { container } = render(
       <DayStrip
         days={DAYS}
@@ -73,9 +76,27 @@ describe('DayStrip', () => {
         onSelect={() => {}}
       />,
     );
-    const labels = container.querySelectorAll('.wp-month-label');
-    expect(labels.length).toBe(1);
-    expect(labels[0].textContent).toBe('יולי');
+    const dividers = container.querySelectorAll('.wp-monthdiv');
+    expect(dividers.length).toBe(1);
+    expect(dividers[0].textContent).toBe('יולי');
+    expect(dividers[0].getAttribute('aria-hidden')).toBe('true');
+    // Between the pills, not above them: the divider precedes the 19th's pill.
+    expect(dividers[0].nextElementSibling).toBe(container.querySelectorAll('.wp-daypill')[1]);
+  });
+
+  it('gives the pill a weekday letter over the day number', () => {
+    const { container } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-19"
+        today="2026-07-19"
+        mode="trip"
+        onSelect={() => {}}
+      />,
+    );
+    const pill = container.querySelectorAll('.wp-daypill')[0];
+    expect(pill.querySelector('.l')?.textContent).toBe('ש');
+    expect(pill.querySelector('.n')?.textContent).toBe('18');
   });
 
   it('Plan mode: selection is violet ("on") and empty days get the gap marker', () => {

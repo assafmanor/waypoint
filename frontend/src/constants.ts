@@ -160,9 +160,30 @@ export const DEFAULT_SCHEDULE_SLOT = { START: '17:30', END: '18:30' } as const;
 /** Characters used to build the trip's initial from a display name. */
 export const AVATAR_INITIAL_LENGTH = 1;
 
-/** Header member-cluster avatars shown before collapsing the rest into a
- *  "+N" overflow bubble (app-shell.md §6, mockups/trip-dashboard-v2.html). */
-export const MEMBER_AVATAR_CAP = 2;
+/** Circles the header's people stack draws in total, **you included** — past it
+ *  the rest collapse into a "+N" bubble that takes the last slot, so the box
+ *  never grows (ADR-0149 §4). Two values because the row is the app's tightest:
+ *  at ≤`NARROW_MAX_PX` one circle is given back to the trip name.
+ *
+ *  It is a count of BOXES, not of co-members: the stack is one control leading
+ *  with your own ring since the account avatar merged into it, and the roster
+ *  sheet lists everyone, which is what keeps the cap a rendering detail rather
+ *  than a truncation (ADR-0133 §9). */
+export const PEOPLE_STACK_CAP = { WIDE: 4, NARROW: 3 } as const;
+
+/** The trip name's size ramp in the header chip (ADR-0149 §1/§8). It starts at
+ *  17px — the chip is orientation, not a screen title — and `useShrinkToFit` steps
+ *  it down from there before the CSS ellipsis ever runs. The FLOOR is the point of
+ *  naming this: the hook's default minimum (15px) sits above where this design
+ *  needs to reach, so an 18-character name at 390 would clip at a size the loop
+ *  refused to go below. */
+export const TRIP_NAME_FIT = { maxPx: 17, minPx: 13 } as const;
+
+/** The narrow-phone breakpoint the people stack and the mode control both read.
+ *  Mirrored by the `@media (max-width: 370px)` rules in App.css — CSS cannot read
+ *  a custom property in a media condition, so the number is stated in both and
+ *  named here. */
+export const NARROW_MAX_PX = 370;
 
 /** Icon for a manually created event when the form doesn't collect one (T-047). */
 export const DEFAULT_EVENT_ICON = '📌';
@@ -820,6 +841,22 @@ export const DOT_SEPARATOR = '·';
  *  on both surfaces, so they cannot diverge. Tuned for the NARROWER of the two
  *  (the builder row), so a route that stays inline fits in both. */
 export const ROUTE_INLINE_MAX_CHARS = 26;
+
+/* ── The top chrome's condense (ADR-0149 §7) ──────────────────────────────────
+   Read by `lib/chrome-condense.ts`, which is where the reasoning lives. */
+
+/** Scrolled past this, row 1 rides out. */
+export const CHROME_CONDENSE_ENTER_PX = 48;
+/** …and back within this, it comes back. Two thresholds, because one flips the
+    state on the pixel it is read at. */
+export const CHROME_CONDENSE_RELEASE_PX = 12;
+/** What condensing gives back to the body: 160px of chrome becomes 108px. */
+export const CHROME_CONDENSE_FREES_PX = 52;
+/** The slack test: below this there is not enough to scroll for the condense to
+    survive itself. Condensing frees `CHROME_CONDENSE_FREES_PX`, so the body has
+    that much less to scroll afterwards — it has to still clear the release
+    threshold, or the chrome expands again and the loop starts. */
+export const CHROME_CONDENSE_MIN_SLACK_PX = CHROME_CONDENSE_FREES_PX + CHROME_CONDENSE_RELEASE_PX;
 
 /** Active-trip override — per-device, not synced (ADR-0021). */
 export const ACTIVE_TRIP_STORAGE_KEY = 'wp_active_trip_id';

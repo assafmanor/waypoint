@@ -1,14 +1,3 @@
-/* The header failed-summary affordance reuses the `.offline-badge` chrome but is
-   a <button> (opens this sheet), so it needs the button-default resets the div
-   badge never did. Lives here because this stylesheet loads at app boot. */
-.sync-failed-summary {
-  font-family: var(--font-body);
-  cursor: pointer;
-}
-.sync-failed-summary:active {
-  transform: scale(var(--press-scale));
-}
-
 /* SyncReviewSheet — the U-04 dead-letter review/retry list (ADR-0080). Tokens
    only (Wave-0); failure semantics use the sync/status tokens, never the
    amber/teal/plan budget. Logical properties throughout so it mirrors under

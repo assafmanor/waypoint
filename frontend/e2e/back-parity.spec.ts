@@ -63,7 +63,7 @@ test.describe('Plan mode’s overlap resolve sheet', () => {
   test.beforeEach(async ({ page }) => {
     await bootIntoTrip(page, { events: overlappingSoftEvents(), dates: shortLiveTripDates() });
     await page.goto('/');
-    await page.locator('.modebar button', { hasText: PLAN_MODE }).click();
+    await page.getByRole('button', { name: PLAN_MODE, exact: true }).click();
     await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
     await expect(page).toHaveURL(/[?&]tab=days/);
   });
