@@ -86,6 +86,45 @@ Two guards are part of the decision, because the first build oscillated visibly:
 
 Both are fixable independently of this ADR and shipped on their own branch first (PR #388).
 
+## Amendment, 2026-08-05 (device pass) — the condense is scroll-LINKED, not a state with an animation
+
+§7 modelled the condense as a discrete state that animates between two heights. On a
+device that is smooth **only when nothing else is moving**: the Map's declared
+condense rides a tab change and felt right throughout, while the same collapse under
+a scroll did not.
+
+The reason is not the animation, it is the header being **in flow**. Collapsing it
+lifts the body's top edge (measured: 117px → 65px), so the content inside slides 52px
+— and on a timer, that is 52px the content moves **on its own**, arriving on top of
+the movement the finger is already producing. Shortening the animation narrowed the
+window without removing it.
+
+**So the collapse is a continuous function of the scroll offset** — `chromeOpenness`,
+written straight to a `--chrome-open` custom property with no transition behind it.
+Nothing moves that the finger is not moving, it reverses exactly, and it stops when
+the finger stops (verified: 0px of drift after the gesture ends, and the same offset
+gives the same height going both ways — 26px → 91px up and down).
+
+**Three things this settles rather than tunes:**
+
+- **The oscillation class is gone by construction.** Hysteresis existed because a
+  discrete flip had two states to bounce between; a continuous mapping has a fixed
+  point. `CHROME_CONDENSE_ENTER_PX` and `CHROME_CONDENSE_RELEASE_PX` retire with it.
+- **The slack gate stays and still reads the expanded height** — but it now needs the
+  CURRENT openness passed in, because `slack` is smaller by exactly what has been
+  given back. Inferring that from the scroll instead re-creates the moving-input bug
+  one level down, strobing a 6px band (59–64) where the old one strobed 15.
+- **Only a DECLARED change animates.** `data-chrome` is the surface's statement and
+  carries the transition; the scroll path's endpoints ride `data-chrome-row`, for
+  `visibility` and the tab order alone. Sharing one attribute let the scroll path
+  borrow the transition and lag the finger by a whole duration on the way back up.
+
+**What this does not fix, stated:** with the header in flow, scrolling `S` px while it
+gives back `S` px still moves the content `2S` — the two add. Scroll-linking makes
+that coupled and reversible instead of an independent drift, which is what the report
+was about. True 1:1 needs the header to leave flow (overlay plus compensating body
+padding), which is a structural change and is not made here.
+
 ## Amendment, 2026-08-04 (device pass) — the condense oscillated, and the slack test was asking the wrong question
 
 Reported from a phone: scrolling Plan Home made the chrome strobe open/closed

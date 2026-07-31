@@ -1,96 +1,137 @@
-// **When the top chrome condenses on scroll** (ADR-0149 §7).
+// **How the top chrome gives way to the body** (ADR-0149 §7).
 //
 // Row 1 rides out as the body scrolls and the trip glyph slots into the day row,
 // so identity never leaves the chrome: 160px → 108px.
 //
-// Two guards are part of the DECISION, not implementation detail, because the
-// first build of this oscillated visibly:
+// **It is scroll-LINKED, not a state with an animation** (the 2026-08-04 device
+// pass). The header is in flow, so collapsing it lifts the body's top edge — and
+// on a timer that is 52px of movement the content makes ON ITS OWN, arriving on
+// top of the movement the finger is already producing. That is what read as
+// unsmooth, and only while scrolling: the Map's declared condense rides a tab
+// change, where nothing is competing, and felt fine throughout.
 //
-//  · **Hysteresis.** One threshold flips the state on the pixel it is read at,
-//    and a finger resting near it strobes the chrome.
-//  · **A slack test.** Condensing frees CHROME_CONDENSE_FREES_PX of body, which
-//    removes the very overflow that triggered it — so on a page that barely
-//    scrolls, condensing scrolls the body back under the release threshold and
-//    the chrome expands, which re-creates the overflow. That is a loop, not a
-//    flicker. It is also the honest reading: the room it buys is room the
-//    content did not need.
+// So the collapse is a continuous function of the scroll offset, written straight
+// to a custom property with no transition behind it. Nothing moves that the finger
+// is not moving, it reverses exactly when you scroll back, and it stops when you
+// stop.
 //
-// **And a third, which the build found:** the chrome must not change while a
-// drag is in flight. A drag auto-scrolls the body when the finger reaches an
-// edge band (ADR-0116), which would otherwise condense the chrome mid-gesture
-// and move every row, pill and drop target 52px under the finger — the exact
-// class of bug this file's own siblings keep being written for. So the state is
-// HELD for the duration, in whichever position the drag found it.
+// **Two things fall out of going continuous, and both are why this is the model
+// rather than a tuning of the old one:**
 //
-// The decision is a pure function so the guards can be tested without a scroll
-// container (the pattern ADR-0121 §13 set: the decision lives in `lib/`, the
-// component just renders it).
+//  · **It cannot oscillate.** The discrete version condensed on one threshold and
+//    released on another, and because collapsing changes how much there is to
+//    scroll, a 15px band of page heights flipped forever (ADR-0149's amendment).
+//    Hysteresis existed to patch that. A continuous mapping has a FIXED POINT
+//    instead of two states to bounce between — `s ≤ slackExpanded − s` converges —
+//    so the whole apparatus goes away rather than being re-tuned.
+//  · **The slack gate stays**, because without it a page with barely more content
+//    than a screen settles at a permanently half-collapsed header, which is worse
+//    than not collapsing. It reads the EXPANDED height, which is the fix that made
+//    it stable in the first place: the answer must not move the question.
+//
+// The drag hold stays too: a drag auto-scrolls the body at the edge bands
+// (ADR-0116), and the chrome must not give way under a gesture that is already
+// carrying something.
+//
+// The mapping is a pure function so it can be tested without a scroll container
+// (the pattern ADR-0121 §13 set: the decision lives in `lib/`, the component just
+// renders it).
 import { useEffect, useRef, useState } from 'react';
-import {
-  CHROME_CONDENSE_ENTER_PX,
-  CHROME_CONDENSE_FREES_PX,
-  CHROME_CONDENSE_MIN_SLACK_PX,
-  CHROME_CONDENSE_RELEASE_PX,
-} from '../constants';
+import { CHROME_CONDENSE_FREES_PX, CHROME_CONDENSE_MIN_SLACK_PX } from '../constants';
 
 export interface ScrollExtent {
   scrollTop: number;
-  /** How much there is to scroll RIGHT NOW: `scrollHeight - clientHeight`. Note
-   *  that this shrinks by `CHROME_CONDENSE_FREES_PX` the moment the chrome
-   *  condenses — which is exactly what `nextCondensed` has to correct for. */
+  /** How much there is to scroll RIGHT NOW: `scrollHeight - clientHeight`. It
+   *  shrinks as the chrome gives way, which is exactly what `chromeOpenness`
+   *  corrects for before asking whether there is enough to scroll at all. */
   slack: number;
 }
 
-/** The next condensed state, given the current one — which is what makes the
- *  hysteresis expressible at all: entering and leaving read different thresholds.
+/** How much of row 1 is still open: **1** fully expanded, **0** fully condensed.
  *
- *  **The slack test is asked of a state-INVARIANT quantity, and that is the whole
- *  trick.** Condensing frees `CHROME_CONDENSE_FREES_PX` of body, so the live
- *  `slack` is 52px smaller while condensed — put the raw number into the test and
- *  the decision changes its own input. That shipped, and it oscillates forever
- *  across a 15px-wide band of page heights (measured: 101–115): the chrome
- *  condenses on `slack ≥ 64`, immediately fails the same test at `slack − 52`,
- *  expands, re-qualifies, and repeats. "Is there enough here to scroll" is a fact
- *  about the CONTENT, not about what the chrome happens to be doing, so it is
- *  answered against the expanded height in both states.
+ *  Linear in the scroll offset over the first `CHROME_CONDENSE_FREES_PX`, so the
+ *  chrome gives back exactly what has been scrolled and hands the rest over at a
+ *  rate the finger owns.
  *
- *  The threshold is then strict, not `≥`: at exactly `FREES + RELEASE` the body
- *  ends up with precisely `RELEASE` left to scroll, `scrollTop` clamps to it, and
- *  `> RELEASE` is false — a release on the pixel it condensed at. */
-export function nextCondensed(condensed: boolean, { scrollTop, slack }: ScrollExtent): boolean {
-  const slackExpanded = slack + (condensed ? CHROME_CONDENSE_FREES_PX : 0);
-  if (slackExpanded <= CHROME_CONDENSE_MIN_SLACK_PX) return false;
-  return scrollTop > (condensed ? CHROME_CONDENSE_RELEASE_PX : CHROME_CONDENSE_ENTER_PX);
+ *  **It takes the CURRENT openness, and that is not incidental.** `slack` is smaller
+ *  by exactly whatever has already been given back, so reconstructing the expanded
+ *  height needs to know how much that was — and inferring it from `scrollTop`
+ *  instead is wrong precisely where it matters: while the gate is holding the chrome
+ *  open, `slack` is already the expanded number, so adding the scroll to it
+ *  overstates it, which opens the gate, which closes it again. That is the same
+ *  moving-input bug the discrete version had, one level down, and it strobes a 6px
+ *  band of page heights (measured: 59–64) instead of a 15px one. */
+export function chromeOpenness(open: number, { scrollTop, slack }: ScrollExtent): number {
+  const slackExpanded = slack + (1 - open) * CHROME_CONDENSE_FREES_PX;
+  if (slackExpanded <= CHROME_CONDENSE_MIN_SLACK_PX) return 1;
+  return 1 - Math.min(Math.max(scrollTop, 0), CHROME_CONDENSE_FREES_PX) / CHROME_CONDENSE_FREES_PX;
 }
 
-/** Tracks `el`'s scroll and answers whether the chrome should be condensed.
+/** Drives `--chrome-open` on `frame` from `body`'s scroll offset.
  *
- *  Takes the element as STATE rather than a ref: the shell re-keys its body per
- *  tab, so the node this watches is replaced on every tab change — and the state
- *  has to reset with it, or a tab arrives already condensed at scroll 0.
+ *  It writes the custom property **directly to the DOM** rather than through React
+ *  state, and that is the point rather than an optimisation: this runs on every
+ *  scroll event of a live gesture, and a re-render per event is precisely the cost
+ *  that makes a scroll-linked effect stutter.
  *
- *  `hold` freezes the answer where it is. It rides a REF and is deliberately not
- *  an effect dependency: re-running the effect would reset the state to false,
- *  which is the opposite of holding — entering a drag would itself expand the
- *  chrome, doing the very thing the hold exists to prevent. */
-export function useCondenseOnScroll(el: HTMLElement | null, hold = false): boolean {
-  const [condensed, setCondensed] = useState(false);
+ *  Returns only the two ENDPOINTS — fully open, fully closed — which is what
+ *  `visibility` and the tab order need, and nothing in between. So a gesture costs
+ *  two re-renders rather than one per scroll event, and a control is never both
+ *  invisible and tabbable: row 1 leaves the tab order once it is 0px tall, and the
+ *  condensed glyph joins it as soon as it starts fading in rather than popping in
+ *  at the end.
+ *
+ *  `body` is STATE, not a ref: the shell re-keys its body per tab, so the node
+ *  being watched is replaced on every tab change and the openness has to reset with
+ *  it, or a tab arrives already condensed at scroll 0.
+ *
+ *  `hold` freezes it where it is, for a drag in flight. It rides a REF and is
+ *  deliberately not an effect dependency: re-running the effect would reset the
+ *  openness, so entering a drag would itself expand the chrome — the very thing the
+ *  hold exists to prevent. */
+export function useChromeOpenness(
+  frame: HTMLElement | null,
+  body: HTMLElement | null,
+  hold = false,
+): { closed: boolean; expanded: boolean } {
+  const [ends, setEnds] = useState({ closed: false, expanded: true });
   const holdRef = useRef(hold);
   holdRef.current = hold;
+  // The mapping needs its own previous answer to reconstruct the expanded height,
+  // and it lives in a ref for the same reason the property write does: this runs
+  // per scroll event, and routing it through state would re-render the shell on
+  // every frame of a gesture.
+  const openRef = useRef(1);
 
   useEffect(() => {
-    setCondensed(false);
-    if (!el) return;
+    if (!frame) return;
+    const apply = (open: number) => {
+      openRef.current = open;
+      frame.style.setProperty('--chrome-open', `${open}`);
+      setEnds((was) =>
+        was.closed === (open === 0) && was.expanded === (open === 1)
+          ? was
+          : { closed: open === 0, expanded: open === 1 },
+      );
+    };
+    apply(1);
+    if (!body) return;
     const read = () => {
       if (holdRef.current) return;
-      setCondensed((was) =>
-        nextCondensed(was, { scrollTop: el.scrollTop, slack: el.scrollHeight - el.clientHeight }),
+      apply(
+        chromeOpenness(openRef.current, {
+          scrollTop: body.scrollTop,
+          slack: body.scrollHeight - body.clientHeight,
+        }),
       );
     };
     read();
-    el.addEventListener('scroll', read, { passive: true });
-    return () => el.removeEventListener('scroll', read);
-  }, [el]);
+    body.addEventListener('scroll', read, { passive: true });
+    return () => {
+      body.removeEventListener('scroll', read);
+      frame.style.removeProperty('--chrome-open');
+    };
+  }, [frame, body]);
 
-  return condensed;
+  return ends;
 }
