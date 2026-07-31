@@ -91,7 +91,14 @@ ADR-0149 §4 states. Read the renderer, not the cards.
   390 and the strip is 184px; whether that is usable in the hand is not a measurement. If it
   is too tight, the refused alternative is drawn in the same mockup under ⟨הסרגל מתפרק⟩ — read
   that before redesigning it.
-- The other four device questions from session 193 stand unanswered: whether an icons-only
-  mode pill reads as trip-vs-plan to someone who has not seen it, whether the deck reads as
-  "there are other trips" at 20px, whether 17px Secular One is legible on dark chrome
-  outdoors, and whether the condense feels smooth on a body that already cross-fades tabs.
+- Of session 193's other four device questions, **one came back answered the next day and
+  the answer was no**: the deck cue did not read as "there are other trips" at 20px — it
+  read as a box overlapping the flag, so it was withdrawn and the `swap` mark carries the
+  exit alone (ADR-0149 §2's device-pass amendment). Two reasons the mockup could not have
+  shown it: the glyph fills its own box at 20px, so nothing can peek from behind it, and
+  every frame in that file is **Trip** mode while the report came from **Plan**, where the
+  same rule draws dark ink on a light chip instead of white on indigo.
+- The remaining three stand unanswered: whether an icons-only mode pill reads as
+  trip-vs-plan to someone who has not seen it, whether 17px Secular One is legible on dark
+  chrome outdoors, and whether the condense feels smooth on a body that already cross-fades
+  tabs.
