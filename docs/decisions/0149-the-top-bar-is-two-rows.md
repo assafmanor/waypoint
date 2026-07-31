@@ -86,6 +86,35 @@ Two guards are part of the decision, because the first build oscillated visibly:
 
 Both are fixable independently of this ADR and shipped on their own branch first (PR #388).
 
+## Amendment, 2026-08-04 (device pass) — the condense oscillated, and the slack test was asking the wrong question
+
+Reported from a phone: scrolling Plan Home made the chrome strobe open/closed
+indefinitely. §7's second guard existed precisely to prevent this and **was itself
+the cause.**
+
+The slack test ran in _both_ states against the **live** `scrollHeight - clientHeight`
+— and that number shrinks by the 52px the condense frees. So entering needed
+`slack ≥ 64` while _staying_ needed `slack − 52 ≥ 64`, i.e. an expanded slack of 116.
+Between them the chrome condensed, instantly failed its own test, expanded,
+re-qualified, and repeated. Enumerated rather than estimated: **every page whose
+expanded slack is 101–115 inclusive never settles.**
+
+The fix is to ask the question of something the answer cannot move: "is there enough
+here to scroll" is a fact about the CONTENT, so it is evaluated against the expanded
+height in both states (`slack + (condensed ? FREES : 0)`), and the threshold is
+strict — at exactly `FREES + RELEASE` the body is left with precisely the release
+distance, `scrollTop` clamps to it, and the release fires on the pixel it condensed at.
+
+**Two things worth carrying forward.** The guards were each unit-tested in isolation
+and the loop they exist to prevent never was; the suite now runs the decision against
+its own consequences at every page height from 0 to 400 and asserts that all of them
+settle. And the original "verified live" pass missed this because it ran in a desktop
+browser, where `--safe-top` is 0: the notch makes the body ~48px shorter and the slack
+~48px larger, so **a desktop measurement of a scroll-threshold behaviour is
+systematically off by the inset on the very quantity being tested.** Measured local
+slack was 52 (below the band); the same page on the reporting device is ~101 (the
+bottom of it).
+
 ## Amendment, 2026-08-03 (device pass) — the deck cue is withdrawn; the `swap` mark carries it alone
 
 §2 answered discovery with **two** marks: a card edge peeking behind the trip's glyph

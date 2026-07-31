@@ -28,20 +28,38 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   CHROME_CONDENSE_ENTER_PX,
+  CHROME_CONDENSE_FREES_PX,
   CHROME_CONDENSE_MIN_SLACK_PX,
   CHROME_CONDENSE_RELEASE_PX,
 } from '../constants';
 
 export interface ScrollExtent {
   scrollTop: number;
-  /** How much there is to scroll: `scrollHeight - clientHeight`. */
+  /** How much there is to scroll RIGHT NOW: `scrollHeight - clientHeight`. Note
+   *  that this shrinks by `CHROME_CONDENSE_FREES_PX` the moment the chrome
+   *  condenses — which is exactly what `nextCondensed` has to correct for. */
   slack: number;
 }
 
 /** The next condensed state, given the current one — which is what makes the
- *  hysteresis expressible at all: entering and leaving read different thresholds. */
+ *  hysteresis expressible at all: entering and leaving read different thresholds.
+ *
+ *  **The slack test is asked of a state-INVARIANT quantity, and that is the whole
+ *  trick.** Condensing frees `CHROME_CONDENSE_FREES_PX` of body, so the live
+ *  `slack` is 52px smaller while condensed — put the raw number into the test and
+ *  the decision changes its own input. That shipped, and it oscillates forever
+ *  across a 15px-wide band of page heights (measured: 101–115): the chrome
+ *  condenses on `slack ≥ 64`, immediately fails the same test at `slack − 52`,
+ *  expands, re-qualifies, and repeats. "Is there enough here to scroll" is a fact
+ *  about the CONTENT, not about what the chrome happens to be doing, so it is
+ *  answered against the expanded height in both states.
+ *
+ *  The threshold is then strict, not `≥`: at exactly `FREES + RELEASE` the body
+ *  ends up with precisely `RELEASE` left to scroll, `scrollTop` clamps to it, and
+ *  `> RELEASE` is false — a release on the pixel it condensed at. */
 export function nextCondensed(condensed: boolean, { scrollTop, slack }: ScrollExtent): boolean {
-  if (slack < CHROME_CONDENSE_MIN_SLACK_PX) return false;
+  const slackExpanded = slack + (condensed ? CHROME_CONDENSE_FREES_PX : 0);
+  if (slackExpanded <= CHROME_CONDENSE_MIN_SLACK_PX) return false;
   return scrollTop > (condensed ? CHROME_CONDENSE_RELEASE_PX : CHROME_CONDENSE_ENTER_PX);
 }
 
