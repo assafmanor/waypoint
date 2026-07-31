@@ -28,6 +28,7 @@ import { Icon } from '../Icon';
 import { IconPicker } from '../IconPicker';
 import { ChoiceGrid } from '../primitives/ChoiceGrid';
 import { Field } from '../primitives/Field';
+import { useFormErrors } from '../primitives/useFormErrors';
 
 /** What the four sources disagree about, and nothing else. Built by the host, because only it
  *  knows whether the trip already owns the place and what the confirm is going to do. */
@@ -98,8 +99,9 @@ export function MapPlaceForm({
   /** A write is in flight: the confirm is disabled rather than removed, because it is about
    *  to come back. */
   busy?: boolean;
-  /** The write failed. Rendered in `Field`'s error slot, which carries the `role="alert"`
-   *  that announces it — so the message is not a second mechanism beside the label and hint. */
+  /** The write failed. Reported through the same refusal mechanism as an empty name
+   *  (ADR-0150), so a failure the host reports and a refusal the form makes look alike
+   *  and land in the same place — this card has one field, and both are about it. */
   error?: string | null;
   onConfirm: (value: MapPlaceFormValue) => void;
   onCancel: () => void;
@@ -114,6 +116,8 @@ export function MapPlaceForm({
   onValueChange?: (value: MapPlaceFormValue) => void;
 }) {
   const nameId = useId();
+  const errors = useFormErrors<'name'>();
+  const nameMark = errors.field('name');
   const [name, setName] = useState(spec.name);
   const [category, setCategory] = useState<EventCategory | undefined>(spec.category);
   // **A CATEGORY DRIVES THE ICON UNTIL A HUMAN SAYS OTHERWISE**, through the one mechanism
@@ -132,15 +136,26 @@ export function MapPlaceForm({
     });
 
   const trimmed = name.trim();
-  const submittable = !busy && trimmed !== '';
   const confirm = () => {
-    if (!submittable) return;
+    if (busy) return;
+    // A PLACE NEEDS A NAME, and saying so is the fix (ADR-0150): the confirm used to be
+    // disabled while the field was empty, so the Enter key — which this field binds —
+    // ran `confirm` into a silent `return` and the card sat there answering nothing.
+    if (!trimmed) return void errors.report([{ field: 'name', message: t.map.make.nameRequired }]);
     onConfirm({ name: trimmed, icon: icon.value, iconTouched: icon.touched, category });
   };
 
   return (
-    <div className="map-draft">
-      <Field label={spec.title} htmlFor={nameId} hint={spec.note} error={error}>
+    <div className="map-draft" {...errors.formProps}>
+      {/* The host's failure and the form's own refusal share the slot; a failure the host is
+          still reporting outranks a mark the user has since retired by typing. */}
+      <Field
+        label={spec.title}
+        htmlFor={nameId}
+        hint={spec.note}
+        {...nameMark}
+        error={error ?? nameMark.error}
+      >
         <div className="map-draft-name">
           {/* THE APP'S OWN PICKER, not a row of chips at "its own scale" — a single 44px chip
               whose panel FLOATS over the card rather than expanding it, which is what the
@@ -236,7 +251,7 @@ export function MapPlaceForm({
         <button type="button" className="map-gbtn" onClick={onCancel}>
           {t.map.make.cancel}
         </button>
-        <button type="button" className="map-addmaybe" disabled={!submittable} onClick={confirm}>
+        <button type="button" className="map-addmaybe" disabled={busy} onClick={confirm}>
           {spec.confirmLabel}
         </button>
       </div>

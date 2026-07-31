@@ -42,6 +42,7 @@ import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { WhenField } from './primitives/WhenField';
 import { type ZoneChipProps } from './primitives/ZoneChip';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
+import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import {
   mergeBookingDetails,
@@ -70,6 +71,10 @@ const BOOKING_TYPE_OPTIONS = Object.values(BOOKING_TYPE).map((ty) => ({
 /** The two span-endpoint labels for a type — shared with the detail view and the
  *  Index row so the wording never drifts (`../lib/booking-timing`). */
 const spanLabels = timingLabels;
+
+/** What this sheet can refuse, one name per BOX on screen (ADR-0150) — which is why
+ *  a span's two legs are two names and the day variant's date is a third. */
+type BookingField = 'title' | 'route' | 'date' | 'spanStart' | 'spanEnd';
 
 /** Pre-set fields for a create-flow open (ADR-0061): the Plan-home checklist opens
  *  the form for a specific booking type, and for a flight seeds the missing leg's
@@ -158,7 +163,11 @@ export function BookingSheet({
     draft ? draft.kind : initial.kind,
     draft ? draft.kindTouched : false,
   );
-  const [error, setError] = useState<string | null>(null);
+  // Every refusal this sheet can make, marked at the field it is about (ADR-0150).
+  // A span refuses per LEG for the same reason it carries a zone per leg: saying
+  // "the dates are outside the trip" over two good fields and one bad one is the
+  // refusal naming the wrong thing.
+  const errors = useFormErrors<BookingField>();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -277,6 +286,7 @@ export function BookingSheet({
   const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
   const save = async () => {
+    const problems: FieldProblem<BookingField>[] = [];
     // Transport is identified by its route, not a name (ADR-0059 §3): derive the
     // stored title from origin→destination (it backs the linked event's title and
     // any place-less fallback), so a flight never carries a hand-typed name.
@@ -286,27 +296,33 @@ export function BookingSheet({
         placeName(places, fromPlaceId) ?? '',
         placeName(places, toPlaceId) ?? '',
       );
-      if (!finalTitle) return setError(t.index.form.routeRequired);
+      if (!finalTitle) problems.push({ field: 'route', message: t.index.form.routeRequired });
     } else {
       finalTitle = title.trim();
-      if (!finalTitle) return setError(t.index.form.titleRequired);
+      if (!finalTitle) problems.push({ field: 'title', message: t.index.form.titleRequired });
     }
     const outOfRange = (v: string) => dateOutOfTripRange(v, trip.startDate, trip.endDate);
-    if (isSpan ? outOfRange(spanStart) || outOfRange(spanEnd) : outOfRange(date)) {
-      return setError(t.index.form.dateOutOfRange);
+    if (!isSpan && outOfRange(date)) {
+      problems.push({ field: 'date', message: t.index.form.dateOutOfRange });
     }
-    // A span's end must be after its start. WhenField bounds the end's earliest
-    // day to the start day; this also rejects a same-day end at/before the start
-    // time (a time-less end stays open-ended, so only guard when both have one).
     if (isSpan) {
+      if (outOfRange(spanStart))
+        problems.push({ field: 'spanStart', message: t.index.form.dateOutOfRange });
+      if (outOfRange(spanEnd))
+        problems.push({ field: 'spanEnd', message: t.index.form.dateOutOfRange });
+      // A span's end must be after its start. WhenField bounds the end's earliest
+      // day to the start day; this also rejects a same-day end at/before the start
+      // time (a time-less end stays open-ended, so only guard when both have one).
       const [sDay, sTime] = spanStart.split('T');
       const [eDay, eTime] = spanEnd.split('T');
       if (sTime && eTime) {
         const s = Date.parse(zonedIso(sDay, sTime, startZone));
         const e = Date.parse(zonedIso(eDay, eTime, endZone));
-        if (e <= s) return setError(t.index.form.endBeforeStart);
+        if (e <= s) problems.push({ field: 'spanEnd', message: t.index.form.endBeforeStart });
       }
     }
+    if (errors.report(problems)) return;
+
     setSaving(true);
     try {
       // One user action → one change group (ADR-0092): the places backing a
@@ -388,6 +404,8 @@ export function BookingSheet({
       >
         <div
           className="booking-sheet"
+          // Addressing a refusal retires it, wherever in the sheet it was made.
+          {...errors.formProps}
           // Reveal the focused field above the on-screen keyboard within the
           // scrolling sheet (matches EventForm — the keyboard never covers a field).
           onFocusCapture={(e) => {
@@ -405,39 +423,44 @@ export function BookingSheet({
             />
           )}
 
-          <div className="titlerow">
-            <IconPicker
-              icon={icon.value}
-              // Booking icon is a badge only — the category comes from the type
-              // (ADR-0038), so the picker's category suggestion is ignored here.
-              onChange={icon.set}
-            />
-            {isTransport ? (
-              // A flight's identity is its route, not a name (ADR-0059 §3). The
-              // endpoints are now picked places, so the title row shows a derived
-              // read-only route preview; the two PlacePickers live in the route
-              // field just below (ADR-0059 §3 reshaping, ADR-0113 follow-up).
-              <div className="bs-route-preview">
-                {fromPlaceId || toPlaceId ? (
-                  <RouteLabel
-                    from={placeName(places, fromPlaceId)}
-                    to={placeName(places, toPlaceId)}
-                  />
-                ) : (
-                  <span className="bs-route-ghost">{t.index.form.routePreviewGhost}</span>
-                )}
-              </div>
-            ) : (
-              <input
-                className="bs-title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={t.index.sheet.titlePlaceholder}
-                aria-label={t.index.sheet.titlePlaceholder}
-                autoFocus={isCreate}
+          {/* The identity row carries no label of its own (the caption below states
+              the type), so the shell around it is here to hold the mark: a booking
+              with no name is refused AT the name. */}
+          <Field {...errors.field('title')}>
+            <div className="titlerow">
+              <IconPicker
+                icon={icon.value}
+                // Booking icon is a badge only — the category comes from the type
+                // (ADR-0038), so the picker's category suggestion is ignored here.
+                onChange={icon.set}
               />
-            )}
-          </div>
+              {isTransport ? (
+                // A flight's identity is its route, not a name (ADR-0059 §3). The
+                // endpoints are now picked places, so the title row shows a derived
+                // read-only route preview; the two PlacePickers live in the route
+                // field just below (ADR-0059 §3 reshaping, ADR-0113 follow-up).
+                <div className="bs-route-preview">
+                  {fromPlaceId || toPlaceId ? (
+                    <RouteLabel
+                      from={placeName(places, fromPlaceId)}
+                      to={placeName(places, toPlaceId)}
+                    />
+                  ) : (
+                    <span className="bs-route-ghost">{t.index.form.routePreviewGhost}</span>
+                  )}
+                </div>
+              ) : (
+                <input
+                  className="bs-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={t.index.sheet.titlePlaceholder}
+                  aria-label={t.index.sheet.titlePlaceholder}
+                  autoFocus={isCreate}
+                />
+              )}
+            </div>
+          </Field>
 
           <div className="bs-caption">
             <span>
@@ -458,7 +481,7 @@ export function BookingSheet({
           {/* The route field: two real place pickers (origin → destination), so
               transport endpoints carry coords + timezones like any other place. */}
           {isTransport && (
-            <Field label={t.index.form.routeLabel}>
+            <Field label={t.index.form.routeLabel} {...errors.field('route')}>
               <div className="bs-route-pickers">
                 {/* TWO FIELDS, TWO ERRANDS — this is why `target.field` is not optional
                     (ADR-0134 §2): without it a successful return could assign the right
@@ -524,6 +547,7 @@ export function BookingSheet({
                       setEndOverride,
                     ),
                   }}
+                  marks={{ start: errors.field('spanStart'), end: errors.field('spanEnd') }}
                 />
                 <ZoneNote
                   startZone={startZone}
@@ -550,6 +574,7 @@ export function BookingSheet({
                   minDate={trip.startDate}
                   maxDate={trip.endDate}
                   zone={zoneChip(placeId, startZone, startOverride, setStartOverride)}
+                  marks={{ date: errors.field('date') }}
                 />
                 <ZoneNote
                   startZone={startZone}
@@ -615,9 +640,10 @@ export function BookingSheet({
             <textarea id="bs-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
 
-          {error && (
+          {/* Only what has no field to point at still reads down here. */}
+          {errors.formError && (
             <p className="field-error" role="alert">
-              {error}
+              {errors.formError}
             </p>
           )}
 

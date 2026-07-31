@@ -2395,9 +2395,6 @@
   color: var(--muted);
   flex: none;
 }
-.set-fld input.invalid {
-  border-color: var(--miss);
-}
 .set-fld .subfld {
   display: flex;
   align-items: center;

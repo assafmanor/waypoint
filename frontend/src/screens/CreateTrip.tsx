@@ -47,6 +47,7 @@ import { useToast } from '../ui/Toast';
 import { IconPicker } from '../ui/IconPicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { Icon } from '../ui/Icon';
 import {
   MS_PER_DAY,
@@ -66,6 +67,10 @@ const DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 /** Which beat of the birth sequence has landed. `form` and `submitting` are the
  *  creation screen; everything from `born` on is the new trip. */
 type Phase = 'form' | 'submitting' | 'born';
+
+/** What the create form can refuse, one name per BOX on screen (ADR-0150) — the two date
+ *  inputs are one box, because "the trip needs dates" is one statement. */
+type NewTripField = 'dest' | 'dates' | 'name';
 
 export function CreateTrip() {
   const navigate = useNavigate();
@@ -90,6 +95,8 @@ export function CreateTrip() {
   const name = useDerivedField('');
   const icon = useDerivedField(DEFAULT_TRIP_ICON);
   const [submitting, setSubmitting] = useState(false);
+  // Every refusal this screen can make, marked at the field it is about (ADR-0150).
+  const errors = useFormErrors<NewTripField>();
 
   // Auto-suggest the trip name and — from a recognized destination — the flag,
   // until the user overrides either (ADR-0038: flag auto-fill, overridable).
@@ -134,6 +141,23 @@ export function CreateTrip() {
   }
 
   const submit = async () => {
+    // THE CTA IS PRESSABLE, AND SAYS WHY (ADR-0150 §8, amending U-13). It stays dimmed
+    // until the form completes and it still ARMS on that flip (ADR-0142 §1 is untouched —
+    // the beat keys on `data-armed`, never on `disabled`), but a press now names the field
+    // that is missing instead of doing nothing at all. `ctaReason` stays: it says what is
+    // needed BEFORE the press, and the refusal says where.
+    const problems: FieldProblem<NewTripField>[] = [];
+    if (!destination) problems.push({ field: 'dest', message: t.shell.newTrip.destRequired });
+    if (!startDate || !endDate)
+      problems.push({ field: 'dates', message: t.shell.newTrip.datesRequired });
+    else if (datesInvalid)
+      problems.push({
+        field: 'dates',
+        message: startInPast || endInPast ? t.shell.newTrip.datePast : t.shell.newTrip.dateError,
+      });
+    if (!name.value) problems.push({ field: 'name', message: t.shell.newTrip.nameRequired });
+    if (errors.report(problems)) return;
+
     const parsed = createTripSchema.safeParse({
       name: name.value,
       destination,
@@ -158,6 +182,9 @@ export function CreateTrip() {
   };
 
   const phase: Phase = createdTrip ? 'born' : submitting ? 'submitting' : 'form';
+  const destMark = errors.field('dest');
+  const datesMark = errors.field('dates');
+  const nameMark = errors.field('name');
 
   return (
     <Birth
@@ -187,7 +214,7 @@ export function CreateTrip() {
         )}
       </header>
 
-      <main className="new-body birth-form">
+      <main className="new-body birth-form" {...errors.formProps}>
         {/* One `--i` step per group, so the form ASSEMBLES rather than appearing
             whole — and it is finished before a fast typist reaches the first field
             (ADR-0142 §1). The point is that it was built, not that you waited. */}
@@ -195,7 +222,12 @@ export function CreateTrip() {
           {t.shell.newTrip.lede}
         </p>
 
-        <div className="field birth-in" style={{ '--i': 1 } as React.CSSProperties}>
+        <div
+          className="field birth-in"
+          style={{ '--i': 1 } as React.CSSProperties}
+          ref={destMark.ref}
+          data-invalid={destMark.error ? '' : undefined}
+        >
           <label htmlFor="dest">{t.shell.newTrip.destLabel}</label>
           <DestinationPicker value={destination} onPick={handleDestination} />
           {destination && (
@@ -213,6 +245,11 @@ export function CreateTrip() {
               {candidateZones && <p className="dest-tz-note">{t.shell.newTrip.tzMultiNote}</p>}
             </div>
           )}
+          {destMark.error && (
+            <div className="field-error" role="alert">
+              {destMark.error}
+            </div>
+          )}
           {tzPickerOpen && (
             <ZonePicker
               value={timezone}
@@ -226,14 +263,20 @@ export function CreateTrip() {
           )}
         </div>
 
-        <div className="field birth-in" style={{ '--i': 2 } as React.CSSProperties}>
+        <div
+          className="field birth-in"
+          style={{ '--i': 2 } as React.CSSProperties}
+          ref={datesMark.ref}
+        >
           <label>{t.shell.newTrip.datesLabel}</label>
           <div className="date-row">
             <input
               type="date"
               lang={DEVICE_LOCALE}
               min={today}
-              className={startInPast ? 'invalid' : ''}
+              // Live while the day is already past, and on the save's refusal when it is
+              // the one still empty — two reasons, one mark (ADR-0150 §7).
+              data-invalid={startInPast || (!startDate && datesMark.error) ? '' : undefined}
               value={startDate}
               onChange={(e) => {
                 setStartDate(e.target.value);
@@ -245,18 +288,27 @@ export function CreateTrip() {
               lang={DEVICE_LOCALE}
               min={startDate || today}
               value={endDate}
-              className={datesInvalid ? 'invalid' : ''}
+              data-invalid={datesInvalid || (!endDate && datesMark.error) ? '' : undefined}
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
-          {datesInvalid && (
-            <div className="field-error">
-              {startInPast || endInPast ? t.shell.newTrip.datePast : t.shell.newTrip.dateError}
+          {(datesInvalid || datesMark.error) && (
+            <div className="field-error" role="alert">
+              {datesInvalid
+                ? startInPast || endInPast
+                  ? t.shell.newTrip.datePast
+                  : t.shell.newTrip.dateError
+                : datesMark.error}
             </div>
           )}
         </div>
 
-        <div className="field birth-in" style={{ '--i': 3 } as React.CSSProperties}>
+        <div
+          className="field birth-in"
+          style={{ '--i': 3 } as React.CSSProperties}
+          ref={nameMark.ref}
+          data-invalid={nameMark.error ? '' : undefined}
+        >
           <label htmlFor="tripName">{t.shell.newTrip.nameLabel}</label>
           <div className="title-row">
             <IconPicker
@@ -275,6 +327,11 @@ export function CreateTrip() {
             />
           </div>
           <div className="hint">{t.shell.newTrip.nameHint}</div>
+          {nameMark.error && (
+            <div className="field-error" role="alert">
+              {nameMark.error}
+            </div>
+          )}
         </div>
 
         {/* The shared card's slot in the form. It reserves the space; the card
@@ -283,14 +340,15 @@ export function CreateTrip() {
         <div className="birth-slot" data-slot="form" aria-hidden="true" />
 
         <div className="new-cta birth-in" style={{ '--i': 4 } as React.CSSProperties}>
-          {/* U-13: the CTA is always visible, disabled with a reason until the
-              form is complete, so a first-timer always sees the next step. It also
-              ARMS when the form completes (ADR-0142 §1) — the disabled→enabled flip
-              is a real state change, and it is the app saying "you're done". */}
+          {/* U-13: the CTA is always visible with a reason until the form is complete, so
+              a first-timer always sees the next step — and it ARMS when the form completes
+              (ADR-0142 §1), which is the app saying "you're done". Disabled only for the two
+              things a press cannot answer (ADR-0150 §8): offline, and a write already in
+              flight. Not-ready is `:not([data-armed])`, which looks the same and answers. */}
           <button
             className="create-btn"
             onClick={submit}
-            disabled={!canCreate || offline || submitting}
+            disabled={offline || submitting}
             data-armed={canCreate && !offline ? '' : undefined}
           >
             {t.shell.newTrip.createButton}
@@ -377,49 +435,57 @@ function Birth({
     };
   }, [phase]);
 
-  useLayoutEffect(() => {
-    const apply = () => {
-      const m = measure();
-      if (m == null) return;
-      const top = m.cardTop;
-      setCardTop(top);
-      setHeadHeight(m.headHeight);
-      // FLIP: the previous phase's top is where the card visibly was, so play the
-      // difference to zero. Only across a real phase change — a re-measure inside one
-      // phase (a date error appearing) must move the card, not animate it.
-      const from = lastTopRef.current;
-      lastTopRef.current = top;
-      const card = rootRef.current?.querySelector<HTMLElement>('.birth-card');
-      if (
-        !card?.animate ||
-        from == null ||
-        phase === lastPhaseRef.current ||
-        prefersReducedMotion() ||
-        Math.abs(from - top) < 1
-      ) {
-        lastPhaseRef.current = phase;
-        return;
-      }
+  const apply = useCallback(() => {
+    const m = measure();
+    if (m == null) return;
+    const top = m.cardTop;
+    setCardTop(top);
+    setHeadHeight(m.headHeight);
+    // FLIP: the previous phase's top is where the card visibly was, so play the
+    // difference to zero. Only across a real phase change — a re-measure inside one
+    // phase (a date error appearing) must move the card, not animate it.
+    const from = lastTopRef.current;
+    lastTopRef.current = top;
+    const card = rootRef.current?.querySelector<HTMLElement>('.birth-card');
+    if (
+      !card?.animate ||
+      from == null ||
+      phase === lastPhaseRef.current ||
+      prefersReducedMotion() ||
+      Math.abs(from - top) < 1
+    ) {
       lastPhaseRef.current = phase;
-      card.animate([{ transform: `translateY(${from - top}px)` }, { transform: 'none' }], {
-        duration: readDurationMs('--t-deliberate'),
-        easing: EASE_ARRIVE,
-        fill: 'none',
-      });
-    };
-    apply();
-    // The form's height changes as fields fill in (a date error appears, a timezone note
-    // shows), so the resting position is re-measured rather than read once.
-    //
-    // Guarded rather than shimmed in tests: jsdom has no `ResizeObserver`, and the
-    // one-shot measurement above is the part correctness depends on.
+      return;
+    }
+    lastPhaseRef.current = phase;
+    card.animate([{ transform: `translateY(${from - top}px)` }, { transform: 'none' }], {
+      duration: readDurationMs('--t-deliberate'),
+      easing: EASE_ARRIVE,
+      fill: 'none',
+    });
+  }, [phase, measure]);
+
+  // **EVERY RENDER, NOT EVERY RESIZE** (found rendering ADR-0150's refusals). The slot the
+  // card rests on MOVES whenever the form above it grows — a timezone note, a refusal — and
+  // that is a re-layout, not a resize: the root and the body are both viewport-sized, so
+  // their own boxes never change and a `ResizeObserver` on either never fires. Three
+  // refusals at once pushed the slot 57px down and the card stayed put, over the field
+  // above. The form is this component's `children`, so a render is exactly the signal that
+  // something below may have moved; re-measuring is idempotent (an unchanged `setState`
+  // bails out) and the FLIP is already gated on a real phase change.
+  useLayoutEffect(apply);
+
+  // The resize path stays for what a render cannot see: the viewport itself changing
+  // (rotation, the keyboard). Guarded rather than shimmed in tests — jsdom has no
+  // `ResizeObserver`, and the measurement above is the part correctness depends on.
+  useLayoutEffect(() => {
     if (typeof ResizeObserver === 'undefined') return;
     const root = rootRef.current;
     if (!root) return;
     const ro = new ResizeObserver(apply);
     ro.observe(root);
     return () => ro.disconnect();
-  }, [phase, measure]);
+  }, [apply]);
 
   // The sequence. Reduced motion lands the END STATE immediately — a user who asked
   // for less motion did not ask for a different outcome (ADR-0140 §5).

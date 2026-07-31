@@ -50,6 +50,7 @@ import { PlacePicker } from './primitives/PlacePicker';
 import { ToggleChip } from './primitives/ToggleChip';
 import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
+import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
 
 /** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
  *  state that no URL addresses, so sending its place field off to the Map tab means the
@@ -200,7 +201,8 @@ export function EventForm({
   const [placeId, setPlaceId] = useState<string | undefined>(
     draft ? draft.placeId : initialPlaceId,
   );
-  const [error, setError] = useState<string | null>(null);
+  // Every refusal this form can make, marked at the field it is about (ADR-0150).
+  const errors = useFormErrors<'title' | 'date' | 'time'>();
 
   // ── `יש הזמנה` (ADR-0136) ──────────────────────────────────────────────────
   // The row DEFAULTS from the category — lodging and transport open on, everything else off —
@@ -290,16 +292,42 @@ export function EventForm({
     return hardConflicts(provisional, dayEvents);
   }, [start, end, kind.value, date, tz, events, event?.id]);
 
+  /** The backstop below the checks in `submit`: a shape the schema refuses after they
+   *  all passed. There is no field to point at, so it reads in the form-level slot. */
+  const refuseUnexpected = (message?: string) => {
+    errors.report([{ field: null, message: message ?? t.eventForm.titleRequired }]);
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return setError(t.eventForm.titleRequired);
-    if (!date) return setError(t.eventForm.dateRequired);
+    // EVERY refusal at once (ADR-0150), each named at its own field: a form with
+    // two things missing says so once, instead of sending the user round the save
+    // loop a second time to be told the next one.
+    const problems: FieldProblem<'title' | 'date' | 'time'>[] = [];
+    if (!title.trim()) problems.push({ field: 'title', message: t.eventForm.titleRequired });
     // Native min/max guides the picker, but a typed value can still land outside
     // the trip. An event belongs to a day within [startDate, endDate] — an
     // overnight event on the last day still files under that day (ADR-0037).
-    if (date < trip.startDate || date > trip.endDate) {
-      return setError(t.eventForm.dateOutOfRange);
+    const dateProblem = !date
+      ? t.eventForm.dateRequired
+      : date < trip.startDate || date > trip.endDate
+        ? t.eventForm.dateOutOfRange
+        : null;
+    if (dateProblem) problems.push({ field: 'date', message: dateProblem });
+
+    // The instants only mean anything once the day does, so they are derived after
+    // the day is known good — and then they are what the save sends.
+    const startsAt = !dateProblem && start ? zonedIso(date, start, tz) : undefined;
+    const endsAt =
+      !dateProblem && end
+        ? start
+          ? resolveEndIso(date, start, end, tz)
+          : zonedIso(date, end, tz)
+        : undefined;
+    if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
+      problems.push({ field: 'time', message: t.eventForm.endBeforeStart });
     }
+    if (errors.report(problems)) return;
 
     const fields = {
       date,
@@ -312,20 +340,9 @@ export function EventForm({
       // and clearing one sends `null` to hand the event back to the derivation. An
       // untouched form sends nothing, so it can't freeze today's derived zone.
       displayTimezone: override !== initialOverride ? override : undefined,
-      startsAt: start ? zonedIso(date, start, tz) : undefined,
-      endsAt: end
-        ? start
-          ? resolveEndIso(date, start, end, tz)
-          : zonedIso(date, end, tz)
-        : undefined,
+      startsAt,
+      endsAt,
     };
-    if (
-      fields.startsAt &&
-      fields.endsAt &&
-      Date.parse(fields.endsAt) <= Date.parse(fields.startsAt)
-    ) {
-      return setError(t.eventForm.endBeforeStart);
-    }
 
     // ── THE ONE BRANCH THIS ROW ADDS (ADR-0136 §1/§3) ────────────────────────
     // Everything above is unchanged: you are always creating an event, and the fields are the
@@ -341,8 +358,7 @@ export function EventForm({
     // The verb keeps those writes behind ONE toast and ONE undo.
     if (booked.value && showBooked) {
       const parsed = createEventSchema.safeParse(fields);
-      if (!parsed.success)
-        return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
+      if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
       verbs.book(
         {
           type: derivedType,
@@ -368,13 +384,11 @@ export function EventForm({
 
     if (event) {
       const parsed = updateEventSchema.safeParse(fields);
-      if (!parsed.success)
-        return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
+      if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
       verbs.update(event, parsed.data);
     } else if (maybeItem) {
       const parsed = createEventSchema.safeParse(fields);
-      if (!parsed.success)
-        return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
+      if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
       verbs.schedule(maybeItem, {
         date: parsed.data.date,
         title: parsed.data.title,
@@ -388,8 +402,7 @@ export function EventForm({
       });
     } else {
       const parsed = createEventSchema.safeParse(fields);
-      if (!parsed.success)
-        return setError(parsed.error.issues[0]?.message ?? t.eventForm.titleRequired);
+      if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
       const now = new Date(getNow()).toISOString();
       verbs.create({
         ...parsed.data,
@@ -419,6 +432,15 @@ export function EventForm({
         <form
           className="modal-form"
           onSubmit={submit}
+          // THE APP DOES THE REFUSING (ADR-0150). Without this the browser's own
+          // constraint validation gets there first on a date outside `min`/`max` — an
+          // untranslated LTR bubble, and a save that never reaches `submit`, so the
+          // form's own Hebrew refusal at the field could not run. It also puts this
+          // form and `BookingSheet` (whose save is a plain button, never natively
+          // validated) on the same footing.
+          noValidate
+          // Addressing a refusal retires it, wherever in the form it was made.
+          {...errors.formProps}
           // Reveal the focused field above the keyboard within the scrolling sheet.
           onFocusCapture={(e) => {
             if (e.target instanceof HTMLElement)
@@ -441,7 +463,7 @@ export function EventForm({
             </Field>
           )}
 
-          <Field label={t.eventForm.titleLabel}>
+          <Field label={t.eventForm.titleLabel} {...errors.field('title')}>
             <div className="title-row">
               <IconPicker icon={icon.value} onChange={icon.set} />
               <input
@@ -478,6 +500,7 @@ export function EventForm({
             }}
             minDate={trip.startDate}
             maxDate={trip.endDate}
+            marks={{ date: errors.field('date'), time: errors.field('time') }}
           />
 
           {conflicts.length > 0 && (
@@ -643,9 +666,10 @@ export function EventForm({
             </div>
           </Field>
 
-          {error && (
+          {/* Only what has no field to point at still reads down here. */}
+          {errors.formError && (
             <p className="field-error" role="alert">
-              {error}
+              {errors.formError}
             </p>
           )}
 

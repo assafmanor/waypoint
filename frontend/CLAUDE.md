@@ -53,6 +53,17 @@ one.
   sheet, a new tappable and a new shell screen inherit their motion by existing. What a
   new **large** surface must do is one line: `--press-scale: var(--press-scale-lg)`,
   because the default step is the control one.
+- **A form that can refuse a save** — `ui/primitives/useFormErrors` + the `data-invalid`
+  attribute (ADR-0150), never a `useState<string | null>` and a caption of your own.
+  The hook owns what happens _after_ the refusal (mark, one nudge, bring the first
+  problem into view); the form still decides what is wrong and in what words. A field
+  joins by spreading `errors.field(name)` onto its `Field` — or onto anything that
+  forwards a `FieldMark`, which is how `WhenField` refuses per leg. Report **every**
+  problem in one call: returning at the first one sends the user round the save loop
+  again to be told the next. And **a primary is `disabled` only when a press could not
+  work** — offline, or a write in flight — never as a stand-in for a refusal it cannot
+  explain (ADR-0150 §8); four buttons were doing the latter and three of them said
+  nothing at all.
 - **`ui/feedback/`** — the empty/loading/error/status shell family (ADR-0078):
   `EmptyState`, `ErrorState`, `LoadingState`+`Skeleton`, `StatusBanner`,
   `SyncBadge`. A screen needing "no data yet" / "failed to load" / "offline"
@@ -164,6 +175,11 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   surface (ADR-0090); lint-blocked for a reason.
 - A bespoke empty/loading/error `<div>` per screen instead of the
   `ui/feedback/` family (ADR-0078).
+- A form-level "something is wrong" caption, or a per-form `.invalid` class, instead of
+  `useFormErrors` (ADR-0150). There were three of these across six forms and none marked
+  the field; the shipped complaint was that the refusal was _"nearly noticeable"_. Note
+  the second half, which the caption version hid: a refusal that stops at the FIRST
+  problem is a second save attempt for the second missing field.
 - A hand-picked `:active` transform, or a duration literal in a `setTimeout` that is
   waiting for an animation. Both existed in quantity: seven different press values
   across 16 rules, and a mode-switch timer whose token reader was private to

@@ -26,6 +26,7 @@ import { TimePicker } from '../TimePicker';
 import { TimeField } from './TimeField';
 import { ZoneChip, type ZoneChipProps } from './ZoneChip';
 import { Field } from './Field';
+import { type FieldMark } from './useFormErrors';
 import { t } from '../../i18n/he';
 import './when-field.css';
 
@@ -54,6 +55,11 @@ type DayProps = {
    *  (ADR-0107 §6): shown when passed, editable when it carries an `onChange`.
    *  Omitted → no chip, and the caller's own zone handling is unchanged. */
   zone?: ZoneChipProps;
+  /** Where a refusal about the when lands (ADR-0150). The day and the time are
+   *  separate boxes and refuse for separate reasons ("no date" vs "the end is
+   *  before the start"), so the form marks whichever it means — from
+   *  `useFormErrors().field(name)`, never assembled by hand. */
+  marks?: { date?: FieldMark; time?: FieldMark };
 };
 
 type SpanProps = {
@@ -81,6 +87,9 @@ type SpanProps = {
    *  interpreted in, and is editable when it carries an `onChange`. A crossing
    *  needs one per end: pinning both to one zone would erase the crossing. */
   zones?: { start?: ZoneChipProps; end?: ZoneChipProps };
+  /** A refusal per leg (ADR-0150) — the same reason the zones are per leg: a span
+   *  can be wrong at either end, and marking both would name a field that is fine. */
+  marks?: { start?: FieldMark; end?: FieldMark };
 };
 
 export type WhenFieldProps = DayProps | SpanProps;
@@ -100,10 +109,11 @@ function WhenDay({
   dateId,
   dateLabel,
   zone,
+  marks,
 }: DayProps) {
   return (
     <div className="wf">
-      <Field label={dateLabel ?? t.eventForm.dateLabel} htmlFor={dateId}>
+      <Field label={dateLabel ?? t.eventForm.dateLabel} htmlFor={dateId} {...marks?.date}>
         <input
           type="date"
           id={dateId}
@@ -115,7 +125,11 @@ function WhenDay({
           onChange={(e) => onChange({ date: e.target.value, start, end })}
         />
       </Field>
-      <TimePicker start={start} end={end} onChange={(next) => onChange({ date, ...next })} />
+      {/* The time keeps its own caption inside `TimePicker`, so the shell around it
+          is unlabelled — it is here to hold the mark and the message. */}
+      <Field {...marks?.time}>
+        <TimePicker start={start} end={end} onChange={(next) => onChange({ date, ...next })} />
+      </Field>
       {/* The zone the times above mean (ADR-0107 §6) — inference is never silently
           authoritative, so the chip states it and one tap corrects it. */}
       {zone && <ZoneChip {...zone} />}
@@ -136,6 +150,7 @@ function WhenSpan({
   endTimeZone = timeZone,
   durationUnit,
   zones,
+  marks,
 }: SpanProps) {
   const setStart = (v: string) => onChange({ start: v, end });
   const setEnd = (v: string) => onChange({ start, end: v });
@@ -160,29 +175,33 @@ function WhenSpan({
 
   return (
     <div className="wf wf-span">
-      <SpanLeg
-        label={labels.start}
-        value={start}
-        onChange={setStart}
-        minDate={minDate}
-        maxDate={maxDate}
-        defaultDate={defaultDate}
-      />
+      <Field {...marks?.start}>
+        <SpanLeg
+          label={labels.start}
+          value={start}
+          onChange={setStart}
+          minDate={minDate}
+          maxDate={maxDate}
+          defaultDate={defaultDate}
+        />
+      </Field>
       {zones?.start && <ZoneChip {...zones.start} />}
-      <SpanLeg
-        label={labels.end}
-        value={end}
-        onChange={setEnd}
-        // The end can't fall before the start: its earliest selectable day is the
-        // start's day (falling back to the trip start until a start is picked).
-        // Latest stays the trip end, so the end is bounded to [start, tripEnd].
-        minDate={startDay || minDate}
-        maxDate={maxDate}
-        // The arrival day defaults to the departure day, so a same-day trip needs
-        // only its time picked; a later day is still freely selectable.
-        defaultDate={startDay || defaultDate}
-        badge={crossesDays ? `+${daysApart}` : undefined}
-      />
+      <Field {...marks?.end}>
+        <SpanLeg
+          label={labels.end}
+          value={end}
+          onChange={setEnd}
+          // The end can't fall before the start: its earliest selectable day is the
+          // start's day (falling back to the trip start until a start is picked).
+          // Latest stays the trip end, so the end is bounded to [start, tripEnd].
+          minDate={startDay || minDate}
+          maxDate={maxDate}
+          // The arrival day defaults to the departure day, so a same-day trip needs
+          // only its time picked; a later day is still freely selectable.
+          defaultDate={startDay || defaultDate}
+          badge={crossesDays ? `+${daysApart}` : undefined}
+        />
+      </Field>
       {zones?.end && <ZoneChip {...zones.end} />}
       {/* A lodging span reads in nights, derived from the two calendar days (no
           "crosses a day" note — a stay always does). Everything else keeps the
