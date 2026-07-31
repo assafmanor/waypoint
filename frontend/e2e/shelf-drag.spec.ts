@@ -130,10 +130,16 @@ async function settleChrome(page: Page) {
   // Then wait for the transitions THEMSELVES rather than for a height that happens
   // to repeat. `getAnimations` reports running CSS transitions, so this asks the
   // question exactly instead of inferring it from samples.
+  //
+  // …and for the chrome to be at an END. A scroll leaves it wherever the finger
+  // did and it SNAPS on an idle timer afterwards (ADR-0149 §7's 2026-08-04
+  // amendment), so "nothing is animating" is true twice: once mid-gesture, before
+  // the snap has even started, at a height nothing will still be at.
   await page.waitForFunction(
     () => {
       const el = document.querySelector('.header');
       if (!el) return true;
+      if (document.querySelector('.app[data-chrome-row="mid"]')) return false;
       return el.getAnimations({ subtree: true }).every((a) => a.playState !== 'running');
     },
     null,

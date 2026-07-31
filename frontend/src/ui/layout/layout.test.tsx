@@ -100,7 +100,22 @@ describe('AppShell', () => {
 
     it('leaves data-chrome off a body that has not been scrolled', () => {
       const { container } = render(<AppShell>body</AppShell>);
-      expect(container.querySelector('.app')!.hasAttribute('data-chrome')).toBe(false);
+      const app = container.querySelector('.app')!;
+      expect(app.hasAttribute('data-chrome')).toBe(false);
+      // The scroll path's own position rides a SEPARATE attribute, so nothing the
+      // body does can be mistaken for something a surface asked for.
+      expect(app.getAttribute('data-chrome-row')).toBe('open');
+    });
+
+    // The regression this exists to catch, and it shipped once: the scroll path
+    // writes `--chrome-open` inline, an inline value outranks the selector carrying
+    // a surface's declaration, and the Map simply stopped collapsing. Nothing of the
+    // scroll path may touch a frame whose chrome was declared.
+    it('writes nothing of its own under a declared chrome', () => {
+      const { container } = render(<AppShell chrome={CHROME_CONDENSED}>body</AppShell>);
+      const app = container.querySelector('.app') as HTMLElement;
+      expect(app.style.getPropertyValue('--chrome-open')).toBe('');
+      expect(app.hasAttribute('data-chrome-row')).toBe(false);
     });
 
     // A drag auto-scrolls the body at the edge bands, and a header collapsing

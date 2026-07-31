@@ -162,24 +162,29 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 44px;
-  /* The gap to the day row lives HERE, on the box that collapses, so the whole
-     condense is one box changing size rather than two. It used to be the day row's
-     `margin-top`, which meant the same vertical movement was expressed twice, on
-     two elements, and read as a double step.
+  overflow: hidden;
+  /* Every dimension is a function of `--chrome-open` (1 whole, 0 gone), so the row's
+     position during a scroll is the scroll's, not a timer's. The gap to the day row
+     is in here too, on the box that collapses, so the whole condense is one box
+     changing size rather than two — it used to be the day row's `margin-top`, which
+     meant the same vertical movement was expressed twice and read as a double step. */
+  height: calc(44px * var(--chrome-open, 1));
+  margin-bottom: calc(8px * var(--chrome-open, 1));
+  opacity: var(--chrome-open, 1);
+  /* One clock and one easing for every property, deliberately: the contents used to
+     fade over `--t-quick` while the row collapsed over `--t-base`, so you saw the row
+     go blank and THEN the gap close — one gesture read as two events.
 
-     One clock and one easing for every property, deliberately: the contents used to
-     fade over `--t-quick` while the row collapsed over `--t-base`, so you saw the
-     row go blank and THEN the gap close — one gesture read as two events. And it is
-     `--t-quick`, not `--t-base`: this animates layout (the body resizes every frame),
-     which is the expensive kind, and a scroll-driven collapse wants to feel decisive
-     rather than to be watched. */
-  margin-bottom: 8px;
+     `--chrome-t` is how the scroll path turns this off: while the body is being
+     scrolled the hook sets it to 0s, because the header is IN FLOW and a timed
+     collapse moves the content by 52px ON TOP of the movement the finger is already
+     making. Unset — a declared condense, and the snap when the scrolling stops — it
+     falls back to `--t-quick` and animates, since nothing else is moving then. */
   transition:
-    height var(--t-quick) var(--ease-standard),
-    margin-bottom var(--t-quick) var(--ease-standard),
-    opacity var(--t-quick) var(--ease-standard),
-    visibility var(--t-quick);
+    height var(--chrome-t, var(--t-quick)) var(--ease-standard),
+    margin-bottom var(--chrome-t, var(--t-quick)) var(--ease-standard),
+    opacity var(--chrome-t, var(--t-quick)) var(--ease-standard),
+    visibility var(--chrome-t, var(--t-quick));
 }
 
 /* The trip chip. It navigates straight to /trips (ADR-0033 §3's one-list rule
@@ -576,19 +581,19 @@
 
 /* ── The condense (ADR-0149 §7) ───────────────────────────────────────────────
    Row 1 rides out and the trip glyph slots into the day row, so identity never
-   leaves the chrome: 160px → 108px. Driven by `data-chrome` on the shell, which is
-   set either by the body's own scroll (`lib/chrome-condense.ts`) or by a surface
-   declaring it as its resting state (`CHROME_CONDENSED`) — the header itself is
-   told the layout and never asks why.
+   leaves the chrome: 160px → 108px. One number says how far along it is,
+   `--chrome-open`, and it arrives one of two ways: written inline by the body's own
+   scroll (`lib/chrome-condense.ts`) or declared by a surface as its resting state
+   (`CHROME_CONDENSED`). The header is told the layout and never asks why.
 
    `visibility` alongside the sizes, in both directions: a control at zero width is
-   still focusable, so without it a tab press would land on a chip nobody can see. */
+   still focusable, so without it a tab press would land on a chip nobody can see. It
+   is the one thing NOT a function of `--chrome-open` — a fraction has no answer to
+   "is it reachable" — so it keys off `data-chrome-row`, which names the ends. */
 .hdr-minitrip {
   position: relative;
   flex: 0 0 auto;
-  width: 0;
   height: 44px;
-  margin-inline-end: 0;
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -598,33 +603,37 @@
   color: inherit;
   font-size: 19px;
   cursor: pointer;
-  opacity: 0;
+  width: calc(34px * (1 - var(--chrome-open, 1)));
+  margin-inline-end: calc(6px * (1 - var(--chrome-open, 1)));
+  opacity: calc(1 - var(--chrome-open, 1));
   visibility: hidden;
   /* The same one clock as the row it replaces — it arrives as that leaves, and two
      durations made the glyph still sliding in after the collapse had finished. */
   transition:
-    width var(--t-quick) var(--ease-standard),
-    margin-inline-end var(--t-quick) var(--ease-standard),
-    opacity var(--t-quick) var(--ease-standard),
-    visibility var(--t-quick);
+    width var(--chrome-t, var(--t-quick)) var(--ease-standard),
+    margin-inline-end var(--chrome-t, var(--t-quick)) var(--ease-standard),
+    opacity var(--chrome-t, var(--t-quick)) var(--ease-standard),
+    visibility var(--chrome-t, var(--t-quick));
 }
 .hdr-minitrip:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: -2px;
   border-radius: 9px;
 }
-.app[data-chrome='condensed'] .hdr-top {
-  height: 0;
-  margin-bottom: 0;
-  opacity: 0;
-  overflow: hidden;
+/* A surface DECLARING the condense sets the same one number, and nothing else — no
+   inline value is written under it (that inline/selector clash is what took the Map's
+   collapse away once), so this path is the plain timed transition it always was. */
+.app[data-chrome='condensed'] {
+  --chrome-open: 0;
+}
+.app[data-chrome='condensed'] .hdr-top,
+.app[data-chrome-row='closed'] .hdr-top {
   visibility: hidden;
   pointer-events: none;
 }
-.app[data-chrome='condensed'] .hdr-minitrip {
-  width: 34px;
-  margin-inline-end: 6px;
-  opacity: 1;
+.app[data-chrome='condensed'] .hdr-minitrip,
+.app[data-chrome-row='mid'] .hdr-minitrip,
+.app[data-chrome-row='closed'] .hdr-minitrip {
   visibility: visible;
 }
 /* The badge follows identity into the condensed row: an exception indicator that

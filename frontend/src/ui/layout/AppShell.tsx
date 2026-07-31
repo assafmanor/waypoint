@@ -1,5 +1,5 @@
 import { useState, type Key, type ReactNode } from 'react';
-import { useCondenseOnScroll } from '../../lib/chrome-condense';
+import { useChromeOpenness } from '../../lib/chrome-condense';
 import { cx } from './shared';
 
 /** The body modifier a surface passes as `bodyClassName` to own its own layout
@@ -88,19 +88,30 @@ export function AppShell({
   className,
   bodyClassName,
 }: AppShellProps) {
-  // Scrolling the body condenses the chrome (ADR-0149 §7). It lives HERE, not in
-  // the header, because the body is the thing being scrolled and this layer owns
-  // it — the header would have to reach out of itself to find the element. A
-  // surface's own declaration wins: `reclaimed` has no chrome left to condense,
-  // and `condensed` is already the answer.
+  // Scrolling the body gives the chrome away (ADR-0149 §7). It lives HERE, not in
+  // the header, because the body is the thing being scrolled and this layer owns it —
+  // the header would have to reach out of itself to find the element.
   const [bodyEl, setBodyEl] = useState<HTMLElement | null>(null);
-  const scrolledPast = useCondenseOnScroll(bodyEl, holdChrome);
+  const [frameEl, setFrameEl] = useState<HTMLElement | null>(null);
+  // `declared` is load-bearing, not a guard for tidiness: the hook writes
+  // `--chrome-open` INLINE, and an inline value outranks the selector that carries a
+  // surface's declaration — so leaving it on took the Map's condense away entirely.
+  const chromeRow = useChromeOpenness(frameEl, bodyEl, {
+    declared: chrome !== undefined,
+    hold: holdChrome,
+  });
   return (
     <div
+      ref={setFrameEl}
       className={cx('app', className)}
       data-mode={mode}
       data-switching={switching}
-      data-chrome={chrome ?? (scrolledPast ? CHROME_CONDENSED : undefined)}
+      // `data-chrome` is the SURFACE'S statement; `data-chrome-row` is where the
+      // body's scroll has got to. They are separate attributes because only the first
+      // is a layout the surface asked for — the second is the position of a gesture,
+      // and the header reads it for `visibility` alone (ADR-0149 §7's amendment).
+      data-chrome={chrome}
+      data-chrome-row={chrome === undefined ? chromeRow : undefined}
     >
       {header}
       <main className={cx('body', bodyClassName)} key={bodyKey} ref={setBodyEl}>

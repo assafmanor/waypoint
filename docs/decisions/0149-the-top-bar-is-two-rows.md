@@ -69,7 +69,7 @@ Scrolling the body lifts row 1 out; the trip glyph slides into the day row's lea
 
 Two guards are part of the decision, because the first build oscillated visibly:
 
-- **Hysteresis** — condense at 48px, release at 12px. One threshold flips the state on the pixel it is read at, and collapsing frees 52px of body, which removes the very overflow that triggered it.
+- **Hysteresis** — condense at 48px, release at 12px. One threshold flips the state on the pixel it is read at, and collapsing frees 52px of body, which removes the very overflow that triggered it. _(Superseded by the 2026-08-04 amendment "the condense is scroll-linked, and it snaps": the collapse is now continuous and has no threshold to be hysteretic about.)_
 - **A slack test** — never condense when the page barely scrolls; the room it buys is room the content did not need.
 
 **And a surface may declare the condensed chrome as its resting state, with no gesture involved.** The Map must: its body is `is-fullbleed` and therefore **never scrolls**, so the scroll trigger is structurally unavailable on the one surface whose scarce axis is height (ADR-0121 §5 / ADR-0126). This is a third `AppShell` modifier beside `BODY_FULLBLEED` and `CHROME_RECLAIMED`, and it keeps that layer's rule: the surface says what layout it wants, never what it is doing (the "search-mode flag" ADR-0101 refused). The Map's chrome becomes **108px at rest**, and the reclaim (ADR-0132) still takes it to 0 when the query field opens — three states, where there were two.
@@ -114,6 +114,57 @@ browser, where `--safe-top` is 0: the notch makes the body ~48px shorter and the
 systematically off by the inset on the very quantity being tested.** Measured local
 slack was 52 (below the band); the same page on the reporting device is ~101 (the
 bottom of it).
+
+## Amendment, 2026-08-04 (device pass) — the condense is scroll-linked, and it snaps
+
+Three builds of §7's collapse were reported jumpy from a phone, and each fix produced a
+different failure: retiming it, then linking it to the offset (which oscillated again,
+rested half open, and took the Map's collapse away entirely). The third report is the one
+that named the cause — _"collapsing when going to the map screen is smooth and expanding
+going out is smooth too"_ — because those are the same 52px, animated, on the one path
+with **no finger in it**.
+
+**The header is in flow, so collapsing it moves the content by its own height change.**
+On a timer, that is 52px the content travels _on its own_, landing on top of the movement
+the finger is already producing: at any duration you are watching two things move at once
+and only asked for one. No easing fixes that, and hysteresis makes it worse, because a
+threshold turns a gradual gesture into a 52px step.
+
+So §7's trigger changes shape (the owner's model, and the name for it is Facebook's bar):
+
+- **While the body is being scrolled, the chrome is a function of the scroll, not of a
+  clock** — `--chrome-open`, driven straight to the DOM with the transition switched off.
+  1:1, so the chrome hands back exactly what the finger took and the content moves once.
+- **When the scrolling stops, a part-collapsed chrome snaps to the nearer end, animated.**
+  By then nothing else is moving, which is the whole distinction. There is no resting half
+  state — the owner's second requirement, and the suite asserts it as a property.
+- **Down follows the finger from the first pixel; up must be _armed_** by
+  `CHROME_EXPAND_ARM_PX` of deliberate upward scroll, or every small correction mid-read
+  drags the header back over what you are reading.
+- **It steps on DELTAS, never on the absolute offset.** Openness derived from `scrollTop`
+  feeds back — collapsing changes how much there is to scroll, the browser clamps, and the
+  clamp changes the openness that caused it. That loop is what oscillated twice. Against
+  deltas it cannot form, and the handler re-reads the offset _after_ its own write so a
+  clamp it caused is absorbed rather than counted as a gesture.
+
+Two consequences worth stating, because both are constraints rather than tuning:
+
+- **The chrome may never be more collapsed than the offset accounts for.** Without that
+  floor, coming back up the last stretch the chrome is still part-closed when `scrollTop`
+  hits 0 and §7's "whole header at the top" rule slams the rest open in one frame. The
+  floor can only ever _open_ the chrome, and opening gives the body more to scroll — so it
+  cannot provoke the clamp that would re-trigger it, which is why it stays out of the loop
+  above. It also means the top 52px are rigidly linked in both directions, arm included.
+- **The slack test's threshold doubles**, to `2 × FREES + 12`. A fully condensed chrome
+  needs a whole `FREES` of scroll left _underneath_ it or the floor pulls it straight back
+  open; one times over, the closed state does not survive its own arrival.
+
+**And the declared path is now untouched by any of it.** The previous build wrote
+`--chrome-open` inline on every frame — an inline value outranks the selector carrying a
+surface's declaration, so its own opening write silently beat the Map's and the Map stopped
+collapsing. Nothing of the scroll path is written when a declaration is in force, which
+leaves the Map exactly the plain timed transition it had before, in both directions — the
+owner's first requirement, and now the reference the scroll path was measured against.
 
 ## Amendment, 2026-08-03 (device pass) — the deck cue is withdrawn; the `swap` mark carries it alone
 
