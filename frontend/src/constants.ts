@@ -843,20 +843,21 @@ export const DOT_SEPARATOR = '·';
 export const ROUTE_INLINE_MAX_CHARS = 26;
 
 /* ── The top chrome's condense (ADR-0149 §7) ──────────────────────────────────
-   Read by `lib/chrome-condense.ts`, which is where the reasoning lives. */
+   Read by `lib/chrome-condense.ts`, which is where the reasoning lives.
 
-/** Scrolled past this, row 1 rides out. */
-export const CHROME_CONDENSE_ENTER_PX = 48;
-/** …and back within this, it comes back. Two thresholds, because one flips the
-    state on the pixel it is read at. */
-export const CHROME_CONDENSE_RELEASE_PX = 12;
-/** What condensing gives back to the body: 160px of chrome becomes 108px. */
+   The enter/release pair that used to live here retired with the discrete model:
+   the collapse is scroll-LINKED now, and a continuous mapping has a fixed point
+   where a two-threshold flip had two states to bounce between. */
+
+/** What a full condense gives back to the body: 160px of chrome becomes 108px.
+    It is also the scroll distance the collapse is spread over, because the chrome
+    handing back exactly what has been scrolled is what makes it track the finger. */
 export const CHROME_CONDENSE_FREES_PX = 52;
-/** The slack test: below this there is not enough to scroll for the condense to
-    survive itself. Condensing frees `CHROME_CONDENSE_FREES_PX`, so the body has
-    that much less to scroll afterwards — it has to still clear the release
-    threshold, or the chrome expands again and the loop starts. */
-export const CHROME_CONDENSE_MIN_SLACK_PX = CHROME_CONDENSE_FREES_PX + CHROME_CONDENSE_RELEASE_PX;
+/** Below this much to scroll, the chrome does not start giving way at all — a page
+    with barely more content than a screen would otherwise settle at a permanently
+    half-collapsed header, which is worse than not collapsing. Judged on the
+    EXPANDED height, since the live slack shrinks by whatever has been given back. */
+export const CHROME_CONDENSE_MIN_SLACK_PX = CHROME_CONDENSE_FREES_PX + 12;
 
 /** Active-trip override — per-device, not synced (ADR-0021). */
 export const ACTIVE_TRIP_STORAGE_KEY = 'wp_active_trip_id';
