@@ -175,9 +175,15 @@ export type WsMessageType = (typeof WS_MESSAGE_TYPE)[keyof typeof WS_MESSAGE_TYP
  *  so the server's `take` and the client's continuation loop agree. */
 export const CHANGES_PAGE_LIMIT = 500;
 
-/** Trip name length cap — keeps the header switcher pill to one line
- *  (app-shell.md §5). Validated server-side (createTripSchema) and enforced
- *  client-side (the create form's input `maxLength`). */
+/** Trip name length cap. **A length bound, not a one-line guarantee** — the
+ *  guarantee this comment used to make stopped holding once the header row filled
+ *  up, and 18 characters clipped anyway (ADR-0149 §9). What keeps the name on one
+ *  line is `useShrinkToFit` in the header, with the CSS ellipsis behind it; how
+ *  much room it gets depends on the screen width and on how many avatars sit
+ *  beside it, so no single character count can promise a fit. Kept at 18 rather
+ *  than re-derived downward: a smaller cap would invalidate names already typed
+ *  and still promise nothing. Validated server-side (createTripSchema) and
+ *  enforced client-side (the create form's input `maxLength`). */
 export const MAX_TRIP_NAME_LENGTH = 18;
 
 /** Display-name length cap. Roomier than the trip name because it is a person's
