@@ -162,30 +162,19 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  /* Everything the collapse moves is a multiple of ONE variable, which is what
-     makes it one movement rather than several that have to be kept in step. The
-     gap to the day row is in here too (it was the day row's `margin-top`, so the
-     same vertical movement was expressed twice, on two elements, and read as a
-     double step).
+  height: 44px;
+  /* The gap to the day row lives HERE, on the box that collapses, so the whole
+     condense is one box changing size rather than two. It used to be the day row's
+     `margin-top`, which meant the same vertical movement was expressed twice, on
+     two elements, and read as a double step.
 
-     `--chrome-open` is driven continuously from the scroll offset, so the position
-     is the finger's at every instant — see `lib/chrome-condense.ts`. The default of
-     1 is what every surface outside the trip shell renders at. */
-  height: calc(44px * var(--chrome-open, 1));
-  margin-bottom: calc(8px * var(--chrome-open, 1));
-  opacity: var(--chrome-open, 1);
-  overflow: hidden;
-}
-/* …and NO transition on the scroll path, deliberately. The movement there is
-   already the finger's, so a transition on top of it is a second, independent 52px
-   the content makes on its own — exactly what read as unsmooth on a device.
-
-   A surface that DECLARES the condense has no finger competing with it, so that one
-   animates, and on one clock: the contents used to fade over `--t-quick` while the
-   row collapsed over `--t-base`, so the row went blank and THEN the gap closed. It
-   is `--t-quick` rather than `--t-base` because this animates layout — the body
-   resizes every frame — and that wants to feel decisive rather than be watched. */
-.app[data-chrome] .hdr-top {
+     One clock and one easing for every property, deliberately: the contents used to
+     fade over `--t-quick` while the row collapsed over `--t-base`, so you saw the
+     row go blank and THEN the gap close — one gesture read as two events. And it is
+     `--t-quick`, not `--t-base`: this animates layout (the body resizes every frame),
+     which is the expensive kind, and a scroll-driven collapse wants to feel decisive
+     rather than to be watched. */
+  margin-bottom: 8px;
   transition:
     height var(--t-quick) var(--ease-standard),
     margin-bottom var(--t-quick) var(--ease-standard),
@@ -597,7 +586,9 @@
 .hdr-minitrip {
   position: relative;
   flex: 0 0 auto;
+  width: 0;
   height: 44px;
+  margin-inline-end: 0;
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -607,13 +598,10 @@
   color: inherit;
   font-size: 19px;
   cursor: pointer;
-  /* It arrives out of the SAME variable the row it replaces leaves by, so the two
-     are one movement by construction rather than by two matched durations. */
-  width: calc(34px * (1 - var(--chrome-open, 1)));
-  margin-inline-end: calc(6px * (1 - var(--chrome-open, 1)));
-  opacity: calc(1 - var(--chrome-open, 1));
-}
-.app[data-chrome] .hdr-minitrip {
+  opacity: 0;
+  visibility: hidden;
+  /* The same one clock as the row it replaces — it arrives as that leaves, and two
+     durations made the glyph still sliding in after the collapse had finished. */
   transition:
     width var(--t-quick) var(--ease-standard),
     margin-inline-end var(--t-quick) var(--ease-standard),
@@ -625,22 +613,19 @@
   outline-offset: -2px;
   border-radius: 9px;
 }
-.app[data-chrome='condensed'] {
-  --chrome-open: 0;
-}
-/* Row 1 is 0px tall by then, so taking it out of the tab order here is invisible
-   and correct: a control nobody can see must not be reachable by a tab press.
-   Both routes to fully-closed say it — the surface's declaration, and the scroll
-   reaching the end of its travel. */
-.app[data-chrome='condensed'] .hdr-top,
-.app[data-chrome-row='closed'] .hdr-top {
+.app[data-chrome='condensed'] .hdr-top {
+  height: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  overflow: hidden;
   visibility: hidden;
   pointer-events: none;
 }
-/* Hidden only while row 1 is FULLY open — from the first pixel of collapse the
-   glyph is on its way in, and it takes the tab order with it. */
-.app[data-chrome-row='open'] .hdr-minitrip {
-  visibility: hidden;
+.app[data-chrome='condensed'] .hdr-minitrip {
+  width: 34px;
+  margin-inline-end: 6px;
+  opacity: 1;
+  visibility: visible;
 }
 /* The badge follows identity into the condensed row: an exception indicator that
    disappears when the chrome collapses is worse than none, because "quiet" already

@@ -1,5 +1,5 @@
 import { useState, type Key, type ReactNode } from 'react';
-import { useChromeOpenness } from '../../lib/chrome-condense';
+import { useCondenseOnScroll } from '../../lib/chrome-condense';
 import { cx } from './shared';
 
 /** The body modifier a surface passes as `bodyClassName` to own its own layout
@@ -88,36 +88,19 @@ export function AppShell({
   className,
   bodyClassName,
 }: AppShellProps) {
-  // Scrolling the body gives the chrome away (ADR-0149 §7). It lives HERE, not in
+  // Scrolling the body condenses the chrome (ADR-0149 §7). It lives HERE, not in
   // the header, because the body is the thing being scrolled and this layer owns
   // it — the header would have to reach out of itself to find the element. A
   // surface's own declaration wins: `reclaimed` has no chrome left to condense,
   // and `condensed` is already the answer.
   const [bodyEl, setBodyEl] = useState<HTMLElement | null>(null);
-  const [frameEl, setFrameEl] = useState<HTMLElement | null>(null);
-  const { closed: rowClosed, expanded: rowExpanded } = useChromeOpenness(
-    frameEl,
-    bodyEl,
-    holdChrome,
-  );
+  const scrolledPast = useCondenseOnScroll(bodyEl, holdChrome);
   return (
     <div
-      ref={setFrameEl}
       className={cx('app', className)}
       data-mode={mode}
       data-switching={switching}
-      // `data-chrome` is the SURFACE'S DECLARATION and nothing else — it is what
-      // carries the transition, because a declared change is the only one that
-      // happens without a finger already moving the content.
-      data-chrome={chrome}
-      // The scroll path's endpoints ride their own attribute so they cannot borrow
-      // that transition: `--chrome-open` already places the row continuously, and
-      // these say only what `visibility` and the tab order need. Reusing
-      // `data-chrome` here animated the way back up — the row lagged the finger by
-      // a whole duration, reading 80px where the offset called for 91.
-      data-chrome-row={
-        chrome === undefined ? (rowExpanded ? 'open' : rowClosed ? 'closed' : undefined) : undefined
-      }
+      data-chrome={chrome ?? (scrolledPast ? CHROME_CONDENSED : undefined)}
     >
       {header}
       <main className={cx('body', bodyClassName)} key={bodyKey} ref={setBodyEl}>
