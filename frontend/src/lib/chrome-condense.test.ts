@@ -35,14 +35,56 @@ describe('nextCondensed', () => {
     );
   });
 
-  it('refuses to condense a page that barely scrolls, in either direction', () => {
-    // The oscillation this exists to prevent, stated as the numbers that produce it:
-    // condensing frees CHROME_CONDENSE_FREES_PX, so a body with only that much slack
-    // ends up back at the top, releases, re-overflows, and condenses again.
-    const barely = { scrollTop: 999, slack: CHROME_CONDENSE_MIN_SLACK_PX - 1 };
+  it('refuses to condense a page that barely scrolls', () => {
+    const barely = { scrollTop: 999, slack: CHROME_CONDENSE_MIN_SLACK_PX };
     expect(nextCondensed(false, barely)).toBe(false);
-    expect(nextCondensed(true, barely)).toBe(false);
-    expect(nextCondensed(false, { ...barely, slack: CHROME_CONDENSE_MIN_SLACK_PX })).toBe(true);
+    // Strictly past it, not at it: AT the threshold the body is left with exactly
+    // CHROME_CONDENSE_RELEASE_PX to scroll, scrollTop clamps to that, and the
+    // release test (`> RELEASE`) is false on the very pixel it condensed at.
+    expect(nextCondensed(false, { ...barely, slack: CHROME_CONDENSE_MIN_SLACK_PX + 1 })).toBe(true);
+  });
+
+  it('judges the slack by the EXPANDED height, in both states', () => {
+    // The live slack is CHROME_CONDENSE_FREES_PX smaller while condensed, so asking
+    // the raw number would make the decision change its own input. A body that
+    // qualified when it condensed still qualifies afterwards.
+    const expandedSlack = CHROME_CONDENSE_MIN_SLACK_PX + 1;
+    expect(nextCondensed(false, { scrollTop: 999, slack: expandedSlack })).toBe(true);
+    expect(
+      nextCondensed(true, { scrollTop: 999, slack: expandedSlack - CHROME_CONDENSE_FREES_PX }),
+    ).toBe(true);
+  });
+
+  // THE TEST THAT WAS MISSING, and the reason a 15px band of page heights strobed
+  // on a real phone: the guards were each checked in isolation and the loop they
+  // exist to prevent never was. Condensing changes how much there is to scroll, so
+  // the only honest check is to run the decision against its own consequences until
+  // it either settles or repeats a state.
+  it('settles at every page height — no height oscillates', () => {
+    const settles = (slackExpanded: number) => {
+      let condensed = false;
+      // Worst case for the loop: the user has scrolled to the very bottom.
+      let scrollTop = slackExpanded;
+      const seen = new Set<string>();
+      for (let i = 0; i < 200; i++) {
+        const slack = slackExpanded - (condensed ? CHROME_CONDENSE_FREES_PX : 0);
+        // The browser clamps the scroll position when the scrollable area shrinks.
+        scrollTop = Math.min(scrollTop, Math.max(slack, 0));
+        const next = nextCondensed(condensed, { scrollTop, slack });
+        if (next === condensed) return true;
+        const key = `${condensed}:${scrollTop}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        condensed = next;
+      }
+      return false;
+    };
+
+    const oscillating: number[] = [];
+    for (let slackExpanded = 0; slackExpanded <= 400; slackExpanded++) {
+      if (!settles(slackExpanded)) oscillating.push(slackExpanded);
+    }
+    expect(oscillating).toEqual([]);
   });
 
   it('leaves enough slack after condensing for the state to survive itself', () => {
