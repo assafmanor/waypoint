@@ -113,23 +113,28 @@ interface Box {
  *  This is the same trap the mockup that designed the header hit four times, one
  *  layer down: **a transition in flight makes every measurement a lie.**
  *
- *  Polls the header's own height until it repeats, rather than sleeping a duration —
- *  so it costs nothing when the chrome was not moving, and cannot drift from the
- *  token that times it. */
+ *  It waits for the TRANSITIONS, not for a height that happens to repeat: a stable
+ *  sample is not the same claim, and a height polled inside the gap between the
+ *  scroll event and React flipping the class is stable at exactly the wrong value.
+ *  Costs nothing when the chrome was not moving, and cannot drift from the token
+ *  that times it. */
 async function settleChrome(page: Page) {
-  await page.evaluate(() => {
-    (window as unknown as { __chromeH?: number; __chromeStable?: number }).__chromeH = undefined;
-    (window as unknown as { __chromeStable?: number }).__chromeStable = 0;
-  });
+  // Two frames first, so a class change React has queued but not yet painted has
+  // landed: a scroll event condenses the chrome one render LATER, and sampling
+  // inside that gap sees a perfectly stable pre-condense height and believes it.
+  // That race is what made a measured card sit 52px — exactly the condense — from
+  // where the drag ghost then appeared.
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+  );
+  // Then wait for the transitions THEMSELVES rather than for a height that happens
+  // to repeat. `getAnimations` reports running CSS transitions, so this asks the
+  // question exactly instead of inferring it from samples.
   await page.waitForFunction(
     () => {
       const el = document.querySelector('.header');
       if (!el) return true;
-      const w = window as unknown as { __chromeH?: number; __chromeStable?: number };
-      const h = Math.round(el.getBoundingClientRect().height);
-      w.__chromeStable = w.__chromeH === h ? (w.__chromeStable ?? 0) + 1 : 0;
-      w.__chromeH = h;
-      return (w.__chromeStable ?? 0) >= 3;
+      return el.getAnimations({ subtree: true }).every((a) => a.playState !== 'running');
     },
     null,
     { polling: 'raf' },
