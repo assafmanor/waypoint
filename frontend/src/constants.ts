@@ -846,17 +846,29 @@ export const ROUTE_INLINE_MAX_CHARS = 26;
    Read by `lib/chrome-condense.ts`, which is where the reasoning lives. */
 
 /** Scrolled past this, row 1 rides out. */
-export const CHROME_CONDENSE_ENTER_PX = 48;
-/** …and back within this, it comes back. Two thresholds, because one flips the
-    state on the pixel it is read at. */
-export const CHROME_CONDENSE_RELEASE_PX = 12;
-/** What condensing gives back to the body: 160px of chrome becomes 108px. */
+/** What a full condense gives back to the body: 160px of chrome becomes 108px. It
+    is also the scroll distance the collapse is spread over — the chrome handing
+    back exactly what the finger took is what makes it track rather than jump. */
 export const CHROME_CONDENSE_FREES_PX = 52;
-/** The slack test: below this there is not enough to scroll for the condense to
-    survive itself. Condensing frees `CHROME_CONDENSE_FREES_PX`, so the body has
-    that much less to scroll afterwards — it has to still clear the release
-    threshold, or the chrome expands again and the loop starts. */
-export const CHROME_CONDENSE_MIN_SLACK_PX = CHROME_CONDENSE_FREES_PX + CHROME_CONDENSE_RELEASE_PX;
+/** Below this much to scroll, the chrome never starts giving way: a page with barely
+    more content than a screen would spend its whole scroll on the header. Judged on
+    the EXPANDED height, since the live slack shrinks as it collapses.
+
+    TWICE what the condense frees, plus a margin, and the factor is load-bearing: the
+    chrome may not be more collapsed than the offset it was scrolled by, so a fully
+    condensed chrome needs `CHROME_CONDENSE_FREES_PX` of scroll left UNDER it. One
+    times over, the closed state would pull itself open the moment it arrived. */
+export const CHROME_CONDENSE_MIN_SLACK_PX = CHROME_CONDENSE_FREES_PX * 2 + 12;
+/** How far you must scroll UP before the chrome starts coming back. Collapsing
+    follows the finger from the first pixel; expanding deliberately does not, or
+    every small upward correction mid-read drags the header back down over what you
+    are looking at. Asymmetric on purpose — the same asymmetry Facebook's bar has. */
+export const CHROME_EXPAND_ARM_PX = 32;
+/** Quiet time after the last scroll event that counts as "the gesture ended", at
+    which point a part-collapsed chrome snaps to whichever end it is nearer. Long
+    enough to outlast the gap between frames of a slow drag, short enough that the
+    snap reads as part of letting go. */
+export const CHROME_SNAP_IDLE_MS = 120;
 
 /** Active-trip override — per-device, not synced (ADR-0021). */
 export const ACTIVE_TRIP_STORAGE_KEY = 'wp_active_trip_id';
