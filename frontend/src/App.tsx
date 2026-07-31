@@ -309,13 +309,6 @@ export function Header({
             >
               {trip.icon ?? DEFAULT_TRIP_ICON}
             </span>
-            {/* The deck: one card edge peeking behind the glyph. It says "there are
-                others like this one" — LATERAL, where a back arrow would say this
-                screen sits underneath something, which ADR-0033's landing rule
-                contradicts (a live trip opens directly). Visible without a tap,
-                which is the whole point: discovery cannot be fixed by something you
-                must tap to discover. */}
-            {otherTripCount > 0 && <span className="hdr-deck" aria-hidden="true" />}
             {passiveSync && (
               <span className="hdr-sync-badge" data-state={passiveSync} aria-hidden="true">
                 <Icon name={passiveSync === 'offline' ? 'offline' : 'sync'} />
@@ -325,6 +318,14 @@ export function Header({
           <span ref={tripNameRef} className="trip-name">
             {trip.name}
           </span>
+          {/* The switch mark: "there are others like this one", and the action is
+              LATERAL — where a back arrow would say this screen sits underneath
+              something, which ADR-0033's landing rule contradicts (a live trip opens
+              directly). Visible without a tap, which is the whole point: discovery
+              cannot be fixed by something you must tap to discover. Absent at one
+              trip (ADR-0045 / ADR-0109 §6: no source, no control).
+              It carries this alone since the deck cue was withdrawn — see §2's
+              2026-08-03 amendment. */}
           {otherTripCount > 0 && (
             <span className="hdr-swap" aria-hidden="true">
               <Icon name="swap" />
