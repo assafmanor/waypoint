@@ -12,6 +12,7 @@ import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { FilePicker } from './primitives/FilePicker';
+import { useFormErrors } from './primitives/useFormErrors';
 import { queueDocumentUpload } from '../lib/outbox';
 import { useToast } from './Toast';
 import { DOCUMENT_TYPE_ICON, CONTROL_ICON } from '../constants';
@@ -41,24 +42,31 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
   const [file, setFile] = useState<File | null>(null);
   const [type, setType] = useState<DocumentType>(DOCUMENT_TYPE.PASSPORT);
   const [title, setTitle] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // One refusal shape for the whole app (ADR-0150): the file field is marked,
+  // nudged and scrolled to, rather than quietly captioned.
+  const errors = useFormErrors<'file'>();
+
+  const refuse = (message: string) => errors.report([{ field: 'file', message }]);
 
   const pick = (f: File) => {
     const problem = validateFile(f);
-    setError(problem);
-    if (!problem) setFile(f);
+    if (problem) refuse(problem);
+    else {
+      errors.clear();
+      setFile(f);
+    }
   };
 
   const clear = () => {
     setFile(null);
-    setError(null);
+    errors.clear();
   };
 
   // Optimistic (ADR-0056): validate, enqueue the file on the outbox with a
   // client-generated id (idempotent re-POST), close at once, and let the pending
   // row render from the outbox until the background flush turns it real.
   const submit = () => {
-    if (!file) return setError(t.docs.upload.fileRequired);
+    if (!file) return void refuse(t.docs.upload.fileRequired);
     // Title required non-empty (createDocumentSchema); an unnamed doc falls back
     // to its type label (e.g. "דרכון"), never the raw filename.
     void queueDocumentUpload(
@@ -74,6 +82,7 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
     <Sheet ariaLabel={t.docs.upload.title} onClose={onClose}>
       <div
         className="booking-sheet"
+        {...errors.formProps}
         onFocusCapture={(e) => {
           if (e.target instanceof HTMLElement)
             e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -107,7 +116,7 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
           />
         </Field>
 
-        <Field label={t.docs.upload.fileLabel} error={error}>
+        <Field label={t.docs.upload.fileLabel} {...errors.field('file')}>
           <FilePicker
             value={file}
             onPick={pick}
@@ -118,8 +127,10 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
           />
         </Field>
 
+        {/* Pressable with no file: `fileRequired` was unreachable copy behind a disabled
+            button, which is the shape ADR-0150 §8 retires. */}
         <FormActions
-          primary={{ label: t.docs.upload.save, onClick: submit, disabled: !file }}
+          primary={{ label: t.docs.upload.save, onClick: submit }}
           secondary={{ label: t.docs.upload.cancel, onClick: onClose }}
         />
       </div>

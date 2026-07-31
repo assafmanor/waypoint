@@ -159,6 +159,29 @@ describe('CreateTrip — the birth sequence (ADR-0142)', () => {
     expect(cta().hasAttribute('data-armed')).toBe(true);
   });
 
+  // ADR-0150 §8: dim is not the same as dead. The CTA stays pressable while the form is
+  // incomplete, and the press names the field — where it used to be `disabled`, so a
+  // first-timer who pressed it got nothing at all back.
+  it('answers a press on the incomplete form by naming what is missing', () => {
+    render(wrapNav(<CreateTrip />));
+    const cta = screen.getByText(t.shell.newTrip.createButton) as HTMLButtonElement;
+    expect(cta.disabled).toBe(false);
+    expect(cta.hasAttribute('data-armed')).toBe(false);
+
+    fireEvent.click(cta);
+    expect(vi.mocked(createTrip)).not.toHaveBeenCalled();
+    const said = screen.getAllByRole('alert').map((el) => el.textContent);
+    expect(said).toContain(t.shell.newTrip.destRequired);
+    expect(said).toContain(t.shell.newTrip.datesRequired);
+    // …and the field itself carries the mark, not only a caption somewhere.
+    expect(
+      screen
+        .getByText(t.shell.newTrip.destRequired)
+        .closest('.field')
+        ?.hasAttribute('data-invalid'),
+    ).toBe(true);
+  });
+
   it('does not arm on a date range that is invalid', () => {
     render(wrapNav(<CreateTrip />));
     fireEvent.click(screen.getByTestId('pick-japan'));

@@ -1,0 +1,59 @@
+/* How a form says no (ADR-0150). Two marks, both carried by ONE attribute —
+   `data-invalid` on whatever shell owns the field — so a `Field`, a screen's own
+   field div and a bare row all refuse identically, and a new form gets it by
+   spreading `useFormErrors().field(name)` rather than by styling anything.
+
+   Color is `--miss` and nothing else: a refusal is a status, and the status
+   mini-palette is where statuses live (design-language, ADR-0028). */
+
+/* The mark sits on the field shell, which is what nudges — but a field with TWO
+   controls (a date range) can be wrong at one end only, so a control may carry it
+   itself and be the whole refusal. Both forms, one rule.
+
+   The `:focus-visible` half is not belt-and-braces: a refusal FOCUSES the field it
+   names, so it is focused the instant it is marked — and `field.css`'s focus rule
+   (border-color: teal) would otherwise out-specify this one and paint the refused
+   control as the healthy focused one. */
+[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field),
+[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field):focus-visible,
+:is(input, textarea, select, .pp-trigger, .tp-field)[data-invalid],
+:is(input, textarea, select, .pp-trigger, .tp-field)[data-invalid]:focus-visible {
+  border-color: var(--miss);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--miss) 20%, transparent);
+}
+
+/* The label reads as part of the refusal, so it stops being quiet chrome. */
+[data-invalid] > .field-label {
+  color: var(--miss);
+}
+
+/* THE NUDGE. Added imperatively for one shot (`useFormErrors`), because the
+   refusal has to be felt again on a REPEAT attempt at the same field — a mark that
+   is already on screen changes nothing when you press save a second time.
+
+   `linear`, deliberately: the keyframe offsets ARE the timing of an oscillation,
+   and an easing curve resamples them into a different shape entirely (ADR-0140 §7
+   is the same lesson from the other side). And no `--dir`: a shake is symmetric,
+   so unlike every other translate in this app it has no inline direction to
+   express — mirroring it for RTL would produce the identical animation. */
+.is-nudging {
+  animation: field-nudge var(--t-base) linear both;
+}
+
+@keyframes field-nudge {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}

@@ -27,6 +27,26 @@ describe('Field', () => {
     expect(input.getAttribute('aria-describedby')).toBe(alert.id);
   });
 
+  // The mark the whole refusal is drawn from (ADR-0150): the control's outline, the
+  // label's hue and what the nudge animates all key off this one attribute, so a
+  // form that shows a message without it would say no invisibly.
+  it('marks the field itself while an error is shown', () => {
+    const { container, rerender } = render(
+      <Field label="קוד" error="שגיאה">
+        <input />
+      </Field>,
+    );
+    expect(container.querySelector('.field')?.hasAttribute('data-invalid')).toBe(true);
+    expect(screen.getByRole('textbox').getAttribute('aria-invalid')).toBe('true');
+    rerender(
+      <Field label="קוד">
+        <input />
+      </Field>,
+    );
+    expect(container.querySelector('.field')?.hasAttribute('data-invalid')).toBe(false);
+    expect(screen.getByRole('textbox').getAttribute('aria-invalid')).toBeNull();
+  });
+
   // The hint is the error slot's quiet peer: it never blocks a save, so it must not
   // announce itself as an alert or claim the control's `aria-describedby`.
   it('renders a hint without making it an alert', () => {

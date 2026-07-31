@@ -219,3 +219,57 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
     expect('endDisplayTimezone' in patch).toBe(false);
   });
 });
+
+// ADR-0150. A booking's refusal is at the field it is about — and a span refuses
+// per LEG, for the same reason it carries a zone per leg: marking both ends when
+// one is fine is the refusal naming something that isn't wrong.
+describe('BookingSheet — refusing a save', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.createBooking.mockClear();
+  });
+
+  const fieldOf = (el: Element | null) => el?.closest('.field');
+
+  it('marks the identity row when a booking has no name, and saves nothing', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    fireEvent.click(screen.getByText(t.common.save));
+    const title = screen.getByPlaceholderText(t.index.sheet.titlePlaceholder);
+    expect(fieldOf(title)?.hasAttribute('data-invalid')).toBe(true);
+    expect(fieldOf(title)?.querySelector('.field-error')?.textContent).toBe(
+      t.index.form.titleRequired,
+    );
+    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+  });
+
+  it('marks the route field when a transport has no endpoints', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.FLIGHT }} onClose={() => {}} />,
+      ),
+    );
+    fireEvent.click(screen.getByText(t.common.save));
+    const route = screen.getByRole('button', { name: t.index.form.originLabel });
+    expect(fieldOf(route)?.hasAttribute('data-invalid')).toBe(true);
+    expect(fieldOf(route)?.querySelector('.field-error')?.textContent).toBe(
+      t.index.form.routeRequired,
+    );
+  });
+
+  it('marks only the leg that falls outside the trip', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    const [depDate, arrDate] = [...document.querySelectorAll<HTMLInputElement>('.wf-date-val')];
+    fireEvent.change(depDate, { target: { value: '2026-07-20' } });
+    fireEvent.change(arrDate, { target: { value: '2026-08-30' } });
+    fireEvent.click(screen.getByText(t.common.save));
+    expect(fieldOf(depDate)?.hasAttribute('data-invalid')).toBe(false);
+    expect(fieldOf(arrDate)?.hasAttribute('data-invalid')).toBe(true);
+    expect(fieldOf(arrDate)?.querySelector('.field-error')?.textContent).toBe(
+      t.index.form.dateOutOfRange,
+    );
+  });
+});

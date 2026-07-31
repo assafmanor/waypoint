@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>איך טופס אומר לא — Form refusal (ADR-0150)</title>
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.12);
+        --miss: #c2584e;
+        --cta: #1b2a4a;
+        --radius: 12px;
+        --t-base: 240ms;
+        --font-body: 'Assistant', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--screen);
+        color: var(--ink);
+        font-family: var(--font-body);
+        line-height: 1.5;
+        padding: 24px 14px 60px;
+      }
+      .head {
+        text-align: center;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        max-width: 760px;
+        margin: 0 auto 22px;
+        font-size: 14px;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .col {
+        width: 360px;
+        max-width: 100%;
+      }
+      .col > h2 {
+        font-size: 13px;
+        letter-spacing: 0.02em;
+        margin: 0 0 8px;
+        color: var(--muted);
+      }
+      .col > h2 b {
+        color: var(--ink);
+      }
+      .note {
+        font-size: 12.5px;
+        color: var(--muted);
+        margin: 10px 2px 0;
+      }
+
+      /* ── the sheet ───────────────────────────────────────────────────── */
+      .sheet {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 14px 40px rgba(14, 23, 41, 0.14);
+      }
+      .sheet-title {
+        font-weight: 700;
+        font-size: 17px;
+        color: var(--indigo);
+        margin-bottom: 12px;
+      }
+      .form {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .field-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .field input {
+        font: inherit;
+        font-size: 15px;
+        color: var(--ink);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 8px 12px;
+        width: 100%;
+      }
+      /* the app's focus style — the refusal has to survive it (see below) */
+      .field input:focus-visible {
+        outline: none;
+        border-color: var(--teal);
+      }
+      .title-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .icon-chip {
+        flex: none;
+        width: 44px;
+        height: 44px;
+        border-radius: var(--radius);
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+      }
+      .tp-fields {
+        display: flex;
+        gap: 8px;
+      }
+      .tp-field {
+        flex: 1;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 6px 10px;
+        display: flex;
+        flex-direction: column;
+      }
+      .tp-cap {
+        font-size: 10.5px;
+        color: var(--muted);
+      }
+      .tp-val {
+        font-family: var(--font-mono);
+        font-size: 19px;
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .field-error {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--miss);
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+        padding-top: 4px;
+      }
+      .save {
+        flex: 1;
+        background: var(--cta);
+        color: #fff;
+        border: 0;
+        border-radius: var(--radius);
+        padding: 12px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .cancel {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: var(--radius);
+        padding: 12px 18px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      /* ── THE PROPOSAL: one attribute carries both marks ───────────────── */
+      [data-invalid] :is(input, .tp-field),
+      [data-invalid] :is(input, .tp-field):focus-visible,
+      :is(input, .tp-field)[data-invalid] {
+        border-color: var(--miss);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--miss) 20%, transparent);
+      }
+      [data-invalid] > .field-label {
+        color: var(--miss);
+      }
+      .is-nudging {
+        animation: field-nudge var(--t-base) linear both;
+      }
+      @keyframes field-nudge {
+        0% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-5px);
+        }
+        50% {
+          transform: translateX(4px);
+        }
+        75% {
+          transform: translateX(-2px);
+        }
+        100% {
+          transform: translateX(0);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <h1>איך טופס אומר לא</h1>
+      <p class="sub">
+        משמאל: מה שקיים היום — משפט קטן מעל כפתור השמירה, בקצה השני של הטופס מהשדה שהוא מדבר עליו,
+        לרוב מתחת לקו הגלילה. מימין: ההצעה — כל שדה חסר מסומן במקומו, נדנוד אחד, והראשון מובא למסך.
+        לחצו “שמירה” בשני הצדדים.
+      </p>
+    </div>
+
+    <div class="grid">
+      <!-- ── after (the proposal) ─────────────────────────────────────── -->
+      <div class="col">
+        <h2><b>אחרי</b> · הסירוב על השדה</h2>
+        <div class="sheet">
+          <div class="sheet-title">אירוע חדש</div>
+          <div class="form" id="after">
+            <div class="field" id="f-title">
+              <span class="field-label">שם</span>
+              <div class="title-row">
+                <div class="icon-chip">📍</div>
+                <input placeholder="מה קורה?" />
+              </div>
+              <p class="field-error" hidden>חסרה כותרת</p>
+            </div>
+
+            <div class="field" id="f-date">
+              <span class="field-label">תאריך</span>
+              <input type="date" value="" />
+              <p class="field-error" hidden>חסר תאריך</p>
+            </div>
+
+            <div class="field">
+              <span class="field-label">שעה</span>
+              <div class="tp-fields">
+                <div class="tp-field">
+                  <span class="tp-cap">התחלה</span>
+                  <span class="tp-val">21:00</span>
+                </div>
+                <div class="tp-field">
+                  <span class="tp-cap">משך</span>
+                  <span class="tp-val">שעה</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button class="save" type="button" onclick="refuse()">שמירה</button>
+              <button class="cancel" type="button">ביטול</button>
+            </div>
+          </div>
+        </div>
+        <p class="note">
+          שני השדות החסרים מסומנים יחד — טופס שחסרים בו שניים לא שולח אתכם לסיבוב שני כדי לגלות את
+          השני. לחיצה חוזרת מנדנדת שוב; הקלדה בשדה מסירה את הסימון ממנו בלבד.
+        </p>
+      </div>
+
+      <!-- ── before (shipped) ─────────────────────────────────────────── -->
+      <div class="col">
+        <h2><b>לפני</b> · משפט מעל הכפתור</h2>
+        <div class="sheet">
+          <div class="sheet-title">אירוע חדש</div>
+          <div class="form">
+            <div class="field">
+              <span class="field-label">שם</span>
+              <div class="title-row">
+                <div class="icon-chip">📍</div>
+                <input placeholder="מה קורה?" />
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="field-label">תאריך</span>
+              <input type="date" value="" />
+            </div>
+
+            <div class="field">
+              <span class="field-label">שעה</span>
+              <div class="tp-fields">
+                <div class="tp-field">
+                  <span class="tp-cap">התחלה</span>
+                  <span class="tp-val">21:00</span>
+                </div>
+                <div class="tp-field">
+                  <span class="tp-cap">משך</span>
+                  <span class="tp-val">שעה</span>
+                </div>
+              </div>
+            </div>
+
+            <p class="field-error" id="old-error" hidden>חסרה כותרת</p>
+            <div class="actions">
+              <button class="save" type="button" onclick="oldRefuse()">שמירה</button>
+              <button class="cancel" type="button">ביטול</button>
+            </div>
+          </div>
+        </div>
+        <p class="note">
+          אחת בכל פעם, בלי לומר על איזה שדה מדובר, ובטופס אמיתי היא נמצאת אחרי גלילה — כך שהתשובה
+          לרוב היא לחיצה חוזרת על “שמירה”.
+        </p>
+      </div>
+    </div>
+
+    <script>
+      function mark(id) {
+        const field = document.getElementById(id);
+        field.setAttribute('data-invalid', '');
+        field.querySelector('.field-error').hidden = false;
+        field.classList.remove('is-nudging');
+        void field.offsetWidth;
+        field.classList.add('is-nudging');
+        setTimeout(() => field.classList.remove('is-nudging'), 240);
+      }
+      function refuse() {
+        ['f-title', 'f-date'].forEach(mark);
+        document.getElementById('f-title').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        document.querySelector('#f-title input').focus({ preventScroll: true });
+      }
+      function oldRefuse() {
+        document.getElementById('old-error').hidden = false;
+      }
+      // Typing in a marked field retires its refusal — that field's only.
+      document.getElementById('after').addEventListener('input', (e) => {
+        const field = e.target.closest('.field');
+        if (!field) return;
+        field.removeAttribute('data-invalid');
+        field.querySelector('.field-error').hidden = true;
+      });
+    </script>
+  </body>
+</html>

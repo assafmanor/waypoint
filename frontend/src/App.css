@@ -1071,9 +1071,6 @@
   direction: ltr;
   text-align: center;
 }
-.field input.invalid {
-  border-color: var(--miss);
-}
 .field-error {
   color: var(--miss);
   font-size: 12px;
@@ -1105,6 +1102,12 @@
 .create-btn:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;
+}
+/* Not-ready and un-pressable are two different things (ADR-0150 §8): the CTA is dim
+   until the form completes — the same 0.45 it always was — but it stays pressable so a
+   press can name the missing field. `disabled` is now only offline / write-in-flight. */
+.create-btn:not([data-armed]) {
+  opacity: 0.45;
 }
 .create-btn:disabled {
   opacity: 0.45;

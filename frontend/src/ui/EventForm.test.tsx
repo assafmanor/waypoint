@@ -514,6 +514,47 @@ describe('EventForm (folded into Modal, U-01)', () => {
     });
   });
 
+  // ADR-0150. The refusal used to be a caption above the save button — below the
+  // fold, in a scroll container the user was not looking at, naming a field it did
+  // not point to. It now lands ON the field.
+  describe('refusing a save', () => {
+    const save = () => fireEvent.click(screen.getByText(t.common.save));
+    const fieldOf = (el: Element | null) => el?.closest('.field');
+
+    it('marks the title field itself, not just a caption at the foot of the form', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      save();
+      const title = screen.getByPlaceholderText(t.eventForm.titlePlaceholder);
+      expect(fieldOf(title)?.hasAttribute('data-invalid')).toBe(true);
+      expect(fieldOf(title)?.querySelector('.field-error')?.textContent).toBe(
+        t.eventForm.titleRequired,
+      );
+      expect(verbs.create).not.toHaveBeenCalled();
+    });
+
+    it('marks the day when it falls outside the trip, at the day', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+        target: { value: 'ארוחת ערב' },
+      });
+      const date = document.querySelector('.wf-date')!;
+      fireEvent.change(date, { target: { value: '2026-08-30' } });
+      save();
+      expect(fieldOf(date)?.hasAttribute('data-invalid')).toBe(true);
+      expect(fieldOf(date)?.querySelector('.field-error')?.textContent).toBe(
+        t.eventForm.dateOutOfRange,
+      );
+    });
+
+    it('retires the mark when the field it named is typed in', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      save();
+      const title = screen.getByPlaceholderText(t.eventForm.titlePlaceholder);
+      fireEvent.input(title, { target: { value: 'ארוחת ערב' } });
+      expect(fieldOf(title)?.hasAttribute('data-invalid')).toBe(false);
+    });
+  });
+
   // ADR-0109 §11: category is an explicit ChoiceGrid, not derived from the icon.
   it('offers an explicit category selector for a manual event and marks the pick', () => {
     render(wrapNav(<EventForm onClose={() => {}} />));

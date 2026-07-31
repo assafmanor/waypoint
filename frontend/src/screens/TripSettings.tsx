@@ -18,6 +18,7 @@ import { useAuth } from '../state/auth-state';
 import { useAppBack } from '../state/nav-state';
 import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { Icon } from '../ui/Icon';
 import { IconPicker } from '../ui/IconPicker';
@@ -441,6 +442,10 @@ function ReadRow({
   );
 }
 
+/** What the details form can refuse, one name per BOX on screen (ADR-0150) — the two
+ *  date inputs are one box, because "the trip needs dates" is one statement. */
+type SettingsField = 'name' | 'destination' | 'dates';
+
 function DetailsEditor({
   trip,
   onSave,
@@ -482,6 +487,8 @@ function DetailsEditor({
   const [currency, setCurrency] = useState(trip.currency ?? '');
   const [budget, setBudget] = useState(trip.dailyBudgetMinor?.toString() ?? '');
   const [saving, setSaving] = useState(false);
+  // Every refusal this form can make, marked at the field it is about (ADR-0150).
+  const errors = useFormErrors<SettingsField>();
 
   // Surface the device zone + the trip's own place zones first in the picker
   // (ADR-0113 §6) — the zones most likely to be wanted, before the full IANA list.
@@ -495,10 +502,20 @@ function DetailsEditor({
   // No floor-to-today here (unlike creation, PR #92): an existing trip may be
   // under way or already past, so editing its dates must stay unbounded below.
   const datesInvalid = Boolean(startDate && endDate && endDate < startDate);
-  const canSave = Boolean(name && destination && startDate && endDate && !datesInvalid && !saving);
 
   const save = async () => {
-    if (!canSave) return;
+    // THE SAVE SAYS WHY (ADR-0150). It used to be `disabled` on a `canSave` covering four
+    // fields with no note beside it — the one dead primary in the app that named nothing,
+    // so a trip missing its destination offered a button that did not respond and no
+    // reason. Now it is pressable and refuses at whichever field is missing.
+    const problems: FieldProblem<SettingsField>[] = [];
+    if (!name) problems.push({ field: 'name', message: t.settings.nameRequired });
+    if (!destination) problems.push({ field: 'destination', message: t.settings.destRequired });
+    if (!startDate || !endDate)
+      problems.push({ field: 'dates', message: t.settings.datesRequired });
+    else if (datesInvalid) problems.push({ field: 'dates', message: t.shell.newTrip.dateError });
+    if (errors.report(problems)) return;
+
     const input: UpdateTripInput = {
       name,
       destination,
@@ -523,6 +540,10 @@ function DetailsEditor({
     }
   };
 
+  const nameMark = errors.field('name');
+  const destMark = errors.field('destination');
+  const datesMark = errors.field('dates');
+
   return (
     <form
       className="set-card set-edit-form"
@@ -530,15 +551,28 @@ function DetailsEditor({
         e.preventDefault();
         void save();
       }}
+      // The app does the refusing, not the browser (ADR-0150 §5).
+      noValidate
+      {...errors.formProps}
     >
-      <div className="set-fld">
+      <div className="set-fld" ref={nameMark.ref} data-invalid={nameMark.error ? '' : undefined}>
         <label htmlFor="s-name">{t.settings.nameLabel}</label>
         <input id="s-name" value={name} onChange={(e) => setName(e.target.value)} />
+        {nameMark.error && (
+          <div className="field-error" role="alert">
+            {nameMark.error}
+          </div>
+        )}
       </div>
-      <div className="set-fld">
+      <div className="set-fld" ref={destMark.ref} data-invalid={destMark.error ? '' : undefined}>
         <label htmlFor="dest">{t.settings.destinationLabel}</label>
         <DestinationPicker value={destination} onPick={handleDestination} />
         {candidateZones && <p className="dest-tz-note">{t.shell.newTrip.tzMultiNote}</p>}
+        {destMark.error && (
+          <div className="field-error" role="alert">
+            {destMark.error}
+          </div>
+        )}
       </div>
       <div className="set-fld">
         <label>{t.settings.iconLabel}</label>
@@ -551,7 +585,7 @@ function DetailsEditor({
           destinations={DESTINATIONS}
         />
       </div>
-      <div className="set-fld">
+      <div className="set-fld" ref={datesMark.ref}>
         <label>{t.settings.datesLabel}</label>
         <div className="date-row">
           <label className="subfld">
@@ -560,6 +594,7 @@ function DetailsEditor({
               type="date"
               lang={DEVICE_LOCALE}
               value={startDate}
+              data-invalid={!startDate && datesMark.error ? '' : undefined}
               onChange={(e) => setStartDate(e.target.value)}
             />
           </label>
@@ -569,13 +604,19 @@ function DetailsEditor({
               type="date"
               lang={DEVICE_LOCALE}
               min={startDate}
-              className={datesInvalid ? 'invalid' : ''}
+              // Live while the range contradicts itself, and on the save's refusal —
+              // two reasons, one mark (ADR-0150 §7).
+              data-invalid={datesInvalid || (!endDate && datesMark.error) ? '' : undefined}
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
             />
           </label>
         </div>
-        {datesInvalid && <div className="field-error">{t.shell.newTrip.dateError}</div>}
+        {(datesInvalid || datesMark.error) && (
+          <div className="field-error" role="alert">
+            {datesInvalid ? t.shell.newTrip.dateError : datesMark.error}
+          </div>
+        )}
       </div>
       <div className="set-fld">
         <label htmlFor="s-tz">{t.settings.timezoneLabel}</label>
@@ -626,7 +667,9 @@ function DetailsEditor({
       </div>
       <div className="set-hint-block">{t.settings.derivedHint}</div>
       <div className="set-form-actions">
-        <button type="submit" className="set-save" disabled={!canSave}>
+        {/* Disabled only while a write is in flight — never as a stand-in for a
+            refusal it cannot explain (ADR-0150 §8). */}
+        <button type="submit" className="set-save" disabled={saving}>
           {t.settings.save}
         </button>
         <button type="button" className="set-cancel" onClick={onCancel}>

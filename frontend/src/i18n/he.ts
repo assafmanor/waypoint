@@ -145,6 +145,9 @@ export const t = {
       rename: 'שינוי שם',
       failed: 'ההוספה נכשלה · נסו שוב',
       saveFailed: 'השמירה נכשלה · נסו שוב',
+      // The card's one mandatory field (ADR-0150). Its confirm used to be disabled
+      // instead, which left the Enter key this field binds answering nothing at all.
+      nameRequired: 'חסר שם למקום',
     },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.
@@ -711,6 +714,11 @@ export const t = {
       draftTag: 'טיוטה',
       createButton: 'יאללה, יש טיול 🎉',
       ctaReason: 'מלאו יעד, תאריכים ושם כדי להמשיך',
+      // …and if you press anyway, the CTA names the one that is missing, at the field
+      // (ADR-0150). The note above says what is needed; these say where.
+      destRequired: 'חסר יעד',
+      datesRequired: 'חסרים תאריכים',
+      nameRequired: 'חסר שם לטיול',
       offlineNote: 'יצירת טיול צריכה חיבור · לינק שחבר שולח ייפתח גם עכשיו',
       note: 'אזור זמן ומטבע מסתדרים לפי היעד · תקציב אפשר להוסיף אחר כך',
     },
@@ -1358,6 +1366,11 @@ export const t = {
     destinationLabel: 'יעד',
     iconLabel: 'סמל',
     datesLabel: 'תאריכים',
+    // The three the save refuses on (ADR-0150). It used to be a dead button with no
+    // note at all, so a form missing its destination said nothing whatsoever.
+    nameRequired: 'חסר שם לטיול',
+    destRequired: 'חסר יעד',
+    datesRequired: 'חסרים תאריכים',
     dateFrom: 'מ־',
     dateTo: 'עד',
     timezoneLabel: 'אזור זמן',

@@ -2242,13 +2242,11 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(indexVerbs.resolvePlace).not.toHaveBeenCalled();
         expect(searchStub.pick).not.toHaveBeenCalled();
         // And it cannot be confirmed nameless — a dropped pin has nothing else to be called.
-        expect(
-          (
-            within(draftForm()!).getByRole('button', {
-              name: t.map.make.add,
-            }) as HTMLButtonElement
-          ).disabled,
-        ).toBe(true);
+        // Pressing add REFUSES rather than doing nothing (ADR-0150); what is protected here
+        // is that nothing is written, which is unchanged.
+        fireEvent.click(within(draftForm()!).getByRole('button', { name: t.map.make.add }));
+        expect(within(draftForm()!).getByRole('alert').textContent).toBe(t.map.make.nameRequired);
+        expect(indexVerbs.createPlace).not.toHaveBeenCalled();
         // The coordinates are the confirmation that the pin fell where the finger was; no
         // address is fetched for it, because a reverse geocode is paid and refused.
         expect(withoutBidiControls(draftForm()!.textContent!)).toContain('35.7148, 139.7967');

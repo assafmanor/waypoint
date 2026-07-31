@@ -93,6 +93,10 @@ import { liveToday } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
 import './screens.css';
+// Global rather than owned by `useFormErrors` (ADR-0150): `data-invalid` is an
+// attribute contract, and the screens that set it live (the two date ranges) are
+// lazy chunks that never touch the hook — its stylesheet has to be here for them.
+import './ui/primitives/form-errors.css';
 import { Avatar } from './ui/primitives/Avatar';
 import { RosterSheet } from './ui/RosterSheet';
 import { ltrIsolate } from './lib/bidi';

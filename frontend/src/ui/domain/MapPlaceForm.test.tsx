@@ -170,14 +170,20 @@ describe('MapPlaceForm — a derived glyph is not a choice', () => {
 
 describe('MapPlaceForm — what may be submitted', () => {
   // A name is required everywhere EXCEPT a tapped sight, whose confirm buys Google's label.
-  // Anywhere else an empty submit would write a nameless place.
-  it('blocks an empty name, and trims what it reports', () => {
+  // Anywhere else an empty submit would write a nameless place. **How** that is prevented
+  // changed in ADR-0150 — the confirm is pressable and REFUSES, where it used to be a dead
+  // button — but what may reach `onConfirm` is exactly what it always was.
+  it('refuses an empty name instead of confirming, and trims what it reports', () => {
     const { onConfirm } = mount();
-    expect(confirmBtn().disabled).toBe(true);
+    fireEvent.click(confirmBtn());
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toBe(t.map.make.nameRequired);
+
     fireEvent.change(nameField(), { target: { value: '   ' } });
-    expect(confirmBtn().disabled).toBe(true);
+    fireEvent.click(confirmBtn());
+    expect(onConfirm).not.toHaveBeenCalled();
+
     fireEvent.change(nameField(), { target: { value: '  הספסל  ' } });
-    expect(confirmBtn().disabled).toBe(false);
     fireEvent.click(confirmBtn());
     expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ name: 'הספסל' }));
   });
@@ -186,12 +192,24 @@ describe('MapPlaceForm — what may be submitted', () => {
   // this and there should not be: an empty submit would write a nameless place. The one source
   // that had an escape — a tapped sight, whose confirm bought Google's label — was removed
   // (ADR-0148 §6), and `nameOptional` went with it rather than being left for nobody.
-  it('has no way to submit an empty name at all', () => {
+  //
+  // Enter is the reason this is a refusal rather than a disabled button (ADR-0150): the field
+  // binds it, so it ran `confirm` into a silent `return` and the card answered nothing at all.
+  it('answers the Enter key instead of swallowing it, and still submits nothing', () => {
     const { onConfirm } = mount({ note: 'Kabukicho' });
-    expect(confirmBtn().disabled).toBe(true);
     fireEvent.keyDown(nameField(), { key: 'Enter' });
     expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert').textContent).toBe(t.map.make.nameRequired);
     expect(screen.getByText('Kabukicho')).toBeTruthy();
+  });
+
+  // …and it is retired by the one thing that answers it, so the card is not left shouting at
+  // someone already typing.
+  it('retires the refusal as soon as the name is typed', () => {
+    mount();
+    fireEvent.click(confirmBtn());
+    fireEvent.input(nameField(), { target: { value: 'ה' } });
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('does not confirm while a write is in flight', () => {

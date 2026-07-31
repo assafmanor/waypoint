@@ -10,14 +10,21 @@ import {
   useId,
   type ReactElement,
   type ReactNode,
+  type Ref,
 } from 'react';
 import './field.css';
+
+interface AriaErrorProps {
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean;
+}
 
 export function Field({
   label,
   error,
   hint,
   htmlFor,
+  ref,
   children,
 }: {
   /** Field caption. Renders as a real <label> when `htmlFor` is set. */
@@ -33,23 +40,36 @@ export function Field({
   hint?: ReactNode;
   /** Ties the label to a control by id (explicit association). */
   htmlFor?: string;
+  /** The registration half of `useFormErrors` (ADR-0150): it is the field's own box
+   *  that gets nudged and scrolled to, so the hook needs to hold it. Spread it with
+   *  the message via `errors.field(name)` — never wired by hand. */
+  ref?: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
   const errorId = useId();
   const showError = error != null && error !== '';
 
-  // Wire aria-describedby onto a single control child while an error is shown,
-  // so a screen reader announces the message with the field. Multi-control
-  // bodies (e.g. an icon + input row) keep their own labelling.
+  // Wire aria-describedby + aria-invalid onto a single control child while an error
+  // is shown, so a screen reader announces the message with the field and knows the
+  // field is what was refused. Multi-control bodies (e.g. an icon + input row) keep
+  // their own labelling, and so does a composed component — the props would land on
+  // something that never renders them.
   const body =
-    showError && Children.count(children) === 1 && isValidElement(children)
-      ? cloneElement(children as ReactElement<{ 'aria-describedby'?: string }>, {
+    showError &&
+    Children.count(children) === 1 &&
+    isValidElement(children) &&
+    typeof children.type === 'string'
+      ? cloneElement(children as ReactElement<AriaErrorProps>, {
           'aria-describedby': errorId,
+          'aria-invalid': true,
         })
       : children;
 
+  // The mark every refusal is drawn from (ADR-0150 / `form-errors.css`): the outline
+  // on the control, the label's hue, and what the nudge animates are all this one
+  // attribute — so nothing has to be styled per form.
   return (
-    <div className="field">
+    <div className="field" ref={ref} data-invalid={showError ? '' : undefined}>
       {label != null &&
         (htmlFor ? (
           <label className="field-label" htmlFor={htmlFor}>
