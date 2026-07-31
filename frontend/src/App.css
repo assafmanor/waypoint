@@ -222,20 +222,6 @@
 .trip-icon.is-handoff {
   visibility: hidden;
 }
-/* "This is one of several." A card edge peeking behind the glyph — the deck
-   metaphor, which is LATERAL: it says there are others like this one, where a back
-   arrow would say this one sits underneath something. Absent at one trip.
-   `--dir` carries the inline axis's physical sign, so one rule serves both
-   directions, and the edge peeks toward the OUTSIDE so it never crowds the name. */
-.hdr-deck {
-  position: absolute;
-  inset: 0;
-  border-radius: 5px;
-  border: 1.5px solid currentColor;
-  opacity: 0.4;
-  pointer-events: none;
-  transform: translate(calc(var(--dir) * -4px), -4px) scale(0.84);
-}
 .trip-name {
   font-family: var(--font-head);
   font-size: 17px;

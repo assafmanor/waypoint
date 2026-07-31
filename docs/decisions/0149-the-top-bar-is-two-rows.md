@@ -86,6 +86,32 @@ Two guards are part of the decision, because the first build oscillated visibly:
 
 Both are fixable independently of this ADR and shipped on their own branch first (PR #388).
 
+## Amendment, 2026-08-03 (device pass) — the deck cue is withdrawn; the `swap` mark carries it alone
+
+§2 answered discovery with **two** marks: a card edge peeking behind the trip's glyph
+(the deck) and a `swap` mark in place of the caret. On a real phone the deck does not
+read as depth — it reads as a stray box overlapping the flag, which is worse than no
+affordance, because an artifact is the first thing a new user sees in the chrome.
+
+Two reasons the mockup could not show it, both worth keeping:
+
+- **The glyph fills its own box.** It renders at 20px inside a 22px square, so there is
+  nothing for a card to peek out from _behind_; the outline lands on top of the emoji.
+  The metaphor needs a glyph smaller than its box, and this one is a flag emoji whose
+  size is the thing making it legible at all.
+- **It was only ever looked at in Trip mode.** The mockup's frames default there, where
+  the edge is white at 40% on indigo. In **Plan** mode `currentColor` is dark ink on a
+  light chip, so the same rule draws something far more assertive than was designed.
+
+**So the deck goes and the `swap` mark stays.** §2's actual argument survives intact:
+discovery cannot be fixed by something you must tap to discover, and the mark is visible
+without a tap. It also **tested well where the deck did not** — the owner read `⇅` as
+switching, unprompted, from a screenshot. Everything else in §2 is unchanged: the mark is
+still absent at one trip, and the chip still navigates straight to `/trips`.
+
+This is what a device pass is for. It is the first of ADR-0149's five open questions to be
+answered, and the answer is no.
+
 ## Amendment, 2026-08-03 (the build) — a third guard: the chrome holds still under a drag
 
 §7 gives the condense two guards. The build found it needs three, and the third is not a

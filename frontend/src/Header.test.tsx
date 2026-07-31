@@ -128,15 +128,16 @@ describe('the trip chip', () => {
     expect(onOpenSwitcher).toHaveBeenCalled();
   });
 
-  it('draws the deck and the swap mark when there ARE other trips', () => {
+  it('draws the swap mark when there ARE other trips', () => {
     const { container } = renderHeader({ otherTripCount: 2 });
-    expect(container.querySelector('.hdr-deck')).toBeTruthy();
     expect(container.querySelector('.hdr-swap')).toBeTruthy();
+    // And nothing behind the glyph: the deck cue was withdrawn on a device pass
+    // (ADR-0149 §2's 2026-08-03 amendment), so the mark carries this alone.
+    expect(container.querySelector('.hdr-deck')).toBeNull();
   });
 
-  it('draws neither at one trip — no source, no control (ADR-0045 / ADR-0109 §6)', () => {
+  it('draws none of it at one trip — no source, no control (ADR-0045 / ADR-0109 §6)', () => {
     const { container } = renderHeader({ otherTripCount: 0 });
-    expect(container.querySelector('.hdr-deck')).toBeNull();
     expect(container.querySelector('.hdr-swap')).toBeNull();
     // The chip itself stays a control, which is what keeps app-shell.md §5's
     // single-trip path to /trips (and therefore to "create a second trip") alive.
