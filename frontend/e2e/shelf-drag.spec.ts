@@ -105,12 +105,44 @@ interface Box {
   height: number;
 }
 
+/** Wait for the top chrome to stop moving before believing any coordinate.
+ *
+ *  Scrolling the body condenses the header (ADR-0149 §7) over a CSS transition, so
+ *  every box read in the frames after a scroll is a number that is about to change
+ *  by 52px — and a CDP touch aimed with one lands on whatever slid into that place.
+ *  This is the same trap the mockup that designed the header hit four times, one
+ *  layer down: **a transition in flight makes every measurement a lie.**
+ *
+ *  Polls the header's own height until it repeats, rather than sleeping a duration —
+ *  so it costs nothing when the chrome was not moving, and cannot drift from the
+ *  token that times it. */
+async function settleChrome(page: Page) {
+  await page.evaluate(() => {
+    (window as unknown as { __chromeH?: number; __chromeStable?: number }).__chromeH = undefined;
+    (window as unknown as { __chromeStable?: number }).__chromeStable = 0;
+  });
+  await page.waitForFunction(
+    () => {
+      const el = document.querySelector('.header');
+      if (!el) return true;
+      const w = window as unknown as { __chromeH?: number; __chromeStable?: number };
+      const h = Math.round(el.getBoundingClientRect().height);
+      w.__chromeStable = w.__chromeH === h ? (w.__chromeStable ?? 0) + 1 : 0;
+      w.__chromeH = h;
+      return (w.__chromeStable ?? 0) >= 3;
+    },
+    null,
+    { polling: 'raf' },
+  );
+}
+
 /** Viewport-space box of an element, scrolled into view first — the shelf sits
  *  below the fold on a phone, and CDP touch points are viewport coordinates: a
  *  box measured off-screen aims the finger at nothing. */
 async function boxOf(page: Page, selector: string): Promise<Box> {
   const el = page.locator(selector).first();
   await el.scrollIntoViewIfNeeded();
+  await settleChrome(page);
   const box = await el.boundingBox();
   if (!box) throw new Error(`no box for ${selector}`);
   return box;
@@ -127,13 +159,21 @@ async function centre(page: Page, selector: string): Promise<{ x: number; y: num
  *  feature rather than flake: if the target happens to sit inside an edge band, the
  *  finger arriving there starts the auto-scroll, which moves the target. Re-measuring
  *  each round converges — the scroll stops at the end of the scroller, and from then
- *  on the target holds still. Returns the point it finally settled on. */
+ *  on the target holds still. Returns the point it finally settled on.
+ *
+ *  **Lit is not enough; it also has to have stopped moving** (found when ADR-0149
+ *  shortened the header by ~135px, which put targets that used to clear the top band
+ *  inside it). Returning on the first `drop-over` can hand back a point the
+ *  auto-scroll is still dragging the target away from, so the release lands on
+ *  whatever slid into that place — a drop that lights up and then does nothing.
+ *  Convergence was always this helper's stated contract; this is it made literal. */
 async function holdOver(
   cdp: CDPSession,
   page: Page,
   selector: string,
 ): Promise<{ x: number; y: number }> {
   let at = { x: 0, y: 0 };
+  let lastY: number | null = null;
   await expect
     .poll(
       async () => {
@@ -145,7 +185,10 @@ async function holdOver(
         if (!box) return false;
         at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         await touch(cdp, 'touchMove', at.x, at.y);
-        return (await page.locator(`${selector}.drop-over`).count()) > 0;
+        const lit = (await page.locator(`${selector}.drop-over`).count()) > 0;
+        const settled = lastY !== null && Math.abs(box.y - lastY) < 1;
+        lastY = box.y;
+        return lit && settled;
       },
       { timeout: 8000 },
     )
@@ -173,7 +216,7 @@ async function bodyBands(page: Page) {
  *  builder — so the mode toggle comes first, then the day tab. Both screens are
  *  lazy chunks, hence waiting on the builder rather than the click. */
 async function openPlanDayBuilder(page: Page) {
-  await page.locator('.modebar .toggle button', { hasText: 'תכנון' }).click();
+  await page.getByRole('button', { name: 'תכנון', exact: true }).click();
   await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
   await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
   // Generous: the day builder is a lazy chunk, and under the dev server several
@@ -395,6 +438,7 @@ test.describe('a drag lifted inside an edge band', () => {
     await page
       .locator('[data-bld-id="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    await settleChrome(page);
     const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
     const bands = await bodyBands(page);
     const body = await boxOf(page, '.body');
@@ -433,6 +477,7 @@ test.describe('a drag lifted inside an edge band', () => {
       .locator('[data-bld-id="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await page.locator('.body').evaluate((el) => (el.scrollTop -= 50));
+    await settleChrome(page);
     const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
     const body = await boxOf(page, '.body');
     const from = row.y + 8;
@@ -460,6 +505,7 @@ test.describe('a drag lifted inside an edge band', () => {
     await page
       .locator('[data-bld-id="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
+    await settleChrome(page);
     const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
     const bands = await bodyBands(page);
     const before = await scrollTop(page);

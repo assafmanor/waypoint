@@ -1,6 +1,6 @@
 # 0149 — The in-trip top bar is two rows, and the exit is lateral
 
-**Status:** Accepted (design; nothing built)
+**Status:** Accepted — **built 2026-08-03 (session 199)**; see [`planning/2026-08-03-session-199-the-top-bar-is-built.md`](../planning/2026-08-03-session-199-the-top-bar-is-built.md)
 **Date:** 2026-08-02
 **Design exploration:** [`mockups/top-bar-v1.html`](../../mockups/top-bar-v1.html) — renders the shipped `App.css` / `day-strip.css` / `avatar.css` / `modal.css`, so its "before" frame is the real header and every number below was measured from it, not estimated.
 **Amends:** [0043](0043-day-view-now-line-phases-and-archive-chrome.md) §4 (the day-scope context ribbon) and §6 (the account/settings cluster), [0033](0033-all-trips-home.md) §3 (how you reach all-trips from inside a trip), [0080](0080-per-entity-sync-status.md) (where the failed-sync affordance lives), [0133](0133-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md) §9 (the roster's entry point)
@@ -84,7 +84,38 @@ Two guards are part of the decision, because the first build oscillated visibly:
 - **`MAX_TRIP_NAME_LENGTH = 18` no longer buys what it was set to buy.** Its comment says it exists "to keep the header switcher pill to one line (app-shell.md §5)", but at 390 with four avatars and the gear in the row, the shipped pill shrinks to its 15px floor and clips anyway. The new layout fixes the symptom; the constant's justification should be re-derived or its comment corrected.
 - **`useShrinkToFit`'s fit test compares integers.** `scrollWidth`/`clientWidth` are rounded, so text overflowing its box by 1.8px reports 94 against 93 — the loop can stop a step early while the browser draws an ellipsis. Measure the text with a `Range` over its contents for the sub-pixel width the renderer actually used. The mockup hit exactly this and printed "fits" over a frame showing `…`.
 
-Both are fixable independently of this ADR and should ship on their own branch first.
+Both are fixable independently of this ADR and shipped on their own branch first (PR #388).
+
+## Amendment, 2026-08-03 (the build) — a third guard: the chrome holds still under a drag
+
+§7 gives the condense two guards. The build found it needs three, and the third is not a
+tuning detail: **a drag auto-scrolls the body when the finger reaches an edge band**
+(ADR-0116), so without it the header collapses _mid-gesture_ and moves every row, day
+pill and drop target 52px out from under the finger. So the state is held for the drag's
+duration, wherever the drag found it — `AppShell`'s `holdChrome`, phrased as what the
+layout should do rather than as what the app is doing, like its three siblings.
+
+**And a consequence of the shorter header that is not a defect but is worth knowing:**
+row 2 now starts ~135px further up, so content that used to sit clear of the drag's top
+edge band now sits inside it. The band is measured from the body's edge (ADR-0116), so
+this follows from the height and nothing else. It is fine with the hold in place — the
+list still runs and the target still converges — but it means **more of a day is
+"grabbable only while the list is moving" than before**, which is a device-pass question
+for ADR-0116 rather than one this ADR can answer.
+
+## Amendment, 2026-08-03 (the build) — what the condense costs the failed-sync control
+
+§5 puts the `--miss` control in row 1 and §7 lifts row 1 out. Both are right and they
+collide in one state: while the chrome is condensed — scrolled, or at rest on the Map —
+**the control ADR-0080 wants persistent is not on screen.**
+
+It is not silent, which is the part that matters: the status badge follows identity into
+the condensed row, so a rejected write still reads as one there, and the control returns
+the moment row 1 does (a scroll up, or any other tab). The alternatives were both worse
+than the state they fix: a second copy of the control in row 2 is the duplication this
+repo has filed four times, and refusing to condense while a write has failed makes the
+Map's resting chrome depend on the sync state, which is exactly the "surface says what it
+is doing" that §7 exists to prevent. Recorded as a stated cost rather than smoothed over.
 
 ## Consequences
 

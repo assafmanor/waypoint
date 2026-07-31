@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import {
   AppShell,
+  CHROME_CONDENSED,
   CHROME_RECLAIMED,
   Inline,
   ResponsiveGrid,
@@ -80,6 +81,47 @@ describe('AppShell', () => {
     const second = screen.getByRole('main');
     expect(second.textContent).toContain('index');
     expect(second).not.toBe(first);
+  });
+
+  // The third surface-driven modifier (ADR-0149 §7). jsdom reports every scroll
+  // dimension as 0, so the shell's own scroll path can't fire here — which is
+  // precisely why the surface DECLARATION is the thing worth asserting: it is the
+  // only route to a condensed chrome on a body that never scrolls.
+  describe('the condensed chrome', () => {
+    it('applies a surface-declared condense as data-chrome', () => {
+      const { container } = render(<AppShell chrome={CHROME_CONDENSED}>body</AppShell>);
+      expect(container.querySelector('.app')!.getAttribute('data-chrome')).toBe('condensed');
+    });
+
+    it('lets the reclaim win over it — there is no chrome left to condense', () => {
+      const { container } = render(<AppShell chrome={CHROME_RECLAIMED}>body</AppShell>);
+      expect(container.querySelector('.app')!.getAttribute('data-chrome')).toBe('reclaimed');
+    });
+
+    it('leaves data-chrome off a body that has not been scrolled', () => {
+      const { container } = render(<AppShell>body</AppShell>);
+      expect(container.querySelector('.app')!.hasAttribute('data-chrome')).toBe(false);
+    });
+
+    // A drag auto-scrolls the body at the edge bands, and a header collapsing
+    // mid-gesture moves every drop target 52px out from under the finger. jsdom
+    // can't scroll, so what is pinned here is the one thing that would have
+    // undone the hold on its own: `holdChrome` must not re-run the effect, whose
+    // first act is to reset the state — entering a drag would then EXPAND the
+    // chrome, doing exactly what the hold exists to prevent.
+    it('holding the chrome does not itself reset it', () => {
+      const { container, rerender } = render(<AppShell chrome={CHROME_CONDENSED}>body</AppShell>);
+      const frame = () => container.querySelector('.app')!.getAttribute('data-chrome');
+      expect(frame()).toBe('condensed');
+      rerender(
+        <AppShell chrome={CHROME_CONDENSED} holdChrome>
+          body
+        </AppShell>,
+      );
+      expect(frame()).toBe('condensed');
+      rerender(<AppShell chrome={CHROME_CONDENSED}>body</AppShell>);
+      expect(frame()).toBe('condensed');
+    });
   });
 });
 

@@ -7,50 +7,74 @@
 
 .wp-daystrip {
   display: flex;
-  gap: 6px;
-  margin-top: 14px;
+  align-items: center;
+  gap: 4px;
   overflow-x: auto;
 }
 .wp-daystrip::-webkit-scrollbar {
   height: 0;
 }
 
-/* Column layout (label above pill inside the scroll container) — see the note
-   in App.css: an absolutely-placed label lands in clipped scroll overflow. */
-.wp-daypill-wrap {
+/* The month divider — a hairline and a caption BETWEEN the pills, replacing the
+   label row that used to sit above them (ADR-0149 §6). It rides in the scroll
+   container like a pill does, so it scrolls with the month it opens, and it is
+   `aria-hidden`: each pill already carries its own date. */
+.wp-monthdiv {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 44px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
-.wp-month-label {
-  text-align: center;
-  font-size: 10.5px;
-  font-weight: 600;
+.wp-monthdiv i {
+  display: block;
+  width: 1px;
+  height: 11px;
+  background: rgba(255, 255, 255, 0.2);
+}
+.wp-monthdiv span {
+  font-size: 9.5px;
+  font-weight: 700;
   color: #8494b5;
   white-space: nowrap;
-  margin-bottom: var(--space-1);
 }
 
+/* Exactly 44×44 — the touch floor met by geometry, not by padding around a
+   smaller box (ADR-0126's rule: the box that must clear the floor is the
+   tappable one). Weekday letter over the number. */
 .wp-daypill {
   position: relative;
-  min-width: 44px; /* ≥44px touch target (design-language a11y) */
-  text-align: center;
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
   font: inherit;
-  font-size: var(--text-caption);
   font-weight: 600;
-  padding: 7px 0 var(--space-2);
   border: none;
-  border-radius: 9px;
+  border-radius: 12px;
   color: #8494b5;
   background: rgba(255, 255, 255, 0.05);
   cursor: pointer;
 }
+.wp-daypill .l {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.8;
+}
 .wp-daypill .n {
-  display: block;
   font-family: var(--font-mono);
-  font-size: 14px;
-  margin-top: 2px;
+  font-size: 15px;
+  line-height: 1.1;
   color: #b9c4de;
 }
 .wp-daypill.on {
@@ -105,7 +129,10 @@
 .wp-daystrip[data-mode='plan'] .wp-daypill .n {
   color: var(--ink);
 }
-.wp-daystrip[data-mode='plan'] .wp-month-label {
+.wp-daystrip[data-mode='plan'] .wp-monthdiv i {
+  background: var(--line);
+}
+.wp-daystrip[data-mode='plan'] .wp-monthdiv span {
   color: var(--muted);
 }
 .wp-daystrip[data-mode='plan'] .wp-daypill.on {

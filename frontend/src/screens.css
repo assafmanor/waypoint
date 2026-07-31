@@ -3947,25 +3947,6 @@
 
 /* ===== The roster + the shared member row/surface (ADR-0133 §9) ===== */
 
-/* The header cluster is a control now, not a `title`. The button is bare — the
-   avatars inside it carry the whole look — but it must meet the touch floor
-   (ADR-0017), which the old `<div>` never did. */
-.avatars-btn {
-  background: none;
-  border: 0;
-  padding: 4px 2px;
-  margin: 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-}
-.avatars-btn:focus-visible {
-  outline: 2.5px solid var(--amber);
-  outline-offset: 2px;
-  border-radius: 999px;
-}
-
 /* A member row that opens the member. Same `.set-member` grammar as the settings
    list — it IS that rule — plus the affordances a control needs. */
 .set-member-tap {

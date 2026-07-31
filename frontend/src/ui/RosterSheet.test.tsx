@@ -51,8 +51,8 @@ afterEach(cleanup);
 
 describe('RosterSheet', () => {
   it('lists EVERY member — the cap is a rendering detail, not a truncation', () => {
-    // The defect: `MEMBER_AVATAR_CAP = 2` left an inert `+N` hiding most of a
-    // ~5-person group, reachable only through trip settings (ADR-0133 §9).
+    // The defect: a cap of two left an inert `+N` hiding most of a ~5-person group,
+    // reachable only through trip settings (ADR-0133 §9).
     renderRoster();
     for (const name of ['אסף', 'דנה', 'נועם', 'מאור', 'רון']) {
       expect(screen.getByText(name)).toBeTruthy();
@@ -98,6 +98,32 @@ describe('RosterSheet', () => {
     renderRoster();
     fireEvent.click(screen.getByText('דנה').closest('button')!);
     expect(screen.queryByText(/@example\.com/)).toBeNull();
+  });
+
+  // The merged people stack (ADR-0149 §4): the header's cluster and your own ringed
+  // avatar became one control, so this is the sheet it opens — you at the top, then
+  // the group — and your row carries the account entry point that avatar gave up.
+  describe('as the header stack’s people sheet', () => {
+    it('puts you first, however the memberships arrive', () => {
+      renderRoster({ myUserId: 'u-ron' });
+      expect(document.querySelectorAll('.set-member-tap')[0].textContent).toContain('רון');
+    });
+
+    it('sends your own row to your account instead of the member surface', () => {
+      const onOpenAccount = vi.fn();
+      renderRoster({ onOpenAccount });
+      fireEvent.click(screen.getByText('אסף').closest('button')!);
+      expect(onOpenAccount).toHaveBeenCalled();
+      expect(screen.queryByText('תפקיד')).toBeNull();
+    });
+
+    it('leaves everyone else opening the member surface exactly as before', () => {
+      const onOpenAccount = vi.fn();
+      renderRoster({ onOpenAccount });
+      fireEvent.click(screen.getByText('נועם').closest('button')!);
+      expect(onOpenAccount).not.toHaveBeenCalled();
+      expect(screen.getByText('תפקיד')).toBeTruthy();
+    });
   });
 
   it('skips a membership with no matching user rather than drawing a blank person', () => {

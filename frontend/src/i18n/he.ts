@@ -288,17 +288,20 @@ export const t = {
     dayRoute: 'מסלול היום בגוגל',
   },
   header: {
-    dayOf: (day: number, total: number) => `יום ${day} מתוך ${total}`,
-    // Plan mode, pre-trip: the header leads with the countdown to departure
-    // instead of "day X of Y" (mockups/plan-mode-v1.html). Reads relative near
-    // the date (ADR-0085): "יוצאים מחר", "יוצאים בעוד 3 ימים".
-    leavingIn: (days: number) => `יוצאים ${countdownText(days)}`,
+    // `dayOf` and `leavingIn` left with the header's sub-line (ADR-0149 §1): the
+    // day count is the anchor slot's job now, and Plan's countdown to departure
+    // already lives on the prep hero, where it was not a duplicate.
     pendingSync: (count: number) => `${count} שינויים מחכים לסנכרון`,
     offlineNow: 'אופליין · נתונים שמורים',
-    // Day-scope context ribbon under the strip when viewing a non-today day in
-    // Trip mode (ADR-0043 / ADR-0029), plus the one-tap way back to today.
-    pastDay: 'יום שהיה · היסטוריה',
-    futureDay: 'יום עתידי · תצוגה מקדימה',
+    // The anchor slot at the day strip's leading edge (ADR-0149 §5), which replaced
+    // the day-scope context ribbon: one fixed-width box, two states cross-faded in
+    // place. On today it reads the trip's progress — `dayCap` over `dayProgress`,
+    // stacked, so the box stays narrow; off today it becomes the way back. The
+    // ribbon's own two labels are gone with it, but `backToToday` stays and is now
+    // both the button's word and the slot's accessible name.
+    dayCap: 'יום',
+    dayProgress: (day: number, total: number) => `${day}/${total}`,
+    todayShort: 'היום',
     backToToday: 'חזרה להיום',
   },
   // Per-entity sync status (U-04, ADR-0080): the per-row SyncBadge, the header
@@ -617,6 +620,9 @@ export const t = {
     },
   },
   mode: {
+    // The toggle is icons-only in the day row (ADR-0149 §3), so these two are the
+    // buttons' accessible names rather than painted labels — same words either way.
+    group: 'מצב',
     plan: 'תכנון',
     trip: 'טיול',
     autoHint: (date: string) => `יתחלף אוטומטית ב-${date}`,

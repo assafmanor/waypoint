@@ -103,8 +103,10 @@
 /* header */
 .header {
   /* Top padding clears the notch via --safe-top (0px on non-notched devices,
-     so phone is unchanged). Block axis only — not an inline direction. */
-  padding: calc(14px + var(--safe-top)) 20px 16px;
+     so phone is unchanged). Block axis only — not an inline direction. The block
+     padding came down with the row count: 14/16 was sized for a five-row stack
+     (ADR-0149 §1). */
+  padding: calc(10px + var(--safe-top)) 16px 10px;
   z-index: 0;
 }
 /* Mode-tinted chrome surface (ADR-0028 identity + ADR-0101 reuse): the trip
@@ -151,35 +153,67 @@
   position: relative;
   z-index: 1;
 }
-.trip-row {
+/* ── Row 1: identity · the failed-sync control · settings · the people stack ──
+   44px, which is the touch floor met by GEOMETRY rather than by a min-height on
+   each child (ADR-0126's rule: the box that must clear the floor is the tappable
+   one). The header's block padding came down with the row count — 14/16 was sized
+   for a five-row stack. */
+.hdr-top {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  transition:
+    height var(--t-base) var(--ease-standard),
+    opacity var(--t-quick) var(--ease-exit);
 }
-/* min-width: 0 lets this side shrink below its content size — the default
-   flex-item min-width is auto (= content size), which is exactly what let a
-   long trip name blow out the pill into a wrapped two-line block instead of
-   truncating. */
-.trip-name-wrap {
+
+/* The trip chip. It navigates straight to /trips (ADR-0033 §3's one-list rule
+   untouched); what tells you so is the deck behind the glyph, not a caret.
+   `flex: 1 1 0` and not `auto` on purpose: the basis has to be independent of the
+   content, or the chip's width would follow the trip name's font-size and
+   `useShrinkToFit` would be observing its own output. */
+.hdr-trip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
   min-width: 0;
-  flex: 1 1 auto;
+  height: 44px;
+  padding-inline: 11px 9px;
+  border-radius: var(--radius-999);
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--t-quick) var(--ease-standard);
 }
-.trip-name {
-  font-family: var(--font-head);
-  font-size: 26px;
-  line-height: 1.05;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
+.hdr-trip:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
-/* the trip's chosen glyph, leading the switcher pill (ADR-0038 §5); falls
-   back to DEFAULT_TRIP_ICON when unset. Fixed-size so it never gets caught
-   by the .trip-name ellipsis shrink-to-fit. */
-.trip-icon {
+.hdr-trip:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+/* The glyph gets a fixed box of its own because the sync badge hangs off it. A
+   badge on the CHIP's corner leaves the chip's box and lands on whatever is above
+   it — on a notched phone, the status bar's clock. */
+.trip-glyph {
+  position: relative;
   flex: 0 0 auto;
-  font-size: 22px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  line-height: 1;
+}
+/* the trip's chosen glyph (ADR-0038 §5); falls back to DEFAULT_TRIP_ICON when
+   unset. Fixed-size so it never gets caught by the .trip-name shrink-to-fit. */
+.trip-icon {
+  grid-area: 1 / 1;
   line-height: 1;
 }
 /* A handoff's glyph is still in the air (ADR-0140 §7) — a shared element that arrives
@@ -188,56 +222,98 @@
 .trip-icon.is-handoff {
   visibility: hidden;
 }
-.trip-sub {
-  color: #9daac8;
-  font-size: 13px;
-  margin-top: 5px;
-  font-weight: 500;
+/* "This is one of several." A card edge peeking behind the glyph — the deck
+   metaphor, which is LATERAL: it says there are others like this one, where a back
+   arrow would say this one sits underneath something. Absent at one trip.
+   `--dir` carries the inline axis's physical sign, so one rule serves both
+   directions, and the edge peeks toward the OUTSIDE so it never crowds the name. */
+.hdr-deck {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  border: 1.5px solid currentColor;
+  opacity: 0.4;
+  pointer-events: none;
+  transform: translate(calc(var(--dir) * -4px), -4px) scale(0.84);
 }
-.trip-sub .dot {
-  opacity: 0.5;
-  margin: 0 6px;
+.trip-name {
+  font-family: var(--font-head);
+  font-size: 17px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
-/* the switcher pill (ADR-0033) — a clear "there's more than one trip"
-   affordance, distinct from the ⚙ settings button, navigating to /trips.
-   Always shown, even with one trip (app-shell.md §5). max-width + the
-   .trip-name ellipsis above keep a long trip name to one line instead of
-   wrapping and blowing out the pill shape. */
-.trip-name-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  padding: 5px 8px 5px 12px;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  transition: 0.14s;
-}
-.trip-name-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-.trip-name-btn:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-.trip-name-btn .chev {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
+/* The switch mark, in place of the caret the menu-shaped pill used to carry: this
+   chip navigates, and `swap` says lateral where a caret promises a menu. */
+.hdr-swap {
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-inline-start: auto;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
   font-size: 11px;
-  flex: 0 0 auto;
 }
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Offline / pending, POSITIONED rather than in flow (ADR-0149 §5) — which is the
+   whole fix: in flow, these pushed the body down every time the network dropped.
+   Silent when synced (an exception indicator, ADR-0092); it settles once on arrival
+   and never loops (ADR-0140 §6). */
+.hdr-sync-badge {
+  position: absolute;
+  inset-block-end: -5px;
+  inset-inline-start: -6px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  border: 2px solid var(--indigo);
+  background: var(--muted);
+  color: #fff; /* fixed: on-fill ink */
+  animation: hdr-badge-settle var(--t-base) var(--ease-arrive) both;
+}
+.hdr-sync-badge .icon {
+  width: 10px;
+  height: 10px;
+}
+@keyframes hdr-badge-settle {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+/* The failed-sync control (ADR-0080's persistent path, ADR-0149 §5). `--miss`
+   because it is a status asking for action, not chrome — the only thing in this bar
+   allowed a semantic hue of its own. Absent in every other state. */
+.hdr-syncfail {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--miss);
+  cursor: pointer;
+}
+.hdr-syncfail .icon {
+  width: 20px;
+  height: 20px;
+}
+.hdr-syncfail:focus-visible {
+  outline: 2.5px solid var(--miss);
+  outline-offset: -2px;
+  border-radius: 9px;
 }
 /* Settings is a UI control, not an identity chip (ADR-0043 / design-language
    "emoji are content, icons are UI"): a borderless ghost icon beside the round
@@ -258,6 +334,9 @@
   font-size: 18px;
   cursor: pointer;
 }
+.gear-btn {
+  flex: 0 0 auto;
+}
 .gear-btn:hover,
 .chrome-ghost-btn:hover {
   color: #fff;
@@ -267,23 +346,31 @@
   outline: 2.5px solid var(--amber);
   outline-offset: 2px;
 }
-/* header account avatar — clearly ringed, distinct from the plain member cluster
-   (app-shell.md §6). ADR-0043: the shipped border was too faint to read as "you",
-   so this is a proper outer ring (a gap + a bright ring), not just a border.
-   Google is stated once, quietly, in the account sheet — no per-avatar badge. */
-.account-btn {
+/* ONE people control where there were two adjacent circles doing different things
+   (ADR-0149 §4) — the member cluster and your own avatar. You lead it and keep the
+   ring; the overlap order puts you on top, so the ring is never clipped by the next
+   avatar. It is an ENTRY POINT; the roster sheet is what it opens, which is what
+   keeps the cap a rendering detail rather than a truncation. */
+.hdr-people {
+  flex: 0 0 auto;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
   cursor: pointer;
-  margin-inline-start: 3px;
-  border-color: var(--indigo);
-  box-shadow:
-    0 0 0 2px var(--indigo),
-    0 0 0 3.5px rgba(255, 255, 255, 0.6);
   font: inherit;
+  color: inherit;
+}
+.hdr-people:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+  border-radius: var(--radius-999);
 }
 .avatars {
   display: flex;
   flex-direction: row-reverse;
-  margin-inline-end: 4px;
 }
 .av {
   width: 31px;
@@ -297,19 +384,52 @@
   border: 2px solid var(--indigo);
   margin-inline-start: -9px;
 }
-/* overflow bubble when the trip has more members than the visible cap */
+/* overflow bubble when there are more members than the visible cap */
 .av.more {
   background: rgba(255, 255, 255, 0.14);
   color: #dce3f2;
   font-size: 11px;
 }
-/* Offline/pending-sync badges (T-013) — muted like the offline map state in
-   mockups/trip-dashboard-v2.html (.map-offline-banner), not amber/teal: this
-   is a background/system signal, not a "now" or "location" one (ADR rule #4).
-   `.chrome-chip` generalizes the translucent-pill-on-`.mode-chrome` treatment
-   (ADR-0101) for any other small annotation living directly on that surface —
-   e.g. the search-mode top bar's trip-name context label — reusing the same
-   readable-on-both-mode-tints styling rather than a second copy. */
+/* An account avatar that is clearly "you" — ADR-0043: the shipped border was too
+   faint to read as identity, so this is a proper outer ring (a gap + a bright
+   ring), not just a border. The shell surfaces outside a trip (all-trips, the zero
+   state) still draw it as their own control; inside the trip it is the head of the
+   people stack below. */
+.account-btn {
+  cursor: pointer;
+  margin-inline-start: 3px;
+  border-color: var(--indigo);
+  box-shadow:
+    0 0 0 2px var(--indigo),
+    0 0 0 3.5px rgba(255, 255, 255, 0.6);
+  font: inherit;
+}
+/* The header stack's own sizing — tighter than the standalone `.av`, because four
+   of these plus the gear share a 44px row with the trip name. */
+.hdr-people .av {
+  width: 26px;
+  height: 26px;
+  font-size: 11px;
+  margin-inline-start: -7px;
+}
+.hdr-people .av.more {
+  font-size: 10px;
+}
+/* You lead the stack and keep the ring; the overlap order puts you on top, so the
+   ring is never clipped by the next avatar. */
+.hdr-people .av.is-me {
+  margin-inline-start: 0;
+  z-index: 2;
+  border-color: var(--indigo);
+  box-shadow:
+    0 0 0 2px var(--indigo),
+    0 0 0 3.5px rgba(255, 255, 255, 0.6);
+}
+/* Offline/pending annotations on other shell surfaces (T-013) — muted, because
+   this is a background/system signal, not a "now" or "location" one (rule #4).
+   `.chrome-chip` generalizes the same translucent-pill-on-`.mode-chrome` treatment
+   (ADR-0101) for a small annotation living directly on that surface. The in-trip
+   header no longer uses either: its sync state is a positioned badge (ADR-0149 §5). */
 .offline-badge,
 .chrome-chip {
   display: inline-flex;
@@ -326,96 +446,232 @@
 .offline-badge {
   margin-top: 8px;
 }
-/* mode toggle (design-language.md's Plan-mode components, mockups/plan-mode-v1.html) */
-.modebar {
-  display: flex;
-  justify-content: center;
-  padding-bottom: 10px;
-}
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 11px;
-  padding: 3px;
-  gap: 2px;
-}
-.toggle button {
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  border: 0;
-  background: none;
-  color: #93a2c4;
-  padding: 6px 14px;
-  border-radius: 9px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.toggle button.on {
-  background: var(--amber);
-  color: #3a2405; /* fixed: dark ink on the amber fill (fill re-maps, ink must not) */
-}
-/* Plan mode never uses amber (design-language: mode identity): the selected
-   mode pill and selected day go plan violet. Solid --plan reads as the pressed
-   state against the light "drafting table" chrome (see the [data-mode='plan']
-   chrome block below). */
-.app[data-mode='plan'] .toggle button.on {
-  background: var(--plan);
-  color: #fff; /* fixed: white on the plan-violet fill */
-}
-.toggle .auto {
-  color: #7e8fb4;
-  font-size: 10px;
-  font-weight: 600;
-  padding-inline-start: 8px;
-  white-space: nowrap;
-}
 
-/* The day-strip itself (`.day-strip` / `.day-pill*` / `.month-label`) now lives
-   in the DayStrip domain component (ui/domain/day-strip.css, review U-03). Only
-   the day-scope context ribbon below stays here — it is header chrome, not a pill. */
-
-/* Day-scope context ribbon under the strip when viewing a non-today day in Trip
-   mode (ADR-0043 / ADR-0029) — names the state and taps back to today. */
-.day-context {
+/* ── Row 2: the day axis — the condensed identity · anchor slot · strip · mode ── */
+.hdr-days {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  margin-top: 11px;
-  padding: 7px 11px;
-  border-radius: 10px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: start;
+  margin-top: 8px;
+  transition: margin-top var(--t-base) var(--ease-standard);
+}
+.hdr-strip-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The anchor slot (ADR-0149 §5): one fixed-width box at the strip's leading edge
+   with two states — the trip's progress on today, the way back off it. It replaces
+   the 42px context ribbon, which appeared and disappeared UNDER the strip and shoved
+   the body every time. Both states are stacked in one grid cell, so the box is the
+   same size in both and the swap is a cross-fade rather than a resize. */
+.hdr-anchor {
+  flex: 0 0 auto;
+  width: 54px;
+  height: 44px;
+  display: grid;
+  border-radius: 12px;
   border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  text-align: center;
 }
-.day-context.past {
-  background: rgba(255, 255, 255, 0.06);
-  color: #c3cee6;
-  border-color: rgba(255, 255, 255, 0.09);
+.hdr-anchor > * {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  transition: opacity var(--t-quick) var(--ease-standard);
 }
-.day-context.future {
-  background: rgba(110, 89, 214, 0.16);
-  color: #cabff4;
-  border-color: rgba(110, 89, 214, 0.3);
+.hdr-anchor > [data-off] {
+  opacity: 0;
+  pointer-events: none;
 }
-.day-context .dc-back {
-  margin-inline-start: auto;
+.hdr-anchor .cap {
+  font-size: 9px;
   font-weight: 700;
-  color: #fff;
-  white-space: nowrap;
+  color: #8494b5;
+  line-height: 1;
 }
-.day-context.future .dc-back {
-  color: #d9d0fb;
+.hdr-anchor .num {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: #b9c4de;
+  line-height: 1.1;
 }
-.day-context:focus-visible {
+.hdr-anchor.is-back {
+  cursor: pointer;
+  background: rgba(233, 166, 60, 0.16);
+  border-color: rgba(233, 166, 60, 0.42);
+}
+.hdr-anchor.is-back .anchor-back {
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 800;
+}
+.hdr-anchor.is-back .anchor-back .nav-arrow {
+  width: 13px;
+  height: 13px;
+}
+.hdr-anchor:focus-visible {
   outline: 2.5px solid var(--amber);
   outline-offset: 2px;
 }
+
+/* The mode control (ADR-0149 §3), icons-only, at the trailing end of the day row —
+   which is what makes it survive the condense and therefore work on the Map. The
+   BUTTON is the 44px tap target and the PILL an inner 36px box: the floor and the
+   visual weight are two boxes, so they have to be two elements. */
+.hdr-mode {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  margin-inline-start: 8px;
+  border-radius: var(--radius-999);
+  background: rgba(255, 255, 255, 0.08);
+}
+.hdr-mode button {
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.hdr-mode .p {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-width: 38px;
+  border-radius: var(--radius-999);
+  color: #93a2c4;
+  transition:
+    background-color var(--t-quick) var(--ease-standard),
+    color var(--t-quick) var(--ease-standard);
+}
+.hdr-mode button.on .p {
+  background-color: var(--amber);
+  color: #3a2405; /* fixed: dark ink on the amber fill (fill re-maps, ink must not) */
+}
+.hdr-mode button:focus-visible {
+  outline: 2.5px solid var(--amber);
+  outline-offset: -2px;
+  border-radius: var(--radius-999);
+}
+/* Plan mode never uses amber (design-language: mode identity): the selected mode
+   pill goes plan violet. */
+.app[data-mode='plan'] .hdr-mode button.on .p {
+  background-color: var(--plan);
+  color: #fff; /* fixed: white on the plan-violet fill */
+}
+
+/* ── The condense (ADR-0149 §7) ───────────────────────────────────────────────
+   Row 1 rides out and the trip glyph slots into the day row, so identity never
+   leaves the chrome: 160px → 108px. Driven by `data-chrome` on the shell, which is
+   set either by the body's own scroll (`lib/chrome-condense.ts`) or by a surface
+   declaring it as its resting state (`CHROME_CONDENSED`) — the header itself is
+   told the layout and never asks why.
+
+   `visibility` alongside the sizes, in both directions: a control at zero width is
+   still focusable, so without it a tab press would land on a chip nobody can see. */
+.hdr-minitrip {
+  position: relative;
+  flex: 0 0 auto;
+  width: 0;
+  height: 44px;
+  margin-inline-end: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  font-size: 19px;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    width var(--t-base) var(--ease-standard),
+    margin-inline-end var(--t-base) var(--ease-standard),
+    opacity var(--t-quick) var(--ease-standard),
+    visibility var(--t-base);
+}
+.hdr-minitrip:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -2px;
+  border-radius: 9px;
+}
+.app[data-chrome='condensed'] .hdr-top {
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+.app[data-chrome='condensed'] .hdr-days {
+  margin-top: 0;
+}
+.app[data-chrome='condensed'] .hdr-minitrip {
+  width: 34px;
+  margin-inline-end: 6px;
+  opacity: 1;
+  visibility: visible;
+}
+/* The badge follows identity into the condensed row: an exception indicator that
+   disappears when the chrome collapses is worse than none, because "quiet" already
+   means "everything saved". `overflow: hidden` (the width transition needs it) is
+   why this sits INSIDE the box rather than on a corner. */
+.hdr-minitrip .hdr-sync-badge {
+  inset-block-end: 3px;
+  inset-inline-start: 1px;
+  width: 15px;
+  height: 15px;
+  font-size: 9px;
+}
+
+/* One circle back to the trip name on a narrow phone — the count itself is decided
+   in JS (`useNarrowScreen`), because hiding an avatar here would leave the `+N`
+   counting a member that is still rendered. Mirrors NARROW_MAX_PX. */
+@media (max-width: 370px) {
+  .hdr-trip {
+    padding-inline: 9px 7px;
+  }
+  .hdr-days {
+    gap: 6px;
+  }
+}
+
+/* Announced but not painted (ADR-0149 §5): the header's sync live region keeps its
+   strings and its role; what it used to draw is now the badge and the `--miss`
+   control, neither of which is in flow. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The day-strip itself lives in the DayStrip domain component
+   (ui/domain/day-strip.css, review U-03). The day-scope context ribbon that used
+   to sit under it here is gone — ADR-0149 §5 replaced it with the anchor slot
+   above, which is a fixed box in the day row rather than a strip of chrome that
+   appears and disappears. Its colour rules survive there unchanged. */
 
 /* Zero-state home (T-040 / ADR-0024 §2) — the dormant departure board.
    Design: mockups/zero-state-v1.html. The board renders where it will live
@@ -1824,21 +2080,21 @@
   /* drafting grid lives on .header::before (transitionable) — see the base rule */
   border-bottom: 1px solid var(--line);
 }
-.app[data-mode='plan'] .trip-sub {
-  color: var(--muted);
-}
-.app[data-mode='plan'] .trip-name-btn {
+.app[data-mode='plan'] .hdr-trip {
   background: var(--plan-tint);
   border-color: rgba(110, 89, 214, 0.28);
 }
-.app[data-mode='plan'] .trip-name-btn:hover {
+.app[data-mode='plan'] .hdr-trip:hover {
   background: rgba(110, 89, 214, 0.16);
 }
-.app[data-mode='plan'] .trip-name-btn .chev {
+.app[data-mode='plan'] .hdr-swap {
   background: rgba(110, 89, 214, 0.16);
 }
-.app[data-mode='plan'] .trip-name-btn:focus-visible {
+.app[data-mode='plan'] .hdr-trip:focus-visible {
   outline-color: var(--plan);
+}
+.app[data-mode='plan'] .hdr-sync-badge {
+  border-color: var(--card);
 }
 .app[data-mode='plan'] .gear-btn,
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn {
@@ -1852,8 +2108,8 @@
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn:focus-visible {
   outline-color: var(--plan);
 }
-/* Avatar overlap rings match the (now light) header surface; the ringed
-   account avatar gets a violet ring instead of the dark-chrome white one. */
+/* Avatar overlap rings match the (now light) header surface; your own ringed
+   avatar gets a violet ring instead of the dark-chrome white one. */
 .app[data-mode='plan'] .av {
   border-color: var(--card);
 }
@@ -1861,25 +2117,27 @@
   background: var(--plan-tint);
   color: var(--plan-deep);
 }
-.app[data-mode='plan'] .account-btn {
+.app[data-mode='plan'] .av.is-me {
   border-color: var(--card);
   box-shadow:
     0 0 0 2px var(--card),
     0 0 0 3.5px rgba(110, 89, 214, 0.5);
 }
-.app[data-mode='plan'] .offline-badge,
 .mode-chrome[data-mode='plan'] .chrome-chip {
   background: rgba(22, 35, 61, 0.05);
   border-color: var(--line);
   color: var(--muted);
 }
-.app[data-mode='plan'] .toggle {
-  background: var(--plan-tint);
-}
-.app[data-mode='plan'] .toggle button {
+.app[data-mode='plan'] .hdr-anchor .cap {
   color: var(--muted);
 }
-.app[data-mode='plan'] .toggle .auto {
+.app[data-mode='plan'] .hdr-anchor .num {
+  color: var(--ink);
+}
+.app[data-mode='plan'] .hdr-mode {
+  background: var(--plan-tint);
+}
+.app[data-mode='plan'] .hdr-mode .p {
   color: var(--muted);
 }
 /* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
