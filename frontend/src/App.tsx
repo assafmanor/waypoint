@@ -477,6 +477,9 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // Tab lives in the URL (?tab=), Home-anchored, so back peels it (ADR-0035).
   const { tab, goToTab } = useTripTab();
   const { allDays, chromeReclaimed: mapWantsChrome } = useMapScope();
+  // The shell reads the drag only to hold the chrome still for its duration; the
+  // strip reads it again for its own drop targets.
+  const { dragging } = useDragState();
   const [rosterOpen, setRosterOpen] = useState(false);
   // The roster's own data. The header already renders the cluster from `users`; the
   // sheet needs the memberships too, for each person's role and joined date.
@@ -594,6 +597,10 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
       bodyKey={tab}
       bodyClassName={fullBleed ? BODY_FULLBLEED : undefined}
       chrome={chromeReclaimed ? CHROME_RECLAIMED : chromeCondensed ? CHROME_CONDENSED : undefined}
+      // A drag auto-scrolls the body at the edge bands (ADR-0116), and a header
+      // collapsing mid-gesture would move every row, day pill and drop target 52px
+      // out from under the finger. So the chrome holds where the drag found it.
+      holdChrome={dragging}
       header={
         <Header
           onSelectDay={onSelectDay}

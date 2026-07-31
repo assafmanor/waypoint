@@ -102,6 +102,26 @@ describe('AppShell', () => {
       const { container } = render(<AppShell>body</AppShell>);
       expect(container.querySelector('.app')!.hasAttribute('data-chrome')).toBe(false);
     });
+
+    // A drag auto-scrolls the body at the edge bands, and a header collapsing
+    // mid-gesture moves every drop target 52px out from under the finger. jsdom
+    // can't scroll, so what is pinned here is the one thing that would have
+    // undone the hold on its own: `holdChrome` must not re-run the effect, whose
+    // first act is to reset the state — entering a drag would then EXPAND the
+    // chrome, doing exactly what the hold exists to prevent.
+    it('holding the chrome does not itself reset it', () => {
+      const { container, rerender } = render(<AppShell chrome={CHROME_CONDENSED}>body</AppShell>);
+      const frame = () => container.querySelector('.app')!.getAttribute('data-chrome');
+      expect(frame()).toBe('condensed');
+      rerender(
+        <AppShell chrome={CHROME_CONDENSED} holdChrome>
+          body
+        </AppShell>,
+      );
+      expect(frame()).toBe('condensed');
+      rerender(<AppShell chrome={CHROME_CONDENSED}>body</AppShell>);
+      expect(frame()).toBe('condensed');
+    });
   });
 });
 

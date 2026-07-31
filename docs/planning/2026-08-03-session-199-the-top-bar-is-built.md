@@ -39,6 +39,27 @@ Nothing in the chrome reflows any more.
    right in a browser and _unimplemented_ in jsdom, so the first render of the header under
    test threw. It reports 0 there now — no layout, nothing overflows, leave the size alone.
 
+## What CI caught that the local unit suite could not
+
+Three `shelf-drag` specs failed on the first green-looking push, and **both causes were
+real** rather than test noise. Worth reading before touching either file again:
+
+1. **The chrome condensed under a live gesture.** A drag auto-scrolls the body at the
+   edge bands, which crossed the condense threshold mid-drag and moved every drop target
+   52px. Fixed in the product (`holdChrome`), not in the test, and recorded as ADR-0149's
+   third guard.
+2. **A drop that lit up and then did nothing.** With the header ~135px shorter, targets
+   that used to clear the top edge band now sit inside it, so the auto-scroll was still
+   running when `holdOver` returned on the first `drop-over` — and by the release the
+   target had slid out from under the finger. `holdOver`'s own comment already promised
+   convergence ("the scroll stops at the end of the scroller, and from then on the target
+   holds still"); it just returned before converging. Now it waits for lit **and** still.
+
+And one harness lesson that generalises: **a transition in flight makes every measurement
+a lie** — the mockup that designed this header hit that four times, and the e2e suite hit
+it one layer down, reading boxes in the frames while the chrome was still animating.
+`settleChrome` polls the header's height until it repeats rather than sleeping a duration.
+
 ## Two things worth knowing before touching this again
 
 **The chip is the `useShrinkToFit` container, and its flex basis is load-bearing.**

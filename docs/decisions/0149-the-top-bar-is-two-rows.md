@@ -86,6 +86,23 @@ Two guards are part of the decision, because the first build oscillated visibly:
 
 Both are fixable independently of this ADR and shipped on their own branch first (PR #388).
 
+## Amendment, 2026-08-03 (the build) — a third guard: the chrome holds still under a drag
+
+§7 gives the condense two guards. The build found it needs three, and the third is not a
+tuning detail: **a drag auto-scrolls the body when the finger reaches an edge band**
+(ADR-0116), so without it the header collapses _mid-gesture_ and moves every row, day
+pill and drop target 52px out from under the finger. So the state is held for the drag's
+duration, wherever the drag found it — `AppShell`'s `holdChrome`, phrased as what the
+layout should do rather than as what the app is doing, like its three siblings.
+
+**And a consequence of the shorter header that is not a defect but is worth knowing:**
+row 2 now starts ~135px further up, so content that used to sit clear of the drag's top
+edge band now sits inside it. The band is measured from the body's edge (ADR-0116), so
+this follows from the height and nothing else. It is fine with the hold in place — the
+list still runs and the target still converges — but it means **more of a day is
+"grabbable only while the list is moving" than before**, which is a device-pass question
+for ADR-0116 rather than one this ADR can answer.
+
 ## Amendment, 2026-08-03 (the build) — what the condense costs the failed-sync control
 
 §5 puts the `--miss` control in row 1 and §7 lifts row 1 out. Both are right and they

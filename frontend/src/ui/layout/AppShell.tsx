@@ -53,6 +53,12 @@ export type AppShellProps = {
    *  MOUNTED either way. Unset leaves the chrome to the body's own scroll, which
    *  condenses it below. */
   chrome?: string;
+  /** Hold the chrome exactly as it is, neither condensing nor expanding. Its one
+   *  caller is a drag in flight: the drag auto-scrolls the body at an edge band
+   *  (ADR-0116), which would otherwise collapse the header mid-gesture and move
+   *  every drop target 52px under the finger. Phrased as what the layout should
+   *  DO, not as what the app is doing — same rule as the modifiers above. */
+  holdChrome?: boolean;
   className?: string;
   /** Extra classes on `<main className="body">`. The one in use today is
    *  `is-fullbleed` (`overflow: hidden; padding: 0`), which lets a surface opt out
@@ -78,6 +84,7 @@ export function AppShell({
   mode,
   switching,
   chrome,
+  holdChrome,
   className,
   bodyClassName,
 }: AppShellProps) {
@@ -87,7 +94,7 @@ export function AppShell({
   // surface's own declaration wins: `reclaimed` has no chrome left to condense,
   // and `condensed` is already the answer.
   const [bodyEl, setBodyEl] = useState<HTMLElement | null>(null);
-  const scrolledPast = useCondenseOnScroll(bodyEl);
+  const scrolledPast = useCondenseOnScroll(bodyEl, holdChrome);
   return (
     <div
       className={cx('app', className)}
