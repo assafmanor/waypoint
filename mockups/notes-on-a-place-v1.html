@@ -10113,69 +10113,120 @@ body {
             8px
         );
       }
+      /* **ONLY THE NOTES SCROLL. EVERYTHING ELSE IS PINNED** (owner, on this file).
+         The card takes `.map-draft`'s own grammar rather than a near-miss of it: the
+         identity row, the section's header with its `＋ פתק`, the way-in block and the
+         primary action are all things you must be able to reach at any scroll position,
+         and the notes are the only part that can grow without bound.
+
+         `.place` becomes a GRID in this one variant, and it has to: as a wrapping flex
+         row it can only distribute cross-axis space between LINES, so no single wrapped
+         line can be made the flexible one. The grid places the row's three existing
+         children on line 1 and gives each block below its own row, with the note LIST as
+         the single `minmax(0, 1fr)` — the same shape, and the same reason, as
+         `grid-template-rows: auto minmax(0, 1fr) auto` on the form card (ADR-0148 §1).
+
+         The section itself is `display: contents` so its header can pin while its list
+         scrolls; the separator moves to the header, which is now the section's top edge.
+
+         Scoped by `:has(.note-sec)` to the CARD, so a row in the list — which has no
+         bound to be flexible inside — is untouched. */
       .map-placecard:has(.note-sec) > .place {
-        flex: 1 1 auto;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: 0 11px;
+        overflow: hidden;
+      }
+      .map-placecard:has(.note-sec) > .place > .wp-place-badge {
+        grid-row: 1;
+        grid-column: 1;
+        align-self: center;
+      }
+      .map-placecard:has(.note-sec) > .place > .map-main {
+        grid-row: 1;
+        grid-column: 2;
+        min-width: 0;
+        align-self: center;
+      }
+      .map-placecard:has(.note-sec) > .place > .map-right {
+        grid-row: 1;
+        grid-column: 3;
+      }
+      .map-placecard:has(.note-sec) > .place > .note-sec {
+        display: contents;
+      }
+      .map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-h {
+        grid-row: 2;
+        grid-column: 1 / -1;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+      }
+      /* THE ONE SCROLLING REGION. `min-height: 0` is what lets a grid row shrink below its
+         content at all — without it the track sizes to the notes and the card overflows,
+         which is the same trap the form card's middle documents. */
+      .map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list {
+        grid-row: 3;
+        grid-column: 1 / -1;
+        /* `stretch`, and it is load-bearing: the grid's `align-items: center` leaves an item
+           at its content height INSIDE a 0px track, so the list overflowed the card while the
+           track itself reported 0 — measured, and invisible to the track sizing. */
+        align-self: stretch;
         min-height: 0;
-        /* The row is the scroller in this variant. Same shape as the form card's
-           middle: the shortfall becomes a scroll rather than a clip, and the
-           card can never be taller than the room it has (ADR-0148 §1). */
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-width: none;
       }
-      .map-placecard:has(.note-sec) > .place::-webkit-scrollbar {
+      .map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list::-webkit-scrollbar {
         width: 0;
       }
-      /* ── §3b · AND THE PRIMARY ACTION IS PINNED (owner, on this mockup) ──
-         The first draft let the whole row scroll, `שיבוץ ליום` included — which
-         is the same defect ADR-0148 §1 fixed on the form card and for the same
-         reason: putting a place on a day is what the card is FOR, and a primary
-         action that scrolls out of reach behind three notes makes the common
-         gesture the expensive one.
+      .map-placecard:has(.note-sec) > .place > .map-refs {
+        grid-row: 4;
+        grid-column: 1 / -1;
+      }
+      .map-placecard:has(.note-sec) > .place > .map-refs-foot {
+        grid-row: 5;
+        grid-column: 1 / -1;
+      }
 
-         `position: sticky` rather than a grid: the row is a wrapping flex
-         container shared by every list row, and restructuring it into
-         head/middle/foot for one variant would change the row everywhere. Sticky
-         is inert when there is nothing to scroll, so an unscrolled card — and
-         every row in the list — is untouched by construction.
-
-         It needs its own ground and a hairline: the notes scroll UNDER it, and a
-         transparent foot would let them read through the button's own gap. */
-      /* **The foot leaves `.map-refs` and becomes the row's own last child**, and that
-         move is what makes the pin possible at all rather than a preference: a sticky
-         element cannot leave its containing block, and `.map-refs` sits entirely BELOW
-         the scrollport on a card scrolled to the top — measured at −156px, i.e. off the
-         card, with the sticky rule already in force. As a direct child of the scroller
-         its containing block is the scrolled content, so it pins from the first pixel.
-
-         It also reads better as structure: the footer is the ROW's primary action, not
-         a fourth reference. In the list (nothing scrolling) `flex-basis: 100%` makes it
-         the same full-width line it already was, so an unselected or unscrolled row is
-         pixel-identical. */
+      /* ── §2 · The note section inside a place row (the LIST variant) ───
+         In the list nothing is bounded and nothing scrolls, so the section is simply the
+         next full-width line in the wrapping row — exactly what `.map-refs` already does.
+         The card variant above overrides this. */
+      .place > .note-sec {
+        flex-basis: 100%;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+      }
+      .place > .note-sec + .map-refs {
+        margin-top: 8px;
+      }
+      /* The foot is the ROW's own last child rather than `.map-refs`' — it is the row's
+         primary action, not a fourth reference, and in the card variant that is what lets
+         the grid pin it. `flex-basis` keeps it the same full-width line in the list. */
       .place > .map-refs-foot {
         flex-basis: 100%;
       }
-      .map-placecard:has(.note-sec) > .place > .map-refs-foot {
-        position: sticky;
-        inset-block-end: 0;
-        margin-top: 0;
-        padding-block: 8px;
-        background: var(--card);
-        border-top: 1px solid var(--line);
+
+      /* ── §3 · The height bound stops being form-only ──────────────────
+         `map.css` bounds the card with `:has(> .map-draft)` and says why the selection
+         card is excluded: "the selection card is a 73px row and wants none of this". With
+         a note section it is not a 73px row any more, so the same arithmetic — already
+         written, already reasoned about — extends to it. A SELECTOR change, not new maths. */
+      .map-placecard:has(> .map-draft),
+      .map-placecard:has(.note-sec) {
+        display: flex;
+        max-height: calc(
+          100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) -
+            8px
+        );
       }
-      /* A scroll container's own PADDING is part of its scrollable area, so with the foot
-         pinned at `inset-block-end: 0` the notes kept scrolling visibly through the 11px
-         strip beneath it — caught by rendering, not by the arithmetic, which read a healthy
-         12px the whole time. This paints that strip in the card's own ground rather than
-         moving the button: `sticky` is a positioned box, so the pseudo-element anchors to
-         it, and the inline inset covers the row's side padding too. */
-      .map-placecard:has(.note-sec) > .place > .map-refs-foot::after {
-        content: '';
-        position: absolute;
-        inset-inline: -12px;
-        top: 100%;
-        height: 12px;
-        background: var(--card);
+      .map-placecard:has(.note-sec) > .place {
+        flex: 1 1 auto;
+        min-height: 0;
       }
 
       /* ══════════════════════════════════════════════════════════════════
@@ -10581,6 +10632,7 @@ body {
             <span class="t">${ic('clipboard')} פתקים</span>
             <button type="button" class="add">${ic('plus')} פתק</button>
           </div>
+          <div class="note-sec-list">
           ${
             n === 0
               ? '<p class="note-item-m">אין פתקים על זה</p>'
@@ -10594,6 +10646,7 @@ body {
                   )
                   .join('')
           }
+          </div>
         </div>`;
 
       /* ─── PlaceRow, exact shipped tree (`Map.tsx`) ──────────────────────
@@ -10948,7 +11001,35 @@ body {
                 <span class="tag after">נגלל עד הסוף · הפועל נשאר</span>
                 ${canvas(placeCard({ ...CROWDED, selected: true, section: true, notes: 3 }))}
               </div>
+              <div class="col">
+                <span class="tag after">הגיליון עומד בצד (ADR-0148 §2)</span>
+                <div class="canvas" style="width:${W}px;height:${SPLIT_H()}px">
+                  <div class="map-placecard" style="--sheet-h:0px;--map-attr-h:${ATTR_H}px;--map-controls-h:46px">
+                    ${placeRow({ ...CROWDED, selected: true, section: true, notes: 3 })}
+                  </div>
+                  <span class="attr">Google</span>
+                </div>
+              </div>
             </div>
+            <p class="note">
+              <b>רק הפתקים נגללים, כל השאר נעול</b> (הערת הבעלים). זו בדיוק הדקדוק של
+              <code>.map-draft</code>: שורת הזהות, כותרת המקטע עם ה-<code>＋ פתק</code>, בלוק
+              הדרך־פנימה והפועל הראשי הם דברים שצריך להגיע אליהם בכל מצב גלילה, והפתקים הם החלק
+              היחיד שיכול לגדול בלי גבול. <code>.place</code> נהיית <b>רשת</b> בווריאנט הזה, וזה
+              הכרחי: כמיכל flex עוטף היא יכולה לחלק מקום רק <b>בין שורות</b>, ואי אפשר להפוך שורה
+              עטופה אחת לגמישה. הרשת שמה את שלושת הילדים הקיימים בשורה 1 ונותנת לכל בלוק שורה
+              משלו, כשרשימת הפתקים היא ה-<code>minmax(0, 1fr)</code> היחיד.
+            </p>
+            <p class="note">
+              <b>ומה שהמדידה אמרה על זה, וזה משנה את ההצעה:</b> ב-390 העבודה מסתדרת — 115px
+              לפתקים, הפועל 12px מהתחתית. <b>ב-360 עם הגיליון פתוח היא לא מסתדרת בכלל:</b> ארבעת
+              הבלוקים הנעוצים לבדם דורשים 244px כשלכרטיס יש 204, כך שאזור הפתקים מקבל
+              <b>0px</b> והפועל יוצא מהכרטיס ב-30px — לפני פתק אחד. התשובה כבר קיימת באפליקציה:
+              <b>הגיליון עומד בצד</b>, בדיוק כמו שהוא עושה כשכרטיס הטופס פתוח (ADR-0148 §2). עם
+              זה, ב-360 הפתקים מקבלים <b>90px</b> והפועל 12px — והפריים הרביעי מראה את זה.
+              החלופה, לשחרר את הנעילה מכותרת המקטע ומבלוק ההפניות, נדחתה: היא מגלגלת דווקא את
+              <code>＋ פתק</code> אל מחוץ למסך במשטח שכל מטרתו לכתוב פתק.
+            </p>
             <p class="note">
               <b>ו-<code>שיבוץ ליום</code> ננעץ</b> (הערת הבעלים על הקובץ הזה). בטיוטה הראשונה כל
               השורה נגללה, הפועל הראשי בכללה — וזה בדיוק הכשל ש-ADR-0148 §1 תיקן בכרטיס הטופס,
@@ -11036,8 +11117,8 @@ body {
           </section>`;
         // The scrolled frame has to actually be scrolled, or it draws the same picture as
         // the one beside it and proves nothing.
-        document.querySelectorAll('[data-scrolled] .map-placecard > .place').forEach((row) => {
-          row.scrollTop = row.scrollHeight;
+        document.querySelectorAll('[data-scrolled] .map-placecard .note-sec-list').forEach((el) => {
+          el.scrollTop = el.scrollHeight;
         });
         measure();
       }
@@ -11141,7 +11222,7 @@ body {
         const card = probe.querySelector('.map-placecard');
         const room = SPLIT_H() - 46 - 8 - SHEET_H - ATTR_H - 8;
         const cardH = h(card);
-        const inner = card?.querySelector('.place');
+        const inner = card?.querySelector('.note-sec-list');
         const scrolls = inner ? inner.scrollHeight > inner.clientHeight + 1 : false;
         out.push(
           `<tr><td><b>כרטיס המקום · 3 פתקים</b> · מול החדר שיש לו (${room}px)</td>${cell(
@@ -11158,13 +11239,17 @@ body {
         probe.innerHTML = canvas(
           placeCard({ ...CROWDED, selected: true, section: true, notes: 3 }),
         );
-        const scroller = probe.querySelector('.map-placecard > .place');
+        const scroller = probe.querySelector('.note-sec-list');
         const btn = probe.querySelector('.map-refs-foot');
         const cardBox = probe.querySelector('.map-placecard');
         let restAt = 0;
         let scrolledAt = 0;
+        let listH = 0;
+        let listNeeds = 0;
         if (scroller && btn && cardBox) {
           restAt = Math.round(cardBox.getBoundingClientRect().bottom - btn.getBoundingClientRect().bottom);
+          listH = Math.round(scroller.getBoundingClientRect().height);
+          listNeeds = scroller.scrollHeight;
           scroller.scrollTop = scroller.scrollHeight;
           scrolledAt = Math.round(
             cardBox.getBoundingClientRect().bottom - btn.getBoundingClientRect().bottom,
@@ -11176,6 +11261,45 @@ body {
           )}${cell(scrolledAt + 'px')}${cell(
             scrolledAt >= 0 ? 'נעוץ' : 'נעלם',
             scrolledAt >= 0 ? 'good' : 'bad',
+          )}</tr>`,
+        );
+        // AND WHAT THE NOTES ARE LEFT WITH. Pinning four blocks spends the card's room on
+        // them first, so the one region that scrolls gets the remainder — which is the
+        // number that decides whether "only the notes scroll" is usable at 360.
+        out.push(
+          `<tr><td><b>אזור הפתקים</b> · מה נשאר לו אחרי שכל השאר ננעץ (צריך ${listNeeds}px ל-3 פתקים)</td>${cell(
+            listNeeds + 'px',
+          )}${cell(listH + 'px')}${cell(
+            listH >= 96 ? 'קריא' : listH >= 56 ? 'צר' : 'חנק',
+            listH >= 96 ? 'good' : listH >= 56 ? '' : 'bad',
+          )}</tr>`,
+        );
+
+        // 4c. THE SAME CARD WITH THE SHEET STANDING DOWN (ADR-0148 §2 already does this for
+        // the form card). At 360 the pinned blocks alone need more than the card has, so this
+        // is not a nicety — it is the difference between a notes region and none.
+        probe.innerHTML = `
+          <div class="canvas" style="width:${W}px;height:${SPLIT_H()}px">
+            <div class="map-placecard" style="--sheet-h:0px;--map-attr-h:${ATTR_H}px;--map-controls-h:46px">
+              ${placeRow({ ...CROWDED, selected: true, section: true, notes: 3 })}
+            </div>
+          </div>`;
+        const downList = probe.querySelector('.note-sec-list');
+        const downBtn = probe.querySelector('.map-refs-foot');
+        const downCard = probe.querySelector('.map-placecard');
+        const downListH = downList ? Math.round(downList.getBoundingClientRect().height) : 0;
+        const downBtnAt =
+          downBtn && downCard
+            ? Math.round(
+                downCard.getBoundingClientRect().bottom - downBtn.getBoundingClientRect().bottom,
+              )
+            : 0;
+        out.push(
+          `<tr><td><b>אותו כרטיס · הגיליון עומד בצד</b> · אזור הפתקים, והפועל</td>${cell(
+            downListH + 'px',
+          )}${cell(downBtnAt + 'px')}${cell(
+            downListH > 0 && downBtnAt >= 0 ? 'נכנס' : 'לא נכנס',
+            downListH > 0 && downBtnAt >= 0 ? 'good' : 'bad',
           )}</tr>`,
         );
 
