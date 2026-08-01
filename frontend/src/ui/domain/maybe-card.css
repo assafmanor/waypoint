@@ -60,6 +60,11 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* The base card lays out exactly as it did before the wrapper existed; `.compact`
+   below is the only thing that makes it a box. */
+.wp-maybecard-main {
+  display: contents;
+}
 .wp-maybecard-meta {
   font-size: var(--text-caption);
   color: var(--muted);
@@ -73,6 +78,78 @@
   font-weight: 700;
   color: var(--plan-deep); /* plan action, not location */
   display: block;
+}
+
+/* The compact tile (ADR-0116's session-202 amendment §2, measured in
+   `mockups/shelf-crowded-v1.html`). A modifier on the card, not a second
+   component: the soft grammar (dashed border + diagonal hatch, ADR-0011), the
+   focus ring, the drag states and `.consumed` all come from the rules above and
+   are deliberately untouched. What changes is geometry and what the card SAYS.
+
+   Three moves, in order of how much height each buys back:
+     1. the action line goes. `＋ שבץ ליום` was on every card, under a section
+        hint that already says it, and its `margin-top: auto` is what held the
+        card open to 132px.
+     2. the axis flips to a row, so the glyph sits BESIDE the text instead of
+        above it — one line saved, and the glyph stops being the largest thing in
+        a card whose glyph is usually the category default and so not
+        distinguishing.
+     3. the meta line stops being optional and starts carrying a fact that VARIES
+        per card (distance from the day's stops, or the day the idea is aimed
+        at), which the action line never was. */
+.wp-maybecard.compact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  /* 140, and the number is measured rather than chosen. `.shelf` fades 14px at
+     each edge, so the READABLE box at 360px is 300px wide — two cards fit inside
+     it only at `2w + gap <= 300`, i.e. w <= 145. The shipped 150 misses it by
+     10px, which is why the strip showed exactly ONE fully-legible card at the
+     primary width, and why the first draft of this tile (148) did not fix the
+     thing it was drawn to fix. */
+  width: 140px;
+  min-height: 76px;
+  padding: 10px;
+}
+.wp-maybecard.compact .wp-maybecard-ic {
+  font-size: 17px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.wp-maybecard.compact .wp-maybecard-main {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+/* The title keeps its 2-line clamp. The first draft of this tile clamped to ONE
+   line to buy height, and the render answered immediately: at this width
+   `מוזיאון אדו־טוקיו` became `מוזיאון…`, so the tile was denser and unreadable,
+   which is not a trade — it is the same failure in a smaller box. The height
+   comes out of the action line, which carried nothing, never out of the title. */
+.wp-maybecard.compact .wp-maybecard-title {
+  margin-top: 0;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.wp-maybecard.compact .wp-maybecard-meta {
+  margin-top: 1px;
+  line-height: 1.3;
+}
+/* Belt-and-braces so a stale call site cannot re-inflate the tile. */
+.wp-maybecard.compact .wp-maybecard-add {
+  display: none;
+}
+/* The remove variant, which the mockup did not draw. On the shipped card the
+   corner `✕` sits over the glyph's own line and clears the title; once the axis
+   is a row the title runs under it, so the text yields the corner back. */
+.wp-maybecard.compact .wp-maybecard-body {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+.wp-maybecard.compact:has(.wp-maybecard-remove) .wp-maybecard-main {
+  padding-inline-end: 18px;
 }
 
 /* Remove variant (PlanDay shelf): the body carries the schedule tap, a corner

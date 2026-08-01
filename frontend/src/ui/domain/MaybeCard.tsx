@@ -24,8 +24,12 @@ export interface MaybeCardProps {
   title: ReactNode;
   /** Real derived meta (source / added-by / …). Omitted → the line is not shown. */
   meta?: ReactNode;
-  /** The bottom action line, e.g. "＋ שבץ ליום" — screen passes copy + icon. */
-  action: ReactNode;
+  /** The bottom action line, e.g. "＋ שבץ ליום" — screen passes copy + icon.
+   *  A `compact` tile has none: the section hint above the strip says it once. */
+  action?: ReactNode;
+  /** The shelf tile (ADR-0116 session-202 §2): same soft grammar, row axis, no
+   *  action line. Geometry only — every other state comes from the base card. */
+  compact?: boolean;
   /** Schedule this idea onto the active day. */
   onSchedule: () => void;
   /** Disables scheduling (a consumed idea kept visible, dimmed). */
@@ -49,6 +53,7 @@ export function MaybeCard({
   title,
   meta,
   action,
+  compact,
   onSchedule,
   disabled,
   onRemove,
@@ -57,16 +62,22 @@ export function MaybeCard({
   dragProps,
   dragging,
 }: MaybeCardProps) {
+  // Title + meta always get the wrapper, so there is one markup shape rather than
+  // two: it is `display: contents` on the base card (laying out exactly as before)
+  // and the block the row axis stacks on under `.compact`.
   const inner = (
     <>
       <span className="wp-maybecard-ic">{icon}</span>
-      <span className="wp-maybecard-title">{title}</span>
-      {meta != null && <span className="wp-maybecard-meta">{meta}</span>}
-      <span className="wp-maybecard-add">{action}</span>
+      <span className="wp-maybecard-main">
+        <span className="wp-maybecard-title">{title}</span>
+        {meta != null && <span className="wp-maybecard-meta">{meta}</span>}
+      </span>
+      {action != null && <span className="wp-maybecard-add">{action}</span>}
     </>
   );
   const cls =
     'wp-maybecard' +
+    (compact ? ' compact' : '') +
     (disabled ? ' consumed' : '') +
     (dragging ? ' dragging' : '') +
     (dragProps ? ' draggable' : '') +

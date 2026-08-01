@@ -2011,6 +2011,26 @@
   text-align: center;
   padding: 14px 8px;
 }
+/* The way past the cap (ADR-0116 session-202 §4). Neutral `--cta`: it reveals the
+   rest of a list, so it is not a plan action and does not spend plan violet
+   (ADR-0028, root rule 4). */
+.gapfill-more {
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--cta);
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-12);
+  padding: 9px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+/* The shared `SearchField` primitive; only its placement in this sheet is here. */
+.gapfill-search {
+  margin: 0 0 var(--space-3);
+}
 .gapfill-new {
   width: 100%;
   font: inherit;

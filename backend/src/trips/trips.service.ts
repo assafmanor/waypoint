@@ -453,7 +453,12 @@ export class TripsService {
           }),
           this.prisma.booking.findMany({ where: { tripId } }),
           this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
-          this.prisma.maybeItem.findMany({ where: { tripId } }),
+          // `id` breaks ties, so the floor every shelf ranking sits on is total
+          // rather than merely usually-sorted (ADR-0151 §3).
+          this.prisma.maybeItem.findMany({
+            where: { tripId },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          }),
           this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
         ],
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },

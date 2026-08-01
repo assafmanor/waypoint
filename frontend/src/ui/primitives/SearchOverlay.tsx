@@ -20,7 +20,7 @@
 import { useRef, type ReactNode } from 'react';
 import { Modal } from './Modal';
 import { NavArrow } from '../NavArrow';
-import { Icon } from '../Icon';
+import { SearchField } from './SearchField';
 import type { Mode } from '../../lib/mode';
 import './search-overlay.css';
 
@@ -75,26 +75,14 @@ export function SearchOverlay({
             )}
           </div>
 
-          <div className="search-overlay-field">
-            <Icon name="search" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              placeholder={placeholder}
-              onChange={(e) => onQueryChange(e.target.value)}
-            />
-            {query && (
-              <button
-                type="button"
-                className="clear"
-                aria-label={clearLabel}
-                onClick={() => onQueryChange('')}
-              >
-                <Icon name="close" />
-              </button>
-            )}
-          </div>
+          <SearchField
+            className="search-overlay-field"
+            inputRef={inputRef}
+            value={query}
+            placeholder={placeholder}
+            clearLabel={clearLabel}
+            onChange={onQueryChange}
+          />
 
           <div className="search-overlay-results">{children}</div>
         </div>

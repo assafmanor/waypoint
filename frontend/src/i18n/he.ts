@@ -1017,6 +1017,14 @@ export const t = {
     maybeShelf: 'מדף האולי',
     tapToSchedule: 'לחצו כדי לשבץ ליום',
     skippedTag: 'דילגתם · לחצו להחזרה',
+    // Why a suggestion sits where it does (ADR-0151 §8). The contract carries the
+    // fact and this spells it, which is what lets a user disagree with the order.
+    // Never a score and never a star: only the fact that put this one here.
+    why: {
+      nearStop: (distance: string, stop: string) => `${distance} מ${stop}`,
+      aimedAtDay: (relativeDay: string) => `מכוון ל${relativeDay}`,
+      recentlyAdded: 'נוסף לאחרונה',
+    },
     scheduleTitle: (title: string) => `שיבוץ · ${title}`,
     // Concurrency (ADR-0041): a cluster of partially-overlapping events, and the
     // "contains N" note on an envelope that nests shorter events inside it.
@@ -1052,6 +1060,11 @@ export const t = {
     rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
     gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
+    // The sheet is capped at the best few; these are the way past the cap and the
+    // search that only appears once the pool is big enough to need one.
+    gapFillSearch: 'חיפוש ברעיונות',
+    gapFillSearchClear: 'נקה חיפוש',
+    gapFillAll: (n: number) => `כל ${n} הרעיונות`,
     // Plan mode's shelf also drags (ADR-0116 §5): the hint teaches the hold, since
     // a press-and-hold is the one part of the gesture nobody guesses.
     shelfHint: 'לחצו כדי לשבץ · לחיצה ארוכה לגרירה',

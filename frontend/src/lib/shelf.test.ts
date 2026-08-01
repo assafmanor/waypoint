@@ -4,9 +4,19 @@ import {
   EVENT_SOURCE,
   EVENT_STATUS,
   type MaybeItem,
+  type Place,
   type TripEvent,
 } from '@waypoint/shared';
-import { shelfGroups } from './shelf';
+import {
+  dayStops,
+  rankIdeas,
+  reasonText,
+  shelfGroups,
+  slotStops,
+  stopReasonText,
+  tileReasonText,
+} from './shelf';
+import { withoutBidiControls } from './bidi';
 
 const DAY = '2026-07-20';
 
@@ -71,5 +81,214 @@ describe('shelfGroups (ADR-0116 §2/§3)', () => {
     expect(groups.forDay).toEqual([]);
     expect(groups.skipped).toEqual([]);
     expect(ids(groups.pool)).toEqual(['a', 'b']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The ranking (ADR-0116 session-202 §3/§4, ADR-0151). `shelfGroups` above is
+// untouched by all of this — these functions only order what it grouped.
+
+const place = (id: string, name: string, lat?: number, lng?: number): Place =>
+  ({ id, tripId: 't', name, lat, lng, createdAt: '', updatedAt: '', updatedBy: 'u' }) as Place;
+
+// A Tokyo lunch stop and points a known distance north of it.
+const LUNCH = { lat: 35.6812, lng: 139.7671 };
+const north = (m: number) => ({ lat: LUNCH.lat + m / 111_320, lng: LUNCH.lng });
+
+const located = (id: string, name: string, m: number) =>
+  place(id, name, north(m).lat, north(m).lng);
+
+const at = (id: string, hhmm: string, placeId?: string, over: Partial<TripEvent> = {}) =>
+  event({ id, placeId, startsAt: `${DAY}T${hhmm}:00.000Z`, ...over });
+
+describe('dayStops', () => {
+  const places = [located('p-lunch', 'מסעדת מון', 0), place('p-lite', 'מקום בלי נקודה')];
+
+  it("carries the day's located stops, by name", () => {
+    const stops = dayStops([at('e1', '12:00', 'p-lunch')], [], places, DAY);
+    expect(stops).toEqual([{ name: 'מסעדת מון', at: LUNCH }]);
+  });
+
+  it('skips an event with no place, and a Place-lite with no coordinates', () => {
+    const events = [at('e1', '12:00'), at('e2', '14:00', 'p-lite')];
+    expect(dayStops(events, [], places, DAY)).toEqual([]);
+  });
+
+  // A skipped event is not happening, so ranking ideas against it would measure
+  // proximity to a plan that was abandoned.
+  it('excludes a skipped event', () => {
+    const events = [at('e1', '12:00', 'p-lunch', { status: EVENT_STATUS.SKIPPED })];
+    expect(dayStops(events, [], places, DAY)).toEqual([]);
+  });
+
+  it('ignores another day', () => {
+    expect(
+      dayStops([at('e1', '12:00', 'p-lunch', { date: '2026-07-21' })], [], places, DAY),
+    ).toEqual([]);
+  });
+});
+
+describe('slotStops — the gap sheet ranks against its own neighbours', () => {
+  const places = [
+    located('p-before', 'לפני', 0),
+    located('p-after', 'אחרי', 500),
+    located('p-far', 'רחוק בזמן', 900),
+  ];
+  // 09:00 · [gap 12:00–14:00] · 15:00, plus an early event that is NOT the neighbour.
+  const events = [
+    at('early', '07:00', 'p-far', { endsAt: `${DAY}T08:00:00.000Z` }),
+    at('before', '09:00', 'p-before', { endsAt: `${DAY}T10:00:00.000Z` }),
+    at('after', '15:00', 'p-after'),
+  ];
+  const slot = {
+    fromMs: Date.parse(`${DAY}T12:00:00.000Z`),
+    toMs: Date.parse(`${DAY}T14:00:00.000Z`),
+  };
+
+  it('takes the CLOSEST event on either side, not every event on the day', () => {
+    expect(slotStops(events, [], places, DAY, slot).map((s) => s.name)).toEqual(['לפני', 'אחרי']);
+  });
+
+  it('a gap at the day’s edge has one neighbour', () => {
+    const dayStart = {
+      fromMs: Date.parse(`${DAY}T06:00:00.000Z`),
+      toMs: Date.parse(`${DAY}T07:00:00.000Z`),
+    };
+    expect(slotStops(events, [], places, DAY, dayStart).map((s) => s.name)).toEqual(['רחוק בזמן']);
+  });
+
+  it('a day with no located events has none, and the strategy falls back honestly', () => {
+    expect(slotStops(events, [], [], DAY, slot)).toEqual([]);
+  });
+});
+
+describe('rankIdeas', () => {
+  const places = [
+    located('p-lunch', 'מסעדת מון', 0),
+    located('p-near', 'קרוב', 200),
+    located('p-far', 'רחוק', 4000),
+  ];
+  const stops = [{ name: 'מסעדת מון', at: LUNCH }];
+  const withPlace = (id: string, placeId?: string, targetDate?: string): MaybeItem =>
+    ({
+      id,
+      tripId: 't',
+      title: id,
+      consumed: false,
+      placeId,
+      targetDate,
+      createdAt: `2026-07-0${id.length}`,
+    }) as MaybeItem;
+
+  it('brings the nearest idea to the front of a pool it was buried in', () => {
+    const pool = [withPlace('faraway', 'p-far'), withPlace('close', 'p-near')];
+    expect(rankIdeas(pool, places, DAY, stops).map((r) => r.item.id)).toEqual(['close', 'faraway']);
+  });
+
+  it('keeps ADR-0116 §2’s partition: a dateless idea still leads one aimed elsewhere', () => {
+    const pool = [withPlace('aimed', 'p-near', '2026-07-24'), withPlace('open', 'p-far')];
+    expect(rankIdeas(pool, places, DAY, stops).map((r) => r.item.id)).toEqual(['open', 'aimed']);
+  });
+
+  it('attaches a reason to every idea (ADR-0151 §8)', () => {
+    const pool = [withPlace('a', 'p-near'), withPlace('b')];
+    for (const r of rankIdeas(pool, places, DAY, stops)) expect(r.reason.code).toBeTruthy();
+  });
+
+  it('caps to `limit` when one is given — what the gap sheet and the strip spend', () => {
+    const pool = ['a', 'b', 'c'].map((id) => withPlace(id));
+    expect(rankIdeas(pool, places, DAY, stops, 2)).toHaveLength(2);
+  });
+
+  it('ranks with no stops at all, which is the offline / no-places day', () => {
+    const pool = [withPlace('a', 'p-near'), withPlace('b', 'p-far')];
+    expect(rankIdeas(pool, places, DAY, []).map((r) => r.item.id)).toHaveLength(2);
+  });
+});
+
+describe('the reason, in Hebrew', () => {
+  const places = [located('p-lunch', 'מסעדת מון', 0), located('p-near', 'קרוב', 300)];
+  const stops = [{ name: 'מסעדת מון', at: LUNCH }];
+  const only = (m: MaybeItem) => rankIdeas([m], places, DAY, stops)[0];
+
+  it('names the distance and the stop', () => {
+    const r = only({
+      id: 'a',
+      tripId: 't',
+      title: 'a',
+      consumed: false,
+      placeId: 'p-near',
+    } as MaybeItem);
+    expect(withoutBidiControls(reasonText(r.reason, DAY))).toBe('300 מ׳ ממסעדת מון');
+  });
+
+  it('names the day an idea is aimed at', () => {
+    const r = only({
+      id: 'a',
+      tripId: 't',
+      title: 'a',
+      consumed: false,
+      targetDate: '2026-07-21',
+    } as MaybeItem);
+    expect(reasonText(r.reason, DAY)).toBe('מכוון למחר');
+  });
+
+  it('says recency when there is nothing else true to say', () => {
+    const r = only({ id: 'a', tripId: 't', title: 'a', consumed: false } as MaybeItem);
+    expect(reasonText(r.reason, DAY)).toBe('נוסף לאחרונה');
+  });
+
+  // The tile is 140px and its one line is what bought its height: the full sentence
+  // wraps to two there, which costs exactly the 8px the tile was drawn to save. So
+  // the strip states the fact alone and the full-width sheet row names the stop.
+  describe('tileReasonText — the same reason at tile width', () => {
+    it('states the distance alone, without the stop the sentence names', () => {
+      const r = only({
+        id: 'a',
+        tripId: 't',
+        title: 'a',
+        consumed: false,
+        placeId: 'p-near',
+      } as MaybeItem);
+      expect(withoutBidiControls(tileReasonText(r.reason, DAY)!)).toBe('300 מ׳');
+    });
+
+    it('states the day alone, which is what the shipped pool card already said', () => {
+      const r = only({
+        id: 'a',
+        tripId: 't',
+        title: 'a',
+        consumed: false,
+        targetDate: '2026-07-21',
+      } as MaybeItem);
+      expect(tileReasonText(r.reason, DAY)).toBe('מחר');
+    });
+
+    it('spends no line on recency — on a strip that is chrome, not a fact', () => {
+      const r = only({ id: 'a', tripId: 't', title: 'a', consumed: false } as MaybeItem);
+      expect(tileReasonText(r.reason, DAY)).toBeUndefined();
+    });
+  });
+
+  // The day's OWN group states a distance or nothing — the day an idea is aimed at
+  // would only repeat the day you are looking at (ADR-0116 §2).
+  it('stopReasonText gives the distance, and nothing for the other reasons', () => {
+    const near = only({
+      id: 'a',
+      tripId: 't',
+      title: 'a',
+      consumed: false,
+      placeId: 'p-near',
+    } as MaybeItem);
+    expect(withoutBidiControls(stopReasonText(near.reason)!)).toBe('300 מ׳');
+    const aimed = only({
+      id: 'b',
+      tripId: 't',
+      title: 'b',
+      consumed: false,
+      targetDate: '2026-07-21',
+    } as MaybeItem);
+    expect(stopReasonText(aimed.reason)).toBeUndefined();
+    expect(stopReasonText(undefined)).toBeUndefined();
   });
 });

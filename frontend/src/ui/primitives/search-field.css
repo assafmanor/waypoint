@@ -1,0 +1,46 @@
+/* The search pill (SearchField.tsx). Lifted verbatim from `.search-overlay-field`
+   in search-overlay.css, which owned it while the overlay was the only host.
+   No margin here — placement belongs to the host. */
+.wp-searchfield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  background: var(--card);
+  border: 1px solid var(--soft-line);
+  border-radius: var(--radius-999);
+  padding: 0 var(--space-3);
+  height: 40px;
+  color: var(--muted);
+}
+.wp-searchfield .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+.wp-searchfield input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: var(--text-body);
+  background: none;
+  color: var(--ink);
+}
+.wp-searchfield .clear {
+  flex: 0 0 auto;
+  border: 0;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.wp-searchfield .clear .icon {
+  width: 10px;
+  height: 10px;
+}

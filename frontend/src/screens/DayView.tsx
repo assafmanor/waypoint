@@ -45,13 +45,12 @@ import {
   eventPhase,
   formatTime,
   hardConflicts,
-  relativeDayLabel,
   zonedIso,
   resolveEndIso,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
-import { shelfGroups } from '../lib/shelf';
+import { dayStops, rankIdeas, shelfGroups, stopReasonText, tileReasonText } from '../lib/shelf';
 import { nextSlot } from '../lib/gaps';
 import {
   dayTransitions,
@@ -199,6 +198,15 @@ export function DayView() {
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
   // lot) the day's skipped soft events, durable and restorable in place.
   const shelf = shelfGroups(maybeItems, events, activeDate);
+  // …and ranked (ADR-0116 session-202 §3 / ADR-0151). The grouping above is
+  // untouched — this only orders what it produced, and attaches each idea's reason.
+  const stops = dayStops(events, bookings, places, activeDate);
+  const rankedPool = rankIdeas(shelf.pool, places, activeDate, stops);
+  // The day's own group keeps its order (it is small by construction) and gains
+  // only the distance line — see `stopReasonText` for why it says nothing else.
+  const forDayReasons = new Map(
+    rankIdeas(shelf.forDay, places, activeDate, stops).map((r) => [r.item.id, r.reason]),
+  );
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const weekday = new Intl.DateTimeFormat('he-IL', {
@@ -418,29 +426,24 @@ export function DayView() {
                 {shelf.forDay.map((m) => (
                   <MaybeCard
                     key={m.id}
+                    compact
                     icon={m.icon}
                     title={m.title}
-                    action={
-                      <>
-                        <Icon name="plus" /> {t.actions.scheduleToDay}
-                      </>
-                    }
+                    meta={stopReasonText(forDayReasons.get(m.id))}
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}
-                {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
+                {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
+                    The tile drops the action line; `skippedTag` already says what a
+                    tap does, which is why it is the one card that loses nothing. */}
                 {shelf.skipped.map((e) => (
                   <MaybeCard
                     key={e.id}
+                    compact
                     className="skipped-card"
                     icon={e.icon}
                     title={e.title}
                     meta={t.day.skippedTag}
-                    action={
-                      <>
-                        <Icon name="undo" /> {t.actions.restore}
-                      </>
-                    }
                     onSchedule={() => verbs.restore(e)}
                   />
                 ))}
@@ -455,17 +458,15 @@ export function DayView() {
               <div className="shelf">
                 {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
                     (ADR-0027); `shelfGroups` already dropped them. */}
-                {shelf.pool.map((m) => (
+                {/* The tile's meta carries the ranking reason — a fact that VARIES
+                    per card, which is what the retired action line never was. */}
+                {rankedPool.map(({ item: m, reason }) => (
                   <MaybeCard
                     key={m.id}
+                    compact
                     icon={m.icon}
                     title={m.title}
-                    meta={m.targetDate ? relativeDayLabel(m.targetDate, today) : undefined}
-                    action={
-                      <>
-                        <Icon name="plus" /> {t.actions.scheduleToDay}
-                      </>
-                    }
+                    meta={tileReasonText(reason, activeDate)}
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}
