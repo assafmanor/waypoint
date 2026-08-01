@@ -13,7 +13,9 @@ import { FormActions } from './primitives/FormActions';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { FilePicker } from './primitives/FilePicker';
 import { useFormErrors } from './primitives/useFormErrors';
-import { queueDocumentUpload } from '../lib/outbox';
+import { NoteComposer, useNoteComposer } from './NoteComposer';
+import { useTrip } from '../state/trip-state';
+import { queueDocumentUpload, withChangeGroup } from '../lib/outbox';
 import { useToast } from './Toast';
 import { DOCUMENT_TYPE_ICON, CONTROL_ICON } from '../constants';
 import { t } from '../i18n/he';
@@ -39,9 +41,12 @@ function validateFile(f: File): string | null {
 export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClose: () => void }) {
   const toast = useToast();
   const nameId = useId();
+  const noteId = useId();
+  const { noteVerbs } = useTrip();
   const [file, setFile] = useState<File | null>(null);
   const [type, setType] = useState<DocumentType>(DOCUMENT_TYPE.PASSPORT);
   const [title, setTitle] = useState('');
+  const composer = useNoteComposer();
   // One refusal shape for the whole app (ADR-0150): the file field is marked,
   // nudged and scrolled to, rather than quietly captioned.
   const errors = useFormErrors<'file'>();
@@ -69,11 +74,21 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
     if (!file) return void refuse(t.docs.upload.fileRequired);
     // Title required non-empty (createDocumentSchema); an unnamed doc falls back
     // to its type label (e.g. "דרכון"), never the raw filename.
-    void queueDocumentUpload(
-      tripId,
-      { id: crypto.randomUUID(), type, title: title.trim() || t.docs.type[type] },
-      file,
-    );
+    const id = crypto.randomUUID();
+    // One user action → one change group (ADR-0092), and the notes queue AFTER the upload:
+    // the outbox is FIFO, so offline a note still finds its host on the server. The id is
+    // client-generated, so it is known before either write leaves (ADR-0152 §6b).
+    void withChangeGroup(async () => {
+      await queueDocumentUpload(
+        tripId,
+        { id, type, title: title.trim() || t.docs.type[type] },
+        file,
+      );
+      for (const body of composer.pending()) {
+        // `queue` because the upload above is queued, not sent: see `NoteVerbs.createNote`.
+        await noteVerbs.createNote({ body, documentId: id }, { queue: true });
+      }
+    });
     toast(CONTROL_ICON.done, t.docs.upload.saved);
     onClose();
   };
@@ -125,6 +140,12 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
             capture="environment"
             hint={t.docs.upload.pickHint(MAX_MB)}
           />
+        </Field>
+
+        {/* **The note is written on the way** (ADR-0152 §6b) — one box, and a blank one
+            writes nothing, so a document that needs no note costs no press. */}
+        <Field label={t.notes.composer.label} htmlFor={noteId} hint={t.notes.composer.hintPlain}>
+          <NoteComposer state={composer} id={noteId} />
         </Field>
 
         {/* Pressable with no file: `fileRequired` was unreachable copy behind a disabled

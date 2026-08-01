@@ -250,6 +250,55 @@ async function bootBuilder(
   await openPlanDayBuilder(page);
 }
 
+// A plain TAP, which this file never covered because a tap was never the interesting half
+// of the gesture — until ADR-0116 §5a changed what it does. Kept next to the drag on
+// purpose: the two share one card, and the whole reason the extra tap is affordable is that
+// the hold above still slots an idea in one gesture.
+test.describe('a plain tap on an idea (ADR-0116 §5a)', () => {
+  test.beforeEach(({ page }) => bootBuilder(page, { events: EVENTS, maybeItems: IDEAS }));
+
+  /** **A real tap, and it has to be.** `locator.click()` is a mouse press whose
+   *  down→up round-trip through CDP can outlast `DRAG_HOLD_MS` (500ms) — which arms the
+   *  hold, so the release swallows the click and the tap does nothing at all. That is the
+   *  shipped contract (a slow press IS a drag, and the swallow is defect 3 above), not a
+   *  defect this found; it just means only `touchscreen.tap` asks the question. */
+  const tap = async (page: Page, selector: string) => {
+    const at = await centre(page, selector);
+    await page.touchscreen.tap(at.x, at.y);
+  };
+
+  test('opens the idea itself, with שיבוץ ליום first and its notes above', async ({ page }) => {
+    await tap(page, `${POOL_STRIP} .wp-maybecard-body`);
+
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toBeVisible();
+    // The sheet is the idea's, not the schedule form's: it names the idea and offers the
+    // verb the tap used to perform.
+    await expect(sheet.getByText('מגדל אייפל')).toBeVisible();
+    await expect(sheet.locator('.note-sec')).toBeVisible();
+    await expect(sheet.locator('.wp-row-action').first()).toContainText('שיבוץ ליום');
+
+    // And one press deeper is where the tap used to land: the schedule form, on a day.
+    await sheet.getByRole('button', { name: 'שיבוץ ליום' }).click();
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'שיבוץ ליום' })).toHaveCount(
+      0,
+    );
+    await expect(page.locator('.wf-date').first()).toBeVisible();
+  });
+
+  test('does not schedule anything by itself — the shelf is unchanged behind it', async ({
+    page,
+  }) => {
+    const before = await page.locator(`${POOL_STRIP} .wp-maybecard`).count();
+    await tap(page, `${POOL_STRIP} .wp-maybecard-body`);
+    await expect(page.getByRole('dialog')).toBeVisible();
+    // No event was written and no idea consumed: the tap is a read, and the day's rows are
+    // the same ones. (The gap chips are what a scheduled idea would have displaced.)
+    await expect(page.locator('[data-bld-id]')).toHaveCount(EVENTS.length);
+    expect(await page.locator(`${POOL_STRIP} .wp-maybecard`).count()).toBe(before);
+  });
+});
+
 test.describe('a day with a wide gap between two events', () => {
   test.beforeEach(({ page }) => bootBuilder(page, { events: EVENTS, maybeItems: IDEAS }));
 
@@ -273,6 +322,11 @@ test.describe('a day with a wide gap between two events', () => {
       await expect(page.locator('.wp-maybecard.dragging'), `held the ${spot.name}`).toBeVisible();
       await touch(cdp, 'touchEnd');
       await expect(page.locator('.wp-maybecard.dragging')).toHaveCount(0);
+      // Defect 3 above, re-aimed by ADR-0116 §5a: the click a drop fires used to open the
+      // new-event sheet, and the tile's tap now opens the IDEA's sheet — so a release in
+      // place must still open nothing at all. The swallow's target changed; the claim did
+      // not, and it would have gone untested if this loop only watched `.dragging`.
+      await expect(page.getByRole('dialog'), `released the ${spot.name}`).toHaveCount(0);
     }
   });
 
@@ -604,8 +658,12 @@ test.describe('a day with nothing on it', () => {
     await touch(cdp, 'touchEnd');
 
     // The empty day knows WHICH day but has no slot to offer, so the release opens
-    // the schedule sheet instead of inventing a time.
-    await expect(page.getByRole('dialog')).toBeVisible();
+    // the schedule sheet instead of inventing a time. Named rather than counted: since
+    // ADR-0116 §5a a stray click on the tile would ALSO produce a dialog — the idea's own
+    // sheet — so "a dialog is visible" no longer distinguishes the two.
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'שיבוץ ליום' })).toHaveCount(0);
   });
 });
 

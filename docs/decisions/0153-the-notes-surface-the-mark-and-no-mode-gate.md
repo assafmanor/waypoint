@@ -82,6 +82,8 @@ The row menu, the note section on the detail surface, the `＋ פתק` control, 
 
 **`MaybeItem` has no detail surface** — the one real gap in ADR-0152 §6's rule. Closed without a sixth surface: the sheet the tile already opens gains the same note section the detail surfaces get, above its verbs.
 
+**Corrected 2026-08-01 (session 206, phase 5): there was no such sheet.** The tile's only tap was `onSchedule` — it opened the **schedule** form, which is the wrong room for a note section (its question is which day and what time). So the sheet was built and **the tap now opens it**, with `שיבוץ ליום` as its first action; the reasoning, the rejected alternatives and the reason the extra tap is affordable are in **[ADR-0116 §5a](0116-day-aware-shelf-and-idea-target-day.md)**, since the gesture is that ADR's to change. A **document** likewise takes its section in the manage sheet rather than in the viewer, whose body is a pinch-zoom image in a card that clips — so of §8's four entrances an idea and a document each have three (the sheet, its `＋ פתק`, the notes screen), and the fourth is the row menu they _are_.
+
 ### 9. Notes are mode-neutral. No Plan gate anywhere — and this is the unusual answer, so it is stated outright
 
 Applying [ADR-0025](0025-trip-mode-edit-capability-tiers.md)'s framework rather than inventing one — **an edit's tier is its blast radius, not its mode**:

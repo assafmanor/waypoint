@@ -237,6 +237,23 @@ export function noteWhen(createdAt: string, nowMs: number): string {
   return elapsed ? t.changeFeed.relTime.agoPrefix(elapsed) : t.changeFeed.relTime.now;
 }
 
+/** This host's notes, newest first — the list every host surface reads (ADR-0152 §6). Here
+ *  rather than at each surface so the five hosts cannot drift on the order, and so a sixth
+ *  is a `NOTE_HOST_FIELD` line and nothing else. */
+export function notesForHost(notes: Note[], kind: NoteHostKind, id: string): Note[] {
+  return sortNotes(notes.filter((note) => isHostedBy(note, kind, id)));
+}
+
+/** The host half of a `createNote` input — `{ bookingId: id }`, `{ documentId: id }`, … —
+ *  looked up rather than spelled at the call site, which is what keeps a surface from
+ *  attaching a note to the wrong field and makes the sixth host free. */
+export function noteHostInput(
+  kind: NoteHostKind,
+  id: string,
+): Partial<Record<NoteHostKey, string>> {
+  return { [NOTE_HOST_FIELD[kind]]: id };
+}
+
 /** How many notes each host carries, keyed the same way `buildNoteHosts` keys its lookup.
  *  Built once per note-list change rather than filtered per row: a day of twelve events
  *  asks this twelve times, and the mark is on every row that has one. */

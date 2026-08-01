@@ -401,7 +401,11 @@ export interface SettingsVerbs {
  *  `create` resolves to the note so a caller that wrote several in one save can await them
  *  in order, which is what keeps the outbox FIFO and a host FK valid on flush (§6b). */
 export interface NoteVerbs {
-  createNote: (input: CreateNoteInput) => Promise<Note | undefined>;
+  /** `queue` forces the write onto the outbox even when online, for a note whose host is
+   *  itself only queued — a document upload, which is outbox-first by ADR-0056. Without it
+   *  the note's POST overtakes the upload's background flush and the server refuses a host
+   *  it cannot see yet. Every other host is persisted (or REST-first) before its notes. */
+  createNote: (input: CreateNoteInput, opts?: { queue?: boolean }) => Promise<Note | undefined>;
   updateNote: (noteId: string, input: UpdateNoteInput) => Promise<void>;
   deleteNote: (noteId: string) => Promise<void>;
 }
@@ -1139,7 +1143,7 @@ function TripReady({
   const noteVerbs = useMemo<NoteVerbs>(() => {
     const stamp = () => new Date(getNow()).toISOString();
     return {
-      createNote: async (input) => {
+      createNote: async (input, opts) => {
         const id = input.id ?? crypto.randomUUID();
         const withId = { ...input, id };
         const optimistic = {
@@ -1160,6 +1164,7 @@ function TripReady({
             tripId,
             { verb: OUTBOX_VERB.CREATE_NOTE, input: withId },
             () => apiCreateNote(tripId, withId),
+            opts,
           );
           if (canonical) setNotes((prev) => prev.map((n) => (n.id === id ? canonical : n)));
           return canonical ?? optimistic;

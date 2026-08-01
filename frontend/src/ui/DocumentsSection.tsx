@@ -7,12 +7,13 @@
 // once flushed. The title/encrypted-badge header lives in IndexDocumentsView's
 // merged `idx-head` row now (ADR-0100 Consequences), not here — this component
 // is content only.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { usePendingUploads, useIsOffline } from '../lib/outbox';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
-import { ListRow } from './domain';
+import { ListRow, NoteMark } from './domain';
+import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { groupDocuments } from '../lib/documents';
 import { formatBytes } from '../lib/bytes';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
@@ -24,7 +25,9 @@ import { t } from '../i18n/he';
 import { Icon } from './Icon';
 
 export function DocumentsSection() {
-  const { trip, documents } = useTrip();
+  const { trip, documents, notes } = useTrip();
+  // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
+  const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   const [uploading, setUploading] = useState(false);
   const [viewing, setViewing] = useState<DocumentSummary | null>(null);
   const [managing, setManaging] = useState<DocumentSummary | null>(null);
@@ -87,6 +90,7 @@ export function DocumentsSection() {
                 key={d.id}
                 doc={d}
                 isPending={pendingIds.has(d.id)}
+                notes={noteCountFor(noteCounts, 'document', d.id)}
                 onOpen={() => setViewing(d)}
                 onManage={() => setManaging(d)}
               />
@@ -115,11 +119,14 @@ export function DocumentsSection() {
 function DocumentRow({
   doc: d,
   isPending,
+  notes,
   onOpen,
   onManage,
 }: {
   doc: DocumentSummary;
   isPending: boolean;
+  /** How many notes this document carries (ADR-0152 §6): a mark on the row, never a body. */
+  notes: number;
   onOpen: () => void;
   onManage: () => void;
 }) {
@@ -132,6 +139,11 @@ function DocumentRow({
       openLabel={d.title}
       disabled={isPending}
       title={d.title}
+      // The document row is the one host with no meta line of its own, so the mark brings
+      // one — and costs no height, because the row's height is set by its 36px badge and a
+      // title + an 11.5px meta line still measure under it (pinned in e2e, since jsdom
+      // reports every rect as zero).
+      meta={notes > 0 ? <NoteMark count={notes} /> : undefined}
       unsynced={unsynced}
       right={
         isPending ? (

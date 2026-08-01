@@ -75,6 +75,7 @@ import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
+import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
 
@@ -170,6 +171,9 @@ export function DayView() {
   // the same pattern as the Index; editing from there opens the BookingSheet.
   const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
+  // The idea's own surface (ADR-0116's 2026-08-01 amendment): a tap opens this, and
+  // `שיבוץ ליום` inside it is what reaches `scheduleItem` above.
+  const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
 
   // The live "now" sits in the zone of the itinerary segment you're in (ADR-0107
   // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar
@@ -442,7 +446,8 @@ export function DayView() {
                     icon={m.icon}
                     title={m.title}
                     meta={stopReasonText(forDayReasons.get(m.id))}
-                    onSchedule={() => setScheduleItem(m)}
+                    notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                    onOpen={() => setIdeaSheet(m)}
                   />
                 ))}
                 {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
@@ -456,7 +461,9 @@ export function DayView() {
                     icon={e.icon}
                     title={e.title}
                     meta={t.day.skippedTag}
-                    onSchedule={() => verbs.restore(e)}
+                    // A skipped event's tap still restores it in place: it HAS a surface of
+                    // its own (its day row), so the gesture change is the idea's alone.
+                    onOpen={() => verbs.restore(e)}
                   />
                 ))}
               </div>
@@ -482,7 +489,8 @@ export function DayView() {
                     icon={m.icon}
                     title={m.title}
                     meta={tileReasonText(reason, activeDate)}
-                    onSchedule={() => setScheduleItem(m)}
+                    notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                    onOpen={() => setIdeaSheet(m)}
                   />
                 ))}
                 {/* The tail, and what makes the strip's width independent of N. Absent
@@ -498,6 +506,17 @@ export function DayView() {
             </>
           )}
         </>
+      )}
+
+      {ideaSheet && (
+        <MaybeManageSheet
+          item={ideaSheet}
+          onSchedule={() => {
+            setScheduleItem(ideaSheet);
+            setIdeaSheet(null);
+          }}
+          onClose={() => setIdeaSheet(null)}
+        />
       )}
 
       {scheduleItem && (

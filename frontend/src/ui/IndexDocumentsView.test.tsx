@@ -7,6 +7,8 @@ vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip: { id: 't1', timezone: 'Asia/Tokyo' },
     documents: [],
+    // The rows carry a note mark now (ADR-0152 §6), so the section reads the note list.
+    notes: [],
   }),
 }));
 vi.mock('../lib/outbox', async (importOriginal) => {

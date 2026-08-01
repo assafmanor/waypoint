@@ -13,6 +13,7 @@
 // The list stays time-ordered and hard events are pinned anchors (ADR-0011).
 import {
   Fragment,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -126,6 +127,8 @@ import { Sheet } from '../ui/Sheet';
 import { TitleLabel } from '../ui/TitleLabel';
 import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
+import { MaybeManageSheet } from '../ui/MaybeManageSheet';
+import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
 const daysBetween = (from: string, to: string) =>
@@ -205,8 +208,17 @@ function gapLabel(minutes: number): string {
 }
 
 export function PlanDay() {
-  const { trip, events, maybeItems, bookings, places, activeDate, setActiveDate, zoneEvidence } =
-    useTrip();
+  const {
+    trip,
+    events,
+    maybeItems,
+    bookings,
+    places,
+    notes,
+    activeDate,
+    setActiveDate,
+    zoneEvidence,
+  } = useTrip();
   const verbs = useVerbs();
   const now = useClock();
   // The builder's way to the map (ADR-0121 §8), on every row whose event resolves a
@@ -239,6 +251,11 @@ export function PlanDay() {
   // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
   // so the user picks the day/time/kind (not the old hardcoded 17:30 dump).
   const [scheduleMaybe, setScheduleMaybe] = useState<MaybeItem | null>(null);
+  // The idea's own surface (ADR-0116's 2026-08-01 amendment): a tap opens this, the hold
+  // still drags. `שיבוץ ליום` inside it reaches `openSchedule` below.
+  const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
+  // Built once per note-list change rather than filtered per tile (ADR-0152 §6c).
+  const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // A gap the user tapped "＋ שבץ" on — opens a chooser to drop an existing shelf
   // idea into the gap's slot, or start a fresh event there (#21).
   const [gapChoice, setGapChoice] = useState<GapDefaults | null>(null);
@@ -600,7 +617,9 @@ export function PlanDay() {
           icon={e.icon}
           title={e.title}
           meta={t.day.skippedTag}
-          onSchedule={() => verbs.restore(e)}
+          // A skipped event's tap still restores it in place — it has a surface of its own
+          // (its day row), so the gesture change is the idea's alone.
+          onOpen={() => verbs.restore(e)}
           dragProps={skippedDragProps(e)}
           dragging={dragging}
         />
@@ -620,7 +639,8 @@ export function PlanDay() {
             ? tileReasonText(reasonById.get(m.id)!, activeDate)
             : stopReasonText(forDayReasons.get(m.id))
         }
-        onSchedule={() => openSchedule(m)}
+        notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+        onOpen={() => setIdeaSheet(m)}
         onRemove={() => verbs.removeMaybe(m)}
         removeLabel={t.planDay.removeIdea}
         dragProps={ideaDragProps(m)}
@@ -980,6 +1000,24 @@ export function PlanDay() {
             setGapChoice(null);
           }}
           onClose={() => setGapChoice(null)}
+        />
+      )}
+
+      {ideaSheet && (
+        <MaybeManageSheet
+          item={ideaSheet}
+          onSchedule={() => {
+            const item = ideaSheet;
+            setIdeaSheet(null);
+            openSchedule(item);
+          }}
+          // Plan mode is where an idea can be removed (ADR-0116 §4), so the sheet carries
+          // the same verb the tile's `✕` does rather than a second capability.
+          onRemove={() => {
+            verbs.removeMaybe(ideaSheet);
+            setIdeaSheet(null);
+          }}
+          onClose={() => setIdeaSheet(null)}
         />
       )}
 
