@@ -2,6 +2,7 @@
 
 **Status:** Accepted (contract + the first strategy; the endpoint of §4 is **reserved, not built**)
 **Date:** 2026-08-01
+**Session note:** [`planning/2026-08-01-session-202-the-shelf-crowds-and-a-suggestion-gets-a-contract.md`](../planning/2026-08-01-session-202-the-shelf-crowds-and-a-suggestion-gets-a-contract.md)
 **Design exploration:** [`mockups/shelf-crowded-v1.html`](../../mockups/shelf-crowded-v1.html) — the shelf-crowding consultation this came out of. Its §3 (rank the pool) and §4 (rank the gap sheet against its own slot) are the first two consumers, and its `.gapfill-m` reason line is §8 drawn.
 **Builds on:** [0108](0108-maps-and-places-backend-architecture-key-model-and-cost.md) (the split-key model, the proxy, and "a leak or abuse can't blow past the free allowances" as the stated cost goal — plus `PlacesThrottlerGuard`, the per-member·trip windows a remote strategy inherits), [0115](0115-plan-mode-place-research.md) §2 (the paid half is **armed by intent** — §7 is that rule applied to a second surface), [0109](0109-map-tab-design.md) §7 (the near-me rule: offline, a thing that needs the network is **absent**, not disabled — §5), [0094](0094-one-pluggable-change-applier-registry.md) (the registry idiom this reuses rather than inventing), [0095](0095-named-constants-for-string-discriminants.md) (strategy ids and source tags are named constants, never bare literals), [0023](0023-zod-first-entities-and-openapi.md) (the contract is zod-first in `@waypoint/shared`)
 **Refines:** [0116](0116-day-aware-shelf-and-idea-target-day.md) §1 — which rejected a derived per-day "fit" as a **substitute** for the stored `targetDate` and explicitly kept it "on the table as a future _sort_". This is that sort arriving, with the field it was waiting for already shipped. `targetDate` stays the stored human intention; a score never overwrites it.
@@ -46,6 +47,8 @@ In `@waypoint/shared`, zod-first (ADR-0023), so both sides and every surface spe
 
 The signature is identical either way. That is what makes the split a property of the strategy rather than a fork in the design: a strategy can be promoted or demoted without any surface changing, and the frontend merges both kinds into one list through one renderer.
 
+**A surface calls the registry, never a strategy.** `suggestFor(ctx, placement)` consults `SUGGESTION_STRATEGIES`, runs what matches and merges the results; the shelf and the gap sheet call **that**, and neither one imports `nearTheDay` or knows its name. This is the whole of what makes a second strategy a registration rather than an edit — a call site holding a direct reference to today's only strategy is a call site that has to be found and changed for the next one, which is how the `if`/`else` chains ADR-0094 undid got there in the first place. With one strategy registered the indirection buys nothing visible, and that is expected: it is the seam, and the seam is the deliverable.
+
 **Scores from different strategies are not commensurable, and nothing may sort a merged list by `score`.** "0.3 km from lunch" and "popular in this area" are not two readings of one quantity, and normalising them would be inventing a precision we do not have. A merge **interleaves by rank** within each source. Recorded here because a merged list sorted by score is the obvious wrong thing to write, it will look like it works, and its output is meaningless.
 
 ### 3. The first strategy is `near-the-day`, and it is `LOCAL`
@@ -55,6 +58,8 @@ Ranking the pool for a day: ideas aimed at that day are already the shelf's own 
 It reuses `haversineMeters` (rule 8; the Map's near-me sort is the same arithmetic on the same data). Its prerequisite is the missing `orderBy`, which lands with it as the stable floor a rank sits on.
 
 The gap sheet runs the same strategy with a narrower `near` — the events on either side of the slot rather than the whole day — which is the case for a _context_, not a second function.
+
+**What this first build does NOT do, stated so the scope is not read up.** `near-the-day` ranks ideas that are **already on the shelf**. It proposes nothing new: no external candidates, no `REMOTE` strategy, no network call, no spend, and `ref` never takes its third tag. Functionally the user gets the same set of ideas in a better order with a reason attached. Everything else here — the registry, the placement split, the scores, the reason line, §4's reserved route — is the seam that makes the next strategy an addition instead of a rewrite, and it is built now precisely because retrofitting a seam under a shipped sort is the more expensive half.
 
 ### 4. The endpoint is a host for strategies that cannot run locally, and it is deliberately **not built yet**
 
