@@ -9581,6 +9581,22 @@
         inset-inline-start: 6px;
       }
 
+      /* ── §5 · The note stack on a host form ────────────────────────────
+         N boxes, always ending in one blank. Not a list widget and not a
+         repeating-field component — just stacked `textarea`s inside one
+         `Field`, so `field.css` still owns the control's chrome and the
+         refusal mark still works on the group. */
+      .note-stack {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+      }
+      /* The spare reads quieter than a box with something in it, so a form with
+         one written note does not look like a form with two empty ones. */
+      .note-stack-box:placeholder-shown {
+        background: color-mix(in srgb, var(--paper) 60%, transparent);
+      }
+
       /* ── §5 · The note section on a detail surface ─────────────────────
          Where the BODY lives, per ADR-0152 §6. It is a section of the surface
          the host already has, not a new screen — `.bk-facts` is the sibling
@@ -10308,6 +10324,29 @@
            save      → the host's save. There is no second commit.
 
          What is left is one textarea, and a blank one writes nothing. */
+      /* MORE THAN ONE, and without a control that says so. The stack always
+         ends in exactly one blank box: typing into the last one spawns the next,
+         emptying it again removes the spare. So the affordance is the typing —
+         no "＋ another note" button to notice, nothing to tap before writing,
+         and no cap.
+
+         Each non-blank box becomes its own `Note` row on the host's save, in
+         order. Blank and whitespace-only boxes write nothing. Ids are minted
+         client-side like the host's (ADR-0093 / §6b), so there is no round trip
+         between them and the outbox stays FIFO.
+
+         WHY NOT one box that splits on newlines: a note is a row, and a
+         paragraph break is not a user saying "these are two things". It would
+         also make editing one of them ambiguous forever after. */
+      const noteStack = (filled) => {
+        const boxes = filled
+          .map((v, i) => `<textarea class="note-stack-box" rows="2" data-nb="${i}">${v}</textarea>`)
+          .join('');
+        return `<div class="note-stack" data-note-stack>${boxes}<textarea class="note-stack-box" rows="2" data-nb="${filled.length}" placeholder="${
+          filled.length ? 'פתק נוסף…' : 'משהו שכדאי לזכור על זה…'
+        }"></textarea></div>`;
+      };
+
       const formCreate = (host) => `
         <div class="modal-overlay" data-variant="sheet">
           <div class="modal-card" role="dialog" aria-modal="true">
@@ -10324,9 +10363,9 @@
               </div>
               <div class="field"><label class="field-label" for="c2">מתי</label><input id="c2" value="19:30" /></div>
               <div class="field">
-                <label class="field-label" for="c3">${ic('clipboard')} פתק · לא חובה</label>
-                <textarea id="c3" rows="2" placeholder="משהו שכדאי לזכור על זה…"></textarea>
-                <p class="field-hint">יקבל את הקטגוריה והסמל של האירוע</p>
+                <span class="field-label">${ic('clipboard')} פתקים · לא חובה</span>
+                ${noteStack([])}
+                <p class="field-hint">כל תיבה היא פתק. תיבה חדשה נפתחת מעצמה · יורשים את הקטגוריה והסמל של האירוע</p>
               </div>
               <div class="form-actions">
                 <button type="button" class="fa-primary">שמירה</button>
@@ -10357,7 +10396,7 @@
                   <span class="note-item-b">קוד הכספת 4417</span>
                   <span class="note-item-m">דנה · לפני 3 ימים</span>
                 </div>
-                <textarea id="e3" rows="2" placeholder="פתק נוסף…"></textarea>
+                ${noteStack([])}
               </div>
               <div class="form-actions">
                 <button type="button" class="fa-primary">שמירה</button>
@@ -10504,9 +10543,20 @@
               (יורש), כותרת (אין), ושמירה נפרדת (אין — זו השמירה של המארח). מה שנשאר: תיבת טקסט
               אחת. ריקה — לא נכתב שום פתק.
             </p>
+            <p class="note">
+              <b>ואפשר יותר מאחד, בלי פקד שאומר את זה.</b> המחסנית תמיד מסתיימת בתיבה ריקה אחת:
+              הקלדה באחרונה פותחת את הבאה, ריקון תיבה מוחק את העודפת. כלומר <b>ההקלדה היא
+              האפשרות</b> — אין כפתור "＋ פתק נוסף" לשים לב אליו, אין מה ללחוץ לפני שכותבים, ואין
+              תקרה. כל תיבה לא ריקה הופכת ל<code>Note</code> משלה בשמירה של המארח, לפי הסדר; ריקה או
+              רווחים בלבד לא כותבת כלום. <b>נסו להקליד בתיבה למטה.</b>
+            </p>
+            <p class="note">
+              <b>ולמה לא תיבה אחת שמתפצלת לפי שורות ריקות:</b> פתק הוא שורה, ומעבר פסקה הוא לא
+              משתמש שאומר "אלה שני דברים". זה גם היה הופך עריכה של אחד מהם לעמומה לתמיד אחר כך.
+            </p>
             <div class="pair">
-              <div class="col"><span class="tag after">יצירה · שדה אחד בדרך</span>${phone(formCreate(), 'overlay', 560)}</div>
-              <div class="col"><span class="tag after">עריכה · הקיימים למעלה, אחד ריק למטה</span>${phone(formEdit(), 'overlay', 560)}</div>
+              <div class="col"><span class="tag after">יצירה · הקלידו · תיבה חדשה נפתחת</span>${phone(formCreate(), 'overlay', 560)}</div>
+              <div class="col"><span class="tag after">עריכה · הקיימים למעלה, מחסנית למטה</span>${phone(formEdit(), 'overlay', 560)}</div>
             </div>
           </section>
 
@@ -10554,7 +10604,36 @@
         measure();
       }
 
+      /* The whole interaction, and it is eight lines: the stack keeps exactly
+         one trailing blank. Typing in the last box appends a new one; clearing
+         a trailing box removes the spare it no longer needs. Nothing to tap. */
+      function wireStacks() {
+        document.querySelectorAll('[data-note-stack]').forEach((stack) => {
+          const sync = () => {
+            const boxes = [...stack.querySelectorAll('.note-stack-box')];
+            const last = boxes[boxes.length - 1];
+            if (last.value.trim()) {
+              const nb = document.createElement('textarea');
+              nb.className = 'note-stack-box';
+              nb.rows = 2;
+              nb.placeholder = 'פתק נוסף…';
+              stack.appendChild(nb);
+              nb.addEventListener('input', sync);
+            } else {
+              // Trim spares: keep at most one trailing blank.
+              for (let i = boxes.length - 2; i >= 0; i--) {
+                if (!boxes[i].value.trim() && !boxes[i + 1].value.trim()) boxes[i + 1].remove();
+              }
+            }
+          };
+          stack
+            .querySelectorAll('.note-stack-box')
+            .forEach((b) => b.addEventListener('input', sync));
+        });
+      }
+
       function wire() {
+        wireStacks();
         document.querySelectorAll('[data-arrive]').forEach((b) =>
           b.addEventListener('click', () => {
             const line = document.querySelector('#arriveframe .wp-event-m');
@@ -10793,6 +10872,20 @@
         <p>
           <b>מה נחסך בפועל:</b> קטגוריה (יורשת), סמל (יורש), כותרת (אין בכלל בטופס המארח), ושמירה
           נפרדת (אין — זו השמירה של המארח). נשארה תיבת טקסט אחת, ותיבה ריקה לא כותבת פתק.
+        </p>
+
+        <h3>§B1a · יותר מפתק אחד — <span class="ok">כן, והאפשרות היא ההקלדה</span></h3>
+        <p>
+          שאלה של הבעלים, והתשובה הכנה הייתה שהטיוטה הראשונה הראתה תיבה <b>אחת</b> ולא תכננה את זה.
+          תוקן: מחסנית שתמיד מסתיימת בתיבה ריקה אחת. הקלדה באחרונה פותחת את הבאה, ריקון מוחק את
+          העודפת — בלי כפתור "עוד", בלי תקרה, ובלי שום לחיצה לפני הכתיבה. זה גם מאחד את היצירה
+          והעריכה: בשתיהן יש N מלאים ואחת ריקה בסוף.
+        </p>
+        <p>
+          כל תיבה לא ריקה היא <code>Note</code> משלה, לפי הסדר, במזהים שנוצרים בצד הלקוח כמו של
+          המארח — כך שאין סבב רשת ביניהן וה-outbox נשאר FIFO. <b>נדחה:</b> תיבה אחת שמתפצלת לפי
+          שורות ריקות — פתק הוא שורה, ומעבר פסקה אינו הצהרה של המשתמש שאלה שני דברים; והעריכה של
+          אחד מהם הייתה נשארת עמומה לנצח.
         </p>
 
         <h3>§B1b · הירושה — <span class="ok">נגזרת בזמן הצגה, לא מועתקת בזמן כתיבה</span></h3>

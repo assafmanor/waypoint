@@ -88,6 +88,8 @@ The owner's call, and it settles the brief's §B1: adding a note from an event /
 
 So the inline note is cheap, and the build follows ADR-0093's path rather than inventing one. What the user is spared, in full: the category (§5's chain), the glyph (same chain), the title (absent from the host form — the body is the note), and any second commit.
 
+**More than one note per save, and the affordance is the typing.** The slot is a stack of `textarea`s that always ends in exactly one blank: typing in the last one opens the next, emptying one removes the spare. No `＋ another note` control to notice, nothing to tap before writing, and no cap. Each non-blank box becomes its own `Note` on the host's save, in order; blank and whitespace-only boxes write nothing. Ids are minted client-side like the host's, so there is no round trip between them and the outbox stays FIFO. **Rejected: one box split on blank lines** — a note is a row, a paragraph break is not a user saying "these are two things", and it would leave editing one of them ambiguous forever after.
+
 **On edit the same slot lists the host's existing notes** — compact, tappable to edit — above one blank field. Still no second form, still one save. This is the case a create-only design discovers late.
 
 ### 6c. What the mark costs `EventCard`, measured — three changes, and one of them is a rule about what a row says
