@@ -1,4 +1,4 @@
-// Index tab — a landing with two peer tiles (ADR-0098): bookings and documents
+// Index tab — a landing with three peer tiles (ADR-0098/0152): bookings, documents and notes
 // (ADR-0047/0049) each push their own dedicated full screen instead of sharing
 // one long page. The sub-screens are LOCAL VIEW STATE here, not routes — Index
 // already renders inside the one TripProvider the trip Shell mounts, and a
@@ -11,18 +11,20 @@ import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import { splitBookings, scheduleLabel } from '../lib/index-bookings';
 import { groupDocuments } from '../lib/documents';
+import { noteTitleText, sortNotes } from '../lib/notes';
 import { BookingTitle } from '../ui/BookingTitle';
 import { IndexBookingsView } from '../ui/IndexBookingsView';
 import { IndexDocumentsView } from '../ui/IndexDocumentsView';
+import { IndexNotesView } from '../ui/IndexNotesView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
 import { BOOKING_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import { t } from '../i18n/he';
 
-type IndexView = 'landing' | 'bookings' | 'documents';
+type IndexView = 'landing' | 'bookings' | 'documents' | 'notes';
 
 export function Index() {
-  const { trip, bookings, places, events, documents } = useTrip();
+  const { trip, bookings, places, events, documents, notes, users } = useTrip();
   const now = useClock();
   const [view, setView] = useState<IndexView>('landing');
   // Set alongside `view` by the ?booking= deep-link below, and handed to a
@@ -80,6 +82,13 @@ export function Index() {
       </div>
     );
   }
+  if (view === 'notes') {
+    return (
+      <div className="index">
+        <IndexNotesView onClose={backToLanding} />
+      </div>
+    );
+  }
 
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
   const next = upcoming[0];
@@ -104,6 +113,19 @@ export function Index() {
       t.index.tile.emptyDocuments
     );
 
+  // A note collection has no "next" and no type groups, but it has a NEWEST — and that is
+  // the only line on this tile that changes and is worth a glance (ADR-0153 §1). The author
+  // is part of it because the real question is "what did someone just write that I have not
+  // read". Rejected: a count split (a number that barely moves) and the categories present
+  // (which duplicates the chip row one screen inside).
+  const latestNote = sortNotes(notes)[0];
+  const latestAuthor = latestNote
+    ? (users.find((u) => u.id === latestNote.createdBy)?.displayName ?? '')
+    : '';
+  const notesSubtitle = latestNote
+    ? t.notes.tile.latest(latestAuthor, noteTitleText(latestNote))
+    : t.notes.tile.empty;
+
   return (
     <div className="index">
       {/* Offline status is a page-level fact — shown once, on the landing. */}
@@ -126,6 +148,15 @@ export function Index() {
         count={documents.length}
         subtitle={documentsSubtitle}
         onOpen={() => setView('documents')}
+      />
+      {/* The third tile ADR-0098 measured its landing at five for, discharging the
+          deferred content type and its `מחקר` naming debt — by not spending the word. */}
+      <IndexTile
+        icon={<Icon name="clipboard" />}
+        title={t.notes.title}
+        count={notes.length}
+        subtitle={notesSubtitle}
+        onOpen={() => setView('notes')}
       />
     </div>
   );

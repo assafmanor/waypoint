@@ -560,6 +560,76 @@ export const t = {
       cancel: 'בטל',
     },
   },
+  // פתקים (ADR-0152 / ADR-0153). `פתק` over the incumbent `הערות` — the group's own
+  // scribbles rather than a records field, which is what this surface actually is.
+  notes: {
+    title: 'פתקים',
+    one: 'פתק',
+    head: {
+      count: (n: number) => `${n} פתקים`,
+    },
+    // The tile's one changing line: the newest note, with who wrote it. A collection has
+    // no "next" and no type groups, but it has a newest — and the real question at a
+    // glance is what someone just wrote that you have not read.
+    tile: {
+      latest: (author: string, text: string) => `${author}: ${text}`,
+      empty: 'אין עדיין פתקים',
+    },
+    add: 'פתק חדש',
+    filter: {
+      all: 'הכל',
+      categoryLabel: 'סינון לפי קטגוריה',
+      noResults: 'אין פתקים בקטגוריה הזאת',
+    },
+    search: {
+      button: 'חיפוש',
+      modeTitle: 'חיפוש בפתקים',
+      placeholder: 'חיפוש בכותרת, בגוף ובקישור',
+      clear: 'ניקוי',
+      backAria: 'סגירת החיפוש',
+      noResults: 'אין פתק שמתאים לחיפוש',
+    },
+    empty: {
+      title: 'עדיין אין פתקים',
+      body: 'דברים קטנים שכדאי לזכור: איפה הכניסה, מה השעה האחרונה, קישור ששלחו לכם.',
+      action: 'כתיבת פתק',
+    },
+    // The editor. The body leads; title and url are optional. Its one refusal is marked on
+    // BOTH fields that can cure it, in one call (ADR-0150).
+    sheet: {
+      createTitle: 'פתק חדש',
+      editTitle: 'עריכת פתק',
+      bodyLabel: 'מה כדאי לדעת',
+      bodyPlaceholder: 'הכניסה מאחור, ליד חנות הפרחים',
+      titleLabel: 'כותרת · לא חובה',
+      titlePlaceholder: 'מזומן בלבד',
+      urlLabel: 'קישור · לא חובה',
+      urlPlaceholder: 'instagram.com/p/',
+      categoryLabel: 'קטגוריה',
+      save: 'שמירה',
+      cancel: 'ביטול',
+      needsBodyOrUrl: 'צריך גוף או קישור, לפחות אחד מהם',
+      needsBodyOrUrlHere: 'או כאן',
+    },
+    manage: {
+      actions: 'פעולות על הפתק',
+      edit: 'עריכה',
+      openHost: 'מעבר למה שהפתק מדבר עליו',
+      delete: 'מחיקה',
+      deleteTitle: 'למחוק את הפתק?',
+      // Says what is NOT harmed: the host outlives its notes, and a delete confirm that
+      // does not say so invites the reader to assume the worst.
+      deleteBody: (host?: string) =>
+        host ? `הפתק ייעלם אצל כולם. ${host} לא ייפגע.` : 'הפתק ייעלם אצל כולם.',
+      confirmDelete: 'מחיקה',
+      cancel: 'ביטול',
+    },
+    toast: {
+      saved: 'הפתק נשמר',
+      savedQueued: 'הפתק יישלח כשהחיבור יחזור',
+      deleted: 'הפתק נמחק',
+    },
+  },
   docs: {
     title: 'מסמכים',
     encrypted: 'מוצפן',
@@ -894,6 +964,9 @@ export const t = {
     relTime: {
       now: 'עכשיו',
       prefix: 'לפני',
+      // The same word, composed with an already-phrased elapsed length (ADR-0114's
+      // ladder) — so a note's "when" reads `לפני 3 ימים` without a second time vocabulary.
+      agoPrefix: (elapsed: string) => `לפני ${elapsed}`,
       minUnit: 'ד׳',
       hrUnit: 'ש׳',
     },
