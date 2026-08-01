@@ -4,7 +4,7 @@
 **Scope:** Pre-development planning for [ADR-0152](../decisions/0152-a-note-is-one-entity-with-an-optional-host.md) + [ADR-0153](../decisions/0153-the-notes-surface-the-mark-and-no-mode-gate.md). **No feature code was written.** The deliverable is the phased plan below, its test list, and the gap list — which is the part worth reading first.
 **Read:** both ADRs (with 0152's four in-place amendments), [`mockups/notes-screen-v1.html`](../../mockups/notes-screen-v1.html) and [`mockups/notes-on-a-host-v1.html`](../../mockups/notes-on-a-host-v1.html), both driven in Chromium.
 
-**Owner's answers are folded in (session 206).** A place carries notes in v1 — G1 below is now a resolution, not a proposal. The change feed narrates note creates and deletes only; the card tier is not built; the ADR corrections in Part 1 land in Phase 1's commit. One question is left open (Q5) and one new prerequisite is added (a small mockup before Phase 6).
+**Owner's answers are folded in (session 206).** A place carries notes in v1 — G1 below is now a resolution, not a proposal. The change feed narrates note creates and deletes only; the card tier is not built; the ADR corrections in Part 1 land in Phase 1's commit. Q5 is answered too: a place-less idea gets the manage sheet the mockup already drew, and a tap opens it. One new prerequisite is added — a small row-level mockup before Phase 6.
 
 ---
 
@@ -134,9 +134,15 @@ G1's resolution does **not** transfer: a 140×76 tile cannot expand the way a ma
 
 **Q4 — the ADR corrections: confirmed.** The `22 hosts / 1.4 rows` figure (three places in ADR-0153), §7's corner-collision note, and the webfont-dependent pixel numbers are amended in place, in Phase 1's commit.
 
+**Q5 — an idea with no place: `MaybeCard` gets the `RowManageSheet`, and a TAP opens it.** The sheet itself needs no design — [`notes-on-a-host-v1.html`](../../mockups/notes-on-a-host-v1.html) §6 already drew it (subject `רעיון · נוסף על ידי מיכל`, the note section, then `שיבוץ ליום` / `עריכה`, then `הסרה` in the danger group). What did not exist is the way in: today a tap **is** `onSchedule` (`DayView.tsx:435`, `PlanDay.tsx:611`), so there is nowhere in the app that says _"here is this idea"_, and a note section above a scheduling form is the wrong room.
+
+**This is a behaviour change to a shipped gesture, so it is an ADR line and not a plan line.** Scheduling moves one tap deeper, with `שיבוץ ליום` first in the sheet; Plan mode keeps hold-to-drag as the fast path for slotting, which is what makes the extra tap affordable. Rejected, with their costs: a `⋯` in a corner (Plan's `✕` owns top-inline-end and the mark is proposed for top-inline-start — three controls on a 140px tile); long-press (taken by hold-to-drag, ADR-0116 §5); tapping the glyph as the way in (right instinct, and the app's own `PlaceBadge` idiom, but 17px against a 44px floor — the same objection that made the note mark read-only).
+
+Amended in place, in Phase 5's commit: **ADR-0116** (the shelf owns the gesture) and **ADR-0153 §8** (whose sentence assumed a sheet that turned out not to exist). One extra frame on the Phase 6 mockup shows the tile with its mark beside the sheet it opens.
+
 ## Still the owner's
 
-**Q5 — an idea with no place (G6).** An idea _with_ a place inherits G1's section for free by rendering as a `PlaceRow`. For the rest: give `MaybeCard` the `RowManageSheet` it has never had — which would also collect its scattered verbs onto the one surface ADR-0138 says a row's actions belong on — or leave those notes to the notes screen. **My recommendation: the manage sheet**, because the alternative is the only host where the mark points at something you cannot open, and because ADR-0153 §8's own sentence assumed a sheet that turned out not to exist.
+Nothing blocking. Two questions stay open by design and are answered on a device, not in a plan: whether the editor's textarea autofocuses (ADR-0153 §10), and whether the note mark wants a tap target (§8).
 
 ---
 
@@ -187,9 +193,11 @@ The vertical slice that proves the shape: the mark on the `IndexBookingsView` ro
 
 `feat(notes): notes on a document and on an idea`
 
-Cheap by comparison: `DocumentsSection`'s `ListRow` takes the mark, `DocumentViewer`/`DocumentManageSheet` take the section and the entrance, `DocumentUploadSheet` takes the composer. The `MaybeCard` corner mark ships here, verified against the shipped `✕` (opposite corner) and the compact row's glyph. Q5 decides whether a place-less idea also gets a manage sheet; if it does, it lands here.
+The document half is cheap: `DocumentsSection`'s `ListRow` takes the mark, `DocumentViewer`/`DocumentManageSheet` take the section and the entrance, `DocumentUploadSheet` takes the composer.
 
-**Tests.** Component: the mark's count appears only past 1; the tile's height is unchanged with the mark (**e2e**, and check it with the Plan-mode `✕` present, which no mockup did). **Device-only:** whether the mark wants a tap target — the one question ADR-0153 §8 explicitly left to a finger.
+The idea half carries Q5, and it is the only place in this build where a **shipped gesture changes**: `MaybeCard` gains a `RowManageSheet` (drawn already, mockup §6) and a **tap opens it** instead of going straight to the schedule form, with `שיבוץ ליום` as the sheet's first action and Plan's hold-to-drag unchanged as the fast path. The corner mark ships here too, verified against the shipped `✕` at the opposite corner and against the compact row's glyph. **ADR-0116 and ADR-0153 §8 are amended in place in this commit** — the gesture is a decision, not an adjustment.
+
+**Tests.** Component: the mark's count appears only past 1; a tap opens the sheet and does **not** schedule; the sheet's first action still schedules; Plan's `✕` and the drag are untouched; both shelf hosts (`DayView`, `PlanDay`) behave alike, since they are two call sites of one card. Regression: the existing shelf specs (`PlanDay.gapfill.test.tsx`, the drag spec) must be re-read rather than patched — a gesture change that leaves an old assertion passing is the tell that it tested the wrong thing. **e2e-only:** the tile's height is unchanged with the mark, checked with the Plan-mode `✕` present, which no mockup did. **Device-only:** whether the mark wants a tap target — the one question ADR-0153 §8 explicitly left to a finger.
 
 ### Phase 6 — the place, on the Map
 
@@ -197,7 +205,7 @@ Cheap by comparison: `DocumentsSection`'s `ListRow` takes the mark, `DocumentVie
 
 G1's three changes: the mark as a seventh `.map-tag` rendered last; `.note-sec` inside `renderRow` gated on `selected`, reaching the card at the `map` stop and the list at `full` from one implementation; the composer as `.map-draft-scroll`'s second child in `MapPlaceForm`; and `map.css:514`'s height bound extended from `:has(> .map-draft)` to a selection card that is no longer a 73px row.
 
-**Prerequisite: one small mockup, `notes-on-a-place-v1.html`** (ADR-0097's catalogue). Not a Map mockup — everything unmeasured here is row-level, so it is a strip-and-card file like `notes-on-a-host-v1.html`, needing `.map-m`, the row CSS and `.map-placecard` through the existing `inline-app-css.mjs` manifest, and no canvas at all. Four questions: (1) the mark as the **7th tag** on a maximally crowded `.map-m` (time + now/next + outcome + meta + `על המדף` + rating) at 390 and 360 — does it wrap, and can wrapping ever displace a semantic tag if it renders last; (2) the selected row with its section at **0 / 1 / 3 notes**, in the card and inline in the list; (3) what the extended height bound leaves when the shortfall becomes a scroll; (4) the composer as the scroll region's second child, mostly to confirm the pinned foot survives.
+**Prerequisite: one small mockup, `notes-on-a-place-v1.html`** (ADR-0097's catalogue). Not a Map mockup — everything unmeasured here is row-level, so it is a strip-and-card file like `notes-on-a-host-v1.html`, needing `.map-m`, the row CSS and `.map-placecard` through the existing `inline-app-css.mjs` manifest, and no canvas at all. Five questions: (1) the mark as the **7th tag** on a maximally crowded `.map-m` (time + now/next + outcome + meta + `על המדף` + rating) at 390 and 360 — does it wrap, and can wrapping ever displace a semantic tag if it renders last; (2) the selected row with its section at **0 / 1 / 3 notes**, in the card and inline in the list; (3) what the extended height bound leaves when the shortfall becomes a scroll; (4) the composer as the scroll region's second child, mostly to confirm the pinned foot survives; (5) the idea tile with its mark beside the sheet a tap now opens (Q5).
 
 It earns its keep on precedent: session 203 built the compact tile from a mockup saying 76px and got **84px** — _"every token identical, the eight pixels entirely from the meta line wrapping"_ — on a row less dense than this one. It blocks nothing before it; Phases 1–5 never touch the Map.
 
