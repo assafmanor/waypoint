@@ -4,7 +4,7 @@
 // system-back returns to the landing before falling through to the normal
 // tab → Home rule; a nested BookingDetail/BookingManageSheet/BookingSheet
 // registers on top of that via its own Modal, so it closes first in turn.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BOOKING_TYPE, type Booking, type Place, type Trip } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
@@ -22,6 +22,7 @@ import {
   type CategoryFilter,
 } from '../lib/index-bookings';
 import { countVisible } from '../lib/filter-reveal';
+import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
@@ -32,7 +33,7 @@ import { BookingManageSheet } from './BookingManageSheet';
 import { BookingTitle } from './BookingTitle';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
-import { ListRow, type BadgeTone } from './domain';
+import { ListRow, NoteMark, type BadgeTone } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
 import { RevealList } from './primitives/RevealList';
@@ -49,12 +50,14 @@ export function IndexBookingsView({
    *  that booking's detail on top of this screen once mounted. */
   initialBookingId?: string;
 }) {
-  const { trip, bookings, places, events } = useTrip();
+  const { trip, bookings, places, events, notes } = useTrip();
   const { mode } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
   const showPlaceOnMap = useShowPlaceOnMap();
   const now = useClock();
+  // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
+  const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
 
   const [category, setCategory] = useState<CategoryFilter>(CATEGORY_ALL);
@@ -174,6 +177,7 @@ export function IndexBookingsView({
       now={now}
       onOpen={openDetail}
       onManage={setManage}
+      notes={noteCountFor(noteCounts, 'booking', row.booking.id)}
       showPlaceOnMap={showPlaceOnMap}
       onLeaveForMap={onClose}
     />
@@ -338,6 +342,7 @@ function BookingLi({
   now,
   onOpen,
   onManage,
+  notes,
   showPlaceOnMap,
   onLeaveForMap,
 }: {
@@ -347,6 +352,8 @@ function BookingLi({
   now: Date;
   onOpen: (booking: Booking) => void;
   onManage: (booking: Booking) => void;
+  /** How many notes this booking carries (ADR-0152 §6): a mark on the row, never a body. */
+  notes: number;
   showPlaceOnMap: ShowPlaceOnMap;
   /** Close this screen before the tab changes underneath it. */
   onLeaveForMap: () => void;
@@ -380,21 +387,27 @@ function BookingLi({
         </>
       }
       meta={
-        event ? (
-          <span className="link-cue">
-            <Icon name="link" /> {scheduleLabel(event, booking, trip, now)}
-            {(() => {
-              const dur = formatBookingDuration(
-                event,
-                trip.timezone,
-                bookingDurationUnit(booking.type),
-              );
-              return dur ? <span className="bk-dur"> · {dur}</span> : null;
-            })()}
-          </span>
-        ) : (
-          <span className="unlinked">{t.index.unlinked}</span>
-        )
+        <>
+          {event ? (
+            <span className="link-cue">
+              <Icon name="link" /> {scheduleLabel(event, booking, trip, now)}
+              {(() => {
+                const dur = formatBookingDuration(
+                  event,
+                  trip.timezone,
+                  bookingDurationUnit(booking.type),
+                );
+                return dur ? <span className="bk-dur"> · {dur}</span> : null;
+              })()}
+            </span>
+          ) : (
+            <span className="unlinked">{t.index.unlinked}</span>
+          )}
+          {/* The mark rides the meta line the row already has — a note is a mark on a row,
+              never a body in it (ADR-0152 §6). Composed here rather than through a new
+              `ListRow` prop: the row's meta is already a node, so it needs no variant. */}
+          <NoteMark count={notes} />
+        </>
       }
       right={
         booking.confirmationCode && (

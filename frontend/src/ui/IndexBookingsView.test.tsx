@@ -119,6 +119,13 @@ vi.mock('../state/trip-state', () => ({
     places: [hotelPlace],
     events: tripEvents,
     documents: [],
+    notes: [],
+    users: [],
+    noteVerbs: {
+      createNote: async () => {},
+      updateNote: async () => {},
+      deleteNote: async () => {},
+    },
   }),
 }));
 vi.mock('../lib/useClock', () => ({ useClock: () => new Date('2026-07-20T00:00:00Z') }));

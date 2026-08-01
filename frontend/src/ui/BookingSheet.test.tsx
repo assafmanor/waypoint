@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { wrapNav } from '../test/nav-harness';
 import { BOOKING_SOURCE, BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
 
@@ -41,6 +41,13 @@ const indexVerbs = {
   resolvePlace: vi.fn(),
 };
 
+// Typed args, so the assertions below can read what the form actually sent rather than
+// asserting against a `never`.
+const noteVerbs = {
+  createNote: vi.fn(async (_input: { body: string; bookingId?: string }) => {}),
+  updateNote: vi.fn(async (_id: string, _input: unknown) => {}),
+  deleteNote: vi.fn(async (_id: string) => {}),
+};
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     trip: {
@@ -55,6 +62,9 @@ vi.mock('../state/trip-state', () => ({
     maybeItems: [],
     places,
     indexVerbs,
+    notes: [],
+    users: [],
+    noteVerbs,
   }),
 }));
 
@@ -271,5 +281,92 @@ describe('BookingSheet — refusing a save', () => {
     expect(fieldOf(arrDate)?.querySelector('.field-error')?.textContent).toBe(
       t.index.form.dateOutOfRange,
     );
+  });
+});
+
+// The note is written ON THE WAY (ADR-0152 §6b): the booking form carries a composer, and
+// the booking's own save commits both. This is the first host to get it, and the shape
+// every other host will copy.
+describe('BookingSheet — notes written on the way', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.createBooking.mockClear();
+    noteVerbs.createNote.mockClear();
+  });
+
+  const openHotel = () =>
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+  const nameIt = () =>
+    fireEvent.change(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder), {
+      target: { value: 'מלון שינג׳וקו גרנבל' },
+    });
+  // By class, not by placeholder: the placeholder deliberately changes to `פתק נוסף` once
+  // a note is committed, so a placeholder lookup would find nothing on the second one.
+  const composer = () => document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+  const save = () => fireEvent.click(screen.getByText(t.common.save));
+
+  it('writes no note when the composer was never touched', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
+    openHotel();
+    nameIt();
+    save();
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalled());
+    expect(noteVerbs.createNote).not.toHaveBeenCalled();
+  });
+
+  // The common case, and the whole point of §6b: no extra press.
+  it('takes what is still in the box at save, with no ＋ pressed', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
+    openHotel();
+    nameIt();
+    fireEvent.change(composer(), { target: { value: 'קוד הכספת 4417' } });
+    save();
+
+    await waitFor(() => expect(noteVerbs.createNote).toHaveBeenCalledTimes(1));
+    expect(noteVerbs.createNote).toHaveBeenCalledWith({
+      body: 'קוד הכספת 4417',
+      bookingId: 'b-new',
+    });
+  });
+
+  it('writes several, in the order they were typed, all hosted by the booking', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
+    openHotel();
+    nameIt();
+    fireEvent.change(composer(), { target: { value: 'הראשון' } });
+    fireEvent.click(screen.getByLabelText(t.notes.composer.add));
+    fireEvent.change(composer(), { target: { value: 'השני' } });
+    save();
+
+    await waitFor(() => expect(noteVerbs.createNote).toHaveBeenCalledTimes(2));
+    expect(noteVerbs.createNote.mock.calls.map((c) => c[0].body)).toEqual(['הראשון', 'השני']);
+  });
+
+  // A hosted note is written with NO category: it resolves from the host at render
+  // (ADR-0152 §5's amendment), so the form must not send one.
+  it('sends no category and no title — both are spared from the user', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
+    openHotel();
+    nameIt();
+    fireEvent.change(composer(), { target: { value: 'משהו' } });
+    save();
+
+    await waitFor(() => expect(noteVerbs.createNote).toHaveBeenCalled());
+    const input = noteVerbs.createNote.mock.calls[0][0];
+    expect(input).not.toHaveProperty('category');
+    expect(input).not.toHaveProperty('title');
+  });
+
+  // The refusal runs first: a form that will not save must not leave notes behind.
+  it('writes nothing at all when the booking itself is refused', async () => {
+    openHotel();
+    fireEvent.change(composer(), { target: { value: 'לא אמור להישמר' } });
+    save();
+    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+    expect(noteVerbs.createNote).not.toHaveBeenCalled();
   });
 });

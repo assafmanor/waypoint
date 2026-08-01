@@ -36,6 +36,7 @@ import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
 import { RouteLabel } from './RouteLabel';
 import { Field } from './primitives/Field';
+import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { FormActions } from './primitives/FormActions';
 import { PlacePicker } from './primitives/PlacePicker';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
@@ -97,7 +98,7 @@ export function BookingSheet({
   focus?: 'when';
   onClose: () => void;
 }) {
-  const { trip, events, places, indexVerbs } = useTrip();
+  const { trip, events, places, indexVerbs, noteVerbs } = useTrip();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
@@ -146,7 +147,7 @@ export function BookingSheet({
     draft ? draft.endOverride : initial.endOverride,
   );
   const [room, setRoom] = useState(draft ? draft.room : initial.room);
-  const [notes, setNotes] = useState(draft ? draft.notes : initial.notes);
+  const composer = useNoteComposer();
   const [wifiNetwork, setWifiNetwork] = useState(draft ? draft.wifiNetwork : initial.wifiNetwork);
   const [wifiPassword, setWifiPassword] = useState(
     draft ? draft.wifiPassword : initial.wifiPassword,
@@ -193,7 +194,6 @@ export function BookingSheet({
         startOverride,
         endOverride,
         room,
-        notes,
         wifiNetwork,
         wifiPassword,
         date,
@@ -264,7 +264,6 @@ export function BookingSheet({
     toPlaceId !== initial.toPlaceId ||
     placeId !== initial.placeId ||
     room !== initial.room ||
-    notes !== initial.notes ||
     wifiNetwork !== initial.wifiNetwork ||
     wifiPassword !== initial.wifiPassword ||
     date !== initial.date ||
@@ -334,7 +333,6 @@ export function BookingSheet({
         // linked-event write so the pair counts as one pending change (ADR-0092).
         const details = mergeBookingDetails(booking?.details, {
           room: isHotel ? room : undefined,
-          notes,
           wifiNetwork: isHotel ? wifiNetwork : undefined,
           wifiPassword: isHotel ? wifiPassword : undefined,
         });
@@ -376,18 +374,34 @@ export function BookingSheet({
         };
         // Transport carries fromPlaceId/toPlaceId; every other type a single
         // placeId — mutually exclusive (ADR-0048), so send only the relevant side.
+        let hostId = booking?.id;
         if (isCreate) {
-          await indexVerbs.createBooking(
+          const created = await indexVerbs.createBooking(
             isTransport
               ? { type, ...base, ...zonePatch, fromPlaceId, toPlaceId }
               : { type, ...base, ...zonePatch, placeId },
           );
+          hostId = created?.id;
         } else {
           await indexVerbs.updateBooking(booking.id, {
             ...base,
             ...zonePatch,
             ...(isTransport ? { fromPlaceId, toPlaceId } : { placeId }),
           });
+        }
+
+        // **The notes, after their host and inside the same group** (ADR-0152 §6b). Ordering
+        // is the whole reason this is here rather than beside the booking write: offline the
+        // outbox is FIFO, so a note queued after its booking still finds its host on the
+        // server. Nothing is awaited on a network round-trip — the booking's id is
+        // client-generated, so it is known the moment the verb returns, queued or not.
+        //
+        // These are ordinary queued ops, NOT ADR-0093 synthetic changes: that pattern is for
+        // an entity the SERVER materializes with no op of its own, and a note has one.
+        if (hostId) {
+          for (const body of composer.pending()) {
+            await noteVerbs.createNote({ body, bookingId: hostId });
+          }
         }
       });
       onClose();
@@ -636,8 +650,11 @@ export function BookingSheet({
             </>
           )}
 
-          <Field label={t.index.sheet.notesLabel} htmlFor="bs-notes">
-            <textarea id="bs-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          {/* **The note is written on the way** (ADR-0152 §6b). This is the one form that
+              already had a notes field, and it keeps it — as the composer, so a booking's
+              notes are rows like everyone else's rather than a string in a JSON blob. */}
+          <Field label={t.notes.composer.label} htmlFor="bs-notes" hint={t.notes.composer.hint}>
+            <NoteComposer state={composer} id="bs-notes" />
           </Field>
 
           {/* Only what has no field to point at still reads down here. */}
