@@ -566,8 +566,14 @@ export async function restOrQueue<T>(
   tripId: string,
   op: OutboxOp,
   call: () => Promise<T>,
+  opts?: { queue?: boolean },
 ): Promise<T | undefined> {
-  if (isOffline()) {
+  // `queue` is for an op whose HOST is itself only queued — a note written on a document's
+  // upload form, since ADR-0056 makes an upload outbox-first even when online. Sending such
+  // a note now would race the upload's background flush and almost always win it, and the
+  // server refuses a note whose host it cannot see (`assertNoteHostInTrip`). Queued, it
+  // simply lands behind its host and FIFO does the rest.
+  if (opts?.queue || isOffline()) {
     await enqueueOutbox(tripId, op);
     return undefined;
   }

@@ -150,16 +150,23 @@ export interface RowAction {
  *  accident had been distinguished by text hue alone.
  *
  *  Multi-step flows (a delete/unlink prompt, the `הזז` position step) keep their
- *  own sub-state and pass only the top-level menu here. */
+ *  own sub-state and pass only the top-level menu here.
+ *
+ *  `children` render ABOVE the verbs, for the one thing that is content rather
+ *  than an action: a host's note section (ADR-0152 §6, ADR-0153 §8). It is the
+ *  slot rather than a `notes` prop because the sheet stays presentational — the
+ *  screen passes `<HostNotes>` already connected. */
 export function RowManageSheet({
   title,
   subject,
   actions,
+  children,
   onClose,
 }: {
   title: ReactNode;
   subject?: ReactNode;
   actions: RowAction[];
+  children?: ReactNode;
   onClose: () => void;
 }) {
   return (
@@ -172,6 +179,7 @@ export function RowManageSheet({
       }
       onClose={onClose}
     >
+      {children}
       <RowActionList actions={actions} />
     </Sheet>
   );

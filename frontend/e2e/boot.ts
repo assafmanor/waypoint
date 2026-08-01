@@ -101,6 +101,8 @@ export async function bootIntoTrip(
     places?: unknown[];
     /** Trip notes, so a host row can carry the mark (ADR-0152 §6c). */
     notes?: unknown[];
+    /** Trip documents, so the Index's documents rows exist to be measured. */
+    documents?: unknown[];
     /** Override the trip's date range (see `shortLiveTripDates`). */
     dates?: { startDate: string; endDate: string };
   } = {},
@@ -114,6 +116,7 @@ export async function bootIntoTrip(
     maybeItems: opts.maybeItems ?? SNAPSHOT.maybeItems,
     places: opts.places ?? SNAPSHOT.places,
     notes: opts.notes ?? SNAPSHOT.notes,
+    documents: opts.documents ?? SNAPSHOT.documents,
   };
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),

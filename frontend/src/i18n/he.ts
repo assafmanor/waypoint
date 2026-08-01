@@ -623,6 +623,9 @@ export const t = {
       add: 'פתק נוסף',
       remove: 'הסרת הפתק',
       hint: 'יורש את הקטגוריה והסמל · ＋ רק אם רוצים עוד אחד',
+      // A host with no category of its own (a document, a place) has nothing to inherit, so
+      // the hint does not promise it.
+      hintPlain: '＋ רק אם רוצים עוד אחד',
     },
     // The note section on a detail surface, where the body lives.
     section: {
@@ -1116,8 +1119,19 @@ export const t = {
     // The empty day group, conjured up mid-drag so there is somewhere to drop.
     shelfDropHere: 'שחררו כאן ליום הזה',
     maybeShelf: 'מדף האולי',
-    tapToSchedule: 'לחצו כדי לשבץ ליום',
+    // A tap opens the idea rather than the schedule form (ADR-0116's 2026-08-01
+    // amendment), so the hint says both: what a tap does, and that shibutz is still
+    // what it is mostly for.
+    tapToSchedule: 'לחצו לפתיחה ולשיבוץ',
     skippedTag: 'דילגתם · לחצו להחזרה',
+    // The idea's sheet — the surface a tap now opens. `שיבוץ ליום` leads it, so the
+    // verb the tile used to perform is one press away and named.
+    idea: {
+      actions: 'פעולות על הרעיון',
+      subject: (author?: string) => (author ? `רעיון · נוסף על ידי ${author}` : 'רעיון'),
+      schedule: 'שיבוץ ליום',
+      remove: 'הסרה',
+    },
     // Why a suggestion sits where it does (ADR-0151 §8). The contract carries the
     // fact and this spells it, which is what lets a user disagree with the order.
     // Never a score and never a star: only the fact that put this one here.
@@ -1167,8 +1181,9 @@ export const t = {
     gapFillSearchClear: 'נקה חיפוש',
     gapFillAll: (n: number) => `כל ${n} הרעיונות`,
     // Plan mode's shelf also drags (ADR-0116 §5): the hint teaches the hold, since
-    // a press-and-hold is the one part of the gesture nobody guesses.
-    shelfHint: 'לחצו כדי לשבץ · לחיצה ארוכה לגרירה',
+    // a press-and-hold is the one part of the gesture nobody guesses — and it is now
+    // the FAST path for slotting, which is what makes the tap's extra step affordable.
+    shelfHint: 'לחצו לפתיחה · לחיצה ארוכה לגרירה ליום',
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
     removeIdea: 'הסר רעיון',

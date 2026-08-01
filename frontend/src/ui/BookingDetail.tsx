@@ -3,13 +3,10 @@
 // guard for a hard commitment (ADR-0011); editing is a deliberate tap. Edit
 // opens the merged BookingSheet. Delete lives on the row's "⋯" (BookingManageSheet),
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
-import { useState } from 'react';
-import { BOOKING_TYPE, type Booking, type BookingType, type Note } from '@waypoint/shared';
+import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
 import { bookingSheetDraft } from '../lib/booking-draft';
 import { useTrip } from '../state/trip-state';
-import { useClock } from '../lib/useClock';
-import { NoteSection } from './NoteSection';
-import { NoteSheet } from './NoteSheet';
+import { HostNotes } from './HostNotes';
 import { Sheet } from './Sheet';
 import { RouteLabel } from './RouteLabel';
 import {
@@ -57,16 +54,9 @@ export function BookingDetail({
   onClose: () => void;
   onEdit: (booking: Booking) => void;
 }) {
-  const { trip, events, places, notes: tripNotes, users, noteVerbs } = useTrip();
-  const now = useClock();
-  // **This surface owns its own note editing** rather than taking two more props. It is
-  // already a connected component (`useTrip`), and it has FOUR call sites — the day view,
-  // Plan, the Map and the bookings screen — so pushing the editor outward would mean
-  // wiring the same sheet four times and drifting three ways.
-  const [noteSheet, setNoteSheet] = useState<Note | 'create' | null>(null);
+  const { trip, events, places } = useTrip();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
-  const bookingNotes = tripNotes.filter((n) => n.bookingId === booking.id);
 
   const tz = trip.timezone;
   const icon = chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[booking.type];
@@ -218,31 +208,12 @@ export function BookingDetail({
           )}
         </div>
 
-        {/* A note is a mark on a row and a BODY here (ADR-0152 §6). This replaces the old
-            `details.notes` fact: notes are rows now, and a booking's are its own. */}
-        <NoteSection
-          notes={bookingNotes}
-          users={users}
-          now={now}
-          onAdd={() => setNoteSheet('create')}
-          onOpen={setNoteSheet}
-        />
+        {/* A note is a mark on a row and a BODY here (ADR-0152 §6). This replaced the old
+            `details.notes` fact: notes are rows now, and a booking's are its own. The
+            section and its editor travel together (`HostNotes`), so this surface states the
+            host and nothing else. */}
+        <HostNotes host={{ kind: 'booking', id: booking.id, name: booking.title }} />
       </div>
-
-      {noteSheet && (
-        <NoteSheet
-          note={noteSheet === 'create' ? undefined : noteSheet}
-          // Stated, never chosen: the host is a fact here, and there is no picker (§5).
-          host={{ kind: 'booking', id: booking.id, name: booking.title }}
-          onSave={(draft) => {
-            const editing = noteSheet === 'create' ? null : noteSheet;
-            setNoteSheet(null);
-            if (editing) void noteVerbs.updateNote(editing.id, draft);
-            else void noteVerbs.createNote({ ...draft, bookingId: booking.id });
-          }}
-          onClose={() => setNoteSheet(null)}
-        />
-      )}
     </Sheet>
   );
 }

@@ -66,6 +66,22 @@ Two corrections to `park` while it is being surfaced:
 - **Day-scope gates the range, it isn't re-decided here** (ADR-0029): in **Trip mode** `minDate` is trip-local today (scheduling into a past day is a create, and creates are locked there), in **Plan mode** the whole trip range is open. `maxDate` is the trip's end in both.
 - **Drag targets free time, not rows.** In Plan mode a shelf card can be dragged onto a **gap chip**, which schedules the idea into that gap — the same write `GapFillSheet` already performs, reusing the existing pointer-capture drag (`data-gap-id` targets beside the existing `data-bld-id` ones). Dropping onto an occupied row is deliberately **out**: it would mean displacing a scheduled event, which is a ripple decision (ADR-0041) and not what "drag it to a day" ever meant. Tap-to-schedule stays the complete path (any day, any time); drag is the shortcut for the obvious case, and the mockup's long-standing `גרור ליום` hint stops being a lie.
 
+### 5a. Amended 2026-08-01 (session 206, notes phase 5): **a tap on an idea opens the idea, and `שיבוץ ליום` is the first thing in it**
+
+The tile's tap went straight to the schedule sheet. It now opens a `RowManageSheet` for the idea, whose first action is `שיבוץ ליום` — so scheduling moves **one tap deeper** and is named where it used to be implied. This is a behaviour change to a shipped gesture, which is why it is here rather than in a session note.
+
+**Why it had to change.** [ADR-0152](0152-a-note-is-one-entity-with-an-optional-host.md) §6 gives every note host a surface where the note's **body** lives, and [ADR-0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §8 closed the idea's gap with "the sheet the tile already opens". There was no such sheet: the tile's only tap was `onSchedule`, so nowhere in the app said _"here is this idea"_ — and a note section above a **scheduling form** is the wrong room, because the form's whole question is "which day and what time", not "what do we know about this". Building the sheet also collects the idea's scattered verbs (a tap that scheduled, a Plan-only `✕`) onto the one surface ADR-0138 §1 says a row's actions belong on. The idea was the last shelf citizen with no such surface; a **skipped** event still restores on tap, because it has one — its own day row.
+
+**What makes the extra tap affordable:** in Plan mode **hold-to-drag onto a gap chip (§5 above) is the fast path** for slotting, and it is untouched. Trip mode keeps one tap to the sheet and one to the day picker, on the surface where writing a note matters most (ADR-0153 §9 — authoring is ungated and most valuable on the ground).
+
+Rejected, with what each costs:
+
+- **A `⋯` in a corner.** Plan's remove `✕` already owns top-inline-end and ADR-0153 §7 puts the note mark at top-inline-start — three controls on a 140×76 tile, two of them 20px.
+- **Long-press.** Taken by hold-to-drag (§5), and it is the gesture nobody guesses without the hint.
+- **Tapping the note mark as the way in.** The right instinct, and the app's own `PlaceBadge` idiom, but the mark is ~13px against a 44px floor (ADR-0017) — the same objection that made it read-only in ADR-0153 §8.
+
+**Capabilities are unchanged.** The sheet offers `הסרה` only where the host already allowed it (Plan mode's `✕`, §4), and it offers **no `עריכה`** — the mockup drew one and the app has no idea-edit surface, so inventing a form here would be a second decision hidden behind a gesture change. The section hints say what a tap now does (`לחצו לפתיחה ולשיבוץ`, and Plan's `לחצו לפתיחה · לחיצה ארוכה לגרירה ליום`).
+
 ## Consequences
 
 - **The shelf can finally answer "what's this day about?"** without pretending an idea is scheduled, and the Map's day filter gains ideas that were previously all-days-only (a place referenced by an idea with a `targetDate` now has a day facet).

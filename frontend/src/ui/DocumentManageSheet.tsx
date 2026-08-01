@@ -7,6 +7,7 @@ import { useId, useState } from 'react';
 import { DOCUMENT_TYPE, type DocumentSummary, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
 import { RowManageSheet } from './domain';
+import { HostNotes } from './HostNotes';
 import { Spinner } from './Spinner';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
@@ -82,7 +83,13 @@ export function DocumentManageSheet({
             onSelect: () => setMode('delete'),
           },
         ]}
-      />
+      >
+        {/* **This sheet is the document's note surface** (ADR-0153 §8). A document's other
+            surface is the viewer, whose body is a pinch-zoom image in a card that clips —
+            so the notes would compete with the bytes you opened it to read, and the room
+            for the section is here, where the document is already described in words. */}
+        <HostNotes host={{ kind: 'document', id: doc.id, name: doc.title }} />
+      </RowManageSheet>
     );
   }
 

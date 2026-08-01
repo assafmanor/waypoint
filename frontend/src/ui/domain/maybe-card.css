@@ -117,6 +117,18 @@
   line-height: 1;
   flex: 0 0 auto;
 }
+/* The note mark (ADR-0153 §7): the tile's corner, inside the padding the card
+   already has, so it costs ZERO height — the meta line belongs to ADR-0151's
+   ranking reason, and that ADR's own amendment refused a second line here because
+   the wrap cost 8px on a 76px tile just redesigned to save them. Top-inline-START,
+   which is the corner the shipped `✕` (top-inline-end) leaves free, and above the
+   vertically-centred glyph rather than beside it. Out of the flex flow, so the
+   title's box is unchanged whether the mark is there or not. */
+.wp-maybecard.compact .note-mark {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-start: 6px;
+}
 .wp-maybecard.compact .wp-maybecard-main {
   flex: 1;
   min-width: 0;
