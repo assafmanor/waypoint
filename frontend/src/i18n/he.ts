@@ -1012,6 +1012,11 @@ export const t = {
     // content, so a trip that never uses a target day looks exactly as it did.
     shelfForDay: 'לְיום הזה',
     shelfPool: 'רעיונות',
+    // The pool strip is a ranked shortlist now, not the whole pool, so its header
+    // says what it is showing and its count says how many there are in all. The way
+    // through carries the rest to the Map's אולי facet (ADR-0116 session-202 §5).
+    shelfRanked: 'הכי מתאימים להיום',
+    shelfMore: (n: number) => `עוד ${n} · במפה`,
     // The empty day group, conjured up mid-drag so there is somewhere to drop.
     shelfDropHere: 'שחררו כאן ליום הזה',
     maybeShelf: 'מדף האולי',

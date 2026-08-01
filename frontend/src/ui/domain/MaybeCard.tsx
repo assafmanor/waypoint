@@ -114,3 +114,30 @@ export function MaybeCard({
     </button>
   );
 }
+
+/**
+ * The last item on a capped pool strip: the way through to the rest
+ * (ADR-0116 session-202 §5). It borrows the tile's BOX and deliberately not its
+ * grammar — solid rather than dashed, no hatch, neutral `--cta` — because it is a
+ * navigation, not an idea, and must not read as one more thing you could schedule.
+ *
+ * Its own component rather than a `MaybeCard` prop: the card's every other prop
+ * (schedule, remove, drag, consumed) is meaningless here, and `onSchedule` holding a
+ * tab navigation is the kind of misnaming a reader has to un-learn.
+ */
+export function MaybeMoreCard({
+  label,
+  icon,
+  onOpen,
+}: {
+  label: ReactNode;
+  icon: ReactNode;
+  onOpen: () => void;
+}) {
+  return (
+    <button type="button" className="wp-maybecard compact more" onClick={onOpen}>
+      {icon}
+      <span className="wp-maybecard-title">{label}</span>
+    </button>
+  );
+}

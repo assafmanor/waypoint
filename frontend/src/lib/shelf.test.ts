@@ -17,6 +17,7 @@ import {
   tileReasonText,
 } from './shelf';
 import { withoutBidiControls } from './bidi';
+import { SHELF_POOL_CAP } from '../constants';
 
 const DAY = '2026-07-20';
 
@@ -198,6 +199,24 @@ describe('rankIdeas', () => {
   it('caps to `limit` when one is given — what the gap sheet and the strip spend', () => {
     const pool = ['a', 'b', 'c'].map((id) => withPlace(id));
     expect(rankIdeas(pool, places, DAY, stops, 2)).toHaveLength(2);
+  });
+
+  // The strip's whole point after §5: forty ideas and five ideas produce the same
+  // number of cards, so swipes-to-last stops growing with N.
+  it('holds the strip’s cap however large the pool gets, and reports the tail', () => {
+    const big = Array.from({ length: 40 }, (_, i) => withPlace(`m${i}`));
+    const small = Array.from({ length: 7 }, (_, i) => withPlace(`m${i}`));
+    const shown = (pool: MaybeItem[]) => rankIdeas(pool, places, DAY, stops, SHELF_POOL_CAP).length;
+    expect(shown(big)).toBe(SHELF_POOL_CAP);
+    expect(shown(big)).toBe(shown(small));
+    expect(big.length - shown(big)).toBe(35);
+  });
+
+  it('shows the whole pool, and no tail, below the cap', () => {
+    const pool = ['a', 'b'].map((id) => withPlace(id));
+    const ranked = rankIdeas(pool, places, DAY, stops, SHELF_POOL_CAP);
+    expect(ranked).toHaveLength(2);
+    expect(pool.length - ranked.length).toBe(0);
   });
 
   it('ranks with no stops at all, which is the offline / no-places day', () => {

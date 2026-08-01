@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MaybeCard } from './MaybeCard';
+import { MaybeCard, MaybeMoreCard } from './MaybeCard';
 
 describe('MaybeCard', () => {
   afterEach(() => cleanup());
@@ -100,6 +100,24 @@ describe('MaybeCard', () => {
       fireEvent.click(document.querySelector('.wp-maybecard-body') as HTMLButtonElement);
       expect(onRemove).toHaveBeenCalledTimes(1);
       expect(onSchedule).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // The way through to the rest (§5). It borrows the tile's box and not its grammar,
+  // so what a test can hold is that it is NOT a maybe card wearing a different hat:
+  // no soft modifier, no schedule, no drag, no remove.
+  describe('MaybeMoreCard', () => {
+    it('opens the rest, and carries the tile box without the idea affordances', () => {
+      const onOpen = vi.fn();
+      const { container } = render(
+        <MaybeMoreCard label="עוד 35 · במפה" icon={<span className="icon" />} onOpen={onOpen} />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: /עוד 35/ }));
+      expect(onOpen).toHaveBeenCalledTimes(1);
+      expect(container.querySelector('.wp-maybecard.compact.more')).toBeTruthy();
+      expect(container.querySelector('.wp-maybecard-add')).toBeNull();
+      expect(container.querySelector('.wp-maybecard-remove')).toBeNull();
+      expect(container.querySelector('.draggable')).toBeNull();
     });
   });
 

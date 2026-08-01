@@ -140,6 +140,32 @@
 .wp-maybecard.compact .wp-maybecard-add {
   display: none;
 }
+/* The way through to the rest (MaybeMoreCard, §5). Solid and neutral: it is a
+   navigation, not a plan action, so it spends no plan violet (ADR-0028, root rule 4)
+   — which also stops it competing with the ideas beside it. */
+.wp-maybecard.more {
+  border-style: solid;
+  border-color: var(--line);
+  background: var(--card);
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  color: var(--cta);
+}
+.wp-maybecard.more:hover {
+  border-color: var(--line);
+  transform: none;
+}
+.wp-maybecard.more .wp-maybecard-title {
+  font-size: 12.5px;
+  color: var(--cta);
+}
+.wp-maybecard.more .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
 /* The remove variant, which the mockup did not draw. On the shipped card the
    corner `✕` sits over the glyph's own line and clears the title; once the axis
    is a row the title runs under it, so the text yields the corner back. */

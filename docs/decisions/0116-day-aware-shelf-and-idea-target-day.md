@@ -379,3 +379,18 @@ Designed in [`mockups/shelf-crowded-v1.html`](../../mockups/shelf-crowded-v1.htm
 ### The one open question, and it is not a measurement
 
 §5's handoff is a **tab switch mid-build**. ADR-0135 makes it a complete round trip — you slot from the map and never come back — but whether it reads as "the rest of my ideas are over there" or as being thrown off the surface you were working on is a phone judgement (ADR-0017's device pass), not something a desktop browser can settle. Two smaller ones sit beside it: whether the tile's two-line title truncates too much on the trip's real titles, and whether a capped strip reads as "the five best" or as "something is missing".
+
+## Amendment (2026-08-05, session 203) — built, and what the build found
+
+All five changes ship, plus [ADR-0151](0151-a-suggestion-has-a-source-and-a-reason.md)'s contract. Session note: [`planning/2026-08-05-session-203-the-shelf-crowds-built.md`](../planning/2026-08-05-session-203-the-shelf-crowds-built.md).
+
+**The open question was put to the owner and answered "build it as drawn"**, on the reasoning that the alternative — capping the strip with no way through — trades a _suspected_ problem (an abrupt transition) for a _known_ one (35 ideas visibly hidden behind no affordance), and that the destination is complete rather than a dead end. **The device pass is still owed**, and it is the same one: whether the switch reads as the rest being over there. It is now a question about a shipped behaviour instead of a drawing, which is the only thing that changed.
+
+Four things the build found that the mockup could not:
+
+1. **The reason needs two renderings, not one.** `0.3 ק״מ ממסעדת מון` wraps at 140px and takes the tile from 76px to 84px — exactly the height §2 exists to buy back. So the strip says `0.3 ק״מ` and the sheet says the sentence, from one structured reason (ADR-0151 §8's amendment). The mockup had this right and the ADR prose did not: its shelf drew `km(k)` while only its gap row named the stop.
+2. **A third reason exists that the fixture never had.** Every idea in the mockup carried a distance. A real shelf holds ideas with no place, and a Place-lite carries no coordinates — for those the only true thing to say is recency, so that is what it says, and it takes no line on the tile.
+3. **The remove `✕` overlaps the tile's title**, which the mockup never drew because it drew the strip's cards as plain `div`s. On the shipped card the glyph sits above the title and the corner is free; once the axis is a row the title runs under it. The text yields the corner back.
+4. **The strategy's ordering is the mockup's, not this ADR's prose.** §3 of ADR-0151 reads as a priority list with distance first; the mockup's own `ranked()` partitions on spoken-for and sorts by distance _within_ it. The mockup is right, because the other reading silently reverses §2's dateless-before-aimed-elsewhere grouping — the one thing this build was not supposed to touch.
+
+**Also recorded: a distance past ~5km stops discriminating.** Two ideas across town are both simply "not near today", so they tie there and recency breaks it — which keeps an idea that merely _has_ coordinates from outranking a placeless one on that alone.

@@ -34,7 +34,11 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
-import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
+import {
+  usePlaceErrandReturn,
+  useShowMaybesOnMap,
+  useShowPlaceOnMap,
+} from '../state/map-scope-state';
 import { useBackLayer } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
 import {
@@ -81,7 +85,7 @@ import {
 import { SearchField } from '../ui/primitives/SearchField';
 import { RevealList } from '../ui/primitives/RevealList';
 import { countVisible, revealRows } from '../lib/filter-reveal';
-import { GAP_FILL_CAP, GAP_FILL_SEARCH_AT } from '../constants';
+import { GAP_FILL_CAP, GAP_FILL_SEARCH_AT, SHELF_POOL_CAP } from '../constants';
 import {
   resolveRowDrop,
   resolveShelfDrop,
@@ -121,7 +125,7 @@ import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { TitleLabel } from '../ui/TitleLabel';
 import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
-import { MaybeCard } from '../ui/domain/MaybeCard';
+import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
 const daysBetween = (from: string, to: string) =>
@@ -209,6 +213,7 @@ export function PlanDay() {
   // coord-bearing place. It is the only surface here that needs it: the row's own tap
   // opens the edit form, which carries no location view of its own.
   const showPlaceOnMap = useShowPlaceOnMap();
+  const showMaybesOnMap = useShowMaybesOnMap();
   const tz = trip.timezone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
@@ -483,7 +488,10 @@ export function PlanDay() {
   // …and ranked (ADR-0116 session-202 §3 / ADR-0151). Order and reason only; the
   // grouping, and every drop the drag can make, are unchanged.
   const stops = dayStops(events, bookings, places, activeDate);
-  const rankedPool = rankIdeas(shelf.pool, places, activeDate, stops);
+  // Capped, with the tail handed to the Map's אולי facet (§5) — which is what keeps
+  // the strip's width independent of how many ideas the trip has accumulated.
+  const rankedPool = rankIdeas(shelf.pool, places, activeDate, stops, SHELF_POOL_CAP);
+  const poolTail = shelf.pool.length - rankedPool.length;
   const reasonById = new Map(rankedPool.map((r) => [r.item.id, r.reason]));
   // The day's own group keeps its order (it is small by construction) and gains
   // only the distance line — see `stopReasonText` for why it says nothing else.
@@ -910,7 +918,10 @@ export function PlanDay() {
           {(showPoolGroup || parkingRow) && (
             <>
               {(showDayGroup || draggingFromPool || parkingRow) && (
-                <div className="shelf-group">{t.day.shelfPool}</div>
+                <div className="shelf-group">
+                  {t.day.shelfRanked}
+                  <span className="shelf-count">{shelf.pool.length}</span>
+                </div>
               )}
               <div
                 className={'shelf' + (overShelf(SHELF_DROP.POOL) ? ' drop-over' : '')}
@@ -919,6 +930,16 @@ export function PlanDay() {
                 {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
                     tombstone (ADR-0027: an idea is parked OR placed, never both). */}
                 {rankedPool.map(({ item: m }) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
+                {/* The tail, and what makes the strip's width independent of N. It is
+                    not a drop target: dropping an idea on a navigation means nothing,
+                    and the drag is untouched by all of this. */}
+                {poolTail > 0 && showMaybesOnMap && (
+                  <MaybeMoreCard
+                    label={t.day.shelfMore(poolTail)}
+                    icon={<Icon name="map" />}
+                    onOpen={showMaybesOnMap}
+                  />
+                )}
                 {!showPoolGroup && (
                   <div className="shelf-dropzone">{t.planDay.parkSomedayDropHere}</div>
                 )}
