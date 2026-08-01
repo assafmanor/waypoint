@@ -32,6 +32,16 @@ Sub-questions worth settling in the ADR, each with a real tension behind it:
    already carries title, kind, until-time, code, countdown, zone shift, conflicts and
    concurrency. Whatever expansion adds has to be worth an interaction, not a reflow of
    the same facts — otherwise this is animation for its own sake.
+
+   **A candidate answer arrived after this brief was written (2026-08-01, ADR-0152):
+   the note attached to the now/next event.** It is genuinely new information the
+   collapsed board cannot carry — not a reflow of the facts listed above — and it is the
+   highest-value on-the-ground content the app holds (_"the entrance is round the back"_,
+   _"bring cash"_). The notes work deliberately puts **no mark on the Board**, precisely
+   because a per-entity control there is what got backed out in ADR-0121's amendment §4;
+   it hands the board's note-reach to this session instead. See
+   [`2026-08-01-notes-design-brief.md`](2026-08-01-notes-design-brief.md) §C3.
+
 2. **Which actions?** The map way-in is the one this brief inherits. Candidates beyond
    it: `ניווט`, the settle verbs (`היינו`/`דלג`), the ±30 nudge, the way through to the
    booking. Note that all of these already exist on `EventCard` in the day view, so the
