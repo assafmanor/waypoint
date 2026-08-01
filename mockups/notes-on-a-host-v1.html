@@ -9566,6 +9566,15 @@
       .note-sec {
         margin-top: var(--space-4);
       }
+      /* Scaffolding: the host chip shape from the screen mockup, reused here
+         only so §5b's three rows read as the same row before and after. */
+      .note-host-demo {
+        padding: 1px 6px;
+        border-radius: var(--radius-999);
+        background: color-mix(in srgb, var(--ink) 6%, transparent);
+        font-weight: 700;
+        font-size: 10.5px;
+      }
       .note-sec-h {
         display: flex;
         align-items: center;
@@ -10232,14 +10241,40 @@
           </div>
         </div>`;
 
-      const formInline = () => `
+      /* ─── §5 · The inline note field, as decided by the owner ───────
+         "Adding a note on an event/booking/place form should be as easy as
+         possible. This shouldn't have to open a new form. It should be ON THE
+         WAY, and everything that could be spared from the user should be."
+
+         So it is a FIELD, not a button that opens a sheet — and on a hosted
+         note almost every input is spared:
+
+           category  → inherited from the host, RESOLVED not copied (§5b)
+           icon      → same chain, so no picker
+           title     → optional, and absent here; the body is the note
+           save      → the host's save. There is no second commit.
+
+         What is left is one textarea, and a blank one writes nothing. */
+      const formCreate = (host) => `
         <div class="modal-overlay" data-variant="sheet">
           <div class="modal-card" role="dialog" aria-modal="true">
-            <div class="modal-title">הזמנה חדשה</div>
+            <div class="modal-title">אירוע חדש</div>
             <div class="booking-sheet">
-              <div class="field"><label class="field-label" for="f1">שם</label><input id="f1" value="מלון שינג׳וקו גרנבל" /></div>
-              <div class="field"><label class="field-label" for="f2">קוד אישור</label><input id="f2" dir="ltr" value="HT-88213" /></div>
-              <div class="field"><label class="field-label" for="f3">הערות</label><textarea id="f3" rows="2">הצ׳ק-אין רק מ-15:00</textarea></div>
+              <div class="field"><label class="field-label" for="c1">מה</label><input id="c1" value="ארוחת ערב במסעדת מון" /></div>
+              <div class="field">
+                <span class="field-label">קטגוריה</span>
+                <div class="choice-grid pills" role="radiogroup" aria-label="קטגוריה">
+                  <button type="button" role="radio" aria-checked="true" class="choice-pill on"><span>אוכל</span><span aria-hidden="true">🍜</span></button>
+                  <button type="button" role="radio" aria-checked="false" class="choice-pill"><span>אתרים</span><span aria-hidden="true">⛩️</span></button>
+                  <button type="button" role="radio" aria-checked="false" class="choice-pill"><span>תחבורה</span><span aria-hidden="true">🚄</span></button>
+                </div>
+              </div>
+              <div class="field"><label class="field-label" for="c2">מתי</label><input id="c2" value="19:30" /></div>
+              <div class="field">
+                <label class="field-label" for="c3">${ic('clipboard')} פתק · לא חובה</label>
+                <textarea id="c3" rows="2" placeholder="משהו שכדאי לזכור על זה…"></textarea>
+                <p class="field-hint">יקבל את הקטגוריה והסמל של האירוע</p>
+              </div>
               <div class="form-actions">
                 <button type="button" class="fa-primary">שמירה</button>
                 <button type="button" class="fa-secondary">ביטול</button>
@@ -10248,19 +10283,28 @@
           </div>
         </div>`;
 
-      const formSecondAct = () => `
+      /* On EDIT the host already has notes, so the same slot lists them —
+         compact, tappable to edit — above the one blank field. Still no second
+         form and still one save. This is the case the create frame cannot
+         show, and the one that would have been discovered late. */
+      const formEdit = () => `
         <div class="modal-overlay" data-variant="sheet">
           <div class="modal-card" role="dialog" aria-modal="true">
-            <div class="modal-title">הזמנה חדשה</div>
+            <div class="modal-title">עריכת הזמנה</div>
             <div class="booking-sheet">
-              <div class="field"><label class="field-label" for="g1">שם</label><input id="g1" value="מלון שינג׳וקו גרנבל" /></div>
-              <div class="field"><label class="field-label" for="g2">קוד אישור</label><input id="g2" dir="ltr" value="HT-88213" /></div>
-              <div class="note-sec" style="margin-top:0">
-                <div class="note-sec-h">
-                  <span class="t">${ic('clipboard')} פתקים</span>
-                  <button type="button" class="add">${ic('plus')} פתק</button>
+              <div class="field"><label class="field-label" for="e1">שם</label><input id="e1" value="מלון שינג׳וקו גרנבל" /></div>
+              <div class="field"><label class="field-label" for="e2">קוד אישור</label><input id="e2" dir="ltr" value="HT-88213" /></div>
+              <div class="field">
+                <span class="field-label">${ic('clipboard')} פתקים</span>
+                <div class="note-item">
+                  <span class="note-item-b">הצ׳ק-אין רק מ-15:00, אפשר להשאיר מזוודות בלובי מהבוקר</span>
+                  <span class="note-item-m">דנה · לפני 3 ימים</span>
                 </div>
-                <p style="margin:0;font-size:11.5px;color:var(--faint)">אפשר להוסיף אחרי השמירה</p>
+                <div class="note-item">
+                  <span class="note-item-b">קוד הכספת 4417</span>
+                  <span class="note-item-m">דנה · לפני 3 ימים</span>
+                </div>
+                <textarea id="e3" rows="2" placeholder="פתק נוסף…"></textarea>
               </div>
               <div class="form-actions">
                 <button type="button" class="fa-primary">שמירה</button>
@@ -10268,6 +10312,42 @@
               </div>
             </div>
           </div>
+        </div>`;
+
+      /* §5b — what the user never typed. The note carries NO category and NO
+         icon of its own; both are resolved from the host at render, through
+         the `??` chain the app already uses for icons (`chosenIcon`,
+         `constants.ts:313`). Copying them at write time would freeze a stale
+         value the moment the host is recategorised — the same
+         "content-enum-as-decoration" mistake `constants.ts` already warns
+         about at `DEFAULT_STAY_ICON`. */
+      const inheritance = () => `
+        <div class="strip">
+          <div class="lbl2">מה שנכתב · שדה אחד, בלי קטגוריה ובלי סמל</div>
+          <div class="index"><div class="listcard">
+            <div class="wp-listrow"><button type="button" class="wp-listrow-open">
+              <span class="wp-place-badge wp-listrow-badge">📝</span>
+              <span class="wp-listrow-main">
+                <span class="wp-listrow-title">הכניסה מאחור, ליד חנות הפרחים</span>
+                <span class="wp-listrow-meta">בלי קטגוריה · בלי סמל · דנה</span>
+              </span></button></div>
+          </div></div>
+          <div class="lbl2">מה שנקרא · אחרי הירושה מהמארח, בלי שנגעו בכלום</div>
+          <div class="index"><div class="listcard">
+            ${listRow({
+              icon: '🍜',
+              title: 'הכניסה מאחור, ליד חנות הפרחים',
+              meta: '<span class="note-host-demo">🍜 ארוחת ערב במסעדת מון</span> · דנה · עכשיו',
+            })}
+          </div></div>
+          <div class="lbl2">ואם האירוע ישנה קטגוריה מחר · הפתק זז איתו, כי שום דבר לא הועתק</div>
+          <div class="index"><div class="listcard">
+            ${listRow({
+              icon: '🎟️',
+              title: 'הכניסה מאחור, ליד חנות הפרחים',
+              meta: '<span class="note-host-demo">🎟️ ארוחת ערב במסעדת מון</span> · דנה · עכשיו',
+            })}
+          </div></div>
         </div>`;
 
       const maybeSheetRow = () => `
@@ -10357,18 +10437,36 @@
           </section>
 
           <section class="case">
-            <h2>§5 · פיצול זמן היצירה · הכשל שכבר קיים</h2>
+            <h2>§5 · הפתק נכתב בדרך · שדה, לא טופס</h2>
             <p class="note">
-              §B1, והוא לא היפותטי: ל-<code>BookingSheet</code> יש שדה "הערות" <b>היום</b>
-              (<code>BookingSheet.tsx:639</code>). אם פתק הוא שורה, שמירה אחת כותבת שתי ישויות, ולא
-              מקוון אלה שתי פעולות outbox עם תלות — הפתק צריך את המזהה של המארח. <b>מימין</b>: השדה
-              נשאר, והתלות נפתרת. <b>משמאל</b>: פתק הוא מעשה שני — כן ותר, פשוט יותר, ו<b>נסיגה</b>
-              עבור הטופס היחיד שכבר יש לו את זה.
+              <b>הוכרע על ידי הבעלים</b>, וההסתייגות שהעליתי קודם הייתה <b>שגויה</b>. טענתי ששמירה אחת
+              שכותבת שתי ישויות היא, לא מקוון, שתי פעולות outbox עם תלות מזהה. הקוד אומר אחרת:
+              <b>המזהים נוצרים בצד הלקוח</b> (<code>crypto.randomUUID()</code>,
+              <code>trip-state.tsx:930</code>) ו<b>ה-outbox הוא FIFO</b> — בדיוק מה שכתוב מעל
+              <code>createPlace</code> על מקום שנוצר לפני ההזמנה שמפנה אליו. אין תלות לפתור.
+              האפליקציה כבר עושה את זה פעמיים: מקום←הזמנה, והזמנה←אירוע נגזר (ADR-0093).
+            </p>
+            <p class="note">
+              אז זה <b>שדה</b>, לא כפתור שפותח גיליון. ומה שנחסך מהמשתמש: קטגוריה (יורשת), סמל
+              (יורש), כותרת (אין), ושמירה נפרדת (אין — זו השמירה של המארח). מה שנשאר: תיבת טקסט
+              אחת. ריקה — לא נכתב שום פתק.
             </p>
             <div class="pair">
-              <div class="col"><span class="tag plain">א · שדה בתוך הטופס (המצב היום)</span>${phone(formInline(), 'overlay', 520)}</div>
-              <div class="col"><span class="tag plain">ב · מעשה שני</span>${phone(formSecondAct(), 'overlay', 520)}</div>
+              <div class="col"><span class="tag after">יצירה · שדה אחד בדרך</span>${phone(formCreate(), 'overlay', 560)}</div>
+              <div class="col"><span class="tag after">עריכה · הקיימים למעלה, אחד ריק למטה</span>${phone(formEdit(), 'overlay', 560)}</div>
             </div>
+          </section>
+
+          <section class="case">
+            <h2>§5b · הירושה · נגזרת, לא מועתקת</h2>
+            <p class="note">
+              הפתק לא נושא קטגוריה ולא סמל משלו; שניהם נפתרים <b>מהמארח בזמן ההצגה</b>, דרך אותה
+              שרשרת <code>??</code> שהאפליקציה כבר מפעילה על סמלים (<code>chosenIcon</code>,
+              <code>constants.ts:313</code>). העתקה בזמן הכתיבה הייתה מקפיאה ערך שמתיישן ברגע
+              שהמארח משנה קטגוריה — בדיוק טעות ה"enum תוכן כקישוט" ש-<code>constants.ts</code> כבר
+              מזהיר ממנה ב-<code>DEFAULT_STAY_ICON</code>. השורה השלישית מראה למה זה משנה.
+            </p>
+            <div class="pair"><div class="col" style="width:${W}px">${inheritance()}</div></div>
           </section>
 
           <section class="case">
@@ -10560,12 +10658,37 @@
           אבל אז הוא מתחרה עם פתיחת השורה עצמה — וזה בדיוק סוג ההתנגשות שכדאי להרגיש לפני שמחליטים.
         </p>
 
-        <h3>§B1 · זמן היצירה — <span class="rej">פתוח, וזו ההחלטה היקרה</span></h3>
+        <h3>§B1 · זמן היצירה — <span class="ok">הוכרע: שדה בדרך</span>, וההסתייגות שלי הייתה שגויה</h3>
         <p>
-          לא המלצתי כאן בכוונה, כי המחיר אינו עיצובי אלא סנכרוני: שמירה אחת שכותבת שתי ישויות היא,
-          לא מקוון, שתי פעולות outbox עם תלות מזהה. <b>א</b> שומר על מה שיש היום ומשלם את התלות;
-          <b>ב</b> פשוט וכן, ומוריד יכולת מהטופס היחיד שכבר יש לו אותה. שווה להכריע מול המימוש של
-          ה-outbox ולא מול מסגרת.
+          הבעלים הכריע: הוספת פתק מטופס של אירוע/הזמנה/מקום <b>לא תפתח טופס חדש</b>. היא בדרך, והכל
+          שאפשר לחסוך מהמשתמש — נחסך.
+        </p>
+        <p>
+          <b>וההסתייגות שהעליתי קודם לא החזיקה.</b> טענתי ששמירה אחת שכותבת שתי ישויות היא, לא
+          מקוון, שתי פעולות outbox עם תלות מזהה. הקוד אומר אחרת: המזהים נוצרים בצד הלקוח
+          (<code>crypto.randomUUID()</code>, <code>trip-state.tsx:930</code>), אז מזהה המארח ידוע
+          <b>לפני</b> השמירה ואין למה לחכות; וה-outbox הוא FIFO, מה שכתוב מפורשות מעל
+          <code>createPlace</code> על מקום שנוצר לפני ההזמנה שמפנה אליו. האפליקציה כבר פתרה בדיוק
+          את הצורה הזאת פעמיים — מקום←הזמנה, והזמנה←אירוע נגזר (ADR-0093, שגם נותן את התבנית: הישות
+          הנגזרת נפלטת כ-<code>Change</code> יחיד דרך אותם appliers של ה-WS, בלי מסלול מקביל).
+        </p>
+        <p>
+          <b>מה נחסך בפועל:</b> קטגוריה (יורשת), סמל (יורש), כותרת (אין בכלל בטופס המארח), ושמירה
+          נפרדת (אין — זו השמירה של המארח). נשארה תיבת טקסט אחת, ותיבה ריקה לא כותבת פתק.
+        </p>
+
+        <h3>§B1b · הירושה — <span class="ok">נגזרת בזמן הצגה, לא מועתקת בזמן כתיבה</span></h3>
+        <p>
+          <code>Note.category</code> נשאר <code>null</code>, וההצגה פותרת
+          <code>note.category ?? host.category</code> — אותה שרשרת <code>??</code> שכבר מפעילה
+          <code>chosenIcon</code> (<code>constants.ts:313</code>). העתקה בזמן הכתיבה נראית זהה ביום
+          הראשון ומתפרקת ביום שהמארח משנה קטגוריה: הפתק היה נשאר עם הישן. זו בדיוק אזהרת
+          ה"enum תוכן כקישוט" שכתובה ב-<code>constants.ts</code> ליד <code>DEFAULT_STAY_ICON</code>.
+        </p>
+        <p>
+          <b>ולכן גם אין <code>Note.icon</code> בגרסה הראשונה.</b> השרשרת נותנת את הירושה בחינם, ושדה
+          משלו היה גורר בורר סמלים בעורך — כלומר עוד קלט, בסתירה ל"לחסוך כל מה שאפשר". אם יתברר שכן
+          רוצים סמל משלו, זו הוספה של עמודה אחת וחוליה אחת בשרשרת, ולא עיצוב מחדש.
         </p>
 
         <h3>§B5 · הפער של הרעיון — <span class="ok">הגיליון הקיים מקבל את המקטע</span></h3>

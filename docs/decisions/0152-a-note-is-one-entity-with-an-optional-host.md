@@ -64,6 +64,8 @@ The tile, the screen and the entity read `פתקים` / `פתק` (owner's call o
 
 **Custom user-defined categories are rejected for v1, and the reason is a cost rather than a taste.** The app has no open taxonomy anywhere — `EventCategory`, `BookingType` and `DocumentType` are closed enums with per-value `Record` lookups (`frontend/CLAUDE.md`'s constants rule) whose whole value is that the compiler flags a missing case when the enum grows. The first open one costs: no icon, no exhaustiveness, a merge problem the LWW model has no answer for (two members type `אוכל` and `אכל` on different phones and the trip has two categories that mean one thing), and no i18n story. If it still feels necessary after the surface has been lived with, it gets its own ADR, because what is being added is a taxonomy and not a field.
 
+**Amended (2026-08-01, session 205, owner's call) — an inherited category is RESOLVED, not copied, and the same chain covers the glyph.** The owner's instruction for the host forms is that adding a note _"shouldn't have to open a new form … it should be on the way … and everything that could be spared from the user should be"_ — which means a hosted note is written with **no category chosen at all**. So `Note.category` stays `null` and the render resolves `note.category ?? host.category`, through the same `??` chain `chosenIcon` already runs (`frontend/src/constants.ts:313`). Copying the host's value at write time looks identical on day one and goes stale the moment the host is recategorised, which is exactly the "content-enum-as-decoration" mistake `constants.ts` already warns about beside `DEFAULT_STAY_ICON`. **There is no `Note.icon` field**: the same chain gives the glyph for free, and a field of its own would drag an icon picker into the editor — one more input, against the instruction. Adding one later is a column and a link in the chain, not a redesign.
+
 **"Social media" is not a category — it is a link.** `Note.url` covers a pasted Instagram/TikTok/blog reference with no enum at all, and a URL-only note renders as a link card. It is also the honest hook for later enrichment (resolving a link's title and thumbnail is a remote strategy, §8), which a category never could have been.
 
 ### 6. The Index gets a third tile; a row gets a mark, not a body
@@ -73,6 +75,20 @@ The tile, the screen and the entity read `פתקים` / `פתק` (owner's call o
 The screen inherits ADR-0098 §2's apparatus **from day one rather than when it crowds**, because a notes list crowds faster than a bookings list: the category chip row, the search control (ADR-0102's multi-field matching over title/body/url), and the shared reveal (ADR-0120) on every control that changes the list. General notes and hosted notes are one list with the host shown on the row; the grouping and default order are a design-session question for the mockup, not a decision this ADR should invent from a fixture.
 
 **On every host surface: a note is a mark on the row, not content in it.** The row shows a small count/glyph; the body lives in the detail surface and the row menu (ADR-0138 — the row menu is one surface). ADR-0149 spent a whole session getting the in-trip header from 250px to 160px and ADR-0151's own amendment refused eight pixels of tile height for a repeated sentence; a note body in a timeline row spends all of it back. The on-the-ground payoff — standing outside the restaurant, tapping the event, reading _"ask for the roof table, the entrance is round the back"_ — is a detail-surface job and loses nothing by being one.
+
+### 6b. A note is written **on the way**, in the host's own form — amended 2026-08-01 (session 205), and it retracts a caution this ADR's §9 had left open
+
+The owner's call, and it settles the brief's §B1: adding a note from an event / booking / place / idea / document form **never opens a second form**. The host's form carries a plain `textarea`; a blank one writes nothing; the host's own save commits both.
+
+**The objection that was raised against this did not survive contact with the code, and that is worth recording rather than quietly dropping.** The design brief argued that one save writing two entities is, offline, two outbox ops with an id dependency between them. It is not:
+
+- **Host ids are client-generated** — `crypto.randomUUID()` in `trip-state.createBooking` (`frontend/src/state/trip-state.tsx:930`), so the host's id exists _before_ the save and the note can carry it immediately.
+- **The outbox is FIFO**, stated verbatim above `createPlace` for the case that already relies on it: a name-only Place is queued before the Booking that FK-references it.
+- **The shape is already solved twice** — Place→Booking (ordering) and Booking→derived Event ([ADR-0093](0093-offline-booking-linked-event-coherence.md), which also supplies the pattern: the derived entity is emitted as **one synthetic `Change` through the same appliers the WS echo uses**, never a parallel offline handler).
+
+So the inline note is cheap, and the build follows ADR-0093's path rather than inventing one. What the user is spared, in full: the category (§5's chain), the glyph (same chain), the title (absent from the host form — the body is the note), and any second commit.
+
+**On edit the same slot lists the host's existing notes** — compact, tappable to edit — above one blank field. Still no second form, still one save. This is the case a create-only design discovers late.
 
 ### 7. A booking's notes migrate; its WiFi does not
 
@@ -120,6 +136,7 @@ Before writing anything new:
 - **ADR-0098's `מחקר` debt is discharged** without spending the word.
 - **ADR-0151 §2 gains a `cost` axis** and §7's arming rule re-keys to it — amended in place, with the first free-remote strategy as the consumer that will prove it.
 - **The first external source is a registration plus one handler**, against a contract already fixed — which is the flexibility asked for, bought without pre-building a pipe that has no consumer (ADR-0065).
+- **The host forms each gain one `textarea`** (§6b), and `BookingSheet`'s existing `הערות` field becomes that slot rather than being removed — the one form that already had this keeps it.
 - **New `he.ts` copy** for the tile, the screen, the editor and the host-surface affordances, and the booking form's `הערות` renamed. No em dashes, per convention.
 - **Design owes a mockup** before the build: the notes screen's grouping and default order, the host-surface mark, and the card tier's exact subordinate treatment (§3 names the grammar to spend, not the pixels).
 
