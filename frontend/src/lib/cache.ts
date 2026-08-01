@@ -5,10 +5,12 @@ import {
   CHANGE_ACTION,
   ENTITY_TYPE,
   EVENT_STATUS,
+  NOTE_SOURCE,
   type Change,
   type EntityType,
   type MaybeItem,
   type Membership,
+  type Note,
   type Place,
   type Trip,
   type TripSnapshot,
@@ -20,6 +22,7 @@ import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 import { fetchTrips } from './api';
 import { clearAllCachedDocuments } from './doc-cache';
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
+import { dropNotesForHostChange } from './notes';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
 export interface SnapshotMeta {
@@ -29,6 +32,7 @@ export interface SnapshotMeta {
   users: User[];
   maybeItems: MaybeItem[];
   places: Place[];
+  notes: Note[];
   latestSeq: string;
 }
 
@@ -51,6 +55,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       users: snapshot.users,
       maybeItems: snapshot.maybeItems,
       places: snapshot.places,
+      notes: snapshot.notes,
       latestSeq: snapshot.latestSeq,
     });
   });
@@ -75,6 +80,9 @@ export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot |
     documents,
     maybeItems: meta.maybeItems,
     places: meta.places,
+    // A trip cached before notes shipped has no list; treat it as empty rather than
+    // letting `undefined` reach a `.map()` on the first render after the upgrade.
+    notes: meta.notes ?? [],
     latestSeq: meta.latestSeq,
   };
 }
@@ -103,7 +111,7 @@ function applyToRow<T extends { id: string }>(
 type CacheRow = { id: string; tripId?: string };
 type CacheChannel =
   | { table: Table<CacheRow, string> }
-  | { metaList: 'maybeItems' | 'places' | 'members' }
+  | { metaList: 'maybeItems' | 'places' | 'members' | 'notes' }
   | { metaTrip: true };
 
 const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
@@ -113,6 +121,10 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
   // reaches the client (ADR-0015/0034); blob bytes cache separately (ADR-0055).
   [ENTITY_TYPE.DOCUMENT]: { table: db.documents as unknown as Table<CacheRow, string> },
   [ENTITY_TYPE.MAYBE_ITEM]: { metaList: 'maybeItems' },
+  // Notes ride `snapshotMeta` rather than a table of their own (ADR-0152's reuse audit):
+  // a trip's notes are a few hundred small rows, and a dedicated Dexie table would cost a
+  // schema version bump plus edits to `wipeLocalData` and three transaction lists.
+  [ENTITY_TYPE.NOTE]: { metaList: 'notes' },
   [ENTITY_TYPE.PLACE]: { metaList: 'places' },
   // Trip settings are data-plane (ADR-0039), so the roster + trip row stay
   // coherent too — else an offline reader shows a stale name/member on cold load.
@@ -123,7 +135,7 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
 /** Upsert/delete a change into one of `snapshotMeta`'s embedded lists. */
 async function applyChangeToMetaList(
   tripId: string,
-  listKey: 'maybeItems' | 'places' | 'members',
+  listKey: 'maybeItems' | 'places' | 'members' | 'notes',
   change: EntityChange,
 ): Promise<void> {
   const meta = await db.snapshotMeta.get(tripId);
@@ -140,10 +152,26 @@ async function applyChangeToMetaList(
   await db.snapshotMeta.put({ ...meta, [listKey]: updated } as SnapshotMeta);
 }
 
+/** The cached half of the host-cascade rule (`lib/notes.ts`'s `dropNotesForHostChange`,
+ *  ADR-0152 §2). One `snapshotMeta` write, and only when a host delete actually drops
+ *  something — the shared derivation returns the same array otherwise, so this reads the
+ *  cache and writes nothing on every other change. */
+async function dropCachedNotesForHost(tripId: string, change: EntityChange): Promise<void> {
+  const meta = await db.snapshotMeta.get(tripId);
+  if (!meta?.notes?.length) return;
+  const next = dropNotesForHostChange(meta.notes, change);
+  if (next !== meta.notes) await db.snapshotMeta.put({ ...meta, notes: next });
+}
+
 /** Keeps the Dexie cache coherent with every data-plane entity type in the
  *  snapshot so a change (a WS echo or an offline optimistic write) never silently
  *  falls out of the offline cache. Table-driven off `CACHE_CHANNELS`. */
 export async function applyChangeToCache(tripId: string, change: EntityChange): Promise<void> {
+  // The host cascade's cache half (ADR-0152 §2) — BEFORE the channel dispatch, because a
+  // host's delete is routed to the host's own channel and would otherwise leave its notes
+  // in the cache with nothing to remove them: the database cascade writes no `Change` rows
+  // of its own. A no-op for every change that is not a host delete.
+  await dropCachedNotesForHost(tripId, change);
   const channel = CACHE_CHANNELS[change.entityType];
   if (!channel) return;
   if ('table' in channel) {
@@ -400,6 +428,30 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         entityId: op.placeId,
         action: CHANGE_ACTION.UPDATE,
         after: op.input,
+      });
+    case OUTBOX_VERB.CREATE_NOTE:
+      if (!op.input.id) return [];
+      // `source` is the server's default and the seed does not carry it, so the optimistic
+      // row states it — otherwise a note read back from the cache before its flush would
+      // fail `noteSchema` on the next cold load.
+      return one({
+        entityType: ENTITY_TYPE.NOTE,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: { ...op.input, source: NOTE_SOURCE.MEMBER },
+      });
+    case OUTBOX_VERB.UPDATE_NOTE:
+      return one({
+        entityType: ENTITY_TYPE.NOTE,
+        entityId: op.noteId,
+        action: CHANGE_ACTION.UPDATE,
+        after: op.input,
+      });
+    case OUTBOX_VERB.DELETE_NOTE:
+      return one({
+        entityType: ENTITY_TYPE.NOTE,
+        entityId: op.noteId,
+        action: CHANGE_ACTION.DELETE,
       });
     case OUTBOX_VERB.UPDATE_TRIP:
       return one({

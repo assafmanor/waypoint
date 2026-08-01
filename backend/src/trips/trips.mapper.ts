@@ -4,6 +4,7 @@ import type {
   Event,
   Membership,
   MaybeItem,
+  Note,
   Place,
   Trip,
   User,
@@ -14,6 +15,8 @@ import type {
   InvitePreview,
   Membership as SharedMembership,
   MaybeItem as SharedMaybeItem,
+  Note as SharedNote,
+  NoteSource,
   Place as SharedPlace,
   Trip as SharedTrip,
   TripEvent,
@@ -136,6 +139,28 @@ export const toMaybeItemDto = (m: MaybeItem): SharedMaybeItem => ({
   createdAt: m.createdAt.toISOString(),
   updatedAt: m.updatedAt.toISOString(),
   updatedBy: m.updatedBy,
+});
+
+/** A note row → its wire DTO. `source` is a plain column rather than a Prisma enum (it
+ *  has one value in v1 and its second arrives with the first strategy, ADR-0152 §8), so
+ *  this is the one place the stored string is narrowed to the shared union. */
+export const toNoteDto = (n: Note): SharedNote => ({
+  id: n.id,
+  tripId: n.tripId,
+  title: n.title ?? undefined,
+  body: n.body ?? undefined,
+  url: n.url ?? undefined,
+  category: n.category ?? undefined,
+  eventId: n.eventId ?? undefined,
+  bookingId: n.bookingId ?? undefined,
+  placeId: n.placeId ?? undefined,
+  maybeItemId: n.maybeItemId ?? undefined,
+  documentId: n.documentId ?? undefined,
+  source: n.source as NoteSource,
+  createdBy: n.createdBy,
+  createdAt: n.createdAt.toISOString(),
+  updatedAt: n.updatedAt.toISOString(),
+  updatedBy: n.updatedBy,
 });
 
 export const toInvitePreviewDto = (t: Trip, memberCount: number): InvitePreview => ({

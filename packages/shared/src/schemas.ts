@@ -10,6 +10,8 @@ import {
   eventSourceSchema,
   eventStatusSchema,
   membershipRoleSchema,
+  NOTE_HOST_KEYS,
+  type NoteHostKey,
 } from './entities';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 import { MAX_DISPLAY_NAME_LENGTH, MAX_TRIP_NAME_LENGTH } from './constants';
@@ -375,6 +377,61 @@ export const updateMaybeItemSchema = z.object({
   targetDate: z.string().nullish(),
 });
 export type UpdateMaybeItemInput = z.infer<typeof updateMaybeItemSchema>;
+
+// --- Notes (ADR-0152 / ADR-0153) ------------------------------------------------------
+// The two rules a note owes, enforced here so client and server refuse identically
+// (ADR-0023) and the frontend's `useFormErrors` and the Nest pipe read the same verdict.
+
+const noteHostCount = (data: Partial<Record<NoteHostKey, unknown>>): number =>
+  NOTE_HOST_KEYS.filter((key) => data[key] != null).length;
+
+/** A note says something, or points somewhere, or both — never neither. This is the
+ *  editor's ONE refusal (ADR-0153 §5), and it is marked on **both** fields that can cure
+ *  it rather than the first, so a save is not refused twice for one mistake (ADR-0150). */
+const hasContent = (data: { body?: string | null; url?: string | null }): boolean =>
+  !!data.body?.trim() || !!data.url?.trim();
+
+export const createNoteSchema = z
+  .object({
+    id: entityIdSchema.optional(),
+    title: z.string().optional(),
+    body: z.string().optional(),
+    url: z.string().optional(),
+    /** Absent on a hosted note **by design** — the category is resolved from the host at
+     *  render, never copied at write time (ADR-0152 §5's amendment). */
+    category: eventCategorySchema.optional(),
+    eventId: entityIdSchema.optional(),
+    bookingId: entityIdSchema.optional(),
+    placeId: entityIdSchema.optional(),
+    maybeItemId: entityIdSchema.optional(),
+    documentId: entityIdSchema.optional(),
+  })
+  .refine(hasContent, { message: 'a note needs a body or a url', path: ['body'] })
+  .refine((data) => noteHostCount(data) <= 1, {
+    message: 'a note has at most one host',
+    path: ['eventId'],
+  });
+export type CreateNoteInput = z.infer<typeof createNoteSchema>;
+
+/** `PATCH /trips/:tripId/notes/:noteId` — **a whole-content submit, not a sparse patch.**
+ *  Every content field is sent and an absent one means cleared, because the only edit
+ *  surfaces are a form that holds all of them (the editor sheet) and the composer chip,
+ *  which reopens the note's whole body. Stated because the refusal below reads the SUBMITTED
+ *  fields: a caller that sent only `category` would be told it needs a body, which would be
+ *  a confusing lie about a note that has one. Same shape as `updateMaybeItemSchema`, whose
+ *  `apply` writes `targetDate ?? null` unconditionally for the same reason.
+ *
+ *  The host is **not** editable: attachment is established from the host's side (ADR-0153 §5
+ *  — there is no host picker in v1), and a note that could be re-hosted would need one. */
+export const updateNoteSchema = z
+  .object({
+    title: z.string().nullish(),
+    body: z.string().nullish(),
+    url: z.string().nullish(),
+    category: eventCategorySchema.nullish(),
+  })
+  .refine(hasContent, { message: 'a note needs a body or a url', path: ['body'] });
+export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 
 /** `POST /trips/:tripId/invite` response. */
 export const inviteUrlSchema = z.object({ inviteUrl: z.string() });

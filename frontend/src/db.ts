@@ -4,8 +4,8 @@ import type { OutboxEntry } from './lib/outbox';
 import type { SnapshotMeta } from './lib/cache';
 
 // Offline read cache (sync-and-offline.md "Read"). events/bookings mirror the
-// per-entity tables; snapshotMeta holds the rest of the snapshot (trip,
-// members, maybeItems, notes, latestSeq) that has no dedicated table.
+// per-entity tables; snapshotMeta holds the rest of the snapshot (trip, members,
+// users, maybeItems, places, notes, latestSeq) that has no dedicated table.
 export class WaypointDB extends Dexie {
   events!: Table<TripEvent, string>;
   bookings!: Table<Booking, string>;

@@ -75,6 +75,7 @@ export const entityTypeSchema = z.enum([
   'place',
   'trip',
   'membership',
+  'note',
 ]);
 export type EntityType = z.infer<typeof entityTypeSchema>;
 
@@ -301,6 +302,67 @@ export const maybeItemSchema = z.object({
 });
 export type MaybeItem = z.infer<typeof maybeItemSchema>;
 
+/** Where a note came from (ADR-0152 §1/§8). One value in v1 — a member wrote it — because
+ *  no strategy is registered and nothing external can produce a row yet (§9). It is a named
+ *  constant rather than a boolean precisely so the second value is a line and not a
+ *  migration: an external tip becomes a `Note` only when a human keeps it, and the row has
+ *  to record which source that was. */
+export const noteSourceSchema = z.enum(['member']);
+export type NoteSource = z.infer<typeof noteSourceSchema>;
+
+/** The five typed host FKs as one list, so "at most one host" is a `.filter().length`
+ *  rather than a ten-clause boolean and a sixth host is one string. `NOTE_HOST_FIELD`
+ *  (`constants.ts`) is the same set from the other direction — entity type → which FK —
+ *  and it is what the cascade rule keys off. Declared here rather than beside the schemas
+ *  that enforce it because `constants.ts` needs the type too, and `schemas.ts` already
+ *  imports `constants.ts`. */
+export const NOTE_HOST_KEYS = [
+  'eventId',
+  'bookingId',
+  'placeId',
+  'maybeItemId',
+  'documentId',
+] as const;
+export type NoteHostKey = (typeof NOTE_HOST_KEYS)[number];
+
+/** **A note is one entity and what it is about is a field** (ADR-0152 §1). No host = a
+ *  general note; exactly one host FK set = that entity's note. Same row, same editor, same
+ *  list, same sync channel, same offline story either way.
+ *
+ *  `category` stays **null on a hosted note** and is RESOLVED at render as
+ *  `note.category ?? host.category` (§5's amendment) — copying the host's value at write
+ *  time looks identical on day one and goes stale the moment the host is recategorised.
+ *  There is deliberately no `icon`: the same chain gives the glyph, and a field of its own
+ *  would drag an icon picker into an editor whose whole point is that it asks for nothing.
+ *
+ *  A note carries `body` or `url` or both — never neither, which is the editor's one
+ *  refusal (ADR-0150 / ADR-0153 §5). `title` is optional; when it and a body are both
+ *  present the row shows the title and demotes the body, so they are never printed twice. */
+export const noteSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  title: z.string().optional(),
+  body: z.string().optional(),
+  /** A pasted Instagram/TikTok/blog reference. **"Social media" is a link, not a category**
+   *  (ADR-0152 §5) — and it is the honest hook for later enrichment, which an enum never was. */
+  url: z.string().optional(),
+  category: eventCategorySchema.optional(),
+  // The typed host union: AT MOST ONE is set (ADR-0152 §2). Typed FKs rather than a
+  // `targetType`/`targetId` pair so orphan cleanup is the database's job in one place
+  // instead of application logic in five delete paths.
+  eventId: idSchema.optional(),
+  bookingId: idSchema.optional(),
+  placeId: idSchema.optional(),
+  maybeItemId: idSchema.optional(),
+  documentId: idSchema.optional(),
+  source: noteSourceSchema,
+  createdBy: idSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type Note = z.infer<typeof noteSchema>;
+
 /** Full current trip state + sync cursor — GET /trips/:tripId/snapshot (ADR-0019/0022). */
 export const tripSnapshotSchema = z.object({
   trip: tripSchema,
@@ -313,6 +375,7 @@ export const tripSnapshotSchema = z.object({
   documents: z.array(documentSummarySchema),
   maybeItems: z.array(maybeItemSchema),
   places: z.array(placeSchema),
+  notes: z.array(noteSchema),
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq
 });
 export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;

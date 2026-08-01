@@ -55,6 +55,11 @@ function subjectOf(change: Change, users: User[]): string {
       return pick('name') ?? t.changeFeed.nouns.place;
     case 'document':
       return pick('filename') ?? pick('name') ?? t.changeFeed.nouns.document;
+    // A note's own words ARE its name, so the line reads "wrote 'the entrance is round the
+    // back'" rather than the anonymous "added an item" the default case would have given
+    // (ADR-0152). A titled note leads with its title, exactly as its row does.
+    case 'note':
+      return pick('title') ?? pick('body') ?? pick('url') ?? t.changeFeed.nouns.note;
     case 'membership': {
       const uid = str(after.userId) ?? str(before.userId);
       const member = uid ? users.find((u) => u.id === uid) : undefined;
@@ -79,6 +84,13 @@ export function describeChange(
   tz: string,
 ): ChangeEntry | null {
   if (meId && change.actorUserId === meId) return null;
+  // A note's EDITS do not narrate (owner, session 206). The feed is a bounded 20-entry ring
+  // and a note is the one entity a group re-reads and re-words — three people tidying one
+  // sentence would flush everything else out of it. Its create and its delete still speak,
+  // which is what the feed is actually for: something new to know, or something gone.
+  if (change.entityType === ENTITY_TYPE.NOTE && change.action === CHANGE_ACTION.UPDATE) {
+    return null;
+  }
 
   const cf = t.changeFeed;
   const actor = users.find((u) => u.id === change.actorUserId);

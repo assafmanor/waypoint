@@ -114,6 +114,7 @@ model User {
   changes            Change[]
   calendarEventLinks CalendarEventLink[]
   tripBlocks         TripBlock[]
+  notes              Note[]
 }
 
 // Provider identity + that provider's OAuth material, one per (user, provider). ADR-0020.
@@ -179,6 +180,7 @@ model Trip {
   changes     Change[]
   invite      Invite?
   blocks      TripBlock[]
+  notes       Note[]
 
   @@index([createdBy])
 }
@@ -256,6 +258,7 @@ model Event {
 
   trip          Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
   booking       Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  notes         Note[]
   place         Place?              @relation("EventPlace", fields: [placeId], references: [id], onDelete: SetNull)
   calendarLinks CalendarEventLink[]
 
@@ -287,6 +290,7 @@ model Booking {
   place     Place? @relation("BookingPlace", fields: [placeId], references: [id], onDelete: SetNull)
   fromPlace Place? @relation("BookingFromPlace", fields: [fromPlaceId], references: [id], onDelete: SetNull)
   toPlace   Place? @relation("BookingToPlace", fields: [toPlaceId], references: [id], onDelete: SetNull)
+  notes     Note[]
 
   @@index([tripId])
 }
@@ -321,6 +325,7 @@ model Place {
   bookingsFrom Booking[]   @relation("BookingFromPlace")
   bookingsTo   Booking[]   @relation("BookingToPlace")
   maybeItems   MaybeItem[] @relation("MaybeItemPlace")
+  notes        Note[]
 
   @@unique([tripId, googlePlaceId])
   @@index([tripId])
@@ -355,7 +360,8 @@ model Document {
   updatedAt   DateTime     @updatedAt
   updatedBy   String
 
-  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  notes Note[]
 
   @@index([tripId])
 }
@@ -379,8 +385,61 @@ model MaybeItem {
   trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
   user  User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   place Place? @relation("MaybeItemPlace", fields: [placeId], references: [id], onDelete: SetNull)
+  notes Note[]
 
   @@index([tripId])
+}
+
+// A note is ONE entity and what it is about is a field (ADR-0152 §1). No host = a general
+// note; exactly one of the five FKs set = that entity's note — same row, same editor, same
+// list, same sync channel either way.
+//
+// Every host FK is `onDelete: Cascade`, which is the STORAGE guarantee and deliberately not
+// the sync one: a database cascade deletes these rows WITHOUT writing `Change` rows, so the
+// clients are told by a rule in the ADR-0094 appliers keyed off `NOTE_HOST_FIELD` instead
+// (ADR-0152 §2). Typed FKs rather than a `targetType`/`targetId` pair so orphan cleanup is
+// the database's job in one place rather than application logic in five delete paths; the
+// accepted cost is a migration when a sixth entity becomes note-bearing.
+//
+// `category` is nullable and STAYS null on a hosted note — it resolves from the host at
+// render (§5's amendment). There is no `icon` column: the same chain gives the glyph.
+model Note {
+  id       String         @id @default(cuid())
+  tripId   String
+  title    String?
+  body     String?
+  url      String?
+  category EventCategory?
+  // At most one of these is set — enforced by the shared zod schema at both edges
+  // (ADR-0023), since the union is closed and a check constraint here could not be
+  // expressed through Prisma's schema language.
+  eventId      String?
+  bookingId    String?
+  placeId      String?
+  maybeItemId  String?
+  documentId   String?
+  source       String     @default("member")
+  createdBy    String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  updatedBy    String
+
+  trip      Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  event     Event?     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  booking   Booking?   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  place     Place?     @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  maybeItem MaybeItem? @relation(fields: [maybeItemId], references: [id], onDelete: Cascade)
+  document  Document?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  // The five host indexes are what make "this row's notes" a lookup rather than a scan —
+  // the mark on every row of a day asks that question once per host.
+  @@index([tripId])
+  @@index([eventId])
+  @@index([bookingId])
+  @@index([placeId])
+  @@index([maybeItemId])
+  @@index([documentId])
 }
 
 // The sync/undo/feed substrate; seq is a strictly-increasing cursor (ADR-0019).

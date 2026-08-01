@@ -43,6 +43,7 @@ const SNAPSHOT = {
   documents: [],
   maybeItems: [],
   places: [],
+  notes: [],
   latestSeq: '0',
 };
 const ME = { user: USER, memberships: [MEMBERSHIP] };

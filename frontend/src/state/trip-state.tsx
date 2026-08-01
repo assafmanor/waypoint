@@ -20,14 +20,17 @@ import {
   CHANGES_PAGE_LIMIT,
   ENTITY_TYPE,
   EVENT_STATUS,
+  NOTE_SOURCE,
   type Booking,
   type Change,
   type EntityType,
   type CreateBookingInput,
+  type CreateNoteInput,
   type CreatePlaceInput,
   type DocumentSummary,
   type MaybeItem,
   type Membership,
+  type Note,
   type MembershipRole,
   type Trip,
   type TripEvent,
@@ -35,14 +38,17 @@ import {
   type ResolvePlaceInput,
   type TripSnapshot,
   type UpdateBookingInput,
+  type UpdateNoteInput,
   type UpdatePlaceInput,
   type UpdateTripInput,
   type User,
 } from '@waypoint/shared';
 import {
   createBooking as apiCreateBooking,
+  createNote as apiCreateNote,
   createPlace as apiCreatePlace,
   deleteBooking as apiDeleteBooking,
+  deleteNote as apiDeleteNote,
   deleteTrip as apiDeleteTrip,
   evictDocumentBlob,
   fetchChanges,
@@ -52,6 +58,7 @@ import {
   resolvePlace as apiResolvePlace,
   setMemberRole as apiSetMemberRole,
   updateBooking as apiUpdateBooking,
+  updateNote as apiUpdateNote,
   updatePlace as apiUpdatePlace,
   updateTrip as apiUpdateTrip,
   type RippleSuggestion,
@@ -64,6 +71,7 @@ import {
   coerceTripPatch,
   readCachedSnapshot,
 } from '../lib/cache';
+import { dropNotesForHostChange } from '../lib/notes';
 import {
   flushOutbox,
   getSyncFailures,
@@ -385,6 +393,19 @@ export interface SettingsVerbs {
  *  form (checkpoint 4) call these. A booking `event` seed is forwarded to the
  *  server (which creates the linked event atomically); the optimistic *event*
  *  side is the form's job — for now a seeded event arrives via the WS echo. */
+/** Note write verbs (ADR-0152). Optimistic + reconcile/rollback and queued offline, the
+ *  same shape as the index verbs beside them — a note is an ordinary trip write, not a
+ *  derived entity, so it needs no synthetic `Change` of its own (ADR-0093 is for entities
+ *  the SERVER materializes; a note has its own op).
+ *
+ *  `create` resolves to the note so a caller that wrote several in one save can await them
+ *  in order, which is what keeps the outbox FIFO and a host FK valid on flush (§6b). */
+export interface NoteVerbs {
+  createNote: (input: CreateNoteInput) => Promise<Note | undefined>;
+  updateNote: (noteId: string, input: UpdateNoteInput) => Promise<void>;
+  deleteNote: (noteId: string) => Promise<void>;
+}
+
 export interface IndexVerbs {
   /** `silent` suppresses the saved/queued toast, for a caller that is doing more than one
    *  write and owes the user ONE message about the whole thing (ADR-0136 §3's conversion).
@@ -425,6 +446,9 @@ interface TripContextValue {
    *  surfaces can't drift apart on what they resolve from. */
   zoneEvidence: ZoneEvidence;
   documents: DocumentSummary[];
+  /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
+   *  notes alike — what a note is about is a field on the row, not a separate store. */
+  notes: Note[];
   activeDate: string;
   setActiveDate: (date: string) => void;
   events: TripEvent[];
@@ -433,6 +457,7 @@ interface TripContextValue {
   dispatch: React.Dispatch<Action>;
   settings: SettingsVerbs;
   indexVerbs: IndexVerbs;
+  noteVerbs: NoteVerbs;
   // Group change-feed (ADR-0081, U-09): a bounded, newest-first list of recent
   // SHARED peer edits, narrated (not re-applied) off the same WS `change` stream.
   // Own edits are filtered out; resets on trip switch (TripReady remounts).
@@ -590,6 +615,10 @@ function TripReady({
   // reflect live. The bytes still load lazily via /content + the ADR-0055 cache.
   const [documents, setDocuments] = useState<DocumentSummary[]>(snapshot.documents);
 
+  // Notes ride the snapshot as a reactive list (ADR-0152), so a peer's note and our own
+  // optimistic write both reflect live through the one applier below.
+  const [notes, setNotes] = useState<Note[]>(snapshot.notes);
+
   // Group change-feed buffer (ADR-0081, U-09). Narrated from the same WS change
   // stream in applyRemoteChange below — never a second socket, never re-applied.
   // Re-inits to empty on trip switch (TripReady remounts). The describe context
@@ -690,6 +719,7 @@ function TripReady({
       [ENTITY_TYPE.BOOKING]: (change) =>
         setBookings((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.PLACE]: (change) => setPlaces((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.NOTE]: (change) => setNotes((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT]: (change) => {
         // A replace/delete invalidates the client blob cache: the /content URL is
         // reused across a replace with no fresh updatedAt to re-key it (ADR-0055/0058).
@@ -709,6 +739,12 @@ function TripReady({
   const applyEntityChange = useCallback(
     (change: Change) => {
       void applyChangeToCache(tripId, change);
+      // The host cascade's memory half (ADR-0152 §2), beside the cache half inside
+      // `applyChangeToCache`. It runs for EVERY change rather than inside a host's own
+      // channel, because the thing that has to happen — a deleted host's notes leaving the
+      // list — belongs to no single host's channel and would otherwise be five branches.
+      // A no-op unless this is a host delete that actually hosted something.
+      setNotes((prev) => dropNotesForHostChange(prev, change));
       memoryChannels[change.entityType]?.(change);
     },
     [tripId, memoryChannels],
@@ -749,6 +785,7 @@ function TripReady({
           setBookings(s.bookings);
           setPlaces(s.places);
           setDocuments(s.documents);
+          setNotes(s.notes);
           onReconnected();
         },
         () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -1097,6 +1134,90 @@ function TripReady({
     };
   }, [tripId, bookings, places, toast, authorId, applyEntityChange]);
 
+  // Notes (ADR-0152). Optimistic write, reconcile on the server's row, roll back on a real
+  // failure — the same three moves as the index verbs above, over the `notes` list.
+  const noteVerbs = useMemo<NoteVerbs>(() => {
+    const stamp = () => new Date(getNow()).toISOString();
+    return {
+      createNote: async (input) => {
+        const id = input.id ?? crypto.randomUUID();
+        const withId = { ...input, id };
+        const optimistic = {
+          ...withId,
+          tripId,
+          source: NOTE_SOURCE.MEMBER,
+          createdBy: authorId,
+          createdAt: stamp(),
+          updatedAt: stamp(),
+          updatedBy: authorId,
+        } as Note;
+        // Newest first, the screen's own order (ADR-0153 §2) — so an optimistic note lands
+        // where the server would have put it and does not jump on reconcile.
+        const previous = notes;
+        setNotes((prev) => [optimistic, ...prev]);
+        try {
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.CREATE_NOTE, input: withId },
+            () => apiCreateNote(tripId, withId),
+          );
+          if (canonical) setNotes((prev) => prev.map((n) => (n.id === id ? canonical : n)));
+          return canonical ?? optimistic;
+        } catch (err) {
+          setNotes(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      updateNote: async (noteId, input) => {
+        const previous = notes;
+        setNotes((prev) =>
+          prev.map((n) =>
+            n.id === noteId
+              ? {
+                  ...n,
+                  // A whole-content submit: an absent field CLEARS, so the optimistic row
+                  // has to clear it too or the screen would show a stale title until the
+                  // echo lands (`coerceClearedFields` is the same rule one layer down).
+                  title: input.title ?? undefined,
+                  body: input.body ?? undefined,
+                  url: input.url ?? undefined,
+                  category: input.category ?? undefined,
+                  updatedAt: stamp(),
+                  updatedBy: authorId,
+                }
+              : n,
+          ),
+        );
+        try {
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_NOTE, noteId, input },
+            () => apiUpdateNote(tripId, noteId, input),
+          );
+          if (canonical) setNotes((prev) => prev.map((n) => (n.id === noteId ? canonical : n)));
+        } catch (err) {
+          setNotes(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      deleteNote: async (noteId) => {
+        const previous = notes;
+        setNotes((prev) => prev.filter((n) => n.id !== noteId));
+        try {
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_NOTE, noteId }, () =>
+            apiDeleteNote(tripId, noteId),
+          );
+        } catch (err) {
+          setNotes(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+    };
+  }, [tripId, notes, toast, authorId]);
+
   const value = useMemo<TripContextValue>(
     () => ({
       trip,
@@ -1107,6 +1228,7 @@ function TripReady({
       zoneCrossings,
       zoneEvidence,
       documents,
+      notes,
       activeDate,
       setActiveDate,
       events: state.events,
@@ -1115,6 +1237,7 @@ function TripReady({
       dispatch,
       settings,
       indexVerbs,
+      noteVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,
@@ -1131,8 +1254,10 @@ function TripReady({
       zoneCrossings,
       zoneEvidence,
       documents,
+      notes,
       settings,
       indexVerbs,
+      noteVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,

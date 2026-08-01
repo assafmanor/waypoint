@@ -9,6 +9,8 @@ import type {
   CreateEventInput,
   CreateMaybeItemInput,
   UpdateMaybeItemInput,
+  CreateNoteInput,
+  UpdateNoteInput,
   CreatePlaceInput,
   DocumentType,
   EventStatus,
@@ -28,10 +30,12 @@ import {
   createEvent,
   createMaybeItem,
   updateMaybeItem,
+  createNote,
   createPlace,
   deleteBooking,
   deleteEvent,
   deleteMaybeItem,
+  deleteNote,
   deleteTrip,
   moveEvent,
   removeMember,
@@ -39,6 +43,7 @@ import {
   setMemberRole,
   updateBooking,
   updateEvent,
+  updateNote,
   updatePlace,
   updateTrip,
   uploadDocument,
@@ -71,6 +76,9 @@ export const OUTBOX_VERB = {
   CREATE_PLACE: 'createPlace',
   UPDATE_PLACE: 'updatePlace',
   UPLOAD_DOCUMENT: 'uploadDocument',
+  CREATE_NOTE: 'createNote',
+  UPDATE_NOTE: 'updateNote',
+  DELETE_NOTE: 'deleteNote',
 } as const;
 
 export type OutboxVerb = (typeof OUTBOX_VERB)[keyof typeof OUTBOX_VERB];
@@ -111,7 +119,13 @@ export type OutboxOp =
   // Document upload (ADR-0056) — the first outbox op to carry binary: the file
   // rides as a `File` (a `Blob`, which Dexie persists) so the sheet can close
   // instantly and the upload flushes in the background / on reconnect.
-  | { verb: typeof OUTBOX_VERB.UPLOAD_DOCUMENT; input: CreateDocumentInput; file: File };
+  | { verb: typeof OUTBOX_VERB.UPLOAD_DOCUMENT; input: CreateDocumentInput; file: File }
+  // Notes (ADR-0152) — offline-capable like every other trip write. A note written on a
+  // host's form is queued right after its host, and FIFO is what makes its host FK valid
+  // by the time the server sees it (ADR-0152 §6b).
+  | { verb: typeof OUTBOX_VERB.CREATE_NOTE; input: CreateNoteInput }
+  | { verb: typeof OUTBOX_VERB.UPDATE_NOTE; noteId: string; input: UpdateNoteInput }
+  | { verb: typeof OUTBOX_VERB.DELETE_NOTE; noteId: string };
 
 export interface OutboxEntry {
   seq?: number;
@@ -135,6 +149,7 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.CREATE_BOOKING:
     case OUTBOX_VERB.CREATE_PLACE:
     case OUTBOX_VERB.UPLOAD_DOCUMENT:
+    case OUTBOX_VERB.CREATE_NOTE:
       return op.input.id ?? '';
     case OUTBOX_VERB.UPDATE:
     case OUTBOX_VERB.SET_STATUS:
@@ -151,6 +166,9 @@ export function outboxOpEntityId(op: OutboxOp): string {
       return op.bookingId;
     case OUTBOX_VERB.UPDATE_PLACE:
       return op.placeId;
+    case OUTBOX_VERB.UPDATE_NOTE:
+    case OUTBOX_VERB.DELETE_NOTE:
+      return op.noteId;
     case OUTBOX_VERB.SET_MEMBER_ROLE:
     case OUTBOX_VERB.REMOVE_MEMBER:
       return op.userId;
@@ -631,6 +649,15 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       // after the first attempt already landed is treated as already-applied
       // server-side rather than creating a second document / blob.
       await uploadDocument(tripId, op.input, op.file);
+      return;
+    case OUTBOX_VERB.CREATE_NOTE:
+      await createNote(tripId, op.input);
+      return;
+    case OUTBOX_VERB.UPDATE_NOTE:
+      await updateNote(tripId, op.noteId, op.input);
+      return;
+    case OUTBOX_VERB.DELETE_NOTE:
+      await deleteNote(tripId, op.noteId);
       return;
   }
 }

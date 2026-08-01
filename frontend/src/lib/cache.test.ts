@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Change, DocumentSummary, Trip, TripSnapshot } from '@waypoint/shared';
+import type { Change, DocumentSummary, Note, Trip, TripSnapshot } from '@waypoint/shared';
+import { CHANGE_ACTION, ENTITY_TYPE } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import {
@@ -39,6 +40,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     documents: [],
     maybeItems: MAYBE_ITEMS,
     places: [],
+    notes: [],
     latestSeq: '10',
     ...overrides,
   };
@@ -494,5 +496,85 @@ describe('wipeLocalData (sign-out / session loss, F-01)', () => {
     expect(await db.tripList.count()).toBe(0);
     expect(await db.outbox.count()).toBe(0);
     expect(localStorage.getItem(ACTIVE_TRIP_STORAGE_KEY)).toBeNull();
+  });
+});
+
+// Notes ride `snapshotMeta` (no table of their own), so this covers both halves the
+// ADR-0152 §2 rule needs: the ordinary channel, and the host cascade that has no Change.
+describe('notes in the offline cache (ADR-0152)', () => {
+  const note = (id: string, over: Partial<Note> = {}): Note => ({
+    id,
+    tripId: TRIP_ID,
+    body: `note ${id}`,
+    source: 'member',
+    createdBy: 'u-assaf',
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    updatedBy: 'u-assaf',
+    ...over,
+  });
+
+  it('round-trips notes through the snapshot cache', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ notes: [note('n1'), note('n2')] }));
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.notes.map((n) => n.id)).toEqual(['n1', 'n2']);
+  });
+
+  it('reads a trip cached BEFORE notes shipped as having none, not undefined', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    const meta = await db.snapshotMeta.get(TRIP_ID);
+    // Simulate the pre-upgrade row, which simply has no `notes` key at all.
+    delete (meta as unknown as Record<string, unknown>).notes;
+    await db.snapshotMeta.put(meta!);
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.notes).toEqual([]);
+  });
+
+  it('mirrors an offline-written note so a cold reopen still shows it', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.CREATE_NOTE,
+      input: { id: 'n-offline', body: 'נכתב במטוס' },
+    });
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.notes.find((n) => n.id === 'n-offline')).toMatchObject({
+      body: 'נכתב במטוס',
+      // The seed carries no `source`; the optimistic row states it, or the row would
+      // fail `noteSchema` on the next cold load.
+      source: 'member',
+    });
+  });
+
+  it('mirrors an offline edit and an offline delete', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ notes: [note('n1')] }));
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.UPDATE_NOTE,
+      noteId: 'n1',
+      input: { body: 'תוקן' },
+    });
+    expect((await readCachedSnapshot(TRIP_ID))?.notes[0]?.body).toBe('תוקן');
+
+    await applyOutboxOpToCache(TRIP_ID, { verb: OUTBOX_VERB.DELETE_NOTE, noteId: 'n1' });
+    expect((await readCachedSnapshot(TRIP_ID))?.notes).toEqual([]);
+  });
+
+  // The trap: Postgres cascades the rows away and writes NO Change for them, so without
+  // this the cache keeps serving notes whose host is gone until the next full snapshot.
+  it('drops a deleted host’s notes from the cache, though no note Change was sent', async () => {
+    await cacheSnapshot(
+      TRIP_ID,
+      snapshot({
+        notes: [note('n1', { eventId: 'e1' }), note('n2', { eventId: 'e2' }), note('n3')],
+      }),
+    );
+
+    await applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.EVENT,
+      entityId: 'e1',
+      action: CHANGE_ACTION.DELETE,
+    });
+
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.notes.map((n) => n.id)).toEqual(['n2', 'n3']);
   });
 });

@@ -7,6 +7,7 @@ import {
   invitePreviewSchema,
   destinationResultSchema,
   maybeItemSchema,
+  noteSchema,
   meSchema,
   membershipSchema,
   placePredictionSchema,
@@ -24,13 +25,16 @@ import {
   type CreateDocumentInput,
   type CreateEventInput,
   type CreateMaybeItemInput,
+  type CreateNoteInput,
   type UpdateMaybeItemInput,
+  type UpdateNoteInput,
   type CreatePlaceInput,
   type CreateTripInput,
   type DestinationResult,
   type DocumentType,
   type EventStatus,
   type MaybeItem,
+  type Note,
   type TripDocument,
   type InvitePreview,
   type InviteUrl,
@@ -310,6 +314,8 @@ const consumeMaybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemUrl(tripId, maybeItemId)}/consume`;
 const restoreMaybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemUrl(tripId, maybeItemId)}/restore`;
+const notesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/notes`;
+const noteUrl = (tripId: string, noteId: string) => `${notesUrl(tripId)}/${noteId}`;
 const bookingsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/bookings`;
 const bookingUrl = (tripId: string, bookingId: string) => `${bookingsUrl(tripId)}/${bookingId}`;
 const placesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/places`;
@@ -479,6 +485,37 @@ export async function createMaybeItem(
   });
   if (!res.ok) return throwApiError(res);
   return maybeItemSchema.parse(await res.json());
+}
+
+/** Write a note — general, or hosted by one of the five entities (ADR-0152 §1/§2). */
+export async function createNote(tripId: string, input: CreateNoteInput): Promise<Note> {
+  const res = await apiFetch(notesUrl(tripId), {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return noteSchema.parse(await res.json());
+}
+
+/** Edit a note's own words. A whole-content submit, and the host is not editable. */
+export async function updateNote(
+  tripId: string,
+  noteId: string,
+  input: UpdateNoteInput,
+): Promise<Note> {
+  const res = await apiFetch(noteUrl(tripId, noteId), {
+    method: HTTP_METHOD.PATCH,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return noteSchema.parse(await res.json());
+}
+
+export async function deleteNote(tripId: string, noteId: string): Promise<void> {
+  const res = await apiFetch(noteUrl(tripId, noteId), { method: HTTP_METHOD.DELETE });
+  if (!res.ok) return throwApiError(res);
 }
 
 /** Re-aim an idea at a day, or back to "someday" with `null` (ADR-0116 §1). */
