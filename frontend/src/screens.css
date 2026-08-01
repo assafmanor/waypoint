@@ -2011,6 +2011,26 @@
   text-align: center;
   padding: 14px 8px;
 }
+/* The way past the cap (ADR-0116 session-202 §4). Neutral `--cta`: it reveals the
+   rest of a list, so it is not a plan action and does not spend plan violet
+   (ADR-0028, root rule 4). */
+.gapfill-more {
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--cta);
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-12);
+  padding: 9px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+/* The shared `SearchField` primitive; only its placement in this sheet is here. */
+.gapfill-search {
+  margin: 0 0 var(--space-3);
+}
 .gapfill-new {
   width: 100%;
   font: inherit;
@@ -3722,6 +3742,14 @@
   font-weight: 700;
   color: var(--muted);
   margin: 8px 2px 6px;
+}
+/* The pool's total, so a capped strip can say how much it is capping rather than
+   leave "is something missing?" to be guessed (ADR-0116 session-202 §5). Sits before
+   the rule below, which keeps its `flex: 1`. */
+.shelf-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--faint);
 }
 .shelf-group::after {
   content: '';

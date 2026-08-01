@@ -28,6 +28,10 @@
 //     the reason-first rule exists to avoid. Session-scoped, so a reload asks again;
 //     it lives here rather than in the screen because the screen unmounts on every
 //     tab change.
+//  6. **The shelf's tail** (ADR-0116 session-202 §5). The pool strip is capped, and
+//     everything past the cap comes through to this tab's `אולי` facet — the same
+//     union by ADR-0119. Another `useHandoff`, for (4)'s reason: it is an intent in
+//     flight, so it is consumed once and a later visit is not still filtered by it.
 //
 // None of it is a back layer: the sheet height and the scope chip are view state
 // like each other, and back leaves the tab (ADR-0103's typed-layer model).
@@ -139,6 +143,13 @@ interface MapScope {
    *  still open. */
   chromeReclaimed: boolean;
   setChromeReclaimed: (value: boolean) => void;
+  /** **The shelf's tail, arriving** (ADR-0116 session-202 §5). The capped pool strip
+   *  hands the rest of the ideas here and lands on the tab; the Map `take()`s it and
+   *  turns on the `אולי` facet, which ADR-0119 already made the same union. A handoff
+   *  rather than a fourth bespoke flag, for the reason `lib/handoff.ts` exists: it is
+   *  an intent in flight, consumed once, so a later visit to the tab does not re-apply
+   *  a filter nobody asked for this time. */
+  maybesFacet: Handoff<true>;
   /** A form asking the Map for one place (ADR-0134 §1). The Map reads `pending` to render
    *  its errand mode and `take()`s it when the choice is made or cancelled. */
   errand: Handoff<PlaceErrand>;
@@ -153,6 +164,7 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
   const [focusPlaceId, setFocusPlaceId] = useState<string | null>(null);
   const [locationOffered, setLocationOffered] = useState(false);
   const [chromeReclaimed, setChromeReclaimed] = useState(false);
+  const maybesFacet = useHandoff<true>();
   const errand = useHandoff<PlaceErrand>();
   const errandResult = useHandoff<PlaceErrandResult>();
   const value = useMemo<MapScope>(
@@ -166,10 +178,11 @@ export function MapScopeProvider({ children }: { children: ReactNode }) {
       markLocationOffered: () => setLocationOffered(true),
       chromeReclaimed,
       setChromeReclaimed,
+      maybesFacet,
       errand,
       errandResult,
     }),
-    [allDays, focusPlaceId, locationOffered, chromeReclaimed, errand, errandResult],
+    [allDays, focusPlaceId, locationOffered, chromeReclaimed, maybesFacet, errand, errandResult],
   );
   return <MapScopeContext.Provider value={value}>{children}</MapScopeContext.Provider>;
 }
@@ -227,6 +240,38 @@ export function useShowPlaceOnMap(): ((placeId: string) => void) | null {
       navigate(tabTarget('map') + (day ? `&day=${day}` : ''), { replace: true });
     };
   }, [requestFocus, navigate]);
+}
+
+/** **"The rest of my ideas are over there"** — the shelf's tail, as one call
+ *  (ADR-0116 session-202 §5). The pool strip keeps the day's working set and hands
+ *  everything past the cap to the Map's `אולי` facet, which is the same union by
+ *  ADR-0119 and already carries day scope, type chips, search, distance sort and
+ *  `＋ שיבוץ ליום`. This is what makes the strip's width independent of N.
+ *
+ *  The `?day=` rides along exactly as `useShowPlaceOnMap`'s does, so the tail arrives
+ *  scoped to the day you were building — landing on all-days would answer a wider
+ *  question than the one that was asked.
+ *
+ *  `null` outside the trip shell, where there is no Map tab to route to: the strip
+ *  then renders no way-through rather than a broken one, the same "absent, not
+ *  broken" rule the rest of this file follows.
+ *
+ *  **Still owed: a device pass** (ADR-0017). Whether this reads as "the rest are over
+ *  there" or as being thrown off the surface you were building is a phone judgement,
+ *  and ADR-0135's round trip (you slot from the map and never come back) is what the
+ *  bet rests on. */
+export function useShowMaybesOnMap(): (() => void) | null {
+  const scope = useContext(MapScopeContext);
+  const navigate = useNavigate();
+  const hand = scope?.maybesFacet.hand;
+  return useMemo(() => {
+    if (!hand) return null;
+    return () => {
+      hand(true);
+      const day = new URLSearchParams(window.location.search).get('day');
+      navigate(tabTarget('map') + (day ? `&day=${day}` : ''), { replace: true });
+    };
+  }, [hand, navigate]);
 }
 
 /** **"Find me a place for this field"** — the errand, as one call (ADR-0134 §1). Composed

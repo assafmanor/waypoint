@@ -3,25 +3,13 @@
 // spatial maths in Phase 4 — no routing, no Google call, no tiles. A straight-line
 // metre count is honest for the job it does (ordering nearby places and saying
 // roughly how far), and it stays correct offline.
-import { EARTH_RADIUS_M, DISTANCE_STEP } from '../constants';
+import { DISTANCE_STEP } from '../constants';
 import { t } from '../i18n/he';
 
-export interface LatLng {
-  lat: number;
-  lng: number;
-}
-
-const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-
-/** Great-circle distance in metres (haversine). */
-export function haversineMeters(from: LatLng, to: LatLng): number {
-  const dLat = toRadians(to.lat - from.lat);
-  const dLng = toRadians(to.lng - from.lng);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(from.lat)) * Math.cos(toRadians(to.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(a)));
-}
+// The maths moved to `@waypoint/shared` when ADR-0151's `near-the-day` strategy
+// needed the same haversine (root rule 8 — generalise the one-off, don't copy it).
+// Re-exported here so this file stays the frontend's one distance import.
+export { haversineMeters, type LatLng } from '@waypoint/shared';
 
 /**
  * A distance as a person reads it on a row chip: metres rounded to a walkable step

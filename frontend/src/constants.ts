@@ -108,8 +108,19 @@ export type PlaceCorpus = (typeof PLACE_CORPUS)[keyof typeof PLACE_CORPUS];
 /** The waking window the day-progress bar spans, in trip-local hours. */
 export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
 
-/** Mean Earth radius, for the near-me haversine (lib/distance.ts). */
-export const EARTH_RADIUS_M = 6_371_000;
+/** How many ranked ideas the pool strip keeps (ADR-0116 session-202 §5). This is
+ *  what makes the strip's width independent of N: the mockup measured swipes-to-last
+ *  going 2 · 10 · 24 at 5 · 18 · 40 ideas, against a constant 3 once capped. The tail
+ *  is not hidden — it goes through to the Map's `אולי` facet, the same union by
+ *  ADR-0119, and the group header states how many there are in total. */
+export const SHELF_POOL_CAP = 5;
+
+/** The gap sheet's two thresholds (ADR-0116 session-202 §4). The cap is what keeps
+ *  the sheet a decision rather than a list — the mockup measured six rows visible
+ *  without scrolling at the primary width — and the search only appears once the
+ *  pool is big enough to need one, so a shelf of six never grows a control. */
+export const GAP_FILL_CAP = 6;
+export const GAP_FILL_SEARCH_AT = 8;
 
 /** Where a near-me distance chip changes precision (ADR-0109 §7): sub-kilometre
  *  distances round to a walkable 10 m, then read as one decimal of a kilometre,

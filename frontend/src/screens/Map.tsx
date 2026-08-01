@@ -218,6 +218,7 @@ export function MapView() {
     locationOffered,
     markLocationOffered,
     setChromeReclaimed,
+    maybesFacet,
     errand,
     errandResult,
   } = useMapScope();
@@ -1814,6 +1815,15 @@ export function MapView() {
     setArrival(at ? { at, frame: true } : null);
     clearFocus();
   }, [focusPlaceId, usageIndex, placeById, activeDate, setAllDays, clearFocus]);
+
+  // The shelf's tail arriving (ADR-0116 session-202 §5). It turns on the `אולי`
+  // facet and nothing else: the day scope rode in on `?day=`, and the tail was
+  // ranked against that day, so widening here would answer a wider question than
+  // the strip asked. Consumed once, so a later visit to the tab is not still
+  // filtered by a tap from three screens ago.
+  useEffect(() => {
+    if (maybesFacet.take()) setMaybesOnly(true);
+  }, [maybesFacet]);
 
   // ── The row's meta line: `<time> · <what happens here>` (ADR-0109 §1) ──────
   // It replaces the address, which said nothing about why the place is on the list

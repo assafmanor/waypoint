@@ -38,51 +38,12 @@
 }
 
 /* Pinned search field, always visible (no cover-in-place animation needed —
-   this whole screen only exists to search). Enough top margin to clear the
-   chrome bar's own color as a distinct band, not butt directly against it. */
+   this whole screen only exists to search). The pill itself is the shared
+   `SearchField` primitive (`search-field.css`); all that is left here is where
+   this host puts it — enough top margin to clear the chrome bar's own color as a
+   distinct band, not butt directly against it. */
 .search-overlay-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
   margin: var(--space-4) var(--space-4) var(--space-3);
-  background: var(--card);
-  border: 1px solid var(--soft-line);
-  border-radius: var(--radius-999);
-  padding: 0 var(--space-3);
-  height: 40px;
-  color: var(--muted);
-}
-.search-overlay-field .icon {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 auto;
-}
-.search-overlay-field input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  font: inherit;
-  font-size: var(--text-body);
-  background: none;
-  color: var(--ink);
-}
-.search-overlay-field .clear {
-  flex: 0 0 auto;
-  border: 0;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  color: var(--muted);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-}
-.search-overlay-field .clear .icon {
-  width: 10px;
-  height: 10px;
 }
 
 /* All remaining space between the field and the on-screen keyboard — a

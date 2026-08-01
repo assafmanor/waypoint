@@ -18,7 +18,11 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
-import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
+import {
+  usePlaceErrandReturn,
+  useShowMaybesOnMap,
+  useShowPlaceOnMap,
+} from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
 import {
   authoringZone,
@@ -45,13 +49,12 @@ import {
   eventPhase,
   formatTime,
   hardConflicts,
-  relativeDayLabel,
   zonedIso,
   resolveEndIso,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
-import { shelfGroups } from '../lib/shelf';
+import { dayStops, rankIdeas, shelfGroups, stopReasonText, tileReasonText } from '../lib/shelf';
 import { nextSlot } from '../lib/gaps';
 import {
   dayTransitions,
@@ -59,7 +62,7 @@ import {
   type DayEntry,
   type TransitionEntry,
 } from '../lib/day-entries';
-import { CODE_PREFIX, DAY_NOON, DEFAULT_STAY_ICON, MS_PER_DAY } from '../constants';
+import { CODE_PREFIX, DAY_NOON, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -70,7 +73,7 @@ import { Sheet } from '../ui/Sheet';
 import { WhenField } from '../ui/primitives/WhenField';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
-import { MaybeCard } from '../ui/domain/MaybeCard';
+import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
 
@@ -132,6 +135,7 @@ export function DayView() {
   // `מפה` is an in-app destination now (ADR-0121 §8): it hands the Map tab a focus
   // and lands there, instead of deep-linking out to Google's place view.
   const showPlaceOnMap = useShowPlaceOnMap();
+  const showMaybesOnMap = useShowMaybesOnMap();
   const [openId, setOpenId] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2). The form went to the Map tab to have a
@@ -199,6 +203,18 @@ export function DayView() {
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
   // lot) the day's skipped soft events, durable and restorable in place.
   const shelf = shelfGroups(maybeItems, events, activeDate);
+  // …and ranked (ADR-0116 session-202 §3 / ADR-0151). The grouping above is
+  // untouched — this only orders what it produced, and attaches each idea's reason.
+  const stops = dayStops(events, bookings, places, activeDate);
+  // Capped, with the tail handed to the Map's אולי facet (§5) — which is what keeps
+  // the strip's width independent of how many ideas the trip has accumulated.
+  const rankedPool = rankIdeas(shelf.pool, places, activeDate, stops, SHELF_POOL_CAP);
+  const poolTail = shelf.pool.length - rankedPool.length;
+  // The day's own group keeps its order (it is small by construction) and gains
+  // only the distance line — see `stopReasonText` for why it says nothing else.
+  const forDayReasons = new Map(
+    rankIdeas(shelf.forDay, places, activeDate, stops).map((r) => [r.item.id, r.reason]),
+  );
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const weekday = new Intl.DateTimeFormat('he-IL', {
@@ -418,29 +434,24 @@ export function DayView() {
                 {shelf.forDay.map((m) => (
                   <MaybeCard
                     key={m.id}
+                    compact
                     icon={m.icon}
                     title={m.title}
-                    action={
-                      <>
-                        <Icon name="plus" /> {t.actions.scheduleToDay}
-                      </>
-                    }
+                    meta={stopReasonText(forDayReasons.get(m.id))}
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}
-                {/* Skipped soft events park here, restorable (ADR-0027 parking lot). */}
+                {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
+                    The tile drops the action line; `skippedTag` already says what a
+                    tap does, which is why it is the one card that loses nothing. */}
                 {shelf.skipped.map((e) => (
                   <MaybeCard
                     key={e.id}
+                    compact
                     className="skipped-card"
                     icon={e.icon}
                     title={e.title}
                     meta={t.day.skippedTag}
-                    action={
-                      <>
-                        <Icon name="undo" /> {t.actions.restore}
-                      </>
-                    }
                     onSchedule={() => verbs.restore(e)}
                   />
                 ))}
@@ -450,25 +461,35 @@ export function DayView() {
           {shelf.pool.length > 0 && (
             <>
               {(shelf.forDay.length > 0 || shelf.skipped.length > 0) && (
-                <div className="shelf-group">{t.day.shelfPool}</div>
+                <div className="shelf-group">
+                  {t.day.shelfRanked}
+                  <span className="shelf-count">{shelf.pool.length}</span>
+                </div>
               )}
               <div className="shelf">
                 {/* Scheduled (consumed) ideas leave the shelf — no dead tombstone
                     (ADR-0027); `shelfGroups` already dropped them. */}
-                {shelf.pool.map((m) => (
+                {/* The tile's meta carries the ranking reason — a fact that VARIES
+                    per card, which is what the retired action line never was. */}
+                {rankedPool.map(({ item: m, reason }) => (
                   <MaybeCard
                     key={m.id}
+                    compact
                     icon={m.icon}
                     title={m.title}
-                    meta={m.targetDate ? relativeDayLabel(m.targetDate, today) : undefined}
-                    action={
-                      <>
-                        <Icon name="plus" /> {t.actions.scheduleToDay}
-                      </>
-                    }
+                    meta={tileReasonText(reason, activeDate)}
                     onSchedule={() => setScheduleItem(m)}
                   />
                 ))}
+                {/* The tail, and what makes the strip's width independent of N. Absent
+                    rather than broken outside the trip shell (no Map tab to route to). */}
+                {poolTail > 0 && showMaybesOnMap && (
+                  <MaybeMoreCard
+                    label={t.day.shelfMore(poolTail)}
+                    icon={<Icon name="map" />}
+                    onOpen={showMaybesOnMap}
+                  />
+                )}
               </div>
             </>
           )}

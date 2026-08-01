@@ -32,7 +32,9 @@ In `@waypoint/shared`, zod-first (ADR-0023), so both sides and every surface spe
 - **`source`** — the strategy that produced it, a named constant (`SUGGESTION_SOURCE`, ADR-0095). It is what §8's reason line is keyed to and what a merge interleaves by.
 - **`ref`** — a tagged union, and the tags are the whole point of §6: an existing `MaybeItem`, an existing `Place`, or an **unresolved external candidate** that is not in the trip and has no row.
 - **`score`** — comparable **within one strategy only** (§2's note).
-- **`reason`** — a rendered string, **not optional**. A strategy that cannot say why it spoke has not finished (§8).
+- **`reason`** — **not optional**. A strategy that cannot say why it spoke has not finished (§8).
+
+  **Amended on build (2026-08-05, session 203):** this said "a rendered string", and it ships as a **structured** reason (`{ code, …params }`) that the consumer renders. Two reasons that only surfaced in code. `packages/shared` holds no UI copy by rule — it supplies stable keys and the frontend supplies the Hebrew — and §4's endpoint returns `Suggestion[]` **from the server**, where a rendered Hebrew string would put UI copy in a Nest service, against [ADR-0009](0009-docs-english-ui-hebrew.md). What §1 was actually requiring (a reason is never optional, and it is per-suggestion) is unchanged; only who spells it moved. The frontend renders it twice at two widths, which is the second thing the string form could not have expressed — see §8.
 
 ### 2. A strategy is a pure function over a context; where it runs is a property of the strategy, not of the architecture
 
@@ -94,6 +96,8 @@ ADR-0115 §2 drew this line for search, because it was the first surface that sp
 The reason line renders in `.gapfill-m` — a slot styled in `screens.css` since the sheet shipped and never once rendered — and in the tile's meta. `0.3 ק״מ ממסעדת מון` and `פופולרי באזור` are different sentences because they are different claims, and a user who disagrees can see what to disagree with.
 
 It is also the honest limit. We are stating a fact we computed, never taste we do not have.
+
+**Amended on build (2026-08-05, session 203) — the same reason renders at two widths, and that is measured rather than preferred.** The sheet's row is full-width and says `0.3 ק״מ ממסעדת מון`; the tile is 140px and says `0.3 ק״מ`. The sentence wraps to two lines at tile width, which takes the tile from 76px to 84px — exactly the height §2 was drawn to buy back, spent on words that repeat for every card on a strip already measured against the one day. So the strip states the **fact**, the sheet states the **claim**, and both come from the one structured reason. A third case appeared that the mockup's fixture never had: an idea with no place and no target day, where the only true thing to say is recency — it renders in the sheet and takes no line on the tile, because on a strip that is chrome, not a fact.
 
 ## Consequences
 

@@ -218,3 +218,32 @@ describe('usePlaceErrandReturn', () => {
     });
   });
 });
+
+// The shelf's tail arriving on the Map (ADR-0116 session-202 §5). The navigation half
+// is the router's; what matters here is the property every handoff in this file has to
+// have and that the errand's own bug was a failure of — it fires ONCE.
+describe('the maybes facet handoff', () => {
+  const wrapper = MapScopeProvider;
+
+  it('hands the intent over, and the Map takes it exactly once', () => {
+    const { result } = renderHook(() => useMapScope(), { wrapper });
+    expect(result.current.maybesFacet.pending).toBeNull();
+
+    act(() => result.current.maybesFacet.hand(true));
+    expect(result.current.maybesFacet.pending).toBe(true);
+
+    // The Map's effect takes it and turns the facet on…
+    let taken: true | null = null;
+    act(() => {
+      taken = result.current.maybesFacet.take();
+    });
+    expect(taken).toBe(true);
+
+    // …and a later visit to the tab must not find a filter nobody asked for again.
+    act(() => {
+      taken = result.current.maybesFacet.take();
+    });
+    expect(taken).toBeNull();
+    expect(result.current.maybesFacet.pending).toBeNull();
+  });
+});

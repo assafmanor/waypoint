@@ -23,6 +23,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   isAmbient,
+  matchesAnyTerm,
   type Booking,
   type EventCategory,
   type MaybeItem,
@@ -33,7 +34,11 @@ import { useTrip, byStart } from '../state/trip-state';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
-import { usePlaceErrandReturn, useShowPlaceOnMap } from '../state/map-scope-state';
+import {
+  usePlaceErrandReturn,
+  useShowMaybesOnMap,
+  useShowPlaceOnMap,
+} from '../state/map-scope-state';
 import { useBackLayer } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
 import {
@@ -54,7 +59,6 @@ import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
   formatTime,
-  relativeDayLabel,
   zonedIso,
   crossesMidnightZoned,
   type TimeGroup,
@@ -68,7 +72,20 @@ import {
   type Gap,
   type GapDefaults,
 } from '../lib/gaps';
-import { shelfGroups } from '../lib/shelf';
+import {
+  dayStops,
+  rankIdeas,
+  reasonText,
+  shelfGroups,
+  slotStops,
+  stopReasonText,
+  tileReasonText,
+  type RankedIdea,
+} from '../lib/shelf';
+import { SearchField } from '../ui/primitives/SearchField';
+import { RevealList } from '../ui/primitives/RevealList';
+import { countVisible, revealRows } from '../lib/filter-reveal';
+import { GAP_FILL_CAP, GAP_FILL_SEARCH_AT, SHELF_POOL_CAP } from '../constants';
 import {
   resolveRowDrop,
   resolveShelfDrop,
@@ -108,7 +125,7 @@ import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { TitleLabel } from '../ui/TitleLabel';
 import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
-import { MaybeCard } from '../ui/domain/MaybeCard';
+import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
 const daysBetween = (from: string, to: string) =>
@@ -196,6 +213,7 @@ export function PlanDay() {
   // coord-bearing place. It is the only surface here that needs it: the row's own tap
   // opens the edit form, which carries no location view of its own.
   const showPlaceOnMap = useShowPlaceOnMap();
+  const showMaybesOnMap = useShowMaybesOnMap();
   const tz = trip.timezone;
   // A finished trip is a read-only archive (ADR-0040): the builder becomes a
   // frozen, browsable history — no create/edit/delete/move, no shelf.
@@ -467,6 +485,19 @@ export function PlanDay() {
   // The shelf, grouped by the one shared derivation (ADR-0116 §2) — same call the
   // Trip-mode day view makes, so the two shelves cannot drift again.
   const shelf = shelfGroups(maybeItems, events, activeDate);
+  // …and ranked (ADR-0116 session-202 §3 / ADR-0151). Order and reason only; the
+  // grouping, and every drop the drag can make, are unchanged.
+  const stops = dayStops(events, bookings, places, activeDate);
+  // Capped, with the tail handed to the Map's אולי facet (§5) — which is what keeps
+  // the strip's width independent of how many ideas the trip has accumulated.
+  const rankedPool = rankIdeas(shelf.pool, places, activeDate, stops, SHELF_POOL_CAP);
+  const poolTail = shelf.pool.length - rankedPool.length;
+  const reasonById = new Map(rankedPool.map((r) => [r.item.id, r.reason]));
+  // The day's own group keeps its order (it is small by construction) and gains
+  // only the distance line — see `stopReasonText` for why it says nothing else.
+  const forDayReasons = new Map(
+    rankIdeas(shelf.forDay, places, activeDate, stops).map((r) => [r.item.id, r.reason]),
+  );
   /** Open the schedule form for an idea, prefilled with `fill` when the drop named a
    *  slot (a gap chip) and with the day's next opening when it didn't. */
   const openSchedule = (m: MaybeItem, fill?: GapDefaults) => {
@@ -564,15 +595,11 @@ export function PlanDay() {
       return (
         <MaybeCard
           key={e.id}
+          compact
           className="skipped-card"
           icon={e.icon}
           title={e.title}
           meta={t.day.skippedTag}
-          action={
-            <>
-              <Icon name="undo" /> {t.actions.restore}
-            </>
-          }
           onSchedule={() => verbs.restore(e)}
           dragProps={skippedDragProps(e)}
           dragging={dragging}
@@ -583,19 +610,15 @@ export function PlanDay() {
     return (
       <MaybeCard
         key={m.id}
+        compact
         icon={m.icon}
         title={m.title}
-        // A pool card names the day it's aimed at; the day's own group would only be
-        // repeating the day you're looking at (ADR-0116 §2).
+        // A pool card carries its ranking reason; the day's own group carries the
+        // distance or nothing (ADR-0116 §2, ADR-0151 §8).
         meta={
-          m.targetDate && m.targetDate !== activeDate
-            ? relativeDayLabel(m.targetDate, activeDate)
-            : undefined
-        }
-        action={
-          <>
-            <Icon name="plus" /> {t.actions.scheduleToDay}
-          </>
+          reasonById.has(m.id)
+            ? tileReasonText(reasonById.get(m.id)!, activeDate)
+            : stopReasonText(forDayReasons.get(m.id))
         }
         onSchedule={() => openSchedule(m)}
         onRemove={() => verbs.removeMaybe(m)}
@@ -895,7 +918,10 @@ export function PlanDay() {
           {(showPoolGroup || parkingRow) && (
             <>
               {(showDayGroup || draggingFromPool || parkingRow) && (
-                <div className="shelf-group">{t.day.shelfPool}</div>
+                <div className="shelf-group">
+                  {t.day.shelfRanked}
+                  <span className="shelf-count">{shelf.pool.length}</span>
+                </div>
               )}
               <div
                 className={'shelf' + (overShelf(SHELF_DROP.POOL) ? ' drop-over' : '')}
@@ -903,7 +929,17 @@ export function PlanDay() {
               >
                 {/* Scheduled (consumed) ideas leave the shelf — no dead "שובץ"
                     tombstone (ADR-0027: an idea is parked OR placed, never both). */}
-                {shelf.pool.map((m) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
+                {rankedPool.map(({ item: m }) => shelfCard({ kind: SHELF_DRAG.IDEA, item: m }))}
+                {/* The tail, and what makes the strip's width independent of N. It is
+                    not a drop target: dropping an idea on a navigation means nothing,
+                    and the drag is untouched by all of this. */}
+                {poolTail > 0 && showMaybesOnMap && (
+                  <MaybeMoreCard
+                    label={t.day.shelfMore(poolTail)}
+                    icon={<Icon name="map" />}
+                    onOpen={showMaybesOnMap}
+                  />
+                )}
                 {!showPoolGroup && (
                   <div className="shelf-dropzone">{t.planDay.parkSomedayDropHere}</div>
                 )}
@@ -917,7 +953,17 @@ export function PlanDay() {
       {gapChoice && (
         <GapFillSheet
           gap={gapChoice}
-          ideas={maybeItems.filter((m) => !m.consumed)}
+          // Ranked against THIS slot's own neighbours, not the whole day — the
+          // sheet's only question is which idea fits here (ADR-0151 §3).
+          ideas={rankIdeas(
+            [...shelf.forDay, ...shelf.pool],
+            places,
+            gapChoice.date,
+            slotStops(events, bookings, places, gapChoice.date, {
+              fromMs: Date.parse(zonedIso(gapChoice.date, gapChoice.start, tz)),
+              toMs: Date.parse(zonedIso(gapChoice.date, gapChoice.end, tz)),
+            }),
+          )}
           onPickIdea={(m) => {
             verbs.schedule(m, {
               date: gapChoice.date,
@@ -1131,7 +1177,14 @@ function ResolveSheet({
 // Gap-fill chooser (#21): drop an existing shelf idea into the gap's slot, or
 // start a fresh event there. Scheduling an idea reuses verbs.schedule with the
 // gap's exact start/end so it lands in the hole, not the old default slot.
-function GapFillSheet({
+//
+// It used to be handed `maybeItems.filter((m) => !m.consumed)` — the WHOLE pool,
+// unsorted and unsearchable — on the one surface whose entire question is "which
+// idea fits THIS slot" (ADR-0116's session-202 amendment §4). Now it is ranked
+// against its own slot rather than the whole day, capped, searchable once the pool
+// is big enough to need it, and it finally renders `.gapfill-m` — a meta slot
+// styled in `screens.css` since the sheet shipped and never once emitted.
+export function GapFillSheet({
   gap,
   ideas,
   onPickIdea,
@@ -1139,27 +1192,63 @@ function GapFillSheet({
   onClose,
 }: {
   gap: GapDefaults;
-  ideas: MaybeItem[];
+  /** Already ranked against this gap's own neighbours, each with its reason. */
+  ideas: RankedIdea[];
   onPickIdea: (m: MaybeItem) => void;
   onNewEvent: () => void;
   onClose: () => void;
 }) {
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState(false);
+  // A control that only appears once it is needed: a shelf of six never grows a
+  // search box. Past the threshold the cap is what keeps the sheet a decision
+  // rather than a list, and `expanded` is the way past it.
+  const searchable = ideas.length > GAP_FILL_SEARCH_AT;
+  const searching = query.trim().length > 0;
+  const shown = searching || expanded ? ideas : ideas.slice(0, GAP_FILL_CAP);
+  const hidden = ideas.length - shown.length;
+
+  // The shared reveal (ADR-0120), not a `.filter()`: a row that stops matching
+  // collapses in place instead of being dropped from the array.
+  const { rows } = revealRows(shown, ({ item }) => matchesAnyTerm(query, [item.title]));
+
   return (
     <Sheet title={t.planDay.gapFillTitle(gap.start, gap.end)} onClose={onClose}>
-      <div className="gapfill-list">
-        {ideas.map((m) => (
-          <button key={m.id} className="gapfill-row" onClick={() => onPickIdea(m)}>
+      {searchable && (
+        <SearchField
+          className="gapfill-search"
+          value={query}
+          onChange={setQuery}
+          placeholder={t.planDay.gapFillSearch}
+          clearLabel={t.planDay.gapFillSearchClear}
+        />
+      )}
+      <RevealList
+        rows={rows}
+        className="gapfill-list"
+        getKey={({ item }) => item.id}
+        renderRow={({ item: m, reason }) => (
+          <button className="gapfill-row" onClick={() => onPickIdea(m)}>
             <span className="gapfill-ic">{m.icon}</span>
             <span className="gapfill-main">
               <span className="gapfill-t">{m.title}</span>
+              {/* The ranking REASON, never a score and never a star: it says which
+                  fact put this row here, so a wrong order is arguable instead of
+                  magic (ADR-0151 §8). */}
+              <span className="gapfill-m">{reasonText(reason, gap.date)}</span>
             </span>
             <span className="gapfill-add">
               <Icon name="plus" />
             </span>
           </button>
-        ))}
-        {ideas.length === 0 && <div className="gapfill-empty">{t.planDay.gapFillEmpty}</div>}
-      </div>
+        )}
+      />
+      {countVisible(rows) === 0 && <div className="gapfill-empty">{t.planDay.gapFillEmpty}</div>}
+      {hidden > 0 && (
+        <button className="gapfill-more" onClick={() => setExpanded(true)}>
+          {t.planDay.gapFillAll(ideas.length)}
+        </button>
+      )}
       <button className="btn-primary gapfill-new" onClick={onNewEvent}>
         <Icon name="plus" /> {t.actions.newEvent}
       </button>
