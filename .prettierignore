@@ -35,3 +35,7 @@ docs/design/map-styles/cbms-json-schema.json
 mockups/map-form-visibility-v1.html
 mockups/top-bar-v1.html
 mockups/shelf-crowded-v1.html
+# Inlines `screens/map.css`, whose long-form comments Prettier rewraps inside a <style>
+# block — so formatting and the generator rewrite each other on every run. Same reason as
+# every other map-inlining mockup above.
+mockups/notes-on-a-place-v1.html
