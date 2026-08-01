@@ -1,95 +1,60 @@
 <!doctype html>
-<!-- הלוך ושוב — ROUND-TRIP TRANSPORT — v1 (2026-08-01).
+<!-- טופס בשלבים — MULTI-STEP FORMS — v1 (2026-08-01).
 
-     WHAT THIS IS. A flight or a train is normally bought as a round trip, and
-     the booking form only ever authors ONE leg. This file designs the missing
-     half: how the second journey gets typed, and how the two rows know about
-     each other afterwards.
-
-     WHAT IS NOT IN QUESTION. ADR-0047 §1 already decided the model — "a
-     round-trip flight is TWO Bookings (outbound, return), each optionally
-     backing its own Event" — and it is right for a reason worth restating,
-     because the tempting fix is to reopen it. On the timeline these are not one
-     thing: two hard events three weeks apart, each with its own instant, its own
-     done/skipped, its own origin/destination zones, its own slip. The same ADR
-     rejected 1:many Booking→Event explicitly. A round trip is one PURCHASE and
-     two JOURNEYS, and this app renders journeys.
-
-     So nothing here changes an entity, a table or a relationship. It is an
-     AUTHORING change plus a DERIVED relationship, and it needs no migration.
+     WHAT THIS IS. The question is "should a long form become a stepped form
+     with next/back, and which existing forms would profit?" This file answers
+     it with a scan of every form in the app and one head-to-head, rather than
+     with an opinion.
 
      ─────────────────────────────────────────────────────────────────────────
-     FOUR THINGS READING THE CODE CHANGED, and only the first was in the brief:
+     THE ANSWER IN ONE PARAGRAPH, because it is not the expected one.
 
-     1. THE APP ALREADY KNOWS THE CONCEPT, IN ONE CORNER ONLY.
-        `lib/readiness.ts` computes `hasOutbound`/`hasReturn` off the flights'
-        from/to place names, and `PlanHome` even seeds the missing leg into the
-        create form. Open the same form from the Index tab and every bit of that
-        knowledge is gone. So this is not a new idea in the product — it is an
-        idea that never left Plan mode's checklist.
+     **The concept already exists in the app, twice, unowned** — and neither of
+     the two is a long form. Both live in `screens/PlanDay.tsx`: `ResolveSheet`
+     (pick which soft event moves → pick where) and `RowManageSheet`'s `הזז`
+     position step (ADR-0138 §8). Each hand-rolls its own step state and each
+     carries the SAME `useBackLayer(…, { remainsActive: true })` block with a
+     near-identical comment explaining the parent-registration trick — a rule
+     that is in `frontend/CLAUDE.md` precisely because it had to be got right
+     twice. That is the rule-8 pile, and those two are the primitive's real
+     justification and its first two call sites.
 
-     2. `RouteLabel` CANNOT SIMPLY GET A "⇄". Its arrow is `NavArrow`, whose own
-        file comment says it is drawn for RTL and MIRRORED for LTR, and
-        `Icon.tsx`'s `swap` is deliberately a VERTICAL pair with the note that
-        "a horizontal pair would read backwards". A mirrored glyph is a
-        direction claim, and a round trip has no direction. §1 draws a
-        double-headed arrow instead: SYMMETRIC, so there is nothing for a
-        direction to flip. That is not a workaround, it is the honest shape.
+     **But they are a different animal from a long form**, and conflating the
+     two is the trap this file exists to avoid:
 
-     3. THE PAIR LINK CANNOT BE TEAL. The obvious host for "go to the other leg"
-        is `BookingDetail`'s existing `.bk-loc-link` pill — which is teal, and
-        teal is LOCATION only (root rule 4 / ADR-0028). A sibling booking is not
-        a location. §3 gives it a neutral ink treatment with the shared
-        `NavArrow`, and spends no new hue.
+       BRANCHING steps — step 2's content DEPENDS on step 1's answer. Which
+       event you picked determines the slots offered. You genuinely cannot draw
+       step 2 until step 1 is answered. Both shipped surfaces are this.
 
-     4. THE FORM'S FIRST SPAN IS UNLABELLED TODAY, and that is fine while there
-        is one. The moment there are two, an unlabelled block above a labelled
-        one reads as a defect. So the leg headings arrive IN PAIRS OR NOT AT
-        ALL: one-way keeps today's form byte-for-byte.
+       CHUNKED steps — independent fields split across pages. `BookingSheet`'s
+       code does not depend on its date. Nothing forces an order; the pages are
+       a presentation choice.
+
+     A stepper is unarguable for branching. For chunking it costs three things
+     this app has explicitly paid to avoid, and they are listed in the panels.
      ─────────────────────────────────────────────────────────────────────────
 
-     5. "IS THIS TRANSPORT?" IS WRITTEN SIX TIMES, IN TWO PACKAGES, and two of
-        those are exported in parallel (`booking-draft`'s `isTransportType` and
-        `places`'s `isTransportBooking`) with different call sites importing
-        each. None lives in `packages/shared`, although the backend keeps its
-        own copy — the exact FE/BE-discriminant case that file's own CLAUDE.md
-        says belongs in a shared table. Meanwhile the CATEGORY axis already
-        obeys the rule in five places, one of which explains in its own comment
-        why it is a `Record` and not a `||` chain. The type axis is the only one
-        that does not, and it is the axis this change touches.
+     AND THE SCAN'S RESULT IS THE SHARPEST PART. Of nine form surfaces, exactly
+     ONE is long enough to be a candidate, and it is only long enough AFTER the
+     round-trip proposal in `booking-round-trip-v1.html` lands. Every other form
+     fits, or is deliberately minimal (ADR-0032), or already uses `Collapsible`
+     for the same job (ADR-0098, four call sites). So the proposal would create
+     the app's first form that needs paging — which is an argument to look at
+     the proposal again, not only to add a stepper.
 
-     5b. AND IT ALREADY COSTS SOMETHING SHIPPED. `TRANSPORT_BOOKING_TYPES`
-        offers `🚌 אחר` for "bus, car, ferry, cable car" — but `other` is not
-        transport by any of the six definitions, so a bus saves with a single
-        `placeId`, and `BookingSheet` will never show it a route field. **A bus
-        is transport in the picker and is not transport in the model**, with no
-        path to ever get a route. The app already wants a third transport mode
-        and has nowhere to put it. The profile table is not future-proofing.
+     Numbers marked "measured" are read from the live DOM of this file in a
+     headless browser. Numbers marked "counted" are `<Field>`/control counts
+     from the source; they are NOT pixel claims and are not presented as any.
 
-     6. AND THIS FILE'S OWN FIRST DRAFT BROKE THE RULE IT IS ARGUING FOR: §4
-        copied `.bs-route-pickers` and its two `PlacePicker`s into `EventForm`
-        rather than extracting them. Corrected — `ui/domain/RouteField` is one
-        component with two call sites, and `BookingSheet`'s own frame in §1 now
-        draws it too, which is how it gains the swap it has never had.
-
-     ─────────────────────────────────────────────────────────────────────────
-
-     WHAT IT DELIBERATELY DOES NOT SETTLE — see the last panel: which leg a note
-     written during a round-trip create belongs to, and whether the Index row
-     should say anything at all (this file's answer is no, with the measurement
-     behind it).
-
-     RENDERS THE APP'S REAL CSS. The shipped stylesheets are inlined by
-     `mockups/tools/inline-app-css.mjs` from the `APP-CSS:` manifest below —
-     re-run it after changing any of them. Three things are this file's own and
-     each is fenced: `mk-*` chrome, THE PROPOSAL (new CSS, written in the app's
-     own naming so it reads as the diff), and the fixture data.
+     RENDERS THE APP'S REAL CSS via `mockups/tools/inline-app-css.mjs` — re-run
+     it after touching those sheets. `mk-*` chrome and THE PROPOSAL block are
+     the only CSS this file owns.
   -->
 <html lang="he" dir="rtl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>הלוך ושוב · הזמנת תחבורה — v1</title>
+    <title>טופס בשלבים — v1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -97,8 +62,8 @@
       rel="stylesheet"
     />
 
-    <!-- Regenerate with `node mockups/tools/inline-app-css.mjs mockups/booking-round-trip-v1.html`. -->
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/modal.css, ui/primitives/field.css, ui/primitives/form-actions.css, ui/primitives/form-errors.css, ui/primitives/choice-grid.css, ui/primitives/when-field.css, ui/primitives/place-picker.css, ui/primitives/zone-chip.css, ui/primitives/confirm-dialog.css, ui/primitives/toggle-chip.css, ui/primitives/collapsible.css, ui/domain/list-row.css, ui/domain/place-badge.css -->
+    <!-- Regenerate with `node mockups/tools/inline-app-css.mjs mockups/form-steps-v1.html`. -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/modal.css, ui/primitives/field.css, ui/primitives/form-actions.css, ui/primitives/form-errors.css, ui/primitives/choice-grid.css, ui/primitives/when-field.css, ui/primitives/place-picker.css, ui/primitives/zone-chip.css, ui/primitives/collapsible.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -8373,190 +8338,6 @@ input.wf-date-val:focus-visible {
   outline-offset: 2px;
 }
 
-/* ═══ ui/primitives/confirm-dialog.css — generated, do not edit here ═══ */
-/* One confirm dialog (U-02), rendered inside the neutral Modal `dialog` card.
-   The card chrome stays neutral (ADR-0079); `tone` colors only the confirm
-   action and a subtle heading accent. Token-based, logical properties (RTL). */
-
-.confirm-heading {
-  font-weight: 700;
-  font-size: var(--text-h3);
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.confirm-text {
-  font-size: var(--text-secondary);
-  color: var(--muted);
-  line-height: var(--leading-normal);
-  margin-block: var(--space-2) var(--space-4);
-}
-
-.confirm-actions {
-  display: flex;
-  gap: var(--space-2);
-  justify-content: flex-end;
-}
-
-.confirm-actions button {
-  font: inherit;
-  font-size: var(--text-secondary);
-  font-weight: 700;
-  border-radius: var(--radius-8);
-  padding-block: var(--space-2);
-  padding-inline: var(--space-4);
-  cursor: pointer;
-}
-
-.confirm-cancel {
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-}
-
-.confirm-confirm {
-  border: 0;
-  color: var(--cta-text);
-  background: var(--cta);
-}
-
-/* danger = a destructive confirm (delete/leave): --miss fill, light text. */
-.confirm[data-tone='danger'] .confirm-confirm {
-  background: var(--miss);
-  color: #fff;
-}
-
-/* hard = the hard-edit commitment guard (ADR-0011): amber fill + amber heading
-   accent — the one place the confirm deliberately wears the commitment hue. */
-.confirm[data-tone='hard'] .confirm-confirm {
-  background: var(--amber);
-  color: #3a2405;
-}
-.confirm[data-tone='hard'] .confirm-heading {
-  color: var(--amber-deep);
-}
-
-.confirm-actions button:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-
-/* ═══ ui/primitives/toggle-chip.css — generated, do not edit here ═══ */
-/* The pressed chip (`ui/primitives/ToggleChip`), extracted in session 185 from the four
-   hand-rolled copies in `map.css`. Everything here is APPEARANCE; where a chip sits and
-   how it enters/leaves stays with the screen that places it, through `className`. */
-.wp-chip {
-  /* Never a flex item that grows: in the Map's rows the strip owns the sizing, and in a
-     `.field` — which is a COLUMN — an `inline-flex` child would stretch to the column's
-     width and the pill would read as a disabled INPUT rather than a control (measured in
-     session 184). `width: fit-content` settles both without an `align-self`, which would
-     have top-aligned every chip in the Map's centred rows. */
-  flex: 0 0 auto;
-  width: fit-content;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--card);
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-/* The touch floor (ADR-0017), for a chip that is its surface's primary control rather
-   than one of a strip — the form's `יש הזמנה` row. A filter chip stays at chip size. */
-.wp-chip.touch {
-  min-height: 44px;
-  padding-inline: 16px;
-  font-size: 13px;
-}
-
-/* Provisional while off (ADR-0110 §2) — the `אולי` facet is a maybe about maybes, and the
-   dash says so before the label does. It goes solid when the facet is on. */
-.wp-chip.provisional:not(.on) {
-  border-style: dashed;
-  border-color: var(--soft-line);
-}
-
-/* ── the tones ────────────────────────────────────────────────────────────────
-   Each names its own on-state, rather than one shared fill plus per-tone patches: the
-   accent FILLS and the cta TINTS, and that is a real difference between a chip over a
-   canvas and a chip in a form, not a knob. */
-
-/* The surface's own selection accent, set per-mode by whichever screen mounts the chip
-   (`.map-screen`/`.index` define it; ink in Trip, plan violet in Plan). The fallback is
-   what makes the primitive safe anywhere else — a Modal's portal has no such ancestor. */
-.wp-chip.accent.on {
-  background: var(--idx-accent, var(--ink));
-  border-color: var(--idx-accent, var(--ink));
-  color: var(--idx-accent-text, #fff);
-}
-
-/* The neutral primary, tinted rather than filled. Amber is time and commitment and plan
-   violet is Plan mode (ADR-0028, root rule 4) — and "this is booked" is emphatically not
-   the commitment axis, which is the whole point of ADR-0136 §4. */
-.wp-chip.cta.on {
-  border-color: var(--cta);
-  background: color-mix(in srgb, var(--cta) 10%, transparent);
-  color: var(--cta);
-}
-
-/* Teal is LOCATION, throughout and only (ADR-0109 §6-7 / ADR-0028): it reads teal even
-   when off, because what it is about does not change with its state. */
-.wp-chip.teal {
-  border-color: var(--teal);
-  color: var(--teal);
-  background: color-mix(in srgb, var(--teal) 10%, transparent);
-}
-.wp-chip.teal.on {
-  background: var(--teal);
-  color: var(--cta-text);
-}
-
-/* Present but no longer claiming it can do anything — near-me after a location refusal,
-   with the banner beside it carrying the explanation and the retry. Last, and it wins over
-   the on-state on purpose: the intent may still be set, and "cannot act on it" is the
-   fact worth showing. */
-.wp-chip.muted,
-.wp-chip.muted.on {
-  border-style: dashed;
-  border-color: var(--soft-line);
-  color: var(--muted);
-  background: transparent;
-}
-
-.wp-chip-count {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-}
-/* Against a filled chip the count rides its own text colour rather than a hardcoded
-   white, so it holds up in every tone and in dark mode. */
-.wp-chip.on .wp-chip-count {
-  color: color-mix(in srgb, currentColor 80%, transparent);
-}
-
-/* The chip settles when it becomes selected (ADR-0140's Journey 4). The press scale
-   already answers the tap; this answers the OUTCOME, which is a different fact — a chip
-   can be pressed and not become selected (tapping the one already on). Keyed on the
-   selected state, so it fires exactly when the answer changes. */
-.wp-chip.on {
-  animation: chip-settle var(--t-quick) var(--ease-arrive);
-}
-@keyframes chip-settle {
-  50% {
-    transform: scale(1.05);
-  }
-}
-
 /* ═══ ui/primitives/collapsible.css — generated, do not edit here ═══ */
 /* Collapsible — animated open/shut container + its count-in-label toggle
    (ADR-0098 reuse audit: generalized out of PlanHome's showCompleted/.chk-toggle
@@ -8587,305 +8368,96 @@ input.wf-date-val:focus-visible {
   max-height: 2000px;
   opacity: 1;
 }
-
-/* ═══ ui/domain/list-row.css — generated, do not edit here ═══ */
-/* ListRow + RowManageSheet (domain, review U-03). Ported faithfully from the
-   Index booking row (`.index .li.bk`) and the Documents row (`.index .li.doc`)
-   + the shared `.row-action` menu in screens.css, under new `wp-` classes so
-   nothing overlaps the legacy rules until the screens migrate and delete them.
-   Amber = time/commitment, teal = location (design-language color budget);
-   spacing/radius/type from the Wave-0 tokens where they map to the ramp. */
-
-.wp-listrow {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-}
-.wp-listrow:last-child {
-  border-bottom: none;
-}
-/* An in-transit (pending) write reads as provisional (ADR-0092): the whole row
-   fades until the server confirms it. Pending only — a failed row stays crisp so
-   its cloud-bang keeps drawing attention. The 19px cloud-up marker stays legible
-   at this opacity, so it still reads as "saving". */
-.wp-listrow.is-unsynced {
-  opacity: 0.6;
-}
-
-.wp-listrow-open {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  cursor: pointer;
-  padding: var(--space-3) 14px;
-}
-.wp-listrow-open:hover {
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.wp-listrow-open:focus-visible {
-  outline: 2px solid var(--teal);
-  outline-offset: -2px;
-}
-.wp-listrow-open:disabled {
-  cursor: default;
-}
-
-.wp-listrow-badge {
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
-  background: var(--paper);
-  display: grid;
-  place-items: center;
-  font-size: var(--text-h3);
-  flex: 0 0 auto;
-}
-/* Category tint (ADR-0059 §3): teal = a stay, amber = transport. */
-.wp-listrow-badge.stay {
-  background: color-mix(in srgb, var(--teal) 12%, transparent);
-}
-.wp-listrow-badge.trans {
-  background: rgba(233, 166, 60, 0.12);
-}
-
-.wp-listrow-main {
-  flex: 1;
-  min-width: 0;
-}
-.wp-listrow-title {
-  font-size: 13.5px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1) 6px;
-  flex-wrap: wrap;
-}
-.wp-listrow-meta {
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 3px;
-  display: block;
-}
-
-.wp-listrow-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-inline-end: var(--space-3);
-  flex: 0 0 auto;
-  text-align: end;
-}
-/* Fixed sync column (ADR-0091): reserves its width even when the badge is silent
-   (synced → EntitySyncBadge renders null), so the marker sits in the same place
-   on every row and neighbours stay aligned. */
-.wp-listrow-sync {
-  inline-size: 19px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-}
-/* 44×44 is the touch floor the rest of the app meets (ADR-0017); this shipped at
-   30 and is the control that OPENS the menu, so it came along with the redesign.
-   The visible ink stays 30px — the extra is hit area, negative-margined so the
-   row's height and the trailing group's spacing are unchanged. */
-.wp-listrow-kebab {
-  width: 44px;
-  height: 44px;
-  margin: -7px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: none;
-  border: 0;
-  color: var(--muted);
-  font-size: var(--text-h3);
-  line-height: 1;
-  cursor: pointer;
-}
-.wp-listrow-kebab .icon {
-  width: 1.15em;
-  height: 1.15em;
-}
-.wp-listrow-kebab:hover {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
-}
-
-/* RowManageSheet action list — the `⋯` menu items (ported from `.row-action`).
-   Violet hover: managing a row is a neutral action; the plan-tint hover matches
-   the shipped sheet. Danger action reads in the miss color. */
-.wp-row-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: var(--space-1) 0;
-}
-.wp-row-action {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  width: 100%;
-  text-align: start;
-  font: inherit;
-  font-size: var(--text-body);
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-12);
-  padding: 13px 14px;
-  cursor: pointer;
-}
-.wp-row-action:hover {
-  border-color: var(--plan);
-  background: var(--plan-tint);
-}
-.wp-row-action:focus-visible {
-  outline: 2.5px solid var(--plan);
-  outline-offset: 2px;
-}
-.wp-row-action.danger {
-  color: var(--miss);
-}
-.wp-row-action.danger:hover {
-  border-color: var(--miss);
-  background: rgba(198, 40, 40, 0.06);
-}
-.wp-row-action-ic {
-  font-size: var(--text-h3);
-  flex: 0 0 auto;
-  /* Aligns with the label rather than the line box: an SVG sized in `em` sits on
-     its own baseline, and a 1.25em box beside 15px text drifts a hair low. */
-  display: inline-flex;
-}
-/* The mark is an SVG now (ADR-0138), so `danger` tints it WITH its label — the
-   emoji it replaced kept its own colours inside a red row, which is the tell
-   that it was never part of the state. Slightly over 1em because a 2px stroke
-   needs the extra to carry beside 15px of Hebrew. */
-.wp-row-action-ic .icon {
-  width: 1.25em;
-  height: 1.25em;
-  stroke-width: 1.9;
-}
-
-/* ── The sheet names its subject (ADR-0138 §3) ──────────────────────────────
-   A quiet fact line under `.modal-title`: type · time · state, in the app's `·`
-   grammar. It exists so the destructive verb is never anonymous — the booking
-   and document menus used to render two unlabelled rows over a scrim with the
-   thing being deleted hidden behind them. */
-.wp-row-subject {
-  display: block;
-  margin-block-start: 3px;
-  font-size: var(--text-meta);
-  font-weight: 500;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-/* ── The destructive verb partitions, it does not just recolour (§5) ────────
-   `מחק` and `ערוך` shipped as identical cards differing by text hue alone. A
-   hairline and a gap — 13px total — is the whole fix, and it costs the sheet
-   nothing it was using. */
-.wp-row-actions-danger {
-  margin-block-start: 10px;
-  padding-block-start: 10px;
-  border-block-start: 1px solid var(--line);
-}
-
-/* ═══ ui/domain/place-badge.css — generated, do not edit here ═══ */
-/* PlaceBadge — the category badge as the way to the place on our map. It adds NO
-   box to the row: the badge already exists on every host, at the same leading
-   position, which is what makes this the one placement a dense row can afford
-   (measured: a separate trailing control wrapped or truncated titles on all four
-   surfaces). Teal because it is a location affordance and teal is location only
-   (ADR-0028) — the badge's own category tint is untouched underneath. */
-
-.wp-placebadge {
-  position: relative;
-  cursor: pointer;
-  /* The category tint stays; the ring is the only thing added, and it reads as
-     "this one is a control" against the identical inert badges around it. */
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 40%, transparent);
-}
-.wp-placebadge:hover {
-  box-shadow: 0 0 0 2px var(--teal);
-}
-.wp-placebadge:focus-visible {
-  outline: 2.5px solid var(--teal);
-  outline-offset: 2px;
-}
-
-/* The corner marker: a real pin, not a dot. A dot says "there is something here";
-   the pin says what the tap does, in the silhouette of what you land on (ADR-0087's
-   marker). The `--card` ring lifts it off the badge so it reads as an overlay rather
-   than part of the glyph. */
-.wp-placebadge-mark {
-  position: absolute;
-  inset-block-end: -5px;
-  inset-inline-end: -5px;
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  background: var(--teal);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 11px;
-  box-shadow: 0 0 0 2px var(--card);
-}
-/* The pin's stroke needs to survive at 11px, where the shared 2px looks spindly. */
-.wp-placebadge-mark .icon {
-  stroke-width: 2.4;
-}
-
-/* NOT on the departure board, deliberately (owner, 2026-07-28). It was wired there
-   first, on the rule that every event has a way to its pin, and read too loud: the
-   hero is the app's one dark, glowing surface, so a teal ring plus a marker on its
-   icon competes with the thing the board exists to say. The hero's way in is
-   deferred to its own redesign — see the backlog's "Hero 2.0", where tapping the
-   board expands it and actions become possible in place, which is the shape this
-   affordance actually wants there. */
 </style>
 
     <style>
       /* ══════════════════════════════════════════════════════════════════
-         THE PROPOSAL. Five rules and one SVG. Everything else on these
-         frames is shipped CSS, untouched.
+         THE PROPOSAL — `ui/primitives/FormSteps`. Three rules.
+         Everything else on these frames is shipped CSS.
          ══════════════════════════════════════════════════════════════════ */
 
-      /* ── §1a · The direction control ──────────────────────────────────
-         Two pills at the top of the ROUTE field — not a field of their own,
-         and not beside the "when". What they describe is the shape of the
-         journey between these two places, which is exactly what that field
-         is about; and putting them there means the `⇄` in the title preview
-         directly above is the immediate feedback for the tap.
+      /* ── §1 · The step bar ────────────────────────────────────────────
+         States which step you are on and how many there are, and it is a
+         READ-OUT, not a control: tapping a dot to jump would need every step
+         to be independently valid, which is exactly the property a BRANCHING
+         flow does not have. Navigation is the footer's two buttons only.
 
-         `.choice-grid.pills` verbatim (ADR-0100's chip grammar, already the
-         Index's and the Map's). No new control, no new selected-state hue —
-         `.choice-pill.on` is ink, which is what a non-semantic selection is
-         supposed to be. */
-      .booking-sheet .bs-direction {
-        margin-block-end: var(--space-2);
+         No hue. A step is neither time (amber), place (teal) nor plan mode
+         (violet), and rule 4 has nothing spare to lend it — same reasoning the
+         note mark settled on (ADR-0153). */
+      .fs-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-block-end: var(--space-3);
+      }
+      .fs-dots {
+        display: flex;
+        gap: 5px;
+      }
+      .fs-dot {
+        inline-size: 6px;
+        block-size: 6px;
+        border-radius: var(--radius-999);
+        background: var(--line);
+      }
+      .fs-dot.on {
+        background: var(--ink);
+      }
+      .fs-dot.done {
+        background: var(--muted);
+      }
+      .fs-label {
+        font-size: var(--text-caption);
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .fs-label b {
+        color: var(--ink);
       }
 
-      /* ── §1b · The leg heading ────────────────────────────────────────
-         Appears only in the two-leg form, and then on BOTH blocks (see the
-         header comment, #4). It states which journey the span below belongs
-         to and, next to it, the route for that direction — because "חזרה"
-         alone still leaves you checking which end is which.
+      /* ── §2 · The footer, which IS `FormActions` ──────────────────────
+         Not a new action row. `FormActions` already owns primary/secondary/
+         destructive and the whole app's save grammar (ADR-0078's family), so a
+         step just supplies different labels: the primary is `הבא` until the
+         last step, where it is `שמירה`; the secondary is `הקודם` after the
+         first, where it is `ביטול`. A second action row beside it would be the
+         fourth copy of a thing that already exists once. */
 
-         Quiet on purpose: `--muted` caption weight, with the route in ink.
-         The amber already spent inside the span (the leg dots, the time
-         values) is the time accent for this block; a second amber here would
-         be the budget being spent twice on one idea. */
+      /* ── §3 · The step transition, from the shell's own grammar ───────
+         Steps travel the way routes do (ADR-0140): forward arrives from the
+         inline-end edge, back from the inline-start. `--nav-dir` is the same
+         signal the shell already sets, so a step does not invent a motion —
+         it borrows the one the app uses for "you moved along". Latched at the
+         step change, never read live, which is the mistake ADR-0140 §7 logged.
+
+         Reduced motion is handled by `motionDurationMs` answering 0 in JS and
+         by the media query here; a step must never depend on the animation
+         having run. */
+      .fs-panel {
+        animation: fs-arrive var(--t-base) var(--ease-arrive) both;
+      }
+      @keyframes fs-arrive {
+        from {
+          opacity: 0;
+          transform: translateX(calc(var(--nav-dir, 1) * 14px));
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fs-panel {
+          animation: none;
+        }
+      }
+
+      /* ── borrowed · the round-trip proposal's own new rules ──────────
+         Copied from `booking-round-trip-v1.html`, because this file draws that
+         form and those rules are not shipped CSS for the inliner to fetch.
+         They are that file's proposal, not this one's — if they change, they
+         change there first. */
       .booking-sheet .bs-leg-head {
         display: flex;
         align-items: baseline;
@@ -8900,86 +8472,11 @@ input.wf-date-val:focus-visible {
         font-weight: 600;
         color: var(--ink);
       }
-      /* The return block is a second journey, not a continuation of the first —
-         one hairline is enough to say so, and it costs no vertical rhythm that
-         a heading was not already going to spend. */
       .booking-sheet .bs-leg.return {
         border-block-start: 1px solid var(--soft-line);
         padding-block-start: var(--space-4);
       }
-
-      /* ── §1c · The two-way route arrow ────────────────────────────────
-         `RouteLabel` gains `roundTrip`. Its glyph is a double-headed arrow,
-         and being SYMMETRIC is the whole point: `NavArrow` is mirrored per
-         direction and `Icon`'s `swap` is vertical precisely because a
-         horizontal pair reads backwards in RTL (that file's own comment).
-         Nothing can flip a shape that is its own mirror image. */
-      .route .arr-both {
-        display: inline-flex;
-        color: var(--muted);
-        padding: 0 5px;
-      }
-      .route .arr-both svg {
-        width: 1.05em;
-        height: 1.05em;
-      }
-
-      /* ── §3 · The pair link, on the detail ────────────────────────────
-         NOT `.bk-loc-link` — that pill is teal, and teal is location only
-         (rule 4). A sibling booking is a relationship, which has no hue in
-         this app's budget, so it gets ink and the shared forward arrow. */
-      .bk-pairlink {
-        font: inherit;
-        font-size: 12.5px;
-        font-weight: 700;
-        color: var(--ink);
-        background: transparent;
-        border: 0;
-        padding: 0;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-      }
-      .bk-pairlink .nav-arrow {
-        width: 13px;
-        height: 13px;
-        color: var(--muted);
-      }
-
-      /* ── §4 · `ui/domain/RouteField` — ONE component, two hosts ───────
-         THE FIRST DRAFT OF THIS FILE BROKE RULE 8 AND DREW IT ANYWAY: it copied
-         `.bs-route-pickers` + two `PlacePicker`s + the hint into `EventForm`,
-         which is a second copy of the thing rule 8 exists to prevent, added by
-         the very change that complains about copies.
-
-         So the route field is EXTRACTED, not duplicated. `ui/domain/RouteField`
-         (+ its own `route-field.css`) owns the stacked pickers, the swap, the
-         hint, and the two errand `field` names — and `BookingSheet` and
-         `EventForm` are call sites. The CSS leaves `screens.css`'s
-         `.booking-sheet .bs-route-pickers`, because a rule scoped to one host is
-         wrong the moment there are two (`frontend/CLAUDE.md`, layering).
-
-         THE SWAP IS WHY THE EXTRACTION PAYS FOR ITSELF RATHER THAN COSTING. It
-         is what makes the origin guess safe — an existing transport event has
-         one place and cannot say which end it is, so it lands in the origin and
-         one tap moves it, with no errand. `BookingSheet` has never had it
-         either: today a route entered backwards is corrected with two trips to
-         the Map. One control, both hosts, written once.
-
-         The glyph is `Icon`'s `swap`, a VERTICAL pair — and here that is not a
-         compromise but the literal truth: the pickers are stacked, so a vertical
-         exchange is exactly the motion. (Its own file comment warns that a
-         horizontal pair reads backwards in RTL; this layout never has to test
-         that rule.) */
-      /* Was `.booking-sheet .bs-route-pickers` in `screens.css`. Same two
-         declarations, no host in the selector — which is the whole extraction. */
-      .route-field {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-2);
-      }
-      .route-field-swap {
+      .bs-swap {
         align-self: flex-start;
         display: inline-flex;
         align-items: center;
@@ -8993,31 +8490,9 @@ input.wf-date-val:focus-visible {
         padding: 2px 4px;
         cursor: pointer;
       }
-      .route-field-swap .icon {
+      .bs-swap .icon {
         width: 15px;
         height: 15px;
-      }
-      .route-field-swap:active {
-        transform: scale(var(--press-scale));
-      }
-
-      /* ── §4b · The partner note on the delete prompt ──────────────────
-         Sits exactly where `.bs-hard-note` sits, and is deliberately quieter:
-         the hard note is amber because it is a warning about a commitment,
-         while this is a statement of fact about a row you are not deleting. */
-      .bs-pair-note {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--muted);
-        margin: 2px 0 6px;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-      }
-      .bs-pair-note .icon {
-        width: 14px;
-        height: 14px;
-        flex: 0 0 auto;
       }
 
       /* ══════════════════════════════════════════════════════════════════
@@ -9046,40 +8521,6 @@ input.wf-date-val:focus-visible {
         max-width: 86ch;
         line-height: 1.75;
       }
-      .controls {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-        margin-bottom: 22px;
-        position: sticky;
-        top: 0;
-        z-index: 5;
-        background: #dfe3ea;
-        padding: 10px 0;
-      }
-      .controls button {
-        font: inherit;
-        font-size: 13px;
-        font-weight: 600;
-        padding: 8px 14px;
-        border-radius: 999px;
-        border: 1px solid var(--line);
-        background: #fff;
-        color: var(--ink);
-        cursor: pointer;
-      }
-      .controls button[aria-pressed='true'] {
-        background: var(--plan);
-        border-color: var(--plan);
-        color: #fff;
-      }
-      .controls .lbl {
-        font-size: 12px;
-        font-weight: 700;
-        color: var(--muted);
-        margin-inline-end: 4px;
-      }
       section.case {
         background: #fff;
         border: 1px solid var(--line);
@@ -9107,10 +8548,7 @@ input.wf-date-val:focus-visible {
       section.case > .note b {
         color: var(--ink);
       }
-      section.case > .note code,
-      .panel code,
-      .doc-h code,
-      .notes code {
+      code {
         font:
           600 11.5px 'JetBrains Mono',
           monospace;
@@ -9133,9 +8571,6 @@ input.wf-date-val:focus-visible {
         width: 390px;
         max-width: 100%;
       }
-      .col.narrow {
-        width: 330px;
-      }
       .tag {
         display: block;
         width: fit-content;
@@ -9153,42 +8588,51 @@ input.wf-date-val:focus-visible {
         background: var(--plan-tint);
         color: var(--plan);
       }
-      .tag.plain {
-        background: rgba(22, 35, 61, 0.06);
-        color: var(--muted);
-      }
       .phone {
         background: var(--screen);
         overflow: hidden;
         position: relative;
         box-shadow: var(--elevation-floating);
         border-radius: 10px;
+        padding-block-start: 30px;
       }
-      /* The frames render the REAL `.modal-overlay` tree. Two overrides, and the
-         first one is why the first render came out EMPTY: the shipped overlay is
-         `position: fixed; inset: 0`, so containing it in the phone box with
-         `absolute` collapsed the box to zero height. In normal flow instead, the
-         card sizes the frame and the whole sheet is visible at once — which is
-         what a design review needs and what a real 844px screen would not give
-         (this sheet scrolls on a phone; `max-height: 80vh` is lifted below). */
       .phone .modal-overlay {
         position: relative;
         inset: auto;
         animation: none;
       }
-      /* A band of screen above the sheet, so it still reads as something over
-         a surface rather than a card on a page. */
-      .phone {
-        padding-block-start: 38px;
-      }
-      .phone .modal-overlay::before {
-        animation: none;
-      }
+      .phone .modal-overlay::before,
       .phone .modal-card {
         animation: none;
       }
       .phone .booking-sheet {
         max-height: none;
+      }
+      /* THE FOLD. A sheet is capped at `max-height: 80vh`, so on a 390×844
+         phone the user sees ~675px of it at a time. Everything below this line
+         costs a scroll — which is the number this whole question is about. */
+      .fold {
+        position: absolute;
+        inset-inline: 0;
+        top: 705px;
+        border-top: 2px dashed var(--miss);
+        pointer-events: none;
+        /* Above `.modal-overlay`'s z-index 20 — the first draft used 3 and the
+           line painted UNDER the sheet, i.e. was invisible in exactly the frame
+           it exists for. */
+        z-index: 30;
+      }
+      .fold::after {
+        content: 'קו הקיפול · 80vh במסך 844';
+        position: absolute;
+        inset-inline-end: 6px;
+        top: 3px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--miss);
+        background: #fff;
+        padding: 1px 6px;
+        border-radius: 4px;
       }
       .caption {
         font-size: 12px;
@@ -9249,32 +8693,15 @@ input.wf-date-val:focus-visible {
         background: #f7f8fa;
         font-size: 11.5px;
       }
-      .strip {
-        padding: 16px;
-        background: var(--screen);
-      }
-      .strip .lbl2 {
-        font-size: 11px;
+      table.m td.yes {
+        color: var(--ok);
         font-weight: 700;
-        color: var(--faint);
-        margin: 14px 0 5px;
       }
-      .strip .lbl2:first-child {
-        margin-top: 0;
+      table.m td.no {
+        color: var(--muted);
       }
-      /* The rejected Index variant, shown struck rather than described. */
-      .rejected {
-        position: relative;
-        opacity: 0.62;
-      }
-      /* Offscreen, but LAID OUT — `display:none` would report every height as zero,
-         which is the whole failure mode a measurement panel exists to avoid. */
-      #ph-measure,
-      #ph-measure-one {
-        position: absolute;
-        inset-inline-start: -10000px;
-        top: 0;
-        visibility: hidden;
+      table.m tr.hit td {
+        background: rgba(233, 166, 60, 0.09);
       }
     </style>
   </head>
@@ -9282,1070 +8709,398 @@ input.wf-date-val:focus-visible {
   <body>
     <div class="wrap">
       <div class="doc-h">
-        <h1>הלוך ושוב · הזמנת תחבורה</h1>
+        <h1>טופס בשלבים</h1>
         <p>
-          טיסה או רכבת נקנות כמעט תמיד הלוך ושוב, והטופס יודע לכתוב רק כיוון אחד. הדגם הזה מוסיף את
-          החצי החסר: איך כותבים את הנסיעה השנייה, ואיך שתי השורות יודעות זו על זו אחר כך. המודל לא
-          משתנה. ADR-0047 §1 כבר קבע ששתי הנסיעות הן שתי הזמנות, וזה נכון: על ציר הזמן הן שני אירועים
-          קשיחים במרחק שבועות, לכל אחד המופע שלו, הסטטוס שלו ואזורי הזמן שלו. מה שמשתנה הוא
-          <b>הכתיבה</b>, ובנוסף <b>קשר נגזר</b> בין השתיים. אין מיגרציה ואין שדה חדש.
+          השאלה: האם טופס ארוך צריך להפוך לטופס עם <b>הבא</b> ו<b>הקודם</b>, ואילו טפסים קיימים
+          ירוויחו מזה. התשובה כאן היא לא "כן" ולא "לא": <b>המנגנון כבר קיים באפליקציה פעמיים</b>,
+          בלי בעלים, ואף אחד משני המופעים אינו טופס ארוך. הסריקה למטה עוברת על תשעה משטחים ומוצאת
+          <b>מועמד אחד</b> — וגם הוא נעשה מועמד רק אחרי ההצעה של
+          <code>booking-round-trip-v1.html</code>.
         </p>
       </div>
 
-      <div class="controls">
-        <span class="lbl">כיוון</span>
-        <button type="button" data-dir="one">כיוון אחד</button>
-        <button type="button" data-dir="two" aria-pressed="true">הלוך ושוב</button>
-        <span class="lbl" style="margin-inline-start: 12px">רוחב</span>
-        <button type="button" data-w="390" aria-pressed="true">390</button>
-        <button type="button" data-w="360">360</button>
-      </div>
-
-      <!-- ════════ §1 · הטופס ════════════════════════════════════════════ -->
+      <!-- ════════ §1 · העימות ═══════════════════════════════════════════ -->
       <section class="case">
-        <h2>§1 · הטופס — הפקד, הכותרות והמקטע השני</h2>
+        <h2>§1 · אותו טופס, גלילה מול שלבים — עם קו הקיפול מצויר</h2>
         <p class="note">
-          מימין הטופס כפי שהוא היום; משמאל ההצעה. הפקד הוא שני צ׳יפים בראש שדה <b>מסלול</b>, כי מה
-          שהם מתארים הוא צורת הנסיעה בין שני המקומות האלה. בחירת <b>הלוך ושוב</b> עושה שלושה דברים
-          ולא יותר: החץ בכותרת נעשה דו-כיווני, לשני המקטעים נוספת כותרת שאומרת איזו נסיעה זו, ומתחת
-          לראשון נפתח מקטע זמנים שני. המסלול של החזרה נגזר, לא נבחר שוב. השתמשו בפקד למעלה כדי
-          להחליף. בכיוון אחד <b>שום שדה לא משתנה</b> — אבל שורת הפקד עצמה עולה 44px גם למי שלא
-          ייגע בה, וזה נמדד ולא מוערך (הפאנל מתחת).
+          גיליון תחתון חסום ב-<code>max-height: 80vh</code>, ובמסך 390×844 זה
+          <b>675px נראים בכל רגע</b>. הקו המקווקו הוא שם. משמאל הטופס עם הלוך ושוב כפי שהוצע —
+          נמדד <b id="m-scroll">…</b> — וכמעט חצי ממנו מתחת לקו. מימין אותו תוכן בשלושה שלבים.
         </p>
         <div class="pair">
           <div class="col">
-            <span class="tag before">היום · כיוון אחד בלבד</span>
-            <div class="phone" id="ph-before"></div>
+            <span class="tag before">גלילה · כפי שהוצע</span>
+            <div class="phone" id="ph-scroll"><div class="fold"></div></div>
             <p class="caption">
-              אין שום אזכור לטיסת החזור. מי שרוצה אותה חוזר לכפתור <b>הוסף הזמנה</b>, בוחר סוג שוב,
-              בוחר את אותם שני מקומות בסדר הפוך, ומקליד את אותו קוד אישור פעם שנייה. ארבע פעולות
-              שהטופס כבר יודע את כולן.
+              <b>מה שנשמר:</b> אפשר לראות את כל ההזמנה לפני שמירה, וסירוב על שדה רחוק מסומן על השדה
+              עצמו באותה קריאה (ADR-0150). <b>מה שנעלם:</b> שני מסכים וקצת של גלילה, ואת הרגל השנייה
+              אי אפשר להשוות לראשונה בלי לגלול הלוך ושוב.
             </p>
           </div>
           <div class="col">
-            <span class="tag after">ההצעה</span>
-            <div class="phone" id="ph-after"></div>
+            <span class="tag after">שלבים · אותו תוכן</span>
+            <div class="phone" id="ph-steps"><div class="fold"></div></div>
             <p class="caption">
-              קוד האישור, הסמל וסוג האירוע משותפים לשתי הנסיעות, ולכן נשארים שדה אחד. רק התאריכים
-              והשעות נכתבים פעמיים, כי רק הם באמת שונים. הרמז מתחת לקוד אומר את זה במקום שבו השאלה
-              עולה.
+              <b>מה שנשמר:</b> כל שלב נכנס במסך, וההשוואה בין הרגליים היא מעבר שלב ולא גלילה עיוורת.
+              <b>מה שעולה:</b> שתי הקשות נוספות לכל הזמנה, גם לכיוון אחד; ואי אפשר לסקור את הכול
+              לפני שמירה. השתמשו ב<b>הבא</b>/<b>הקודם</b> — הם חיים.
             </p>
           </div>
         </div>
       </section>
 
+      <!-- ════════ §2 · הסריקה ═══════════════════════════════════════════ -->
       <div class="panel">
-        <h2>מדידה · מה המקטע השני עולה בגובה</h2>
+        <h2>הסריקה · כל טופס באפליקציה</h2>
         <p>
-          נקרא מה-DOM החי של המסגרות למעלה, ברוחב הנבחר. זו העלות היחידה שההצעה גובה, ולכן היא
-          נמדדת ולא מוערכת: הטופס כבר ארוך, וגיליון תחתון מוגבל ל-<code>max-height: 80vh</code>.
+          <code>&lt;Field&gt;</code> ו"פקדים" <b>נספרו</b> מהמקור (פקד = קלט, בורר מקום, בורר זמן,
+          בורר סמל, רשת בחירה, בורר קובץ, מחבר פתקים, צ׳יפ מצב). הם לא טענת פיקסלים. הגובה של
+          <code>BookingSheet</code> הוא היחיד שכאן <b>נמדד</b>, כי רק הוא מצויר בקובץ הזה.
         </p>
         <table class="m">
           <thead>
             <tr>
-              <th>מה נמדד</th>
-              <th>היום</th>
-              <th>כיוון אחד · עם הפקד</th>
-              <th>הלוך ושוב</th>
-            </tr>
-          </thead>
-          <tbody id="mbody"></tbody>
-        </table>
-        <!-- Measured offscreen so the table is complete whatever the toggle says. -->
-        <div id="ph-measure" aria-hidden="true" class="phone"></div>
-        <div id="ph-measure-one" aria-hidden="true" class="phone"></div>
-        <p style="margin-top: 12px">
-          <b>המדידה הרגה טענה שכתבתי כאן קודם.</b> §1 אמר "בכיוון אחד הטופס זהה לחלוטין לקיים", וזה
-          <b>לא נכון ב-44px</b>: שורת הצ׳יפים היא שדה חדש, והיא נמצאת שם גם כשלא בוחרים בה. הפיצול
-          הוא מה שחשוב, והוא נקי במפתיע:
-        </p>
-        <ul>
-          <li>
-            <b>44px — מס על כולם.</b> מה שכל טופס תחבורה משלם על עצם קיום הפקד, גם מי שמזמין כיוון
-            אחד. זה המספר שצריך להצדיק, והוא שורת צ׳יפים אחת בשדה שכבר קיים.
-          </li>
-          <li>
-            <b>492px — משולם רק כשמבקשים.</b> המקטע השני, שתי הכותרות והקו המפריד. בערך גובה מסך,
-            כלומר גלילה אחת, אחרי הקשה מפורשת על צ׳יפ.
-          </li>
-        </ul>
-        <p>
-          וזו <b>הסיבה האמיתית לברירת המחדל</b>, לא זהירות כללית: אילו הפקד נפתח דלוק, 492px היו
-          עוברים מהעמודה השנייה לראשונה ונגבים מכל מי שמזמין כיוון אחד.
-        </p>
-        <p>
-          <b>ומה עושים עם האורך עצמו</b> — 1565px הם 2.3 מסכים בגיליון שחסום ב-<code>max-height: 80vh</code>
-          — נשאל בנפרד ונענה בנפרד, ב-<code>mockups/form-steps-v1.html</code>: שם הטופס הזה מצויר
-          פעמיים, נגלל מול מחולק לשלבים, עם קו הקיפול מצויר; שם גם הסריקה של כל טפסי האפליקציה,
-          והממצא ששני משטחים כבר עושים שלבים ביד. <b>מסקנתו: לא לחלק את הטופס הזה בינתיים</b> —
-          החלוקה שלו היא חיתוך ולא הסתעפות, ו-<code>Collapsible</code> הוא הכלי הזול יותר שכבר
-          בבית.
-        </p>
-      </div>
-
-      <!-- ════════ §2 · הסירוב ═══════════════════════════════════════════ -->
-      <section class="case">
-        <h2>§2 · הסירוב החדש — חזרה שיוצאת לפני ההגעה</h2>
-        <p class="note">
-          שני המקטעים מוסיפים שני שמות ל-<code>BookingField</code> (<code>returnStart</code>,
-          <code>returnEnd</code>), ולכן כל סירוב מסומן על המקטע שהוא מדבר עליו, בדיוק כמו שמקטע יחיד
-          כבר עושה היום (ADR-0150). הבדיקות הקיימות רצות על שני המקטעים; מה שחדש הוא בדיקה
-          <b>אחת</b>: חזרה שיוצאת לפני שהנסיעה הראשונה הגיעה. לחצו <b>שמירה</b>.
-        </p>
-        <div class="pair">
-          <div class="col">
-            <div class="phone" id="ph-refuse"></div>
-            <p class="caption">
-              הנוסח <b>החזרה יוצאת לפני ההגעה ליעד</b> לא מזכיר מטוס או רכבת, ולכן הוא אחד לשני
-              הסוגים. הסימון יושב על מקטע היציאה של החזרה, שהוא השדה השגוי, ולא על ארבעת השדות
-              התקינים סביבו.
-            </p>
-          </div>
-          <div class="col narrow">
-            <div class="panel" style="margin: 0">
-              <h2 style="margin-bottom: 8px">מה נבדק, ועל מה מסומן</h2>
-              <table class="m">
-                <thead>
-                  <tr>
-                    <th>מה</th>
-                    <th>סימון</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>תאריך מחוץ לטווח הטיול</td>
-                    <td>המקטע החורג, אחד או שניים</td>
-                  </tr>
-                  <tr>
-                    <td>סיום לפני התחלה, בתוך נסיעה</td>
-                    <td>מקטע הסיום של אותה נסיעה</td>
-                  </tr>
-                  <tr>
-                    <td><b>חזרה לפני ההגעה</b></td>
-                    <td>מקטע היציאה של החזרה</td>
-                  </tr>
-                  <tr>
-                    <td>חסר מוצא או יעד</td>
-                    <td>שדה המסלול, כמו היום</td>
-                  </tr>
-                </tbody>
-              </table>
-              <p style="margin-top: 10px">
-                כל הבעיות מדווחות בקריאה אחת. טופס שמסרב על הראשונה בלבד שולח אתכם לסיבוב שני כדי
-                לגלות את השנייה, וזה בדיוק מה ש-ADR-0150 נכתב כדי לסגור.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ════════ §3 · אחרי השמירה ══════════════════════════════════════ -->
-      <section class="case">
-        <h2>§3 · אחרי השמירה — הזוג, והיכן הוא נראה</h2>
-        <p class="note">
-          שמירה אחת כותבת שתי הזמנות ושני אירועים בתוך <code>withChangeGroup</code> אחד (ADR-0092),
-          כך שהן שינוי ממתין אחד ולא ארבעה. מכאן והלאה הן שתי הזמנות רגילות לגמרי: פתיחת אחת מהן
-          פותחת את הטופס של נסיעה אחת, בלי הפקד. <b>הזיווג נגזר ולא נשמר</b> — הכלל מופיע בפאנל
-          למטה. מה שהוא מוסיף הוא שתי שורות בסך הכול.
-        </p>
-        <div class="pair">
-          <div class="col">
-            <span class="tag after">פרטי ההזמנה · שורת הזוג</span>
-            <div class="phone" id="ph-detail"></div>
-            <p class="caption">
-              העובדה יושבת <b>אחרונה</b>: כל השאר מתאר את ההזמנה הזאת, וזו מדברת על השכנה. בטיסת
-              החזור אותה שורה קוראת <b>הלוך</b> ומצביעה חזרה. הקישור בצבע דיו ולא טורקיז, כי טורקיז
-              שמור למיקום.
-            </p>
-          </div>
-          <div class="col">
-            <span class="tag after">מחיקה · הערת השותפה</span>
-            <div class="phone" id="ph-delete"></div>
-            <p class="caption">
-              שורה אחת מעל הבחירה, במקום שבו יושבת היום הערת ההזמנה הקשיחה. <b>בלי כפתור שלישי</b>:
-              דיאלוג הרסני שגדל מפעולה אחת לשתיים הוא בדיוק המקום שבו ADR-0138 §2 מצא פעולה מסוכנת
-              שזזה מתחת לאצבע.
-            </p>
-          </div>
-        </div>
-        <div class="pair" style="border-block-start: 1px solid var(--line)">
-          <div class="col">
-            <span class="tag plain">רשימת ההזמנות · ללא שינוי</span>
-            <div class="strip" id="strip-index"></div>
-            <p class="caption">
-              הרשימה ממוינת כרונולוגית והזוג רחוק שבועיים, ולכן אי אפשר להצמיד את השורות בלי לשבור
-              את המיון. התשובה היא <b>לא לעשות כלום</b>: השאלה "האם הזמנתי חזור" כבר נענית במסך
-              ההכנה של מצב תכנון (<code>readiness.ts</code>), ושורה שנפתחה כבר מראה את הזוג בפרטים.
-            </p>
-          </div>
-          <div class="col">
-            <span class="tag before">נשקל ונדחה · תגית בשורה</span>
-            <div class="strip rejected" id="strip-index-rejected"></div>
-            <p class="caption">
-              תגית <b>הלוך ושוב</b> בשורת המטא. היא נראית זולה עד שרואים אותה: השורה כאן כבר נושאת
-              שעה, משך וסימון פתק, והתגית <b>נשברת לשורה שנייה</b> — בדיוק העלות ש-ADR-0152 שילם
-              עליה בחיתוך שם מקום כדי לא לשלם. וכל שורת תחבורה משלמת אותה, כדי לענות על שאלה שכבר
-              יש לה תשובה בשני מקומות אחרים.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <!-- ════════ §4 · טופס האירוע ══════════════════════════════════════ -->
-      <section class="case">
-        <h2>§4 · טופס האירוע — ההזמנה שנולדת שם חסרה מסלול, ולפעמים לא נולדת בכלל</h2>
-        <p class="note">
-          ADR-0136 נתן ל-<code>EventForm</code> שורת <b>יש הזמנה</b>, והתיקון של סשן 185 כבר גילה חצי
-          מהבעיה: ל-<code>EventCategory</code> יש <code>transport</code> אחד ול-<code>BookingType</code>
-          שלושה, ולכן תחבורה <b>נשאלת</b> איזו. החצי השני לא נמצא אז: לתחבורה יש גם
-          <b>צורת מקום אחרת</b>. כל שאר הסוגים נושאים <code>placeId</code> אחד; תחבורה נושאת מסלול
-          (<code>fromPlaceId</code>/<code>toPlaceId</code>), והשרת אוכף את זה. השורה שואלת "איזה כלי
-          רכב" ואז שולחת מטען בצורת מסעדה.
-        </p>
-        <div class="pair">
-          <div class="col">
-            <span class="tag before">היום · שדה מיקום יחיד</span>
-            <div class="phone" id="ph-ev-before"></div>
-            <p class="caption">
-              המקום נשלח כ-<code>placeId</code> עם <code>type: 'flight'</code>. עם מקום, השרת מחזיר
-              400; בלי מקום ההזמנה נשמרת <b>בלי מסלול</b>, וארבעה משטחים אחרים לא יודעים לקרוא
-              אותה.
-            </p>
-          </div>
-          <div class="col">
-            <span class="tag after">ההצעה · אותו שדה, שני קצוות</span>
-            <div class="phone" id="ph-ev-after"></div>
-            <p class="caption">
-              כשהסוג נושא מסלול, שדה <b>מיקום</b> נעשה שדה <b>מסלול</b> — לא עותק שני של השדה
-              מטופס ההזמנה אלא <b>אותו רכיב</b>, <code>ui/domain/RouteField</code>, ששני הטפסים
-              קוראים לו. <b>אף אחד מהקצוות לא חובה</b>, ולכן ההבטחה של ADR-0136 ("לא דורש כלום")
-              נשמרת. מה שהשתנה הוא רק שהמקום שכן נמסר נוחת בשדה שאפשר לקרוא.
-            </p>
-          </div>
-        </div>
-        <p class="note" style="border-block-start: 1px solid var(--line); border-block-end: 0">
-          <b>ההחלפה (⇅) היא מה שמכשיר את הניחוש</b>, והיא גם מה שמשלם על החילוץ. אירוע תחבורה
-          קיים עם מקום אחד לא אומר איזה קצה הוא, ולכן הוא נוחת ב<b>מוצא</b> ואפשר להעביר אותו ליעד
-          בהקשה אחת בלי שליחות למפה. אותו פקד חסר גם ב-<code>BookingSheet</code>, שבו מסלול הפוך
-          מתוקן היום בשתי שליחויות למפה. רכיב אחד, שני מארחים, נכתב פעם אחת — וזו הכללה של תשתית
-          קיימת, לא פקד חדש (כלל 8). <b>הטיוטה הראשונה של הקובץ הזה שכפלה את השדה במקום לחלץ אותו</b>,
-          כלומר עברה על הכלל בדיוק בשינוי שמתלונן עליו.
-        </p>
-      </section>
-
-      <div class="panel">
-        <h2>מה שבור היום, ומה כל תיקון פותר</h2>
-        <p>
-          נבדק מול הקוד, והשורה הראשונה <b>שוחזרה</b>: רינדור של <code>EventForm</code> על אירוע
-          תחבורה עם מקום, לחיצה על שמירה, והמטען שיצא הוא
-          <code>{ type: 'flight', title: '…', placeId: 'p-nrt' }</code>. השומר בשרת
-          (<code>assertPlaceShape</code>) זורק על בדיוק את זה.
-        </p>
-        <table class="m">
-          <thead>
-            <tr>
-              <th>מה קורה</th>
-              <th>למה</th>
-              <th>מה מתקן</th>
+              <th>משטח</th>
+              <th>שדות</th>
+              <th>פקדים</th>
+              <th>מה יש לו היום</th>
+              <th>ירוויח משלבים?</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><b>אירוע תחבורה עם מקום לא נשמר כלל</b></td>
-              <td><code>placeId</code> נשלח עם סוג תחבורה. השרת מחזיר 400.</td>
-              <td>שלב 0 — התנאי שכבר קיים ב-<code>BookingSheet</code></td>
+            <tr class="hit">
+              <td><code>BookingSheet</code></td>
+              <td>9</td>
+              <td>28</td>
+              <td>גלילה בלבד. אין <code>Collapsible</code>.</td>
+              <td class="yes">כן, ורק אחרי הלוך ושוב</td>
             </tr>
             <tr>
-              <td>ההזמנה נשמרת בלי מסלול</td>
-              <td>אין <code>fromPlaceId</code>/<code>toPlaceId</code> לכתוב אליהם.</td>
-              <td>§4 — שדה המסלול</td>
+              <td><code>EventForm</code></td>
+              <td>4</td>
+              <td>15</td>
+              <td><code>Collapsible</code> ×3 (הבלוק של "יש הזמנה")</td>
+              <td class="no">לא. הגילוי ההדרגתי כבר שם ועובד.</td>
             </tr>
             <tr>
-              <td>הכותרת היא שם ולא מסלול</td>
-              <td><code>BookingTitle</code> נופל לכותרת כשאין קצוות, נגד ADR-0059 §3.</td>
-              <td>§4</td>
+              <td><code>CreateTrip</code></td>
+              <td colspan="2">3 קבוצות</td>
+              <td>יעד + תאריכים + שם. מינימלי במכוון (ADR-0032).</td>
+              <td class="no">לא. חלוקה לשלושה מסכים תבטל את ההחלטה.</td>
             </tr>
             <tr>
-              <td>אין מיקום, אין סיכה במפה, אין ניווט</td>
-              <td><code>bookingPlaceId</code> קורא <code>fromPlaceId</code> לתחבורה.</td>
-              <td>§4</td>
+              <td><code>DocumentUploadSheet</code></td>
+              <td>3</td>
+              <td>7</td>
+              <td>קובץ → סוג → שם. <b>באמת רציף ותלוי.</b></td>
+              <td class="no">לא — קצר מספיק. הדוגמה הכי טובה ל"רציף ≠ צריך שלבים".</td>
             </tr>
             <tr>
-              <td><b>שעות שגויות בטיסה חוצת אזורים</b></td>
-              <td>אזורי הקצוות (ADR-0107) נגזרים מהמקומות. אין מקומות, אין אזורים.</td>
-              <td>§4</td>
+              <td><code>NoteSheet</code></td>
+              <td>4</td>
+              <td>5</td>
+              <td>גוף + מארח מוצהר</td>
+              <td class="no">לא</td>
             </tr>
             <tr>
-              <td>מסך ההכנה נשאר אדום</td>
-              <td><code>readiness.ts</code> קורא <code>to/fromPlaceId</code>. אין קצה, אין ספירה.</td>
-              <td>§4 (חלקית: צריך את הקצה הרלוונטי)</td>
+              <td><code>DocumentManageSheet</code></td>
+              <td>2</td>
+              <td>3</td>
+              <td>שם + סוג</td>
+              <td class="no">לא</td>
             </tr>
             <tr>
-              <td>עריכה חוזרת מסרבת להישמר</td>
-              <td><code>routeRequired</code> דורש קצה, וההזמנה נולדה בלי אף אחד.</td>
-              <td>§4</td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="margin-top: 12px">
-          <b>שלב 0 עומד בפני עצמו.</b> השורה הראשונה היא באג חי, והתיקון שלה הוא תנאי אחד שכבר כתוב
-          במקום אחר בקוד. הוא לא צריך להמתין לאישור של שום עיצוב כאן.
-        </p>
-      </div>
-
-      <div class="panel">
-        <h2>הגבול בין שני הטפסים</h2>
-        <p>
-          <b>הלוך ושוב לא נכנס לטופס האירוע, וזו לא השמטה.</b> טופס האירוע כותב
-          <b>אירוע אחד</b>: תאריך אחד, מקטע זמן אחד, ויום אחד שאתם מסתכלים עליו. חזרה היא אירוע שני
-          בעוד שבועיים, ושמירה שהייתה יוצרת אותו הייתה מוסיפה משהו ליום שלא פתחתם. זה הגבול:
-        </p>
-        <ul>
-          <li>
-            <b><code>EventForm</code></b> — הנסיעה שאתם משבצים עכשיו. מסלול אופציונלי, קוד
-            אופציונלי, לא דורש כלום.
-          </li>
-          <li>
-            <b><code>BookingSheet</code></b> — המקום שבו הזמנה <b>נכתבת</b>: קוד, חדר, ואי-פיי,
-            פתקים, מסמכים, ומעכשיו גם הלוך ושוב.
-          </li>
-        </ul>
-        <p>
-          <b>וכאן הזיווג הנגזר משתלם.</b> מי שהזמין טיסה מטופס האירוע ואת החזרה מטופס ההזמנה קיבל
-          שתי רגליים שנוצרו בשני מקומות שונים, בשני ימים שונים, אולי גם בהפרש של שבוע. כלל השיקוף
-          מזווג אותן בכל זאת, כי הוא קורא את מה שההזמנות <b>הן</b> ולא את מה שהיוצר שלהן היה. שדה
-          <code>pairId</code> שהיה נכתב בפקד של §1 היה מפספס בדיוק את הזוג הזה.
-        </p>
-      </div>
-
-
-      <div class="panel">
-        <h2>כלל 8 · הצורה היא טבלה, לא תנאי</h2>
-        <p>
-          כדי שההצעה הזאת תתרחב אחר כך לסוגים ולקטגוריות נוספים, היא לא יכולה להישען על השאלה
-          "זו תחבורה?". נספר כמה פעמים השאלה הזאת כתובה היום:
-        </p>
-        <table class="m">
-          <thead>
-            <tr>
-              <th>איפה</th>
-              <th>מה כתוב</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td><code>backend/…/bookings.service.ts:26</code></td><td><code>isTransport</code> מקומי</td></tr>
-            <tr><td><code>frontend/…/booking-draft.ts:67</code></td><td><code>isTransportType</code> מיוצא</td></tr>
-            <tr><td><code>frontend/…/places.ts:21</code></td><td><code>isTransportBooking</code> מיוצא <b>שני</b></td></tr>
-            <tr><td><code>frontend/…/place-usage.ts:91</code></td><td><code>isTransport</code> מקומי</td></tr>
-            <tr><td><code>frontend/…/BookingTitle.tsx:12</code></td><td><code>isTransport</code> מקומי</td></tr>
-            <tr><td><code>frontend/…/BookingDetail.tsx:37</code></td><td><code>isTransport</code> מקומי</td></tr>
-          </tbody>
-        </table>
-        <p style="margin-top: 12px">
-          <b>שש הגדרות, שתי חבילות, שתיים מהן "רשמיות" ומיוצאות במקביל</b> —
-          <code>BookingSheet</code> מייבא את האחת ו-<code>place-refs</code> את השנייה. אף אחת לא
-          יושבת ב-<code>packages/shared</code>, למרות שהשרת מחזיק עותק משלו; זה בדיוק מה
-          ש-<code>packages/shared/CLAUDE.md</code> מתאר: ערך שמסתעפים עליו בשני צדי הגבול הוא
-          דיסקרימיננטה, ומקומו בטבלה משותפת. זו הערימה שבגללה נכתבו ADR-0078, 0079, 0094 ו-0095.
-        </p>
-        <h3>והאסימטריה היא החלק המעניין</h3>
-        <p>
-          ציר <b>הקטגוריה</b> כבר מציית לכלל, בכל מקום: <code>CATEGORY_TIME_PROFILE</code>,
-          <code>CATEGORY_TO_BOOKING_TYPE</code>, <code>BOOKING_TYPE_CATEGORY</code>,
-          <code>CATEGORY_DEFAULT_ICON</code>, <code>CATEGORY_DEFAULT_BOOKED</code> — כולם
-          <code>Record</code> ממצה, ואחד מהם אפילו מסביר בהערה שלו למה הוא לא
-          <code>cat === 'lodging' || …</code>. ציר <b>סוג ההזמנה</b> הוא היחיד שלא, והוא במקרה
-          הציר שההצעה הזאת נוגעת בו.
-        </p>
-        <h3>ויש לזה כבר מחיר בשטח, לא רק בעתיד</h3>
-        <p>
-          <code>TRANSPORT_BOOKING_TYPES</code> מציע בטופס האירוע שלוש אפשרויות:
-          <code>✈️ טיסה</code> · <code>🚄 רכבת</code> · <code>🚌 אחר</code>, כשהשלישית מכסה
-          "אוטובוס, רכב, מעבורת, רכבל". אבל <code>other</code> אינו תחבורה לפי אף אחת משש
-          ההגדרות. כלומר: <b>אוטובוס הוא תחבורה בבורר ואינו תחבורה במודל</b> — הוא נשמר עם
-          <code>placeId</code> יחיד, ו-<code>BookingSheet</code> לעולם לא יראה לו שדה מסלול, ולכן
-          <b>לא תהיה לו דרך לקבל מסלול אי פעם</b>. האפליקציה כבר רוצה סוג תחבורה שלישי ואין לו איפה
-          לגור. הטבלה היא לא הכנה לעתיד משוער; היא המקום החסר עכשיו.
-        </p>
-        <h3>ההצעה: <code>BOOKING_TYPE_PROFILE</code>, לצד <code>CATEGORY_TIME_PROFILE</code></h3>
-        <p>
-          לא מנגנון חדש — <b>המופע השני של דפוס שהריפו כבר בחר</b>, באותו קובץ
-          (<code>packages/shared/src/icons.ts</code>) ובאותו ניסוח, כולל אותה מטרה שההערה של
-          ADR-0063 מנסחת במילים האלה ממש: <i>"כדי ש'סוגר' ו'רקע' יפסיקו להיות בדיקות סוג מפוזרות"</i>.
-        </p>
-        <table class="m">
-          <thead>
-            <tr>
-              <th>ציר</th>
-              <th>ערכים</th>
-              <th>מחליף היום את</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>places</code></td>
-              <td><code>'route' | 'single'</code></td>
-              <td>שש ההגדרות למעלה, וגם השומר בשרת</td>
-            </tr>
-            <tr>
-              <td><code>schedule</code></td>
-              <td><code>'span' | 'point'</code></td>
-              <td><code>isSpanType</code></td>
-            </tr>
-            <tr>
-              <td><code>defaultKind</code></td>
-              <td><code>'hard' | 'soft'</code></td>
-              <td><code>bookingDefaultKind</code></td>
-            </tr>
-            <tr>
-              <td><code>legs</code></td>
-              <td><code>'single' | 'mirrored'</code></td>
-              <td>הפקד של §1 (חדש)</td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="margin-top: 12px">
-          <b>והשינוי האמיתי הוא בשאלה, לא בטבלה.</b> היא מפסיקה להיות "זו תחבורה?" ונעשית
-          <b>"האם היא נושאת מסלול?"</b> — וזו השאלה ששש ההגדרות באמת שאלו בכל אחד מהמקומות שבהם הן
-          נקראות. ברגע שזאת השאלה, מעבורת עתידית היא שורה, לא סיור בקוד.
-        </p>
-        <p>
-          <code>legs</code> נשאר ציר נפרד ולא נגזר מ-<code>places</code> בכוונה: הם באמת אורתוגונליים.
-          שהייה מפוצלת באותו מלון היא <code>places: 'single'</code> עם יותר מרגל אחת, וכיווץ שני
-          הצירים לאחד היה חוסם בדיוק את ההרחבה שהקובץ הזה נשאל עליה.
-        </p>
-      </div>
-
-      <div class="panel">
-        <h2>מה עולה הרחבה, לפני ואחרי</h2>
-        <table class="m">
-          <thead>
-            <tr>
-              <th>ההרחבה</th>
-              <th>היום</th>
-              <th>אחרי</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>סוג תחבורה שלישי (מעבורת, אוטובוס)</td>
-              <td>שש הגדרות בשתי חבילות, ואחת שנשכחת היא הסתעפות שגויה שקטה</td>
-              <td><b>שורה אחת</b> בטבלה</td>
-            </tr>
-            <tr>
-              <td>לתת למלון שהייה מפוצלת</td>
-              <td>אין מנגנון; הפקד של §1 היה <code>if (isTransport)</code></td>
-              <td><code>legs</code> בשורה של <code>hotel</code></td>
-            </tr>
-            <tr>
-              <td>סוג חדש שאינו נושא מסלול</td>
-              <td>הקומפיילר שותק, כי אף תנאי לא ממצה</td>
-              <td>הקומפיילר נופל עד שהשורה נכתבת</td>
-            </tr>
-            <tr>
-              <td>קטגוריה חדשה</td>
-              <td><b>כבר שורה אחת</b> — ציר הקטגוריה כבר מציית</td>
-              <td>ללא שינוי</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="panel">
-        <h2>פנקס כלל 8 · מה נעשה שימוש חוזר, מה חולץ, ומה באמת חדש</h2>
-        <table class="m">
-          <thead>
-            <tr>
-              <th>חלק בהצעה</th>
-              <th>מעמד</th>
-              <th>על מה הוא רוכב</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>פקד הכיוון</td><td class="ok">שימוש חוזר</td><td><code>ChoiceGrid layout="pills"</code>, דקדוק הצ׳יפים של ADR-0100</td></tr>
-            <tr><td>מקטע הזמנים השני</td><td class="ok">שימוש חוזר</td><td><code>WhenField variant="span"</code>, ללא שינוי</td></tr>
-            <tr><td>אזורי הזמן של החזרה</td><td class="ok">שימוש חוזר</td><td>אזור לכל קצה (ADR-0107), רק מוחלפים</td></tr>
-            <tr><td>שתי כתיבות, שינוי ממתין אחד</td><td class="ok">שימוש חוזר</td><td><code>withChangeGroup</code> (ADR-0092)</td></tr>
-            <tr><td>הסירוב לפי רגל</td><td class="ok">שימוש חוזר</td><td><code>useFormErrors</code> (ADR-0150), שני שמות נוספים</td></tr>
-            <tr><td>שליחות מקום לשני קצוות באירוע</td><td class="ok">שימוש חוזר</td><td><code>PlaceErrandFormTarget</code> כבר מתיר <code>kind:'event'</code> עם <code>from/toPlaceId</code></td></tr>
-            <tr><td>הרמז מתחת לקוד</td><td class="ok">שימוש חוזר</td><td><code>Field hint</code></td></tr>
-            <tr><td>הערת השותפה במחיקה</td><td class="ok">שימוש חוזר</td><td>החריץ של <code>bs-hard-note</code>, בלי כפתור נוסף</td></tr>
-            <tr><td><b>שדה המסלול</b></td><td>חולץ</td><td><code>ui/domain/RouteField</code> משני מארחים; ה-CSS יוצא מ-<code>.booking-sheet</code></td></tr>
-            <tr><td><b>שאלת "נושא מסלול?"</b></td><td>חולץ</td><td>שש הגדרות → <code>BOOKING_TYPE_PROFILE</code></td></tr>
-            <tr><td>ההחלפה ⇅</td><td>חדש</td><td>בתוך הרכיב שחולץ, ולכן שני המארחים מקבלים אותה</td></tr>
-            <tr><td>כותרת הרגל</td><td>חדש</td><td>שתי הצהרות CSS; הרגליים נרנדרות ב-<code>map</code> ולא ב-<code>if</code>, כדי שרגל שלישית תהיה נתון</td></tr>
-            <tr><td>הזיווג הנגזר</td><td>חדש</td><td><b>מערך של כללים</b> ולא <code>||</code> קשיח, כדי שיחס נוסף יהיה איבר</td></tr>
-          </tbody>
-        </table>
-        <p style="margin-top: 12px">
-          <b>שתי שורות החילוץ הן מה שצריך החלטה שלכם, לא רק אישור עיצוב.</b> כלל 8 מבקש לשאול לפני
-          הכללה שהיא רפקטור ולא הפרדה קטנה: <code>RouteField</code> נוגע בשני טפסים ומזיז CSS
-          מ-<code>screens.css</code>, והפרופיל נוגע בשש נקודות בשתי חבילות ובבדיקות שלהן.
-          <b>אף אחד מהשניים אינו תנאי לתיקון ה-400</b> (שלב 0 נשאר תנאי אחד), אבל שניהם כן תנאי לכך
-          שהתשובה תתרחב לסוג הבא במקום להוסיף לו עותק שביעי.
-        </p>
-      </div>
-
-      <!-- ════════ פאנלים ════════════════════════════════════════════════ -->
-      <div class="panel">
-        <h2>הכלל: הזיווג נגזר, לא נשמר</h2>
-        <p>
-          פונקציה טהורה ב-<code>packages/shared</code>, על צורת ההזמנה בלבד, בלי שעון ובלי רשת. שתי
-          הזמנות הן זוג הלוך ושוב כאשר:
-        </p>
-        <ul>
-          <li>שתיהן תחבורה (<code>flight</code> או <code>train</code>) ומאותו סוג;</li>
-          <li>
-            <b>וגם</b> המסלולים הפוכים (<code>a.fromPlaceId === b.toPlaceId</code> וכן להפך),
-            <b>או</b> שהן חולקות קוד אישור לא ריק;
-          </li>
-          <li>ומבין המועמדות, כל אחת בוחרת את הקרובה ביותר אליה בזמן.</li>
-        </ul>
-        <p>המאוחרת מבין השתיים היא החזרה.</p>
-        <h3>למה נגזר ולא שדה</h3>
-        <p>
-          שדה <code>pairId</code> היה דורש מיגרציה, היה נסדק ברגע שמישהו עורך מסלול, והיה מזהה רק
-          זוגות שנוצרו דרך הפקד הזה. הנגזרת מזהה גם שתי רגליים שנכתבו בנפרד, גם כאלה שהגיעו מייבוא
-          Gmail (ADR-0004: אינטגרציות הן צינורות), וגם זוג שנוצר לפני שהפקד קיים. זו אותה הכרעה
-          שכבר נעשתה עבור מצב ההכנה ועבור עכשיו/הבא: מצב מחושב לא נכתב חזרה (ADR-0018/0027).
-        </p>
-        <h3>מקרי קצה שהכלל עומד בהם</h3>
-        <ul>
-          <li>
-            <b>אותה טיסה הוזמנה פעמיים בטעות.</b> אותו כיוון, לא הפוך, ולכן אין זיווג. אם גם הקוד
-            זהה הן כן יזווגו, וזה נכון: אלה באמת אותה הזמנה.
-          </li>
-          <li><b>הלוך וחזור באותו יום</b> (טיול יום ברכבת). מזווג, והזמן הוא שקובע מי החזרה.</li>
-          <li>
-            <b>שלוש רגליים</b> (יעד ביניים). כל אחת בוחרת את הקרובה לה בזמן, ולכן אין שלישייה שכולה
-            מזווגת זו לזו.
-          </li>
-          <li><b>קוד אישור משותף לטיסה וללינה.</b> שער הסוג פוסל.</li>
-          <li><b>רגל לא משובצת.</b> בלי זמן אין השוואה, ולכן רק התאמת הקוד יכולה לזווג אותה.</li>
-        </ul>
-      </div>
-
-      <div class="panel">
-        <h2>מה משותף ומה נכתב פעמיים</h2>
-        <table class="m">
-          <thead>
-            <tr>
-              <th>שדה</th>
-              <th>בטופס</th>
-              <th>למה</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>סוג, סמל, קוד אישור, סוג אירוע</td>
-              <td>אחד, משותף</td>
-              <td>הלוך ושוב הוא רכישה אחת. הקוד באמת מופיע על שני הכרטיסים.</td>
-            </tr>
-            <tr>
-              <td>מוצא ויעד</td>
-              <td>אחד, והחזרה גוזרת הפוך</td>
-              <td>בחירה חוזרת של אותם שני מקומות בסדר הפוך היא עבודה שהטופס כבר יודע לעשות.</td>
-            </tr>
-            <tr>
-              <td>אזורי זמן</td>
-              <td>נגזרים, מתחלפים</td>
-              <td>
-                ADR-0107 כבר נותן אזור לכל קצה. בחזרה היציאה בטוקיו וההגעה בתל אביב, וזה בדיוק
-                החילוף.
+              <td><code>MapPlaceForm</code></td>
+              <td>1</td>
+              <td>5</td>
+              <td>כרטיס מעוגן לקנבס</td>
+              <td class="no">
+                לא, ו<b>אסור</b>: ADR-0148 הקדיש סשן לחדר שלו, וכרטיס חסום ב-<code>overflow</code>
+                לא יכול לגדול.
               </td>
             </tr>
             <tr>
-              <td>תאריכים ושעות</td>
-              <td><b>פעמיים</b></td>
-              <td>הדבר היחיד שבאמת שונה בין שתי הנסיעות.</td>
+              <td><code>TripSettings</code> · <code>UserSettings</code></td>
+              <td colspan="2">מסכים</td>
+              <td>שומרים לכל שדה ב-blur, בלי כפתור שמירה</td>
+              <td class="no">לא. אין "שמירה" שאפשר לפצל.</td>
+            </tr>
+            <tr class="hit">
+              <td><code>ResolveSheet</code> (PlanDay)</td>
+              <td colspan="2">2 שלבים</td>
+              <td><b>כבר בשלבים</b>, ביד</td>
+              <td class="yes">הוא הלקוח, לא המועמד</td>
+            </tr>
+            <tr class="hit">
+              <td><code>RowManageSheet</code> · <code>הזז</code></td>
+              <td colspan="2">2 שלבים</td>
+              <td><b>כבר בשלבים</b>, ביד, עותק שני</td>
+              <td class="yes">הוא הלקוח, לא המועמד</td>
             </tr>
           </tbody>
         </table>
         <p style="margin-top: 12px">
-          הכותרת הנשמרת נגזרת כבר היום מהמסלול (<code>routeTitle</code>), ולכן שתי ההזמנות מקבלות
-          שם נכון בלי שאיש יקליד אותו: <code>נתב״ג ← נריטה</code> ו-<code>נריטה ← נתב״ג</code>.
+          <b>מסקנת הסריקה.</b> אף טופס קיים לא ארוך מספיק. המועמד היחיד נהיה מועמד בגלל ההצעה של
+          הלוך ושוב — כלומר השאלה "צריך שלבים?" נולדה מהשינוי ולא מהאפליקציה. זה לא פוסל את השלבים;
+          זה אומר שהצדקה שלהם נמצאת ב<b>שני המשטחים שכבר עושים את זה</b>, לא בטופס ההזמנה.
         </p>
       </div>
 
+      <!-- ════════ §3 · הכללים ═══════════════════════════════════════════ -->
       <div class="panel">
-        <h2>מה זה לא מכריע</h2>
-        <h3>לאיזו רגל שייך פתק שנכתב בזמן היצירה</h3>
+        <h2>שני סוגי שלבים, ורק אחד מהם מובן מאליו</h2>
+        <h3>שלב מסתעף · השלב הבא <b>תלוי</b> בתשובה הקודמת</h3>
         <p>
-          הטופס נושא מחבר פתקים (ADR-0152 §6b), ובשמירה אחת יש שני מארחים אפשריים. שלוש תשובות
-          כנות: לתלות בהלוך (שרירותי אבל צפוי), לתלות בשתיהן (משכפל גוף פתק, מה שהמודל של פתק אחד עם
-          מארח אחד לא מתיר), או להסתיר את המחבר כשהפקד דלוק (מונע את השאלה ומאבד יכולת קיימת).
-          <b>ההמלצה: ההלוך</b>, כי הוא הנסיעה שבאמת קורית קודם, עם שורת רמז שאומרת זאת. זו הכרעה
-          שצריכה לצאת מכם ולא מהדגם.
+          <code>ResolveSheet</code>: אי אפשר לצייר את המשבצות עד שידוע איזה אירוע זז. השלב הוא
+          <b>אילוץ אמיתי</b>, לא פריסה. שני המשטחים הקיימים הם זה, ובשבילם השלבים אינם שנויים
+          במחלוקת.
         </p>
-        <h3>ברירת המחדל של הפקד</h3>
+        <h3>שלב מחולק · שדות עצמאיים שנפרסים על עמודים</h3>
         <p>
-          הדגם מצייר <b>כיוון אחד</b> כברירת מחדל, כדי שהטופס הקיים לא ישתנה למי שלא ביקש. יש טענה
-          נגדית אמיתית: בטיול לחו״ל הלוך ושוב הוא הרוב, וברירת מחדל הפוכה הייתה חוסכת הקשה. אפשר גם
-          ברירת מחדל חכמה — <code>readiness.ts</code> כבר יודע אם אין עדיין אף רגל — אבל טופס
-          שנפתח אחרת לפי מצב הנתונים הוא טופס שקשה ללמוד. שווה החלטה מפורשת.
+          <code>BookingSheet</code>: קוד האישור לא תלוי בתאריך. שום דבר לא מכתיב סדר, ולכן העמודים
+          הם בחירת תצוגה. וזה עולה שלושה דברים שהאפליקציה כבר שילמה כדי להימנע מהם:
         </p>
-        <h3>עריכה נשארת של נסיעה אחת</h3>
-        <p>
-          הפקד קיים ביצירה בלבד, כמו בורר הסוג שכבר מתנהג כך. עריכת רגל אחת פותחת את משטח העריכה
-          הממוזג של ADR-0047 §2 ללא שינוי. הפיכת רגל בודדת לזוג אחרי שנשמרה היא פעולה אחרת ("הוסף
-          חזרה"), והיא לא בהיקף כאן.
-        </p>
-      </div>
-
-      <div class="panel">
-        <h2>מה נדחה, ולמה</h2>
         <ul>
           <li>
-            <span class="rej">הזמנה אחת עם שתי רגליים.</span> פותח מחדש את מה ש-ADR-0047 §1 סגר. ציר
-            הזמן צריך שני אירועים קשיחים עצמאיים, כל אחד עם סטטוס, אזורי זמן והחלקה משלו.
+            <span class="rej">ADR-0150.</span> "דווח על כל הבעיות בקריאה אחת" — בדיוק כדי שלא תשלחו
+            את המשתמש לסיבוב שני. עמודים <b>מייצרים</b> את הסיבוב הזה: בעיה בשלב 1 מתגלה בשלב 3.
           </li>
           <li>
-            <span class="rej">סוג הזמנה חדש <code>roundtrip</code>.</span> סוג הוא מה שהדבר הוא, לא
-            כמה מהם קנית. הוא היה מחייב מקרה חדש בכל <code>Record&lt;BookingType, T&gt;</code> בקוד.
+            <span class="rej">ADR-0136.</span> העמדה היא "לא דורש כלום". שלב הוא הקשה שחייבים לעשות,
+            גם מי שממלא שדה אחד.
           </li>
           <li>
-            <span class="rej">יצירת חזרה ריקה ללא תאריך.</span> מחויבות קשיחה בלי זמן היא בדיוק
-            המצב ש-ADR-0011 אומר שאסור שיתקיים.
-          </li>
-          <li>
-            <span class="rej">שאלה אחרי השמירה ("להוסיף גם חזור?").</span> הסיגנל קיים
-            (<code>hasReturn</code>), אבל ל-<code>Toast</code> אין היום פעולה, כך שזו התוספת היקרה
-            מבין השלוש והכי קלה להתעלמות. אפשר להוסיף בהמשך מעל הפקד, לא במקומו.
-          </li>
-          <li>
-            <span class="rej">קישוריות (עצירת ביניים).</span> קרוב אבל צורה אחרת: עצירת ביניים היא
-            <b>רצף</b>, והלוך ושוב הוא <b>שיקוף</b>. דחייה מכוונת, לא השמטה.
+            <span class="rej">סקירה לפני שמירה.</span> בטופס נגלל אפשר להסתכל על הכול ולחתום. בטופס
+            עם עמודים אי אפשר, ומחויבות קשיחה היא בדיוק המקום שבו רוצים להסתכל.
           </li>
         </ul>
+        <h3>הכלל שחייב להיכנס לתוך הפרימיטיב, אחרת הוא שובר את ADR-0150</h3>
+        <p>
+          <b>שער שלב מדווח על כל הבעיות <em>בשלב הנוכחי</em>, והשמירה מאמתת הכול מחדש</b> — ואם משהו
+          נכשל, היא <b>מנווטת לשלב הראשון שנושא בעיה ומסמנת אותו</b>, במקום להיכשל בשקט או להיכשל
+          במקום שלא רואים. בלי הכלל הזה, טופס בשלבים הוא בדיוק הלולאה ש-ADR-0150 נכתב כדי לסגור.
+          זה שייך לפרימיטיב, לא לכל מארח בנפרד.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>כלל 8 · מה הפרימיטיב רוכב עליו</h2>
+        <table class="m">
+          <thead>
+            <tr>
+              <th>חלק</th>
+              <th>מעמד</th>
+              <th>על מה</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>מצב השלב + החזרה בשלב</td>
+              <td>חולץ</td>
+              <td>
+                <code>ResolveSheet</code> ו-<code>הזז</code>, שני עותקים היום, כולל אותו
+                <code>useBackLayer(…, remainsActive: true)</code> ואותה הערה
+              </td>
+            </tr>
+            <tr>
+              <td>שורת הפעולות</td>
+              <td class="yes">שימוש חוזר</td>
+              <td><code>FormActions</code> עם תוויות אחרות. לא שורה שנייה לידה.</td>
+            </tr>
+            <tr>
+              <td>הסירוב</td>
+              <td class="yes">שימוש חוזר</td>
+              <td><code>useFormErrors</code> — הפרימיטיב רק מוסיף את כלל הניווט-לשלב</td>
+            </tr>
+            <tr>
+              <td>התנועה</td>
+              <td class="yes">שימוש חוזר</td>
+              <td>
+                כיוון המסלול של המעטפת (ADR-0140) ו-<code>motionDurationMs</code>, לא תזמון חדש
+              </td>
+            </tr>
+            <tr>
+              <td>המעטפת</td>
+              <td class="yes">שימוש חוזר</td>
+              <td><code>Modal</code> — שלב הוא תוכן בתוך גיליון, לא שכבה חדשה (ADR-0079)</td>
+            </tr>
+            <tr>
+              <td>סרגל השלבים</td>
+              <td>חדש</td>
+              <td>ארבע הצהרות CSS, בלי גוון (כלל 4)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>ההמלצה</h2>
+        <ol>
+          <li>
+            <b>כן לפרימיטיב, ולא בגלל טופס ההזמנה.</b> חלצו
+            <code>ui/primitives/FormSteps</code> משני המשטחים שכבר עושים את זה, והעבירו את שניהם
+            אליו. זו הצדקה עומדת בפני עצמה, היא מוחקת עותק, והיא לא תלויה בשום החלטה על הלוך ושוב.
+          </li>
+          <li>
+            <b>ולא לטופס ההזמנה, בינתיים.</b> החלוקה שלו היא חיתוך ולא הסתעפות, והיא גובה את שלושת
+            המחירים למעלה מכל מי שמזמין כיוון אחד. אם הכיוון בכל זאת מוצא חן בעיניכם — הוא צריך
+            להיבדק על טלפון אמיתי לפני שמחליטים, כי זו שאלה של תחושה ולא של מספרים, וקובץ הזה לא
+            יכול לענות עליה.
+          </li>
+          <li>
+            <b>ולטופס הארוך יש תשובה זולה יותר שכבר בבית.</b> <code>Collapsible</code> (ADR-0098,
+            ארבעה מופעים) — <code>EventForm</code> כבר פותר בו בדיוק את הבעיה הזאת. גילוי הדרגתי
+            שומר על גלילה אחת, על סקירה לפני שמירה, ועל דיווח סירוב אחד. אם צריך לקצר את
+            <code>BookingSheet</code>, זה הכלי לנסות ראשון.
+          </li>
+        </ol>
       </div>
     </div>
 
     <script>
-      /* ════════ fixtures — illustrative data, not shipped ════════════════
-         טיול ליפן. נתב״ג ← נריטה ב-12 באוגוסט, וחזרה ב-26 בו. טוקיו +6 מירושלים
-         באוגוסט, ולכן הערת האזור קוראת "קדימה" בהלוך ו"אחורה" בחזרה. */
-      const ICON = {
+      /* fixtures — illustrative, not shipped. Same Japan trip as the round-trip file. */
+      const P = {
         pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
         lock: 'M7.4 10.4V7.6a4.6 4.6 0 0 1 9.2 0v2.8 M5.8 10.4h12.4a1.4 1.4 0 0 1 1.4 1.4v8a1.4 1.4 0 0 1-1.4 1.4H5.8a1.4 1.4 0 0 1-1.4-1.4v-8a1.4 1.4 0 0 1 1.4-1.4Z',
         clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
         sparkle:
           'M11 3.4l1.5 4.1 4.1 1.5-4.1 1.5L11 14.6 9.5 10.5 5.4 9l4.1-1.5Z M17.8 14.4l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8Z',
-        link: 'M10.6 13.4a4 4 0 0 0 6 .4l2.4-2.4a4 4 0 0 0-5.6-5.6l-1.4 1.4 M13.4 10.6a4 4 0 0 0-6-.4L5 12.6a4 4 0 0 0 5.6 5.6l1.4-1.4',
-        edit: 'M12 20h9 M16.4 3.6a2.12 2.12 0 0 1 3 3L7.5 18.5l-4.2 1.2 1.2-4.2Z',
-        more: 'M6 12h.02 M12 12h.02 M18 12h.02',
-        close: 'M6 18 18 6M6 6l12 12',
-        check: 'M5 12.6l4.7 4.7L19 7.4',
-        // Vertical pair on purpose (`Icon.tsx`): a horizontal one reads backwards in RTL.
         swap: 'M8 20.5V4.2 M4.8 7.4 8 4.2l3.2 3.2 M16 3.5v16.3 M12.8 16.6 16 19.8l3.2-3.2',
-        trash:
-          'M4 6.5h16 M9 6.5V4.7a1.2 1.2 0 0 1 1.2-1.2h3.6A1.2 1.2 0 0 1 15 4.7v1.8 M6.4 6.5l.8 12.3A2 2 0 0 0 9.2 20.7h5.6a2 2 0 0 0 2-1.9l.8-12.3 M10.4 10.4v6 M13.6 10.4v6',
+        close: 'M6 18 18 6M6 6l12 12',
       };
-      const icon = (n, cls = '') =>
-        `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[n]}"/></svg>`;
-      // The shipped NavArrow, verbatim (drawn for RTL; forward points at the destination).
-      const navArrow = (variant = 'forward') =>
-        `<svg class="nav-arrow nav-arrow-${variant}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6"/></svg>`;
-      // §1c — the proposal's own glyph. Symmetric, so RTL has nothing to flip.
-      const bothArrow = () =>
-        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12h17 M8 6.5 3.5 12 8 17.5 M16 6.5l4.5 5.5-4.5 5.5"/></svg>`;
-
+      const ic = (n) =>
+        `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+      const arrow = () =>
+        `<svg class="nav-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6"/></svg>`;
       const TLV = 'נתב״ג';
       const NRT = 'נריטה';
-      const route = (from, to, both) =>
-        `<span class="route"><bdi>${from}</bdi>${
-          both ? `<span class="arr-both">${bothArrow()}</span>` : `<span class="arr">${navArrow()}</span>`
-        }<bdi>${to}</bdi></span>`;
+      const route = (a, b) =>
+        `<span class="route"><bdi>${a}</bdi><span class="arr">${arrow()}</span><bdi>${b}</bdi></span>`;
+      const pp = (n) =>
+        `<div class="place-picker"><button type="button" class="pp-trigger filled"><span class="pp-trigger-icon">${ic('pin')}</span><span class="pp-trigger-label">${n}</span></button><button type="button" class="pp-clear">${ic('close')}</button></div>`;
+      const zc = (z) =>
+        `<div class="zchip"><span class="zchip-cap">אזור זמן</span><span class="zchip-static">${ic('clock')} <span class="zchip-zone">${z}</span></span></div>`;
+      const legRow = (cap, d, t, badge) =>
+        `<div class="field"><div class="wf-leg"><div class="wf-leg-cap">${cap}${badge ? `<span class="wf-leg-badge">${badge}</span>` : ''}</div><div class="wf-leg-row"><label class="tp-field wf-date-cell"><span class="tp-cap">תאריך</span><span class="tp-val wf-date-val" dir="ltr">${d}</span></label><div class="tp-field"><span class="tp-cap">שעה</span><span class="tp-val">${t}</span></div></div></div></div>`;
 
-      /* ── form pieces, built from the shipped class names ─────────────── */
-      const typeGrid = () => {
-        const types = [
-          ['✈️', 'טיסה', true],
-          ['🏨', 'לינה', false],
-          ['🍽️', 'מסעדה', false],
-          ['🚄', 'רכבת', false],
-          ['🎟️', 'פעילות', false],
-          ['📦', 'אחר', false],
-        ];
-        return `<div class="choice-grid" style="--choice-cols:3">${types
+      /* The three content blocks. IDENTICAL in both frames — only the container
+         differs, which is the point of the head-to-head. */
+      const blkIdentity = () => `
+        <div class="choice-grid" style="--choice-cols:3">${[
+          ['🍽️', 'מסעדה'],
+          ['🏨', 'לינה'],
+          ['✈️', 'טיסה', 1],
+          ['🚄', 'רכבת'],
+          ['🎟️', 'פעילות'],
+          ['📦', 'אחר'],
+        ]
           .map(
-            ([ic, lb, on]) =>
-              `<button type="button" class="choice-card${on ? ' on' : ''}"><span class="choice-card-ic">${ic}</span><span class="choice-card-lbl">${lb}</span></button>`,
+            ([g, l, on]) =>
+              `<button type="button" class="choice-card${on ? ' on' : ''}"><span class="choice-card-ic">${g}</span><span class="choice-card-lbl">${l}</span></button>`,
           )
-          .join('')}</div>`;
-      };
+          .join('')}</div>
+        <div class="field"><div class="titlerow">
+          <button type="button" class="icon-chip">✈️</button>
+          <div class="bs-route-preview">${route(TLV, NRT)}</div>
+        </div></div>
+        <div class="bs-caption"><span>${ic('sparkle')} נבחר לפי סוג ההזמנה <span class="cat-readout">טיסה</span></span></div>
+        <div class="field"><span class="field-label">מסלול</span>
+          <div class="choice-grid pills"><button type="button" class="choice-pill">כיוון אחד</button><button type="button" class="choice-pill on">הלוך ושוב</button></div>
+          <div class="bs-route-pickers">${pp(TLV)}<button type="button" class="bs-swap">${ic('swap')} החלפת כיוון</button>${pp(NRT)}</div>
+          <div class="bs-route-hint">${ic('pin')} מקומות אמיתיים · מזינים את המפה ואזורי הזמן</div>
+        </div>`;
 
-      const placePicker = (name) =>
-        `<div class="place-picker"><button type="button" class="pp-trigger filled"><span class="pp-trigger-icon">${icon('pin')}</span><span class="pp-trigger-label">${name}</span></button><button type="button" class="pp-clear">${icon('close')}</button></div>`;
-
-      const placePickerEmpty = (placeholder) =>
-        `<div class="place-picker"><button type="button" class="pp-trigger"><span class="pp-trigger-icon">${icon('pin')}</span><span class="pp-trigger-label">${placeholder}</span></button></div>`;
-
-      const zoneChip = (zone) =>
-        `<div class="zchip"><span class="zchip-cap">אזור זמן</span><span class="zchip-static">${icon('clock')} <span class="zchip-zone">${zone}</span></span></div>`;
-
-      /** One span endpoint — the real `.wf-leg` tree (date cell + TimeField trigger). */
-      const leg = (label, date, time, badge, invalid) =>
-        `<div class="field"${invalid ? ' data-invalid=""' : ''}><div class="wf-leg">
-           <div class="wf-leg-cap">${label}${badge ? `<span class="wf-leg-badge">${badge}</span>` : ''}</div>
-           <div class="wf-leg-row">
-             <label class="tp-field wf-date-cell"><span class="tp-cap">תאריך</span><span class="tp-val wf-date-val" dir="ltr">${date}</span></label>
-             <div class="tp-field"><span class="tp-cap">שעה</span><span class="tp-val">${time}</span></div>
-           </div>
-         </div>${invalid ? `<p class="field-error" role="alert">${invalid}</p>` : ''}</div>`;
-
-      /** A whole journey block: optional heading, the span, the zone note. */
-      const legBlock = ({ head, headRoute, klass, start, end, badge, dur, crosses, note, bad }) => `
-        <div class="bs-leg ${klass || ''}">
-          ${head ? `<div class="bs-leg-head"><span>${head}</span>${route(headRoute[0], headRoute[1])}</div>` : ''}
+      const blkOutbound = () => `
+        <div class="bs-leg">
+          <div class="bs-leg-head"><span>הלוך</span>${route(TLV, NRT)}</div>
           <div class="wf wf-span">
-            ${leg('המראה 🛫', start.date, start.time, null, bad)}
-            ${zoneChip(start.zone)}
-            ${leg('נחיתה 🛬', end.date, end.time, badge, null)}
-            ${zoneChip(end.zone)}
-            ${dur ? `<div class="wf-dur">משך: <b>${dur}</b>${crosses ? '<span class="wf-dur-note"> · חוצה יממה</span>' : ''}</div>` : ''}
+            ${legRow('המראה 🛫', '2026-08-12', '22:15')}${zc('ירושלים')}
+            ${legRow('נחיתה 🛬', '2026-08-13', '16:40', '+1')}${zc('טוקיו')}
+            <div class="wf-dur">משך: <b>12:25 שע׳</b><span class="wf-dur-note"> · חוצה יממה</span></div>
           </div>
-          <div class="bs-zone-note">${icon('clock')} ${note}</div>
+          <div class="bs-zone-note">${ic('clock')} זמן מקומי בכל עיר · ביעד 6 שעות קדימה</div>
         </div>`;
 
-      const kindToggle = () => `
+      const blkReturn = () => `
+        <div class="bs-leg return">
+          <div class="bs-leg-head"><span>חזרה</span>${route(NRT, TLV)}</div>
+          <div class="wf wf-span">
+            ${legRow('המראה 🛫', '2026-08-26', '11:30')}${zc('טוקיו')}
+            ${legRow('נחיתה 🛬', '2026-08-26', '18:05')}${zc('ירושלים')}
+            <div class="wf-dur">משך: <b>12:35 שע׳</b></div>
+          </div>
+          <div class="bs-zone-note">${ic('clock')} זמן מקומי בכל עיר · ביעד 6 שעות אחורה</div>
+        </div>`;
+
+      const blkDetails = () => `
         <div class="field"><span class="field-label">סוג אירוע</span>
-          <div class="kind-toggle">
-            <button type="button" class="soft">גמיש</button>
-            <button type="button" class="hard on">${icon('lock')} קשיח</button>
-          </div>
+          <div class="kind-toggle"><button type="button" class="soft">גמיש</button><button type="button" class="hard on">${ic('lock')} קשיח</button></div>
+        </div>
+        <div class="field"><span class="field-label">קוד אישור</span>
+          <input dir="ltr" value="LY6K2QA" readonly />
+          <p class="field-hint">משותף לשתי הטיסות</p>
         </div>`;
 
-      /** The booking sheet.
-       *  `shipped` = draw it exactly as it is today (no direction control at all);
-       *  `two`     = round trip on;
-       *  `bad`     = the §2 refusal state. */
-      function bookingSheet({ shipped, two, bad }) {
-        const outbound = legBlock({
-          head: two ? 'הלוך' : null,
-          headRoute: [TLV, NRT],
-          start: { date: '2026-08-12', time: '22:15', zone: 'ירושלים' },
-          end: { date: '2026-08-13', time: '16:40', zone: 'טוקיו' },
-          badge: '+1',
-          dur: '12:25 שע׳',
-          crosses: true,
-          note: 'זמן מקומי בכל עיר · ביעד 6 שעות קדימה',
-        });
-        const back = legBlock({
-          head: 'חזרה',
-          headRoute: [NRT, TLV],
-          klass: 'return',
-          start: {
-            date: bad ? '2026-08-12' : '2026-08-26',
-            time: bad ? '09:00' : '11:30',
-            zone: 'טוקיו',
-          },
-          end: {
-            date: bad ? '2026-08-12' : '2026-08-26',
-            time: bad ? '15:05' : '18:05',
-            zone: 'ירושלים',
-          },
-          dur: bad ? null : '12:35 שע׳',
-          note: 'זמן מקומי בכל עיר · ביעד 6 שעות אחורה',
-          bad: bad ? 'החזרה יוצאת לפני ההגעה ליעד' : null,
-        });
-        return `
+      const actions = (primary, secondary) => `
+        <div class="form-actions">
+          <button type="button" class="fa-primary" data-next>${primary}</button>
+          <button type="button" class="fa-secondary" data-prev>${secondary}</button>
+        </div>`;
+
+      /* ── the scrolled frame — everything at once ─────────────────────── */
+      const scrolled = () => `
         <div class="modal-overlay" data-variant="sheet"><div class="modal-card">
           <div class="booking-sheet">
-            ${typeGrid()}
-
-            <div class="field">
-              <div class="titlerow">
-                <button type="button" class="icon-chip">✈️</button>
-                <div class="bs-route-preview">${route(TLV, NRT, two)}</div>
-              </div>
-            </div>
-
-            <div class="bs-caption">
-              <span>${icon('sparkle')} נבחר לפי סוג ההזמנה <span class="cat-readout">טיסה</span></span>
-            </div>
-
-            <div class="field"><span class="field-label">מסלול</span>
-              ${
-                shipped
-                  ? ''
-                  : /* §1a — THE PROPOSAL: two pills, in the route field. */ `<div class="choice-grid pills bs-direction">
-                <button type="button" class="choice-pill${two ? '' : ' on'}" data-set="one">כיוון אחד</button>
-                <button type="button" class="choice-pill${two ? ' on' : ''}" data-set="two">הלוך ושוב</button>
-              </div>`
-              }
-              <div class="route-field">${placePicker(TLV)}<button type="button" class="route-field-swap">${icon('swap')} החלפת כיוון</button>${placePicker(NRT)}</div>
-              <div class="bs-route-hint">${icon('pin')} מקומות אמיתיים · מזינים את המפה ואזורי הזמן</div>
-            </div>
-
-            ${outbound}
-            ${two ? back : ''}
-            ${kindToggle()}
-
-            <div class="field"><span class="field-label">קוד אישור</span>
-              <input dir="ltr" value="LY6K2QA" readonly />
-              ${two ? '<p class="field-hint">משותף לשתי הטיסות</p>' : ''}
-            </div>
-
-            <div class="form-actions">
-              <button type="button" class="fa-primary" data-save>שמירה</button>
-              <button type="button" class="fa-secondary">ביטול</button>
-            </div>
+            ${blkIdentity()}${blkOutbound()}${blkReturn()}${blkDetails()}
+            ${actions('שמירה', 'ביטול')}
           </div>
         </div></div>`;
-      }
 
-      /* ── §4 · the event form, at the two states that matter ──────────────
-         Real `EventForm` markup: the category pills, the title row, the place
-         field, and ADR-0136's `יש הזמנה` ToggleChip + Collapsible. Only the
-         place field differs between the frames. */
-      const eventForm = (proposal) => `
+      /* ── the stepped frame — THE PROPOSAL ────────────────────────────── */
+      const STEPS = [
+        { label: 'מסלול', body: blkIdentity },
+        { label: 'הלוך', body: blkOutbound },
+        { label: 'חזרה', body: () => blkReturn() + blkDetails() },
+      ];
+      let step = 0;
+      let dir = 1;
+
+      const stepped = () => `
         <div class="modal-overlay" data-variant="sheet"><div class="modal-card">
-          <div class="modal-title">אירוע חדש</div>
-          <form class="modal-form">
-            <div class="field"><span class="field-label">קטגוריה</span>
-              <div class="choice-grid pills category-pills">
-                <button type="button" class="choice-pill on">🚕 תחבורה</button>
-                <button type="button" class="choice-pill">🍽️ אוכל</button>
-                <button type="button" class="choice-pill">🏨 לינה</button>
-              </div>
+          <div class="booking-sheet" style="--nav-dir:${dir}">
+            <div class="fs-bar">
+              <div class="fs-dots">${STEPS.map((_, i) => `<span class="fs-dot${i === step ? ' on' : i < step ? ' done' : ''}"></span>`).join('')}</div>
+              <span class="fs-label"><b>${STEPS[step].label}</b> · ${step + 1} מתוך ${STEPS.length}</span>
             </div>
-
-            <div class="field"><span class="field-label">שם</span>
-              <div class="title-row">
-                <button type="button" class="icon-chip">✈️</button>
-                <input class="title-input" value="טיסה לטוקיו" readonly />
-              </div>
-            </div>
-
-            ${
-              proposal
-                ? /* §4 — THE PROPOSAL: the place field IS the route field for a booked
-                     transport event. Same PlacePickers, same stacked layout, plus the
-                     swap. Neither endpoint required. */ `
-            <div class="field"><span class="field-label">מסלול</span>
-              <div class="route-field">
-                ${placePicker(TLV)}
-                <button type="button" class="route-field-swap">${icon('swap')} החלפת כיוון</button>
-                ${placePickerEmpty('יעד')}
-              </div>
-              <p class="field-hint">שני הקצוות אופציונליים. מה שיימסר ייקרא במפה, באזורי הזמן ובמסך ההכנה.</p>
-            </div>`
-                : `
-            <div class="field"><span class="field-label">מיקום</span>
-              ${placePicker(TLV)}
-            </div>`
-            }
-
-            <div class="field">
-              <button type="button" class="wp-chip cta touch on" aria-pressed="true">${icon('check')} יש הזמנה</button>
-              <div class="wp-collapsible on">
-                <div class="ef-btype">
-                  <div class="choice-grid pills">
-                    <button type="button" class="choice-pill on">✈️ טיסה</button>
-                    <button type="button" class="choice-pill">🚄 רכבת</button>
-                    <button type="button" class="choice-pill">🚌 אחר</button>
-                  </div>
-                </div>
-                <input class="ef-code-input" placeholder="קוד אישור · לא חובה" />
-                <p class="ef-derived"><span aria-hidden="true">🚕</span><span>האירוע יירשם גם כהזמנה · טיסה, ואפשר להשלים אותה אחר כך</span></p>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <button type="button" class="fa-primary">שמירה</button>
-              <button type="button" class="fa-secondary">ביטול</button>
-            </div>
-          </form>
-        </div></div>`;
-
-      /* ── §3 · the detail sheet, with the pair fact last ────────────────── */
-      const fact = (k, v, mono) =>
-        `<div class="bk-fact"><span class="bk-fact-k">${k}</span><span class="bk-fact-v${mono ? ' mono' : ''}"${mono ? ' dir="ltr"' : ''}>${v}</span></div>`;
-
-      const detailSheet = () => `
-        <div class="modal-overlay" data-variant="sheet"><div class="modal-card">
-          <div class="bk-detail">
-            <div class="bk-actions"><button type="button" class="bk-edit">${icon('edit')} ערוך</button></div>
-            <div class="bk-head">
-              <div class="bk-badge">✈️</div>
-              <div class="bk-headtext">
-                <div class="bk-title">${route(TLV, NRT)}</div>
-                <div class="bk-type">טיסה</div>
-              </div>
-            </div>
-            <div class="bs-hard-note">${icon('lock')} האירוע קשיח · מחויבות</div>
-            <div class="bk-facts">
-              ${fact('מיקום', 'נמל התעופה בן גוריון')}
-              ${fact('המראה 🛫', 'יום ד׳, 12 באוג׳ · 22:15')}
-              ${fact('נחיתה 🛬', 'יום ה׳, 13 באוג׳ · 16:40')}
-              ${fact('משך', '12:25 שע׳')}
-              ${fact('קוד אישור', '#LY6K2QA', true)}
-              <!-- §3 — THE PROPOSAL: last, because it is a fact about the neighbour. -->
-              <div class="bk-fact"><span class="bk-fact-k">חזרה</span>
-                <!-- The route is deliberately NOT repeated here. The return of TLV→NRT can
-                     only be NRT→TLV, so drawing it puts a second arrow beside the link's own
-                     and says nothing the header did not. Date + the way through. -->
-                <span class="bk-fact-v"><button type="button" class="bk-pairlink">יום ד׳, 26 באוג׳ ${navArrow()}</button></span>
-              </div>
-            </div>
+            <div class="fs-panel" key="${step}">${STEPS[step].body()}</div>
+            ${actions(step === STEPS.length - 1 ? 'שמירה' : 'הבא', step === 0 ? 'ביטול' : 'הקודם')}
           </div>
         </div></div>`;
-
-      /* ── §3 · the delete prompt, with the partner note ─────────────────── */
-      const deletePrompt = () => `
-        <div class="modal-overlay" data-variant="dialog"><div class="modal-card">
-          <div class="confirm" data-tone="danger">
-            <div class="confirm-heading"><span aria-hidden="true">${icon('link')}</span> ההזמנה משובצת במסלול</div>
-            <p class="confirm-text">יש אירוע במסלול שמסתמך על ההזמנה. מה לעשות?</p>
-            <p class="bs-hard-note">${icon('lock')} האירוע קשיח · מחויבות</p>
-            <!-- §4 — THE PROPOSAL: a statement, not a fourth button. -->
-            <p class="bs-pair-note">${icon('link')} יש גם טיסת חזרה ב-26 באוג׳. היא לא תימחק.</p>
-            <div class="bs-choices">
-              <button type="button" class="bs-choice danger">
-                <div class="bs-choice-t">מחק את שניהם</div>
-                <div class="bs-choice-s">ההזמנה והאירוע במסלול יימחקו</div>
-              </button>
-              <button type="button" class="bs-choice">
-                <div class="bs-choice-t">בטל שיוך ושמור את האירוע</div>
-                <div class="bs-choice-s">האירוע יישאר במסלול כרשומה ידנית</div>
-              </button>
-            </div>
-            <button type="button" class="confirm-cancel bs-choice-cancel">בטל</button>
-          </div>
-        </div></div>`;
-
-      /* ── §3 · the Index rows ───────────────────────────────────────────── */
-      const listRow = (from, to, meta, code, tag) => `
-        <div class="wp-listrow">
-          <button type="button" class="wp-listrow-open">
-            <span class="wp-listrow-badge trans">✈️</span>
-            <span class="wp-listrow-main">
-              <span class="wp-listrow-title">${route(from, to)}<span class="bk-lock">${icon('lock')}</span><span class="tag-type">טיסה</span></span>
-              <span class="wp-listrow-meta"><span class="link-cue">${icon('link')} ${meta}</span>${
-                tag ? `<span class="tag-type">הלוך ושוב</span>` : ''
-              }</span>
-            </span>
-          </button>
-          <div class="wp-listrow-right">
-            <span class="code" dir="auto">#${code}</span>
-            <button type="button" class="wp-listrow-kebab">${icon('more')}</button>
-          </div>
-        </div>`;
-
-      // `.index` is a real ancestor in the app (the screen's own class) and several of
-      // these rules are scoped to it — `.index .tag-type`, `.index .link-cue`,
-      // `.index .bk-lock`, `.index .code`. Dropping it was the first thing rendering
-      // against the real sheets caught.
-      const indexStrip = (tag) => `
-        <div class="index">
-          <div class="lbl2">הזמנות · 12 באוגוסט</div>
-          <div class="listcard">${listRow(TLV, NRT, 'המראה · 12 באוג׳ · 22:15 <span class="bk-dur">· 12:25 שע׳</span>', 'LY6K2QA', tag)}</div>
-          <div class="lbl2">הזמנות · 26 באוגוסט</div>
-          <div class="listcard">${listRow(NRT, TLV, 'המראה · 26 באוג׳ · 11:30 <span class="bk-dur">· 12:35 שע׳</span>', 'LY6K2QA', tag)}</div>
-        </div>`;
-
-      /* ── render + wiring ───────────────────────────────────────────────── */
-      let width = 390;
-      let two = true;
 
       function render() {
-        document.getElementById('ph-before').innerHTML = bookingSheet({ shipped: true });
-        document.getElementById('ph-after').innerHTML = bookingSheet({ two });
-        // Rendered ALREADY REFUSED, so the state is reviewable without interacting
-        // (a screenshot cannot press a button). The save re-plays the nudge.
-        document.getElementById('ph-refuse').innerHTML = bookingSheet({ two: true, bad: true });
-        document.getElementById('ph-detail').innerHTML = detailSheet();
-        document.getElementById('ph-delete').innerHTML = deletePrompt();
-        document.getElementById('strip-index').innerHTML = indexStrip(false);
-        document.getElementById('strip-index-rejected').innerHTML = indexStrip(true);
-        document.getElementById('ph-ev-before').innerHTML = eventForm(false);
-        document.getElementById('ph-ev-after').innerHTML = eventForm(true);
-        document.getElementById('ph-measure').innerHTML = bookingSheet({ two: true });
-        document.getElementById('ph-measure-one').innerHTML = bookingSheet({ two: false });
-        document.querySelectorAll('.phone, .col, .strip').forEach((el) => {
-          if (el.classList.contains('phone')) el.style.width = width + 'px';
+        const s = document.getElementById('ph-scroll');
+        const t = document.getElementById('ph-steps');
+        s.innerHTML = '<div class="fold"></div>' + scrolled();
+        t.innerHTML = '<div class="fold"></div>' + stepped();
+        t.querySelector('[data-next]').addEventListener('click', () => {
+          if (step >= STEPS.length - 1) return;
+          dir = 1;
+          step++;
+          render();
         });
-        document.querySelectorAll('.col').forEach((c) => {
-          if (!c.classList.contains('narrow')) c.style.width = width + 'px';
+        t.querySelector('[data-prev]').addEventListener('click', () => {
+          if (step === 0) return;
+          dir = -1;
+          step--;
+          render();
         });
-
-        measure();
-
-        // The direction pills are live in every frame that has them.
-        document.querySelectorAll('[data-set]').forEach((b) =>
-          b.addEventListener('click', () => {
-            two = b.dataset.set === 'two';
-            syncControls();
-            render();
-          }),
+        // Measured, not asserted — the one pixel claim this file makes.
+        const h = Math.round(
+          document.querySelector('#ph-scroll .booking-sheet').getBoundingClientRect().height,
         );
-        // §2 — save refuses, marking the leg it means.
-        const refuse = document.querySelector('#ph-refuse [data-save]');
-        refuse?.addEventListener('click', () => {
-          const field = document.querySelector('#ph-refuse [data-invalid]');
-          field?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          field?.animate(
-            [
-              { transform: 'translateX(0)' },
-              { transform: 'translateX(-5px)' },
-              { transform: 'translateX(4px)' },
-              { transform: 'translateX(0)' },
-            ],
-            { duration: 240 },
-          );
-        });
+        document.getElementById('m-scroll').textContent =
+          `${h}px, כלומר ${(h / 675).toFixed(1)} מסכים`;
       }
-
-      /** Real numbers off the rendered frames — never typed by hand into the table.
-       *  The one-way figure comes from the shipped frame, so it is the app's height
-       *  and not a reconstruction of it. */
-      function measure() {
-        const h = (sel) => {
-          const el = document.querySelector(sel);
-          return el ? Math.round(el.getBoundingClientRect().height) : 0;
-        };
-        const today = h('#ph-before .booking-sheet');
-        const oneWay = h('#ph-measure-one .booking-sheet');
-        const both = h('#ph-measure .booking-sheet');
-        const rows = [
-          ['גובה הגיליון', today, oneWay, both],
-          ['הפרש מהיום', 0, oneWay - today, both - today],
-          ['מזה: המקטע השני בלבד', 0, 0, both - oneWay],
-          ['מתוכו, מקטע זמנים עם כותרת', 0, 0, h('#ph-measure .bs-leg.return')],
-        ];
-        document.getElementById('mbody').innerHTML = rows
-          .map(
-            ([k, ...v]) =>
-              `<tr><td>${k}</td>${v
-                .map((n) => `<td>${n ? (n > 0 && k === 'הפרש מהיום' ? '+' : '') + n + 'px' : '-'}</td>`)
-                .join('')}</tr>`,
-          )
-          .join('');
-      }
-
-      function syncControls() {
-        document
-          .querySelectorAll('[data-dir]')
-          .forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.dir === 'two') === two)));
-      }
-
-      document.querySelectorAll('[data-dir]').forEach((b) =>
-        b.addEventListener('click', () => {
-          two = b.dataset.dir === 'two';
-          syncControls();
-          render();
-        }),
-      );
-      document.querySelectorAll('[data-w]').forEach((b) =>
-        b.addEventListener('click', () => {
-          width = Number(b.dataset.w);
-          document
-            .querySelectorAll('[data-w]')
-            .forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-          render();
-        }),
-      );
-
       render();
     </script>
   </body>
