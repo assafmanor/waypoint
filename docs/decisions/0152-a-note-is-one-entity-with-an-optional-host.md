@@ -66,6 +66,16 @@ The tile, the screen and the entity read `פתקים` / `פתק` (owner's call o
 
 **Amended (2026-08-01, session 205, owner's call) — an inherited category is RESOLVED, not copied, and the same chain covers the glyph.** The owner's instruction for the host forms is that adding a note _"shouldn't have to open a new form … it should be on the way … and everything that could be spared from the user should be"_ — which means a hosted note is written with **no category chosen at all**. So `Note.category` stays `null` and the render resolves `note.category ?? host.category`, through the same `??` chain `chosenIcon` already runs (`frontend/src/constants.ts:313`). Copying the host's value at write time looks identical on day one and goes stale the moment the host is recategorised, which is exactly the "content-enum-as-decoration" mistake `constants.ts` already warns about beside `DEFAULT_STAY_ICON`. **There is no `Note.icon` field**: the same chain gives the glyph for free, and a field of its own would drag an icon picker into the editor — one more input, against the instruction. Adding one later is a column and a link in the chain, not a redesign.
 
+**Amended (2026-08-01, session 206, phase 5c) — the host is immutable to a USER and transferable by a CONVERSION.** This ADR and ADR-0153 §5 both say the host is not editable, and the reason given is that attachment is established from the host's side and v1 has no host picker. That is still true of every surface a person operates. What the wording did not cover is the app converting one entity into another, and all three shipped conversions were losing notes:
+
+- **an idea scheduled into an event** left its notes on the consumed idea — off the shelf, so reachable only from the notes screen, chipped to something the user can no longer see;
+- **an event parked back onto the shelf** was worse than stranding: parking DELETES the event, and the five host FKs are `onDelete: Cascade`, so the notes were **destroyed in the database**;
+- **an idea booked** left them behind in the same way as scheduling.
+
+So a conversion carries the notes with it, in the write it already performs. `updateNoteSchema` gains the five host FKs, and they are **the one part of that payload that is not whole-content: absent means untouched, not cleared** — an ordinary edit sends none of them and cannot lose a host, a conversion sends the new host and `null` for the old. A submitted host is scope-checked exactly like a created one.
+
+**Ordering is the correctness condition, not a detail.** Offline the outbox is FIFO, so the move is queued **after** the new host exists and **before** the old one is deleted. The same rule mirrored is what makes undo safe: undoing a schedule deletes the event, so the notes ride back to the idea first; un-parking deletes the idea, so the event is re-created first, the notes ride to it, and only then does the idea go. Both were data loss before this.
+
 **"Social media" is not a category — it is a link.** `Note.url` covers a pasted Instagram/TikTok/blog reference with no enum at all, and a URL-only note renders as a link card. It is also the honest hook for later enrichment (resolving a link's title and thumbnail is a remote strategy, §8), which a category never could have been.
 
 ### 6. The Index gets a third tile; a row gets a mark, not a body

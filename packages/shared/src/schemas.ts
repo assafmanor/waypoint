@@ -421,16 +421,34 @@ export type CreateNoteInput = z.infer<typeof createNoteSchema>;
  *  a confusing lie about a note that has one. Same shape as `updateMaybeItemSchema`, whose
  *  `apply` writes `targetDate ?? null` unconditionally for the same reason.
  *
- *  The host is **not** editable: attachment is established from the host's side (ADR-0153 §5
- *  — there is no host picker in v1), and a note that could be re-hosted would need one. */
+ *  **The host is immutable to a USER and transferable by a CONVERSION** (ADR-0152 §5's
+ *  2026-08-01 amendment). There is still no host picker (ADR-0153 §5) — nothing a person
+ *  operates re-hosts a note. What does is the app converting one entity into another: an
+ *  idea scheduled into an event, an event parked back onto the shelf, an idea booked. Those
+ *  used to strand a note on the entity that was consumed, or — when the old host was
+ *  DELETED, as parking does — let the FK cascade destroy it.
+ *
+ *  **The host fields are the one part of this payload that is not whole-content.** Absent
+ *  means UNTOUCHED, not cleared, which is the opposite of the rule above and is why they are
+ *  called out here: an ordinary edit from the editor sheet sends none of them and must never
+ *  lose the note's host. A conversion sends the new host and `null` for the old one. */
 export const updateNoteSchema = z
   .object({
     title: z.string().nullish(),
     body: z.string().nullish(),
     url: z.string().nullish(),
     category: eventCategorySchema.nullish(),
+    eventId: entityIdSchema.nullish(),
+    bookingId: entityIdSchema.nullish(),
+    placeId: entityIdSchema.nullish(),
+    maybeItemId: entityIdSchema.nullish(),
+    documentId: entityIdSchema.nullish(),
   })
-  .refine(hasContent, { message: 'a note needs a body or a url', path: ['body'] });
+  .refine(hasContent, { message: 'a note needs a body or a url', path: ['body'] })
+  .refine((data) => noteHostCount(data) <= 1, {
+    message: 'a note has at most one host',
+    path: ['eventId'],
+  });
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 
 /** `POST /trips/:tripId/invite` response. */

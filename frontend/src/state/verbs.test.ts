@@ -1,6 +1,11 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { EVENT_STATUS, type CreateBookingInput } from '@waypoint/shared';
+import {
+  EVENT_STATUS,
+  type CreateBookingInput,
+  type Note,
+  type NoteHostKey,
+} from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import { initOutboxCount, OUTBOX_VERB } from '../lib/outbox';
@@ -26,9 +31,15 @@ import {
 } from './verbs';
 import { TRIP_ACTION, type Action } from './trip-state';
 
-function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & {
+function fakeDeps(
+  confirmHardEdit?: VerbDeps['confirmHardEdit'],
+  /** The trip's notes, for the conversions that have to carry them (ADR-0152 §5's
+   *  amendment). Empty by default, so every test that is not about notes reads as before. */
+  notes: Note[] = [],
+): VerbDeps & {
   actions: Action[];
   bookings: { createBooking: Mock; deleteBooking: Mock };
+  notes: { list: Note[]; rehost: Mock };
 } {
   const actions: Action[] = [];
   return {
@@ -46,9 +57,28 @@ function fakeDeps(confirmHardEdit?: VerbDeps['confirmHardEdit']): VerbDeps & {
       })),
       deleteBooking: vi.fn(async () => {}),
     } as unknown as { createBooking: Mock; deleteBooking: Mock },
+    // The notes half, same shape and same reason as the bookings one above.
+    notes: { list: notes, rehost: vi.fn(async () => {}) } as unknown as {
+      list: Note[];
+      rehost: Mock;
+    },
     actions,
   };
 }
+
+/** A note on a host, minimal — only the fields a conversion reads. */
+const noteOn = (id: string, host: Partial<Record<NoteHostKey, string>>): Note =>
+  ({
+    id,
+    tripId: 'trip-japan-26',
+    body: `הפתק ${id}`,
+    source: 'member',
+    createdBy: 'u1',
+    createdAt: '2026-07-19T00:00:00.000Z',
+    updatedAt: '2026-07-19T00:00:00.000Z',
+    updatedBy: 'u1',
+    ...host,
+  }) as Note;
 
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -808,6 +838,133 @@ describe('applyReorder', () => {
     const deps = fakeDeps();
     await applyReorder(deps, [], [a, b]);
     expect(deps.actions).toHaveLength(0);
+  });
+});
+
+// ── A CONVERSION CARRIES ITS NOTES (ADR-0152 §5's 2026-08-01 amendment) ─────────────────
+//
+// Three shipped conversions consume one entity into another, and every one of them used to
+// leave the notes behind. Parking was the worst: it DELETES the event, and the note FKs are
+// `onDelete: Cascade`, so the notes were destroyed rather than stranded. These tests are
+// about WHICH host and IN WHAT ORDER, because both are what make it correct offline.
+describe('carrying notes through a conversion', () => {
+  const event = EVENTS.find((e) => e.id === 'ev-goldengai')!; // soft
+  const idea = MAYBE_ITEMS[0];
+
+  // The responses have to be REAL entities: every api fetcher parses what comes back, so a
+  // `{}` throws inside the verb and the conversion never reaches its notes — which is how
+  // the first draft of these tests failed for the wrong reason.
+  const okFetch = () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        calls.push(u);
+        const body = u.includes('/events')
+          ? { ...EVENTS[0], ...JSON.parse(String(init?.body ?? '{}')) }
+          : MAYBE_ITEMS[0];
+        return new Response(JSON.stringify(body), { status: 200 });
+      }),
+    );
+    return calls;
+  };
+
+  it('moves an idea’s notes onto the event it is scheduled into', async () => {
+    okFetch();
+    const notes = [noteOn('n1', { maybeItemId: idea.id }), noteOn('n2', { maybeItemId: idea.id })];
+    const deps = fakeDeps(undefined, [...notes, noteOn('n3', { maybeItemId: 'mb-other' })]);
+    const scheduled = { ...EVENTS[0], id: 'ev-scheduled' };
+
+    await applySchedule(deps, scheduled, idea.id);
+
+    expect(deps.notes.rehost).toHaveBeenCalledTimes(2);
+    const [note, host] = deps.notes.rehost.mock.calls[0];
+    expect(note.id).toBe('n1');
+    // The new host set and every other one CLEARED, in the one write — a note claiming two
+    // hosts is refused at the schema.
+    expect(host).toEqual({
+      eventId: 'ev-scheduled',
+      bookingId: null,
+      placeId: null,
+      maybeItemId: null,
+      documentId: null,
+    });
+  });
+
+  // The ordering claim, and the one that makes parking safe: the notes must reach the idea
+  // BEFORE the event's delete goes out, or the cascade takes them.
+  it('moves an event’s notes to the shelf BEFORE the event is deleted', async () => {
+    const order: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = String(url);
+        if (u.includes('/maybe-items')) order.push('idea');
+        if (u.includes('/events/')) order.push('delete');
+        return new Response(JSON.stringify(u.includes('/events') ? EVENTS[0] : MAYBE_ITEMS[0]), {
+          status: 200,
+        });
+      }),
+    );
+    const item = { ...idea, id: 'mb-parked' };
+    const deps = fakeDeps(undefined, [noteOn('n1', { eventId: event.id })]);
+    deps.notes.rehost.mockImplementation(async () => void order.push('note'));
+
+    await applyPark(deps, event, item);
+
+    expect(order).toEqual(['idea', 'note', 'delete']);
+    expect(deps.notes.rehost.mock.calls[0][1]).toMatchObject({
+      maybeItemId: 'mb-parked',
+      eventId: null,
+    });
+  });
+
+  // Undoing the schedule deletes the event again — so the notes have to ride back first, or
+  // the undo destroys what the action itself preserved.
+  it('carries the notes BACK when a schedule is undone', async () => {
+    okFetch();
+    const deps = fakeDeps(undefined, [noteOn('n1', { eventId: 'ev-scheduled' })]);
+    deps.lastAction.current = { kind: 'create', id: 'ev-scheduled', maybeId: idea.id };
+
+    await applyUndo(deps);
+
+    expect(deps.notes.rehost).toHaveBeenCalledTimes(1);
+    expect(deps.notes.rehost.mock.calls[0][1]).toMatchObject({
+      maybeItemId: idea.id,
+      eventId: null,
+    });
+  });
+
+  // Un-parking deletes the IDEA, so the same rule applies mirrored: the event is re-created
+  // first, the notes ride to it, and only then does the idea go.
+  it('re-creates the event before carrying the notes back on an un-park', async () => {
+    const order: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes('/events') && init?.method === 'POST') order.push('event');
+        if (u.includes('/maybe-items/')) order.push('delete-idea');
+        return new Response(JSON.stringify(u.includes('/events') ? EVENTS[0] : MAYBE_ITEMS[0]), {
+          status: 200,
+        });
+      }),
+    );
+    const deps = fakeDeps(undefined, [noteOn('n1', { maybeItemId: 'mb-parked' })]);
+    deps.notes.rehost.mockImplementation(async () => void order.push('note'));
+    deps.lastAction.current = { kind: 'park', event, maybeId: 'mb-parked' };
+
+    await applyUndo(deps);
+
+    expect(order).toEqual(['event', 'note', 'delete-idea']);
+  });
+
+  it('leaves a host’s notes alone when nothing is converted', async () => {
+    okFetch();
+    const deps = fakeDeps(undefined, [noteOn('n1', { bookingId: 'bk-1' })]);
+    await applySchedule(deps, { ...EVENTS[0], id: 'ev-x' }, idea.id);
+    expect(deps.notes.rehost).not.toHaveBeenCalled();
   });
 });
 

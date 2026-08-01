@@ -88,6 +88,10 @@ export class NotesService {
     actorUserId: string,
   ): Promise<Note> {
     const before = await this.requireNote(tripId, noteId);
+    // A conversion may be moving this note to a new host (ADR-0152 §5's 2026-08-01
+    // amendment), and a foreign one would be a note its readers can never see — the same
+    // check `create` runs, for the same reason.
+    await assertNoteHostInTrip(this.prisma, tripId, input);
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,
@@ -104,6 +108,16 @@ export class NotesService {
             body: input.body ?? null,
             url: input.url ?? null,
             category: input.category ?? null,
+            // **`undefined` here means UNTOUCHED, and that is the whole contract** — Prisma
+            // omits an undefined field from the UPDATE, so an ordinary edit (which sends no
+            // host at all) cannot lose the note's host, while a conversion sends the new one
+            // and `null` for the old. The content fields above deliberately read the other
+            // way (absent = cleared); the asymmetry is stated on the schema.
+            eventId: input.eventId,
+            bookingId: input.bookingId,
+            placeId: input.placeId,
+            maybeItemId: input.maybeItemId,
+            documentId: input.documentId,
             updatedBy: actorUserId,
           },
         }),
