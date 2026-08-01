@@ -81,6 +81,19 @@ export interface EventCardProps {
    *  props — so the mark needs its own. A count only past 1: a `1` beside a glyph that
    *  already means "a note" is a digit that says nothing. */
   notes?: number;
+  /** **Where an event's notes are READ and WRITTEN** (ADR-0152 §6, ADR-0153 §8) — the
+   *  connected `<HostNotes>`, rendered in this card's `⋯` sheet above the verbs, exactly as
+   *  a document's and an idea's are.
+   *
+   *  A node rather than the component, because this file is `ui/domain/`: presentational,
+   *  all data via props, no `state` imports. The screen supplies it already connected.
+   *
+   *  **Not the expanded card**, which is the tempting spot: `.wp-event-actions` animates
+   *  `max-height: 0 → 220px`, so a section that grows with the note count would be clipped
+   *  at three notes, and raising the cap changes the reveal's motion for every card on the
+   *  day (ADR-0140). The sheet has no cap and is already the surface a row's actions live
+   *  on (ADR-0138 §1). */
+  notesSlot?: ReactNode;
   // Verbs (callbacks; presence + phase gate which buttons show, faithfully).
   // `onNavigate` (directions) and `onShowOnMap` (view the place) are the two
   // location actions — each present only when the event has a mappable place
@@ -160,6 +173,7 @@ export function EventCard(props: EventCardProps) {
     conflict,
     nestedCount,
     notes,
+    notesSlot,
     onNavigate,
     onShowOnMap,
     onDone,
@@ -471,7 +485,9 @@ export function EventCard(props: EventCardProps) {
           subject={menuSubject}
           actions={menuActions}
           onClose={() => setMenuOpen(false)}
-        />
+        >
+          {notesSlot}
+        </RowManageSheet>
       )}
     </div>
   );

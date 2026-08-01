@@ -7,6 +7,7 @@ import {
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
+  type Booking,
   type CreateBookingInput,
   type CreateEventInput,
   type EventCategory,
@@ -331,21 +332,26 @@ export async function applyConsumeMaybeItem(deps: VerbDeps, maybeId: string): Pr
  *  • Either, from the shelf → plus the idea's consume.
  *
  *  If the link fails, the booking is deleted rather than left for nothing to point at — the
- *  half-applied conversion ADR-0136's Consequences names. Returns false when nothing stuck. */
+ *  half-applied conversion ADR-0136's Consequences names.
+ *
+ *  **Resolves to the BOOKING**, or `null` when nothing stuck. Not a boolean, because on the
+ *  new-event path the linked event is the SERVER's (from the seed, ADR-0093) — so the
+ *  booking is the only id a caller can hold, and a form writing notes on the way needs one
+ *  to put them on (ADR-0152 §6b). */
 export async function applyBookEvent(
   deps: VerbDeps,
   input: CreateBookingInput,
   opts: { event?: TripEvent | null; maybeId?: string | null } = {},
-): Promise<boolean> {
+): Promise<Booking | null> {
   const { event = null, maybeId = null } = opts;
   let booking;
   try {
     // `silent`: this is one action, so it gets one toast, and the caller owns it.
     booking = await deps.bookings.createBooking(input, { silent: true });
   } catch {
-    return false; // the verb rolled back and toasted already
+    return null; // the verb rolled back and toasted already
   }
-  if (!booking) return false;
+  if (!booking) return null;
 
   let previous: { id: string; previous: UpdateEventInput } | null = null;
   if (event) {
@@ -358,7 +364,7 @@ export async function applyBookEvent(
       // stuck, so there is nothing to undo — offering to reverse a write that never applied
       // is worse than offering nothing.
       deps.lastAction.current = null;
-      return false;
+      return null;
     }
   }
   if (maybeId) await applyConsumeMaybeItem(deps, maybeId);
@@ -366,7 +372,7 @@ export async function applyBookEvent(
   // Set LAST, so it survives the descriptors `applyUpdateEvent`/the consume wrote: undoing a
   // booked save is one action, not the last of three.
   deps.lastAction.current = { kind: 'book', bookingId: booking.id, event: previous, maybeId };
-  return true;
+  return booking;
 }
 
 export async function applySchedule(
@@ -887,7 +893,9 @@ export function useVerbs() {
     schedule: (m: MaybeItem, fields?: ScheduleFields) => {
       const now = new Date(getNow()).toISOString();
       const event = buildScheduleEvent(trip, activeDate, m, now, authorId, fields);
-      void applySchedule(deps, event, m.id);
+      // Resolves to the event it built — the same reason `create` returns its promise: a
+      // caller writing notes on the way has to queue them BEHIND their host (ADR-0152 §6b).
+      const done = applySchedule(deps, event, m.id).then(() => event);
       // The toast says the time back in the event's OWN zone (ADR-0107) — on a
       // multi-zone trip the trip primary would confirm an hour nobody typed.
       const timeLabel = event.startsAt
@@ -898,6 +906,7 @@ export function useVerbs() {
         timeLabel ? t.toast.scheduled(event.title, timeLabel) : t.toast.scheduledDay(event.title),
         undo,
       );
+      return done;
     },
     // An idea can arrive from the day-view jot (title only) or from Plan-mode
     // place research (a picked place, ADR-0115 §3) — hence the options bag rather
@@ -965,20 +974,26 @@ export function useVerbs() {
       void applyPark(deps, event, item);
       toast(CONTROL_ICON.toShelf, t.toast.movedToShelf, undo);
     },
+    /** Resolves when the event's own write has been sent or queued — which is what lets a
+     *  caller queue something BEHIND it. The form writing notes on the way (ADR-0152 §6b)
+     *  is the one caller that needs it: offline the outbox is FIFO, so a note enqueued
+     *  before its host's op would flush first and the server would refuse a host it cannot
+     *  see. Every other call site ignores the promise, exactly as before. */
     create: (event: TripEvent) => {
-      void applyCreateEvent(deps, event);
+      const done = applyCreateEvent(deps, event);
       toast(CONTROL_ICON.done, t.toast.eventCreated, undo);
+      return done;
     },
     /** The event is ALSO booked (ADR-0136). One toast for one action, whichever of the three
      *  shapes it took — and the undo behind it reverses all of their writes together. */
     book: (
       input: CreateBookingInput,
       opts: { event?: TripEvent | null; maybeId?: string | null } = {},
-    ) => {
-      void applyBookEvent(deps, input, opts).then((applied) => {
-        if (applied) toast(CONTROL_ICON.done, t.toast.eventBooked, undo);
-      });
-    },
+    ) =>
+      applyBookEvent(deps, input, opts).then((booking) => {
+        if (booking) toast(CONTROL_ICON.done, t.toast.eventBooked, undo);
+        return booking;
+      }),
     update: (event: TripEvent, patch: UpdateEventInput) => {
       void applyGuardedUpdate(deps, event, patch).then((applied) => {
         if (applied) toast(CONTROL_ICON.done, t.toast.eventUpdated, undo);

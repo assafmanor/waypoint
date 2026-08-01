@@ -413,6 +413,26 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       expect(screen.getByLabelText(t.notes.mark(2))).toBeTruthy();
     });
 
+    // WHERE THE BODY LIVES (ADR-0152 §6). The mark says there are notes; the `⋯` sheet is
+    // where they are read and written, as on a document and an idea. Deliberately NOT the
+    // expanded card: `.wp-event-actions` animates to a fixed 220px, so a section that grows
+    // with the count would be clipped there.
+    it('carries its notes in the ⋯ sheet, above the verbs — never in the expanded card', () => {
+      showCard({
+        notes: 2,
+        notesSlot: <div data-testid="host-notes" />,
+        onEdit: () => {},
+      });
+      // Closed: the slot is not rendered anywhere on the card itself.
+      expect(screen.queryByTestId('host-notes')).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+      const slot = screen.getByTestId('host-notes');
+      const actions = document.querySelector('.wp-row-actions') as HTMLElement;
+      expect(actions).toBeTruthy();
+      expect(slot.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it('elementises the meta so the code can be protected from the ellipsis', () => {
       showCard({ placeName: 'שיבויה', code: 'MN-4471' });
       // The code is its OWN item — flex cannot protect part of a text node.

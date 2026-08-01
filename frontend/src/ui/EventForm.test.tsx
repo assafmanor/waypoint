@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { wrapNav } from '../test/nav-harness';
 
 // jsdom has no scrollIntoView; the form's focus-reveal and the zone picker both
@@ -34,10 +34,24 @@ const tripState = {
   // An already-linked event's statement reads its booking from here (ADR-0136 §3).
   bookings: [] as unknown[],
   indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
+  // Notes written on the way (ADR-0152 §6b): the form queues them BEHIND their host.
+  noteVerbs: { createNote: vi.fn(() => Promise.resolve(undefined)) },
 };
 vi.mock('../state/trip-state', () => ({ useTrip: () => tripState }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
-const verbs = { create: vi.fn(), update: vi.fn(), schedule: vi.fn(), book: vi.fn() };
+// **These three RESOLVE, and the mock has to say so.** They return their host now (a
+// promise of it) precisely so a caller can queue notes behind it — a mock returning
+// `undefined` would let the form's note write die silently while every assertion here
+// still passed, which is the shape of test that hides a feature rather than pinning it.
+type AnyFields = Record<string, unknown>;
+const verbs = {
+  create: vi.fn((_event: AnyFields) => Promise.resolve()),
+  update: vi.fn((_event: AnyFields, _patch: AnyFields) => undefined),
+  schedule: vi.fn((_m: AnyFields, fields: AnyFields) =>
+    Promise.resolve({ id: 'ev-scheduled', ...fields }),
+  ),
+  book: vi.fn((_input: AnyFields, _opts?: AnyFields) => Promise.resolve({ id: 'bk-new' })),
+};
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 // The place field sends an errand to the Map (ADR-0134 §1); the form supplies the draft, so
 // this is where the hand-over blob is asserted.
@@ -60,6 +74,10 @@ describe('EventForm (folded into Modal, U-01)', () => {
     // Per test, not per file: `mock.calls[0]` otherwise reads whatever an earlier test in
     // this describe happened to save, which is how four assertions here first "passed".
     for (const fn of Object.values(verbs)) fn.mockClear();
+    // Same reason as the line above, and it bit once already: this mock is shared through
+    // `tripState`, so without a reset a later test reads the previous one's calls.
+    tripState.noteVerbs.createNote.mockReset();
+    tripState.noteVerbs.createNote.mockResolvedValue(undefined);
     startErrand.mockClear();
   });
   afterEach(() => {
@@ -434,7 +452,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
         save();
         const [input, opts] = verbs.book.mock.calls[0];
         expect(input.event).toBeUndefined();
-        expect(opts.event).toMatchObject({ id: 'ev-1' });
+        expect(opts?.event).toMatchObject({ id: 'ev-1' });
         expect(verbs.update).not.toHaveBeenCalled();
       });
 
@@ -563,5 +581,106 @@ describe('EventForm (folded into Modal, U-01)', () => {
     expect(food.getAttribute('aria-checked')).toBe('false');
     fireEvent.click(food);
     expect(food.getAttribute('aria-checked')).toBe('true');
+  });
+  // ── Notes written on the way (ADR-0152 §6b) ───────────────────────────────────────────
+  //
+  // The ordering claim is the one that matters and the one a unit test can actually hold:
+  // the note is written only AFTER its host's write resolves. Offline the outbox is FIFO, so
+  // a note that overtook its host would flush first and the server would refuse a host it
+  // cannot see — the same defect the document upload had to be built around.
+  describe('the composer', () => {
+    const composer = () => document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+    const save = () => fireEvent.click(screen.getByText(t.common.save));
+    const nameIt = (title = 'ארוחת ערב') =>
+      fireEvent.input(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+        target: { value: title },
+      });
+
+    it('writes nothing when the box was never touched', async () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      nameIt();
+      save();
+      await waitFor(() => expect(verbs.create).toHaveBeenCalled());
+      expect(tripState.noteVerbs.createNote).not.toHaveBeenCalled();
+    });
+
+    it('takes what is still in the box at save, hosted by the new event', async () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      nameIt();
+      fireEvent.change(composer(), { target: { value: 'להזמין מקום ליד החלון' } });
+      save();
+
+      await waitFor(() => expect(tripState.noteVerbs.createNote).toHaveBeenCalledTimes(1));
+      // The SAME id the event was created with — the client mints it, so the FK is valid
+      // whether the write went out or was queued.
+      const id = verbs.create.mock.calls[0][0].id;
+      expect(tripState.noteVerbs.createNote).toHaveBeenCalledWith({
+        body: 'להזמין מקום ליד החלון',
+        eventId: id,
+      });
+    });
+
+    it('waits for the host: the event resolves BEFORE the note is written', async () => {
+      const order: string[] = [];
+      let release!: () => void;
+      verbs.create.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            order.push('event');
+            release = () => resolve();
+          }),
+      );
+      tripState.noteVerbs.createNote.mockImplementation(() => {
+        order.push('note');
+        return Promise.resolve(undefined);
+      });
+
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      nameIt();
+      fireEvent.change(composer(), { target: { value: 'פתק' } });
+      save();
+
+      await waitFor(() => expect(order).toEqual(['event']));
+      expect(tripState.noteVerbs.createNote).not.toHaveBeenCalled();
+      release();
+      await waitFor(() => expect(order).toEqual(['event', 'note']));
+    });
+
+    // The event this path creates is materialized by the SERVER from a seed (ADR-0093), so
+    // there is no client event id — the booking's is the one that exists, and it is where
+    // the same note would have been written from `BookingSheet`.
+    it('hosts the notes on the BOOKING when יש הזמנה is on', async () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      nameIt('לינה בשינג׳וקו');
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.eventForm.bookedLabel) }));
+      fireEvent.change(composer(), { target: { value: 'קוד הכספת 4417' } });
+      save();
+
+      await waitFor(() => expect(tripState.noteVerbs.createNote).toHaveBeenCalledTimes(1));
+      expect(tripState.noteVerbs.createNote).toHaveBeenCalledWith({
+        body: 'קוד הכספת 4417',
+        bookingId: 'bk-new',
+      });
+    });
+
+    // An existing event's notes are read and written where its body lives (its `⋯` sheet),
+    // so a second way to write the same thing is deliberately absent here.
+    it('is absent when editing an existing event', () => {
+      const existing = {
+        id: 'ev-1',
+        tripId: 't1',
+        date: '2026-07-20',
+        title: 'ארוחת ערב',
+        kind: 'soft',
+        status: 'planned',
+        sortOrder: 0,
+        source: 'manual',
+        createdAt: '2026-07-19T00:00:00.000Z',
+        updatedAt: '2026-07-19T00:00:00.000Z',
+        updatedBy: 'u1',
+      } as unknown as Parameters<typeof EventForm>[0]['event'];
+      render(wrapNav(<EventForm event={existing} onClose={() => {}} />));
+      expect(document.querySelector('.note-compose-in')).toBeNull();
+    });
   });
 });
