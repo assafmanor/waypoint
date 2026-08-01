@@ -33,6 +33,7 @@ import {
   toInvitePreviewDto,
   toMaybeItemDto,
   toMembershipDto,
+  toNoteDto,
   toPlaceDto,
   toTripDto,
   toUserDto,
@@ -437,7 +438,7 @@ export class TripsService {
    * every lower `seq` has already committed, so no entity it counts is missing.
    */
   async getSnapshot(tripId: string): Promise<TripSnapshot> {
-    const [latestChange, trip, members, events, bookings, documents, maybeItems, places] =
+    const [latestChange, trip, members, events, bookings, documents, maybeItems, places, notes] =
       await this.prisma.$transaction(
         [
           this.prisma.change.findFirst({
@@ -460,6 +461,13 @@ export class TripsService {
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           }),
           this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+          // Newest first, which is the notes screen's own order (ADR-0153 §2) — and `id`
+          // breaks ties so two notes written in the same millisecond (the composer's
+          // several-at-one-save case) have a stable order rather than a shuffling one.
+          this.prisma.note.findMany({
+            where: { tripId },
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          }),
         ],
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
       );
@@ -473,6 +481,7 @@ export class TripsService {
       documents: documents.map(toDocumentSummaryDto),
       maybeItems: maybeItems.map(toMaybeItemDto),
       places: places.map(toPlaceDto),
+      notes: notes.map(toNoteDto),
       latestSeq: latestChange ? latestChange.seq.toString() : '0',
     };
   }

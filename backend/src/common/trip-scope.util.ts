@@ -44,3 +44,68 @@ export async function assertBookingInTrip(
   });
   if (!booking) throw new BadRequestException(`Unknown booking for this trip: ${bookingId}`);
 }
+
+/**
+ * Reject a note's host id that isn't in this trip (ADR-0152 §2). A note carries at most
+ * one of five typed FKs, and every one of them is a client-supplied id — so this is the
+ * same class of reference `assertPlacesInTrip`/`assertBookingInTrip` above already guard,
+ * one entity wider. A foreign id gets a 400 rather than a cross-trip note whose host the
+ * reader can never see.
+ *
+ * Table-driven so a sixth note-bearing entity is one line here and nothing at the call
+ * site — the shape ADR-0094 uses for the applier registries, applied to a scope check.
+ * The at-most-one rule itself is the shared zod schema's (`createNoteSchema`), so this
+ * only has to check whichever host is actually set.
+ */
+export async function assertNoteHostInTrip(
+  prisma: PrismaService,
+  tripId: string,
+  host: {
+    eventId?: string | null;
+    bookingId?: string | null;
+    placeId?: string | null;
+    maybeItemId?: string | null;
+    documentId?: string | null;
+  },
+): Promise<void> {
+  const checks: [string | null | undefined, string, () => Promise<{ id: string } | null>][] = [
+    [
+      host.eventId,
+      'event',
+      () => prisma.event.findFirst({ where: { id: host.eventId!, tripId }, select: { id: true } }),
+    ],
+    [
+      host.bookingId,
+      'booking',
+      () =>
+        prisma.booking.findFirst({ where: { id: host.bookingId!, tripId }, select: { id: true } }),
+    ],
+    [
+      host.placeId,
+      'place',
+      () => prisma.place.findFirst({ where: { id: host.placeId!, tripId }, select: { id: true } }),
+    ],
+    [
+      host.maybeItemId,
+      'maybe item',
+      () =>
+        prisma.maybeItem.findFirst({
+          where: { id: host.maybeItemId!, tripId },
+          select: { id: true },
+        }),
+    ],
+    [
+      host.documentId,
+      'document',
+      () =>
+        prisma.document.findFirst({
+          where: { id: host.documentId!, tripId },
+          select: { id: true },
+        }),
+    ],
+  ];
+  for (const [id, label, find] of checks) {
+    if (!id) continue;
+    if (!(await find())) throw new BadRequestException(`Unknown ${label} for this trip: ${id}`);
+  }
+}

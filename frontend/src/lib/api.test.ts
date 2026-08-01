@@ -35,6 +35,7 @@ const snapshotBody = {
   documents: [],
   maybeItems: [],
   places: [],
+  notes: [],
   latestSeq: '0',
 };
 

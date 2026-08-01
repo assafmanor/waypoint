@@ -13,6 +13,8 @@ import type {
   EventSource,
   EventStatus,
   MembershipRole,
+  NoteHostKey,
+  NoteSource,
 } from './entities';
 
 export const AUTH_PROVIDER = { GOOGLE: 'google' } as const satisfies Record<string, AuthProvider>;
@@ -125,7 +127,33 @@ export const ENTITY_TYPE = {
   PLACE: 'place',
   TRIP: 'trip',
   MEMBERSHIP: 'membership',
+  NOTE: 'note',
 } as const satisfies Record<string, EntityType>;
+
+/** Where a note came from (ADR-0152 §1). One value in v1 — §9 registers no strategy. */
+export const NOTE_SOURCE = {
+  MEMBER: 'member',
+} as const satisfies Record<string, NoteSource>;
+
+/** **Which FK holds a note's host, per host entity type** (ADR-0152 §2) — the lookup that
+ *  makes the cascade rule ONE rule instead of five branches.
+ *
+ *  A database cascade deletes a host's notes **without writing `Change` rows**, so a peer
+ *  holding the trip in memory or in Dexie never hears about it and keeps rendering notes
+ *  whose host is gone. The cascade is the storage guarantee; this is what the sync half
+ *  keys off, consulted in both places a change is mirrored — the memory channels in
+ *  `state/trip-state.tsx` and `CACHE_CHANNELS` in `lib/cache.ts`. Partial on purpose: the
+ *  entity types NOT here (trip, membership, note) cannot host a note, and a `delete` for
+ *  one of them drops nothing.
+ *
+ *  `NOTE_HOST_KEYS` in `schemas.ts` is the same set from the validation side. */
+export const NOTE_HOST_FIELD = {
+  [ENTITY_TYPE.EVENT]: 'eventId',
+  [ENTITY_TYPE.BOOKING]: 'bookingId',
+  [ENTITY_TYPE.PLACE]: 'placeId',
+  [ENTITY_TYPE.MAYBE_ITEM]: 'maybeItemId',
+  [ENTITY_TYPE.DOCUMENT]: 'documentId',
+} as const satisfies Partial<Record<EntityType, NoteHostKey>>;
 
 /** The `code` field of the error envelope (api-contract.md §14). One source the
  *  backend throws and the client branches on, so neither side spells the string:

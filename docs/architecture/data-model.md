@@ -126,6 +126,17 @@ The trip-scoped location registry every `placeId` FK points to, and the cache th
 - Referenced by `Event.placeId` (unlinked events only — see the authority rule, ADR-0051), `Booking.placeId` + `Booking.fromPlaceId`/`toPlaceId`, `MaybeItem.placeId`. All `onDelete: SetNull`.
 - Enrichment (hours, rating, photos) is added when the Maps work lands; `googlePlaceId`/`lat`/`lng` fill in when the Places picker replaces free-text entry. Orphaned rows are left (no GC yet); no within-trip dedup until `googlePlaceId` exists.
 
+### Note (ADR-0152)
+
+**One entity, and what it is about is a field.** No host = a general note; exactly one host FK set = that entity's note. Same row, same editor, same list, same sync channel, same offline story either way — which is the whole reason the entity exists rather than a `notes` column on each of five tables (five editors and no unified view).
+
+- `id`, `tripId`, `title?`, `body?`, `url?`, `category?` (`EventCategory`, ADR-0038), `source` (`member` in v1), `createdBy`, `createdAt`, `updatedAt`, `updatedBy`
+- Five nullable host FKs, **at most one set**: `eventId?`, `bookingId?`, `placeId?`, `maybeItemId?`, `documentId?`. All `onDelete: Cascade` — note the contrast with `Place`'s `SetNull` above: a note with no host is a _general note_, not an orphan, so a null-ed FK would silently promote a dead note into the group's memory.
+- The at-most-one rule is the shared zod schema's (`createNoteSchema`), enforced identically on client and server (ADR-0023) — Prisma's schema language cannot express it as a constraint.
+- `category` stays **null on a hosted note**: it is RESOLVED at render as `note.category ?? host.category` (ADR-0152 §5's amendment), never copied at write time, which would go stale the moment the host is recategorised. For the same reason there is **no `icon` column** — the existing `chosenIcon` chain supplies the glyph.
+- **A cascade writes no `Change` rows.** Deleting a host removes its notes in the database and tells no client, so the sync half is a rule in the ADR-0094 appliers keyed off `NOTE_HOST_FIELD` (`lib/notes.ts`'s `dropNotesForHostChange`, registered in both the memory channels and `CACHE_CHANNELS`). The cascade is the storage guarantee; the applier rule is the sync one.
+- Group-visible only in v1 — no `ownerUserId` (deferred, ADR-0152 §9: the visibility filter would reach every read path and the offline cache).
+
 ### Change (the sync/undo/feed substrate — ADR-0019)
 
 - `id`, `seq BigInt @default(autoincrement())` (strictly-increasing cursor), `tripId`, `actorUserId`

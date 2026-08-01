@@ -10,6 +10,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
+import { NotesModule } from './notes/notes.module';
 import { PlacesModule } from './places/places.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SyncModule } from './sync/sync.module';
@@ -32,6 +33,7 @@ import { TripsModule } from './trips/trips.module';
     EventsModule,
     BookingsModule,
     MaybeItemsModule,
+    NotesModule,
     PlacesModule,
     DocumentsModule,
   ],

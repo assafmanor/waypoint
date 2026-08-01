@@ -340,6 +340,9 @@ export const t = {
       createPlace: 'הוספת מקום',
       updatePlace: 'עדכון מקום',
       uploadDocument: 'העלאת מסמך',
+      createNote: 'כתיבת פתק',
+      updateNote: 'עריכת פתק',
+      deleteNote: 'מחיקת פתק',
       // `satisfies Record<OutboxVerb, string>`, not `as Record<string, string>`: this map is
       // read as `t.sync.verb[f.verb]`, so a verb missing from it renders a queued failure with
       // NO name — and the loose cast made that silent. Typed, a new outbox verb is a compile
@@ -877,6 +880,7 @@ export const t = {
       booking: 'ההזמנה',
       place: 'המקום',
       document: 'המסמך',
+      note: 'הפתק',
       member: 'משתתף',
       trip: 'הטיול',
       item: 'הפריט',

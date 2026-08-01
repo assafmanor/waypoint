@@ -16,8 +16,8 @@ ADR-0152 settled what a note **is** and left the geometry open, correctly: it na
 
 Three things the mockups found that no amount of prose would have, and they shape the decisions below:
 
-- **A host-grouped notes list does not survive its own fixture.** At 40 notes across a realistic trip they fall on **22 distinct hosts** — 1.4 rows per header, so the headers out-scroll the content they organise.
-- **The day row's meta line is exactly full.** At 390px it has 151px and its content needs 151px; the mark needs 21px that do not exist. That is not a defect the mark created — it is a ceiling it revealed, and every coded row was already at it.
+- **A host-grouped notes list does not survive its own fixture.** At 40 notes across a realistic trip they fall on **28 distinct hosts** — **1.1 rows per header** (and 1.0 at six notes, 1.2 at eighteen), so the headers out-scroll the content they organise. _Corrected 2026-08-01, session 206: this ADR first said 22 hosts and 1.4, which the panel does not report when the fixture is driven. The correction strengthens the decision — grouping is worse than it was argued to be — and is recorded rather than quietly fixed because the number is quoted in three places._
+- **The day row's meta line is exactly full.** At 390px it has 151px and its content needs 151px; the mark needs 21px that do not exist. That is not a defect the mark created — it is a ceiling it revealed, and every coded row was already at it. _Qualified 2026-08-01, session 206: the **151px available** is layout-driven and reproduces exactly, but every width derived from TEXT here (this ADR's `151px needed`, ADR-0152 §6c's `174px`, the host mockup's `+19px` and `113px vs 152px`) depends on the Assistant webfont, which a sandboxed browser cannot load — so those figures are evidence for the decisions, not acceptance criteria. Re-measure on a device. Two rows of the host mockup's panel are also now historical: with §6c's place-name-drop rule in force there is no place name left to wrap, so it reports 0px both ways._
 - **`EventCard` has no `meta` prop.** The line is assembled inside the component from two string props (`EventCard.tsx:148`), so nothing could be passed through it.
 
 ## Decision
@@ -32,7 +32,7 @@ Rejected: a count split (`N general · N attached`), a number that barely moves;
 
 The load-bearing decision, and the argument matters more than the measurement.
 
-There are exactly two jobs on this surface. **(1) "What do we know?"** — browsing the group's memory. **(2) "What did we say about the hotel?"** — a targeted lookup. **Job 2 is not this screen's job**: it is answered on the hotel's own row, by §6. Every host carries its own notes, so grouping here rebuilds — worse, and 22 times — what the host surfaces already do perfectly.
+There are exactly two jobs on this surface. **(1) "What do we know?"** — browsing the group's memory. **(2) "What did we say about the hotel?"** — a targeted lookup. **Job 2 is not this screen's job**: it is answered on the hotel's own row, by §6. Every host carries its own notes, so grouping here rebuilds — worse, and 28 times — what the host surfaces already do perfectly.
 
 That is what makes flat the _answer_ rather than a compromise. The fixture only confirms it.
 
@@ -74,7 +74,7 @@ The tile's meta line belongs to ADR-0151's ranking reason, and that ADR's own am
 
 Corner wins. Replacing the reason is rejected not on pixels but on meaning — the suggestion was built to say _why_ it is there, and trading that for a note count sells last week's feature for this week's.
 
-**Noted for whoever builds it:** the top-inline-start corner is where a `✕` would go if the tile ever gained the shelf's remove variant. It has not, so there is no collision today; if it does, the mark moves to the opposite corner. Written down rather than discovered.
+**Corrected 2026-08-01 (session 206), because the original note was wrong twice.** It said the top-inline-start corner _"is where a `✕` would go if the tile ever gained the shelf's remove variant. It has not."_ The tile **has** that variant, shipped, in Plan mode (`PlanDay.tsx` passes `onRemove`), and `maybe-card.css` puts its `✕` at `top: 6px; inset-inline-**end**: 6px` — the opposite corner from the mark. So there is no collision and the contingency as written could never have fired. The adjacency actually worth checking is the mark against the **glyph**: `.compact` is a row axis with `.wp-maybecard-ic` leading at the inline-start, and the mockup drew the corner variant with neither a `✕` nor a glyph beside it.
 
 ### 8. The reach is four entrances to one destination, and the mark is not a tap target
 
@@ -112,7 +112,7 @@ The screen inherits mode-neutrality from ADR-0049 ("mode changes chrome only"); 
 
 ## Alternatives considered
 
-- **Group the notes screen by host.** The intuitive answer, rejected on the argument in §2 and confirmed by 1.4 rows per header at 40 notes. It also rebuilds what every host row already does.
+- **Group the notes screen by host.** The intuitive answer, rejected on the argument in §2 and confirmed by 1.1 rows per header at 40 notes. It also rebuilds what every host row already does.
 - **A general/attached facet in the chip row.** Rejected: `ChoiceGrid` is single-select, so it would make "food and general" unaskable, and the host chip's absence already carries the fact for free.
 - **Collapse past notes**, mirroring the bookings screen. Rejected (§3): a note on a past event has not passed.
 - **Put the mark on the title line, or give it a tap target.** Rejected (§6, §8): the title line reflows and the hard/soft tag already drops to a second line on a long title, which reintroduces the height problem; a 16px target against a 44px floor competes with opening the row.

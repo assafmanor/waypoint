@@ -56,6 +56,7 @@ const SNAPSHOT: TripSnapshot = {
   documents: [],
   maybeItems: [],
   places: [],
+  notes: [],
   latestSeq: '0',
 };
 

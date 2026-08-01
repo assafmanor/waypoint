@@ -48,6 +48,74 @@ function change(over: Partial<Change>): Change {
   };
 }
 
+// Notes narrate on create and delete, and deliberately NOT on edit (owner, session 206):
+// the buffer is a bounded ring and a note is the one entity a group re-words.
+describe('describeChange — notes', () => {
+  const noteChange = (over: Partial<Change>) =>
+    change({ entityType: 'note', entityId: 'n1', action: 'create', after: {}, ...over });
+
+  it('names a note by its own words rather than "an item"', () => {
+    const entry = describeChange(
+      noteChange({ after: { body: 'הכניסה מאחור' } }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry!.lead).toContain('הכניסה מאחור');
+  });
+
+  it('prefers a titled note’s title, exactly as its row does', () => {
+    const entry = describeChange(
+      noteChange({ after: { title: 'מזומן בלבד', body: 'ארוך יותר' } }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry!.lead).toContain('מזומן בלבד');
+    expect(entry!.lead).not.toContain('ארוך יותר');
+  });
+
+  it('falls back to the url for a url-only note', () => {
+    const entry = describeChange(
+      noteChange({ after: { url: 'instagram.com/p/x' } }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry!.lead).toContain('instagram.com/p/x');
+  });
+
+  it('narrates a peer’s delete', () => {
+    const entry = describeChange(
+      noteChange({ action: 'delete', before: { body: 'נמחק' } }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry).not.toBeNull();
+  });
+
+  it('stays silent on a note EDIT', () => {
+    const entry = describeChange(
+      noteChange({ action: 'update', after: { body: 'תוקן' } }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry).toBeNull();
+  });
+
+  it('still narrates an edit to any OTHER entity', () => {
+    const entry = describeChange(
+      change({ entityType: 'booking', action: 'update', after: { title: 'מלון' } }),
+      USERS,
+      ME.id,
+      'Asia/Tokyo',
+    );
+    expect(entry).not.toBeNull();
+  });
+});
+
 describe('describeChange (buffer)', () => {
   it('narrates a peer move with the right actor, subject and a moved-to time', () => {
     const entry = describeChange(change({}), USERS, ME.id, 'Asia/Tokyo');
