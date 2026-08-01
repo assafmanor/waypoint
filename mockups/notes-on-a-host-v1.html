@@ -9581,20 +9581,108 @@
         inset-inline-start: 6px;
       }
 
-      /* ── §5 · The note stack on a host form ────────────────────────────
-         N boxes, always ending in one blank. Not a list widget and not a
-         repeating-field component — just stacked `textarea`s inside one
-         `Field`, so `field.css` still owns the control's chrome and the
-         refusal mark still works on the group. */
-      .note-stack {
+      /* ── §5 · The composer on a host form ──────────────────────────────
+         One input that never moves, and committed notes above it as one-line
+         chips. The chip is deliberately the SAME compact shape the detail
+         surfaces and the edit frame use, so a note looks like a note wherever
+         it is and the form does not invent a fourth representation. */
+      .note-compose {
         display: flex;
         flex-direction: column;
         gap: var(--space-2);
       }
-      /* The spare reads quieter than a box with something in it, so a form with
-         one written note does not look like a form with two empty ones. */
-      .note-stack-box:placeholder-shown {
-        background: color-mix(in srgb, var(--paper) 60%, transparent);
+      /* A committed note, before the host is saved. NOT `--paper` (#f3efe6):
+         that token is a warm cream and it is right behind a badge glyph, where
+         it is a 40px square — as a full-width fill it reads as a beige wash and
+         drags the form's temperature with it. This is the neutral ink wash
+         `list-row.css:39` already uses for a compact fill in the same layer,
+         so the chip belongs to the app's palette rather than introducing a
+         tone. Rule 4 has nothing to lend it either: a note is not time, place
+         or plan mode. */
+      .note-chip {
+        display: flex;
+        align-items: center;
+        gap: var(--space-1);
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+        border-radius: var(--radius-8);
+        padding: 3px 4px 3px 4px;
+      }
+      /* The text is a BUTTON, because a committed note has to be editable
+         before the host is saved — otherwise a typo costs a delete and a
+         retype, which is the opposite of sparing anyone. Tapping it returns
+         the note to the composer with the caret at the end; `＋`/Enter puts it
+         back. Anything already half-typed in the composer is committed first,
+         so nothing is clobbered. */
+      .note-chip-t {
+        font: inherit;
+        text-align: start;
+        background: none;
+        border: 0;
+        padding: 5px 6px;
+        border-radius: var(--radius-8);
+        cursor: text;
+        color: var(--ink);
+      }
+      .note-chip-t:hover {
+        background: color-mix(in srgb, var(--ink) 4%, transparent);
+      }
+      /* One line, always. A note is not shortened by being written down — it is
+         shortened by being LISTED, and the full text is one tap away. This is
+         the declaration that keeps the form's height linear and small. */
+      .note-chip-t {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12.5px;
+      }
+      .note-chip-x {
+        flex: 0 0 auto;
+        background: none;
+        border: 0;
+        padding: 4px;
+        color: var(--muted);
+        cursor: pointer;
+        display: inline-flex;
+      }
+      .note-chip-x .icon {
+        width: 14px;
+        height: 14px;
+      }
+      .note-compose-row {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--space-2);
+      }
+      .note-compose-in {
+        flex: 1;
+        min-width: 0;
+        /* Grows with what is typed rather than reserving rows nobody used. */
+        resize: none;
+        overflow: hidden;
+      }
+      /* Disabled only because a press could not work — an empty note is not a
+         note (ADR-0150 §8: never disabled as a stand-in for a refusal). */
+      .note-compose-add {
+        flex: 0 0 auto;
+        width: 38px;
+        height: 38px;
+        border-radius: var(--radius-12);
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--cta);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+      .note-compose-add:disabled {
+        color: var(--faint);
+        cursor: default;
+      }
+      .note-compose-add .icon {
+        width: 17px;
+        height: 17px;
       }
 
       /* ── §5 · The note section on a detail surface ─────────────────────
@@ -10324,28 +10412,47 @@
            save      → the host's save. There is no second commit.
 
          What is left is one textarea, and a blank one writes nothing. */
-      /* MORE THAN ONE, and without a control that says so. The stack always
-         ends in exactly one blank box: typing into the last one spawns the next,
-         emptying it again removes the spare. So the affordance is the typing —
-         no "＋ another note" button to notice, nothing to tap before writing,
-         and no cap.
+      /* MORE THAN ONE, second attempt — the first was wrong on both counts the
+         owner named, and both were about the same mistake: it optimised the
+         RARE case (several notes written at once) at the cost of the common one
+         (nought or one).
 
-         Each non-blank box becomes its own `Note` row on the host's save, in
-         order. Blank and whitespace-only boxes write nothing. Ids are minted
-         client-side like the host's (ADR-0093 / §6b), so there is no round trip
-         between them and the outbox stays FIFO.
+         WHAT WAS WRONG WITH THE STACK. (1) Length: every note held a ~62px
+         textarea open forever, so three notes added ~200px to a sheet whose
+         actual job is the event — the save button gets pushed off a phone by
+         the least important field on the form. (2) Surprise: a box that appears
+         without being asked for is a thing the user has to notice, understand
+         and then ignore. "Spare the user" cannot mean "add UI on their behalf".
 
-         WHY NOT one box that splits on newlines: a note is a row, and a
-         paragraph break is not a user saying "these are two things". It would
-         also make editing one of them ambiguous forever after. */
-      const noteStack = (filled) => {
-        const boxes = filled
-          .map((v, i) => `<textarea class="note-stack-box" rows="2" data-nb="${i}">${v}</textarea>`)
-          .join('');
-        return `<div class="note-stack" data-note-stack>${boxes}<textarea class="note-stack-box" rows="2" data-nb="${filled.length}" placeholder="${
-          filled.length ? 'פתק נוסף…' : 'משהו שכדאי לזכור על זה…'
-        }"></textarea></div>`;
-      };
+         THE SHAPE INSTEAD. Exactly ONE input, always, and it never moves.
+         A committed note collapses to a ONE-LINE row above it — the same
+         compact representation the edit frame and the detail surfaces already
+         use — so N notes cost N × ~30px instead of N × ~62px, and the input
+         stays where the thumb left it.
+
+         AND THE COMMON CASE COSTS NOTHING. `＋` commits the text and clears the
+         input, but you never have to press it: **whatever is still in the input
+         when the host is saved becomes a note too.** So one note is type-and-
+         save, exactly as before; `＋` exists only to start a second one. That is
+         the whole difference between an affordance and a chore. */
+      const noteComposer = (committed, id) => `
+        <div class="note-compose" data-compose="${id}">
+          ${committed
+            .map(
+              (
+                v,
+                i,
+              ) => `<div class="note-chip"><button type="button" class="note-chip-t">${v}</button>
+                 <button type="button" class="note-chip-x" aria-label="הסרת הפתק">${ic('close')}</button></div>`,
+            )
+            .join('')}
+          <div class="note-compose-row">
+            <textarea class="note-compose-in" rows="1" placeholder="${
+              committed.length ? 'פתק נוסף…' : 'משהו שכדאי לזכור על זה…'
+            }"></textarea>
+            <button type="button" class="note-compose-add" aria-label="פתק נוסף" disabled>${ic('plus')}</button>
+          </div>
+        </div>`;
 
       const formCreate = (host) => `
         <div class="modal-overlay" data-variant="sheet">
@@ -10364,8 +10471,8 @@
               <div class="field"><label class="field-label" for="c2">מתי</label><input id="c2" value="19:30" /></div>
               <div class="field">
                 <span class="field-label">${ic('clipboard')} פתקים · לא חובה</span>
-                ${noteStack([])}
-                <p class="field-hint">כל תיבה היא פתק. תיבה חדשה נפתחת מעצמה · יורשים את הקטגוריה והסמל של האירוע</p>
+                ${noteComposer([], 'c')}
+                <p class="field-hint">יורש את הקטגוריה והסמל של האירוע · ＋ רק אם רוצים עוד אחד</p>
               </div>
               <div class="form-actions">
                 <button type="button" class="fa-primary">שמירה</button>
@@ -10396,7 +10503,7 @@
                   <span class="note-item-b">קוד הכספת 4417</span>
                   <span class="note-item-m">דנה · לפני 3 ימים</span>
                 </div>
-                ${noteStack([])}
+                ${noteComposer([], 'e')}
               </div>
               <div class="form-actions">
                 <button type="button" class="fa-primary">שמירה</button>
@@ -10544,19 +10651,21 @@
               אחת. ריקה — לא נכתב שום פתק.
             </p>
             <p class="note">
-              <b>ואפשר יותר מאחד, בלי פקד שאומר את זה.</b> המחסנית תמיד מסתיימת בתיבה ריקה אחת:
-              הקלדה באחרונה פותחת את הבאה, ריקון תיבה מוחק את העודפת. כלומר <b>ההקלדה היא
-              האפשרות</b> — אין כפתור "＋ פתק נוסף" לשים לב אליו, אין מה ללחוץ לפני שכותבים, ואין
-              תקרה. כל תיבה לא ריקה הופכת ל<code>Note</code> משלה בשמירה של המארח, לפי הסדר; ריקה או
-              רווחים בלבד לא כותבת כלום. <b>נסו להקליד בתיבה למטה.</b>
+              <b>ואפשר יותר מאחד — בגרסה שנייה, אחרי שהראשונה נדחתה בצדק.</b> הטיוטה הקודמת פתחה
+              תיבה חדשה מעצמה לכל פתק, ושתי ההסתייגויות של הבעלים היו נכונות ושתיהן על אותה טעות:
+              היא ייעלה את המקרה <b>הנדיר</b> (כמה פתקים בבת אחת) על חשבון <b>הנפוץ</b> (אפס או
+              אחד). תיבה שנפתחת בלי שביקשו היא דבר שצריך לשים לב אליו, להבין, ואז להתעלם ממנו;
+              ו-62px לכל פתק דחפו את כפתור השמירה מהמסך בגלל השדה הכי פחות חשוב בטופס.
             </p>
+            
             <p class="note">
               <b>ולמה לא תיבה אחת שמתפצלת לפי שורות ריקות:</b> פתק הוא שורה, ומעבר פסקה הוא לא
               משתמש שאומר "אלה שני דברים". זה גם היה הופך עריכה של אחד מהם לעמומה לתמיד אחר כך.
+              <b>נסו להקליד ולהקיש Enter.</b>
             </p>
             <div class="pair">
-              <div class="col"><span class="tag after">יצירה · הקלידו · תיבה חדשה נפתחת</span>${phone(formCreate(), 'overlay', 560)}</div>
-              <div class="col"><span class="tag after">עריכה · הקיימים למעלה, מחסנית למטה</span>${phone(formEdit(), 'overlay', 560)}</div>
+              <div class="col"><span class="tag after">יצירה · תיבה אחת, פתק מתקפל לשורה</span>${phone(formCreate(), 'overlay', 560)}</div>
+              <div class="col"><span class="tag after">עריכה · הקיימים למעלה, מלחין למטה</span>${phone(formEdit(), 'overlay', 560)}</div>
             </div>
           </section>
 
@@ -10604,36 +10713,63 @@
         measure();
       }
 
-      /* The whole interaction, and it is eight lines: the stack keeps exactly
-         one trailing blank. Typing in the last box appends a new one; clearing
-         a trailing box removes the spare it no longer needs. Nothing to tap. */
-      function wireStacks() {
-        document.querySelectorAll('[data-note-stack]').forEach((stack) => {
-          const sync = () => {
-            const boxes = [...stack.querySelectorAll('.note-stack-box')];
-            const last = boxes[boxes.length - 1];
-            if (last.value.trim()) {
-              const nb = document.createElement('textarea');
-              nb.className = 'note-stack-box';
-              nb.rows = 2;
-              nb.placeholder = 'פתק נוסף…';
-              stack.appendChild(nb);
-              nb.addEventListener('input', sync);
-            } else {
-              // Trim spares: keep at most one trailing blank.
-              for (let i = boxes.length - 2; i >= 0; i--) {
-                if (!boxes[i].value.trim() && !boxes[i + 1].value.trim()) boxes[i + 1].remove();
-              }
-            }
+      /* The interaction. `＋` commits and clears; Enter does the same, because
+         a note is a sentence and the keyboard's return is the obvious gesture.
+         Nothing appears on its own, and nothing has to be pressed for the
+         single-note case — the host's save takes whatever is still in the box. */
+      function wireComposers() {
+        document.querySelectorAll('[data-compose]').forEach((box) => {
+          const input = box.querySelector('.note-compose-in');
+          const add = box.querySelector('.note-compose-add');
+          const grow = () => {
+            input.style.height = 'auto';
+            input.style.height = input.scrollHeight + 'px';
           };
-          stack
-            .querySelectorAll('.note-stack-box')
-            .forEach((b) => b.addEventListener('input', sync));
+          /* Tap a committed note to keep writing it. Whatever is half-typed in
+             the composer is committed first, so reopening never eats it. */
+          const reopen = (chip) => {
+            const text = chip.querySelector('.note-chip-t').textContent;
+            if (input.value.trim()) commit();
+            chip.remove();
+            input.value = text;
+            add.disabled = false;
+            grow();
+            input.focus();
+            input.setSelectionRange(text.length, text.length);
+          };
+          const commit = () => {
+            const v = input.value.trim();
+            if (!v) return;
+            const chip = document.createElement('div');
+            chip.className = 'note-chip';
+            chip.innerHTML = `<button type="button" class="note-chip-t">${v}</button><button type="button" class="note-chip-x" aria-label="הסרת הפתק">${ic(
+              'close',
+            )}</button>`;
+            chip.querySelector('.note-chip-x').addEventListener('click', () => chip.remove());
+            chip.querySelector('.note-chip-t').addEventListener('click', () => reopen(chip));
+            box.insertBefore(chip, box.querySelector('.note-compose-row'));
+            input.value = '';
+            input.placeholder = 'פתק נוסף…';
+            add.disabled = true;
+            grow();
+            input.focus();
+          };
+          input.addEventListener('input', () => {
+            add.disabled = !input.value.trim();
+            grow();
+          });
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              commit();
+            }
+          });
+          add.addEventListener('click', commit);
         });
       }
 
       function wire() {
-        wireStacks();
+        wireComposers();
         document.querySelectorAll('[data-arrive]').forEach((b) =>
           b.addEventListener('click', () => {
             const line = document.querySelector('#arriveframe .wp-event-m');
@@ -10740,6 +10876,28 @@
             )}px שהוא צריך</td></tr>`,
           );
         }
+
+        // The composer against the stack it replaced, on the same three notes.
+        const three = ['הכניסה מאחור, ליד חנות הפרחים', 'מזומן בלבד', 'לבקש את השולחן בגג'];
+        probe.innerHTML = `<div class="note-compose">${three
+          .map(
+            (v) =>
+              `<div class="note-chip"><button type="button" class="note-chip-t">${v}</button></div>`,
+          )
+          .join(
+            '',
+          )}<div class="note-compose-row"><textarea class="note-compose-in" rows="1"></textarea></div></div>`;
+        const composeH = h(probe.firstElementChild);
+        probe.innerHTML = `<div class="note-compose">${three
+          .map((v) => `<textarea rows="2">${v}</textarea>`)
+          .join('')}<textarea rows="2"></textarea></div>`;
+        const stackH = h(probe.firstElementChild);
+        out.push(
+          `<tr><td><b>שלושה פתקים בטופס</b> · המחסנית שנדחתה מול המלחין</td>${cell(
+            stackH + 'px',
+            'bad',
+          )}${cell(composeH + 'px', 'good')}${cell('−' + (stackH - composeH) + 'px', 'good')}</tr>`,
+        );
 
         // The tile, all three options.
         const tileH = (variant, notes) => {
@@ -10877,9 +11035,16 @@
         <h3>§B1a · יותר מפתק אחד — <span class="ok">כן, והאפשרות היא ההקלדה</span></h3>
         <p>
           שאלה של הבעלים, והתשובה הכנה הייתה שהטיוטה הראשונה הראתה תיבה <b>אחת</b> ולא תכננה את זה.
-          תוקן: מחסנית שתמיד מסתיימת בתיבה ריקה אחת. הקלדה באחרונה פותחת את הבאה, ריקון מוחק את
-          העודפת — בלי כפתור "עוד", בלי תקרה, ובלי שום לחיצה לפני הכתיבה. זה גם מאחד את היצירה
-          והעריכה: בשתיהן יש N מלאים ואחת ריקה בסוף.
+          התיקון הראשון היה מחסנית שפותחת תיבה מעצמה — ו<b>נדחה על ידי הבעלים, בצדק</b>, על שתי
+          עילות שהן אותה טעות: הוא ייעל את המקרה הנדיר על חשבון הנפוץ. תיבה שנפתחת בלי שביקשו היא
+          עוד דבר לשים לב אליו ולהתעלם ממנו, ו-62px לפתק דחפו את השמירה מהמסך.
+        </p>
+        <p>
+          <b>הגרסה השנייה:</b> תיבה <b>אחת</b> שלא זזה, ופתק שהוקלד מתקפל ל<b>שורה אחת</b> מעליה —
+          אותה צורה קומפקטית שמשטחי הפירוט כבר משתמשים בה, כך שהטופס לא ממציא ייצוג רביעי. נמדד:
+          <b>113px</b> לשלושה פתקים מול <b>152px</b> במחסנית. <b>והמקרה הנפוץ עולה אפס:</b> ＋ מתחיל
+          פתק שני, אבל מה שנשאר בתיבה בזמן שמירת המארח נשמר גם הוא — כך שפתק אחד הוא הקלדה ושמירה,
+          בלי אף לחיצה נוספת. זה ההבדל בין אפשרות למטלה.
         </p>
         <p>
           כל תיבה לא ריקה היא <code>Note</code> משלה, לפי הסדר, במזהים שנוצרים בצד הלקוח כמו של
