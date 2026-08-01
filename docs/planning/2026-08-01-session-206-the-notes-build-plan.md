@@ -4,7 +4,7 @@
 **Scope:** Pre-development planning for [ADR-0152](../decisions/0152-a-note-is-one-entity-with-an-optional-host.md) + [ADR-0153](../decisions/0153-the-notes-surface-the-mark-and-no-mode-gate.md). **No feature code was written.** The deliverable is the phased plan below, its test list, and the gap list — which is the part worth reading first.
 **Read:** both ADRs (with 0152's four in-place amendments), [`mockups/notes-screen-v1.html`](../../mockups/notes-screen-v1.html) and [`mockups/notes-on-a-host-v1.html`](../../mockups/notes-on-a-host-v1.html), both driven in Chromium.
 
-Nothing here re-opens a decided item except the two marked **proposed amendment**, which are stated with their cost rather than planned around.
+**Owner's answers are folded in (session 206).** A place carries notes in v1 — G1 below is now a resolution, not a proposal. The change feed narrates note creates and deletes only; the card tier is not built; the ADR corrections in Part 1 land in Phase 1's commit. One question is left open (Q5) and one new prerequisite is added (a small mockup before Phase 6).
 
 ---
 
@@ -57,11 +57,21 @@ The two **silent** ones are the ones to pin with tests: a missing memory channel
 
 Ordered by how much they change the build.
 
-### G1 · A `Place` has no row menu, no detail surface, and a bespoke meta line — so it has no entrance at all
+### G1 · A `Place` has no row menu and no detail surface — RESOLVED (owner, session 206: a place must carry notes in v1)
 
-This is the largest gap and it is invisible from the mockup, which drew the place host as a `ListRow`. It is not one. `screens/Map.tsx:2841`'s `PlaceRow` is a bespoke ~60-prop component with its own `.map-m` meta line and its own `.map-tag` vocabulary (`map.css:986`) — a **third** meta grammar beside `.wp-event-m` and `.wp-listrow-meta`, and the mark's cost there was never measured. Worse, that row has **no kebab and no `RowManageSheet`**, and a place's "detail surface" is the _same row again_ rendered inside `.map-placecard` (`Map.tsx:2368`) — there is no facts panel with room for a `.note-sec`. Of ADR-0153 §8's four entrances, a Place has **none**. Authoring is worse still: the only place form is `MapPlaceForm`, hosted on the canvas inside a bounded card — and `frontend/CLAUDE.md` records twice that _a bounded card that clips cannot host_ what wants to grow (the `IconPicker` panel cut to 50px, ADR-0148's third amendment). A growing composer textarea is exactly that shape.
+The gap is real and it is invisible from the mockup, which drew the place host as a `ListRow`. It is not one. `Map.tsx:2841`'s `PlaceRow` is a bespoke ~60-prop component with its own `.map-m` meta line and its own `.map-tag` vocabulary (`map.css:986`) — a **third** meta grammar beside `.wp-event-m` and `.wp-listrow-meta`. That row has **no kebab and no `RowManageSheet`**, and a place's "detail surface" is the _same row again_ rendered inside `.map-placecard` (`Map.tsx:2368`), which exists only at the `map` sheet stop. Of ADR-0153 §8's four entrances, a Place appeared to have none.
 
-**Proposed amendment (ADR-0152 §2/§6, ADR-0153 §8), with its cost.** Keep `placeId` in the schema — an unused nullable FK costs nothing and adding it later is a migration nobody wants. Ship **no Place authoring or reading surface in v1**. The cost is real and should be stated rather than discovered: a note about a place must be attached to the event, booking or idea at that place, and a place with none of those cannot carry one. The alternative is a genuine sub-project — a row menu on the Map (ADR-0138 territory), a place detail surface that does not exist, and a form that cannot grow — for the host whose knowledge is almost always already attached to something else. **Owner's call**, see Q1.
+The owner's answer is that a place carries notes in v1, so the question is how — and reading the Map's own files turned this from a sub-project into three modest changes, one of which I had flagged as a trap it is not.
+
+**The mark is the cheapest of the five, not the hardest.** I had it backwards. `.wp-event-m` needed `nowrap`, elementisation and a drop rule because it is a **joined string** in a line that must never grow. `.map-m` is already `display: flex; flex-wrap: wrap` with every fact already its own element (`map.css:986`) — up to six `.map-tag`s that appear and disappear per row. The mark is **one more item in a line built to take them**: no surgery, no drop rule, no new grammar. Render it **last**, after the rating, so it is first to wrap and can never displace a semantic tag.
+
+**The body rides `renderRow`, gated on `selected` — so it lands in both places a row renders, from one implementation.** `renderRow` (`Map.tsx:1968`) is a single curried renderer shared by the sheet list (:2084), the ghost row (:2346) and the place card (:2370). Putting `.note-sec` inside it, gated on the row's existing `selected` state, gives a place its notes **inside the card at the `map` stop and inline in the list at `full`** — with no gating question, no sixth surface, and no kebab on `.map-right`, whose height cost that file already measured and recorded (_"a verb ADDED beside `נווט` would cost height and the row would grow"_). This is the same principle the file states three times for the card itself — _the row surfaces wherever the sheet cannot show it_ — applied one level in. The entrance is the tap that already selects.
+
+**The composer drops into `MapPlaceForm` unchanged, and my trap-flag was wrong.** I cited `frontend/CLAUDE.md`'s _"a bounded card that clips cannot host an anchored panel"_. That warning is about a panel **leaving** its host's box (`IconPicker`, cut to 50px). A textarea is inline content, and ADR-0148 §1 already rebuilt this card for exactly this: `.map-draft` is `grid-template-rows: auto minmax(0, 1fr) auto` — pinned head, **scrolling middle**, pinned foot — explicitly modelled on `EventForm`/`BookingSheet`, bounded by arithmetic so a shortfall becomes a scroll rather than a clip, and it deliberately **does not** set `overflow: hidden`. `.map-draft-scroll` currently holds one child (the category pills). The composer is the second.
+
+**The one real new cost.** `map.css:514`'s height bound is scoped `:has(> .map-draft)`, with the comment _"the selection card is a 73px row and wants none of this"_. Once the selection card can hold a note section it is no longer a 73px row, so the same arithmetic extends to it — a selector change over a bound already written and already reasoned about, not new maths.
+
+So a Place ends up with three of §8's four entrances (the card, the section's `＋ פתק`, the notes screen) and not the row menu, which it has never had. Recorded in ADR-0153 §8 rather than left as a silent omission.
 
 ### G2 · The change feed narrates notes on day one, whether or not §C is deferred
 
@@ -81,7 +91,9 @@ The applier rule handles the sync half correctly. What nothing handles: **undo**
 
 ### G6 · `MaybeItem`'s "the sheet the tile already opens" is a schedule flow, not a manage sheet
 
-ADR-0153 §8 closes the idea gap by giving _"the sheet the tile already opens"_ the note section. There is no such sheet. `MaybeCard`'s only tap is `onSchedule` (`DayView.tsx:435`, `PlanDay.tsx:611`), which opens the **schedule** sheet — pick a day, pick a time — and a note section above a scheduling flow is the wrong room. Plan mode adds a `✕`, not a menu. Closing this honestly means either giving `MaybeCard` a manage sheet it has never had, or accepting that an idea's notes are reachable only from the notes screen.
+ADR-0153 §8 closes the idea gap by giving _"the sheet the tile already opens"_ the note section. There is no such sheet. `MaybeCard`'s only tap is `onSchedule` (`DayView.tsx:435`, `PlanDay.tsx:611`), which opens the **schedule** sheet — pick a day, pick a time — and a note section above a scheduling flow is the wrong room. Plan mode adds a `✕`, not a menu.
+
+G1's resolution does **not** transfer: a 140×76 tile cannot expand the way a map row can. Two honest closes remain, and one of them is now cheaper than it looks. **An idea with a place already renders as a `PlaceRow` on the Map** (`isPureIdea` → the `על המדף` tag), so it inherits G1's section for free — the gap is only ideas with **no** place. For those: either `MaybeCard` gains the `RowManageSheet` it has never had (which would also give its scattered verbs — a tap to schedule, a Plan-only `✕` — the one surface ADR-0138 says a row's actions belong on), or an idea's notes are written and read from the notes screen alone. **See Q5** — this is the one question G1's answer opens rather than closes.
 
 ### G7 · Ordering, timestamps and authorship are unspecified
 
@@ -112,15 +124,19 @@ ADR-0153 §8 closes the idea gap by giving _"the sheet the tile already opens"_ 
 9. **`Note.createdBy` mirrors `MaybeItem`** — a `User` relation with `onDelete: Cascade`.
 10. **`packages/shared` gets no Hebrew.** `NOTE_SOURCE` and `NOTE_HOST_FIELD` are keys; every string lands in `i18n/he.ts`. No em dashes; `·` between peer facts, `-` for a missing value.
 
-## Questions that are the owner's
+## Answered by the owner (session 206)
 
-**Q1 — Place hosting.** Ship it with a bespoke mark, no entrance and a composer in a clipping canvas card; build the Map a row menu and a place detail surface (a sub-project); or keep the FK and ship no Place surface in v1? **My recommendation: the third**, with the limitation written into the ADR rather than discovered.
+**Q1 — Place hosting: a place must carry notes in v1.** Resolved in G1 above: the mark is a seventh `.map-tag`, the body rides `renderRow` gated on `selected` so it reaches both sheet stops from one implementation, and the composer is `.map-draft-scroll`'s second child. Phase 6 builds it, behind a small mockup (below).
 
-**Q2 — the change feed (G2).** Notes narrate automatically. Narrate creates only, creates + deletes, or everything? **My recommendation: creates and deletes, suppress note updates** — one rule in `describeChange`. I will build to this unless told otherwise, and it is reversible in a line.
+**Q2 — the change feed: as recommended.** Narrate note **creates and deletes**, suppress note updates — one rule in `describeChange`, reversible in a line, and it keeps a group editing one note from flushing the bounded 20-entry buffer.
 
-**Q3 — the card tier.** Ship its CSS and markup empty now so the layout has a place, or keep the mockup as its spec and let the first strategy bring it? **My recommendation: the mockup is the spec.** Dead CSS with no consumer is not what "retrofitting is expensive" was warning about — the expensive half is the two-tier _decision_, which is already made and recorded.
+**Q3 — the card tier: as recommended.** The mockup is its spec. No empty CSS ships; the first strategy brings it.
 
-**Q4 — the ADR corrections.** The 1.4/22 figure, ADR-0153 §7's collision note, and the "measured" pixel numbers should be amended in place (Part 1). Confirm and I will fold them into Phase 1's commit.
+**Q4 — the ADR corrections: confirmed.** The `22 hosts / 1.4 rows` figure (three places in ADR-0153), §7's corner-collision note, and the webfont-dependent pixel numbers are amended in place, in Phase 1's commit.
+
+## Still the owner's
+
+**Q5 — an idea with no place (G6).** An idea _with_ a place inherits G1's section for free by rendering as a `PlaceRow`. For the rest: give `MaybeCard` the `RowManageSheet` it has never had — which would also collect its scattered verbs onto the one surface ADR-0138 says a row's actions belong on — or leave those notes to the notes screen. **My recommendation: the manage sheet**, because the alternative is the only host where the mark points at something you cannot open, and because ADR-0153 §8's own sentence assumed a sheet that turned out not to exist.
 
 ---
 
@@ -141,9 +157,11 @@ The eighteen registration points, the Prisma model + migration, the Nest module,
 
 **Tests.** Backend service specs: create is idempotent on a duplicate client id (the P2002 path `maybe-items.service.ts` models); at-most-one-host is refused; a host id from another trip is refused; delete writes its `Change`. Shared: zod refuses a note with neither body nor url, and refuses two hosts. Frontend units: `outboxOpToCacheChanges` for all three verbs; the memory channel applies a WS note change (**the silent registration — this test is the point**); the cascade rule drops the right notes and only those, in both the memory and the cache half; `describeChange` names a note. **e2e-only:** none. **Device-only:** none.
 
-### Phase 2 — the screen and the tile
+### Phase 2 — THE NOTES SCREEN itself: the flat list, the third tile, the editor
 
 `feat(notes): the notes screen, the third Index tile, and the editor`
+
+**This is the surface ADR-0153 §2–§5 describes** — the flat recency-ordered list, its chip row and search, the row across its nine states, the row menu and its delete confirm, both empty states, and the editor. It is a phase of its own and it is the first thing a user sees.
 
 General notes end-to-end. `IndexNotesView` modelled on `IndexBookingsView` (`ChoiceGrid` pills, `SearchOverlay`, `RevealList`, `useBackLayer` peeling the chip filter first), `ListRow` rows, a `Modal` editor with `useFormErrors`, `RowManageSheet` + `ConfirmDialog`, both `EmptyState`s, the third `IndexTile`, `lib/notes.ts`, the Hebrew copy, and the five new CSS rules.
 
@@ -169,13 +187,21 @@ The vertical slice that proves the shape: the mark on the `IndexBookingsView` ro
 
 `feat(notes): notes on a document and on an idea`
 
-Cheap by comparison: `DocumentsSection`'s `ListRow` takes the mark, `DocumentViewer`/`DocumentManageSheet` take the section and the entrance, `DocumentUploadSheet` takes the composer. The idea is G6's open question — resolve it before this branch starts. The `MaybeCard` corner mark ships here, verified against the shipped `✕` and the compact row's glyph.
+Cheap by comparison: `DocumentsSection`'s `ListRow` takes the mark, `DocumentViewer`/`DocumentManageSheet` take the section and the entrance, `DocumentUploadSheet` takes the composer. The `MaybeCard` corner mark ships here, verified against the shipped `✕` (opposite corner) and the compact row's glyph. Q5 decides whether a place-less idea also gets a manage sheet; if it does, it lands here.
 
 **Tests.** Component: the mark's count appears only past 1; the tile's height is unchanged with the mark (**e2e**, and check it with the Plan-mode `✕` present, which no mockup did). **Device-only:** whether the mark wants a tap target — the one question ADR-0153 §8 explicitly left to a finger.
 
-### Phase 6 — places, or the recorded decision not to
+### Phase 6 — the place, on the Map
 
-Depends entirely on Q1. If the answer is "not in v1", this phase is an ADR amendment and a backlog line, not a branch.
+`feat(notes): notes on a place`
+
+G1's three changes: the mark as a seventh `.map-tag` rendered last; `.note-sec` inside `renderRow` gated on `selected`, reaching the card at the `map` stop and the list at `full` from one implementation; the composer as `.map-draft-scroll`'s second child in `MapPlaceForm`; and `map.css:514`'s height bound extended from `:has(> .map-draft)` to a selection card that is no longer a 73px row.
+
+**Prerequisite: one small mockup, `notes-on-a-place-v1.html`** (ADR-0097's catalogue). Not a Map mockup — everything unmeasured here is row-level, so it is a strip-and-card file like `notes-on-a-host-v1.html`, needing `.map-m`, the row CSS and `.map-placecard` through the existing `inline-app-css.mjs` manifest, and no canvas at all. Four questions: (1) the mark as the **7th tag** on a maximally crowded `.map-m` (time + now/next + outcome + meta + `על המדף` + rating) at 390 and 360 — does it wrap, and can wrapping ever displace a semantic tag if it renders last; (2) the selected row with its section at **0 / 1 / 3 notes**, in the card and inline in the list; (3) what the extended height bound leaves when the shortfall becomes a scroll; (4) the composer as the scroll region's second child, mostly to confirm the pinned foot survives.
+
+It earns its keep on precedent: session 203 built the compact tile from a mockup saying 76px and got **84px** — _"every token identical, the eight pixels entirely from the meta line wrapping"_ — on a row less dense than this one. It blocks nothing before it; Phases 1–5 never touch the Map.
+
+**Tests.** Unit: the mark renders last among the tags; a note section renders only for the selected row; an idea rendering as a `PlaceRow` gets the same section. **e2e-only:** the place card's height at the `map` stop with three notes, at 360×640, stays inside its bound and scrolls rather than clipping (the failure ADR-0148 §1 records is a card you could commit but not read); a selected row expanding in the `full` list does not throw the scroll position. **Device-only:** the composer with the keyboard up on iOS, where the viewport does not shrink and every layout number reads healthy while the card is invisible — the exact trap `map.css:460` documents.
 
 ---
 
