@@ -1,6 +1,26 @@
 // Notes (ADR-0152 / ADR-0153). Pure derivations over the note list — no React, no Dexie,
 // no clock — so both halves of the sync path and every render surface read one answer.
-import { CHANGE_ACTION, NOTE_HOST_FIELD, type EntityType, type Note } from '@waypoint/shared';
+import {
+  CHANGE_ACTION,
+  categoryForBookingType,
+  eventCategorySchema,
+  iconForCategory,
+  matchesAnyTerm,
+  NOTE_HOST_FIELD,
+  type BookingType,
+  type EntityType,
+  type EventCategory,
+  type Note,
+  type NoteHostKey,
+} from '@waypoint/shared';
+import { DEFAULT_EVENT_ICON } from '../constants';
+import { revealRows, type Revealed } from './filter-reveal';
+import { formatDuration } from './duration';
+import { t } from '../i18n/he';
+
+/** Every `EventCategory`, in the enum's own order — the chip row's order, so nothing here
+ *  chooses one (`other` is last because the enum puts it last). */
+const EVENT_CATEGORIES = eventCategorySchema.options;
 
 /** The `Change` fields these derivations read — the same subset `EntityChange` names in
  *  `lib/cache.ts`, so a live WS echo and an offline optimistic write both fit. */
@@ -32,4 +52,187 @@ export function dropNotesForHostChange(notes: Note[], change: HostChange): Note[
   if (!(change.entityType in NOTE_HOST_FIELD)) return notes;
   const kept = notes.filter((note) => !isHostedBy(note, change.entityType, change.entityId));
   return kept.length === notes.length ? notes : kept;
+}
+
+// --- Reading a note: its host, its category, its glyph, its order -------------------------
+// The screen shows a note's category glyph and, when it has a host, that host's NAME — and
+// a hosted note stores neither (§5's amendment: resolved, never copied). So every note
+// render needs its host resolved, across five entity types. That resolution is here, once.
+
+/** What a note's row needs to know about its host: which kind it is, what it is called, and
+ *  the category the note inherits when it carries none of its own. */
+export interface NoteHostRef {
+  kind: NoteHostKind;
+  id: string;
+  name: string;
+  category?: EventCategory;
+}
+
+/** The five hostable entity types, as the row's own vocabulary — narrower than `EntityType`,
+ *  so a chip's kind-mark lookup is exhaustive and a sixth host is a compile error there. */
+export type NoteHostKind = keyof typeof NOTE_HOST_FIELD;
+
+/** Everything the resolver needs, in the shapes trip-state already holds. Deliberately the
+ *  minimum of each entity rather than the entity itself, so a fixture is a literal and the
+ *  derivation cannot start depending on some other field. */
+export interface NoteHostSources {
+  events: { id: string; title: string; category?: EventCategory }[];
+  bookings: { id: string; title: string; type: BookingType }[];
+  places: { id: string; name: string }[];
+  maybeItems: { id: string; title: string; category?: EventCategory }[];
+  documents: { id: string; title: string }[];
+}
+
+/** An id → host lookup per kind, built once per snapshot change rather than per row: the
+ *  screen resolves a host for every note it renders, and the day card asks the same
+ *  question once per row. `Map` rather than `.find()` for the same reason.
+ *
+ *  A **booking** has a `BookingType`, not an `EventCategory`, so it goes through the app's
+ *  existing `categoryForBookingType` (ADR-0038) instead of a second mapping. A **place** and
+ *  a **document** have no category at all — a place deliberately so (the referencing entity
+ *  that has one is ambiguous, ADR-0147) — and a note on either simply falls back to the
+ *  no-category glyph, which is the honest answer rather than an invented one. */
+export function buildNoteHosts(sources: NoteHostSources): Map<string, NoteHostRef> {
+  const index = new Map<string, NoteHostRef>();
+  const put = (kind: NoteHostKind, ref: Omit<NoteHostRef, 'kind'>) =>
+    index.set(`${kind}:${ref.id}`, { kind, ...ref });
+
+  for (const e of sources.events) put('event', { id: e.id, name: e.title, category: e.category });
+  for (const b of sources.bookings)
+    put('booking', { id: b.id, name: b.title, category: categoryForBookingType(b.type) });
+  for (const p of sources.places) put('place', { id: p.id, name: p.name });
+  for (const m of sources.maybeItems)
+    put('maybeItem', { id: m.id, name: m.title, category: m.category });
+  for (const d of sources.documents) put('document', { id: d.id, name: d.title });
+  return index;
+}
+
+/** This note's host, or `undefined` for a general note — **and also for a note whose host
+ *  is not in the lookup**. That second case is real rather than defensive: a stale offline
+ *  cache, or a peer's delete mid-render. Such a note reads as GENERAL (no chip) rather than
+ *  showing an empty chip or a placeholder name, because "we don't know what this is about"
+ *  is exactly what a general note looks like and it is the truthful degradation. */
+export function noteHost(note: Note, hosts: Map<string, NoteHostRef>): NoteHostRef | undefined {
+  for (const [kind, field] of Object.entries(NOTE_HOST_FIELD) as [NoteHostKind, NoteHostKey][]) {
+    const id = note[field];
+    if (id) return hosts.get(`${kind}:${id}`);
+  }
+  return undefined;
+}
+
+/** The category a note READS as: its own, else its host's (ADR-0152 §5's amendment). The
+ *  chip row, the chip counts, the filter and the badge glyph all go through this, so a
+ *  hosted note cannot show one category and be filed under another. */
+export function noteCategory(
+  note: Note,
+  hosts: Map<string, NoteHostRef>,
+): EventCategory | undefined {
+  return note.category ?? noteHost(note, hosts)?.category;
+}
+
+/** The badge glyph: the resolved category's, else the no-category fallback. `📌`
+ *  (`DEFAULT_EVENT_ICON`) rather than a glyph invented for this surface. */
+export function noteGlyph(note: Note, hosts: Map<string, NoteHostRef>): string {
+  const category = noteCategory(note, hosts);
+  return category ? iconForCategory(category) : DEFAULT_EVENT_ICON;
+}
+
+/** A note with no category still has to be findable, so it counts and filters under `other`
+ *  — otherwise the one chip that could reach it is the one it is missing from. */
+export const noteFilterCategory = (note: Note, hosts: Map<string, NoteHostRef>): EventCategory =>
+  noteCategory(note, hosts) ?? 'other';
+
+/** A note's searchable terms (ADR-0102's multi-field matching, ADR-0153 §3): title, body
+ *  **and url** — the url is why searching `tabelog` finds a link-only note — plus its
+ *  host's name, so "what did we say about the hotel" works from this screen too even
+ *  though the screen itself is ungrouped. An array, not `||`-chained fields, so a future
+ *  searchable facet is a push here rather than a branch in the matcher. */
+export function noteSearchTerms(
+  note: Note,
+  hosts: Map<string, NoteHostRef>,
+): (string | undefined)[] {
+  return [note.title, note.body, note.url, noteHost(note, hosts)?.name];
+}
+
+export function matchesNoteQuery(
+  note: Note,
+  hosts: Map<string, NoteHostRef>,
+  query: string,
+): boolean {
+  if (!query.trim()) return true;
+  return matchesAnyTerm(query, noteSearchTerms(note, hosts));
+}
+
+/** The category-chip filter over the RESOLVED category, so a hosted note is filed where it
+ *  visually belongs. `all` passes everything. */
+export const NOTE_CATEGORY_ALL = 'all';
+export type NoteCategoryFilter = EventCategory | typeof NOTE_CATEGORY_ALL;
+
+export function matchesNoteCategory(
+  note: Note,
+  hosts: Map<string, NoteHostRef>,
+  category: NoteCategoryFilter,
+): boolean {
+  return category === NOTE_CATEGORY_ALL || noteFilterCategory(note, hosts) === category;
+}
+
+/** Per-resolved-category counts for the chip row (ADR-0100 §2). Every value is initialized
+ *  to 0 so the chip row's "only non-empty categories get a chip" rule has a total to read. */
+export function countNotesByCategory(
+  notes: Note[],
+  hosts: Map<string, NoteHostRef>,
+): Record<EventCategory, number> {
+  const counts = Object.fromEntries(EVENT_CATEGORIES.map((c) => [c, 0])) as Record<
+    EventCategory,
+    number
+  >;
+  for (const note of notes) counts[noteFilterCategory(note, hosts)]++;
+  return counts;
+}
+
+/** Newest first (ADR-0153 §2), on `createdAt` and **not** `updatedAt`: the group's memory
+ *  should not shuffle under a reader because someone fixed a typo. `id` breaks ties, so the
+ *  several notes one host save can write in the same millisecond hold a stable order. */
+export function sortNotes(notes: Note[]): Note[] {
+  return [...notes].sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.id.localeCompare(b.id),
+  );
+}
+
+/** Per-row visibility against the chip + query, through the app's ONE shared reveal
+ *  derivation (ADR-0120) — never a `.filter()` on the array, which is the one-off that made
+ *  the Map jump for two releases. */
+export function visibleNotes(
+  notes: Note[],
+  hosts: Map<string, NoteHostRef>,
+  category: NoteCategoryFilter,
+  query: string,
+): { rows: Revealed<Note>[]; nextIndex: number } {
+  return revealRows(
+    notes,
+    (note) => matchesNoteCategory(note, hosts, category) && matchesNoteQuery(note, hosts, query),
+  );
+}
+
+/** A note's line as PLAIN TEXT — for an accessible name, a sheet's title, a change-feed
+ *  line. The render is the row's job (a body clamps, a url is an LTR island); this is the
+ *  same precedence in one string: the title if there is one, else the body, else the url. */
+export function noteTitleText(note: Note): string {
+  return note.title?.trim() || note.body?.trim() || note.url?.trim() || '';
+}
+
+/** "When", for a note's meta line — `לפני 4 ד׳`, `לפני 3 ימים`, `לפני שבועיים`.
+ *
+ *  Built on `formatDuration`, the app's ONE elapsed ladder (ADR-0114: minutes → hours →
+ *  days → weeks → months → years, largest rung, rounded to nearest), rather than a second
+ *  relative-time helper. `ChangeFeed`'s private `relTime` deliberately stops at hours
+ *  because a 20-entry ring only ever holds recent things; a notes list holds the whole
+ *  trip, so a note from last week must not read as `לפני 216 ש׳`.
+ *
+ *  Under a minute is "now" — the same floor the change feed uses, and the case that
+ *  matters most, since it is what you see the instant you write one. */
+export function noteWhen(createdAt: string, nowMs: number): string {
+  const minutes = Math.floor((nowMs - Date.parse(createdAt)) / 60_000);
+  const elapsed = formatDuration(minutes);
+  return elapsed ? t.changeFeed.relTime.agoPrefix(elapsed) : t.changeFeed.relTime.now;
 }

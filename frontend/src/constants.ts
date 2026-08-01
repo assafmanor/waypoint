@@ -1,6 +1,7 @@
 // App-wide tunables and non-copy literals. UI copy lives in i18n/; domain enum
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
 import type { BookingType, DocumentType, EventCategory } from '@waypoint/shared';
+import type { NoteHostKind } from './lib/notes';
 import type { SnapStop } from './lib/snap-sheet';
 import type { IconName } from './ui/Icon';
 
@@ -963,6 +964,19 @@ export const GLYPH = {
 
 /** Control icons — every one of these is drawn by `<Icon name={…} />`. The value
  *  IS the `IconName`, so a call site cannot accidentally render it as text. */
+/** **What KIND of thing a note's host chip points at** (ADR-0153 §4). An `Icon`, not an
+ *  emoji, for the same reason `.link-cue` is one: it CLASSIFIES the row's subject, it is
+ *  not the thing's own face — the badge beside it stays emoji, which is the category's own
+ *  vocabulary (ADR-0038/0138). Exhaustive over the five hostable kinds, so a sixth host is
+ *  a compile error here rather than a chip with no mark. */
+export const NOTE_HOST_ICON = {
+  event: 'clock',
+  booking: 'ticket',
+  place: 'pin',
+  maybeItem: 'shelf',
+  document: 'documents',
+} as const satisfies Record<NoteHostKind, IconName>;
+
 export const CONTROL_ICON = {
   navigate: 'navigate',
   nearMe: 'pin',

@@ -31,6 +31,9 @@ vi.mock('../state/trip-state', () => ({
     places: [],
     events: [],
     documents: [],
+    maybeItems: [],
+    notes: [],
+    users: [],
   }),
 }));
 vi.mock('../lib/useClock', () => ({ useClock: () => new Date('2026-07-20T00:00:00Z') }));

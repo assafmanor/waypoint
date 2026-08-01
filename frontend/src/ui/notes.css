@@ -1,0 +1,92 @@
+/* פתקים (ADR-0152 / ADR-0153), from `mockups/notes-screen-v1.html`'s proposal block.
+   Deliberately small: the screen is `.index > .idx-screen` + `.listcard` + `ListRow` +
+   `ChoiceGrid` + `RevealList` + `EmptyState`, all of which the bookings screen already
+   built (ADR-0098). What is net-new is the row's host chip, its two title-line variants,
+   its link mark, and the editor's body. */
+
+/* A body-only note: its words ARE the title line. Two lines, not one — one line turns
+   every real note into an ellipsis, which is denser and unreadable, and that is not a
+   trade (the same reasoning that kept the maybe tile's 2-line clamp, ADR-0151). */
+.note-body-line {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+/* A URL-ONLY note. The url is the line, and it is an LTR island inside an RTL row — the
+   isolate characters come from `lib/bidi.ts`'s `ltrIsolate`, NOT from `dir="ltr"`, which
+   is lint-blocked on anything but an <input> (ADR-0118) and would lay the whole row out
+   left-to-right. `unicode-bidi: isolate` here is belt-and-braces for the ellipsis, which
+   otherwise truncates the wrong END of a long url in RTL. */
+.note-url-line {
+  display: block;
+  unicode-bidi: isolate;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* THE HOST CHIP — the only signal separating a general note from an attached one, which is
+   what lets the screen need no grouping and no second facet (ADR-0153 §2). A general note
+   simply has no chip, and its ABSENCE is the fact.
+
+   Neutral by rule: a note is not time (amber), not place (teal) and not plan mode (violet),
+   so it spends `--ink` at 6% — the same wash `.wp-idx-tile-count` uses, so the two read as
+   one family. */
+.note-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 47%;
+  padding: 1px 6px;
+  border-radius: var(--radius-999);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: -1px;
+}
+/* The NAME is what ellipsises, not the chip — otherwise the glyph is the first thing to go
+   and the chip loses the only part that says what KIND of thing it points at. */
+.note-host-n {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note-host .icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+/* A url note's trailing mark. NOT a button: the row already opens the note, and a second
+   tap target in a row this size on a list you are scrolling is a mis-tap waiting to
+   happen. */
+.note-link-mark {
+  color: var(--muted);
+  display: inline-flex;
+}
+.note-link-mark .icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* The editor's body. `Field` supplies no outer gap (`field.css`: its `gap` is INSIDE a
+   field), so the sheet's own class stacks them — the same job `.booking-sheet` does. */
+.note-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+/* On a hosted note the host is a stated FACT, not a picker (ADR-0153 §5). */
+.note-sheet-host {
+  margin: 0;
+}
