@@ -10126,6 +10126,57 @@ body {
       .map-placecard:has(.note-sec) > .place::-webkit-scrollbar {
         width: 0;
       }
+      /* ── §3b · AND THE PRIMARY ACTION IS PINNED (owner, on this mockup) ──
+         The first draft let the whole row scroll, `שיבוץ ליום` included — which
+         is the same defect ADR-0148 §1 fixed on the form card and for the same
+         reason: putting a place on a day is what the card is FOR, and a primary
+         action that scrolls out of reach behind three notes makes the common
+         gesture the expensive one.
+
+         `position: sticky` rather than a grid: the row is a wrapping flex
+         container shared by every list row, and restructuring it into
+         head/middle/foot for one variant would change the row everywhere. Sticky
+         is inert when there is nothing to scroll, so an unscrolled card — and
+         every row in the list — is untouched by construction.
+
+         It needs its own ground and a hairline: the notes scroll UNDER it, and a
+         transparent foot would let them read through the button's own gap. */
+      /* **The foot leaves `.map-refs` and becomes the row's own last child**, and that
+         move is what makes the pin possible at all rather than a preference: a sticky
+         element cannot leave its containing block, and `.map-refs` sits entirely BELOW
+         the scrollport on a card scrolled to the top — measured at −156px, i.e. off the
+         card, with the sticky rule already in force. As a direct child of the scroller
+         its containing block is the scrolled content, so it pins from the first pixel.
+
+         It also reads better as structure: the footer is the ROW's primary action, not
+         a fourth reference. In the list (nothing scrolling) `flex-basis: 100%` makes it
+         the same full-width line it already was, so an unselected or unscrolled row is
+         pixel-identical. */
+      .place > .map-refs-foot {
+        flex-basis: 100%;
+      }
+      .map-placecard:has(.note-sec) > .place > .map-refs-foot {
+        position: sticky;
+        inset-block-end: 0;
+        margin-top: 0;
+        padding-block: 8px;
+        background: var(--card);
+        border-top: 1px solid var(--line);
+      }
+      /* A scroll container's own PADDING is part of its scrollable area, so with the foot
+         pinned at `inset-block-end: 0` the notes kept scrolling visibly through the 11px
+         strip beneath it — caught by rendering, not by the arithmetic, which read a healthy
+         12px the whole time. This paints that strip in the card's own ground rather than
+         moving the button: `sticky` is a positioned box, so the pseudo-element anchors to
+         it, and the inline inset covers the row's side padding too. */
+      .map-placecard:has(.note-sec) > .place > .map-refs-foot::after {
+        content: '';
+        position: absolute;
+        inset-inline: -12px;
+        top: 100%;
+        height: 12px;
+        background: var(--card);
+      }
 
       /* ══════════════════════════════════════════════════════════════════
          MOCKUP SCAFFOLDING BELOW — NOT part of the proposal.
@@ -10614,9 +10665,9 @@ body {
                        ${ic('caret')}
                      </button>
                    </span>
-                   <span class="map-refs-foot">
-                     <button type="button" class="map-addmaybe">${ic('plus')} שיבוץ ליום</button>
-                   </span>
+                 </span>
+                 <span class="map-refs-foot">
+                   <button type="button" class="map-addmaybe">${ic('plus')} שיבוץ ליום</button>
                  </span>`
               : ''
           }
@@ -10893,7 +10944,30 @@ body {
                 <span class="tag after">עם החסם · אותו תוכן, נגלל</span>
                 ${canvas(placeCard({ ...CROWDED, selected: true, section: true, notes: 3 }))}
               </div>
+              <div class="col" data-scrolled>
+                <span class="tag after">נגלל עד הסוף · הפועל נשאר</span>
+                ${canvas(placeCard({ ...CROWDED, selected: true, section: true, notes: 3 }))}
+              </div>
             </div>
+            <p class="note">
+              <b>ו-<code>שיבוץ ליום</code> ננעץ</b> (הערת הבעלים על הקובץ הזה). בטיוטה הראשונה כל
+              השורה נגללה, הפועל הראשי בכללה — וזה בדיוק הכשל ש-ADR-0148 §1 תיקן בכרטיס הטופס,
+              ומאותה סיבה: לשבץ מקום ליום זה מה שהכרטיס קיים בשבילו, ופעולה ראשית שנעלמת מאחורי
+              שלושה פתקים הופכת את התנועה הנפוצה ליקרה. הפריים השמאלי גלול עד הסוף — התוכן זז,
+              הכפתור לא. <code>position: sticky</code> ולא רשת: השורה היא מיכל flex עוטף שמשמש כל
+              שורה ברשימה, ופירוק שלה לראש/אמצע/רגל בשביל וריאנט אחד היה משנה את השורה בכל מקום.
+              sticky גם אינרטי כשאין מה לגלול, ולכן כרטיס לא־גלול וכל שורה ברשימה לא מושפעים בכלל.
+            </p>
+            <p class="note">
+              <b>והטיוטה הראשונה של הנעיצה לא עבדה, והמדידה היא שתפסה.</b> עם
+              <code>position: sticky</code> על <code>.map-refs-foot</code> במקומו הנוכחי — בתוך
+              <code>.map-refs</code> — הכפתור נמדד ב-<b>−156px</b> בכרטיס גלול לראש: <b>מחוץ
+              לכרטיס</b>. אלמנט sticky לא יכול לצאת מהבלוק המכיל שלו, ו-<code>.map-refs</code> כולו
+              יושב מתחת לחלון הגלילה במצב הזה, אז לא היה למה להיצמד. לכן ההצעה <b>מוציאה את הרגל
+              מ-<code>.map-refs</code></b> והופכת אותה לילד ישיר של השורה: הבלוק המכיל נהיה התוכן
+              הנגלל עצמו, והכפתור ננעץ מהפיקסל הראשון (12px מהתחתית, בשני הרוחבים, במנוחה ואחרי
+              גלילה מלאה). זה גם תיאור נכון יותר של מה שהוא: הפועל הראשי של השורה, לא הפניה רביעית.
+            </p>
           </section>
 
           <section class="case">
@@ -10960,6 +11034,11 @@ body {
               </div>
             </div>
           </section>`;
+        // The scrolled frame has to actually be scrolled, or it draws the same picture as
+        // the one beside it and proves nothing.
+        document.querySelectorAll('[data-scrolled] .map-placecard > .place').forEach((row) => {
+          row.scrollTop = row.scrollHeight;
+        });
         measure();
       }
 
@@ -11070,6 +11149,33 @@ body {
           )}${cell(cardH + 'px')}${cell(
             cardH <= room + 1 ? (scrolls ? 'נגלל' : 'נכנס') : 'חורג',
             cardH <= room + 1 ? 'good' : 'bad',
+          )}</tr>`,
+        );
+
+        // 4b. THE PINNED ACTION. The claim is not "it exists" but "it is still on screen after
+        // the row has scrolled past it" — so the probe scrolls the row to its end and reads the
+        // button's box against the card's. Positive = inside.
+        probe.innerHTML = canvas(
+          placeCard({ ...CROWDED, selected: true, section: true, notes: 3 }),
+        );
+        const scroller = probe.querySelector('.map-placecard > .place');
+        const btn = probe.querySelector('.map-refs-foot');
+        const cardBox = probe.querySelector('.map-placecard');
+        let restAt = 0;
+        let scrolledAt = 0;
+        if (scroller && btn && cardBox) {
+          restAt = Math.round(cardBox.getBoundingClientRect().bottom - btn.getBoundingClientRect().bottom);
+          scroller.scrollTop = scroller.scrollHeight;
+          scrolledAt = Math.round(
+            cardBox.getBoundingClientRect().bottom - btn.getBoundingClientRect().bottom,
+          );
+        }
+        out.push(
+          `<tr><td><b>שיבוץ ליום</b> · מרחקו מתחתית הכרטיס, במנוחה ואחרי גלילה עד הסוף</td>${cell(
+            restAt + 'px',
+          )}${cell(scrolledAt + 'px')}${cell(
+            scrolledAt >= 0 ? 'נעוץ' : 'נעלם',
+            scrolledAt >= 0 ? 'good' : 'bad',
           )}</tr>`,
         );
 
