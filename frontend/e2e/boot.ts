@@ -99,6 +99,8 @@ export async function bootIntoTrip(
     /** Trip places, so the Map tab's FREE half has rows to choose from — an errand can
      *  then be finished without Google, which is what keeps this spec hermetic. */
     places?: unknown[];
+    /** Trip notes, so a host row can carry the mark (ADR-0152 §6c). */
+    notes?: unknown[];
     /** Override the trip's date range (see `shortLiveTripDates`). */
     dates?: { startDate: string; endDate: string };
   } = {},
@@ -111,6 +113,7 @@ export async function bootIntoTrip(
     events: opts.events ?? SNAPSHOT.events,
     maybeItems: opts.maybeItems ?? SNAPSHOT.maybeItems,
     places: opts.places ?? SNAPSHOT.places,
+    notes: opts.notes ?? SNAPSHOT.notes,
   };
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),

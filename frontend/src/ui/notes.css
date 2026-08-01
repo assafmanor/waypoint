@@ -90,3 +90,29 @@
 .note-sheet-host {
   margin: 0;
 }
+
+/* THE MARK on a host's row (ADR-0153 §6). One shape everywhere — the same `clipboard`
+   `Icon` the tile and the empty state use — so "note" has ONE silhouette across the app.
+   A count only past 1: a `1` beside a glyph that already means "a note" says nothing.
+
+   `--muted`, not a hue: a note is neither time (amber), place (teal) nor plan mode
+   (violet), and rule 4 has no spare colour to lend it. That also keeps it quieter than
+   every semantic mark it shares a row with, which is correct — a note is context, not
+   status. It is a READ-ONLY indicator (§8): ~16px against a 44px floor, so widening its
+   target would put it in competition with opening the row it sits in. */
+.note-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  vertical-align: -2px;
+}
+.note-mark .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}

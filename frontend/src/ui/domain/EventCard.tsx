@@ -25,6 +25,7 @@ import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
 import { t } from '../../i18n/he';
 import './event-card.css';
+import '../notes.css';
 
 export type EventKind = 'hard' | 'soft';
 export type EventPhaseName = 'upcoming' | 'now' | 'passed' | 'done';
@@ -75,6 +76,11 @@ export interface EventCardProps {
   conflict?: { title: string; startsAt: string };
   /** "כולל N" contents count on an envelope event that nests others. */
   nestedCount?: number;
+  /** **How many notes this event carries** (ADR-0152 §6c). There is no `meta` prop to pass
+   *  a node through — the meta line is assembled inside this component from two string
+   *  props — so the mark needs its own. A count only past 1: a `1` beside a glyph that
+   *  already means "a note" is a digit that says nothing. */
+  notes?: number;
   // Verbs (callbacks; presence + phase gate which buttons show, faithfully).
   // `onNavigate` (directions) and `onShowOnMap` (view the place) are the two
   // location actions — each present only when the event has a mappable place
@@ -94,6 +100,42 @@ export interface EventCardProps {
   onPark?: () => void;
   onEdit?: () => void;
   onRemove?: () => void;
+}
+
+/**
+ * **What the day row's meta line says, as a rule rather than a CSS accident** (ADR-0152
+ * §6c). Exported and pure precisely so it can be tested: the alternative — letting the
+ * ellipsis decide — is behaviour that only appears at one screen width.
+ *
+ * The line is exactly full at 390px on a coded row, so a mark asks for width that does not
+ * exist. **A row carrying both a confirmation code and a note mark drops its place name
+ * entirely** rather than degrading it to a two-character stub: `ש..` is noise, not
+ * information, and the district is one tap away in the expanded card. Deterministic and
+ * testable; a stub is neither.
+ *
+ * Rejected, with their costs: keep the stub (permanent noise); move the mark to the title
+ * line (the hard/soft tag already flows to a second line on a long title, so it
+ * reintroduces the height problem); drop the code instead (it is the glanceable fact the
+ * row exists for).
+ */
+export function eventMetaParts({
+  placeName,
+  code,
+  notes,
+}: {
+  placeName?: string;
+  code?: string;
+  notes?: number;
+}): { placeName?: string; separator: boolean; code?: string } {
+  const hasMark = notes !== undefined && notes > 0;
+  const showPlace = placeName && !(code && hasMark);
+  return {
+    placeName: showPlace ? placeName : undefined,
+    // The separator is its own item so it leaves with the place name rather than
+    // stranding a leading `·` on a code-only row.
+    separator: !!showPlace && !!code,
+    code,
+  };
 }
 
 export function EventCard(props: EventCardProps) {
@@ -117,6 +159,7 @@ export function EventCard(props: EventCardProps) {
     duration,
     conflict,
     nestedCount,
+    notes,
     onNavigate,
     onShowOnMap,
     onDone,
@@ -145,7 +188,8 @@ export function EventCard(props: EventCardProps) {
     fn?.();
   };
 
-  const meta = [placeName, code && `${t.event.bookingLabel} ${code}`].filter(Boolean).join(' · ');
+  const codeText = code ? `${t.event.bookingLabel} ${code}` : undefined;
+  const metaParts = eventMetaParts({ placeName, code: codeText, notes });
 
   const tag = isDone ? (
     <span className="wp-event-tag-done">
@@ -185,9 +229,28 @@ export function EventCard(props: EventCardProps) {
           <span className="wp-event-nest-note">{t.day.contains(nestedCount)}</span>
         )}
       </span>
+      {/* ONE `nowrap` line, and its text is ELEMENTS rather than a joined string
+          (ADR-0152 §6c). Both are load-bearing: `flex-wrap: wrap` wraps BEFORE it
+          shrinks, so a shrinkable span alone measured identically to no fix at all —
+          only `nowrap` returns the row to its height. And flex cannot protect part of
+          a text node, so the code has to be its own item or the ellipsis eats the
+          confirmation code, which is the fact the row is opened for. */}
       <span className="wp-event-m">
         {sync}
-        {meta}
+        {metaParts.placeName && <span className="wp-event-m-txt">{metaParts.placeName}</span>}
+        {metaParts.separator && <span className="wp-event-m-sep">·</span>}
+        {metaParts.code && <span className="wp-event-m-code">{metaParts.code}</span>}
+        {notes !== undefined && notes > 0 && (
+          <span
+            className="note-mark"
+            role="img"
+            aria-label={t.notes.mark(notes)}
+            title={t.notes.mark(notes)}
+          >
+            <Icon name="clipboard" />
+            {notes > 1 ? notes : ''}
+          </span>
+        )}
       </span>
       {conflict && (
         <span className="wp-event-conflict-flag">

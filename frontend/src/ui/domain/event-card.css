@@ -173,11 +173,44 @@
   color: var(--muted);
   margin-top: 3px;
   display: flex;
-  /* flex-start (not center) so the sync marker (ADR-0091) stays on the first line
-     and the meta text wraps beneath it — the badge never reflows the title. */
+  /* flex-start (not center) so the sync marker (ADR-0091) stays on the first line —
+     it never reflows the title. */
   align-items: flex-start;
   gap: 6px;
-  flex-wrap: wrap;
+  /* **ONE LINE, ALWAYS** (ADR-0152 §6c), and this replaces the `flex-wrap: wrap` that
+     used to let the meta text wrap beneath the sync badge. Two things forced it, both
+     measured rather than reasoned:
+
+     `flex-wrap: wrap` WRAPS BEFORE IT SHRINKS — flex distributes negative free space only
+     WITHIN a line — so giving the text a shrinkable span while the container could still
+     wrap did nothing at all, and measured identically to no fix (121px both times). Only
+     `nowrap` returns a noted row to its unnoted height.
+
+     **This changes rows with NO notes too**, which is why it is an ADR line and not an
+     implementation detail: a long `placeName · code` used to wrap under the badge and now
+     ellipsises. Secondary text losing its tail is cheaper than every noted row on the day
+     growing — and the code, the separator and the mark are all `flex: 0 0 auto` below, so
+     the one thing that can afford to lose its tail is the only thing that does. */
+  flex-wrap: nowrap;
+}
+/* Only the PLACE NAME shrinks. Without this, `nowrap` returned the height and then
+   truncated `הזמנה MN-4471` to `הזמנה 471…`, because the code sits at the END of the line:
+   a shortened place name is a cosmetic loss, a shortened confirmation code is the fact you
+   opened the row to read. */
+.wp-event-m .wp-event-m-txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wp-event-m .wp-event-m-code,
+.wp-event-m .wp-event-m-sep,
+.wp-event-m .note-mark {
+  flex: 0 0 auto;
+}
+.wp-event-m .wp-event-m-sep {
+  opacity: 0.55;
 }
 .wp-event-time {
   font-family: var(--font-mono);
