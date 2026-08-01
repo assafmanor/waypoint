@@ -341,3 +341,41 @@ The unit tests cover the gate as arithmetic and the loop's first frames with a h
 Reported once the above shipped: "near an edge, if you want to drag in the direction of the edge, it doesn't allow you even after starting the move." True, and it made the one edge you could not reach the one you started next to — a card lifted in the shelf had to be walked a full `DRAG_EDGE_SCROLL_ZONE_PX` up the screen and back down before the bottom band would answer. The gesture that most obviously means "further down" was the one the latch refused.
 
 Leaving the band was too narrow a release, because it is a _position_ test on a problem about _intent_: resting where you were lifted and pushing on toward the edge are the same position. Movement since the lift is what tells them apart, so the latch now also releases when the pointer has travelled `DRAG_EDGE_SCROLL_RELEASE_PX` (16 px) **toward** its edge — above `DRAG_HOLD_SLOP_PX` so a thumb settling on the card never counts, well under the band's depth so the ask stays one small movement. That is why the latch remembers where the drag was lifted (`{ dir, from }`) and not merely which band.
+
+## Amendment (2026-08-01, session 202) — the shelf crowds, and three of the fixes are on this ADR's own deferral list
+
+Two owner reports against the shipped shelf, plus a third the code volunteered when they were read:
+
+1. _"some people are going to have tens of maybe items, so at some point it's gonna become hard to find and slot the card that you want."_
+2. _"the cards are really big compared to the events themselves."_
+3. `GapFillSheet` is handed `maybeItems.filter((m) => !m.consumed)` (`PlanDay.tsx:920`) — the **whole** pool, unsorted, unsearchable — on the one surface whose entire question is _which idea fits this slot_. Nobody reported it because the sheet is opened less often than the shelf is looked at; it is the worse of the two.
+
+**This is this ADR's own trigger firing.** Its Consequences deferred "a shelf-level filter row mirroring the Map's chips" with a condition attached — _"the shelf is a strip, not a list — earn it when the strip crowds"_ — and deferred "sorting the idea pool (by fit/proximity/recency)" beside it. Since then [ADR-0115](0115-plan-mode-place-research.md) put `＋ אולי` one tap from a Google result and [ADR-0135](0135-a-place-becomes-an-event-or-a-booking.md) put `＋ שיבוץ ליום` on the map's place card. Supply rose an order of magnitude; the container stayed §2's two strips.
+
+Designed in [`mockups/shelf-crowded-v1.html`](../../mockups/shelf-crowded-v1.html), whose subject is **N rather than the card** — the idea count is its main toggle (5 · 18 · 40) and every number in its panel is read from the live DOM at the selected count.
+
+### What the mockup measured, including where it corrected the proposal that opened it
+
+- **The idea you are reaching for** (nearest to the day's stops) sits at position **3 · 18 · 18** shipped, and **1** proposed, on both the shelf and the gap sheet, at every count. This is the report restated as a number; every other row in the panel is a size.
+- **Swipes to the last card: 2 · 10 · 24** shipped against **2 · 3 · 3** proposed. The point is not that 3 is small — it is that it stops growing.
+- **The card is 132px against a collapsed event row's 86px** (1.53×), and **56px of that 132 is padding and slack** held open by `min-height` plus the action line's `margin-top: auto`. The tile is 76px (0.88×); the whole shelf goes 349px → 245px of a 640px screen.
+- **The strip holds two cards at any usable width.** Three would need a 102px card, which carries no title. So shrinking the card buys **vertical only** — the horizontal half is fixable only by capping the strip, which is why §5 below is load-bearing rather than a nicety. The first draft of the tile was 148px wide and changed the visible-card count by zero.
+- **A one-line title clamp was tried and rejected on sight**: at tile width `מוזיאון אדו־טוקיו` renders `מוזיאון…`. The height comes out of the action line, which carries nothing; never out of the title, which carries the card.
+
+### The five changes
+
+1. **A stable `orderBy`** on `maybeItem.findMany` (`trips.service.ts:456` has none), so §2's "the snapshot's order" is a real order rather than Postgres's whim. At five ideas nobody notices; at forty, the card you were about to hold for `DRAG_HOLD_MS` has moved since the last sync. Every ranking below needs this floor.
+2. **The compact tile.** Same soft grammar (dashed + hatch, ADR-0011) — geometry only: a row axis so the glyph sits beside the text, and **the per-card `＋ שבץ ליום` goes**, under a section hint that already says `לחצו כדי לשבץ ליום`. It was the same sentence twice as chrome and then N more times as content. The reclaimed line carries a fact that **varies** (distance from the day's stops, or the day the idea is aimed at), which the action never was.
+3. **The pool is ranked, not only grouped** — §1's deferred "future sort", now that `targetDate` exists to rank against. The rule and its registry are [ADR-0151](0151-a-suggestion-has-a-source-and-a-reason.md); this section only records that the shelf is its first consumer. §1's line is untouched: a score never writes `targetDate`, and a pencilled day stays the human intention.
+4. **The gap sheet answers its own question**: ranked against the slot it was opened on, capped, searchable past a threshold, and finally rendering `.gapfill-m` — a meta slot styled in `screens.css` since the sheet shipped and never once emitted. It carries the ranking **reason**, not a score (ADR-0151 §8).
+5. **The pool's tail leaves the shelf.** The strip keeps the day's working set — the day's group, plus the top of the ranked pool — and everything past the cap goes through to the Map's `אולי` facet, which [ADR-0119](0119-map-maybes-facet-is-the-shelf.md) made the same union and which already carries day scope, type chips, search, distance sort and (since ADR-0135) `＋ שיבוץ ליום`. This is what makes the strip's width independent of N.
+
+**Rejected: a search sheet on the shelf itself.** It would be a third copy of the filter apparatus [ADR-0120](0120-filter-reveal-is-shared-infrastructure.md) exists to have prevented a second of — and worse, it answers "which idea" without showing **where** any of them are, which is the actual basis for the decision at that moment.
+
+**Rejected: filter chips on the strip.** Left open by this ADR, but after (2)–(5) the shelf is no longer a list to narrow; it is five ranked cards. A chip on a strip of five is a control treating the symptom of a version that no longer exists.
+
+**Untouched, deliberately: the drag.** Amendments 113 through 125 above live in that gesture, with unit and e2e cover, and nothing here changes what a drop **means** — only how many candidates you passed to start one.
+
+### The one open question, and it is not a measurement
+
+§5's handoff is a **tab switch mid-build**. ADR-0135 makes it a complete round trip — you slot from the map and never come back — but whether it reads as "the rest of my ideas are over there" or as being thrown off the surface you were working on is a phone judgement (ADR-0017's device pass), not something a desktop browser can settle. Two smaller ones sit beside it: whether the tile's two-line title truncates too much on the trip's real titles, and whether a capped strip reads as "the five best" or as "something is missing".
