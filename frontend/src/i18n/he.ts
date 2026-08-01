@@ -614,6 +614,22 @@ export const t = {
       needsBodyOrUrl: 'צריך גוף או קישור, לפחות אחד מהם',
       needsBodyOrUrlHere: 'או כאן',
     },
+    // The composer on a host's form (ADR-0152 §6b). No title field, no category, no second
+    // save — one box, and a blank one writes nothing.
+    composer: {
+      label: 'פתקים · לא חובה',
+      placeholder: 'משהו שכדאי לזכור על זה',
+      another: 'פתק נוסף',
+      add: 'פתק נוסף',
+      remove: 'הסרת הפתק',
+      hint: 'יורש את הקטגוריה והסמל · ＋ רק אם רוצים עוד אחד',
+    },
+    // The note section on a detail surface, where the body lives.
+    section: {
+      title: 'פתקים',
+      add: 'פתק',
+      empty: 'אין פתקים על זה',
+    },
     manage: {
       actions: 'פעולות על הפתק',
       edit: 'עריכה',

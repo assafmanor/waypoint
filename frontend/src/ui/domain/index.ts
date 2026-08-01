@@ -30,6 +30,7 @@ export { IndexTile } from './IndexTile';
 export type { IndexTileProps } from './IndexTile';
 
 export { ListRow, RowManageSheet, RowActionList } from './ListRow';
+export { NoteMark } from './NoteMark';
 export type { ListRowProps, RowAction, BadgeTone } from './ListRow';
 
 export { ChangeFeed } from './ChangeFeed';

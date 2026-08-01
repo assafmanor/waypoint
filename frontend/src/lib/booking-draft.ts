@@ -48,7 +48,6 @@ export interface BookingSheetDraft {
   startOverride: string | null;
   endOverride: string | null;
   room: string;
-  notes: string;
   wifiNetwork: string;
   wifiPassword: string;
   date: string;
@@ -78,7 +77,7 @@ export const isSpanType = (ty: BookingType) =>
  *  booking schema update"_).
  *
  *  A draft cannot be derived from `Booking` by a mapped type: the sheet authors a **form**,
- *  so one entity field becomes several (`details` → room + notes + wifi × 2) and a stored
+ *  so one entity field becomes several (`details` → room + wifi × 2) and a stored
  *  instant becomes a date plus a time in a resolved zone. What CAN be enforced is coverage —
  *  so this map is exhaustive over `keyof Booking`, and adding a field to `bookingSchema`
  *  (the source of truth, mirrored from `schema.prisma`) fails the build right here until
@@ -104,7 +103,10 @@ export const BOOKING_FIELD_COVERAGE = {
   toPlaceId: 'form',
   startDisplayTimezone: 'form',
   endDisplayTimezone: 'form',
-  // One field, four inputs: room, notes, and the two wifi halves.
+  // One field, three inputs: room and the two wifi halves. **Notes left this blob**
+  // (ADR-0152 §7): they are `Note` rows now, authored by the sheet's composer rather than
+  // by a draft string. `details.wifi` deliberately stays — it is a field with one reader
+  // (`home-quick.ts`), not a note.
   details: 'form',
   // Never surfaced in the sheet — an importer's name for where a booking came from.
   provider: 'unused',
@@ -165,7 +167,6 @@ export function bookingSheetDraft(input: {
     startOverride,
     endOverride,
     room: (booking?.details?.room as string | undefined) ?? '',
-    notes: (booking?.details?.notes as string | undefined) ?? '',
     wifiNetwork: wifi?.network ?? '',
     wifiPassword: wifi?.password ?? '',
     date: linkedEvent?.date ?? '',

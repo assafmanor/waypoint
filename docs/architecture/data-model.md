@@ -135,6 +135,7 @@ The trip-scoped location registry every `placeId` FK points to, and the cache th
 - The at-most-one rule is the shared zod schema's (`createNoteSchema`), enforced identically on client and server (ADR-0023) — Prisma's schema language cannot express it as a constraint.
 - `category` stays **null on a hosted note**: it is RESOLVED at render as `note.category ?? host.category` (ADR-0152 §5's amendment), never copied at write time, which would go stale the moment the host is recategorised. For the same reason there is **no `icon` column** — the existing `chosenIcon` chain supplies the glyph.
 - **A cascade writes no `Change` rows.** Deleting a host removes its notes in the database and tells no client, so the sync half is a rule in the ADR-0094 appliers keyed off `NOTE_HOST_FIELD` (`lib/notes.ts`'s `dropNotesForHostChange`, registered in both the memory channels and `CACHE_CHANNELS`). The cascade is the storage guarantee; the applier rule is the sync one.
+- **Migrated in:** `Booking.details.notes` became `Note` rows hosted by their booking (`20260801200000_booking_notes_to_rows_adr0152`), one-time and one-way — a read-both fallback is the drift problem this entity exists to end. `details.wifi` and `details.room` are untouched: WiFi is a field with one reader (`lib/home-quick.ts`), not a note.
 - Group-visible only in v1 — no `ownerUserId` (deferred, ADR-0152 §9: the visibility filter would reach every read path and the offline cache).
 
 ### Change (the sync/undo/feed substrate — ADR-0019)

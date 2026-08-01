@@ -23,9 +23,9 @@ import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
 import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
+import { NoteMark } from './NoteMark';
 import { t } from '../../i18n/he';
 import './event-card.css';
-import '../notes.css';
 
 export type EventKind = 'hard' | 'soft';
 export type EventPhaseName = 'upcoming' | 'now' | 'passed' | 'done';
@@ -240,17 +240,7 @@ export function EventCard(props: EventCardProps) {
         {metaParts.placeName && <span className="wp-event-m-txt">{metaParts.placeName}</span>}
         {metaParts.separator && <span className="wp-event-m-sep">·</span>}
         {metaParts.code && <span className="wp-event-m-code">{metaParts.code}</span>}
-        {notes !== undefined && notes > 0 && (
-          <span
-            className="note-mark"
-            role="img"
-            aria-label={t.notes.mark(notes)}
-            title={t.notes.mark(notes)}
-          >
-            <Icon name="clipboard" />
-            {notes > 1 ? notes : ''}
-          </span>
-        )}
+        <NoteMark count={notes} />
       </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
