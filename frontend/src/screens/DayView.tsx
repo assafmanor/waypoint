@@ -76,6 +76,7 @@ import { routeDisplay } from '../ui/route-display';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
+import { HostNotes } from '../ui/HostNotes';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
 
@@ -688,6 +689,9 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
       code={code}
       notes={noteCountFor(ctx.noteCounts, 'event', e.id)}
+      // The mark says there are notes; this is where they are read and written. Connected
+      // here rather than inside the card, which is presentational (`ui/domain/`).
+      notesSlot={<HostNotes host={{ kind: 'event', id: e.id, name: e.title }} />}
       kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
       phase={phase}
       sync={<EntitySyncBadge id={e.id} />}

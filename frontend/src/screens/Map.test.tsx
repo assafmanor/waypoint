@@ -89,12 +89,18 @@ vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }
 // PlaceResearch.test.tsx, so the screen only needs the hook to exist.
 // The Map now hosts `EventForm` too (ADR-0135 §3), which reaches for the write verbs and the
 // signed-in author — so the stub covers what that form calls, not only the shelf verb.
+// The three create verbs RESOLVE to their host (ADR-0152 §6b): the form queues notes behind
+// them, so a stub returning `undefined` would throw where the real one hands back an id.
 const verbs = {
   addMaybe: vi.fn(),
-  create: vi.fn(),
+  create: vi.fn((_event: Record<string, unknown>) => Promise.resolve()),
   update: vi.fn(),
-  schedule: vi.fn(),
-  book: vi.fn(),
+  schedule: vi.fn((_m: Record<string, unknown>, _fields?: Record<string, unknown>) =>
+    Promise.resolve({ id: 'ev-scheduled' }),
+  ),
+  book: vi.fn((_input: Record<string, unknown>, _opts?: Record<string, unknown>) =>
+    Promise.resolve({ id: 'bk-new' }),
+  ),
 };
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
