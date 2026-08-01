@@ -565,6 +565,9 @@ export const t = {
   notes: {
     title: 'פתקים',
     one: 'פתק',
+    // The mark's accessible name — it is an icon with an optional count, so a screen
+    // reader needs the noun said out loud (the same shape `SyncBadge` uses).
+    mark: (n: number) => (n === 1 ? 'פתק אחד' : `${n} פתקים`),
     head: {
       count: (n: number) => `${n} פתקים`,
     },

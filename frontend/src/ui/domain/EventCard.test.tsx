@@ -2,7 +2,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { wrapNav } from '../../test/nav-harness';
-import { EventCard, type EventCardProps } from './EventCard';
+import { EventCard, eventMetaParts, type EventCardProps } from './EventCard';
 import { SyncBadge } from '../feedback';
 import { ROUTE_TITLE_ARROW, routeTitle } from '../../lib/route-title';
 import { t } from '../../i18n/he';
@@ -350,5 +350,87 @@ describe('EventCard — the way to the map (ADR-0121 §8 amendment)', () => {
     render(wrapNav(<EventCard {...base} isOpen onNavigate={() => {}} onShowOnMap={() => {}} />));
     expect(screen.getByRole('button', { name: t.actions.navigate })).toBeTruthy();
     expect(screen.getByRole('button', { name: t.actions.showOnMap })).toBeTruthy();
+  });
+});
+
+// ADR-0152 §6c. Two of these three changes affect rows with NO notes at all, which is why
+// the rule is a pure function and not an ellipsis deciding at one screen width.
+describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => {
+  afterEach(cleanup);
+
+  const meta = () => document.querySelector('.wp-event-m');
+  const showCard = (props: Partial<EventCardProps>) =>
+    render(wrapNav(<EventCard {...base} {...props} />));
+
+  describe('the composition rule', () => {
+    it('keeps the place name when there is a code but no mark', () => {
+      const parts = eventMetaParts({ placeName: 'שיבויה', code: 'הזמנה MN-4471' });
+      expect(parts.placeName).toBe('שיבויה');
+      expect(parts.separator).toBe(true);
+    });
+
+    it('keeps the place name when there is a mark but no code', () => {
+      const parts = eventMetaParts({ placeName: 'שיבויה', notes: 2 });
+      expect(parts.placeName).toBe('שיבויה');
+      // No code, so nothing to separate it from.
+      expect(parts.separator).toBe(false);
+    });
+
+    // The line is exactly full at 390px, so something has to go — and a two-character
+    // stub is noise, not information.
+    it('DROPS the place name when a row carries both a code and a mark', () => {
+      const parts = eventMetaParts({ placeName: 'שיבויה', code: 'הזמנה MN-4471', notes: 2 });
+      expect(parts.placeName).toBeUndefined();
+      // …and the separator leaves with it, rather than stranding a leading `·`.
+      expect(parts.separator).toBe(false);
+      // The code is what the row was opened for, so it always survives.
+      expect(parts.code).toBe('הזמנה MN-4471');
+    });
+
+    it('treats a zero count as no mark at all', () => {
+      const parts = eventMetaParts({ placeName: 'שיבויה', code: 'הזמנה MN-4471', notes: 0 });
+      expect(parts.placeName).toBe('שיבויה');
+    });
+  });
+
+  describe('the rendered row', () => {
+    it('renders no mark when the event has no notes', () => {
+      showCard({ placeName: 'שיבויה' });
+      expect(meta()?.querySelector('.note-mark')).toBeNull();
+    });
+
+    // A `1` beside a glyph that already means "a note" is a digit that says nothing.
+    it('shows the glyph alone for one note, and a count past one', () => {
+      showCard({ placeName: 'שיבויה', notes: 1 });
+      expect(meta()?.querySelector('.note-mark')?.textContent).toBe('');
+      cleanup();
+      showCard({ placeName: 'שיבויה', notes: 3 });
+      expect(meta()?.querySelector('.note-mark')?.textContent).toBe('3');
+    });
+
+    it('names the mark for a screen reader rather than leaving a mystery glyph', () => {
+      showCard({ notes: 2 });
+      expect(screen.getByLabelText(t.notes.mark(2))).toBeTruthy();
+    });
+
+    it('elementises the meta so the code can be protected from the ellipsis', () => {
+      showCard({ placeName: 'שיבויה', code: 'MN-4471' });
+      // The code is its OWN item — flex cannot protect part of a text node.
+      expect(meta()?.querySelector('.wp-event-m-code')).toBeTruthy();
+      expect(meta()?.querySelector('.wp-event-m-txt')?.textContent).toBe('שיבויה');
+      expect(meta()?.querySelector('.wp-event-m-sep')).toBeTruthy();
+    });
+
+    it('strands no separator on a code-only row', () => {
+      showCard({ code: 'MN-4471' });
+      expect(meta()?.querySelector('.wp-event-m-sep')).toBeNull();
+    });
+
+    it('drops the place name in the DOM on a coded, noted row', () => {
+      showCard({ placeName: 'שיבויה', code: 'MN-4471', notes: 2 });
+      expect(meta()?.querySelector('.wp-event-m-txt')).toBeNull();
+      expect(meta()?.querySelector('.wp-event-m-code')?.textContent).toContain('MN-4471');
+      expect(meta()?.querySelector('.note-mark')).toBeTruthy();
+    });
   });
 });

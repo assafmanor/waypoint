@@ -236,3 +236,25 @@ export function noteWhen(createdAt: string, nowMs: number): string {
   const elapsed = formatDuration(minutes);
   return elapsed ? t.changeFeed.relTime.agoPrefix(elapsed) : t.changeFeed.relTime.now;
 }
+
+/** How many notes each host carries, keyed the same way `buildNoteHosts` keys its lookup.
+ *  Built once per note-list change rather than filtered per row: a day of twelve events
+ *  asks this twelve times, and the mark is on every row that has one. */
+export function noteCountsByHost(notes: Note[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const note of notes) {
+    for (const [kind, field] of Object.entries(NOTE_HOST_FIELD) as [NoteHostKind, NoteHostKey][]) {
+      const id = note[field];
+      if (!id) continue;
+      const key = `${kind}:${id}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      break;
+    }
+  }
+  return counts;
+}
+
+/** This host's note count, or 0. The key shape is an implementation detail of this file,
+ *  so callers ask by kind and id rather than building it. */
+export const noteCountFor = (counts: Map<string, number>, kind: NoteHostKind, id: string): number =>
+  counts.get(`${kind}:${id}`) ?? 0;

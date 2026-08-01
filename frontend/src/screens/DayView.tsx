@@ -73,6 +73,7 @@ import { Sheet } from '../ui/Sheet';
 import { WhenField } from '../ui/primitives/WhenField';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
+import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
@@ -125,6 +126,7 @@ export function DayView() {
     maybeItems,
     bookings,
     places,
+    notes,
     zoneEvidence,
     activeDate,
     ripple,
@@ -226,6 +228,7 @@ export function DayView() {
   // Per-event display zones (ADR-0107): one builder over the one evidence, shared
   // with the Plan-mode builder so the two day surfaces cannot diverge.
   const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
+  const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
 
   const dayCtx: DayCtx = {
     tz: trip.timezone,
@@ -236,6 +239,7 @@ export function DayView() {
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
     places,
+    noteCounts,
     dayEvents,
     verbs,
     onEdit: (e) => {
@@ -564,6 +568,9 @@ interface DayCtx {
   toggle: (id: string) => void;
   bookings: Booking[];
   places: Place[];
+  /** How many notes each host carries (ADR-0152 §6c), built once per note-list change
+   *  rather than filtered per row — a day of twelve events asks this twelve times. */
+  noteCounts: Map<string, number>;
   dayEvents: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
   onEdit: (event: TripEvent) => void;
@@ -661,6 +668,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       titleText={e.title}
       placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
       code={code}
+      notes={noteCountFor(ctx.noteCounts, 'event', e.id)}
       kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
       phase={phase}
       sync={<EntitySyncBadge id={e.id} />}
