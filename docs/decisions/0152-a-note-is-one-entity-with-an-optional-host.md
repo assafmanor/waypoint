@@ -90,6 +90,14 @@ So the inline note is cheap, and the build follows ADR-0093's path rather than i
 
 **On edit the same slot lists the host's existing notes** — compact, tappable to edit — above one blank field. Still no second form, still one save. This is the case a create-only design discovers late.
 
+### 6c. What the mark costs `EventCard`, measured — three changes, and one of them is a rule about what a row says
+
+Added 2026-08-01 (session 205) from [`mockups/notes-on-a-host-v1.html`](../../mockups/notes-on-a-host-v1.html), which measured this rather than asserting it. The mark rides `.wp-event-m` — the meta line, which already hosts the sync badge — and getting it there costs three edits, listed because the third is not a styling choice:
+
+1. **A new `notes?: number` prop.** There is no `meta` prop to pass a node through: `EventCard.tsx:148` builds `[placeName, code].join(' · ')` internally from two string props.
+2. **The meta line becomes `nowrap`, and its text becomes elements.** `.wp-event-m` is `flex-wrap: wrap`, and **flex wraps before it shrinks** — so the mark pushed the text to a second line, +19px on a 102px row, and giving the text a shrinkable span changed nothing. Only `nowrap` + ellipsis returns it to 0px. The joined string also has to become `placeName` / separator / `code` as separate items, because flex cannot protect part of a text node — and without that the ellipsis ate the **confirmation code**, which is the fact the row is opened for. The code and the mark are `flex: 0 0 auto`; only the place name shrinks. **This changes rows with no notes at all** (a long meta ellipsises where it used to wrap beneath the sync badge), which is why it is here and not in a commit message.
+3. **A row carrying both a code and a mark drops its place name.** The line is exactly full at 390px — 151px available, 174px needed, and the shortfall is the width of the mark — so the place name would render as roughly two characters plus an ellipsis. That is noise, not information, and the district is one tap away in the expanded card. Omitting it is deterministic and testable; degrading it is neither. Rejected alternatives, with their costs: keep the stub (permanent noise); move the mark to the title line (the hard/soft tag already flows to a second line on a long title, so it reintroduces the height problem); drop the code instead (it is the glanceable fact the row exists for).
+
 ### 7. A booking's notes migrate; its WiFi does not
 
 `Booking.details.notes` becomes `Note` rows hosted by the booking, in a one-time migration. `Booking.details.wifi` **stays exactly where ADR-0047 §6 put it**: it is a field with one specific reader (Home's quick-access, via `frontend/src/lib/home-quick.ts`), not a note, and moving it would re-open the sync question that ADR ruled on.

@@ -9534,6 +9534,21 @@
       .wp-event-m.wrap-on {
         flex-wrap: wrap;
       }
+      /* Only the PLACE NAME shrinks. The confirmation code and the mark are
+         both `flex: 0 0 auto`, so the ellipsis eats the one part of the line
+         that can afford to lose its tail.
+
+         This is the third correction in this section and it came from looking
+         at the render: `nowrap` fixed the height and then truncated
+         `הזמנה MN-4471` down to `הזמנה 471…`, because the code sits at the END
+         of the joined string. A shortened place name is a cosmetic loss; a
+         shortened confirmation code is the fact you opened the row to read.
+
+         COST, and it is a second `EventCard` change on top of `notes?: number`:
+         the meta can no longer be a joined STRING. `EventCard.tsx:148` builds
+         `[placeName, code].join(' · ')`; it has to become two elements with the
+         separator between them, because `flex` cannot protect part of a text
+         node. Same edit, one line further. */
       .wp-event-m .wp-event-m-txt {
         flex: 1 1 auto;
         min-width: 0;
@@ -9541,8 +9556,15 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .wp-event-m .wp-event-m-code,
+      .wp-event-m .wp-event-m-sep,
       .wp-event-m .note-mark {
         flex: 0 0 auto;
+      }
+      /* The separator is its own item so it disappears with the place name
+         rather than stranding a leading `·` on a code-only row. */
+      .wp-event-m .wp-event-m-sep {
+        opacity: 0.55;
       }
 
       /* ── §3 · On the maybe tile — the option §3 recommends ─────────────
@@ -9997,7 +10019,16 @@
          `.wp-event > .wp-event-face > PlaceBadge + .wp-event-main + time + chev`.
          The mark is a sibling INSIDE `.wp-event-m`, beside the sync badge —
          the one node already living on that line. */
-      const eventCard = (o) => `
+      /* THE RULE, decided by the owner after the arithmetic below: a row that
+         carries BOTH a confirmation code and a note mark drops the PLACE NAME
+         rather than truncating it to a stub. The line is exactly full at 390px
+         (151 available / 174 needed), so something has to go, and `ש..` is
+         noise where the district is already readable one tap away in the
+         expanded card. Deterministic, and a rule in `EventCard`'s meta
+         composition rather than a CSS accident — so it is testable. */
+      const eventCard = (o) => {
+        const showPlace = !(o.code && o.notes && MARK);
+        return `
         <div class="wp-event ${o.cls || ''}">
           <button type="button" class="wp-event-face" aria-expanded="${!!o.open}">
             <span class="wp-place-badge wp-event-badge">${o.icon}</span>
@@ -10006,7 +10037,11 @@
                 <span class="wp-event-title-txt">${o.title}</span>
                 ${o.tag || ''}
               </span>
-              <span class="wp-event-m"><span class="wp-event-m-txt">${o.meta}</span>${mark(o.notes)}</span>
+              <span class="wp-event-m">${
+                showPlace && o.meta ? `<span class="wp-event-m-txt">${o.meta}</span>` : ''
+              }${showPlace && o.meta && o.code ? '<span class="wp-event-m-sep">·</span>' : ''}${
+                o.code ? `<span class="wp-event-m-code">${o.code}</span>` : ''
+              }${mark(o.notes)}</span>
               ${
                 o.conflict
                   ? `<span class="wp-event-conflict-flag">${ic('warn')} מתנגש עם ${o.conflict}</span>`
@@ -10054,6 +10089,7 @@
               : ''
           }
         </div>`;
+      };
 
       /* ─── MaybeCard compact tile, exact shipped tree ────────────────── */
       const maybeTile = (o, variant) => {
@@ -10108,7 +10144,8 @@
             icon: '🍜',
             title: 'ארוחת ערב במסעדת מון',
             tag: '<span class="wp-event-tag-hard">מחויב</span>',
-            meta: 'שיבויה · הזמנה MN-4471',
+            meta: 'שיבויה',
+            code: 'הזמנה MN-4471',
             time: '19:30–21:00',
             dur: '1:30',
             zone: '+1 ש׳',
@@ -10160,12 +10197,27 @@
                 icon: '🍜',
                 title: 'ארוחת ערב במסעדת מון',
                 tag: '<span class="wp-event-tag-hard">מחויב</span>',
-                meta: 'שיבויה · הזמנה MN-4471',
+                meta: 'שיבויה',
+                code: 'הזמנה MN-4471',
                 time: '19:30–21:00',
                 dur: '1:30',
                 zone: '+1 ש׳',
                 notes: 2,
                 conflict: 'סיור לילה',
+              })}
+            </div></div>
+          </div>
+          <div class="col"><span class="tag after">שם מקום ארוך · הקוד שורד</span>
+            <div class="phone" style="width:${W}px;height:250px"><div class="scroll">
+              ${eventCard({
+                icon: '🍜',
+                title: 'ארוחת ערב במסעדת מון',
+                tag: '<span class="wp-event-tag-hard">מחויב</span>',
+                meta: 'רובע שיבויה, סמוך לתחנת הרכבת המרכזית',
+                code: 'הזמנה MN-4471',
+                time: '19:30–21:00',
+                dur: '1:30',
+                notes: 2,
               })}
             </div></div>
           </div>
@@ -10175,7 +10227,8 @@
                 icon: '🍜',
                 title: 'ארוחת ערב במסעדת מון',
                 tag: '<span class="wp-event-tag-hard">מחויב</span>',
-                meta: 'שיבויה · הזמנה MN-4471',
+                meta: 'שיבויה',
+                code: 'הזמנה MN-4471',
                 time: '19:30–21:00',
                 dur: '1:30',
                 notes: 2,
@@ -10530,7 +10583,8 @@
             icon: '🍜',
             title: 'ארוחת ערב במסעדת מון',
             tag: '<span class="wp-event-tag-hard">מחויב</span>',
-            meta: 'שיבויה · הזמנה MN-4471',
+            meta: 'שיבויה',
+            code: 'הזמנה MN-4471',
             time: '19:30–21:00',
             dur: '1:30',
             zone: '+1 ש׳',
@@ -10561,6 +10615,52 @@
             broken + 'px',
           )}${cell('+' + (broken - noMark), 'bad')}</tr>`,
         );
+
+        // The long-place-name case: height must hold AND the code must survive.
+        probe.innerHTML = eventCard({
+          icon: '🍜',
+          title: 'ארוחת ערב במסעדת מון',
+          tag: '<span class="wp-event-tag-hard">מחויב</span>',
+          meta: 'רובע שיבויה, סמוך לתחנת הרכבת המרכזית',
+          code: 'הזמנה MN-4471',
+          time: '19:30–21:00',
+          dur: '1:30',
+          notes: 2,
+        });
+        const longRow = h(probe.firstElementChild);
+        const codeEl = probe.querySelector('.wp-event-m-code');
+        const codeIntact = codeEl && codeEl.scrollWidth <= codeEl.clientWidth + 1;
+        out.push(
+          `<tr><td><b>שם מקום ארוך</b> · הגובה מחזיק, והקוד לא נחתך</td>${cell(noMark + 'px')}${cell(
+            longRow + 'px',
+          )}${cell(codeIntact ? 'קוד שלם ✓' : 'קוד נחתך ✗', codeIntact ? 'good' : 'bad')}</tr>`,
+        );
+
+        // The arithmetic behind the place name's collapse, so the residual
+        // choice is made on numbers rather than on the screenshot.
+        const live = document.querySelectorAll('.wp-event')[0];
+        if (live) {
+          const w = (sel) => {
+            const e = live.querySelector(sel);
+            return e ? Math.round(e.getBoundingClientRect().width) : 0;
+          };
+          const sw = (sel) => {
+            const e = live.querySelector(sel);
+            return e ? e.scrollWidth : 0;
+          };
+          const avail = w('.wp-event-m');
+          const need = sw('.wp-event-m-txt') + 8 + w('.wp-event-m-code') + w('.note-mark') + 18;
+          out.push(
+            `<tr><td><b>שורת המטא ברוחב הזה</b> · יש מול צריך</td><td class="n" colspan="3">יש <b>${avail}px</b> · צריך <b>${need}px</b> · חסרים <b class="bad">${
+              need - avail
+            }px</b>, וזה בדיוק גודל הסימון</td></tr>`,
+          );
+          out.push(
+            `<tr><td>ולכן שם המקום מצטמצם ל-</td><td class="n" colspan="3">${w('.wp-event-m-txt')}px מתוך ${sw(
+              '.wp-event-m-txt',
+            )}px שהוא צריך</td></tr>`,
+          );
+        }
 
         // The tile, all three options.
         const tileH = (variant, notes) => {
@@ -10622,12 +10722,30 @@
         </p>
 
         <p>
-          <b>ומה שהתיקון עצמו חשף, וצריך אצבע:</b> הקיצור אוכל את <b>סוף</b> השורה, וסוף השורה הוא
-          <code>קוד ההזמנה</code> — בצילום למעלה כתוב "שיבויה · הזמנה 471…". שם מקום שמאבד זנב זה
-          זול; קוד אישור חתוך זה בדיוק העובדה שבשבילה פותחים את השורה. שתי דרכים, ואף אחת מהן לא
-          מובנת מאליה: להפוך את הסדר (קוד קודם, שם מקום מתקצר), או לתת ל-<code>code</code>
-          <code>flex: 0 0 auto</code> כמו לסימון ולתת רק לשם המקום להתקצר. ההמלצה שלי היא השנייה, אבל
-          זו החלטה של <code>EventCard</code> ולא של הפתקים, והיא צריכה להיות מודעת.
+          <b>ותיקון שלישי, שהגיע מהסתכלות ברנדר:</b> <code>nowrap</code> החזיר את הגובה ואז קיצר את
+          <code>הזמנה MN-4471</code> ל-<code>הזמנה 471…</code>, כי הקוד יושב ב<b>סוף</b> המחרוזת
+          המחוברת. שם מקום שמאבד זנב זה אובדן קוסמטי; קוד אישור חתוך זה בדיוק העובדה שבשבילה פתחו
+          את השורה. <b>תוקן:</b> רק שם המקום מתקצר — הקוד, המפריד והסימון כולם
+          <code>flex: 0 0 auto</code>. §2 מציג את זה על שם מקום ארוך במיוחד, והקוד שורד שלם.
+        </p>
+        <p>
+          <b>ומה שהתיקון חשף מיד אחריו — הוכרע.</b> שורת המטא ברוחב 390 <b>מלאה בדיוק</b>: 151px יש,
+          174px התוכן צריך. הסימון מבקש 21px שאין, ולכן שם המקום התכווץ ל-16px — <code>ש..</code>,
+          שזה רעש ולא מידע. זו לא תקלה שהסימון יצר אלא <b>תקרה שהוא חשף</b>: כל שורה עם קוד הזמנה
+          כבר הייתה על הגבול.
+        </p>
+        <p>
+          <b>ההכרעה:</b> שורה שנושאת קוד אישור <b>וגם</b> סימון פתקים <b>מוותרת על שם המקום לגמרי</b>
+          במקום לקצר אותו לגדם. דטרמיניסטי, בלי <code>ש..</code>, הקוד שלם והגובה קבוע; והרובע עדיין
+          נקרא לחיצה אחת משם, בכרטיס הפתוח. חשוב מה זה <b>לא</b>: זה לא תאונת CSS אלא <b>כלל בהרכבת
+          המטא של <code>EventCard</code></b> — כלומר דבר שאפשר לכתוב עליו טסט, ולא התנהגות שמתגלה
+          ברוחב מסך מסוים.
+        </p>
+        <p>
+          שלוש האפשרויות שנדחו, עם המחיר שלהן: להשאיר את הגדם (רעש קבוע); להעביר את הסימון לשורת
+          הכותרת (התג כבר יורד לשורה שנייה בכותרת ארוכה — כלומר גובה, בדיוק מה שברחנו ממנו); ולהוריד
+          את הקוד מהשורה המכווצת (הופך את התיקון שביקשת על הראש — הקוד הוא העובדה שבשבילה פותחים
+          את השורה).
         </p>
 
         <h3>§B2b · ממצא: ל-<code>EventCard</code> אין <code>meta</code> כ-prop</h3>
