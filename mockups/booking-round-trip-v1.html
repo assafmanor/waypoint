@@ -74,6 +74,18 @@
 
      ─────────────────────────────────────────────────────────────────────────
 
+     7. AND THE LENGTH IS ITS OWN QUESTION, so §6 draws it rather than
+        arguing it: the same form scrolled and stepped, side by side, with the
+        80vh fold line on both. Drawing it changed the verdict from
+        `form-steps-v1.html`, which called this pure CHUNKING and recommended
+        against: §2's own refusal — the return cannot depart before the arrival
+        — is a cross-step dependency, so leg 2 is not independently valid. That
+        is branching, and it is the strongest argument for stepping this
+        particular form. Still not a recommendation: it is a feel question, and
+        the two frames exist so it can be settled on a phone.
+
+     ─────────────────────────────────────────────────────────────────────────
+
      WHAT IT DELIBERATELY DOES NOT SETTLE — see the last panel: which leg a note
      written during a round-trip create belongs to, and whether the Index row
      should say anything at all (this file's answer is no, with the measurement
@@ -8924,6 +8936,68 @@ input.wf-date-val:focus-visible {
         height: 1.05em;
       }
 
+      /* ── §6 · `ui/primitives/FormSteps`, applied to this form ─────────
+         Designed in `form-steps-v1.html` — that file carries the scan, the two
+         shipped surfaces it is extracted FROM (`ResolveSheet` and `הזז`), and
+         the branching-vs-chunking distinction. These four rules are repeated
+         here because §6 draws the primitive and the inliner cannot fetch CSS
+         that is not shipped yet. If they change, they change there first.
+
+         The bar is a READ-OUT, not a control: tapping a dot to jump needs every
+         step independently valid, which a form with a cross-leg rule does not
+         have. Navigation is the footer only. No hue — a step is not time, place
+         or plan mode (rule 4). */
+      .fs-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-block-end: var(--space-3);
+      }
+      .fs-dots {
+        display: flex;
+        gap: 5px;
+      }
+      .fs-dot {
+        inline-size: 6px;
+        block-size: 6px;
+        border-radius: var(--radius-999);
+        background: var(--line);
+      }
+      .fs-dot.on {
+        background: var(--ink);
+      }
+      .fs-dot.done {
+        background: var(--muted);
+      }
+      .fs-label {
+        font-size: var(--text-caption);
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .fs-label b {
+        color: var(--ink);
+      }
+      /* Steps travel the way routes do (ADR-0140), borrowing `--nav-dir` rather
+         than inventing a motion. Latched at the change, never read live. */
+      .fs-panel {
+        animation: fs-arrive var(--t-base) var(--ease-arrive) both;
+      }
+      @keyframes fs-arrive {
+        from {
+          opacity: 0;
+          transform: translateX(calc(var(--nav-dir, 1) * 14px));
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .fs-panel {
+          animation: none;
+        }
+      }
+
       /* ── §3 · The pair link, on the detail ────────────────────────────
          NOT `.bk-loc-link` — that pill is teal, and teal is location only
          (rule 4). A sibling booking is a relationship, which has no hue in
@@ -9189,6 +9263,30 @@ input.wf-date-val:focus-visible {
       }
       .phone .booking-sheet {
         max-height: none;
+      }
+      /* THE FOLD. A sheet is capped at `max-height: 80vh`, so on a 390×844
+         phone ~675px of it is visible at a time. Above `.modal-overlay`'s
+         z-index 20 — at 3 it painted UNDER the sheet, i.e. was invisible in
+         exactly the frame it exists for. */
+      .fold {
+        position: absolute;
+        inset-inline: 0;
+        top: 713px;
+        border-top: 2px dashed var(--miss);
+        pointer-events: none;
+        z-index: 30;
+      }
+      .fold::after {
+        content: 'קו הקיפול · 80vh במסך 844';
+        position: absolute;
+        inset-inline-end: 6px;
+        top: 3px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--miss);
+        background: #fff;
+        padding: 1px 6px;
+        border-radius: 4px;
       }
       .caption {
         font-size: 12px;
@@ -9786,6 +9884,75 @@ input.wf-date-val:focus-visible {
         </p>
       </div>
 
+      <!-- ════════ §6 · אותו טופס, בשלבים ═══════════════════════════════ -->
+      <section class="case">
+        <h2>§6 · אותו טופס בשלבים — והשאלה שהאורך פותח</h2>
+        <p class="note">
+          §1 עולה 1565px, וגיליון תחתון חסום ב-<code>max-height: 80vh</code> — כלומר במסך 390×844
+          נראים <b>675px בכל רגע</b>. הקו המקווקו מצויר בשתי המסגרות. מימין: כפי ש-§1 הציע, ורגל
+          החזרה כולה מתחת לקו. משמאל: אותו תוכן ב-<code>ui/primitives/FormSteps</code>, הפרימיטיב
+          שמעוצב ב-<code>form-steps-v1.html</code> (שם גם הסריקה של כל טפסי האפליקציה, ושני
+          המשטחים שכבר עושים שלבים ביד ומצדיקים את החילוץ). <b>הכפתורים חיים.</b>
+        </p>
+        <div class="pair">
+          <div class="col">
+            <span class="tag before">גלילה · כפי ש-§1 הציע</span>
+            <div class="phone" id="ph-scroll"></div>
+            <p class="caption">
+              רואים את כל ההזמנה לפני חתימה, וסירוב על שדה רחוק מסומן על השדה עצמו באותה קריאה
+              (ADR-0150). המחיר: <b>2.3 מסכים</b>, ואי אפשר להשוות את שתי הרגליים בלי לגלול הלוך
+              ושוב — בדיוק ההשוואה שהסירוב של §2 עושה בשבילכם.
+            </p>
+          </div>
+          <div class="col">
+            <span class="tag after">שלבים · אותו תוכן</span>
+            <div class="phone" id="ph-stepped"></div>
+            <p class="caption">
+              כל שלב נכנס במסך, והחלוקה היא שלושת הנושאים של הטופס עצמו ולא חיתוך שרירותי:
+              <b>איזו נסיעה · מתי הלוך · מתי חזרה ומה משותף</b>. המחיר: שתי הקשות נוספות לכל הזמנה,
+              וסקירה מלאה לפני שמירה כבר לא אפשרית.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div class="panel">
+        <h2>§6ב · למה דווקא הטופס הזה הוא המקרה הגבולי</h2>
+        <p>
+          <code>form-steps-v1.html</code> מבחין בין <b>שלב מסתעף</b> (השלב הבא תלוי בתשובה
+          הקודמת — אילוץ אמיתי) לבין <b>שלב מחולק</b> (שדות עצמאיים על עמודים — בחירת תצוגה), וממליץ
+          שלבים לראשון בלבד. הטופס הזה נופל <b>באמצע</b>, וזה מה שהופך את ההחלטה לשלכם ולא לשלי:
+        </p>
+        <ul>
+          <li>
+            <b>רובו חיתוך.</b> קוד האישור לא תלוי בתאריך, סוג האירוע לא תלוי במסלול. שום דבר לא
+            מכתיב את הסדר.
+          </li>
+          <li>
+            <b>אבל יש בו תלות אחת אמיתית, וזו בדיוק זו של §2:</b> "החזרה יוצאת לפני ההגעה ליעד". שלב
+            <b>חזרה</b> לא ניתן לאימות לפני ששלב <b>הלוך</b> נענה. זו הסתעפות, לא פריסה — והיא
+            הטיעון החזק ביותר בעד שלבים כאן, וגם זה שמיעטתי בערכו כשהמלצתי נגד.
+          </li>
+        </ul>
+        <h3>הכלל שמחזיק את ADR-0150 בשתי הצורות</h3>
+        <p>
+          <b>שער שלב מדווח על כל הבעיות בשלב הנוכחי</b>; והשמירה מאמתת הכול מחדש, ואם משהו נכשל היא
+          <b>מנווטת לשלב הראשון שנושא בעיה ומסמנת אותו</b>. הכלל חי בפרימיטיב, לא במארח. בלעדיו
+          טופס בשלבים הוא בדיוק לולאת ה"שמור, גלה, חזור" ש-ADR-0150 נכתב כדי לסגור. התלות של §2
+          נבדקת בשער היציאה משלב <b>חזרה</b>, כלומר במקום שבו שתי הרגליים כבר ידועות.
+        </p>
+        <h3>ההמלצה, ומה לא השתנה בה</h3>
+        <p>
+          <b>לחלץ את <code>FormSteps</code> — כן, ובלי קשר להחלטה כאן.</b> שני המשטחים
+          ב-<code>PlanDay.tsx</code> כבר עושים את זה ביד, עם אותו בלוק
+          <code>useBackLayer</code> פעמיים; זו הצדקה עומדת בפני עצמה שמוחקת עותק.
+          <b>להחיל אותו על הטופס הזה — שאלה של תחושה על טלפון</b>, לא של מספרים, ושתי המסגרות למעלה
+          הן כדי שתוכלו להכריע אותה בעין ולא בטיעון. אם התשובה "לא", <code>Collapsible</code>
+          (ADR-0098, ארבעה מופעים) הוא הכלי הזול יותר, ו-<code>EventForm</code> כבר פותר בו את אותה
+          בעיה.
+        </p>
+      </div>
+
       <!-- ════════ פאנלים ════════════════════════════════════════════════ -->
       <div class="panel">
         <h2>הכלל: הזיווג נגזר, לא נשמר</h2>
@@ -10019,8 +10186,14 @@ input.wf-date-val:focus-visible {
        *  `shipped` = draw it exactly as it is today (no direction control at all);
        *  `two`     = round trip on;
        *  `bad`     = the §2 refusal state. */
-      function bookingSheet({ shipped, two, bad }) {
-        const outbound = legBlock({
+      /* ── the sheet's content, as BLOCKS ────────────────────────────────
+         Split out of one template literal so the scrolled sheet and the stepped
+         one (§6) compose the SAME markup rather than each drawing its own. If
+         they were two templates, the head-to-head would be comparing two
+         mockups instead of two containers, which is the one thing it must not
+         do. */
+      const legOutbound = (two) =>
+        legBlock({
           head: two ? 'הלוך' : null,
           headRoute: [TLV, NRT],
           start: { date: '2026-08-12', time: '22:15', zone: 'ירושלים' },
@@ -10030,7 +10203,9 @@ input.wf-date-val:focus-visible {
           crosses: true,
           note: 'זמן מקומי בכל עיר · ביעד 6 שעות קדימה',
         });
-        const back = legBlock({
+
+      const legReturn = (bad) =>
+        legBlock({
           head: 'חזרה',
           headRoute: [NRT, TLV],
           klass: 'return',
@@ -10048,9 +10223,9 @@ input.wf-date-val:focus-visible {
           note: 'זמן מקומי בכל עיר · ביעד 6 שעות אחורה',
           bad: bad ? 'החזרה יוצאת לפני ההגעה ליעד' : null,
         });
-        return `
-        <div class="modal-overlay" data-variant="sheet"><div class="modal-card">
-          <div class="booking-sheet">
+
+      /** Type grid + identity row + the route field (with §1a's direction pills). */
+      const blockRoute = ({ shipped, two }) => `
             ${typeGrid()}
 
             <div class="field">
@@ -10075,16 +10250,29 @@ input.wf-date-val:focus-visible {
               }
               <div class="route-field">${placePicker(TLV)}<button type="button" class="route-field-swap">${icon('swap')} החלפת כיוון</button>${placePicker(NRT)}</div>
               <div class="bs-route-hint">${icon('pin')} מקומות אמיתיים · מזינים את המפה ואזורי הזמן</div>
-            </div>
+            </div>`;
 
-            ${outbound}
-            ${two ? back : ''}
+      /** The shared tail: commitment + the code both legs carry. */
+      const blockDetails = (two) => `
             ${kindToggle()}
 
             <div class="field"><span class="field-label">קוד אישור</span>
               <input dir="ltr" value="LY6K2QA" readonly />
               ${two ? '<p class="field-hint">משותף לשתי הטיסות</p>' : ''}
-            </div>
+            </div>`;
+
+      /** The booking sheet.
+       *  `shipped` = draw it exactly as it is today (no direction control at all);
+       *  `two`     = round trip on;
+       *  `bad`     = the §2 refusal state. */
+      function bookingSheet({ shipped, two, bad }) {
+        return `
+        <div class="modal-overlay" data-variant="sheet"><div class="modal-card">
+          <div class="booking-sheet">
+            ${blockRoute({ shipped, two })}
+            ${legOutbound(two)}
+            ${two ? legReturn(bad) : ''}
+            ${blockDetails(two)}
 
             <div class="form-actions">
               <button type="button" class="fa-primary" data-save>שמירה</button>
@@ -10093,6 +10281,46 @@ input.wf-date-val:focus-visible {
           </div>
         </div></div>`;
       }
+
+      /* ── §6 · THE SAME FORM, STEPPED ───────────────────────────────────
+         `ui/primitives/FormSteps` applied to this form — the primitive designed
+         in `form-steps-v1.html`, drawn here so the round-trip design can be
+         reviewed whole in one file rather than across two.
+
+         Three steps, and the split is not arbitrary: it is the form's own three
+         subjects (which journey · when out · when back + what both share). The
+         `בדיקה` gate on the last step is what keeps ADR-0150 intact — see the
+         panel under the frame. */
+      const STEPS = [
+        { label: 'מסלול', body: () => blockRoute({ two: true }) },
+        { label: 'הלוך', body: () => legOutbound(true) },
+        { label: 'חזרה', body: (bad) => legReturn(bad) + blockDetails(true) },
+      ];
+      let step = 0;
+      let stepDir = 1;
+      let stepBad = false;
+
+      const steppedSheet = () => `
+        <div class="modal-overlay" data-variant="sheet"><div class="modal-card">
+          <div class="booking-sheet" style="--nav-dir:${stepDir}">
+            <div class="fs-bar">
+              <div class="fs-dots">${STEPS.map(
+                (_, i) =>
+                  `<span class="fs-dot${i === step ? ' on' : i < step ? ' done' : ''}"></span>`,
+              ).join('')}</div>
+              <span class="fs-label"><b>${STEPS[step].label}</b> · ${step + 1} מתוך ${STEPS.length}</span>
+            </div>
+            <div class="fs-panel">${STEPS[step].body(stepBad)}</div>
+            <div class="form-actions">
+              <button type="button" class="fa-primary" data-step-next>${
+                step === STEPS.length - 1 ? 'שמירה' : 'הבא'
+              }</button>
+              <button type="button" class="fa-secondary" data-step-prev>${
+                step === 0 ? 'ביטול' : 'הקודם'
+              }</button>
+            </div>
+          </div>
+        </div></div>`;
 
       /* ── §4 · the event form, at the two states that matter ──────────────
          Real `EventForm` markup: the category pills, the title row, the place
@@ -10258,6 +10486,12 @@ input.wf-date-val:focus-visible {
         document.getElementById('ph-delete').innerHTML = deletePrompt();
         document.getElementById('strip-index').innerHTML = indexStrip(false);
         document.getElementById('strip-index-rejected').innerHTML = indexStrip(true);
+        // §6 — the head-to-head. Both frames get the fold line; the scrolled one
+        // is the §1 proposal verbatim, so the two cannot drift apart.
+        document.getElementById('ph-scroll').innerHTML =
+          '<div class="fold"></div>' + bookingSheet({ two: true });
+        document.getElementById('ph-stepped').innerHTML =
+          '<div class="fold"></div>' + steppedSheet();
         document.getElementById('ph-ev-before').innerHTML = eventForm(false);
         document.getElementById('ph-ev-after').innerHTML = eventForm(true);
         document.getElementById('ph-measure').innerHTML = bookingSheet({ two: true });
@@ -10270,6 +10504,20 @@ input.wf-date-val:focus-visible {
         });
 
         measure();
+
+        // The step footer is live, so the tradeoff can be felt rather than read.
+        document.querySelector('[data-step-next]')?.addEventListener('click', () => {
+          if (step >= STEPS.length - 1) return;
+          stepDir = 1;
+          step++;
+          render();
+        });
+        document.querySelector('[data-step-prev]')?.addEventListener('click', () => {
+          if (step === 0) return;
+          stepDir = -1;
+          step--;
+          render();
+        });
 
         // The direction pills are live in every frame that has them.
         document.querySelectorAll('[data-set]').forEach((b) =>
