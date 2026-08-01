@@ -476,7 +476,11 @@ describe('applyBookEvent (an event that is also booked, ADR-0136)', () => {
 
     const applied = await applyBookEvent(deps, { ...input, event: { date: '2026-07-26' } });
 
-    expect(applied).toBe(true);
+    // It resolves to the BOOKING, not to a boolean — and on this path that matters beyond
+    // tidiness: the linked event is the server's (from the seed), so the booking's
+    // client-generated id is the only one a caller can hold, which is what lets the form
+    // write notes behind it (ADR-0152 §6b).
+    expect(applied).toMatchObject({ id: 'bk-new' });
     expect(deps.bookings.createBooking).toHaveBeenCalledTimes(1);
     expect(deps.bookings.createBooking.mock.calls[0][0]).toMatchObject({
       event: { date: '2026-07-26' },
@@ -499,7 +503,7 @@ describe('applyBookEvent (an event that is also booked, ADR-0136)', () => {
 
     const applied = await applyBookEvent(deps, input, { event: unlinked });
 
-    expect(applied).toBe(true);
+    expect(applied).toMatchObject({ id: 'bk-new' });
     expect(deps.bookings.createBooking.mock.calls[0][0].event).toBeUndefined();
     const patch = calls.find((c) => c.url.includes(`/events/${unlinked.id}`));
     expect(patch?.method).toBe('PATCH');
@@ -536,7 +540,9 @@ describe('applyBookEvent (an event that is also booked, ADR-0136)', () => {
 
     const applied = await applyBookEvent(deps, input, { event: unlinked });
 
-    expect(applied).toBe(false);
+    // `null`, not `false`: a rolled-back write hands back no host, so a caller cannot
+    // attach anything to it (the form's `writeNotesBehind` reads exactly this).
+    expect(applied).toBeNull();
     expect(deps.bookings.deleteBooking).toHaveBeenCalledWith('bk-new', { deleteEvents: false });
     expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(true);
     expect(deps.lastAction.current).toBeNull();
@@ -546,7 +552,7 @@ describe('applyBookEvent (an event that is also booked, ADR-0136)', () => {
     const deps = fakeDeps();
     deps.bookings.createBooking.mockRejectedValueOnce(new Error('nope'));
 
-    expect(await applyBookEvent(deps, input)).toBe(false);
+    expect(await applyBookEvent(deps, input)).toBeNull();
     expect(deps.actions).toEqual([]);
     expect(deps.lastAction.current).toBeNull();
   });

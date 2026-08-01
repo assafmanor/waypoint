@@ -115,10 +115,16 @@ const addMaybe = vi.fn();
 // outbox queueing, the undo toast) is `verbs`' to test, and is already tested there.
 const verbs = {
   addMaybe,
-  create: vi.fn(),
+  // The three create verbs RESOLVE to their host (ADR-0152 §6b) — the form queues notes
+  // behind them, so a stub returning `undefined` throws where the real one hands back an id.
+  create: vi.fn((_event: Record<string, unknown>) => Promise.resolve()),
   update: vi.fn(),
-  schedule: vi.fn(),
-  book: vi.fn(),
+  schedule: vi.fn((_m: Record<string, unknown>, _fields?: Record<string, unknown>) =>
+    Promise.resolve({ id: 'ev-scheduled' }),
+  ),
+  book: vi.fn((_input: Record<string, unknown>, _opts?: Record<string, unknown>) =>
+    Promise.resolve({ id: 'bk-new' }),
+  ),
   done: vi.fn(),
   skip: vi.fn(),
   restore: vi.fn(),

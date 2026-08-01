@@ -3,7 +3,7 @@
 // overlay stack (system-back), focus-in/Escape/restore, and backdrop-close all
 // work like every other sheet; this component owns only the fields, not the
 // presentation container. A dirty close is guarded by a discard confirm (U-05).
-import { useMemo, useState, type FormEvent } from 'react';
+import { useId, useMemo, useState, type FormEvent } from 'react';
 import {
   createEventSchema,
   updateEventSchema,
@@ -20,6 +20,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { withChangeGroup } from '../lib/outbox';
 import { authoringZone, eventDisplayZones, placeTimezone } from '../lib/places';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
@@ -51,6 +52,7 @@ import { ToggleChip } from './primitives/ToggleChip';
 import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
+import { NoteComposer, useNoteComposer } from './NoteComposer';
 
 /** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
  *  state that no URL addresses, so sending its place field off to the Map tab means the
@@ -113,7 +115,7 @@ export function EventForm({
   draft?: EventFormDraft | null;
   onClose: () => void;
 }) {
-  const { trip, activeDate, events, places, bookings, zoneEvidence } = useTrip();
+  const { trip, activeDate, events, places, bookings, zoneEvidence, noteVerbs } = useTrip();
   const { me } = useAuth();
   const verbs = useVerbs();
   const startErrand = useStartPlaceErrand();
@@ -203,6 +205,8 @@ export function EventForm({
   );
   // Every refusal this form can make, marked at the field it is about (ADR-0150).
   const errors = useFormErrors<'title' | 'date' | 'time'>();
+  const noteId = useId();
+  const composer = useNoteComposer();
 
   // ── `יש הזמנה` (ADR-0136) ──────────────────────────────────────────────────
   // The row DEFAULTS from the category — lodging and transport open on, everything else off —
@@ -298,6 +302,33 @@ export function EventForm({
     errors.report([{ field: null, message: message ?? t.eventForm.titleRequired }]);
   };
 
+  /**
+   * **The notes, after their host and inside the same change group** (ADR-0152 §6b).
+   *
+   * Ordering is the whole reason this waits on the host's own promise rather than firing
+   * beside it: offline the outbox is FIFO, so a note enqueued before its host's op would
+   * flush first and the server would refuse a host it cannot see. That is why `verbs.create`,
+   * `verbs.schedule` and `verbs.book` all resolve now — nothing here waits on a NETWORK
+   * round-trip, only on the write being sent or queued.
+   *
+   * `hostOf` names which entity the notes belong to, because it is not the same one on every
+   * path: a booked save's event is materialized by the server (ADR-0093), so its notes go on
+   * the booking, whose id is client-generated.
+   */
+  const writeNotesBehind = async <T,>(
+    host: Promise<T>,
+    hostOf: (created: NonNullable<T>) => { eventId?: string; bookingId?: string },
+  ): Promise<void> => {
+    const bodies = composer.pending();
+    if (bodies.length === 0) return;
+    await withChangeGroup(async () => {
+      const created = await host;
+      if (created == null) return; // the write rolled back and has already said so
+      const where = hostOf(created);
+      for (const body of bodies) await noteVerbs.createNote({ body, ...where });
+    });
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     // EVERY refusal at once (ADR-0150), each named at its own field: a form with
@@ -359,24 +390,32 @@ export function EventForm({
     if (booked.value && showBooked) {
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
-      verbs.book(
-        {
-          type: derivedType,
-          title: parsed.data.title,
-          // Sent only when one was typed: the code creates nothing, and an empty string here
-          // would be the "clear it" intent, which makes no sense on a create.
-          confirmationCode: code.trim() || undefined,
-          placeId: parsed.data.placeId,
-          ...(event
-            ? {}
-            : {
-                event: buildEventSeed(
-                  { date, start, end, kind: kind.value, icon: icon.value, category },
-                  tz,
-                ),
-              }),
-        },
-        { event: event ?? null, maybeId: maybeItem?.id ?? null },
+      // **The notes go on the BOOKING here, and that is not a compromise.** On this path the
+      // linked event is materialized by the SERVER from a seed (ADR-0093), so there is no
+      // client-side event id to attach to — while the booking's id is client-generated and
+      // comes back from the verb. It is also where they would have been written had the user
+      // opened `BookingSheet` instead, so the pair stays consistent.
+      void writeNotesBehind(
+        verbs.book(
+          {
+            type: derivedType,
+            title: parsed.data.title,
+            // Sent only when one was typed: the code creates nothing, and an empty string here
+            // would be the "clear it" intent, which makes no sense on a create.
+            confirmationCode: code.trim() || undefined,
+            placeId: parsed.data.placeId,
+            ...(event
+              ? {}
+              : {
+                  event: buildEventSeed(
+                    { date, start, end, kind: kind.value, icon: icon.value, category },
+                    tz,
+                  ),
+                }),
+          },
+          { event: event ?? null, maybeId: maybeItem?.id ?? null },
+        ),
+        (booking) => ({ bookingId: booking.id }),
       );
       onClose();
       return;
@@ -389,33 +428,42 @@ export function EventForm({
     } else if (maybeItem) {
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
-      verbs.schedule(maybeItem, {
-        date: parsed.data.date,
-        title: parsed.data.title,
-        kind: parsed.data.kind,
-        startsAt: parsed.data.startsAt,
-        endsAt: parsed.data.endsAt,
-        icon: parsed.data.icon,
-        category: parsed.data.category,
-        placeId: parsed.data.placeId,
-        displayTimezone: parsed.data.displayTimezone ?? undefined,
-      });
+      void writeNotesBehind(
+        verbs.schedule(maybeItem, {
+          date: parsed.data.date,
+          title: parsed.data.title,
+          kind: parsed.data.kind,
+          startsAt: parsed.data.startsAt,
+          endsAt: parsed.data.endsAt,
+          icon: parsed.data.icon,
+          category: parsed.data.category,
+          placeId: parsed.data.placeId,
+          displayTimezone: parsed.data.displayTimezone ?? undefined,
+        }),
+        (created) => ({ eventId: created.id }),
+      );
     } else {
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
       const now = new Date(getNow()).toISOString();
-      verbs.create({
-        ...parsed.data,
-        displayTimezone: parsed.data.displayTimezone ?? undefined,
-        id: crypto.randomUUID(),
-        tripId: trip.id,
-        status: EVENT_STATUS.PLANNED,
-        sortOrder: 99,
-        source: parsed.data.source ?? EVENT_SOURCE.MANUAL,
-        createdAt: now,
-        updatedAt: now,
-        updatedBy: me?.user.id ?? trip.updatedBy,
-      });
+      const id = crypto.randomUUID();
+      void writeNotesBehind(
+        verbs
+          .create({
+            ...parsed.data,
+            displayTimezone: parsed.data.displayTimezone ?? undefined,
+            id,
+            tripId: trip.id,
+            status: EVENT_STATUS.PLANNED,
+            sortOrder: 99,
+            source: parsed.data.source ?? EVENT_SOURCE.MANUAL,
+            createdAt: now,
+            updatedAt: now,
+            updatedBy: me?.user.id ?? trip.updatedBy,
+          })
+          .then(() => id),
+        (created) => ({ eventId: created }),
+      );
     }
     onClose();
   };
@@ -665,6 +713,16 @@ export function EventForm({
               </button>
             </div>
           </Field>
+
+          {/* **The note is written on the way** (ADR-0152 §6b) — one box, and a blank one
+              writes nothing, so an event that needs no note costs no press. Create only: an
+              existing event's notes are read and written where its body lives, and a
+              composer here would be a second way to write the same thing. */}
+          {!event && (
+            <Field label={t.notes.composer.label} htmlFor={noteId} hint={t.notes.composer.hint}>
+              <NoteComposer state={composer} id={noteId} />
+            </Field>
+          )}
 
           {/* Only what has no field to point at still reads down here. */}
           {errors.formError && (
