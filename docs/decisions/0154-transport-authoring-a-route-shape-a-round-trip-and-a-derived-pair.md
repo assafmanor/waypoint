@@ -127,6 +127,15 @@ otherwise be re-derived:
   regression. The shared component therefore carries no validation of its own — the host
   decides, which is also why `RouteField` takes no `error` prop.
 
+- **Two defects the build introduced and caught in self-review, both invisible to the
+  suite as it stood.** `EventForm`'s `dirty` guard lists its fields by hand, so a picked
+  route closed with no discard prompt; and its authoring zone read the single `placeId`,
+  so a departure typed at a Tokyo origin would have been stored as an instant in the trip's
+  primary zone — a wrong moment that does not look wrong. Both now follow the route, and
+  both have a test verified to fail without the fix. The second is the rule
+  `bookingSheetDraft` already followed, which is the argument for the two forms sharing a
+  component in the first place.
+
 **The reproduction is the regression test**, and it was verified to fail without the fix:
 reverting the payload conditional turns two `EventForm` specs red. The backend's guard
 gained a loop over every `BookingType` asserting it follows the shared profile in both

@@ -615,6 +615,49 @@ describe('EventForm (folded into Modal, U-01)', () => {
         expect(screen.getByText(t.common.discardTitle)).toBeTruthy();
       });
 
+      // ADR-0107: a departure is typed in the ORIGIN's zone, the rule `bookingSheetDraft`
+      // already follows. Asserting the INSTANT rather than a chip, because a wrong zone
+      // here does not look wrong — it stores a different moment than the one typed.
+      it('encodes the times in the origin zone, not the trip primary', () => {
+        tripState.places = [PLACE_A, PLACE_B];
+        tripState.zoneEvidence = { ...tripState.zoneEvidence, places: [PLACE_A, PLACE_B] };
+        // Via the draft, so the date/time/origin are set without driving three widgets.
+        render(
+          wrapNav(
+            <EventForm
+              draft={
+                {
+                  title: 'טיסה לטוקיו',
+                  date: '2026-07-20',
+                  start: '22:15',
+                  end: '',
+                  kind: 'hard',
+                  kindTouched: false,
+                  icon: '✈️',
+                  iconTouched: false,
+                  booked: true,
+                  bookedTouched: true,
+                  code: '',
+                  bookingType: 'flight',
+                  category: 'transport',
+                  fromPlaceId: 'p-tlv',
+                  override: null,
+                } as never
+              }
+              onClose={() => {}}
+            />,
+          ),
+        );
+        save();
+
+        // 22:15 in Asia/Jerusalem (+03) is 19:15Z. Read in the trip's own Asia/Tokyo (+09)
+        // — which is what `placeId` would have resolved to with no place picked — it would
+        // be 13:15Z, so this fails loudly if the origin stops driving the zone.
+        const seed = verbs.book.mock.calls[0]?.[0]?.event as { startsAt?: string } | undefined;
+        expect(seed?.startsAt).toBe('2026-07-20T19:15:00.000Z');
+        tripState.places = [];
+      });
+
       // An unbooked transport event is still a plain event with one place — the route
       // field belongs to the BOOKING, so it must not appear when nothing is booked.
       it('shows the single place field, not the route field, when nothing is booked', () => {

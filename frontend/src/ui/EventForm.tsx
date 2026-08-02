@@ -302,7 +302,11 @@ export function EventForm({
 
   // The zone in force right now: the pinned override, else re-derived from the
   // fields as they stand (changing the place or the day can move it).
-  const tz = override ?? derivedZone(date, start, placeId);
+  // A route-shaped booking's times are typed in its ORIGIN's zone (ADR-0107) — the rule
+  // `bookingSheetDraft` already follows, so the two authoring forms agree about what a
+  // departure time means. Reading `placeId` here would interpret a Tokyo departure in the
+  // trip's primary zone and store a different instant than the one typed.
+  const tz = override ?? derivedZone(date, start, routeShaped ? routeFrom : placeId);
   // Suggested zones in the picker: what this trip actually touches (its places'
   // zones + its primary), most relevant first — never the raw IANA list alone.
   const suggestedZones = useMemo(() => {
