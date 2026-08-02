@@ -68,6 +68,41 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
+  // The cascade's slot (ADR-0152 §2). Its own line rather than more body text, because
+  // every body here ends in a question and a count belongs before the answer.
+  it('renders the consequence as its own line under the body, and omits it when absent', () => {
+    const { rerender } = render(
+      wrapNav(
+        <ConfirmDialog
+          tone="danger"
+          title="למחוק?"
+          body="הפעולה בלתי הפיכה"
+          consequence="3 פתקים יימחקו"
+          confirmLabel="מחק"
+          onConfirm={() => {}}
+          onCancel={() => {}}
+        />,
+      ),
+    );
+    const line = document.querySelector('.confirm-consequence');
+    expect(line?.textContent).toBe('3 פתקים יימחקו');
+    expect(line?.previousElementSibling?.className).toBe('confirm-text');
+
+    rerender(
+      wrapNav(
+        <ConfirmDialog
+          tone="danger"
+          title="למחוק?"
+          body="הפעולה בלתי הפיכה"
+          confirmLabel="מחק"
+          onConfirm={() => {}}
+          onCancel={() => {}}
+        />,
+      ),
+    );
+    expect(document.querySelector('.confirm-consequence')).toBeNull();
+  });
+
   it('applies the tone as a data attribute (styling hook)', () => {
     render(
       wrapNav(

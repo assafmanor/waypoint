@@ -7,11 +7,12 @@ import { useId, useState } from 'react';
 import { DOCUMENT_TYPE, type DocumentSummary, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
 import { RowManageSheet } from './domain';
-import { HostNotes } from './HostNotes';
-import { Spinner } from './Spinner';
+import { HostNotes, useHostNoteCount } from './HostNotes';
+import { Icon } from './Icon';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
+import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { deleteDocument, updateDocument } from '../lib/api';
 import { useToast } from './Toast';
 import { CONTROL_ICON, DOCUMENT_TYPE_ICON } from '../constants';
@@ -36,6 +37,7 @@ export function DocumentManageSheet({
 }) {
   const toast = useToast();
   const nameId = useId();
+  const noteCount = useHostNoteCount('document', doc.id);
   const [mode, setMode] = useState<Mode>('menu');
   const [title, setTitle] = useState(doc.title);
   const [type, setType] = useState<DocumentType>(doc.type);
@@ -93,6 +95,36 @@ export function DocumentManageSheet({
     );
   }
 
+  // The delete guard rides the ONE confirm dialog (ADR-0079), which is where the cascade's
+  // sentence lives too — this was the last hand-rolled `.sheet-title`/`.sheet-body`/`.bs-actions`
+  // prompt of the family that ADR folded, and adding the note line to it would have been a
+  // second copy of the line rather than a second consumer of the slot. What the fold costs
+  // is the in-button spinner; the guard against a double press moved into the handler, and
+  // every other delete confirm in the app already closes without one.
+  if (mode === 'delete') {
+    return (
+      <ConfirmDialog
+        tone="danger"
+        icon={<Icon name="trash" />}
+        title={t.docs.manage.deleteTitle}
+        body={t.docs.manage.deleteBody}
+        consequence={
+          noteCount > 0 ? (
+            <>
+              <Icon name="clipboard" /> {t.notes.hostDelete(noteCount)}
+            </>
+          ) : undefined
+        }
+        confirmLabel={t.docs.manage.deleteConfirm}
+        cancelLabel={t.docs.manage.cancel}
+        onConfirm={() => {
+          if (!busy) void remove();
+        }}
+        onCancel={() => setMode('menu')}
+      />
+    );
+  }
+
   return (
     <Sheet ariaLabel={t.docs.manage.actions} onClose={onClose}>
       <div className="doc-manage">
@@ -119,26 +151,6 @@ export function DocumentManageSheet({
               primary={{ label: t.docs.manage.save, onClick: save, busy }}
               secondary={{ label: t.docs.manage.cancel, onClick: () => setMode('menu') }}
             />
-          </div>
-        )}
-
-        {mode === 'delete' && (
-          <div className="booking-sheet">
-            <div className="sheet-title">{t.docs.manage.deleteTitle}</div>
-            <p className="sheet-body">{t.docs.manage.deleteBody}</p>
-            <div className="bs-actions">
-              <button
-                type="button"
-                className="bs-save bs-danger-ok"
-                onClick={remove}
-                disabled={busy}
-              >
-                {busy ? <Spinner /> : t.docs.manage.deleteConfirm}
-              </button>
-              <button type="button" className="bs-cancel" onClick={() => setMode('menu')}>
-                {t.docs.manage.cancel}
-              </button>
-            </div>
           </div>
         )}
       </div>

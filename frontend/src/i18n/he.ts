@@ -655,6 +655,11 @@ export const t = {
     head: {
       count: (n: number) => `${n} פתקים`,
     },
+    // **The mirror of `manage.deleteBody`**, and the sentence no host's delete confirm said
+    // (ADR-0152 §2): deleting a host destroys its notes in the database, and the confirm is
+    // the only moment a reader can learn it. Gender-free on purpose — one sentence serves
+    // ההזמנה, המסמך and האירוע, and three gendered copies of one fact is how copy drifts.
+    hostDelete: (n: number) => (n === 1 ? 'פתק אחד יימחק' : `${n} פתקים יימחקו`),
     // The tile's one changing line: the newest note, with who wrote it. A collection has
     // no "next" and no type groups, but it has a newest — and the real question at a
     // glance is what someone just wrote that you have not read.

@@ -37,6 +37,7 @@ import { RouteField } from './domain';
 import { Field } from './primitives/Field';
 import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
+import { useHostNoteCount } from './HostNotes';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { FormError } from './primitives/FormError';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
@@ -180,7 +181,11 @@ export function BookingSheet({
   const [deleting, setDeleting] = useState(false);
   // Read here rather than inside `DeletePrompt`, which is presentational and shared with
   // the manage sheet — the pair is trip state, and only a connected component reads that.
+  // The two note counts the delete confirm owes (ADR-0152 §2) come from the same place for
+  // the same reason.
   const pair = useRoundTripPartner(booking);
+  const bookingNotes = useHostNoteCount('booking', booking?.id);
+  const linkedEventNotes = useHostNoteCount('event', linkedEvent?.id);
 
   // ONE ERRAND BUILDER FOR THE THREE PLACE FIELDS (ADR-0134 §1/§2). Each call names its own
   // field, and the label says which end of the journey it is — a banner reading only
@@ -935,6 +940,8 @@ export function BookingSheet({
           hasLinkedEvent={!!linkedEvent}
           linkedIsHard={linkedEvent?.kind === 'hard'}
           partnerLeg={pair?.leg}
+          notes={bookingNotes}
+          linkedNotes={linkedEventNotes}
           onCancel={() => setDeleting(false)}
           onChoose={(choice) => {
             void indexVerbs.deleteBooking(booking.id, deleteFlags(choice)).catch(() => {});
@@ -1029,6 +1036,8 @@ export function DeletePrompt({
   hasLinkedEvent,
   linkedIsHard,
   partnerLeg,
+  notes,
+  linkedNotes,
   onCancel,
   onChoose,
 }: {
@@ -1037,6 +1046,13 @@ export function DeletePrompt({
   /** The other leg of a derived round trip, if there is one (ADR-0154 §5). It buys a
    *  STATEMENT that the partner survives — never a fourth button. */
   partnerLeg?: PartnerLeg;
+  /** The booking's own notes, which every branch of this dialog destroys (ADR-0152 §2) —
+   *  and unlike an event's, they do not come back: a booking delete has no undo. */
+  notes: number;
+  /** The linked event's, which only `both` takes. Named on that choice rather than up here,
+   *  because `unlink` keeps the event and therefore keeps them: one line above the choices
+   *  would be a warning that is false in the branch beside it. */
+  linkedNotes: number;
   onCancel: () => void;
   onChoose: (choice: 'both' | 'unlink') => void;
 }) {
@@ -1046,6 +1062,11 @@ export function DeletePrompt({
     <p className="bs-hard-note">
       <Icon name="link" /> {t.index.del.pairNote(partnerLeg)}
     </p>
+  );
+  const noteNote = notes > 0 && (
+    <>
+      <Icon name="clipboard" /> {t.notes.hostDelete(notes)}
+    </>
   );
   // A booking with no linked event is a plain confirm; a linked one offers the
   // delete-both-vs-unlink choice (ADR-0047 §3). Both route through the generic
@@ -1057,6 +1078,7 @@ export function DeletePrompt({
         icon={<Icon name="trash" />}
         title={t.index.del.plainTitle}
         body={t.index.del.plainBody}
+        consequence={noteNote || undefined}
         confirmLabel={t.index.del.confirmDelete}
         cancelLabel={t.index.del.cancel}
         onConfirm={() => onChoose('unlink')}
@@ -1072,6 +1094,7 @@ export function DeletePrompt({
       icon={<Icon name="link" />}
       title={t.index.del.linkedTitle}
       body={t.index.del.linkedBody}
+      consequence={noteNote || undefined}
       onCancel={onCancel}
     >
       {linkedIsHard && (
@@ -1083,7 +1106,10 @@ export function DeletePrompt({
       <div className="bs-choices">
         <button type="button" className="bs-choice danger" onClick={() => onChoose('both')}>
           <div className="bs-choice-t">{t.index.del.both}</div>
-          <div className="bs-choice-s">{t.index.del.bothSub}</div>
+          <div className="bs-choice-s">
+            {t.index.del.bothSub}
+            {linkedNotes > 0 && ` ${DOT_SEPARATOR} ${t.notes.hostDelete(linkedNotes)}`}
+          </div>
         </button>
         <button type="button" className="bs-choice" onClick={() => onChoose('unlink')}>
           <div className="bs-choice-t">{t.index.del.unlink}</div>

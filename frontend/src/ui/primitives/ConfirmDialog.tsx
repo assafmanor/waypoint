@@ -20,6 +20,7 @@ export function ConfirmDialog({
   title,
   body,
   icon,
+  consequence,
   confirmLabel,
   cancelLabel,
   onConfirm,
@@ -31,6 +32,12 @@ export function ConfirmDialog({
   body?: ReactNode;
   /** Leading glyph on the heading (e.g. the lock for the hard-edit guard). */
   icon?: ReactNode;
+  /** **What else this delete takes** — a quiet line under the body, above the actions.
+   *  Its own slot rather than more body text because every one of these bodies ends in a
+   *  question, and a count belongs before the question is answered, not after it. Today
+   *  its one consumer is the note cascade (ADR-0152 §2), which three hosts have to say in
+   *  the same words: a `--miss` statement of consequence, not the amber of a commitment. */
+  consequence?: ReactNode;
   /** When set, renders the standard confirm/cancel action row. Omit for a
    *  custom action body passed via `children` (e.g. the delete/unlink choices). */
   confirmLabel?: string;
@@ -52,6 +59,7 @@ export function ConfirmDialog({
             {title}
           </div>
           {body != null && <p className="confirm-text">{body}</p>}
+          {consequence != null && <p className="confirm-consequence">{consequence}</p>}
           {children}
           {confirmLabel != null && (
             <div className="confirm-actions">

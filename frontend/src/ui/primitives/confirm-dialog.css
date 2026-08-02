@@ -18,6 +18,19 @@
   margin-block: var(--space-2) var(--space-4);
 }
 
+/* What else this delete takes (ADR-0152 §2's cascade). `--miss` because it is a
+   destructive consequence, never `--amber`, which in this app means commitment and
+   already has a job two lines up in the hard-edit gate's own heading. */
+.confirm-consequence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--miss);
+  margin-block: calc(-1 * var(--space-2)) var(--space-4);
+}
+
 .confirm-actions {
   display: flex;
   gap: var(--space-2);
