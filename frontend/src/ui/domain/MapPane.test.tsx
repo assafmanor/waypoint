@@ -64,6 +64,16 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       data-marker
       data-z={zIndex}
       data-at={position ? `${position.lat},${position.lng}` : ''}
+      // TWO CHANNELS, because in the browser there are two. A marker is a DOM overlay, so a
+      // tap on it really does produce a DOM click — but the handler `AdvancedMarker` takes is
+      // wired to GOOGLE's own marker click, a subscription nothing can `stopPropagation` on.
+      // The DOM half keeps the older tests reading naturally; the ref hangs the same callback
+      // on the node so a test can fire it the way Google does, which is the only channel that
+      // reaches the pane's `gestureTapRef` guard. `googleTap` above is this same trick for the
+      // canvas, and for the same reason.
+      ref={(el) => {
+        if (el) (el as HTMLElement & { gmpClick?: () => void }).gmpClick = onClick;
+      }}
       onClick={onClick}
     >
       {children}
@@ -194,6 +204,12 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
 }
 
 const pins = () => [...document.querySelectorAll('.map-pin')];
+/** Tap a pin the way GOOGLE reports it — a call on the marker's own subscription, not a DOM
+ *  event. The distinction is the whole of the pane's guard (see the `AdvancedMarker` stub). */
+const firePinTap = (pin: Element) =>
+  act(() => {
+    (pin.closest('[data-marker]') as HTMLElement & { gmpClick?: () => void }).gmpClick?.();
+  });
 const markers = () => [...document.querySelectorAll<HTMLElement>('[data-marker]')];
 
 afterEach(() => {
@@ -606,6 +622,37 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       const onHold = hold(() => document.querySelector('[data-map]')!);
       expect(onHold).toHaveBeenCalledTimes(1);
       expect(onHold.mock.calls[0][1]).toBeUndefined();
+    });
+
+    // **And the release is not a tap on that pin** (session 211, from a phone): holding a
+    // pin opened its menu AND selected the place behind it — two surfaces for one gesture.
+    // The canvas tap has been guarded against exactly this since ADR-0148; the marker was
+    // not, and it cannot be guarded any other way: Google reports a marker click by CALLING
+    // us, so the recogniser's DOM swallow never sees that channel.
+    it("ignores the pin tap Google reports for the long press's own release", () => {
+      vi.useFakeTimers();
+      const map = new FakeZoomMap();
+      mapStub.current = map;
+      const onSelectPin = vi.fn();
+      paint({ onSelectPin, onHold: vi.fn() });
+      const pin = pins()[0];
+      pin.dispatchEvent(
+        new PointerEvent('pointerdown', { clientX: 100, clientY: 200, bubbles: true, button: 0 }),
+      );
+      act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+      // Held past the swallow's own window, because the guard is armed by the RELEASE.
+      act(() => void vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS * 2));
+      pin.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: 100, clientY: 200, bubbles: true, button: 0 }),
+      );
+      firePinTap(pin);
+      expect(onSelectPin).not.toHaveBeenCalled();
+
+      // And only that one: the guard expires, so an ordinary tap on a pin still selects.
+      act(() => void vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS));
+      firePinTap(pin);
+      expect(onSelectPin).toHaveBeenCalledWith('a');
+      vi.useRealTimers();
     });
   });
 

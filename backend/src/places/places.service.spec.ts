@@ -352,6 +352,119 @@ describe('PlacesService', () => {
     expect(await prisma.place.findUnique({ where: { id: place.id } })).not.toBeNull();
   });
 
+  // ── ADR-0157 §6: THE ORPHAN SWEEP ───────────────────────────────────────────
+  // The GC ADR-0112 left open. What these pin is not "it deletes rows" but the three things
+  // it must REFUSE to delete — a referenced place, a place carrying notes, and a place young
+  // enough that an undo might still want it. `graceMs: 0` is how the first two are asserted
+  // without a clock: the grace is the third test's subject, not the others'.
+  describe('sweepOrphans', () => {
+    const noGrace = (tripId: string) => service.sweepOrphans(tripId, DEV_USER, 0);
+
+    it('takes a place nothing points at', async () => {
+      const tripId = await newTrip();
+      const orphan = await service.create(tripId, DEV_USER, { name: 'שריד של בחירה שבוטלה' });
+
+      const swept = await noGrace(tripId);
+
+      expect(swept.map((p) => p.id)).toEqual([orphan.id]);
+      expect(await prisma.place.count({ where: { tripId } })).toBe(0);
+      // Through `ChangeService`, so a peer's list and Dexie cache lose it too (ADR-0019).
+      const change = await prisma.change.findFirst({
+        where: { tripId, entityId: orphan.id, action: 'delete' },
+      });
+      expect(change).toMatchObject({ entityType: 'place' });
+    });
+
+    // One test per FK, driven as a table: a sixth reference added to the schema and not to
+    // the sweep's `where` would delete a row something still points at, and only this notices.
+    it('spares a place any reference points at, whichever FK it is', async () => {
+      const tripId = await newTrip();
+      const place = async (name: string) => (await service.create(tripId, DEV_USER, { name })).id;
+      const onEvent = await place('event');
+      const onBooking = await place('booking');
+      const onFrom = await place('from');
+      const onTo = await place('to');
+      const onIdea = await place('idea');
+      const onNote = await place('note');
+
+      await prisma.event.create({
+        data: {
+          tripId,
+          title: 'יש לו מקום',
+          date: new Date('2027-03-02'),
+          kind: 'soft',
+          placeId: onEvent,
+          updatedBy: DEV_USER,
+        },
+      });
+      await prisma.booking.create({
+        data: { tripId, type: 'hotel', title: 'מלון', placeId: onBooking, updatedBy: DEV_USER },
+      });
+      await prisma.booking.create({
+        data: {
+          tripId,
+          type: 'train',
+          title: 'רכבת',
+          fromPlaceId: onFrom,
+          toPlaceId: onTo,
+          updatedBy: DEV_USER,
+        },
+      });
+      await prisma.maybeItem.create({
+        data: { tripId, title: 'רעיון', placeId: onIdea, createdBy: DEV_USER, updatedBy: DEV_USER },
+      });
+      // A place carrying notes is NOT an orphan, and this is the one that would be data
+      // loss rather than a stale row: `Note.placeId` cascades, and the notes screen lists
+      // them under this place's name (ADR-0153 §8).
+      await prisma.note.create({
+        data: {
+          tripId,
+          body: 'שווה לחזור',
+          placeId: onNote,
+          createdBy: DEV_USER,
+          updatedBy: DEV_USER,
+        },
+      });
+
+      expect(await noGrace(tripId)).toEqual([]);
+      expect(await prisma.place.count({ where: { tripId } })).toBe(6);
+    });
+
+    // The grace is what makes an undo safe: deleting the last reference orphans a place, and
+    // undoing that delete puts the reference back. It also keeps the PAID cache warm across
+    // a cancel-and-re-pick (ADR-0108 §3).
+    it('spares a freshly orphaned place until the grace has passed', async () => {
+      const tripId = await newTrip();
+      await service.create(tripId, DEV_USER, { name: 'זה עתה נוצר' });
+
+      expect(await service.sweepOrphans(tripId, DEV_USER)).toEqual([]);
+      expect(await prisma.place.count({ where: { tripId } })).toBe(1);
+    });
+
+    it('never reaches into another trip', async () => {
+      const mine = await newTrip();
+      const theirs = await newTrip();
+      const theirOrphan = await service.create(theirs, DEV_USER, { name: 'לא שלי' });
+
+      expect(await noGrace(mine)).toEqual([]);
+      expect(await prisma.place.findUnique({ where: { id: theirOrphan.id } })).not.toBeNull();
+    });
+
+    // Where it runs, which is the whole scheduling decision (§6): a create is the only
+    // moment the table grows, so it is the moment it gets tidied — and the row the caller
+    // is being handed is never a candidate for its own sweep.
+    it('runs on a mint, and never takes the place that mint just made', async () => {
+      const tripId = await newTrip();
+      const stale = await service.create(tripId, DEV_USER, { name: 'ישן' });
+      await prisma.$executeRaw`UPDATE "Place" SET "updatedAt" = NOW() - INTERVAL '30 days' WHERE id = ${stale.id}`;
+
+      const fresh = await service.create(tripId, DEV_USER, { name: 'חדש' });
+
+      const left = await prisma.place.findMany({ where: { tripId } });
+      expect(left.map((p) => p.id)).toEqual([fresh.id]);
+    });
+  });
+
   // The restore half of the undo (ADR-0157 §4): every field a deleted place carried comes
   // back through `create`, including the two Google-sourced numbers nothing else could
   // re-assert without paying for a second Place Details call.

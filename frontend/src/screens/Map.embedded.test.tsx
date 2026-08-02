@@ -602,7 +602,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       seed();
       render(wrap(<MapView />));
       holdPin();
-      fireEvent.click(menuItem(t.map.make.rename));
+      fireEvent.click(menuItem(t.map.make.edit));
 
       expect(draftForm()).toBeTruthy();
       expect(draftName().value).toBe('museum');
@@ -2293,7 +2293,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       const nameIt = (value: string) => fireEvent.change(draftName(), { target: { value } });
       const confirm = (label: string = t.map.make.add) =>
         fireEvent.click(within(draftForm()!).getByRole('button', { name: label }));
-      const pencil = () => screen.getByRole('button', { name: t.map.make.rename });
+      const pencil = () => screen.getByRole('button', { name: t.map.make.edit });
       /** The standard fixture, with `museum` given a name worth renaming. Seeded through
        *  `seed()` so the place is REFERENCED and therefore listed — a place with no reference
        *  is cache-only and has no row to carry a pencil (ADR-0112). */
@@ -2785,7 +2785,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
           render(wrap(<MapView />));
           setStop(MAP_SHEET_VIEW.full);
           fireEvent.click(pin('museum')!);
-          fireEvent.click(screen.getByRole('button', { name: t.map.make.rename }));
+          fireEvent.click(screen.getByRole('button', { name: t.map.make.edit }));
           expect(draftForm()).toBeTruthy();
           expect(stop()).toBe(MAP_SHEET_VIEW.map);
         });
@@ -2840,7 +2840,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
           seedNamed();
           render(wrap(<MapView />));
           fireEvent.click(pin('museum')!);
-          fireEvent.click(screen.getByRole('button', { name: t.map.make.rename }));
+          fireEvent.click(screen.getByRole('button', { name: t.map.make.edit }));
           expect(draftForm()).toBeTruthy();
           tapCanvas();
           expect(draftForm()).toBeNull();

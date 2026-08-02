@@ -21,6 +21,7 @@
 //     the whole scoped set before any chip applies — so gaps like `1, 3, 4` are
 //     correct and say something is filtered out.
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -69,7 +70,13 @@ import {
   mapsPredictionUrl,
   nextDestination,
 } from '../lib/places';
-import { PLACE_REF_KIND, placeLinks, placeRefs, soleIdeaFor } from '../lib/place-refs';
+import {
+  PLACE_REF_KIND,
+  placeLinks,
+  placeRefSubject,
+  placeRefs,
+  soleIdeaFor,
+} from '../lib/place-refs';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import {
   buildPinOrderIndex,
@@ -2688,26 +2695,51 @@ export function MapView() {
    *  whose location Postgres is about to null, and the notes its cascade will take — neither
    *  writes a `Change` row, so the confirm is the only moment either can be learned
    *  (ADR-0157 §2, the rule ADR-0152 §2 set for the other four hosts). `undefined` when the
-   *  place is unreferenced, which is the common case and needs no line at all. */
+   *  place is unreferenced, which is the common case and needs no line at all.
+   *
+   *  **Counted BY KIND** since session 212 (ADR-0157 §8): `פריטים` was correct, unactionable,
+   *  and hid the one fact worth knowing — a place added and immediately deleted warned about
+   *  "one item", and the item was the shelf idea the add itself had created. */
   const deleteConsequence = (placeId: string): ReactNode => {
-    const refs = placeLinks(placeId, { events, bookings, maybeItems }).length;
+    const links = placeLinks(placeId, { events, bookings, maybeItems });
+    // The sole live idea is DELETED with the place rather than left without a location
+    // (ADR-0157 §9), so it leaves the "survives without a location" count and gets its own
+    // clause. Same helper the verb resolves, so the sentence cannot promise one thing and
+    // the write do another.
+    const swallowed = soleIdeaFor(placeId, maybeItems);
+    // Each surviving link as the reader knows it: its kind and its own title, so the
+    // sentence can NAME it while there are few enough to name (ADR-0157 §8).
+    const subjects = links
+      .filter((link) => link.id !== swallowed?.id)
+      .map((link) => placeRefSubject(link, { events, bookings, maybeItems }));
+    const refs = subjects.length;
     const hostedNotes = noteCountFor(noteCounts, 'place', placeId);
-    if (refs === 0 && hostedNotes === 0) return undefined;
-    return (
-      <>
-        {refs > 0 && (
-          <>
-            <Icon name="pin" /> {t.map.del.refs(refs)}
-          </>
-        )}
-        {refs > 0 && hostedNotes > 0 && ` ${DOT_SEPARATOR} `}
-        {hostedNotes > 0 && (
-          <>
-            <Icon name="clipboard" /> {t.notes.hostDelete(hostedNotes)}
-          </>
-        )}
-      </>
-    );
+    if (refs === 0 && hostedNotes === 0 && !swallowed) return undefined;
+    const clauses: ReactNode[] = [];
+    if (refs > 0)
+      clauses.push(
+        <>
+          <Icon name="pin" /> {t.map.del.refs(subjects)}
+        </>,
+      );
+    if (swallowed)
+      clauses.push(
+        <>
+          <Icon name="shelf" /> {t.map.del.idea}
+        </>,
+      );
+    if (hostedNotes > 0)
+      clauses.push(
+        <>
+          <Icon name="clipboard" /> {t.notes.hostDelete(hostedNotes)}
+        </>,
+      );
+    return clauses.map((clause, i) => (
+      <Fragment key={i}>
+        {i > 0 && ` ${DOT_SEPARATOR} `}
+        {clause}
+      </Fragment>
+    ));
   };
 
   // **The long press's menu** (ADR-0157 §2). The canvas's counterpart to the verbs a selected
@@ -2723,7 +2755,7 @@ export function MapView() {
       onClose={() => setPinMenuId(null)}
       actions={[
         {
-          label: t.map.make.rename,
+          label: t.map.make.edit,
           icon: 'edit',
           onSelect: () => {
             setPinMenuId(null);
@@ -3212,8 +3244,8 @@ function PlaceRow({
             <button
               type="button"
               className="map-rename"
-              aria-label={t.map.make.rename}
-              title={t.map.make.rename}
+              aria-label={t.map.make.edit}
+              title={t.map.make.edit}
               onClick={(e) => {
                 e.stopPropagation();
                 onRename();

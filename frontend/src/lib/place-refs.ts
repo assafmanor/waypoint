@@ -261,6 +261,24 @@ export function placeLinks(placeId: string, source: PlaceRefSource): PlaceLink[]
   ];
 }
 
+/** **A link as the reader knows it** — its kind in the confirm's vocabulary, and what the
+ *  row is called (ADR-0157 §8). One link is one ROW, so a round trip that both starts and
+ *  ends at the place is one booking here, named once. The label is looked up rather than
+ *  carried on the link, because only the screen holds the lists — and this file stays
+ *  i18n-free: the WORDS for `kind` are the caller's. */
+export function placeRefSubject(
+  link: PlaceLink,
+  source: PlaceRefSource,
+): { kind: 'event' | 'booking' | 'idea'; label?: string } {
+  if (link.owner === ENTITY_TYPE.EVENT) {
+    return { kind: 'event', label: source.events.find((e) => e.id === link.id)?.title };
+  }
+  if (link.owner === ENTITY_TYPE.BOOKING) {
+    return { kind: 'booking', label: source.bookings.find((b) => b.id === link.id)?.title };
+  }
+  return { kind: 'idea', label: source.maybeItems.find((m) => m.id === link.id)?.title };
+}
+
 /**
  * **The place cascade's sync half** — the twin of `dropNotesForHostChange` (ADR-0152 §2),
  * and it exists for the identical reason: the four place FKs are `onDelete: SetNull`, so

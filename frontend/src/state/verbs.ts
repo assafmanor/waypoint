@@ -54,7 +54,7 @@ import {
 } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
-import { type PlaceLink } from '../lib/place-refs';
+import { soleIdeaFor, type PlaceLink } from '../lib/place-refs';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
@@ -100,7 +100,17 @@ type UndoDescriptor =
    *  neither writes a `Change` row, so after the delete this descriptor is the only record
    *  that either existed. Reversing re-creates the place under its own id, hands the links
    *  back and writes the notes home — in that order, since both reference it. */
-  | { kind: 'deletePlace'; place: Place; links: PlaceLink[]; notes: Note[] }
+  | {
+      kind: 'deletePlace';
+      place: Place;
+      links: PlaceLink[];
+      notes: Note[];
+      /** **The shelf idea the place took with it** (ADR-0157 §9), with its own cascaded
+       *  notes. Deleted rather than unlinked, so it is not in `links`: the undo re-creates
+       *  it under its own id and pointed back at the place, which is why the place has to
+       *  come back first. */
+      idea: { item: MaybeItem; notes: Note[] } | null;
+    }
   | { kind: 'maybeDay'; item: MaybeItem }
   | { kind: 'park'; event: TripEvent; maybeId: string }
   /** A booked save (ADR-0136), which is ONE action to the user and up to three writes
@@ -739,11 +749,25 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
  * Resolves `false` when the write failed, so the caller shows no confirmation toast for
  * something that did not happen — trip-state has already rolled the screen back and said so.
  */
-export async function applyDeletePlace(deps: VerbDeps, place: Place): Promise<boolean> {
+export async function applyDeletePlace(
+  deps: VerbDeps,
+  place: Place,
+  /** The place's SOLE live shelf idea, when it has exactly one (`soleIdeaFor`) — resolved by
+   *  the caller, which is also what the confirm's wording is derived from, so the sentence
+   *  and the write cannot disagree about whether the idea is going. */
+  idea: MaybeItem | null = null,
+): Promise<boolean> {
   const notes = notesHostedBy(deps.notes.list, 'placeId', place.id);
+  const ideaNotes = idea ? notesHostedBy(deps.notes.list, 'maybeItemId', idea.id) : [];
   try {
-    const links = await deps.places.deletePlace(place.id);
-    deps.lastAction.current = { kind: 'deletePlace', place, links, notes };
+    const links = await deps.places.deletePlace(place.id, { ideaId: idea?.id });
+    deps.lastAction.current = {
+      kind: 'deletePlace',
+      place,
+      links,
+      notes,
+      idea: idea ? { item: idea, notes: ideaNotes } : null,
+    };
     return true;
   } catch {
     // Deliberately no toast and no rollback: `deletePlace` owns both, and a second
@@ -947,6 +971,22 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
         rating: place.rating,
         userRatingsTotal: place.userRatingsTotal,
       });
+      // The idea that went with it, before the other links and before the notes: it is a row
+      // again rather than a reference, and its own notes hang off it (ADR-0157 §9).
+      if (desc.idea) {
+        const input = {
+          id: desc.idea.item.id,
+          title: desc.idea.item.title,
+          icon: desc.idea.item.icon,
+          category: desc.idea.item.category,
+          placeId: place.id,
+          targetDate: desc.idea.item.targetDate,
+        };
+        await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
+          createMaybeItem(tripId, input),
+        );
+        await restoreNotes(deps, desc.idea.notes);
+      }
       // The FKs Postgres nulled. Events and ideas are already re-linked ON SCREEN by the
       // reducer's snapshot, so these are the server's copy only; a booking is not in that
       // snapshot, so its write goes through the verb that owns its optimistic state too.
@@ -1052,8 +1092,18 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
 }
 
 export function useVerbs() {
-  const { dispatch, trip, events, ripple, activeDate, zoneEvidence, indexVerbs, notes, noteVerbs } =
-    useTrip();
+  const {
+    dispatch,
+    trip,
+    events,
+    maybeItems,
+    ripple,
+    activeDate,
+    zoneEvidence,
+    indexVerbs,
+    notes,
+    noteVerbs,
+  } = useTrip();
   const { me } = useAuth();
   const toast = useToast();
   const confirmHardEdit = useConfirmHardEdit();
@@ -1260,7 +1310,11 @@ export function useVerbs() {
      *  it is the surface that knows how many rows point here — and by the time we are called
      *  the user has answered it. */
     removePlace: (place: Place) => {
-      void applyDeletePlace(deps, place).then((applied) => {
+      // `soleIdeaFor` is ADR-0135 §5's rule read from the other end: exactly one live idea on
+      // a place IS that place's intention, so it goes with it — and two or more are two
+      // intentions, so none of them do. The screen resolves the same helper for the confirm's
+      // wording, which is what keeps the sentence and the write in agreement.
+      void applyDeletePlace(deps, place, soleIdeaFor(place.id, maybeItems)).then((applied) => {
         if (applied) toast(CONTROL_ICON.trash, t.toast.placeDeleted, undo);
       });
     },

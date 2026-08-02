@@ -337,6 +337,22 @@ function MapPaneInner({
     },
     [onHold],
   );
+  // **The release of a long press on a pin is not a tap on that pin** (ADR-0157's
+  // session-211 amendment). Reported from a phone: holding a pin opened its menu AND raised
+  // the place card behind it — two surfaces for one gesture, and the card is the one you
+  // did not ask for. It is the exact defect the canvas tap below was already guarded against
+  // (ADR-0148's build log), one target over: a marker's click is **Google's callback**, not
+  // a DOM event, so the recogniser's `document` swallow cannot reach it and the ref is the
+  // only channel that can. Wrapped here rather than in `PinMarker` so the marker stays
+  // presentational — and memoized, because a fresh identity re-diffs every marker on a
+  // screen that ticks every second (ADR-0121 §4).
+  const selectPin = useCallback(
+    (placeId: string) => {
+      if (gestureTapRef.current) return;
+      onSelectPin(placeId);
+    },
+    [onSelectPin],
+  );
   return (
     <div className="map-pane" ref={paneRef}>
       <APIProvider apiKey={config.apiKey}>
@@ -394,7 +410,7 @@ function MapPaneInner({
           }}
         >
           {pins.map((pin) => (
-            <PinMarker key={pin.placeId} pin={pin} onSelect={onSelectPin} />
+            <PinMarker key={pin.placeId} pin={pin} onSelect={selectPin} />
           ))}
           {results.map((result) => (
             <ResultMarker

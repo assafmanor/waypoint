@@ -5,6 +5,7 @@ import { find as findTimezone } from 'geo-tz';
 import {
   CHANGE_ACTION,
   ENTITY_TYPE,
+  HOUSEKEEPING_CHANGE,
   type CreatePlaceInput,
   type Place,
   type PlacePrediction,
@@ -33,6 +34,108 @@ export class PlacesService {
       orderBy: { createdAt: 'asc' },
     });
     return places.map(toPlaceDto);
+  }
+
+  /**
+   * **How long an orphan is left alone before the sweep may take it** (ADR-0157 §6).
+   *
+   * It is one number doing two jobs, and both want it generous rather than tight:
+   *
+   *  - **The row is a PAID cache.** `resolvePlace` dedups on `(tripId, googlePlaceId)`, so
+   *    deleting an enriched orphan means the next pick of that place buys Place Details
+   *    again (ADR-0108 §3). The cache's value is highest right after the pick — pick,
+   *    cancel, re-pick tomorrow — and about zero a week later.
+   *  - **An undo must still find what it re-links to.** Deleting the last thing that
+   *    referenced a place orphans it, and undoing that delete puts the reference back.
+   *
+   * A week satisfies both with room to spare. Deliberately NOT env-tunable: nothing about
+   * it is deployment-specific, and the number is only meaningful alongside the reasoning.
+   */
+  static readonly ORPHAN_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+  /**
+   * **Delete the places nothing points at any more** (ADR-0157 §6) — the GC that ADR-0112
+   * left open ("cache-only rows still accumulate … a later GC is possible if it ever
+   * matters, not needed now"). It matters at the snapshot: every orphan is downloaded on
+   * every cold load, and nothing can ever show it, because the Map's list and pins are
+   * built from references (ADR-0110 §2). An invisible row is not a harmless row.
+   *
+   * **What is spared, and why each one is not an orphan:**
+   *  - anything a reference points at — the definition;
+   *  - **a place carrying notes.** Its notes are authored data, `Note.placeId` is
+   *    `onDelete: Cascade`, and they are *visible*: the notes screen lists them under this
+   *    place's name (ADR-0153 §8). A sweep that destroyed them would be the one thing this
+   *    whole feature is careful not to do silently;
+   *  - anything touched inside `ORPHAN_GRACE_MS`.
+   *
+   * Each deletion goes through `ChangeService` like every other data-plane write (ADR-0019),
+   * so a peer's list and Dexie cache lose the row too rather than carrying it until the next
+   * snapshot.
+   */
+  async sweepOrphans(
+    tripId: string,
+    actorUserId: string,
+    graceMs: number = PlacesService.ORPHAN_GRACE_MS,
+  ): Promise<Place[]> {
+    const orphans = await this.prisma.place.findMany({
+      where: {
+        tripId,
+        updatedAt: { lt: new Date(Date.now() - graceMs) },
+        // The four `SetNull` FKs and the one `Cascade` one, as relation filters — the same
+        // set `place-refs.ts` names on the client, and the reason a sixth FK has to be
+        // added here too or the sweep would delete a row something still points at.
+        events: { none: {} },
+        bookings: { none: {} },
+        bookingsFrom: { none: {} },
+        bookingsTo: { none: {} },
+        maybeItems: { none: {} },
+        notes: { none: {} },
+      },
+    });
+    if (orphans.length === 0) return [];
+
+    const dtos = orphans.map(toPlaceDto);
+    await this.changes.mutateMany({
+      tripId,
+      actorUserId,
+      apply: async (tx) => {
+        await tx.place.deleteMany({ where: { id: { in: orphans.map((p) => p.id) } } });
+        return {
+          entity: dtos,
+          ops: dtos.map((place) => ({
+            entityType: ENTITY_TYPE.PLACE,
+            entityId: place.id,
+            action: CHANGE_ACTION.DELETE,
+            before: place,
+            // Marks these as the server tidying up rather than as this actor's edit, so the
+            // change feed does not report a housekeeping delete against whoever happened to
+            // pick a place that minute. A delete's `after` is otherwise unused, and no
+            // applier reads it — see `HOUSEKEEPING_CHANGE`.
+            after: HOUSEKEEPING_CHANGE,
+          })),
+        };
+      },
+    });
+    return dtos;
+  }
+
+  /**
+   * **The sweep runs where places are MINTED**, and nowhere else (ADR-0157 §6).
+   *
+   * That is the whole scheduling decision, and it is deliberate rather than convenient: a
+   * create is the only moment the table grows, it is already a write with a transaction and
+   * a change stream, and it bounds the work to the trip in hand. The repo has no scheduler
+   * and this is not a good enough reason to introduce one (root rule 8).
+   *
+   * **Best-effort, always.** A pick is a user action with a form waiting on it; a
+   * housekeeping query must never be what fails it. `ponytail:` the next mint retries.
+   */
+  private async sweepAfterMint(tripId: string, actorUserId: string): Promise<void> {
+    try {
+      await this.sweepOrphans(tripId, actorUserId);
+    } catch {
+      // ponytail: a failed sweep costs nothing but the rows it did not take.
+    }
   }
 
   async create(tripId: string, actorUserId: string, input: CreatePlaceInput): Promise<Place> {
@@ -72,6 +175,9 @@ export class PlacesService {
             },
           }),
       });
+      // The table just grew, so this is where it gets tidied (ADR-0157 §6). After the
+      // create, never before: the row we are about to return must not be a candidate.
+      await this.sweepAfterMint(tripId, actorUserId);
       return toPlaceDto(entity);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -212,9 +318,14 @@ export class PlacesService {
       : await this.google.placeDetails(input.googlePlaceId, input.sessionToken);
     const timezone = this.resolveTimezone(details.lat, details.lng);
 
-    return target
-      ? this.enrichExisting(tripId, actorUserId, target, details, timezone)
-      : this.createEnriched(tripId, actorUserId, details, timezone);
+    const place = target
+      ? await this.enrichExisting(tripId, actorUserId, target, details, timezone)
+      : await this.createEnriched(tripId, actorUserId, details, timezone);
+    // The other mint (ADR-0157 §6). The dedup hit above returns before reaching this, which
+    // is right: a hit added no row, and it is also the path a form's re-pick takes — the one
+    // moment the cache is earning its keep.
+    await this.sweepAfterMint(tripId, actorUserId);
+    return place;
   }
 
   /** Resolve the IANA zone once from coords (ADR-0107/0108). `geo-tz` returns [] for

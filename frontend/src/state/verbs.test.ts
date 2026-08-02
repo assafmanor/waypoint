@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   EVENT_STATUS,
   type CreateBookingInput,
+  type MaybeItem,
   type Note,
   type NoteHostKey,
   type Place,
@@ -1303,10 +1304,17 @@ describe('undoing a place delete', () => {
     updatedBy: 'u',
   } as Place;
 
+  // Route-aware, like the host-delete suite's: a maybe-item POST is parsed against
+  // `maybeItemSchema`, so answering it with an event makes the undo throw where the real
+  // one succeeds — and a swallowed undo error looks exactly like a restore that did nothing.
   const okFetch = () =>
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify(EVENTS[0]), { status: 200 })),
+      vi.fn(async (url: string) =>
+        String(url).includes('/maybe-items')
+          ? new Response(JSON.stringify(MAYBE_ITEMS[0]), { status: 200 })
+          : new Response(JSON.stringify(EVENTS[0]), { status: 200 }),
+      ),
     );
 
   const withLinks = (links: PlaceLink[], notes: Note[] = []) => {
@@ -1402,6 +1410,78 @@ describe('undoing a place delete', () => {
     await applyUndo(deps);
 
     expect(deps.notes.recreate.mock.calls.map((call) => call[0] as Note)).toEqual([mine]);
+  });
+
+  // ── ADR-0157 §9: THE SOLE SHELF IDEA GOES WITH THE PLACE ────────────────────
+  // Reported by the owner: add a place, delete it a second later, and a shelf idea nobody
+  // typed is left behind with no location — because every add creates one (`landPlace`). One
+  // live idea IS that place's intention, which is ADR-0135 §5's consume-on-schedule rule read
+  // from the other end; two or more are two intentions and none are touched.
+  describe('the sole shelf idea', () => {
+    const idea = { ...MAYBE_ITEMS[0], id: 'mb-sole', placeId: place.id } as MaybeItem;
+
+    it('is deleted with the place, and is NOT reported as a surviving link', async () => {
+      okFetch();
+      const deps = withLinks([{ owner: 'maybeItem', id: idea.id, fields: ['placeId'] }]);
+
+      await applyDeletePlace(deps, place, idea);
+
+      expect(deps.places.deletePlace).toHaveBeenCalledWith(place.id, { ideaId: idea.id });
+      // The write layer filters it out of the links it returns; the descriptor carries it as
+      // a deletion instead, which is what makes the undo re-CREATE rather than re-point it.
+      const desc = deps.lastAction.current as { idea: { item: MaybeItem } | null };
+      expect(desc.idea?.item.id).toBe(idea.id);
+    });
+
+    it('comes back on undo, under its own id and pointed at the place again', async () => {
+      const posted: unknown[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string, init?: RequestInit) => {
+          const isMaybe = String(url).includes('/maybe-items');
+          if (isMaybe && init?.method === 'POST')
+            posted.push(JSON.parse(String(init.body ?? '{}')));
+          return new Response(JSON.stringify(isMaybe ? MAYBE_ITEMS[0] : EVENTS[0]), {
+            status: 200,
+          });
+        }),
+      );
+      const deps = withLinks([]);
+
+      await applyDeletePlace(deps, place, idea);
+      await applyUndo(deps);
+
+      expect(posted).toEqual([
+        expect.objectContaining({ id: idea.id, title: idea.title, placeId: place.id }),
+      ]);
+    });
+
+    it('takes its own notes with it, and gives them back', async () => {
+      okFetch();
+      const ideaNote = noteOn('n-idea', { maybeItemId: idea.id });
+      const deps = withLinks([], [ideaNote, noteOn('n-place', { placeId: place.id })]);
+
+      await applyDeletePlace(deps, place, idea);
+      deps.notes.list = []; // what the applier rule has already done by now
+      await applyUndo(deps);
+
+      expect(deps.notes.recreate.mock.calls.map((call) => (call[0] as Note).id)).toEqual([
+        'n-idea',
+        'n-place',
+      ]);
+    });
+
+    // The caller decides; passing nothing means nothing is swallowed, which is the two-ideas
+    // case and the errand case both.
+    it('is left alone when the caller passes none', async () => {
+      okFetch();
+      const deps = withLinks([]);
+
+      await applyDeletePlace(deps, place);
+
+      expect(deps.places.deletePlace).toHaveBeenCalledWith(place.id, { ideaId: undefined });
+      expect((deps.lastAction.current as { idea: unknown }).idea).toBeNull();
+    });
   });
 
   it('leaves no undo behind when the write failed', async () => {
