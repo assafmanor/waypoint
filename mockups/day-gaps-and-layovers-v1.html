@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- פערים ועצירות ביניים — THE DAY'S HOLES, AND THE ONES INSIDE A JOURNEY — v1
-     (2026-08-02).
+     (2026-08-02; v2 the same day, from two owner reports read on a phone).
 
      WHAT THIS IS. Two questions that turned out to be one shape.
 
@@ -58,6 +58,33 @@
         DERIVED, never stored, exactly like the round trip, and for the same
         three reasons that ADR lists. The one rule that separates the two:
         a mirror comes BACK to where it started, a sequence does not.
+
+     ─────────────────────────────────────────────────────────────────────────
+     WHAT v2 CHANGED, both from owner reports against v1 read on a phone:
+
+     6. "THE STRIPED LINE IN THE LAYOVER GAP DOES NOT SIT WELL BETWEEN THE
+        FLIGHTS." Correct, and the diagnosis is specific: a rail is a CONNECTOR,
+        so it has to touch both things it connects, and v1's kept the list's 9px
+        rhythm above and below — it started 9px under one card and ended 9px
+        above the next. Worse in the frame that mattered most: a now-line landing
+        between the legs cut it in half, which is the normal state on the ground.
+        §3 re-opens the question with three candidates and recommends the one
+        that stops asking a mark to sit between two cards — the two legs go
+        INSIDE one block, and the layover is a full-width band in it.
+
+     7. THE FORM IS ALREADY STEPPED, AND A LEG IS A STEP (ADR-0155, two days
+        old). v1 drew both legs stacked in one `מתי` step, which is the 492px-per-
+        leg pile ADR-0154 §4 measured and stepping exists to avoid. §4b draws it
+        right: `מה ואיפה` → `מתי · קטע 1` → `מתי · קטע 2` → `פרטים`, N legs = N
+        steps. And the cross-leg refusal ("a departure before the previous
+        arrival") is a cross-STEP dependency, which ADR-0155 §5 names as the
+        strongest argument for stepping a form in the first place.
+
+     8. NONE OF THIS IS FLIGHT-SPECIFIC. It all keys off `carriesRoute`, true for
+        `train` and `transit` since ADR-0156, so a train change and a bus
+        connection get the same block. One word differs — a train does a
+        החלפה, a flight an עצירת ביניים — and §3c draws the 12-minute change at
+        Kyoto that settles the floor question for good.
 
      ─────────────────────────────────────────────────────────────────────────
      WHAT THIS FILE MEASURES rather than asserts: the noise. Every hole in a day
@@ -9083,27 +9110,53 @@
         white-space: nowrap;
       }
 
-      /* ── §3 · The layover ─────────────────────────────────────────────
-         NOT the same shape, deliberately (see the header's finding 4). The
-         hairline goes away and a SPINE takes its place, in the badge column:
-         `15px` face padding + half of the `40px` badge = the glyph's own
-         centre line, so the journey continues through the icon that started
-         it. Both numbers are read from `event-card.css`, not chosen here.
+      /* ── §3 · The layover · THREE CANDIDATES ──────────────────────────
+         v1 drew ONE shape — a dotted rail in the badge column — and the owner
+         read it on a phone: *"the striped line in the layover gap does not sit
+         well between the flights"*, in both the plain frame and the one with
+         the now-line in it. The report is right and the diagnosis is specific:
+         a rail is a CONNECTOR, so it has to touch both things it connects, and
+         this one floated — the strip kept the list's 9px rhythm above and below
+         it, so the line started 9px under one card and ended 9px above the
+         next. And the moment a now-line landed in the middle, the thing it was
+         connecting stopped being adjacent at all.
 
-         Amber, because a layover is time inside a COMMITMENT (rule 4's own
-         words) — but amber-deep TEXT on a dotted amber-soft rail, never a
-         filled pill: a pill here is the now-line (ADR-0121 §6 caught the same
-         "amber = a pill" reflex on the map's tag). */
-      .day-gap.layover {
+         So the question is re-opened properly, with three candidates. All three
+         keep what v1 got right: amber because a layover is time inside a
+         COMMITMENT, amber-deep TEXT and never a filled pill (a pill on a line is
+         `.nowline`, and the app gets one live mark), and the badge column as the
+         alignment.
+
+         (A) THE RAIL, CORRECTED — zero vertical margin on the strip, the rail
+             stretched edge to edge, and the facing card margins removed, so it
+             actually touches. Cheapest fix, and it still breaks when a now-line
+             lands between the legs.
+
+         (B) THE JOURNEY BLOCK — the two legs go INSIDE one container and the
+             layover is a full-width band between them. Nothing has to sit
+             between two cards, because there are no longer two cards: there is
+             one object with parts, which is what a connection is. A now-line
+             inside it is just another row of the block.
+
+         (C) THE LAYOVER AS ITS OWN ROW — a recessive row in the list's normal
+             rhythm, with a ⏱ in the badge column so it aligns with the two
+             flights. Nothing to connect; the rhythm does the work. Lightest
+             build, and the weakest claim that the two flights are one journey.
+
+         RECOMMENDED: (B). The complaint was that the mark did not sit between
+         the cards, and (B) is the only one that stops asking it to. */
+
+      /* (A) — the rail, corrected */
+      .jr-a {
+        display: flex;
+        align-items: stretch;
         gap: 10px;
-        padding-inline-start: 25px; /* 15 face padding + 20 half-badge − 10 spine box */
-        margin-top: -4px; /* the strip belongs to the pair, so it sits closer */
+        padding-inline-start: 25px; /* 15 face padding + 20 half-badge − 10 rail box */
+        margin: 0;
       }
-      .day-gap.layover .day-gap-spine {
+      .jr-a .jr-rail {
         flex: 0 0 auto;
         width: 20px;
-        align-self: stretch;
-        min-height: 26px;
         background-image: repeating-linear-gradient(
           180deg,
           color-mix(in srgb, var(--amber) 55%, transparent) 0 4px,
@@ -9113,32 +9166,104 @@
         background-position: center;
         background-repeat: no-repeat;
       }
-      .day-gap.layover .day-gap-lbl {
-        color: var(--amber-deep);
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
+      .jr-a .jr-lbl {
+        padding-block: 9px;
       }
-      .day-gap.layover .day-gap-lbl .icon {
-        width: 13px;
-        height: 13px;
-      }
-      /* A connection under the ceiling (`LAYOVER_TIGHT_MINUTES`). One word, and
-         it is descriptive rather than advisory — the app does not know your
-         terminal, and `--miss` would claim something has gone wrong. */
-      .day-gap.layover.tight .day-gap-lbl b {
-        font-weight: 700;
-      }
-      /* The two legs read as one object: the pair's inner corners flatten, the
-         way `.cluster-kids` already says "these belong together" with a rail. */
+      /* The facing margins go, or the rail cannot reach. `.wp-event`'s own 10px
+         bottom margin is what left the line hanging in v1. */
       .wp-event.leg-first {
+        margin-bottom: 0;
         border-end-start-radius: 5px;
         border-end-end-radius: 5px;
-        margin-bottom: 0;
       }
       .wp-event.leg-next {
         border-start-start-radius: 5px;
         border-start-end-radius: 5px;
+      }
+
+      /* (B) — the journey block · RECOMMENDED
+         One object. The container owns the border, the radius and the 10px
+         rhythm; the legs inside give theirs up and become rows. The band spans
+         edge to edge, which is the whole difference: a full-width band is part
+         of the object, a floating mark is a thing between two objects. */
+      .journey {
+        border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
+        border-radius: 15px;
+        overflow: hidden;
+        margin-bottom: 10px;
+        background: var(--card);
+      }
+      .journey > .wp-event {
+        border: 0;
+        border-radius: 0;
+        margin: 0;
+        background: none;
+      }
+      .journey-stop {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 15px;
+        background: color-mix(in srgb, var(--amber) 11%, transparent);
+        border-block: 1px solid color-mix(in srgb, var(--amber) 24%, transparent);
+        color: var(--amber-deep);
+        font-size: 11.5px;
+        font-weight: 700;
+      }
+      .journey-stop .icon {
+        width: 13px;
+        height: 13px;
+        flex: 0 0 auto;
+      }
+      /* The now-line inside a journey keeps the block's own inset, so it reads as
+         a row OF the block rather than a rule laid across it. */
+      .journey .nowline {
+        margin: 9px 12px;
+      }
+
+      /* (C) — a row of its own, in the list's rhythm */
+      .jr-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: 6px 15px;
+        margin-bottom: 10px;
+      }
+      .jr-row .jr-ic {
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--amber) 13%, transparent);
+        color: var(--amber-deep);
+      }
+      .jr-row .jr-ic .icon {
+        width: 17px;
+        height: 17px;
+      }
+      .jr-row .jr-lbl {
+        min-width: 0;
+      }
+
+      /* Shared by all three: the wording. A connection under the ceiling
+         (`LAYOVER_TIGHT_MINUTES`) says so in one word, and it is DESCRIPTIVE
+         rather than advisory — the app does not know your terminal, and
+         `--miss` would claim something has already gone wrong. */
+      .jr-lbl {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        color: var(--amber-deep);
+        font-size: 11.5px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .jr-lbl .icon {
+        width: 13px;
+        height: 13px;
+        flex: 0 0 auto;
       }
 
       /* ── §4 · Authoring: a stop on the route field ─────────────────────
@@ -9449,8 +9574,9 @@
         <p>
           תצוגת היום במצב טיול לא מציירת דבר בין שני אירועים. מצב תכנון כן, אבל שם זה
           <b>פקד</b> למילוי הפער. כאן הפער הוא <b>מידע</b>: כמה זמן יש, ומתי הזמן הזה הוא בכלל לא
-          פנוי אלא <b>עצירת ביניים</b> בתוך מסע אחד. שלוש מסגרות למצב היום, אחת לטופס, ולוח מדידה
-          שנקרא מה-DOM החי.
+          פנוי אלא <b>עצירת ביניים</b> בתוך מסע אחד. שלוש מועמדות לצורת החיבור (אחרי שהראשונה נבחנה
+          במכשיר ונפלה), החלפת רכבת, הטופס המדורג עם קטע לכל צעד, ולוח מדידה שנקרא מה-DOM החי. כל
+          מסגרת נבדקת בשתי ערכות הנושא.
         </p>
       </div>
 
@@ -9536,6 +9662,10 @@
        *  where you are and for how long, in that order. */
       const layoverText = (place, min, tight) =>
         `${tight ? 'עצירת ביניים קצרה' : 'עצירת ביניים'} · ${place} · ${hoursPhrase(min)}`;
+      /** A change of train is the same fact with a different word — and it is
+       *  the case that proves the floor has to be ignored: 12 minutes on a
+       *  platform is a connection nobody would call free time. */
+      const changeText = (place, min) => `החלפה · ${place} · ${hoursPhrase(min)}`;
 
       /* ─── EventCard, the shipped tree (`ui/domain/EventCard.tsx`) ───── */
       const eventCard = (o) => `
@@ -9575,15 +9705,31 @@
           min,
         )}</span><span class="day-gap-line"></span></div>`;
 
-      const layover = (place, min, tight) =>
-        `<div class="day-gap layover${tight ? ' tight' : ''}">
-           <span class="day-gap-spine" aria-hidden="true"></span>
-           <span class="day-gap-lbl">${ic('clock')}<span>${
-             tight
-               ? `<b>עצירת ביניים קצרה</b> · ${place} · ${hoursPhrase(min)}`
-               : layoverText(place, min, false)
-           }</span></span>
-         </div>`;
+      /** The label all three candidates share, so the comparison is about the
+       *  SHAPE and nothing else. */
+      const jrLabel = (place, min, tight) =>
+        `<span class="jr-lbl">${ic('clock')}<span>${layoverText(place, min, tight)}</span></span>`;
+
+      /* (A) the corrected rail · (B) the band inside the journey block ·
+         (C) a row of its own. Same words, three shapes. */
+      const jrA = (place, min, tight) =>
+        `<div class="jr-a"><span class="jr-rail" aria-hidden="true"></span>${jrLabel(
+          place,
+          min,
+          tight,
+        )}</div>`;
+      const jrB = (place, min, tight) =>
+        `<div class="journey-stop">${ic('clock')}<span>${layoverText(
+          place,
+          min,
+          tight,
+        )}</span></div>`;
+      const jrC = (place, min, tight) =>
+        `<div class="jr-row"><span class="jr-ic" aria-hidden="true">${ic('clock')}</span>${jrLabel(
+          place,
+          min,
+          tight,
+        )}</div>`;
 
       /* Plan mode's shipped chip, for the side-by-side. Unchanged markup. */
       const planGap = (min) => {
@@ -9618,17 +9764,48 @@
       const legHead = (name, from, to) =>
         `<div class="bs-leg-head"><span>${name}</span>${routeLabel(from, to)}</div>`;
 
-      const wfLeg = (cap, date, time) => `
-        <div class="wf-leg">
-          <div class="wf-leg-cap">${cap}</div>
-          <div class="wf-leg-row">
-            <span class="tp-field wf-date-cell"><span class="tp-cap">תאריך</span><span class="tp-val">${date}</span></span>
-            <span class="tp-field"><span class="tp-cap">שעה</span><span class="tp-val">${time}</span></span>
+      /** One span leg, inside its own `Field` — which is what carries a refusal
+       *  (ADR-0150: a two-ended field can be wrong at ONE end). */
+      const wfLeg = (cap, date, time, err) => `
+        <div class="field${err ? '' : ''}"${err ? ' data-invalid data-refused' : ''}>
+          <div class="wf-leg">
+            <div class="wf-leg-cap">${cap}</div>
+            <div class="wf-leg-row">
+              <span class="tp-field wf-date-cell"><span class="tp-cap">תאריך</span><span class="tp-val">${date}</span></span>
+              <span class="tp-field"><span class="tp-cap">שעה</span><span class="tp-val">${time}</span></span>
+            </div>
           </div>
+          ${err ? `<p class="field-error" role="alert">${err}</p>` : ''}
         </div>`;
 
-      const span = (d1, t1, d2, t2) =>
-        `<div class="wf wf-span">${wfLeg('יציאה 🛫', d1, t1)}${wfLeg('הגעה 🛬', d2, t2)}</div>`;
+      const span = (d1, t1, d2, t2, err) =>
+        `<div class="wf wf-span">${wfLeg('יציאה 🛫', d1, t1, err)}${wfLeg(
+          'הגעה 🛬',
+          d2,
+          t2,
+        )}</div>`;
+
+      /** The stepped shell, exactly as `FormStepPanel` + `FormStepActions` draw it
+       *  (ADR-0155): a read-out (dots + the step's own name), the pane, and the ONE
+       *  `FormActions` footer — never a second action row beside it. */
+      const stepped = (index, count, label, inner, last) => `
+        <div class="booking-sheet">
+          <div class="form-steps-bar" role="status">
+            <span class="form-steps-dots" aria-hidden="true">${Array.from(
+              { length: count },
+              (_, i) =>
+                `<span class="form-steps-dot${
+                  i === index ? ' on' : i < index ? ' done' : ''
+                }"></span>`,
+            ).join('')}</span>
+            <span class="form-steps-label">${label}</span>
+          </div>
+          <div class="form-step">${inner}</div>
+          <div class="form-actions">
+            <button type="button" class="fa-primary">${last ? 'שמירה' : 'הבא'}</button>
+            <button type="button" class="fa-secondary">${index === 0 ? 'ביטול' : 'הקודם'}</button>
+          </div>
+        </div>`;
 
       const phone = (inner, cls = '', h) =>
         `<div class="phone ${cls}" style="width:${W}px;height:${h || H()}px">
@@ -9722,32 +9899,120 @@
       /* The journey home: two legs of one flight, and the Dubai stop between
          them. Drawn at three lengths, because the length is what the strip is
          for and the short one is the one you most need. */
-      const legs = (min, tight) => `
-        <div class="day-list">
-          ${eventCard({
-            icon: '✈️',
-            title: 'טוקיו ← דובאי',
-            time: '00:30–06:10',
-            hard: true,
-            meta: 'נריטה T1',
-            code: 'EK-319',
-            dur: '11:40',
-            cls: 'leg-first',
-          })}
-          ${layover('דובאי', min, tight)}
-          ${eventCard({
-            icon: '✈️',
-            title: 'דובאי ← תל אביב',
-            time: `${min === 40 ? '06:50' : min === 160 ? '08:50' : '13:40'}–${
-              min === 40 ? '09:35' : min === 160 ? '11:35' : '16:25'
-            }`,
-            hard: true,
-            meta: 'DXB T3',
-            code: 'EK-319',
-            dur: '3:45',
-            cls: 'leg-next',
-          })}
-        </div>`;
+      /* ─────────────────────────────────────────────────────────────────
+         THE JOURNEY, in whichever candidate shape. One renderer for all three
+         so the only difference on screen is the one under discussion, and one
+         `now` switch so the case that broke v1 is drawable in each of them.
+         ───────────────────────────────────────────────────────────────── */
+      const FLIGHT = {
+        first: {
+          icon: '✈️',
+          title: 'טוקיו ← דובאי',
+          time: '00:30–06:10',
+          hard: true,
+          meta: 'נריטה T1',
+          code: 'EK-319',
+          dur: '11:40',
+        },
+        next: {
+          icon: '✈️',
+          title: 'דובאי ← תל אביב',
+          time: '08:50–11:35',
+          hard: true,
+          meta: 'DXB T3',
+          code: 'EK-319',
+          dur: '3:45',
+        },
+        stop: 'דובאי',
+        min: 160,
+        /** The second leg's own length. Its clock is then DERIVED from the stop
+         *  (arrival + layover + this), so changing the layover in one frame can
+         *  never leave a departure that disagrees with the number beside it. */
+        nextMinutes: 165,
+      };
+      /* The train change, which is the case that settles the floor: 12 minutes
+         on a platform in Kyoto is a connection, and no threshold for "free
+         time" would ever surface it. Same vocabulary, one word different. */
+      const TRAIN = {
+        first: {
+          icon: '🚄',
+          title: 'טוקיו ← קיוטו',
+          time: '09:12–11:29',
+          hard: true,
+          meta: 'שינקנסן נוזומי',
+          code: 'JR-4417',
+          dur: '2:17',
+        },
+        next: {
+          icon: '🚉',
+          title: 'קיוטו ← נארה',
+          time: '11:41–12:26',
+          hard: true,
+          meta: 'קו נארה',
+          code: 'JR-4417',
+          dur: '0:45',
+        },
+        stop: 'קיוטו',
+        min: 12,
+        nextMinutes: 45,
+        word: 'change',
+      };
+
+      /** hh:mm + minutes, same day (no journey here crosses into a third). */
+      const addMin = (hhmm, m) => {
+        const total = mins(hhmm) + m;
+        return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(
+          total % 60,
+        ).padStart(2, '0')}`;
+      };
+
+      const journey = (variant, o = {}) => {
+        const j = o.j || FLIGHT;
+        const min = o.min ?? j.min;
+        const tight = o.tight ?? min <= 60;
+        // The second leg's clock follows the stop, so no frame can show a
+        // departure that contradicts the layover printed above it.
+        const arrive = j.first.time.split('–')[1];
+        const depart = addMin(arrive, min);
+        j.next = {
+          ...j.next,
+          time: `${depart}–${addMin(depart, j.nextMinutes)}`,
+          dur: hoursPhrase(j.nextMinutes).replace(' שע׳', ''),
+        };
+        const label =
+          j.word === 'change'
+            ? `<span class="jr-lbl">${ic('clock')}<span>${changeText(j.stop, min)}</span></span>`
+            : null;
+        const now = o.now ? nowline(o.now) : '';
+        if (variant === 'b') {
+          const band = label
+            ? `<div class="journey-stop">${ic('clock')}<span>${changeText(
+                j.stop,
+                min,
+              )}</span></div>`
+            : jrB(j.stop, min, tight);
+          return `<div class="day-list"><div class="journey">${eventCard(
+            j.first,
+          )}${band}${now}${eventCard(j.next)}</div></div>`;
+        }
+        if (variant === 'c') {
+          const row = label
+            ? `<div class="jr-row"><span class="jr-ic" aria-hidden="true">${ic(
+                'clock',
+              )}</span>${label}</div>`
+            : jrC(j.stop, min, tight);
+          return `<div class="day-list">${eventCard(j.first)}${row}${now}${eventCard(
+            j.next,
+          )}</div>`;
+        }
+        const rail = label
+          ? `<div class="jr-a"><span class="jr-rail" aria-hidden="true"></span>${label}</div>`
+          : jrA(j.stop, min, tight);
+        return `<div class="day-list">${eventCard({
+          ...j.first,
+          cls: 'leg-first',
+        })}${rail}${now}${eventCard({ ...j.next, cls: 'leg-next' })}</div>`;
+      };
 
       /* ─────────────────────────────────────────────────────────────────
          THE FRAMES
@@ -9782,68 +10047,78 @@
             </div>`,
         },
         {
-          h: '§3 · עצירת ביניים · פער שהוא לא זמן פנוי',
-          note: `שתי הטיסות האלה הן מסע אחד: הראשונה נוחתת איפה שהשנייה ממריאה. רצועת "פנוי" הייתה משקרת — אין כאן שום דבר פנוי. לכן הצורה הפוכה: לא קו <b>לרוחב</b> הרשימה אלא <b>עמוד שדרה</b> בעמודת האייקון (15px ריפוד + חצי מ-40px תג = מרכז הסמל), והמסע ממשיך דרכו. ענבר כי זו מחויבות, אבל <b>טקסט</b> ענבר-עמוק על מסילה מקווקוות — לא גלולה: גלולת ענבר על קו היא כבר <code>.nowline</code>. שלושת האורכים: קצרה (מתחת לסף), רגילה, וארוכה שבה מצב תכנון עדיין יציע למלא.`,
+          h: '§3 · עצירת ביניים · שלוש מועמדות, אחרי שהראשונה נפלה',
+          note: `הדיווח על v1 היה מדויק: <b>הקו המקווקו לא יושב טוב בין הטיסות</b>. האבחנה נובעת ממנו — מסילה היא <b>מחבר</b>, ולכן היא חייבת לגעת בשני הדברים שהיא מחברת, והמסילה ההיא ריחפה: הרצועה שמרה על מרווח 9px של הרשימה מעל ומתחת, אז הקו התחיל 9px מתחת לכרטיס אחד ונגמר 9px מעל השני. וברגע שקו העכשיו נחת באמצע, מה שהיא ניסתה לחבר הפסיק בכלל להיות צמוד. שלוש מועמדות, אותן מילים בדיוק, רק הצורה משתנה: <b>(א)</b> אותה מסילה מתוקנת (בלי מרווחים, נוגעת בשני הכרטיסים); <b>(ב)</b> <b>גוש המסע</b> — שני הקטעים <b>בתוך</b> מיכל אחד ופס ברוחב מלא ביניהם; <b>(ג)</b> שורה משלה בקצב הרשימה, עם ⏱ בעמודת התג. <b>ההמלצה היא (ב)</b>: התלונה הייתה שהסימן לא יושב בין הכרטיסים, ו-(ב) היא היחידה שמפסיקה לבקש ממנו לשבת שם — אין שני כרטיסים, יש עצם אחד עם חלקים, וזה בדיוק מה שחיבור הוא.`,
           body: `<div class="pair">
-              <div class="col"><span class="tag plain">40 דק׳ · קצרה</span>${phone(
-                legs(40, true),
+              <div class="col"><span class="tag before">א · המסילה, מתוקנת</span>${phone(
+                journey('a'),
                 '',
-                240,
+                250,
               )}</div>
-              <div class="col"><span class="tag plain">2:40 · רגילה</span>${phone(
-                legs(160, false),
+              <div class="col"><span class="tag after">ב · גוש המסע · מומלץ</span>${phone(
+                journey('b'),
                 '',
-                240,
+                250,
               )}</div>
-              <div class="col"><span class="tag plain">7:30 · ארוכה</span>${phone(
-                legs(450, false),
+              <div class="col"><span class="tag plain">ג · שורה משלה</span>${phone(
+                journey('c'),
                 '',
-                240,
+                250,
               )}</div>
             </div>`,
         },
         {
-          h: '§3b · הרצועה והקו של עכשיו · השכן היחיד שיכול להתנגש',
-          note: `המקרה הנפוץ באמת בשטח: אתם <b>בתוך</b> הפער. קו העכשיו נופל לתוכו, וכאן נבדק אם שתי הרצועות חיות זו לצד זו או נלחמות. הן לא נלחמות, ובכוונה: הרצועה מוסרת עובדה על התוכנית (כמה זמן יש בחור הזה), קו העכשיו מוסר את השעון. הרצועה <b>לא</b> סופרת לאחור — ספירה חיה שנייה על אותו מסך תסתור את זו שבדף הבית בשנייה ותיראה שבורה.`,
+          h: '§3b · עם קו העכשיו באמצע · המקרה ששבר את v1',
+          note: `זה לא מקרה קצה אלא <b>המצב הרגיל בשטח</b>: אתם בתוך העצירה, וקו העכשיו נופל בין שני הקטעים. כאן נראה למה (ב) עדיפה — בתוך גוש המסע קו העכשיו הוא עוד שורה של הגוש, והחיבור לא נשבר; ב-(א) הוא חותך את המסילה לשניים, וזה בדיוק מה שנראה במסך. משמאל, לשם השוואה, אותו קו בתוך פער רגיל: שם אין מה לשבור, כי רצועת הפער לא מתיימרת לחבר. ובשני המקרים הרצועה <b>לא</b> סופרת לאחור — קו העכשיו והכרטיס בדף הבית כבר מחזיקים את השעון.`,
           body: `<div class="pair">
-              <div class="col"><span class="tag plain">עכשיו · בתוך הפער</span>${phone(
+              <div class="col"><span class="tag plain">פער רגיל · עכשיו בתוכו</span>${phone(
                 `<div class="day-list">${eventCard(DAY[2])}${dayGap(160)}${nowline(
                   '14:05',
                 )}${eventCard(DAY[3])}</div>`,
                 '',
                 290,
               )}</div>
-              <div class="col"><span class="tag plain">עכשיו · בתוך עצירת ביניים</span>${phone(
-                `<div class="day-list">${eventCard({
-                  icon: '✈️',
-                  title: 'טוקיו ← דובאי',
-                  time: '00:30–06:10',
-                  hard: true,
-                  meta: 'נריטה T1',
-                  code: 'EK-319',
-                  cls: 'leg-first',
-                })}${layover('דובאי', 160, false)}${nowline('07:20')}${eventCard({
-                  icon: '✈️',
-                  title: 'דובאי ← תל אביב',
-                  time: '08:50–11:35',
-                  hard: true,
-                  meta: 'DXB T3',
-                  code: 'EK-319',
-                  cls: 'leg-next',
-                })}</div>`,
+              <div class="col"><span class="tag before">א · המסילה נחתכת</span>${phone(
+                journey('a', { now: '07:20' }),
+                '',
+                290,
+              )}</div>
+              <div class="col"><span class="tag after">ב · שורה של הגוש</span>${phone(
+                journey('b', { now: '07:20' }),
                 '',
                 290,
               )}</div>
             </div>`,
         },
         {
-          h: '§4 · איך עצירת ביניים נוצרת · עצירה על שדה המסלול',
-          note: `החצי השני של הבקשה, וזה מה שגורם למסע להיות מסע ולא שתי הזמנות זרות. <code>RouteField</code> מקבל <b>עצירה</b>: לחצן אחד מתחת לשני הבוררים, וכל עצירה היא בורר מקומות שלישי בערימה עם הסרה משלה. שמירה אחת כותבת שתי הזמנות ושני אירועים בקבוצת שינוי אחת (ADR-0092), עם אותו קוד אישור, אותו סמל ואותה מחויבות — והכותרת של כל קטע נגזרת מהקצוות שלו (ADR-0059 §3), אז אף אחד לא מקליד שם. הצעד "מתי" מקבל אז לוח זמנים לכל קטע, בדיוק כמו שהלוך ושוב קיבל שני לוחות (ADR-0154 §4). שני דברים שהציור שינה: לעצירה <b>אין ✕ משלה</b> — ה-✕ של הבורר עצמו הוא ההסרה, כי עצירה ריקה היא לא מצב; ו<b>החלפת הכיוון נשארת במקומה</b> ומהפכת את כל הרצף, כי "החלפת כיוון" זה בדיוק מה שהיא עושה גם לשלוש נקודות.`,
+          h: '§3c · לא רק טיסות · החלפת רכבת, ולמה הסף לא חל',
+          note: `אותה גזירה בדיוק חלה על רכבת ועל אוטובוס — <code>carriesRoute</code> נכון לשלושת סוגי התחבורה מאז ש-<a href="../docs/decisions/0156-a-bus-is-transport-the-third-mode-the-picker-always-meant.md">ADR-0156</a> הוסיף את <code>transit</code>, ולכן אין כאן שום דבר ספציפי לטיסה. מה שמשתנה זו <b>מילה אחת</b>: רכבת עושה <b>החלפה</b>, לא עצירת ביניים. וזה גם המקרה שמסדיר את שאלת הסף אחת ולתמיד: <b>12 דקות על רציף בקיוטו</b> הן חיבור אמיתי שאף סף של "זמן פנוי" לא היה מציף — הא-סימטריה בין הפער (סף 60 דק׳) לחיבור (בלי סף) היא לא ויתור, היא ההבדל בין היעדר לנוכחות.`,
+          body: `<div class="pair">
+              <div class="col"><span class="tag after">ב · החלפה של 12 דק׳</span>${phone(
+                journey('b', { j: TRAIN }),
+                '',
+                250,
+              )}</div>
+              <div class="col"><span class="tag plain">ב · עצירה קצרה · 40 דק׳</span>${phone(
+                journey('b', { min: 40, tight: true }),
+                '',
+                250,
+              )}</div>
+              <div class="col"><span class="tag plain">ב · עצירה ארוכה · 7:30</span>${phone(
+                journey('b', { min: 450, tight: false }),
+                '',
+                250,
+              )}</div>
+            </div>`,
+        },
+        {
+          h: '§4 · איך עצירת ביניים נוצרת · עצירה על המסלול, וקטע לכל צעד',
+          note: `החצי השני של הבקשה. <code>RouteField</code> מקבל <b>עצירה</b>: לחצן אחד מתחת לבוררים, וכל עצירה היא בורר מקומות נוסף בערימה, מוזח פנימה כי הוא נקודת ביניים ולא קצה. שמירה אחת כותבת שתי הזמנות ושני אירועים בקבוצת שינוי אחת (ADR-0092), עם אותו קוד אישור, אותו סמל ואותה מחויבות, וכותרת כל קטע נגזרת מהקצוות שלו (ADR-0059 §3) — אף אחד לא מקליד שם. שני דברים שהציור שינה: לעצירה <b>אין ✕ משלה</b> (ה-✕ של הבורר הוא ההסרה, כי עצירה ריקה היא לא מצב), ו<b>החלפת הכיוון נשארת במקומה</b> ומהפכת את כל הרצף.`,
           body: `<div class="pair">
               <div class="col"><span class="tag plain">שדה המסלול · עם עצירה</span>${phone(
                 `<div class="booking-sheet">
                    <div class="field">
-                     <span class="field-lbl">מסלול</span>
+                     <span class="field-label">מסלול</span>
                      <div class="route-field">
                        ${picker('נריטה · טוקיו')}
                        <button type="button" class="route-field-swap">${ic(
@@ -9861,18 +10136,61 @@
                    </div>
                  </div>`,
                 '',
+                340,
+              )}</div>
+            </div>`,
+        },
+        {
+          h: '§4b · הטופס כבר יודע לעשות את זה · קטע = צעד',
+          note: `הטופס נעשה מדורג לפני יומיים (<a href="../docs/decisions/0155-a-stepped-form-is-one-primitive-and-it-commits-once.md">ADR-0155</a>), והמסע עם עצירות הוא בדיוק הצורה שהוא נבנה בשבילה: <b>קטע אחד לכל צעד</b>. שתי עצירות אינן טופס ארוך פי שלוש אלא שני צעדים נוספים, וזה גם מה שמונע את מה ש-ADR-0154 §4 מדד — 492px לכל לוח זמנים נוסף, שהיו נערמים מתחת לקיפול. שמות הצעדים אומרים מה הם שואלים: <code>מה ואיפה</code> ← <code>מתי · קטע 1</code> ← <code>מתי · קטע 2</code> ← <code>פרטים</code>. וההצדקה החזקה ביותר לדירוג היא דווקא <b>הסירוב</b>: "יציאה לפני ההגעה הקודמת" היא תלות בין צעדים, שלפי ADR-0155 §5 היא הטיעון החזק ביותר בעד דירוג — ולפי ADR-0150 היא מסומנת על השדה שטועה, שהוא היציאה של הקטע המאוחר. אותה מכניקה בדיוק לרכבת ולאוטובוס (<code>transit</code>, ADR-0156): זה לא מסך לטיסות.`,
+          body: `<div class="pair">
+              <div class="col"><span class="tag plain">צעד 2 · קטע 1</span>${phone(
+                stepped(
+                  1,
+                  4,
+                  'מתי · קטע 1',
+                  `${legHead('קטע 1', 'טוקיו', 'דובאי')}${span(
+                    'א׳ 12.7',
+                    '00:30',
+                    'א׳ 12.7',
+                    '06:10',
+                  )}<div class="bs-zone-note">${ic(
+                    'clock',
+                  )} זמן מקומי בכל עיר · ביעד 5 שעות אחורה</div>`,
+                ),
+                '',
                 360,
               )}</div>
-              <div class="col"><span class="tag plain">הצעד "מתי" · לוח לכל קטע</span>${phone(
-                `<div class="booking-sheet">
-                   ${legHead('קטע 1', 'טוקיו', 'דובאי')}
-                   ${span('א׳ 12.7', '00:30', 'א׳ 12.7', '06:10')}
-                   ${legHead('קטע 2', 'דובאי', 'תל אביב')}
-                   ${span('א׳ 12.7', '08:50', 'א׳ 12.7', '11:35')}
-                   <div class="bs-zone-note">${ic(
-                     'clock',
-                   )} זמן מקומי בכל עיר · העצירה 5 שעות אחורה</div>
-                 </div>`,
+              <div class="col"><span class="tag plain">צעד 3 · קטע 2</span>${phone(
+                stepped(
+                  2,
+                  4,
+                  'מתי · קטע 2',
+                  `${legHead('קטע 2', 'דובאי', 'תל אביב')}${span(
+                    'א׳ 12.7',
+                    '08:50',
+                    'א׳ 12.7',
+                    '11:35',
+                  )}<div class="jr-lbl" style="margin-top:10px">${ic(
+                    'clock',
+                  )}<span>עצירת ביניים בדובאי · 2:40 שע׳</span></div>`,
+                ),
+                '',
+                360,
+              )}</div>
+              <div class="col"><span class="tag before">אותו צעד · מסרב</span>${phone(
+                stepped(
+                  2,
+                  4,
+                  'מתי · קטע 2',
+                  `${legHead('קטע 2', 'דובאי', 'תל אביב')}${span(
+                    'א׳ 12.7',
+                    '05:40',
+                    'א׳ 12.7',
+                    '08:25',
+                    'היציאה לפני ההגעה לדובאי',
+                  )}`,
+                ),
                 '',
                 360,
               )}</div>
@@ -9903,7 +10221,8 @@
 
         probe.innerHTML = dayGap(160);
         const gapH = probe.firstElementChild.getBoundingClientRect().height;
-        probe.innerHTML = layover('דובאי', 160, false);
+        // The recommended shape (B): what the BAND costs inside the journey block.
+        probe.innerHTML = jrB('דובאי', 160, false);
         const layH = probe.firstElementChild.getBoundingClientRect().height;
         probe.innerHTML = eventCard(DAY[1]);
         const rowH = probe.firstElementChild.getBoundingClientRect().height;
@@ -9922,9 +10241,9 @@
             `${Math.round((gapH / rowH) * 100)}% מגובה שורת אירוע · אותו חריץ שהצ׳יפ של מצב תכנון תופס`,
           ],
           [
-            'גובה רצועת עצירת ביניים',
+            'גובה פס העצירה (מועמדת ב)',
             `${layH.toFixed(1)}px`,
-            'עמוד השדרה נמתח לגובה מינימלי, ולכן היא גבוהה מרצועת פער',
+            'ברוחב מלא בתוך גוש המסע · מחליף את המרווח של 10px בין שני כרטיסים',
           ],
           ['גובה שורת אירוע', `${rowH.toFixed(1)}px`, 'לא השתנה · הרצועה חיה בין השורות'],
           [
@@ -9975,46 +10294,57 @@
             הפער ואת המשבצת למילוי. מצב טיול קורא ממנו את <code>minutes</code> וזורק את
             <code>fill</code>. אין חישוב חדש, ולכן גם אין דרך לשני המצבים לא להסכים מה זה פער.</li>
           <li><b>אותו סף בשני המצבים</b> (<code>GAP_MIN_MINUTES = 60</code>). השאלה "האם יש כאן חור
-            אמיתי" זהה בשני המצבים; מה ששונה הוא מה עושים איתו. סף נפרד למצב טיול היה אומר ששני
-            המסכים חלוקים על עובדה, וזה בדיוק הפיצול שרוצים למנוע.</li>
+            אמיתי" זהה; מה ששונה הוא מה עושים איתו. סף נפרד למצב טיול היה אומר ששני המסכים חלוקים
+            על עובדה.</li>
           <li><b>קריאה מדויקת, לא מעוגלת.</b> <code>hoursPhrase</code> ולא
             <code>gapLabel</code> של מצב תכנון: 2:40 ולא "שעתיים". הצהרה חייבת להיות מדידה.</li>
-          <li><b>עצירת ביניים מתעלמת מהסף.</b> חיבור של 40 דק׳ הוא בדיוק המקרה שהכי צריך להיראות,
-            והוא נופל מתחת לכל סף סביר של "זמן פנוי".</li>
-          <li><b>הצמד נגזר, לא נשמר</b> — אותה תנוחה של ADR-0154 §5 ומאותן שלוש סיבות. הכלל שמפריד
-            בין השניים: הלוך ושוב <b>חוזר</b> לנקודת המוצא, רצף לא. בלי הכלל הזה טיסה הלוך-חזור
-            הייתה נקראת עצירת ביניים בדובאי.</li>
+          <li><b>גוש המסע (מועמדת ב) לחיבור</b> — אחרי שהמסילה של v1 נבחנה במכשיר. שני קטעים בתוך
+            מיכל אחד, פס ברוחב מלא ביניהם, וקו העכשיו הופך לשורה של הגוש במקום לחתוך אותו.</li>
+          <li><b>חיבור מתעלם מהסף.</b> החלפת רכבת של 12 דק׳ היא המקרה שמוכיח את זה: אף סף של "זמן
+            פנוי" לא היה מציף אותה, והיא הדבר הכי חשוב על המסך.</li>
+          <li><b>קטע = צעד בטופס</b> (ADR-0155). לא טופס ארוך יותר אלא עוד צעד, וזה גם מה שמונע את
+            492px לכל לוח זמנים ש-ADR-0154 §4 מדד. הסירוב החוצה-צעדים ("יציאה לפני ההגעה הקודמת")
+            הוא בדיוק מה ש-ADR-0155 §5 קורא לו הטיעון החזק ביותר בעד דירוג.</li>
+          <li><b>הצמד נגזר, לא נשמר</b> — אותה תנוחה של ADR-0154 §5. הכלל שמפריד בין השניים: הלוך
+            ושוב <b>חוזר</b> לנקודת המוצא, רצף לא. בלי הכלל הזה טיסה הלוך-חזור הייתה נקראת עצירת
+            ביניים.</li>
+          <li><b>לא רק טיסות.</b> הכול נשען על <code>carriesRoute</code>, שנכון גם ל-<code>train</code>
+            ול-<code>transit</code> (ADR-0156). רכבת עושה <b>החלפה</b>, טיסה עושה <b>עצירת ביניים</b> —
+            מילה אחת שונה, אותה גזירה.</li>
         </ul>
 
         <h3>מה נדחה</h3>
         <ul>
+          <li><span class="rej">המסילה המקווקוות בעמודת התג (v1).</span> נבחנה במכשיר ולא החזיקה:
+            מחבר חייב לגעת, והיא ריחפה 9px מכל צד; וקו העכשיו באמצע חתך אותה. §3א משאיר אותה
+            מתוקנת כדי שההשוואה תהיה כנה, לא כהמלצה.</li>
           <li><span class="rej">גלולת ענבר על קו.</span> זה <code>.nowline</code> כמעט בדיוק — אותו
             מילוי 12%, אותו ענבר-עמוק, אותה גלולה על קו. סימן חי אחד לרשימה.</li>
           <li><span class="rej">מרחק אווירי בתוך הרצועה</span> ("12 ק״מ ליעד הבא"). קיים כבר
-            (<code>lib/distance.ts</code>) וזול להוסיף, אבל קו אווירי לא עונה על השאלה היחידה
-            שנשאלת בפער — האם 40 דקות מספיקות — ולאפליקציה אין ניתוב במכוון (ADR-0109 §7). מספר
-            שנראה כמו תשובה ואיננו תשובה גרוע מכלום.</li>
+            (<code>lib/distance.ts</code>) וזול, אבל קו אווירי לא עונה על השאלה היחידה שנשאלת בפער —
+            האם 40 דקות מספיקות — ולאפליקציה אין ניתוב במכוון (ADR-0109 §7).</li>
           <li><span class="rej">ספירה לאחור חיה ברצועה.</span> קו העכשיו והכרטיס בדף הבית כבר
             מספקים את השעון; שתי ספירות על מסך אחד יסתרו זו את זו בשנייה.</li>
-          <li><span class="rej">רצועות בקצוות היום</span> (לפני הראשון, אחרי האחרון). למצב תכנון יש
-            אותן כי אפשר למלא אותן. "היום מתחיל בעוד 3 שעות" לא מוסיף דבר על השעה שכתובה בשורה
-            הראשונה.</li>
+          <li><span class="rej">רצועות בקצוות היום.</span> "היום מתחיל בעוד 3 שעות" לא מוסיף דבר על
+            השעה שכתובה בשורה הראשונה.</li>
+          <li><span class="rej">✕ נפרד לעצירה.</span> צויר ונמחק: ה-✕ של הבורר הוא ההסרה, כי עצירה
+            ריקה היא לא מצב.</li>
           <li><span class="rej">הזמנה אחת עם שני קטעים.</span> ADR-0047 §1 כבר דחה 1:רבים בין הזמנה
-            לאירוע, ומאותה סיבה: אלה שני אירועים קשיחים עם שני מופעים, שתי הגעות, שני אזורי זמן
-            ושני מצבי "בוצע".</li>
+            לאירוע: אלה שני אירועים קשיחים עם שני מופעים, שתי הגעות, שני אזורי זמן ושני מצבי
+            "בוצע".</li>
         </ul>
 
         <h3>מה נשאר פתוח</h3>
         <ul>
-          <li><b>סף העצירה הקצרה.</b> הפריים מצייר 40 דק׳ כקצרה ו-2:40 כרגילה. הגבול עצמו
-            (<code>LAYOVER_TIGHT_MINUTES</code>) הוא מספר שצריך להיקבע, והוא כנראה שונה לטיסה
-            ולרכבת.</li>
-          <li><b>תקרת הרצף.</b> כמה זמן בין נחיתה להמראה עדיין הופך שתי הזמנות למסע אחד. 24 שעות
-            הוא הגבול המקובל בתעופה בין layover ל-stopover, וזה מה שמוצע — אבל זו החלטה, לא
-            עובדה.</li>
-          <li><b>מצב תכנון והעצירה.</b> כרגע מצב תכנון ימשיך להציע "שבץ" בתוך עצירת ביניים ארוכה,
-            וזה נכון: עצירה של 7 שעות בדובאי היא באמת זמן שאפשר לתכנן בו. אבל הצ׳יפ שם לא יידע
-            להגיד שזו עצירה.</li>
+          <li><b>סף העצירה הקצרה</b> (<code>LAYOVER_TIGHT_MINUTES</code>). 40 דק׳ מצוירות כקצרה,
+            2:40 כרגילה. הגבול עצמו הוא החלטה, והוא כנראה שונה לטיסה ולרכבת.</li>
+          <li><b>תקרת הרצף.</b> כמה זמן בין הגעה ליציאה עדיין הופך שתי הזמנות למסע אחד. 24 שעות הוא
+            הגבול המקובל בתעופה בין layover ל-stopover, וזה מה שמוצע.</li>
+          <li><b>קטעים שנופלים בימים שונים.</b> טיסת לילה שנוחתת למחרת מפרידה את שני הקטעים לשני
+            ימים, ואז אין שני כרטיסים סמוכים לחבר. הגוש קיים רק ביום שבו שניהם נמצאים; מה שאומר את
+            החיבור ביום השני הוא נקודות המעבר של ADR-0064, וזה לא מעוצב כאן.</li>
+          <li><b>מצב תכנון והעצירה.</b> תכנון ימשיך להציע "שבץ" בתוך עצירה ארוכה, וזה נכון — 7 שעות
+            בדובאי הן זמן שאפשר לתכנן בו. אבל הצ׳יפ שם לא יידע להגיד שזו עצירה.</li>
         </ul>`;
 
       render();
