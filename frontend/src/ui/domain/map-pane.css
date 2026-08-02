@@ -269,7 +269,7 @@
   min-width: 0;
   padding: 0;
   font-size: calc(var(--pin-u) * 0.32);
-  color: var(--card);
+  color: var(--on-fill);
 }
 .map-pin .pin-n.outcome .icon {
   stroke-width: 3.1;
@@ -322,8 +322,8 @@
   padding: 0 calc(var(--pin-u) * 0.09);
   display: grid;
   place-items: center;
-  background: var(--ink);
-  color: var(--card);
+  background: var(--cta);
+  color: var(--cta-text);
   font-family: var(--font-mono);
   font-size: calc(var(--pin-u) * 0.26);
   font-weight: 700;
@@ -408,11 +408,14 @@
 .map-result.selected {
   width: var(--pin-base, 34px);
   height: var(--pin-base, 34px);
+  /* `--card` here is the HALO that lifts the pin off the canvas, so it follows
+     the theme; the fill and its ink are the CTA pair and say so. Same token,
+     two jobs — the distinction ADR-0158 §1 exists to keep visible. */
   outline: 2px solid var(--card);
   outline-offset: 2px;
-  background: var(--ink);
+  background: var(--cta);
   border-color: var(--card);
-  color: var(--card);
+  color: var(--cta-text);
   box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 45%, transparent);
 }
 

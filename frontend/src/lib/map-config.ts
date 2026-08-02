@@ -21,7 +21,23 @@ export interface MapsConfig {
   apiKey: string;
   /** The cloud-styled Map ID for the active theme (ADR-0121 §1: mandatory). */
   mapId: string;
+  /** Which of the Map ID's two style slots to render. A Map ID carries a light
+   *  style AND a dark style, and `colorScheme` is what picks between them — it
+   *  is **not** implied by the Map ID. Google defaults it to `LIGHT`, so a map
+   *  built without it renders the night Map ID's *light* slot: the right ID,
+   *  the wrong face, and indistinguishable on screen from "the night style was
+   *  never imported" (ADR-0158 §12). */
+  colorScheme: MapColorScheme;
 }
+
+/** The two slots, named beside the config that resolves them (ADR-0095). Values
+ *  are `google.maps.ColorScheme` members, spelled as the strings the API accepts
+ *  so nothing here has to import the Maps namespace. */
+export const MAP_COLOR_SCHEME = {
+  light: 'LIGHT',
+  dark: 'DARK',
+} as const;
+export type MapColorScheme = (typeof MAP_COLOR_SCHEME)[keyof typeof MAP_COLOR_SCHEME];
 
 /** The three build vars, named beside the type that reads them (ADR-0095). */
 export interface MapsEnv {
@@ -44,15 +60,24 @@ export type MapTheme = Theme;
  *  passing `''` to the API loader would fail at load time instead of degrading.
  *
  *  The dark Map ID falls back to the light one rather than to nothing, so a
- *  checkout that minted only one still draws a map (ADR-0121 §11 — dark mode is
- *  inert app-wide, so this fallback is the honest state, not a compromise). */
+ *  checkout that minted only one still draws a map (ADR-0121 §11).
+ *
+ *  `colorScheme` follows the THEME, not the Map ID that was resolved — including
+ *  down that fallback. A checkout with only the day Map ID still asks for `DARK`
+ *  in dark mode, and gets whatever that one Map ID holds in its dark slot: worst
+ *  case Google's default dark, which beats a light canvas behind a dark app. */
 export function readMapsConfig(env: MapsEnv, theme: MapTheme = MAP_THEME.light): MapsConfig | null {
   const apiKey = env.VITE_GOOGLE_MAPS_BROWSER_KEY?.trim();
   const light = env.VITE_GOOGLE_MAPS_MAP_ID?.trim();
   const dark = env.VITE_GOOGLE_MAPS_MAP_ID_DARK?.trim();
-  const mapId = theme === MAP_THEME.dark ? dark || light : light;
+  const isDark = theme === MAP_THEME.dark;
+  const mapId = isDark ? dark || light : light;
   if (!apiKey || !mapId) return null;
-  return { apiKey, mapId };
+  return {
+    apiKey,
+    mapId,
+    colorScheme: isDark ? MAP_COLOR_SCHEME.dark : MAP_COLOR_SCHEME.light,
+  };
 }
 
 /** The theme the document is in right now — `lib/theme.ts`'s reader, re-exported

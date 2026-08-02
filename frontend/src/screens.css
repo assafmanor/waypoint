@@ -1324,7 +1324,7 @@
    (ADR-0061 mockup) — a status hint, still advisory, never a blocker. */
 .chk-cta.warn {
   border-color: var(--miss);
-  color: var(--miss);
+  color: var(--miss-deep);
 }
 .chk-cta.warn:hover {
   background: var(--miss);
@@ -3543,7 +3543,7 @@
 .du-head-title {
   font-weight: 700;
   font-size: 15px;
-  color: var(--indigo);
+  color: var(--ink);
 }
 .du-head-sub {
   font-size: 11.5px;

@@ -425,13 +425,21 @@
    ring), not just a border. The shell surfaces outside a trip (all-trips, the zero
    state) still draw it as their own control; inside the trip it is the head of the
    people stack below. */
+/* The ring is PROMINENT, not bright — which is the same thing only while the
+   chrome is dark. Hardcoded white read as a ring on indigo and vanished the
+   moment the band went light, and the `--indigo` gap punched a dark hole in it;
+   both are the surface-token-as-accent shape (ADR-0158 §1). The gap is whatever
+   this avatar actually sits on, the ring is that surface's ink.
+
+   Both hosts are chrome — `.zero-head` paints --chrome-bg too — so both name the
+   chrome's pair and follow whichever band they land on. */
 .account-btn {
   cursor: pointer;
   margin-inline-start: 3px;
-  border-color: var(--indigo);
+  border-color: var(--chrome-ring);
   box-shadow:
-    0 0 0 2px var(--indigo),
-    0 0 0 3.5px rgba(255, 255, 255, 0.6);
+    0 0 0 2px var(--chrome-ring),
+    0 0 0 3.5px color-mix(in srgb, var(--chrome-ink) 60%, transparent);
   font: inherit;
 }
 /* The header stack's own sizing — tighter than the standalone `.av`, because four
@@ -450,10 +458,10 @@
 .hdr-people .av.is-me {
   margin-inline-start: 0;
   z-index: 2;
-  border-color: var(--indigo);
+  border-color: var(--chrome-ring);
   box-shadow:
-    0 0 0 2px var(--indigo),
-    0 0 0 3.5px rgba(255, 255, 255, 0.6);
+    0 0 0 2px var(--chrome-ring),
+    0 0 0 3.5px color-mix(in srgb, var(--chrome-ink) 60%, transparent);
 }
 /* Offline/pending annotations on other shell surfaces (T-013) — muted, because
    this is a background/system signal, not a "now" or "location" one (rule #4).
@@ -876,7 +884,7 @@
 .zero-copy h1 {
   font-family: var(--font-head);
   font-size: 26px;
-  color: var(--indigo);
+  color: var(--ink);
 }
 .zero-copy p {
   color: var(--muted);
@@ -1671,7 +1679,7 @@
 .placeholder h1 {
   font-family: var(--font-head);
   font-size: 26px;
-  color: var(--indigo);
+  color: var(--ink);
   margin-bottom: 8px;
 }
 .placeholder p {
@@ -1680,7 +1688,7 @@
 }
 .placeholder-emphasis {
   font-weight: 700;
-  color: var(--indigo);
+  color: var(--ink);
 }
 
 /* bottom nav */
@@ -1761,8 +1769,12 @@
 .nav button.on .ic {
   background: var(--nav-tint);
 }
+/* `--plan-deep`, not `--plan` — the same correction phase 5 made to the trip
+   nav's `--indigo`→`--ink`, which stopped one step short of plan's. An ACCENT
+   read as INK needs the deep variant: bare `--plan` puts the active tab's label
+   at 4.32:1 in dark, and it is the tab you are on. */
 .app[data-mode='plan'] .nav {
-  --nav-accent: var(--plan);
+  --nav-accent: var(--plan-deep);
   --nav-tint: var(--plan-tint);
 }
 .nav button:focus-visible {
@@ -2122,10 +2134,19 @@
    faint drafting grid, so the mode is readable from the chrome alone before any
    content. Scoped entirely under [data-mode='plan'] — Trip mode is untouched.
    ============================================================ */
+/* Plan declares its ground and lets the contract carry the rest. This block used
+   to re-specify the whole chrome by hand — nineteen rules restating what the six
+   --chrome-* names now say — which is the duplication §5 was written to end and
+   the one frontend/CLAUDE.md rule 8 names outright. The ink ramp is NOT restated:
+   plan's band is the lighter of the two, so trip's rungs clear on it. */
+.app[data-mode='plan'],
+.mode-chrome[data-mode='plan'] {
+  --chrome-bg: color-mix(in srgb, var(--plan) 12%, var(--screen));
+}
 .app[data-mode='plan'] .header,
 .mode-chrome[data-mode='plan'] {
-  color: var(--ink);
-  background-color: var(--card);
+  color: var(--chrome-ink);
+  background-color: var(--chrome-bg);
   /* drafting grid lives on .header::before (transitionable) — see the base rule */
   border-bottom: 1px solid var(--line);
 }
@@ -2143,7 +2164,7 @@
   outline-color: var(--plan);
 }
 .app[data-mode='plan'] .hdr-sync-badge {
-  border-color: var(--card);
+  border-color: var(--chrome-bg);
 }
 .app[data-mode='plan'] .gear-btn,
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn {
@@ -2157,37 +2178,22 @@
 .mode-chrome[data-mode='plan'] .chrome-ghost-btn:focus-visible {
   outline-color: var(--plan);
 }
-/* Avatar overlap rings match the (now light) header surface; your own ringed
-   avatar gets a violet ring instead of the dark-chrome white one. */
-.app[data-mode='plan'] .av {
-  border-color: var(--card);
+/* Your own ringed avatar keeps a VIOLET outer ring — the one thing here the
+   contract cannot express, because it is plan's accent and not its chrome. The
+   ring gap and the overlap borders are `--chrome-ring` like everywhere else, so
+   the nine rules that used to restate `--card`, `--muted` and `--ink` for this
+   block are gone: they are what the ramp already says. */
+.app[data-mode='plan'] .av.is-me {
+  box-shadow:
+    0 0 0 2px var(--chrome-ring),
+    0 0 0 3.5px color-mix(in srgb, var(--plan) 60%, transparent);
 }
 .app[data-mode='plan'] .av.more {
   background: var(--plan-tint);
   color: var(--plan-deep);
 }
-.app[data-mode='plan'] .av.is-me {
-  border-color: var(--card);
-  box-shadow:
-    0 0 0 2px var(--card),
-    0 0 0 3.5px rgba(110, 89, 214, 0.5);
-}
-.mode-chrome[data-mode='plan'] .chrome-chip {
-  background: rgba(22, 35, 61, 0.05);
-  border-color: var(--line);
-  color: var(--muted);
-}
-.app[data-mode='plan'] .hdr-anchor .cap {
-  color: var(--muted);
-}
-.app[data-mode='plan'] .hdr-anchor .num {
-  color: var(--ink);
-}
 .app[data-mode='plan'] .hdr-mode {
   background: var(--plan-tint);
-}
-.app[data-mode='plan'] .hdr-mode .p {
-  color: var(--muted);
 }
 /* The Plan-mode day-strip re-skin (light pills, violet selection, dashed
    empty-day markers) moved into the DayStrip component, keyed off its own

@@ -328,7 +328,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         <StatTile value={events.length} label={t.planHome.stats.events} />
         <StatTile
           value={
-            <span style={readiness.emptyDates.length > 0 ? { color: 'var(--miss)' } : undefined}>
+            <span
+              style={readiness.emptyDates.length > 0 ? { color: 'var(--miss-deep)' } : undefined}
+            >
               {readiness.emptyDates.length}
             </span>
           }

@@ -106,17 +106,30 @@
      own alpha off it (`color-mix(… var(--chrome-ink) 9%, transparent)`), which
      preserves every existing alpha exactly AND makes the wash flip with the
      ink — a white wash on dark chrome becomes an ink wash on a light one, with
-     no per-element rule to rewrite. */
-  --chrome-bg: var(--indigo);
-  --chrome-ink: #ffffff; /* titles, active glyphs — also the wash base */
-  --chrome-ink-mid: #dce3f2; /* control glyphs: the back chevron, the +N count */
-  --chrome-ink-num: #b9c4de; /* numerals — the day number, the anchor's value */
-  /* #93a2c4, not #8494b5. Phase 3 folded four values (#9daac8 #93a2c4 #8fa0c4
-     #8494b5) onto the DARKEST of them, which left the day pill's letter at
-     4.02:1 — the pill's own 5% wash lightens the ground under it. #93a2c4 is
-     both the modal value of the four and the one that clears AA there. */
-  --chrome-ink-dim: #93a2c4; /* labels and captions */
-  --chrome-ring: var(--indigo); /* the ring separating overlapping avatars */
+     no per-element rule to rewrite.
+
+     LIGHT MODE'S CHROME IS LIGHT, since phase 6 (§9 shipped). --chrome-bg is
+     the accent at 12% over --screen, so the band keeps its mode's HUE while
+     sitting a step below the page — trip stays indigo, plan stays violet, and
+     identity rides hue rather than luminance now that neither is dark. Plan's
+     ground is set beside trip's in App.css, the one place a mode declares
+     itself; everything downstream reads these names and never learns which
+     mode it is in.
+
+     The INK ramp is shared by both modes: plan's band is the lighter of the
+     two, so a rung that clears on trip's clears on plan's, and one ladder is
+     one thing to keep true. Four rungs in 21 L*, which is tight — a light
+     chrome's floor is higher than a dark one's, because its washes DARKEN the
+     ground under the very ink they sit behind. Each value below is the
+     lightest that clears 4.5 on the heaviest wash it is actually painted on:
+     16% for --mid (the +N bubble), 8% for --dim (the offline badge), 5% for
+     --num (the day pill). Do not lighten one without re-checking its wash. */
+  --chrome-bg: color-mix(in srgb, var(--indigo) 12%, var(--screen));
+  --chrome-ink: #16233d; /* titles, active glyphs — also the wash base */
+  --chrome-ink-mid: #2c3a56; /* control glyphs: the back chevron, the +N count */
+  --chrome-ink-num: #3c4763; /* numerals — the day number, the anchor's value */
+  --chrome-ink-dim: #465166; /* labels and captions */
+  --chrome-ring: var(--chrome-bg); /* the ring separating overlapping avatars */
 
   /* Plan's LOUD SURFACE, the counterpart of --board/--board-2 (ADR-0158 §4).
      The prep hero used to paint itself out of the ACCENT tokens (--plan-deep →
@@ -131,6 +144,16 @@
   /* Status mini-palette (distinct from the semantic trio) */
   --ok: #3c9a6b;
   --miss: #c2584e;
+  /* --miss AS INK, the same split --amber/--amber-deep already runs (ADR-0158
+     §1: one token, two jobs). --miss is a FILL — dots, dashed borders, the
+     settle mark — and at L* 50.7 it is right for that and 4.38:1 as text on
+     white, i.e. under AA everywhere it is written rather than painted. Scalar
+     along the same RGB ray, so hue and saturation are untouched.
+
+     ONE call site today, deliberately: the 36 others are a conversion this
+     phase did not do, and the backlog carries them. Naming it is what stops
+     the 37th from being another literal. */
+  --miss-deep: #9b463e;
 
   /* Category pin palette (ADR-0038 §2 / ADR-0028 decorative palette) — 5 pastel
      hues, "never amber or teal": colour = category on the Map list badge + pin
@@ -426,10 +449,32 @@ body {
      is unmistakably the loud thing on a plan screen while staying calm. This is
      also what keeps the two modes as distinguishable in dark as they are in
      light: trip is near-black with amber inside it, plan is a lifted violet slab
-     with white on it. The --chrome-* names above are NOT restated: trip chrome
-     is always-dark, so its contract is theme-fixed. */
+     with white on it. */
   --plan-surface: #2a2158;
   --plan-surface-2: #332866;
+
+  /* The chrome, restated — and it has to be, now that light's is light. §5 read
+     the chrome as theme-fixed and phase 6 refuted that: once light mode got its
+     own band, the values in :root stopped being "the chrome" and became "the
+     LIGHT chrome". These are phase 3's always-dark values, unchanged, with one
+     exception:
+
+     --chrome-bg is no longer bare --indigo. In dark, --indigo is #131f38 and
+     --screen is #0f1726 — 4.3 L* apart, contrast 1.09 — so the band that
+     carries mode identity was very nearly the page it sits on, while the card
+     above it (L* 15.7) floated HIGHER than the chrome. Same shape as the light
+     side and the same 12% answer, mixed the other way: the accent over --card,
+     which lifts the band clear of the screen and restores the plane order. */
+  --chrome-bg: color-mix(in srgb, var(--indigo) 12%, var(--card));
+  --chrome-ink: #ffffff;
+  --chrome-ink-mid: #dce3f2;
+  --chrome-ink-num: #b9c4de;
+  /* #93a2c4, not #8494b5. Phase 3 folded four values (#9daac8 #93a2c4 #8fa0c4
+     #8494b5) onto the DARKEST of them, which left the day pill's letter at
+     4.02:1 — the pill's own 5% wash lightens the ground under it. #93a2c4 is
+     both the modal value of the four and the one that clears AA there. */
+  --chrome-ink-dim: #93a2c4;
+  --chrome-ring: var(--chrome-bg);
 
   --ink: #e7eaf2;
   --indigo: #131f38;
@@ -455,6 +500,9 @@ body {
   --cta-text: var(--on-fill); /* tracks the family; the CTA is one more fill */
   --ok: #4cbf85;
   --miss: #e07a6e;
+  /* Deep means FURTHER FROM THE GROUND, not darker — on dark that is lighter,
+     the same inversion --amber-deep and --plan-deep already make. */
+  --miss-deep: #e3877d;
   /* Category pins, nudged brighter so the pastels clear the dark board (dark is
      readiness-only today, ADR-0028/0105 — inert until data-theme=dark is set). */
   /* Identity ramp, lifted like the pin hues so a pastel ground still carries the

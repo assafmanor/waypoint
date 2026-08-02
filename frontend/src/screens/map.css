@@ -935,8 +935,8 @@
   padding: 0 3px;
   display: grid;
   place-items: center;
-  background: var(--ink);
-  color: var(--card);
+  background: var(--cta);
+  color: var(--cta-text);
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: 700;
@@ -1352,8 +1352,8 @@
 .place.result.selected .map-badge.result {
   border-style: solid;
   border-color: var(--ink);
-  background: var(--ink);
-  color: var(--card);
+  background: var(--cta);
+  color: var(--cta-text);
 }
 /* `--cta`, NOT `--plan`, and that is a rule fix rather than a restyle (ADR-0131 §8).
    Plan violet was legitimate here while ADR-0115 §6 kept research Plan-only; the moment

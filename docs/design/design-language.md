@@ -31,22 +31,22 @@ The two modes must be identifiable **at a glance, from any screen**, without rea
 
 ## Color palette
 
-| Token                  | Hex                   | Role                                                                      |
-| ---------------------- | --------------------- | ------------------------------------------------------------------------- |
-| `--ink`                | `#16233D`             | Primary text                                                              |
-| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                        |
-| `--board`              | `#0E1729`             | Departure-board background                                                |
-| `--board-2`            | `#152137`             | Board gradient top                                                        |
-| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                             |
-| `--card`               | `#FFFFFF`             | Card surface                                                              |
-| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                                |
-| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                   |
-| `--amber-deep`         | `#915E1E`             | Amber's **paper** variant — mono times and labels on a card (ADR-0158 §6) |
-| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                      |
-| `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)           |
-| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)  |
-| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                   |
-| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative)                                   |
+| Token                  | Hex                   | Role                                                                                                        |
+| ---------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `--ink`                | `#16233D`             | Primary text                                                                                                |
+| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                                                          |
+| `--board`              | `#0E1729`             | Departure-board background                                                                                  |
+| `--board-2`            | `#152137`             | Board gradient top                                                                                          |
+| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                                                               |
+| `--card`               | `#FFFFFF`             | Card surface                                                                                                |
+| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                                                                  |
+| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                                                     |
+| `--amber-deep`         | `#915E1E`             | Amber's **paper** variant — mono times and labels on a card (ADR-0158 §6)                                   |
+| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                                                        |
+| `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)                                             |
+| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)                                    |
+| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                                                     |
+| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative). As **text** use `--miss-deep` `#9B463E` — the fill fails AA as ink |
 
 **The ink ramp has three steps and the third one is narrow** (ADR-0158 §7).
 `--ink` for content, `--muted` for secondary **and every persistent hint**, and
@@ -357,16 +357,43 @@ colour is painted _onto_ something, the ink is its own token, named for what it
 sits on.** Three families, all shaped like the `--amber` / `--amber-ink` pair
 that already existed:
 
-| Family                        | Tokens                                                                                                         | For                                                                                                                                                                                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **On a semantic fill**        | `--on-fill` (`#FFFFFF` / `#12203A`), `--on-amber` (`#3A2405` both)                                             | Ink on `--cta`/`--plan`/`--ok`/`--miss`/`--teal`/`--muted`. The fill re-maps **across the midpoint**, so the ink flips with it. `--cta-text` is an alias of `--on-fill`.                                                                  |
-| **On an always-dark surface** | `--on-dark-strong` `#FFFFFF` · `--on-dark` `#EAF0FF` · `--on-dark-dim` `#93A2C4` · `--on-dark-faint` `#7688AC` | Ink on the board, the indigo chrome, the day strip, `/login`, `/join`, the ticket, the trip hero, the plan hero. **Theme-fixed in both themes** — these surfaces are dark in light mode too. Folds 18 drifted hex values across 53 sites. |
-| **The chrome's contract**     | `--chrome-bg` · `--chrome-ink` · `--chrome-ink-dim` · `--chrome-wash`/`-2` · `--chrome-ring`                   | Set once per mode. 53 chrome declarations assume a dark chrome; these make that a set value rather than an assumption, and stop a third hand-written copy.                                                                                |
+| Family                        | Tokens                                                                                                          | For                                                                                                                                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **On a semantic fill**        | `--on-fill` (`#FFFFFF` / `#12203A`), `--on-amber` (`#3A2405` both)                                              | Ink on `--cta`/`--plan`/`--ok`/`--miss`/`--teal`/`--muted`. The fill re-maps **across the midpoint**, so the ink flips with it. `--cta-text` is an alias of `--on-fill`.                                                                  |
+| **On an always-dark surface** | `--on-dark-strong` `#FFFFFF` · `--on-dark` `#EAF0FF` · `--on-dark-dim` `#93A2C4` · `--on-dark-faint` `#7688AC`  | Ink on the board, the indigo chrome, the day strip, `/login`, `/join`, the ticket, the trip hero, the plan hero. **Theme-fixed in both themes** — these surfaces are dark in light mode too. Folds 18 drifted hex values across 53 sites. |
+| **The chrome's contract**     | `--chrome-bg` · `--chrome-ink` · `--chrome-ink-mid` · `--chrome-ink-num` · `--chrome-ink-dim` · `--chrome-ring` | Set once per mode, per theme. Six names replacing 53 declarations that assumed a dark chrome and 19 that plan had re-specified by hand. A surface inside the chrome reads these and never learns which mode or theme it is in.            |
 
 **The distinction that had been written down as one rule and is two:** a
 _re-mapping fill_ flips its ink with it (`--on-fill`); _always-dark chrome_ keeps
 light ink in both themes (`--on-dark-*`). Dark ink on dark `--indigo` measures
 **1.01:1**, which is what conflating them costs.
+
+**Deep variants are the same rule for accents.** `--amber-deep`, `--plan-deep`
+and `--miss-deep` are what those hues become when a surface **writes** with them
+instead of painting with them: `--miss` `#C2584E` is right as a dot and 4.38:1 as
+text on white. "Deep" means _further from the ground_, so it darkens in light and
+**lightens** in dark. If you are typing `color: var(--amber)`, `var(--plan)` or
+`var(--miss)`, you almost certainly want the deep one — and if you are typing
+`color: var(--indigo)` or `var(--card)`, you want `--ink` or `--on-fill`: a
+surface token used as ink follows the surface into invisibility exactly when the
+page does (ADR-0158 §12 found four families of that, worst at 1.10:1).
+
+### The trip chrome is light in light mode (ADR-0158 §12)
+
+`--chrome-bg` is **the mode's accent at 12% over the ground** — indigo for trip,
+violet for plan — in both themes: over `--screen` in light, over `--card` in
+dark. So mode identity rides **hue**, which is what lets both bands be pale in
+light and both be dark in dark without the modes colliding. Two consequences
+worth knowing before touching it:
+
+- **A light chrome's ink ramp is tighter than a dark one's**, because the washes
+  are mixed off `--chrome-ink` and therefore darken the ground beneath the ink
+  sitting on them. Four rungs live inside 21 L\*, each the lightest that clears
+  4.5 on the heaviest wash it is actually painted on. Lighten one and re-check
+  its wash, not just the band.
+- **The hero stays dark in both themes.** Lightening it hands the prominence to
+  the chrome and inverts the hierarchy — in light mode, darkness is the hero's
+  only prominence mechanism, since amber-as-a-ground was rejected in ADR-0105.
 
 A `/* fixed: … */` marker now means only what a token cannot say: ink on the
 Google brand mark, and the light/dark swatches in the theme control, which are a
@@ -383,23 +410,24 @@ rendered at L\* 68, the brightest surface in the app, in the calm mode.
 
 **Dark remap table** (as wired in `tokens.css`):
 
-| Token                      | Light                 | Dark                                                                                       |
-| -------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
-| `--ink`                    | `#16233D`             | `#E7EAF2`                                                                                  |
-| `--screen`                 | `#E7EAEF`             | `#0F1726`                                                                                  |
-| `--card`                   | `#FFFFFF`             | `#1A2740`                                                                                  |
-| `--paper`                  | `#F3EFE6`             | `#2E2A20`                                                                                  |
-| `--indigo`                 | `#1B2A4A`             | `#131F38`                                                                                  |
-| `--board` / `--board-2`    | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                                                      |
-| `--amber` / `--amber-deep` | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                                                      |
-| `--amber-ink`              | `#7A5A1E`             | `#F0B254` (dark-amber text on a light amber _tint_; the tint darkens, so the ink lightens) |
-| `--teal`                   | `#2C9C90`             | `#3FB3A5`                                                                                  |
-| `--plan` / `--plan-deep`   | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter)                                 |
-| `--muted`                  | `#6C7488`             | `#93A0B8`                                                                                  |
-| `--faint`                  | `#98A0B0`             | `#8592AB` (faint hint/placeholder text, one step past `--muted`)                           |
-| `--line` / `--soft-line`   | ink @ .10/.28         | light @ .10/.30                                                                            |
-| `--cta` / `--cta-text`     | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
-| `--ok` / `--miss`          | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
+| Token                       | Light                 | Dark                                                                                       |
+| --------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
+| `--ink`                     | `#16233D`             | `#E7EAF2`                                                                                  |
+| `--screen`                  | `#E7EAEF`             | `#0F1726`                                                                                  |
+| `--card`                    | `#FFFFFF`             | `#1A2740`                                                                                  |
+| `--paper`                   | `#F3EFE6`             | `#2E2A20`                                                                                  |
+| `--indigo`                  | `#1B2A4A`             | `#131F38`                                                                                  |
+| `--board` / `--board-2`     | `#0E1729` / `#152137` | `#0A1120` / `#101B30`                                                                      |
+| `--amber` / `--amber-deep`  | `#E9A63C` / `#C9822A` | `#F0B254` / `#D89440`                                                                      |
+| `--amber-ink`               | `#7A5A1E`             | `#F0B254` (dark-amber text on a light amber _tint_; the tint darkens, so the ink lightens) |
+| `--teal`                    | `#2C9C90`             | `#3FB3A5`                                                                                  |
+| `--plan` / `--plan-deep`    | `#6E59D6` / `#5747B4` | `#8B79E8` / `#A99AF2` (deep is used as _text_, so lighter)                                 |
+| `--muted`                   | `#6C7488`             | `#93A0B8`                                                                                  |
+| `--faint`                   | `#98A0B0`             | `#8592AB` (faint hint/placeholder text, one step past `--muted`)                           |
+| `--line` / `--soft-line`    | ink @ .10/.28         | light @ .10/.30                                                                            |
+| `--cta` / `--cta-text`      | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
+| `--ok` / `--miss`           | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
+| `--miss-deep` (miss as ink) | `#9B463E`             | `#E3877D`                                                                                  |
 
 **Status — designed, not built.** ADR-0158 §10 phases it: (1) on-fill ink,
 (2) the `--on-dark-*` ramp, (3) surface + chrome tokens, (4) the theme itself —

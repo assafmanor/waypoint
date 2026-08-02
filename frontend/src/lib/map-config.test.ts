@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAP_THEME, readMapsConfig } from './map-config';
+import { MAP_COLOR_SCHEME, MAP_THEME, readMapsConfig } from './map-config';
 
 const FULL = {
   VITE_GOOGLE_MAPS_BROWSER_KEY: 'key-1',
@@ -9,16 +9,35 @@ const FULL = {
 
 describe('readMapsConfig (ADR-0121 §2)', () => {
   it('resolves the browser key and the day Map ID', () => {
-    expect(readMapsConfig(FULL)).toEqual({ apiKey: 'key-1', mapId: 'waypoint-day' });
+    expect(readMapsConfig(FULL)).toEqual({
+      apiKey: 'key-1',
+      mapId: 'waypoint-day',
+      colorScheme: MAP_COLOR_SCHEME.light,
+    });
   });
 
-  it('picks the night Map ID under a dark theme, which is inert readiness today', () => {
+  it('picks the night Map ID under a dark theme', () => {
     expect(readMapsConfig(FULL, MAP_THEME.dark)?.mapId).toBe('waypoint-night');
+  });
+
+  // The Map ID names a PAIR of styles; colorScheme picks which one renders. Google
+  // defaults it to LIGHT, so the night Map ID without this renders its light slot
+  // — the right ID, the wrong face (ADR-0158 §12).
+  it('asks for the dark style slot in dark, the light one in light', () => {
+    expect(readMapsConfig(FULL, MAP_THEME.dark)?.colorScheme).toBe(MAP_COLOR_SCHEME.dark);
+    expect(readMapsConfig(FULL, MAP_THEME.light)?.colorScheme).toBe(MAP_COLOR_SCHEME.light);
   });
 
   it('falls back to the day Map ID when only one was minted', () => {
     const { VITE_GOOGLE_MAPS_MAP_ID_DARK: _dropped, ...oneId } = FULL;
     expect(readMapsConfig(oneId, MAP_THEME.dark)?.mapId).toBe('waypoint-day');
+  });
+
+  // The scheme tracks the THEME, not the Map ID it landed on. One Map ID asked for
+  // its dark slot still beats a light canvas under a dark app.
+  it('still asks for the dark slot when it fell back to the day Map ID', () => {
+    const { VITE_GOOGLE_MAPS_MAP_ID_DARK: _dropped, ...oneId } = FULL;
+    expect(readMapsConfig(oneId, MAP_THEME.dark)?.colorScheme).toBe(MAP_COLOR_SCHEME.dark);
   });
 
   // Graceful absence, not a disabled state: a checkout without Google setup must
@@ -43,6 +62,6 @@ describe('readMapsConfig (ADR-0121 §2)', () => {
   it('trims, so a stray newline in a .env value cannot reach the script URL', () => {
     expect(
       readMapsConfig({ VITE_GOOGLE_MAPS_BROWSER_KEY: ' k \n', VITE_GOOGLE_MAPS_MAP_ID: ' m ' }),
-    ).toEqual({ apiKey: 'k', mapId: 'm' });
+    ).toEqual({ apiKey: 'k', mapId: 'm', colorScheme: MAP_COLOR_SCHEME.light });
   });
 });
