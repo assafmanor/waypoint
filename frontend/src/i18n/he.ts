@@ -12,6 +12,46 @@ import { measure } from '../lib/bidi';
  *  article, which is also why the gendered sentences below can't be one template. */
 const LEG = { out: 'הלוך', back: 'חזרה' } as const;
 
+/** **What a place's delete names, per kind** (ADR-0157 §8). The order is the one the map's
+ *  own way-in block lists references in — most committed first — so the sentence and the
+ *  block behind the dialog agree. `verb` is only reached when that kind is the ONLY one and
+ *  there is one of it; anything else takes the masculine plural (`יישארו`), which is what
+ *  Hebrew does with a mixed list. */
+const PLACE_REF_NOUN = {
+  event: {
+    named: (title: string) => `האירוע "${title}"`,
+    one: 'אירוע אחד',
+    many: (n: number) => `${n} אירועים`,
+    verb: 'יישאר',
+  },
+  booking: {
+    named: (title: string) => `ההזמנה "${title}"`,
+    one: 'הזמנה אחת',
+    many: (n: number) => `${n} הזמנות`,
+    verb: 'תישאר',
+  },
+  idea: {
+    named: (title: string) => `הרעיון "${title}"`,
+    one: 'רעיון אחד',
+    many: (n: number) => `${n} רעיונות`,
+    verb: 'יישאר',
+  },
+} as const;
+const PLACE_REF_ORDER = ['event', 'booking', 'idea'] as const;
+export type PlaceRefKindWord = (typeof PLACE_REF_ORDER)[number];
+/** One row that would lose its location, and what it is called. `label` is absent only if
+ *  the row somehow has no title, which drops the whole sentence back to counting. */
+export interface PlaceRefSubject {
+  kind: PlaceRefKindWord;
+  label?: string;
+}
+/** **How many can be NAMED before the sentence becomes a list** (ADR-0157 §8). Two, and the
+ *  ceiling is the point: naming is what makes the warning actionable, and a dialog reciting
+ *  five titles is a report rather than a question. Past it the counted form takes over — and
+ *  the specifics are still on screen behind the dialog, in the selected row's own way-in
+ *  block, which lists every reference with its label. */
+const PLACE_REF_NAME_LIMIT = 2;
+
 export const t = {
   common: {
     undo: 'בטל',
@@ -157,7 +197,12 @@ export const t = {
       add: 'הוספה למדף',
       save: 'שמירה',
       cancel: 'ביטול',
-      rename: 'שינוי שם',
+      // **The verb is EDIT, not rename** (owner, session 211). The form this opens has been
+      // the whole of a place's authorship since ADR-0147 — the name, the glyph, the category
+      // and a note on the way — and its own title already said so (`renameTitle` below is
+      // `שם ופרטים`). Only the control that opens it was still promising less than it does.
+      // Worded to match `del.action`, since the two stand next to each other in the pin menu.
+      edit: 'עריכת המקום',
       failed: 'ההוספה נכשלה · נסו שוב',
       saveFailed: 'השמירה נכשלה · נסו שוב',
       // The card's one mandatory field (ADR-0150). Its confirm used to be disabled
@@ -172,12 +217,46 @@ export const t = {
       aria: (name: string) => `מחיקת ${name}`,
       title: 'למחוק את המקום?',
       body: (name: string) => `${name} יוסר מהמפה ומהרשימה.`,
-      // The cascade, said before it happens — the same call `notes.hostDelete` made
-      // (ADR-0152 §2) and for the same reason: the confirm is the only moment a reader can
-      // learn it. Gender-free and counted rather than listed, because one sentence has to
-      // serve אירועים, הזמנות and רעיונות at once.
-      refs: (n: number) =>
-        n === 1 ? 'פריט אחד בטיול יישאר בלי מיקום' : `${n} פריטים בטיול יישארו בלי מיקום`,
+      // **The cascade, said before it happens, IN THE READER'S OWN NOUNS** (ADR-0157 §8).
+      //
+      // It shipped counting `פריטים`, gender-free, on the reasoning that one sentence had to
+      // serve אירועים, הזמנות and רעיונות at once. The owner's report is what that costs: a
+      // place added and immediately deleted warned about "one item", and the item was the
+      // shelf idea the ADD ITSELF had created (`landPlace`) — so the line was simultaneously
+      // correct, unactionable, and hiding the one fact worth knowing. A warning you cannot
+      // act on is not a warning.
+      //
+      // Gender is why this is a table and not a template: אירוע is masculine, הזמנה is
+      // feminine, and Hebrew has no neutral singular verb for them to share. One kind gets
+      // its own verb; several join their subjects under the masculine plural, which is what
+      // Hebrew does with a mixed list anyway.
+      refs: (subjects: PlaceRefSubject[]) => {
+        if (subjects.length === 0) return '';
+        // **Named when there are few, counted when there are many.** Naming is the whole
+        // repair: the report that started it was a warning about "one item" where the item
+        // was a shelf idea, and no count of anything could have said that.
+        const namable = subjects.length <= PLACE_REF_NAME_LIMIT && subjects.every((s) => s.label);
+        const phrases = namable
+          ? subjects.map((s) => PLACE_REF_NOUN[s.kind].named(s.label as string))
+          : PLACE_REF_ORDER.filter((kind) => subjects.some((s) => s.kind === kind)).map((kind) => {
+              const n = subjects.filter((s) => s.kind === kind).length;
+              return n === 1 ? PLACE_REF_NOUN[kind].one : PLACE_REF_NOUN[kind].many(n);
+            });
+        // `ו` is a prefix, not a word — and it takes a hyphen before a numeral, or `ו2`
+        // reads as one token.
+        const last = phrases[phrases.length - 1];
+        const joined =
+          phrases.length === 1
+            ? last
+            : `${phrases.slice(0, -1).join(', ')} ו${/^\d/.test(last) ? '-' : ''}${last}`;
+        const verb = subjects.length === 1 ? PLACE_REF_NOUN[subjects[0].kind].verb : 'יישארו';
+        return `${joined} ${verb} בלי מיקום`;
+      },
+      // **And the one thing a place delete DELETES besides its notes** (ADR-0157 §9). Named
+      // in its own clause rather than folded into `refs`, because the two make opposite
+      // claims: everything in `refs` survives without a location, and this does not survive.
+      // It says WHERE it is, since the shelf is the one surface the reader has to picture.
+      idea: 'גם הרעיון שעל המדף יימחק',
       confirm: 'מחק',
     },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip

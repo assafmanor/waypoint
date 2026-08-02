@@ -9,7 +9,13 @@
 // as local state in trip-state's TripReady, so it resets on trip switch (the
 // component remounts) and stays in-memory + offline-safe (no changes arrive
 // offline → the feed stays quiet). The `ChangeFeed` component reads it.
-import { CHANGE_ACTION, ENTITY_TYPE, type Change, type User } from '@waypoint/shared';
+import {
+  CHANGE_ACTION,
+  ENTITY_TYPE,
+  isHousekeepingChange,
+  type Change,
+  type User,
+} from '@waypoint/shared';
 import { formatTime } from '../lib/time';
 import { shortTitleText } from '../lib/route-title';
 import { t } from '../i18n/he';
@@ -91,6 +97,11 @@ export function describeChange(
   if (change.entityType === ENTITY_TYPE.NOTE && change.action === CHANGE_ACTION.UPDATE) {
     return null;
   }
+  // Nor does the server's own housekeeping (ADR-0157 §6). The orphan sweep writes real
+  // deletes — the caches need them — but they are not anybody's edit: narrating one would
+  // report "X removed <place>" against whoever happened to pick a place that minute, for a
+  // row that had no list entry and no pin. Same ring pressure as the note rule above.
+  if (isHousekeepingChange(change)) return null;
 
   const cf = t.changeFeed;
   const actor = users.find((u) => u.id === change.actorUserId);

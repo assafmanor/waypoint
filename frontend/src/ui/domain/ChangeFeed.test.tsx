@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { Change, User } from '@waypoint/shared';
+import { HOUSEKEEPING_CHANGE, type Change, type User } from '@waypoint/shared';
 import { ChangeFeed } from './ChangeFeed';
 import {
   appendChangeEntry,
@@ -113,6 +113,33 @@ describe('describeChange — notes', () => {
       'Asia/Tokyo',
     );
     expect(entry).not.toBeNull();
+  });
+});
+
+// The server's own housekeeping is a real change — the caches need it — and not anybody's
+// edit (ADR-0157 §6). Narrating a swept place would report "נועם removed <place>" against
+// whoever happened to pick a place that minute, for a row that had no list entry and no pin.
+describe('describeChange — the orphan sweep', () => {
+  const sweptPlace = (over: Partial<Change> = {}) =>
+    change({
+      entityType: 'place',
+      entityId: 'pl-1',
+      action: 'delete',
+      before: { id: 'pl-1', name: 'שינג׳וקו' },
+      after: HOUSEKEEPING_CHANGE,
+      ...over,
+    });
+
+  it('does not narrate a swept place', () => {
+    expect(describeChange(sweptPlace(), USERS, ME.id, 'Asia/Tokyo')).toBeNull();
+  });
+
+  // The distinction the mark exists for: a person deleting a place IS news, and it is the
+  // same entity, action and actor — only the mark differs.
+  it('still narrates a peer deleting a place themselves', () => {
+    const entry = describeChange(sweptPlace({ after: undefined }), USERS, ME.id, 'Asia/Tokyo');
+    expect(entry).not.toBeNull();
+    expect(entry!.lead).toContain('שינג׳וקו');
   });
 });
 

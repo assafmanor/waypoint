@@ -48,6 +48,7 @@ import {
   createBooking as apiCreateBooking,
   createNote as apiCreateNote,
   createPlace as apiCreatePlace,
+  deleteMaybeItem as apiDeleteMaybeItem,
   deletePlace as apiDeletePlace,
   deleteBooking as apiDeleteBooking,
   deleteNote as apiDeleteNote,
@@ -186,7 +187,10 @@ export type Action =
   // of its own. Two actions, one transform: ours snapshots (the delete is undoable and the
   // undo has to put these FKs back), a peer's must not — a remote change that overwrote the
   // undo snapshot would make the next undo revert somebody else's edit.
-  | { type: typeof TRIP_ACTION.DELETE_PLACE; placeId: string }
+  // `ideaId` is the sole shelf idea the place takes with it (ADR-0157 §9) — in the SAME
+  // action, because two dispatches would take two undo snapshots and the second would
+  // capture a state the first had already changed.
+  | { type: typeof TRIP_ACTION.DELETE_PLACE; placeId: string; ideaId?: string }
   | { type: typeof TRIP_ACTION.REMOTE_PLACE_DELETED; placeId: string }
   // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
   | { type: typeof TRIP_ACTION.RECONCILE_EVENT; event: TripEvent }
@@ -321,8 +325,13 @@ export function reducer(state: State, action: Action): State {
         ripple: null,
         undo: snapshotOf(state),
       };
-    case TRIP_ACTION.DELETE_PLACE:
-      return { ...placeCleared(state, action.placeId), ripple: null, undo: snapshotOf(state) };
+    case TRIP_ACTION.DELETE_PLACE: {
+      const cleared = placeCleared(state, action.placeId);
+      const maybeItems = action.ideaId
+        ? cleared.maybeItems.filter((m) => m.id !== action.ideaId)
+        : cleared.maybeItems;
+      return { ...cleared, maybeItems, ripple: null, undo: snapshotOf(state) };
+    }
     case TRIP_ACTION.REMOTE_PLACE_DELETED:
       return placeCleared(state, action.placeId);
     case TRIP_ACTION.RECONCILE_EVENT: {
@@ -461,7 +470,7 @@ export interface IndexVerbs {
    *  their location and the place's notes go, because that is what the database is about to
    *  do and offline nothing else would tell us. Resolves to the links it cleared, which is
    *  the only record of them once the row is gone — the undo re-attaches them from it. */
-  deletePlace: (placeId: string) => Promise<PlaceLink[]>;
+  deletePlace: (placeId: string, opts?: { ideaId?: string }) => Promise<PlaceLink[]>;
   // The Places picker's terminating enrich-on-pick (ADR-0108 §3 / ADR-0110 §1).
   // Online-only (needs Google, so never queued); the returned canonical row is
   // adopted into `places` immediately for the form's use, and the WS `place` echo
@@ -1163,27 +1172,43 @@ function TripReady({
           throw err;
         }
       },
-      deletePlace: async (placeId) => {
+      deletePlace: async (placeId, opts = {}) => {
+        const { ideaId } = opts;
         // Captured BEFORE the write, because after it there is nowhere left to read them
-        // from — the same reason a host's delete captures its notes (ADR-0152 §2).
+        // from — the same reason a host's delete captures its notes (ADR-0152 §2). The idea
+        // going WITH the place is not a link: it is deleted, not unlinked, so the undo
+        // re-creates it rather than re-pointing it (ADR-0157 §9).
         const links = placeLinks(placeId, {
           events: state.events,
           bookings,
           maybeItems: state.maybeItems,
-        });
+        }).filter((link) => link.id !== ideaId);
         const previousPlaces = places;
         const previousBookings = bookings;
         const previousNotes = notes;
         setPlaces((prev) => prev.filter((p) => p.id !== placeId));
         setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, placeId));
-        setNotes((prev) => prev.filter((n) => n.placeId !== placeId));
+        // Both cascades at once: the place's own notes, and the idea's — the idea is being
+        // deleted, so Postgres takes its notes exactly as it takes the place's.
+        setNotes((prev) =>
+          prev.filter((n) => n.placeId !== placeId && (!ideaId || n.maybeItemId !== ideaId)),
+        );
         // Events and ideas ride the reducer, where the same clear also takes the undo
         // snapshot: this is the one dispatch that makes the delete reversible.
-        dispatch({ type: TRIP_ACTION.DELETE_PLACE, placeId });
+        dispatch({ type: TRIP_ACTION.DELETE_PLACE, placeId, ideaId });
         try {
           await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_PLACE, placeId }, () =>
             apiDeletePlace(tripId, placeId),
           );
+          // After the place, and only once it landed: an idea removed while its place
+          // survived would be the one outcome nobody asked for.
+          if (ideaId) {
+            await restOrQueue(
+              tripId,
+              { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: ideaId },
+              () => apiDeleteMaybeItem(tripId, ideaId),
+            );
+          }
         } catch (err) {
           setPlaces(previousPlaces);
           setBookings(previousBookings);

@@ -2167,9 +2167,27 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       fireEvent.click(row('food')!);
       fireEvent.click(trash()!);
 
+      // NAMED, not counted as "items" (ADR-0157 §8): `food` is referenced by one event, so
+      // the line says which event — a reader cannot act on `פריט`.
       const consequence = document.querySelector('.confirm-consequence')!.textContent ?? '';
-      expect(consequence).toContain(t.map.del.refs(1));
+      expect(consequence).toContain(t.map.del.refs([{ kind: 'event', label: 'food plan' }]));
       expect(consequence).toContain(t.notes.hostDelete(1));
+    });
+
+    // The report both rules came from: a place added and immediately deleted warned about
+    // "one item", and the item was the shelf idea the ADD ITSELF created (`landPlace`). The
+    // fixture's `idea` place is exactly that shape — one live idea and nothing else — so it
+    // is now the §9 case: the idea goes WITH the place, and the line says so instead of
+    // promising it will survive without a location.
+    it('says the sole shelf idea is deleted, not that it survives', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('idea')!);
+      fireEvent.click(screen.getByRole('button', { name: t.map.del.aria('idea') }));
+
+      const consequence = document.querySelector('.confirm-consequence')!.textContent ?? '';
+      expect(consequence).toContain(t.map.del.idea);
+      expect(consequence).not.toContain('בלי מיקום');
     });
 
     // It says only what applies. A place with no notes gets the location clause and no
@@ -2181,7 +2199,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       fireEvent.click(screen.getByRole('button', { name: t.map.del.aria('idea') }));
 
       const consequence = document.querySelector('.confirm-consequence')!.textContent ?? '';
-      expect(consequence).toContain(t.map.del.refs(1));
+      expect(consequence).toContain(t.map.del.idea);
       expect(consequence).not.toContain(t.notes.hostDelete(0));
       expect(consequence).not.toContain(DOT_SEPARATOR);
     });

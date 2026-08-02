@@ -118,6 +118,29 @@ export const CHANGE_ACTION = {
   STATUS: 'status',
 } as const satisfies Record<string, ChangeAction>;
 
+/**
+ * **A change the SERVER made as housekeeping, not a person's edit** (ADR-0157 §6).
+ *
+ * The orphan sweep deletes places nothing points at any more, and it does so through
+ * `ChangeService` like every other data-plane write (ADR-0019) — which is right for the
+ * caches, and wrong for the change feed: it would read as _"דנה removed <place>"_ against
+ * whoever happened to pick a place that minute, for a row nobody could see. The feed is a
+ * bounded 20-entry ring, so a misleading line also evicts a real one (the reason a note's
+ * edits already don't narrate, ADR-0152's session-206 amendment).
+ *
+ * It rides the delete's **`after`**, which a delete otherwise leaves empty — so no applier
+ * changes: `applyToRow` returns `undefined` for a delete without reading it. A discriminant
+ * both layers branch on, so it lives here rather than as a literal at either end.
+ */
+export const HOUSEKEEPING_CHANGE = { swept: true } as const;
+
+/** Was this change housekeeping rather than somebody's edit? Written by the backend's
+ *  sweep, read by the frontend's change feed — one predicate, so neither side spells the
+ *  key. */
+export function isHousekeepingChange(change: { after?: unknown }): boolean {
+  return (change.after as { swept?: boolean } | null | undefined)?.swept === true;
+}
+
 /** The entity kinds a Change targets (ADR-0094) — the single source the backend
  *  Change log and the frontend applier registries (cache + memory channels) both
  *  key off, so no layer hardcodes the strings. */

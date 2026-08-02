@@ -32,6 +32,7 @@ Concretely (`lib/usePlaceSearch.ts`): `alreadyInTrip(prediction)` now matches a 
 - **One definition of "in the trip"** shared by the picker and the Map tab's place-usage; a `Place` row's two roles (cache vs trip entity) are no longer conflated.
 - **No backend/schema change** — this is a FE derivation over the existing snapshot.
 - **Cache-only rows still accumulate** in a trip's `places` (downloaded in the snapshot, broadcast on creation). Tolerated at this scale (ADR-0048 already leaves orphans); a later GC/`deletePlace` is possible if it ever matters, not needed now.
+  - **Both arrived on 2026-08-02 ([ADR-0157](0157-a-place-can-be-removed.md)).** `deletePlace` §1–§5, and the GC in §6 — which is this bullet's own reasoning taken one step further: the rows accumulate _and_ every one of them is downloaded on every cold load while being unable to appear anywhere, so "tolerated" had a ceiling after all. The sweep is deliberately lazy (a week's grace, run on a mint) precisely to keep the half of this bullet that is still right: the cache is worth paying for, just not forever.
 
 ## Related, explicitly not decided here
 
