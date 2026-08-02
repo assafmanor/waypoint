@@ -164,11 +164,23 @@ ring. So a light trip chrome (§9) would be the **third** hand-written copy of
 [0094](0094-one-pluggable-change-applier-registry.md) and [0095](0095-named-constants-for-string-discriminants.md) all
 exist to undo.
 
-Five names, set once per mode, replacing nineteen hand-written rules:
+**Six names** (this ADR first said five; the build found the chrome needs a
+distinct rung for _numerals_ — the day number and the anchor's value sit a step
+above labels and a step below titles), set once per mode, replacing nineteen
+hand-written rules:
 
 ```
---chrome-bg  --chrome-ink  --chrome-ink-dim  --chrome-wash / -2  --chrome-ring
+--chrome-bg  --chrome-ink  --chrome-ink-mid  --chrome-ink-num
+--chrome-ink-dim  --chrome-ring
 ```
+
+And a seventh thing that is deliberately **not** a token: the washes. Those run
+at eight different alphas across the chrome, so one `--chrome-wash` could only
+serve them by folding — which would move pixels for no reason. Instead each
+element mixes its own alpha off the ink: `color-mix(in srgb, var(--chrome-ink)
+9%, transparent)`. Every existing alpha is preserved exactly, and the wash still
+flips with the chrome, because a white wash on dark chrome becomes an ink wash on
+a light one with no per-element rule to rewrite.
 
 Trip-dark keeps exactly today's values, so this is a **no-op refactor** on its
 own. Plan-light collapses to setting the same five. It is worth doing whether or
