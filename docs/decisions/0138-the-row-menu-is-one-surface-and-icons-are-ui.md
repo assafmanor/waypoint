@@ -319,3 +319,50 @@ it is §2's "split the vocabulary at its source", applied to the last holdouts.
 - The plane is authored **nose-left** and the bracket **opening left**, for the
   reason `exit` is authored mirrored: forward and inward are leftward in RTL, and
   this app has no LTR mode to transform back to.
+
+## Fourth amendment (2026-08-02) — a door says nothing about whose it is
+
+Asked of the two trip-settings screenshots: _"the icon for leave group or remove
+from group — is it inverted in Hebrew? Should it face the other side?"_
+
+**The direction is right and stays.** `exit` is authored mirrored from the LTR
+log-out convention — door on the trailing side, arrow leading away leftward, which is
+forward in RTL — the same call the plane and the bracket make in this ADR's third
+amendment. What the question caught is one step earlier than direction: the **same
+mark** was drawing two different verbs. `הסר מהטיול` (remove that member) and
+`עזוב את הטיול` (leave, yourself) both rendered `CONTROL_ICON.leave`, so a row aimed
+at someone else's name wore the mark for walking out of your own trip. A door frame
+carries no subject, so nothing in the shape distinguished them — the arrow pointing
+away from a person's name is what read as backwards.
+
+`Icon` gains `userMinus` (one figure + a minus, badge on the trailing side where a
+mirrored `user-minus` puts it) and `CONTROL_ICON` gains `removeMember`. That is §2's
+split applied once more: **one verb, one mark, and a verb that takes an object does
+not share with one that doesn't** — the rule already stated here for `swap`/`sync`,
+where one emoji had served two meanings. `exit` keeps trip settings' own leave row,
+which is now its only job.
+
+The direction is pinned by a geometry test (`Icon.test.tsx`) rather than a comment,
+because "un-inverting" the mark back to the LTR original is exactly the well-meant
+change a future reader might make.
+
+**Un-mirroring it was tried in this session and withdrawn, which is the part worth
+recording.** The mirrored mark was reported as reading backwards twice — _"back is
+pointing right in Hebrew and in the app. The leave arrow is pointing left. They're not
+the same"_ — and the door was moved to the left on that report before the reasoning
+was finished. Two things then settled it:
+
+- **Back and exit are opposites in LTR too.** Back points ← and log-out points → there;
+  mirroring both preserves that. Leaving pointing the way back points would be wrong in
+  either locale. What back does is retrace, against the flow; what exit does is continue
+  out, with it — `הבא`'s direction, not `חזור`'s.
+- **The report had a confound, and it was the real defect.** It came from two screens at
+  once, and on one of them the door was aimed at another person's name (`הסר מהטיול`,
+  above). With that row carrying `userMinus` instead, the thing that looked wrong is
+  gone independently of which way the arrow points.
+
+So the mirrored path stands. Worth knowing anyway: a reader who follows the same instinct
+should reach for the second bullet first, because the confound is the cheaper explanation
+and it was the true one. If the leave row still reads wrong on a device now that the
+member row no longer wears a door, this is a one-line path swap and the test above says
+so out loud.

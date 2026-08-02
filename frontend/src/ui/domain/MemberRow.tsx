@@ -21,6 +21,7 @@ export function MemberRow({
   role,
   isMe = false,
   onOpen,
+  reserveAction = false,
   children,
 }: {
   person: AvatarPerson;
@@ -29,6 +30,13 @@ export function MemberRow({
   /** Present ⇒ the row is a control that opens the member. The roster passes it; the
    *  settings list keeps its own kebab instead, so it does not. */
   onOpen?: () => void;
+  /** Hold the trailing control column open on a row that has no control. Set it for
+   *  EVERY row in a list where ANY row has one — the settings party list, where your
+   *  own row gets no kebab — or the role badges step in and out by the kebab's width
+   *  down the column and the list reads ragged. A row cannot decide this itself: it
+   *  sees only its own missing control, not its neighbours'. Same reservation as
+   *  `ListRow`'s sync column (ADR-0091), for the same reason. */
+  reserveAction?: boolean;
   /** Trailing slot — the settings list's kebab lives here rather than in this
    *  component, which has no business knowing about admin actions. */
   children?: React.ReactNode;
@@ -45,7 +53,14 @@ export function MemberRow({
           </span>
         )}
       </div>
-      <span className={`role ${role === 'admin' ? 'owner' : 'mem'}`}>{memberRoleLabel(role)}</span>
+      {/* The badge rides a fixed-floor CELL and sits at its start, so `מנהל` and
+          `משתתף` begin at the same x — a pill hugs its own text, so aligning the
+          pills' outer edge still left the two words ragged where you read them. */}
+      <span className="member-role">
+        <span className={`role ${role === 'admin' ? 'owner' : 'mem'}`}>
+          {memberRoleLabel(role)}
+        </span>
+      </span>
     </>
   );
 
@@ -60,7 +75,7 @@ export function MemberRow({
   return (
     <div className="set-member">
       {body}
-      {children}
+      {(children || reserveAction) && <span className="member-act">{children}</span>}
     </div>
   );
 }

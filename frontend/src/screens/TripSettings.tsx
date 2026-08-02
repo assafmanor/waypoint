@@ -291,7 +291,7 @@ export function TripSettings() {
             const isMe = m.userId === myId;
             if (!u) return null;
             return (
-              <MemberRow key={m.id} person={u} role={m.role} isMe={isMe}>
+              <MemberRow key={m.id} person={u} role={m.role} isMe={isMe} reserveAction={isAdmin}>
                 {isAdmin && !isMe && (
                   <button
                     className="kebab"
@@ -359,7 +359,7 @@ export function TripSettings() {
         <div className="set-card set-danger">
           <div className="set-danger-row">
             <span className="fi">
-              <Icon name="exit" />
+              <Icon name={CONTROL_ICON.leave} />
             </span>
             <div className="fv">{t.settings.leave}</div>
             <button className="set-danger-btn" onClick={leaveTrip}>

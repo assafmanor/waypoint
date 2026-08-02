@@ -1011,7 +1011,10 @@ export const CONTROL_ICON = {
   offline: 'offline',
   upload: 'upload',
   promote: 'crown',
+  /** Leaving is something you do to YOURSELF — the door. Removing a member is
+   *  `removeMember`: one verb per subject, the split ADR-0138 keeps making. */
   leave: 'exit',
+  removeMember: 'userMinus',
   close: 'close',
   clock: 'clock',
 } as const satisfies Record<string, IconName>;

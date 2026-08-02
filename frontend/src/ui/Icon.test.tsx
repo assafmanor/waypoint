@@ -33,6 +33,32 @@ describe('Icon', () => {
     expect(mirrored).toEqual(xs);
   });
 
+  // The question that produced this test: is the leave/remove mark inverted in Hebrew?
+  // It is not — it is authored MIRRORED from the LTR log-out convention (Icon.tsx), door on
+  // the trailing side and the arrow leading away leftward, which is forward in RTL. Pinned
+  // as geometry so a later pass cannot "un-invert" it back into the LTR original.
+  it('authors the exit mark for RTL — door trailing, arrow leading away', () => {
+    const d = render(<Icon name="exit" />)
+      .container.querySelector('svg path')!
+      .getAttribute('d')!;
+    const [door, arrowhead] = d.trim().split(/\s+(?=M)/);
+    const [x1, , tipX, , x3] = arrowhead
+      .replace('M', '')
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
+    expect(tipX).toBeLessThan(Math.min(x1, x3)); // a tip pointing left, not a tail
+    expect(Number(door.match(/^M([\d.]+)/)![1])).toBeGreaterThan(tipX); // the door is behind it
+  });
+
+  // ADR-0138's fourth amendment: `exit` means "I leave" and cannot also mean "remove them".
+  it('draws remove-a-member as its own mark, not the leave door', () => {
+    const exit = render(<Icon name="exit" />).container.querySelector('svg path');
+    cleanup();
+    const remove = render(<Icon name="userMinus" />).container.querySelector('svg path');
+    expect(remove?.getAttribute('d')).not.toBe(exit?.getAttribute('d'));
+  });
+
   it('renders the search and close glyphs (Index search control, ADR-0098)', () => {
     const search = render(<Icon name="search" />).container.querySelector('svg path');
     cleanup();
