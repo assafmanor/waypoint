@@ -291,10 +291,22 @@
    stop (§5): ADR-0121 §5 claimed "one state, two controls" in code and then rendered
    `half` as neither button on, which reads as a broken segmented control. At `half` the
    thumb narrows and centres, so it sits visibly BETWEEN the two labels. */
+/* The track is a RECESS, expressed as a wash of `--board` rather than of `--ink`.
+   That distinction is the whole bug: `--ink` INVERTS between themes, so a 6% ink
+   wash darkens the track in light and LIGHTENS it in dark — until it passes the
+   `--card` thumb sitting on it. Measured, the thumb was 11.7 L* above the track
+   in light and **1.6** in dark: both labels legible, and no way to tell which one
+   was selected. `--board` is dark in both themes, so a wash of it recesses in
+   both, and the thumb stays above it (12.0 / 8.0 L*).
+
+   The general rule, and the reason this needed a token change rather than a
+   value tweak: **a raised chip written as `--card` only reads as raised while
+   `--card` is the lightest surface.** In dark it is one step off the screen. Give
+   the thing it sits ON a direction that does not flip. */
 .map-viewtoggle {
   position: relative;
   display: flex;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  background: color-mix(in srgb, var(--board) 6%, transparent);
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 2px;
@@ -306,7 +318,11 @@
   font-weight: 600;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  /* `--ink`, not `--muted`: an unselected segment is still a live choice, and on
+     the recessed track `--muted` measures 4.09 in light — under AA. The rule
+     below already says the thumb carries the selection, so the ink does not have
+     to, and WEIGHT is the second channel it claimed but never actually set. */
+  color: var(--ink);
   border-radius: 999px;
   padding: 4px 15px;
   cursor: pointer;
@@ -318,7 +334,7 @@
   z-index: 1;
 }
 .map-viewtoggle button.on {
-  color: var(--ink);
+  font-weight: 700;
 }
 .map-viewtoggle::before {
   content: '';

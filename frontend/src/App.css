@@ -540,13 +540,29 @@
   color: var(--chrome-ink-num);
   line-height: 1.1;
 }
+/* An OPAQUE warm chip, not a translucent amber veil — and the difference is the
+   whole reason this looked wrong the moment the chrome went light. Amber sits at
+   hue +72°, the light band at -83°: near-complementary. A 16% amber wash over
+   near-black indigo read as a warm glow, but the same wash over a cool light band
+   **cancels** — the ground computed to #CDCBD0, chroma 2.8, which is the khaki
+   the owner saw, and `--amber` on it measured 1.31:1.
+
+   Mixing amber into `--paper` instead of into the band keeps it warm because
+   `--paper` is warm in BOTH themes by design. One expression, no theme branch:
+   the chip lands 8.1 L* above the light band and 8.7 above the dark one.
+
+   The rule this is an instance of: **a translucent accent is a wash of whatever
+   is behind it.** Its appearance is a property of the ground, not of the accent —
+   so on a surface that re-themes, an accent that must stay recognisable has to be
+   opaque, or mixed into something that shares its temperature. */
 .hdr-anchor.is-back {
   cursor: pointer;
-  background: rgba(233, 166, 60, 0.16);
-  border-color: rgba(233, 166, 60, 0.42);
+  background: color-mix(in srgb, var(--amber) 10%, var(--paper));
+  border-color: color-mix(in srgb, var(--amber-deep) 45%, var(--paper));
 }
 .hdr-anchor.is-back .anchor-back {
-  color: var(--amber);
+  /* `--amber` is a FILL; written as text on a light ground it is 1.31:1 (§1). */
+  color: var(--amber-deep);
   font-size: 11px;
   font-weight: 800;
 }
