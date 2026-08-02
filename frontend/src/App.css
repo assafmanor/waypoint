@@ -2139,9 +2139,13 @@
    --chrome-* names now say — which is the duplication §5 was written to end and
    the one frontend/CLAUDE.md rule 8 names outright. The ink ramp is NOT restated:
    plan's band is the lighter of the two, so trip's rungs clear on it. */
+/* The VALUE lives in tokens.css under both theme blocks; this selector only says
+   which mode is speaking. Putting a light literal here directly is a mistake the
+   sweep caught immediately — a mode selector is not a theme selector, so it
+   painted plan's dark chrome lavender with light ink on it, 23 nodes at 1.2-1.8:1. */
 .app[data-mode='plan'],
 .mode-chrome[data-mode='plan'] {
-  --chrome-bg: color-mix(in srgb, var(--plan) 12%, var(--screen));
+  --chrome-bg: var(--chrome-bg-plan);
 }
 .app[data-mode='plan'] .header,
 .mode-chrome[data-mode='plan'] {
@@ -2368,7 +2372,7 @@
   font-size: 10px;
   font-weight: 700;
   color: var(--muted);
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: 6px;
   padding: 2px 7px;
   transition:
