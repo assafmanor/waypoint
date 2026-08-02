@@ -79,6 +79,23 @@ import { routeTitle } from '../lib/route-title';
 import { zonedIso } from '../lib/time';
 import { t } from '../i18n/he';
 
+// **The sheet is stepped now** (ADR-0155 §5): `שמירה` lives on the LAST step, and the
+// primary is `הבא` until then. These are the whole diff to this file — every assertion
+// below is the one it always made, taken on the step that owns the field.
+const next = () => fireEvent.click(screen.getByText(t.common.steps.next));
+/** Walk to the last step. Each `הבא` runs that step's gate, so a form this refuses does
+ *  not arrive — which is the point, and what the refusal tests below assert. */
+const toLastStep = () => {
+  next();
+  next();
+};
+const save = () => fireEvent.click(screen.getByText(t.common.save));
+const saveFrom = (step: 'what' | 'when' | 'more') => {
+  if (step === 'what') toLastStep();
+  else if (step === 'when') next();
+  save();
+};
+
 const flight: Booking = {
   id: 'bk',
   tripId: 't1',
@@ -117,9 +134,11 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
   });
 
   it('shows a zone note so each leg reads in its own zone (ADR-0107 form authoring)', () => {
+    // The schedule and its zone chips are the SECOND step now (ADR-0155 §5).
     // The sheet renders through a Modal portal, so query the document, not the
     // render container.
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
     // The flight crosses zones (Jerusalem → Tokyo, Tokyo 6h ahead): the note says
     // each end is local time + the destination is ahead — no English city names.
     const note = document.querySelector('.bs-zone-note');
@@ -141,10 +160,16 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
    *  zone is unknowable, which is exactly when the chip becomes editable. */
   const halfKnown: Booking = { ...flight, toPlaceId: 'pl-lite' };
 
+  // The chips ride the schedule, which is the `when` step (ADR-0155 §5) — so every test
+  // here steps once before it can see them.
   const chips = () => Array.from(document.querySelectorAll('.zchip'));
+  const openWhen = (booking: Booking) => {
+    render(wrapNav(<BookingSheet booking={booking} onClose={() => {}} />));
+    next();
+  };
 
   it('states each leg zone, and only the unknowable end is correctable', () => {
-    render(wrapNav(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    openWhen(halfKnown);
     const [start, end] = chips();
     // Origin: a real place answers the zone → a statement, no control (§3 — the
     // honest edit is the place itself).
@@ -155,25 +180,18 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
   });
 
   it('both legs are correctable when neither endpoint resolves a zone', () => {
-    render(
-      wrapNav(
-        <BookingSheet
-          booking={{ ...flight, fromPlaceId: 'pl-lite', toPlaceId: 'pl-lite' }}
-          onClose={() => {}}
-        />,
-      ),
-    );
+    openWhen({ ...flight, fromPlaceId: 'pl-lite', toPlaceId: 'pl-lite' });
     expect(chips().every((c) => c.querySelector('.zchip-btn'))).toBe(true);
   });
 
   it('pins ONE end only — a crossing needs two overrides, not one for both', () => {
-    render(wrapNav(<BookingSheet booking={halfKnown} onClose={() => {}} />));
+    openWhen(halfKnown);
     fireEvent.click(chips()[1].querySelector<HTMLElement>('.zchip-btn')!);
     fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
       target: { value: 'reykjavik' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Reykjavik/ }));
-    fireEvent.click(screen.getByText(t.common.save));
+    saveFrom('when');
 
     const patch = indexVerbs.updateBooking.mock.calls[0][1];
     expect(patch.endDisplayTimezone).toBe('Atlantic/Reykjavik');
@@ -182,45 +200,31 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
   });
 
   it('reads a stored override back as pinned, and the reset clears it with null', () => {
-    render(
-      wrapNav(
-        <BookingSheet
-          booking={{ ...halfKnown, endDisplayTimezone: 'Atlantic/Reykjavik' }}
-          onClose={() => {}}
-        />,
-      ),
-    );
+    openWhen({ ...halfKnown, endDisplayTimezone: 'Atlantic/Reykjavik' });
     const end = chips()[1];
     expect(end.querySelector('.zchip-btn.pinned')).not.toBeNull();
     expect(end.querySelector('.zchip-zone')!.textContent).toContain('Reykjavik');
 
     fireEvent.click(end.querySelector<HTMLElement>('.zchip-reset')!);
-    fireEvent.click(screen.getByText(t.common.save));
+    saveFrom('when');
     expect(indexVerbs.updateBooking.mock.calls[0][1].endDisplayTimezone).toBeNull();
   });
 
   it('a single-place booking has one chip, and saving clears the unused end', () => {
-    render(
-      wrapNav(
-        <BookingSheet
-          booking={{
-            ...flight,
-            type: BOOKING_TYPE.RESTAURANT,
-            fromPlaceId: undefined,
-            toPlaceId: undefined,
-            placeId: 'pl-lite',
-          }}
-          onClose={() => {}}
-        />,
-      ),
-    );
+    openWhen({
+      ...flight,
+      type: BOOKING_TYPE.RESTAURANT,
+      fromPlaceId: undefined,
+      toPlaceId: undefined,
+      placeId: 'pl-lite',
+    });
     expect(chips()).toHaveLength(1);
     fireEvent.click(chips()[0].querySelector<HTMLElement>('.zchip-btn')!);
     fireEvent.change(screen.getByPlaceholderText(t.zonePicker.searchPlaceholder), {
       target: { value: 'reykjavik' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Reykjavik/ }));
-    fireEvent.click(screen.getByText(t.common.save));
+    saveFrom('when');
 
     const patch = indexVerbs.updateBooking.mock.calls[0][1];
     // One zone drives both ends for a single-place booking, so `start` carries it
@@ -230,8 +234,8 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
   });
 
   it('an untouched form sends no zone keys at all', () => {
-    render(wrapNav(<BookingSheet booking={halfKnown} onClose={() => {}} />));
-    fireEvent.click(screen.getByText(t.common.save));
+    openWhen(halfKnown);
+    saveFrom('when');
     const patch = indexVerbs.updateBooking.mock.calls[0][1];
     expect('startDisplayTimezone' in patch).toBe(false);
     expect('endDisplayTimezone' in patch).toBe(false);
@@ -241,6 +245,8 @@ describe('BookingSheet — per-end zone overrides (ADR-0107 §6 session-99 amend
 // ADR-0150. A booking's refusal is at the field it is about — and a span refuses
 // per LEG, for the same reason it carries a zone per leg: marking both ends when
 // one is fine is the refusal naming something that isn't wrong.
+// The refusal lands at the STEP GATE now (ADR-0155 §3), which is earlier than the save
+// and is the point: you are told at the step that owns the field, before paging past it.
 describe('BookingSheet — refusing a save', () => {
   afterEach(() => {
     cleanup();
@@ -255,12 +261,14 @@ describe('BookingSheet — refusing a save', () => {
         <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
       ),
     );
-    fireEvent.click(screen.getByText(t.common.save));
+    next();
     const title = screen.getByPlaceholderText(t.index.sheet.titlePlaceholder);
     expect(fieldOf(title)?.hasAttribute('data-invalid')).toBe(true);
     expect(fieldOf(title)?.querySelector('.field-error')?.textContent).toBe(
       t.index.form.titleRequired,
     );
+    // Refused, so it did not advance — and nothing was written.
+    expect(screen.getByText(t.common.steps.next)).toBeTruthy();
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
   });
 
@@ -270,7 +278,7 @@ describe('BookingSheet — refusing a save', () => {
         <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.FLIGHT }} onClose={() => {}} />,
       ),
     );
-    fireEvent.click(screen.getByText(t.common.save));
+    next();
     const route = screen.getByRole('button', { name: t.index.form.originLabel });
     expect(fieldOf(route)?.hasAttribute('data-invalid')).toBe(true);
     expect(fieldOf(route)?.querySelector('.field-error')?.textContent).toBe(
@@ -280,10 +288,11 @@ describe('BookingSheet — refusing a save', () => {
 
   it('marks only the leg that falls outside the trip', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
     const [depDate, arrDate] = [...document.querySelectorAll<HTMLInputElement>('.wf-date-val')];
     fireEvent.change(depDate, { target: { value: '2026-07-20' } });
     fireEvent.change(arrDate, { target: { value: '2026-08-30' } });
-    fireEvent.click(screen.getByText(t.common.save));
+    next();
     expect(fieldOf(depDate)?.hasAttribute('data-invalid')).toBe(false);
     expect(fieldOf(arrDate)?.hasAttribute('data-invalid')).toBe(true);
     expect(fieldOf(arrDate)?.querySelector('.field-error')?.textContent).toBe(
@@ -314,13 +323,15 @@ describe('BookingSheet — notes written on the way', () => {
     });
   // By class, not by placeholder: the placeholder deliberately changes to `פתק נוסף` once
   // a note is committed, so a placeholder lookup would find nothing on the second one.
+  // The composer rides the last step, with the fields shared across the whole form
+  // (ADR-0155 §4) — so every test here names the booking, walks to the end, and writes.
   const composer = () => document.querySelector('.note-compose-in') as HTMLTextAreaElement;
-  const save = () => fireEvent.click(screen.getByText(t.common.save));
 
   it('writes no note when the composer was never touched', async () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
     openHotel();
     nameIt();
+    toLastStep();
     save();
     await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalled());
     expect(noteVerbs.createNote).not.toHaveBeenCalled();
@@ -331,6 +342,7 @@ describe('BookingSheet — notes written on the way', () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
     openHotel();
     nameIt();
+    toLastStep();
     fireEvent.change(composer(), { target: { value: 'קוד הכספת 4417' } });
     save();
 
@@ -345,6 +357,7 @@ describe('BookingSheet — notes written on the way', () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
     openHotel();
     nameIt();
+    toLastStep();
     fireEvent.change(composer(), { target: { value: 'הראשון' } });
     fireEvent.click(screen.getByLabelText(t.notes.composer.add));
     fireEvent.change(composer(), { target: { value: 'השני' } });
@@ -360,6 +373,7 @@ describe('BookingSheet — notes written on the way', () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
     openHotel();
     nameIt();
+    toLastStep();
     fireEvent.change(composer(), { target: { value: 'משהו' } });
     save();
 
@@ -370,10 +384,13 @@ describe('BookingSheet — notes written on the way', () => {
   });
 
   // The refusal runs first: a form that will not save must not leave notes behind.
-  it('writes nothing at all when the booking itself is refused', async () => {
+  // The refusal runs first — and it now runs at the FIRST step's gate, so an unnamed
+  // booking never reaches the composer at all, let alone the save.
+  it('writes nothing at all when the booking itself is refused', () => {
     openHotel();
-    fireEvent.change(composer(), { target: { value: 'לא אמור להישמר' } });
-    save();
+    next();
+    expect(composer()).toBeNull();
+    expect(screen.queryByText(t.common.save)).toBeNull();
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
     expect(noteVerbs.createNote).not.toHaveBeenCalled();
   });
@@ -406,6 +423,8 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
   const open = (over?: Partial<BookingSheetDraft>) =>
     render(wrapNav(<BookingSheet booking={null} draft={routed(over)} onClose={() => {}} />));
   const goRoundTrip = () => fireEvent.click(screen.getByText(t.index.form.roundTrip));
+  /** The span legs ON THE CURRENT STEP. There are two of them either way now: the outbound
+   *  span is step `when`, the return span is step `more` (ADR-0155 §5). */
   const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
   const setDate = (leg: HTMLElement, value: string) =>
     fireEvent.change(leg.querySelector('.wf-date-val') as HTMLInputElement, { target: { value } });
@@ -417,16 +436,26 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
       target: { value },
     });
   };
-  const save = () => fireEvent.click(screen.getByText(t.common.save));
+  /** Fill the outbound span on step `when`, then advance to `more`. */
+  const fillOut = (d1: string, t1: string, d2: string, t2: string) => {
+    const [a, b] = legs();
+    setDate(a, d1);
+    setTime(a, t1);
+    setDate(b, d2);
+    setTime(b, t2);
+  };
 
   it('offers the direction control on a transport create, and defaults to one way', () => {
     open();
     expect(screen.getByText(t.index.form.oneWay)).toBeTruthy();
     expect(screen.getByText(t.index.form.roundTrip)).toBeTruthy();
-    // Default OFF: no return block, and no leg headings on the single journey either.
-    expect(document.querySelector('.bs-leg-return')).toBeNull();
-    expect(document.querySelectorAll('.bs-leg-head').length).toBe(0);
+    // Default OFF: the schedule step carries one journey and no leg heading, and the
+    // last step carries no return block at all.
+    next();
     expect(legs().length).toBe(2);
+    expect(document.querySelectorAll('.bs-leg-head').length).toBe(0);
+    next();
+    expect(document.querySelector('.bs-leg-return')).toBeNull();
   });
 
   it('does not offer it on a type that has no route to mirror', () => {
@@ -443,29 +472,49 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     expect(screen.queryByText(t.index.form.roundTrip)).toBeNull();
   });
 
-  it('adds the second span and BOTH leg headings on the tap', () => {
+  // **The two legs are two STEPS now** (ADR-0155 §5), so the headings are never adjacent.
+  // ADR-0154 §4's "in pairs or not at all" still holds — what it forbids is an unlabelled
+  // block beside a labelled one, and each step now has exactly one. Each heading also
+  // carries its own `RouteLabel`, which is the part the step name cannot say: which way
+  // this leg goes.
+  it('names the outbound on its step and the return on the next, one heading each', () => {
     open();
     goRoundTrip();
+    next();
+    let heads = [...document.querySelectorAll('.bs-leg-head > span:first-child')].map(
+      (e) => e.textContent,
+    );
+    expect(heads).toEqual([t.index.form.legOut]);
+    expect(legs().length).toBe(2);
+
+    next();
     expect(document.querySelector('.bs-leg-return')).toBeTruthy();
-    expect(legs().length).toBe(4);
-    const heads = [...document.querySelectorAll('.bs-leg-head span')].map((e) => e.textContent);
-    expect(heads).toContain(t.index.form.legOut);
-    expect(heads).toContain(t.index.form.legBack);
+    heads = [...document.querySelectorAll('.bs-leg-head > span:first-child')].map(
+      (e) => e.textContent,
+    );
+    expect(heads).toEqual([t.index.form.legBack]);
+    expect(legs().length).toBe(2);
+  });
+
+  it('names the two steps for the journey they ask about', () => {
+    open();
+    goRoundTrip();
+    const label = () => document.querySelector('.form-steps-label')!.textContent;
+    expect(label()).toBe(t.index.form.stepWhat);
+    next();
+    expect(label()).toBe(t.index.form.stepWhenOut);
+    next();
+    expect(label()).toBe(t.index.form.stepBackAndShared);
   });
 
   it('writes two bookings with mirrored routes and titles, in one change group', async () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-out' });
     open();
     goRoundTrip();
-    const [out1, out2, back1, back2] = legs();
-    setDate(out1, '2026-07-19');
-    setTime(out1, '09:00');
-    setDate(out2, '2026-07-20');
-    setTime(out2, '05:00');
-    setDate(back1, '2026-07-28');
-    setTime(back1, '11:00');
-    setDate(back2, '2026-07-28');
-    setTime(back2, '18:00');
+    next();
+    fillOut('2026-07-19', '09:00', '2026-07-20', '05:00');
+    next();
+    fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
     save();
 
     await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
@@ -482,15 +531,10 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-out' });
     open();
     goRoundTrip();
-    const [out1, out2, back1, back2] = legs();
-    setDate(out1, '2026-07-19');
-    setTime(out1, '09:00');
-    setDate(out2, '2026-07-20');
-    setTime(out2, '05:00');
-    setDate(back1, '2026-07-28');
-    setTime(back1, '11:00');
-    setDate(back2, '2026-07-28');
-    setTime(back2, '18:00');
+    next();
+    fillOut('2026-07-19', '09:00', '2026-07-20', '05:00');
+    next();
+    fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
     save();
 
     await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
@@ -503,30 +547,28 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
   it('refuses a return that leaves before the outbound has landed, on that field', async () => {
     open();
     goRoundTrip();
-    const [out1, out2, back1, back2] = legs();
-    setDate(out1, '2026-07-19');
-    setTime(out1, '09:00');
-    setDate(out2, '2026-07-20');
-    setTime(out2, '05:00');
+    next();
+    fillOut('2026-07-19', '09:00', '2026-07-20', '05:00');
+    next();
     // Same day as the arrival, but two hours before it — a real instant comparison,
-    // which a date-only check would wave through.
-    setDate(back1, '2026-07-20');
-    setTime(back1, '03:00');
-    setDate(back2, '2026-07-20');
-    setTime(back2, '10:00');
+    // which a date-only check would wave through. **The one cross-step rule** (ADR-0155
+    // §5): it needs the outbound's arrival from the PREVIOUS step, and it is marked here
+    // because this is the field that is wrong.
+    fillOut('2026-07-20', '03:00', '2026-07-20', '10:00');
     save();
 
     // Each span leg wears its own `Field`, which is what carries the mark (ADR-0150).
+    const [back1, back2] = legs();
     const marked = (leg: HTMLElement) => leg.closest('.field');
     expect(marked(back1)?.hasAttribute('data-invalid')).toBe(true);
     expect(marked(back1)?.querySelector('.field-error')?.textContent).toBe(
       t.index.form.returnBeforeArrival,
     );
-    // The three fields that are fine are not marked, and nothing was written.
-    expect(marked(out1)?.hasAttribute('data-invalid')).toBe(false);
-    expect(marked(out2)?.hasAttribute('data-invalid')).toBe(false);
+    // The leg beside it is fine and is not marked, and nothing was written.
     expect(marked(back2)?.hasAttribute('data-invalid')).toBe(false);
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+    // Still on the return's step — a refused save does not commit and does not move.
+    expect(document.querySelector('.bs-leg-return')).toBeTruthy();
   });
 
   // ADR-0154 §6. Both legs have client-generated ids, so `hostId` would otherwise be
@@ -537,15 +579,10 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
       .mockResolvedValueOnce({ id: 'b-back' });
     open();
     goRoundTrip();
-    const [out1, out2, back1, back2] = legs();
-    setDate(out1, '2026-07-19');
-    setTime(out1, '09:00');
-    setDate(out2, '2026-07-20');
-    setTime(out2, '05:00');
-    setDate(back1, '2026-07-28');
-    setTime(back1, '11:00');
-    setDate(back2, '2026-07-28');
-    setTime(back2, '18:00');
+    next();
+    fillOut('2026-07-19', '09:00', '2026-07-20', '05:00');
+    next();
+    fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
     fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
       target: { value: 'מושב ליד החלון בשתי הטיסות' },
     });
@@ -574,8 +611,11 @@ describe('BookingSheet — deleting one leg of a derived pair', () => {
     tripBookings = [];
   });
 
+  // Delete sits beside the decision to commit, i.e. on the last step (ADR-0155 §5's
+  // build log) — never under a control that is only navigating.
   const openDelete = () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    toLastStep();
     fireEvent.click(screen.getByText(t.index.sheet.delete));
   };
 
@@ -596,5 +636,108 @@ describe('BookingSheet — deleting one leg of a derived pair', () => {
     openDelete();
     expect(screen.queryByText(t.index.del.pairNote('back'))).toBeNull();
     expect(screen.queryByText(t.index.del.pairNote('out'))).toBeNull();
+  });
+});
+
+// **The form is stepped** (ADR-0155 §5, revised by the owner 2026-08-02). What is pinned
+// here is the stepping as a contract, not just as the setting the tests above walk through:
+// where the fields live, that the save is a single commit on the last step, and that a
+// refusal is reachable rather than stranded on a page you are not looking at.
+describe('BookingSheet — three steps', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.createBooking.mockReset();
+    indexVerbs.updateBooking.mockClear();
+  });
+
+  const openHotel = () =>
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+  const nameIt = () =>
+    fireEvent.change(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder), {
+      target: { value: 'מלון שינג׳וקו גרנבל' },
+    });
+  const stepLabel = () => document.querySelector('.form-steps-label')?.textContent;
+
+  it('asks what and where, then when, then the rest', () => {
+    openHotel();
+    // Step one: identity and place. Not the schedule, and not the code.
+    expect(stepLabel()).toBe(t.index.form.stepWhat);
+    expect(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeTruthy();
+    expect(screen.getByText(t.index.sheet.locationLabel)).toBeTruthy();
+    expect(screen.queryByText(t.index.sheet.codeLabel)).toBeNull();
+    expect(document.querySelector('.wf')).toBeNull();
+
+    nameIt();
+    next();
+    expect(stepLabel()).toBe(t.index.form.stepWhen);
+    expect(document.querySelector('.wf')).toBeTruthy();
+    expect(screen.queryByText(t.index.sheet.codeLabel)).toBeNull();
+
+    next();
+    expect(stepLabel()).toBe(t.index.form.stepDetails);
+    expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
+    expect(screen.getByText(t.index.sheet.roomLabel)).toBeTruthy();
+    expect(document.querySelector('.note-compose-in')).toBeTruthy();
+    expect(document.querySelector('.wf')).toBeNull();
+  });
+
+  it('commits once, on the last step (ADR-0155 §4)', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
+    openHotel();
+    nameIt();
+    next();
+    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+    next();
+    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText(t.common.save));
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(1));
+  });
+
+  it('offers delete only where the decision to commit is', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    expect(screen.queryByText(t.index.sheet.delete)).toBeNull();
+    next();
+    expect(screen.queryByText(t.index.sheet.delete)).toBeNull();
+    next();
+    expect(screen.getByText(t.index.sheet.delete)).toBeTruthy();
+  });
+
+  // **The gate catches it before the save has to.** Worth being exact about what this
+  // does and does not show: in THIS form the per-step gates cover every rule, so the
+  // save's walk-back to an earlier step (ADR-0155 §3) is currently unreachable from the
+  // UI — you cannot break a step-two field from step three, because it is not rendered.
+  // That path is real and is defence in depth; it is tested directly on the primitive
+  // (`FormSteps.test.tsx`), which is where it belongs. What this pins is the half a user
+  // meets: a schedule pushed out of the trip is refused AT the schedule step.
+  it('refuses at the step that owns the field, before it can be paged past', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    next();
+    // Push the outbound's departure outside the trip, then page past it.
+    const [dep] = [...document.querySelectorAll<HTMLInputElement>('.wf-date-val')];
+    fireEvent.change(dep, { target: { value: '2026-07-20' } });
+    next();
+    expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
+
+    // Now break it from the step that cannot show it, and save.
+    fireEvent.click(screen.getByText(t.common.steps.back));
+    fireEvent.change(document.querySelector('.wf-date-val') as HTMLInputElement, {
+      target: { value: '2026-08-30' },
+    });
+    next();
+    // Refused at the gate rather than paged past — which is the earlier half of §3.
+    expect(stepLabel()).toBe(t.index.form.stepWhen);
+    const marked = document.querySelector('.field[data-invalid]');
+    expect(marked?.querySelector('.field-error')?.textContent).toBe(t.index.form.dateOutOfRange);
+    expect(indexVerbs.updateBooking).not.toHaveBeenCalled();
+  });
+
+  it('keeps `שבץ במסלול` a shortcut — it opens ON the schedule step', async () => {
+    render(wrapNav(<BookingSheet booking={flight} focus="when" onClose={() => {}} />));
+    await waitFor(() => expect(stepLabel()).toBe(t.index.form.stepWhen));
+    expect(document.querySelector('.wf')).toBeTruthy();
   });
 });

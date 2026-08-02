@@ -1,6 +1,6 @@
 # 0155 — A stepped form is **one primitive**, it never animates height, and it commits **once**
 
-**Status:** Accepted (owner sign-off 2026-08-02). **Built 2026-08-02** — see the build log at the foot. The extraction shipped with both call sites migrated; **applying it to `BookingSheet` is still not approved** — see §5.
+**Status:** Accepted (owner sign-off 2026-08-02). **Built 2026-08-02**, in two parts — the extraction, then `BookingSheet`. **§5 was reversed by the owner the same day**: the form IS stepped. See §5's amendment and the second build log.
 **Date:** 2026-08-02
 **Design reference:** [`mockups/form-steps-v1.html`](../../mockups/form-steps-v1.html) — carries the scan of every form surface, the 80vh fold drawn at 390px, and the head-to-head. [`mockups/booking-round-trip-v1.html`](../../mockups/booking-round-trip-v1.html) §6 draws the same comparison on the one form that is a candidate.
 
@@ -45,6 +45,27 @@ A step gate reports every problem **in the current step** — 0150 unchanged, sc
 **And the composer belongs in the last step**, with the fields shared across the whole form.
 
 ### 5. Not applied to `BookingSheet` yet, and `Collapsible` is tried first
+
+> **Amended 2026-08-02, same day, by the owner — this section is REVERSED.** After the
+> extraction shipped, the owner's report was: _"I still see one big form instead of a stepped
+> form for transportation for example"_. That is the honest outcome of what §5 decided —
+> both migrated surfaces are **choosers**, so the extraction landed with no user-visible
+> change to any form, and the one form the whole question came from was untouched. Asked
+> directly whether to step it now or try `Collapsible` first as written below, the owner
+> chose to step it. **`BookingSheet` is stepped**; the reasoning below is kept because the
+> costs it names are real and are now costs the app is paying, not costs it avoided.
+>
+> **Three steps, which are the form's own three subjects rather than a paging of its
+> fields:** `מה ואיפה` (type, identity, route or place, and the direction control) ·
+> `מתי` (the schedule and the kind) · `פרטים` (the code, room/wifi, and the composer). For
+> a round trip the last two are renamed `מתי הלוך` and `חזרה ופרטים`, and the return leg
+> moves onto the last step — which is what the design reference drew.
+>
+> **The costs below are accepted, not dismissed.** Paging does manufacture a second pass at
+> a refusal, and the form no longer shows a hard commitment whole before you sign it. What
+> reduces the first is that a gate refuses at the step that owns the field, which is
+> **earlier** than the old save-time refusal, not later. The second is unmitigated and
+> should be the first thing looked at on a phone.
 
 `BookingSheet` is a **middle case**, and the design says so rather than rounding it off. Mostly chunking — the code does not depend on the date — but it carries one genuine cross-step dependency: 0154 §4's own refusal, _the return cannot depart before the arrival_, means the return leg is not independently valid until the outbound is answered. That is branching, and it is the strongest argument for stepping this particular form.
 
@@ -106,3 +127,45 @@ It is still not enough to decide from a desktop browser. **The order is: `Collap
 
 - **`useBackLayer` is no longer imported by `screens/PlanDay.tsx` at all.** That import
   going dead is the cleanest measure of what the extraction removed.
+
+## Build log — `BookingSheet`, 2026-08-02
+
+- **The extraction shipped invisibly, and that is what prompted the reversal.** Both
+  migrated surfaces advance by _choosing_, so neither renders the footer; §2's `הבא`/`שמירה`
+  and §3's re-validation went out with no user-facing call site. Worth naming as a planning
+  lesson rather than a build one: "extract the primitive first, apply it later" left a
+  release where the thing that motivated the work was the thing that did not change.
+
+- **Steps are the form's SUBJECTS, and the field-to-step map is a table.** `STEP_FIELDS` is
+  exhaustive over `BookingField` by `satisfies`, so a new refusal has to say which step
+  shows it or the build fails — otherwise a problem could belong to no step and the save
+  would have nowhere to jump. One `allProblems()` feeds both the gates and the save, so a
+  rule cannot hold on one path and not the other.
+
+- **`שבץ במסלול` got better, and needed re-plumbing.** ADR-0138 §7's shortcut used to scroll
+  to the schedule; it now NAVIGATES to that step. It takes two renders — the step's first
+  control does not exist until the step is on screen — which is the same ordering the
+  primitive's deferred refusal needs, for the same reason.
+
+- **Delete moved to the last step.** It belongs beside the decision to commit, not beside a
+  control that is only navigating.
+
+- **The two leg headings are never adjacent now**, which reads as a contradiction of
+  ADR-0154 §4's "in pairs or not at all" and is not one: what that forbids is an unlabelled
+  block beside a labelled one, and each step has exactly one block. The heading earns its
+  place by carrying the leg's `RouteLabel` — which way this journey goes is the part the
+  step name cannot say.
+
+- **In this form the save's walk-back to an earlier step is unreachable from the UI**, and
+  the test says so instead of implying otherwise: the gates cover every rule, and you cannot
+  break a step-two field from step three because it is not rendered. The path is real
+  defence in depth and is tested on the primitive, where it belongs.
+
+- **22 existing specs failed on the first run**, all of them because they assumed one page,
+  and every one of them was updated rather than relaxed. Two are worth noting: the refusal
+  tests now assert at the STEP GATE, which is earlier than the save they used to press; and
+  the delete-prompt tests walk to the last step first.
+
+- **Still not answered: the phone.** Everything here was judged in a browser. §5's second
+  cost — that you no longer review a hard commitment whole before signing it — is exactly
+  the kind of thing a desktop pass cannot weigh.

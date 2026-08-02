@@ -62,6 +62,9 @@ one.
   note before its host and fails only offline). A chooser passes no `errors` and no
   `validate`; a form passes its own `useFormErrors` and gets ADR-0150 scoped per step,
   with the save re-validating everything and jumping to the first step that refuses.
+  `BookingSheet` is the worked example of the form shape: its steps are the form's own
+  three subjects, and `STEP_FIELDS` there is exhaustive over its field union by
+  `satisfies`, so a new refusal must say which step shows it or the build fails.
 - **A form that can refuse a save** — `ui/primitives/useFormErrors` + the `data-invalid`
   attribute (ADR-0150), never a `useState<string | null>` and a caption of your own.
   The hook owns what happens _after_ the refusal (mark, one nudge, bring the first
