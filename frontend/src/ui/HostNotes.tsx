@@ -15,9 +15,21 @@ import { useMemo, useState } from 'react';
 import type { Note } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { noteHostInput, notesForHost, type NoteHostRef } from '../lib/notes';
+import { noteHostInput, notesForHost, type NoteHostKind, type NoteHostRef } from '../lib/notes';
 import { NoteSection } from './NoteSection';
 import { NoteSheet } from './NoteSheet';
+
+/** **How many notes this one host carries**, from trip state — for the surfaces that ask
+ *  about a single host rather than a listful: the delete confirms, which owe the reader the
+ *  count the cascade is about to take (ADR-0152 §2). A list screen keeps
+ *  `noteCountsByHost`, which answers the same question for a whole screen in one pass.
+ *
+ *  Here beside `HostNotes` because this module is what "a host's notes" means, and a second
+ *  place deriving it is how three confirms end up disagreeing with the mark on the row. */
+export function useHostNoteCount(kind: NoteHostKind, id: string | undefined): number {
+  const { notes } = useTrip();
+  return useMemo(() => (id ? notesForHost(notes, kind, id).length : 0), [notes, kind, id]);
+}
 
 export function HostNotes({
   host,

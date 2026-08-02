@@ -14,6 +14,7 @@ import { useTrip } from '../state/trip-state';
 import { RowManageSheet, type RowAction } from './domain';
 import { BookingTitle } from './BookingTitle';
 import { DeletePrompt } from './BookingSheet';
+import { useHostNoteCount } from './HostNotes';
 import { deleteFlags } from '../lib/booking-edit';
 import { useRoundTripPartner } from '../lib/booking-pair';
 import { CONTROL_ICON, DOT_SEPARATOR } from '../constants';
@@ -34,6 +35,8 @@ export function BookingManageSheet({
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
   const [deleting, setDeleting] = useState(false);
   const pair = useRoundTripPartner(booking);
+  const bookingNotes = useHostNoteCount('booking', booking.id);
+  const linkedEventNotes = useHostNoteCount('event', linkedEvent?.id);
 
   if (deleting) {
     return (
@@ -41,6 +44,8 @@ export function BookingManageSheet({
         hasLinkedEvent={!!linkedEvent}
         linkedIsHard={linkedEvent?.kind === 'hard'}
         partnerLeg={pair?.leg}
+        notes={bookingNotes}
+        linkedNotes={linkedEventNotes}
         onCancel={() => setDeleting(false)}
         onChoose={(choice) => {
           void indexVerbs.deleteBooking(booking.id, deleteFlags(choice)).catch(() => {});

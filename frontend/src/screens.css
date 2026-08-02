@@ -656,17 +656,6 @@
   padding: 18px;
   box-shadow: 0 -20px 40px -14px rgba(0, 0, 0, 0.35);
 }
-.sheet-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--indigo);
-  margin-bottom: 10px;
-}
-.sheet-body {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-}
 /* account sheet (app-shell.md §6, PR #57): grip + centered identity, no
    title bar — Google is stated once here, quietly, not badged per-avatar. */
 .acct-grip {
@@ -3188,46 +3177,6 @@
   font-weight: 400;
   color: var(--muted);
 }
-/* Pinned footer: Save/Cancel stay reachable while the field area scrolls
-   (the scroll container is .booking-sheet). The negative margin swallows the
-   column gap so scrolling fields slide fully under the opaque band instead of
-   peeking through it. */
-.booking-sheet .bs-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
-  gap: 10px;
-  margin-top: -12px;
-  padding-top: 14px;
-  background: var(--card);
-}
-.booking-sheet .bs-save,
-.booking-sheet .bs-cancel {
-  font: inherit;
-  font-weight: 700;
-  font-size: 13px;
-  border-radius: 12px;
-  padding: 12px;
-  cursor: pointer;
-}
-.booking-sheet .bs-save {
-  flex: 1; /* primary spans the row; ghost cancel is a small pill (mockup) */
-  background: var(--cta);
-  color: var(--cta-text);
-  border: none;
-}
-.booking-sheet .bs-save:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.booking-sheet .bs-cancel {
-  flex: 0 0 auto;
-  padding: 12px 20px;
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--soft-line);
-}
 .booking-sheet .bs-delete {
   font: inherit;
   font-weight: 700;
@@ -3279,9 +3228,6 @@
 }
 .bs-choice-cancel {
   width: 100%;
-}
-.bs-danger-ok {
-  background: var(--miss);
 }
 
 /* Index add-booking button + empty-state CTA. Color follows the Index's own
