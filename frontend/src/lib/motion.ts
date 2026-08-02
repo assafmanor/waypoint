@@ -50,6 +50,34 @@ const FALLBACK_MS = 400;
  *    guessing 400ms of held-open overlay is strictly worse than closing now. It is
  *    also what every jsdom test sees, which is why they can assert a close
  *    synchronously without stubbing a clock. */
+/** How far an element's centre sits from the viewport's, in px, clamped.
+ *
+ *  The one measurement an overlay needs in order to appear to grow out of the thing
+ *  that was tapped. It is expressed as an OFFSET rather than as a percentage because a
+ *  centred overlay's card centre *is* the viewport centre, so the caller needs no
+ *  second measurement of the card — which matters, since the card has not been laid
+ *  out yet at the moment the row is tapped. Feed it to
+ *  `transform-origin: 50% calc(50% + var(--…))`.
+ *
+ *  Answers `null` when there is nothing to measure, and that is a real case rather than
+ *  a failure: a document opened from a note deep link (`?doc=`) has no row it came
+ *  from, so the overlay is summoned at its centre instead.
+ *
+ *  Clamped because an origin far outside the card turns a scale into a slide across the
+ *  screen; the cap keeps the effect a growth from roughly the right place. */
+export function overlayOriginOffset(el: Element | null | undefined): number | null {
+  if (!el || typeof window === 'undefined') return null;
+  const rect = el.getBoundingClientRect();
+  // jsdom reports every rect as zero, which would read as "dead centre" — a lie the
+  // unit suite cannot see through. Treat an unmeasurable element as absent.
+  if (rect.height === 0 && rect.width === 0) return null;
+  const offset = rect.top + rect.height / 2 - window.innerHeight / 2;
+  const cap = window.innerHeight * ORIGIN_CLAMP;
+  return Math.round(Math.max(-cap, Math.min(cap, offset)));
+}
+
+const ORIGIN_CLAMP = 0.42;
+
 export function motionDurationMs(token: string): number {
   if (prefersReducedMotion() || typeof window === 'undefined') return 0;
   const raw = getComputedStyle(document.documentElement).getPropertyValue(token).trim();

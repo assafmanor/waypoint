@@ -54,6 +54,27 @@ Exit is briefer than entrance (`--t-quick` / `--t-base`), as everywhere else.
 - A new anchored panel takes `useExitTransition` and the `panel-open` keyframe; a new
   overlay gets its motion from `Modal` and needs nothing.
 
+## Amended 2026-08-02 — the panels' exits never ran either
+
+`IconPicker` and `TimePicker` share `panel-open`, played `reverse` on `.is-closing`.
+That does not animate: the same `animation-name` retargets the running animation rather
+than starting a new one, so it keeps its current time, is already past the new duration
+by the time a panel closes, and `fill: both` paints the reversed end state on the first
+frame. Both rules now use a `panel-close` of their own.
+
+Nothing about this ADR's **design** changes — an anchored panel still unfolds from its
+edge, and it still shares `useExitTransition` with `Modal` rather than folding onto it.
+What changes is that the fold-away now happens. Full measurements, the two reasons it
+survived review, and the contract test that guards it are in
+[ADR-0140](0140-motion-foundations-overlays-arrive-taps-answer-routes-have-a-direction.md)
+§8, which is where the same defect is recorded for the four `modal.css` rules.
+
+Note the shape of it against this ADR's own Consequences, which recorded that the
+extraction _"had a latent bug that only a second kind of consumer could expose"_. This is
+the same lesson one level down: the bug was in the CSS technique both consumers copied,
+and it took a **third** consumer — one that happened to name an exit keyframe
+differently — to expose it.
+
 ## Build log
 
 **The extraction had a bug, and putting it on a second kind of consumer is what exposed

@@ -7,7 +7,7 @@
 // once flushed. The title/encrypted-badge header lives in IndexDocumentsView's
 // merged `idx-head` row now (ADR-0100 Consequences), not here — this component
 // is content only.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { usePendingUploads, useIsOffline } from '../lib/outbox';
@@ -15,6 +15,7 @@ import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { ListRow, NoteMark } from './domain';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { groupDocuments } from '../lib/documents';
+import { overlayOriginOffset } from '../lib/motion';
 import { formatBytes } from '../lib/bytes';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
 import { DocumentViewer } from './DocumentViewer';
@@ -30,13 +31,20 @@ export function DocumentsSection({ initialDocumentId }: { initialDocumentId?: st
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   const [uploading, setUploading] = useState(false);
   const [viewing, setViewing] = useState<DocumentSummary | null>(null);
+  // Where the viewer should appear to grow from — measured off the row at the moment it
+  // is tapped, because the card has not been laid out yet and the row is about to be
+  // covered. `null` for the deep link below, which has no row (ADR-0140's amendment).
+  const [viewFrom, setViewFrom] = useState<number | null>(null);
   // Runs once against the id this screen was mounted with — a note about a document sends
   // you here (ADR-0153 §8's way-in amendment), and the id is spent on arrival. A fresh mount
   // is what re-arms it, exactly as the bookings screen's `initialBookingId` works.
   useEffect(() => {
     if (!initialDocumentId) return;
     const target = documents.find((d) => d.id === initialDocumentId);
-    if (target) setViewing(target);
+    if (target) {
+      setViewing(target);
+      setViewFrom(null);
+    }
     // The id is the trigger, deliberately once — a fresh mount handles the next deep link,
     // exactly as `IndexBookingsView`'s does.
   }, [initialDocumentId]);
@@ -101,7 +109,10 @@ export function DocumentsSection({ initialDocumentId }: { initialDocumentId?: st
                 doc={d}
                 isPending={pendingIds.has(d.id)}
                 notes={noteCountFor(noteCounts, 'document', d.id)}
-                onOpen={() => setViewing(d)}
+                onOpen={(e) => {
+                  setViewFrom(overlayOriginOffset(e.currentTarget));
+                  setViewing(d);
+                }}
                 onManage={() => setManaging(d)}
               />
             ))}
@@ -111,7 +122,12 @@ export function DocumentsSection({ initialDocumentId }: { initialDocumentId?: st
 
       {uploading && <DocumentUploadSheet tripId={trip.id} onClose={() => setUploading(false)} />}
       {viewing && (
-        <DocumentViewer tripId={trip.id} doc={viewing} onClose={() => setViewing(null)} />
+        <DocumentViewer
+          tripId={trip.id}
+          doc={viewing}
+          originY={viewFrom}
+          onClose={() => setViewing(null)}
+        />
       )}
       {managing && (
         <DocumentManageSheet tripId={trip.id} doc={managing} onClose={() => setManaging(null)} />
@@ -137,7 +153,9 @@ function DocumentRow({
   isPending: boolean;
   /** How many notes this document carries (ADR-0152 §6): a mark on the row, never a body. */
   notes: number;
-  onOpen: () => void;
+  /** Carries the click through to `ListRow`, so the caller can measure the row the
+   *  viewer should grow out of. */
+  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
   onManage: () => void;
 }) {
   const offline = useIsOffline();

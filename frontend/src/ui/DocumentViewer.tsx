@@ -10,6 +10,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
@@ -17,9 +18,32 @@ import { isInlineOpenableDocumentMimeType, type DocumentSummary } from '@waypoin
 import { fetchDocumentContent } from '../lib/api';
 import { useOverlay } from '../state/nav-state';
 import { useDialogFocus } from '../lib/useDialogFocus';
+import { useExitTransition } from '../lib/useExitTransition';
 import { Spinner } from './Spinner';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
+
+/* How far the mount travels from the tapped row, as a SHARE of that row's offset, and
+   the cap on it. A share rather than the whole distance because the card is not flying
+   from the row, it is growing out of it — matching the full offset reads as a slide
+   across the screen. Local consts like the zoom ones below: single call site, and the
+   meaning does not leave this file. */
+const ORIGIN_TRAVEL_RATIO = 0.22;
+const MAX_ORIGIN_TRAVEL_PX = 40;
+
+/** The two custom properties the arrival needs, from the one measured number.
+ *  Absent origin means no properties, so the CSS falls back to a centred origin and no
+ *  travel — a note deep link has no row to grow from. */
+function originStyle(originY?: number | null): CSSProperties | undefined {
+  if (originY == null) return undefined;
+  const travel = Math.round(
+    Math.max(-MAX_ORIGIN_TRAVEL_PX, Math.min(MAX_ORIGIN_TRAVEL_PX, originY * ORIGIN_TRAVEL_RATIO)),
+  );
+  return {
+    '--dv-origin-dy': `${originY}px`,
+    '--dv-origin-travel': `${travel}px`,
+  } as CSSProperties;
+}
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
@@ -215,12 +239,24 @@ export function DocumentViewer({
   tripId,
   doc,
   onClose,
+  originY,
 }: {
   tripId: string;
   doc: DocumentSummary;
   onClose: () => void;
+  /** The tapped row's centre, as an offset from the viewport's (`overlayOriginOffset`),
+   *  so the card grows out of what you pressed. Absent for a note deep link (`?doc=`),
+   *  which has no row — the card is then summoned at centre, which is correct rather
+   *  than a fallback. */
+  originY?: number | null;
 }) {
-  useOverlay(onClose);
+  // The exit runs `--t-base`, and its LAST channel is the scrim, delayed by one
+  // `--stagger-step` so the card clears against a still-dimmed room — hence both
+  // tokens, or the tail is cut and the background snaps back (ADR-0140's amendment).
+  const { closing, beginClose } = useExitTransition(onClose, '--t-base', '--stagger-step');
+  // Every way out runs the ONE close (ADR-0103 §2): this registration covers back,
+  // the Android gesture and Escape; the backdrop and the ✕ below take the same handler.
+  useOverlay(beginClose);
   const cardRef = useRef<HTMLDivElement>(null);
   useDialogFocus(cardRef, { trap: true });
   const [url, setUrl] = useState<string | null>(null);
@@ -236,10 +272,24 @@ export function DocumentViewer({
     // `doc.updatedAt` versions the client blob cache (ADR-0055): a replaced file bumps it,
     // so a stale cached blob is never served for the same docId.
     fetchDocumentContent(tripId, doc.id, doc.updatedAt).then(
-      (blob) => {
+      async (blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
+        // Decode BEFORE handing the URL to the DOM. A multi-megabyte scan decoding on
+        // the main thread while the card is mid-transform drops frames, and no easing
+        // fixes that. It also replaces the round-trip through a rendered-then-broken
+        // `<img>`: a HEIC that cannot decode goes straight to the hand-off (ADR-0052
+        // §1) instead of painting an empty box first.
+        if (doc.mimeType.startsWith('image/')) {
+          const probe = new Image();
+          probe.src = objectUrl;
+          try {
+            await probe.decode();
+          } catch {
+            if (!cancelled) setImageBroken(true);
+          }
+        }
+        if (!cancelled) setUrl(objectUrl);
       },
       () => {
         if (!cancelled) setFailed(true);
@@ -249,7 +299,7 @@ export function DocumentViewer({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [tripId, doc.id, doc.updatedAt]);
+  }, [tripId, doc.id, doc.updatedAt, doc.mimeType]);
 
   // A newly loaded image starts at fit-to-frame, never carrying the prior zoom.
   useEffect(() => reset(), [url, reset]);
@@ -261,7 +311,7 @@ export function DocumentViewer({
   const canOpenInTab = isInlineOpenableDocumentMimeType(doc.mimeType);
 
   return createPortal(
-    <div className="doc-viewer" onClick={onClose}>
+    <div className={closing ? 'doc-viewer is-closing' : 'doc-viewer'} onClick={beginClose}>
       <div
         ref={cardRef}
         tabIndex={-1}
@@ -270,14 +320,25 @@ export function DocumentViewer({
         aria-modal="true"
         aria-label={doc.title}
         onClick={(e) => e.stopPropagation()}
+        style={originStyle(originY)}
       >
         <div className="doc-viewer-head">
           <span className="doc-viewer-title">{doc.title}</span>
-          <button className="doc-viewer-close" onClick={onClose} aria-label={t.docs.viewer.close}>
+          <button
+            className="doc-viewer-close"
+            onClick={beginClose}
+            aria-label={t.docs.viewer.close}
+          >
             <Icon name="close" />
           </button>
         </div>
-        <div className="doc-viewer-body">
+        {/* `data-expect` is the mime type, read before any bytes exist — which is what
+            lets the frame be reserved while the spinner is still running (screens.css).
+            `is-opening` runs the mount layer once the page itself has landed. */}
+        <div
+          className={url ? 'doc-viewer-body is-opening' : 'doc-viewer-body'}
+          data-expect={showInlineImage ? 'image' : undefined}
+        >
           {failed ? (
             <p className="doc-viewer-msg">{t.docs.viewer.error}</p>
           ) : !url ? (
@@ -288,14 +349,14 @@ export function DocumentViewer({
           ) : showInlineImage ? (
             <img
               ref={imgRef}
-              className="doc-viewer-img"
+              className="doc-viewer-img is-fresh"
               src={url}
               alt={doc.title}
               onError={() => setImageBroken(true)}
               {...handlers}
             />
           ) : (
-            <div className="doc-viewer-handoff">
+            <div className="doc-viewer-handoff is-fresh">
               <div className="doc-viewer-handoff-ic" aria-hidden="true">
                 <Icon name="documents" />
               </div>

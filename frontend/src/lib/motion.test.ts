@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { motionDurationMs, prefersReducedMotion, readDurationMs } from './motion';
+import {
+  motionDurationMs,
+  prefersReducedMotion,
+  readDurationMs,
+  overlayOriginOffset,
+} from './motion';
 
 const stubReducedMotion = (matches: boolean) =>
   vi.stubGlobal(
@@ -67,5 +72,42 @@ describe('motionDurationMs', () => {
   it('is 0 when the token is unreadable, rather than guessing', () => {
     stubReducedMotion(false);
     expect(motionDurationMs('--t-quick')).toBe(0);
+  });
+});
+
+describe('overlayOriginOffset', () => {
+  const withViewport = (height: number, rect: Partial<DOMRect>) => {
+    vi.stubGlobal('innerHeight', height);
+    return { getBoundingClientRect: () => ({ top: 0, height: 0, width: 0, ...rect }) } as Element;
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is the distance from the element centre to the viewport centre', () => {
+    // A row at 100..160 has its centre at 130; a 800px viewport has its at 400.
+    expect(overlayOriginOffset(withViewport(800, { top: 100, height: 60, width: 300 }))).toBe(-270);
+  });
+
+  it('is positive for a row below the middle', () => {
+    expect(overlayOriginOffset(withViewport(800, { top: 500, height: 60, width: 300 }))).toBe(130);
+  });
+
+  // An origin far outside the card turns a scale into a slide across the screen.
+  it('clamps to 42% of the viewport either way', () => {
+    expect(overlayOriginOffset(withViewport(800, { top: 780, height: 60, width: 300 }))).toBe(336);
+    expect(overlayOriginOffset(withViewport(800, { top: -400, height: 60, width: 300 }))).toBe(
+      -336,
+    );
+  });
+
+  // The deep-link case: nothing was tapped, so the overlay is summoned at centre.
+  it('is null with no element', () => {
+    expect(overlayOriginOffset(null)).toBeNull();
+    expect(overlayOriginOffset(undefined)).toBeNull();
+  });
+
+  // jsdom reports every rect as zero, which would read as "dead centre" — a lie no unit
+  // test could see through, and the class of bug frontend/CLAUDE.md warns about twice.
+  it('is null for an unmeasurable element rather than reporting dead centre', () => {
+    expect(overlayOriginOffset(withViewport(800, { top: 0, height: 0, width: 0 }))).toBeNull();
   });
 });

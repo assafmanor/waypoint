@@ -19,8 +19,14 @@ import { motionDurationMs } from './motion';
  *
  *  @param onClose what the owner does when the surface is really gone (usually: unmount it)
  *  @param token   the duration token the exit animation runs for
+ *  @param delayToken added to `token` when the LAST channel to finish is a delayed one.
+ *    A surface whose exit is staggered (the document viewer's scrim leaves after its
+ *    card, so the card clears against a still-dimmed room) finishes at delay+duration,
+ *    and unmounting at `duration` alone cuts the tail off — which is visible precisely
+ *    because it is the background snapping back. Two tokens rather than one summed
+ *    literal so reduced motion still zeroes BOTH halves.
  */
-export function useExitTransition(onClose: () => void, token = '--t-quick') {
+export function useExitTransition(onClose: () => void, token = '--t-quick', delayToken?: string) {
   const [closing, setClosing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const onCloseRef = useRef(onClose);
@@ -35,7 +41,7 @@ export function useExitTransition(onClose: () => void, token = '--t-quick') {
     // frame of a surface the user already closed, and it would make every caller async
     // for no benefit. See `motionDurationMs` for why an unreadable token counts as
     // "nothing is animating".
-    const wait = motionDurationMs(token);
+    const wait = motionDurationMs(token) + (delayToken ? motionDurationMs(delayToken) : 0);
     if (wait === 0) {
       onCloseRef.current();
       return;
@@ -50,7 +56,7 @@ export function useExitTransition(onClose: () => void, token = '--t-quick') {
       setClosing(false);
       onCloseRef.current();
     }, wait);
-  }, [token]);
+  }, [token, delayToken]);
 
   // A caller that tears the surface down for its own reasons must not be called back
   // about a close it never asked for.

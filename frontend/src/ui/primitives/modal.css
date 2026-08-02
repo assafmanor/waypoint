@@ -19,13 +19,36 @@
 
    `animation`, not `transition`, on purpose: an animation fires on mount with no
    need to paint a closed state first and flip it a frame later, so there is no
-   double-rAF and no first-frame flash. `.is-closing` swaps in the reverse pair.
+   double-rAF and no first-frame flash.
 
    Exit is deliberately BRISKER than entrance (`--t-quick` vs `--t-base`): you have
    already decided to leave, and matching the two makes dismissal feel sluggish.
    The `.toast` in screens.css is the in-repo precedent for animating both ways off
    a class — this is that shape, generalized into the primitive so all ~20 overlay
-   call sites inherit it (ADR-0096). */
+   call sites inherit it (ADR-0096).
+
+   ── EVERY EXIT HAS ITS OWN @keyframes NAME, AND MUST (ADR-0140's 2026-08-02
+   amendment) ───────────────────────────────────────────────────────────────────
+   This block used to read "`.is-closing` swaps in the reverse pair", with one
+   keyframe per channel played `reverse` to leave — argued as the thing that stops
+   an exit drifting out of sync with its entrance by being written twice. It does
+   stop that. It also meant NONE OF THESE EXITS EVER RAN.
+
+   The same `animation-name` is the same animation: changing only duration, easing
+   and direction retargets the running one rather than starting a new one, so it
+   keeps its current time. By the time anyone closes an overlay that current time is
+   far past the new `--t-quick` duration, the animation is therefore already
+   complete, and `fill: both` paints the REVERSED END STATE on the first frame.
+   Measured on a sheet: open for >=200ms and it is at `translateY(100%)` with the
+   scrim at 0 the instant `.is-closing` lands. It only animated if you closed within
+   ~140ms of opening — which is exactly the window ADR-0140's build log was sampling
+   in when it verified these durations "mid-flight", and why this survived review.
+
+   So the cost is real and is accepted: two names per channel is two things to keep
+   true, and it is the only way either of them runs. If you add a variant, add BOTH
+   halves — `modal-x-in` and `modal-x-out` — and never write `reverse` here.
+   `styles/exit-animations.contract.test.ts` fails the build if this is broken again;
+   jsdom has no CSS engine, so no rendering test can catch it. */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -47,7 +70,7 @@
   animation: modal-scrim-in var(--t-base) var(--ease-standard) both;
 }
 .modal-overlay.is-closing::before {
-  animation: modal-scrim-in var(--t-quick) var(--ease-exit) reverse both;
+  animation: modal-scrim-out var(--t-quick) var(--ease-exit) both;
 }
 /* Paints above the scrim pseudo (which is drawn as the first child) and gives the
    card its own compositing box for the transform. */
@@ -90,7 +113,7 @@
   animation: modal-sheet-in var(--t-base) var(--ease-arrive) both;
 }
 .modal-overlay[data-variant='sheet'].is-closing .modal-card {
-  animation: modal-sheet-in var(--t-quick) var(--ease-exit) reverse both;
+  animation: modal-sheet-out var(--t-quick) var(--ease-exit) both;
 }
 /* dialog — has no edge to come from, so it is summoned in place. A confirm that
    slid in from somewhere would imply a location it does not have. */
@@ -98,7 +121,7 @@
   animation: modal-dialog-in var(--t-base) var(--ease-arrive) both;
 }
 .modal-overlay[data-variant='dialog'].is-closing .modal-card {
-  animation: modal-dialog-in var(--t-quick) var(--ease-exit) reverse both;
+  animation: modal-dialog-out var(--t-quick) var(--ease-exit) both;
 }
 /* full — REPLACES a screen, so it arrives like one: from the inline-end edge, the
    same grammar as the shell's forward push, off the same `--dir` sign. */
@@ -106,7 +129,7 @@
   animation: modal-full-in var(--t-base) var(--ease-standard) both;
 }
 .modal-overlay[data-variant='full'].is-closing .modal-card {
-  animation: modal-full-in var(--t-quick) var(--ease-exit) reverse both;
+  animation: modal-full-out var(--t-quick) var(--ease-exit) both;
 }
 
 .modal-card {
@@ -155,9 +178,9 @@
   margin-block-end: var(--space-3);
 }
 
-/* One keyframe pair per channel, each played forwards to enter and `reverse` to
-   leave — so an exit cannot drift out of sync with its entrance by being written
-   twice. */
+/* Two keyframes per channel: an `-in` and an `-out`. The `-out` is the `-in`
+   inverted BY HAND, which is the cost the block at the top of this file accepts —
+   `reverse` expresses the same thing and does not run. Keep each pair in sync. */
 @keyframes modal-scrim-in {
   from {
     opacity: 0;
@@ -190,5 +213,41 @@
   }
   to {
     transform: none;
+  }
+}
+
+/* The exits. Each is its `-in` read bottom-to-top; nothing here is a new decision. */
+@keyframes modal-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes modal-sheet-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes modal-dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes modal-full-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateX(calc(var(--dir) * 100%));
   }
 }
