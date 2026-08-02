@@ -18,7 +18,11 @@
   display: flex;
   flex-direction: column;
   text-align: start;
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--card) 0 9px,
+    color-mix(in srgb, var(--paper) 33%, var(--card)) 9px 18px
+  );
   border: 1px dashed var(--soft-line);
   border-radius: 15px;
   padding: var(--space-3);

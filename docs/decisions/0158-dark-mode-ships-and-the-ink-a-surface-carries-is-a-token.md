@@ -231,6 +231,16 @@ below `--muted` is then carried by **size and weight**, which is more robust tha
 Dark is unaffected (`--faint` measures 4.76 there) but follows the same narrowing,
 because a token means one thing in both themes.
 
+**Amended at build time (phase 5), and the outcome is better than this section
+predicted.** The section framed it as a choice between darkening `--faint` and
+narrowing it. It is both, and they are not in tension: narrowed to transient
+text, `--faint`'s floor is **3.0**, not 4.5 — so it can be deepened to
+`#808694` (3.65 on `--card`, 3.03 on `--screen`) and still sit **11.9 L\* below
+`--muted`**. The collapse this section feared only happens at a 4.5 floor, which
+narrowing removes. So the third step survives _and_ every value clears its
+floor; 21 persistent-hint sites moved to `--muted`, and 9 genuinely transient
+ones kept `--faint`.
+
 ### 8. The toggle: three rungs, on the device, before first paint
 
 ADR-0133 §7 rejected a theme toggle on `/settings` in July for one stated reason
@@ -311,6 +321,50 @@ cheap when it comes.
   real glass, and the map epic has had four device corrections of things that
   were derived, tested and wrong. **Phase 6 is the device pass and it is not
   optional.**
+
+## §11 — What the device found, and the hole in the sweep (added phase 5)
+
+The owner ran the shipped dark mode on a real phone before phase 6 and found
+three things in minutes. Recording them because **two were invisible to the
+audit in §1**, and the reason is instructive.
+
+**1. The active nav tab was dark-on-dark, 1.27:1.** `--nav-accent: var(--indigo)`
+— and `--indigo` is a chrome _surface_ token, so it DARKENS on dark. As an accent
+on the nav's `--card` ground that is invisible. This is the **third instance** of
+this ADR's own §1 shape (after `--plan-deep` and `--amber-deep`): a token whose
+value was chosen for one of its two roles. It is now `--ink`, the neutral it
+always meant, which flips correctly and is a hair from `--indigo` in light.
+
+**2. The event cards, the settle actions and the maybe shelf never themed.** They
+carried hardcoded light _grounds_ — `#f7f7f9`, `#f6faf7`, `#fafbfd`, `#fff`, and
+a `repeating-linear-gradient` hatch of `#fff`/`#fbfaf7`. In dark they stayed
+white slabs on a dark page.
+
+**This is the hole, and it is a hole in the method, not just the code.** §1's
+audit swept **ink** (`color:`) exhaustively and never swept **grounds**
+(`background:`) on themeable surfaces. Worse, the runtime contrast sweep
+_structurally cannot_ catch it: a light card with dark ink passes contrast
+perfectly. It is only wrong relative to the page around it, and contrast is a
+local measure. So a sweep that reported "zero failures" was telling the truth
+about the question it asked.
+
+The lesson generalises past dark mode: **a contrast audit answers "can you read
+it", never "does it belong here".** The second question needs either a ground
+sweep or a pair of eyes, and the eyes found it first. A ground sweep now exists
+and runs clean, but it was written _after_ the phone.
+
+**3. The map canvas is still the day style.** Predicted and correct — the night
+JSON has never been imported in the Cloud console (§10's 👤 step). Confirms the
+diagnosis: an unimported Map ID renders Google-default rather than failing.
+
+**And one thing the device found that was never dark mode's:**
+`.create-btn:not([data-armed])` dims to 0.45, a rule written for `CreateTrip`'s
+submit, which is genuinely not-ready until its form completes (ADR-0150 §8).
+`AllTrips` reuses the class for a button that only navigates, never set the
+attribute, and had therefore been permanently dim in **both themes** since the
+rule landed — sitting next to a real disabled button and reading identically. It
+is `frontend/CLAUDE.md`'s own "reusing a component and inheriting its DEFAULTS"
+anti-pattern, and it took a theming review to notice.
 
 ## §10 — The build, in phases
 

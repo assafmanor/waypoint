@@ -10,12 +10,30 @@
   --card: #ffffff;
   --paper: #f3efe6;
   --amber: #e9a63c;
-  --amber-deep: #c9822a;
+  /* Amber's PAPER variant — 10-12.5px bold times and labels across zone chips,
+     leg badges, the glance rail and the tz-shift pill. Deepened from #c9822a by
+     ADR-0158 §6: that measured 3.13:1 on --card, under AA for text this size.
+     A SCALAR darkening along the same RGB ray, so hue and saturation are
+     mathematically identical — the same amber, deep enough to read. --amber
+     itself is untouched: it lives on the board at 8.51:1, and it is the
+     product's signature colour. */
+  --amber-deep: #915e1e;
   --amber-ink: #7a5a1e; /* dark-amber text on a light amber TINT (e.g. the ripple bar);
                            the tint darkens on dark, so this lightens (see dark block) */
   --teal: #2c9c90;
-  --muted: #6c7488;
-  --faint: #98a0b0; /* faint hint/placeholder/secondary text — one step lighter than --muted */
+  /* Likewise deepened (was #6c7488): 3.88:1 on --screen, under AA for the
+     secondary text it carries everywhere. Same scalar darkening. */
+  --muted: #61687a;
+  /* TRANSIENT text only, since ADR-0158 §6/§7 — a placeholder or ghost value
+     the user's own input replaces, a disabled control, or a bare glyph at the
+     3:1 graphic floor. It used to mean "one step past --muted" and carry
+     persistent hints too, which is what put real content at 2.18:1 on --screen.
+     Those 21 sites moved to --muted; this stayed a distinct rung and was
+     deepened just enough to clear 3.0 (3.65 on --card, 3.03 on --screen).
+     Deliberately NOT taken to 4.5: at that floor it lands 0.6 L* from --muted
+     and the third step stops existing. Narrowing the meaning is what makes a
+     lighter value honest. */
+  --faint: #808694;
   --line: rgba(22, 35, 61, 0.1);
   --soft-line: rgba(22, 35, 61, 0.28);
   --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
@@ -93,7 +111,11 @@
   --chrome-ink: #ffffff; /* titles, active glyphs — also the wash base */
   --chrome-ink-mid: #dce3f2; /* control glyphs: the back chevron, the +N count */
   --chrome-ink-num: #b9c4de; /* numerals — the day number, the anchor's value */
-  --chrome-ink-dim: #8494b5; /* labels and captions */
+  /* #93a2c4, not #8494b5. Phase 3 folded four values (#9daac8 #93a2c4 #8fa0c4
+     #8494b5) onto the DARKEST of them, which left the day pill's letter at
+     4.02:1 — the pill's own 5% wash lightens the ground under it. #93a2c4 is
+     both the modal value of the four and the one that clears AA there. */
+  --chrome-ink-dim: #93a2c4; /* labels and captions */
   --chrome-ring: var(--indigo); /* the ring separating overlapping avatars */
 
   /* Plan's LOUD SURFACE, the counterpart of --board/--board-2 (ADR-0158 §4).
