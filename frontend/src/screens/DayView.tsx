@@ -37,6 +37,7 @@ import {
   isDayOver,
   liveToday,
   liveZone,
+  placeName,
   placeTimezone,
   type ShowPlaceOnMap,
   type ZoneContext,
@@ -58,12 +59,12 @@ import {
 } from '../lib/time';
 import { dayStops, rankIdeas, shelfGroups, stopReasonText, tileReasonText } from '../lib/shelf';
 import { nextSlot } from '../lib/gaps';
-import {
-  dayTransitions,
-  mergeDayEntries,
-  type DayEntry,
-  type TransitionEntry,
-} from '../lib/day-entries';
+import { dayTransitions, mergeDayEntries, type TransitionEntry } from '../lib/day-entries';
+import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
+import { nowLinePlacement } from '../lib/now-line';
+import { bookingWhen } from '../lib/booking-journey';
+import { hoursPhrase } from '../lib/duration';
+import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
 import { CODE_PREFIX, DAY_NOON, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -75,6 +76,7 @@ import { Sheet } from '../ui/Sheet';
 import { WhenField } from '../ui/primitives/WhenField';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
+import { shortPlaceLabel } from '../lib/place-label';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
@@ -112,16 +114,40 @@ function transitionZoneProps(
 
 type DayScope = 'past' | 'today' | 'future';
 
-/** Chronological end of a top-level group, for placing the now-line above the
- *  first group that isn't fully behind us. */
-function groupEndMs(g: TimeGroup): number {
-  if (g.kind === 'cluster') return g.endMs;
-  const e = g.item.event;
-  return e.endsAt ? Date.parse(e.endsAt) : Date.parse(e.startsAt!);
-}
-
 const groupKey = (g: TimeGroup) =>
   g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
+
+/** A block is keyed by its first row, which is stable across a clock tick — the
+ *  journey it holds can gain a leg, and re-keying the whole run would remount both. */
+const blockKey = (block: DayBlock) => {
+  const first = block.entries[0].entry;
+  return first.kind === 'event' ? groupKey(first.group) : `${first.event.id}-${first.edge}`;
+};
+
+const shortPlaceName = (places: Place[], id: string | undefined) => {
+  const name = placeName(places, id);
+  return name ? shortPlaceLabel(name) : undefined;
+};
+
+/** The one row that draws whatever sits above an entry (ADR-0159). A gap states free
+ *  time; a connection names the stop and how long you are in it, and only ever renders
+ *  inside a `.journey` block, because that is what makes it part of an object instead
+ *  of a mark between two cards. */
+function JoinRow({ join, places }: { join: DayJoin; places: Place[] }) {
+  const length = hoursPhrase(join.minutes);
+  if (join.kind === 'gap') return <GapStrip length={length} />;
+  return (
+    <ConnectionBand
+      word={t.day.join.word[join.type] ?? t.day.join.word.flight}
+      length={length}
+      // The SHORT label, like every other route surface (ADR-0059 §3's amendment):
+      // `נמל התעופה דובאי (DXB)` in a one-line band pushes the length out of the
+      // row, and the two cards around it already name the place in full.
+      placeName={shortPlaceName(places, join.stopPlaceId)}
+      tight={join.tight}
+    />
+  );
+}
 
 export function DayView() {
   const {
@@ -285,14 +311,18 @@ export function DayView() {
   // groups by instant (ADR-0064 §B). Same-day brackets stay a single span row.
   const merged = mergeDayEntries(buildTimeTree(dayEvents), dayTransitions(events, activeDate));
 
-  // The now-line: only on today (a past/future day has no "now"). It sits above
-  // the first entry that isn't fully behind us (a transition point ends at its
-  // own instant); if every entry is passed it falls after them all.
-  const entryEndMs = (entry: DayEntry) =>
-    entry.kind === 'event' ? groupEndMs(entry.group) : entry.atMs;
+  // **What sits between two rows** (ADR-0159): free time stated, or a connection that
+  // is not free time at all and takes both legs into one block. The join derivation is
+  // shared with nothing else on this screen and the same `gapBetween` Plan mode fills
+  // from, so the two modes cannot disagree about where a hole is.
+  const blocks = dayBlocks(merged, { bookings, when: bookingWhen(events), tz: trip.timezone });
+
+  // The now-line: only on today (a past/future day has no "now"). Where it lands is
+  // `lib/now-line.ts` — one derivation shared with Plan's static now-reference, and
+  // the seam for the generalization that will let it sit INSIDE a running event
+  // rather than always above it.
   const showNowLine = dayScope === 'today';
-  let nowLineIndex = merged.findIndex((entry) => entryEndMs(entry) > now.getTime());
-  if (nowLineIndex === -1) nowLineIndex = merged.length;
+  const nowLineIndex = nowLinePlacement(merged, now.getTime()).index;
 
   // Land on now: scroll the now-line into view once per day-open (today only), a
   // passed event or two left peeking above. Keyed on the viewed day — never on
@@ -370,35 +400,51 @@ export function DayView() {
             for containment, quiet clusters for partial overlap. The now-line is
             interleaved at the top level; untimed events have no span to place, so
             they stay plain leaf rows at the end. */}
-        {merged.map((entry, i) => (
-          <Fragment
-            key={entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`}
-          >
-            {showNowLine && i === nowLineIndex && (
-              <NowLine ref={nowLineRef} now={now} tz={nowZone} />
-            )}
-            {entry.kind === 'event' ? (
-              <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
-            ) : (
-              <TransitionRow
-                entry={entry}
-                tz={dayCtx.tz}
-                {...transitionZoneProps(entry, dayCtx.zoneCtx)}
-                bookings={dayCtx.bookings}
-                onOpen={dayCtx.onOpenDetail}
-                onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
-                // Not gated on `readOnly`: a past day is a browsable archive
-                // (ADR-0029), and looking at where you were changes nothing.
-                onShowOnMap={eventShowOnMap(
-                  entry.event,
-                  dayCtx.bookings,
-                  dayCtx.places,
-                  dayCtx.showPlaceOnMap,
-                )}
-              />
-            )}
-          </Fragment>
-        ))}
+        {blocks.map((block) => {
+          const rows = block.entries.map(({ entry, index, join }) => (
+            <Fragment
+              key={
+                entry.kind === 'event' ? groupKey(entry.group) : `${entry.event.id}-${entry.edge}`
+              }
+            >
+              {/* The join reads BEFORE the now-line: it is a fact about the plan, and
+                  the now-line is the clock arriving inside it. */}
+              {join && <JoinRow join={join} places={places} />}
+              {showNowLine && index === nowLineIndex && (
+                <NowLine ref={nowLineRef} now={now} tz={nowZone} />
+              )}
+              {entry.kind === 'event' ? (
+                <GroupNode group={entry.group} depth={0} ctx={dayCtx} />
+              ) : (
+                <TransitionRow
+                  entry={entry}
+                  tz={dayCtx.tz}
+                  {...transitionZoneProps(entry, dayCtx.zoneCtx)}
+                  bookings={dayCtx.bookings}
+                  onOpen={dayCtx.onOpenDetail}
+                  onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
+                  // Not gated on `readOnly`: a past day is a browsable archive
+                  // (ADR-0029), and looking at where you were changes nothing.
+                  onShowOnMap={eventShowOnMap(
+                    entry.event,
+                    dayCtx.bookings,
+                    dayCtx.places,
+                    dayCtx.showPlaceOnMap,
+                  )}
+                />
+              )}
+            </Fragment>
+          ));
+          // A journey's legs live INSIDE one block, so the band between them belongs to
+          // an object rather than floating between two cards (ADR-0159 §3).
+          return block.journey ? (
+            <div className="journey" key={blockKey(block)}>
+              {rows}
+            </div>
+          ) : (
+            <Fragment key={blockKey(block)}>{rows}</Fragment>
+          );
+        })}
         {showNowLine && nowLineIndex === merged.length && (
           <NowLine ref={nowLineRef} now={now} tz={nowZone} />
         )}
@@ -711,6 +757,9 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       title={route.title ?? <TitleLabel title={e.title} />}
       titleText={e.title}
       placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
+      // A route row's meta IS its title's destination, in full — so it is the part
+      // that gives way when a booking code shares the line (`eventMetaParts`).
+      routeRow={!!route.title}
       code={code}
       notes={noteCountFor(ctx.noteCounts, 'event', e.id)}
       // The mark says there are notes; this is where they are read and written. Connected

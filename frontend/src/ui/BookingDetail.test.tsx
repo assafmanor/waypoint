@@ -346,3 +346,104 @@ describe('BookingDetail — the round-trip fact', () => {
     expect(screen.queryByText(t.index.detail.pair)).toBeNull();
   });
 });
+
+// **The journey fact** (ADR-0159) — the other derived relation. Same posture as the
+// pair: derived, stated last, a way through only where the host can swap its detail.
+describe('BookingDetail — the journey fact', () => {
+  const TLV = pl('pl-tlv', 'תל אביב', { lat: 32, lng: 34.8 });
+  const DXB = pl('pl-dxb', 'דובאי', { lat: 25.2, lng: 55.4 });
+  const NRT = pl('pl-nrt', 'טוקיו', { lat: 35.7, lng: 139.7 });
+  const leg1 = bk({
+    id: 'b-leg1',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'טוקיו → דובאי',
+    fromPlaceId: 'pl-nrt',
+    toPlaceId: 'pl-dxb',
+  });
+  const leg2 = bk({
+    id: 'b-leg2',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'דובאי → תל אביב',
+    fromPlaceId: 'pl-dxb',
+    toPlaceId: 'pl-tlv',
+  });
+  const flight = (id: string, bookingId: string, startsAt: string, endsAt: string): TripEvent => ({
+    id,
+    tripId: 't1',
+    date: startsAt.slice(0, 10),
+    title: 'טיסה',
+    kind: EVENT_KIND.HARD,
+    startsAt,
+    endsAt,
+    status: EVENT_STATUS.PLANNED,
+    bookingId,
+    sortOrder: 0,
+    source: EVENT_SOURCE.MANUAL,
+    createdAt: NOW,
+    updatedAt: NOW,
+    updatedBy: 'u1',
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripPlaces = [TLV, DXB, NRT];
+    tripBookings = [leg1, leg2];
+    tripEvents = [
+      flight('e-leg1', 'b-leg1', '2026-07-19T00:30:00Z', '2026-07-19T06:10:00Z'),
+      flight('e-leg2', 'b-leg2', '2026-07-19T08:50:00Z', '2026-07-19T12:35:00Z'),
+    ];
+    showPlaceOnMap = null;
+    startErrand = () => {};
+  });
+  afterEach(() => {
+    cleanup();
+    tripBookings = [];
+    tripEvents = [];
+    setSimulatedNow(null);
+  });
+
+  const link = () => document.querySelector('.bk-pairlink') as HTMLElement;
+  const openWith = (booking: Booking, onOpen = vi.fn()) => {
+    render(
+      wrapNav(
+        <BookingDetail booking={booking} onClose={() => {}} onEdit={() => {}} onOpen={onOpen} />,
+      ),
+    );
+    return onOpen;
+  };
+
+  it('says which leg of the journey this is, and points at the next', () => {
+    const onOpen = openWith(leg1);
+    expect(screen.getByText(t.index.detail.journey)).toBeTruthy();
+    expect(link().textContent).toContain(t.index.detail.journeyLeg(1, 2));
+    fireEvent.click(link());
+    expect(onOpen).toHaveBeenCalledWith(leg2);
+  });
+
+  // The last leg has no "next", so the way through goes back rather than disappearing.
+  it('points at the previous leg from the last one', () => {
+    const onOpen = openWith(leg2);
+    expect(link().textContent).toContain(t.index.detail.journeyLeg(2, 2));
+    fireEvent.click(link());
+    expect(onOpen).toHaveBeenCalledWith(leg1);
+  });
+
+  // The defect this relation exists to prevent: one PNR across both legs is exactly
+  // what a connection has, so the pair rule would otherwise call the second half of
+  // the outbound journey "the return".
+  it('is not confused with a round trip when both legs share a code', () => {
+    tripBookings = [
+      { ...leg1, confirmationCode: 'EK319' },
+      { ...leg2, confirmationCode: 'EK319' },
+    ];
+    openWith(tripBookings[0]);
+    expect(screen.getByText(t.index.detail.journey)).toBeTruthy();
+    expect(screen.queryByText(t.index.detail.pair)).toBeNull();
+  });
+
+  it('shows nothing for a booking whose journey is only itself', () => {
+    tripBookings = [leg1];
+    openWith(leg1);
+    expect(screen.queryByText(t.index.detail.journey)).toBeNull();
+  });
+});

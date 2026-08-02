@@ -16,7 +16,7 @@ import { BookingTitle } from './BookingTitle';
 import { DeletePrompt } from './BookingSheet';
 import { useHostNoteCount } from './HostNotes';
 import { deleteFlags } from '../lib/booking-edit';
-import { useRoundTripPartner } from '../lib/booking-pair';
+import { useRoundTripPartner } from '../lib/booking-journey';
 import { CONTROL_ICON, DOT_SEPARATOR } from '../constants';
 import { t } from '../i18n/he';
 

@@ -5,7 +5,7 @@
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
 import { carriesRoute, type Booking } from '@waypoint/shared';
 import { bookingSheetDraft } from '../lib/booking-draft';
-import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-pair';
+import { useJourney, useRoundTripPartner, type Journey } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
 import { HostNotes } from './HostNotes';
 import { Sheet } from './Sheet';
@@ -24,7 +24,7 @@ import { routeTitle } from '../lib/route-title';
 import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
-import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX } from '../constants';
+import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX, DOT_SEPARATOR } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
 
@@ -64,6 +64,8 @@ export function BookingDetail({
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
   const pair = useRoundTripPartner(booking);
+  // The journey this leg belongs to (ADR-0159) — null unless there is more than itself.
+  const journey = useJourney(booking);
 
   const tz = trip.timezone;
   const icon = chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[booking.type];
@@ -213,14 +215,37 @@ export function BookingDetail({
               mono
             />
           )}
+          {/* **Two derived relations, two facts, both last** (ADR-0154 §5, ADR-0159).
+              The journey reads first because it is about THIS leg's own trip; the
+              round trip is about the other half of the purchase. A leg can honestly
+              have both — the outbound of a round trip can itself have a layover. */}
+          {journey && (
+            <RelatedFact
+              label={t.index.detail.journey}
+              text={[
+                t.index.detail.journeyLeg(journey.index + 1, journey.legs.length),
+                journeyNeighbour(journey, tz)?.text,
+              ]
+                .filter(Boolean)
+                .join(` ${DOT_SEPARATOR} `)}
+              onOpen={
+                onOpen &&
+                (() => {
+                  const neighbour = journeyNeighbour(journey, tz);
+                  if (neighbour) onOpen(neighbour.booking);
+                })
+              }
+            />
+          )}
           {pair && (
-            <PairFact
-              leg={pair.leg}
-              when={
+            <RelatedFact
+              label={t.index.detail.pair}
+              text={t.index.detail.pairLeg(
+                pair.leg,
                 pair.partnerEvent?.startsAt
                   ? dayTime(pair.partnerEvent.startsAt, tz)
-                  : (pair.partnerEvent?.date ?? t.index.detail.pairUnscheduled)
-              }
+                  : (pair.partnerEvent?.date ?? t.index.detail.pairUnscheduled),
+              )}
               onOpen={onOpen && (() => onOpen(pair.partner))}
             />
           )}
@@ -286,16 +311,42 @@ function LocationFact({
   );
 }
 
-// The derived round-trip pair (ADR-0154 §5), as the last fact. It is the only fact
-// pointing at ANOTHER booking, which is why it is last and why it reads in plain ink:
-// teal is location only (rule 4) and a sibling booking is not a location. With no way
-// through it degrades to a plain `Fact`, since the pair is worth stating either way.
-function PairFact({ leg, when, onOpen }: { leg: PartnerLeg; when: string; onOpen?: () => void }) {
-  const text = t.index.detail.pairLeg(leg, when);
-  if (!onOpen) return <Fact k={t.index.detail.pair} v={text} />;
+/** **Which leg to offer a way through to, and how it reads.** The next one, because a
+ *  journey is read forwards; the previous one on the last leg, where "next" is nothing.
+ *  Null when the neighbour has no schedule to name, in which case the fact still states
+ *  the position — that part is always true. */
+function journeyNeighbour(journey: Journey, tz: string) {
+  const next = journey.legs[journey.index + 1];
+  const prev = journey.legs[journey.index - 1];
+  const target = next ?? prev;
+  if (!target) return null;
+  const at = target.event?.startsAt;
+  return {
+    booking: target.booking,
+    text: (next ? t.index.detail.journeyNext : t.index.detail.journeyPrev)(
+      at ? dayTime(at, tz) : (target.event?.date ?? t.index.detail.pairUnscheduled),
+    ),
+  };
+}
+
+// A derived relation to ANOTHER booking, as a fact (ADR-0154 §5, ADR-0159). The only
+// facts that point away from this booking, which is why they read last and why they read
+// in plain ink: teal is location only (rule 4) and a sibling booking is not a location.
+// With no way through it degrades to a plain `Fact`, since the relation is worth stating
+// either way — the rule `onShowOnMap` above already follows.
+function RelatedFact({
+  label,
+  text,
+  onOpen,
+}: {
+  label: string;
+  text: string;
+  onOpen?: () => void;
+}) {
+  if (!onOpen) return <Fact k={label} v={text} />;
   return (
     <div className="bk-fact">
-      <span className="bk-fact-k">{t.index.detail.pair}</span>
+      <span className="bk-fact-k">{label}</span>
       <span className="bk-fact-v">
         {/* `NavArrow`, not an `Icon`: this one advances to another surface, and it is
             RTL-mirrored for exactly that reason. (The round-trip mark on the title is

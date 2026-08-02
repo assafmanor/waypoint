@@ -51,7 +51,7 @@ import { HOME_TAB, TAB_PARAM, tabTarget } from './nav-state';
 import type { TabId } from '../constants';
 import { useTrip } from './trip-state';
 
-export type PlaceErrandField = 'placeId' | 'fromPlaceId' | 'toPlaceId';
+export type PlaceErrandField = 'placeId' | 'fromPlaceId' | 'toPlaceId' | 'stopPlaceIds';
 
 /** Which place field of which entity an errand is for (ADR-0134 §2). **`field` is not
  *  optional**, and that is the point of the type: a transport booking has two place
@@ -63,6 +63,13 @@ export interface PlaceErrandFormTarget {
    *  time is exactly the case the draft is for. */
   id?: string;
   field: PlaceErrandField;
+  /** **Which one, when the field is a list** (ADR-0159): a journey's stops are a
+   *  `stopPlaceIds` array, so naming the field is no longer enough to say where the
+   *  answer goes. Absent for every scalar field, which is all of them but one.
+   *
+   *  The channel still knows nothing about the shape of a form — it knows a field is
+   *  either a value or a list, which is a property of the ERRAND and not of the draft. */
+  index?: number;
 }
 
 /** The fourth target, and the one that never travels (ADR-0134 §9): a **place row** on the
@@ -97,6 +104,18 @@ export interface PlaceErrand {
   /** The form's own state, opaque here on purpose (ADR-0134 §2). This channel must not
    *  know the shape of an event form, or every form change would touch it. */
   draft?: unknown;
+}
+
+/** Put the chosen place where the errand said it goes — the one write, in one place,
+ *  rather than at each form host (ADR-0134 §2). A field with an `index` is a LIST, so
+ *  the element is replaced and the rest of the draft is untouched; anything else is a
+ *  plain assignment, which is every field but a journey's stops. */
+function assignErrandPlace<D>(draft: D, target: PlaceErrandFormTarget, placeId: string): D {
+  if (target.index == null) return { ...draft, [target.field]: placeId };
+  const current = (draft as Record<string, unknown>)[target.field];
+  const list = Array.isArray(current) ? [...(current as unknown[])] : [];
+  list[target.index] = placeId;
+  return { ...draft, [target.field]: list };
 }
 
 /** What comes back: the errand, plus the place that was chosen. The form host takes it
@@ -411,7 +430,7 @@ export function usePlaceErrandReturn<D>(
       // Assigned here, once, rather than at five call sites (see `ReturnedPlaceErrand`).
       // A cancel carries no place, so the draft comes back untouched — which is what makes
       // `ביטול` re-open the form instead of losing it.
-      draft: draft && result.placeId ? { ...draft, [target.field]: result.placeId } : draft,
+      draft: draft && result.placeId ? assignErrandPlace(draft, target, result.placeId) : draft,
       placeId: result.placeId,
       target,
     });

@@ -3,6 +3,8 @@ import type { BookingType, EventCategory, TripEvent } from './entities';
 import { BOOKING_TYPE, BOOKING_TYPE_TO_CATEGORY } from './constants';
 import {
   authorsRoundTrip,
+  connectionWindow,
+  isTightConnection,
   BOOKING_TYPE_PROFILE,
   carriesRoute,
   CATEGORY_TIME_PROFILE,
@@ -302,5 +304,35 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     expect(ALL_TYPES.filter(authorsRoundTrip).sort()).toEqual(
       [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.TRANSIT].sort(),
     );
+  });
+
+  // The sequence half of the same axis (ADR-0159). Same claim as above, and the same
+  // reason: a connection chains one leg's destination into the next leg's origin, so
+  // it needs a route on both.
+  it('only offers a connection where there is a route to chain', () => {
+    for (const type of ALL_TYPES) {
+      if (connectionWindow(type)) expect(carriesRoute(type)).toBe(true);
+    }
+    expect(ALL_TYPES.filter((t) => connectionWindow(t) != null).sort()).toEqual(
+      [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.TRANSIT].sort(),
+    );
+  });
+
+  // The two numbers are a decision, not a detail, so they are pinned: a flight is
+  // measured against the aviation layover/stopover line, a platform is not.
+  it('gives a flight an airport window and a train a platform one', () => {
+    expect(connectionWindow(BOOKING_TYPE.FLIGHT)).toEqual({
+      maxGapMinutes: 24 * 60,
+      tightMinutes: 90,
+    });
+    expect(connectionWindow(BOOKING_TYPE.TRAIN)).toEqual({
+      maxGapMinutes: 6 * 60,
+      tightMinutes: 20,
+    });
+    expect(isTightConnection(BOOKING_TYPE.FLIGHT, 90)).toBe(true);
+    expect(isTightConnection(BOOKING_TYPE.FLIGHT, 91)).toBe(false);
+    expect(isTightConnection(BOOKING_TYPE.TRAIN, 90)).toBe(false);
+    // Nothing about a hotel is a short connection, and asking is not an error.
+    expect(isTightConnection(BOOKING_TYPE.HOTEL, 5)).toBe(false);
   });
 });

@@ -9,7 +9,21 @@
 // unchanged — they stay their single spanning event row (ADR-0064).
 import { isMultiDay, type TripEvent } from '@waypoint/shared';
 import { bookingTransitionsOnDate, type BookingTransition } from './glance';
-import type { TimeGroup } from './time';
+import type { TimeGroup, TimeItem } from './time';
+
+/** The events a group holds — one, or a cluster's several (ADR-0041). */
+export const groupMembers = (g: TimeGroup): TimeItem[] =>
+  g.kind === 'cluster' ? g.items : [g.item];
+const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
+const endMsOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
+/** The member a group STARTS with, and the one it ENDS with — which is what anything
+ *  measuring the space between two groups has to ask (a gap, a connection). Written
+ *  once in `PlanDay` while it was the only surface measuring that space; moved here
+ *  when the Day view began measuring it too (root rule 8: generalise the one-off). */
+export const groupStartEvent = (g: TimeGroup): TripEvent =>
+  groupMembers(g).reduce((a, b) => (startMsOf(b.event) < startMsOf(a.event) ? b : a)).event;
+export const groupEndEvent = (g: TimeGroup): TripEvent =>
+  groupMembers(g).reduce((a, b) => (endMsOf(b.event) > endMsOf(a.event) ? b : a)).event;
 
 export type DayEntry =
   | { kind: 'event'; group: TimeGroup; atMs: number }

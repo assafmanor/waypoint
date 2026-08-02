@@ -29,6 +29,17 @@ const places: Place[] = [
     updatedAt: '',
     updatedBy: 'u',
   },
+  {
+    id: 'pl-dxb',
+    tripId: 't1',
+    name: 'דובאי',
+    lat: 25.2,
+    lng: 55.4,
+    timezone: 'Asia/Dubai',
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u',
+  },
   // A coordless Place-lite: minted offline or when Google matched nothing, so it
   // has NO timezone — the case the zone override exists for (ADR-0107 §6).
   { id: 'pl-lite', tripId: 't1', name: 'קפלאוויק', createdAt: '', updatedAt: '', updatedBy: 'u' },
@@ -449,13 +460,13 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     open();
     expect(screen.getByText(t.index.form.oneWay)).toBeTruthy();
     expect(screen.getByText(t.index.form.roundTrip)).toBeTruthy();
-    // Default OFF: the schedule step carries one journey and no leg heading, and the
-    // last step carries no return block at all.
+    // Default OFF: one schedule step, no leg heading, and the last step is details only
+    // — a one-way single-leg form is byte-for-byte the one that shipped.
     next();
     expect(legs().length).toBe(2);
     expect(document.querySelectorAll('.bs-leg-head').length).toBe(0);
     next();
-    expect(document.querySelector('.bs-leg-return')).toBeNull();
+    expect(screen.getByText(t.common.save)).toBeTruthy();
   });
 
   it('does not offer it on a type that has no route to mirror', () => {
@@ -488,7 +499,6 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     expect(legs().length).toBe(2);
 
     next();
-    expect(document.querySelector('.bs-leg-return')).toBeTruthy();
     heads = [...document.querySelectorAll('.bs-leg-head > span:first-child')].map(
       (e) => e.textContent,
     );
@@ -496,6 +506,8 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     expect(legs().length).toBe(2);
   });
 
+  // **A leg is a step** (ADR-0159), so the return has one of its own and the shared
+  // fields keep the last. Four steps for a round trip, and one more for every stop.
   it('names the two steps for the journey they ask about', () => {
     open();
     goRoundTrip();
@@ -504,7 +516,9 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     next();
     expect(label()).toBe(t.index.form.stepWhenOut);
     next();
-    expect(label()).toBe(t.index.form.stepBackAndShared);
+    expect(label()).toBe(t.index.form.legBack);
+    next();
+    expect(label()).toBe(t.index.form.stepDetails);
   });
 
   it('writes two bookings with mirrored routes and titles, in one change group', async () => {
@@ -515,6 +529,7 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     fillOut('2026-07-19', '09:00', '2026-07-20', '05:00');
     next();
     fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
+    next();
     save();
 
     await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
@@ -535,6 +550,7 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     fillOut('2026-07-19', '09:00', '2026-07-20', '05:00');
     next();
     fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
+    next();
     save();
 
     await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
@@ -555,7 +571,7 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     // §5): it needs the outbound's arrival from the PREVIOUS step, and it is marked here
     // because this is the field that is wrong.
     fillOut('2026-07-20', '03:00', '2026-07-20', '10:00');
-    save();
+    next();
 
     // Each span leg wears its own `Field`, which is what carries the mark (ADR-0150).
     const [back1, back2] = legs();
@@ -567,8 +583,8 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     // The leg beside it is fine and is not marked, and nothing was written.
     expect(marked(back2)?.hasAttribute('data-invalid')).toBe(false);
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
-    // Still on the return's step — a refused save does not commit and does not move.
-    expect(document.querySelector('.bs-leg-return')).toBeTruthy();
+    // Still on the return's step — a refused step does not advance.
+    expect(document.querySelector('.form-steps-label')?.textContent).toBe(t.index.form.legBack);
   });
 
   // ADR-0154 §6. Both legs have client-generated ids, so `hostId` would otherwise be
@@ -583,6 +599,7 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     fillOut('2026-07-19', '09:00', '2026-07-20', '05:00');
     next();
     fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
+    next();
     fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
       target: { value: 'מושב ליד החלון בשתי הטיסות' },
     });
@@ -739,5 +756,177 @@ describe('BookingSheet — three steps', () => {
     render(wrapNav(<BookingSheet booking={flight} focus="when" onClose={() => {}} />));
     await waitFor(() => expect(stepLabel()).toBe(t.index.form.stepWhen));
     expect(document.querySelector('.wf')).toBeTruthy();
+  });
+});
+
+// **A journey with a stop** (ADR-0159) — the sequence half of the same axis the round
+// trip populated. Same entry point as the pair's tests and for the same reason: a
+// `PlacePicker` tap is an errand to the Map, so the errand-return `draft` is how a
+// routed form is opened in a unit test.
+describe('BookingSheet — a stop makes one save a chain of bookings', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.createBooking.mockReset();
+    noteVerbs.createNote.mockClear();
+  });
+
+  const withStop = (over: Partial<BookingSheetDraft> = {}): BookingSheetDraft => ({
+    ...bookingSheetDraft({
+      booking: null,
+      seed: { type: BOOKING_TYPE.FLIGHT },
+      trip,
+      events: [],
+      places,
+    }),
+    fromPlaceId: 'pl-nrt',
+    toPlaceId: 'pl-tlv',
+    stopPlaceIds: ['pl-dxb'],
+    ...over,
+  });
+  const open = (over?: Partial<BookingSheetDraft>) =>
+    render(wrapNav(<BookingSheet booking={null} draft={withStop(over)} onClose={() => {}} />));
+  const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
+  const setDate = (leg: HTMLElement, value: string) =>
+    fireEvent.change(leg.querySelector('.wf-date-val') as HTMLInputElement, { target: { value } });
+  const setTime = (leg: HTMLElement, value: string) => {
+    fireEvent.click(leg.querySelector('button.tp-field') as HTMLElement);
+    fireEvent.change(leg.querySelector('.tp-time-input') as HTMLInputElement, {
+      target: { value },
+    });
+  };
+  const fillLeg = (d1: string, t1: string, d2: string, t2: string) => {
+    const [a, b] = legs();
+    setDate(a, d1);
+    setTime(a, t1);
+    setDate(b, d2);
+    setTime(b, t2);
+  };
+  const label = () => document.querySelector('.form-steps-label')!.textContent;
+
+  it('gives every leg a step of its own, named for it', () => {
+    open();
+    expect(label()).toBe(t.index.form.stepWhat);
+    next();
+    expect(label()).toBe(t.index.form.stepLeg(1));
+    expect(document.querySelector('.bs-leg-head > span:first-child')?.textContent).toBe(
+      t.index.form.legNumber(1),
+    );
+    next();
+    expect(label()).toBe(t.index.form.stepLeg(2));
+    next();
+    expect(label()).toBe(t.index.form.stepDetails);
+  });
+
+  it('writes a booking per leg, chained through the stop, in one change group', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
+    open();
+    next();
+    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
+    next();
+    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    next();
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const [first] = indexVerbs.createBooking.mock.calls[0];
+    const [second] = indexVerbs.createBooking.mock.calls[1];
+    // The chain itself: leg 1 arrives where leg 2 departs, which is what makes the two
+    // one journey when they are read back (`connectionMinutes`).
+    expect(first).toMatchObject({ fromPlaceId: 'pl-nrt', toPlaceId: 'pl-dxb' });
+    expect(second).toMatchObject({ fromPlaceId: 'pl-dxb', toPlaceId: 'pl-tlv' });
+    // Nobody types either name — each leg's title is derived from its own two ends.
+    expect(first.title).toBe(routeTitle('טוקיו', 'דובאי'));
+    expect(second.title).toBe(routeTitle('דובאי', 'תל אביב'));
+  });
+
+  it('reads each leg in ITS OWN two zones, the stop included', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-leg1' });
+    open();
+    next();
+    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
+    next();
+    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    next();
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const [first] = indexVerbs.createBooking.mock.calls[0];
+    const [second] = indexVerbs.createBooking.mock.calls[1];
+    // Departs Tokyo, lands in Dubai — then departs Dubai and lands in Tel Aviv. The
+    // interior stop's own zone is read from its place, with no chip needed for it.
+    expect(first.event.startsAt).toBe(zonedIso('2026-07-19', '00:30', 'Asia/Tokyo'));
+    expect(first.event.endsAt).toBe(zonedIso('2026-07-19', '06:10', 'Asia/Dubai'));
+    expect(second.event.startsAt).toBe(zonedIso('2026-07-19', '08:50', 'Asia/Dubai'));
+    expect(second.event.endsAt).toBe(zonedIso('2026-07-19', '11:35', 'Asia/Jerusalem'));
+  });
+
+  it('refuses a leg that leaves before the one before it landed, on that field', async () => {
+    open();
+    next();
+    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
+    next();
+    // 05:40 Dubai time is before the 06:10 arrival — a real instant comparison across
+    // two zones, which a date-only check would wave through.
+    fillLeg('2026-07-19', '05:40', '2026-07-19', '08:25');
+    next();
+
+    const [start, end] = legs();
+    const marked = (leg: HTMLElement) => leg.closest('.field');
+    expect(marked(start)?.hasAttribute('data-invalid')).toBe(true);
+    expect(marked(start)?.querySelector('.field-error')?.textContent).toBe(
+      t.index.form.legBeforeArrival('דובאי'),
+    );
+    expect(marked(end)?.hasAttribute('data-invalid')).toBe(false);
+    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+    // A refused step does not advance.
+    expect(label()).toBe(t.index.form.stepLeg(2));
+  });
+
+  it('refuses a stop with no place, at the route', () => {
+    open({ stopPlaceIds: [undefined] });
+    next();
+    expect(document.querySelector('.field[data-invalid] .field-error')?.textContent).toBe(
+      t.index.form.stopRequired,
+    );
+    expect(label()).toBe(t.index.form.stepWhat);
+  });
+
+  // ADR-0154 §6 generalised: the note hangs on the leg that happens FIRST, not on
+  // whichever `createBooking` ran last.
+  it('hangs a note written on the way on the first leg', async () => {
+    indexVerbs.createBooking
+      .mockResolvedValueOnce({ id: 'b-leg1' })
+      .mockResolvedValueOnce({ id: 'b-leg2' });
+    open();
+    next();
+    fillLeg('2026-07-19', '00:30', '2026-07-19', '06:10');
+    next();
+    fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
+    next();
+    fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
+      target: { value: 'הכבודה עוברת ישירות' },
+    });
+    save();
+
+    await waitFor(() => expect(noteVerbs.createNote).toHaveBeenCalledTimes(1));
+    expect(noteVerbs.createNote).toHaveBeenCalledWith({
+      body: 'הכבודה עוברת ישירות',
+      bookingId: 'b-leg1',
+    });
+  });
+
+  it('is offered on a create only, and only where the type can be broken by one', () => {
+    open();
+    expect(screen.getByText(t.index.form.addStop)).toBeTruthy();
+    cleanup();
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    expect(screen.queryByText(t.index.form.addStop)).toBeNull();
+    cleanup();
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    expect(screen.queryByText(t.index.form.addStop)).toBeNull();
   });
 });

@@ -109,6 +109,8 @@ import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/n
 import { useNavigate } from 'react-router-dom';
 import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
+import { connectionStopKey, connectionStops } from '../lib/day-joins';
+import { bookingWhen } from '../lib/booking-journey';
 import { shortTitleText } from '../lib/route-title';
 import { useClock } from '../lib/useClock';
 import { formatDistance, haversineMeters } from '../lib/distance';
@@ -977,6 +979,21 @@ export function MapView() {
   const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
   const eventLookup = useCallback((id: string) => eventById.get(id), [eventById]);
 
+  // **Which places are connection stops** (ADR-0159), from the same rule the day list
+  // draws its bands from — so the pin, the row beneath it and the day's own band say
+  // one thing about a place you are only passing through. Keyed by place AND day: an
+  // airport you change planes at on the way out is a plain destination on the way home.
+  const connectionWordAt = useMemo(() => {
+    const words = new Map<string, string>();
+    for (const stop of connectionStops(bookings, events, bookingWhen(events))) {
+      words.set(
+        connectionStopKey(stop.placeId, stop.date),
+        t.day.join.word[stop.type] ?? t.day.join.word.flight,
+      );
+    }
+    return (placeId: string, date: string) => words.get(connectionStopKey(placeId, date));
+  }, [bookings, events]);
+
   // ── The pins (ADR-0121 §6) ────────────────────────────────────────────────
   // The number is the index in the scoped day sequence, computed over the whole
   // scoped set with NO clock — so neither a filter, nor near-me, nor the ticking
@@ -1086,7 +1103,7 @@ export function MapView() {
         // what you are looking at.
         transition:
           (scopedDate || isNext || isNow) && !isAsidePin(tier)
-            ? pinTransition(usage, pinCtx, eventLookup)
+            ? pinTransition(usage, pinCtx, eventLookup, connectionWordAt)
             : undefined,
         selected: selectedId === usage.placeId,
         label: place.name,
@@ -1945,7 +1962,13 @@ export function MapView() {
       // surface transport, check-in/out for a stay) — never a bare transition word,
       // because the row's own name and time supply the context §1 asks for. Anything
       // else says what it is, via its title in display form.
-      what: eventEdgeTransition(event, usageDay.edge) ?? shortTitleText(event.title),
+      // A connection stop says so instead (ADR-0159): the pin above this row would
+      // otherwise read `עצירת ביניים` while the row read `נחיתה`, which is the exact
+      // disagreement ADR-0141 removed between the two.
+      what:
+        connectionWordAt(usage.placeId, usageDay.date) ??
+        eventEdgeTransition(event, usageDay.edge) ??
+        shortTitleText(event.title),
     };
   };
 

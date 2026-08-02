@@ -226,9 +226,17 @@ export function pinTransition(
   usage: PlaceUsage,
   ctx: PinContext,
   eventById: (id: string) => TripEvent | undefined,
+  /** **What this place is, when it is a connection stop** (ADR-0159) — the word the day
+   *  list's band uses, looked up per place and DAY. It wins over the edge word, and the
+   *  reason is the same one that made the tag exist: `נחיתה` at a place you leave again
+   *  two hours later is true and misleading, and the pin has room for one word. Absent
+   *  on surfaces that do not resolve journeys, which then behave exactly as before. */
+  connectionWordAt?: (placeId: string, date: string) => string | undefined,
 ): string | undefined {
   if (placePinTier(usage, ctx) === PIN_TIER.behind) return undefined;
   const day = placeMetaDay(usage, ctx);
+  const stop = day?.date ? connectionWordAt?.(usage.placeId, day.date) : undefined;
+  if (stop) return stop;
   const event = day?.eventId ? eventById(day.eventId) : undefined;
   return event ? eventEdgeTransition(event, day?.edge) : undefined;
 }

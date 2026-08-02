@@ -21,6 +21,7 @@
 // something added here.
 import { PlacePicker } from '../primitives/PlacePicker';
 import { Icon } from '../Icon';
+import { MAX_ROUTE_STOPS } from '../../constants';
 import { t } from '../../i18n/he';
 import './route-field.css';
 
@@ -40,13 +41,43 @@ export interface RouteFieldProps {
   /** Replaces the default "real places feed the map and the zones" note. `EventForm`
    *  passes its own, because there both ends are optional and that is worth saying. */
   hint?: string;
+  /** **The stops between the two ends** (ADR-0159) — a layover, a change of train.
+   *  Absent (not `[]`) means this host does not author them at all, which is the
+   *  `EventForm` case: one event cannot be a sequence of journeys, so it gets no
+   *  control for one. Present means the host will write a booking per leg. */
+  stops?: (string | undefined)[];
+  onStopsChange?: (next: (string | undefined)[]) => void;
+  /** The errand for one stop. Separate from `onFind` because a stop is addressed by
+   *  INDEX, not by a `Booking` column: the two are genuinely different targets. */
+  onFindStop?: (index: number, sideLabel: string) => void;
 }
 
-export function RouteField({ from, to, onChange, onFind, hint }: RouteFieldProps) {
+export function RouteField({
+  from,
+  to,
+  onChange,
+  onFind,
+  hint,
+  stops,
+  onStopsChange,
+  onFindStop,
+}: RouteFieldProps) {
   // Offered only with something to exchange — a swap over two empty slots is a control
   // that cannot do anything, which ADR-0150 §8 makes a `disabled` primary's rule and is
   // the same judgement here: absent beats inert.
   const canSwap = !!(from || to);
+  // A stop is authored only where the host asked for them, and the ceiling is a named
+  // number rather than an open list: past a few, this is an itinerary and not a journey.
+  const authorsStops = !!stops && !!onStopsChange;
+  const setStop = (index: number, value: string | undefined) =>
+    onStopsChange?.(
+      // **Clearing a stop REMOVES it.** An empty stop is not a state worth keeping —
+      // it names no place, so it can neither be flown to nor scheduled — which is why
+      // the picker's own `✕` is the only removal control this field has.
+      value === undefined
+        ? stops!.filter((_, i) => i !== index)
+        : stops!.map((s, i) => (i === index ? value : s)),
+    );
 
   return (
     <>
@@ -65,11 +96,31 @@ export function RouteField({ from, to, onChange, onFind, hint }: RouteFieldProps
           <button
             type="button"
             className="route-field-swap"
-            onClick={() => onChange({ from: to, to: from })}
+            // With stops it reverses the WHOLE sequence, which is exactly what its
+            // label already promises: the direction of the journey, not of two of its
+            // points. So the control neither moves nor gains a second meaning.
+            onClick={() => {
+              onChange({ from: to, to: from });
+              if (stops) onStopsChange?.([...stops].reverse());
+            }}
           >
             <Icon name="swap" /> {t.index.form.swapRoute}
           </button>
         )}
+        {stops?.map((stop, i) => (
+          // Indented, because a stop is a WAYPOINT and not an endpoint: a three-row
+          // stack of equals reads as three destinations. Same thing `.cluster-kids`
+          // says with an indent about the rows that belong to the one above them.
+          <PlacePicker
+            key={i}
+            className="place-picker-stop"
+            value={stop}
+            onChange={(id) => setStop(i, id)}
+            ariaLabel={t.index.form.stopLabel}
+            placeholder={t.index.form.stopShort}
+            onFind={() => onFindStop?.(i, t.index.form.stopLabel)}
+          />
+        ))}
         <PlacePicker
           value={to}
           onChange={(id) => onChange({ from, to: id })}
@@ -78,6 +129,15 @@ export function RouteField({ from, to, onChange, onFind, hint }: RouteFieldProps
           onFind={() => onFind('toPlaceId', t.index.form.destLabel)}
         />
       </div>
+      {authorsStops && stops!.length < MAX_ROUTE_STOPS && (
+        <button
+          type="button"
+          className="route-field-add"
+          onClick={() => onStopsChange!([...stops!, undefined])}
+        >
+          <Icon name="plus" /> {t.index.form.addStop}
+        </button>
+      )}
       <div className="route-field-hint">
         <Icon name="pin" /> {hint ?? t.index.form.routeHint}
       </div>

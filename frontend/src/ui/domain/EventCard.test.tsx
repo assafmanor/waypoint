@@ -391,6 +391,33 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       const parts = eventMetaParts({ placeName: 'שיבויה', code: 'הזמנה MN-4471', notes: 0 });
       expect(parts.placeName).toBe('שיבויה');
     });
+
+    // The case the rule above did not cover (ADR-0159's build): a coded flight with no
+    // mark at all, whose meta is the destination's FULL name while the title already
+    // carries it shortened. Measured on the shipped row at 360px: 95px of line, 84 of
+    // which is the code — so the enrichment goes, not a stub of it.
+    it('DROPS a place name the title already carries, once a code shares the line', () => {
+      const parts = eventMetaParts({
+        placeName: 'נמל התעופה דובאי (DXB)',
+        code: 'הזמנה #EK319',
+        placeInTitle: true,
+      });
+      expect(parts.placeName).toBeUndefined();
+      expect(parts.separator).toBe(false);
+      expect(parts.code).toBe('הזמנה #EK319');
+    });
+
+    it('keeps it with no code — nothing is competing for the line', () => {
+      const parts = eventMetaParts({ placeName: 'נמל התעופה דובאי (DXB)', placeInTitle: true });
+      expect(parts.placeName).toBe('נמל התעופה דובאי (DXB)');
+    });
+
+    // A hotel's or a restaurant's place name is NOT on its title line, so a code beside
+    // it changes nothing: this rule is about an enrichment, not about long names.
+    it('leaves a coded row alone when the title does not name the place', () => {
+      const parts = eventMetaParts({ placeName: 'שינג׳וקו', code: 'הזמנה #4471' });
+      expect(parts.placeName).toBe('שינג׳וקו');
+    });
   });
 
   describe('the rendered row', () => {

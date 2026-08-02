@@ -625,6 +625,13 @@ export const t = {
       // and is the way to it.
       pair: 'הלוך ושוב',
       pairLeg: (leg: 'out' | 'back', when: string) => `${LEG[leg]} · ${when}`,
+      // The other derived relation (ADR-0159): which leg of the journey this is, and the
+      // way to the one beside it. Position first, because it is the part that is always
+      // true — a neighbour with no schedule still leaves "קטע 2 מתוך 3" standing.
+      journey: 'מסע',
+      journeyLeg: (index: number, count: number) => `קטע ${index} מתוך ${count}`,
+      journeyNext: (when: string) => `ההמשך · ${when}`,
+      journeyPrev: (when: string) => `הקודם · ${when}`,
       // A leg with no slot in the itinerary yet. Shorter than the row's own
       // `לא משובצת במסלול`, which would swamp the value it sits inside.
       pairUnscheduled: 'ללא מועד',
@@ -659,6 +666,12 @@ export const t = {
       // carries one place and cannot say which end it is, so it lands in the origin and
       // this moves it — the correction that makes the guess safe.
       swapRoute: 'החלפת כיוון',
+      // **The stop** (ADR-0159) — a layover, a change of train. `עצירה` and not
+      // `עצירת ביניים` on the picker itself: the field is already inside a route, so
+      // the two extra words would be saying "between" twice.
+      stopLabel: 'עצירה 📍',
+      stopShort: 'עצירה',
+      addStop: 'עצירת ביניים',
       // The direction control (ADR-0154 §4), offered on flight/train at create only.
       // Defaults to one-way: the control row costs 44px on every transport booking, and
       // the second leg a further 492px that only an explicit tap should buy.
@@ -669,6 +682,12 @@ export const t = {
       // above a labelled one reads as a defect, and one-way keeps today's form.
       legOut: LEG.out,
       legBack: LEG.back,
+      // **A journey with stops numbers its legs** (ADR-0159): with four schedules on
+      // four steps, `הלוך`/`חזרה` alone stops telling you which one you are answering.
+      legNumber: (n: number) => `קטע ${n}`,
+      legBackNumber: (n: number) => `${LEG.back} · קטע ${n}`,
+      stepLeg: (n: number) => `מתי · קטע ${n}`,
+      stepBackLeg: (n: number) => `${LEG.back} · קטע ${n}`,
       // The three step names (ADR-0155 §5). They say what each step ASKS, not what it
       // contains — the read-out is one short line and a field list would not fit it. Two
       // of them change for a round trip: with two journeys `מתי` alone leaves you checking
@@ -678,11 +697,18 @@ export const t = {
       stepDetails: 'פרטים',
       stepWhenOut: `מתי ${LEG.out}`,
       stepBackAndShared: `${LEG.back} ופרטים`,
-      // Shared across both legs, said where the question actually occurs.
-      codeSharedHint: 'משותף לשתי הנסיעות',
+      // Shared across every leg of the save, said where the question actually occurs.
+      codeSharedHint: 'משותף לכל הקטעים',
       // The one refusal the second leg adds, marked on the return's DEPARTURE (ADR-0150).
       // Type-independent wording, so a flight and a train share it.
       returnBeforeArrival: 'החזרה יוצאת לפני ההגעה ליעד',
+      // Its peer inside one journey (ADR-0159), marked on the leg that leaves too early.
+      // Names the stop where it can, because with three legs "the previous arrival" is
+      // one question too many.
+      legBeforeArrival: (place?: string) =>
+        place ? `היציאה לפני ההגעה ל${place}` : 'היציאה לפני ההגעה הקודמת',
+      // A stop with no place cannot be flown to, scheduled or titled.
+      stopRequired: 'בחרו מקום לכל עצירה',
       // `EventForm`'s own route hint: there both ends are optional (ADR-0136's "requires
       // nothing" survives), and what is given is what the map and the zones can read.
       routeHintOptional: 'שני הקצוות אופציונליים · מה שיימסר ייקרא במפה ובאזורי הזמן',
@@ -1318,6 +1344,28 @@ export const t = {
   day: {
     heading: (day: number, weekday: string, destination: string) =>
       `יום ${day} · ${weekday} · ${destination}`,
+    // **What sits between two events** (ADR-0159). Trip mode STATES the gap where Plan
+    // mode offers to fill it, so the wording is a fact and not an invitation: no verb,
+    // no `שבץ`. `פנוי · <משך>` and not `<משך> פנויות`, because the adjective has to
+    // agree with a number the phrase does not expose (שעה פנויה / שעתיים פנויות /
+    // 45 דקות פנויות) — the same dodge Plan's own edge chips already make.
+    join: {
+      free: (length: string) => `פנוי · ${length}`,
+      // A connection is not free time, so it is named rather than measured: what the
+      // stop is called, and how long you are in it. One word per transport mode —
+      // a train changes, a flight stops over (ADR-0156's third mode says החלפה too:
+      // a bus connection is a platform, not a terminal).
+      word: {
+        flight: 'עצירת ביניים',
+        train: 'החלפה',
+        transit: 'החלפה',
+      } as Record<string, string>,
+      // Descriptive, never advisory: the app does not know your terminal, so it says
+      // the join is short and stops there.
+      short: (word: string) => `${word} קצרה`,
+      text: (word: string, length: string, place?: string) =>
+        place ? `${word} · ${place} · ${length}` : `${word} · ${length}`,
+    },
     // The shelf's two groups (ADR-0116 §2). A header renders only when its group has
     // content, so a trip that never uses a target day looks exactly as it did.
     shelfForDay: 'לְיום הזה',

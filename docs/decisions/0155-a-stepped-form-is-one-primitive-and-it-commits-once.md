@@ -169,3 +169,28 @@ It is still not enough to decide from a desktop browser. **The order is: `Collap
 - **Still not answered: the phone.** Everything here was judged in a browser. §5's second
   cost — that you no longer review a hard commitment whole before signing it — is exactly
   the kind of thing a desktop pass cannot weigh.
+
+## Amendment — a leg is a step (2026-08-02, [ADR-0159](0159-the-day-says-what-is-between-two-events.md) §5)
+
+§5 gave `BookingSheet` three steps because they were "the form's own three subjects".
+With journeys that have stops, the subject that repeats is the **leg**, so the steps do:
+`מה ואיפה` → `מתי · קטע 1` → `מתי · קטע 2` → `פרטים`. Two stops is two more steps rather
+than a form three times as long, which is the 492px-per-schedule ADR-0154 §4 measured and
+the reason this primitive exists.
+
+Two consequences worth recording:
+
+- **The return moved off the last step.** §5 sat it with the shared fields, which cannot
+  hold two return legs. A step count that depends on whether the return happens to be one
+  leg is the special case that makes the code branch, so the leg is the unit and details
+  keep the last step alone. A round trip is four steps now.
+- **`STEP_FIELDS` became a function.** The table was exhaustive over a literal field union
+  by `satisfies`; leg fields are indexed (`out-start-1`), so no literal list can be. The
+  replacement is `stepOf(field)`, which is **total** by construction — every field has a
+  step or it does not compile — and that is the stronger property the table was standing
+  in for.
+
+And it confirms §5's own argument for stepping this form rather than scrolling it: the
+cross-leg refusal ("a departure before the previous arrival") is a cross-STEP dependency,
+which §5 named as the strongest case there is. It now occurs `legs - 1` times per journey
+instead of once.

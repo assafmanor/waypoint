@@ -117,3 +117,20 @@ The tier gate (§5) is still resolved with `placePinTier`, so a `behind` pin is 
 - **A design session's own measurement can flatter it, and this one did twice.** §B2's first scenes were laid out across the frame and returned **zero** collisions under every arm including "tag every booking" — a result about the layout, not about the design. Redrawn as a genuine district (pins inside one pin-height of a neighbour), the same arm returns 4. And the first pass counted only tag-to-tag intersections, which said nothing about the failure the redraw made obvious: a tag sitting on the **neighbouring pin**. Both are now columns in the table.
 - **A measurement taken during a CSS transition is the same class of lie as a selector matching nothing.** `.map-pin` ships `transition: --pin-u var(--t-base)`, so §A's table at the 56px stop came back with the 34px stop's numbers — every read was one stop behind, and the ratios looked reassuringly size-invariant for the wrong reason. The transition is cut inside measured stages, as a labelled mockup-only override. `map-place-becomes-v1.html` recorded this exact trap about the sheet; it is worth knowing that it applies to the **pins** too.
 - **Verify a derivation in both directions or it is an assertion.** §B1 derives the clearance threshold from two measured tag widths, then renders at threshold+2 (must clear) and threshold−6 (must clash) and reads both back. The first version rendered at exactly the threshold, where the two boxes abut and `a.left < b.right` on subpixel rects is a coin toss — it reported "still touching" for two of three pairs and nothing was wrong with the derivation.
+
+## Amendment — a connection stop takes the word (2026-08-02, [ADR-0159](0159-the-day-says-what-is-between-two-events.md) §6)
+
+`pinTransition` gained one optional resolver: where a place is a **connection stop** on
+that day — one leg arrives, the next departs — the tag says so (`עצירת ביניים` /
+`החלפה`) instead of the edge word.
+
+The edge word is not wrong there. `נחיתה` is exactly what happens at the stop, and that
+is the problem: it is true, it is unremarkable, and the pin has room for **one** word.
+The one worth spending is the fact you would not otherwise know — that you are passing
+through rather than arriving.
+
+It keeps this ADR's own property rather than bending it. The word comes from the same
+derivation the day view's band uses (`connectionMinutes`), so the pin, the row under it
+and the day list cannot make three different claims about one place — which is the whole
+argument of §1, applied to a second source of words. And it is keyed by place **and day**:
+an airport you change planes at on the way out is a plain destination on the way home.

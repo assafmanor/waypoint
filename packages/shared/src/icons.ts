@@ -359,37 +359,70 @@ export interface BookingTypeProfile {
   /** The commitment a freshly created booking of this type opens with (ADR-0011).
    *  Orthogonal to booked-ness (ADR-0136 §4) — a restaurant booking is soft. */
   defaultKind: EventKind;
-  /** How many journeys one save may author, and how a second derives from the first.
-   *  `mirrored` is the round trip: leg 2 reverses leg 1's route (ADR-0154 §4).
+  /** How many journeys one save may author, and how the extra ones relate to the first.
+   *  Two independent shapes, because they are genuinely different relations: a round
+   *  trip is a **mirror** and a connection is a **sequence** (ADR-0154 §7 named the
+   *  distinction and left the second one unpopulated; ADR-0159 populates it).
    *
-   *  **Deliberately not derived from `places`.** The two are genuinely orthogonal: a
-   *  split hotel stay would be `places: 'single'` with more than one leg, and
-   *  collapsing the axes would block exactly the extension this table exists for. */
-  legs: 'single' | 'mirrored';
+   *  **Deliberately not derived from `places`.** A split hotel stay would be
+   *  `places: 'single'` with a sequence, and collapsing the axes would block exactly
+   *  the extension this table exists for. */
+  legs: {
+    /** Leg 2 reverses leg 1's route — the round trip (ADR-0154 §4). */
+    mirrored: boolean;
+    /** Legs chain end to start (Tokyo→Dubai→Tel Aviv), plus the window that decides
+     *  when two of them are ONE journey rather than two. `null` = this type has no
+     *  such thing, which is every non-transport type.
+     *
+     *  The window is per type because the two answers genuinely differ. A flight's
+     *  ceiling is the aviation line between a layover and a stopover (24h); a train
+     *  or a bus stop measured in hours is a visit to the city, not a change of
+     *  platform. Same for what counts as TIGHT: 90 minutes is a short connection with
+     *  bags and a terminal, 20 minutes is a short one on a platform. */
+    sequence: ConnectionWindow | null;
+  };
 }
 
-/** A route-shaped type: two endpoints, and a round trip is a mirror of them. */
-const TRANSPORT_PROFILE: BookingTypeProfile = {
+/** What makes two bookings one journey, and what makes the join a tight one. */
+export interface ConnectionWindow {
+  /** Longest gap between an arrival and the next departure that still reads as one
+   *  journey. Beyond it they are two journeys that happen to touch. */
+  maxGapMinutes: number;
+  /** At or below this, the connection is called short — a description, not a warning:
+   *  the app does not know your terminal, and a `--miss` treatment would claim
+   *  something has already gone wrong. */
+  tightMinutes: number;
+}
+
+const MINUTES_PER_HOUR = 60;
+
+/** A route-shaped type: two endpoints, a round trip is a mirror of them, and a
+ *  connection is a sequence of them. The window differs per type, so each type
+ *  supplies its own below rather than sharing this one. */
+const transportProfile = (sequence: ConnectionWindow): BookingTypeProfile => ({
   places: 'route',
   schedule: 'span',
   defaultKind: 'hard',
-  legs: 'mirrored',
-};
+  legs: { mirrored: true, sequence },
+});
+
+/** No second journey of any shape. */
+const ONE_JOURNEY = { mirrored: false, sequence: null } as const;
 
 export const BOOKING_TYPE_PROFILE = {
-  flight: TRANSPORT_PROFILE,
-  train: TRANSPORT_PROFILE,
-  // **The third transport mode** (ADR-0156). It shares the profile verbatim, which is the
-  // whole claim ADR-0154 §2 made for this table: a bus, a ferry or a car hire carries a
-  // route, spans two instants, is a real commitment and can be bought as a round trip —
-  // exactly like the two above. One row, no new branch anywhere.
-  transit: TRANSPORT_PROFILE,
+  // A layover, by the aviation line that separates one from a stopover.
+  flight: transportProfile({ maxGapMinutes: 24 * MINUTES_PER_HOUR, tightMinutes: 90 }),
+  train: transportProfile({ maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 }),
+  // **The third transport mode** (ADR-0156). It carries a route, spans two instants, is a
+  // real commitment, can be bought as a round trip and can be changed halfway — exactly
+  // like the two above, and on a platform's timescale rather than an airport's.
+  transit: transportProfile({ maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 }),
   // A stay is two endpoints at ONE place — which is why `places` and `schedule` are
   // separate axes rather than one "is it transport" flag.
-  hotel: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: 'single' },
-  activity: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: 'single' },
-  restaurant: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: 'single' },
-  other: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: 'single' },
+  hotel: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: ONE_JOURNEY },
+  activity: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: ONE_JOURNEY },
+  restaurant: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: ONE_JOURNEY },
+  other: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: ONE_JOURNEY },
 } as const satisfies Record<BookingType, BookingTypeProfile>;
 
 /** **Does this booking type carry a route** (`fromPlaceId`/`toPlaceId`) rather than a
@@ -409,4 +442,16 @@ export const defaultKindForBookingType = (type: BookingType): EventKind =>
 
 /** Can one save of this type author a mirrored return leg (ADR-0154 §4)? */
 export const authorsRoundTrip = (type: BookingType): boolean =>
-  BOOKING_TYPE_PROFILE[type].legs === 'mirrored';
+  BOOKING_TYPE_PROFILE[type].legs.mirrored;
+
+/** Can a journey of this type be broken by stops — a layover, a change of train
+ *  (ADR-0159)? The window that decides when two legs are one journey, or `null`. */
+export const connectionWindow = (type: BookingType): ConnectionWindow | null =>
+  BOOKING_TYPE_PROFILE[type].legs.sequence;
+
+/** Is this join a short one? False for a type that has no connections at all, which
+ *  is the honest answer rather than a thrown error: nothing is short about a hotel. */
+export const isTightConnection = (type: BookingType, minutes: number): boolean => {
+  const window = connectionWindow(type);
+  return window != null && minutes <= window.tightMinutes;
+};
