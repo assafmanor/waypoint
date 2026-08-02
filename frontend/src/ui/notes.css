@@ -270,7 +270,7 @@
   display: block;
   margin-top: 2px;
   font-size: 11px;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 /* ── AN OPEN NOTE (ADR-0153 §4's 2026-08-02 amendment, round two) ─────────────

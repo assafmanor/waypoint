@@ -232,7 +232,19 @@ export function AllTrips({ onOpenAccount }: { onOpenAccount: () => void }) {
 
         <div className="spacer" />
 
-        <button className="create-btn" disabled={offline} onClick={() => navigate('/new')}>
+        {/* `data-armed` unconditionally: `.create-btn:not([data-armed])` dims to
+            0.45, a rule written for CreateTrip's SUBMIT, which is not-ready until
+            its form completes (ADR-0150 §8). This button has no form and no
+            not-ready state — it navigates — so without the attribute it sat
+            permanently dim and read as disabled beside the genuinely disabled
+            one. Offline still dims it, through `:disabled`, which is the state
+            that actually means "a press could not work". */}
+        <button
+          className="create-btn"
+          data-armed=""
+          disabled={offline}
+          onClick={() => navigate('/new')}
+        >
           <Icon name="plus" /> {t.shell.allTrips.create}
         </button>
         {offline && <p className="offline-note">{t.shell.allTrips.offlineNote}</p>}

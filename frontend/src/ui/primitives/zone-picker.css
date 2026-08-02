@@ -31,7 +31,7 @@
 /* A quiet group header ("suggested" / "all zones") between the two segments. */
 .zp-group {
   padding: var(--space-2) var(--space-3) var(--space-1);
-  color: var(--faint);
+  color: var(--muted);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -67,7 +67,7 @@
 
 /* The full IANA id, a quiet secondary so search-by-zone is legible. */
 .zp-zone {
-  color: var(--faint);
+  color: var(--muted);
   font-size: 0.8rem;
   overflow: hidden;
   text-overflow: ellipsis;

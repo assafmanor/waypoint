@@ -31,22 +31,31 @@ The two modes must be identifiable **at a glance, from any screen**, without rea
 
 ## Color palette
 
-| Token                  | Hex                   | Role                                                                     |
-| ---------------------- | --------------------- | ------------------------------------------------------------------------ |
-| `--ink`                | `#16233D`             | Primary text                                                             |
-| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                       |
-| `--board`              | `#0E1729`             | Departure-board background                                               |
-| `--board-2`            | `#152137`             | Board gradient top                                                       |
-| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                            |
-| `--card`               | `#FFFFFF`             | Card surface                                                             |
-| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                               |
-| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                  |
-| `--amber-deep`         | `#C9822A`             | Amber pressed/hard-code accent                                           |
-| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                     |
-| `--muted`              | `#6C7488`             | Secondary text                                                           |
-| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`) |
-| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                  |
-| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative)                                  |
+| Token                  | Hex                   | Role                                                                      |
+| ---------------------- | --------------------- | ------------------------------------------------------------------------- |
+| `--ink`                | `#16233D`             | Primary text                                                              |
+| `--indigo`             | `#1B2A4A`             | Base / chrome (header, status bar)                                        |
+| `--board`              | `#0E1729`             | Departure-board background                                                |
+| `--board-2`            | `#152137`             | Board gradient top                                                        |
+| `--screen`             | `#E7EAEF`             | App background ("cool paper")                                             |
+| `--card`               | `#FFFFFF`             | Card surface                                                              |
+| `--paper`              | `#F3EFE6`             | Badge / warm paper accents                                                |
+| **`--amber`**          | **`#E9A63C`**         | **Time & commitment — this color only**                                   |
+| `--amber-deep`         | `#915E1E`             | Amber's **paper** variant — mono times and labels on a card (ADR-0158 §6) |
+| **`--teal`**           | **`#2C9C90`**         | **Location / map — this color only**                                      |
+| `--muted`              | `#61687A`             | Secondary text — and **all persistent hint text** (ADR-0158 §7)           |
+| **`--plan`**           | **`#6E59D6`**         | **Plan mode — this color only** (`--plan-deep` `#5747B4`, `--plan-tint`)  |
+| `--cta` / `--cta-text` | `--ink` / `#FFF`      | Neutral primary button (semantic colors are never CTAs)                   |
+| `--ok` / `--miss`      | `#3C9A6B` / `#C2584E` | Status mini-palette (positive/negative)                                   |
+
+**The ink ramp has three steps and the third one is narrow** (ADR-0158 §7).
+`--ink` for content, `--muted` for secondary **and every persistent hint**, and
+`--faint` `#808694` for **transient** text only — a placeholder or ghost value
+the user's own input replaces, a disabled control, or a bare glyph. That
+narrowing is what lets `--faint` stay visibly lighter (11.9 L\* below `--muted`)
+while nothing that needs AA relies on it: taken to a 4.5 floor it would land
+**0.6 L\*** from `--muted` and the step would stop existing. A persistent hint
+is content, so it reads `--muted`.
 
 ### Functional color coding: a budget, not a paint bucket
 

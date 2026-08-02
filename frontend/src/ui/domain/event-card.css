@@ -13,7 +13,11 @@
   overflow: hidden;
 }
 .wp-event.soft {
-  background: repeating-linear-gradient(-45deg, #fff 0 9px, #fbfaf7 9px 18px);
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--card) 0 9px,
+    color-mix(in srgb, var(--paper) 33%, var(--card)) 9px 18px
+  );
   border: 1px dashed var(--soft-line);
 }
 .wp-event.now {
@@ -26,14 +30,14 @@
   opacity: 0.66;
 }
 .wp-event.passed.soft {
-  background: #f7f7f9;
+  background: color-mix(in srgb, var(--muted) 5%, var(--card));
   border-style: solid;
   border-color: var(--line);
 }
 /* A done event settles + a positive ✓ (--ok, a record, never amber). */
 .wp-event.done {
   opacity: 0.85;
-  background: #f6faf7;
+  background: color-mix(in srgb, var(--ok) 5%, var(--card));
   border-color: rgba(60, 154, 107, 0.32);
   border-style: solid;
 }
@@ -340,7 +344,7 @@
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows var(--t-base) ease;
-  background: #fafbfd;
+  background: color-mix(in srgb, var(--ink) 2%, var(--card));
   border-top: 1px solid transparent;
 }
 .wp-event.open .wp-event-actions {
@@ -370,7 +374,7 @@
   font-size: var(--text-secondary);
   font-weight: 600;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   border-radius: 9px;
   padding: 7px 11px;

@@ -779,7 +779,7 @@
   text-decoration: underline;
 }
 .map-geohint {
-  color: var(--faint);
+  color: var(--muted);
   font-weight: 600;
 }
 
@@ -808,7 +808,7 @@
   white-space: nowrap;
 }
 .map-dist.stale {
-  color: var(--faint);
+  color: var(--muted);
   font-weight: 600;
 }
 
@@ -969,7 +969,7 @@
 /* coordless Place-lite: a listed-only row, dashed empty badge (ADR-0109 §3). */
 .map-badge.nocoord {
   background: transparent;
-  border: 1.5px dashed var(--faint);
+  border: 1.5px dashed var(--muted);
   opacity: 0.7;
 }
 
@@ -1298,7 +1298,7 @@
    time anchor (amber) — the budget stays where ADR-0028 put it. */
 .map-res-hint {
   font-size: 12px;
-  color: var(--faint);
+  color: var(--muted);
   line-height: 1.5;
   margin: 2px 4px 10px;
 }
@@ -1328,7 +1328,7 @@
 /* not ours yet: the same dashed neutral pin a coordless Place-lite wears */
 .map-badge.result {
   background: transparent;
-  border: 1.5px dashed var(--faint);
+  border: 1.5px dashed var(--muted);
   color: var(--muted);
   font-size: 16px;
 }
@@ -1498,7 +1498,7 @@
 .map-res-foot {
   text-align: center;
   font-size: 10.5px;
-  color: var(--faint);
+  color: var(--muted);
   margin-top: 12px;
 }
 
