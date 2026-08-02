@@ -20,6 +20,7 @@
 // words read below it, in full and unclamped, which is the entire reason this surface exists.
 import type { Note, User } from '@waypoint/shared';
 import { noteWhen, type NoteHostRef } from '../lib/notes';
+import { externalHref } from '../lib/external-url';
 import { Sheet } from './Sheet';
 import { Icon } from './Icon';
 import { ltrIsolate } from '../lib/bidi';
@@ -48,6 +49,7 @@ export function NoteDetail({
 }) {
   const author = users.find((user) => user.id === note.createdBy)?.displayName;
   const title = note.title?.trim() || t.notes.one;
+  const href = externalHref(note.url);
 
   return (
     <Sheet ariaLabel={title} onClose={onClose}>
@@ -75,16 +77,28 @@ export function NoteDetail({
         {note.url && (
           <p className="note-read">
             {/* An LTR island inside an RTL sheet via `ltrIsolate`, never `dir="ltr"`, which
-                would lay the whole line out left-to-right (ADR-0118). */}
-            <a
-              className="note-read-url"
-              href={note.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={t.notes.preview.openLink}
-            >
-              <Icon name="link" /> {ltrIsolate(note.url)}
-            </a>
+                would lay the whole line out left-to-right (ADR-0118).
+
+                **The href is not the typed string** (`externalHref`): people write
+                `tabelog.com/…`, which as an href is RELATIVE, so the tap re-entered the app —
+                the whole window, in the installed PWA. The scheme is supplied here; the text
+                stays what was typed. A url that cannot be made safe renders as text rather
+                than as a dead link, which is also the `javascript:` guard. */}
+            {href ? (
+              <a
+                className="note-read-url"
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={t.notes.preview.openLink}
+              >
+                <Icon name="link" /> {ltrIsolate(note.url)}
+              </a>
+            ) : (
+              <span className="note-read-url">
+                <Icon name="link" /> {ltrIsolate(note.url)}
+              </span>
+            )}
           </p>
         )}
 

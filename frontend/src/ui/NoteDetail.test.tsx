@@ -8,6 +8,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Note, User } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { NoteDetail } from './NoteDetail';
+import { withoutBidiControls } from '../lib/bidi';
 import { t } from '../i18n/he';
 
 const NOW = new Date('2026-07-20T09:00:00Z');
@@ -59,6 +60,26 @@ describe('NoteDetail', () => {
     expect(link.href).toContain('tabelog.com');
     expect(link.rel).toContain('noopener');
     expect(link.target).toBe('_blank');
+  });
+
+  // THE REPORTED BUG (owner, 2026-08-02): nobody types `https://`, and a scheme-less url is a
+  // RELATIVE href — so the tap resolved it against the current page and re-entered the app,
+  // which in the installed PWA is the whole window. The scheme is supplied for the href; the
+  // text stays the string that was typed.
+  it('makes a scheme-less url leave the app, and still prints what was typed', () => {
+    show({ url: 'tabelog.com/tokyo/A1303' });
+    const link = document.querySelector('.note-read-url') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('https://tabelog.com/tokyo/A1303');
+    expect(withoutBidiControls(link.textContent!)).toContain('tabelog.com/tokyo/A1303');
+    expect(withoutBidiControls(link.textContent!)).not.toContain('https://');
+  });
+
+  // A note is group-visible free text, so a url field is a script one member could hand
+  // another. It still READS — it is the note's content — it just is not a link.
+  it('renders a url it cannot make safe as text, not as a link', () => {
+    show({ url: 'javascript:alert(1)' });
+    expect(document.querySelector('a.note-read-url')).toBeNull();
+    expect(document.querySelector('span.note-read-url')?.textContent).toContain('alert(1)');
   });
 
   // ADR-0118: an LTR island via `ltrIsolate`, never `dir="ltr"` on a non-input, which would
