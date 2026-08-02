@@ -110,10 +110,22 @@ describe('HostNotes', () => {
     expect(screen.queryByText(t.notes.sheet.categoryLabel)).toBeNull();
   });
 
+  // A section line clamps exactly as the notes screen's row does, so its tap READS
+  // (ADR-0153 §4's amendment) — the editor is one deliberate press further in. The whole
+  // point is that a long note can be read without entering a form.
+  it('opens a note to read, not to edit', () => {
+    tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    expect(document.querySelector('.note-read')?.textContent).toBe('קוד הכספת 4417');
+    expect(screen.queryByLabelText(t.notes.sheet.bodyLabel)).toBeNull();
+  });
+
   it('opens an existing note into the same editor and updates it', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.preview.edit) }));
     fireEvent.change(screen.getByLabelText(t.notes.sheet.bodyLabel), {
       target: { value: 'קוד הכספת 4418' },
     });

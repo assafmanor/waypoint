@@ -296,6 +296,26 @@ Also fixed here because it is the same domain and one line: `/trips`' back arrow
 live trip stamped nothing, so the one back in the app that bypasses the resolver was also
 the one that advanced.
 
+### 8. A reveal animates its CONTENT's height, never a guessed number — added 2026-08-02 (session 206)
+
+The day card's verb strip animated `max-height: 0 → 220px`. That is fine while the strip
+holds only verbs, whose height is known — and it silently becomes a **content decision**
+the moment anything variable moves in: ADR-0152 §6's first amendment put an event's notes
+in the `⋯` sheet specifically because three notes measure 235px and would have been cut by
+15px, and the cap was treated as the fixed thing and the room as the negotiable one. It is
+the other way round. `grid-template-rows: 0fr → 1fr` animates to whatever the content
+actually is, so there is no number to guess and nothing can be clipped at any count. (The
+inner wrapper is required, not decorative: a collapsing track can only shrink a child that
+is allowed to, so the child carries `min-height: 0` and the `overflow: hidden`.)
+
+**The cost, stated because it touches every card on the day and not only noted ones:** the
+strip used to race toward a ceiling and stop wherever its content ended, so a short strip
+travelled its own height and a tall one was capped. Now every strip travels exactly its own
+height — same duration, same easing, different distance. That is within this ADR's ramp
+discipline (no new token, no new beat) and it is the honest trade for a surface that cannot
+lie about how much there is to read. Reduced motion is unaffected: §5's global kill takes
+out the transition whatever property it names.
+
 ## Build log
 
 **Session 190 (2026-07-31)** — built in the order the brief set out (G1 → G3 → G2), each

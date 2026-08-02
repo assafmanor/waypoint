@@ -413,24 +413,46 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       expect(screen.getByLabelText(t.notes.mark(2))).toBeTruthy();
     });
 
-    // WHERE THE BODY LIVES (ADR-0152 §6). The mark says there are notes; the `⋯` sheet is
-    // where they are read and written, as on a document and an idea. Deliberately NOT the
-    // expanded card: `.wp-event-actions` animates to a fixed 220px, so a section that grows
-    // with the count would be clipped there.
-    it('carries its notes in the ⋯ sheet, above the verbs — never in the expanded card', () => {
+    // WHERE THE BODY LIVES (ADR-0152 §6's 2026-08-02 amendment). The mark says there are
+    // notes; the card the row EXPANDS is where they are read and written. It was the `⋯`
+    // sheet for one release, which put content inside a menu of verbs — the owner found it
+    // there and said it did not belong, and a reader who never opens the menu never found
+    // it at all.
+    it('carries its notes in the expanded card, under the verbs', () => {
       showCard({
         notes: 2,
         notesSlot: <div data-testid="host-notes" />,
         onEdit: () => {},
+        isOpen: true,
       });
-      // Closed: the slot is not rendered anywhere on the card itself.
-      expect(screen.queryByTestId('host-notes')).toBeNull();
 
-      fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
       const slot = screen.getByTestId('host-notes');
-      const actions = document.querySelector('.wp-row-actions') as HTMLElement;
-      expect(actions).toBeTruthy();
-      expect(slot.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      const strip = document.querySelector('.wp-event-actions-in');
+      expect(strip?.contains(slot)).toBe(true);
+
+      // Under the verbs, not above them: the row was opened to act on, and reading is the
+      // longer errand.
+      const acts = document.querySelector('.wp-event-act-row') as HTMLElement;
+      expect(acts.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('leaves the ⋯ menu a list of verbs, with no notes in it', () => {
+      showCard({
+        notes: 2,
+        notesSlot: <div data-testid="host-notes" />,
+        onEdit: () => {},
+        isOpen: true,
+      });
+      fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+      const menu = document.querySelector('.wp-row-actions')?.parentElement as HTMLElement;
+      expect(menu.querySelector('[data-testid="host-notes"]')).toBeNull();
+    });
+
+    // The strip is in the DOM at every height, so "closed" has to mean unmounted — the slot
+    // is a connected component and a day holds a dozen cards.
+    it('mounts no note section at all while the card is closed', () => {
+      showCard({ notes: 2, notesSlot: <div data-testid="host-notes" /> });
+      expect(screen.queryByTestId('host-notes')).toBeNull();
     });
 
     it('elementises the meta so the code can be protected from the ellipsis', () => {

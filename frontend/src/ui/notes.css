@@ -272,3 +272,36 @@
   font-size: 11px;
   color: var(--faint);
 }
+
+/* ── The preview a row's tap opens (ADR-0153 §4's 2026-08-02 amendment) ────────
+   Almost all of this surface is `BookingDetail`'s shipped CSS (`.bk-detail`, `.bk-head`,
+   `.bk-facts`). What a note adds is the one thing a booking has no equivalent of: the words
+   themselves, which are the whole point of the surface and must not clamp — the ROW is the
+   summary, and if the preview clamped too there would be nowhere to read the note at all. */
+.note-read {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0 0 var(--space-3);
+  white-space: pre-wrap;
+}
+/* A url-only note: the link IS the content, so it reads at content size rather than as a
+   trailing detail, and stays an LTR island in an RTL sheet. */
+.note-read-url {
+  display: inline-flex;
+  /* A long url wraps, and a centred mark then floats between its lines — align it to the
+     FIRST line, where the reader starts. */
+  align-items: flex-start;
+  gap: 5px;
+  unicode-bidi: isolate;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--cta);
+  word-break: break-all;
+}
+.note-read-url .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin-block-start: 3px;
+}

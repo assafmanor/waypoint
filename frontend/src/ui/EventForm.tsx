@@ -53,6 +53,7 @@ import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
+import { HostNotes } from './HostNotes';
 
 /** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
  *  state that no URL addresses, so sending its place field off to the Map tab means the
@@ -425,6 +426,10 @@ export function EventForm({
       const parsed = updateEventSchema.safeParse(fields);
       if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
       verbs.update(event, parsed.data);
+      // The host is already there, so there is nothing to wait for — but this still goes
+      // through the same helper, so a note written while editing is grouped and ordered
+      // exactly like one written while creating.
+      void writeNotesBehind(Promise.resolve(event.id), (id) => ({ eventId: id }));
     } else if (maybeItem) {
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
@@ -715,14 +720,25 @@ export function EventForm({
           </Field>
 
           {/* **The note is written on the way** (ADR-0152 §6b) — one box, and a blank one
-              writes nothing, so an event that needs no note costs no press. Create only: an
-              existing event's notes are read and written where its body lives, and a
-              composer here would be a second way to write the same thing. */}
-          {!event && (
-            <Field label={t.notes.composer.label} htmlFor={noteId} hint={t.notes.composer.hint}>
-              <NoteComposer state={composer} id={noteId} />
-            </Field>
+              writes nothing, so an event that needs no note costs no press.
+
+              **On EDIT the existing notes read above that box**, which is §6b's own last
+              paragraph and was missed when this form was first wired. It is not a nicety: in
+              PLAN MODE this form is the only way into an event at all — the builder's row
+              opens it directly, with no expanded card behind it — so until now a whole mode
+              could neither read an event's notes nor write one. The section's own `＋ פתק` is
+              off here (`canAdd`), because the box below it already is the way to add and it
+              rides this form's save rather than opening a second sheet. */}
+          {event && (
+            <HostNotes host={{ kind: 'event', id: event.id, name: event.title }} canAdd={false} />
           )}
+          <Field
+            label={event ? t.notes.composer.labelMore : t.notes.composer.label}
+            htmlFor={noteId}
+            hint={t.notes.composer.hint}
+          >
+            <NoteComposer state={composer} id={noteId} />
+          </Field>
 
           {/* Only what has no field to point at still reads down here. */}
           {errors.formError && (

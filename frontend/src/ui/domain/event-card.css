@@ -317,17 +317,47 @@
   margin-top: 2px;
 }
 
-/* Expanding verb strip. */
+/* Expanding verb strip — **and its height is the content's, not a number**
+   (ADR-0140's 2026-08-02 amendment).
+
+   It animated `max-height: 0 → 220px` for as long as it held only verbs, whose
+   height is known. A note section is not: three notes need 235px and clipped by
+   15px, which is why phase 5b put them in the `⋯` sheet instead — the wrong fix
+   for the wrong constraint. `grid-template-rows: 0fr → 1fr` animates to whatever
+   the content actually is, so the guess is gone and nothing can be cut.
+
+   THE COST, stated because it touches every card on the day and not only noted
+   ones: the strip used to race toward a 220px ceiling and stop wherever its
+   content ended, so a short strip travelled its own height and a tall one was
+   capped. Now every strip travels exactly its own height. Same duration, same
+   easing; what changed is the distance. Reduced motion is unaffected — App.css
+   kills the transition globally, whatever property it names.
+
+   The inner element is required rather than decorative: a `1fr → 0fr` track can
+   only collapse a child that is allowed to shrink, so the child carries
+   `min-height: 0` and the `overflow: hidden` this rule used to own. */
 .wp-event-actions {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height var(--t-base) ease;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-base) ease;
   background: #fafbfd;
   border-top: 1px solid transparent;
 }
 .wp-event.open .wp-event-actions {
-  max-height: 220px;
+  grid-template-rows: 1fr;
   border-top-color: var(--line);
+}
+.wp-event-actions-in {
+  min-height: 0;
+  overflow: hidden;
+}
+/* The host's own note section, inside the card the row opens (ADR-0152 §6's
+   2026-08-02 amendment). Its own block under the verbs, with the card's padding
+   and a rule above it, so it reads as content rather than as more buttons. */
+.wp-event-actions-in > .note-sec {
+  margin: 0;
+  padding: var(--space-3) 14px;
+  border-top: 1px solid var(--line);
 }
 .wp-event-act-row {
   display: flex;

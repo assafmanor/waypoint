@@ -81,18 +81,17 @@ export interface EventCardProps {
    *  props — so the mark needs its own. A count only past 1: a `1` beside a glyph that
    *  already means "a note" is a digit that says nothing. */
   notes?: number;
-  /** **Where an event's notes are READ and WRITTEN** (ADR-0152 §6, ADR-0153 §8) — the
-   *  connected `<HostNotes>`, rendered in this card's `⋯` sheet above the verbs, exactly as
-   *  a document's and an idea's are.
+  /** **Where an event's notes are READ and WRITTEN** (ADR-0152 §6's 2026-08-02 amendment) —
+   *  the connected `<HostNotes>`, rendered inside the card this row EXPANDS, under its verbs.
    *
    *  A node rather than the component, because this file is `ui/domain/`: presentational,
    *  all data via props, no `state` imports. The screen supplies it already connected.
    *
-   *  **Not the expanded card**, which is the tempting spot: `.wp-event-actions` animates
-   *  `max-height: 0 → 220px`, so a section that grows with the note count would be clipped
-   *  at three notes, and raising the cap changes the reveal's motion for every card on the
-   *  day (ADR-0140). The sheet has no cap and is already the surface a row's actions live
-   *  on (ADR-0138 §1). */
+   *  **It was in the `⋯` sheet for one release and that was wrong** (owner: notes "don't
+   *  belong" in a menu). A row menu is a list of VERBS (ADR-0138 §1); notes are content, and
+   *  content read from inside a menu is content nobody finds. What put it there was
+   *  `.wp-event-actions`'s fixed `max-height: 220px`, which clips three notes — so the cap
+   *  moved instead (`event-card.css`), which is the change that actually had to happen. */
   notesSlot?: ReactNode;
   // Verbs (callbacks; presence + phase gate which buttons show, faithfully).
   // `onNavigate` (directions) and `onShowOnMap` (view the place) are the two
@@ -402,80 +401,90 @@ export function EventCard(props: EventCardProps) {
         </span>
       </button>
       <div className="wp-event-actions">
-        <div className="wp-event-act-row">
-          {isDone ? (
-            <>
-              <button type="button" className="wp-event-act" onClick={onRestore}>
-                {t.actions.restore}
-              </button>
-              {navAct}
-            </>
-          ) : isHard ? (
-            <>
-              {navAct}
-              {!readOnly && (
-                <>
-                  <button type="button" className="wp-event-act" onClick={onOnWay}>
-                    {t.actions.onWay}
-                  </button>
-                  <button type="button" className="wp-event-act" onClick={onDelay}>
-                    {t.actions.delayBy(DELAY_STEP_MINUTES)}
-                  </button>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <button type="button" className="wp-event-act" onClick={onDone}>
-                {t.actions.done}
-              </button>
-              <button type="button" className="wp-event-act" onClick={onSkip}>
-                {t.actions.skip}
-              </button>
-              {/* The nudge adapts to phase (ADR-0043): both ways upcoming; +30
+        {/* One wrapper, and it is load-bearing: a collapsing grid track can only shrink a
+            child that is allowed to, so this carries `min-height: 0` and the overflow the
+            old `max-height` rule owned. */}
+        <div className="wp-event-actions-in">
+          <div className="wp-event-act-row">
+            {isDone ? (
+              <>
+                <button type="button" className="wp-event-act" onClick={onRestore}>
+                  {t.actions.restore}
+                </button>
+                {navAct}
+              </>
+            ) : isHard ? (
+              <>
+                {navAct}
+                {!readOnly && (
+                  <>
+                    <button type="button" className="wp-event-act" onClick={onOnWay}>
+                      {t.actions.onWay}
+                    </button>
+                    <button type="button" className="wp-event-act" onClick={onDelay}>
+                      {t.actions.delayBy(DELAY_STEP_MINUTES)}
+                    </button>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <button type="button" className="wp-event-act" onClick={onDone}>
+                  {t.actions.done}
+                </button>
+                <button type="button" className="wp-event-act" onClick={onSkip}>
+                  {t.actions.skip}
+                </button>
+                {/* The nudge adapts to phase (ADR-0043): both ways upcoming; +30
                   only for a now event (can't pull it into the past). */}
-              <div className="wp-event-act stepper">
-                {!isNow && (
+                <div className="wp-event-act stepper">
+                  {!isNow && (
+                    <button
+                      type="button"
+                      className="step"
+                      onClick={onEarlier}
+                      aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
+                    >
+                      −
+                    </button>
+                  )}
+                  <span className="step-label">{t.actions.stepMinutes(DELAY_STEP_MINUTES)}</span>
                   <button
                     type="button"
                     className="step"
-                    onClick={onEarlier}
-                    aria-label={t.actions.earlierBy(DELAY_STEP_MINUTES)}
+                    onClick={onDelay}
+                    aria-label={t.actions.delayBy(DELAY_STEP_MINUTES)}
                   >
-                    −
+                    +
                   </button>
-                )}
-                <span className="step-label">{t.actions.stepMinutes(DELAY_STEP_MINUTES)}</span>
+                </div>
+                {navAct}
+              </>
+            )}
+            {!readOnly && menuActions.length > 0 && (
+              <span className="wp-event-act-row-end">
                 <button
                   type="button"
-                  className="step"
-                  onClick={onDelay}
-                  aria-label={t.actions.delayBy(DELAY_STEP_MINUTES)}
+                  className="wp-event-act icon-only more"
+                  onClick={() => setMenuOpen(true)}
+                  aria-label={t.actions.more}
                 >
-                  +
+                  <Icon name="more" />
                 </button>
-              </div>
-              {navAct}
-            </>
-          )}
-          {!readOnly && menuActions.length > 0 && (
-            <span className="wp-event-act-row-end">
-              <button
-                type="button"
-                className="wp-event-act icon-only more"
-                onClick={() => setMenuOpen(true)}
-                aria-label={t.actions.more}
-              >
-                <Icon name="more" />
-              </button>
-            </span>
-          )}
-        </div>
-        {isHard && (
-          <div className="wp-event-hard-warn">
-            <Icon name="warn" /> {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
+              </span>
+            )}
           </div>
-        )}
+          {isHard && (
+            <div className="wp-event-hard-warn">
+              <Icon name="warn" /> {t.event.hardWarn} {code && <span dir="auto">{code}</span>}
+            </div>
+          )}
+          {/* The body, under the verbs: what the group knows about this event, where the row
+              that carries the mark opens. Mounted only while the card is open, because the
+              strip is in the DOM at every height — a day of twelve events would otherwise
+              hold twelve connected note sections nobody is looking at. */}
+          {isOpen && notesSlot}
+        </div>
       </div>
       {menuOpen && (
         <RowManageSheet
@@ -485,9 +494,7 @@ export function EventCard(props: EventCardProps) {
           subject={menuSubject}
           actions={menuActions}
           onClose={() => setMenuOpen(false)}
-        >
-          {notesSlot}
-        </RowManageSheet>
+        />
       )}
     </div>
   );

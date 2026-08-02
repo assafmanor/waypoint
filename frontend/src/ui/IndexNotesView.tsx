@@ -37,6 +37,7 @@ import { ltrIsolate } from '../lib/bidi';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { NoteSheet, type NoteDraft } from './NoteSheet';
 import { NoteManageSheet } from './NoteManageSheet';
+import { NoteDetail } from './NoteDetail';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
 import { ListRow } from './domain';
@@ -50,7 +51,8 @@ import { t } from '../i18n/he';
 import './notes.css';
 
 export function IndexNotesView({ onClose }: { onClose: () => void }) {
-  const { trip, notes, events, bookings, places, maybeItems, documents, noteVerbs } = useTrip();
+  const { trip, notes, events, bookings, places, maybeItems, documents, users, noteVerbs } =
+    useTrip();
   const { mode } = useMode();
   const now = useClock();
 
@@ -60,6 +62,8 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
   // null = closed; 'create' = a new note; a Note = editing that one.
   const [sheet, setSheet] = useState<Note | 'create' | null>(null);
   const [manage, setManage] = useState<Note | null>(null);
+  // A row's tap opens this READ surface, not the editor (ADR-0153 §4's amendment).
+  const [preview, setPreview] = useState<Note | null>(null);
 
   // The host lookup, built once per source change rather than per row: every note's badge,
   // chip, chip-count and filter position needs its host resolved (ADR-0152 §5's amendment).
@@ -126,7 +130,7 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
       glyph={noteGlyph(note, hosts)}
       now={now}
       onManage={setManage}
-      onOpen={setSheet}
+      onOpen={setPreview}
     />
   );
   const noteKey = (note: Note) => note.id;
@@ -230,6 +234,22 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
           host={sheet === 'create' ? undefined : noteHost(sheet, hosts)}
           onSave={saveNote}
           onClose={() => setSheet(null)}
+        />
+      )}
+
+      {preview && (
+        <NoteDetail
+          note={preview}
+          host={noteHost(preview, hosts)}
+          glyph={noteGlyph(preview, hosts)}
+          users={users}
+          now={now}
+          onEdit={() => {
+            const note = preview;
+            setPreview(null);
+            setSheet(note);
+          }}
+          onClose={() => setPreview(null)}
         />
       )}
 
