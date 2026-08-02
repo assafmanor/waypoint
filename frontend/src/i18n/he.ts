@@ -1089,6 +1089,14 @@ export const t = {
       identity: 'הזהות שלי',
       nameLabel: 'שם',
       sharedHint: 'השם והתמונה נראים לכל מי שנוסע איתכם.',
+      // The theme control (ADR-0158 §8). Three rungs: `system` keeps following
+      // the phone, which is why it is a rung rather than the absence of one.
+      display: 'תצוגה',
+      themeLabel: 'ערכת נושא',
+      themeSystem: 'מערכת',
+      themeLight: 'בהיר',
+      themeDark: 'כהה',
+      themeHint: 'הבחירה נשמרת במכשיר הזה. במצב מערכת האפליקציה עוקבת אחרי הטלפון.',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
       emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',
