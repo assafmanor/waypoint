@@ -382,9 +382,9 @@ describe('EventForm (folded into Modal, U-01)', () => {
         expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.flight));
 
         fireEvent.click(
-          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.other }),
+          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.transit }),
         );
-        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.other));
+        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.transit));
       });
 
       it('forgets an explicit type when the category changes, since that is a new question', () => {
@@ -405,15 +405,25 @@ describe('EventForm (folded into Modal, U-01)', () => {
 
       // `other` is not a span type, so `defaultKindForBookingType` makes it soft while flight and
       // train are hard. Deliberately not special-cased: commitment has one source (§4).
-      it('lets the kind follow the type, including other → soft', () => {
+      // This used to end `…including other → soft`, because the third pill wrote `other`
+      // and `other` is not a span type. ADR-0156 made it `transit`, so **all three
+      // transport modes are hard** — a booked bus is as much a commitment as a booked
+      // train. ADR-0136 §4's axis is unchanged and is now shown where it still varies:
+      // across categories, not within the transport pills.
+      it('keeps every transport mode hard, and lets a soft category soften it', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         pickCategory('transport');
         const on = () => document.querySelector('.kind-toggle button.on')!.textContent!.trim();
         expect(on()).toBe(t.eventForm.kindHard);
 
-        fireEvent.click(
-          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.other }),
-        );
+        for (const type of [t.index.bookingType.train, t.index.bookingType.transit]) {
+          fireEvent.click(within(typeGroup()!).getByRole('radio', { name: type }));
+          expect(on()).toBe(t.eventForm.kindHard);
+        }
+
+        // A restaurant booking is soft — booked-ness and commitment are different axes.
+        pickCategory('food');
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(t.eventForm.bookedLabel) }));
         expect(on()).toBe(t.eventForm.kindSoft);
       });
     });
@@ -582,21 +592,23 @@ describe('EventForm (folded into Modal, U-01)', () => {
         expect(payload).toHaveProperty('placeId');
       });
 
-      // `🚌 אחר` is offered under transport but `other` is NOT route-shaped — the gap
-      // ADR-0154 states and deliberately leaves open. Pinned so closing it is a decision.
-      it('sends a single placeId for the bus/other transport type', () => {
+      // **The gap is closed** (ADR-0156). This test used to assert the opposite and say so:
+      // the `🚌` pill wrote `other`, `other` is not route-shaped, and a bus therefore saved
+      // with a single `placeId` and could never be given a route. It writes `transit` now,
+      // which carries a route like the other two transport modes.
+      it('sends a route and no placeId for a bus, like any other transport', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         named('אוטובוס לנמל');
         pickCategory('transport');
         fireEvent.click(
-          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.other }),
+          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.transit }),
         );
         save();
 
         const payload = bookedPayload();
-        expect(payload).toMatchObject({ type: 'other' });
-        expect('fromPlaceId' in payload).toBe(false);
-        expect(payload).toHaveProperty('placeId');
+        expect(payload).toMatchObject({ type: 'transit' });
+        expect('placeId' in payload).toBe(false);
+        expect('fromPlaceId' in payload).toBe(true);
       });
 
       // A picked route is an edit: closing with one unsaved must hit the discard guard,

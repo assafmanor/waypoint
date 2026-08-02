@@ -424,6 +424,10 @@ export const t = {
       hotel: 'לינה',
       restaurant: 'מסעדה',
       train: 'רכבת',
+      // The third transport mode (ADR-0156): a bus, a ferry, a car hire, a cable car.
+      // `נסיעה` is the word that covers all four without naming any — `אוטובוס` would
+      // be wrong on a ferry, and `תחבורה` is the CATEGORY's name, not a booking's.
+      transit: 'נסיעה',
       activity: 'פעילות',
       other: 'אחר',
     },
@@ -437,6 +441,7 @@ export const t = {
       hotel: 'לינות',
       restaurant: 'מסעדות',
       train: 'רכבות',
+      transit: 'נסיעות',
       activity: 'פעילויות',
       other: 'אחר',
     },
@@ -449,6 +454,22 @@ export const t = {
     // empty rather than padded with weak, unlikely-to-be-typed synonyms.
     bookingTypeSynonyms: {
       flight: ['מטוס'],
+      // `transit` is the one type whose LABEL nobody would search by: you look for the
+      // vehicle you booked, not the generic word for a journey. So unlike `train` and
+      // `other`, this list is the point rather than padding.
+      transit: [
+        'אוטובוס',
+        'אוטובוסים',
+        'מעבורת',
+        'מעבורות',
+        'רכב',
+        'רכב שכור',
+        'השכרת רכב',
+        'הסעה',
+        'הסעות',
+        'שאטל',
+        'רכבל',
+      ],
       hotel: [
         'מלון',
         'מלונות',

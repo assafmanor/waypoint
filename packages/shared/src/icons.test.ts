@@ -250,16 +250,18 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     }
   });
 
-  it('gives flight and train a route, and every other type a single place', () => {
+  it('gives the three transport modes a route, and every other type a single place', () => {
     expect(carriesRoute(BOOKING_TYPE.FLIGHT)).toBe(true);
     expect(carriesRoute(BOOKING_TYPE.TRAIN)).toBe(true);
+    // **The gap ADR-0154 pinned open is closed** (ADR-0156). This assertion used to read
+    // `carriesRoute(OTHER) === false` with a comment saying the picker offered `other` as
+    // 🚌 and the model disagreed. It does not any more: the pill writes `transit`, which
+    // carries a route like the two above, and `other` is back to meaning a booking that
+    // is not transport at all.
+    expect(carriesRoute(BOOKING_TYPE.TRANSIT)).toBe(true);
     for (const type of [BOOKING_TYPE.HOTEL, BOOKING_TYPE.RESTAURANT, BOOKING_TYPE.ACTIVITY]) {
       expect(carriesRoute(type)).toBe(false);
     }
-    // `other` is the one that reads wrong to a human — `TRANSPORT_BOOKING_TYPES`
-    // offers it as 🚌 in the event form — and the model says it is not a route
-    // (ADR-0154's stated, deliberately-unclosed gap). Pinned so closing it later is
-    // a visible decision rather than a drift.
     expect(carriesRoute(BOOKING_TYPE.OTHER)).toBe(false);
   });
 
@@ -272,7 +274,13 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
 
   it('spans exactly the types that have two endpoints', () => {
     expect(ALL_TYPES.filter(hasSpanSchedule).sort()).toEqual(
-      [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.HOTEL, BOOKING_TYPE.ACTIVITY].sort(),
+      [
+        BOOKING_TYPE.FLIGHT,
+        BOOKING_TYPE.TRAIN,
+        BOOKING_TYPE.TRANSIT,
+        BOOKING_TYPE.HOTEL,
+        BOOKING_TYPE.ACTIVITY,
+      ].sort(),
     );
   });
 
@@ -292,7 +300,7 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
       if (authorsRoundTrip(type)) expect(carriesRoute(type)).toBe(true);
     }
     expect(ALL_TYPES.filter(authorsRoundTrip).sort()).toEqual(
-      [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN].sort(),
+      [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.TRANSIT].sort(),
     );
   });
 });

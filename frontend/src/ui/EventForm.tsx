@@ -33,6 +33,7 @@ import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import { useDerivedField } from '../lib/useDerivedField';
 import { buildEventSeed } from '../lib/booking-edit';
 import {
+  BOOKING_TYPE_ICON,
   CATEGORY_DEFAULT_BOOKED,
   DEFAULT_EVENT_ICON,
   DOT_SEPARATOR,
@@ -710,10 +711,12 @@ export function EventForm({
                   <div className="ef-btype">
                     <ChoiceGrid
                       layout="pills"
+                      // Glyph AND label from the shared tables now (ADR-0156) — the third
+                      // pill used to spell its own `🚌` because `other`'s was `📄`.
                       options={TRANSPORT_BOOKING_TYPES.map((ty) => ({
-                        value: ty.value,
-                        icon: ty.icon,
-                        label: t.index.bookingType[ty.value],
+                        value: ty,
+                        icon: BOOKING_TYPE_ICON[ty],
+                        label: t.index.bookingType[ty],
                       }))}
                       value={derivedType}
                       onChange={pickBookingType}

@@ -29,6 +29,9 @@ export const bookingTypeSchema = z.enum([
   'hotel',
   'restaurant',
   'train',
+  // The third transport mode (ADR-0156): bus, ferry, car hire, cable car, shuttle.
+  // Everything that carries you somewhere and is neither a flight nor a train.
+  'transit',
   'activity',
   'other',
 ]);

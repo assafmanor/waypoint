@@ -82,7 +82,7 @@ It surfaces twice and quietly. On `BookingDetail`, **one fact, last** in `bk-fac
 
 **Whether the form should be stepped** — that is [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md), and its answer for this form is "try `Collapsible` first, and settle stepping on a phone".
 **Connections and multi-city.** Adjacent but a different shape: a layover is a **sequence**, a round trip is a **mirror**. `legs` is the axis that would carry it; deliberately not populated now.
-**A real third transport mode.** The `🚌 אחר` gap above is stated, not closed — once §2 lands it is one row, and it should be taken as its own change with its own migration.
+**A real third transport mode.** The `🚌 אחר` gap above is stated, not closed — once §2 lands it is one row, and it should be taken as its own change with its own migration. **Closed 2026-08-02 by [0156](0156-a-bus-is-transport-the-third-mode-the-picker-always-meant.md)**, and it was one row: `transit` carries `TRANSPORT_PROFILE` verbatim.
 
 ## Consequences
 
