@@ -5,7 +5,13 @@
    overlay portal too (no .app ancestor there). */
 .map-screen {
   --idx-accent: var(--ink);
-  --idx-accent-text: #fff;
+  /* `--on-fill`, not `#fff` (ADR-0158 §2). The fill here is `--ink`, which is a
+     MID-TONE that inverts — light in dark mode — so a hardcoded white ink put
+     every selected filter chip at white-on-near-white. Phase 1 converted the
+     literal on-fill inks and missed this one because the literal was behind a
+     variable: the sweep looked at `color:` declarations, and this says
+     `color: var(--idx-accent-text)`. An indirection is not a fix. */
+  --idx-accent-text: var(--on-fill);
 }
 .map-screen[data-mode='plan'] {
   --idx-accent: var(--plan);

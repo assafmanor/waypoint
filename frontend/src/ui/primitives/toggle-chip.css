@@ -50,7 +50,7 @@
 .wp-chip.accent.on {
   background: var(--idx-accent, var(--ink));
   border-color: var(--idx-accent, var(--ink));
-  color: var(--idx-accent-text, #fff);
+  color: var(--idx-accent-text, var(--on-fill));
 }
 
 /* The neutral primary, tinted rather than filled. Amber is time and commitment and plan

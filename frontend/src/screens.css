@@ -2592,7 +2592,7 @@
 }
 .icon-chip.open {
   border-color: var(--ink);
-  box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.12);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 12%, transparent);
 }
 /* THE PANEL IS CAPPED TO THE ROOM IT HAS, AND MAY OPEN UPWARD (ADR-0148's amendment).
    `top` is right in a scrolling form and wrong in the Map's bottom-anchored place card,
@@ -2746,10 +2746,15 @@
 .icon-cell:hover {
   background: var(--screen);
 }
-/* Selection — neutral ink fill + ring (non-colour-redundant, ADR-0038 §6). */
+/* Selection — neutral ink fill + ring (non-colour-redundant, ADR-0038 §6).
+   The ring is a `0 0 0 Npx` SPREAD, which is a ring and not a drop shadow — the
+   distinction matters because a shadow is dark in both themes and a ring is a
+   wash of the ink, so a frozen `rgba(22, 35, 61, α)` disappears on a dark card.
+   Two of these hid inside `box-shadow` when the other 28 washes were converted,
+   because the converter read `box-shadow: 0 …` as a shadow. */
 .icon-cell.sel {
   background: var(--ink);
-  box-shadow: 0 0 0 2px rgba(22, 35, 61, 0.25);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 25%, transparent);
 }
 .icon-chip:focus-visible,
 .icon-cat:focus-visible,
@@ -2919,7 +2924,13 @@
    consumer shares this one token. */
 .index {
   --idx-accent: var(--ink);
-  --idx-accent-text: #fff;
+  /* `--on-fill`, not `#fff` (ADR-0158 §2). The fill here is `--ink`, which is a
+     MID-TONE that inverts — light in dark mode — so a hardcoded white ink put
+     every selected filter chip at white-on-near-white. Phase 1 converted the
+     literal on-fill inks and missed this one because the literal was behind a
+     variable: the sweep looked at `color:` declarations, and this says
+     `color: var(--idx-accent-text)`. An indirection is not a fix. */
+  --idx-accent-text: var(--on-fill);
 }
 .app[data-mode='plan'] .index {
   --idx-accent: var(--plan);

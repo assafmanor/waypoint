@@ -546,6 +546,46 @@ remaining ones sit on the chrome. Every other one is over `--card`, `--screen` o
 hued, near-complementary ground, and the chrome is the only hued surface the app
 has. This class of bug can only occur there.
 
+## §15 — Two more, and the sweep's own blind spot in one sentence
+
+**The selected filter chip was white-on-white in dark, at 1.20:1.** That number is
+already in §2's table — it is the `--ink`-fill row, the worst one this ADR opened
+on. Phase 1 converted every literal on-fill ink and missed this one for a reason
+worth naming: **the literal was behind a custom property.** `--idx-accent-text:
+#fff` is declared in `.index` and `.map-screen`; the call site reads
+`color: var(--idx-accent-text)`, which a sweep over `color:` values sees as a
+token and passes. Now `var(--on-fill)` — light mode does not move at all, because
+`--on-fill` _is_ `#FFFFFF` there.
+
+> **An indirection is not a fix.** A sweep that reads declarations sees the name,
+> not the value behind it.
+
+**Two frozen ink rings inside `box-shadow`.** When §13 converted 28 hardcoded
+`rgba(22, 35, 61, α)` washes it deliberately skipped `box-shadow: 0 …` as drop
+shadows — right for a shadow, which is dark in both themes, and wrong for a
+`0 0 0 Npx` **spread**, which is a _ring_, i.e. a wash of the ink. Two selection
+rings were invisible on a dark card. The distinction is now in the CSS.
+
+### What is actually covered, stated so nobody reads §12-§14 as "done"
+
+Four literal classes are now swept clean and can be re-checked with a grep:
+literals behind a custom-property name, literals in a `var(--x, LITERAL)`
+fallback, unmarked white as ink, and hardcoded light grounds.
+
+What is **not** covered is the corpus. The static sweep runs over **six captured
+frames** — trip home, plan home, login, settings, plus a synthesized modal and
+zero state. The app has roughly thirty surfaces: the Map screen, the Index, the
+Day view, every form, `BookingSheet`, the builder and the search overlay have
+never been measured in either theme. And the sweep measures **text contrast
+only**, so it structurally cannot see the two defects the owner found on the
+device this session — a selection you cannot distinguish (§14's toggle: both
+labels passed) and a graphic mark that is invisible (§14's today dot).
+
+The fix is corpus, not another sweep: `extract-dark-mode-dom.mjs` already
+captures real DOM from the running app, so extending it to walk more routes **and
+open overlays** takes it from 6 frames to ~25 and closes §12's "routes, not
+states" hole for good. Backlogged, not done.
+
 ## §10 — The build, in phases
 
 Each phase is independently shippable and independently revertible. Phases 1–3
