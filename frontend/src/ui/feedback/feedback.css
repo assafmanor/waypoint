@@ -312,6 +312,29 @@
   text-align: center;
 }
 
+/* The dark boot, designed in ADR-0105 and dormant until now (ADR-0158 §8).
+   ADR-0105 rejected a token-only remap for this screen — "the light/dark
+   difference has to be HOW MUCH DARK IS ON SCREEN" — and a remapped --screen
+   would only have given it a slightly darker paper. So the dark boot takes the
+   NIGHT BOARD as its ground, full-bleed, which is the same
+   --board-2 → --board gradient /login uses: boot → login becomes one continuous
+   surface in dark, where in light it is paper handing over to the board. */
+:root[data-theme='dark'] .fb-boot {
+  background: linear-gradient(180deg, var(--board-2), var(--board));
+}
+:root[data-theme='dark'] .fb-boot-clock {
+  color: var(--on-dark);
+}
+:root[data-theme='dark'] .fb-boot-label {
+  color: var(--on-dark-dim);
+}
+:root[data-theme='dark'] .fb-boot-dots {
+  color: var(--amber);
+}
+:root[data-theme='dark'] .fb-boot-track {
+  background: color-mix(in srgb, var(--on-dark-strong) 10%, transparent);
+}
+
 .fb-boot-mark {
   position: relative;
   z-index: 1;

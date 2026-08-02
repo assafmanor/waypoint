@@ -13,9 +13,20 @@ import { MAX_DISPLAY_NAME_LENGTH } from '@waypoint/shared';
 import { t } from '../i18n/he';
 import { useAuth } from '../state/auth-state';
 import { SETTINGS_PICTURE_PATH, useAppBack } from '../state/nav-state';
+import { readThemePick, setThemePick, THEME_PICK, type ThemePick } from '../lib/theme';
 import { Avatar } from '../ui/primitives/Avatar';
+import { ChoiceGrid } from '../ui/primitives/ChoiceGrid';
 import { NavArrow } from '../ui/NavArrow';
 import { StatusBanner } from '../ui/feedback/StatusBanner';
+
+/** The three rungs, in ramp order. `system` first because it is the default and
+ *  the one that keeps tracking; no icons, because the words are the whole
+ *  vocabulary and `ChoiceGrid` omits the slot on an empty glyph. */
+const THEME_OPTIONS: { value: ThemePick; icon: string; label: string }[] = [
+  { value: THEME_PICK.system, icon: '', label: t.shell.account.themeSystem },
+  { value: THEME_PICK.light, icon: '', label: t.shell.account.themeLight },
+  { value: THEME_PICK.dark, icon: '', label: t.shell.account.themeDark },
+];
 
 export default function UserSettings() {
   const { me, logout, patchMe } = useAuth();
@@ -23,6 +34,9 @@ export default function UserSettings() {
   const navigate = useNavigate();
   const [draftName, setDraftName] = useState(me?.user.displayName ?? '');
   const [failed, setFailed] = useState(false);
+  // Seeded from storage rather than from a provider: the theme is device state,
+  // not trip or account state, so nothing above this screen needs to hold it.
+  const [themePick, setPick] = useState<ThemePick>(readThemePick);
 
   if (!me) return null;
 
@@ -87,6 +101,28 @@ export default function UserSettings() {
           </div>
         </div>
         <div className="set-hint-block">{t.shell.account.sharedHint}</div>
+
+        {/* ADR-0133 §7 rejected a theme toggle here in July, for one stated
+            reason — "a switch that does nothing is worse than a thin page" —
+            which was true while the remap was inert and expired the moment it
+            was not (ADR-0158 §8). The rejection is amended by its own
+            condition, not overturned. */}
+        <div className="set-sec-title">{t.shell.account.display}</div>
+        <div className="set-card">
+          <div className="id-row">
+            <span className="lab">{t.shell.account.themeLabel}</span>
+          </div>
+          <ChoiceGrid
+            options={THEME_OPTIONS}
+            value={themePick}
+            onChange={(pick) => {
+              setPick(pick);
+              setThemePick(pick);
+            }}
+            ariaLabel={t.shell.account.themeLabel}
+          />
+        </div>
+        <div className="set-hint-block">{t.shell.account.themeHint}</div>
 
         <div className="set-sec-title">{t.shell.account.accountSection}</div>
         <div className="set-card">

@@ -32,6 +32,36 @@
       })();
     </script>
     <meta name="theme-color" content="#1B2A4A" />
+    <script>
+      // ADR-0158 §8: put the theme on <html> BEFORE FIRST PAINT. This has to be
+      // an inline, blocking script in <head> — by the time the module bundle
+      // runs, the first frame is already on screen and a dark-mode user has seen
+      // a white flash. It is also why the pick is stored on the DEVICE: a
+      // server-held preference arrives a round trip after this point and could
+      // only change the theme *after* paint.
+      //
+      // Deliberately tiny and duplicated from `lib/theme.ts` rather than
+      // imported — an import is a module, and a module is too late. The contract
+      // between the two is the storage key, the attribute, and light being the
+      // ABSENCE of the attribute (tokens.css keeps light in :root and dark in a
+      // variant block, so writing data-theme="light" would make the selector
+      // lie). Keep them in step.
+      (function () {
+        try {
+          var pick = localStorage.getItem('waypoint:theme') || 'system';
+          var dark =
+            pick === 'dark' ||
+            (pick === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) {
+            document.documentElement.dataset.theme = 'dark';
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute('content', '#0F1726');
+          }
+        } catch (e) {
+          /* no storage (Safari private mode) — light is the correct fallback */
+        }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Waypoint · מרכז שליטה לטיול</title>
