@@ -43,6 +43,10 @@ Which three are pinned is not arbitrary. While you are typing, the questions on 
 
 That is a better card regardless of any keyboard — two competing quiet lines is worse than one.
 
+_Amended 2026-08-02 (session 207, the notes build's phase 6): **the bound is no longer form-only.** The selector becomes `:has(> .map-draft), :has(.note-sec)`, because the sentence beside it — "the selection card is a 73px row and wants none of this" — stopped being true the day a place could carry notes (ADR-0153 §8's amendment): a note section grows without bound, and the selection card is the surface it grows on. Nothing about the arithmetic changes, which is the whole reason it was written as arithmetic rather than measured._
+
+_The **selection** card resolves what scrolls differently from the form card, on the owner's instruction (_"only the notes themselves should be scrollable, everything else is locked"_, and *"the שבץ ליום button should be sticky and always be visible"*). The form has one obvious middle; the row has four blocks below its identity line, and only one of them can grow. So `.place` becomes a grid in that variant with the note LIST as the single `minmax(0, 1fr)` — same shape and same reason as this section's three rows, applied to a row that has five. Two things that variant needs and the form card did not: the section renders as `display: contents` so its header can pin while its list scrolls, and `.map-refs-foot` moved out of `.map-refs` to be the row's own child, since a foot inside a scrolling block cannot be pinned. Measured at 360×640 with three notes: the card lands on its cap exactly (316px), the list is the only scroller, and both the section header and the primary action stay inside the card._
+
 ### 2. The form implies the `map` stop, and the sheet stands down entirely
 
 **From every origin, always — not "when the room is short".** Plain map, `half`, the full list, or the search view: opening the form normalises the sheet. So standing it down stops being a special behaviour of the form and becomes **the same act as tapping `רשימה / מפה`** — no third position to negotiate, no condition to calibrate, no new motion.

@@ -9,6 +9,7 @@ import {
   EVENT_STATUS,
   type Booking,
   type MaybeItem,
+  type Note,
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
@@ -46,11 +47,26 @@ const event = (p: Partial<TripEvent> & Pick<TripEvent, 'id'>): TripEvent => ({
 const maybe = (p: Partial<MaybeItem> & Pick<MaybeItem, 'id'>): MaybeItem =>
   ({ tripId: 't1', title: p.id, consumed: false, ...p }) as MaybeItem;
 
+const note = (id: string, placeId: string, body: string): Note =>
+  ({
+    id,
+    tripId: 't1',
+    placeId,
+    body,
+    source: 'member',
+    createdBy: 'u1',
+    createdAt: '2026-07-19T09:00:00Z',
+    updatedAt: '2026-07-19T09:00:00Z',
+    updatedBy: 'u1',
+  }) as Note;
+
 // Fixtures: a food event + a coordless-lite event today; a sightseeing event on
 // another day; a food maybe (no day). Mutable so a test can blank them.
 let tripEvents: TripEvent[] = [];
 let tripMaybes: MaybeItem[] = [];
 let tripPlaces: Place[] = [];
+let tripNotes: Note[] = [];
+const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripBookings: Booking[] = [];
 let currentMode = 'trip';
 let isOffline = false;
@@ -82,6 +98,11 @@ vi.mock('../state/trip-state', () => ({
     },
     usingCachedSnapshot: false,
     indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
+    // A place is the fifth note host (ADR-0153 §8's amendment): the row carries the mark, the
+    // selected row carries the section, and the make/rename form carries the composer.
+    notes: tripNotes,
+    users: [{ id: 'u1', displayName: 'דנה' }],
+    noteVerbs: { createNote },
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
@@ -104,7 +125,11 @@ const verbs = {
 };
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
-vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
+vi.mock('../lib/outbox', () => ({
+  useIsOffline: () => isOffline,
+  // A place's notes are written inside one change group, behind their host (ADR-0152 §6b).
+  withChangeGroup: (run: () => Promise<unknown>) => run(),
+}));
 
 /** The shared search core, stubbed so this suite can say what the PAID half has done —
  *  which is what decides whether the merged list is allowed to call itself empty. Its own
@@ -250,6 +275,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     tripEvents = [];
     tripMaybes = [];
     tripPlaces = [];
+    tripNotes = [];
     tripBookings = [];
     currentMode = 'trip';
     isOffline = false;
@@ -258,6 +284,99 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     getCurrentPosition.mockClear();
     setActiveDate.mockClear();
     for (const fn of Object.values(verbs)) fn.mockClear();
+    createNote.mockClear();
+  });
+
+  // ── A PLACE CARRIES NOTES (ADR-0153 §8's 2026-08-02 amendment) ───────────────
+  // A place has no row menu and no detail surface of its own, so the ROW is where its notes
+  // are read and written — the mark in the meta line, the section on selection. Both day
+  // scopes, because they are genuinely different renders on this tab.
+  describe('a place carries notes (ADR-0153 §8)', () => {
+    const markOf = (name: string) => row(name)?.querySelector('.note-mark') ?? null;
+    const sectionOf = (name: string) => row(name)?.querySelector('.note-sec') ?? null;
+
+    for (const allDays of [false, true]) {
+      const label = allDays ? 'all-days' : 'day';
+
+      it(`marks only the rows that have notes, in ${label} scope`, () => {
+        seed();
+        tripNotes = [note('n1', 'food', 'הכניסה מאחור')];
+        render(wrap(<MapView />));
+        if (allDays) tapAllDays();
+
+        expect(markOf('food')).toBeTruthy();
+        expect(markOf('see')).toBeNull();
+      });
+
+      it(`reveals the section on the SELECTED row only, in ${label} scope`, () => {
+        seed();
+        tripNotes = [note('n1', 'food', 'הכניסה מאחור')];
+        render(wrap(<MapView />));
+        if (allDays) tapAllDays();
+        expect(document.querySelector('.note-sec')).toBeNull();
+
+        fireEvent.click(row('food')!);
+        expect(sectionOf('food')).toBeTruthy();
+        expect(sectionOf('see')).toBeNull();
+      });
+    }
+
+    // THE LAYOUT RULE, and the whole reason this row needed none of `EventCard`'s three
+    // changes (ADR-0152 §6c): `.map-m` wraps, so the mark can be the item that wraps first —
+    // which it can only be by being LAST. A crowded row must never lose a semantic tag to it.
+    it('renders the mark last in the meta line, after every semantic tag', () => {
+      seed();
+      tripNotes = [note('n1', 'food', 'הכניסה מאחור')];
+      render(wrap(<MapView />));
+
+      const meta = row('food')!.querySelector('.map-m')!;
+      expect(meta.lastElementChild?.classList.contains('note-mark')).toBe(true);
+      expect(meta.querySelectorAll('.map-tag').length).toBeGreaterThan(0);
+    });
+
+    it('counts only THAT place’s notes', () => {
+      seed();
+      tripNotes = [
+        note('n1', 'food', 'א'),
+        note('n2', 'food', 'ב'),
+        note('n3', 'see', 'ג'),
+        note('n4', 'nowhere', 'ד'),
+      ];
+      render(wrap(<MapView />));
+
+      expect(markOf('food')?.textContent).toContain('2');
+      // A count only past 1: a `1` beside a glyph that already means "a note" says nothing.
+      expect(markOf('see')?.textContent).toBe('');
+      fireEvent.click(row('food')!);
+      expect(sectionOf('food')!.querySelectorAll('.note-item')).toHaveLength(2);
+    });
+
+    // An idea with a place renders as a `PlaceRow` too, so it inherits all of this for free —
+    // which is half of how ADR-0153 §8's idea gap was closed without a sixth surface.
+    it('gives an idea’s row the same mark and section', () => {
+      seed();
+      tripNotes = [note('n1', 'idea', 'שווה לנסות')];
+      render(wrap(<MapView />));
+
+      expect(markOf('idea')).toBeTruthy();
+      fireEvent.click(row('idea')!);
+      expect(sectionOf('idea')).toBeTruthy();
+    });
+
+    // Facts, then what we know, then the verbs — `BookingDetail`'s order and the idea sheet's.
+    // Content under a primary action is the one arrangement no surface here uses.
+    it('puts the section between the meta line and the way-in block, with the foot last', () => {
+      seed();
+      tripNotes = [note('n1', 'food', 'הכניסה מאחור')];
+      render(wrap(<MapView />));
+      fireEvent.click(row('food')!);
+
+      const kids = [...row('food')!.children].map((el) => el.className);
+      const at = (cls: string) => kids.findIndex((c) => c.split(' ').includes(cls));
+      expect(at('note-sec')).toBeGreaterThan(at('map-main'));
+      expect(at('note-sec')).toBeLessThan(at('map-refs'));
+      expect(at('map-refs-foot')).toBe(kids.length - 1);
+    });
   });
 
   // ── A PLACE BECOMES AN EVENT OR A BOOKING (ADR-0135) ─────────────────────────

@@ -22,10 +22,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter, useLocation } from 'react-router-dom';
-import type { Place, TripEvent } from '@waypoint/shared';
+import type { Note, Place, TripEvent } from '@waypoint/shared';
 
 const ACTIVE_DATE = '2026-07-22';
 let tripPlaces: Place[] = [];
+const tripNotes: Note[] = [];
+const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripEvents: TripEvent[] = [];
 
 vi.mock('../state/trip-state', () => ({
@@ -51,11 +53,19 @@ vi.mock('../state/trip-state', () => ({
     },
     usingCachedSnapshot: false,
     indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn(), updateBooking: vi.fn() },
+    // A place is the fifth note host (ADR-0153 §8's amendment): the row carries the mark, the
+    // selected row carries the section, and the make/rename form carries the composer.
+    notes: tripNotes,
+    users: [{ id: 'u1', displayName: 'דנה' }],
+    noteVerbs: { createNote },
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: 'trip' }) }));
 vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe: vi.fn() }) }));
-vi.mock('../lib/outbox', () => ({ useIsOffline: () => false }));
+vi.mock('../lib/outbox', () => ({
+  useIsOffline: () => false,
+  withChangeGroup: (run: () => Promise<unknown>) => run(),
+}));
 vi.mock('../lib/useGeolocation', () => ({
   useGeolocation: () => ({
     status: 'denied',

@@ -19,6 +19,7 @@ import {
   EVENT_STATUS,
   type Booking,
   type MaybeItem,
+  type Note,
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
@@ -67,6 +68,8 @@ const maybe = (p: Partial<MaybeItem> & Pick<MaybeItem, 'id'>): MaybeItem =>
 let tripEvents: TripEvent[] = [];
 let tripMaybes: MaybeItem[] = [];
 let tripPlaces: Place[] = [];
+let tripNotes: Note[] = [];
+const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripBookings: Booking[] = [];
 let currentMode = 'trip';
 let isOffline = false;
@@ -104,6 +107,11 @@ vi.mock('../state/trip-state', () => ({
     },
     usingCachedSnapshot: false,
     indexVerbs,
+    // A place is the fifth note host (ADR-0153 §8's amendment): the row carries the mark, the
+    // selected row carries the section, and the make/rename form carries the composer.
+    notes: tripNotes,
+    users: [{ id: 'u1', displayName: 'דנה' }],
+    noteVerbs: { createNote },
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
@@ -131,7 +139,10 @@ const verbs = {
 };
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
-vi.mock('../lib/outbox', () => ({ useIsOffline: () => isOffline }));
+vi.mock('../lib/outbox', () => ({
+  useIsOffline: () => isOffline,
+  withChangeGroup: (run: () => Promise<unknown>) => run(),
+}));
 
 // The device's location, driven per test. `permissionState` is what the Permissions
 // API reports BEFORE anything is asked — which is what decides whether opening the
@@ -468,6 +479,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     tripEvents = [];
     tripMaybes = [];
     tripPlaces = [];
+    tripNotes = [];
     tripBookings = [];
     currentMode = 'trip';
     isOffline = false;
@@ -483,6 +495,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     verbs.skip.mockClear();
     verbs.restore.mockClear();
     for (const fn of Object.values(verbs)) fn.mockClear();
+    // Shared through the trip-state mock, so without this a later test reads the previous
+    // one's calls — the exact shape that made four assertions here "pass" once already.
+    createNote.mockClear();
   });
 
   const seed = () => {
@@ -2204,6 +2219,58 @@ describe('the embedded map’s shell (ADR-0121)', () => {
           );
           expect(addMaybe.mock.calls[0][1].placeId).toBeTruthy();
         }
+      });
+
+      // ── A NOTE WRITTEN ON THE WAY (ADR-0152 §6b, phase 6) ───────────────────────
+      // The composer is the scroll region's second child, and what it writes has to land on
+      // the place this form produced — which is why the host does the writing: only it knows
+      // which of the four sources ran, and therefore when the id exists.
+      it('writes a note typed on the form onto the place it just made', async () => {
+        seed();
+        indexVerbs.createPlace.mockResolvedValue('p-drop');
+        render(wrap(<MapView />));
+        holdCanvas();
+        nameIt('הספסל עם הנוף');
+        fireEvent.change(draftForm()!.querySelector('.note-compose-in')!, {
+          target: { value: 'הכי שקט בבוקר' },
+        });
+        confirm();
+
+        await vi.waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+        expect(createNote).toHaveBeenCalledWith({ body: 'הכי שקט בבוקר', placeId: 'p-drop' });
+        // …and the place came first. Offline the outbox is FIFO, so a note that overtook its
+        // host would flush first and the server would refuse a host it cannot see.
+        expect(indexVerbs.createPlace.mock.invocationCallOrder[0]).toBeLessThan(
+          createNote.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('writes nothing when the box was left empty — the common case costs no press', async () => {
+        seed();
+        indexVerbs.createPlace.mockResolvedValue('p-drop');
+        render(wrap(<MapView />));
+        holdCanvas();
+        nameIt('הספסל עם הנוף');
+        confirm();
+
+        await vi.waitFor(() => expect(addMaybe).toHaveBeenCalled());
+        expect(createNote).not.toHaveBeenCalled();
+      });
+
+      // Renaming is the one source whose place already exists, so it is the one that could
+      // have written the note to the wrong id (or to none).
+      it('hangs a note from the rename form on the place being renamed', async () => {
+        seedNamed();
+        render(wrap(<MapView />));
+        fireEvent.click(row('רמן נאגי')!);
+        fireEvent.click(pencil());
+        fireEvent.change(draftForm()!.querySelector('.note-compose-in')!, {
+          target: { value: 'סוגרים ב-17:00' },
+        });
+        confirm(t.map.make.save);
+
+        await vi.waitFor(() => expect(createNote).toHaveBeenCalledTimes(1));
+        expect(createNote).toHaveBeenCalledWith({ body: 'סוגרים ב-17:00', placeId: 'museum' });
       });
 
       // ── ONE COMPOSITION, THREE DESTINATIONS (ADR-0131 §11) ──────────────────────

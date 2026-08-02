@@ -42,25 +42,31 @@ export function NoteSection({
           </button>
         )}
       </div>
-      {notes.length === 0 ? (
-        <p className="note-item-m">{t.notes.section.empty}</p>
-      ) : (
-        notes.map((note) => (
-          <div className="note-item" key={note.id}>
-            <button type="button" className="note-item-b" onClick={() => onOpen(note)}>
-              {note.title ? note.title : (note.body ?? note.url)}
-            </button>
-            <span className="note-item-m">
-              {[
-                users.find((u) => u.id === note.createdBy)?.displayName,
-                noteWhen(note.createdAt, now.getTime()),
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
-          </div>
-        ))
-      )}
+      {/* The list is its own element so a host that must BOUND this section can make the
+          list — and only the list — the scrolling part, with the header above it pinned
+          (the Map's place card, ADR-0148 §1's grammar). Everywhere else it is a plain
+          block and costs nothing. */}
+      <div className="note-sec-list">
+        {notes.length === 0 ? (
+          <p className="note-item-m">{t.notes.section.empty}</p>
+        ) : (
+          notes.map((note) => (
+            <div className="note-item" key={note.id}>
+              <button type="button" className="note-item-b" onClick={() => onOpen(note)}>
+                {note.title ? note.title : (note.body ?? note.url)}
+              </button>
+              <span className="note-item-m">
+                {[
+                  users.find((u) => u.id === note.createdBy)?.displayName,
+                  noteWhen(note.createdAt, now.getTime()),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

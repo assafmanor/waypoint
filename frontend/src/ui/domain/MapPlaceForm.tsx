@@ -28,6 +28,7 @@ import { Icon } from '../Icon';
 import { IconPicker } from '../IconPicker';
 import { ChoiceGrid } from '../primitives/ChoiceGrid';
 import { Field } from '../primitives/Field';
+import { NoteComposer, useNoteComposer } from '../NoteComposer';
 import { useFormErrors } from '../primitives/useFormErrors';
 
 /** What the four sources disagree about, and nothing else. Built by the host, because only it
@@ -85,6 +86,10 @@ export interface MapPlaceFormValue {
   iconTouched: boolean;
   /** The category, or `undefined` if none was ever chosen or inherited. */
   category?: EventCategory;
+  /** **The notes typed on the way** (ADR-0152 §6b) — bodies, in order, none of them written
+   *  yet. The host writes them behind the place, because only the host knows which of the four
+   *  sources produced it and therefore when its id exists. Empty is the common case. */
+  notes: string[];
 }
 
 export function MapPlaceForm({
@@ -125,6 +130,11 @@ export function MapPlaceForm({
   // `*Touched` pairs said the same thing five times. The starting glyph is the place's own
   // resolution (`placeGlyph`), so the chip opens showing what the pin already shows.
   const icon = useDerivedField(placeGlyph({ icon: spec.icon }, spec.category), Boolean(spec.icon));
+  // **A note is written on the way** (ADR-0152 §6b) — the same composer every other host form
+  // carries, so a place is the fifth host and not a fifth way of writing a note. Local state,
+  // read once at confirm: this file stays presentational and the host does the writing.
+  const composer = useNoteComposer();
+  const noteId = useId();
 
   const report = (next: Partial<MapPlaceFormValue>) =>
     onValueChange?.({
@@ -132,6 +142,7 @@ export function MapPlaceForm({
       icon: icon.value,
       iconTouched: icon.touched,
       category,
+      notes: composer.pending(),
       ...next,
     });
 
@@ -142,7 +153,15 @@ export function MapPlaceForm({
     // disabled while the field was empty, so the Enter key — which this field binds —
     // ran `confirm` into a silent `return` and the card sat there answering nothing.
     if (!trimmed) return void errors.report([{ field: 'name', message: t.map.make.nameRequired }]);
-    onConfirm({ name: trimmed, icon: icon.value, iconTouched: icon.touched, category });
+    onConfirm({
+      name: trimmed,
+      icon: icon.value,
+      iconTouched: icon.touched,
+      category,
+      // Whatever is in the box counts, committed or not — which is what makes `＋` optional and
+      // one note type-and-save.
+      notes: composer.pending(),
+    });
   };
 
   return (
@@ -232,6 +251,18 @@ export function MapPlaceForm({
             ariaLabel={t.map.make.categoryLabel}
           />
         </div>
+        {/* The scroll region's SECOND child, which is the region ADR-0148 §1 built for exactly
+            this: the head (what am I naming), the actions (how do I get out) and now the note
+            box are three different jobs, and only the first two must survive a keyboard.
+
+            **And it carries NO hint**, where every other host's composer does. Two reasons, and
+            the second is the real one: a place has no category of its own, so the sentence the
+            hint exists to say (`יורש את הקטגוריה והסמל`) is not true here — and this is the one
+            card in the app whose height is arithmetic, where ADR-0148 §1 spent a session
+            refusing "two competing quiet lines". The `＋` beside the box says the rest. */}
+        <Field label={t.notes.composer.label} htmlFor={noteId}>
+          <NoteComposer state={composer} id={noteId} />
+        </Field>
       </div>
       <div className="map-draft-acts">
         {spec.vetUrl && (
