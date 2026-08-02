@@ -24,6 +24,14 @@ export const t = {
     save: 'שמירה',
     cancel: 'ביטול',
     delete: 'מחיקה',
+    // A stepped surface's footer and its read-out (ADR-0155 §2). Here rather than at
+    // each host so `הבא`/`הקודם` cannot drift between two stepped surfaces — the same
+    // reason `save`/`cancel` above are shared.
+    steps: {
+      next: 'הבא',
+      back: 'הקודם',
+      progress: (n: number, total: number) => `שלב ${n} מתוך ${total}`,
+    },
     // Unsaved-changes discard confirm (U-05), shown when closing a dirty form.
     discardTitle: 'לצאת בלי לשמור?',
     discardBody: 'יש שינויים שעדיין לא נשמרו. אם תצא עכשיו הם יאבדו.',

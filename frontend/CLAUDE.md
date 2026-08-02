@@ -9,7 +9,7 @@ one.
 
 - **`ui/primitives/`** — generic UI mechanics with no trip-domain shape:
   `Modal` (+ its `Sheet`/`ConfirmDialog`/`RowManageSheet` wrappers), `Field`,
-  `FormActions`, `FilePicker`, `WhenField`/`TimeField`, `ChoiceGrid`,
+  `FormActions`, `FormSteps`, `FilePicker`, `WhenField`/`TimeField`, `ChoiceGrid`,
   `SnapSheet`. **Every**
   overlay (sheet/dialog/picker/popover) renders through `Modal`, which
   registers into the back stack via `useOverlay` — never hand-roll a floating
@@ -53,6 +53,15 @@ one.
   sheet, a new tappable and a new shell screen inherit their motion by existing. What a
   new **large** surface must do is one line: `--press-scale: var(--press-scale-lg)`,
   because the default step is the control one.
+- **A form or chooser with more than one step** — `ui/primitives/FormSteps`
+  (ADR-0155). `useFormSteps` owns the step state, the back layer, the `הבא`/`שמירה`
+  footer through `FormActions`, and the transition; `FormStepPanel` paints it. Two
+  rules live inside it and are not the host's to re-decide: it **never animates
+  height** (ADR-0152 §6's clip, and a step can hold a composer that grows), and it
+  **commits once, on the last step** (the outbox is FIFO, so a per-step save queues a
+  note before its host and fails only offline). A chooser passes no `errors` and no
+  `validate`; a form passes its own `useFormErrors` and gets ADR-0150 scoped per step,
+  with the save re-validating everything and jumping to the first step that refuses.
 - **A form that can refuse a save** — `ui/primitives/useFormErrors` + the `data-invalid`
   attribute (ADR-0150), never a `useState<string | null>` and a caption of your own.
   The hook owns what happens _after_ the refusal (mark, one nudge, bring the first
@@ -144,10 +153,14 @@ diverged:
   existing; gate the layer on whatever renders the close control (`active`), not
   on a narrower condition. Gating it on the query while one `✕` served the query
   _and_ the filter is precisely how a back walked past a visible control.
-- **A step INSIDE an overlay** — Plan mode's resolve sheet. Register in the
-  component that renders the `Modal`, i.e. its parent: child effects run first, so
-  the Modal's close layer lands underneath and back peels the step first. Return
-  `{ remainsActive: true }` — a step back leaves the overlay open.
+- **A step INSIDE an overlay** — `ui/primitives/FormSteps` owns this now (ADR-0155),
+  so a third stepped surface calls `useFormSteps` and writes no layer at all. The rule
+  it encodes, and the reason the primitive is a **hook** rather than a component:
+  register in whatever renders the `Modal`, i.e. its parent — child effects run first,
+  so the Modal's close layer lands underneath and back peels the step first, and a
+  component rendered _inside_ the sheet would register in the wrong order. Returns
+  `{ remainsActive: true }` — a step back leaves the overlay open. Two surfaces
+  hand-rolled this before it was one thing; do not write the third.
 - **A hand-rolled panel with a backdrop or an outside-tap handler** —
   `IconPicker`, `TimeField`/`TimePicker`. These don't go through `Modal`, so
   nothing registered them and back fell through to the host form's layer,
