@@ -1,6 +1,6 @@
 # 0155 — A stepped form is **one primitive**, it never animates height, and it commits **once**
 
-**Status:** Accepted (owner sign-off 2026-08-02). The extraction is approved; **applying it to `BookingSheet` is not** — see §5.
+**Status:** Accepted (owner sign-off 2026-08-02). **Built 2026-08-02** — see the build log at the foot. The extraction shipped with both call sites migrated; **applying it to `BookingSheet` is still not approved** — see §5.
 **Date:** 2026-08-02
 **Design reference:** [`mockups/form-steps-v1.html`](../../mockups/form-steps-v1.html) — carries the scan of every form surface, the 80vh fold drawn at 390px, and the head-to-head. [`mockups/booking-round-trip-v1.html`](../../mockups/booking-round-trip-v1.html) §6 draws the same comparison on the one form that is a candidate.
 
@@ -65,3 +65,44 @@ It is still not enough to decide from a desktop browser. **The order is: `Collap
 - **Animate the panel height so the sheet does not jump.** Rejected in §4 — it is 0152 §6's clip, one surface over.
 - **A tappable step bar.** Rejected in §2: it presumes independent per-step validity, which branching flows do not have.
 - **Solve the length with a scrollable body and a sticky footer instead.** Already the case — `.booking-sheet` scrolls and its footer pins. The fold measurement is taken **with** that in place, so it is not an available fix.
+
+## Build log — 2026-08-02
+
+- **The primitive is a HOOK, and that was forced rather than chosen.** §2 says "one
+  primitive owns step state, the back layer, the footer labels and the transition", which
+  reads like a component. It cannot be one: `useBackLayer` registers in an effect and
+  child effects run first, so a `<FormSteps>` rendered _inside_ the sheet would be the
+  `Modal`'s child and would register its layer **underneath** the Modal's own — back would
+  dismiss the whole surface instead of peeling the step, which is the exact defect 0103's
+  session-175 amendment was written for. So `useFormSteps` is called by whatever renders
+  the `Modal`, and `FormStepPanel`/`FormStepActions` are only the paint. The rule is now
+  in the primitive's header and in `frontend/CLAUDE.md`, where it used to be advice.
+
+- **§3 needed one thing the ADR did not name: the report is DEFERRED past the target
+  step's render.** `useFormErrors.report` marks a field by looking its node up in the live
+  DOM, and the node for a step you are not on yet does not exist — so reporting in the same
+  tick as the navigation silently skips the nudge and the focus. The caption still appears,
+  which is what makes it nasty: the refusal looks delivered and is not. The list is parked
+  and flushed from an effect instead. **The first version of the test did not catch this**
+  — it asserted `data-invalid` and the message, both of which survive the bug — and only
+  started failing on the mutation once it also asserted that the field is **focused**.
+
+- **Neither migrated surface is a form**, so the footer and §3 have no call site yet and
+  are held up by the primitive's own tests alone. That was put to the owner before
+  building and the answer was to build the full spec now. `errors` and `validate` are
+  therefore **optional**: a chooser advances by choosing and has nothing to report through.
+
+- **One deliberate behaviour change, and unifying the gate is what surfaced it.**
+  `ResolveSheet`'s visible `חזרה` and its back layer were both gated on
+  `softMovers.length > 1`. With a single soft mover you could still reach step two — the
+  chooser always rendered — and then neither the button nor a system back could return to
+  it; the only way out was dismissing the sheet. The primitive has one gate, `index > 0`,
+  so both now agree and the step is leavable. Pinned in `PlanDay.resolve.test.tsx`.
+
+- **`ResolveSheet`'s step state came down a level.** `resolveMover` lived in `PlanDay`
+  only because the step machinery did; nothing outside the sheet ever read it. The sheet
+  also gained its first unit test — it had none, which is worth stating given how much of
+  Plan mode's overlap handling runs through it.
+
+- **`useBackLayer` is no longer imported by `screens/PlanDay.tsx` at all.** That import
+  going dead is the cleanest measure of what the extraction removed.

@@ -1,0 +1,67 @@
+/* FormSteps (ADR-0155). Logical properties only (RTL).
+
+   THE ONE RULE THIS FILE EXISTS TO HOLD: no height is animated, ever. The
+   obvious transition tweens `max-height` so the sheet does not jump between
+   steps — and that is ADR-0152 §6's trap one surface over: `.wp-event-actions`
+   animates to a FIXED cap and clips notes at about three, and raising the cap
+   changes the motion of every card. A step panel can hold a composer that grows
+   without bound, so the pane travels and fades and the sheet is allowed to
+   resize. The jump is the accepted cost; the alternative clips a field. */
+
+/* The arrival, borrowed from the shell's route transition (ADR-0140) rather than
+   invented: same offset, same duration, same easing, same `--dir` mirroring — so
+   a step forward inside a sheet reads like a screen forward outside one. No
+   `animation-fill-mode`, so the final keyframe leaves no transform behind to
+   establish a containing block for `position: fixed` descendants. */
+.form-step[data-step-nav='forward'] {
+  animation: form-step-in-fwd var(--t-base) var(--ease-standard);
+}
+.form-step[data-step-nav='back'] {
+  animation: form-step-in-back var(--t-base) var(--ease-standard);
+}
+@keyframes form-step-in-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * var(--route-offset)));
+  }
+}
+@keyframes form-step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir) * -1 * var(--route-offset)));
+  }
+}
+
+/* The read-out. Quiet by construction — it reports where you are, it is not a
+   control, and it spends no hue (rule 4: a step is not time, place or plan). */
+.form-steps-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-3);
+}
+.form-steps-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.form-steps-dot {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 999px;
+  background: var(--soft-line);
+}
+.form-steps-dot.done {
+  background: var(--muted);
+}
+/* The one you are on reads as a short bar rather than a brighter dot: a size
+   difference survives a monochrome render and a colour difference does not. */
+.form-steps-dot.on {
+  inline-size: 16px;
+  background: var(--ink);
+}
+.form-steps-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}

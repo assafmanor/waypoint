@@ -40,7 +40,6 @@ import {
   useShowMaybesOnMap,
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
-import { useBackLayer } from '../state/nav-state';
 import { useClock } from '../lib/useClock';
 import {
   eventDurationLabel,
@@ -124,6 +123,7 @@ import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
+import { FormStepPanel, useFormSteps } from '../ui/primitives/FormSteps';
 import { TitleLabel } from '../ui/TitleLabel';
 import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
@@ -259,10 +259,10 @@ export function PlanDay() {
   // A gap the user tapped "＋ שבץ" on — opens a chooser to drop an existing shelf
   // idea into the gap's slot, or start a fresh event there (#21).
   const [gapChoice, setGapChoice] = useState<GapDefaults | null>(null);
-  // An overlap cluster being resolved via "הזז" (ADR-0041), and the soft event
-  // chosen to move (null = still choosing which one).
+  // An overlap cluster being resolved via "הזז" (ADR-0041). WHICH soft event moves is
+  // the sheet's own first step now (ADR-0155) — it lived here only because the step
+  // state was hand-rolled, and nothing outside the sheet ever read it.
   const [resolveCluster, setResolveCluster] = useState<TimeGroup | null>(null);
-  const [resolveMover, setResolveMover] = useState<TripEvent | null>(null);
 
   // A live trip hides skipped soft events (they park on the shelf); a finished
   // trip's archive shows them in place — struck-through, restorable — so the
@@ -773,16 +773,10 @@ export function PlanDay() {
     onOpenDetail: setDetailTarget,
     onGapFill: (fill) => setGapChoice(fill),
     overGap,
-    onResolve: (cluster) => {
-      setResolveCluster(cluster);
-      setResolveMover(null);
-    },
+    onResolve: (cluster) => setResolveCluster(cluster),
   };
 
-  const closeResolve = () => {
-    setResolveCluster(null);
-    setResolveMover(null);
-  };
+  const closeResolve = () => setResolveCluster(null);
 
   return (
     <div className="builder">
@@ -1024,10 +1018,7 @@ export function PlanDay() {
       {resolveCluster && resolveCluster.kind === 'cluster' && (
         <ResolveSheet
           cluster={resolveCluster}
-          mover={resolveMover}
           tz={tz}
-          onChooseMover={setResolveMover}
-          onBack={() => setResolveMover(null)}
           onMove={(mover, minutes) => {
             verbs.moveBy(mover, minutes);
             closeResolve();
@@ -1088,25 +1079,32 @@ export function PlanDay() {
   );
 }
 
+/** Pick which soft event moves, then pick where. */
+const RESOLVE_STEPS = [{ id: 'which' }, { id: 'where' }] as const;
+/** The row's verb list, then the `הזז` position step (ADR-0138 §8). */
+const MENU_STEPS = [{ id: 'menu' }, { id: 'move' }] as const;
+
 // The "הזז" overlap-resolve (ADR-0041): pick which SOFT event to move (hard
 // members show as disabled anchors), then a one-tap clean slot before/after the
 // rest of the cluster, or the exact time-setter (EventForm). Moving is a manual
 // ripple — duration preserved, downstream overlap flows through the ripple bar.
-function ResolveSheet({
+//
+// **Two steps, on the shared primitive** (ADR-0155). This sheet and the builder row's
+// `הזז` each hand-rolled the same step state and the same back-layer block; both are
+// `useFormSteps` now. Which event moves is the sheet's own state rather than the
+// screen's — it lived one level up only because the step machinery did, and nothing
+// outside ever read it.
+//
+// Exported for its own test (`PlanDay.resolve.test.tsx`), like `BuilderRow` below.
+export function ResolveSheet({
   cluster,
-  mover,
   tz,
-  onChooseMover,
-  onBack,
   onMove,
   onOther,
   onClose,
 }: {
   cluster: Extract<TimeGroup, { kind: 'cluster' }>;
-  mover: TripEvent | null;
   tz: string;
-  onChooseMover: (e: TripEvent) => void;
-  onBack: () => void;
   onMove: (mover: TripEvent, minutes: number) => void;
   onOther: (mover: TripEvent) => void;
   onClose: () => void;
@@ -1115,55 +1113,56 @@ function ResolveSheet({
   const softMovers = members.filter((e) => e.kind === EVENT_KIND.SOFT);
   const hardAnchors = members.filter((e) => e.kind === EVENT_KIND.HARD);
   const fmt = (ms: number) => formatTime(new Date(ms), tz);
+  const [mover, setMover] = useState<TripEvent | null>(null);
 
-  // **THE IN-SHEET STEP BACK IS A BACK LAYER** (owner, session 175). This sheet has two
-  // steps — pick which soft event moves, then pick where — and step 2 renders its own
-  // `אירוע אחר` control. `Modal` registers `onClose`, so without this a system back
-  // dismissed the whole sheet while the visible button one line above went back a step.
-  //
-  // Registered here rather than inside `Sheet` because this component is the Modal's
-  // PARENT: child effects run first, so the Modal's own layer registers below this one and
-  // back peels the step before the sheet. `remainsActive: true` — stepping back leaves the
-  // sheet open, so the next press is the one the Modal's layer answers. Gated on exactly
-  // what renders the button, so the two can't drift.
-  useBackLayer(
-    () => {
-      onBack();
-      return { remainsActive: true };
-    },
-    mover != null && softMovers.length > 1,
-  );
+  // Neither step can refuse — you advance by CHOOSING, and a chooser has nothing to
+  // validate — so no `validate` and no footer. `onCommit` never runs here: the sheet
+  // finishes on a slot tap, not on a last-step primary.
+  const steps = useFormSteps({ steps: RESOLVE_STEPS, onCommit: onClose });
+  const chooseMover = (e: TripEvent) => {
+    setMover(e);
+    steps.next();
+  };
+  // One handler for the visible `חזרה` and for the step's back layer, which is the rule
+  // that made this a primitive: the primitive owns the layer, so the button only has to
+  // call the same `back`.
+  const back = () => {
+    steps.back();
+    setMover(null);
+  };
 
-  if (!mover) {
+  if (steps.isFirst || !mover) {
     return (
       <Sheet title={t.planDay.resolveTitle} onClose={onClose}>
-        <div className="resolve-sub">{t.planDay.resolveChoose}</div>
-        {softMovers.map((e) => (
-          <button key={e.id} className="resolve-mover" onClick={() => onChooseMover(e)}>
-            <span className="ic" aria-hidden="true">
-              {e.icon}
-            </span>
-            <span className="nm">{e.title}</span>
-            <span className="tm" dir="auto">
-              {formatTime(e.startsAt!, tz)}
-              {e.endsAt && `–${formatTime(e.endsAt, tz)}`}
-            </span>
-            <span className="chev" aria-hidden="true">
-              <Icon name="caret" dir="down" />
-            </span>
-          </button>
-        ))}
-        {hardAnchors.map((e) => (
-          <div key={e.id} className="resolve-mover anchor">
-            <span className="ic" aria-hidden="true">
-              {e.icon}
-            </span>
-            <span className="nm">{e.title}</span>
-            <span className="anchor-note">
-              <Icon name="lock" /> {t.planDay.resolveAnchor}
-            </span>
-          </div>
-        ))}
+        <FormStepPanel steps={steps}>
+          <div className="resolve-sub">{t.planDay.resolveChoose}</div>
+          {softMovers.map((e) => (
+            <button key={e.id} className="resolve-mover" onClick={() => chooseMover(e)}>
+              <span className="ic" aria-hidden="true">
+                {e.icon}
+              </span>
+              <span className="nm">{e.title}</span>
+              <span className="tm" dir="auto">
+                {formatTime(e.startsAt!, tz)}
+                {e.endsAt && `–${formatTime(e.endsAt, tz)}`}
+              </span>
+              <span className="chev" aria-hidden="true">
+                <Icon name="caret" dir="down" />
+              </span>
+            </button>
+          ))}
+          {hardAnchors.map((e) => (
+            <div key={e.id} className="resolve-mover anchor">
+              <span className="ic" aria-hidden="true">
+                {e.icon}
+              </span>
+              <span className="nm">{e.title}</span>
+              <span className="anchor-note">
+                <Icon name="lock" /> {t.planDay.resolveAnchor}
+              </span>
+            </div>
+          ))}
+        </FormStepPanel>
       </Sheet>
     );
   }
@@ -1178,37 +1177,43 @@ function ResolveSheet({
 
   return (
     <Sheet title={t.planDay.resolveFor(mover.title)} onClose={onClose}>
-      {softMovers.length > 1 && (
-        <button className="resolve-backbtn" onClick={onBack}>
+      <FormStepPanel steps={steps}>
+        {/* **Offered on every step 2, not only when there were several to choose from.**
+            It used to be gated on `softMovers.length > 1`, together with the back layer —
+            so with a single soft mover you could reach this step and neither the button
+            nor a system back could return to it. Unifying the two on the primitive's one
+            gate is what surfaced it: a step you can be ON is a step you can leave. */}
+        <button className="resolve-backbtn" onClick={back}>
           <NavArrow variant="back" /> {t.planDay.resolveBack}
         </button>
-      )}
-      <button
-        className="resolve-opt"
-        onClick={() => onMove(mover, Math.round((afterStart - mStart) / 60000))}
-      >
-        <span className="ttl">
-          {t.planDay.resolveAfter} · {others.length === 1 ? others[0].title : t.planDay.overlapping}
-        </span>
-        <span className="tm" dir="auto">
-          {fmt(afterStart)}
-        </span>
-      </button>
-      <button
-        className="resolve-opt"
-        onClick={() => onMove(mover, Math.round((beforeStart - mStart) / 60000))}
-      >
-        <span className="ttl">
-          {t.planDay.resolveBefore} ·{' '}
-          {others.length === 1 ? others[0].title : t.planDay.overlapping}
-        </span>
-        <span className="tm" dir="auto">
-          {fmt(beforeStart)}
-        </span>
-      </button>
-      <button className="resolve-opt other" onClick={() => onOther(mover)}>
-        {t.planDay.resolveOther}
-      </button>
+        <button
+          className="resolve-opt"
+          onClick={() => onMove(mover, Math.round((afterStart - mStart) / 60000))}
+        >
+          <span className="ttl">
+            {t.planDay.resolveAfter} ·{' '}
+            {others.length === 1 ? others[0].title : t.planDay.overlapping}
+          </span>
+          <span className="tm" dir="auto">
+            {fmt(afterStart)}
+          </span>
+        </button>
+        <button
+          className="resolve-opt"
+          onClick={() => onMove(mover, Math.round((beforeStart - mStart) / 60000))}
+        >
+          <span className="ttl">
+            {t.planDay.resolveBefore} ·{' '}
+            {others.length === 1 ? others[0].title : t.planDay.overlapping}
+          </span>
+          <span className="tm" dir="auto">
+            {fmt(beforeStart)}
+          </span>
+        </button>
+        <button className="resolve-opt other" onClick={() => onOther(mover)}>
+          {t.planDay.resolveOther}
+        </button>
+      </FormStepPanel>
     </Sheet>
   );
 }
@@ -1700,23 +1705,21 @@ export function BuilderRow({
   // (mockups/plan-mode-v1.html). Edit is also reachable by tapping the row body.
   // `menu` = the verb list; `move` = the `הזז` position step (ADR-0138 §8), which
   // is a step INSIDE the sheet rather than a second sheet.
-  const [menuStep, setMenuStep] = useState<'closed' | 'menu' | 'move'>('closed');
-  const menuOpen = menuStep !== 'closed';
+  const [menuOpen, setMenuOpen] = useState(false);
+  // The verb list, then the `הזז` position step (ADR-0138 §8) — a step INSIDE the sheet,
+  // not a second sheet. On the shared primitive since ADR-0155, which owns the step's
+  // back layer; this component only has to be the Modal's PARENT, which it is.
+  const steps = useFormSteps({ steps: MENU_STEPS, onCommit: () => setMenuOpen(false) });
+  const closeMenu = () => {
+    setMenuOpen(false);
+    steps.reset();
+  };
   const runAction = (fn: () => void) => {
-    setMenuStep('closed');
+    closeMenu();
     fn();
   };
   const movePeers = reorder?.peers ?? [];
   const canReorder = movePeers.length > 1;
-
-  // The step back is its own back layer, registered HERE because this component is
-  // the Modal's parent — child effects run first, so the Modal's close layer lands
-  // underneath and back peels the step first. `remainsActive` keeps the sheet open,
-  // exactly like the resolve sheet's two steps (frontend/CLAUDE.md).
-  useBackLayer(() => {
-    setMenuStep('menu');
-    return { remainsActive: true };
-  }, menuStep === 'move');
   // The archive settle control replaces the (hidden) ⋯ slot; an unresolved row
   // opens this chooser to record "we were there / skip" (ADR-0044).
   const [settleOpen, setSettleOpen] = useState(false);
@@ -1817,7 +1820,7 @@ export function BuilderRow({
       {!readOnly && (
         <button
           className="bld-icon"
-          onClick={() => setMenuStep('menu')}
+          onClick={() => setMenuOpen(true)}
           aria-label={t.planDay.rowActions}
         >
           <Icon name="more" />
@@ -1891,69 +1894,71 @@ export function BuilderRow({
               </span>
             </>
           }
-          onClose={() => setMenuStep('closed')}
+          onClose={closeMenu}
         >
-          {menuStep === 'menu' ? (
-            <RowActionList
-              actions={[
-                {
-                  label: t.actions.edit,
-                  icon: CONTROL_ICON.edit,
-                  onSelect: () => runAction(onEdit),
-                },
-                ...(canReorder
-                  ? [
-                      {
-                        label: t.planDay.move,
-                        icon: CONTROL_ICON.swap,
-                        onSelect: () => setMenuStep('move'),
-                      } as RowAction,
-                    ]
-                  : []),
-                ...(onPark
-                  ? [
-                      {
-                        label: t.actions.toShelf,
-                        icon: CONTROL_ICON.toShelf,
-                        onSelect: () => runAction(onPark),
-                      } as RowAction,
-                    ]
-                  : []),
-                {
-                  label: t.actions.delete,
-                  icon: CONTROL_ICON.trash,
-                  danger: true,
-                  onSelect: () => runAction(onDelete),
-                },
-              ]}
-            />
-          ) : (
-            // Step 2: WHERE it goes. The whole soft list, with the row you came
-            // from marked — so you pick a destination you can see, instead of
-            // tapping `הקדם` twice and checking afterwards.
-            <div className="bld-move">
-              <div className="bld-move-sub">{t.planDay.moveChoose}</div>
-              {movePeers.map((peer) => {
-                const isSelf = peer.id === event.id;
-                return (
-                  <button
-                    key={peer.id}
-                    className={'bld-move-slot' + (isSelf ? ' is-self' : '')}
-                    disabled={isSelf}
-                    onClick={() => runAction(() => reorder?.onMoveTo(peer.id))}
-                  >
-                    <span className="tm" dir="auto">
-                      {peer.startsAt ? formatTime(peer.startsAt, tz) : ''}
-                    </span>
-                    <span className="nm">
-                      <TitleLabel title={peer.title} />
-                    </span>
-                    {isSelf && <span className="here">{t.planDay.moveHere}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <FormStepPanel steps={steps}>
+            {steps.isFirst ? (
+              <RowActionList
+                actions={[
+                  {
+                    label: t.actions.edit,
+                    icon: CONTROL_ICON.edit,
+                    onSelect: () => runAction(onEdit),
+                  },
+                  ...(canReorder
+                    ? [
+                        {
+                          label: t.planDay.move,
+                          icon: CONTROL_ICON.swap,
+                          onSelect: () => steps.next(),
+                        } as RowAction,
+                      ]
+                    : []),
+                  ...(onPark
+                    ? [
+                        {
+                          label: t.actions.toShelf,
+                          icon: CONTROL_ICON.toShelf,
+                          onSelect: () => runAction(onPark),
+                        } as RowAction,
+                      ]
+                    : []),
+                  {
+                    label: t.actions.delete,
+                    icon: CONTROL_ICON.trash,
+                    danger: true,
+                    onSelect: () => runAction(onDelete),
+                  },
+                ]}
+              />
+            ) : (
+              // Step 2: WHERE it goes. The whole soft list, with the row you came
+              // from marked — so you pick a destination you can see, instead of
+              // tapping `הקדם` twice and checking afterwards.
+              <div className="bld-move">
+                <div className="bld-move-sub">{t.planDay.moveChoose}</div>
+                {movePeers.map((peer) => {
+                  const isSelf = peer.id === event.id;
+                  return (
+                    <button
+                      key={peer.id}
+                      className={'bld-move-slot' + (isSelf ? ' is-self' : '')}
+                      disabled={isSelf}
+                      onClick={() => runAction(() => reorder?.onMoveTo(peer.id))}
+                    >
+                      <span className="tm" dir="auto">
+                        {peer.startsAt ? formatTime(peer.startsAt, tz) : ''}
+                      </span>
+                      <span className="nm">
+                        <TitleLabel title={peer.title} />
+                      </span>
+                      {isSelf && <span className="here">{t.planDay.moveHere}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </FormStepPanel>
         </Sheet>
       )}
       {settle && settleOpen && (
