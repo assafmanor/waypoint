@@ -15,6 +15,7 @@ import { RowManageSheet, type RowAction } from './domain';
 import { BookingTitle } from './BookingTitle';
 import { DeletePrompt } from './BookingSheet';
 import { deleteFlags } from '../lib/booking-edit';
+import { useRoundTripPartner } from '../lib/booking-pair';
 import { CONTROL_ICON, DOT_SEPARATOR } from '../constants';
 import { t } from '../i18n/he';
 
@@ -32,12 +33,14 @@ export function BookingManageSheet({
   const { events, places, indexVerbs } = useTrip();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
   const [deleting, setDeleting] = useState(false);
+  const pair = useRoundTripPartner(booking);
 
   if (deleting) {
     return (
       <DeletePrompt
         hasLinkedEvent={!!linkedEvent}
         linkedIsHard={linkedEvent?.kind === 'hard'}
+        partnerLeg={pair?.leg}
         onCancel={() => setDeleting(false)}
         onChoose={(choice) => {
           void indexVerbs.deleteBooking(booking.id, deleteFlags(choice)).catch(() => {});

@@ -313,7 +313,12 @@ export function IndexBookingsView({
       )}
 
       {detail && (
-        <BookingDetail booking={detail} onClose={() => setDetail(null)} onEdit={editFrom} />
+        <BookingDetail
+          booking={detail}
+          onClose={() => setDetail(null)}
+          onOpen={setDetail}
+          onEdit={editFrom}
+        />
       )}
       {manage && (
         <BookingManageSheet booking={manage} onClose={() => setManage(null)} onEdit={editFrom} />

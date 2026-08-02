@@ -48,17 +48,22 @@ const noteVerbs = {
   updateNote: vi.fn(async (_id: string, _input: unknown) => {}),
   deleteNote: vi.fn(async (_id: string) => {}),
 };
+// The whole trip's bookings — what the derived round-trip pair reads (ADR-0154 §5).
+let tripBookings: Booking[] = [];
+
+const trip = {
+  id: 't1',
+  name: 'טיול',
+  timezone: 'Asia/Tokyo',
+  startDate: '2026-07-19',
+  endDate: '2026-07-30',
+};
+
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
-    trip: {
-      id: 't1',
-      name: 'טיול',
-      timezone: 'Asia/Tokyo',
-      startDate: '2026-07-19',
-      endDate: '2026-07-30',
-    },
+    trip,
     events: [],
-    bookings: [],
+    bookings: tripBookings,
     maybeItems: [],
     places,
     indexVerbs,
@@ -69,6 +74,9 @@ vi.mock('../state/trip-state', () => ({
 }));
 
 import { BookingSheet } from './BookingSheet';
+import { bookingSheetDraft, type BookingSheetDraft } from '../lib/booking-draft';
+import { routeTitle } from '../lib/route-title';
+import { zonedIso } from '../lib/time';
 import { t } from '../i18n/he';
 
 const flight: Booking = {
@@ -368,5 +376,225 @@ describe('BookingSheet — notes written on the way', () => {
     save();
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
     expect(noteVerbs.createNote).not.toHaveBeenCalled();
+  });
+});
+
+// **The round trip** (ADR-0154 §4/§6): one control on the route field, a second span, one
+// save that writes two bookings. The sheet is opened through `draft` rather than by picking
+// places — a `PlacePicker` tap is an ERRAND to the Map (ADR-0134 §1), so the errand-return
+// path is also the only way a unit test can start from a routed form. That is the same
+// entry point a real user comes back through, not a shortcut around one.
+describe('BookingSheet — a round trip is one save and two bookings', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.createBooking.mockReset();
+    noteVerbs.createNote.mockClear();
+  });
+
+  const routed = (over: Partial<BookingSheetDraft> = {}): BookingSheetDraft => ({
+    ...bookingSheetDraft({
+      booking: null,
+      seed: { type: BOOKING_TYPE.FLIGHT },
+      trip,
+      events: [],
+      places,
+    }),
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-nrt',
+    ...over,
+  });
+  const open = (over?: Partial<BookingSheetDraft>) =>
+    render(wrapNav(<BookingSheet booking={null} draft={routed(over)} onClose={() => {}} />));
+  const goRoundTrip = () => fireEvent.click(screen.getByText(t.index.form.roundTrip));
+  const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
+  const setDate = (leg: HTMLElement, value: string) =>
+    fireEvent.change(leg.querySelector('.wf-date-val') as HTMLInputElement, { target: { value } });
+  // Through the panel's exact <input type="time">, which is the picker's own precise
+  // path — the 15-minute list can't express every instant these assertions need.
+  const setTime = (leg: HTMLElement, value: string) => {
+    fireEvent.click(leg.querySelector('button.tp-field') as HTMLElement);
+    fireEvent.change(leg.querySelector('.tp-time-input') as HTMLInputElement, {
+      target: { value },
+    });
+  };
+  const save = () => fireEvent.click(screen.getByText(t.common.save));
+
+  it('offers the direction control on a transport create, and defaults to one way', () => {
+    open();
+    expect(screen.getByText(t.index.form.oneWay)).toBeTruthy();
+    expect(screen.getByText(t.index.form.roundTrip)).toBeTruthy();
+    // Default OFF: no return block, and no leg headings on the single journey either.
+    expect(document.querySelector('.bs-leg-return')).toBeNull();
+    expect(document.querySelectorAll('.bs-leg-head').length).toBe(0);
+    expect(legs().length).toBe(2);
+  });
+
+  it('does not offer it on a type that has no route to mirror', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    expect(screen.queryByText(t.index.form.roundTrip)).toBeNull();
+  });
+
+  it('does not offer it when editing an existing leg', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    expect(screen.queryByText(t.index.form.roundTrip)).toBeNull();
+  });
+
+  it('adds the second span and BOTH leg headings on the tap', () => {
+    open();
+    goRoundTrip();
+    expect(document.querySelector('.bs-leg-return')).toBeTruthy();
+    expect(legs().length).toBe(4);
+    const heads = [...document.querySelectorAll('.bs-leg-head span')].map((e) => e.textContent);
+    expect(heads).toContain(t.index.form.legOut);
+    expect(heads).toContain(t.index.form.legBack);
+  });
+
+  it('writes two bookings with mirrored routes and titles, in one change group', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-out' });
+    open();
+    goRoundTrip();
+    const [out1, out2, back1, back2] = legs();
+    setDate(out1, '2026-07-19');
+    setTime(out1, '09:00');
+    setDate(out2, '2026-07-20');
+    setTime(out2, '05:00');
+    setDate(back1, '2026-07-28');
+    setTime(back1, '11:00');
+    setDate(back2, '2026-07-28');
+    setTime(back2, '18:00');
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const [outbound] = indexVerbs.createBooking.mock.calls[0];
+    const [back] = indexVerbs.createBooking.mock.calls[1];
+    expect(outbound).toMatchObject({ fromPlaceId: 'pl-tlv', toPlaceId: 'pl-nrt' });
+    expect(back).toMatchObject({ fromPlaceId: 'pl-nrt', toPlaceId: 'pl-tlv' });
+    // Nobody types either name — `routeTitle` derives both, so the return reads backwards.
+    expect(back.title).toBe(routeTitle('טוקיו', 'תל אביב'));
+    expect(back.type).toBe(BOOKING_TYPE.FLIGHT);
+  });
+
+  it('reads the return in the SWAPPED zones — it flies the route backwards', async () => {
+    indexVerbs.createBooking.mockResolvedValue({ id: 'b-out' });
+    open();
+    goRoundTrip();
+    const [out1, out2, back1, back2] = legs();
+    setDate(out1, '2026-07-19');
+    setTime(out1, '09:00');
+    setDate(out2, '2026-07-20');
+    setTime(out2, '05:00');
+    setDate(back1, '2026-07-28');
+    setTime(back1, '11:00');
+    setDate(back2, '2026-07-28');
+    setTime(back2, '18:00');
+    save();
+
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalledTimes(2));
+    const back = indexVerbs.createBooking.mock.calls[1][0];
+    // Departs Tokyo (the outbound's DESTINATION) and lands in Tel Aviv.
+    expect(back.event.startsAt).toBe(zonedIso('2026-07-28', '11:00', 'Asia/Tokyo'));
+    expect(back.event.endsAt).toBe(zonedIso('2026-07-28', '18:00', 'Asia/Jerusalem'));
+  });
+
+  it('refuses a return that leaves before the outbound has landed, on that field', async () => {
+    open();
+    goRoundTrip();
+    const [out1, out2, back1, back2] = legs();
+    setDate(out1, '2026-07-19');
+    setTime(out1, '09:00');
+    setDate(out2, '2026-07-20');
+    setTime(out2, '05:00');
+    // Same day as the arrival, but two hours before it — a real instant comparison,
+    // which a date-only check would wave through.
+    setDate(back1, '2026-07-20');
+    setTime(back1, '03:00');
+    setDate(back2, '2026-07-20');
+    setTime(back2, '10:00');
+    save();
+
+    // Each span leg wears its own `Field`, which is what carries the mark (ADR-0150).
+    const marked = (leg: HTMLElement) => leg.closest('.field');
+    expect(marked(back1)?.hasAttribute('data-invalid')).toBe(true);
+    expect(marked(back1)?.querySelector('.field-error')?.textContent).toBe(
+      t.index.form.returnBeforeArrival,
+    );
+    // The three fields that are fine are not marked, and nothing was written.
+    expect(marked(out1)?.hasAttribute('data-invalid')).toBe(false);
+    expect(marked(out2)?.hasAttribute('data-invalid')).toBe(false);
+    expect(marked(back2)?.hasAttribute('data-invalid')).toBe(false);
+    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+  });
+
+  // ADR-0154 §6. Both legs have client-generated ids, so `hostId` would otherwise be
+  // whichever `createBooking` ran LAST — the return, by statement order.
+  it('hangs a note written on the way on the OUTBOUND', async () => {
+    indexVerbs.createBooking
+      .mockResolvedValueOnce({ id: 'b-out' })
+      .mockResolvedValueOnce({ id: 'b-back' });
+    open();
+    goRoundTrip();
+    const [out1, out2, back1, back2] = legs();
+    setDate(out1, '2026-07-19');
+    setTime(out1, '09:00');
+    setDate(out2, '2026-07-20');
+    setTime(out2, '05:00');
+    setDate(back1, '2026-07-28');
+    setTime(back1, '11:00');
+    setDate(back2, '2026-07-28');
+    setTime(back2, '18:00');
+    fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
+      target: { value: 'מושב ליד החלון בשתי הטיסות' },
+    });
+    save();
+
+    await waitFor(() => expect(noteVerbs.createNote).toHaveBeenCalledTimes(1));
+    expect(noteVerbs.createNote).toHaveBeenCalledWith({
+      body: 'מושב ליד החלון בשתי הטיסות',
+      bookingId: 'b-out',
+    });
+  });
+});
+
+// The pair's second surface (ADR-0154 §5): the delete prompt says the other leg
+// survives. A STATEMENT — the dialog must not grow a fourth verb (ADR-0138 §2).
+describe('BookingSheet — deleting one leg of a derived pair', () => {
+  const backLeg: Booking = {
+    ...flight,
+    id: 'bk-back',
+    title: 'טוקיו → תל אביב',
+    fromPlaceId: 'pl-nrt',
+    toPlaceId: 'pl-tlv',
+  };
+  afterEach(() => {
+    cleanup();
+    tripBookings = [];
+  });
+
+  const openDelete = () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    fireEvent.click(screen.getByText(t.index.sheet.delete));
+  };
+
+  it('names the surviving leg, and adds no button to say so', () => {
+    tripBookings = [flight, backLeg];
+    openDelete();
+    // Neither leg is scheduled here, so the subject reads as the outbound and the
+    // partner as the return.
+    expect(screen.getByText(t.index.del.pairNote('back'))).toBeTruthy();
+    // Still the plain confirm's two: מחק and בטל. No third choice appeared.
+    expect(screen.queryByText(t.index.del.both)).toBeNull();
+    expect(screen.queryByText(t.index.del.unlink)).toBeNull();
+    expect(screen.getByText(t.index.del.confirmDelete)).toBeTruthy();
+  });
+
+  it('says nothing about a pair when there is none', () => {
+    tripBookings = [flight];
+    openDelete();
+    expect(screen.queryByText(t.index.del.pairNote('back'))).toBeNull();
+    expect(screen.queryByText(t.index.del.pairNote('out'))).toBeNull();
   });
 });

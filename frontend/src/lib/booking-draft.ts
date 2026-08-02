@@ -56,6 +56,13 @@ export interface BookingSheetDraft {
   end: string;
   spanStart: string;
   spanEnd: string;
+  /** The round trip's own three fields (ADR-0154 §4). Form state, not `Booking` state —
+   *  the save turns them into a SECOND booking — but they travel on the draft for the
+   *  same reason everything else does: a place errand that dropped them would come back
+   *  having quietly changed what the save writes (ADR-0134 §2). */
+  roundTrip: boolean;
+  returnStart: string;
+  returnEnd: string;
   kind: 'hard' | 'soft';
   kindTouched: boolean;
 }
@@ -163,6 +170,11 @@ export function bookingSheetDraft(input: {
     end: linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, endZone) : '',
     spanStart: linkedEvent?.startsAt ? isoToDateTimeLocal(linkedEvent.startsAt, startZone) : '',
     spanEnd: linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, endZone) : '',
+    // Always off on open: editing an existing booking never offers it (the control is
+    // create-only), and a fresh form defaults to one-way (§4).
+    roundTrip: false,
+    returnStart: '',
+    returnEnd: '',
     kind: linkedEvent?.kind ?? defaultKindForBookingType(type),
     kindTouched: false,
   };

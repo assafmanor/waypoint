@@ -5,6 +5,13 @@ import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
 
+/** The two legs of a journey, in one place. Said by the authoring form's leg headings
+ *  (ADR-0154 §4) AND by the detail's derived-pair fact and the delete prompt (§5) — a
+ *  pair of words that must not drift between where you write a round trip and where the
+ *  app tells you it found one. Prefixed with `ה` at the call sites that need the definite
+ *  article, which is also why the gendered sentences below can't be one template. */
+const LEG = { out: 'הלוך', back: 'חזרה' } as const;
+
 export const t = {
   common: {
     undo: 'בטל',
@@ -487,6 +494,15 @@ export const t = {
       wifi: 'WiFi',
       notes: 'הערות',
       hardNote: 'הזמנה קשיחה',
+      // The derived pair (ADR-0154 §5) — one fact, LAST, because everything above it
+      // describes this booking and this one describes its neighbour. `הלוך ושוב` is the
+      // key because the fact's subject is the relation; the value names the other leg
+      // and is the way to it.
+      pair: 'הלוך ושוב',
+      pairLeg: (leg: 'out' | 'back', when: string) => `${LEG[leg]} · ${when}`,
+      // A leg with no slot in the itinerary yet. Shorter than the row's own
+      // `לא משובצת במסלול`, which would swamp the value it sits inside.
+      pairUnscheduled: 'ללא מועד',
     },
     sheet: {
       editTitle: 'עריכת הזמנה',
@@ -518,6 +534,21 @@ export const t = {
       // carries one place and cannot say which end it is, so it lands in the origin and
       // this moves it — the correction that makes the guess safe.
       swapRoute: 'החלפת כיוון',
+      // The direction control (ADR-0154 §4), offered on flight/train at create only.
+      // Defaults to one-way: the control row costs 44px on every transport booking, and
+      // the second leg a further 492px that only an explicit tap should buy.
+      oneWay: 'כיוון אחד',
+      roundTrip: 'הלוך ושוב',
+      directionLabel: 'כיוון הנסיעה',
+      // The two leg headings. They appear in PAIRS or not at all — an unlabelled block
+      // above a labelled one reads as a defect, and one-way keeps today's form.
+      legOut: LEG.out,
+      legBack: LEG.back,
+      // Shared across both legs, said where the question actually occurs.
+      codeSharedHint: 'משותף לשתי הנסיעות',
+      // The one refusal the second leg adds, marked on the return's DEPARTURE (ADR-0150).
+      // Type-independent wording, so a flight and a train share it.
+      returnBeforeArrival: 'החזרה יוצאת לפני ההגעה ליעד',
       // `EventForm`'s own route hint: there both ends are optional (ADR-0136's "requires
       // nothing" survives), and what is given is what the map and the zones can read.
       routeHintOptional: 'שני הקצוות אופציונליים · מה שיימסר ייקרא במפה ובאזורי הזמן',
@@ -563,6 +594,14 @@ export const t = {
       unlinkSub: 'האירוע יישאר במסלול כרשומה ידנית',
       plainTitle: 'למחוק את ההזמנה?',
       plainBody: 'ההזמנה תוסר מהאינדקס.',
+      // The other leg of a derived round trip (ADR-0154 §5): named, and said to survive.
+      // A STATEMENT, never a fourth button — a destructive dialog growing an extra verb
+      // is the defect ADR-0138 §2 logged. Two sentences rather than one template because
+      // ההלוך and החזרה disagree on gender.
+      pairNote: (leg: 'out' | 'back') =>
+        leg === 'out'
+          ? `ה${LEG.out} יישאר בטיול. המחיקה כאן לא נוגעת בו.`
+          : `ה${LEG.back} תישאר בטיול. המחיקה כאן לא נוגעת בה.`,
       confirmDelete: 'מחק',
       cancel: 'בטל',
     },
