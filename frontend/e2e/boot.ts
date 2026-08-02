@@ -103,6 +103,18 @@ export async function bootIntoTrip(
     notes?: unknown[];
     /** Trip documents, so the Index's documents rows exist to be measured. */
     documents?: unknown[];
+    /**
+     * **Pin the app's clock**, in ms — the e2e half of the rule the unit suite already
+     * follows (`frontend/CLAUDE.md`: "a test whose fixtures carry fixed dates must set its
+     * own `now`"). The app reads `waypoint:dev-now` from localStorage at module load in DEV,
+     * so seeding it before the first script runs fixes what "now" means for the whole page.
+     *
+     * Opt-in, and it earns itself: a spec whose fixtures are times "today" is really a spec
+     * about a PHASE — passed, now, upcoming — and which phase the clock produces changes by
+     * the hour. Two specs here silently depended on being run in the afternoon and went red
+     * the moment the date rolled past midnight UTC, on code that had not changed.
+     */
+    now?: number;
     /** Override the trip's date range (see `shortLiveTripDates`). */
     dates?: { startDate: string; endDate: string };
   } = {},
@@ -184,12 +196,22 @@ export async function bootIntoTrip(
   // Seed the cached identity + active-trip id the app reads on boot, so auth
   // resolves as "authed" and the landing picks our trip without a race.
   await page.addInitScript(
-    ([me, tripId]) => {
+    ([me, tripId, now]) => {
       localStorage.setItem('wp_me', me as string);
       localStorage.setItem('wp_active_trip_id', tripId as string);
+      // `waypoint:dev-now` — `lib/useClock.ts` reads it at module load, so it has to be set
+      // before the app's first script, which is exactly what `addInitScript` guarantees.
+      if (now) localStorage.setItem('waypoint:dev-now', now as string);
     },
-    [JSON.stringify(ME), 't1'],
+    [JSON.stringify(ME), 't1', opts.now ? String(opts.now) : ''],
   );
+}
+
+/** A fixed hour on the CURRENT day, for a spec whose fixtures are times "today".
+ *  Afternoon on purpose: it puts a morning fixture in the past and an evening one ahead,
+ *  which is the pair most of these specs are actually about. */
+export function todayAt(hhmm: string): number {
+  return Date.parse(`${new Date().toISOString().slice(0, 10)}T${hhmm}:00.000Z`);
 }
 
 /** The auth half of `bootIntoTrip`, on its own — the two first-run surfaces need a signed-in

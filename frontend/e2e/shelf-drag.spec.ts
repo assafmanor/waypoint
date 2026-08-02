@@ -25,7 +25,7 @@
 // it from coming back. Feel — whether the hold reads as responsive — is out of
 // reach of any automated test (ADR-0017 still wants a real-device pass).
 import { test, expect, type Page, type CDPSession } from '@playwright/test';
-import { bootIntoTrip, shortLiveTripDates } from './boot';
+import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
 import { DRAG_EDGE_SCROLL_RELEASE_PX, DRAG_EDGE_SCROLL_ZONE_PX } from '../src/constants';
 
 // Phone-sized and touch-capable: the drag is a touch gesture on a ~390px screen
@@ -244,7 +244,12 @@ async function bootBuilder(
   page: Page,
   seed: { events?: unknown[]; maybeItems?: unknown[] },
 ): Promise<void> {
-  await bootIntoTrip(page, { ...seed, dates: shortLiveTripDates() });
+  // Pinned, because the BUILDER'S HEIGHT depends on the day's phase: a passed event carries
+  // settle chrome and a now-line that an upcoming one does not, and the auto-scroll tests
+  // need a page taller than its viewport to have anywhere to scroll. Run after midnight UTC
+  // the seeded 07:00/20:00 events were both ahead, the page lost that chrome, and the second
+  // auto-scroll test failed on code nobody had touched.
+  await bootIntoTrip(page, { ...seed, now: todayAt('15:00'), dates: shortLiveTripDates() });
   await page.goto('/');
   await expect(page.locator('nav.nav')).toBeVisible();
   await openPlanDayBuilder(page);
