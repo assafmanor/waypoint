@@ -328,7 +328,7 @@
   font-size: 10px;
   font-weight: 700;
   color: var(--muted);
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   padding: 2px 6px;
   border-radius: 6px;
 }
@@ -338,7 +338,7 @@
   font-size: 10px;
   font-weight: 700;
   color: var(--muted);
-  background: rgba(22, 35, 61, 0.05);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
   padding: 2px 6px;
   border-radius: 6px;
 }
@@ -495,7 +495,7 @@
   align-items: center;
   gap: 9px;
   background: var(--paper);
-  border: 1px solid rgba(22, 35, 61, 0.09);
+  border: 1px solid color-mix(in srgb, var(--ink) 9%, transparent);
   border-radius: 12px;
   padding: 9px 12px;
   margin-bottom: 12px;
@@ -864,7 +864,7 @@
 .kind-toggle button.soft.on {
   border-style: dashed;
   border-color: var(--soft-line);
-  background: rgba(22, 35, 61, 0.04);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
 }
 /* ===== time picker (T-054, ADR-0036) =====
@@ -1620,7 +1620,7 @@
   flex: 0 0 auto;
 }
 .bld.soft .bld-bd {
-  background: rgba(22, 35, 61, 0.05);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
 }
 .bld-main {
   flex: 1;
@@ -2210,7 +2210,7 @@
   font-weight: 700;
   letter-spacing: 0;
   color: var(--ink);
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 4px 12px;
@@ -2262,7 +2262,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 15px;
-  background: rgba(22, 35, 61, 0.03);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
   border-top: 1px solid var(--line);
   font-size: 11.5px;
   color: var(--muted);
@@ -2313,12 +2313,12 @@
    reserved hue. Wrong since trip settings shipped; fixed here because the roster
    reuses this exact badge and would have spent amber on a second surface. */
 .role.owner {
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--line);
 }
 .role.mem {
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--muted);
 }
 .kebab {
@@ -2335,7 +2335,7 @@
   cursor: pointer;
 }
 .kebab:hover {
-  background: rgba(22, 35, 61, 0.05);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
   color: var(--ink);
 }
 
@@ -2765,7 +2765,7 @@
   font-size: 10.5px;
   font-weight: 600;
   color: var(--muted);
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: 999px;
   padding: 2px 8px;
   letter-spacing: 0;
@@ -2790,7 +2790,7 @@
   font-size: 9.5px;
   font-weight: 700;
   color: var(--muted);
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   border-radius: 6px;
   padding: 1.5px 6px;
 }
@@ -3731,7 +3731,7 @@
   opacity: 0.7;
 }
 .stay-strip .ss-x:hover {
-  background: rgba(22, 35, 61, 0.06);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   opacity: 1;
 }
 
@@ -3995,6 +3995,12 @@
    list — it IS that rule — plus the affordances a control needs. */
 .set-member-tap {
   font: inherit;
+  /* `font: inherit` does NOT carry colour, and a <button> gets the UA's
+     `color: buttontext` — near-black, which happened to match --ink while the
+     app was light-only. On a dark card the member's name inherited black from
+     the user agent and went nearly invisible. Every other tappable row in the
+     app sets its own colour; this one relied on the default matching. */
+  color: inherit;
   text-align: start;
   width: 100%;
   background: none;
@@ -4004,7 +4010,7 @@
   min-height: 44px;
 }
 .set-member-tap:hover {
-  background: rgba(22, 35, 61, 0.03);
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
 }
 .set-member-tap:focus-visible {
   outline: 2.5px solid var(--teal);

@@ -380,11 +380,21 @@ page does (ADR-0158 §12 found four families of that, worst at 1.10:1).
 
 ### The trip chrome is light in light mode (ADR-0158 §12)
 
-`--chrome-bg` is **the mode's accent at 12% over the ground** — indigo for trip,
-violet for plan — in both themes: over `--screen` in light, over `--card` in
-dark. So mode identity rides **hue**, which is what lets both bands be pale in
-light and both be dark in dark without the modes colliding. Two consequences
-worth knowing before touching it:
+`--chrome-bg` is **a band per mode** — trip blue, plan violet — set in
+`tokens.css` under each theme block, with App.css naming only which mode is
+speaking. Mode identity rides **hue**, which is what lets both bands be pale in
+light and both be dark in dark without the modes colliding.
+
+**In light both bands are literals, and that is deliberate.** `--indigo` is a
+near-neutral navy (chroma 22.4) chosen to be a _dark surface_, so no mix of it
+yields a light band with hue left. And the counter-intuitive part: because indigo
+and violet sit only ~20° apart, **making trip more colourful at indigo's own
+angle makes it LESS distinct from plan** — chroma-matching collapses the pair to
+ΔE00 1.2. Trip's band is therefore pushed _away_ from violet, which buys colour
+and separation together (ΔE00 8.4). If you retune one band, re-measure the pair,
+not the band.
+
+Three more things worth knowing before touching it:
 
 - **A light chrome's ink ramp is tighter than a dark one's**, because the washes
   are mixed off `--chrome-ink` and therefore darken the ground beneath the ink
@@ -394,6 +404,10 @@ worth knowing before touching it:
 - **The hero stays dark in both themes.** Lightening it hands the prominence to
   the chrome and inverts the hierarchy — in light mode, darkness is the hero's
   only prominence mechanism, since amber-as-a-ground was rejected in ADR-0105.
+- **A wash is `color-mix(… var(--ink) N%, transparent)`, never a frozen
+  `rgba(22, 35, 61, N)`.** The literal is light `--ink` at an alpha and it
+  vanishes on a dark card. A **backdrop** is the exception and stays literal: a
+  scrim is dark in both themes. Alpha tells them apart — washes sit at ≤ 0.34.
 
 A `/* fixed: … */` marker now means only what a token cannot say: ink on the
 Google brand mark, and the light/dark swatches in the theme control, which are a

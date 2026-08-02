@@ -445,6 +445,59 @@ Three things fell out of it that the deferral had not priced:
 **Verified on the captured frames, against `origin/main` on the same frames:**
 light **10 → 0** failing text nodes, dark **6 → 0**.
 
+## §13 — The chrome again, and a defect `font: inherit` hid for a year
+
+Two owner reports on the shipped phase 6, and both turned out to be one-line
+symptoms of things worth naming.
+
+**1. "The top bar for light theme trip mode is a little dull."** Correct, and
+measurable: `--chrome-bg` was `color-mix(--indigo 12%, --screen)`, and **`--indigo`
+#1B2A4A is a near-neutral navy at chroma 22.4** — a value chosen to be a _dark
+surface_. No proportion of it yields a light band with hue left: 12% gives chroma
+**4.4**, 22% only 6.2 and by then the band is heavy and still grey. `--plan` is
+chroma **73.6**, so 12% of it is visibly violet. Trip read as grey beside a
+coloured plan because the two sources were never comparable. **§1 again** — the
+value was chosen for one of its two roles.
+
+The fix is a literal, not a mix, and the reason it is not a trade is the
+interesting part. Indigo and violet sit ~20° apart, so chroma-matching trip to
+plan _at indigo's own hue angle_ collapses the pair to **ΔE00 1.2** — the shipped
+grey was separated precisely by being neutral, at 5.6. Pushing trip's hue **away**
+from violet buys both at once: `#C8D2EC` against `#DCD5F2` is **ΔE00 8.4**, bluer
+_and_ further apart than what it replaced.
+
+Both bands now live in `tokens.css` under each theme block, with App.css naming
+only the mode (`--chrome-bg: var(--chrome-bg-plan)`). The first attempt put the
+light literal in the **mode** selector, which is not a theme selector — it painted
+plan's _dark_ chrome lavender under light ink, 23 nodes at 1.2–1.8:1. The sweep
+caught it in one run, which is the argument for having it.
+
+**2. "The roster name colors are off."** Two defects under one report.
+
+`.role.owner` and `.role.mem` both painted `rgba(22, 35, 61, 0.06)` — light
+`--ink` frozen at an alpha. Invisible on a dark card, so admin still read as a
+chip (it has a `--line` border) and member read as bare text: two role labels
+that look like different components. **28 such washes** were converted to
+`color-mix(… var(--ink) N%, transparent)`, which flips. Three were left alone and
+that distinction matters: a modal **backdrop** is a scrim, dark in both themes.
+Alpha is the tell — the washes sit at ≤ 0.34, the three backdrops at 0.45/0.72.
+
+The second is the better find. **`font: inherit` does not carry `color`**, and a
+`<button>` gets the UA's `buttontext` — near-black, which is _indistinguishable
+from `--ink`_ while the app is light-only. **Fourteen rules** across the app write
+`font: inherit` on a control and stop there, because `font` looks like it covered
+it and every render agreed. On a dark card those labels inherit the user agent's
+black. One base rule on `button, input, select, textarea` at element specificity
+fixes all fourteen and lets any control that meant something by its ink keep
+saying it.
+
+**What both have in common with §11 and §12:** none of the three sweeps could
+have found them. A contrast sweep sees ink against ground and these were ink
+against _the wrong ground_, a ground that was invisible, and a colour inherited
+from outside the stylesheet entirely. Three device reports, three method holes.
+The pattern is not that the audits were sloppy — it is that **an audit answers
+the question it encodes, and dark mode kept asking a different one.**
+
 ## §10 — The build, in phases
 
 Each phase is independently shippable and independently revertible. Phases 1–3

@@ -108,13 +108,11 @@
      ink — a white wash on dark chrome becomes an ink wash on a light one, with
      no per-element rule to rewrite.
 
-     LIGHT MODE'S CHROME IS LIGHT, since phase 6 (§9 shipped). --chrome-bg is
-     the accent at 12% over --screen, so the band keeps its mode's HUE while
-     sitting a step below the page — trip stays indigo, plan stays violet, and
-     identity rides hue rather than luminance now that neither is dark. Plan's
-     ground is set beside trip's in App.css, the one place a mode declares
-     itself; everything downstream reads these names and never learns which
-     mode it is in.
+     LIGHT MODE'S CHROME IS LIGHT, since phase 6 (§9 shipped): a band per mode,
+     so identity rides HUE rather than luminance now that neither is dark. Both
+     grounds live here, under each theme block, because they are theme values —
+     App.css only picks WHICH mode is speaking (`--chrome-bg: var(--chrome-bg-plan)`).
+     Everything downstream reads --chrome-* and never learns either answer.
 
      The INK ramp is shared by both modes: plan's band is the lighter of the
      two, so a rung that clears on trip's clears on plan's, and one ladder is
@@ -124,7 +122,27 @@
      lightest that clears 4.5 on the heaviest wash it is actually painted on:
      16% for --mid (the +N bubble), 8% for --dim (the offline badge), 5% for
      --num (the day pill). Do not lighten one without re-checking its wash. */
-  --chrome-bg: color-mix(in srgb, var(--indigo) 12%, var(--screen));
+  /* A LITERAL, and not a `color-mix` off --indigo, which is what phase 6 shipped
+     and the owner called dull. The reason is measurable: --indigo #1B2A4A is a
+     near-neutral navy (chroma 22.4) chosen to be a DARK SURFACE, so no
+     proportion of it yields a light band with any hue left — 12% gives chroma
+     4.4 and 22% only 6.2, by which point the band is heavy and still grey.
+     Meanwhile --plan is chroma 73.6, so 12% of IT is visibly violet. That
+     asymmetry is the whole complaint: trip read as grey next to a violet plan.
+
+     §1 one more time — --indigo's value was chosen for one of its two roles.
+
+     The non-obvious part, and the reason this is not a trade: making trip more
+     colourful also makes it MORE distinct from plan, not less. Indigo and violet
+     sit ~20° apart, so chroma-matching trip to plan at indigo's own angle
+     collapses the pair to ΔE00 1.2 — the shipped grey was separated by being
+     neutral, at 5.6. Pushing trip's hue AWAY from violet buys both: this pair is
+     ΔE00 **8.4**, bluer and further apart than what it replaces. */
+  --chrome-bg: #c8d2ec;
+  /* Plan's band, beside trip's rather than in App.css, because it is a THEME
+     value and App.css only knows about modes. Violet needs no help — --plan is
+     chroma 73.6 — so this one stays a mix and simply matches trip's weight. */
+  --chrome-bg-plan: #dcd5f2;
   --chrome-ink: #16233d; /* titles, active glyphs — also the wash base */
   --chrome-ink-mid: #2c3a56; /* control glyphs: the back chevron, the +N count */
   --chrome-ink-num: #3c4763; /* numerals — the day number, the anchor's value */
@@ -153,7 +171,7 @@
      ONE call site today, deliberately: the 36 others are a conversion this
      phase did not do, and the backlog carries them. Naming it is what stops
      the 37th from being another literal. */
-  --miss-deep: #9b463e;
+  --miss-deep: #96443c;
 
   /* Category pin palette (ADR-0038 §2 / ADR-0028 decorative palette) — 5 pastel
      hues, "never amber or teal": colour = category on the Map list badge + pin
@@ -433,6 +451,23 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* A form control does not inherit `color` — the UA gives it `buttontext`, which
+   is near-black and therefore INDISTINGUISHABLE FROM `--ink` while the app is
+   light-only. Fourteen rules across the app write `font: inherit` on a button
+   and stop there, because `font` looks like it should have covered this and the
+   render agreed. On a dark card those labels inherit the user agent's black.
+   The roster's member names are how this surfaced (ADR-0158 §12's follow-up).
+
+   One base rule rather than fourteen patches: element specificity, so every
+   existing `color:` on a control still wins, and a control that meant to say
+   something about its ink keeps saying it. */
+button,
+input,
+select,
+textarea {
+  color: inherit;
+}
+
 /* Dark mode remap — INERT until <html data-theme="dark"> is set.
    Same token names, re-mapped; component CSS stays untouched.
    See design-language "Dark mode readiness" for principles + remaining work. */
@@ -466,14 +501,16 @@ body {
      side and the same 12% answer, mixed the other way: the accent over --card,
      which lifts the band clear of the screen and restores the plane order. */
   --chrome-bg: color-mix(in srgb, var(--indigo) 12%, var(--card));
+  --chrome-bg-plan: color-mix(in srgb, var(--plan) 12%, var(--card));
   --chrome-ink: #ffffff;
   --chrome-ink-mid: #dce3f2;
   --chrome-ink-num: #b9c4de;
-  /* #93a2c4, not #8494b5. Phase 3 folded four values (#9daac8 #93a2c4 #8fa0c4
-     #8494b5) onto the DARKEST of them, which left the day pill's letter at
-     4.02:1 — the pill's own 5% wash lightens the ground under it. #93a2c4 is
-     both the modal value of the four and the one that clears AA there. */
-  --chrome-ink-dim: #93a2c4;
+  /* Lifted again, to #a1aecf. Phase 3 folded four drifted values onto #93a2c4,
+     the one that cleared on the TRIP band's 5% wash; phase 6's follow-up gave
+     plan its own dark band, which is the brighter of the two, and #93a2c4 lands
+     at 4.27 on it. This rung is now derived from the worse of the two grounds
+     rather than the only one that existed when it was picked. */
+  --chrome-ink-dim: #a1aecf;
   --chrome-ring: var(--chrome-bg);
 
   --ink: #e7eaf2;
