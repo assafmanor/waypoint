@@ -473,3 +473,34 @@ we serve an avatar would be a vulnerability.
   should adopt deliberately rather than inherit.
 - **Making `user` a syncable entity type in v1.** See §8 — the per-trip fan-out is the cost, and the
   benefit is a rare event resolving minutes sooner.
+
+## Amendment (2026-08-02) — a third §10 defect on the same row: the badge column was ragged
+
+Reported off the shipped screens: _"משתתף and מנהל — the 3 dots make these titles become
+unaligned."_ Same row, same reuse decision as §9/§10, and the same cost paid once.
+
+`.set-member` is a flex row ending `… role → children`, and in the settings party list the
+`children` slot holds a kebab only on rows that **aren't you** (yours has no admin verbs
+aimed at it). So `מנהל` on your own row sat flush at the row's end while every `משתתף`
+below it was inset by the kebab's width — a badge column that stepped in and out down a
+list whose whole job is to read as one set of peers.
+
+The trailing control is now a **fixed column that stays open when it is empty**
+(`.member-act`, `MemberRow`'s `reserveAction`), which is `ListRow`'s sync column (ADR-0091)
+applied to the other managed list rather than a second idea. It is reserved per **list**,
+not per row: a row sees only its own missing control, so a row cannot make this call, and a
+non-admin — where no row has a kebab — reserves nothing and keeps the tight edge. The
+kebab also came up to the 44px touch floor (ADR-0017) via `.wp-listrow-kebab`'s negative-margin
+trick, so its hit area grew inside the 32px the column is measured on; this copy of the
+control had been missed when the other was raised.
+
+**Holding the column open was only half of it, and the owner's follow-up named the other
+half:** _"they're both left aligned in their own cells and should right align there."_ With
+the kebab no longer moving them, the pills' **outer** edges lined up — and a pill hugs its
+own text, so `מנהל` being shorter than `משתתף` left the two WORDS ragged where you actually
+read them. The badge now rides a width-floored cell (`.member-role`) and sits at its inline
+**start**, which in RTL is the right: the labels begin at one x, and the ragged edge is the
+one facing the kebab, where nothing reads across rows. The floor is in `em` so it tracks the
+badge's type size instead of snapshotting today's pixels, and a longer label grows the cell
+rather than overflowing it. It lands on the roster too, since both lists render `MemberRow`
+— the point of §9's shared row.

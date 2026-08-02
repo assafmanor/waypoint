@@ -34,6 +34,31 @@ describe('MemberRow', () => {
     expect(onOpen).toHaveBeenCalled();
   });
 
+  it('holds the control column open on a row with no control, so the badges align', () => {
+    // The reported defect: in the settings party list only rows that aren't you carry a
+    // kebab, so `מנהל` sat a kebab's width further out than `משתתף`. The reservation is
+    // a LIST decision — a row sees only its own missing control — hence the prop.
+    const { container } = render(<MemberRow person={person} role="admin" reserveAction />);
+    expect(container.querySelector('.member-act')).toBeTruthy();
+    expect(container.querySelector('.kebab')).toBeNull();
+  });
+
+  it('puts the role badge in a cell, so the two labels can start at one x', () => {
+    // The second half of the same report: with the kebab no longer moving them, the pills
+    // still hugged their own text, so `מנהל` and `משתתף` began at different x's. The cell
+    // is the hook the width floor + start alignment hang on (screens.css) — jsdom cannot
+    // measure either, so what this pins is that the badge is inside it.
+    const { container } = render(<MemberRow person={person} role="admin" />);
+    expect(container.querySelector('.member-role > .role.owner')).toBeTruthy();
+  });
+
+  it('reserves nothing when no row in the list has a control', () => {
+    // A non-admin sees no kebabs at all, so there is no column to hold open and the
+    // badges should not be inset by a gutter that never fills.
+    const { container } = render(<MemberRow person={person} role="admin" />);
+    expect(container.querySelector('.member-act')).toBeNull();
+  });
+
   it('does not offer a kebab slot AND a tap on the same row', () => {
     // Two ways to open one row is two answers to the same question.
     const { container } = render(

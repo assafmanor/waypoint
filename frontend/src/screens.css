@@ -2336,12 +2336,39 @@
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--muted);
 }
+/* The role column. A width FLOOR with the badge at the cell's inline start — the right,
+   in RTL — so the two labels begin at the same x. Aligning the pills' outer edge is not
+   enough: a pill hugs its text, `מנהל` is shorter than `משתתף`, and it is the WORD you
+   read, not the box. The floor is in `em` so it tracks the badge's own type size rather
+   than snapshotting today's pixels; a longer label grows the cell instead of overflowing. */
+.member-role {
+  flex: 0 0 auto;
+  min-inline-size: 5.4em;
+  display: flex;
+}
+/* The trailing control column. A FIXED width, so the slot holds the column open even
+   when it is empty: only rows that aren't you carry a kebab, and without this the role
+   badge beside your own row sat a kebab's width further out than every other one. Same
+   reservation as `ListRow`'s sync column (ADR-0091) — an aligned edge is worth more
+   than a tight one. */
+.member-act {
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
 .kebab {
   font: inherit;
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
+  /* 44×44 is the touch floor (ADR-0017); the negative margin keeps the 32px footprint
+     the reserved column is measured on, so the hit area grows and the layout does not.
+     `.wp-listrow-kebab` was raised the same way — this copy of the control was missed. */
+  width: 44px;
+  height: 44px;
+  margin: -6px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
   border: 1px solid transparent;
   background: none;
   color: var(--muted);
