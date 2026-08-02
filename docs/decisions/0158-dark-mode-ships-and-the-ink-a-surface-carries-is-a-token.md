@@ -566,6 +566,27 @@ shadows — right for a shadow, which is dark in both themes, and wrong for a
 `0 0 0 Npx` **spread**, which is a _ring_, i.e. a wash of the ink. Two selection
 rings were invisible on a dark card. The distinction is now in the CSS.
 
+### The deep variant has a limit, and an INVERTED surface is it
+
+The undo action on the toast was `--amber` — **1.56:1** in dark. The reflex fix
+is `--amber-deep`, and it is wrong: **it fails both themes** (2.85 light / 2.12
+dark). The reason is worth writing down, because every deep variant shares it.
+
+`--amber-deep`, `--plan-deep` and `--miss-deep` all mean _further from the
+ground_, and the ground they were derived against is **the page**. The toast's
+ground is `var(--ink)`, which inverts: dark in light mode, light in dark. So on
+it the deep variant moves the wrong way in both directions at once.
+
+**No sixth token.** Rule 4 already answered it — amber is time and commitment
+only, an undo is a generic action, so amber was decorative here. On an inverted
+surface the neutral action ink is that surface's own on-fill, which is what the
+toast's body text already used: `--cta-text`, at 15.65 / 13.49. The underline
+keeps it reading as a control now that it no longer differs in hue.
+
+An inventory says this is one site and not a family: **23 surfaces fill with
+`--ink`/`--cta`**, and the toast's undo was the only one painting a semantic
+accent as ink on that inverted ground.
+
 ### What is actually covered, stated so nobody reads §12-§14 as "done"
 
 Four literal classes are now swept clean and can be re-checked with a grep:
