@@ -114,6 +114,7 @@ vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }
 // them, so a stub returning `undefined` would throw where the real one hands back an id.
 const verbs = {
   addMaybe: vi.fn(),
+  removePlace: vi.fn(),
   create: vi.fn((_event: Record<string, unknown>) => Promise.resolve()),
   update: vi.fn(),
   schedule: vi.fn((_m: Record<string, unknown>, _fields?: Record<string, unknown>) =>
@@ -188,7 +189,7 @@ import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { withoutBidiControls } from '../lib/bidi';
 import { relativeDayLabel } from '../lib/time';
-import { FILTER_STAGGER_MS } from '../constants';
+import { DOT_SEPARATOR, FILTER_STAGGER_MS } from '../constants';
 import { t } from '../i18n/he';
 
 function wrap(node: ReactNode) {
@@ -288,7 +289,8 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   });
 
   // ── A PLACE CARRIES NOTES (ADR-0153 §8's 2026-08-02 amendment) ───────────────
-  // A place has no row menu and no detail surface of its own, so the ROW is where its notes
+  // A place has no detail surface of its own, and the pin's menu holds verbs rather than
+  // content (ADR-0157 §2), so the ROW is where its notes
   // are read and written — the mark in the meta line, the section on selection. Both day
   // scopes, because they are genuinely different renders on this tab.
   describe('a place carries notes (ADR-0153 §8)', () => {
@@ -2104,6 +2106,95 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(screen.queryByText(t.map.search.noResultsTitle)).toBeNull();
       expect(screen.getByText('Blue Bottle')).toBeTruthy();
       searchStub.predictions = [];
+    });
+  });
+  // ── DELETING A PLACE (ADR-0157) ──────────────────────────────────────────────────────────
+  // The list half. `Map.embedded.test.tsx` covers the canvas half (the long press and its
+  // menu); what belongs here is the affordance every path shares — the trash a selected row
+  // reveals, the confirm it opens, and the sentence that confirm has to say. Both day scopes,
+  // as every day-scoped surface in this suite is asserted.
+  describe('a place can be removed from the trip (ADR-0157)', () => {
+    const dialog = () => screen.queryByRole('dialog');
+    const trash = () =>
+      screen.queryByRole('button', { name: t.map.del.aria('food') }) as HTMLElement | null;
+
+    for (const allDays of [false, true]) {
+      const label = allDays ? 'all-days' : 'day';
+
+      it(`the trash appears only on the SELECTED row, in ${label} scope`, () => {
+        seed();
+        render(wrap(<MapView />));
+        if (allDays) allDaysOn();
+        expect(trash()).toBeNull();
+
+        fireEvent.click(row('food')!);
+        expect(trash()).toBeTruthy();
+      });
+    }
+
+    it('the trash opens a confirm and deletes nothing on its own', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('food')!);
+      fireEvent.click(trash()!);
+
+      expect(dialog()).toBeTruthy();
+      expect(screen.getByText(t.map.del.title)).toBeTruthy();
+      expect(verbs.removePlace).not.toHaveBeenCalled();
+    });
+
+    it('confirming removes the place, cancelling does not', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('food')!);
+      fireEvent.click(trash()!);
+      fireEvent.click(screen.getByRole('button', { name: t.common.cancel }));
+      expect(verbs.removePlace).not.toHaveBeenCalled();
+
+      fireEvent.click(row('food')!);
+      fireEvent.click(trash()!);
+      fireEvent.click(screen.getByRole('button', { name: t.map.del.confirm }));
+      expect(verbs.removePlace).toHaveBeenCalledWith(expect.objectContaining({ id: 'food' }));
+    });
+
+    // The half no undo can be honest without: a `SetNull` and a `Cascade` write no `Change`
+    // rows, so this dialog is the only moment either can be learned (ADR-0152 §2's rule, on
+    // the fifth host). One event points at `food`, and one note is written on it.
+    it('names what the delete costs: the rows that lose their location, and the notes', () => {
+      seed();
+      tripNotes = [note('n1', 'food', 'הכניסה מאחור')];
+      render(wrap(<MapView />));
+      fireEvent.click(row('food')!);
+      fireEvent.click(trash()!);
+
+      const consequence = document.querySelector('.confirm-consequence')!.textContent ?? '';
+      expect(consequence).toContain(t.map.del.refs(1));
+      expect(consequence).toContain(t.notes.hostDelete(1));
+    });
+
+    // It says only what applies. A place with no notes gets the location clause and no
+    // second one — `hostDelete` naming zero notes would be a warning about nothing.
+    it('leaves the note clause out when the place carries none', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('idea')!);
+      fireEvent.click(screen.getByRole('button', { name: t.map.del.aria('idea') }));
+
+      const consequence = document.querySelector('.confirm-consequence')!.textContent ?? '';
+      expect(consequence).toContain(t.map.del.refs(1));
+      expect(consequence).not.toContain(t.notes.hostDelete(0));
+      expect(consequence).not.toContain(DOT_SEPARATOR);
+    });
+
+    // ADR-0134 §3's rule, which this verb joins: while the tab is answering one question the
+    // verbs CHANGE rather than accumulate — the same reason `נווט` and the schedule verb go.
+    it('is absent while a place errand is live', () => {
+      seed();
+      render(wrap(<MapView />));
+      // The coordless row's `＋ מיקום` starts a row errand without leaving the tab.
+      fireEvent.click(row('lite')!.querySelector('.pp-addbtn') as HTMLElement);
+      fireEvent.click(row('food')!);
+      expect(trash()).toBeNull();
     });
   });
 });

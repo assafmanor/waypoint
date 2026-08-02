@@ -181,6 +181,7 @@ Three requests triaged together: a user settings page reachable from inside a tr
 
 - **Minor-unit currency** — `lib/money.ts` treats amounts as whole units. Correct for JPY, wrong for ILS/USD. **Nothing renders money today**: `formatMoney` has no call site outside its own test, and `Booking.cost`/`currency` reach no surface — so this is a trap waiting for whoever first displays a cost, not a live defect, and "fix before a non-JPY trip" was the wrong trigger. Fix it _with_ that surface: the storage unit is the decision (minor units everywhere, formatted on the way out), and it wants settling before any amount is written, not after.
 - **Admin role permission matrix** — ADR-0005 is admin/peer only; if roles grow, decide the matrix in an ADR first.
+- **An orphan `Place` is unreachable, not just invisible** ([ADR-0157](decisions/0157-a-place-can-be-removed.md)'s Consequences) — the usage index is built from references (ADR-0112), so a place nothing points at has no row and no pin, and the delete that shipped can only reach what is listed. Deleting the last reference therefore leaves the row behind: harmless (it is invisible, and the dedup re-adopts it on the next pick of the same Google place) but unbounded. Decide between a server-side sweep and leaving it stated — **not** a UI for listing orphans, which would put a second, uglier place list on the tab.
 
 ## Known shortcuts (each names its own ceiling in a `ponytail:` comment)
 

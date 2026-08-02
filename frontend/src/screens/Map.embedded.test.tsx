@@ -149,6 +149,7 @@ const verbs = {
   done: vi.fn(),
   skip: vi.fn(),
   restore: vi.fn(),
+  removePlace: vi.fn(),
 };
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
@@ -262,14 +263,30 @@ vi.mock('../ui/domain/MapPane', () => ({
         {/* THE TWO MAKE-A-PLACE GESTURES (ADR-0147). The recogniser itself is
             `lib/canvas-gestures.test.ts`'s and the projection round trip is
             `useMapCamera`'s; what the SCREEN owns is what each gesture opens, so the stub
-            exposes them as the two taps that call the callbacks with a point. */}
+            exposes them as the two taps that call the callbacks with a point.
+
+            THE HOLD NOW REPORTS WHAT IT LANDED ON (ADR-0157 §2), so there are two buttons
+            for the one gesture: on blank canvas it makes a place, on a pin it opens that
+            place's menu. Which is which is the second argument, exactly as `MapPane`
+            resolves it from `data-pin` in the real pane. */}
         <button
           data-hold
           onClick={() =>
-            (props.onHoldCanvas as (at: { lat: number; lng: number }) => void)(HELD_AT)
+            (props.onHold as (at: { lat: number; lng: number }, placeId?: string) => void)(HELD_AT)
           }
         >
           hold
+        </button>
+        <button
+          data-holdpin
+          onClick={() =>
+            (props.onHold as (at: { lat: number; lng: number }, placeId?: string) => void)(
+              HELD_AT,
+              (props.pins as { placeId: string }[])[0]?.placeId,
+            )
+          }
+        >
+          hold pin
         </button>
         {/* A POI tap is GOOGLE's again (ADR-0148 §6), so the pane takes no callback for it and
             this button drives the only thing the tap still does on our side: clear the
@@ -450,6 +467,8 @@ const tapCanvas = () => fireEvent.click(document.querySelector('[data-canvas]')!
  *  threads through, not something it derives. */
 const HELD_AT = { lat: 35.7148, lng: 139.7967 };
 const holdCanvas = () => fireEvent.click(document.querySelector('[data-hold]')!);
+/** The same gesture, landed on the first pin instead of on blank canvas (ADR-0157 §2). */
+const holdPin = () => fireEvent.click(document.querySelector('[data-holdpin]')!);
 const tapPoi = () => fireEvent.click(document.querySelector('[data-poi]')!);
 const draftMarker = () =>
   (document.querySelector('[data-draftmarker]') as HTMLElement).dataset.draftmarker;
@@ -527,6 +546,84 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       event({ id: 'e4', placeId: 'tomorrow', category: 'food', date: NEXT_DAY }),
     ];
   };
+
+  // ── THE LONG PRESS HAS TWO OBJECTS (ADR-0157 §2) ──────────────────────────────
+  // The canvas half of removing a place. The gesture that makes a place is unchanged on
+  // blank canvas — what is new is that the same press ON a pin acts on that place instead,
+  // which is the conflict this had to resolve: before the pane reported what the finger was
+  // on, a hold over a pin dropped a second place on top of the one you were pressing.
+  describe('a long press on a pin opens that place’s menu', () => {
+    const menu = () => document.querySelector('.wp-row-actions') as HTMLElement | null;
+    const menuItem = (label: string) =>
+      screen.getByRole('button', { name: new RegExp(label) }) as HTMLElement;
+
+    it('opens the menu and makes NO place', () => {
+      seed();
+      render(wrap(<MapView />));
+      holdPin();
+
+      expect(menu()).toBeTruthy();
+      // The one that would have been the bug: the make-a-place form must not be up.
+      expect(draftForm()).toBeNull();
+      expect(indexVerbs.createPlace).not.toHaveBeenCalled();
+    });
+
+    it('still makes a place when the press lands on blank canvas', () => {
+      seed();
+      render(wrap(<MapView />));
+      holdCanvas();
+
+      expect(draftForm()).toBeTruthy();
+      expect(menu()).toBeNull();
+    });
+
+    it('names the place it is about, so the destructive verb is never anonymous', () => {
+      seed();
+      render(wrap(<MapView />));
+      holdPin();
+
+      expect(document.querySelector('.modal-title')!.textContent).toContain('museum');
+    });
+
+    it('deletes nothing by itself: the verb opens the confirm', () => {
+      seed();
+      render(wrap(<MapView />));
+      holdPin();
+      fireEvent.click(menuItem(t.map.del.action));
+
+      expect(screen.getByText(t.map.del.title)).toBeTruthy();
+      expect(verbs.removePlace).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: t.map.del.confirm }));
+      expect(verbs.removePlace).toHaveBeenCalledWith(expect.objectContaining({ id: 'museum' }));
+    });
+
+    it('offers the rename from the same menu, since a pin has no row of verbs', () => {
+      seed();
+      render(wrap(<MapView />));
+      holdPin();
+      fireEvent.click(menuItem(t.map.make.rename));
+
+      expect(draftForm()).toBeTruthy();
+      expect(draftName().value).toBe('museum');
+    });
+
+    // The selection would otherwise outlive the row it points at, and at the map extreme
+    // that is a card describing a place that no longer exists.
+    it('clears the selection when the place it is showing is the one deleted', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+      expect(row('museum')!.className).toContain('selected');
+
+      fireEvent.click(
+        within(row('museum')!).getByRole('button', { name: t.map.del.aria('museum') }),
+      );
+      fireEvent.click(screen.getByRole('button', { name: t.map.del.confirm }));
+
+      expect(document.querySelector('.place.selected')).toBeNull();
+    });
+  });
 
   // ── A PLACE CARRIES NOTES (ADR-0153 §8's amendment) ─────────────────────────
   // `Map.test.tsx` covers the mark and the section on the list-only path. What is only true

@@ -69,7 +69,7 @@ import {
   mapsPredictionUrl,
   nextDestination,
 } from '../lib/places';
-import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from '../lib/place-refs';
+import { PLACE_REF_KIND, placeLinks, placeRefs, soleIdeaFor } from '../lib/place-refs';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import {
   buildPinOrderIndex,
@@ -144,7 +144,9 @@ import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { HostNotes } from '../ui/HostNotes';
 import { NoteMark } from '../ui/domain/NoteMark';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
+import { RowManageSheet } from '../ui/domain/ListRow';
 import { SettleControl } from '../ui/domain/SettleControl';
+import { ConfirmDialog } from '../ui/primitives/ConfirmDialog';
 import { EmptyState, StatusBanner } from '../ui/feedback';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
@@ -502,6 +504,22 @@ export function MapView() {
   const openScheduleForm = (placeId: string) => {
     setScheduleForm({ placeId, maybeItem: soleIdeaFor(placeId, maybeItems) });
     setEventDraft(null);
+  };
+
+  // ── REMOVING A PLACE (ADR-0157) ──────────────────────────────────────────────
+  // Two surfaces, one confirm. `pinMenuId` is the long press's menu — the canvas's answer to
+  // "act on this pin", since the canvas has no room for a row of verbs; `deletingId` is the
+  // confirm both ways in open. Ids rather than rows, so a place edited by a peer while the
+  // sheet is up is re-read rather than frozen at the moment it was pressed.
+  const [pinMenuId, setPinMenuId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // A latest-ref, because `holdCanvas` is one of the `useCallback(…, [])` handlers the
+  // memoized pane takes — see the note there.
+  const openPinMenu = useRef<(placeId: string) => void>(() => {});
+  openPinMenu.current = (placeId) => {
+    // An errand is one question, and ADR-0134 §3 has the verbs CHANGE rather than
+    // accumulate — the same rule that takes `נווט` and the schedule verb off the row.
+    if (!pendingErrand) setPinMenuId(placeId);
   };
   const closeScheduleForm = useCallback(() => {
     setScheduleForm(null);
@@ -1681,7 +1699,14 @@ export function MapView() {
   // every marker — the anti-pattern `frontend/CLAUDE.md` lists as already fixed once.
   // **Neither gesture needs an offline guard:** `hasMap` already withholds the whole pane, so
   // they are absent rather than disabled (ADR-0121 §11).
-  const holdCanvas = useCallback((at: LatLng) => openDraft.current({ kind: 'drop', at }, at), []);
+  // **One gesture, two objects** (ADR-0157 §2). A hold on blank canvas makes a place there;
+  // a hold ON a place opens that place's menu instead — never both, and never a new place
+  // dropped on top of an existing one, which is what the gesture did before the pane learned
+  // to report what the finger was on.
+  const holdCanvas = useCallback((at: LatLng, placeId?: string) => {
+    if (placeId) openPinMenu.current(placeId);
+    else openDraft.current({ kind: 'drop', at }, at);
+  }, []);
 
   // The pencil (ADR-0147 §3). Any place is renameable — including one Google named — because
   // otherwise the same row would be editable or not depending on where it came from, and the
@@ -2080,6 +2105,9 @@ export function MapView() {
           onRename={
             selected && !pendingErrand ? () => beginRename.current(usage.placeId) : undefined
           }
+          // Selection-gated on the same rule as the pencil (ADR-0157 §2), so the trash is
+          // wherever the row is — the sheet's list AND the canvas card, one `renderRow`.
+          onDelete={selected && !pendingErrand ? () => setDeletingId(usage.placeId) : undefined}
         />
       );
     };
@@ -2656,6 +2684,91 @@ export function MapView() {
     </>
   );
 
+  /** **What this delete costs, in the two counts nothing can recover afterwards.** The rows
+   *  whose location Postgres is about to null, and the notes its cascade will take — neither
+   *  writes a `Change` row, so the confirm is the only moment either can be learned
+   *  (ADR-0157 §2, the rule ADR-0152 §2 set for the other four hosts). `undefined` when the
+   *  place is unreferenced, which is the common case and needs no line at all. */
+  const deleteConsequence = (placeId: string): ReactNode => {
+    const refs = placeLinks(placeId, { events, bookings, maybeItems }).length;
+    const hostedNotes = noteCountFor(noteCounts, 'place', placeId);
+    if (refs === 0 && hostedNotes === 0) return undefined;
+    return (
+      <>
+        {refs > 0 && (
+          <>
+            <Icon name="pin" /> {t.map.del.refs(refs)}
+          </>
+        )}
+        {refs > 0 && hostedNotes > 0 && ` ${DOT_SEPARATOR} `}
+        {hostedNotes > 0 && (
+          <>
+            <Icon name="clipboard" /> {t.notes.hostDelete(hostedNotes)}
+          </>
+        )}
+      </>
+    );
+  };
+
+  // **The long press's menu** (ADR-0157 §2). The canvas's counterpart to the verbs a selected
+  // ROW reveals: a pin has no room for them, so the gesture that means "act on this" opens
+  // the app's existing row menu instead of a surface of its own (`RowManageSheet`, a fourth
+  // consumer after bookings, documents and members). Nothing here deletes: the destructive
+  // item opens the same confirm the row's trash does.
+  const pinMenuPlace = pinMenuId ? placeById.get(pinMenuId) : undefined;
+  const pinMenu = pinMenuPlace && (
+    <RowManageSheet
+      title={pinMenuPlace.name}
+      subject={pinMenuPlace.address}
+      onClose={() => setPinMenuId(null)}
+      actions={[
+        {
+          label: t.map.make.rename,
+          icon: 'edit',
+          onSelect: () => {
+            setPinMenuId(null);
+            beginRename.current(pinMenuPlace.id);
+          },
+        },
+        {
+          label: t.map.del.action,
+          icon: 'trash',
+          danger: true,
+          onSelect: () => {
+            setPinMenuId(null);
+            setDeletingId(pinMenuPlace.id);
+          },
+        },
+      ]}
+    />
+  );
+
+  // **The one confirm both ways in open** (ADR-0157 §2). It names what the delete costs
+  // BEFORE it happens, in the two counts nothing else can recover afterwards: the rows that
+  // lose their location, and the notes the database cascade takes (ADR-0152 §2's rule, from
+  // the fifth host). Recomputed here rather than captured at the press, so a peer's edit in
+  // the seconds the dialog is open cannot make the sentence a lie.
+  const deletingPlace = deletingId ? placeById.get(deletingId) : undefined;
+  const deleteConfirm = deletingPlace && (
+    <ConfirmDialog
+      tone="danger"
+      icon={<Icon name="trash" />}
+      title={t.map.del.title}
+      body={t.map.del.body(deletingPlace.name)}
+      consequence={deleteConsequence(deletingPlace.id)}
+      confirmLabel={t.map.del.confirm}
+      cancelLabel={t.common.cancel}
+      onCancel={() => setDeletingId(null)}
+      onConfirm={() => {
+        setDeletingId(null);
+        // The selection would otherwise outlive the row it points at — and at the map
+        // extreme that is a card for a place that no longer exists.
+        if (selectedId === deletingPlace.id) clearSelection();
+        verbs.removePlace(deletingPlace);
+      }}
+    />
+  );
+
   const overlays = (
     <>
       {/* Reached through a selected row's way-in (§8). */}
@@ -2692,6 +2805,8 @@ export function MapView() {
           onClose={closeScheduleForm}
         />
       )}
+      {pinMenu}
+      {deleteConfirm}
     </>
   );
 
@@ -2811,7 +2926,7 @@ export function MapView() {
           // Both make-a-place gestures (ADR-0147). Stable identities via latest-refs, like
           // every other handler this memoized pane takes — an inline arrow here would
           // re-diff every marker once a second (§7, ADR-0121 §4).
-          onHoldCanvas={holdCanvas}
+          onHold={holdCanvas}
           draftMarker={draftMarker}
         />
         {draftCard}
@@ -2917,6 +3032,7 @@ function PlaceRow({
   onFrame,
   onChoose,
   onRename,
+  onDelete,
 }: {
   usage: PlaceUsage;
   place: Place;
@@ -2965,9 +3081,10 @@ function PlaceRow({
    *  string on a line that must not grow. */
   notes?: number;
   /** **Where a place's notes are read and written** — the connected `<HostNotes>`, present
-   *  only while selected, which is what gives a place a body at all: it has no row menu and
-   *  no detail surface of its own, and this same row IS its card at the `map` stop
-   *  (ADR-0153 §8's amendment). One node, two surfaces, because `renderRow` is shared. */
+   *  only while selected, which is what gives a place a body at all: it has no detail surface
+   *  of its own — the pin's long-press menu holds verbs, not content (ADR-0157 §2) — and this
+   *  same row IS its card at the `map` stop (ADR-0153 §8's amendment). One node, two surfaces,
+   *  because `renderRow` is shared. */
   notesSlot?: ReactNode;
   /** The way in to each reference, present only while selected. */
   refs?: RefEntry[];
@@ -2995,6 +3112,13 @@ function PlaceRow({
    *  what makes it free: every other slot on this row is measured-spent, and a selected row is
    *  already the object that reveals its verbs. */
   onRename?: () => void;
+  /** **Remove this place from the trip** (ADR-0157 §2). Selection-gated like the pencil, and
+   *  in the FOOTER rather than beside it: the pencil is a 16px control carrying a 44px
+   *  `::after`, so a second one next to it would overlap its target by 20px — and of the two
+   *  verbs the one you must not hit by accident is this one. The footer gives it a real box
+   *  beside the schedule pill, which is also where the eye already looks for this row's
+   *  verbs. */
+  onDelete?: () => void;
 }) {
   const hue = usage.pin.category ? CATEGORY_PIN_HUE[usage.pin.category] : 'leisure';
   // The same one chain the pin reads (`placeGlyph`), so the row's badge and its pin can never
@@ -3231,18 +3355,36 @@ function PlaceRow({
           offers it too (it used to render only inside a non-empty `.map-refs`, which is
           precisely the place most likely to want scheduling). And in the bounded card it is
           what the grid can PIN: a foot inside a scrolling block cannot stay in view. */}
-      {onSchedule && (
+      {(onSchedule || onDelete) && (
         <span className="map-refs-foot">
-          <button
-            type="button"
-            className="map-addmaybe"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSchedule();
-            }}
-          >
-            <Icon name="plus" /> {t.map.scheduleToDay}
-          </button>
+          {onSchedule && (
+            <button
+              type="button"
+              className="map-addmaybe"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSchedule();
+              }}
+            >
+              <Icon name="plus" /> {t.map.scheduleToDay}
+            </button>
+          )}
+          {/* Quiet beside the primary, and `--miss` because that is the hue this app's
+              destructive verbs already wear (`.wp-row-action.danger`) — never a second red
+              of its own. It opens the confirm; nothing is deleted by this press. */}
+          {onDelete && (
+            <button
+              type="button"
+              className="map-del"
+              aria-label={t.map.del.aria(place.name)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Icon name="trash" /> {t.map.del.action}
+            </button>
+          )}
         </span>
       )}
     </div>

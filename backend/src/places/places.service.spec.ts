@@ -294,4 +294,95 @@ describe('PlacesService', () => {
     expect(second.id).toBe(first.id);
     expect(await prisma.place.count({ where: { tripId } })).toBe(1);
   });
+
+  // ── ADR-0157: DELETING A PLACE ───────────────────────────────────────────────
+  // The service writes one change and lets the FKs do the rest, so what this pins is the
+  // SHAPE OF THE CASCADE rather than the call: an event survives without its location, and
+  // the place's notes do not survive at all. Both are `schema.prisma`'s to enforce, and both
+  // are what the client mirrors locally off the single change — if either flips, the client's
+  // local rule is wrong and nothing else would say so.
+  it('deletes a place: the event survives without its location, the notes do not', async () => {
+    const tripId = await newTrip();
+    const place = await service.create(tripId, DEV_USER, {
+      name: 'Shibuya',
+      lat: 35.6595,
+      lng: 139.7005,
+    });
+    const event = await prisma.event.create({
+      data: {
+        tripId,
+        title: 'הצומת',
+        date: new Date('2027-03-02'),
+        kind: 'soft',
+        placeId: place.id,
+        updatedBy: DEV_USER,
+      },
+    });
+    const note = await prisma.note.create({
+      data: {
+        tripId,
+        body: 'הכי יפה בלילה',
+        placeId: place.id,
+        createdBy: DEV_USER,
+        updatedBy: DEV_USER,
+      },
+    });
+
+    await service.remove(tripId, place.id, DEV_USER);
+
+    expect(await prisma.place.findUnique({ where: { id: place.id } })).toBeNull();
+    const survivor = await prisma.event.findUnique({ where: { id: event.id } });
+    expect(survivor).not.toBeNull();
+    expect(survivor?.placeId).toBeNull();
+    expect(await prisma.note.findUnique({ where: { id: note.id } })).toBeNull();
+
+    // One change for the place and none for what the cascade took — the fact the client's
+    // local mirror is built on (ADR-0152 §2's precedent).
+    const changes = await prisma.change.findMany({ where: { tripId, action: 'delete' } });
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ entityType: 'place', entityId: place.id });
+  });
+
+  it('refuses to delete a place belonging to another trip', async () => {
+    const mine = await newTrip();
+    const theirs = await newTrip();
+    const place = await service.create(theirs, DEV_USER, { name: 'לא שלי' });
+
+    await expect(service.remove(mine, place.id, DEV_USER)).rejects.toThrow();
+    expect(await prisma.place.findUnique({ where: { id: place.id } })).not.toBeNull();
+  });
+
+  // The restore half of the undo (ADR-0157 §4): every field a deleted place carried comes
+  // back through `create`, including the two Google-sourced numbers nothing else could
+  // re-assert without paying for a second Place Details call.
+  it('re-creates a deleted place with its id, its icon and its rating (the undo path)', async () => {
+    const tripId = await newTrip();
+    const place = await service.create(tripId, DEV_USER, {
+      name: 'רמן נאגי',
+      icon: '🍜',
+      lat: 35.6595,
+      lng: 139.7005,
+      rating: 4.4,
+      userRatingsTotal: 1820,
+    });
+    expect(place.rating).toBe(4.4);
+
+    await service.remove(tripId, place.id, DEV_USER);
+    const restored = await service.create(tripId, DEV_USER, {
+      id: place.id,
+      name: place.name,
+      icon: place.icon,
+      lat: place.lat,
+      lng: place.lng,
+      rating: place.rating,
+      userRatingsTotal: place.userRatingsTotal,
+    });
+
+    expect(restored.id).toBe(place.id);
+    expect(restored.icon).toBe('🍜');
+    expect(restored.rating).toBe(4.4);
+    expect(restored.userRatingsTotal).toBe(1820);
+    // Re-derived rather than restored, which is why the input has no `timezone` field.
+    expect(restored.timezone).toBe('Asia/Tokyo');
+  });
 });

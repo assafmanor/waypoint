@@ -36,6 +36,7 @@ import {
   deleteEvent,
   deleteMaybeItem,
   deleteNote,
+  deletePlace,
   deleteTrip,
   moveEvent,
   removeMember,
@@ -75,6 +76,7 @@ export const OUTBOX_VERB = {
   DELETE_BOOKING: 'deleteBooking',
   CREATE_PLACE: 'createPlace',
   UPDATE_PLACE: 'updatePlace',
+  DELETE_PLACE: 'deletePlace',
   UPLOAD_DOCUMENT: 'uploadDocument',
   CREATE_NOTE: 'createNote',
   UPDATE_NOTE: 'updateNote',
@@ -116,6 +118,7 @@ export type OutboxOp =
     }
   | { verb: typeof OUTBOX_VERB.CREATE_PLACE; input: CreatePlaceInput }
   | { verb: typeof OUTBOX_VERB.UPDATE_PLACE; placeId: string; input: UpdatePlaceInput }
+  | { verb: typeof OUTBOX_VERB.DELETE_PLACE; placeId: string }
   // Document upload (ADR-0056) — the first outbox op to carry binary: the file
   // rides as a `File` (a `Blob`, which Dexie persists) so the sheet can close
   // instantly and the upload flushes in the background / on reconnect.
@@ -165,6 +168,7 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.DELETE_BOOKING:
       return op.bookingId;
     case OUTBOX_VERB.UPDATE_PLACE:
+    case OUTBOX_VERB.DELETE_PLACE:
       return op.placeId;
     case OUTBOX_VERB.UPDATE_NOTE:
     case OUTBOX_VERB.DELETE_NOTE:
@@ -649,6 +653,9 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case OUTBOX_VERB.UPDATE_PLACE:
       await updatePlace(tripId, op.placeId, op.input);
+      return;
+    case OUTBOX_VERB.DELETE_PLACE:
+      await deletePlace(tripId, op.placeId);
       return;
     case OUTBOX_VERB.UPLOAD_DOCUMENT:
       // The client-generated id makes this re-POST idempotent (ADR-0056): a retry

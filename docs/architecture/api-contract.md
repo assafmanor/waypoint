@@ -97,7 +97,7 @@ There is no `Day` resource — events carry `date` (ADR-0018); the client groups
 
 ## Places
 
-Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`); written here. Name-only rows are valid ("Place-lite"); the Places picker enriches `googlePlaceId`/`lat`/`lng`/`timezone` on a pick. No delete endpoint yet (orphans are left).
+Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`); written here. Name-only rows are valid ("Place-lite"); the Places picker enriches `googlePlaceId`/`lat`/`lng`/`timezone` on a pick.
 
 | Method | Path                             | Body → Response                                                                       |
 | ------ | -------------------------------- | ------------------------------------------------------------------------------------- |
@@ -105,6 +105,9 @@ Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`);
 | POST   | `/trips/:tripId/places/search`   | `searchPlacesSchema` (`{ input, sessionToken }`) → `PlacePrediction[]`                |
 | POST   | `/trips/:tripId/places/resolve`  | `resolvePlaceSchema` (`{ googlePlaceId, sessionToken?, enrichPlaceId? }`) → `Place`   |
 | PATCH  | `/trips/:tripId/places/:placeId` | partial → `Place` (manual field edit; Google enrichment goes through `resolve`)       |
+| DELETE | `/trips/:tripId/places/:placeId` | → `204` (a 404 is idempotent success — an outbox retry of an applied delete)          |
+
+**Delete (ADR-0157).** One `place:delete` `Change` and nothing else: the referencing rows are the **database's** to update, and it does so silently. Four FKs are `onDelete: SetNull` (`Event.placeId`, `Booking.placeId`/`fromPlaceId`/`toPlaceId`, `MaybeItem.placeId`) — the event keeps its slot and loses its location — and `Note.placeId` is `onDelete: Cascade`, so the place's notes go with it. **Neither writes a `Change` row**, so a client derives both locally off the one delete it receives (the rule ADR-0152 §2 set for the note cascade; `lib/place-refs.ts`'s `clearPlaceRefsForChange` is its twin for the place FKs). An undone delete re-`POST`s the place under its own id — which is why `createPlaceSchema` accepts `rating`/`userRatingsTotal`, the two fields nothing else could restore without a second Place Details call.
 
 **Google Places proxy (ADR-0108).** `search` and `resolve` are the backend proxy for the Places picker — the server holds the Places key (`GOOGLE_MAPS_SERVER_KEY`), the browser never does. Requests ask Google for **Hebrew names + Israel-biased ranking** (`languageCode=he`, `regionCode=IL`, ADR-0009) — the Hebrew name is returned where Google has one, local/English otherwise, and is cached on the `Place` row at pick time (so it applies to new picks, not already-saved rows). The same applies to the `/destinations` endpoints. Both are behind `MembershipGuard` and a **per-member·trip** rate limit (custom throttler tracker `${userId}:${tripId}`, two windows — a per-minute burst cap and a per-day drip cap, env-tunable; a breach returns the standard `429` + `Retry-After` / `RATE_LIMITED` envelope).
 
