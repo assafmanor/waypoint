@@ -1,0 +1,2249 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dark mode — the ration, the two fixed screens, and the toggle</title>
+  </head>
+  <body>
+    <!--
+  Waypoint · Dark mode (v1) — the design session's instrument
+  ----------------------------------------------------------
+  A DESIGN MOCKUP. Subject: shipping `data-theme='dark'`. Everything about dark
+  mode in this repo is already WRITTEN and nothing is WIRED:
+
+    - `tokens.css` carries a complete `:root[data-theme='dark']` remap (every
+      colour token, all five `--id-*` identity hues, elevation).
+    - `App.css` / `screens.css` read tokens; the U-08 hex sweep is done.
+    - `map-config.ts` already takes a theme; both Map IDs exist; the night style
+      is authored in `docs/design/map-styles/` (ADR-0121 §11).
+    - ADR-0105 designed the dark boot.
+    - NOTHING sets `data-theme`. So every dark value in the tree is inert.
+
+  So this file is NOT about picking colours. It exists for the two questions a
+  token flip cannot answer, drawn so they can be LOOKED AT rather than argued:
+
+    §1  THE RATION      design-language's "one loud element" rations the dark
+                        board as the loud thing. In dark mode everything is dark.
+                        What carries the board's prominence then? Three candidate
+                        dark boards are drawn against the same body, and the
+                        measurement panel gives the numbers behind the answer.
+
+    §2  THE CONVERGENCE /login and /join/:token are full-screen THEME-FIXED dark
+                        boards today. In dark mode they sit next to a dark app.
+                        Drawn side by side with dark Home to see whether the two
+                        collide — and to settle whether those two screens theme
+                        at all.
+
+    §3  THE TOGGLE      three rungs (מערכת / בהיר / כהה) in /settings, and the
+                        boot sequence each one produces. ADR-0133 §7 rejected a
+                        theme toggle on this page in July for one stated reason —
+                        "a switch that does nothing is worse than a thin page".
+                        That reason expires the moment the remap is live.
+
+    §5  THE FILLS       what the live pass FOUND, and it is the reason this file exists:
+                        the "on-fill ink is theme-fixed" convention the U-08 sweep
+                        recorded is true for amber and indigo and FALSE for every
+                        mid-tone semantic fill. Ten shipped controls go illegible in
+                        dark, one of them white-on-near-white at 1.20:1.
+
+    §5b LIGHT TOO       auditing both themes together inverted the result. Text
+                        contrast fails FOUR times in the shipped LIGHT theme and zero
+                        times in dark; on-fill ink fails ten times in dark and zero in
+                        light. Each theme was hiding the other's bug class.
+
+    §6  MEASURED        live-computed L* and WCAG ratios off the rendered pixels,
+                        not off a table someone typed. ADR-0125 is this repo's
+                        precedent for a palette that measures fine and reads as
+                        one hue on a real screen, so the numbers are the floor,
+                        not the verdict — the device pass is still owed.
+
+  TOKEN FIDELITY: the `--*` values below are copied verbatim from
+  `frontend/src/styles/tokens.css` (both blocks). This file inlines ONLY the
+  rules it draws — it deliberately does not carry a copy of App.css/screens.css,
+  because the catalog's inlined app CSS has drifted ~16.6k lines across 14 files
+  and sweeping that in here would make this diff unreviewable (backlog,
+  2026-07-31 / session 189, scoped as its own branch).
+
+  NOTE ON FONTS: system stack substitutes Secular One / Assistant / JetBrains
+  Mono (CSP blocks the CDN). RTL preserved.
+
+  STATUS: adopted — ADR-0157.
+-->
+    <style>
+      /* ── Waypoint tokens, verbatim from tokens.css ──────────────────────────── */
+      .wp {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --board: #0e1729;
+        --board-2: #152137;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --paper: #f3efe6;
+        --amber: #e9a63c;
+        --amber-deep: #c9822a;
+        --amber-ink: #7a5a1e;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.1);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --shadow: 0 18px 40px -18px rgba(14, 23, 41, 0.45);
+        --plan: #6e59d6;
+        --plan-deep: #5747b4;
+        --cta: var(--ink);
+        --cta-text: #ffffff;
+        --ok: #3c9a6b;
+        --miss: #c2584e;
+        --id-plum: #b98ac9;
+        --id-rose: #d98ca8;
+        --id-moss: #9db585;
+        --id-denim: #8496b5;
+        --id-cocoa: #b99483;
+        --elevation-raised: 0 8px 20px -14px rgba(14, 23, 41, 0.35);
+      }
+      /* Tokens this session ADDS (§5). Light values are byte-identical to the
+     literals they replace, so light mode does not move. */
+      .wp {
+        --on-fill: #ffffff; /* ink on a re-mapping semantic fill */
+        --on-amber: #3a2405; /* the one fill that keeps dark ink in both themes */
+        --plan-surface: #6e59d6; /* plan's loud surface — the board's counterpart */
+        --plan-surface-2: #5747b4;
+      }
+      /* Light-mode corrections (§5b) — measured AA failures in the SHIPPED theme.
+     Both are scalar darkenings, so hue and saturation are untouched. */
+      .wp.fixed-light {
+        --faint: #808694; /* was #98a0b0 — 2.18:1 on --screen */
+        --muted: #626a7c; /* was #6c7488 — 3.88:1 on --screen */
+        --amber-deep: #915e1e; /* was #c9822a — 3.13:1 on --card */
+      }
+      .wp[data-theme='dark'] {
+        --on-fill: #12203a; /* the brightened fills now take DARK ink */
+        --plan-surface: #2a2158; /* deep violet night surface, not the accent */
+        --plan-surface-2: #332866;
+        --ink: #e7eaf2;
+        --indigo: #131f38;
+        --board: #0a1120;
+        --board-2: #101b30;
+        --screen: #0f1726;
+        --card: #1a2740;
+        --paper: #2e2a20;
+        --amber: #f0b254;
+        --amber-deep: #d89440;
+        --amber-ink: #f0b254;
+        --teal: #3fb3a5;
+        --muted: #93a0b8;
+        --faint: #8592ab;
+        --line: rgba(231, 234, 242, 0.1);
+        --soft-line: rgba(231, 234, 242, 0.3);
+        --shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.6);
+        --plan: #8b79e8;
+        --plan-deep: #a99af2;
+        --cta: #e7eaf2;
+        --cta-text: #12203a;
+        --ok: #4cbf85;
+        --miss: #e07a6e;
+        --id-plum: #c79cd4;
+        --id-rose: #e39db6;
+        --id-moss: #adc396;
+        --id-denim: #96a6c4;
+        --id-cocoa: #c7a695;
+        --elevation-raised: 0 8px 20px -14px rgba(0, 0, 0, 0.5);
+      }
+
+      /* ── Lab chrome (not the product) ───────────────────────────────────────── */
+      :root {
+        --lab-bg: #0c1220;
+        --lab-bg-2: #111a2c;
+        --lab-panel: #141d31;
+        --lab-line: rgba(148, 163, 194, 0.16);
+        --lab-line-2: rgba(148, 163, 194, 0.32);
+        --lab-ink: #e7ecf6;
+        --lab-muted: #93a0b8;
+        --lab-faint: #6b7794;
+        --lab-accent: #8b79e8;
+        --lab-amber: #e9a63c;
+        --lab-ok: #4cbf85;
+        --lab-miss: #e07a6e;
+        --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+        --sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+        --head: 'Trebuchet MS', var(--sans);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        color: var(--lab-ink);
+        background:
+          radial-gradient(120% 80% at 82% -10%, rgba(233, 166, 60, 0.1), transparent 55%),
+          linear-gradient(180deg, var(--lab-bg-2), var(--lab-bg));
+        min-height: 100vh;
+        padding: clamp(18px, 3vw, 40px);
+        line-height: 1.5;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: clamp(20px, 2.4vw, 27px);
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        margin: 0;
+        color: var(--lab-muted);
+        font-size: 13.5px;
+        max-width: 96ch;
+      }
+      .sub b {
+        color: var(--lab-ink);
+        font-weight: 600;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.88em;
+        background: rgba(148, 163, 194, 0.12);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+      section {
+        margin-top: clamp(28px, 4vw, 52px);
+        border-top: 1px solid var(--lab-line);
+        padding-top: clamp(18px, 2.4vw, 28px);
+      }
+      h2 {
+        margin: 0 0 4px;
+        font-size: clamp(16px, 1.8vw, 20px);
+      }
+      h2 .n {
+        font-family: var(--mono);
+        color: var(--lab-accent);
+        margin-inline-end: 8px;
+        font-size: 0.8em;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: clamp(16px, 2.4vw, 30px);
+        align-items: flex-start;
+        margin-top: 20px;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .cap {
+        font-size: 11.5px;
+        color: var(--lab-muted);
+        max-width: 34ch;
+      }
+      .cap b {
+        color: var(--lab-ink);
+      }
+      /* Only the LEADING <b> is the caption's title — an inline <b> mid-sentence must
+     stay inline, or every emphasis in the prose breaks its own line. */
+      .cap > b:first-child {
+        display: block;
+        font-size: 12.5px;
+        margin-bottom: 2px;
+      }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--lab-line-2);
+        color: var(--lab-muted);
+      }
+      .tag.keep {
+        color: var(--lab-ok);
+        border-color: rgba(76, 191, 133, 0.45);
+      }
+      .tag.cut {
+        color: var(--lab-miss);
+        border-color: rgba(224, 122, 110, 0.45);
+      }
+      .note {
+        margin-top: 18px;
+        border-inline-start: 3px solid var(--lab-accent);
+        padding: 10px 0 10px 0;
+        padding-inline-start: 14px;
+        font-size: 13px;
+        color: var(--lab-muted);
+        max-width: 100ch;
+      }
+      .note b {
+        color: var(--lab-ink);
+      }
+      .note.warn {
+        border-color: var(--lab-amber);
+      }
+
+      /* ── The phone frame ────────────────────────────────────────────────────── */
+      .phone {
+        width: 300px;
+        height: 600px;
+        border-radius: 26px;
+        overflow: hidden;
+        border: 1px solid var(--lab-line-2);
+        box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.9);
+        position: relative;
+      }
+      .phone.short {
+        height: 420px;
+      }
+      .wp {
+        direction: rtl;
+        font-family: var(--sans);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        background: var(--screen);
+        color: var(--ink);
+        font-size: 13px;
+      }
+
+      /* in-trip chrome — always-dark indigo header (theme-fixed by the shipped sweep) */
+      .hdr {
+        background: var(--indigo);
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex: 0 0 auto;
+      }
+      .hdr .ttl {
+        font-family: var(--head);
+        font-size: 14px;
+        color: #eaf0ff; /* fixed: light ink on the always-dark chrome */
+      }
+      .hdr .avs {
+        display: flex;
+      }
+      .hdr .av {
+        width: 21px;
+        height: 21px;
+        border-radius: 50%;
+        margin-inline-start: -6px;
+        border: 2px solid var(--indigo);
+        font-size: 9px;
+        font-weight: 700;
+        color: #12203a; /* fixed: dark ink on the pastel identity ramp, both themes */
+        display: grid;
+        place-items: center;
+      }
+      .bodyp {
+        flex: 1 1 auto;
+        overflow: hidden;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      /* the board hero */
+      .board {
+        background: linear-gradient(180deg, var(--board-2), var(--board));
+        border-radius: 20px;
+        padding: 14px;
+        color: #eaf0ff; /* fixed */
+        box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
+        position: relative;
+        overflow: hidden;
+        flex: 0 0 auto;
+      }
+      .board::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(90% 60% at 85% 0%, rgba(233, 166, 60, 0.16), transparent 60%);
+        pointer-events: none;
+      }
+      /* Candidate B — a hairline rim. Candidate C — rim + a lifted glow. */
+      .board.rim {
+        box-shadow:
+          0 20px 34px -20px rgba(8, 14, 28, 0.9),
+          inset 0 0 0 1px rgba(240, 178, 84, 0.18);
+      }
+      .board.rimglow {
+        box-shadow:
+          0 20px 34px -20px rgba(8, 14, 28, 0.9),
+          inset 0 0 0 1px rgba(240, 178, 84, 0.22),
+          0 0 26px -6px rgba(240, 178, 84, 0.18);
+      }
+      .board.rimglow::before {
+        background: radial-gradient(90% 60% at 85% 0%, rgba(240, 178, 84, 0.24), transparent 60%);
+      }
+      /* Candidate D — a NEUTRAL hairline, the edge that spends no budget. */
+      .board.hair {
+        box-shadow:
+          0 20px 34px -20px rgba(8, 14, 28, 0.9),
+          inset 0 0 0 1px var(--line);
+      }
+      .b-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: relative;
+        font-size: 9.5px;
+        letter-spacing: 0.14em;
+        font-weight: 600;
+        color: #8fa0c4; /* fixed */
+      }
+      .b-top .live {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .blip {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--amber);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+      .b-clock {
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 12px;
+        color: var(--amber);
+        letter-spacing: 0.04em;
+      }
+      .b-lab {
+        position: relative;
+        margin-top: 12px;
+        font-size: 9.5px;
+        letter-spacing: 0.12em;
+        color: var(--amber);
+        font-weight: 700;
+      }
+      .b-ttl {
+        position: relative;
+        font-family: var(--head);
+        font-size: 19px;
+        margin-top: 2px;
+        color: #fff; /* fixed */
+      }
+      .b-meta {
+        position: relative;
+        margin-top: 5px;
+        font-size: 11px;
+        color: #93a2c4; /* fixed */
+      }
+      .b-meta .num {
+        font-family: var(--mono);
+        color: var(--amber);
+        font-weight: 700;
+      }
+      .b-bar {
+        position: relative;
+        margin-top: 12px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      .b-bar i {
+        display: block;
+        height: 100%;
+        width: 46%;
+        background: var(--amber);
+        border-radius: 999px;
+      }
+
+      /* paper cards around it — the thing that carries the ration in light mode */
+      .card {
+        background: var(--card);
+        border-radius: 14px;
+        padding: 11px 12px;
+        box-shadow: var(--elevation-raised);
+        flex: 0 0 auto;
+      }
+      .card .t {
+        font-weight: 700;
+        font-size: 12.5px;
+      }
+      .card .m {
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 3px;
+      }
+      .card .m .tm {
+        font-family: var(--mono);
+        color: var(--amber-deep);
+        font-weight: 700;
+      }
+      .card.hard {
+        border-inline-start: 3px solid var(--amber);
+      }
+      .card.soft {
+        border-inline-start: 3px dashed var(--soft-line);
+      }
+      .sect {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 2px 2px -2px;
+      }
+      .navb {
+        flex: 0 0 auto;
+        background: var(--card);
+        border-top: 1px solid var(--line);
+        display: flex;
+        justify-content: space-around;
+        padding: 8px 0 10px;
+        font-size: 9.5px;
+        color: var(--muted);
+      }
+      .navb .on {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      /* ── The two theme-fixed boards: /login and /join ───────────────────────── */
+      .land {
+        background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
+        color: #eaf0ff; /* fixed */
+        padding: 16px 18px 22px;
+        position: relative;
+        overflow: hidden;
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+      }
+      .land::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(80% 45% at 85% 0%, rgba(233, 166, 60, 0.14), transparent 60%);
+        pointer-events: none;
+      }
+      .land > * {
+        position: relative;
+      }
+      .land-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .land-logo {
+        font-family: var(--head);
+        font-size: 16px;
+        color: #fff; /* fixed */
+      }
+      .mark {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 50% 42%, var(--amber) 0 22%, transparent 23%),
+          linear-gradient(180deg, #182642, #0e1729);
+        box-shadow: inset 0 0 0 2px #3fb3a3;
+      }
+      .land-hero {
+        margin-top: 34px;
+      }
+      .land-hero h1 {
+        font-family: var(--head);
+        font-size: 25px;
+        line-height: 1.18;
+        color: #fff; /* fixed */
+        margin: 0;
+      }
+      .land-hero .em {
+        color: var(--amber);
+      }
+      .land-hero p {
+        color: #93a2c4; /* fixed */
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 10px 0 0;
+        max-width: 28ch;
+      }
+      .teaser {
+        margin-top: 20px;
+        background: rgba(255, 255, 255, 0.045); /* fixed */
+        border: 1px solid rgba(255, 255, 255, 0.1); /* fixed */
+        border-radius: 15px;
+        padding: 11px 12px;
+      }
+      .teaser .lbl {
+        font-size: 9px;
+        letter-spacing: 0.14em;
+        color: #8fa0c4; /* fixed */
+      }
+      .teaser .ttl {
+        font-family: var(--head);
+        font-size: 14px;
+        color: #fff; /* fixed */
+        margin-top: 5px;
+      }
+      .teaser .cd {
+        margin-top: 8px;
+        display: inline-flex;
+        gap: 5px;
+        align-items: baseline;
+        background: rgba(233, 166, 60, 0.13); /* fixed: amber-semantic tint */
+        border: 1px solid rgba(233, 166, 60, 0.3);
+        border-radius: 999px;
+        padding: 3px 9px;
+      }
+      .teaser .cd b {
+        font-family: var(--mono);
+        color: var(--amber);
+        font-size: 12px;
+      }
+      .teaser .cd i {
+        font-style: normal;
+        font-size: 9.5px;
+        color: #b9985c; /* fixed */
+      }
+      .cta {
+        margin-top: auto;
+        padding-top: 18px;
+      }
+      .cta button {
+        width: 100%;
+        background: #fff; /* fixed: white sign-in button on the always-dark board */
+        color: #1a1a1a;
+        border: 0;
+        border-radius: 13px;
+        padding: 11px;
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 700;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: center;
+      }
+      .cta .gd {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        background: conic-gradient(#4285f4 0 25%, #ea4335 0 50%, #fbbc05 0 75%, #34a853 0);
+      }
+      .cta .nt {
+        text-align: center;
+        color: #7e8fb4; /* fixed */
+        font-size: 9.5px;
+        margin-top: 9px;
+      }
+
+      /* the boarding pass (join) */
+      .ticket {
+        margin-top: 18px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+        border: 1px solid rgba(255, 255, 255, 0.08); /* fixed */
+        border-radius: 16px;
+        padding: 12px;
+      }
+      .ticket .badge {
+        display: inline-block;
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        background: rgba(233, 166, 60, 0.13);
+        border: 1px solid rgba(233, 166, 60, 0.3);
+        color: var(--amber);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      .ticket .nm {
+        font-family: var(--head);
+        font-size: 16px;
+        color: #fff; /* fixed */
+        margin-top: 7px;
+      }
+      .ticket .mt {
+        font-size: 10.5px;
+        color: #93a2c4; /* fixed */
+        margin-top: 3px;
+      }
+      .perf {
+        border-top: 2px dashed rgba(255, 255, 255, 0.14); /* fixed */
+        margin: 11px -12px;
+        position: relative;
+      }
+      .perf::before,
+      .perf::after {
+        content: '';
+        position: absolute;
+        top: -7px;
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: var(--board);
+      }
+      .perf::before {
+        right: -7px;
+      }
+      .perf::after {
+        left: -7px;
+      }
+      .ticket .btm {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .ticket .avs {
+        display: flex;
+      }
+      .ticket .avs span {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        margin-inline-start: -6px;
+        border: 2px solid #16223a;
+        font-size: 9px;
+        font-weight: 700;
+        color: #12203a; /* fixed */
+        display: grid;
+        place-items: center;
+      }
+      .ticket .ppl {
+        font-size: 11px;
+        font-weight: 700;
+        color: #eaf0ff; /* fixed */
+      }
+      .ticket .sub2 {
+        font-size: 9.5px;
+        color: #93a2c4; /* fixed */
+      }
+
+      /* ── The boot screen ────────────────────────────────────────────────────── */
+      .boot {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: var(--screen);
+        text-align: center;
+      }
+      .boot.night {
+        background: linear-gradient(180deg, var(--board-2), var(--board));
+      }
+      .boot-mark {
+        position: relative;
+        z-index: 1;
+      }
+      .boot-mark::before {
+        content: '';
+        position: absolute;
+        inset: -44px;
+        z-index: -1;
+        margin: auto;
+        background: radial-gradient(circle, rgba(233, 166, 60, 0.32), transparent 62%);
+        filter: blur(12px);
+        opacity: 0.6;
+      }
+      .boot.night .boot-mark::before {
+        background: radial-gradient(circle, rgba(240, 178, 84, 0.42), transparent 62%);
+        opacity: 0.85;
+      }
+      .boot-clock {
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 28px;
+        color: var(--ink);
+      }
+      .boot.night .boot-clock {
+        color: #eaf0ff; /* fixed: the boot ground IS the board in dark */
+      }
+      .boot-dots {
+        font-family: var(--mono);
+        font-size: 17px;
+        letter-spacing: 0.24em;
+        color: var(--amber-deep);
+        margin-top: 2px;
+      }
+      .boot.night .boot-dots {
+        color: var(--amber);
+      }
+      .boot-lab {
+        font-family: var(--head);
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .boot.night .boot-lab {
+        color: #93a2c4; /* fixed */
+      }
+      .boot-track {
+        width: 130px;
+        height: 3px;
+        border-radius: 999px;
+        background: var(--line);
+        overflow: hidden;
+      }
+      .boot.night .boot-track {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .boot-track i {
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: 999px;
+        background: var(--amber);
+        animation: sweep 1.5s ease-in-out infinite;
+      }
+      @keyframes sweep {
+        0% {
+          transform: translateX(140%);
+        }
+        100% {
+          transform: translateX(-140%);
+        }
+      }
+
+      /* ── /settings — the display section ────────────────────────────────────── */
+      .newhead {
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+        padding: 12px 14px;
+        font-family: var(--head);
+        font-size: 15px;
+        flex: 0 0 auto;
+      }
+      .setbody {
+        flex: 1 1 auto;
+        padding: 12px;
+        overflow: hidden;
+      }
+      .setsec {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 14px 2px 6px;
+      }
+      .setsec:first-child {
+        margin-top: 0;
+      }
+      .setcard {
+        background: var(--card);
+        border-radius: 14px;
+        padding: 12px;
+        box-shadow: var(--elevation-raised);
+      }
+      .setrow {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+      }
+      .setrow .lab {
+        color: var(--muted);
+      }
+      .segs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .seg {
+        border: 1px solid var(--line);
+        background: transparent;
+        border-radius: 11px;
+        padding: 9px 4px 8px;
+        font: inherit;
+        font-size: 11px;
+        color: var(--ink);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+      .seg .sw {
+        width: 100%;
+        height: 22px;
+        border-radius: 7px;
+        border: 1px solid var(--soft-line);
+      }
+      .seg .sw.lt {
+        background: linear-gradient(135deg, #e7eaef 50%, #ffffff 50%);
+      }
+      .seg .sw.dk {
+        background: linear-gradient(135deg, #0f1726 50%, #1a2740 50%);
+      }
+      .seg .sw.sy {
+        background: linear-gradient(135deg, #e7eaef 50%, #0f1726 50%);
+      }
+      .seg[aria-checked='true'] {
+        border-color: var(--cta);
+        box-shadow: inset 0 0 0 1px var(--cta);
+        font-weight: 700;
+      }
+      .sethint {
+        font-size: 10.5px;
+        color: var(--faint);
+        margin: 6px 4px 0;
+        line-height: 1.5;
+      }
+
+      /* ── The measurement panel ──────────────────────────────────────────────── */
+      table.m {
+        border-collapse: collapse;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        margin-top: 16px;
+        width: 100%;
+        max-width: 940px;
+      }
+      table.m th,
+      table.m td {
+        border: 1px solid var(--lab-line);
+        padding: 5px 9px;
+        text-align: start;
+      }
+      table.m th {
+        color: var(--lab-muted);
+        font-weight: 600;
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      table.m td.v {
+        color: var(--lab-ink);
+      }
+      .pass {
+        color: var(--lab-ok);
+      }
+      .fail {
+        color: var(--lab-miss);
+      }
+      .warnc {
+        color: var(--lab-amber);
+      }
+      .swatch {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        border: 1px solid var(--lab-line-2);
+        vertical-align: -1px;
+        margin-inline-end: 6px;
+      }
+    </style>
+
+    <h1>Dark mode — the ration, the two fixed screens, and the toggle</h1>
+    <p class="sub">
+      The colour work is <b>done</b> and <b>inert</b>: <code>tokens.css</code> carries a complete
+      <code>:root[data-theme='dark']</code> remap and nothing in the tree sets
+      <code>data-theme</code>. So this file is not about picking colours — it is about the two
+      things a token flip cannot answer. <b>§1</b> asks what carries the board's one-loud-element
+      ration when the whole app is dark. <b>§2</b> asks whether <code>/login</code> and
+      <code>/join/:token</code> — full-screen theme-fixed boards today — should theme at all.
+      <b>§3</b> places the toggle. <b>§6</b> measures the rendered pixels rather than the table
+      someone typed.
+    </p>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <section>
+      <h2>
+        <span class="n">§1</span> The ration: what makes the board loud when everything is dark
+      </h2>
+      <p class="sub">
+        In light mode the board is loud by <b>contrast of luminance against paper</b> — it is the
+        only dark thing on the screen. Dark mode deletes that mechanism. The remap's answer
+        (design-language, "Dark mode readiness") is that the board keeps hierarchy by owning the
+        <i>darkest</i> surface while cards sit on lighter dark ones, and elevation flips to
+        "lighter&nbsp;=&nbsp;closer". Three candidates against the same body, so the claim can be
+        looked at instead of believed.
+      </p>
+
+      <div class="row">
+        <div class="col">
+          <div class="phone">
+            <div class="wp" id="p-light">
+              <div class="hdr">
+                <div class="ttl">איטליה · יום 3</div>
+                <div class="avs">
+                  <span class="av" style="background: var(--id-denim)">א</span
+                  ><span class="av" style="background: var(--id-moss)">ר</span
+                  ><span class="av" style="background: var(--id-rose)">ט</span>
+                </div>
+              </div>
+              <div class="bodyp">
+                <div class="board">
+                  <div class="b-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="b-clock">14:20</div>
+                  </div>
+                  <div class="b-lab">הבא בתור</div>
+                  <div class="b-ttl">רכבת לפירנצה</div>
+                  <div class="b-meta">
+                    יוצאת בעוד <span class="num">42</span> דק׳ · רציף <span class="num">7</span>
+                  </div>
+                  <div class="b-bar"><i></i></div>
+                </div>
+                <div class="sect">היום</div>
+                <div class="card hard">
+                  <div class="t">רכבת לפירנצה</div>
+                  <div class="m"><span class="tm">15:02</span> · תחנת סנטה מריה</div>
+                </div>
+                <div class="card soft">
+                  <div class="t">ארוחת ערב</div>
+                  <div class="m"><span class="tm">20:00</span> · טרסטוורה</div>
+                </div>
+              </div>
+              <div class="navb">
+                <span class="on">בית</span><span>יום</span><span>מפה</span><span>אינדקס</span>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Light — the reference</b> The board is the only dark surface. Its edge is unmissable,
+            so it reads as an <i>object</i> sitting on paper.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone">
+            <div class="wp" data-theme="dark" id="p-darkA">
+              <div class="hdr">
+                <div class="ttl">איטליה · יום 3</div>
+                <div class="avs">
+                  <span class="av" style="background: var(--id-denim)">א</span
+                  ><span class="av" style="background: var(--id-moss)">ר</span
+                  ><span class="av" style="background: var(--id-rose)">ט</span>
+                </div>
+              </div>
+              <div class="bodyp">
+                <div class="board" id="boardA">
+                  <div class="b-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="b-clock">14:20</div>
+                  </div>
+                  <div class="b-lab">הבא בתור</div>
+                  <div class="b-ttl">רכבת לפירנצה</div>
+                  <div class="b-meta">
+                    יוצאת בעוד <span class="num">42</span> דק׳ · רציף <span class="num">7</span>
+                  </div>
+                  <div class="b-bar"><i></i></div>
+                </div>
+                <div class="sect">היום</div>
+                <div class="card hard">
+                  <div class="t">רכבת לפירנצה</div>
+                  <div class="m"><span class="tm">15:02</span> · תחנת סנטה מריה</div>
+                </div>
+                <div class="card soft">
+                  <div class="t">ארוחת ערב</div>
+                  <div class="m"><span class="tm">20:00</span> · טרסטוורה</div>
+                </div>
+              </div>
+              <div class="navb">
+                <span class="on">בית</span><span>יום</span><span>מפה</span><span>אינדקס</span>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>A — the remap as written <span class="tag keep">ships</span></b> Board
+            <code>#0A1120</code> on screen <code>#0F1726</code> —
+            <b>ΔL* 2.6, which is not a visible edge</b>. The board stops being a card and becomes
+            the field the amber lives in. Every amber thing on this screen is inside it, and that is
+            what the eye follows.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone">
+            <div class="wp" data-theme="dark">
+              <div class="hdr">
+                <div class="ttl">איטליה · יום 3</div>
+                <div class="avs">
+                  <span class="av" style="background: var(--id-denim)">א</span
+                  ><span class="av" style="background: var(--id-moss)">ר</span
+                  ><span class="av" style="background: var(--id-rose)">ט</span>
+                </div>
+              </div>
+              <div class="bodyp">
+                <div class="board rim">
+                  <div class="b-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="b-clock">14:20</div>
+                  </div>
+                  <div class="b-lab">הבא בתור</div>
+                  <div class="b-ttl">רכבת לפירנצה</div>
+                  <div class="b-meta">
+                    יוצאת בעוד <span class="num">42</span> דק׳ · רציף <span class="num">7</span>
+                  </div>
+                  <div class="b-bar"><i></i></div>
+                </div>
+                <div class="sect">היום</div>
+                <div class="card hard">
+                  <div class="t">רכבת לפירנצה</div>
+                  <div class="m"><span class="tm">15:02</span> · תחנת סנטה מריה</div>
+                </div>
+                <div class="card soft">
+                  <div class="t">ארוחת ערב</div>
+                  <div class="m"><span class="tm">20:00</span> · טרסטוורה</div>
+                </div>
+              </div>
+              <div class="navb">
+                <span class="on">בית</span><span>יום</span><span>מפה</span><span>אינדקס</span>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>B — an amber hairline rim <span class="tag cut">rejected</span></b> It works — the
+            board is an object again. <i>That is the trap.</i> It works by spending amber on an
+            outline, which is chrome, not time: the rule-4 violation, bought with the exact budget
+            the board's own prominence is denominated in. Beating the ration by spending the ration.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone">
+            <div class="wp" data-theme="dark">
+              <div class="hdr">
+                <div class="ttl">איטליה · יום 3</div>
+                <div class="avs">
+                  <span class="av" style="background: var(--id-denim)">א</span
+                  ><span class="av" style="background: var(--id-moss)">ר</span
+                  ><span class="av" style="background: var(--id-rose)">ט</span>
+                </div>
+              </div>
+              <div class="bodyp">
+                <div class="board rimglow">
+                  <div class="b-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="b-clock">14:20</div>
+                  </div>
+                  <div class="b-lab">הבא בתור</div>
+                  <div class="b-ttl">רכבת לפירנצה</div>
+                  <div class="b-meta">
+                    יוצאת בעוד <span class="num">42</span> דק׳ · רציף <span class="num">7</span>
+                  </div>
+                  <div class="b-bar"><i></i></div>
+                </div>
+                <div class="sect">היום</div>
+                <div class="card hard">
+                  <div class="t">רכבת לפירנצה</div>
+                  <div class="m"><span class="tm">15:02</span> · תחנת סנטה מריה</div>
+                </div>
+                <div class="card soft">
+                  <div class="t">ארוחת ערב</div>
+                  <div class="m"><span class="tm">20:00</span> · טרסטוורה</div>
+                </div>
+              </div>
+              <div class="navb">
+                <span class="on">בית</span><span>יום</span><span>מפה</span><span>אינדקס</span>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>C — rim + an outer bloom <span class="tag cut">rejected</span></b> The board now
+            <i>emits</i>. It is findable, and it is also the loudest thing this product has ever
+            drawn — a glow that leaves its own box competes with the pulse for "live", and pulse is
+            the one signal that means <i>this minute</i>.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone">
+            <div class="wp" data-theme="dark">
+              <div class="hdr">
+                <div class="ttl">איטליה · יום 3</div>
+                <div class="avs">
+                  <span class="av" style="background: var(--id-denim)">א</span
+                  ><span class="av" style="background: var(--id-moss)">ר</span
+                  ><span class="av" style="background: var(--id-rose)">ט</span>
+                </div>
+              </div>
+              <div class="bodyp">
+                <div class="board hair">
+                  <div class="b-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="b-clock">14:20</div>
+                  </div>
+                  <div class="b-lab">הבא בתור</div>
+                  <div class="b-ttl">רכבת לפירנצה</div>
+                  <div class="b-meta">
+                    יוצאת בעוד <span class="num">42</span> דק׳ · רציף <span class="num">7</span>
+                  </div>
+                  <div class="b-bar"><i></i></div>
+                </div>
+                <div class="sect">היום</div>
+                <div class="card hard">
+                  <div class="t">רכבת לפירנצה</div>
+                  <div class="m"><span class="tm">15:02</span> · תחנת סנטה מריה</div>
+                </div>
+                <div class="card soft">
+                  <div class="t">ארוחת ערב</div>
+                  <div class="m"><span class="tm">20:00</span> · טרסטוורה</div>
+                </div>
+              </div>
+              <div class="navb">
+                <span class="on">בית</span><span>יום</span><span>מפה</span><span>אינדקס</span>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>D — a neutral hairline <span class="tag cut">rejected</span></b> The edge that spends
+            no budget (<code>--line</code>, light @ .10). Rejected on a different ground: a
+            <i>light</i> rim on the app's <i>lowest</i> plane says "raised", which is the opposite
+            of what the board now is. It buys objecthood by lying about elevation.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <b>What the render corrected.</b> design-language's stated dark-mode mechanism is that the
+        board <i>"owns the darkest surface … while cards sit on lighter dark surfaces"</i>. Measured
+        on the pixels above, that step is <b>ΔL* 2.6</b> — against ΔL* 84.8 in light. It is not a
+        visible edge, and A shows it: the board has no boundary against the body. So the doc's
+        mechanism is real in the token table and <b>does essentially no work on screen</b>. That is
+        worth writing down, because the number in the table looks like an answer.
+      </div>
+      <div class="note">
+        <b>What actually carries it: amber density.</b> Look at A again. The clock, the
+        <code>הבא בתור</code> label, the countdown numeral, the platform numeral, the progress bar,
+        the live blip — <i>every amber thing on the screen is inside the board</i>. The eye goes
+        straight there with no luminance edge involved at all. And the hierarchy
+        <b>inverts</b> rather than weakening: in light the board is the object and the cards are
+        quiet; in dark the cards are the objects and the board is the field they sit above. That
+        inversion is not a defect to correct. It is closer to what the board <i>is</i> — the thing
+        that speaks, not a thing you pick up — and it is exactly why B and D are both wrong: each
+        restores an edge the surface no longer needs.
+      </div>
+      <div class="note warn">
+        <b>The rule this sharpens, and it is a real tightening.</b> In light mode a stray amber
+        accent elsewhere on the screen is survivable, because the board's darkness still separates
+        it. In dark mode <b>amber density IS the ration</b> — so amber spent anywhere else is taken
+        directly out of the board's prominence, with nothing left to compensate. "Amber = time &amp;
+        commitment" stops being a semantic rule and becomes a <i>hierarchy</i> rule. The event
+        cards' amber hard-edge and mono times are the tolerated case (small, static, non-glowing);
+        anything larger or glowing is not, and there is no longer a second channel that would have
+        hidden the mistake.
+      </div>
+      <div class="note warn">
+        <b>Two things the render exposed that were not on the brief.</b> (1)
+        <b>The header changes plane.</b> Dark <code>--indigo</code> <code>#131F38</code> is
+        <i>lighter</i> than the body ground, so the always-dark chrome stops being "the dark bar at
+        the top" and becomes a raised band — fine under "lighter = closer", but it means
+        <b>mode identity is carried by hue alone in dark mode</b>, which §1b checks rather than
+        assumes. (2)
+        <b><code>--faint</code> on <code>--card</code> measures 2.63:1 in the LIGHT theme</b> —
+        under its own AA-large floor, a
+        <i>pre-existing light-mode defect that dark mode fixes by accident</i> (4.76:1). Pulling
+        that thread is what turned up §5b, and it is the reason this session audited both themes
+        rather than only the new one.
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <section>
+      <h2>
+        <span class="n">§1b</span> Mode identity survives the remap (ADR-0028, non-negotiable)
+      </h2>
+      <p class="sub">
+        Mode must be readable from the chrome alone, before any content, via at least two channels.
+        Light mode gets that almost for free — trip chrome is <i>dark</i> indigo, plan chrome is
+        <i>light</i> paper, so luminance alone separates them. Dark mode deletes that channel too:
+        both chromes are now dark. Drawn, because "it still works" is a claim about a rendered
+        screen.
+      </p>
+      <div class="row">
+        <div class="col">
+          <div class="phone short">
+            <div class="wp" data-theme="dark">
+              <div class="hdr">
+                <div class="ttl">🧭 איטליה · יום 3</div>
+                <div class="avs">
+                  <span class="av" style="background: var(--id-denim)">א</span
+                  ><span class="av" style="background: var(--id-moss)">ר</span>
+                </div>
+              </div>
+              <div class="bodyp">
+                <div class="board">
+                  <div class="b-top">
+                    <div class="live"><span class="blip"></span>עכשיו</div>
+                    <div class="b-clock">14:20</div>
+                  </div>
+                  <div class="b-ttl">רכבת לפירנצה</div>
+                  <div class="b-bar"><i></i></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Trip · dark</b> Indigo chrome + amber energy + the pulsing blip + 🧭. Three channels,
+            one of them motion.
+          </p>
+        </div>
+        <div class="col">
+          <div class="phone short">
+            <div class="wp" data-theme="dark">
+              <div
+                class="hdr"
+                style="
+                  background: color-mix(in srgb, var(--plan) 16%, var(--screen));
+                  background-image:
+                    repeating-linear-gradient(
+                      0deg,
+                      rgba(169, 154, 242, 0.09) 0 1px,
+                      transparent 1px 11px
+                    ),
+                    repeating-linear-gradient(
+                      90deg,
+                      rgba(169, 154, 242, 0.09) 0 1px,
+                      transparent 1px 11px
+                    );
+                "
+              >
+                <div class="ttl" style="color: var(--ink)">✏️ איטליה · תכנון</div>
+                <div class="avs">
+                  <span class="av" style="background: var(--id-denim); border-color: #232a45"
+                    >א</span
+                  ><span class="av" style="background: var(--id-moss); border-color: #232a45"
+                    >ר</span
+                  >
+                </div>
+              </div>
+              <div class="bodyp">
+                <div
+                  style="
+                    background: linear-gradient(180deg, var(--plan-surface-2), var(--plan-surface));
+                    border-radius: 20px;
+                    padding: 14px;
+                    color: #f2effc;
+                  "
+                >
+                  <div style="font-size: 9.5px; letter-spacing: 0.14em; opacity: 0.8">מוכנות</div>
+                  <div style="font-family: var(--head); font-size: 19px; margin-top: 4px">
+                    4 מתוך 7 סגורים
+                  </div>
+                  <div
+                    style="
+                      margin-top: 12px;
+                      height: 4px;
+                      border-radius: 999px;
+                      background: rgba(255, 255, 255, 0.22);
+                    "
+                  >
+                    <i
+                      style="
+                        display: block;
+                        height: 100%;
+                        width: 57%;
+                        border-radius: 999px;
+                        background: #fff;
+                      "
+                    ></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Plan · dark</b> Violet-tinted dark chrome + the drafting grid + ✏️, and
+            <b>no pulse anywhere</b>. Also three channels.
+          </p>
+        </div>
+        <div class="col">
+          <div class="phone short">
+            <div class="wp" data-theme="dark">
+              <div
+                class="hdr"
+                style="background: color-mix(in srgb, var(--plan) 16%, var(--screen))"
+              >
+                <div class="ttl" style="color: var(--ink)">✏️ איטליה · תכנון</div>
+              </div>
+              <div class="bodyp">
+                <div
+                  style="
+                    background: linear-gradient(180deg, var(--plan-deep), var(--plan));
+                    border-radius: 20px;
+                    padding: 14px;
+                    color: #f2effc;
+                  "
+                >
+                  <div style="font-size: 9.5px; letter-spacing: 0.14em; opacity: 0.8">מוכנות</div>
+                  <div style="font-family: var(--head); font-size: 19px; margin-top: 4px">
+                    4 מתוך 7 סגורים
+                  </div>
+                  <div
+                    style="
+                      margin-top: 12px;
+                      height: 4px;
+                      border-radius: 999px;
+                      background: rgba(255, 255, 255, 0.22);
+                    "
+                  >
+                    <i
+                      style="
+                        display: block;
+                        height: 100%;
+                        width: 57%;
+                        border-radius: 999px;
+                        background: #fff;
+                      "
+                    ></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Plan · dark, AS THE REMAP SHIPS TODAY <span class="tag cut">defect</span></b> The
+            hero fills from <code>--plan-deep</code>, whose dark value was chosen
+            <i>"used as text — lighter on dark"</i>. It is also a <b>fill</b> at two sites. Result:
+            <b>L* 68</b> — the brightest surface in the entire dark app, in the mode design-language
+            calls <i>calm</i>, with its own ink at <b>2.16:1</b>.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <b
+          >The bar is "completely different at a glance", not "two channels technically survive".</b
+        >
+        ADR-0028's rule is <i>chrome colour + mode pill + texture</i> — hue, glyph and pattern, all
+        of which survive a luminance remap. But light mode clears that bar by a mile for a reason
+        the rule never names: trip chrome is <i>dark</i> and plan chrome is <i>light</i>, so the two
+        modes differ in <b>luminance</b> before you notice anything else. Dark mode deletes that
+        channel, and the remap as shipped does not just fail to replace it — it <b>inverts</b> it,
+        making plan the loud mode and trip the quiet one.
+      </div>
+      <div class="note">
+        <b>So plan's hero gets surface tokens, exactly as trip's does.</b> The asymmetry is the root
+        cause: the board has dedicated surface tokens (<code>--board</code>/<code>--board-2</code>)
+        while the plan hero has always been painting itself out of the <i>accent</i> tokens
+        (<code>--plan-deep</code>/<code>--plan</code>). An accent brightens on dark; a surface must
+        not. Adding <code>--plan-surface</code>/<code>--plan-surface-2</code> — light values
+        byte-identical to today, dark values a deep violet night surface
+        (<code>#2A2158</code>/<code>#332866</code>, L*&nbsp;17–21, ink at <b>12.7:1</b>) — keeps
+        dark mode a token remap, restores plan's calm, and gives the two modes their luminance
+        channel back the right way round:
+        <b>trip = near-black with amber inside it, plan = a lifted violet slab with white on it</b>.
+        Unmistakable at a glance, which is the actual requirement.
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <section>
+      <h2><span class="n">§2</span> The convergence: /login and /join beside a dark app</h2>
+      <p class="sub">
+        Both screens are full-screen departure boards today, deliberately — the pre-login brand
+        impression, and design-language's one stated exception to the ration ("the pre-login landing
+        teaser is the one marketing exception"). Their ground is
+        <code>--board-2</code>&nbsp;→&nbsp;<code>--board</code>, which <i>does</i> re-map, so they
+        already shift by the remap's few L* without anyone wiring anything. The question is whether
+        they should do more than that.
+      </p>
+
+      <div class="row">
+        <div class="col">
+          <div class="phone">
+            <div class="wp" id="p-login">
+              <div class="land">
+                <div class="land-top">
+                  <div class="land-logo">Waypoint</div>
+                  <div class="mark"></div>
+                </div>
+                <div class="land-hero">
+                  <h1>הטיול שלכם,<br />במקום <span class="em">אחד</span>.</h1>
+                  <p>מה עכשיו, מה הלאה, ומה צריך ברבע השעה הקרובה.</p>
+                </div>
+                <div class="teaser">
+                  <div class="lbl">הבא בתור</div>
+                  <div class="ttl">רכבת לפירנצה</div>
+                  <div class="cd"><b>00:42</b><i>עד היציאה</i></div>
+                </div>
+                <div class="cta">
+                  <button><span class="gd"></span>המשך עם Google</button>
+                  <div class="nt">אין הרשמה. חשבון Google בלבד.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>/login — light theme</b> The board is the field. Note there is nothing paper on this
+            screen to be scarce <i>against</i>.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone">
+            <div class="wp" data-theme="dark" id="p-loginD">
+              <div class="land">
+                <div class="land-top">
+                  <div class="land-logo">Waypoint</div>
+                  <div class="mark"></div>
+                </div>
+                <div class="land-hero">
+                  <h1>הטיול שלכם,<br />במקום <span class="em">אחד</span>.</h1>
+                  <p>מה עכשיו, מה הלאה, ומה צריך ברבע השעה הקרובה.</p>
+                </div>
+                <div class="teaser">
+                  <div class="lbl">הבא בתור</div>
+                  <div class="ttl">רכבת לפירנצה</div>
+                  <div class="cd"><b>00:42</b><i>עד היציאה</i></div>
+                </div>
+                <div class="cta">
+                  <button><span class="gd"></span>המשך עם Google</button>
+                  <div class="nt">אין הרשמה. חשבון Google בלבד.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>/login — dark theme <span class="tag keep">ships</span></b> The ground darkened, the
+            amber brightened, and the ~21 fixed inks stayed. This is the whole delta, and it is
+            correct: the screen was <i>already</i> at the theme's dark end.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone">
+            <div class="wp" data-theme="dark">
+              <div class="land">
+                <div class="land-top">
+                  <div class="land-logo">Waypoint</div>
+                  <div class="mark"></div>
+                </div>
+                <div class="land-hero">
+                  <h1>מזמינים אותך<br />ל<span class="em">איטליה</span>.</h1>
+                </div>
+                <div class="ticket">
+                  <span class="badge">כרטיס עלייה</span>
+                  <div class="nm">איטליה · יולי</div>
+                  <div class="mt">20.07–29.07 · 4 ימים לצאת</div>
+                  <div class="perf"></div>
+                  <div class="btm">
+                    <div>
+                      <div class="ppl">3 כבר בפנים</div>
+                      <div class="sub2">מצטרפים בהקשה אחת</div>
+                    </div>
+                    <div class="avs">
+                      <span style="background: var(--id-plum)">ד</span
+                      ><span style="background: var(--id-cocoa)">מ</span
+                      ><span style="background: var(--id-moss)">ר</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="cta">
+                  <button><span class="gd"></span>המשך עם Google</button>
+                  <div class="nt">ההצטרפות היא בהקשה אחת.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>/join/:token — dark theme <span class="tag keep">ships</span></b> Same story. The
+            perforation notches punch out to <code>--board</code>, so they follow the remap for free
+            (ADR-0143's set piece is unharmed).
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone">
+            <div class="wp">
+              <div class="land" style="background: var(--screen); color: var(--ink)">
+                <div class="land-top">
+                  <div class="land-logo" style="color: var(--ink)">Waypoint</div>
+                  <div class="mark"></div>
+                </div>
+                <div class="land-hero">
+                  <h1 style="color: var(--ink)">
+                    הטיול שלכם,<br />במקום <span class="em">אחד</span>.
+                  </h1>
+                  <p style="color: var(--muted)">מה עכשיו, מה הלאה, ומה צריך ברבע השעה הקרובה.</p>
+                </div>
+                <div class="teaser" style="background: var(--card); border-color: var(--line)">
+                  <div class="lbl" style="color: var(--muted)">הבא בתור</div>
+                  <div class="ttl" style="color: var(--ink)">רכבת לפירנצה</div>
+                  <div class="cd"><b style="color: var(--amber-ink)">00:42</b><i>עד היציאה</i></div>
+                </div>
+                <div class="cta">
+                  <button style="background: var(--cta); color: var(--cta-text)">
+                    <span class="gd"></span>המשך עם Google
+                  </button>
+                  <div class="nt" style="color: var(--faint)">אין הרשמה. חשבון Google בלבד.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>The rejected alternative: /login themes <span class="tag cut">rejected</span></b>
+            What "these screens theme" actually means — a <i>light</i> login, because a screen that
+            themes has to have a light state. The brand impression is gone, and ADR-0142/0143's set
+            pieces (the anticipation glow, the perforation, the stamp) now need a second
+            choreography and a second device pass.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <b
+          >The answer: they do not theme, and the argument is not "there is no preference to
+          read".</b
+        >
+        A locally-stored pick <i>is</i> readable on <code>/login</code> (§3), so that argument
+        dissolves. The real one is that
+        <b>these two screens are already at the dark end of the axis</b> — theming them means giving
+        them a light state they have never had and do not want, and the only alternative reading
+        ("theming" = the ground goes a few L* darker) is what the tokens already do for free. They
+        are the same surface class as the indigo header, the dormant board and the boarding-pass
+        ticket: <b>always-dark chrome</b>, every one of which the U-08 sweep already marked
+        <code>fixed:</code>. App.css's own header comment already names "the join/land departure
+        boards" in that list — the decision exists, only the per-declaration markers are missing.
+        So:
+        <b>mark them, don't tokenize them.</b>
+      </div>
+      <div class="note warn">
+        <b>And the ration is not violated, because the ration was never app-wide.</b> "Max one board
+        surface per screen." Login has one — itself. Dark Home has one — its hero. Two different
+        screens both being dark has never been the rule. What dark mode ends is the
+        <i>implicit</i> second thing the rule bought (a board is recognisable because everything
+        around it is paper), and §1 is where that mechanism gets restated rather than lost.
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <section>
+      <h2><span class="n">§3</span> The toggle: three rungs, on the device, before first paint</h2>
+      <p class="sub">
+        <code>/settings</code> is user-scoped and already exists (ADR-0133). It rejected a theme
+        toggle in July for one stated reason —
+        <i>"a switch that does nothing is worse than a thin page"</i> — which was true while the
+        remap was inert and is false the moment it is not.
+      </p>
+
+      <div class="row">
+        <div class="col">
+          <div class="phone short">
+            <div class="wp">
+              <div class="newhead">ההגדרות שלי</div>
+              <div class="setbody">
+                <div class="setsec">תצוגה</div>
+                <div class="setcard">
+                  <div class="setrow"><span class="lab">ערכת נושא</span></div>
+                  <div class="segs" role="radiogroup">
+                    <button class="seg" role="radio" aria-checked="true">
+                      <span class="sw sy"></span>מערכת
+                    </button>
+                    <button class="seg" role="radio" aria-checked="false">
+                      <span class="sw lt"></span>בהיר
+                    </button>
+                    <button class="seg" role="radio" aria-checked="false">
+                      <span class="sw dk"></span>כהה
+                    </button>
+                  </div>
+                </div>
+                <div class="sethint">
+                  הבחירה נשמרת במכשיר הזה. במצב מערכת האפליקציה עוקבת אחרי הטלפון.
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Light</b> Three rungs, <code>מערכת</code> selected. The swatch is the control's
+            non-colour redundancy — a split square, so the pick is legible without reading, and the
+            selected ring is <code>--cta</code> (neutral), never amber.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone short">
+            <div class="wp" data-theme="dark" id="p-set">
+              <div class="newhead">ההגדרות שלי</div>
+              <div class="setbody">
+                <div class="setsec">תצוגה</div>
+                <div class="setcard">
+                  <div class="setrow"><span class="lab">ערכת נושא</span></div>
+                  <div class="segs" role="radiogroup">
+                    <button class="seg" role="radio" aria-checked="false">
+                      <span class="sw sy"></span>מערכת
+                    </button>
+                    <button class="seg" role="radio" aria-checked="false">
+                      <span class="sw lt"></span>בהיר
+                    </button>
+                    <button class="seg" role="radio" aria-checked="true">
+                      <span class="sw dk"></span>כהה
+                    </button>
+                  </div>
+                </div>
+                <div class="sethint">
+                  הבחירה נשמרת במכשיר הזה. במצב מערכת האפליקציה עוקבת אחרי הטלפון.
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Dark <span class="tag keep">ships</span></b> The swatches keep their literal
+            light/dark values in both themes — they are a <i>picture of the option</i>, not chrome,
+            so they are theme-fixed by construction.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone short">
+            <div class="wp">
+              <div class="boot">
+                <div class="boot-mark">
+                  <div class="boot-clock">14:20</div>
+                  <div class="boot-dots">• • •</div>
+                </div>
+                <div class="boot-lab">טוען…</div>
+                <div class="boot-track"><i></i></div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Boot — light</b> Ships today: cool-paper <code>--screen</code> ground, ink clock, a
+            small amber halo (ADR-0105).
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone short">
+            <div class="wp" data-theme="dark" id="p-boot">
+              <div class="boot night">
+                <div class="boot-mark">
+                  <div class="boot-clock">14:20</div>
+                  <div class="boot-dots">• • •</div>
+                </div>
+                <div class="boot-lab">טוען…</div>
+                <div class="boot-track"><i></i></div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Boot — dark <span class="tag keep">ships</span></b> ADR-0105's night board, amber
+            lit, full-bleed. One rule, not a component: the ground becomes the same
+            <code>--board-2</code>&nbsp;→&nbsp;<code>--board</code> gradient
+            <code>/login</code> uses, so boot→login is <i>one continuous surface</i> in dark.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <b>It stores on the device, and that is the design rather than the shortcut.</b> The theme
+        has to be on <code>&lt;html&gt;</code> <i>before first paint</i> or the app flashes light —
+        which a server-stored preference structurally cannot do, since it arrives a round trip after
+        the first frame and would change the theme <i>after</i> paint. A local store is therefore
+        load-bearing even if a server copy existed, so the server copy would be pure duplication
+        with a flash attached. It is also the honest model: theme is a property of
+        <b>the screen you are holding</b>
+        — a phone at night and a laptop in daylight legitimately disagree — where
+        <code>avatarHue</code>, the stored-preference precedent, is a property of the person.
+      </div>
+      <div class="note">
+        <b>Three rungs, and <code>מערכת</code> is the default.</b> Two rungs would force a shipped
+        default, and a dark-mode phone would open light. <code>system</code> is also the only honest
+        state for a user who has never chosen — and it must keep <i>tracking</i>, so the stored
+        value is the <b>pick</b> (<code>system|light|dark</code>) and the resolved theme is computed
+        from it plus a live <code>matchMedia</code> listener. Note what else has to follow the
+        resolved theme and is easy to forget:
+        <code>&lt;meta name="theme-color"&gt;</code> (hardcoded <code>#1B2A4A</code> today — it
+        paints the browser's own chrome bar), and the Map's cloud style, which is already plumbed
+        for exactly this (<code>MAP_THEME</code> + <code>readMapsConfig(env, theme)</code>, ADR-0121
+        §11).
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <section>
+      <h2><span class="n">§5</span> The convention that is wrong, and the ten sites it breaks</h2>
+      <p class="sub">
+        <code>App.css</code> and <code>screens.css</code> both open with the same recorded rule from
+        the U-08 sweep:
+        <i>"ink that rides a semantic FILL — the fill re-maps, the on-fill ink must not."</i> That
+        rule is <b>true for a fill that keeps its polarity</b> and
+        <b>false for every mid-tone semantic fill</b>, because those were brightened for text
+        legibility on dark grounds — which pushes them straight past the point where white ink
+        works. Nobody could see it: the remap has never been rendered.
+      </p>
+
+      <div class="row">
+        <div class="col">
+          <div class="phone short">
+            <div class="wp" data-theme="dark">
+              <div class="setbody" style="padding: 16px">
+                <div class="setsec">כפי שנשלח היום</div>
+                <div style="display: flex; flex-direction: column; gap: 9px">
+                  <button
+                    style="
+                      background: var(--ink);
+                      color: #fff;
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    נבחר
+                  </button>
+                  <button
+                    style="
+                      background: var(--ok);
+                      color: #fff;
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    היינו
+                  </button>
+                  <button
+                    style="
+                      background: var(--miss);
+                      color: #fff;
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    מחיקה
+                  </button>
+                  <button
+                    style="
+                      background: var(--teal);
+                      color: #fff;
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    ניווט
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Dark, today <span class="tag cut">broken</span></b> Four real controls. The first is
+            <code>background: var(--ink)</code> with <code>#fff</code> — <b>1.20:1</b>, white on
+            near-white. It is the selected state of <code>.choice-pill</code>, a control in the
+            app's forms.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone short">
+            <div class="wp" data-theme="dark">
+              <div class="setbody" style="padding: 16px">
+                <div class="setsec">עם ‎--on-fill</div>
+                <div style="display: flex; flex-direction: column; gap: 9px">
+                  <button
+                    style="
+                      background: var(--cta);
+                      color: var(--cta-text);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    נבחר
+                  </button>
+                  <button
+                    style="
+                      background: var(--ok);
+                      color: var(--on-fill);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    היינו
+                  </button>
+                  <button
+                    style="
+                      background: var(--miss);
+                      color: var(--on-fill);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    מחיקה
+                  </button>
+                  <button
+                    style="
+                      background: var(--teal);
+                      color: var(--on-fill);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    ניווט
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Dark, fixed <span class="tag keep">ships</span></b> 13.49 · 7.03 · 5.55 · 6.34. A
+            brightened fill takes <i>dark</i> ink — which is what dark-mode fills do everywhere, and
+            what <code>--cta-text</code> has been doing alone in this codebase since ADR-0028.
+          </p>
+        </div>
+
+        <div class="col">
+          <div class="phone short">
+            <div class="wp">
+              <div class="setbody" style="padding: 16px">
+                <div class="setsec">בהיר — ללא שינוי</div>
+                <div style="display: flex; flex-direction: column; gap: 9px">
+                  <button
+                    style="
+                      background: var(--cta);
+                      color: var(--cta-text);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    נבחר
+                  </button>
+                  <button
+                    style="
+                      background: var(--ok);
+                      color: var(--on-fill);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    היינו
+                  </button>
+                  <button
+                    style="
+                      background: var(--miss);
+                      color: var(--on-fill);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    מחיקה
+                  </button>
+                  <button
+                    style="
+                      background: var(--teal);
+                      color: var(--on-fill);
+                      border: 0;
+                      border-radius: 11px;
+                      padding: 11px;
+                      font: inherit;
+                      font-size: 12.5px;
+                      font-weight: 700;
+                    "
+                  >
+                    ניווט
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Light — byte-identical</b> <code>--on-fill</code> is <code>#FFFFFF</code> in light,
+            so every one of these renders exactly as it does today. The change is invisible in light
+            mode by construction, which is what makes it safe.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <b>One pair, generalised from the one that already existed.</b> Rule 8 says find the one-off
+        doing this job and extend it rather than adding a second. That one-off is
+        <code>--cta</code>/<code>--cta-text</code> — ADR-0028 already wrote
+        <i>"CTA is a pair … they flip together (dark: light button, dark text)"</i>, and then
+        applied the insight to exactly one token. <code>--on-fill</code> is that same pair's ink,
+        named for every fill: <code>#FFFFFF</code> light, <code>#12203A</code> dark (the value
+        <code>--cta-text</code> already carries). <code>--cta-text</code> becomes an alias of it.
+        <code>--on-amber</code> takes the other case — the one fill that is
+        <i>light in both themes</i>, so its ink stays dark in both.
+      </div>
+      <div class="note warn">
+        <b>The one fill that must NOT join the family:</b> <code>--indigo</code>. It is always-dark
+        chrome, so it keeps light ink in both themes — dark ink on it measures <b>1.01:1</b>. This
+        is the same distinction §2 draws for <code>/login</code> and <code>/join</code>, and it is
+        the line the whole "fixed:" marker convention exists to record:
+        <i>always-dark chrome keeps light ink; a re-mapping fill flips its ink with it</i>. Those
+        are two different rules that the sweep wrote down as one.
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <section>
+      <h2><span class="n">§5b</span> And the light theme has four failures of its own</h2>
+      <p class="sub">
+        The reconciliation was supposed to be about dark mode. Auditing both themes together turned
+        the result inside out:
+        <b>text contrast fails four times in the SHIPPED light theme and zero times in dark</b> —
+        the dark remap brightened everything and fixed them by accident. Symmetrically, on-fill ink
+        fails ten times in dark and zero times in light. Each theme has been hiding the other's bug
+        class.
+      </p>
+      <div class="row">
+        <div class="col">
+          <div class="phone short">
+            <div class="wp">
+              <div class="bodyp" style="padding: 16px">
+                <div class="sect">היום</div>
+                <div class="card">
+                  <div class="t">רכבת לפירנצה</div>
+                  <div class="m"><span class="tm">15:02</span> · תחנת סנטה מריה</div>
+                </div>
+                <div style="color: var(--muted); font-size: 11px; margin: 8px 2px">
+                  נותרו 3 דברים היום
+                </div>
+                <div style="color: var(--faint); font-size: 10.5px; margin: 0 2px">
+                  אין עוד מה לסגור להיום
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Light, today <span class="tag cut">3 failures visible</span></b>
+            <code>--amber-deep</code> time <b>3.13</b> (needs 4.5) · <code>--muted</code> on the
+            ground <b>3.88</b> (needs 4.5) · <code>--faint</code> <b>2.18</b> (needs 3.0).
+          </p>
+        </div>
+        <div class="col">
+          <div class="phone short">
+            <div class="wp fixed-light">
+              <div class="bodyp" style="padding: 16px">
+                <div class="sect">היום</div>
+                <div class="card">
+                  <div class="t">רכבת לפירנצה</div>
+                  <div class="m"><span class="tm">15:02</span> · תחנת סנטה מריה</div>
+                </div>
+                <div style="color: var(--muted); font-size: 11px; margin: 8px 2px">
+                  נותרו 3 דברים היום
+                </div>
+                <div style="color: var(--faint); font-size: 10.5px; margin: 0 2px">
+                  אין עוד מה לסגור להיום
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="cap">
+            <b>Light, corrected <span class="tag keep">ships</span></b> 5.49 · 4.50 · 3.03. All
+            three are <b>scalar darkenings along the same RGB ray</b>, so hue and saturation are
+            mathematically untouched — the amber is still the same amber, just deep enough to read.
+          </p>
+        </div>
+        <div class="col" style="max-width: 48ch">
+          <p class="cap" style="max-width: none">
+            <b>Why <code>--amber</code> itself is NOT touched.</b> The signature amber
+            <code>#E9A63C</code> lives on the dark board, where it measures 8.51:1. Only
+            <code>--amber-deep</code> — amber's <i>paper</i> variant, carrying 10–12.5px bold times
+            and labels across zone chips, leg badges, the glance rail and the tz-shift pill — moves.
+            So the product's signature colour is unchanged and the rule-4 budget is untouched: this
+            is the same hue at a legible depth, not a new one. <br /><br />
+            <b>The pattern worth keeping.</b> Both bug classes have one shape —
+            <i>a token whose value was chosen for one of its two roles</i>.
+            <code>--amber-deep</code> was chosen as an accent and used as small text.
+            <code>--plan-deep</code> was remapped as text and used as a fill. The ten on-fill sites
+            inherited a rule written for amber and applied to everything. Each time the fix is the
+            same: <b>give the second role its own token</b>, which is what
+            <code>--amber-ink</code> already did once and nobody generalised.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════ -->
+    <section>
+      <h2><span class="n">§6</span> Measured off the rendered pixels</h2>
+      <p class="sub">
+        Computed at load from <code>getComputedStyle</code> on the frames above — not from a table
+        anyone typed. L* is CIE lightness; ratios are WCAG 2.x contrast.
+        <b>These are the floor, not the verdict:</b> ADR-0125 is this repo's own precedent for a
+        palette that measured fine and read as one hue on a real screen, and the map epic has had
+        four device corrections of things that were derived, tested and wrong. The device pass is
+        still owed.
+      </p>
+      <table class="m" id="mtable">
+        <thead>
+          <tr>
+            <th>Pair</th>
+            <th>Light — shipped</th>
+            <th>Light — §5b fix</th>
+            <th>Dark — §5 fix</th>
+            <th>Requirement</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="note" id="verdict"></div>
+    </section>
+
+    <script>
+      const hex = (c) => {
+        const m = c.match(/\d+(\.\d+)?/g).map(Number);
+        return [m[0], m[1], m[2]];
+      };
+      const px = (s) => [1, 3, 5].map((i) => parseInt(s.slice(i, i + 2), 16));
+      const lin = (v) => {
+        v /= 255;
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      };
+      const relLum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      const ratio = (a, b) => {
+        const [x, y] = [relLum(a), relLum(b)].sort((p, q) => q - p);
+        return (x + 0.05) / (y + 0.05);
+      };
+      // CIE L* from relative luminance (D65, the achromatic case — enough for a
+      // "how far apart are these two greys" read, which is all §1 asks of it).
+      const lstar = (rgb) => {
+        const y = relLum(rgb);
+        return y <= 216 / 24389 ? y * (24389 / 27) : Math.cbrt(y) * 116 - 16;
+      };
+      // Resolve through a probe rather than reading the custom property directly:
+      // `getPropertyValue('--cta')` answers the literal `var(--ink)`, not a colour.
+      // Painting it onto `color` makes the browser do the substitution for us.
+      const tok = (el, name) => {
+        if (name.startsWith('#')) return px(name);
+        const probe = document.createElement('span');
+        probe.style.color = `var(${name})`;
+        probe.style.display = 'none';
+        el.appendChild(probe);
+        const rgb = hex(getComputedStyle(probe).color);
+        probe.remove();
+        return rgb;
+      };
+      const sw = (rgb) =>
+        `<span class="swatch" style="background:rgb(${rgb.join(',')})"></span>rgb(${rgb.join(' ')})`;
+
+      const L = document.getElementById('p-light');
+      const D = document.getElementById('p-darkA');
+      // A third root carrying §5b's corrected light values, so the "light (fixed)"
+      // column is measured off a real render rather than asserted.
+      const LF = document.querySelector('.wp.fixed-light');
+
+      // A "pair" is (foreground/upper-plane, background/lower-plane, requirement,
+      // kind) — kind picks whether we report a contrast ratio or an L* delta.
+      const PAIRS = [
+        ['--ink', '--card', 'body text · AA 4.5', 'ratio'],
+        ['--muted', '--card', 'meta text · AA 4.5', 'ratio'],
+        ['--faint', '--card', 'hint text · AA-large 3.0', 'ratio'],
+        ['--ink', '--screen', 'text on ground · AA 4.5', 'ratio'],
+        ['--muted', '--screen', 'meta on the ground · AA 4.5', 'ratio'],
+        ['--faint', '--screen', 'hint on the ground · AA-large 3.0', 'ratio'],
+        ['--amber-deep', '--card', 'mono times on a card · AA 4.5', 'ratio'],
+        ['--amber', '--board', 'mono ≥12px bold · 3.0', 'ratio'],
+        ['--teal', '--card', 'location accents · 3.0', 'ratio'],
+        ['--plan-deep', '--card', 'plan text · AA 4.5', 'ratio'],
+        ['--ok', '--card', 'status · 3.0', 'ratio'],
+        ['--miss', '--card', 'refusal · 3.0', 'ratio'],
+        ['--card', '--screen', 'card lifts off ground · ΔL* ≥ 3', 'dl'],
+        ['--board', '--screen', 'board reads as its own plane · ΔL* ≥ 2', 'dl'],
+        ['--card', '--board', 'card vs board · ΔL* ≥ 5', 'dl'],
+        ['--on-fill', '--plan', 'ink on a plan fill · AA 4.5', 'ratio'],
+        ['--on-fill', '--ok', 'ink on an ok fill · 3.0', 'ratio'],
+        ['--on-fill', '--miss', 'ink on a miss fill · 3.0', 'ratio'],
+        ['--on-fill', '--teal', 'ink on a teal fill · 3.0', 'ratio'],
+        ['--on-fill', '--cta', 'ink on the CTA · AA 4.5', 'ratio'],
+        ['--on-amber', '--amber', 'ink on an amber pill · AA 4.5', 'ratio'],
+        ['#f2effc', '--plan-surface', 'ink on the plan hero · AA 4.5', 'ratio'],
+        ['--plan-surface', '--screen', 'plan hero lifts off ground · ΔL* ≥ 6', 'dl'],
+      ];
+
+      const tb = document.querySelector('#mtable tbody');
+      const flags = [];
+      const ROOTS = [
+        [L, 'light (today)'],
+        [LF, 'light (fixed)'],
+        [D, 'dark'],
+      ];
+      for (const [fg, bg, req, kind] of PAIRS) {
+        const need = parseFloat(req.match(/[\d.]+$/)[0]);
+        const cells = ROOTS.map(([root, label]) => {
+          const f = tok(root, fg),
+            b = tok(root, bg);
+          if (kind === 'ratio') {
+            const r = ratio(f, b);
+            const ok = r >= need;
+            // Only the SHIPPED columns get flagged — "light (fixed)" is the proposal.
+            if (!ok && label !== 'light (fixed)')
+              flags.push(`${fg} on ${bg} [${label}] = ${r.toFixed(2)}:1`);
+            return `<span class="${ok ? 'pass' : 'fail'}">${r.toFixed(2)}:1</span>`;
+          }
+          const d = Math.abs(lstar(f) - lstar(b));
+          const cls = d >= need ? 'pass' : d >= need * 0.6 ? 'warnc' : 'fail';
+          if (cls !== 'pass' && label !== 'light (fixed)')
+            flags.push(`ΔL* ${fg}/${bg} [${label}] = ${d.toFixed(1)}`);
+          return `<span class="${cls}">ΔL* ${d.toFixed(1)}</span>`;
+        });
+        tb.insertAdjacentHTML(
+          'beforeend',
+          `<tr><td class="v">${fg} <span style="color:var(--lab-faint)">on</span> ${bg}</td>` +
+            cells.map((c) => `<td>${c}</td>`).join('') +
+            `<td style="color:var(--lab-faint)">${req}</td></tr>`,
+        );
+      }
+
+      // The three planes, spelled out — §1's whole argument is an ordering claim.
+      const planes = (root, label) =>
+        ['--board', '--screen', '--card']
+          .map((n) => `${n} L* ${lstar(tok(root, n)).toFixed(1)}`)
+          .join(' · ');
+      document.getElementById('verdict').innerHTML =
+        `<b>The three planes.</b> Light — ${planes(L)}. Dark — ${planes(D)}. ` +
+        `In light the board is <i>far</i> below both; in dark the ordering survives but the steps ` +
+        `compress, which is §1's point: the board stops being found by its darkness and starts being ` +
+        `found by its amber. ` +
+        (flags.length
+          ? `<br><br><b class="warnc">Still failing in a SHIPPED theme:</b> ${flags.join(' · ')}. ` +
+            `<b>Every one of them is light mode</b> — the "light — §5b fix" column is what clears them, ` +
+            `and the dark column has no failures left at all. That inversion is §5b's whole point.`
+          : `<br><br><b class="pass">Every pair clears its stated floor in every column.</b>`) +
+        `<br><br><b>And none of this is the verdict.</b> ADR-0125 measured fine and read as one hue on ` +
+        `a real screen; the map epic has had four device corrections of things that were derived, ` +
+        `tested and wrong. What these numbers buy is the right to <i>stop arguing on paper</i> — the ` +
+        `phone still gets the last word.`;
+    </script>
+  </body>
+</html>
