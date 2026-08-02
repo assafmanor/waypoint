@@ -166,7 +166,10 @@ directions, so a profile row changed without the server agreeing now fails there
   Index, the Map, the Day view and Plan's day — each already holding the detail's state —
   so `onOpen` is their existing setter and nothing new coordinates it. It is **optional**:
   a host without detail state still gets the fact, stated rather than linked, which is the
-  rule `onShowOnMap` in the same file already follows.
+  rule `onShowOnMap` in the same file already follows. **It registers no back layer**,
+  and that is not an oversight: swapping which booking a sheet is about is not entering
+  a surface you can leave, there is no visible control for back to mirror (0103's test),
+  and `onEdit` beside it already replaces the sheet's subject the same way.
 
 - **`הלוך`/`חזרה` are now one pair of words in `i18n/he.ts`** rather than two, because §4
   writes them as leg headings and §5 reads them back as a fact and as a sentence. The
