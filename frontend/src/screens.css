@@ -1154,11 +1154,26 @@
 .toast .txt {
   flex: 1;
 }
+/* THE TOAST IS AN INVERTED SURFACE, and that breaks the deep-variant rule.
+   Its ground is `--ink`, so it is dark in light mode and LIGHT IN DARK — the
+   opposite polarity to the page. `--amber` on it measures 7.44 in light and
+   **1.56** in dark; and `--amber-deep` is not the fix, because "deep" means
+   further from the PAGE's ground, so on a surface that inverts against the page
+   it moves the wrong way and fails BOTH themes (2.85 / 2.12).
+
+   The answer is not a sixth token. Rule 4 is the answer: amber is time and
+   commitment only, and an undo is a generic action, so amber was decorative
+   here. On an inverted surface the neutral action ink is the surface's own
+   on-fill — which is exactly what the toast's body text already uses (13.49 in
+   dark, 15.65 in light). The underline keeps it reading as a control rather
+   than as bold text, now that it no longer differs in hue. */
 .toast .undo {
   font: inherit;
   font-weight: 700;
   font-size: 13px;
-  color: var(--amber);
+  color: var(--cta-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
   background: none;
   border: 0;
   cursor: pointer;
