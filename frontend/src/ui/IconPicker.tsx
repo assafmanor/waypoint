@@ -19,6 +19,7 @@ import {
 import { useBackLayer } from '../state/nav-state';
 import { useExitTransition } from '../lib/useExitTransition';
 import { useKeyboardInset } from '../lib/useKeyboardInset';
+import { useCenterSelected } from '../lib/useCenterSelected';
 import { ICON_PANEL_EDGE_PX, ICON_PANEL_GAP_PX } from '../constants';
 import { t } from '../i18n/he';
 
@@ -145,6 +146,10 @@ export function IconPicker({
   );
 
   const groups = activeCat === ALL ? ICON_SET : ICON_SET.filter((g) => g.id === activeCat);
+  // The active tab centres itself in the scrolling row, like every other selected chip in
+  // the app (`lib/useCenterSelected`). Gated on `open`: the row mounts with the panel, so
+  // each opening re-arrives at the saved category rather than at the row's leading edge.
+  const activeCatRef = useCenterSelected<HTMLButtonElement>(activeCat, { active: open });
   // Trip search covers vibe glyphs AND flags; vibe icons render first, flags last.
   const searching = tripMode && query.trim().length > 0;
   const vibeMatches = searching ? searchVibeIcons(query) : [];
@@ -226,6 +231,7 @@ export function IconPicker({
             <>
               <div className="icon-cats">
                 <button
+                  ref={activeCat === ALL ? activeCatRef : undefined}
                   type="button"
                   className={'icon-cat' + (activeCat === ALL ? ' on' : '')}
                   onClick={() => setActiveCat(ALL)}
@@ -235,6 +241,7 @@ export function IconPicker({
                 {ICON_SET.map((g) => (
                   <button
                     key={g.id}
+                    ref={activeCat === g.id ? activeCatRef : undefined}
                     type="button"
                     className={'icon-cat' + (activeCat === g.id ? ' on' : '')}
                     onClick={() => setActiveCat(g.id)}

@@ -58,9 +58,11 @@
   padding-block-end: 2px;
   scrollbar-width: none;
   /* scroll-snap-type + scroll-snap-align (below) align the row's resting
-     scroll position to a chip boundary at the leading edge, including on
-     first load — without it the row can rest at any offset, bisecting the
-     chip nearest the container edge. It can't fix the TRAILING edge (the
+     scroll position to a chip boundary at the leading edge — without it the
+     row can rest at any offset, bisecting the chip nearest the container
+     edge. (Where the row rests on FIRST LOAD is no longer this rule's job:
+     the selected pill centres itself, see `.choice-pill.on` below.)
+     It can't fix the TRAILING edge (the
      container width is never an exact multiple of chip widths, so a peek is
      inherent); a mask-image fade handles that so the peek reads as a "scroll
      for more" affordance instead of a hard cutoff (ADR-0100 §6). The gradient
@@ -143,6 +145,16 @@
   background: var(--ink);
   border-color: var(--ink);
   color: #fff;
+}
+
+/* The selected pill is a CENTRE snap point, not a start one — and this line is what makes
+   `lib/useCenterSelected` work on this row at all. The snap above is `mandatory`, so the
+   browser must rest at a snap position: with every pill start-aligned, our centred offset
+   was immediately re-snapped back to the nearest chip boundary and the centring was
+   undone. Declaring the selected pill's own snap position AS the centred one makes the two
+   rules agree — and user scrolling still snaps to chip boundaries everywhere else. */
+.choice-pill.on {
+  scroll-snap-align: center;
 }
 
 /* Selection settles, same reasoning as `.wp-chip.on` (ADR-0140's Journey 4): the press

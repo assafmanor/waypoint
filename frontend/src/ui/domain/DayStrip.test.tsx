@@ -2,10 +2,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { DayStrip, type DayStripDay } from './DayStrip';
-
-// jsdom has no layout engine, so it doesn't implement scrollIntoView — the
-// auto-scroll-to-selected effect below calls it on every mount/selection change.
-Element.prototype.scrollIntoView = vi.fn();
+import { fakeScroller } from '../../test/scroller-harness';
 
 const DAYS: DayStripDay[] = [
   { date: '2026-07-18', dayOfMonth: '18', letter: 'ש', hasEvents: true },
@@ -136,36 +133,47 @@ describe('DayStrip', () => {
     expect(pills[2].classList.contains('future')).toBe(true);
   });
 
-  it('scrolls the selected pill into view (centered) on mount and on selection change', () => {
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
-    const { container, rerender } = render(
-      <DayStrip
-        days={DAYS}
-        selected="2026-07-19"
-        today="2026-07-19"
-        mode="trip"
-        onSelect={() => {}}
-      />,
-    );
-    expect(scrollIntoView).toHaveBeenCalledWith(
-      expect.objectContaining({ inline: 'center', block: 'nearest' }),
-    );
-    const pills = container.querySelectorAll('.wp-daypill');
-    expect(scrollIntoView.mock.instances[0]).toBe(pills[1]); // the 19th (selected)
+  // The centring itself — the arrival, the axis, the latch — is `lib/useCenterSelected`'s
+  // own test. What belongs here is the WIRING: that the ref rides the selected pill, and
+  // that all-days scope withholds it. The harness has to be installed after mount (React
+  // creates the strip during the commit that also runs the effect), so these drive the
+  // selection change rather than the arrival.
+  const LONG_TRIP: DayStripDay[] = Array.from({ length: 5 }, (_, i) => ({
+    date: `2026-07-${18 + i}`,
+    dayOfMonth: String(18 + i),
+    letter: 'ש',
+    hasEvents: true,
+  }));
 
-    scrollIntoView.mockClear();
-    rerender(
-      <DayStrip
-        days={DAYS}
-        selected="2026-07-20"
-        today="2026-07-19"
-        mode="trip"
-        onSelect={() => {}}
-      />,
+  /** Render a 5-day strip and make its 100px pills a 300px scroller (see the harness): the
+   *  first pill's centre is 100px before the viewport's, the third's 100px after. */
+  function scrollableStrip(selected: string, allScope?: boolean) {
+    const props = { days: LONG_TRIP, today: '2026-07-19', mode: 'trip' as const, onSelect() {} };
+    const { container, rerender } = render(
+      <DayStrip {...props} selected={selected} allScope={allScope} />,
     );
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView.mock.instances[0]).toBe(pills[2]); // the 20th (now selected)
+    const strip = container.querySelector<HTMLElement>('.wp-daystrip')!;
+    const pills = Array.from(container.querySelectorAll<HTMLElement>('.wp-daypill'));
+    return {
+      scroller: fakeScroller(strip, pills),
+      select: (date: string) =>
+        rerender(<DayStrip {...props} selected={date} allScope={allScope} />),
+    };
+  }
+
+  it('centres the newly selected pill in the strip', () => {
+    const { scroller, select } = scrollableStrip('2026-07-19');
+    select('2026-07-20'); // the third pill — 100px past the strip's centre
+    expect(scroller.lastDelta()).toBe(100);
+
+    select('2026-07-18'); // back to the first — 100px before it
+    expect(scroller.lastDelta()).toBe(-100);
+  });
+
+  it('does not centre a day that is not visually selected (all-days scope)', () => {
+    const { scroller, select } = scrollableStrip('2026-07-19', true);
+    select('2026-07-20');
+    expect(scroller.calls).toHaveLength(0);
   });
 
   // Spring-loaded pills (ADR-0116 session-119): while a drag is in flight the strip
