@@ -182,6 +182,15 @@ interface RefEntry {
   };
 }
 
+/** **Did this event come out of the row's note section?** The section is CONTENT inside a row
+ *  that is itself a `role="button"` running `select` — so without this, tapping a note or
+ *  `＋ פתק` also re-selects the place, which re-frames the camera and scrolls the list under
+ *  you. Every other control in that row calls `stopPropagation` for the same reason; this is
+ *  the one case where the controls belong to a shared component (`NoteSection`, five hosts),
+ *  so the row declines the event instead of the section swallowing it. */
+const fromNotes = (target: EventTarget | null): boolean =>
+  target instanceof Element && !!target.closest('.note-sec');
+
 /** The glyph to carry onto the created idea — a human's PICK only, so an untouched derivation
  *  leaves `verbs.addMaybe` to supply the shelf's own default. Same rule as `Place.icon`'s write
  *  below, stated once: a derived glyph is not a choice, and storing one stops the thing
@@ -3031,12 +3040,14 @@ function PlaceRow({
             role: 'button',
             tabIndex: 0,
             'aria-pressed': selected,
-            onClick: onSelect,
+            onClick: (e: React.MouseEvent) => {
+              if (!fromNotes(e.target)) onSelect();
+            },
             onKeyDown: (e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onSelect();
-              }
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              if (fromNotes(e.target)) return;
+              e.preventDefault();
+              onSelect();
             },
           }
         : null)}

@@ -62,6 +62,19 @@ const event = (p: Partial<TripEvent> & Pick<TripEvent, 'id'>): TripEvent => ({
   ...p,
 });
 
+const note = (id: string, placeId: string, body: string): Note =>
+  ({
+    id,
+    tripId: 't1',
+    placeId,
+    body,
+    source: 'member',
+    createdBy: 'u1',
+    createdAt: '2026-07-19T09:00:00Z',
+    updatedAt: '2026-07-19T09:00:00Z',
+    updatedBy: 'u1',
+  }) as Note;
+
 const maybe = (p: Partial<MaybeItem> & Pick<MaybeItem, 'id'>): MaybeItem =>
   ({ tripId: 't1', title: p.id, consumed: false, ...p }) as MaybeItem;
 
@@ -514,6 +527,31 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       event({ id: 'e4', placeId: 'tomorrow', category: 'food', date: NEXT_DAY }),
     ];
   };
+
+  // ── A PLACE CARRIES NOTES (ADR-0153 §8's amendment) ─────────────────────────
+  // `Map.test.tsx` covers the mark and the section on the list-only path. What is only true
+  // HERE is the part that needs a sheet and a camera: the row is a `role="button"` running
+  // `select`, so a tap on its note section must not also re-select the place.
+  describe('a place carries notes (ADR-0153 §8)', () => {
+    it('a tap inside the section does not re-select the row under the finger', () => {
+      seed();
+      tripNotes = [note('n1', 'lunch', 'הכניסה מאחור')];
+      render(wrap(<MapView />));
+      fireEvent.click(row('lunch')!);
+
+      const section = row('lunch')!.querySelector('.note-sec') as HTMLElement;
+      expect(section).toBeTruthy();
+      // Selecting sends the camera a FRESH arrival object every time (a frame is spent once,
+      // so the same row may be tapped twice) — which is exactly what a re-select triggered by
+      // a tap on a NOTE would do: move the map under a finger that was reaching for text.
+      const before = paneProps.current.arrival;
+      expect(before).toBeTruthy();
+      fireEvent.click(section.querySelector('.note-item-b') as HTMLElement);
+      expect(paneProps.current.arrival).toBe(before);
+      // …and the tap still did its own job.
+      expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+  });
 
   // ── A PLACE BECOMES AN EVENT OR A BOOKING — THE SPLIT (ADR-0135) ─────────────
   // `Map.test.tsx` covers the same block on the no-build-config, list-only path. Here it has
