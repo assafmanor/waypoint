@@ -1,21 +1,22 @@
 /* Home + Day-by-day components, ported from mockups/trip-dashboard-v2.html.
    Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (design-language.md). */
 
-/* Dark-mode note (U-08, ADR-0082; amended by ADR-0158 §2, phase 1): themeable
-   colors read tokens and re-map under [data-theme='dark'].
+/* Colour in this file (U-08 / ADR-0082, rewritten by ADR-0158 phases 1-2).
+   Themeable colours read tokens and re-map under [data-theme='dark']. Ink is a
+   token too, and which one depends on what it sits on — see App.css's header for
+   the three rules in full. In short:
 
-   Ink on a semantic FILL is now a TOKEN, not a marked literal. This note used to
-   say "the fill re-maps, the on-fill ink must not", which holds for a fill that
-   keeps its polarity and fails for every mid-tone one — those brighten on dark,
-   so white ink stops working (ten controls went illegible, worst 1.20:1). Use
-   `var(--on-fill)` on --plan / --ok / --miss / --teal / --muted / --cta, and
-   `var(--on-amber)` on --amber, the one fill that is light in both themes.
+     on a re-mapping FILL      var(--on-fill), or var(--on-amber) on --amber
+     on an always-dark SURFACE var(--on-dark-strong / --on-dark / --on-dark-dim /
+                               --on-dark-faint) — theme-fixed, four rungs
 
-   Remaining literal hexes here are INTENTIONALLY theme-fixed and carry a
-   "fixed:" marker: light ink on the always-loud PLAN hero (.prep, a saturated
-   violet surface in both themes — ADR-0158 §4 gives it real surface tokens in
-   phase 3); the shared white spinner (drawn on colored/dark fills); and ink on a
-   colored avatar (avatar bg is set inline). Paper/card colors read tokens. */
+   The literal hexes still here are the ones no token can say, and each keeps its
+   "fixed:" marker: the shared white spinner (drawn on colored AND dark fills, so
+   it belongs to neither family); ink on a colored avatar (its ground is set
+   inline); and the PLAN hero's ink (.prep), which stays a literal only until
+   ADR-0158 §4 gives that hero real surface tokens in phase 3 — today it paints
+   itself out of the ACCENT tokens, which is why it renders as the brightest
+   surface in the whole dark app. Paper/card colours read tokens. */
 
 /* section titles */
 .sec-title {
@@ -1205,7 +1206,7 @@
   font-size: 34px;
   line-height: 1;
   margin-top: 4px;
-  color: #fff; /* fixed: on the plan hero */
+  color: var(--on-dark-strong);
 }
 .prep-count-u {
   font-family: var(--font-body);
@@ -1237,7 +1238,7 @@
 }
 .prep-ready-top b {
   font-family: var(--font-mono);
-  color: #fff; /* fixed: on the plan hero */
+  color: var(--on-dark-strong);
 }
 .prep-track {
   height: 7px;

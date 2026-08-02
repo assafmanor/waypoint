@@ -49,6 +49,26 @@
      as one is how this shipped; ADR-0158 §3's --on-dark-* ramp is its half. */
   --on-fill: #ffffff;
   --on-amber: #3a2405;
+
+  /* ── Ink on an always-dark SURFACE (ADR-0158 §3) ───────────────────────────
+     The other half of the same idea, and the bigger one. The board, /login,
+     /join, the boarding-pass ticket, the trip hero and the dormant board are
+     dark in BOTH themes, so their ink is light in both — theme-FIXED, which is
+     why these four are not restated in the dark block below.
+
+     They exist because those surfaces carried 14 distinct hex values doing four
+     jobs, drifted the way the type ramp drifted before ADR-0082 put it in the
+     CSS. Same fix: name the ramp, and a new surface picks a rung instead of
+     inventing a value.
+
+     NOT for: ink on a re-mapping fill (that is --on-fill above), and not for
+     the amber/teal inks on the board — those are hue-bearing semantic accents
+     at small sizes, and folding them into a blue-grey would spend the budget
+     the wrong way. The chrome's own children are --chrome-* (§5). */
+  --on-dark-strong: #ffffff; /* titles, the loud numeral */
+  --on-dark: #eaf0ff; /* body ink on a dark surface */
+  --on-dark-dim: #93a2c4; /* secondary, labels, meta */
+  --on-dark-faint: #7688ac; /* tertiary — rail ends, footnotes */
   /* Status mini-palette (distinct from the semantic trio) */
   --ok: #3c9a6b;
   --miss: #c2584e;
