@@ -26,7 +26,29 @@
   --plan-tint: rgba(110, 89, 214, 0.1);
   --indigo-tint: rgba(27, 42, 74, 0.1); /* chrome-accent wash — active nav pill in Trip mode */
   --cta: var(--ink); /* neutral primary button; amber/teal/plan are semantic, never CTAs */
-  --cta-text: #ffffff;
+  --cta-text: var(--on-fill); /* the CTA is just one more fill — see --on-fill below */
+
+  /* ── On-fill ink (ADR-0158 §2) ─────────────────────────────────────────────
+     The ink painted ON a semantic fill. Both stylesheets used to record this as
+     "the fill re-maps, the on-fill ink must not" — true for a fill that keeps
+     its POLARITY, false for every mid-tone one, because those brighten on dark
+     and white ink stops working there (ten shipped controls went illegible, the
+     worst at 1.20:1). So the ink is a token that flips WITH its fill, which is
+     what --cta/--cta-text already did alone; this generalizes that pair rather
+     than adding a second of them (rule 8).
+
+       --on-fill   for a fill that re-maps ACROSS the midpoint (--cta, --plan,
+                   --plan-deep, --ok, --miss, --teal, --muted): white in light,
+                   dark ink in dark.
+       --on-amber  for a fill that is LIGHT IN BOTH themes (--amber only
+                   brightens), so its ink stays dark in both.
+
+     What joins NEITHER: --indigo and the board / land / join grounds. Those are
+     always-dark CHROME, so they keep LIGHT ink in both themes — dark ink on dark
+     indigo measures 1.01:1. That is a different rule, and writing the two down
+     as one is how this shipped; ADR-0158 §3's --on-dark-* ramp is its half. */
+  --on-fill: #ffffff;
+  --on-amber: #3a2405;
   /* Status mini-palette (distinct from the semantic trio) */
   --ok: #3c9a6b;
   --miss: #c2584e;
@@ -313,6 +335,13 @@ body {
    Same token names, re-mapped; component CSS stays untouched.
    See design-language "Dark mode readiness" for principles + remaining work. */
 :root[data-theme='dark'] {
+  /* A brightened fill takes DARK ink — the inverse of light, and the whole
+     reason --on-fill exists (ADR-0158 §2). --on-amber is deliberately NOT
+     restated: --amber is light in both themes, so its ink is dark in both.
+     Said out loud, because an absent line in this block otherwise reads as an
+     oversight rather than a decision. */
+  --on-fill: #12203a;
+
   --ink: #e7eaf2;
   --indigo: #131f38;
   --board: #0a1120; /* darkest surface — the board stays the loudest */
@@ -334,7 +363,7 @@ body {
   --plan-tint: rgba(139, 121, 232, 0.14);
   --indigo-tint: rgba(141, 168, 232, 0.16); /* brightened for the dark nav bar */
   --cta: #e7eaf2;
-  --cta-text: #12203a;
+  --cta-text: var(--on-fill); /* tracks the family; the CTA is one more fill */
   --ok: #4cbf85;
   --miss: #e07a6e;
   /* Category pins, nudged brighter so the pastels clear the dark board (dark is

@@ -231,7 +231,7 @@
 }
 .wp-maybecard-remove:hover {
   background: var(--miss);
-  color: #fff;
+  color: var(--on-fill);
 }
 .wp-maybecard-remove:focus-visible {
   outline: 2px solid var(--miss);

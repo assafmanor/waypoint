@@ -1,13 +1,21 @@
 /* Home + Day-by-day components, ported from mockups/trip-dashboard-v2.html.
    Amber = time/commitment only; teal = location/nav only; plan violet = plan actions (design-language.md). */
 
-/* Dark-mode note (U-08, ADR-0082): themeable colors read tokens and re-map under
-   [data-theme='dark']. Remaining literal hexes are INTENTIONALLY theme-fixed and
-   carry a "fixed:" marker: white/ink that rides a semantic FILL (on --plan / --ok /
-   --miss / --amber / --ink — the fill re-maps, the on-fill ink must not); light ink
-   on the always-loud PLAN hero (.prep, a saturated violet surface in both themes);
-   the shared white spinner (drawn on colored/dark fills); and ink on a colored
-   avatar (avatar bg is set inline). Paper/card colors were swept onto tokens. */
+/* Dark-mode note (U-08, ADR-0082; amended by ADR-0158 §2, phase 1): themeable
+   colors read tokens and re-map under [data-theme='dark'].
+
+   Ink on a semantic FILL is now a TOKEN, not a marked literal. This note used to
+   say "the fill re-maps, the on-fill ink must not", which holds for a fill that
+   keeps its polarity and fails for every mid-tone one — those brighten on dark,
+   so white ink stops working (ten controls went illegible, worst 1.20:1). Use
+   `var(--on-fill)` on --plan / --ok / --miss / --teal / --muted / --cta, and
+   `var(--on-amber)` on --amber, the one fill that is light in both themes.
+
+   Remaining literal hexes here are INTENTIONALLY theme-fixed and carry a
+   "fixed:" marker: light ink on the always-loud PLAN hero (.prep, a saturated
+   violet surface in both themes — ADR-0158 §4 gives it real surface tokens in
+   phase 3); the shared white spinner (drawn on colored/dark fills); and ink on a
+   colored avatar (avatar bg is set inline). Paper/card colors read tokens. */
 
 /* section titles */
 .sec-title {
@@ -380,7 +388,7 @@
 }
 .ripple .yes {
   background: var(--amber);
-  color: #3a2405; /* fixed: dark ink on the amber fill */
+  color: var(--on-amber);
 }
 .ripple .no {
   background: transparent;
@@ -1305,7 +1313,7 @@
 }
 .chk-cta:hover {
   background: var(--plan);
-  color: #fff;
+  color: var(--on-fill);
 }
 .chk-cta:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -1319,7 +1327,7 @@
 }
 .chk-cta.warn:hover {
   background: var(--miss);
-  color: #fff;
+  color: var(--on-fill);
 }
 /* Per-traveller passport indicator on the documents row (ADR-0061). */
 .chk-ppl {
@@ -1452,7 +1460,7 @@
   font: inherit;
   font-size: 11px;
   font-weight: 700;
-  color: #fff;
+  color: var(--on-fill);
   background: var(--plan);
   border: 0;
   border-radius: 999px;
@@ -1731,7 +1739,7 @@
 }
 .bld-settle.done {
   background: var(--ok);
-  color: #fff;
+  color: var(--on-fill);
 }
 .bld-settle.done .mark,
 .bld-settle.done .undo {
@@ -1835,7 +1843,7 @@
 }
 .gap-add:hover {
   background: var(--plan);
-  color: #fff;
+  color: var(--on-fill);
 }
 .gap-add:focus-visible {
   outline: 2.5px solid var(--plan);
@@ -1902,7 +1910,7 @@
 }
 .add-idea-btn:hover:not(:disabled) {
   background: var(--plan);
-  color: #fff;
+  color: var(--on-fill);
 }
 .add-idea-btn:disabled {
   opacity: 0.4;
@@ -2031,7 +2039,7 @@
   font: inherit;
   font-size: 13.5px;
   font-weight: 700;
-  color: #fff;
+  color: var(--on-fill);
   background: var(--plan);
   border: 0;
   border-radius: 12px;
