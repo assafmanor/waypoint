@@ -2,29 +2,34 @@
    on larger screens (ADR-0017 / design-language "Responsive"). Ported from
    mockups/trip-dashboard-v2.html. Owned by AppShell (ui/layout). */
 
-/* Dark-mode note (U-08, ADR-0082 / ADR-0028): themeable colors read tokens
-   (tokens.css), so they re-map under [data-theme='dark']. The literal hexes that
-   remain are INTENTIONALLY theme-fixed and carry a "fixed:" (or "brand") marker:
-   - light text/decor painted onto the ALWAYS-dark trip-mode chrome (the indigo
-     header, the dormant board, the join/land departure boards, the boarding-pass
-     ticket, the trip-hero) — these surfaces stay dark in both themes, so their
-     light ink stays put;
-   - Google brand colors.
-   Everything on a paper/card surface was swept onto tokens.
+/* Colour in this file (U-08 / ADR-0082, rewritten by ADR-0158 phases 1-2).
+   Themeable colours read tokens, so they re-map under [data-theme='dark'].
+   Ink is a token too, and WHICH token depends on what it is painted on. There
+   are THREE rules, and the old version of this note had written the first two
+   down as one — which is exactly how ten illegible dark controls shipped:
 
-   AMENDED by ADR-0158 §2 (phase 1). This note used to carry a third bullet —
-   "ink that rides a semantic FILL — the fill re-maps, the on-fill ink must not"
-   — and that rule was WRONG for every mid-tone fill, because those brighten on
-   dark and white ink stops working there. Ten shipped controls were illegible in
-   dark, the worst at 1.20:1. On-fill ink is now a token that flips WITH its fill:
-   `--on-fill` (white on light, dark ink on dark) and `--on-amber` (dark in both,
-   for the one fill that is light in both). So there are TWO rules here, not one:
+     1. On a re-mapping FILL   -> var(--on-fill) / var(--on-amber)
+        The fill crosses the midpoint between themes, so the ink flips with it.
+        --on-amber is the exception: --amber is light in both, so its ink is
+        dark in both.
 
-     always-dark CHROME  keeps light ink in both themes   -> the bullet above
-     a re-mapping FILL   flips its ink with the fill      -> var(--on-fill)
+     2. On an always-dark SURFACE -> var(--on-dark-strong / --on-dark /
+        --on-dark-dim / --on-dark-faint)
+        The indigo chrome, the dormant board, the join/land departure boards,
+        the boarding-pass ticket, the trip hero. These are dark in BOTH themes,
+        so their ink is light in both — theme-fixed, four rungs. Dark ink on
+        dark indigo measures 1.01:1, which is what conflating (1) and (2) costs.
 
-   Conflating them is exactly how this shipped. The first bullet's light inks are
-   still literals; ADR-0158 §3's --on-dark-* ramp folds them in phase 2. */
+     3. Genuinely fixed, and still a literal with a "fixed:" or "brand" marker
+        -> the Google brand mark, the white sign-in button on the join board,
+        and ink on a colored avatar (its ground is set inline).
+
+   A marker now means only "no token can say this". Where a token CAN say it,
+   the token says it and the comment is gone.
+
+   Still owed: the chrome's own children (washes, rings, the day pills) assume a
+   dark chrome without recording it — ADR-0158 §5's --chrome-* contract, phase 3.
+   Everything on a paper/card surface was already swept onto tokens. */
 .app {
   max-width: 430px;
   margin-inline: auto;
@@ -750,7 +755,7 @@
   background: linear-gradient(180deg, var(--board-2), var(--board));
   border-radius: 22px;
   padding: 17px 18px 15px;
-  color: #eaf0ff;
+  color: var(--on-dark);
   box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.75);
 }
 .board-off-top {
@@ -1284,7 +1289,7 @@
    reading required. */
 .join-land {
   background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
-  color: #eaf0ff;
+  color: var(--on-dark);
   padding: 20px 22px 28px;
   position: relative;
   overflow: hidden;
@@ -1305,7 +1310,7 @@
 .join-logo {
   font-family: var(--font-head);
   font-size: 17px;
-  color: #fff;
+  color: var(--on-dark-strong);
 }
 .join-icon {
   width: 20px;
@@ -1321,20 +1326,20 @@
   font-family: var(--font-head);
   font-size: 27px;
   line-height: 1.2;
-  color: #fff;
+  color: var(--on-dark-strong);
 }
 .join-hero .hero-em {
   color: var(--amber);
 }
 .join-hero p {
-  color: #93a2c4;
+  color: var(--on-dark-dim);
   font-size: 14px;
   line-height: 1.5;
   margin-top: 8px;
 }
 .join-status {
   margin-top: 44px;
-  color: #93a2c4;
+  color: var(--on-dark-dim);
   font-size: 14px;
   line-height: 1.6;
   text-align: center;
@@ -1395,11 +1400,11 @@
   font-family: var(--font-head);
   font-size: 24px;
   line-height: 1.2;
-  color: #fff;
+  color: var(--on-dark-strong);
   margin-top: 16px;
 }
 .ticket-meta {
-  color: #93a2c4;
+  color: var(--on-dark-dim);
   font-size: 12.5px;
   line-height: 1.5;
   margin-top: 9px;
@@ -1459,11 +1464,11 @@
 .ticket-members {
   font-size: 13px;
   font-weight: 700;
-  color: #eaf0ff;
+  color: var(--on-dark);
 }
 .ticket-sub {
   font-size: 11px;
-  color: #93a2c4;
+  color: var(--on-dark-dim);
   margin-top: 2px;
 }
 
@@ -1504,7 +1509,7 @@
 }
 .join-note {
   text-align: center;
-  color: #7e8fb4;
+  color: var(--on-dark-faint);
   font-size: 11.5px;
   margin-top: 12px;
   line-height: 1.5;
@@ -1522,7 +1527,7 @@
    for the CTA rather than duplicating that button. */
 .land {
   background: linear-gradient(180deg, var(--board-2) 0%, var(--board) 100%);
-  color: #eaf0ff;
+  color: var(--on-dark);
   padding: 20px 24px 28px;
   position: relative;
   overflow: hidden;
@@ -1543,7 +1548,7 @@
 .land-logo {
   font-family: var(--font-head);
   font-size: 20px;
-  color: #fff;
+  color: var(--on-dark-strong);
 }
 .land-icon {
   width: 34px;
@@ -1561,13 +1566,13 @@
   font-family: var(--font-head);
   font-size: 34px;
   line-height: 1.18;
-  color: #fff;
+  color: var(--on-dark-strong);
 }
 .land-hero .hero-em {
   color: var(--amber);
 }
 .land-hero p {
-  color: #93a2c4;
+  color: var(--on-dark-dim);
   font-size: 14.5px;
   line-height: 1.55;
   margin-top: 14px;
@@ -1596,16 +1601,16 @@
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-weight: 700;
-  color: #8fa0c4;
+  color: var(--on-dark-dim);
 }
 .teaser .ttl {
   font-family: var(--font-head);
   font-size: 17px;
-  color: #fff;
+  color: var(--on-dark-strong);
   margin-top: 6px;
 }
 .teaser .mt {
-  color: #93a2c4;
+  color: var(--on-dark-dim);
   font-size: 12px;
   margin-top: 3px;
 }
@@ -1652,7 +1657,7 @@
 .feat .ft {
   font-size: 10.5px;
   font-weight: 600;
-  color: #aeb9d4;
+  color: var(--on-dark-dim);
   margin-top: 5px;
   line-height: 1.25;
 }
@@ -1898,7 +1903,7 @@
   text-align: start;
   font: inherit;
   background: radial-gradient(140% 120% at 88% -20%, #294066 0%, transparent 60%), var(--indigo);
-  color: #eef2fb;
+  color: var(--on-dark);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   padding: 16px;
@@ -1927,10 +1932,10 @@
   font-family: var(--font-head);
   font-size: 19px;
   line-height: 1.1;
-  color: #fff;
+  color: var(--on-dark-strong);
 }
 .trip-hero .m {
-  color: #9fb0d2;
+  color: var(--on-dark-dim);
 }
 .trip-hero .m .sep {
   opacity: 0.5;
@@ -1966,7 +1971,7 @@
   place-items: center;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #dfe6f5;
+  color: var(--on-dark);
   font-size: 18px;
 }
 
@@ -2491,8 +2496,7 @@
   align-items: center;
   font-family: var(--font-mono);
   font-size: var(--text-micro);
-  /* fixed: the board is dark in both themes, so its light ink stays put */
-  color: #8fa0c4;
+  color: var(--on-dark-dim);
   margin-bottom: 11px;
 }
 .birth-board-top .live {
@@ -2563,8 +2567,7 @@
 .birth-flap:nth-child(2) > span {
   font-family: var(--font-body);
   font-size: var(--text-secondary);
-  /* fixed: light ink on the always-dark board */
-  color: #eaf0ff;
+  color: var(--on-dark);
 }
 .birth[data-board='on'] .birth-flap {
   /* `steps()` is the point: a split-flap is DISCRETE. A smooth scaleY reads as a
@@ -2901,6 +2904,5 @@
   margin: 0;
   font-size: var(--text-secondary);
   line-height: var(--leading-normal);
-  /* fixed: the ticket is dark in both themes, so its dim ink stays put */
-  color: #93a2c4;
+  color: var(--on-dark-dim);
 }
