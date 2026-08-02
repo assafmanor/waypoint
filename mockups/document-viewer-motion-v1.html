@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -40,9 +40,14 @@
                that jump is the most visible motion in the whole interaction, and it is
                the one that is specific to DOCUMENTS rather than to overlays in general.
 
-      WHAT THIS FILE IS FOR: choosing the build scope. Every panel is a live pair —
-      light and dark, always both, playing in sync — because the owner asked to judge both
-      themes and because the scrim is the one value the two themes disagree about.
+      WHAT THIS FILE IS FOR: choosing the build scope. Every panel is live, and every
+      panel is judged twice — the THEME control flips `data-theme` on <html>, so the app
+      tokens inside the frames and this page's own chrome re-map together. That is
+      ADR-0158 §16, which landed the day before this file and which it is written to:
+      a toggle rather than a side-by-side pair, "so the same frame is judged twice on the
+      same ground". Worth actually doing here rather than treating as a formality — the
+      scrim (§F) and the letterbox (§B) are both values the two themes disagree about, and
+      neither is visible from the light frame alone.
 
       ── The proposal, three beats ────────────────────────────────────────────────────
       B1  The card arrives as an object. Scrim on its own `::before` channel
@@ -118,7 +123,7 @@
       colour sits beside a scan. A fixed one does, and `.doc-viewer-body`'s existing
       `--paper` answers it by default: cream in light, which is sympathetic to a document,
       and `#2e2a20` in dark — a warm brown band around a bright scan, which reads as a
-      stain rather than as a mount. Visible right now in §B's dark stage. The candidates
+      stain rather than as a mount. Flip THEME to dark in §B to see it. The candidates
       are keeping `--paper` (consistent with the app's document surfaces) or `--board`
       (`#0a1120`, the darkest surface, and what a photo viewer would do). It is a
       one-token decision, it belongs to whoever owns the dark palette, and it is
@@ -8355,7 +8360,33 @@ textarea {
 
     <style>
       /* ══ Lab chrome — deliberately dark, deliberately NOT the app ══════════════ */
+      /* This file's own chrome, and IT IS THEME-AWARE — ADR-0158 §16's first
+         consequence, not decoration. The toggle sets `data-theme` on <html>, which is
+         what makes the app tokens inside the frames flip; if the page around them stayed
+         a dark console, every light frame would be judged against a ground the app never
+         has, which is the same mistake §16 names in the other direction. Light is the
+         base and dark is a block AFTER `:root`, never inside it — the split that once put
+         every token behind `[dir='ltr']` (`frontend/CLAUDE.md`). */
       :root {
+        --lab-bg: #eef1f6;
+        --lab-bg-2: #f7f9fc;
+        --lab-panel: #ffffff;
+        --lab-panel-2: #f7f8fa;
+        --lab-line: rgba(69, 80, 107, 0.16);
+        --lab-line-2: rgba(69, 80, 107, 0.3);
+        --lab-ink: #1b2438;
+        --lab-muted: #4f5a72;
+        --lab-faint: #78829a;
+        --lab-accent: #6e59d6;
+        --lab-warn: #8a5a12;
+        --lab-ok: #1f7a52;
+        --lab-bad: #b2453a;
+        --lab-tint-a: rgba(110, 89, 214, 0.09);
+        --lab-tint-b: rgba(233, 166, 60, 0.07);
+        --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
+        --sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+      }
+      :root[data-theme='dark'] {
         --lab-bg: #0c1220;
         --lab-bg-2: #111a2c;
         --lab-panel: #141d31;
@@ -8369,8 +8400,8 @@ textarea {
         --lab-warn: #e9a63c;
         --lab-ok: #4cbf85;
         --lab-bad: #e07a6e;
-        --mono: ui-monospace, 'SF Mono', 'SFMono-Regular', Menlo, Consolas, monospace;
-        --sans: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+        --lab-tint-a: rgba(139, 121, 232, 0.14);
+        --lab-tint-b: rgba(233, 166, 60, 0.07);
       }
       *,
       *::before,
@@ -8385,8 +8416,8 @@ textarea {
         line-height: 1.5;
         color: var(--lab-ink);
         background:
-          radial-gradient(120% 80% at 82% -10%, rgba(139, 121, 232, 0.14), transparent 55%),
-          radial-gradient(90% 70% at 0% 0%, rgba(233, 166, 60, 0.07), transparent 50%),
+          radial-gradient(120% 80% at 82% -10%, var(--lab-tint-a), transparent 55%),
+          radial-gradient(90% 70% at 0% 0%, var(--lab-tint-b), transparent 50%),
           linear-gradient(180deg, var(--lab-bg-2), var(--lab-bg));
       }
       .lab-wrap {
@@ -8410,7 +8441,7 @@ textarea {
         font-family: var(--mono);
         font-size: 0.87em;
         color: var(--lab-accent);
-        background: rgba(139, 121, 232, 0.1);
+        background: var(--lab-tint-a);
         padding: 1px 5px;
         border-radius: 5px;
       }
@@ -8439,7 +8470,7 @@ textarea {
         align-items: center;
         margin: 18px 0 26px;
         padding: 12px 14px;
-        background: rgba(16, 24, 41, 0.93);
+        background: color-mix(in srgb, var(--lab-panel) 93%, transparent);
         backdrop-filter: blur(10px);
         border: 1px solid var(--lab-line);
         border-radius: 13px;
@@ -8482,7 +8513,7 @@ textarea {
         color: #fff;
       }
       .lab-seg button:not([aria-pressed='true']):hover {
-        background: rgba(148, 163, 194, 0.1);
+        background: color-mix(in srgb, var(--lab-muted) 12%, transparent);
         color: var(--lab-ink);
       }
 
@@ -8509,7 +8540,7 @@ textarea {
       .lab-panel > p.lab-finding {
         border-inline-start: 2px solid var(--lab-warn);
         padding-inline-start: 11px;
-        color: #d8b98a;
+        color: var(--lab-warn);
         font-size: 12.5px;
       }
       .lab-acts {
@@ -8788,7 +8819,7 @@ textarea {
         font-size: 11px;
         line-height: 1.75;
         color: var(--lab-muted);
-        background: rgba(8, 13, 24, 0.6);
+        background: color-mix(in srgb, var(--lab-bg) 70%, var(--lab-panel));
         border: 1px solid var(--lab-line);
         border-radius: 9px;
         padding: 9px 11px;
@@ -8854,10 +8885,12 @@ textarea {
     <div class="lab-wrap">
       <h1>Document viewer — how it opens and how it closes</h1>
       <p class="lab-sub">
-        The last overlay family ADR-0140 §G1 never reached. Every panel is a live pair:
-        <b>light and dark, always both</b>, driven by one builder so the two cannot drift
-        into different drawings. Dark is the app's real
-        <code>:root[data-theme='dark']</code> remap, not hand-picked values.
+        The last overlay family ADR-0140 §G1 never reached. Every stage comes out of one
+        builder, so no two panels can drift into different drawings, and
+        <b>every panel is meant to be judged in both themes</b> — flip <b>THEME</b> and
+        read it again. Dark is the app's real <code>:root[data-theme='dark']</code> remap
+        (ADR-0158), inlined rather than hand-picked; the toggle writes the same
+        <code>data-theme</code> attribute <code>lib/theme.ts</code> does.
       </p>
       <p class="lab-sub">
         Turn <b>SPEED</b> to <code>slow</code> before judging anything — every one of these
@@ -8865,6 +8898,13 @@ textarea {
       </p>
 
       <div class="lab-bar">
+        <div class="lab-grp">
+          <b>Theme</b>
+          <div class="lab-seg" data-ctl="theme">
+            <button data-v="light" aria-pressed="true">light</button>
+            <button data-v="dark">dark</button>
+          </div>
+        </div>
         <div class="lab-grp">
           <b>Speed</b>
           <div class="lab-seg" data-ctl="speed">
@@ -8941,7 +8981,7 @@ textarea {
           card grows from.
         </p>
         <p class="lab-finding">
-          Look at the <b>dark</b> stage once it settles. The fixed frame letterboxes, which
+          Flip <b>THEME</b> to dark and open this again. The fixed frame letterboxes, which
           a content-sized frame never did — so the strip beside the scan is now a visible
           decision, and today it is <code>--paper</code>, which in dark is a warm
           <code>#2e2a20</code> and reads as a stain rather than a mount. Candidates are
@@ -8962,7 +9002,7 @@ textarea {
         <h2><span class="lab-tag">§C</span>Side by side, same tap, same frame</h2>
         <p>
           The comparison the report is actually about. Both phones open the same document
-          at the same instant, in the same theme. Left is today, right is the proposal.
+          at the same instant. Left is today, right is the proposal.
         </p>
         <p class="lab-note">
           The two cards are different heights on purpose and it is not a drawing error:
@@ -8975,7 +9015,7 @@ textarea {
           <button class="lab-go" data-play="C">Open both</button>
           <button class="lab-go" data-play="C-close">Close both</button>
           <button class="lab-go lab-ghost" data-reset="C">Reset</button>
-          <span class="lab-hint">four phones: the light pair, then the dark pair</span>
+          <span class="lab-hint">then flip THEME and open them again</span>
         </div>
         <div class="lab-log" data-log="C"></div>
       </section>
@@ -9048,9 +9088,10 @@ textarea {
           everything behind it is glare.
         </p>
         <p class="lab-note">
-          Judge it in <b>dark</b> especially: on a dark screen a 0.72 scrim over an already
-          dark <code>--screen</code> nearly erases the context, where in light it is the
-          difference between "a document is open" and "a card is floating".
+          Judge it in <b>dark</b> especially — flip THEME and open both again: on a dark
+          screen a 0.72 scrim over an already dark <code>--screen</code> nearly erases the
+          context, where in light it is the difference between "a document is open" and
+          "a card is floating".
         </p>
         <div class="lab-pair" data-stages="F"></div>
         <div class="lab-acts">
@@ -9180,37 +9221,6 @@ textarea {
          drawings of two different screens.
          ════════════════════════════════════════════════════════════════════════ */
 
-      /* ── Making the app's dark mode work on a SUBTREE ─────────────────────────────
-         `tokens.css` scopes the whole dark remap to `:root[data-theme='dark']`, which by
-         definition only ever matches `<html>` — so setting the attribute on a stage div
-         did nothing and every "dark" phone rendered light. Hand-copying the values into
-         the lab would defeat the point of inlining the real stylesheet (they would drift
-         the first time a token moved), so the rule is RE-SCOPED at runtime instead:
-         find every `:root[data-theme=…]` rule in the generated block and re-emit it with
-         the `:root` dropped, so `[data-theme='dark']` matches a stage too. Mechanical,
-         value-free, and it stays true when tokens.css changes. */
-      (function scopeDarkToSubtrees() {
-        const out = [];
-        for (const sheet of document.styleSheets) {
-          let rules;
-          try {
-            rules = sheet.cssRules;
-          } catch {
-            continue; // cross-origin; none here, but never throw on boot
-          }
-          for (const rule of rules) {
-            if (rule.selectorText && rule.selectorText.includes(':root[data-theme')) {
-              out.push(rule.cssText.replaceAll(':root[data-theme', '[data-theme'));
-            }
-          }
-        }
-        if (!out.length) return;
-        const el = document.createElement('style');
-        el.dataset.darkShim = String(out.length);
-        el.textContent = out.join('\n');
-        document.head.appendChild(el);
-      })();
-
       const ICON = {
         close: 'M6 18 18 6M6 6l12 12',
         more: 'M6 12h.02 M12 12h.02 M18 12h.02',
@@ -9276,7 +9286,7 @@ textarea {
 
       const CLAMP = 0.42; // how far from centre the origin may travel, as a share of the frame
 
-      function buildStage({ preset, theme, scrim = 'viewer' }) {
+      function buildStage({ preset, scrim = 'viewer' }) {
         const f = PRESET[preset];
         const cell = document.createElement('div');
         cell.className = 'lab-cell ' + (f.motion === 'before' ? 'is-before' : 'is-after');
@@ -9285,7 +9295,6 @@ textarea {
         phone.className = 'lab-phone';
         const screen = document.createElement('div');
         screen.className = 'lab-screen';
-        screen.dataset.theme = theme; // the app's REAL dark remap, not lab values
         screen.dataset.motion = f.motion;
         screen.dataset.settle = f.settle;
         screen.dataset.frame = f.frame;
@@ -9310,7 +9319,7 @@ textarea {
 
         phone.appendChild(screen);
         cell.innerHTML = `<span class="lab-cap"></span>`;
-        cell.querySelector('.lab-cap').textContent = capOf(preset, theme, scrim);
+        cell.querySelector('.lab-cap').textContent = capOf(preset, scrim);
         cell.appendChild(phone);
 
         screen.querySelectorAll('.wp-listrow-open').forEach((btn, i) => {
@@ -9319,15 +9328,14 @@ textarea {
         return { cell, screen };
       }
 
-      function capOf(preset, theme, scrim) {
+      function capOf(preset, scrim) {
         const p = {
           today: 'as shipped',
           proposed: 'proposed',
           beats12: 'beats 1+2 only',
           centre: 'centre origin',
         }[preset];
-        const s = scrim === 'modal' ? ' · modal scrim 0.45' : '';
-        return `${p} · ${theme}${s}`;
+        return p + (scrim === 'modal' ? ' · modal scrim 0.45' : '');
       }
 
       const row = (d) => `
@@ -9499,63 +9507,36 @@ textarea {
         const box = screen._log;
         if (!box) return;
         const line = document.createElement('div');
-        line.innerHTML = `<span style="opacity:.55">${screen.dataset.theme.padEnd(5)}</span> ${msg}`;
+        const who = (screen._preset ?? '').padEnd(9);
+        line.innerHTML = `<span style="opacity:.55">${who}</span> ${msg}`;
         box.appendChild(line);
         box.scrollTop = box.scrollHeight;
         while (box.children.length > 40) box.firstChild.remove();
       }
 
       /* ── wiring ─────────────────────────────────────────────────────────────── */
-      const STATE = { speed: '1', net: 'instant', reduce: 'off', dir: 'rtl' };
+      const STATE = { theme: 'light', speed: '1', net: 'instant', reduce: 'off', dir: 'rtl' };
       const ALL = [];
 
-      /* Each section names its two cells. Where a section compares two PRESETS the
-         theme is held constant so only the motion differs; everywhere else the pair IS
-         the two themes, which is the file's default reading. */
+      /* Each section names its stages, and a stage is a PRESET — never a theme. ADR-0158
+         §16 is explicit that both themes are judged by a TOGGLE rather than a side-by-side
+         pair, "so the same frame is judged twice on the same ground", so a panel that
+         paired light against dark would be answering a question the rule already settled
+         and spending the width a real comparison needs. */
       const SECTIONS = {
-        A: [
-          { preset: 'today', theme: 'light' },
-          { preset: 'today', theme: 'dark' },
-        ],
-        B: [
-          { preset: 'proposed', theme: 'light' },
-          { preset: 'proposed', theme: 'dark' },
-        ],
-        C: [
-          { preset: 'today', theme: 'light' },
-          { preset: 'proposed', theme: 'light' },
-        ],
-        D: [
-          { preset: 'beats12', theme: 'light' },
-          { preset: 'proposed', theme: 'light' },
-        ],
-        E: [
-          { preset: 'proposed', theme: 'dark' },
-          { preset: 'centre', theme: 'dark' },
-        ],
-        F: [
-          { preset: 'proposed', theme: 'light', scrim: 'viewer' },
-          { preset: 'proposed', theme: 'light', scrim: 'modal' },
-        ],
-        G: [
-          { preset: 'proposed', theme: 'light' },
-          { preset: 'proposed', theme: 'dark' },
-        ],
+        A: [{ preset: 'today' }],
+        B: [{ preset: 'proposed' }],
+        C: [{ preset: 'today' }, { preset: 'proposed' }],
+        D: [{ preset: 'beats12' }, { preset: 'proposed' }],
+        E: [{ preset: 'proposed' }, { preset: 'centre' }],
+        F: [{ preset: 'proposed', scrim: 'viewer' }, { preset: 'proposed', scrim: 'modal' }],
+        G: [{ preset: 'proposed' }],
       };
-
-      /* §F and §E want both themes too, so each gets a second row of the same pair in
-         the other theme — "always both themes" is the file's contract. */
-      const ALSO_DARK = ['C', 'D', 'F'];
-      const ALSO_LIGHT = ['E'];
 
       for (const [key, cells] of Object.entries(SECTIONS)) {
         const host = document.querySelector(`[data-stages="${key}"]`);
         const box = document.querySelector(`[data-log="${key}"]`);
-        const spec = cells.slice();
-        if (ALSO_DARK.includes(key)) spec.push(...cells.map((c) => ({ ...c, theme: 'dark' })));
-        if (ALSO_LIGHT.includes(key)) spec.push(...cells.map((c) => ({ ...c, theme: 'light' })));
-
-        for (const s of spec) {
+        for (const s of cells) {
           const { cell, screen } = buildStage(s);
           screen._preset = s.preset;
           screen._log = box;
@@ -9566,6 +9547,10 @@ textarea {
       }
 
       function apply() {
+        /* The app's own mechanism, not a mockup invention: `data-theme` on <html> is what
+           `lib/theme.ts` writes (ADR-0158 §8), so the dark remap already inlined in the
+           generated block above flips the frames AND this page's chrome with one write. */
+        document.documentElement.dataset.theme = STATE.theme;
         for (const s of ALL) {
           s.dataset.speed = STATE.speed;
           s.dataset.reduce = STATE.reduce;
