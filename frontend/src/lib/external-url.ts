@@ -17,8 +17,9 @@
 // anything else answers `null`, and the call site renders the text without making it a link.
 //
 // **Normalised for the HREF only.** `new URL()` tidies (`https://tabelog.com` gains its
-// trailing slash), which is right for where the tap goes and wrong for what the reader sees —
-// the display stays the string that was typed.
+// trailing slash), which is right for where the tap goes and wrong for what the reader sees.
+// What the reader sees is `prettyUrl`'s job, below — and the two are deliberately different
+// strings: the href must keep everything, the label must not.
 
 /** The schemes a note may point at. `mailto:`/`tel:` are here because a hotel's contact line is
  *  a thing people paste; `javascript:`, `data:` and `file:` are exactly what this excludes. */
@@ -48,4 +49,57 @@ export function externalHref(raw: string | null | undefined): string | null {
     // Not a url at all (someone typed a sentence into the url field). Not a crash, not a link.
     return null;
   }
+}
+
+// **A url, as something a person reads** (owner, 2026-08-02: _"really long links look very
+// ugly"_). A pasted share link is mostly not a url — `https://www.instagram.com/reel/
+// DbTc4IRhNDT/?igsh=azVieW45b2lscHh2` is 64 characters of which 30 are a tracking token that
+// means nothing to anybody, and it wrapped a note row onto three monospace lines.
+//
+// Three things come off, in order of how much they cost the reader and how little they mean:
+// the scheme (every link has one), the `www.` (ditto), and the SHARE PARAMETERS — the ids a
+// platform staples on so it can tell who forwarded what. What stays is the part that says
+// where this goes: the host and the path.
+//
+// **The query is filtered, not dropped.** `youtube.com/watch?v=…` IS its query; deleting it
+// would leave a label pointing at nothing. So this is an explicit list of the parameters that
+// are known to be about tracking, and anything unrecognised is kept — a slightly long label
+// is a much smaller failure than a label that lies about the destination.
+//
+// And it is only ever a LABEL. `externalHref` still builds the href from the full string, so
+// a parameter dropped here is still sent when the link is followed: this cannot break a link,
+// only shorten how one reads.
+const TRACKING_PARAMS = new Set([
+  'igsh', // Instagram
+  'igshid',
+  'fbclid', // Meta
+  'mibextid',
+  'si', // YouTube / Spotify share id
+  'feature',
+  'gclid', // Google Ads
+  'ref',
+  'ref_src', // X/Twitter
+  '_r', // TikTok
+  '_t',
+]);
+const isTracking = (key: string) =>
+  TRACKING_PARAMS.has(key) || key.toLowerCase().startsWith('utm_');
+
+/** The reader's half of a note's url. Falls back to the raw string for anything
+ *  `externalHref` refuses, because an unparseable url is still what someone typed and
+ *  printing nothing would be worse than printing it. */
+export function prettyUrl(raw: string | null | undefined): string {
+  const href = externalHref(raw);
+  if (!href) return raw?.trim() ?? '';
+  const url = new URL(href);
+  // A contact scheme has no host to lead with — the address IS the label.
+  if (url.protocol === 'mailto:' || url.protocol === 'tel:') return decodeURI(url.pathname);
+
+  for (const key of [...url.searchParams.keys()]) {
+    if (isTracking(key)) url.searchParams.delete(key);
+  }
+  const host = url.host.replace(/^www\./i, '');
+  // A bare host reads as the host, not as `example.com/`.
+  const path = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '');
+  return decodeURI(host + path) + url.search + url.hash;
 }

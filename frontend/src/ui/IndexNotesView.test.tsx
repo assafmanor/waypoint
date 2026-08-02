@@ -375,6 +375,17 @@ describe('IndexNotesView (ADR-0153)', () => {
       expect(link.textContent).toContain(withLink.url!);
     });
 
+    // A url-only note's row IS the url, so the foot must not print it a second time — the
+    // only thing that line is missing is the verb (owner, 2026-08-02).
+    it('says the verb instead of the url when the row already is the url', () => {
+      show();
+      // A url-only note's accessible name is its own pretty url, not a title it has not got.
+      fireEvent.click(screen.getByRole('button', { name: 'tabelog.com/tokyo/A1303' }));
+      const link = screen.getByRole('link', { name: t.notes.open.openLink });
+      expect(link.textContent).toContain(t.notes.open.openLink);
+      expect(link.textContent).not.toContain(urlOnly.url!);
+    });
+
     it('offers no link on a note that has none', () => {
       show();
       tap(bodyOnly);

@@ -16,6 +16,7 @@ import {
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { revealRows, type Revealed } from './filter-reveal';
 import { formatDuration } from './duration';
+import { prettyUrl } from './external-url';
 import { t } from '../i18n/he';
 
 /** Every `EventCategory`, in the enum's own order — the chip row's order, so nothing here
@@ -234,9 +235,11 @@ export function visibleNotes(
 
 /** A note's line as PLAIN TEXT — for an accessible name, a sheet's title, a change-feed
  *  line. The render is the row's job (a body clamps, a url is an LTR island); this is the
- *  same precedence in one string: the title if there is one, else the body, else the url. */
+ *  same precedence in one string: the title if there is one, else the body, else the url —
+ *  the url as `prettyUrl` reads it, because a name read aloud has even less use for a
+ *  tracking token than a name on screen. */
 export function noteTitleText(note: Note): string {
-  return note.title?.trim() || note.body?.trim() || note.url?.trim() || '';
+  return note.title?.trim() || note.body?.trim() || prettyUrl(note.url);
 }
 
 /** "When", for a note's meta line — `לפני 4 ד׳`, `לפני 3 ימים`, `לפני שבועיים`.
