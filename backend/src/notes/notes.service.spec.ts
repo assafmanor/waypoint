@@ -108,6 +108,64 @@ describe('NotesService', () => {
     expect(change?.before).toMatchObject({ body: 'קוד הכספת 4417' });
   });
 
+  // ── THE HOST MOVES ONLY WHEN A CONVERSION SAYS SO (ADR-0152 §5's amendment) ─────────
+  //
+  // The payload carries two opposite rules and the second one is the dangerous one: content
+  // clears when absent, the host is UNTOUCHED when absent. An ordinary edit sends no host at
+  // all, so a regression here would silently un-host every note anyone edits.
+  it('leaves the host alone on an ordinary content edit', async () => {
+    const tripId = await newTrip();
+    const event = await newEvent(tripId);
+    const note = await service.create(tripId, DEV_USER, {
+      body: 'הכניסה מאחור',
+      eventId: event.id,
+    });
+
+    const updated = await service.update(tripId, note.id, { body: 'הכניסה מלפנים' }, DEV_USER);
+
+    expect(updated.body).toBe('הכניסה מלפנים');
+    expect(updated.eventId).toBe(event.id);
+  });
+
+  it('moves a note to a new host, clearing the old one in the same write', async () => {
+    const tripId = await newTrip();
+    const idea = await prisma.maybeItem.create({
+      data: { tripId, title: 'מקדש מייג׳י', createdBy: DEV_USER, updatedBy: DEV_USER },
+    });
+    const event = await newEvent(tripId, 'מקדש מייג׳י');
+    const note = await service.create(tripId, DEV_USER, {
+      body: 'לקחת נעליים שקל לחלוץ',
+      maybeItemId: idea.id,
+    });
+
+    const moved = await service.update(
+      tripId,
+      note.id,
+      { body: 'לקחת נעליים שקל לחלוץ', eventId: event.id, maybeItemId: null },
+      DEV_USER,
+    );
+
+    expect(moved.eventId).toBe(event.id);
+    expect(moved.maybeItemId).toBeUndefined();
+    // The words survive the move — the whole reason the client re-sends them.
+    expect(moved.body).toBe('לקחת נעליים שקל לחלוץ');
+    const change = await prisma.change.findFirst({
+      where: { tripId, entityId: note.id, action: 'update' },
+    });
+    expect(change).toBeTruthy();
+  });
+
+  it('refuses a move onto a host in another trip', async () => {
+    const tripId = await newTrip();
+    const otherTrip = await newTrip();
+    const foreign = await newEvent(otherTrip);
+    const note = await service.create(tripId, DEV_USER, { body: 'שלנו' });
+
+    await expect(
+      service.update(tripId, note.id, { body: 'שלנו', eventId: foreign.id }, DEV_USER),
+    ).rejects.toThrow();
+  });
+
   it('deletes a note and writes the delete Change the clients need', async () => {
     const tripId = await newTrip();
     const note = await service.create(tripId, DEV_USER, { body: 'זמני' });

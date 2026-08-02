@@ -11,6 +11,9 @@ import {
   type CreateBookingInput,
   type CreateEventInput,
   type EventCategory,
+  type Note,
+  type NoteHostKey,
+  NOTE_HOST_KEYS,
   type MaybeItem,
   type TripEvent,
   type UpdateEventInput,
@@ -115,6 +118,41 @@ export interface VerbDeps {
    *  through the verbs that already own them — never a second optimistic path beside them
    *  (root rule 8). Only the booked save and its undo touch this. */
   bookings: Pick<IndexVerbs, 'createBooking' | 'deleteBooking'>;
+  /** **The notes a conversion has to carry with it** (ADR-0152 §5's 2026-08-01 amendment).
+   *  Same shape and same reason as `bookings` above: notes live in trip-state, and moving
+   *  one goes through the verb that already owns that write rather than a second optimistic
+   *  path beside it. `list` is read to find what a host is carrying; `rehost` moves one. */
+  notes: { list: Note[]; rehost: (note: Note, host: NoteHostPatch) => Promise<void> };
+}
+
+/** Which FK a moved note lands on — one set, the rest explicitly `null` so the old host is
+ *  cleared in the same write. Deliberately not `Partial<Record<…>>`: a conversion that
+ *  forgot to clear the previous host would leave a note claiming two, which the schema
+ *  refuses at the door. */
+export type NoteHostPatch = Record<NoteHostKey, string | null>;
+
+/** Every host FK nulled, then the one the note is moving to. */
+export const noteHostPatch = (kind: NoteHostKey, id: string): NoteHostPatch =>
+  ({ ...Object.fromEntries(NOTE_HOST_KEYS.map((k) => [k, null])), [kind]: id }) as NoteHostPatch;
+
+/**
+ * **Move every note a conversion is about to strand** (ADR-0152 §5's amendment).
+ *
+ * Three shipped conversions consume one entity into another: an idea scheduled into an
+ * event, an event parked back onto the shelf, an idea booked. Before this, all three left
+ * the notes behind — and parking was the worst of them, because it DELETES the event, so
+ * the FK cascade destroyed them outright rather than merely hiding them.
+ *
+ * Awaited, and that is what keeps it correct offline: the outbox is FIFO, so the move has
+ * to be queued AFTER the new host exists and BEFORE the old one is deleted.
+ */
+export async function carryNotes(
+  deps: VerbDeps,
+  from: { kind: NoteHostKey; id: string },
+  to: { kind: NoteHostKey; id: string },
+): Promise<void> {
+  const carried = deps.notes.list.filter((note) => note[from.kind] === from.id);
+  for (const note of carried) await deps.notes.rehost(note, noteHostPatch(to.kind, to.id));
 }
 
 // A real HTTP error still rejects normally — only network failure/offline queues.
@@ -367,7 +405,17 @@ export async function applyBookEvent(
       return null;
     }
   }
-  if (maybeId) await applyConsumeMaybeItem(deps, maybeId);
+  if (maybeId) {
+    // The linked event on this path is the SERVER's (from the seed, ADR-0093), so the
+    // booking is the host the client can name — the same rule the form's own composer
+    // follows when `יש הזמנה` is on.
+    await carryNotes(
+      deps,
+      { kind: 'maybeItemId', id: maybeId },
+      { kind: 'bookingId', id: booking.id },
+    );
+    await applyConsumeMaybeItem(deps, maybeId);
+  }
 
   // Set LAST, so it survives the descriptors `applyUpdateEvent`/the consume wrote: undoing a
   // booked save is one action, not the last of three.
@@ -388,6 +436,10 @@ export async function applySchedule(
       createEvent(deps.tripId, input),
     );
     if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
+    // What the group wrote about the idea is about the thing, not about the shelf it was
+    // sitting on — so it follows the idea onto the day. After the create, because the event
+    // has to exist before a note can point at it (offline: FIFO).
+    await carryNotes(deps, { kind: 'maybeItemId', id: maybeId }, { kind: 'eventId', id: event.id });
     // Persists the consumed flag server-side (T-058) so a resync after an
     // offline reconnect doesn't revert this maybe-item back to unscheduled.
     // Separate call rather than a combined backend "schedule" endpoint because
@@ -630,6 +682,11 @@ export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeIte
     await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
       createMaybeItem(deps.tripId, input),
     );
+    // **BETWEEN the two writes, and that is the whole point.** Parking deletes the event,
+    // and the note FKs are `onDelete: Cascade` — so notes still pointing at it when the
+    // delete lands are destroyed in the database, not merely stranded. Moved after the idea
+    // exists and before the event goes.
+    await carryNotes(deps, { kind: 'eventId', id: event.id }, { kind: 'maybeItemId', id: item.id });
     await restOrQueue(
       deps.tripId,
       { verb: OUTBOX_VERB.DELETE, eventId: event.id, confirm: false },
@@ -699,6 +756,16 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       return;
     }
     case 'create':
+      // The notes ride BACK first, for the same reason parking moves them before its delete:
+      // this delete cascades, so a note still pointing at the event would be destroyed by
+      // the undo of the very action that gave it that host.
+      if (desc.maybeId) {
+        await carryNotes(
+          deps,
+          { kind: 'eventId', id: desc.id },
+          { kind: 'maybeItemId', id: desc.maybeId },
+        );
+      }
       await restOrQueue(
         tripId,
         { verb: OUTBOX_VERB.DELETE, eventId: desc.id, confirm: false },
@@ -769,15 +836,22 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       return;
     }
     case 'park': {
-      // Un-park: drop the idea and put the event back.
+      // Un-park: drop the idea and put the event back. ORDER, and it is not the obvious one:
+      // the event is re-created FIRST, because the notes parking moved onto the idea have to
+      // reach it before the idea is deleted and its own cascade takes them.
+      const input = toCreateEventInput(desc.event);
+      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
+        createEvent(tripId, input),
+      );
+      await carryNotes(
+        deps,
+        { kind: 'maybeItemId', id: desc.maybeId },
+        { kind: 'eventId', id: desc.event.id },
+      );
       await restOrQueue(
         tripId,
         { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: desc.maybeId },
         () => deleteMaybeItem(tripId, desc.maybeId),
-      );
-      const input = toCreateEventInput(desc.event);
-      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
-        createEvent(tripId, input),
       );
       return;
     }
@@ -792,6 +866,15 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       // event only ever existed because of the booking, so it goes too. On a conversion the
       // event predates the booking and must survive — with its place and category handed
       // back, which nothing else can do: the conversion moved them onto the booking.
+      // The booking's own notes ride back to the idea BEFORE it is deleted — a booked save
+      // from the shelf moved them onto the booking, and this delete cascades.
+      if (desc.maybeId) {
+        await carryNotes(
+          deps,
+          { kind: 'bookingId', id: desc.bookingId },
+          { kind: 'maybeItemId', id: desc.maybeId },
+        );
+      }
       await deps.bookings.deleteBooking(desc.bookingId, {
         deleteEvents: desc.event == null,
         confirm: true,
@@ -831,7 +914,8 @@ export async function applyUndo(deps: VerbDeps): Promise<void> {
 }
 
 export function useVerbs() {
-  const { dispatch, trip, events, ripple, activeDate, zoneEvidence, indexVerbs } = useTrip();
+  const { dispatch, trip, events, ripple, activeDate, zoneEvidence, indexVerbs, notes, noteVerbs } =
+    useTrip();
   const { me } = useAuth();
   const toast = useToast();
   const confirmHardEdit = useConfirmHardEdit();
@@ -843,6 +927,22 @@ export function useVerbs() {
     lastAction,
     confirmHardEdit,
     bookings: indexVerbs,
+    // A conversion carries the old host's notes to the new one (`carryNotes`). The list is
+    // read live rather than captured, so a note written while a sheet is open still moves.
+    notes: {
+      list: notes,
+      rehost: (note, host) =>
+        noteVerbs.updateNote(note.id, {
+          // **The note's own content travels with it**, because this payload is
+          // whole-content for everything but the host: a move that sent only the FKs would
+          // clear the very words it is trying to preserve.
+          title: note.title,
+          body: note.body,
+          url: note.url,
+          category: note.category,
+          ...host,
+        }),
+    },
   };
   // Attribution for our own optimistic writes: the signed-in user, not a fixture.
   // The server stamps the canonical author on reconcile; this is what a

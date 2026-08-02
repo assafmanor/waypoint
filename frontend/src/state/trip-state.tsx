@@ -38,6 +38,7 @@ import {
   type ResolvePlaceInput,
   type TripSnapshot,
   type UpdateBookingInput,
+  NOTE_HOST_KEYS,
   type UpdateNoteInput,
   type UpdatePlaceInput,
   type UpdateTripInput,
@@ -1141,6 +1142,14 @@ function TripReady({
   // Notes (ADR-0152). Optimistic write, reconcile on the server's row, roll back on a real
   // failure — the same three moves as the index verbs above, over the `notes` list.
   const noteVerbs = useMemo<NoteVerbs>(() => {
+    /** Only the host keys the caller actually submitted, so an ordinary edit leaves the
+     *  host alone and a conversion moves it. `null` reads as "cleared" once it lands in the
+     *  row, matching `coerceClearedFields` one layer down. */
+    const hostPatch = (input: UpdateNoteInput): Partial<Note> =>
+      Object.fromEntries(
+        NOTE_HOST_KEYS.filter((key) => key in input).map((key) => [key, input[key] ?? undefined]),
+      );
+
     const stamp = () => new Date(getNow()).toISOString();
     return {
       createNote: async (input, opts) => {
@@ -1188,6 +1197,10 @@ function TripReady({
                   body: input.body ?? undefined,
                   url: input.url ?? undefined,
                   category: input.category ?? undefined,
+                  // The host is the one part that is NOT whole-content: absent means
+                  // untouched, so a spread of only the submitted keys is the optimistic
+                  // half of the same rule the server applies (see `updateNoteSchema`).
+                  ...hostPatch(input),
                   updatedAt: stamp(),
                   updatedBy: authorId,
                 }

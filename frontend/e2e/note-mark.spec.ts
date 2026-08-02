@@ -12,10 +12,17 @@
 //  3. the case no mockup measured (the plan's G4): a row carrying a PENDING sync badge as
 //     well as a code and a mark, which is the true worst case for that line.
 import { test, expect, type Page } from '@playwright/test';
-import { bootIntoTrip, shortLiveTripDates, TRIP_ID } from './boot';
+import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
 
 const PHONE = { width: 390, height: 844 };
 const DAYS_TAB = 'יום-יום';
+
+/** **The clock is pinned, and this file is why the harness grew the option.** Its fixtures
+ *  are times "today", so what they MEAN — passed, now, upcoming — was decided by the hour
+ *  the suite happened to run at. The queued-badge test settles a passed event, which stopped
+ *  existing the moment the date rolled past midnight UTC and the 10:30 fixture became
+ *  tomorrow morning. 15:00 puts the morning fixtures behind us, deterministically. */
+const NOW = () => todayAt('15:00');
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -109,6 +116,7 @@ async function openDay(
   // route handlers first — they accumulate, and which one answers is not worth relying on.
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await bootIntoTrip(page, {
+    now: NOW(),
     dates: shortLiveTripDates(),
     events: [codedEvent(opts.kind ? { kind: opts.kind } : {})],
     bookings: [booking],
@@ -232,7 +240,7 @@ test.describe('the note mark on a day row (ADR-0152 §6c)', () => {
  *  mode's shelf has no `✕`, so the crowded case only exists here. */
 async function openPlanShelf(page: Page, notes: unknown[]): Promise<void> {
   await page.unrouteAll({ behavior: 'ignoreErrors' });
-  await bootIntoTrip(page, { dates: shortLiveTripDates(), maybeItems: [idea], notes });
+  await bootIntoTrip(page, { now: NOW(), dates: shortLiveTripDates(), maybeItems: [idea], notes });
   await page.setViewportSize(PHONE);
   await page.goto('/');
   await page.getByRole('button', { name: 'תכנון', exact: true }).click();
@@ -297,7 +305,12 @@ test.describe('the note mark on an idea tile (ADR-0153 §7)', () => {
 test.describe('the note mark on a document row (ADR-0152 §6)', () => {
   async function openDocuments(page: Page, notes: unknown[]): Promise<void> {
     await page.unrouteAll({ behavior: 'ignoreErrors' });
-    await bootIntoTrip(page, { dates: shortLiveTripDates(), documents: [passportDoc], notes });
+    await bootIntoTrip(page, {
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      documents: [passportDoc],
+      notes,
+    });
     await page.setViewportSize(PHONE);
     await page.goto('/');
     await page.locator('nav.nav button', { hasText: 'אינדקס' }).click();
