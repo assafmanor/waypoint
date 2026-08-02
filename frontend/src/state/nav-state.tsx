@@ -64,6 +64,14 @@ export const DAY_PARAM = 'day';
 /** Open the Index's bookings screen with one booking's DETAIL on top (ADR-0050's quick
  *  access). Named here beside the other params now that it has more than one reader. */
 export const BOOKING_PARAM = 'booking';
+/** …and the same for the other three hosts a note can point at (ADR-0153 §8's way-in
+ *  amendment). Four params rather than one `?open=type:id`, because `?booking=` shipped with
+ *  ADR-0050 and reads as what it is in a URL — what is shared is the DECISION of where each
+ *  kind lives (`lib/note-host-target.ts`), not the spelling of the query string. A place
+ *  needs none: the Map has a focus channel of its own. */
+export const DOCUMENT_PARAM = 'doc';
+export const EVENT_PARAM = 'event';
+export const IDEA_PARAM = 'idea';
 /** Which of the Index's sub-screens to open on arrival. `docs` is ADR-0050's; `bookings`
  *  joins it for the errand return below, and needs no id — the point is only to MOUNT the
  *  screen, not to open anything on top of it. */

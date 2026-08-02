@@ -34,10 +34,12 @@ import {
   type NoteHostRef,
 } from '../lib/notes';
 import { ltrIsolate } from '../lib/bidi';
+import { todayInTz } from '../lib/time';
+import { useNoteHostWayIn, type NoteHostWayIn } from '../state/note-host-nav';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { NoteSheet, type NoteDraft } from './NoteSheet';
 import { NoteManageSheet } from './NoteManageSheet';
-import { NoteDetail } from './NoteDetail';
+import { NoteOpenFoot } from './NoteOpenFoot';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
 import { ListRow } from './domain';
@@ -51,8 +53,7 @@ import { t } from '../i18n/he';
 import './notes.css';
 
 export function IndexNotesView({ onClose }: { onClose: () => void }) {
-  const { trip, notes, events, bookings, places, maybeItems, documents, users, noteVerbs } =
-    useTrip();
+  const { trip, notes, events, bookings, places, maybeItems, documents, noteVerbs } = useTrip();
   const { mode } = useMode();
   const now = useClock();
 
@@ -62,8 +63,13 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
   // null = closed; 'create' = a new note; a Note = editing that one.
   const [sheet, setSheet] = useState<Note | 'create' | null>(null);
   const [manage, setManage] = useState<Note | null>(null);
-  // A row's tap opens this READ surface, not the editor (ADR-0153 §4's amendment).
-  const [preview, setPreview] = useState<Note | null>(null);
+  // **A row's tap opens it WHERE IT IS** (ADR-0153 §4's amendment, round two): the row's
+  // two-line clamp lifts and one foot line appears under it. No sheet, no scrim, and the
+  // list you were reading stays exactly where it was.
+  const [openId, setOpenId] = useState<string | null>(null);
+  // The way in to a note's host, measured against the trip's own today (a day-scoped host
+  // needs `?day=` unless it IS today).
+  const wayIn = useNoteHostWayIn(todayInTz(trip.timezone, now));
 
   // The host lookup, built once per source change rather than per row: every note's badge,
   // chip, chip-count and filter position needs its host resolved (ADR-0152 §5's amendment).
@@ -125,12 +131,15 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
 
   const renderNote = (note: Note) => (
     <NoteLi
+      wayIn={wayIn}
       note={note}
       host={noteHost(note, hosts)}
       glyph={noteGlyph(note, hosts)}
       now={now}
+      open={openId === note.id}
       onManage={setManage}
-      onOpen={setPreview}
+      onToggle={() => setOpenId((current) => (current === note.id ? null : note.id))}
+      onEdit={setSheet}
     />
   );
   const noteKey = (note: Note) => note.id;
@@ -237,22 +246,6 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
         />
       )}
 
-      {preview && (
-        <NoteDetail
-          note={preview}
-          host={noteHost(preview, hosts)}
-          glyph={noteGlyph(preview, hosts)}
-          users={users}
-          now={now}
-          onEdit={() => {
-            const note = preview;
-            setPreview(null);
-            setSheet(note);
-          }}
-          onClose={() => setPreview(null)}
-        />
-      )}
-
       {manage && (
         <NoteManageSheet
           note={manage}
@@ -284,14 +277,22 @@ function NoteLi({
   host,
   glyph,
   now,
-  onOpen,
+  wayIn,
+  open,
+  onToggle,
+  onEdit,
   onManage,
 }: {
   note: Note;
   host?: NoteHostRef;
   glyph: string;
   now: Date;
-  onOpen: (note: Note) => void;
+  /** Whether this note's host can be reached, and how (ADR-0153 §8's amendment). */
+  wayIn: NoteHostWayIn;
+  /** Expanded: the title line's two-line clamp is off and the foot is under it. */
+  open: boolean;
+  onToggle: () => void;
+  onEdit: (note: Note) => void;
   onManage: (note: Note) => void;
 }) {
   const { users } = useTrip();
@@ -327,24 +328,39 @@ function NoteLi({
     </>
   );
 
+  const reachable = wayIn.canReach(host);
+
   return (
-    <ListRow
-      icon={glyph}
-      onOpen={() => onOpen(note)}
-      openLabel={noteTitleText(note)}
-      title={titleLine}
-      meta={meta}
-      right={
-        note.url && (note.title || note.body) ? (
-          <span className="note-link-mark">
-            <Icon name="link" />
-          </span>
-        ) : undefined
-      }
-      sync={<EntitySyncBadge id={note.id} />}
-      unsynced={unsynced}
-      onManage={() => onManage(note)}
-      manageLabel={t.notes.manage.actions}
-    />
+    <>
+      <ListRow
+        className={open ? 'is-open' : undefined}
+        icon={glyph}
+        onOpen={onToggle}
+        openLabel={noteTitleText(note)}
+        title={titleLine}
+        meta={meta}
+        right={
+          note.url && (note.title || note.body) ? (
+            <span className="note-link-mark">
+              <Icon name="link" />
+            </span>
+          ) : undefined
+        }
+        sync={<EntitySyncBadge id={note.id} />}
+        unsynced={unsynced}
+        onManage={() => onManage(note)}
+        manageLabel={t.notes.manage.actions}
+      />
+      {/* The row's SIBLING, not a prop on it: `ListRow` is shared with bookings, documents
+          and members, and none of them has anything to expand. The list card is what holds
+          them together, so the open note joins it there. */}
+      {open && (
+        <NoteOpenFoot
+          host={host}
+          onGoToHost={reachable ? () => wayIn.goTo(host!) : undefined}
+          onEdit={() => onEdit(note)}
+        />
+      )}
+    </>
   );
 }

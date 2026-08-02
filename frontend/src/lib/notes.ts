@@ -66,6 +66,11 @@ export interface NoteHostRef {
   id: string;
   name: string;
   category?: EventCategory;
+  /** **Which day this host lives on**, for the two kinds whose surface is a DAY rather than
+   *  a screen: an event's `date`, and an idea's pencilled `targetDate` (absent for someday).
+   *  The way in needs it — you cannot open a card without first being on its day — and
+   *  nothing else reads it, which is why it is here rather than a second lookup. */
+  date?: string;
 }
 
 /** The five hostable entity types, as the row's own vocabulary — narrower than `EntityType`,
@@ -76,10 +81,10 @@ export type NoteHostKind = keyof typeof NOTE_HOST_FIELD;
  *  minimum of each entity rather than the entity itself, so a fixture is a literal and the
  *  derivation cannot start depending on some other field. */
 export interface NoteHostSources {
-  events: { id: string; title: string; category?: EventCategory }[];
+  events: { id: string; title: string; category?: EventCategory; date: string }[];
   bookings: { id: string; title: string; type: BookingType }[];
   places: { id: string; name: string }[];
-  maybeItems: { id: string; title: string; category?: EventCategory }[];
+  maybeItems: { id: string; title: string; category?: EventCategory; targetDate?: string | null }[];
   documents: { id: string; title: string }[];
 }
 
@@ -97,12 +102,18 @@ export function buildNoteHosts(sources: NoteHostSources): Map<string, NoteHostRe
   const put = (kind: NoteHostKind, ref: Omit<NoteHostRef, 'kind'>) =>
     index.set(`${kind}:${ref.id}`, { kind, ...ref });
 
-  for (const e of sources.events) put('event', { id: e.id, name: e.title, category: e.category });
+  for (const e of sources.events)
+    put('event', { id: e.id, name: e.title, category: e.category, date: e.date });
   for (const b of sources.bookings)
     put('booking', { id: b.id, name: b.title, category: categoryForBookingType(b.type) });
   for (const p of sources.places) put('place', { id: p.id, name: p.name });
   for (const m of sources.maybeItems)
-    put('maybeItem', { id: m.id, name: m.title, category: m.category });
+    put('maybeItem', {
+      id: m.id,
+      name: m.title,
+      category: m.category,
+      date: m.targetDate ?? undefined,
+    });
   for (const d of sources.documents) put('document', { id: d.id, name: d.title });
   return index;
 }

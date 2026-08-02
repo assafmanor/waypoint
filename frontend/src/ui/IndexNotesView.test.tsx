@@ -308,39 +308,58 @@ describe('IndexNotesView (ADR-0153)', () => {
     });
   });
 
-  // ADR-0153 §4's 2026-08-02 amendment. The row clamps to two lines, so before this a long
-  // note could not be read at all without entering a form — a reader sent into an author's
-  // surface, and one accidental keystroke from changing what it says.
-  describe('the preview a row’s tap opens', () => {
+  // ADR-0153 §4's 2026-08-02 amendment, round two. The tap used to raise a SHEET, which is
+  // `BookingDetail`'s grammar — right for an object with facts and verbs, wrong for a
+  // sentence. It opens where it is now: the row's two-line clamp lifts and one foot line
+  // appears under it, with the list still on screen behind nothing at all.
+  describe('a row opens where it is', () => {
     const tap = (note: Note) =>
       fireEvent.click(screen.getByRole('button', { name: note.title ?? note.body ?? '' }));
+    const openRow = () => document.querySelector('.wp-listrow.is-open');
+    const foot = () => document.querySelector('.note-open-foot');
 
-    it('reads the note in full, and is not the editor', () => {
+    it('marks the row open and puts the foot under it — no sheet, no scrim', () => {
       show();
       tap(bodyOnly);
-      expect(document.querySelector('.note-read')?.textContent).toBe(bodyOnly.body);
-      expect(screen.queryByLabelText(t.notes.sheet.bodyLabel)).toBeNull();
+      expect(openRow()).toBeTruthy();
+      expect(foot()).toBeTruthy();
+      // The list is still the list: nothing was raised over it.
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(document.querySelectorAll('.wp-listrow').length).toBeGreaterThan(1);
     });
 
-    it('names the host once — in the head, never also as a fact', () => {
+    it('opens one at a time, and a second tap closes it', () => {
       show();
+      tap(bodyOnly);
       tap(titleAndBody);
-      expect(document.querySelector('.bk-type')?.textContent).toBe(hotel.title);
-      expect(document.querySelectorAll('.bk-fact')).toHaveLength(1);
+      expect(document.querySelectorAll('.note-open-foot')).toHaveLength(1);
+      tap(titleAndBody);
+      expect(foot()).toBeNull();
     });
 
     it('says a general note is general rather than leaving the line blank', () => {
       show();
       tap(bodyOnly);
-      expect(document.querySelector('.bk-type')?.textContent).toBe(t.notes.preview.general);
+      expect(foot()?.textContent).toContain(t.notes.open.general);
     });
 
-    // The note's words are the CONTENT, so an untitled note's head is the noun — printing
-    // them as both heading and body is the same sentence twice.
-    it('heads an untitled note with the noun, not with its own words', () => {
+    // The host was already named on the row and inert. In the foot it is the way in — and
+    // the row's own chip hides while it is open, or the host is named twice.
+    it('turns the host’s name into the way in, and stops naming it twice', () => {
+      show();
+      tap(titleAndBody);
+      const link = screen.getByRole('button', { name: t.notes.open.toHost(hotel.title) });
+      expect(link.textContent).toContain(hotel.title);
+      expect(link.closest('.note-open-foot')).toBeTruthy();
+    });
+
+    // A general note has no host, so there is nothing to go to — the words stay, the
+    // control does not appear at all.
+    it('offers no way in for a general note', () => {
       show();
       tap(bodyOnly);
-      expect(document.querySelector('.bk-title')?.textContent).toBe(t.notes.one);
+      expect(foot()?.querySelector('button.note-open-host')).toBeNull();
+      expect(foot()?.querySelector('.note-open-host.plain')).toBeTruthy();
     });
 
     it('offers edit, and leaves delete on the ⋯ where a destructive verb belongs', () => {
@@ -348,7 +367,7 @@ describe('IndexNotesView (ADR-0153)', () => {
       tap(titleAndBody);
       expect(screen.queryByText(t.notes.manage.delete)).toBeNull();
 
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.preview.edit) }));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.open.edit) }));
       const body = screen.getByLabelText(t.notes.sheet.bodyLabel) as HTMLTextAreaElement;
       expect(body.value).toBe(titleAndBody.body);
     });

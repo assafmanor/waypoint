@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { BOOKING_SOURCE, BOOKING_TYPE, type Booking } from '@waypoint/shared';
 
@@ -13,6 +13,21 @@ const booking: Booking = {
   title: 'טוקיו',
   confirmationCode: 'ABC123',
   source: BOOKING_SOURCE.MANUAL,
+  createdAt: '2026-07-19T00:00:00Z',
+  updatedAt: '2026-07-19T00:00:00Z',
+  updatedBy: 'u1',
+};
+
+/** Empty by default — the landing's counts and the documents screen's empty state both
+ *  assert against zero. A test that needs a document adds one. */
+let tripDocuments: unknown[] = [];
+const passport = {
+  id: 'd1',
+  tripId: 't1',
+  type: 'passport',
+  title: 'דרכון של דנה',
+  mimeType: 'image/jpeg',
+  sizeBytes: 1024,
   createdAt: '2026-07-19T00:00:00Z',
   updatedAt: '2026-07-19T00:00:00Z',
   updatedBy: 'u1',
@@ -30,7 +45,7 @@ vi.mock('../state/trip-state', () => ({
     bookings: [booking],
     places: [],
     events: [],
-    documents: [],
+    documents: tripDocuments,
     maybeItems: [],
     notes: [],
     users: [],
@@ -61,7 +76,10 @@ function wrap(node: ReactNode, initialEntries?: string[]) {
 }
 
 describe('Index landing (ADR-0098)', () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    tripDocuments = [];
+  });
 
   it('renders a bookings tile and a documents tile with their counts', () => {
     render(wrap(<Index />));
@@ -106,5 +124,22 @@ describe('Index landing (ADR-0098)', () => {
   it('?focus=docs deep-link (ADR-0050) opens the documents screen directly', () => {
     render(wrap(<Index />, ['/?tab=index&focus=docs']));
     expect(screen.getByText(t.docs.emptyTitle)).toBeTruthy();
+  });
+
+  // The way in from a note about a document (ADR-0153 §8's amendment): the same shape
+  // `?booking=` has had since ADR-0050, one kind over — mount the screen, hand it the id.
+  it('?doc=<id> opens the documents screen with that document open', () => {
+    tripDocuments = [passport];
+    render(wrap(<Index />, ['/?tab=index&doc=d1']));
+    const viewer = screen.getByRole('dialog');
+    expect(within(viewer).getByText('דרכון של דנה')).toBeTruthy();
+  });
+
+  // A note whose host has since been deleted must land on the screen rather than on a
+  // spinner over a document that is not there.
+  it('?doc=<id> for a document that is gone opens the screen and nothing on top', () => {
+    tripDocuments = [passport];
+    render(wrap(<Index />, ['/?tab=index&doc=d-gone']));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

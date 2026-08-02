@@ -18,7 +18,7 @@ import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexNotesView } from '../ui/IndexNotesView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
-import { BOOKING_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
+import { BOOKING_PARAM, DOCUMENT_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import { t } from '../i18n/he';
 
 type IndexView = 'landing' | 'bookings' | 'documents' | 'notes';
@@ -32,6 +32,9 @@ export function Index() {
   // manual tile tap clears it first, so re-entering the bookings screen later
   // doesn't reopen a stale detail from an earlier deep link.
   const [pendingBookingId, setPendingBookingId] = useState<string | undefined>();
+  /** The same shape one kind over: `?doc=<id>` opens the documents screen with that document
+   *  open, which is where a note about it sends you (ADR-0153 §8's way-in amendment). */
+  const [pendingDocumentId, setPendingDocumentId] = useState<string | undefined>();
 
   // Home's quick-access deep-links (ADR-0050): ?booking=<id> opens the bookings
   // screen with that booking's detail on top; ?focus=docs opens the documents
@@ -40,11 +43,16 @@ export function Index() {
   const [params, setParams] = useSearchParams();
   useEffect(() => {
     const id = params.get(BOOKING_PARAM);
+    const docId = params.get(DOCUMENT_PARAM);
     const focus = params.get(FOCUS_PARAM);
-    if (!id && !focus) return;
+    if (!id && !docId && !focus) return;
     if (id) {
       setPendingBookingId(id);
       setView('bookings');
+    }
+    if (docId) {
+      setPendingDocumentId(docId);
+      setView('documents');
     }
     if (focus === INDEX_FOCUS.DOCS) {
       setView('documents');
@@ -58,6 +66,7 @@ export function Index() {
     }
     const next = new URLSearchParams(params);
     next.delete(BOOKING_PARAM);
+    next.delete(DOCUMENT_PARAM);
     next.delete(FOCUS_PARAM);
     setParams(next, { replace: true });
   }, [params, setParams]);
@@ -65,6 +74,10 @@ export function Index() {
   const openBookings = () => {
     setPendingBookingId(undefined);
     setView('bookings');
+  };
+  const openDocuments = () => {
+    setPendingDocumentId(undefined);
+    setView('documents');
   };
   const backToLanding = () => setView('landing');
 
@@ -78,7 +91,7 @@ export function Index() {
   if (view === 'documents') {
     return (
       <div className="index">
-        <IndexDocumentsView onClose={backToLanding} />
+        <IndexDocumentsView onClose={backToLanding} initialDocumentId={pendingDocumentId} />
       </div>
     );
   }
@@ -147,7 +160,7 @@ export function Index() {
         title={t.docs.title}
         count={documents.length}
         subtitle={documentsSubtitle}
-        onOpen={() => setView('documents')}
+        onOpen={openDocuments}
       />
       {/* The third tile ADR-0098 measured its landing at five for, discharging the
           deferred content type and its `מחקר` naming debt — by not spending the word. */}

@@ -110,22 +110,31 @@ describe('HostNotes', () => {
     expect(screen.queryByText(t.notes.sheet.categoryLabel)).toBeNull();
   });
 
-  // A section line clamps exactly as the notes screen's row does, so its tap READS
-  // (ADR-0153 §4's amendment) — the editor is one deliberate press further in. The whole
-  // point is that a long note can be read without entering a form.
-  it('opens a note to read, not to edit', () => {
+  // A line HERE never clamped, so the words are already whole and opening one adds none —
+  // which is why the tap opens the foot and nothing else (ADR-0153 §4's amendment, round
+  // two). It must not land in the editor: nobody should reach for a sentence and get a form.
+  it('opens a note to its foot, not into the editor', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
-    expect(document.querySelector('.note-read')?.textContent).toBe('קוד הכספת 4417');
+    expect(document.querySelector('.note-open-foot')).toBeTruthy();
     expect(screen.queryByLabelText(t.notes.sheet.bodyLabel)).toBeNull();
+  });
+
+  // …and no way in, because this surface IS the host. A caret pointing at the sheet you are
+  // standing on is the kind of control that makes a reader doubt where they are.
+  it('offers no way in to the host it is already on', () => {
+    tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    expect(document.querySelector('button.note-open-host')).toBeNull();
   });
 
   it('opens an existing note into the same editor and updates it', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.preview.edit) }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.open.edit) }));
     fireEvent.change(screen.getByLabelText(t.notes.sheet.bodyLabel), {
       target: { value: 'קוד הכספת 4418' },
     });

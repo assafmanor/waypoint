@@ -35,7 +35,17 @@
   cursor: pointer;
   padding: var(--space-3) 14px;
 }
-.wp-listrow-open:hover {
+/* **THE HOVER PAINTS THE WHOLE ROW, NOT THE TAPPABLE HALF** (owner, 2026-08-02: fix it
+   _"app wide and not only while a note is open"_).
+   It was on `.wp-listrow-open`, which is only PART of the row: the `⋯` is that button's
+   sibling, because buttons do not nest (ADR-0139 §3). So the fill stopped dead at the kebab
+   and a hovered row read as two tones with a seam — invisible on a phone, which is why it
+   shipped, and wrong on every pointer. `:has()` keeps the trigger exactly where it was (the
+   tappable half — hovering the kebab alone still does not light the row) and moves only what
+   gets painted. `:not(:disabled)` is the one behaviour change beyond the paint area, and it
+   is a correction: a disabled button still MATCHES `:hover` in a browser, so a row that
+   cannot be opened was offering hover feedback for a press that does nothing. */
+.wp-listrow:has(.wp-listrow-open:hover:not(:disabled)) {
   background: color-mix(in srgb, var(--ink) 4%, transparent);
 }
 .wp-listrow-open:focus-visible {

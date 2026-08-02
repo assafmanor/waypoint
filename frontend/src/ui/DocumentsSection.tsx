@@ -7,7 +7,7 @@
 // once flushed. The title/encrypted-badge header lives in IndexDocumentsView's
 // merged `idx-head` row now (ADR-0100 Consequences), not here — this component
 // is content only.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { type DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { usePendingUploads, useIsOffline } from '../lib/outbox';
@@ -24,12 +24,22 @@ import { DOCUMENT_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
 
-export function DocumentsSection() {
+export function DocumentsSection({ initialDocumentId }: { initialDocumentId?: string } = {}) {
   const { trip, documents, notes } = useTrip();
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   const [uploading, setUploading] = useState(false);
   const [viewing, setViewing] = useState<DocumentSummary | null>(null);
+  // Runs once against the id this screen was mounted with — a note about a document sends
+  // you here (ADR-0153 §8's way-in amendment), and the id is spent on arrival. A fresh mount
+  // is what re-arms it, exactly as the bookings screen's `initialBookingId` works.
+  useEffect(() => {
+    if (!initialDocumentId) return;
+    const target = documents.find((d) => d.id === initialDocumentId);
+    if (target) setViewing(target);
+    // The id is the trigger, deliberately once — a fresh mount handles the next deep link,
+    // exactly as `IndexBookingsView`'s does.
+  }, [initialDocumentId]);
   const [managing, setManaging] = useState<DocumentSummary | null>(null);
   const pending = usePendingUploads(trip.id);
 

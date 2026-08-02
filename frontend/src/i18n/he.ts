@@ -714,14 +714,16 @@ export const t = {
       // the hint does not promise it.
       hintPlain: '＋ רק אם רוצים עוד אחד',
     },
-    // The preview a row's tap opens (ADR-0153 §4's 2026-08-02 amendment): a READ surface,
-    // in `BookingDetail`'s grammar. Editing is one deliberate press inside it.
-    preview: {
+    // An OPEN note (ADR-0153 §4's 2026-08-02 amendment, round two). The row expands where it
+    // is rather than opening a sheet, so this is the one line under it: where the note
+    // belongs, and the one verb. The author and the time are on the row already.
+    open: {
       general: 'פתק כללי',
-      written: 'נכתב',
-      by: (author: string, when: string) => `${author} · ${when}`,
       edit: 'עריכה',
       openLink: 'פתיחת הקישור',
+      /** The accessible name for the way in, which the visible label (the host's own name)
+       *  does not say on its own. */
+      toHost: (name: string) => `מעבר אל ${name}`,
     },
     // The note section on a detail surface, where the body lives.
     section: {

@@ -6,8 +6,17 @@
 // `＋ פתק` control it carries, and the notes screen. The mark itself is not one: at ~16px
 // against a 44px floor, widening its target would put it in competition with opening the
 // row it sits in.
+//
+// **A line here does not clamp** — it never has — so a note is already whole on this surface,
+// and opening one adds no words. That is exactly why the tap opens the FOOT and nothing else
+// (ADR-0153 §4's amendment, round two): the only thing missing from a note you can already
+// read is the verb. And the foot carries no way in to the host, because this surface IS the
+// host. (The notes SCREEN is the other case: its rows clamp to two lines, so opening there
+// lifts the clamp as well.)
+import { useState } from 'react';
 import type { Note, User } from '@waypoint/shared';
 import { noteWhen } from '../lib/notes';
+import { NoteOpenFoot } from './NoteOpenFoot';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 import './notes.css';
@@ -17,7 +26,7 @@ export function NoteSection({
   users,
   now,
   onAdd,
-  onOpen,
+  onEdit,
 }: {
   /** This host's notes, already filtered and in the order they should read. */
   notes: Note[];
@@ -26,10 +35,14 @@ export function NoteSection({
   /** Absent when the surface has its own way in — the host FORM carries a composer that
    *  rides its save (ADR-0152 §6b), and two add paths on one screen is one too many. */
   onAdd?: () => void;
-  /** Tapping a note opens it to READ — the line here clamps, so this is the way to the
-   *  whole thing; the editor is a press inside that (ADR-0153 §4's amendment). */
-  onOpen: (note: Note) => void;
+  /** The one verb an open note offers here. Reached by tapping the note and then `עריכה`,
+   *  so nobody lands in a form by reaching for a sentence. */
+  onEdit: (note: Note) => void;
 }) {
+  // Which note is open, if any. Local: it is the state of this rendering, and no host has
+  // any reason to know or to persist it.
+  const [openId, setOpenId] = useState<string | null>(null);
+
   return (
     <div className="note-sec">
       <div className="note-sec-h">
@@ -51,8 +64,12 @@ export function NoteSection({
           <p className="note-item-m">{t.notes.section.empty}</p>
         ) : (
           notes.map((note) => (
-            <div className="note-item" key={note.id}>
-              <button type="button" className="note-item-b" onClick={() => onOpen(note)}>
+            <div className={'note-item' + (openId === note.id ? ' is-open' : '')} key={note.id}>
+              <button
+                type="button"
+                className="note-item-b"
+                onClick={() => setOpenId((current) => (current === note.id ? null : note.id))}
+              >
                 {note.title ? note.title : (note.body ?? note.url)}
               </button>
               <span className="note-item-m">
@@ -63,6 +80,7 @@ export function NoteSection({
                   .filter(Boolean)
                   .join(' · ')}
               </span>
+              {openId === note.id && <NoteOpenFoot onEdit={() => onEdit(note)} />}
             </div>
           ))
         )}
