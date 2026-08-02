@@ -110,7 +110,14 @@ import {
   MINUTES_PER_HOUR,
 } from '../constants';
 import { ltrIsolate } from '../lib/bidi';
-import { dayTransitions, mergeDayEntries, type DayEntry } from '../lib/day-entries';
+import {
+  dayTransitions,
+  groupEndEvent,
+  groupMembers,
+  groupStartEvent,
+  mergeDayEntries,
+} from '../lib/day-entries';
+import { nowLinePlacement } from '../lib/now-line';
 import type { BookingTransition } from '../lib/glance';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -1334,13 +1341,8 @@ interface BuilderCtx {
   overGap: (fill: GapDefaults) => boolean;
 }
 
-const groupMembers = (g: TimeGroup): TimeItem[] => (g.kind === 'cluster' ? g.items : [g.item]);
 const startMsOf = (e: TripEvent) => Date.parse(e.startsAt!);
 const endMsOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
-const groupStartEvent = (g: TimeGroup): TripEvent =>
-  groupMembers(g).reduce((a, b) => (startMsOf(b.event) < startMsOf(a.event) ? b : a)).event;
-const groupEndEvent = (g: TimeGroup): TripEvent =>
-  groupMembers(g).reduce((a, b) => (endMsOf(b.event) > endMsOf(a.event) ? b : a)).event;
 
 /** Total events nested anywhere inside an item — the "כולל N" count. */
 function countDescendants(item: TimeItem): number {
@@ -1418,15 +1420,10 @@ function BuilderGroups({
   // falls after them all if every entry is passed.
   const nowRefMs = depth === 0 ? ctx.nowRefMs : null;
   const entries = mergeDayEntries(groups, depth === 0 ? (transitions ?? []) : []);
-  const entryEndMs = (entry: DayEntry) =>
-    entry.kind === 'event' ? endMsOf(groupEndEvent(entry.group)) : entry.atMs;
-  const nowRefIndex =
-    nowRefMs === null
-      ? -1
-      : (() => {
-          const i = entries.findIndex((e) => entryEndMs(e) > nowRefMs);
-          return i === -1 ? entries.length : i;
-        })();
+  // The same placement the Trip-mode now-line uses (`lib/now-line.ts`) — this screen's
+  // marker is static rather than live, which is a difference in the INSTANT it is given
+  // and nothing else.
+  const nowRefIndex = nowRefMs === null ? -1 : nowLinePlacement(entries, nowRefMs).index;
   // Gaps are measured between consecutive EVENT groups only — a transition point
   // interleaved between two groups doesn't break their adjacency for gap-fill.
   let prevEventGroup: TimeGroup | null = null;

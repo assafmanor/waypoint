@@ -48,3 +48,41 @@
   color: var(--muted);
   margin-block-start: -6px;
 }
+
+/* **A stop is a waypoint, not an endpoint** (ADR-0159). The indent is what says so
+   at a glance — a three-row stack of equals reads as three destinations — and it
+   is the same thing `.cluster-kids` says about rows belonging to the one above.
+   It has no remove control of its own: the picker's `✕` clears the place, and a
+   stop with no place is not a state worth keeping, so clearing IS removing. */
+.route-field .place-picker-stop {
+  margin-inline-start: 18px;
+}
+
+/* `+ עצירת ביניים`. A quiet text action like the swap above it, but `--cta` rather
+   than `--muted`: this one ADDS a field rather than correcting two, so it has to be
+   findable. Still no hue of its own (rule 4) — `--cta` is the neutral action colour. */
+.route-field-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--cta);
+  background: transparent;
+  border: 0;
+  padding: 4px 4px 0;
+  cursor: pointer;
+}
+.route-field-add .icon {
+  inline-size: 14px;
+  block-size: 14px;
+}
+.route-field-add:active {
+  transform: scale(var(--press-scale));
+}
+.route-field-add:focus-visible {
+  outline: none;
+  text-decoration: underline;
+}

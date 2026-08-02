@@ -348,6 +348,30 @@ describe('pinTransition — which transition is next there (ADR-0141)', () => {
     expect(pinTransition(index.get('station')!, ctx, of)).toBe('יציאה');
   });
 
+  // **A connection stop is what the place IS that day** (ADR-0159). The edge word is
+  // still true — you do land at the stop — and it is the wrong thing to spend the pin's
+  // one word on when you leave again two hours later.
+  it('lets a connection stop override the edge word, per place AND day', () => {
+    const landing = event({
+      id: 'leg1',
+      placeId: 'airport',
+      category: 'transport',
+      icon: '✈️',
+      startsAt: `${DAY}T18:00:00Z`,
+      endsAt: `${DAY}T20:00:00Z`,
+    });
+    const index = usages({ places: [place('airport')], events: [landing] });
+    const of = lookup([landing]);
+    expect(pinTransition(index.get('airport')!, ctx, of)).toBe('המראה');
+    const stopAt = (placeId: string, date: string) =>
+      placeId === 'airport' && date === DAY ? 'עצירת ביניים' : undefined;
+    expect(pinTransition(index.get('airport')!, ctx, of, stopAt)).toBe('עצירת ביניים');
+    // A resolver that does not know this place/day changes nothing, which is what keeps
+    // every surface that resolves no journeys behaving exactly as before.
+    const elsewhere = () => undefined;
+    expect(pinTransition(index.get('airport')!, ctx, of, elsewhere)).toBe('המראה');
+  });
+
   it('says nothing for a category with no two ends — a reservation is one moment', () => {
     // ADR-0063 makes `bracketed` 2 of 9 categories, which is also what rations the tag:
     // a restaurant's phase is "coming up", and the amber `היעד הבא` already says that.

@@ -1,0 +1,81 @@
+/* What sits between two rows of the day (ADR-0159). Logical properties only (RTL).
+
+   The gap strip is deliberately geometry-identical to Plan mode's `.gap`
+   (screens.css): same flex row, same 8px gap, same dashed hairline, same 9px
+   bottom margin. The two modes differ in what you can DO there, not in where the
+   fact lives — so the slot is one slot, and only the control is missing here. */
+
+.day-gap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 9px;
+  padding: 2px 6px;
+}
+.day-gap-line {
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--soft-line) 0 5px, transparent 5px 10px);
+}
+/* `--faint`, and no hue: free time is neither commitment (amber), location (teal)
+   nor a plan action (violet), and rule 4 has no fourth colour to lend it. It is
+   also the quietest thing on the list, which is correct — it sits between the two
+   rows that are the content. */
+.day-gap-lbl {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+/* ── The journey block ─────────────────────────────────────────────────────
+   One object with parts. The container owns the border, the radius and the
+   list's 10px rhythm; the legs inside give theirs up and become rows of it —
+   which is the whole point: a connection is not a mark BETWEEN two cards, it is
+   the inside of one thing. */
+.journey {
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
+  border-radius: 15px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: var(--card);
+}
+.journey > .wp-event {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  background: none;
+}
+/* A soft leg keeps its hatch (it is the card's background, not its border) but
+   loses the dashed edge the container now draws. */
+.journey > .wp-event.soft {
+  border: 0;
+}
+.journey-stop {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 15px;
+  background: color-mix(in srgb, var(--amber) 11%, transparent);
+  border-block: 1px solid color-mix(in srgb, var(--amber) 24%, transparent);
+  color: var(--amber-deep);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.journey-stop .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+/* A short join says so in a word (`isTightConnection`, per transport mode). It is
+   descriptive, not a warning — the app does not know your terminal — so it gets
+   weight and not `--miss`. */
+.journey-stop.tight {
+  background: color-mix(in srgb, var(--amber) 17%, transparent);
+}
+/* The now-line inside a journey keeps the block's inset, so it reads as a row OF
+   the block rather than a rule laid across it. */
+.journey .nowline {
+  margin: 9px 12px;
+}

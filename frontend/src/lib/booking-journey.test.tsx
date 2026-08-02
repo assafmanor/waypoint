@@ -22,7 +22,7 @@ vi.mock('../state/trip-state', () => ({
   useTrip: () => ({ bookings: tripBookings, events: tripEvents }),
 }));
 
-import { useRoundTripPartner, type RoundTripPartner } from './booking-pair';
+import { useRoundTripPartner, type RoundTripPartner } from './booking-journey';
 
 const bk = (id: string, from: string, to: string): Booking => ({
   id,

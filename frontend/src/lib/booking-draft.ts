@@ -54,15 +54,26 @@ export interface BookingSheetDraft {
   date: string;
   start: string;
   end: string;
-  spanStart: string;
-  spanEnd: string;
-  /** The round trip's own three fields (ADR-0154 §4). Form state, not `Booking` state —
-   *  the save turns them into a SECOND booking — but they travel on the draft for the
-   *  same reason everything else does: a place errand that dropped them would come back
-   *  having quietly changed what the save writes (ADR-0134 §2). */
+  /** **The journey's stops** (ADR-0159) — the places between the two ends. Create-only,
+   *  and the reason `legs` below is a list: a journey with two stops is three legs and
+   *  three bookings. An entry is `undefined` while its picker is still empty. */
+  stopPlaceIds: (string | undefined)[];
+  /** **Departure and arrival per leg, in travel order.** `legs[0]` is the span a one-leg
+   *  journey has always had; there are `stopPlaceIds.length + 1` of them once there are
+   *  stops. A type whose schedule is a point on a day carries it in `date`/`start`/`end`
+   *  above instead, and this stays a single empty-stringed leg.
+   *
+   *  A list rather than `spanStart`/`spanEnd` plus extras for the rest, because two
+   *  spellings of "when does leg N happen" is exactly the drift this file exists to
+   *  prevent. */
+  legs: LegTimes[];
+  /** The round trip (ADR-0154 §4) and its own legs, which mirror the outbound sequence
+   *  in reverse. Form state, not `Booking` state — the save turns them into more
+   *  bookings — but they travel on the draft for the same reason everything else does:
+   *  a place errand that dropped them would come back having quietly changed what the
+   *  save writes (ADR-0134 §2). */
   roundTrip: boolean;
-  returnStart: string;
-  returnEnd: string;
+  returnLegs: LegTimes[];
   kind: 'hard' | 'soft';
   kindTouched: boolean;
 }
@@ -70,6 +81,13 @@ export interface BookingSheetDraft {
 interface Wifi {
   network?: string;
   password?: string;
+}
+
+/** One leg's two ends, as the form holds them: `YYYY-MM-DDTHH:mm` wall-clock strings,
+ *  each resolved to an instant in its own endpoint's zone on save (ADR-0107). */
+export interface LegTimes {
+  start: string;
+  end: string;
 }
 
 /** **EVERY `Booking` FIELD, CLASSIFIED** — the compile-time tie between the entity and this
@@ -168,13 +186,20 @@ export function bookingSheetDraft(input: {
     date: linkedEvent?.date ?? '',
     start: linkedEvent?.startsAt ? isoToTimeInput(linkedEvent.startsAt, startZone) : '',
     end: linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, endZone) : '',
-    spanStart: linkedEvent?.startsAt ? isoToDateTimeLocal(linkedEvent.startsAt, startZone) : '',
-    spanEnd: linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, endZone) : '',
+    // The one leg an existing booking has. Stops are create-only, so a booking opened
+    // for editing is always a journey of exactly one (ADR-0159): turning a saved leg
+    // into a sequence is a different action, the same way turning one into a pair is.
+    stopPlaceIds: [],
+    legs: [
+      {
+        start: linkedEvent?.startsAt ? isoToDateTimeLocal(linkedEvent.startsAt, startZone) : '',
+        end: linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, endZone) : '',
+      },
+    ],
     // Always off on open: editing an existing booking never offers it (the control is
     // create-only), and a fresh form defaults to one-way (§4).
     roundTrip: false,
-    returnStart: '',
-    returnEnd: '',
+    returnLegs: [],
     kind: linkedEvent?.kind ?? defaultKindForBookingType(type),
     kindTouched: false,
   };

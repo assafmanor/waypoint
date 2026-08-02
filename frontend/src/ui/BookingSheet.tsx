@@ -13,6 +13,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   authorsRoundTrip,
+  connectionWindow,
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
   EVENT_KIND,
@@ -22,8 +23,13 @@ import {
   type Booking,
   type BookingType,
 } from '@waypoint/shared';
-import { bookingSheetDraft, type BookingSeed, type BookingSheetDraft } from '../lib/booking-draft';
-import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-pair';
+import {
+  bookingSheetDraft,
+  type BookingSeed,
+  type BookingSheetDraft,
+  type LegTimes,
+} from '../lib/booking-draft';
+import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
 
 // Re-exported so the sheet stays the obvious import for its own props (the derivation moved
@@ -74,18 +80,39 @@ const BOOKING_TYPE_OPTIONS = Object.values(BOOKING_TYPE).map((ty) => ({
  *  Index row so the wording never drifts (`../lib/booking-timing`). */
 const spanLabels = timingLabels;
 
+/** Shared empties, so a render that authors no stops and no return hands the same
+ *  arrays down every time rather than two fresh ones. */
+const EMPTY_STOPS: (string | undefined)[] = [];
+const EMPTY_LEGS: LegTimes[] = [];
+const BLANK_LEG: LegTimes = { start: '', end: '' };
+
+/** The journey's legs, normalised to the number of legs its ROUTE has. Read-time
+ *  rather than kept in sync by a setter: state can lag the stops by a render, and
+ *  normalising on read makes a leg/point mismatch unrepresentable instead of a bug
+ *  that only shows when a stop is added halfway through filling the form. */
+const resizeLegs = (list: LegTimes[], count: number): LegTimes[] =>
+  list.length === count ? list : Array.from({ length: count }, (_, i) => list[i] ?? BLANK_LEG);
+
+const sameLegs = (a: LegTimes[], b: LegTimes[]) =>
+  a.length === b.length && a.every((leg, i) => leg.start === b[i].start && leg.end === b[i].end);
+
 /** What this sheet can refuse, one name per BOX on screen (ADR-0150) — which is why
  *  a span's two legs are two names and the day variant's date is a third. */
+type LegSide = 'out' | 'back';
 type BookingField =
   | 'title'
   | 'route'
   | 'date'
-  | 'spanStart'
-  | 'spanEnd'
-  // The return's own two legs (ADR-0154 §4). A span refuses per leg for the same reason
-  // it carries a zone per leg, and a round trip has four of them.
-  | 'returnStart'
-  | 'returnEnd';
+  // **One name per LEG END** (ADR-0154 §4's two names, now indexed — ADR-0159). A span
+  // refuses per leg for the same reason it carries a zone per leg, and a journey with
+  // a stop has four of them before the return adds its own.
+  | `${LegSide}-start-${number}`
+  | `${LegSide}-end-${number}`;
+
+/** A leg end's field name. One spelling, used by the refusal, the mark and the step
+ *  lookup — three places that must agree on which box is being talked about. */
+const legField = (side: LegSide, index: number, edge: 'start' | 'end'): BookingField =>
+  `${side}-${edge}-${index}`;
 
 /** Pre-set fields for a create-flow open (ADR-0061): the Plan-home checklist opens
  *  the form for a specific booking type, and for a flight seeds the missing leg's
@@ -158,16 +185,19 @@ export function BookingSheet({
   const [date, setDate] = useState(draft ? draft.date : initial.date);
   const [start, setStart] = useState(draft ? draft.start : initial.start);
   const [end, setEnd] = useState(draft ? draft.end : initial.end);
-  // Span scheduling (transport departure/arrival, hotel check-in/check-out): two
-  // explicit datetimes that may fall on different days.
-  const [spanStart, setSpanStart] = useState(draft ? draft.spanStart : initial.spanStart);
-  const [spanEnd, setSpanEnd] = useState(draft ? draft.spanEnd : initial.spanEnd);
-  // The round trip (ADR-0154 §4): one save, two bookings. Create-only, default OFF —
+  // **The journey's stops** (ADR-0159) — create-only, and what turns one save into a
+  // chain of bookings. Empty is the one-leg journey every transport booking was.
+  const [stopPlaceIds, setStopPlaceIds] = useState(
+    draft ? draft.stopPlaceIds : initial.stopPlaceIds,
+  );
+  // Span scheduling (transport departure/arrival, hotel check-in/check-out), one entry
+  // per leg: two explicit datetimes that may fall on different days.
+  const [legs, setLegs] = useState(draft ? draft.legs : initial.legs);
+  // The round trip (ADR-0154 §4): one save, two journeys. Create-only, default OFF —
   // the control row costs 44px on every transport booking and the second leg a further
   // 492px, which only an explicit tap should buy (measured, `booking-round-trip-v1.html`).
   const [roundTrip, setRoundTrip] = useState(draft ? draft.roundTrip : initial.roundTrip);
-  const [returnStart, setReturnStart] = useState(draft ? draft.returnStart : initial.returnStart);
-  const [returnEnd, setReturnEnd] = useState(draft ? draft.returnEnd : initial.returnEnd);
+  const [returnLegs, setReturnLegs] = useState(draft ? draft.returnLegs : initial.returnLegs);
   const kind = useDerivedField<'hard' | 'soft'>(
     draft ? draft.kind : initial.kind,
     draft ? draft.kindTouched : false,
@@ -191,9 +221,9 @@ export function BookingSheet({
   // field, and the label says which end of the journey it is — a banner reading only
   // "רכבת לקיוטו" would leave you guessing which side you were choosing. `startErrand` is
   // null only where there is no Map tab to route to, which no host of this sheet is.
-  const findPlace = (field: PlaceErrandField, side?: string) => () =>
+  const findPlace = (field: PlaceErrandField, side?: string, index?: number) => () =>
     startErrand?.({
-      target: { kind: 'booking', id: booking?.id, field },
+      target: { kind: 'booking', id: booking?.id, field, index },
       label: [title.trim() || t.map.errand.untitledBooking, side]
         .filter(Boolean)
         .join(` ${DOT_SEPARATOR} `),
@@ -214,15 +244,19 @@ export function BookingSheet({
         date,
         start,
         end,
-        spanStart,
-        spanEnd,
+        stopPlaceIds,
+        legs,
         roundTrip,
-        returnStart,
-        returnEnd,
+        returnLegs,
         kind: kind.value,
         kindTouched: kind.touched,
       } satisfies BookingSheetDraft,
     });
+
+  /** The errand for one STOP. Same builder, one difference: the target carries an
+   *  INDEX, because a stop is an element of a list rather than a `Booking` column
+   *  (ADR-0159 extends ADR-0134 §2's channel by exactly that much). */
+  const findStop = (index: number, side: string) => findPlace('stopPlaceIds', side, index)();
 
   const suggestedZones = useMemo(
     () =>
@@ -238,6 +272,24 @@ export function BookingSheet({
   // pair is a different action (§4, out of scope).
   const offersRoundTrip = isCreate && authorsRoundTrip(type);
   const twoLegs = offersRoundTrip && roundTrip;
+  // **Stops, on the same terms as the round trip** (ADR-0159): only where the type's
+  // profile says a journey of this kind can be broken by one, and only on a create.
+  const offersStops = isCreate && connectionWindow(type) != null;
+  const stops = offersStops ? stopPlaceIds : EMPTY_STOPS;
+  /** The journey's points in travel order: origin, every stop, destination. Legs run
+   *  between consecutive points, so `legCount` is one less than this. */
+  const routePoints = [fromPlaceId, ...stops, toPlaceId];
+  const legCount = isSpan ? routePoints.length - 1 : 1;
+  // Read through a resize rather than kept in sync by a setter: state can lag the
+  // number of stops for one render, and normalising on READ makes that unrepresentable
+  // instead of a bug that only appears when a stop is added mid-edit.
+  const outLegs = resizeLegs(legs, legCount);
+  const backLegs = twoLegs ? resizeLegs(returnLegs, legCount) : EMPTY_LEGS;
+  const setLeg = (side: 'out' | 'back', index: number, next: LegTimes) => {
+    const write = side === 'out' ? setLegs : setReturnLegs;
+    const current = side === 'out' ? outLegs : backLegs;
+    write(current.map((leg, i) => (i === index ? next : leg)));
+  };
   // The LIVE zone resolver — same rule as the draft's, over the CURRENT picks rather than
   // the ones the sheet opened with (`lib/booking-draft.ts` owns the opening ones).
   const zoneOf = (id: string | undefined, override: string | null) =>
@@ -250,6 +302,20 @@ export function BookingSheet({
     ? zoneOf(fromPlaceId, startOverride)
     : zoneOf(placeId, startOverride);
   const endZone = isTransport ? zoneOf(toPlaceId, endOverride) : zoneOf(placeId, startOverride);
+  /** **A leg reads in the zones of ITS OWN two points** (ADR-0107, extended over a
+   *  sequence). Only the journey's outer ends can carry a pinned override — an interior
+   *  stop has a picked place, which is what the chip exists to stand in for when nothing
+   *  else can answer. `back` walks the same points in reverse. */
+  const reversed = [...routePoints].reverse();
+  const legZones = (side: 'out' | 'back', index: number) => {
+    const points = side === 'out' ? routePoints : reversed;
+    const outerStart = side === 'out' ? startZone : endZone;
+    const outerEnd = side === 'out' ? endZone : startZone;
+    return {
+      start: index === 0 ? outerStart : zoneOf(points[index], null),
+      end: index === legCount - 1 ? outerEnd : zoneOf(points[index + 1], null),
+    };
+  };
   // A chip per time field (ADR-0107 §6). It is **editable only when no place
   // answers the zone** — a picked place with coordinates carries its own zone, and
   // correcting it there is the honest edit (§3); a coordless Place-lite (offline, or
@@ -292,11 +358,10 @@ export function BookingSheet({
     date !== initial.date ||
     start !== initial.start ||
     end !== initial.end ||
-    spanStart !== initial.spanStart ||
-    spanEnd !== initial.spanEnd ||
+    stopPlaceIds.join() !== initial.stopPlaceIds.join() ||
+    !sameLegs(legs, initial.legs) ||
     roundTrip !== initial.roundTrip ||
-    returnStart !== initial.returnStart ||
-    returnEnd !== initial.returnEnd ||
+    !sameLegs(returnLegs, initial.returnLegs) ||
     startOverride !== initial.startOverride ||
     endOverride !== initial.endOverride ||
     kind.value !== initial.kind;
@@ -325,6 +390,11 @@ export function BookingSheet({
     const problems: FieldProblem<BookingField>[] = [];
     if (isTransport) {
       if (!finalTitle) problems.push({ field: 'route', message: t.index.form.routeRequired });
+      // A stop with no place cannot be flown to, scheduled or titled. Refused at the
+      // route, which is the field it is a part of (ADR-0150).
+      if (stops.some((id) => !id)) {
+        problems.push({ field: 'route', message: t.index.form.stopRequired });
+      }
     } else if (!finalTitle) {
       problems.push({ field: 'title', message: t.index.form.titleRequired });
     }
@@ -332,67 +402,88 @@ export function BookingSheet({
     if (!isSpan && outOfRange(date)) {
       problems.push({ field: 'date', message: t.index.form.dateOutOfRange });
     }
-    if (isSpan) {
-      if (outOfRange(spanStart))
-        problems.push({ field: 'spanStart', message: t.index.form.dateOutOfRange });
-      if (outOfRange(spanEnd))
-        problems.push({ field: 'spanEnd', message: t.index.form.dateOutOfRange });
-      // A span's end must be after its start. WhenField bounds the end's earliest
-      // day to the start day; this also rejects a same-day end at/before the start
-      // time (a time-less end stays open-ended, so only guard when both have one).
-      const [sDay, sTime] = spanStart.split('T');
-      const [eDay, eTime] = spanEnd.split('T');
-      if (sTime && eTime) {
-        const s = Date.parse(zonedIso(sDay, sTime, startZone));
-        const e = Date.parse(zonedIso(eDay, eTime, endZone));
-        if (e <= s) problems.push({ field: 'spanEnd', message: t.index.form.endBeforeStart });
-      }
-    }
-    // The return leg (ADR-0154 §4). Same two checks as the outbound, on its own two names
-    // — plus the one rule a round trip adds, which is the only CROSS-leg constraint in the
-    // form: you cannot leave before you have arrived. Marked on the return's DEPARTURE,
-    // the field that is actually wrong, not on the three around it that are fine.
-    if (twoLegs) {
-      if (outOfRange(returnStart))
-        problems.push({ field: 'returnStart', message: t.index.form.dateOutOfRange });
-      if (outOfRange(returnEnd))
-        problems.push({ field: 'returnEnd', message: t.index.form.dateOutOfRange });
-      const [rsDay, rsTime] = returnStart.split('T');
-      const [reDay, reTime] = returnEnd.split('T');
-      // The return's own legs read in the SWAPPED zones — it flies the route backwards.
-      if (rsTime && reTime) {
-        const rs = Date.parse(zonedIso(rsDay, rsTime, endZone));
-        const re = Date.parse(zonedIso(reDay, reTime, startZone));
-        if (re <= rs) problems.push({ field: 'returnEnd', message: t.index.form.endBeforeStart });
-      }
-      const [oeDay, oeTime] = spanEnd.split('T');
-      if (rsTime && oeTime) {
-        const arrival = Date.parse(zonedIso(oeDay, oeTime, endZone));
-        const departure = Date.parse(zonedIso(rsDay, rsTime, endZone));
-        if (departure < arrival) {
-          problems.push({ field: 'returnStart', message: t.index.form.returnBeforeArrival });
+    if (!isSpan) return problems;
+
+    /** An end of a leg as an instant, or null when it has no time yet. A day with no
+     *  time is deliberately open — the same reading the single-span form already had. */
+    const instantAt = (value: string, zone: string) => {
+      const [day, time] = value.split('T');
+      return day && time ? Date.parse(zonedIso(day, time, zone)) : null;
+    };
+
+    /** One side of the journey, leg by leg. Two per-leg rules (in the trip's range, and
+     *  an arrival after its own departure) plus the one CROSS-leg rule a sequence adds:
+     *  **you cannot leave before you have arrived**, marked on the departure that is
+     *  wrong rather than on the three fields around it that are fine. */
+    const walk = (side: LegSide, list: LegTimes[], arrivedAt: number | null) => {
+      let previousArrival = arrivedAt;
+      list.forEach((leg, i) => {
+        const zones = legZones(side, i);
+        if (outOfRange(leg.start)) {
+          problems.push({
+            field: legField(side, i, 'start'),
+            message: t.index.form.dateOutOfRange,
+          });
         }
-      }
-    }
+        if (outOfRange(leg.end)) {
+          problems.push({ field: legField(side, i, 'end'), message: t.index.form.dateOutOfRange });
+        }
+        const departure = instantAt(leg.start, zones.start);
+        const arrival = instantAt(leg.end, zones.end);
+        if (departure != null && arrival != null && arrival <= departure) {
+          problems.push({ field: legField(side, i, 'end'), message: t.index.form.endBeforeStart });
+        }
+        if (departure != null && previousArrival != null && departure < previousArrival) {
+          // The return's first leg is the ONE case ADR-0154 §4 already worded: it is
+          // about the whole outbound journey, not about the leg above it.
+          const isReturnStart = side === 'back' && i === 0;
+          problems.push({
+            field: legField(side, i, 'start'),
+            message: isReturnStart
+              ? t.index.form.returnBeforeArrival
+              : t.index.form.legBeforeArrival(
+                  placeName(places, (side === 'out' ? routePoints : reversed)[i]),
+                ),
+          });
+        }
+        previousArrival = arrival ?? previousArrival;
+      });
+      return previousArrival;
+    };
+
+    const landed = walk('out', outLegs, null);
+    if (twoLegs) walk('back', backLegs, landed);
     return problems;
   };
 
-  /** The fields each step owns, so a gate reports only what is on screen and the save's
-   *  jump lands on the step that can actually answer. Exhaustive over `BookingField` by
-   *  construction: a new refusal has to say which step shows it, or this stops compiling. */
-  const STEP_FIELDS = {
-    what: ['title', 'route'],
-    when: ['date', 'spanStart', 'spanEnd'],
-    // The return's two legs live with the shared fields, which is also where the one
-    // CROSS-step rule lands: `returnBeforeArrival` needs the outbound's arrival from the
-    // previous step, and it is marked here because this is the field that is wrong.
-    more: ['returnStart', 'returnEnd'],
-  } as const satisfies Record<string, readonly BookingField[]>;
-  type StepId = keyof typeof STEP_FIELDS;
-  const problemsIn = (step: StepId) => {
-    const owned = STEP_FIELDS[step] as readonly BookingField[];
-    return allProblems().filter((p) => p.field != null && owned.includes(p.field));
+  /** **The steps, one per leg** (ADR-0155 §5, ADR-0159). A leg is what a step is for:
+   *  two stops is two more steps rather than a form three times as long, and the
+   *  cross-leg refusal above is the cross-STEP dependency ADR-0155 §5 names as the
+   *  strongest argument for stepping this form at all.
+   *
+   *  A type with no span keeps its single day step, so a restaurant's form is the three
+   *  it has always been. */
+  const legSteps: StepId[] = [
+    ...outLegs.map((_, i) => `out-${i}` as StepId),
+    ...backLegs.map((_, i) => `back-${i}` as StepId),
+  ];
+  type StepId = 'what' | 'more' | `${LegSide}-${number}`;
+  const STEP_IDS: StepId[] = ['what', ...legSteps, 'more'];
+  /** Where `שבץ במסלול` lands (ADR-0138 §7): the schedule is a step per leg now, so the
+   *  shortcut means the first of them. */
+  const FIRST_LEG_STEP: StepId = 'out-0';
+
+  /** Which step shows a field. A FUNCTION rather than the table this replaced: the leg
+   *  names are indexed, so no literal list can be exhaustive over them — and a total
+   *  function is the stronger property anyway. Every field has a step, by construction. */
+  const stepOf = (field: BookingField): StepId => {
+    if (field === 'title' || field === 'route') return 'what';
+    if (field === 'date') return 'out-0';
+    const [side, , index] = field.split('-');
+    return `${side as LegSide}-${index}` as StepId;
   };
+  const problemsIn = (step: StepId) =>
+    allProblems().filter((p) => p.field != null && stepOf(p.field) === step);
 
   const commit = async () => {
     setSaving(true);
@@ -409,96 +500,150 @@ export function BookingSheet({
           wifiNetwork: isHotel ? wifiNetwork : undefined,
           wifiPassword: isHotel ? wifiPassword : undefined,
         });
-        const seed = isSpan
-          ? buildSpanSeed(
-              { startAt: spanStart, endAt: spanEnd, kind: kind.value, icon: icon.value, category },
-              startZone,
-              endZone,
-            )
-          : buildEventSeed(
-              { date, start, end, kind: kind.value, icon: icon.value, category },
-              startZone,
-            );
-        // Give the seed a stable event id (ADR-0093): the existing linked event's
-        // on edit, a fresh one otherwise. The server upserts under it, so the
-        // optimistic linked event the verb mirrors reconciles in place on flush.
-        const event = seed
-          ? { ...seed, id: seed.id ?? linkedEvent?.id ?? crypto.randomUUID() }
-          : undefined;
         // Zone overrides (ADR-0107 §6): send a key only when the chip was actually
         // used, so an untouched form can't freeze today's derived zone; `null` is the
         // reset. A single-place booking has one zone (`start` drives both ends), so
         // its end resolves to null — which also clears an end pinned while the type
         // was still transport, the one way this form can leave a stale one behind.
-        const zonePatch = {
-          ...(startOverride !== initial.startOverride && { startDisplayTimezone: startOverride }),
-          ...((isTransport ? endOverride : null) !== initial.endOverride && {
-            endDisplayTimezone: isTransport ? endOverride : null,
-          }),
-        };
+        const startPatch =
+          startOverride !== initial.startOverride
+            ? { startDisplayTimezone: startOverride }
+            : undefined;
+        const endPatch =
+          (isTransport ? endOverride : null) !== initial.endOverride
+            ? { endDisplayTimezone: isTransport ? endOverride : null }
+            : undefined;
         const base = {
-          title: finalTitle,
           // Send the trimmed value even when empty: an empty string is the explicit
           // "clear the code" intent (undefined would be dropped by JSON.stringify and
           // read as "leave unchanged"). The backend normalizes empty → null.
           confirmationCode: code.trim(),
           details,
-          event,
         };
-        // Transport carries fromPlaceId/toPlaceId; every other type a single
-        // placeId — mutually exclusive (ADR-0048), so send only the relevant side.
+
+        /** **One leg, as a booking + its linked event.** The journey's shared facts come
+         *  from `base` by construction — the code, the icon and the kind cannot drift
+         *  between legs — and everything that differs is derived from the two points the
+         *  leg runs between: its route, its title (ADR-0059 §3, so nobody types a name)
+         *  and its two zones. Only the journey's OUTER ends carry a zone override. */
+        const legBooking = (side: LegSide, index: number, times: LegTimes) => {
+          const points = side === 'out' ? routePoints : reversed;
+          const from = points[index];
+          const to = points[index + 1];
+          const zones = legZones(side, index);
+          const seed = buildSpanSeed(
+            {
+              startAt: times.start,
+              endAt: times.end,
+              kind: kind.value,
+              icon: icon.value,
+              category,
+            },
+            zones.start,
+            zones.end,
+          );
+          const firstOfJourney = index === 0;
+          const lastOfJourney = index === legCount - 1;
+          // The overrides ride with the END they belong to: on the way out the start's
+          // is the journey's start; on the way back it departs from the destination, so
+          // the two swap. Same "only when the chip was used" rule as a single leg's.
+          const outerStart =
+            side === 'out'
+              ? startPatch
+              : endPatch && { startDisplayTimezone: endPatch.endDisplayTimezone };
+          const outerEnd =
+            side === 'out'
+              ? endPatch
+              : startPatch && { endDisplayTimezone: startPatch.startDisplayTimezone };
+          return {
+            type,
+            ...base,
+            title: routeTitle(placeName(places, from) ?? '', placeName(places, to) ?? ''),
+            fromPlaceId: from,
+            toPlaceId: to,
+            event: seed ? { ...seed, id: crypto.randomUUID() } : undefined,
+            ...(firstOfJourney ? outerStart : undefined),
+            ...(lastOfJourney ? outerEnd : undefined),
+          };
+        };
+
         let hostId = booking?.id;
         if (isCreate) {
-          const created = await indexVerbs.createBooking(
-            isTransport
-              ? { type, ...base, ...zonePatch, fromPlaceId, toPlaceId }
-              : { type, ...base, ...zonePatch, placeId },
-          );
-          hostId = created?.id;
-
-          // **THE SECOND BOOKING** (ADR-0154 §4). Inside the same change group, so one
-          // user action stays one pending change (ADR-0092) rather than four.
-          //
-          // Everything non-schedule is shared by construction — it is the same `base`,
-          // so the code, the icon and the kind cannot drift between the legs. What is
-          // mirrored is the route and, with it, the zones: the return departs from the
-          // destination and arrives at the origin, so its per-endpoint zones are the
-          // outbound's swapped (ADR-0107). `routeTitle` derives its stored title, so
-          // nobody types a name for either leg.
-          if (twoLegs) {
-            const returnSeed = buildSpanSeed(
-              {
-                startAt: returnStart,
-                endAt: returnEnd,
-                kind: kind.value,
-                icon: icon.value,
-                category,
-              },
-              endZone,
-              startZone,
-            );
-            await indexVerbs.createBooking({
+          if (isSpan && isTransport) {
+            // **A JOURNEY IS A CHAIN OF BOOKINGS, WRITTEN IN ONE GROUP** (ADR-0159,
+            // generalising ADR-0154 §4's second booking). One leg per point-to-point
+            // hop, then the return's legs over the same points reversed — all inside
+            // the one `withChangeGroup`, so a three-leg journey is one pending change
+            // and one undo, not six.
+            //
+            // **The note's host is the FIRST leg** (ADR-0154 §6 generalised): it is the
+            // journey that happens first and the one the derived relation calls the
+            // primary. `hostId` is assigned once, deliberately, rather than left to the
+            // last statement to overwrite.
+            for (const [i, times] of outLegs.entries()) {
+              const created = await indexVerbs.createBooking(legBooking('out', i, times));
+              if (i === 0) hostId = created?.id;
+            }
+            for (const [i, times] of backLegs.entries()) {
+              await indexVerbs.createBooking(legBooking('back', i, times));
+            }
+          } else {
+            // A single-place booking: one write, its schedule a span or a day.
+            const seed = isSpan
+              ? buildSpanSeed(
+                  {
+                    startAt: outLegs[0].start,
+                    endAt: outLegs[0].end,
+                    kind: kind.value,
+                    icon: icon.value,
+                    category,
+                  },
+                  startZone,
+                  endZone,
+                )
+              : buildEventSeed(
+                  { date, start, end, kind: kind.value, icon: icon.value, category },
+                  startZone,
+                );
+            const created = await indexVerbs.createBooking({
               type,
               ...base,
-              title: routeTitle(
-                placeName(places, toPlaceId) ?? '',
-                placeName(places, fromPlaceId) ?? '',
-              ),
-              event: returnSeed ? { ...returnSeed, id: crypto.randomUUID() } : undefined,
-              fromPlaceId: toPlaceId,
-              toPlaceId: fromPlaceId,
-              // The overrides swap with the ends they belong to, and only when the chip
-              // was actually used — same rule as the outbound's `zonePatch`.
-              ...(endOverride !== initial.endOverride && { startDisplayTimezone: endOverride }),
-              ...(startOverride !== initial.startOverride && {
-                endDisplayTimezone: startOverride,
-              }),
+              title: finalTitle,
+              placeId,
+              event: seed ? { ...seed, id: seed.id ?? crypto.randomUUID() } : undefined,
+              ...startPatch,
+              ...endPatch,
             });
+            hostId = created?.id;
           }
         } else {
+          // An edit is always ONE leg (stops are create-only), and it keeps the linked
+          // event's id so the server upserts in place (ADR-0093).
+          const seed = isSpan
+            ? buildSpanSeed(
+                {
+                  startAt: outLegs[0].start,
+                  endAt: outLegs[0].end,
+                  kind: kind.value,
+                  icon: icon.value,
+                  category,
+                },
+                startZone,
+                endZone,
+              )
+            : buildEventSeed(
+                { date, start, end, kind: kind.value, icon: icon.value, category },
+                startZone,
+              );
+          const event = seed
+            ? { ...seed, id: seed.id ?? linkedEvent?.id ?? crypto.randomUUID() }
+            : undefined;
           await indexVerbs.updateBooking(booking.id, {
+            title: finalTitle,
             ...base,
-            ...zonePatch,
+            event,
+            ...startPatch,
+            ...endPatch,
             ...(isTransport ? { fromPlaceId, toPlaceId } : { placeId }),
           });
         }
@@ -537,19 +682,56 @@ export function BookingSheet({
   // Called HERE, above the `Sheet`, because the primitive's back layer must register after
   // the Modal's own — the hook's header explains why that makes it a hook.
   const steps = useFormSteps<StepId, BookingField>({
-    steps: [
-      { id: 'what', validate: () => problemsIn('what') },
-      { id: 'when', validate: () => problemsIn('when') },
-      { id: 'more', validate: () => problemsIn('more') },
-    ],
+    steps: STEP_IDS.map((id) => ({ id, validate: () => problemsIn(id) })),
     errors,
     onCommit: () => void commit(),
   });
-  // The labels name what each step ASKS, and two of them change for a round trip: with two
-  // journeys "מתי" alone leaves you checking which one you are answering.
-  const stepLabels = twoLegs
-    ? [t.index.form.stepWhat, t.index.form.stepWhenOut, t.index.form.stepBackAndShared]
-    : [t.index.form.stepWhat, t.index.form.stepWhen, t.index.form.stepDetails];
+  /** The labels name what each step ASKS. A one-way single leg keeps today's three words
+   *  exactly; a journey that has more than one leg has to say WHICH leg, because with
+   *  four schedules on four steps "מתי" alone leaves you counting. */
+  const multiLeg = legCount > 1;
+  const stepLabels = STEP_IDS.map((id) => {
+    if (id === 'what') return t.index.form.stepWhat;
+    if (id === 'more') return t.index.form.stepDetails;
+    const [side, index] = id.split('-');
+    const n = Number(index) + 1;
+    if (side === 'out') {
+      if (multiLeg) return t.index.form.stepLeg(n);
+      return twoLegs ? t.index.form.stepWhenOut : t.index.form.stepWhen;
+    }
+    return multiLeg ? t.index.form.stepBackLeg(n) : t.index.form.legBack;
+  });
+
+  /** **The leg the current step is asking about**, or null when the step is not a leg.
+   *  One derivation for the heading, the two fields, the zones and the marks, so a step
+   *  cannot label itself one leg and edit another. */
+  const legStep = (() => {
+    const id = steps.step;
+    if (id === 'what' || id === 'more') return null;
+    const [rawSide, rawIndex] = id.split('-');
+    const side = rawSide as LegSide;
+    const index = Number(rawIndex);
+    const list = side === 'out' ? outLegs : backLegs;
+    const points = side === 'out' ? routePoints : reversed;
+    // Where the previous leg landed — the day this one opens on, since a connection
+    // almost always departs the same day it arrived. Falls back to the trip's start.
+    const previous = index > 0 ? list[index - 1] : side === 'back' ? outLegs[legCount - 1] : null;
+    return {
+      side,
+      index,
+      times: list[index] ?? BLANK_LEG,
+      zones: legZones(side, index),
+      fromName: placeName(places, points[index]),
+      toName: placeName(places, points[index + 1]),
+      first: side === 'out' && index === 0,
+      // The zone chip belongs to the JOURNEY's two ends, which are the outbound's: the
+      // return flies the same two places, so pinning one there would be a second control
+      // for one fact.
+      outerStart: side === 'out' && index === 0,
+      outerEnd: side === 'out' && index === legCount - 1,
+      defaultDate: previous?.end.split('T')[0] || trip.startDate,
+    };
+  })();
 
   // `שבץ במסלול` opened this sheet FOR the schedule (ADR-0138 §7), which is a STEP now — so
   // the shortcut NAVIGATES to it and then takes focus, in that order and across two renders:
@@ -558,8 +740,9 @@ export function BookingSheet({
   // one-shot, so stepping away afterwards is not undone.
   useEffect(() => {
     if (focus !== 'when' || shortcutDone.current) return;
-    if (steps.step !== 'when') {
-      steps.goTo('when');
+    // The schedule is a step per leg now, so the shortcut lands on the FIRST of them.
+    if (steps.step !== FIRST_LEG_STEP) {
+      steps.goTo(FIRST_LEG_STEP);
       return;
     }
     shortcutDone.current = true;
@@ -691,6 +874,13 @@ export function BookingSheet({
                         setToPlaceId(to);
                       }}
                       onFind={(end, side) => findPlace(end, side)()}
+                      // Stops only where the type's profile allows a sequence, and only
+                      // on a create (ADR-0159) — the same terms as the direction control
+                      // above, and for the same reason: turning a saved leg into a
+                      // journey is a different action.
+                      stops={offersStops ? stopPlaceIds : undefined}
+                      onStopsChange={offersStops ? setStopPlaceIds : undefined}
+                      onFindStop={(index, side) => findStop(index, side)}
                     />
                   </Field>
                 )}
@@ -721,63 +911,84 @@ export function BookingSheet({
               the BLOCK rather than on a `WhenField` autofocus prop, because the two
               variants have different first controls and the sheet is the one place
               that knows which is rendered. */}
-            {steps.step === 'when' && (
+            {legStep && (
               <div ref={whenRef}>
                 {isSpan ? (
                   <>
-                    {/* **Leg headings arrive in PAIRS or not at all** (ADR-0154 §4). With one
-                    journey the span needs no name and today's form is unchanged; the
-                    moment there are two, an unlabelled block above a labelled one reads
-                    as a defect. Each states its own direction, because "חזרה" alone
-                    still leaves you checking which end is which. */}
-                    {twoLegs && (
+                    {/* **Leg headings arrive in PAIRS or not at all** (ADR-0154 §4,
+                    extended over a sequence). One journey of one leg needs no name and
+                    today's form is unchanged; the moment there are two schedules to
+                    keep apart — a return, a stop, or both — each says which leg it is
+                    and where that leg goes. */}
+                    {(multiLeg || twoLegs) && (
                       <div className="bs-leg-head">
-                        <span>{t.index.form.legOut}</span>
-                        <RouteLabel
-                          from={placeName(places, fromPlaceId)}
-                          to={placeName(places, toPlaceId)}
-                        />
+                        <span>
+                          {legStep.side === 'out'
+                            ? multiLeg
+                              ? t.index.form.legNumber(legStep.index + 1)
+                              : t.index.form.legOut
+                            : multiLeg
+                              ? t.index.form.legBackNumber(legStep.index + 1)
+                              : t.index.form.legBack}
+                        </span>
+                        <RouteLabel from={legStep.fromName} to={legStep.toName} />
                       </div>
                     )}
                     <WhenField
                       variant="span"
-                      start={spanStart}
-                      end={spanEnd}
-                      onChange={({ start: s, end: e }) => {
-                        setSpanStart(s);
-                        setSpanEnd(e);
-                      }}
+                      start={legStep.times.start}
+                      end={legStep.times.end}
+                      onChange={({ start: s, end: e }) =>
+                        setLeg(legStep.side, legStep.index, { start: s, end: e })
+                      }
                       minDate={trip.startDate}
                       maxDate={trip.endDate}
                       labels={spanLabels(type)}
-                      defaultDate={trip.startDate}
-                      timeZone={startZone}
-                      endTimeZone={endZone}
+                      // Each leg opens on the day the one before it landed, which is
+                      // what a connection almost always is — and on the trip's first
+                      // day when there is nothing before it.
+                      defaultDate={legStep.defaultDate}
+                      timeZone={legStep.zones.start}
+                      endTimeZone={legStep.zones.end}
                       durationUnit={bookingDurationUnit(type)}
+                      // The chip is the journey's, not the leg's: only its outer ends
+                      // can be pinned, because an interior stop has a picked place and
+                      // that is exactly what the override stands in for (ADR-0107 §6).
                       zones={{
-                        start: zoneChip(
-                          fromPlaceId ?? placeId,
-                          startZone,
-                          startOverride,
-                          setStartOverride,
-                        ),
-                        end: zoneChip(
-                          isTransport ? toPlaceId : placeId,
-                          endZone,
-                          endOverride,
-                          setEndOverride,
-                        ),
+                        start: legStep.outerStart
+                          ? zoneChip(
+                              fromPlaceId ?? placeId,
+                              legStep.zones.start,
+                              startOverride,
+                              setStartOverride,
+                            )
+                          : undefined,
+                        end: legStep.outerEnd
+                          ? zoneChip(
+                              isTransport ? toPlaceId : placeId,
+                              legStep.zones.end,
+                              endOverride,
+                              setEndOverride,
+                            )
+                          : undefined,
                       }}
-                      marks={{ start: errors.field('spanStart'), end: errors.field('spanEnd') }}
+                      marks={{
+                        start: errors.field(legField(legStep.side, legStep.index, 'start')),
+                        end: errors.field(legField(legStep.side, legStep.index, 'end')),
+                      }}
                     />
                     <ZoneNote
-                      startZone={startZone}
-                      endZone={endZone}
+                      startZone={legStep.zones.start}
+                      endZone={legStep.zones.end}
                       tripZone={trip.timezone}
                       refMs={zoneRefMs}
                     />
 
-                    {spanStart && <KindToggle kind={kind.value} onPick={pickKind} />}
+                    {/* The commitment is the JOURNEY's, so it is asked once, on the leg
+                        that starts it. */}
+                    {legStep.first && legStep.times.start && (
+                      <KindToggle kind={kind.value} onPick={pickKind} />
+                    )}
                   </>
                 ) : (
                   <>
@@ -812,54 +1023,10 @@ export function BookingSheet({
 
             {steps.step === 'more' && (
               <>
-                {/* **The second journey**, on its own step (ADR-0155 §5). Dates and times only —
-              the route is the outbound's mirror and every other field is shared, so this
-              block asks for the one thing that genuinely differs. Its zones are swapped:
-              the return departs from the destination and arrives at the origin. It sits
-              with the shared fields because that is what the step is: everything the
-              outbound leg did not already answer. */}
-                {twoLegs && (
-                  <div className="bs-leg bs-leg-return">
-                    <div className="bs-leg-head">
-                      <span>{t.index.form.legBack}</span>
-                      <RouteLabel
-                        from={placeName(places, toPlaceId)}
-                        to={placeName(places, fromPlaceId)}
-                      />
-                    </div>
-                    <WhenField
-                      variant="span"
-                      start={returnStart}
-                      end={returnEnd}
-                      onChange={({ start: s, end: e }) => {
-                        setReturnStart(s);
-                        setReturnEnd(e);
-                      }}
-                      minDate={trip.startDate}
-                      maxDate={trip.endDate}
-                      labels={spanLabels(type)}
-                      defaultDate={spanEnd.split('T')[0] || trip.startDate}
-                      timeZone={endZone}
-                      endTimeZone={startZone}
-                      durationUnit={bookingDurationUnit(type)}
-                      marks={{
-                        start: errors.field('returnStart'),
-                        end: errors.field('returnEnd'),
-                      }}
-                    />
-                    <ZoneNote
-                      startZone={endZone}
-                      endZone={startZone}
-                      tripZone={trip.timezone}
-                      refMs={zoneRefMs}
-                    />
-                  </div>
-                )}
-
                 <Field
                   label={t.index.sheet.codeLabel}
                   htmlFor="bs-code"
-                  hint={twoLegs ? t.index.form.codeSharedHint : undefined}
+                  hint={twoLegs || multiLeg ? t.index.form.codeSharedHint : undefined}
                 >
                   <input
                     id="bs-code"

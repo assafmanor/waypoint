@@ -18,6 +18,7 @@ export function PlacePicker({
   ariaLabel,
   placeholder,
   onFind,
+  className,
 }: {
   /** Current placeId (a trip Place, possibly a coordless name-only Place-lite). */
   value?: string;
@@ -35,12 +36,16 @@ export function PlacePicker({
    *  meaning anyway. Naming the invariant here is what the retired fallback was standing
    *  in for. */
   onFind: () => void;
+  /** A variant class on the field's own box — the route field's indented STOP is the
+   *  first one (ADR-0159). Not a style prop: the host names a role, this file keeps
+   *  owning what the role looks like. */
+  className?: string;
 }) {
   const { places } = useTrip();
   const current = value ? places.find((p) => p.id === value) : undefined;
 
   return (
-    <div className="place-picker">
+    <div className={'place-picker' + (className ? ` ${className}` : '')}>
       <button
         type="button"
         className={'pp-trigger' + (current ? ' filled' : '')}

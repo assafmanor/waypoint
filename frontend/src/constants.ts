@@ -149,6 +149,12 @@ export const GEOLOCATION_OPTIONS = {
  *  have no source, and the grid reflows to the visible count. */
 export const QUICK_TILE_MAX_COLS = 4;
 
+/** **How many stops one journey may be authored with** (ADR-0159). A layover or two is a
+ *  journey; four is an itinerary, and an itinerary is what the trip itself is for. The
+ *  cap is here rather than open-ended because each stop costs a whole step in the form
+ *  and a whole booking on save. */
+export const MAX_ROUTE_STOPS = 3;
+
 /** How far from "now" an event still evidences which zone you are standing in
  *  (ADR-0107 session-100). A booking an hour ago or an hour ahead places you; one
  *  five days out says nothing about the current clock. Half a day either way keeps
@@ -862,6 +868,21 @@ export const DOT_SEPARATOR = '·';
  *  on both surfaces, so they cannot diverge. Tuned for the NARROWER of the two
  *  (the builder row), so a route that stays inline fits in both. */
 export const ROUTE_INLINE_MAX_CHARS = 26;
+
+/** **How long a place name may be on a day row that ALSO carries a booking code**
+ *  (ADR-0159's build; extends ADR-0152 §6c's rule with the case it did not cover).
+ *
+ *  That rule drops the place name when the row carries a code AND a note mark,
+ *  because the line is exactly full at 390px and `ש..` is noise rather than
+ *  information. The uncovered case is a code and a LONG NAME with no mark at all:
+ *  a flight's meta carries its destination's full official name
+ *  (`נמל התעופה דובאי (DXB)`, `routeDisplay`), which beside `הזמנה #EK319`
+ *  ellipsised down to a single letter — the exact stub that rule exists to prevent.
+ *
+ *  A character count and not a measurement, for the reason `ROUTE_INLINE_MAX_CHARS`
+ *  above gives: the Trip card and the builder row have different room, and one
+ *  threshold on the same input keeps them from disagreeing about the same flight. */
+export const META_PLACE_MAX_CHARS = 13;
 
 /* ── The top chrome's condense (ADR-0149 §7) ──────────────────────────────────
    Read by `lib/chrome-condense.ts`, which is where the reasoning lives. */
