@@ -22,6 +22,7 @@ import { Icon } from './Icon';
 import { NOTE_HOST_ICON } from '../constants';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
+import { FormError } from './primitives/FormError';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { useFormErrors } from './primitives/useFormErrors';
 import { t } from '../i18n/he';
@@ -142,11 +143,7 @@ export function NoteSheet({
         {/* The same slot `EventForm` and `BookingSheet` keep for what has no field to
             point at. Here it is the only refusal, and it sits against the button that was
             just pressed — the half ADR-0150's old bottom-of-form caption never had. */}
-        {errors.formError && (
-          <p className="field-error" role="alert">
-            {errors.formError}
-          </p>
-        )}
+        <FormError>{errors.formError}</FormError>
 
         <FormActions
           primary={{ label: t.notes.sheet.save, onClick: save }}

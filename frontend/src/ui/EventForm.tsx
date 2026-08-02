@@ -49,6 +49,7 @@ import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { Collapsible } from './primitives/Collapsible';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
+import { FormError } from './primitives/FormError';
 import { PlacePicker } from './primitives/PlacePicker';
 import { ToggleChip } from './primitives/ToggleChip';
 import { WhenField } from './primitives/WhenField';
@@ -815,11 +816,7 @@ export function EventForm({
           </Field>
 
           {/* Only what has no field to point at still reads down here. */}
-          {errors.formError && (
-            <p className="field-error" role="alert">
-              {errors.formError}
-            </p>
-          )}
+          <FormError>{errors.formError}</FormError>
 
           <FormActions
             primary={{ label: t.common.save, type: 'submit' }}

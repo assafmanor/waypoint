@@ -22,7 +22,8 @@
 //   • the surface IS the host (a booking's own note section — you are already there);
 //   • the host has nowhere to go (a general note; a someday idea, which lives in the pool
 //     rather than on a day, so there is a shelf to reach but not a tile).
-import { noteUrlHref, type NoteHostRef } from '../lib/notes';
+import type { NoteHostRef } from '../lib/notes';
+import { externalHref } from '../lib/external-url';
 import { ltrIsolate } from '../lib/bidi';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
@@ -36,13 +37,16 @@ export function NoteOpenFoot({
 }: {
   /** Resolved, never copied (ADR-0152 §5) — absent for a general note. */
   host?: NoteHostRef;
-  /** The note's url, if it has one. Rendered only when it resolves to an http(s) target. */
+  /** The note's url, if it has one. Rendered only when `externalHref` can make an href of
+   *  it — a `javascript:` in a group-visible text field is not a link. */
   url?: string;
   /** Absent when there is nowhere to go, or when this surface is the host itself. */
   onGoToHost?: () => void;
   onEdit: () => void;
 }) {
-  const href = noteUrlHref(url);
+  // `externalHref` (ADR-0153 §5b) already owns the scheme-supplying and the allowlist, and
+  // it normalises — so the HREF is its answer and the DISPLAY stays what was typed.
+  const href = externalHref(url);
 
   return (
     <>

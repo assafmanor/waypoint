@@ -38,6 +38,7 @@ import { Field } from './primitives/Field';
 import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
+import { FormError } from './primitives/FormError';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { WhenField } from './primitives/WhenField';
 import { type ZoneChipProps } from './primitives/ZoneChip';
@@ -910,11 +911,7 @@ export function BookingSheet({
           </FormStepPanel>
 
           {/* Only what has no field to point at still reads down here. */}
-          {errors.formError && (
-            <p className="field-error" role="alert">
-              {errors.formError}
-            </p>
-          )}
+          <FormError>{errors.formError}</FormError>
 
           {/* `הבא` until the last step, `שמירה` there; `ביטול` on the first, `הקודם` after.
               The primitive owns those labels so two stepped surfaces cannot word them

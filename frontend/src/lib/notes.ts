@@ -239,20 +239,6 @@ export function noteTitleText(note: Note): string {
   return note.title?.trim() || note.body?.trim() || note.url?.trim() || '';
 }
 
-/** A note's url as something a browser can actually open, or `null` if it isn't one.
- *
- *  Notes are typed by hand and the field's own placeholder is scheme-less (`instagram.com/p/`),
- *  so a bare host is the COMMON case and gets `https://` — without it the browser reads
- *  `instagram.com/p/x` as a relative path and navigates inside the app. And the allowlist is
- *  the point of doing this in one place: an `href` built from user text is an injection seat
- *  (`javascript:`, `data:`), so anything already carrying a scheme must carry http(s). */
-export function noteUrlHref(url: string | null | undefined): string | null {
-  const raw = url?.trim();
-  if (!raw) return null;
-  if (/^https?:\/\//i.test(raw)) return raw;
-  return /^[a-z][a-z0-9+.-]*:/i.test(raw) ? null : `https://${raw}`;
-}
-
 /** "When", for a note's meta line — `לפני 4 ד׳`, `לפני 3 ימים`, `לפני שבועיים`.
  *
  *  Built on `formatDuration`, the app's ONE elapsed ladder (ADR-0114: minutes → hours →

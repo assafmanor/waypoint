@@ -72,7 +72,11 @@ one.
   joins by spreading `errors.field(name)` onto its `Field` — or onto anything that
   forwards a `FieldMark`, which is how `WhenField` refuses per leg. Report **every**
   problem in one call: returning at the first one sends the user round the save loop
-  again to be told the next. And **a primary is `disabled` only when a press could not
+  again to be told the next. What no field owns — a failed save, or a rule two
+  optional fields both cure (`NoteSheet`) — is a `field: null` problem rendered by
+  `ui/primitives/FormError`, never a `<p className="field-error">` of your own; and
+  since `dismissAt` retires a mark by the field that was typed in, a form whose only
+  refusal has no field clears on input itself. And **a primary is `disabled` only when a press could not
   work** — offline, or a write in flight — never as a stand-in for a refusal it cannot
   explain (ADR-0150 §8); four buttons were doing the latter and three of them said
   nothing at all.
