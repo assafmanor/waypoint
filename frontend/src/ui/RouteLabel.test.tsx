@@ -24,4 +24,22 @@ describe('RouteLabel', () => {
     const { container } = render(<RouteLabel from="בן גוריון" />);
     expect(container.textContent).toContain('-');
   });
+
+  // ADR-0154 §4. The mark must not be a mirrored `NavArrow`: that one flips per locale
+  // because it CLAIMS a direction, and a round trip claims none.
+  it('marks a round trip with the symmetric glyph, not the directional arrow', () => {
+    const { container } = render(<RouteLabel from="תל אביב" to="טוקיו" roundTrip />);
+    const arr = container.querySelector('.arr')!;
+    expect(arr.classList.contains('arr-both')).toBe(true);
+    expect(arr.querySelector('.nav-arrow')).toBeNull();
+    expect(arr.querySelector('svg.icon')).not.toBeNull();
+    // Still one endpoint each side, still no text glyph between them.
+    expect(container.textContent).toBe('תל אביבטוקיו');
+  });
+
+  it('keeps the directional arrow for a one-way route', () => {
+    const { container } = render(<RouteLabel from="תל אביב" to="טוקיו" />);
+    expect(container.querySelector('.arr-both')).toBeNull();
+    expect(container.querySelector('.arr .nav-arrow')).not.toBeNull();
+  });
 });
