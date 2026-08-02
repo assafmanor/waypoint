@@ -142,9 +142,9 @@
   opacity: 0.6;
 }
 .choice-pill.on {
-  background: var(--ink);
+  background: var(--cta);
   border-color: var(--ink);
-  color: #fff;
+  color: var(--cta-text);
 }
 
 /* The selected pill is a CENTRE snap point, not a start one — and this line is what makes

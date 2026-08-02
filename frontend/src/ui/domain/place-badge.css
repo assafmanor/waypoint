@@ -32,7 +32,7 @@
   height: 17px;
   border-radius: 50%;
   background: var(--teal);
-  color: #fff;
+  color: var(--on-fill);
   display: grid;
   place-items: center;
   font-size: 11px;

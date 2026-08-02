@@ -79,7 +79,7 @@
 }
 .wp-daypill.on {
   background: var(--amber);
-  color: #3a2405;
+  color: var(--on-amber);
 }
 .wp-daypill.on .n {
   color: #3a2405;
@@ -111,7 +111,7 @@
 /* sel-future: a selected future day is violet (plan-ahead). */
 .wp-daypill.sel-future {
   background: var(--plan);
-  color: #fff;
+  color: var(--on-fill);
 }
 .wp-daypill.sel-future .n {
   color: #fff;
@@ -137,7 +137,7 @@
 }
 .wp-daystrip[data-mode='plan'] .wp-daypill.on {
   background: var(--plan);
-  color: #fff;
+  color: var(--on-fill);
 }
 .wp-daystrip[data-mode='plan'] .wp-daypill.on .n {
   color: #fff;

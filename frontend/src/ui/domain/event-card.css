@@ -97,7 +97,7 @@
   place-items: center;
   font-size: var(--text-caption);
   font-weight: 700;
-  color: #fff;
+  color: var(--on-fill);
   background: var(--ok);
 }
 .wp-event-check.btn {
@@ -380,8 +380,8 @@
     color var(--t-quick);
 }
 .wp-event-act:hover {
-  background: var(--ink);
-  color: #fff;
+  background: var(--cta);
+  color: var(--cta-text);
   border-color: var(--ink);
 }
 .wp-event-act.go {
@@ -390,7 +390,7 @@
 }
 .wp-event-act.go:hover {
   background: var(--teal);
-  color: #fff;
+  color: var(--on-fill);
 }
 .wp-event-act:focus-visible {
   outline: 2.5px solid var(--teal);
