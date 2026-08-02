@@ -316,60 +316,53 @@ it is §2's "split the vocabulary at its source", applied to the last holdouts.
   size, so an empty pane never shouts louder than a full one.
 - `.fb-empty-icon` is `--muted` now. A colour emoji carried its own palette; a
   monochrome mark at full `--ink` competes with the title beneath it.
-- The plane is authored **nose-left** and the bracket **opening left**: forward and
-  inward are leftward in RTL, and this app has no LTR mode to transform back to. (This
-  bullet used to cite `exit` as the same call. It no longer is — see the fourth
-  amendment, which un-mirrors the door and draws the line between the two cases.)
+- The plane is authored **nose-left** and the bracket **opening left**, for the
+  reason `exit` is authored mirrored: forward and inward are leftward in RTL, and
+  this app has no LTR mode to transform back to.
 
 ## Fourth amendment (2026-08-02) — a door says nothing about whose it is
 
 Asked of the two trip-settings screenshots: _"the icon for leave group or remove
 from group — is it inverted in Hebrew? Should it face the other side?"_
 
-Two things came out of it, and the first one reversed a decision this ADR had made.
+**The direction is right and stays.** `exit` is authored mirrored from the LTR
+log-out convention — door on the trailing side, arrow leading away leftward, which is
+forward in RTL — the same call the plane and the bracket make in this ADR's third
+amendment. What the question caught is one step earlier than direction: the **same
+mark** was drawing two different verbs. `הסר מהטיול` (remove that member) and
+`עזוב את הטיול` (leave, yourself) both rendered `CONTROL_ICON.leave`, so a row aimed
+at someone else's name wore the mark for walking out of your own trip. A door frame
+carries no subject, so nothing in the shape distinguished them — the arrow pointing
+away from a person's name is what read as backwards.
 
-### The door is not mirrored, after all — owner's call
+`Icon` gains `userMinus` (one figure + a minus, badge on the trailing side where a
+mirrored `user-minus` puts it) and `CONTROL_ICON` gains `removeMember`. That is §2's
+split applied once more: **one verb, one mark, and a verb that takes an object does
+not share with one that doesn't** — the rule already stated here for `swap`/`sync`,
+where one emoji had served two meanings. `exit` keeps trip settings' own leave row,
+which is now its only job.
 
-`exit` shipped **mirrored** from the LTR log-out convention: door on the right, arrow
-leading away leftward, on the reasoning that leftward is forward in RTL. Defensible on
-paper, and the platforms agree with it (Material and SF Symbols both flag their log-out
-symbols for RTL mirroring). It still read as wrong on the device, twice, to the person
-whose app it is: _"back is pointing right in Hebrew and in the app. The leave arrow is
-pointing left. They're not the same."_
+The direction is pinned by a geometry test (`Icon.test.tsx`) rather than a comment,
+because "un-inverting" the mark back to the LTR original is exactly the well-meant
+change a future reader might make.
 
-**The mark goes back to the LTR orientation** — door on the left, arrow leaving to the
-right. The argument for mirroring is that an arrow claims a direction of travel; the
-argument against, and the one that wins here, is that this particular arrow is part of a
-**fixed idiom** — the exit sign everybody already knows — so mirroring it trades away
-recognition to buy consistency with `NavArrow` that nobody reading the row was looking
-for. Consistency with the nav arrows was the whole benefit, and it is worth less than
-being instantly legible.
+**Un-mirroring it was tried in this session and withdrawn, which is the part worth
+recording.** The mirrored mark was reported as reading backwards twice — _"back is
+pointing right in Hebrew and in the app. The leave arrow is pointing left. They're not
+the same"_ — and the door was moved to the left on that report before the reasoning
+was finished. Two things then settled it:
 
-**The line this draws, so the next icon does not have to re-litigate it:** a shape that
-describes **motion or enclosure along the reading axis** mirrors — `NavArrow`, the plane
-sliding down `Board`'s transit track (a nose-right plane would fly backwards along it),
-the bracket enclosing a cluster of rows. A shape that is a **pictogram of a thing**, whose
-internal arrow is part of how that thing is drawn, does not. The third amendment's closing
-bullet cited `exit` as precedent for the plane; it no longer does.
+- **Back and exit are opposites in LTR too.** Back points ← and log-out points → there;
+  mirroring both preserves that. Leaving pointing the way back points would be wrong in
+  either locale. What back does is retrace, against the flow; what exit does is continue
+  out, with it — `הבא`'s direction, not `חזור`'s.
+- **The report had a confound, and it was the real defect.** It came from two screens at
+  once, and on one of them the door was aimed at another person's name (`הסר מהטיול`,
+  above). With that row carrying `userMinus` instead, the thing that looked wrong is
+  gone independently of which way the arrow points.
 
-`userMinus` below is on the first side of that line only in a trivial sense — its minus is
-a **badge position**, which follows the layout, so the person leads at the right in RTL.
-Position follows the locale; an idiom does not.
-
-### The same mark was drawing two different verbs
-
-What the question also caught, one step earlier than direction: `הסר מהטיול` (remove that
-member) and `עזוב את הטיול` (leave, yourself) both rendered `CONTROL_ICON.leave`, so a row
-aimed at someone else's name wore the mark for walking out of your own trip. A door frame
-carries no subject, so nothing in the shape distinguished them — plausibly a second reason
-the mark read as backwards, since the arrow was leaving a person rather than a place.
-
-`Icon` gains `userMinus` (one figure + a minus) and `CONTROL_ICON` gains `removeMember`.
-That is §2's split applied once more: **one verb, one mark, and a verb that takes an object
-does not share with one that doesn't** — the rule already stated here for `swap`/`sync`,
-where one emoji had served two meanings. `exit` keeps trip settings' own leave row, which is
-now its only job.
-
-The orientation is pinned by a geometry test (`Icon.test.tsx`) rather than a comment,
-because "mirror the directional icons" is exactly the well-meant RTL sweep that would flip
-it back — and what stops it is a judgement about this shape, which no sweep can infer.
+So the mirrored path stands. Worth knowing anyway: a reader who follows the same instinct
+should reach for the second bullet first, because the confound is the cheaper explanation
+and it was the true one. If the leave row still reads wrong on a device now that the
+member row no longer wears a door, this is a one-line path swap and the test above says
+so out loud.

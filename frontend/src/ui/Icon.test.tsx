@@ -33,12 +33,11 @@ describe('Icon', () => {
     expect(mirrored).toEqual(xs);
   });
 
-  // The exit mark keeps its LTR orientation — door on the left, arrow leaving to the right —
-  // by the owner's call after the mirrored version read as backwards on the device
-  // (ADR-0138's fourth amendment). Pinned as geometry because "mirror the directional icons"
-  // is exactly the well-meant RTL sweep that would flip it back, and the reason it must not
-  // is a judgement about this shape, not a rule a sweep can infer.
-  it('keeps the exit mark unmirrored — door on the left, arrow leaving to the right', () => {
+  // The question that produced this test: is the leave/remove mark inverted in Hebrew?
+  // It is not — it is authored MIRRORED from the LTR log-out convention (Icon.tsx), door on
+  // the trailing side and the arrow leading away leftward, which is forward in RTL. Pinned
+  // as geometry so a later pass cannot "un-invert" it back into the LTR original.
+  it('authors the exit mark for RTL — door trailing, arrow leading away', () => {
     const d = render(<Icon name="exit" />)
       .container.querySelector('svg path')!
       .getAttribute('d')!;
@@ -48,8 +47,8 @@ describe('Icon', () => {
       .trim()
       .split(/[\s,]+/)
       .map(Number);
-    expect(tipX).toBeGreaterThan(Math.max(x1, x3)); // a tip pointing right, not a tail
-    expect(Number(door.match(/^M([\d.]+)/)![1])).toBeLessThan(tipX); // the door is behind it
+    expect(tipX).toBeLessThan(Math.min(x1, x3)); // a tip pointing left, not a tail
+    expect(Number(door.match(/^M([\d.]+)/)![1])).toBeGreaterThan(tipX); // the door is behind it
   });
 
   // ADR-0138's fourth amendment: `exit` means "I leave" and cannot also mean "remove them".
