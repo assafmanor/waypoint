@@ -113,6 +113,7 @@ test.describe('a note opens where it is', () => {
     const row = page.locator('.wp-listrow', { hasText: 'לבקש את השולחן בגג' });
     const cardBefore = (await card.boundingBox())!.height;
     const rowBefore = (await row.boundingBox())!.height;
+    const titleBefore = (await row.locator('.wp-listrow-title').boundingBox())!.height;
     const rowsBefore = await page.locator('.wp-listrow').count();
 
     await tapNote(page, 'לבקש את השולחן בגג');
@@ -125,8 +126,16 @@ test.describe('a note opens where it is', () => {
     // This note is short, so lifting its two-line clamp adds nothing, and the foot is the
     // row's SIBLING rather than something inside it. On a short note opening adds only the
     // foot, which is the honest answer: the words were never what was missing.
+    //
+    // `<=` rather than `===`, and the slack is exactly one pixel with a reason: an open row
+    // gives up its bottom hairline, because the row and its foot are one object and a rule
+    // between them would cut a sentence from its own byline — the foot carries it instead.
+    // So the row can only SHED a border, never grow, and growing is what this guards: a row
+    // that got taller would mean the body had been printed inside it.
     expect((await card.boundingBox())!.height).toBeGreaterThan(cardBefore);
-    expect((await row.boundingBox())!.height).toBe(rowBefore);
+    expect((await row.boundingBox())!.height).toBeLessThanOrEqual(rowBefore);
+    // …and the words themselves did not move, which is the claim underneath all of it.
+    expect((await row.locator('.wp-listrow-title').boundingBox())!.height).toBe(titleBefore);
 
     // The foot sits immediately under the row it belongs to, inside the same card.
     const rowBox = (await row.boundingBox())!;
