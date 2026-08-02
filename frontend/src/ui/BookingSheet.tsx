@@ -37,7 +37,7 @@ import { RouteField } from './domain';
 import { Field } from './primitives/Field';
 import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
-import { FormActions } from './primitives/FormActions';
+import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { WhenField } from './primitives/WhenField';
 import { type ZoneChipProps } from './primitives/ZoneChip';
@@ -110,16 +110,8 @@ export function BookingSheet({
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
-  // `שבץ במסלול` opened this sheet FOR the schedule (ADR-0138 §7), so land there
-  // rather than at the title. Runs once on open; `Modal` has already taken focus
-  // to the card by then, which is why this re-takes it rather than racing it.
   const whenRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (focus !== 'when') return;
-    const first = whenRef.current?.querySelector<HTMLElement>('input, button');
-    first?.scrollIntoView({ block: 'center' });
-    first?.focus();
-  }, [focus]);
+  const shortcutDone = useRef(false);
   const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
   // ONE derivation, shared with the errand that has to hand this state over before the sheet
   // exists (`lib/booking-draft.ts`). The `initial` blob is both the seed for every field
@@ -312,21 +304,23 @@ export function BookingSheet({
   };
   const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
-  const save = async () => {
+  // Transport is identified by its route, not a name (ADR-0059 §3): the stored title is
+  // derived from origin→destination (it backs the linked event's title and any place-less
+  // fallback), so a flight never carries a hand-typed name.
+  const finalTitle = isTransport
+    ? routeTitle(placeName(places, fromPlaceId) ?? '', placeName(places, toPlaceId) ?? '')
+    : title.trim();
+
+  /** **Every refusal this form can make, in one place** — and it stays one place now that
+   *  the form is stepped (ADR-0155 §3). A step gate and the save both read THIS and filter
+   *  by the fields their step owns, so a rule cannot hold on one path and not the other,
+   *  and the save re-validating everything is the same code rather than a second copy. */
+  const allProblems = (): FieldProblem<BookingField>[] => {
     const problems: FieldProblem<BookingField>[] = [];
-    // Transport is identified by its route, not a name (ADR-0059 §3): derive the
-    // stored title from origin→destination (it backs the linked event's title and
-    // any place-less fallback), so a flight never carries a hand-typed name.
-    let finalTitle: string;
     if (isTransport) {
-      finalTitle = routeTitle(
-        placeName(places, fromPlaceId) ?? '',
-        placeName(places, toPlaceId) ?? '',
-      );
       if (!finalTitle) problems.push({ field: 'route', message: t.index.form.routeRequired });
-    } else {
-      finalTitle = title.trim();
-      if (!finalTitle) problems.push({ field: 'title', message: t.index.form.titleRequired });
+    } else if (!finalTitle) {
+      problems.push({ field: 'title', message: t.index.form.titleRequired });
     }
     const outOfRange = (v: string) => dateOutOfTripRange(v, trip.startDate, trip.endDate);
     if (!isSpan && outOfRange(date)) {
@@ -374,8 +368,27 @@ export function BookingSheet({
         }
       }
     }
-    if (errors.report(problems)) return;
+    return problems;
+  };
 
+  /** The fields each step owns, so a gate reports only what is on screen and the save's
+   *  jump lands on the step that can actually answer. Exhaustive over `BookingField` by
+   *  construction: a new refusal has to say which step shows it, or this stops compiling. */
+  const STEP_FIELDS = {
+    what: ['title', 'route'],
+    when: ['date', 'spanStart', 'spanEnd'],
+    // The return's two legs live with the shared fields, which is also where the one
+    // CROSS-step rule lands: `returnBeforeArrival` needs the outbound's arrival from the
+    // previous step, and it is marked here because this is the field that is wrong.
+    more: ['returnStart', 'returnEnd'],
+  } as const satisfies Record<string, readonly BookingField[]>;
+  type StepId = keyof typeof STEP_FIELDS;
+  const problemsIn = (step: StepId) => {
+    const owned = STEP_FIELDS[step] as readonly BookingField[];
+    return allProblems().filter((p) => p.field != null && owned.includes(p.field));
+  };
+
+  const commit = async () => {
     setSaving(true);
     try {
       // One user action → one change group (ADR-0092): the places backing a
@@ -510,6 +523,46 @@ export function BookingSheet({
     }
   };
 
+  // **THE FORM IS STEPPED** (ADR-0155 §5, revised by the owner 2026-08-02 — see that ADR's
+  // build log). It measures ~1565px against ~675px of visible sheet on a 390×844 phone, and
+  // with a round trip the entire return leg sat below the fold. Three steps, which are the
+  // form's own three subjects rather than an arbitrary paging of its fields.
+  //
+  // Called HERE, above the `Sheet`, because the primitive's back layer must register after
+  // the Modal's own — the hook's header explains why that makes it a hook.
+  const steps = useFormSteps<StepId, BookingField>({
+    steps: [
+      { id: 'what', validate: () => problemsIn('what') },
+      { id: 'when', validate: () => problemsIn('when') },
+      { id: 'more', validate: () => problemsIn('more') },
+    ],
+    errors,
+    onCommit: () => void commit(),
+  });
+  // The labels name what each step ASKS, and two of them change for a round trip: with two
+  // journeys "מתי" alone leaves you checking which one you are answering.
+  const stepLabels = twoLegs
+    ? [t.index.form.stepWhat, t.index.form.stepWhenOut, t.index.form.stepBackAndShared]
+    : [t.index.form.stepWhat, t.index.form.stepWhen, t.index.form.stepDetails];
+
+  // `שבץ במסלול` opened this sheet FOR the schedule (ADR-0138 §7), which is a STEP now — so
+  // the shortcut NAVIGATES to it and then takes focus, in that order and across two renders:
+  // the step's first control does not exist until the step is on screen. (Same ordering the
+  // primitive's own deferred refusal needs, and for the same reason.) The ref makes it a
+  // one-shot, so stepping away afterwards is not undone.
+  useEffect(() => {
+    if (focus !== 'when' || shortcutDone.current) return;
+    if (steps.step !== 'when') {
+      steps.goTo('when');
+      return;
+    }
+    shortcutDone.current = true;
+    const first = whenRef.current?.querySelector<HTMLElement>('input, button');
+    first?.scrollIntoView({ block: 'center' });
+    first?.focus();
+    // Deps are the two facts this reacts to; `steps` itself is rebuilt every render.
+  }, [focus, steps]);
+
   return (
     <>
       <Sheet
@@ -527,113 +580,134 @@ export function BookingSheet({
               e.target.scrollIntoView({ block: 'center', behavior: 'smooth' });
           }}
         >
-          {isCreate && (
-            <ChoiceGrid
-              options={BOOKING_TYPE_OPTIONS}
-              value={type}
-              onChange={changeType}
-              columns={3}
-              ariaLabel={t.index.form.kindLabel}
-            />
-          )}
+          <FormStepPanel steps={steps} labels={stepLabels}>
+            {steps.step === 'what' && (
+              <>
+                {isCreate && (
+                  <ChoiceGrid
+                    options={BOOKING_TYPE_OPTIONS}
+                    value={type}
+                    onChange={changeType}
+                    columns={3}
+                    ariaLabel={t.index.form.kindLabel}
+                  />
+                )}
 
-          {/* The identity row carries no label of its own (the caption below states
+                {/* The identity row carries no label of its own (the caption below states
               the type), so the shell around it is here to hold the mark: a booking
               with no name is refused AT the name. */}
-          <Field {...errors.field('title')}>
-            <div className="titlerow">
-              <IconPicker
-                icon={icon.value}
-                // Booking icon is a badge only — the category comes from the type
-                // (ADR-0038), so the picker's category suggestion is ignored here.
-                onChange={icon.set}
-              />
-              {isTransport ? (
-                // A flight's identity is its route, not a name (ADR-0059 §3). The
-                // endpoints are now picked places, so the title row shows a derived
-                // read-only route preview; the two PlacePickers live in the route
-                // field just below (ADR-0059 §3 reshaping, ADR-0113 follow-up).
-                <div className="bs-route-preview">
-                  {fromPlaceId || toPlaceId ? (
-                    <RouteLabel
-                      from={placeName(places, fromPlaceId)}
-                      to={placeName(places, toPlaceId)}
-                      roundTrip={twoLegs}
+                <Field {...errors.field('title')}>
+                  <div className="titlerow">
+                    <IconPicker
+                      icon={icon.value}
+                      // Booking icon is a badge only — the category comes from the type
+                      // (ADR-0038), so the picker's category suggestion is ignored here.
+                      onChange={icon.set}
                     />
-                  ) : (
-                    <span className="bs-route-ghost">{t.index.form.routePreviewGhost}</span>
+                    {isTransport ? (
+                      // A flight's identity is its route, not a name (ADR-0059 §3). The
+                      // endpoints are now picked places, so the title row shows a derived
+                      // read-only route preview; the two PlacePickers live in the route
+                      // field just below (ADR-0059 §3 reshaping, ADR-0113 follow-up).
+                      <div className="bs-route-preview">
+                        {fromPlaceId || toPlaceId ? (
+                          <RouteLabel
+                            from={placeName(places, fromPlaceId)}
+                            to={placeName(places, toPlaceId)}
+                            roundTrip={twoLegs}
+                          />
+                        ) : (
+                          <span className="bs-route-ghost">{t.index.form.routePreviewGhost}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <input
+                        className="bs-title"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder={t.index.sheet.titlePlaceholder}
+                        aria-label={t.index.sheet.titlePlaceholder}
+                        autoFocus={isCreate}
+                      />
+                    )}
+                  </div>
+                </Field>
+
+                <div className="bs-caption">
+                  <span>
+                    <Icon name="sparkle" /> {t.index.form.autoCaption}{' '}
+                    <span className="cat-readout">{t.index.bookingType[type]}</span>
+                  </span>
+                  {icon.touched && (
+                    <button
+                      type="button"
+                      className="bs-revert"
+                      onClick={() => icon.reset(BOOKING_TYPE_ICON[type])}
+                    >
+                      <Icon name="reset" /> {t.index.form.reset}
+                    </button>
                   )}
                 </div>
-              ) : (
-                <input
-                  className="bs-title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={t.index.sheet.titlePlaceholder}
-                  aria-label={t.index.sheet.titlePlaceholder}
-                  autoFocus={isCreate}
-                />
-              )}
-            </div>
-          </Field>
 
-          <div className="bs-caption">
-            <span>
-              <Icon name="sparkle" /> {t.index.form.autoCaption}{' '}
-              <span className="cat-readout">{t.index.bookingType[type]}</span>
-            </span>
-            {icon.touched && (
-              <button
-                type="button"
-                className="bs-revert"
-                onClick={() => icon.reset(BOOKING_TYPE_ICON[type])}
-              >
-                <Icon name="reset" /> {t.index.form.reset}
-              </button>
-            )}
-          </div>
-
-          {/* The route field: two real place pickers (origin → destination), so
+                {/* The route field: two real place pickers (origin → destination), so
               transport endpoints carry coords + timezones like any other place. */}
-          {isTransport && (
-            <Field label={t.index.form.routeLabel} {...errors.field('route')}>
-              {/* **The direction control** (ADR-0154 §4), in the ROUTE field rather than
+                {isTransport && (
+                  <Field label={t.index.form.routeLabel} {...errors.field('route')}>
+                    {/* **The direction control** (ADR-0154 §4), in the ROUTE field rather than
                   beside the schedule: what it describes is the shape of the journey
                   between these two places, and putting it here makes the `⇄` in the
                   preview directly above the immediate feedback for the tap. Offered only
                   where there is a route to mirror, and only on a create. */}
-              {offersRoundTrip && (
-                <div className="bs-direction">
-                  <ChoiceGrid
-                    layout="pills"
-                    options={[
-                      // No glyph: a direction is a word, not a symbol, and `Choice`'s
-                      // empty string is the documented way to omit the slot.
-                      { value: 'one', icon: '', label: t.index.form.oneWay },
-                      { value: 'two', icon: '', label: t.index.form.roundTrip },
-                    ]}
-                    value={roundTrip ? 'two' : 'one'}
-                    onChange={(v) => setRoundTrip(v === 'two')}
-                    ariaLabel={t.index.form.directionLabel}
-                  />
-                </div>
-              )}
-              {/* One component, two hosts (ADR-0154 §3) — `EventForm` renders the same
+                    {offersRoundTrip && (
+                      <div className="bs-direction">
+                        <ChoiceGrid
+                          layout="pills"
+                          options={[
+                            // No glyph: a direction is a word, not a symbol, and `Choice`'s
+                            // empty string is the documented way to omit the slot.
+                            { value: 'one', icon: '', label: t.index.form.oneWay },
+                            { value: 'two', icon: '', label: t.index.form.roundTrip },
+                          ]}
+                          value={roundTrip ? 'two' : 'one'}
+                          onChange={(v) => setRoundTrip(v === 'two')}
+                          ariaLabel={t.index.form.directionLabel}
+                        />
+                      </div>
+                    )}
+                    {/* One component, two hosts (ADR-0154 §3) — `EventForm` renders the same
                   field, which is how a booked transport event stopped sending a single
                   `placeId` to a server that refuses one. The swap arrives here with it. */}
-              <RouteField
-                from={fromPlaceId}
-                to={toPlaceId}
-                onChange={({ from, to }) => {
-                  setFromPlaceId(from);
-                  setToPlaceId(to);
-                }}
-                onFind={(end, side) => findPlace(end, side)()}
-              />
-            </Field>
-          )}
+                    <RouteField
+                      from={fromPlaceId}
+                      to={toPlaceId}
+                      onChange={({ from, to }) => {
+                        setFromPlaceId(from);
+                        setToPlaceId(to);
+                      }}
+                      onFind={(end, side) => findPlace(end, side)()}
+                    />
+                  </Field>
+                )}
 
-          {/* "When" comes first (right after the identity row), through the one
+                {/* Single-place types carry a location; transport's places are its route
+              endpoints above (ADR-0048). It belongs in this step for the same reason the
+              route does: both answer WHERE, which is half of what this step asks. */}
+                {!isTransport && (
+                  <Field
+                    label={t.index.sheet.locationLabel}
+                    hint={placeId ? undefined : t.placePicker.noLocationHint}
+                  >
+                    <PlacePicker
+                      value={placeId}
+                      onChange={setPlaceId}
+                      onFind={findPlace('placeId')}
+                    />
+                  </Field>
+                )}
+              </>
+            )}
+
+            {/* "When" comes first (right after the identity row), through the one
               WhenField standard — a span for two-endpoint bookings, a single day
               otherwise. Never a cramped native datetime box (U-05).
 
@@ -641,65 +715,103 @@ export function BookingSheet({
               the BLOCK rather than on a `WhenField` autofocus prop, because the two
               variants have different first controls and the sheet is the one place
               that knows which is rendered. */}
-          <div ref={whenRef}>
-            {isSpan ? (
-              <>
-                {/* **Leg headings arrive in PAIRS or not at all** (ADR-0154 §4). With one
+            {steps.step === 'when' && (
+              <div ref={whenRef}>
+                {isSpan ? (
+                  <>
+                    {/* **Leg headings arrive in PAIRS or not at all** (ADR-0154 §4). With one
                     journey the span needs no name and today's form is unchanged; the
                     moment there are two, an unlabelled block above a labelled one reads
                     as a defect. Each states its own direction, because "חזרה" alone
                     still leaves you checking which end is which. */}
-                {twoLegs && (
-                  <div className="bs-leg-head">
-                    <span>{t.index.form.legOut}</span>
-                    <RouteLabel
-                      from={placeName(places, fromPlaceId)}
-                      to={placeName(places, toPlaceId)}
+                    {twoLegs && (
+                      <div className="bs-leg-head">
+                        <span>{t.index.form.legOut}</span>
+                        <RouteLabel
+                          from={placeName(places, fromPlaceId)}
+                          to={placeName(places, toPlaceId)}
+                        />
+                      </div>
+                    )}
+                    <WhenField
+                      variant="span"
+                      start={spanStart}
+                      end={spanEnd}
+                      onChange={({ start: s, end: e }) => {
+                        setSpanStart(s);
+                        setSpanEnd(e);
+                      }}
+                      minDate={trip.startDate}
+                      maxDate={trip.endDate}
+                      labels={spanLabels(type)}
+                      defaultDate={trip.startDate}
+                      timeZone={startZone}
+                      endTimeZone={endZone}
+                      durationUnit={bookingDurationUnit(type)}
+                      zones={{
+                        start: zoneChip(
+                          fromPlaceId ?? placeId,
+                          startZone,
+                          startOverride,
+                          setStartOverride,
+                        ),
+                        end: zoneChip(
+                          isTransport ? toPlaceId : placeId,
+                          endZone,
+                          endOverride,
+                          setEndOverride,
+                        ),
+                      }}
+                      marks={{ start: errors.field('spanStart'), end: errors.field('spanEnd') }}
                     />
-                  </div>
-                )}
-                <WhenField
-                  variant="span"
-                  start={spanStart}
-                  end={spanEnd}
-                  onChange={({ start: s, end: e }) => {
-                    setSpanStart(s);
-                    setSpanEnd(e);
-                  }}
-                  minDate={trip.startDate}
-                  maxDate={trip.endDate}
-                  labels={spanLabels(type)}
-                  defaultDate={trip.startDate}
-                  timeZone={startZone}
-                  endTimeZone={endZone}
-                  durationUnit={bookingDurationUnit(type)}
-                  zones={{
-                    start: zoneChip(
-                      fromPlaceId ?? placeId,
-                      startZone,
-                      startOverride,
-                      setStartOverride,
-                    ),
-                    end: zoneChip(
-                      isTransport ? toPlaceId : placeId,
-                      endZone,
-                      endOverride,
-                      setEndOverride,
-                    ),
-                  }}
-                  marks={{ start: errors.field('spanStart'), end: errors.field('spanEnd') }}
-                />
-                <ZoneNote
-                  startZone={startZone}
-                  endZone={endZone}
-                  tripZone={trip.timezone}
-                  refMs={zoneRefMs}
-                />
+                    <ZoneNote
+                      startZone={startZone}
+                      endZone={endZone}
+                      tripZone={trip.timezone}
+                      refMs={zoneRefMs}
+                    />
 
-                {/* **The second journey.** Dates and times only — the route is the
-                    outbound's mirror and every other field is shared, so this block asks
-                    for the one thing that genuinely differs. Its zones are swapped: the
-                    return departs from the destination and arrives at the origin. */}
+                    {spanStart && <KindToggle kind={kind.value} onPick={pickKind} />}
+                  </>
+                ) : (
+                  <>
+                    <WhenField
+                      variant="day"
+                      dateId="bs-date"
+                      dateLabel={t.index.form.dateLabel}
+                      date={date}
+                      start={start}
+                      end={end}
+                      onChange={({ date: d, start: s, end: e }) => {
+                        setDate(d);
+                        setStart(s);
+                        setEnd(e);
+                      }}
+                      minDate={trip.startDate}
+                      maxDate={trip.endDate}
+                      zone={zoneChip(placeId, startZone, startOverride, setStartOverride)}
+                      marks={{ date: errors.field('date') }}
+                    />
+                    <ZoneNote
+                      startZone={startZone}
+                      endZone={endZone}
+                      tripZone={trip.timezone}
+                      refMs={zoneRefMs}
+                    />
+                    {date && <KindToggle kind={kind.value} onPick={pickKind} />}
+                  </>
+                )}
+              </div>
+            )}
+
+            {steps.step === 'more' && (
+              <>
+                {/* **The second journey**, on its own step (ADR-0155 §5). Dates and times only —
+              the route is the outbound's mirror and every other field is shared, so this
+              block asks for the one thing that genuinely differs. Its zones are swapped:
+              the return departs from the destination and arrives at the origin. It sits
+              with the shared fields because that is what the step is: everything the
+              outbound leg did not already answer. */}
                 {twoLegs && (
                   <div className="bs-leg bs-leg-return">
                     <div className="bs-leg-head">
@@ -737,97 +849,65 @@ export function BookingSheet({
                     />
                   </div>
                 )}
-                {spanStart && <KindToggle kind={kind.value} onPick={pickKind} />}
-              </>
-            ) : (
-              <>
-                <WhenField
-                  variant="day"
-                  dateId="bs-date"
-                  dateLabel={t.index.form.dateLabel}
-                  date={date}
-                  start={start}
-                  end={end}
-                  onChange={({ date: d, start: s, end: e }) => {
-                    setDate(d);
-                    setStart(s);
-                    setEnd(e);
-                  }}
-                  minDate={trip.startDate}
-                  maxDate={trip.endDate}
-                  zone={zoneChip(placeId, startZone, startOverride, setStartOverride)}
-                  marks={{ date: errors.field('date') }}
-                />
-                <ZoneNote
-                  startZone={startZone}
-                  endZone={endZone}
-                  tripZone={trip.timezone}
-                  refMs={zoneRefMs}
-                />
-                {date && <KindToggle kind={kind.value} onPick={pickKind} />}
-              </>
-            )}
-          </div>
 
-          {/* Single-place types carry a location; transport's places are its
-              route endpoints above (ADR-0048). Transport needs no note of its own:
-              `routeTitle` → `routeRequired` already refuses to save without both
-              endpoints, so it is the one type that cannot be placeless. */}
-          {!isTransport && (
-            <Field
-              label={t.index.sheet.locationLabel}
-              hint={placeId ? undefined : t.placePicker.noLocationHint}
-            >
-              <PlacePicker value={placeId} onChange={setPlaceId} onFind={findPlace('placeId')} />
-            </Field>
-          )}
+                <Field
+                  label={t.index.sheet.codeLabel}
+                  htmlFor="bs-code"
+                  hint={twoLegs ? t.index.form.codeSharedHint : undefined}
+                >
+                  <input
+                    id="bs-code"
+                    dir="ltr"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                  />
+                </Field>
 
-          <Field
-            label={t.index.sheet.codeLabel}
-            htmlFor="bs-code"
-            hint={twoLegs ? t.index.form.codeSharedHint : undefined}
-          >
-            <input id="bs-code" dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
-          </Field>
+                {isHotel && (
+                  <>
+                    <Field label={t.index.sheet.roomLabel} htmlFor="bs-room">
+                      <input id="bs-room" value={room} onChange={(e) => setRoom(e.target.value)} />
+                    </Field>
+                    <div className="bs-wifi">
+                      <div className="bs-wifi-head">
+                        <Icon name="wifi" /> {t.index.sheet.wifiTitle}
+                        <span className="bs-hint"> · {t.index.sheet.wifiHotelOnly}</span>
+                      </div>
+                      <div className="bs-row2">
+                        <Field label={t.index.sheet.wifiNetwork} htmlFor="bs-wifi-net">
+                          <input
+                            id="bs-wifi-net"
+                            dir="ltr"
+                            value={wifiNetwork}
+                            onChange={(e) => setWifiNetwork(e.target.value)}
+                          />
+                        </Field>
+                        <Field label={t.index.sheet.wifiPassword} htmlFor="bs-wifi-pass">
+                          <input
+                            id="bs-wifi-pass"
+                            dir="ltr"
+                            value={wifiPassword}
+                            onChange={(e) => setWifiPassword(e.target.value)}
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                  </>
+                )}
 
-          {isHotel && (
-            <>
-              <Field label={t.index.sheet.roomLabel} htmlFor="bs-room">
-                <input id="bs-room" value={room} onChange={(e) => setRoom(e.target.value)} />
-              </Field>
-              <div className="bs-wifi">
-                <div className="bs-wifi-head">
-                  <Icon name="wifi" /> {t.index.sheet.wifiTitle}
-                  <span className="bs-hint"> · {t.index.sheet.wifiHotelOnly}</span>
-                </div>
-                <div className="bs-row2">
-                  <Field label={t.index.sheet.wifiNetwork} htmlFor="bs-wifi-net">
-                    <input
-                      id="bs-wifi-net"
-                      dir="ltr"
-                      value={wifiNetwork}
-                      onChange={(e) => setWifiNetwork(e.target.value)}
-                    />
-                  </Field>
-                  <Field label={t.index.sheet.wifiPassword} htmlFor="bs-wifi-pass">
-                    <input
-                      id="bs-wifi-pass"
-                      dir="ltr"
-                      value={wifiPassword}
-                      onChange={(e) => setWifiPassword(e.target.value)}
-                    />
-                  </Field>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* **The note is written on the way** (ADR-0152 §6b). This is the one form that
+                {/* **The note is written on the way** (ADR-0152 §6b). This is the one form that
               already had a notes field, and it keeps it — as the composer, so a booking's
               notes are rows like everyone else's rather than a string in a JSON blob. */}
-          <Field label={t.notes.composer.label} htmlFor="bs-notes" hint={t.notes.composer.hint}>
-            <NoteComposer state={composer} id="bs-notes" />
-          </Field>
+                <Field
+                  label={t.notes.composer.label}
+                  htmlFor="bs-notes"
+                  hint={t.notes.composer.hint}
+                >
+                  <NoteComposer state={composer} id="bs-notes" />
+                </Field>
+              </>
+            )}
+          </FormStepPanel>
 
           {/* Only what has no field to point at still reads down here. */}
           {errors.formError && (
@@ -836,11 +916,16 @@ export function BookingSheet({
             </p>
           )}
 
-          <FormActions
-            primary={{ label: t.common.save, onClick: save, disabled: saving }}
-            secondary={{ label: t.common.cancel, onClick: requestClose }}
+          {/* `הבא` until the last step, `שמירה` there; `ביטול` on the first, `הקודם` after.
+              The primitive owns those labels so two stepped surfaces cannot word them
+              differently. **Delete only on the last step**: it belongs beside the decision
+              to commit, not beside a control that is only navigating. */}
+          <FormStepActions
+            steps={steps}
+            onCancel={requestClose}
+            busy={saving}
             destructive={
-              isCreate
+              isCreate || !steps.isLast
                 ? undefined
                 : { label: t.index.sheet.delete, onClick: () => setDeleting(true) }
             }

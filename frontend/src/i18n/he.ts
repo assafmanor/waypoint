@@ -552,6 +552,15 @@ export const t = {
       // above a labelled one reads as a defect, and one-way keeps today's form.
       legOut: LEG.out,
       legBack: LEG.back,
+      // The three step names (ADR-0155 §5). They say what each step ASKS, not what it
+      // contains — the read-out is one short line and a field list would not fit it. Two
+      // of them change for a round trip: with two journeys `מתי` alone leaves you checking
+      // which one you are answering.
+      stepWhat: 'מה ואיפה',
+      stepWhen: 'מתי',
+      stepDetails: 'פרטים',
+      stepWhenOut: `מתי ${LEG.out}`,
+      stepBackAndShared: `${LEG.back} ופרטים`,
       // Shared across both legs, said where the question actually occurs.
       codeSharedHint: 'משותף לשתי הנסיעות',
       // The one refusal the second leg adds, marked on the return's DEPARTURE (ADR-0150).
