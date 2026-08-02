@@ -12,6 +12,7 @@
 // ConfirmDialog, and a dirty close is guarded by a discard confirm.
 import { useState, useMemo, useEffect, useRef } from 'react';
 import {
+  authorsRoundTrip,
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
   EVENT_KIND,
@@ -22,6 +23,7 @@ import {
   type BookingType,
 } from '@waypoint/shared';
 import { bookingSheetDraft, type BookingSeed, type BookingSheetDraft } from '../lib/booking-draft';
+import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-pair';
 import { useTrip } from '../state/trip-state';
 
 // Re-exported so the sheet stays the obvious import for its own props (the derivation moved
@@ -72,7 +74,16 @@ const spanLabels = timingLabels;
 
 /** What this sheet can refuse, one name per BOX on screen (ADR-0150) — which is why
  *  a span's two legs are two names and the day variant's date is a third. */
-type BookingField = 'title' | 'route' | 'date' | 'spanStart' | 'spanEnd';
+type BookingField =
+  | 'title'
+  | 'route'
+  | 'date'
+  | 'spanStart'
+  | 'spanEnd'
+  // The return's own two legs (ADR-0154 §4). A span refuses per leg for the same reason
+  // it carries a zone per leg, and a round trip has four of them.
+  | 'returnStart'
+  | 'returnEnd';
 
 /** Pre-set fields for a create-flow open (ADR-0061): the Plan-home checklist opens
  *  the form for a specific booking type, and for a flight seeds the missing leg's
@@ -157,6 +168,12 @@ export function BookingSheet({
   // explicit datetimes that may fall on different days.
   const [spanStart, setSpanStart] = useState(draft ? draft.spanStart : initial.spanStart);
   const [spanEnd, setSpanEnd] = useState(draft ? draft.spanEnd : initial.spanEnd);
+  // The round trip (ADR-0154 §4): one save, two bookings. Create-only, default OFF —
+  // the control row costs 44px on every transport booking and the second leg a further
+  // 492px, which only an explicit tap should buy (measured, `booking-round-trip-v1.html`).
+  const [roundTrip, setRoundTrip] = useState(draft ? draft.roundTrip : initial.roundTrip);
+  const [returnStart, setReturnStart] = useState(draft ? draft.returnStart : initial.returnStart);
+  const [returnEnd, setReturnEnd] = useState(draft ? draft.returnEnd : initial.returnEnd);
   const kind = useDerivedField<'hard' | 'soft'>(
     draft ? draft.kind : initial.kind,
     draft ? draft.kindTouched : false,
@@ -168,6 +185,9 @@ export function BookingSheet({
   const errors = useFormErrors<BookingField>();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Read here rather than inside `DeletePrompt`, which is presentational and shared with
+  // the manage sheet — the pair is trip state, and only a connected component reads that.
+  const pair = useRoundTripPartner(booking);
 
   // ONE ERRAND BUILDER FOR THE THREE PLACE FIELDS (ADR-0134 §1/§2). Each call names its own
   // field, and the label says which end of the journey it is — a banner reading only
@@ -198,6 +218,9 @@ export function BookingSheet({
         end,
         spanStart,
         spanEnd,
+        roundTrip,
+        returnStart,
+        returnEnd,
         kind: kind.value,
         kindTouched: kind.touched,
       } satisfies BookingSheetDraft,
@@ -212,6 +235,11 @@ export function BookingSheet({
   const isTransport = carriesRoute(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
   const isSpan = hasSpanSchedule(type);
+  // Offered only where there is a route to mirror, and only on a create: editing a leg
+  // opens ADR-0047 §2's merged surface unchanged, and turning a saved single leg into a
+  // pair is a different action (§4, out of scope).
+  const offersRoundTrip = isCreate && authorsRoundTrip(type);
+  const twoLegs = offersRoundTrip && roundTrip;
   // The LIVE zone resolver — same rule as the draft's, over the CURRENT picks rather than
   // the ones the sheet opened with (`lib/booking-draft.ts` owns the opening ones).
   const zoneOf = (id: string | undefined, override: string | null) =>
@@ -268,6 +296,9 @@ export function BookingSheet({
     end !== initial.end ||
     spanStart !== initial.spanStart ||
     spanEnd !== initial.spanEnd ||
+    roundTrip !== initial.roundTrip ||
+    returnStart !== initial.returnStart ||
+    returnEnd !== initial.returnEnd ||
     startOverride !== initial.startOverride ||
     endOverride !== initial.endOverride ||
     kind.value !== initial.kind;
@@ -315,6 +346,32 @@ export function BookingSheet({
         const s = Date.parse(zonedIso(sDay, sTime, startZone));
         const e = Date.parse(zonedIso(eDay, eTime, endZone));
         if (e <= s) problems.push({ field: 'spanEnd', message: t.index.form.endBeforeStart });
+      }
+    }
+    // The return leg (ADR-0154 §4). Same two checks as the outbound, on its own two names
+    // — plus the one rule a round trip adds, which is the only CROSS-leg constraint in the
+    // form: you cannot leave before you have arrived. Marked on the return's DEPARTURE,
+    // the field that is actually wrong, not on the three around it that are fine.
+    if (twoLegs) {
+      if (outOfRange(returnStart))
+        problems.push({ field: 'returnStart', message: t.index.form.dateOutOfRange });
+      if (outOfRange(returnEnd))
+        problems.push({ field: 'returnEnd', message: t.index.form.dateOutOfRange });
+      const [rsDay, rsTime] = returnStart.split('T');
+      const [reDay, reTime] = returnEnd.split('T');
+      // The return's own legs read in the SWAPPED zones — it flies the route backwards.
+      if (rsTime && reTime) {
+        const rs = Date.parse(zonedIso(rsDay, rsTime, endZone));
+        const re = Date.parse(zonedIso(reDay, reTime, startZone));
+        if (re <= rs) problems.push({ field: 'returnEnd', message: t.index.form.endBeforeStart });
+      }
+      const [oeDay, oeTime] = spanEnd.split('T');
+      if (rsTime && oeTime) {
+        const arrival = Date.parse(zonedIso(oeDay, oeTime, endZone));
+        const departure = Date.parse(zonedIso(rsDay, rsTime, endZone));
+        if (departure < arrival) {
+          problems.push({ field: 'returnStart', message: t.index.form.returnBeforeArrival });
+        }
       }
     }
     if (errors.report(problems)) return;
@@ -379,6 +436,46 @@ export function BookingSheet({
               : { type, ...base, ...zonePatch, placeId },
           );
           hostId = created?.id;
+
+          // **THE SECOND BOOKING** (ADR-0154 §4). Inside the same change group, so one
+          // user action stays one pending change (ADR-0092) rather than four.
+          //
+          // Everything non-schedule is shared by construction — it is the same `base`,
+          // so the code, the icon and the kind cannot drift between the legs. What is
+          // mirrored is the route and, with it, the zones: the return departs from the
+          // destination and arrives at the origin, so its per-endpoint zones are the
+          // outbound's swapped (ADR-0107). `routeTitle` derives its stored title, so
+          // nobody types a name for either leg.
+          if (twoLegs) {
+            const returnSeed = buildSpanSeed(
+              {
+                startAt: returnStart,
+                endAt: returnEnd,
+                kind: kind.value,
+                icon: icon.value,
+                category,
+              },
+              endZone,
+              startZone,
+            );
+            await indexVerbs.createBooking({
+              type,
+              ...base,
+              title: routeTitle(
+                placeName(places, toPlaceId) ?? '',
+                placeName(places, fromPlaceId) ?? '',
+              ),
+              event: returnSeed ? { ...returnSeed, id: crypto.randomUUID() } : undefined,
+              fromPlaceId: toPlaceId,
+              toPlaceId: fromPlaceId,
+              // The overrides swap with the ends they belong to, and only when the chip
+              // was actually used — same rule as the outbound's `zonePatch`.
+              ...(endOverride !== initial.endOverride && { startDisplayTimezone: endOverride }),
+              ...(startOverride !== initial.startOverride && {
+                endDisplayTimezone: startOverride,
+              }),
+            });
+          }
         } else {
           await indexVerbs.updateBooking(booking.id, {
             ...base,
@@ -395,6 +492,12 @@ export function BookingSheet({
         //
         // These are ordinary queued ops, NOT ADR-0093 synthetic changes: that pattern is for
         // an entity the SERVER materializes with no op of its own, and a note has one.
+        //
+        // **On a round trip the host is the OUTBOUND** (ADR-0154 §6), and it is explicit
+        // rather than incidental: `hostId` is assigned from the first `createBooking`, so
+        // leaving the second one to overwrite it would hang the note on the RETURN by
+        // statement order rather than by decision. The outbound is the journey that
+        // happens first and the one §5's derived relation calls the primary.
         if (hostId) {
           for (const body of composer.pending()) {
             await noteVerbs.createNote({ body, bookingId: hostId });
@@ -455,6 +558,7 @@ export function BookingSheet({
                     <RouteLabel
                       from={placeName(places, fromPlaceId)}
                       to={placeName(places, toPlaceId)}
+                      roundTrip={twoLegs}
                     />
                   ) : (
                     <span className="bs-route-ghost">{t.index.form.routePreviewGhost}</span>
@@ -493,6 +597,27 @@ export function BookingSheet({
               transport endpoints carry coords + timezones like any other place. */}
           {isTransport && (
             <Field label={t.index.form.routeLabel} {...errors.field('route')}>
+              {/* **The direction control** (ADR-0154 §4), in the ROUTE field rather than
+                  beside the schedule: what it describes is the shape of the journey
+                  between these two places, and putting it here makes the `⇄` in the
+                  preview directly above the immediate feedback for the tap. Offered only
+                  where there is a route to mirror, and only on a create. */}
+              {offersRoundTrip && (
+                <div className="bs-direction">
+                  <ChoiceGrid
+                    layout="pills"
+                    options={[
+                      // No glyph: a direction is a word, not a symbol, and `Choice`'s
+                      // empty string is the documented way to omit the slot.
+                      { value: 'one', icon: '', label: t.index.form.oneWay },
+                      { value: 'two', icon: '', label: t.index.form.roundTrip },
+                    ]}
+                    value={roundTrip ? 'two' : 'one'}
+                    onChange={(v) => setRoundTrip(v === 'two')}
+                    ariaLabel={t.index.form.directionLabel}
+                  />
+                </div>
+              )}
               {/* One component, two hosts (ADR-0154 §3) — `EventForm` renders the same
                   field, which is how a booked transport event stopped sending a single
                   `placeId` to a server that refuses one. The swap arrives here with it. */}
@@ -519,6 +644,20 @@ export function BookingSheet({
           <div ref={whenRef}>
             {isSpan ? (
               <>
+                {/* **Leg headings arrive in PAIRS or not at all** (ADR-0154 §4). With one
+                    journey the span needs no name and today's form is unchanged; the
+                    moment there are two, an unlabelled block above a labelled one reads
+                    as a defect. Each states its own direction, because "חזרה" alone
+                    still leaves you checking which end is which. */}
+                {twoLegs && (
+                  <div className="bs-leg-head">
+                    <span>{t.index.form.legOut}</span>
+                    <RouteLabel
+                      from={placeName(places, fromPlaceId)}
+                      to={placeName(places, toPlaceId)}
+                    />
+                  </div>
+                )}
                 <WhenField
                   variant="span"
                   start={spanStart}
@@ -556,6 +695,48 @@ export function BookingSheet({
                   tripZone={trip.timezone}
                   refMs={zoneRefMs}
                 />
+
+                {/* **The second journey.** Dates and times only — the route is the
+                    outbound's mirror and every other field is shared, so this block asks
+                    for the one thing that genuinely differs. Its zones are swapped: the
+                    return departs from the destination and arrives at the origin. */}
+                {twoLegs && (
+                  <div className="bs-leg bs-leg-return">
+                    <div className="bs-leg-head">
+                      <span>{t.index.form.legBack}</span>
+                      <RouteLabel
+                        from={placeName(places, toPlaceId)}
+                        to={placeName(places, fromPlaceId)}
+                      />
+                    </div>
+                    <WhenField
+                      variant="span"
+                      start={returnStart}
+                      end={returnEnd}
+                      onChange={({ start: s, end: e }) => {
+                        setReturnStart(s);
+                        setReturnEnd(e);
+                      }}
+                      minDate={trip.startDate}
+                      maxDate={trip.endDate}
+                      labels={spanLabels(type)}
+                      defaultDate={spanEnd.split('T')[0] || trip.startDate}
+                      timeZone={endZone}
+                      endTimeZone={startZone}
+                      durationUnit={bookingDurationUnit(type)}
+                      marks={{
+                        start: errors.field('returnStart'),
+                        end: errors.field('returnEnd'),
+                      }}
+                    />
+                    <ZoneNote
+                      startZone={endZone}
+                      endZone={startZone}
+                      tripZone={trip.timezone}
+                      refMs={zoneRefMs}
+                    />
+                  </div>
+                )}
                 {spanStart && <KindToggle kind={kind.value} onPick={pickKind} />}
               </>
             ) : (
@@ -601,7 +782,11 @@ export function BookingSheet({
             </Field>
           )}
 
-          <Field label={t.index.sheet.codeLabel} htmlFor="bs-code">
+          <Field
+            label={t.index.sheet.codeLabel}
+            htmlFor="bs-code"
+            hint={twoLegs ? t.index.form.codeSharedHint : undefined}
+          >
             <input id="bs-code" dir="ltr" value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
 
@@ -667,6 +852,7 @@ export function BookingSheet({
         <DeletePrompt
           hasLinkedEvent={!!linkedEvent}
           linkedIsHard={linkedEvent?.kind === 'hard'}
+          partnerLeg={pair?.leg}
           onCancel={() => setDeleting(false)}
           onChoose={(choice) => {
             void indexVerbs.deleteBooking(booking.id, deleteFlags(choice)).catch(() => {});
@@ -760,14 +946,25 @@ function KindToggle({
 export function DeletePrompt({
   hasLinkedEvent,
   linkedIsHard,
+  partnerLeg,
   onCancel,
   onChoose,
 }: {
   hasLinkedEvent: boolean;
   linkedIsHard: boolean;
+  /** The other leg of a derived round trip, if there is one (ADR-0154 §5). It buys a
+   *  STATEMENT that the partner survives — never a fourth button. */
+  partnerLeg?: PartnerLeg;
   onCancel: () => void;
   onChoose: (choice: 'both' | 'unlink') => void;
 }) {
+  // Reuses `.bs-hard-note`'s slot and voice: both are a quiet line of consequence above
+  // the choices, and this dialog should not grow a second way of saying one.
+  const pairNote = partnerLeg && (
+    <p className="bs-hard-note">
+      <Icon name="link" /> {t.index.del.pairNote(partnerLeg)}
+    </p>
+  );
   // A booking with no linked event is a plain confirm; a linked one offers the
   // delete-both-vs-unlink choice (ADR-0047 §3). Both route through the generic
   // danger dialog — Modal portals it above the open booking sheet.
@@ -782,7 +979,9 @@ export function DeletePrompt({
         cancelLabel={t.index.del.cancel}
         onConfirm={() => onChoose('unlink')}
         onCancel={onCancel}
-      />
+      >
+        {pairNote}
+      </ConfirmDialog>
     );
   }
   return (
@@ -798,6 +997,7 @@ export function DeletePrompt({
           <Icon name="lock" /> {t.index.del.hardNote}
         </p>
       )}
+      {pairNote}
       <div className="bs-choices">
         <button type="button" className="bs-choice danger" onClick={() => onChoose('both')}>
           <div className="bs-choice-t">{t.index.del.both}</div>

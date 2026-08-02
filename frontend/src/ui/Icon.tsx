@@ -34,6 +34,7 @@ export type IconName =
   | 'trash'
   | 'shelf'
   | 'swap'
+  | 'roundTrip'
   | 'calendar'
   // Status marks a control or chip carries.
   | 'lock'
@@ -158,6 +159,13 @@ const PATHS: Record<IconName, string> = {
   // Two arrows exchanging, on the BLOCK axis so RTL cannot flip the meaning (a
   // horizontal pair would read backwards). Replaces 🔄 at the `swap` sites.
   swap: 'M8 20.5V4.2 M4.8 7.4 8 4.2l3.2 3.2 M16 3.5v16.3 M12.8 16.6 16 19.8l3.2-3.2',
+  // A round trip's mark (ADR-0154 §4), and it lives here rather than beside `NavArrow`
+  // for the reason that arrow is separate in the first place: `NavArrow` is drawn for RTL
+  // and MIRRORED for LTR, because a one-way arrow claims a direction that has to follow
+  // the locale. A round trip claims none — TLV⇄NRT reads the same from either end — so
+  // this shape is its own mirror image and there is nothing for a direction to get wrong.
+  // Not `swap` either: that one is deliberately a VERTICAL pair for stacked controls.
+  roundTrip: 'M3.5 12 20.5 12 M8 6.5 3.5 12 8 17.5 M16 6.5 20.5 12 16 17.5',
   // Replaces 📅 at BOTH its jobs — `schedule` (put this on a day) and the days
   // tab. One shape, because they mean the same thing.
   calendar:

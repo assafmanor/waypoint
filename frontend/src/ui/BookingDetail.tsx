@@ -5,9 +5,11 @@
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
 import { carriesRoute, type Booking } from '@waypoint/shared';
 import { bookingSheetDraft } from '../lib/booking-draft';
+import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-pair';
 import { useTrip } from '../state/trip-state';
 import { HostNotes } from './HostNotes';
 import { Sheet } from './Sheet';
+import { NavArrow } from './NavArrow';
 import { RouteLabel } from './RouteLabel';
 import {
   bookingMapPlace,
@@ -47,14 +49,21 @@ export function BookingDetail({
   booking,
   onClose,
   onEdit,
+  onOpen,
 }: {
   booking: Booking;
   onClose: () => void;
   onEdit: (booking: Booking) => void;
+  /** Show a different booking in this sheet — the round-trip fact's way through
+   *  (ADR-0154 §5). Absent where the host has no detail state to swap, in which case
+   *  the fact still STATES the pair and simply isn't a link: the same "absent, not
+   *  broken" rule `onShowOnMap` follows below. */
+  onOpen?: (booking: Booking) => void;
 }) {
   const { trip, events, places } = useTrip();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
+  const pair = useRoundTripPartner(booking);
 
   const tz = trip.timezone;
   const icon = chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[booking.type];
@@ -204,6 +213,17 @@ export function BookingDetail({
               mono
             />
           )}
+          {pair && (
+            <PairFact
+              leg={pair.leg}
+              when={
+                pair.partnerEvent?.startsAt
+                  ? dayTime(pair.partnerEvent.startsAt, tz)
+                  : (pair.partnerEvent?.date ?? t.index.detail.pairUnscheduled)
+              }
+              onOpen={onOpen && (() => onOpen(pair.partner))}
+            />
+          )}
         </div>
 
         {/* A note is a mark on a row and a BODY here (ADR-0152 §6). This replaced the old
@@ -261,6 +281,28 @@ function LocationFact({
             {onAddLocation && <AddLocationButton onClick={onAddLocation} />}
           </span>
         )}
+      </span>
+    </div>
+  );
+}
+
+// The derived round-trip pair (ADR-0154 §5), as the last fact. It is the only fact
+// pointing at ANOTHER booking, which is why it is last and why it reads in plain ink:
+// teal is location only (rule 4) and a sibling booking is not a location. With no way
+// through it degrades to a plain `Fact`, since the pair is worth stating either way.
+function PairFact({ leg, when, onOpen }: { leg: PartnerLeg; when: string; onOpen?: () => void }) {
+  const text = t.index.detail.pairLeg(leg, when);
+  if (!onOpen) return <Fact k={t.index.detail.pair} v={text} />;
+  return (
+    <div className="bk-fact">
+      <span className="bk-fact-k">{t.index.detail.pair}</span>
+      <span className="bk-fact-v">
+        {/* `NavArrow`, not an `Icon`: this one advances to another surface, and it is
+            RTL-mirrored for exactly that reason. (The round-trip mark on the title is
+            the opposite case — symmetric, claiming no direction.) */}
+        <button type="button" className="bk-pairlink" onClick={onOpen}>
+          {text} <NavArrow variant="forward" />
+        </button>
       </span>
     </div>
   );

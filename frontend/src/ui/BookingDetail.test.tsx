@@ -46,6 +46,8 @@ const lite = pl('pl-lite', 'Ichiran Ramen');
 
 let tripPlaces: Place[] = [placed, lite];
 let tripEvents: TripEvent[] = [];
+// The whole trip's bookings, which is what the derived round-trip pair reads (§5).
+let tripBookings: Booking[] = [];
 const updateBooking = vi.fn(() => Promise.resolve());
 
 const tripNotes: unknown[] = [];
@@ -57,7 +59,7 @@ vi.mock('../state/trip-state', () => ({
     trip: { id: 't1', name: 'טיול', timezone: 'Asia/Tokyo', updatedBy: 'u1' },
     events: tripEvents,
     places: tripPlaces,
-    bookings: [],
+    bookings: tripBookings,
     maybeItems: [],
     indexVerbs: { updateBooking },
     notes: tripNotes,
@@ -230,5 +232,117 @@ describe('BookingDetail — the linked-event facts still read (regression guard)
     open(bk({ id: 'b8', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
     expect(screen.getByText(t.index.detail.hardNote, { exact: false })).toBeTruthy();
     expect(screen.getByText('2-14-5 Kabukicho')).toBeTruthy();
+  });
+});
+
+// **The derived pair** (ADR-0154 §5). Nothing on either booking says they belong
+// together — the relation is worked out from what they ARE, so these tests hand the
+// detail a trip with two legs in it and assert what the sheet then says.
+describe('BookingDetail — the round-trip fact', () => {
+  const TLV = pl('pl-tlv', 'תל אביב', { lat: 32, lng: 34.8 });
+  const NRT = pl('pl-nrt', 'טוקיו', { lat: 35.7, lng: 139.7 });
+  const outbound = bk({
+    id: 'b-out',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'תל אביב → טוקיו',
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-nrt',
+  });
+  const back = bk({
+    id: 'b-back',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'טוקיו → תל אביב',
+    fromPlaceId: 'pl-nrt',
+    toPlaceId: 'pl-tlv',
+  });
+  const leg = (id: string, bookingId: string, startsAt: string): TripEvent => ({
+    id,
+    tripId: 't1',
+    date: startsAt.slice(0, 10),
+    title: 'טיסה',
+    kind: EVENT_KIND.HARD,
+    startsAt,
+    status: EVENT_STATUS.PLANNED,
+    bookingId,
+    sortOrder: 0,
+    source: EVENT_SOURCE.MANUAL,
+    createdAt: NOW,
+    updatedAt: NOW,
+    updatedBy: 'u1',
+  });
+
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripPlaces = [TLV, NRT];
+    tripBookings = [outbound, back];
+    tripEvents = [
+      leg('e-out', 'b-out', '2026-07-19T04:00:00Z'),
+      leg('e-back', 'b-back', '2026-07-28T04:00:00Z'),
+    ];
+    showPlaceOnMap = null;
+    startErrand = () => {};
+  });
+  afterEach(() => {
+    cleanup();
+    tripBookings = [];
+    setSimulatedNow(null);
+  });
+
+  const facts = () =>
+    [...document.querySelectorAll('.bk-fact .bk-fact-k')].map((e) => e.textContent);
+  // The hosts that CAN swap their detail pass `onOpen`; the fact is a way through only
+  // there. `open()` above deliberately omits it, which is the other half of the contract.
+  const openWithWayThrough = (booking: Booking, onOpen = vi.fn()) => {
+    render(
+      wrapNav(
+        <BookingDetail booking={booking} onClose={() => {}} onEdit={() => {}} onOpen={onOpen} />,
+      ),
+    );
+    return onOpen;
+  };
+  const pairLink = () => document.querySelector('.bk-pairlink') as HTMLElement;
+
+  it('names the return, LAST, when looking at the outbound', () => {
+    openWithWayThrough(outbound);
+    expect(screen.getByText(t.index.detail.pair)).toBeTruthy();
+    // Last, because everything above it describes THIS booking and this one its neighbour.
+    expect(facts()[facts().length - 1]).toBe(t.index.detail.pair);
+    expect(pairLink().textContent).toContain(t.index.form.legBack);
+  });
+
+  it('names the outbound when looking at the return', () => {
+    openWithWayThrough(back);
+    expect(pairLink().textContent).toContain(t.index.form.legOut);
+  });
+
+  it('spends no teal on it — a sibling booking is not a location (rule 4)', () => {
+    openWithWayThrough(outbound);
+    // `.bk-loc-link` is the teal pill; the pair is deliberately not one of those.
+    expect(pairLink().classList.contains('bk-loc-link')).toBe(false);
+  });
+
+  it('is a way through to the other leg', () => {
+    const onOpen = openWithWayThrough(outbound);
+    fireEvent.click(pairLink());
+    expect(onOpen).toHaveBeenCalledWith(back);
+  });
+
+  // "Absent, not broken": a host with no detail state to swap still gets the fact.
+  it('still states the pair where there is nowhere to go', () => {
+    open(outbound);
+    expect(document.querySelector('.bk-pairlink')).toBeNull();
+    expect(screen.getByText(t.index.detail.pair)).toBeTruthy();
+  });
+
+  it('says so plainly when the other leg has no slot yet', () => {
+    tripEvents = [leg('e-out', 'b-out', '2026-07-19T04:00:00Z')];
+    open(outbound);
+    expect(screen.getByText(t.index.detail.pairLeg('back', t.index.detail.pairUnscheduled)));
+  });
+
+  it('shows no such fact for a booking with no partner', () => {
+    tripBookings = [outbound];
+    open(outbound);
+    expect(screen.queryByText(t.index.detail.pair)).toBeNull();
   });
 });

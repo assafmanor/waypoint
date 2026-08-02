@@ -3098,6 +3098,45 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+/* The direction control (ADR-0154 §4) — two pills at the top of the route field.
+   No hue of its own: a journey's shape is neither time nor place (rule 4), so it
+   wears `.choice-pill`'s ink selection like every other non-semantic choice. */
+.booking-sheet .bs-direction {
+  margin-block-end: var(--space-2);
+}
+/* A leg's heading: which journey the span below belongs to, and its route. Quiet —
+   the amber already spent inside the span (the leg dots, the time values) is this
+   block's time accent, and a second one here would spend the budget twice on one
+   idea. */
+.booking-sheet .bs-leg-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  margin-block-end: var(--space-2);
+}
+.booking-sheet .bs-leg-head .route {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+/* The return is a SECOND journey, not a continuation of the first — one hairline
+   says so, and costs no rhythm the heading was not already spending. */
+.booking-sheet .bs-leg-return {
+  border-block-start: 1px solid var(--soft-line);
+  padding-block-start: var(--space-4);
+  margin-block-start: var(--space-3);
+}
+/* The round-trip glyph rides the route label's own size and colour, like NavArrow —
+   `Icon` sizes from the parent's font-size, so this only widens it a touch to match
+   the one-way arrow's optical weight. */
+.route .arr-both .icon {
+  inline-size: 1.05em;
+  block-size: 1.05em;
+}
+
 /* Span scheduling (ADR-0059): the two endpoints stacked full width as a journey.
    Each leg carries an amber dot + amber-tinted label (departure/arrival ARE time
    commitments), giving the grouped date│time control the room the old two-up grid
@@ -3437,6 +3476,37 @@
 .bk-fact-v.mono {
   font-family: var(--font-mono);
   color: var(--amber-deep);
+}
+/* The derived round-trip pair's way through (ADR-0154 §5). Deliberately NOT the
+   `.bk-loc-link` pill beside it: that one is teal because it goes to a place, and
+   teal is location only (rule 4). A sibling booking is not a location, so this
+   reads in the fact's own ink and marks itself as a way through with the arrow
+   alone. Underlined on interaction rather than boxed — a fourth pill in this
+   sheet would compete with the two that go somewhere else. */
+.bk-pairlink {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.bk-pairlink .nav-arrow {
+  inline-size: 14px;
+  block-size: 14px;
+  color: var(--muted);
+}
+.bk-pairlink:active {
+  transform: scale(var(--press-scale));
+}
+.bk-pairlink:hover,
+.bk-pairlink:focus-visible {
+  outline: none;
+  text-decoration: underline;
 }
 
 /* ===== Documents section (DocumentsSection.tsx) — grouped by type, per the

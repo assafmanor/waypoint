@@ -13,6 +13,26 @@ describe('Icon', () => {
     expect(svg?.querySelector('path')).not.toBeNull();
   });
 
+  // ADR-0154 §4: the round-trip mark is SYMMETRIC on purpose, which is the whole reason
+  // it is a registry icon rather than a second `NavArrow` variant — that component mirrors
+  // per locale, and a shape that is its own mirror image cannot be flipped wrong. Asserted
+  // as geometry rather than as a substring, so re-drawing the glyph asymmetrically fails.
+  it('draws the round-trip mark symmetrically, so no locale can flip it', () => {
+    const d = render(<Icon name="roundTrip" />)
+      .container.querySelector('svg path')
+      ?.getAttribute('d');
+    expect(d).toBeTruthy();
+    // All-absolute coordinate PAIRS, so every other number is an x. Guarded, because a
+    // single-coordinate command (`H`/`V`) would break that parity and quietly compare the
+    // wrong axis — which an earlier draft of this test did, passing on an asymmetric path.
+    const nums = d!.match(/-?\d+(\.\d+)?/g)!.map(Number);
+    expect(nums.length % 2).toBe(0);
+    const xs = nums.filter((_, i) => i % 2 === 0).sort((a, b) => a - b);
+    // Reflecting about the 24-wide viewBox's centre must give back the same x's.
+    const mirrored = xs.map((x) => 24 - x).sort((a, b) => a - b);
+    expect(mirrored).toEqual(xs);
+  });
+
   it('renders the search and close glyphs (Index search control, ADR-0098)', () => {
     const search = render(<Icon name="search" />).container.querySelector('svg path');
     cleanup();

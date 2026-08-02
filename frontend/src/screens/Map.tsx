@@ -2663,6 +2663,7 @@ export function MapView() {
         <BookingDetail
           booking={detailBooking}
           onClose={() => setDetailBooking(null)}
+          onOpen={setDetailBooking}
           onEdit={(booking) => {
             setDetailBooking(null);
             setEditBooking(booking);

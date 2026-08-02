@@ -1065,6 +1065,7 @@ export function PlanDay() {
         <BookingDetail
           booking={detailTarget}
           onClose={() => setDetailTarget(null)}
+          onOpen={setDetailTarget}
           onEdit={(b) => {
             setDetailTarget(null);
             setBookingTarget(b);

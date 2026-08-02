@@ -4,6 +4,7 @@ export * from './booking-event';
 export * from './destinations';
 export * from './geo';
 export * from './icons';
+export * from './booking-pair';
 export * from './identity';
 export * from './schemas';
 export * from './server-routes';

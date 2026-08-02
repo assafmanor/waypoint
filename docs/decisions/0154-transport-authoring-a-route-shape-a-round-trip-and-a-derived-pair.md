@@ -1,6 +1,6 @@
 # 0154 — Transport authoring: a route is a **shape**, a round trip is a **control**, and a pair is **derived**
 
-**Status:** Accepted (owner sign-off 2026-08-02). **§1–3 built 2026-08-02** — see the build log at the foot; §4–6 remain.
+**Status:** Accepted (owner sign-off 2026-08-02). **Built 2026-08-02** — §1–3 and §4–6, each with its own build log at the foot. The stepping question stays open and belongs to [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md).
 **Date:** 2026-08-02
 **Design reference:** [`mockups/booking-round-trip-v1.html`](../../mockups/booking-round-trip-v1.html) — every number below is read from that file's live DOM in a headless browser, not estimated. Its §6 and the stepping question belong to [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md).
 
@@ -140,3 +140,39 @@ otherwise be re-derived:
 reverting the payload conditional turns two `EventForm` specs red. The backend's guard
 gained a loop over every `BookingType` asserting it follows the shared profile in both
 directions, so a profile row changed without the server agreeing now fails there too.
+
+## Build log — §4–6, 2026-08-02
+
+- **§6 was a one-line change and it is the one line the design was written for.** The save
+  now leaves `hostId` alone in the second `createBooking` rather than reassigning it, and
+  the test for it fails on the mutation that restores the reassignment. Nothing about the
+  code makes the omission look deliberate, which is why the comment above it says the
+  return is what it would otherwise be.
+
+- **A round trip cannot be authored in a unit test through the route pickers**, because a
+  `PlacePicker` tap is an errand to the Map (0134 §1) and the sheet unmounts. The tests go
+  through the `draft` prop — the errand-return path — which is not a shortcut around the
+  real entry point but the second one, and the one a user comes back through.
+
+- **§5's ordering is decided by a field the shared rule cannot see.** A `Booking` carries
+  no schedule, so `roundTripPartner` takes a `BookingStartAt`, and everything about which
+  leg is the return depends on how the frontend supplies it. Reading only `startsAt` makes
+  a leg scheduled to a **day** look unscheduled and lets the earlier journey be named the
+  return; `useRoundTripPartner` falls back to the event's `date`, with a test that fails
+  without the fallback. This is the whole reason the hook exists rather than each surface
+  deriving its own `startAt`.
+
+- **The way through needed a prop at four hosts.** `BookingDetail` is rendered by the
+  Index, the Map, the Day view and Plan's day — each already holding the detail's state —
+  so `onOpen` is their existing setter and nothing new coordinates it. It is **optional**:
+  a host without detail state still gets the fact, stated rather than linked, which is the
+  rule `onShowOnMap` in the same file already follows. **It registers no back layer**,
+  and that is not an oversight: swapping which booking a sheet is about is not entering
+  a surface you can leave, there is no visible control for back to mirror (0103's test),
+  and `onEdit` beside it already replaces the sheet's subject the same way.
+
+- **`הלוך`/`חזרה` are now one pair of words in `i18n/he.ts`** rather than two, because §4
+  writes them as leg headings and §5 reads them back as a fact and as a sentence. The
+  delete prompt's sentence still cannot be a single template — ההלוך and החזרה disagree on
+  gender — so that one string is two, and the words inside it are interpolated from the
+  same const.
