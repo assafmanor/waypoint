@@ -1,6 +1,6 @@
 # 2026-08-02 · session 209 — the dark-mode design session
 
-Promoted into [ADR-0157](../decisions/0157-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md).
+Promoted into [ADR-0158](../decisions/0158-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md).
 Mockup: [`mockups/dark-mode-v1.html`](../../mockups/dark-mode-v1.html). No product
 code changed — the build is phased in the ADR's §10 and starts after this merges.
 

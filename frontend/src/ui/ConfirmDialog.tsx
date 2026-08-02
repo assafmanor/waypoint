@@ -13,7 +13,13 @@ import { t } from '../i18n/he';
 import { Icon } from './Icon';
 
 export type ConfirmHardEditAction = 'edit' | 'delete';
-type ConfirmHardEdit = (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
+type ConfirmHardEdit = (
+  event: TripEvent,
+  action?: ConfirmHardEditAction,
+  /** How many notes this event hosts (ADR-0152 §2). Passed in rather than read here: this
+   *  provider sits above the trip, and the verb that raises the gate already holds the list. */
+  opts?: { notes?: number },
+) => Promise<boolean>;
 
 const ConfirmContext = createContext<ConfirmHardEdit | null>(null);
 
@@ -21,14 +27,15 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<{
     event: TripEvent;
     action: ConfirmHardEditAction;
+    notes: number;
   } | null>(null);
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
 
   const confirmHardEdit = useCallback<ConfirmHardEdit>(
-    (event, action = 'edit') =>
+    (event, action = 'edit', opts) =>
       new Promise((resolve) => {
         resolveRef.current = resolve;
-        setPending({ event, action });
+        setPending({ event, action, notes: opts?.notes ?? 0 });
       }),
     [],
   );
@@ -58,6 +65,14 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           icon={<Icon name="lock" />}
           title={title}
           body={body}
+          // Only on the delete: an EDIT keeps the event, so it keeps its notes.
+          consequence={
+            pending.action === 'delete' && pending.notes > 0 ? (
+              <>
+                <Icon name="clipboard" /> {t.notes.hostDelete(pending.notes)}
+              </>
+            ) : undefined
+          }
           confirmLabel={t.common.yes}
           cancelLabel={t.common.no}
           onConfirm={() => settle(true)}

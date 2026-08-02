@@ -4,6 +4,7 @@
 // without rendering a component; `useVerbs()` just wires them to context.
 import { useRef } from 'react';
 import {
+  ENTITY_TYPE,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
@@ -15,6 +16,7 @@ import {
   type NoteHostKey,
   NOTE_HOST_KEYS,
   type MaybeItem,
+  type Place,
   type TripEvent,
   type UpdateEventInput,
 } from '@waypoint/shared';
@@ -52,6 +54,7 @@ import {
 } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
+import { type PlaceLink } from '../lib/place-refs';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
@@ -85,10 +88,19 @@ type UndoDescriptor =
   | { kind: 'create'; id: string; maybeId?: string }
   | { kind: 'rippleApply'; items: { id: string; previous: { date: string; startsAt?: string } }[] }
   | { kind: 'update'; id: string; previous: UpdateEventInput; isHard: boolean }
-  | { kind: 'delete'; event: TripEvent }
+  /** `notes` is the host's notes as they were AT THE DELETE, and this descriptor is the only
+   *  place they still exist: the FKs cascade in Postgres and ADR-0152 §2's applier rule drops
+   *  them from memory and from Dexie, so nothing can be read back at undo time. */
+  | { kind: 'delete'; event: TripEvent; notes: Note[] }
   | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] }
   | { kind: 'addMaybe'; id: string }
-  | { kind: 'removeMaybe'; item: MaybeItem }
+  | { kind: 'removeMaybe'; item: MaybeItem; notes: Note[] }
+  /** **A deleted place, and the two things the database took with it** (ADR-0157 §4).
+   *  `links` are the rows whose FK Postgres nulled and `notes` the ones it cascaded away;
+   *  neither writes a `Change` row, so after the delete this descriptor is the only record
+   *  that either existed. Reversing re-creates the place under its own id, hands the links
+   *  back and writes the notes home — in that order, since both reference it. */
+  | { kind: 'deletePlace'; place: Place; links: PlaceLink[]; notes: Note[] }
   | { kind: 'maybeDay'; item: MaybeItem }
   | { kind: 'park'; event: TripEvent; maybeId: string }
   /** A booked save (ADR-0136), which is ONE action to the user and up to three writes
@@ -112,17 +124,30 @@ export interface VerbDeps {
   dispatch: React.Dispatch<Action>;
   toast: ShowToast;
   lastAction: { current: UndoDescriptor | null };
-  confirmHardEdit: (event: TripEvent, action?: ConfirmHardEditAction) => Promise<boolean>;
+  confirmHardEdit: (
+    event: TripEvent,
+    action?: ConfirmHardEditAction,
+    opts?: { notes?: number },
+  ) => Promise<boolean>;
   /** The booking half of a two-entity write (ADR-0136 §3). Bookings live in trip-state's
    *  own state rather than the reducer, so both the write and its compensating delete go
    *  through the verbs that already own them — never a second optimistic path beside them
    *  (root rule 8). Only the booked save and its undo touch this. */
-  bookings: Pick<IndexVerbs, 'createBooking' | 'deleteBooking'>;
+  bookings: Pick<IndexVerbs, 'createBooking' | 'deleteBooking' | 'updateBooking'>;
+  /** The place half of the same arrangement (ADR-0157). Places live in trip-state too, and
+   *  its `deletePlace` owns the local cascade as well as the write — so the verb here adds
+   *  the undo and the words, and never a second optimistic path beside it (root rule 8). */
+  places: Pick<IndexVerbs, 'createPlace' | 'deletePlace'>;
   /** **The notes a conversion has to carry with it** (ADR-0152 §5's 2026-08-01 amendment).
    *  Same shape and same reason as `bookings` above: notes live in trip-state, and moving
    *  one goes through the verb that already owns that write rather than a second optimistic
-   *  path beside it. `list` is read to find what a host is carrying; `rehost` moves one. */
-  notes: { list: Note[]; rehost: (note: Note, host: NoteHostPatch) => Promise<void> };
+   *  path beside it. `list` is read to find what a host is carrying; `rehost` moves one;
+   *  `recreate` writes a destroyed one back, which is what an undone host delete owes. */
+  notes: {
+    list: Note[];
+    rehost: (note: Note, host: NoteHostPatch) => Promise<void>;
+    recreate: (note: Note) => Promise<void>;
+  };
 }
 
 /** Which FK a moved note lands on — one set, the rest explicitly `null` so the old host is
@@ -151,8 +176,39 @@ export async function carryNotes(
   from: { kind: NoteHostKey; id: string },
   to: { kind: NoteHostKey; id: string },
 ): Promise<void> {
-  const carried = deps.notes.list.filter((note) => note[from.kind] === from.id);
-  for (const note of carried) await deps.notes.rehost(note, noteHostPatch(to.kind, to.id));
+  for (const note of notesHostedBy(deps.notes.list, from.kind, from.id)) {
+    await deps.notes.rehost(note, noteHostPatch(to.kind, to.id));
+  }
+}
+
+/** What this host is carrying, by FK. `lib/notes.ts`'s `notesForHost` answers the same
+ *  question for a render, keyed by the host's KIND; the verbs already hold the FK, so this
+ *  is the one-line version rather than a kind→key round trip at three call sites. */
+export const notesHostedBy = (notes: Note[], kind: NoteHostKey, id: string): Note[] =>
+  notes.filter((note) => note[kind] === id);
+
+/**
+ * **Put back the notes a host's delete destroyed** (ADR-0152 §5's 2026-08-02 amendment).
+ *
+ * A conversion has somewhere to move notes to; a delete does not, so `carryNotes` cannot
+ * cover this and the rows really are gone — the FK cascade removes them from Postgres and
+ * §2's applier rule removes them from every list the client holds. An undo that re-creates
+ * only the host therefore restores less than it took, silently, on the one gesture this app
+ * uses for every destructive write.
+ *
+ * So the undo writes them back, **with their original ids**: the create is then idempotent on
+ * an outbox retry (the service treats a duplicate id as already-applied), and anything that
+ * had a hold on a note id still resolves. It goes through `noteVerbs.createNote` — an
+ * ordinary queued op through the ADR-0094 registry — because a cascade writes no `Change`
+ * rows, so there is no echo to ride and no synthetic change to invent (ADR-0093 is for
+ * entities the SERVER materializes).
+ *
+ * Called AFTER the host is re-created and awaited in order, for the same reason every other
+ * note write in this file is: the outbox is FIFO, and a note whose host is not there yet is
+ * refused at the door.
+ */
+export async function restoreNotes(deps: VerbDeps, notes: Note[]): Promise<void> {
+  for (const note of notes) await deps.notes.recreate(note);
 }
 
 // A real HTTP error still rejects normally — only network failure/offline queues.
@@ -529,8 +585,10 @@ export async function applyGuardedUpdate(
 
 export async function applyDeleteEvent(deps: VerbDeps, event: TripEvent): Promise<void> {
   const isHard = event.kind === EVENT_KIND.HARD;
+  // Read BEFORE the write: after it there is nowhere left to read them from (`restoreNotes`).
+  const notes = notesHostedBy(deps.notes.list, 'eventId', event.id);
   deps.dispatch({ type: TRIP_ACTION.DELETE_EVENT, id: event.id });
-  deps.lastAction.current = { kind: 'delete', event };
+  deps.lastAction.current = { kind: 'delete', event, notes };
   try {
     await restOrQueue(
       deps.tripId,
@@ -545,7 +603,11 @@ export async function applyDeleteEvent(deps: VerbDeps, event: TripEvent): Promis
 
 export async function applyGuardedDelete(deps: VerbDeps, event: TripEvent): Promise<boolean> {
   if (event.kind === EVENT_KIND.HARD) {
-    const confirmed = await deps.confirmHardEdit(event, 'delete');
+    // The gate is the one moment this delete can say what else it takes (ADR-0152 §2). A soft
+    // event needs no such line: it has no gate, and its undo puts the notes back.
+    const confirmed = await deps.confirmHardEdit(event, 'delete', {
+      notes: notesHostedBy(deps.notes.list, 'eventId', event.id).length,
+    });
     if (!confirmed) return false;
   }
   await applyDeleteEvent(deps, event);
@@ -650,8 +712,9 @@ export async function applySetMaybeDay(
 }
 
 export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise<void> {
+  const notes = notesHostedBy(deps.notes.list, 'maybeItemId', item.id);
   deps.dispatch({ type: TRIP_ACTION.REMOVE_MAYBE, id: item.id });
-  deps.lastAction.current = { kind: 'removeMaybe', item };
+  deps.lastAction.current = { kind: 'removeMaybe', item, notes };
   try {
     await restOrQueue(
       deps.tripId,
@@ -661,6 +724,31 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
   } catch (err) {
     deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
+  }
+}
+
+/**
+ * **Delete a place** (ADR-0157). The write, the local cascade and the rollback all live in
+ * `indexVerbs.deletePlace` — what belongs here is the descriptor, because this is the layer
+ * that owns undo and because the links it returns are the only surviving record of what the
+ * database nulled.
+ *
+ * The notes are read BEFORE the call for the same reason a host's delete does
+ * (`restoreNotes`): a moment later they are gone from every list the client holds.
+ *
+ * Resolves `false` when the write failed, so the caller shows no confirmation toast for
+ * something that did not happen — trip-state has already rolled the screen back and said so.
+ */
+export async function applyDeletePlace(deps: VerbDeps, place: Place): Promise<boolean> {
+  const notes = notesHostedBy(deps.notes.list, 'placeId', place.id);
+  try {
+    const links = await deps.places.deletePlace(place.id);
+    deps.lastAction.current = { kind: 'deletePlace', place, links, notes };
+    return true;
+  } catch {
+    // Deliberately no toast and no rollback: `deletePlace` owns both, and a second
+    // `writeFailed` beside its own would be the only double-reported failure in the app.
+    return false;
   }
 }
 
@@ -800,6 +888,9 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
         createEvent(tripId, input),
       );
+      // The event comes back with the same id, so its notes can point at it again — but only
+      // if they are written after it exists (`restoreNotes`).
+      await restoreNotes(deps, desc.notes);
       return;
     }
     case 'reorder':
@@ -833,6 +924,53 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
         createMaybeItem(tripId, input),
       );
+      await restoreNotes(deps, desc.notes);
+      return;
+    }
+    case 'deletePlace': {
+      // ORDER IS THE WHOLE OF THIS CASE (ADR-0157 §4). The place comes back first, under its
+      // own id, because the links and the notes both FK-reference it — offline the outbox is
+      // FIFO, so "first" here means enqueued first, and awaiting in sequence is what
+      // guarantees it. `createPlace` restores the row in memory as well, which the reducer's
+      // snapshot cannot: places are not in it.
+      const { place } = desc;
+      await deps.places.createPlace({
+        id: place.id,
+        name: place.name,
+        googlePlaceId: place.googlePlaceId,
+        address: place.address,
+        lat: place.lat,
+        lng: place.lng,
+        icon: place.icon,
+        // Google's numbers, restorable only because `createPlaceSchema` accepts them —
+        // nothing else could hand them back without paying for a second Details call.
+        rating: place.rating,
+        userRatingsTotal: place.userRatingsTotal,
+      });
+      // The FKs Postgres nulled. Events and ideas are already re-linked ON SCREEN by the
+      // reducer's snapshot, so these are the server's copy only; a booking is not in that
+      // snapshot, so its write goes through the verb that owns its optimistic state too.
+      for (const link of desc.links) {
+        const fields = Object.fromEntries(link.fields.map((field) => [field, place.id]));
+        if (link.owner === ENTITY_TYPE.BOOKING) {
+          await deps.bookings.updateBooking(link.id, fields);
+        } else if (link.owner === ENTITY_TYPE.MAYBE_ITEM) {
+          await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_MAYBE_ITEM, maybeItemId: link.id, input: fields },
+            () => updateMaybeItem(tripId, link.id, fields),
+          );
+        } else {
+          // `confirm: true` for the same reason every other undo passes it: re-attaching a
+          // place to a hard event is reversing our own delete, not a new edit to guard.
+          await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE, eventId: link.id, input: fields, confirm: true },
+            () => updateEvent(tripId, link.id, fields, true),
+          );
+        }
+      }
+      await restoreNotes(deps, desc.notes);
       return;
     }
     case 'park': {
@@ -927,6 +1065,7 @@ export function useVerbs() {
     lastAction,
     confirmHardEdit,
     bookings: indexVerbs,
+    places: indexVerbs,
     // A conversion carries the old host's notes to the new one (`carryNotes`). The list is
     // read live rather than captured, so a note written while a sheet is open still moves.
     notes: {
@@ -942,6 +1081,19 @@ export function useVerbs() {
           category: note.category,
           ...host,
         }),
+      // The row as it was, back under its own id and its own host — the FK it already
+      // carries, since the host an undo re-creates keeps the id it had.
+      recreate: (note) =>
+        noteVerbs
+          .createNote({
+            id: note.id,
+            title: note.title,
+            body: note.body,
+            url: note.url,
+            category: note.category,
+            ...Object.fromEntries(NOTE_HOST_KEYS.map((key) => [key, note[key]])),
+          })
+          .then(() => {}),
     },
   };
   // Attribution for our own optimistic writes: the signed-in user, not a fixture.
@@ -1102,6 +1254,14 @@ export function useVerbs() {
     remove: (event: TripEvent) => {
       void applyGuardedDelete(deps, event).then((applied) => {
         if (applied) toast(CONTROL_ICON.trash, t.toast.eventDeleted, undo);
+      });
+    },
+    /** Remove a place (ADR-0157). The confirm that names what this costs is the caller's —
+     *  it is the surface that knows how many rows point here — and by the time we are called
+     *  the user has answered it. */
+    removePlace: (place: Place) => {
+      void applyDeletePlace(deps, place).then((applied) => {
+        if (applied) toast(CONTROL_ICON.trash, t.toast.placeDeleted, undo);
       });
     },
     // Plan-mode builder: move soft event `movedId` to occupy `targetId`'s slot

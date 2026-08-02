@@ -19,7 +19,10 @@
 import {
   carriesRoute,
   isMultiDay,
+  CHANGE_ACTION,
+  ENTITY_TYPE,
   type Booking,
+  type EntityType,
   type MaybeItem,
   type TripEvent,
 } from '@waypoint/shared';
@@ -195,4 +198,104 @@ export function placeRefs(
 export function soleIdeaFor(placeId: string, maybeItems: MaybeItem[]): MaybeItem | null {
   const live = maybeItems.filter((m) => !m.consumed && m.placeId === placeId);
   return live.length === 1 ? live[0] : null;
+}
+
+// --- Deleting a place: what points at it, and what that costs (ADR-0157) ------------------
+// `placeRefs` above answers "why is this place in the trip" for a HUMAN — it merges a
+// booking with its event, orders by the clock and drops what is out of day scope. A delete
+// needs the other question, and none of those three readings survive it: every row holding
+// the FK, once each, whatever day it is on. So this is a second derivation rather than a
+// filter over the first, and the two are not interchangeable.
+
+/** **Which fields point at a place, per entity** — the `onDelete: SetNull` set in
+ *  `schema.prisma`, named once so the local cascade, its undo and the confirm's count can
+ *  never disagree about what a delete touches. A sixth FK is a line here. */
+export const PLACE_FK = {
+  [ENTITY_TYPE.EVENT]: ['placeId'],
+  [ENTITY_TYPE.BOOKING]: ['placeId', 'fromPlaceId', 'toPlaceId'],
+  [ENTITY_TYPE.MAYBE_ITEM]: ['placeId'],
+} as const satisfies Partial<Record<EntityType, readonly string[]>>;
+
+export type PlaceFkOwner = keyof typeof PLACE_FK;
+
+/** One row that loses its location, and exactly which of its fields did. Two for the one
+ *  case that has two: a round trip whose origin and destination are the same station. */
+export interface PlaceLink {
+  owner: PlaceFkOwner;
+  id: string;
+  fields: string[];
+}
+
+/** The `Change` fields these cascade rules read — the same structural subset `notes.ts`'s
+ *  `HostChange` names, and for the same reason: a live WS echo and an offline optimistic
+ *  write both fit it. */
+type PlaceChange = { entityType: EntityType; entityId: string; action: string };
+
+/** The place this change deletes, or `null` for every other change — the one test both
+ *  halves of the cascade start from. */
+export function deletedPlaceId(change: PlaceChange): string | null {
+  return change.entityType === ENTITY_TYPE.PLACE && change.action === CHANGE_ACTION.DELETE
+    ? change.entityId
+    : null;
+}
+
+const fkValue = (row: object, field: string): unknown => (row as Record<string, unknown>)[field];
+
+/** Every row that would lose a location if `placeId` were deleted — what the confirm
+ *  counts, and what the undo re-links. Includes CONSUMED ideas, unlike `placeRefs`: a
+ *  consumed idea still holds the FK, so Postgres still nulls it and an undo that skipped it
+ *  would restore the place with one link quietly missing. */
+export function placeLinks(placeId: string, source: PlaceRefSource): PlaceLink[] {
+  const of = (owner: PlaceFkOwner, rows: { id: string }[]): PlaceLink[] =>
+    rows
+      .map((row) => ({
+        owner,
+        id: row.id,
+        fields: PLACE_FK[owner].filter((field) => fkValue(row, field) === placeId),
+      }))
+      .filter((link) => link.fields.length > 0);
+  return [
+    ...of(ENTITY_TYPE.EVENT, source.events),
+    ...of(ENTITY_TYPE.BOOKING, source.bookings),
+    ...of(ENTITY_TYPE.MAYBE_ITEM, source.maybeItems),
+  ];
+}
+
+/**
+ * **The place cascade's sync half** — the twin of `dropNotesForHostChange` (ADR-0152 §2),
+ * and it exists for the identical reason: the four place FKs are `onDelete: SetNull`, so
+ * Postgres nulls them **without writing `Change` rows**. A peer holding the trip in memory
+ * or in Dexie would keep rendering an event pinned to a place that no longer exists.
+ *
+ * So a place's `delete` change clears the FKs it leaves dangling, applied in both places a
+ * change is mirrored — the memory channels in `state/trip-state.tsx` and `CACHE_CHANNELS`'s
+ * applier in `lib/cache.ts`.
+ *
+ * Returns the SAME array reference when nothing was cleared, so every change that is not a
+ * place delete cannot cause a re-render.
+ */
+export function clearPlaceRefsForChange<T extends object>(
+  rows: T[],
+  owner: PlaceFkOwner,
+  change: PlaceChange,
+): T[] {
+  const placeId = deletedPlaceId(change);
+  return placeId ? clearPlaceRefs(rows, owner, placeId) : rows;
+}
+
+/** The same clear, from the id rather than from a change — what our OWN delete applies
+ *  optimistically, before there is any change to hear back. Same reference discipline. */
+export function clearPlaceRefs<T extends object>(
+  rows: T[],
+  owner: PlaceFkOwner,
+  placeId: string,
+): T[] {
+  let touched = false;
+  const next = rows.map((row) => {
+    const cleared = PLACE_FK[owner].filter((field) => fkValue(row, field) === placeId);
+    if (cleared.length === 0) return row;
+    touched = true;
+    return { ...row, ...Object.fromEntries(cleared.map((field) => [field, undefined])) };
+  });
+  return touched ? next : rows;
 }

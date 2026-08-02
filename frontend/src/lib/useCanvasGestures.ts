@@ -47,10 +47,19 @@ export function useCanvasGestures(
   map: google.maps.Map | null,
   camera: CanvasGestureCamera,
   paneRef: RefObject<HTMLElement | null>,
-  /** A press held still on the canvas background: drop a pin here (ADR-0147 §1/§2). The
-   *  point is already a coordinate — the pixel→`LatLng` conversion happens here, because
-   *  it needs the live map and the screen's callers must not learn about projections. */
-  onHold?: (at: LatLng) => void,
+  /** A press held still: drop a pin here (ADR-0147 §1/§2), or act on whatever was under the
+   *  finger (ADR-0157 §2). The point is already a coordinate — the pixel→`LatLng` conversion
+   *  happens here, because it needs the live map and the screen's callers must not learn
+   *  about projections.
+   *
+   *  **`target` is the element the press LANDED on, and reporting it is what keeps the two
+   *  long presses one gesture.** A marker is a DOM overlay inside this same pane, so a hold
+   *  over a pin reaches this recogniser exactly as a hold over blank canvas does — and
+   *  before this it dropped a second place on top of the one you were pressing. The
+   *  recogniser does not know what a pin is (and must not: ADR-0147 §1 keeps every gesture
+   *  decision in one machine, not in two that negotiate); it says where the finger was and
+   *  what it was on, and the pane decides which of the two acts that is. */
+  onHold?: (at: LatLng, target: EventTarget | null) => void,
   /** Set true for as long as a completed gesture's own `click` is still pending, so the pane
    *  can refuse to read that click as a canvas tap. The DOM swallow below covers the event
    *  stream; this covers **Google's own tap callback**, which is not an event stream at all
@@ -96,6 +105,11 @@ export function useCanvasGestures(
     /** Do we own the finger right now? The suppressors read this and nothing else, so they
      *  are cheap on every event that is not ours — which is almost all of them. */
     let owned = false;
+    /** What the current press landed on, latched at `pointerdown`. Latched rather than read
+     *  at the hold, because by then the only event we have is the synthetic one the timer
+     *  fires and it has no target — and because a pointer that wanders inside the slop must
+     *  still be answered for where it STARTED. */
+    let pressTarget: EventTarget | null = null;
 
     const feed = (type: DragZoomEventType, x: number, y: number, t: number): boolean => {
       const { map: live, camera: cam } = latest.current;
@@ -135,7 +149,7 @@ export function useCanvasGestures(
               x: x - (box.left + box.width / 2),
               y: y - (box.top + box.height / 2),
             });
-          if (at) latest.current.onHold?.(at);
+          if (at) latest.current.onHold?.(at, pressTarget);
           // A drop is followed by a release, which fires a `click` — and that click reaches
           // `onCanvasTap`, which now dismisses the form as an outside tap (ADR-0148 §7). The
           // window is opened by the RELEASE, below: a hold is held for as long as the user
@@ -158,6 +172,7 @@ export function useCanvasGestures(
       // Google's and must not be re-read as a new drag origin.
       if (!e.isPrimary || e.button > 0) return;
       clearHold();
+      pressTarget = e.target;
       const { clientX: x, clientY: y, timeStamp: t } = e;
       owned = feed(DRAG_ZOOM_EVENT.DOWN, x, y, t);
       if (!owned) {

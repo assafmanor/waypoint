@@ -23,6 +23,11 @@
   Proposals are applied as CSS OVERLAYS on top of that, never by editing the
   captured markup, so "shipped" and "proposed" are the same screen.
 
+  STATUS: adopted as ADR-0158 (docs/decisions/0158-dark-mode-ships-and-the-ink-
+  a-surface-carries-is-a-token.md), whose §10 phases the build. One question is
+  deliberately left open for the owner and deferred to Hero 2.0: §6's light trip
+  chrome.
+
   WHAT THIS SESSION IS. The dark remap was complete and INERT — tokens.css
   had every value, and nothing anywhere set 'data-theme', so it had never
   been rendered. Setting it is what produced §3 and §4. Auditing both themes
@@ -4270,17 +4275,6 @@ body {
   padding: 18px;
   box-shadow: 0 -20px 40px -14px rgba(0, 0, 0, 0.35);
 }
-.sheet-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--indigo);
-  margin-bottom: 10px;
-}
-.sheet-body {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-}
 /* account sheet (app-shell.md §6, PR #57): grip + centered identity, no
    title bar — Google is stated once here, quietly, not badged per-avatar. */
 .acct-grip {
@@ -6802,46 +6796,6 @@ body {
   font-weight: 400;
   color: var(--muted);
 }
-/* Pinned footer: Save/Cancel stay reachable while the field area scrolls
-   (the scroll container is .booking-sheet). The negative margin swallows the
-   column gap so scrolling fields slide fully under the opaque band instead of
-   peeking through it. */
-.booking-sheet .bs-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
-  gap: 10px;
-  margin-top: -12px;
-  padding-top: 14px;
-  background: var(--card);
-}
-.booking-sheet .bs-save,
-.booking-sheet .bs-cancel {
-  font: inherit;
-  font-weight: 700;
-  font-size: 13px;
-  border-radius: 12px;
-  padding: 12px;
-  cursor: pointer;
-}
-.booking-sheet .bs-save {
-  flex: 1; /* primary spans the row; ghost cancel is a small pill (mockup) */
-  background: var(--cta);
-  color: var(--cta-text);
-  border: none;
-}
-.booking-sheet .bs-save:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.booking-sheet .bs-cancel {
-  flex: 0 0 auto;
-  padding: 12px 20px;
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--soft-line);
-}
 .booking-sheet .bs-delete {
   font: inherit;
   font-weight: 700;
@@ -6893,9 +6847,6 @@ body {
 }
 .bs-choice-cancel {
   width: 100%;
-}
-.bs-danger-ok {
-  background: var(--miss);
 }
 
 /* Index add-booking button + empty-state CTA. Color follows the Index's own
@@ -8052,6 +8003,19 @@ button.wp-av:focus-visible {
   color: var(--muted);
   line-height: var(--leading-normal);
   margin-block: var(--space-2) var(--space-4);
+}
+
+/* What else this delete takes (ADR-0152 §2's cascade). `--miss` because it is a
+   destructive consequence, never `--amber`, which in this app means commitment and
+   already has a job two lines up in the hard-edit gate's own heading. */
+.confirm-consequence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--miss);
+  margin-block: calc(-1 * var(--space-2)) var(--space-4);
 }
 
 .confirm-actions {

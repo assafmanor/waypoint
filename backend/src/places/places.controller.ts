@@ -1,6 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import {
   createPlaceSchema,
   placePredictionSchema,
@@ -145,5 +161,19 @@ export class PlacesController {
     @Body(new ZodValidationPipe(updatePlaceSchema)) body: UpdatePlaceDto,
   ): Promise<Place> {
     return this.places.update(tripId, placeId, user.userId, body);
+  }
+
+  /** Remove a place from the trip (ADR-0157). The referencing events, bookings and ideas
+   *  survive without a location, and the place's notes go with it — both by FK, see the
+   *  service. */
+  @Delete(':placeId')
+  @HttpCode(204)
+  @ApiNoContentResponse()
+  remove(
+    @CurrentUser() user: Principal,
+    @Param('tripId') tripId: string,
+    @Param('placeId') placeId: string,
+  ): Promise<void> {
+    return this.places.remove(tripId, placeId, user.userId);
   }
 }

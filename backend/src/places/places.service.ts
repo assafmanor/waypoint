@@ -64,6 +64,10 @@ export class PlacesService {
               lng: input.lng,
               timezone,
               icon: input.icon,
+              // Present only on an undo restoring a row we cached ourselves (ADR-0157 §4);
+              // every ordinary create leaves them undefined and Google fills them on enrich.
+              rating: input.rating,
+              userRatingsTotal: input.userRatingsTotal,
               updatedBy: actorUserId,
             },
           }),
@@ -116,12 +120,44 @@ export class PlacesService {
             ...(input.lat !== undefined && { lat: input.lat }),
             ...(input.lng !== undefined && { lng: input.lng }),
             ...(input.icon !== undefined && { icon: input.icon }),
+            ...(input.rating !== undefined && { rating: input.rating }),
+            ...(input.userRatingsTotal !== undefined && {
+              userRatingsTotal: input.userRatingsTotal,
+            }),
             ...(moved && { timezone }),
             updatedBy: actorUserId,
           },
         }),
     });
     return toPlaceDto(entity);
+  }
+
+  /**
+   * **Delete a place, and let the database say what that costs** (ADR-0157).
+   *
+   * The referencing rows are NOT touched here, and that is deliberate: the four FKs that
+   * point at a place are `onDelete: SetNull` and a note's is `onDelete: Cascade`
+   * (`schema.prisma`), so an event keeps its slot and loses its location, and the place's
+   * own notes go with it. Re-implementing either in application code would be a second
+   * opinion about a rule the schema already states.
+   *
+   * What that costs the sync layer is one `Change` row for the place and nothing for the
+   * cascade — Postgres writes no changes of its own. The client applies the same two rules
+   * locally off this one delete (`dropNotesForHostChange`'s twin for the place FKs,
+   * ADR-0152 §2's precedent), which is why the delete has to be a change at all rather than
+   * a quiet row removal.
+   */
+  async remove(tripId: string, placeId: string, actorUserId: string): Promise<void> {
+    const before = await this.requirePlace(tripId, placeId);
+    await this.changes.mutate({
+      tripId,
+      actorUserId,
+      entityType: ENTITY_TYPE.PLACE,
+      entityId: placeId,
+      action: CHANGE_ACTION.DELETE,
+      before: toPlaceDto(before),
+      apply: (tx) => tx.place.delete({ where: { id: placeId } }),
+    });
   }
 
   /** Autocomplete relay (ADR-0108 §1). Pure passthrough to Google under the trip's

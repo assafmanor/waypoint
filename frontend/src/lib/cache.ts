@@ -23,6 +23,7 @@ import { fetchTrips } from './api';
 import { clearAllCachedDocuments } from './doc-cache';
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
 import { dropNotesForHostChange } from './notes';
+import { clearPlaceRefsForChange, deletedPlaceId } from './place-refs';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
 export interface SnapshotMeta {
@@ -163,6 +164,27 @@ async function dropCachedNotesForHost(tripId: string, change: EntityChange): Pro
   if (next !== meta.notes) await db.snapshotMeta.put({ ...meta, notes: next });
 }
 
+/** The place cascade's cache half (`lib/place-refs.ts`'s `clearPlaceRefsForChange`,
+ *  ADR-0157 §3) — the same shape as the note cascade above, over the three stores that hold
+ *  a place FK. Two tables and one meta list, each written only when the delete actually
+ *  cleared something, so a change that is not a place delete costs three reads and no write.
+ *  A `deletedPlaceId` test up front keeps even those off the common path. */
+async function clearCachedPlaceRefs(tripId: string, change: EntityChange): Promise<void> {
+  if (!deletedPlaceId(change)) return;
+  const scoped = <T extends CacheRow>(table: Table<T, string>) =>
+    table.where('tripId').equals(tripId).toArray();
+  const [events, bookings] = await Promise.all([scoped(db.events), scoped(db.bookings)]);
+  const nextEvents = clearPlaceRefsForChange(events, ENTITY_TYPE.EVENT, change);
+  const nextBookings = clearPlaceRefsForChange(bookings, ENTITY_TYPE.BOOKING, change);
+  if (nextEvents !== events) await db.events.bulkPut(nextEvents);
+  if (nextBookings !== bookings) await db.bookings.bulkPut(nextBookings);
+
+  const meta = await db.snapshotMeta.get(tripId);
+  if (!meta?.maybeItems?.length) return;
+  const maybeItems = clearPlaceRefsForChange(meta.maybeItems, ENTITY_TYPE.MAYBE_ITEM, change);
+  if (maybeItems !== meta.maybeItems) await db.snapshotMeta.put({ ...meta, maybeItems });
+}
+
 /** Keeps the Dexie cache coherent with every data-plane entity type in the
  *  snapshot so a change (a WS echo or an offline optimistic write) never silently
  *  falls out of the offline cache. Table-driven off `CACHE_CHANNELS`. */
@@ -172,6 +194,10 @@ export async function applyChangeToCache(tripId: string, change: EntityChange): 
   // in the cache with nothing to remove them: the database cascade writes no `Change` rows
   // of its own. A no-op for every change that is not a host delete.
   await dropCachedNotesForHost(tripId, change);
+  // Its twin for the place FKs (ADR-0157 §3), here for the same reason and in the same
+  // position: a deleted place's change is routed to the place channel, and the events,
+  // bookings and ideas it leaves pointing at nothing belong to none of them.
+  await clearCachedPlaceRefs(tripId, change);
   const channel = CACHE_CHANNELS[change.entityType];
   if (!channel) return;
   if ('table' in channel) {
@@ -428,6 +454,15 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         entityId: op.placeId,
         action: CHANGE_ACTION.UPDATE,
         after: op.input,
+      });
+    case OUTBOX_VERB.DELETE_PLACE:
+      // The cascade rides this one change, in the cache exactly as in memory: the notes
+      // through `dropCachedNotesForHost` and the four place FKs through
+      // `clearCachedPlaceRefs` (ADR-0157 §3), both inside `applyChangeToCache`.
+      return one({
+        entityType: ENTITY_TYPE.PLACE,
+        entityId: op.placeId,
+        action: CHANGE_ACTION.DELETE,
       });
     case OUTBOX_VERB.CREATE_NOTE:
       if (!op.input.id) return [];

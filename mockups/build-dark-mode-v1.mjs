@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Generator for `mockups/dark-mode-v1.html` (ADR-0157's design session).
+/* Generator for `mockups/dark-mode-v1.html` (ADR-0158's design session).
  *
  * WHY A GENERATOR AND NOT A HAND-WRITTEN FILE. The catalog's inlined app CSS has
  * drifted ~16.6k lines across 14 files against unchanged sources (backlog,
@@ -174,6 +174,11 @@ const html = String.raw`<!doctype html>
 
   Proposals are applied as CSS OVERLAYS on top of that, never by editing the
   captured markup, so "shipped" and "proposed" are the same screen.
+
+  STATUS: adopted as ADR-0158 (docs/decisions/0158-dark-mode-ships-and-the-ink-
+  a-surface-carries-is-a-token.md), whose §10 phases the build. One question is
+  deliberately left open for the owner and deferred to Hero 2.0: §6's light trip
+  chrome.
 
   WHAT THIS SESSION IS. The dark remap was complete and INERT — tokens.css
   had every value, and nothing anywhere set 'data-theme', so it had never

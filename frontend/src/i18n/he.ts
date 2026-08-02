@@ -164,6 +164,22 @@ export const t = {
       // instead, which left the Enter key this field binds answering nothing at all.
       nameRequired: 'חסר שם למקום',
     },
+    // **Removing a place** (ADR-0157). One vocabulary for both ways in — the trash on a
+    // selected row and the pin's long-press menu open the same confirm, so the words are
+    // written once here rather than per surface.
+    del: {
+      action: 'מחיקת המקום',
+      aria: (name: string) => `מחיקת ${name}`,
+      title: 'למחוק את המקום?',
+      body: (name: string) => `${name} יוסר מהמפה ומהרשימה.`,
+      // The cascade, said before it happens — the same call `notes.hostDelete` made
+      // (ADR-0152 §2) and for the same reason: the confirm is the only moment a reader can
+      // learn it. Gender-free and counted rather than listed, because one sentence has to
+      // serve אירועים, הזמנות and רעיונות at once.
+      refs: (n: number) =>
+        n === 1 ? 'פריט אחד בטיול יישאר בלי מיקום' : `${n} פריטים בטיול יישארו בלי מיקום`,
+      confirm: 'מחק',
+    },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.
     // (`scopeAll` / `scopeDay` retired with `.map-scopehint` in ADR-0122 §2: the chip's
@@ -354,6 +370,7 @@ export const t = {
       deleteBooking: 'מחיקת הזמנה',
       createPlace: 'הוספת מקום',
       updatePlace: 'עדכון מקום',
+      deletePlace: 'מחיקת מקום',
       uploadDocument: 'העלאת מסמך',
       createNote: 'כתיבת פתק',
       updateNote: 'עריכת פתק',
@@ -655,6 +672,11 @@ export const t = {
     head: {
       count: (n: number) => `${n} פתקים`,
     },
+    // **The mirror of `manage.deleteBody`**, and the sentence no host's delete confirm said
+    // (ADR-0152 §2): deleting a host destroys its notes in the database, and the confirm is
+    // the only moment a reader can learn it. Gender-free on purpose — one sentence serves
+    // ההזמנה, המסמך and האירוע, and three gendered copies of one fact is how copy drifts.
+    hostDelete: (n: number) => (n === 1 ? 'פתק אחד יימחק' : `${n} פתקים יימחקו`),
     // The tile's one changing line: the newest note, with who wrote it. A collection has
     // no "next" and no type groups, but it has a newest — and the real question at a
     // glance is what someone just wrote that you have not read.
@@ -1417,6 +1439,7 @@ export const t = {
     maybeBackToPool: 'הרעיון חזר לרעיונות',
     maybeRemoved: 'הרעיון הוסר מהמדף',
     movedToShelf: 'הועבר למדף האולי',
+    placeDeleted: 'המקום נמחק',
   },
   ripple: {
     prompt: (movedTitle: string, direction: 'later' | 'earlier') =>

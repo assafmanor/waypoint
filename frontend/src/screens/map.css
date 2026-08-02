@@ -1188,7 +1188,8 @@
    the control says where it goes — which is also what earns it a row. Full-width and
    ≥40px, so it is a real touch target (ADR-0017) rather than a tappable 11px tag. */
 /* ── פתקים ON A PLACE (ADR-0153 §8's 2026-08-02 amendment) ─────────────────────
-   A place has no row menu and no detail surface of its own, so its notes live in the row —
+   A place has no detail surface of its own — and its only menu is the pin's, which holds verbs
+   rather than content (ADR-0157 §2) — so its notes live in the row —
    which is exactly what `.map-refs` above already is: a full-width line that appears on
    selection in a row that has wrapped since it shipped. One declaration, no new grammar.
    ORDER in the DOM is facts → notes → verbs, the order `BookingDetail` and the idea sheet
@@ -1412,6 +1413,11 @@
 .map-refs-foot {
   display: flex;
   justify-content: center;
+  align-items: center;
+  /* Wide on purpose: the two verbs in here are a create and a delete, and 8px between a
+     44px primary and a 44px destructive is how the wrong one gets pressed (ADR-0157 §2). */
+  gap: 16px;
+  flex-wrap: wrap;
   margin-top: 8px;
   /* The ROW's own child since the note section arrived (it used to sit inside `.map-refs`), so
      it is the same full-width line it always was — and, in the bounded card, one the grid can
@@ -1427,6 +1433,41 @@
   font-size: 13px;
 }
 
+/* **The selected row's destructive verb** (ADR-0157 §2). Deliberately not a pill: the footer
+   already has one and two outlined pills side by side is two primaries. Muted ink until it is
+   touched, then `--miss` — the hue `.wp-row-action.danger` already gives this verb, never a
+   second red. Full 44×44 in its own box, unlike the pencil's `::after` trick, because there is
+   room here and a destructive target must not be borrowed from a neighbour. */
+.map-del {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  padding-inline: 10px;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.map-del:hover {
+  color: var(--miss);
+}
+.map-del:active {
+  transform: scale(var(--press-scale));
+}
+.map-del:focus-visible {
+  outline: 2px solid var(--miss);
+  outline-offset: 2px;
+}
+.map-del .icon {
+  width: 14px;
+  height: 14px;
+}
 .map-addmaybe {
   display: inline-flex;
   align-items: center;

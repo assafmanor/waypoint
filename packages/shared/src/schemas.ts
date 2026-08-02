@@ -147,6 +147,14 @@ export const createPlaceSchema = z.object({
    *  form reopened. `timezone` deliberately stays absent: the server resolves it from the
    *  coordinates, and a client-supplied zone would be a second source of truth. */
   icon: z.string().optional(),
+  /** **Google's aggregate rating, writable only so an undone delete can hand it back.**
+   *  Every other field a deleted place carries is either user-authored or re-derived
+   *  server-side (`timezone` from the coordinates), so the restore reproduces the row
+   *  exactly — except these two, which came from a Place Details call nobody wants to pay
+   *  for twice (ADR-0157 §4). The client is re-asserting a number our own server cached and
+   *  handed it, in one trip; that is the whole of the trust it is being given. */
+  rating: z.number().min(0).max(5).optional(),
+  userRatingsTotal: z.number().int().nonnegative().optional(),
 });
 export type CreatePlaceInput = z.infer<typeof createPlaceSchema>;
 

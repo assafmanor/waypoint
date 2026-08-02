@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
+  CHANGE_ACTION,
+  ENTITY_TYPE,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
@@ -9,7 +11,14 @@ import {
   type MaybeItem,
   type TripEvent,
 } from '@waypoint/shared';
-import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from './place-refs';
+import {
+  PLACE_REF_KIND,
+  clearPlaceRefsForChange,
+  deletedPlaceId,
+  placeLinks,
+  placeRefs,
+  soleIdeaFor,
+} from './place-refs';
 
 const DAY = '2026-07-20';
 const NEXT_DAY = '2026-07-21';
@@ -276,5 +285,110 @@ describe('soleIdeaFor — what a scheduled place consumes (ADR-0135 §5)', () =>
 
   it('returns nothing when the place has no idea at all', () => {
     expect(soleIdeaFor('pl-1', [])).toBeNull();
+  });
+});
+
+// ── ADR-0157: what a delete touches, and what the client has to mirror ───────────────────
+describe('placeLinks — every row that loses its location', () => {
+  it('names the FK each row held, once per row', () => {
+    const links = placeLinks(
+      'st',
+      source({
+        events: [event({ id: 'e1', placeId: 'st' }), event({ id: 'e2', placeId: 'other' })],
+        bookings: [booking({ id: 'bk', type: BOOKING_TYPE.TRAIN, fromPlaceId: 'st' })],
+        maybeItems: [maybe({ id: 'mb', placeId: 'st' })],
+      }),
+    );
+    expect(links).toEqual([
+      { owner: 'event', id: 'e1', fields: ['placeId'] },
+      { owner: 'booking', id: 'bk', fields: ['fromPlaceId'] },
+      { owner: 'maybeItem', id: 'mb', fields: ['placeId'] },
+    ]);
+  });
+
+  // A round trip out of and back into the same station: one row, two FKs. Reported as one
+  // link with two fields, because the undo has to hand BOTH back and a link per field would
+  // patch the booking twice.
+  it('a booking that both starts and ends there reports both fields on one link', () => {
+    const links = placeLinks(
+      'st',
+      source({
+        bookings: [
+          booking({ id: 'bk', type: BOOKING_TYPE.TRAIN, fromPlaceId: 'st', toPlaceId: 'st' }),
+        ],
+      }),
+    );
+    expect(links).toEqual([{ owner: 'booking', id: 'bk', fields: ['fromPlaceId', 'toPlaceId'] }]);
+  });
+
+  // `placeRefs` drops these — a consumed idea is not a way IN to anything. The FK is still
+  // there, so Postgres still nulls it, and an undo that skipped it would restore the place
+  // with one link quietly missing.
+  it('includes a consumed idea, which the way-in derivation deliberately does not', () => {
+    const consumed = source({ maybeItems: [maybe({ id: 'mb', placeId: 'st', consumed: true })] });
+    expect(placeRefs('st', consumed)).toEqual([]);
+    expect(placeLinks('st', consumed)).toEqual([
+      { owner: 'maybeItem', id: 'mb', fields: ['placeId'] },
+    ]);
+  });
+
+  it('a place nothing points at has no links', () => {
+    expect(placeLinks('st', source({ events: [event({ id: 'e' })] }))).toEqual([]);
+  });
+});
+
+describe('clearPlaceRefsForChange — the cascade Postgres performs silently', () => {
+  const deleted = (entityId: string) => ({
+    entityType: ENTITY_TYPE.PLACE,
+    entityId,
+    action: CHANGE_ACTION.DELETE,
+  });
+
+  it('clears the FK on a place delete, leaving the row itself in the list', () => {
+    const rows = [event({ id: 'e1', placeId: 'st' }), event({ id: 'e2', placeId: 'other' })];
+    const next = clearPlaceRefsForChange(rows, ENTITY_TYPE.EVENT, deleted('st'));
+    expect(next.map((e) => e.placeId)).toEqual([undefined, 'other']);
+    expect(next).toHaveLength(2);
+  });
+
+  it('clears every FK the row held, not only the first', () => {
+    const rows = [
+      booking({ id: 'bk', type: BOOKING_TYPE.TRAIN, fromPlaceId: 'st', toPlaceId: 'st' }),
+    ];
+    const [next] = clearPlaceRefsForChange(rows, ENTITY_TYPE.BOOKING, deleted('st'));
+    expect(next.fromPlaceId).toBeUndefined();
+    expect(next.toPlaceId).toBeUndefined();
+  });
+
+  // The reference discipline `dropNotesForHostChange` set: every change that is not a place
+  // delete has to be free, because this runs on ALL of them and the Map re-renders on a clock.
+  it('returns the same array for any change that clears nothing', () => {
+    const rows = [event({ id: 'e', placeId: 'other' })];
+    expect(clearPlaceRefsForChange(rows, ENTITY_TYPE.EVENT, deleted('st'))).toBe(rows);
+    expect(
+      clearPlaceRefsForChange(rows, ENTITY_TYPE.EVENT, {
+        entityType: ENTITY_TYPE.PLACE,
+        entityId: 'other',
+        action: CHANGE_ACTION.UPDATE,
+      }),
+    ).toBe(rows);
+    expect(
+      clearPlaceRefsForChange(rows, ENTITY_TYPE.EVENT, {
+        entityType: ENTITY_TYPE.EVENT,
+        entityId: 'e',
+        action: CHANGE_ACTION.DELETE,
+      }),
+    ).toBe(rows);
+  });
+
+  it('deletedPlaceId answers only for a place delete', () => {
+    expect(deletedPlaceId(deleted('st'))).toBe('st');
+    expect(
+      deletedPlaceId({
+        entityType: ENTITY_TYPE.EVENT,
+        entityId: 'e',
+        action: CHANGE_ACTION.DELETE,
+      }),
+    ).toBeNull();
   });
 });

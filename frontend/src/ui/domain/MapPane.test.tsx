@@ -185,7 +185,7 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       onAreaSort={props.onAreaSort ?? vi.fn()}
       onLocate={props.onLocate ?? vi.fn()}
       cardReserve={props.cardReserve}
-      onHoldCanvas={props.onHoldCanvas}
+      onHold={props.onHold}
       me={props.me}
       connector={props.connector}
       defaultCentre={props.defaultCentre}
@@ -547,7 +547,7 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       const onCanvasTap = vi.fn();
       const map = new FakeZoomMap();
       mapStub.current = map;
-      paint({ onCanvasTap, onHoldCanvas: vi.fn() });
+      paint({ onCanvasTap, onHold: vi.fn() });
       const pane = document.querySelector('.map-pane')!;
       pane.dispatchEvent(
         new PointerEvent('pointerdown', { clientX: 100, clientY: 200, bubbles: true, button: 0 }),
@@ -566,6 +566,46 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       googleTap.fire?.({ domEvent: undefined, detail: { placeId: null } });
       expect(onCanvasTap).toHaveBeenCalledTimes(1);
       vi.useRealTimers();
+    });
+  });
+
+  // ── THE HOLD REPORTS WHAT IT LANDED ON (ADR-0157 §2) ────────────────────────
+  // The recogniser is one machine over the whole pane, and a marker is a DOM overlay INSIDE
+  // that pane — so a hold over a pin reaches it exactly as a hold over blank canvas does. It
+  // used to be answered the same way too, which is the defect: the gesture dropped a second
+  // place on top of the one under your finger. The pane resolves `data-pin` and says which.
+  describe('a long press says which place it was on (ADR-0157 §2)', () => {
+    // The target is resolved AFTER the paint, so it is a getter: the pin does not exist
+    // until the pane has rendered.
+    const hold = (targetOf: () => Element) => {
+      vi.useFakeTimers();
+      const map = new FakeZoomMap();
+      mapStub.current = map;
+      const onHold = vi.fn();
+      paint({ onHold });
+      targetOf().dispatchEvent(
+        new PointerEvent('pointerdown', { clientX: 100, clientY: 200, bubbles: true, button: 0 }),
+      );
+      act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS));
+      vi.useRealTimers();
+      return onHold;
+    };
+
+    it('carries the pin’s place id when the press landed on a pin', () => {
+      const onHold = hold(() => pins()[0]);
+      expect(onHold).toHaveBeenCalledTimes(1);
+      expect(onHold.mock.calls[0][1]).toBe('a');
+    });
+
+    it('carries the id when the press landed on something INSIDE the pin', () => {
+      const onHold = hold(() => pins()[0].querySelector('.pin-b')!);
+      expect(onHold.mock.calls[0][1]).toBe('a');
+    });
+
+    it('carries no id at all when the press landed on the canvas', () => {
+      const onHold = hold(() => document.querySelector('[data-map]')!);
+      expect(onHold).toHaveBeenCalledTimes(1);
+      expect(onHold.mock.calls[0][1]).toBeUndefined();
     });
   });
 

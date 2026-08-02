@@ -311,13 +311,13 @@ Scoped to **pathname** changes, so an in-trip tab switch keeps `.body`'s fade an
 
 Dark mode is a **token remap, not a redesign**: every component reads
 `var(--token)`, so the theme ships by re-mapping the same names under
-`:root[data-theme='dark']`. **Designed to shippable in [ADR-0157](../decisions/0157-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md); the build is phased in that ADR's §10 and has not started.** Until phase 4 lands, the block in
+`:root[data-theme='dark']`. **Designed to shippable in [ADR-0158](../decisions/0158-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md); the build is phased in that ADR's §10 and has not started.** Until phase 4 lands, the block in
 `tokens.css` is still inert.
 
 **Principles:**
 
 - **The board stays the loudest — but not by being the darkest.** This is the
-  correction ADR-0157 made by rendering it. Board→screen measures **ΔL\* 2.6** in
+  correction ADR-0158 made by rendering it. Board→screen measures **ΔL\* 2.6** in
   dark (against 84.8 in light), which is not a visible edge: the board has no
   boundary against the body at all. What carries it is **amber density** — every
   amber element on the screen is inside the board. So the hierarchy **inverts**
@@ -334,7 +334,7 @@ Dark mode is a **token remap, not a redesign**: every component reads
 - **Semantic hues survive, brightened** — and a brightened fill therefore takes
   **dark** ink. That is `--on-fill`, below. Never introduce new meanings in dark.
 - **Pulse and mode rules unchanged.** Mode identity holds via hue temperature +
-  drafting grid + mode pill. Note what ADR-0157 found: ADR-0028 never listed
+  drafting grid + mode pill. Note what ADR-0158 found: ADR-0028 never listed
   luminance as one of the channels, which is what lets mode identity survive a
   remap — but it is also why the plan hero rendering _brighter_ than the trip
   board inverted the modes until `--plan-surface` fixed it.
@@ -343,7 +343,7 @@ Dark mode is a **token remap, not a redesign**: every component reads
 
 ### The ink a surface carries is a token
 
-The rule ADR-0157 added, and the one that governs everything below: **when a
+The rule ADR-0158 added, and the one that governs everything below: **when a
 colour is painted _onto_ something, the ink is its own token, named for what it
 sits on.** Three families, all shaped like the `--amber` / `--amber-ink` pair
 that already existed:
@@ -392,14 +392,14 @@ rendered at L\* 68, the brightest surface in the app, in the calm mode.
 | `--cta` / `--cta-text`     | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
 | `--ok` / `--miss`          | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
 
-**Status — designed, not built.** ADR-0157 §10 phases it: (1) on-fill ink,
+**Status — designed, not built.** ADR-0158 §10 phases it: (1) on-fill ink,
 (2) the `--on-dark-*` ramp, (3) surface + chrome tokens, (4) the theme itself —
 `lib/theme.ts`, the pre-paint script, the three-rung `/settings` control,
 `meta[name=theme-color]`, ADR-0105's dark boot and the night map style,
 (5) the light theme's own four contrast failures, (6) **the device pass**.
 Phases 1–3 change no light-mode pixels by construction.
 
-Every number in ADR-0157 is a Chromium render at 411×914.
+Every number in ADR-0158 is a Chromium render at 411×914.
 [ADR-0125](../decisions/0125-map-canvas-terrain-vocabulary.md) is this repo's
 precedent for a palette that measured fine and read as one hue on real glass,
 which is why phase 6 exists and is not a formality.

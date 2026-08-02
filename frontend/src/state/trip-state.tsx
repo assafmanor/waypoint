@@ -48,6 +48,7 @@ import {
   createBooking as apiCreateBooking,
   createNote as apiCreateNote,
   createPlace as apiCreatePlace,
+  deletePlace as apiDeletePlace,
   deleteBooking as apiDeleteBooking,
   deleteNote as apiDeleteNote,
   deleteTrip as apiDeleteTrip,
@@ -73,6 +74,7 @@ import {
   readCachedSnapshot,
 } from '../lib/cache';
 import { dropNotesForHostChange } from '../lib/notes';
+import { clearPlaceRefs, deletedPlaceId, placeLinks, type PlaceLink } from '../lib/place-refs';
 import {
   flushOutbox,
   getSyncFailures,
@@ -139,6 +141,8 @@ export const TRIP_ACTION = {
   REMOVE_MAYBE: 'REMOVE_MAYBE',
   UPDATE_MAYBE: 'UPDATE_MAYBE',
   PARK_EVENT: 'PARK_EVENT',
+  DELETE_PLACE: 'DELETE_PLACE',
+  REMOTE_PLACE_DELETED: 'REMOTE_PLACE_DELETED',
   RECONCILE_EVENT: 'RECONCILE_EVENT',
   SET_RIPPLE: 'SET_RIPPLE',
   REMOTE_EVENT_CHANGE: 'REMOTE_EVENT_CHANGE',
@@ -177,6 +181,13 @@ export type Action =
   // Park an event onto the shelf: it leaves the day and becomes a maybe idea,
   // atomically (one undo snapshot).
   | { type: typeof TRIP_ACTION.PARK_EVENT; eventId: string; item: MaybeItem }
+  // **A place was deleted, so everything here that pointed at it loses its location**
+  // (ADR-0157 §3) — the reducer's half of a cascade Postgres performs with no `Change` row
+  // of its own. Two actions, one transform: ours snapshots (the delete is undoable and the
+  // undo has to put these FKs back), a peer's must not — a remote change that overwrote the
+  // undo snapshot would make the next undo revert somebody else's edit.
+  | { type: typeof TRIP_ACTION.DELETE_PLACE; placeId: string }
+  | { type: typeof TRIP_ACTION.REMOTE_PLACE_DELETED; placeId: string }
   // T-014: the REST write layer (verbs.ts) reconciles/broadcasts through these.
   | { type: typeof TRIP_ACTION.RECONCILE_EVENT; event: TripEvent }
   | { type: typeof TRIP_ACTION.SET_RIPPLE; ripple: RippleSuggestion | null }
@@ -192,6 +203,17 @@ const byStart = (a: TripEvent, b: TripEvent) =>
 
 function snapshotOf(s: State): Snapshot {
   return { events: s.events, maybeItems: s.maybeItems };
+}
+
+/** The two reducer-held stores, with every reference to a deleted place cleared (ADR-0157
+ *  §3). Returns the SAME state when neither held one, so a peer's delete of a place nothing
+ *  here points at re-renders nothing. */
+function placeCleared(state: State, placeId: string): State {
+  const events = clearPlaceRefs(state.events, ENTITY_TYPE.EVENT, placeId);
+  const maybeItems = clearPlaceRefs(state.maybeItems, ENTITY_TYPE.MAYBE_ITEM, placeId);
+  return events === state.events && maybeItems === state.maybeItems
+    ? state
+    : { ...state, events, maybeItems };
 }
 
 export function initialState(seed: Snapshot = { events: EVENTS, maybeItems: MAYBE_ITEMS }): State {
@@ -299,6 +321,10 @@ export function reducer(state: State, action: Action): State {
         ripple: null,
         undo: snapshotOf(state),
       };
+    case TRIP_ACTION.DELETE_PLACE:
+      return { ...placeCleared(state, action.placeId), ripple: null, undo: snapshotOf(state) };
+    case TRIP_ACTION.REMOTE_PLACE_DELETED:
+      return placeCleared(state, action.placeId);
     case TRIP_ACTION.RECONCILE_EVENT: {
       const exists = state.events.some((e) => e.id === action.event.id);
       const events = exists
@@ -430,6 +456,12 @@ export interface IndexVerbs {
   // so the queued place op still runs before the booking op).
   createPlace: (input: CreatePlaceInput) => Promise<string>;
   updatePlace: (placeId: string, input: UpdatePlaceInput) => Promise<void>;
+  /** **Remove a place, and everything local that points at it** (ADR-0157). One verb rather
+   *  than a delete plus four cleanups at the call site: the events, bookings and ideas lose
+   *  their location and the place's notes go, because that is what the database is about to
+   *  do and offline nothing else would tell us. Resolves to the links it cleared, which is
+   *  the only record of them once the row is gone — the undo re-attaches them from it. */
+  deletePlace: (placeId: string) => Promise<PlaceLink[]>;
   // The Places picker's terminating enrich-on-pick (ADR-0108 §3 / ADR-0110 §1).
   // Online-only (needs Google, so never queued); the returned canonical row is
   // adopted into `places` immediately for the form's use, and the WS `place` echo
@@ -750,6 +782,15 @@ function TripReady({
       // list — belongs to no single host's channel and would otherwise be five branches.
       // A no-op unless this is a host delete that actually hosted something.
       setNotes((prev) => dropNotesForHostChange(prev, change));
+      // The place cascade's memory half (ADR-0157 §3), here for the same reason as the note
+      // cascade above and in the same position: an event, a booking and an idea can each
+      // hold a place FK, so what a deleted place leaves dangling belongs to no one channel.
+      // `SetNull` in Postgres writes no `Change` row, so this one delete is all we hear.
+      const gonePlaceId = deletedPlaceId(change);
+      if (gonePlaceId) {
+        setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, gonePlaceId));
+        dispatch({ type: TRIP_ACTION.REMOTE_PLACE_DELETED, placeId: gonePlaceId });
+      }
       memoryChannels[change.entityType]?.(change);
     },
     [tripId, memoryChannels],
@@ -1122,6 +1163,37 @@ function TripReady({
           throw err;
         }
       },
+      deletePlace: async (placeId) => {
+        // Captured BEFORE the write, because after it there is nowhere left to read them
+        // from — the same reason a host's delete captures its notes (ADR-0152 §2).
+        const links = placeLinks(placeId, {
+          events: state.events,
+          bookings,
+          maybeItems: state.maybeItems,
+        });
+        const previousPlaces = places;
+        const previousBookings = bookings;
+        const previousNotes = notes;
+        setPlaces((prev) => prev.filter((p) => p.id !== placeId));
+        setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, placeId));
+        setNotes((prev) => prev.filter((n) => n.placeId !== placeId));
+        // Events and ideas ride the reducer, where the same clear also takes the undo
+        // snapshot: this is the one dispatch that makes the delete reversible.
+        dispatch({ type: TRIP_ACTION.DELETE_PLACE, placeId });
+        try {
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_PLACE, placeId }, () =>
+            apiDeletePlace(tripId, placeId),
+          );
+        } catch (err) {
+          setPlaces(previousPlaces);
+          setBookings(previousBookings);
+          setNotes(previousNotes);
+          dispatch({ type: TRIP_ACTION.UNDO });
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+        return links;
+      },
       resolvePlace: async (input) => {
         // Online-only: no optimistic row (the FE can't produce coords/zone) and no
         // outbox (needs Google). Errors — offline, 429, a bad id — propagate to the
@@ -1137,7 +1209,7 @@ function TripReady({
         return place;
       },
     };
-  }, [tripId, bookings, places, toast, authorId, applyEntityChange]);
+  }, [tripId, bookings, places, notes, state, toast, authorId, applyEntityChange]);
 
   // Notes (ADR-0152). Optimistic write, reconcile on the server's row, roll back on a real
   // failure — the same three moves as the index verbs above, over the `notes` list.
