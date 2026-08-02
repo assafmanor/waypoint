@@ -15,10 +15,9 @@ import { useMemo, useState } from 'react';
 import type { Note } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { noteGlyphFor, noteHostInput, notesForHost, type NoteHostRef } from '../lib/notes';
+import { noteHostInput, notesForHost, type NoteHostRef } from '../lib/notes';
 import { NoteSection } from './NoteSection';
 import { NoteSheet } from './NoteSheet';
-import { NoteDetail } from './NoteDetail';
 
 export function HostNotes({
   host,
@@ -33,11 +32,6 @@ export function HostNotes({
   const { notes, users, noteVerbs } = useTrip();
   const now = useClock();
   const [editing, setEditing] = useState<Note | 'create' | null>(null);
-  // Tapping a note READS it; editing is a press inside the preview (ADR-0153 §4's
-  // 2026-08-02 amendment). The rule is the note's, not the notes screen's — a section
-  // line clamps just as a row does, so sending this tap to the editor would have left
-  // four of the five host surfaces with no way to read a long note either.
-  const [reading, setReading] = useState<Note | null>(null);
   const hostNotes = useMemo(
     () => notesForHost(notes, host.kind, host.id),
     [notes, host.kind, host.id],
@@ -50,23 +44,8 @@ export function HostNotes({
         users={users}
         now={now}
         onAdd={canAdd ? () => setEditing('create') : undefined}
-        onOpen={setReading}
+        onEdit={setEditing}
       />
-      {reading && (
-        <NoteDetail
-          note={reading}
-          host={host}
-          glyph={noteGlyphFor(reading, host)}
-          users={users}
-          now={now}
-          onEdit={() => {
-            const note = reading;
-            setReading(null);
-            setEditing(note);
-          }}
-          onClose={() => setReading(null)}
-        />
-      )}
       {editing && (
         <NoteSheet
           note={editing === 'create' ? undefined : editing}

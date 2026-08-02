@@ -15,7 +15,15 @@ import { DocumentsSection } from './DocumentsSection';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
 
-export function IndexDocumentsView({ onClose }: { onClose: () => void }) {
+export function IndexDocumentsView({
+  onClose,
+  initialDocumentId,
+}: {
+  onClose: () => void;
+  /** Opened straight onto this document's viewer, for a note that points at it
+   *  (ADR-0153 §8's way-in amendment) — the same shape the bookings screen already has. */
+  initialDocumentId?: string;
+}) {
   useOverlay(onClose);
   return (
     <div className="idx-screen">
@@ -28,7 +36,7 @@ export function IndexDocumentsView({ onClose }: { onClose: () => void }) {
           </span>
         }
       />
-      <DocumentsSection />
+      <DocumentsSection initialDocumentId={initialDocumentId} />
     </div>
   );
 }

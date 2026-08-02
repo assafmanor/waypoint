@@ -42,6 +42,8 @@ import {
   type ZoneContext,
   type ZoneEvidence,
 } from '../lib/places';
+import { useSearchParams } from 'react-router-dom';
+import { EVENT_PARAM, IDEA_PARAM } from '../state/nav-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -175,6 +177,27 @@ export function DayView() {
   // The idea's own surface (ADR-0116's 2026-08-01 amendment): a tap opens this, and
   // `שיבוץ ליום` inside it is what reaches `scheduleItem` above.
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
+
+  // **ARRIVING FROM A NOTE** (ADR-0153 §8's way-in amendment). A note about an event or an
+  // idea sends you to that host's day, and the id says which one to open once the day is on
+  // screen — `?event=<id>` expands the card, `?idea=<id>` opens the idea's sheet. The params
+  // are spent on arrival, so a back or a reload does not re-open what you have since closed,
+  // which is the same discipline `Index.tsx` runs for `?booking=`.
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const eventId = params.get(EVENT_PARAM);
+    const ideaId = params.get(IDEA_PARAM);
+    if (!eventId && !ideaId) return;
+    if (eventId) setOpenId(eventId);
+    if (ideaId) {
+      const idea = maybeItems.find((m) => m.id === ideaId);
+      if (idea) setIdeaSheet(idea);
+    }
+    const next = new URLSearchParams(params);
+    next.delete(EVENT_PARAM);
+    next.delete(IDEA_PARAM);
+    setParams(next, { replace: true });
+  }, [params, setParams, maybeItems]);
 
   // The live "now" sits in the zone of the itinerary segment you're in (ADR-0107
   // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar

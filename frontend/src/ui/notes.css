@@ -273,35 +273,121 @@
   color: var(--faint);
 }
 
-/* ── The preview a row's tap opens (ADR-0153 §4's 2026-08-02 amendment) ────────
-   Almost all of this surface is `BookingDetail`'s shipped CSS (`.bk-detail`, `.bk-head`,
-   `.bk-facts`). What a note adds is the one thing a booking has no equivalent of: the words
-   themselves, which are the whole point of the surface and must not clamp — the ROW is the
-   summary, and if the preview clamped too there would be nowhere to read the note at all. */
-.note-read {
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--ink);
-  margin: 0 0 var(--space-3);
-  white-space: pre-wrap;
+/* ── AN OPEN NOTE (ADR-0153 §4's 2026-08-02 amendment, round two) ─────────────
+   A note opens WHERE IT IS. It used to rise as a sheet, which is `BookingDetail`'s
+   grammar — right for an object with facts and verbs, and wrong for a sentence: a
+   three-word note came out mostly frame, which is what the owner reported. Phase 5d
+   had already settled the same question one surface over, moving an event's notes out
+   of a menu and into the card the row expands.
+
+   TWO SURFACES, ONE GESTURE, and they are missing different things:
+     • the notes SCREEN clamps its rows to two lines, so opening lifts the clamp AND
+       adds the foot;
+     • a host's SECTION never clamped, so the words are already whole and opening adds
+       the foot alone — which is the honest answer, since on that surface the words
+       were never what was missing. */
+
+/* The screen's row: the clamp comes off the line that is already there, rather than the
+   body being printed a second time underneath it (the first draft, and it read as the
+   same sentence twice on every short note). */
+.wp-listrow.is-open .note-body-line {
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
-/* A url-only note: the link IS the content, so it reads at content size rather than as a
-   trailing detail, and stays an LTR island in an RTL sheet. */
-.note-read-url {
+.wp-listrow.is-open .note-url-line {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* The open row and its foot are ONE object, so the hairline between them would cut a
+   sentence from its own byline.
+
+   **AND NO FILL.** A wash on the open row was drawn, rendered, and rejected on sight
+   (owner: _"the color for an expanded note is bad … why is it separated from the three
+   dots"_). Both halves of that are one cause: `.wp-listrow` is a flex CONTAINER whose
+   tappable half is `.wp-listrow-open` and whose `⋯` is that button's SIBLING (buttons do
+   not nest, ADR-0139 §3) — so the row's own fill sits under both, while the button's
+   `:hover` adds 4% to the tappable half ALONE. On a pointer that paints the row in two
+   tones with the seam exactly at the kebab. It cannot happen on a phone, which is why it
+   survived the mockup, and it was a bad idea regardless: the foot and the unclamped words
+   already say the row is open, and a state does not need a colour to be legible. */
+.wp-listrow.is-open {
+  border-bottom: 0;
+}
+
+/* …and the host chip leaves the meta line while the foot carries it, or the host is
+   named twice six pixels apart. The FOOT is the half that can hold a tap target: the
+   meta lives inside the row's own `<button>`, and buttons do not nest — the same reason
+   `.wp-listrow-right` is a sibling of the open button rather than a child (ADR-0139 §3). */
+.wp-listrow.is-open .note-host {
+  display: none;
+}
+
+/* The foot itself, on both surfaces. One line: where the note belongs, and the one verb.
+   The author and the when are on the row above it already. */
+.note-open-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.listcard .note-open-foot {
+  padding: 0 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+/* Inside a host's section the foot hangs under its own note, so it takes the item's own
+   inset rather than the card's. */
+.note-item.is-open .note-open-foot {
+  margin-top: 4px;
+}
+.note-open-sp {
+  margin-inline-start: auto;
+}
+.note-open-host,
+.note-open-act {
   display: inline-flex;
-  /* A long url wraps, and a centred mark then floats between its lines — align it to the
-     FIRST line, where the reader starts. */
-  align-items: flex-start;
-  gap: 5px;
-  unicode-bidi: isolate;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--cta);
-  word-break: break-all;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 11.5px;
+  background: none;
+  border: 0;
+  padding: 6px 2px;
+  cursor: pointer;
+  position: relative;
 }
-.note-read-url .icon {
-  width: 14px;
-  height: 14px;
+.note-open-host {
+  font-weight: 600;
+  color: var(--cta);
+}
+.note-open-act {
+  font-weight: 700;
+  color: var(--cta);
+}
+/* A 44px target under an 11.5px control, without the line taking 44px of the block — the
+   trick `.map-rename` already uses (ADR-0017). */
+.note-open-host::after,
+.note-open-act::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  transform: translateY(-50%);
+  height: 44px;
+}
+/* Nowhere to go: the same words, no caret, no target. "Absent, not broken" — the rule
+   this app runs for every affordance with no destination. */
+.note-open-host.plain {
+  color: var(--muted);
+  font-weight: 400;
+  cursor: default;
+  padding-inline: 0;
+}
+.note-open-host.plain::after {
+  content: none;
+}
+.note-open-host .icon,
+.note-open-act .icon {
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
-  margin-block-start: 3px;
 }
