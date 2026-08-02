@@ -59,6 +59,8 @@ What is deliberately NOT restored: undoing a **create** — a schedule, a booked
 
 The accepted cost of typed FKs is a migration when a sixth entity becomes note-bearing. That is the right trade: the union is small, closed, and changes about once a year, while an untyped `targetType`/`targetId` pair moves orphan cleanup into application logic in five delete paths and lets offline replay resurrect a note whose host is gone.
 
+**Extended (2026-08-02, [ADR-0157](0157-a-place-can-be-removed.md) §3) — this section's rule has a twin, and the twin was found by giving a place a delete.** The reasoning here is about a cascade the database performs with **no `Change` rows**, and notes are not the only thing that describes: a place's four referencing FKs are `onDelete: SetNull`, equally silent. So `clearPlaceRefsForChange` sits beside `dropNotesForHostChange`, registered in the same two appliers, deriving from the same one delete. Both halves of this section's amendment above transfer too: the confirm names the FKs it will null as well as the notes it will destroy, and the undo hands both back. What that makes explicit is the general rule — **when a schema says `SetNull` or `Cascade`, the client owes a local derivation off the parent's change**, and a fifth note host is not the last time this will come up.
+
 ### 3. Two tiers on one surface, and the boundary is who wrote it
 
 - **A kept פתק is a `Note` row.** A member wrote it, or a member **kept** a card. It syncs, it is editable, it is the group's memory, and it is offline-complete.

@@ -220,11 +220,13 @@ export interface MapPaneProps {
    *  the place card's own dismissal (ADR-0122 §7). Nothing registers with the back
    *  stack — the card is not an overlay, for the same reasons the sheet is not. */
   onCanvasTap: () => void;
-  /** A press held still on the canvas background: make a place here (ADR-0147 §1). Absent
-   *  — offline, or on the list-only path — the gesture is never armed at all, which is the
-   *  "absent, not disabled" rule the pane already follows for everything Google-shaped
-   *  (ADR-0121 §11). */
-  onHoldCanvas?: (at: LatLng) => void;
+  /** **A press held still, and what it was held on** — make a place here (ADR-0147 §1), or
+   *  act on the pin under the finger (ADR-0157 §2). One prop for both because it is one
+   *  gesture: which act it is depends only on whether it landed on a place, and the screen
+   *  is where both acts live. Absent — offline, or on the list-only path — the gesture is
+   *  never armed at all, which is the "absent, not disabled" rule the pane already follows
+   *  for everything Google-shaped (ADR-0121 §11). */
+  onHold?: (at: LatLng, placeId?: string) => void;
   /** The spot the open make/rename form is about. Memoized on a content key by the caller,
    *  exactly like `pins` and `results` — same per-second-tick rule. */
   draftMarker?: MapDraftMarker | null;
@@ -315,7 +317,7 @@ function MapPaneInner({
   onLocate,
   arrival,
   cardReserve,
-  onHoldCanvas,
+  onHold,
   draftMarker,
 }: MapPaneProps) {
   const paneRef = useRef<HTMLDivElement>(null);
@@ -323,6 +325,18 @@ function MapPaneInner({
   // `useCanvasGestures` and read below — a ref rather than state, because a re-render here
   // re-diffs every marker on a map that ticks every second (ADR-0121 §4).
   const gestureTapRef = useRef(false);
+  // **Which of the two long presses this was** (ADR-0157 §2). The recogniser reports the
+  // element the finger landed on; a marker is a DOM overlay in this same pane, so resolving
+  // `data-pin` here is what stops a hold over a pin dropping a second place on top of it —
+  // and it keeps the screen's two handlers free of the DOM. `useCanvasGestures` reads this
+  // through a latest-ref, so its identity is free.
+  const handleHold = useCallback(
+    (at: LatLng, target: EventTarget | null) => {
+      const pin = (target as HTMLElement | null)?.closest?.('[data-pin]');
+      onHold?.(at, pin?.getAttribute('data-pin') ?? undefined);
+    },
+    [onHold],
+  );
   return (
     <div className="map-pane" ref={paneRef}>
       <APIProvider apiKey={config.apiKey}>
@@ -413,7 +427,7 @@ function MapPaneInner({
           onLocate={onLocate}
           arrival={arrival}
           cardReserve={cardReserve}
-          onHoldCanvas={onHoldCanvas}
+          onHold={handleHold}
           gestureTapRef={gestureTapRef}
         />
       </APIProvider>
@@ -521,7 +535,10 @@ const PinMarker = memo(function PinMarker({
       title={name}
       onClick={() => onSelect(pin.placeId)}
     >
-      <div className={cls} role="button" aria-label={name}>
+      {/* `data-pin` is how a long press finds out WHICH place it landed on (ADR-0157 §2) —
+          the canvas's one recogniser reports the pressed element and the pane resolves it
+          here, the same way `data-place` lets a ring tap find its row. */}
+      <div className={cls} data-pin={pin.placeId} role="button" aria-label={name}>
         {/* ONE TAG SLOT, one line, and two hues in one geometry (ADR-0141 §3). Amber is
             what a LIVE claim costs and its population is unchanged — the one `nowStop`
             and the one `nextStop`; a planned edge is `plain`, so the tag population can
@@ -675,7 +692,7 @@ function MapCameraControls({
   onLocate,
   arrival,
   cardReserve,
-  onHoldCanvas,
+  onHold,
   gestureTapRef,
 }: {
   paneRef: RefObject<HTMLDivElement | null>;
@@ -692,8 +709,9 @@ function MapCameraControls({
   cardReserve?: number;
   /** The long press lives here rather than beside `PinDensity` for the same reason the
    *  drag zoom does: it must drive THIS camera's pane, and the recogniser that owns it is
-   *  the same one (ADR-0147 §1). */
-  onHoldCanvas?: (at: LatLng) => void;
+   *  the same one (ADR-0147 §1). Element-shaped rather than place-shaped: resolving what
+   *  the press was ON is the PANE's job (see `MapPaneInner`), not the camera's. */
+  onHold?: (at: LatLng, target: EventTarget | null) => void;
   /** Written by the recogniser, read by the canvas's own click handler above: the release of
    *  a completed gesture must not be read as a tap. */
   gestureTapRef: RefObject<boolean>;
@@ -743,7 +761,7 @@ function MapCameraControls({
   // here rather than as a second pipeline (ADR-0147 §1). A fresh callback per render is fine
   // and deliberate for the same reason the object above is: the hook reads it through a
   // latest-ref, because this screen re-renders every second.
-  useCanvasGestures(map, { zoomTo, stepZoomIn }, paneRef, onHoldCanvas, gestureTapRef);
+  useCanvasGestures(map, { zoomTo, stepZoomIn }, paneRef, onHold, gestureTapRef);
 
   // Focus pans AND zooms in when the view is too far out to read the place (ADR-0127
   // §1, reversing §7's "focus never zooms" in the one direction that was protecting

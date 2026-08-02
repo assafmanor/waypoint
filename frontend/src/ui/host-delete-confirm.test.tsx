@@ -7,8 +7,10 @@
 // derivation.
 //
 // The two hosts NOT here are here in spirit: an event's soft delete and an idea's removal
-// have no confirm at all and need none — their undo restores the notes (`verbs.test.ts`) —
-// and a `Place` has no delete path in the app to confirm.
+// have no confirm at all and need none — their undo restores the notes (`verbs.test.ts`).
+// A `Place` HAS a delete now (ADR-0157), and its confirm names the same count in the same
+// words — but from `screens/Map.tsx` rather than from a sheet, so it is asserted where its
+// two entrances are (`Map.test.tsx`, `Map.embedded.test.tsx`) rather than in this file.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import {

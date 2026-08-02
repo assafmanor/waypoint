@@ -4,6 +4,7 @@
 // without rendering a component; `useVerbs()` just wires them to context.
 import { useRef } from 'react';
 import {
+  ENTITY_TYPE,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
@@ -15,6 +16,7 @@ import {
   type NoteHostKey,
   NOTE_HOST_KEYS,
   type MaybeItem,
+  type Place,
   type TripEvent,
   type UpdateEventInput,
 } from '@waypoint/shared';
@@ -52,6 +54,7 @@ import {
 } from '../lib/outbox';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
+import { type PlaceLink } from '../lib/place-refs';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planReorder } from '../lib/reorder';
@@ -92,6 +95,12 @@ type UndoDescriptor =
   | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] }
   | { kind: 'addMaybe'; id: string }
   | { kind: 'removeMaybe'; item: MaybeItem; notes: Note[] }
+  /** **A deleted place, and the two things the database took with it** (ADR-0157 §4).
+   *  `links` are the rows whose FK Postgres nulled and `notes` the ones it cascaded away;
+   *  neither writes a `Change` row, so after the delete this descriptor is the only record
+   *  that either existed. Reversing re-creates the place under its own id, hands the links
+   *  back and writes the notes home — in that order, since both reference it. */
+  | { kind: 'deletePlace'; place: Place; links: PlaceLink[]; notes: Note[] }
   | { kind: 'maybeDay'; item: MaybeItem }
   | { kind: 'park'; event: TripEvent; maybeId: string }
   /** A booked save (ADR-0136), which is ONE action to the user and up to three writes
@@ -124,7 +133,11 @@ export interface VerbDeps {
    *  own state rather than the reducer, so both the write and its compensating delete go
    *  through the verbs that already own them — never a second optimistic path beside them
    *  (root rule 8). Only the booked save and its undo touch this. */
-  bookings: Pick<IndexVerbs, 'createBooking' | 'deleteBooking'>;
+  bookings: Pick<IndexVerbs, 'createBooking' | 'deleteBooking' | 'updateBooking'>;
+  /** The place half of the same arrangement (ADR-0157). Places live in trip-state too, and
+   *  its `deletePlace` owns the local cascade as well as the write — so the verb here adds
+   *  the undo and the words, and never a second optimistic path beside it (root rule 8). */
+  places: Pick<IndexVerbs, 'createPlace' | 'deletePlace'>;
   /** **The notes a conversion has to carry with it** (ADR-0152 §5's 2026-08-01 amendment).
    *  Same shape and same reason as `bookings` above: notes live in trip-state, and moving
    *  one goes through the verb that already owns that write rather than a second optimistic
@@ -714,6 +727,31 @@ export async function applyRemoveMaybe(deps: VerbDeps, item: MaybeItem): Promise
   }
 }
 
+/**
+ * **Delete a place** (ADR-0157). The write, the local cascade and the rollback all live in
+ * `indexVerbs.deletePlace` — what belongs here is the descriptor, because this is the layer
+ * that owns undo and because the links it returns are the only surviving record of what the
+ * database nulled.
+ *
+ * The notes are read BEFORE the call for the same reason a host's delete does
+ * (`restoreNotes`): a moment later they are gone from every list the client holds.
+ *
+ * Resolves `false` when the write failed, so the caller shows no confirmation toast for
+ * something that did not happen — trip-state has already rolled the screen back and said so.
+ */
+export async function applyDeletePlace(deps: VerbDeps, place: Place): Promise<boolean> {
+  const notes = notesHostedBy(deps.notes.list, 'placeId', place.id);
+  try {
+    const links = await deps.places.deletePlace(place.id);
+    deps.lastAction.current = { kind: 'deletePlace', place, links, notes };
+    return true;
+  } catch {
+    // Deliberately no toast and no rollback: `deletePlace` owns both, and a second
+    // `writeFailed` beside its own would be the only double-reported failure in the app.
+    return false;
+  }
+}
+
 // Park an event onto the shelf: turn it into a maybe idea (title/icon/place) and
 // remove it from the day — so any event can become a reschedulable idea, not
 // just ones that started on the shelf. Offline-capable (Tier-3 build action), one undo.
@@ -889,6 +927,52 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       await restoreNotes(deps, desc.notes);
       return;
     }
+    case 'deletePlace': {
+      // ORDER IS THE WHOLE OF THIS CASE (ADR-0157 §4). The place comes back first, under its
+      // own id, because the links and the notes both FK-reference it — offline the outbox is
+      // FIFO, so "first" here means enqueued first, and awaiting in sequence is what
+      // guarantees it. `createPlace` restores the row in memory as well, which the reducer's
+      // snapshot cannot: places are not in it.
+      const { place } = desc;
+      await deps.places.createPlace({
+        id: place.id,
+        name: place.name,
+        googlePlaceId: place.googlePlaceId,
+        address: place.address,
+        lat: place.lat,
+        lng: place.lng,
+        icon: place.icon,
+        // Google's numbers, restorable only because `createPlaceSchema` accepts them —
+        // nothing else could hand them back without paying for a second Details call.
+        rating: place.rating,
+        userRatingsTotal: place.userRatingsTotal,
+      });
+      // The FKs Postgres nulled. Events and ideas are already re-linked ON SCREEN by the
+      // reducer's snapshot, so these are the server's copy only; a booking is not in that
+      // snapshot, so its write goes through the verb that owns its optimistic state too.
+      for (const link of desc.links) {
+        const fields = Object.fromEntries(link.fields.map((field) => [field, place.id]));
+        if (link.owner === ENTITY_TYPE.BOOKING) {
+          await deps.bookings.updateBooking(link.id, fields);
+        } else if (link.owner === ENTITY_TYPE.MAYBE_ITEM) {
+          await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_MAYBE_ITEM, maybeItemId: link.id, input: fields },
+            () => updateMaybeItem(tripId, link.id, fields),
+          );
+        } else {
+          // `confirm: true` for the same reason every other undo passes it: re-attaching a
+          // place to a hard event is reversing our own delete, not a new edit to guard.
+          await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE, eventId: link.id, input: fields, confirm: true },
+            () => updateEvent(tripId, link.id, fields, true),
+          );
+        }
+      }
+      await restoreNotes(deps, desc.notes);
+      return;
+    }
     case 'park': {
       // Un-park: drop the idea and put the event back. ORDER, and it is not the obvious one:
       // the event is re-created FIRST, because the notes parking moved onto the idea have to
@@ -981,6 +1065,7 @@ export function useVerbs() {
     lastAction,
     confirmHardEdit,
     bookings: indexVerbs,
+    places: indexVerbs,
     // A conversion carries the old host's notes to the new one (`carryNotes`). The list is
     // read live rather than captured, so a note written while a sheet is open still moves.
     notes: {
@@ -1169,6 +1254,14 @@ export function useVerbs() {
     remove: (event: TripEvent) => {
       void applyGuardedDelete(deps, event).then((applied) => {
         if (applied) toast(CONTROL_ICON.trash, t.toast.eventDeleted, undo);
+      });
+    },
+    /** Remove a place (ADR-0157). The confirm that names what this costs is the caller's —
+     *  it is the surface that knows how many rows point here — and by the time we are called
+     *  the user has answered it. */
+    removePlace: (place: Place) => {
+      void applyDeletePlace(deps, place).then((applied) => {
+        if (applied) toast(CONTROL_ICON.trash, t.toast.placeDeleted, undo);
       });
     },
     // Plan-mode builder: move soft event `movedId` to occupy `targetId`'s slot

@@ -1,7 +1,16 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Change, DocumentSummary, Note, Trip, TripSnapshot } from '@waypoint/shared';
-import { CHANGE_ACTION, ENTITY_TYPE } from '@waypoint/shared';
+import type {
+  Booking,
+  Change,
+  DocumentSummary,
+  Note,
+  Place,
+  Trip,
+  TripEvent,
+  TripSnapshot,
+} from '@waypoint/shared';
+import { BOOKING_TYPE, CHANGE_ACTION, ENTITY_TYPE } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import {
@@ -576,5 +585,104 @@ describe('notes in the offline cache (ADR-0152)', () => {
 
     const cached = await readCachedSnapshot(TRIP_ID);
     expect(cached?.notes.map((n) => n.id)).toEqual(['n2', 'n3']);
+  });
+});
+
+// ── ADR-0157: THE PLACE CASCADE IN THE CACHE ─────────────────────────────────────────────
+// The same trap as the note cascade above, over four more FKs and three stores: `SetNull`
+// writes no `Change` either, so without this the cache keeps serving an event pinned to a
+// place that no longer exists — and offline there is no echo coming to correct it.
+describe('a deleted place in the offline cache (ADR-0157)', () => {
+  const placeRow = (id: string): Place => ({
+    id,
+    tripId: TRIP_ID,
+    name: id,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt: '2026-07-01T00:00:00.000Z',
+    updatedBy: 'u-assaf',
+  });
+  const eventRow = (id: string, placeId?: string): TripEvent => ({
+    ...EVENTS[0],
+    id,
+    placeId,
+  });
+  const bookingRow = (id: string, over: Partial<Booking>): Booking =>
+    ({
+      id,
+      tripId: TRIP_ID,
+      type: BOOKING_TYPE.TRAIN,
+      title: id,
+      source: 'manual',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: '2026-07-01T00:00:00.000Z',
+      updatedBy: 'u-assaf',
+      ...over,
+    }) as Booking;
+
+  const seedTrip = () =>
+    cacheSnapshot(
+      TRIP_ID,
+      snapshot({
+        places: [placeRow('pl-1'), placeRow('pl-2')],
+        events: [eventRow('e1', 'pl-1'), eventRow('e2', 'pl-2')],
+        bookings: [bookingRow('bk-1', { fromPlaceId: 'pl-1', toPlaceId: 'pl-2' })],
+        maybeItems: [{ ...MAYBE_ITEMS[0], placeId: 'pl-1' }],
+      }),
+    );
+
+  const deletePlace = () =>
+    applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.PLACE,
+      entityId: 'pl-1',
+      action: CHANGE_ACTION.DELETE,
+    });
+
+  it('clears every cached FK that pointed at it, across all three stores', async () => {
+    await seedTrip();
+    await deletePlace();
+
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.places.map((p) => p.id)).toEqual(['pl-2']);
+    expect(cached?.events.find((e) => e.id === 'e1')?.placeId).toBeUndefined();
+    expect(cached?.bookings[0]?.fromPlaceId).toBeUndefined();
+    expect(cached?.maybeItems[0]?.placeId).toBeUndefined();
+    // …and nothing that pointed elsewhere was touched.
+    expect(cached?.events.find((e) => e.id === 'e2')?.placeId).toBe('pl-2');
+    expect(cached?.bookings[0]?.toPlaceId).toBe('pl-2');
+  });
+
+  // The offline half, which is the one that matters most: with no network there is no echo
+  // coming, so the queued op IS the only thing that will ever tell the cache.
+  it('mirrors an offline delete, cascade included', async () => {
+    await seedTrip();
+    await applyOutboxOpToCache(TRIP_ID, { verb: OUTBOX_VERB.DELETE_PLACE, placeId: 'pl-1' });
+
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.places.map((p) => p.id)).toEqual(['pl-2']);
+    expect(cached?.events.find((e) => e.id === 'e1')?.placeId).toBeUndefined();
+  });
+
+  it('takes the place’s own notes with it, on the rule the fifth host shares', async () => {
+    await cacheSnapshot(
+      TRIP_ID,
+      snapshot({
+        places: [placeRow('pl-1')],
+        notes: [
+          {
+            id: 'n1',
+            tripId: TRIP_ID,
+            placeId: 'pl-1',
+            body: 'note',
+            source: 'member',
+            createdBy: 'u-assaf',
+            createdAt: '2026-07-01T00:00:00.000Z',
+            updatedAt: '2026-07-01T00:00:00.000Z',
+            updatedBy: 'u-assaf',
+          } as Note,
+        ],
+      }),
+    );
+    await deletePlace();
+    expect((await readCachedSnapshot(TRIP_ID))?.notes).toEqual([]);
   });
 });

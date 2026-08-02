@@ -610,6 +610,14 @@ export async function updatePlace(
   return placeSchema.parse(await res.json());
 }
 
+/** Remove a place from the trip (ADR-0157). A 404 is success: the row is already gone,
+ *  which is what an offline op replayed twice looks like — the same tolerance every other
+ *  delete here has. */
+export async function deletePlace(tripId: string, placeId: string): Promise<void> {
+  const res = await apiFetch(placeUrl(tripId, placeId), { method: HTTP_METHOD.DELETE });
+  if (!res.ok && res.status !== 404) return throwApiError(res);
+}
+
 /** Debounced Google Places Autocomplete relay through the backend proxy (ADR-0108
  *  §1 / ADR-0110 §1). The `sessionToken` groups these keystrokes with the terminating
  *  {@link resolvePlace} so Google bills the searches at $0; `signal` lets a superseding

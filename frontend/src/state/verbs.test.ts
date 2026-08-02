@@ -5,6 +5,7 @@ import {
   type CreateBookingInput,
   type Note,
   type NoteHostKey,
+  type Place,
 } from '@waypoint/shared';
 import { db } from '../db';
 import { EVENTS, MAYBE_ITEMS } from '../fixtures';
@@ -15,6 +16,7 @@ import {
   applyBookEvent,
   applyConsumeMaybeItem,
   applyCreateEvent,
+  applyDeletePlace,
   applyGuardedDelay,
   applyGuardedDelete,
   applyAddMaybe,
@@ -30,6 +32,7 @@ import {
   type VerbDeps,
 } from './verbs';
 import { TRIP_ACTION, type Action } from './trip-state';
+import type { PlaceLink } from '../lib/place-refs';
 
 function fakeDeps(
   confirmHardEdit?: VerbDeps['confirmHardEdit'],
@@ -38,7 +41,8 @@ function fakeDeps(
   notes: Note[] = [],
 ): VerbDeps & {
   actions: Action[];
-  bookings: { createBooking: Mock; deleteBooking: Mock };
+  bookings: { createBooking: Mock; deleteBooking: Mock; updateBooking: Mock };
+  places: { createPlace: Mock; deletePlace: Mock };
   notes: { list: Note[]; rehost: Mock; recreate: Mock };
 } {
   const actions: Action[] = [];
@@ -56,7 +60,14 @@ function fakeDeps(
         id: input.id ?? 'bk-new',
       })),
       deleteBooking: vi.fn(async () => {}),
-    } as unknown as { createBooking: Mock; deleteBooking: Mock },
+      updateBooking: vi.fn(async () => {}),
+    } as unknown as { createBooking: Mock; deleteBooking: Mock; updateBooking: Mock },
+    // The place half (ADR-0157), same arrangement: `deletePlace` owns the write AND the
+    // local cascade in trip-state, so here it only has to report the links it cleared.
+    places: {
+      createPlace: vi.fn(async () => 'pl-restored'),
+      deletePlace: vi.fn(async () => []),
+    } as unknown as { createPlace: Mock; deletePlace: Mock },
     // The notes half, same shape and same reason as the bookings one above.
     notes: {
       list: notes,
@@ -1266,5 +1277,141 @@ describe('applySetMaybeDay (re-aim an idea at a day)', () => {
 
     expect(deps.actions.some((a) => a.type === TRIP_ACTION.UNDO)).toBe(true);
     expect(deps.toast).toHaveBeenCalled();
+  });
+});
+
+// ── ADR-0157: AN UNDONE PLACE DELETE PUTS BACK EVERYTHING THE DATABASE TOOK ──────────────
+//
+// A place delete is the widest cascade in the app: `SetNull` on four FKs, `Cascade` on the
+// notes, and NEITHER writes a `Change` row. So the descriptor captured at the delete is the
+// only surviving record of both, and these are the four claims that make the undo honest —
+// the place comes back first (everything else FK-references it), the links are handed back
+// through the writer that owns each store, the notes are written home, and a row that never
+// pointed here is not touched on the way.
+describe('undoing a place delete', () => {
+  const place = {
+    id: 'pl-shibuya',
+    tripId: 'trip-japan-26',
+    name: 'שיבויה',
+    lat: 35.6595,
+    lng: 139.7005,
+    icon: '🍜',
+    rating: 4.4,
+    userRatingsTotal: 1820,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u',
+  } as Place;
+
+  const okFetch = () =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(EVENTS[0]), { status: 200 })),
+    );
+
+  const withLinks = (links: PlaceLink[], notes: Note[] = []) => {
+    const deps = fakeDeps(undefined, notes);
+    deps.places.deletePlace.mockResolvedValue(links);
+    return deps;
+  };
+
+  it('re-creates the place under its own id, with the two numbers only it can restore', async () => {
+    okFetch();
+    const deps = withLinks([]);
+
+    await applyDeletePlace(deps, place);
+    await applyUndo(deps);
+
+    expect(deps.places.createPlace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: place.id,
+        name: 'שיבויה',
+        icon: '🍜',
+        rating: 4.4,
+        userRatingsTotal: 1820,
+      }),
+    );
+    // The zone is re-derived from the coordinates server-side, so it is deliberately absent.
+    expect(deps.places.createPlace.mock.calls[0][0]).not.toHaveProperty('timezone');
+  });
+
+  it('hands every FK back, through the writer that owns each store', async () => {
+    const patched: { url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'PATCH')
+          patched.push({ url: String(url), body: JSON.parse(String(init.body ?? '{}')) });
+        return new Response(JSON.stringify(EVENTS[0]), { status: 200 });
+      }),
+    );
+    const deps = withLinks([
+      { owner: 'event', id: 'ev-1', fields: ['placeId'] },
+      { owner: 'booking', id: 'bk-1', fields: ['fromPlaceId', 'toPlaceId'] },
+      { owner: 'maybeItem', id: 'mb-1', fields: ['placeId'] },
+    ]);
+
+    await applyDeletePlace(deps, place);
+    await applyUndo(deps);
+
+    // A booking is not in the reducer's snapshot, so its re-link goes through the verb that
+    // owns its optimistic state — and both of a round trip's ends come back in one patch.
+    expect(deps.bookings.updateBooking).toHaveBeenCalledWith('bk-1', {
+      fromPlaceId: place.id,
+      toPlaceId: place.id,
+    });
+    expect(patched.map((p) => p.body)).toEqual([{ placeId: place.id }, { placeId: place.id }]);
+    expect(patched.some((p) => p.url.includes('/events/ev-1'))).toBe(true);
+    expect(patched.some((p) => p.url.includes('/maybe-items/mb-1'))).toBe(true);
+  });
+
+  it('re-creates the place BEFORE its links and its notes, so every FK resolves', async () => {
+    const order: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === 'PATCH') order.push('link');
+        return new Response(JSON.stringify(EVENTS[0]), { status: 200 });
+      }),
+    );
+    const deps = withLinks(
+      [{ owner: 'event', id: 'ev-1', fields: ['placeId'] }],
+      [noteOn('n1', { placeId: place.id })],
+    );
+    deps.places.createPlace.mockImplementation(async () => {
+      order.push('place');
+      return place.id;
+    });
+    deps.notes.recreate.mockImplementation(async () => void order.push('note'));
+
+    await applyDeletePlace(deps, place);
+    await applyUndo(deps);
+
+    expect(order).toEqual(['place', 'link', 'note']);
+  });
+
+  // Same load-bearing claim as the host-delete suite above: by undo time the notes are gone
+  // from every list the client holds, so they must have been read at the delete.
+  it('restores the place’s own notes, read at the delete and no one else’s', async () => {
+    okFetch();
+    const mine = noteOn('n1', { placeId: place.id });
+    const deps = withLinks([], [mine, noteOn('n2', { placeId: 'pl-other' })]);
+
+    await applyDeletePlace(deps, place);
+    deps.notes.list = []; // what the applier rule has already done by now
+    await applyUndo(deps);
+
+    expect(deps.notes.recreate.mock.calls.map((call) => call[0] as Note)).toEqual([mine]);
+  });
+
+  it('leaves no undo behind when the write failed', async () => {
+    okFetch();
+    const deps = withLinks([]);
+    deps.places.deletePlace.mockRejectedValue(new Error('offline-ish'));
+
+    expect(await applyDeletePlace(deps, place)).toBe(false);
+    expect(deps.lastAction.current).toBeNull();
+    await applyUndo(deps);
+    expect(deps.places.createPlace).not.toHaveBeenCalled();
   });
 });
