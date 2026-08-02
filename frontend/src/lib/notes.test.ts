@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CHANGE_ACTION, ENTITY_TYPE, type Note } from '@waypoint/shared';
-import { dropNotesForHostChange, isHostedBy } from './notes';
+import { dropNotesForHostChange, isHostedBy, noteUrlHref } from './notes';
 
 const note = (id: string, host: Partial<Note> = {}): Note => ({
   id,
@@ -95,5 +95,27 @@ describe('isHostedBy', () => {
 
   it('is false for an entity type that cannot host', () => {
     expect(isHostedBy(note('n', { eventId: 'e1' }), ENTITY_TYPE.TRIP, 'e1')).toBe(false);
+  });
+});
+
+describe('noteUrlHref', () => {
+  it('gives a scheme-less url https, so it is not read as an in-app path', () => {
+    expect(noteUrlHref('instagram.com/p/abc')).toBe('https://instagram.com/p/abc');
+  });
+
+  it('leaves an http(s) url alone, and trims what was typed around it', () => {
+    expect(noteUrlHref('  http://example.com/x  ')).toBe('http://example.com/x');
+    expect(noteUrlHref('https://example.com/x')).toBe('https://example.com/x');
+  });
+
+  // An href built from user text is an injection seat; anything with a scheme must be http(s).
+  it('refuses a non-http scheme rather than rendering it as a link', () => {
+    expect(noteUrlHref('javascript:alert(1)')).toBeNull();
+    expect(noteUrlHref('data:text/html,<script>')).toBeNull();
+  });
+
+  it('is null for nothing at all', () => {
+    expect(noteUrlHref(undefined)).toBeNull();
+    expect(noteUrlHref('   ')).toBeNull();
   });
 });

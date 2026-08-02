@@ -2,10 +2,13 @@
 // in what the fields open with. On the `Modal`-based `Sheet` like every other overlay, so
 // back / Escape / backdrop all resolve through the one stack (ADR-0090/0103).
 //
-// **Its one refusal**: a note with neither body nor url. It is marked on **both** fields
-// that can cure it, in a single `report` call — a refusal that stops at the first problem
-// sends the user round the save loop again to be told the next one (ADR-0150). The primary
-// is never `disabled` as a stand-in for it (§8 of that ADR).
+// **Its one refusal**: a note with neither body nor url — and it is the FORM's
+// (`field: null`), not any field's (ADR-0150, amended by the owner 2026-08-02). Every field
+// here is individually optional: a link on its own is a whole note, so marking the body
+// calls a field mandatory that isn't, and marking the url reddens a box whose own label
+// reads `לא חובה`. Both read as a bug because both state something untrue. What is wrong is
+// the note, so it says so once, in the form's slot above the actions, and no field turns
+// red. The primary is never `disabled` as a stand-in for it (§8 of that ADR).
 //
 // **There is no host picker** (ADR-0153 §5): a note written here is always general, and a
 // note opened from a host states that host as a fact. Attachment is established from the
@@ -32,8 +35,9 @@ export interface NoteDraft {
   category?: EventCategory;
 }
 
-/** The two fields that can cure the one refusal, so `report` can name them both. */
-type NoteField = 'body' | 'url';
+/** No field of this form can be refused on its own, so there is no field name to refuse
+ *  with — the one refusal is the form's (`field: null`). */
+type NoteField = never;
 
 export function NoteSheet({
   note,
@@ -63,10 +67,7 @@ export function NoteSheet({
   const save = () => {
     const trimmed = { body: body.trim(), title: title.trim(), url: url.trim() };
     if (!trimmed.body && !trimmed.url) {
-      errors.report([
-        { field: 'body', message: t.notes.sheet.needsBodyOrUrl },
-        { field: 'url', message: t.notes.sheet.needsBodyOrUrlHere },
-      ]);
+      errors.report([{ field: null, message: t.notes.sheet.needsBodyOrUrl }]);
       return;
     }
     onSave({
@@ -79,7 +80,10 @@ export function NoteSheet({
 
   return (
     <Sheet title={note ? t.notes.sheet.editTitle : t.notes.sheet.createTitle} onClose={onClose}>
-      <div className="note-sheet" {...errors.formProps}>
+      {/* `formProps`' dismissal is per-field, so a refusal with no field would outlive
+          every cure for it. Either box being typed in is the cure, so any keystroke here
+          retires it — the next save re-states it if it still holds. */}
+      <div className="note-sheet" onInputCapture={() => errors.clear()}>
         {host && (
           <p className="note-sheet-host">
             <span className="note-host">
@@ -89,7 +93,7 @@ export function NoteSheet({
           </p>
         )}
 
-        <Field label={t.notes.sheet.bodyLabel} htmlFor={bodyId} {...errors.field('body')}>
+        <Field label={t.notes.sheet.bodyLabel} htmlFor={bodyId}>
           <textarea
             id={bodyId}
             rows={3}
@@ -108,7 +112,7 @@ export function NoteSheet({
           />
         </Field>
 
-        <Field label={t.notes.sheet.urlLabel} htmlFor={urlId} {...errors.field('url')}>
+        <Field label={t.notes.sheet.urlLabel} htmlFor={urlId}>
           {/* `dir="ltr"` is correct on an INPUT and only on an input (ADR-0118): a url is
               typed left-to-right, and the lint rule that blocks it elsewhere allows it
               exactly here. */}
@@ -133,6 +137,15 @@ export function NoteSheet({
               ariaLabel={t.notes.sheet.categoryLabel}
             />
           </Field>
+        )}
+
+        {/* The same slot `EventForm` and `BookingSheet` keep for what has no field to
+            point at. Here it is the only refusal, and it sits against the button that was
+            just pressed — the half ADR-0150's old bottom-of-form caption never had. */}
+        {errors.formError && (
+          <p className="field-error" role="alert">
+            {errors.formError}
+          </p>
         )}
 
         <FormActions

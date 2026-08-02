@@ -324,12 +324,39 @@
 
 /* The foot itself, on both surfaces. One line: where the note belongs, and the one verb.
    The author and the when are on the row above it already. */
+/* The note's url, on its own line above the foot's verbs. A url is as long as it is, so it
+   truncates rather than wrapping the row — the icon anchors the start, the ellipsis eats the
+   query string. `--cta`: opening a link is a generic action, not time, place or plan. */
+.note-open-url {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--cta);
+  text-decoration: none;
+}
+.note-open-url-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+}
+.note-open-url .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
 .note-open-foot {
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 11.5px;
   color: var(--muted);
+}
+.listcard .note-open-url {
+  padding: 0 14px;
 }
 .listcard .note-open-foot {
   padding: 0 14px 10px;
