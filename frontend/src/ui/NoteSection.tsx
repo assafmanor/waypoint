@@ -15,7 +15,7 @@
 // lifts the clamp as well.)
 import { useState } from 'react';
 import type { Note, User } from '@waypoint/shared';
-import { noteWhen } from '../lib/notes';
+import { noteTitleText, noteWhen } from '../lib/notes';
 import { NoteOpenFoot } from './NoteOpenFoot';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
@@ -70,7 +70,7 @@ export function NoteSection({
                 className="note-item-b"
                 onClick={() => setOpenId((current) => (current === note.id ? null : note.id))}
               >
-                {note.title ? note.title : (note.body ?? note.url)}
+                {noteTitleText(note)}
               </button>
               <span className="note-item-m">
                 {[
@@ -80,7 +80,13 @@ export function NoteSection({
                   .filter(Boolean)
                   .join(' · ')}
               </span>
-              {openId === note.id && <NoteOpenFoot url={note.url} onEdit={() => onEdit(note)} />}
+              {openId === note.id && (
+                <NoteOpenFoot
+                  url={note.url}
+                  urlIsTheTitle={!note.title && !note.body}
+                  onEdit={() => onEdit(note)}
+                />
+              )}
             </div>
           ))
         )}

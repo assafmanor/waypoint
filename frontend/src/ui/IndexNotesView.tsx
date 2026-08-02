@@ -34,6 +34,7 @@ import {
   type NoteHostRef,
 } from '../lib/notes';
 import { ltrIsolate } from '../lib/bidi';
+import { prettyUrl } from '../lib/external-url';
 import { todayInTz } from '../lib/time';
 import { useNoteHostWayIn, type NoteHostWayIn } from '../state/note-host-nav';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
@@ -308,8 +309,9 @@ function NoteLi({
     <span className="note-body-line">{note.body}</span>
   ) : (
     // A url-only note's title line IS the url, as an LTR island inside the RTL row —
-    // `ltrIsolate`, never `dir="ltr"` on a non-input (ADR-0118).
-    <span className="note-url-line">{ltrIsolate(note.url ?? '')}</span>
+    // `ltrIsolate`, never `dir="ltr"` on a non-input (ADR-0118). `prettyUrl`, not the raw
+    // string: a share link is mostly a tracking token, and this is the row's whole title.
+    <span className="note-url-line">{ltrIsolate(prettyUrl(note.url))}</span>
   );
 
   const meta = (
@@ -358,6 +360,7 @@ function NoteLi({
         <NoteOpenFoot
           host={host}
           url={note.url}
+          urlIsTheTitle={!note.title && !note.body}
           onGoToHost={reachable ? () => wayIn.goTo(host!) : undefined}
           onEdit={() => onEdit(note)}
         />

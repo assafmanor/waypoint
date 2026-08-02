@@ -294,10 +294,10 @@
   -webkit-line-clamp: unset;
   overflow: visible;
 }
-.wp-listrow.is-open .note-url-line {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
+/* **A url does not unclamp with the body.** Opening a note lifts its two-line clamp because
+   the words are the content and there may be more of them — but a url has no "more of it"
+   worth reading, and letting one wrap printed a share link across three monospace lines
+   (owner, 2026-08-02). It stays one line here; the foot below carries the tappable link. */
 /* The open row and its foot are ONE object, so the hairline between them would cut a
    sentence from its own byline.
 

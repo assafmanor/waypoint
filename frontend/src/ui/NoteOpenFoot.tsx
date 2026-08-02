@@ -23,7 +23,7 @@
 //   • the host has nowhere to go (a general note; a someday idea, which lives in the pool
 //     rather than on a day, so there is a shelf to reach but not a tile).
 import type { NoteHostRef } from '../lib/notes';
-import { externalHref } from '../lib/external-url';
+import { externalHref, prettyUrl } from '../lib/external-url';
 import { ltrIsolate } from '../lib/bidi';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
@@ -32,6 +32,7 @@ import './notes.css';
 export function NoteOpenFoot({
   host,
   url,
+  urlIsTheTitle,
   onGoToHost,
   onEdit,
 }: {
@@ -40,12 +41,17 @@ export function NoteOpenFoot({
   /** The note's url, if it has one. Rendered only when `externalHref` can make an href of
    *  it — a `javascript:` in a group-visible text field is not a link. */
   url?: string;
+  /** Is the row above already showing this url as its title line? A url-only note's row IS
+   *  the url, so repeating it here is the "same sentence twice" failure this feature keeps
+   *  re-learning — the link then reads as the VERB instead, which is the only thing the
+   *  line above is missing. */
+  urlIsTheTitle?: boolean;
   /** Absent when there is nowhere to go, or when this surface is the host itself. */
   onGoToHost?: () => void;
   onEdit: () => void;
 }) {
-  // `externalHref` (ADR-0153 §5b) already owns the scheme-supplying and the allowlist, and
-  // it normalises — so the HREF is its answer and the DISPLAY stays what was typed.
+  // `externalHref` (ADR-0153 §5b) owns the scheme-supplying and the allowlist, `prettyUrl`
+  // owns what a reader should see of it — the href keeps everything, the label does not.
   const href = externalHref(url);
 
   return (
@@ -62,7 +68,9 @@ export function NoteOpenFoot({
           aria-label={t.notes.open.openLink}
         >
           <Icon name="link" />
-          <span className="note-open-url-t">{ltrIsolate(url!.trim())}</span>
+          <span className="note-open-url-t">
+            {urlIsTheTitle ? t.notes.open.openLink : ltrIsolate(prettyUrl(url))}
+          </span>
         </a>
       )}
       <div className="note-open-foot">
