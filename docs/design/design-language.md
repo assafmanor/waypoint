@@ -253,7 +253,7 @@ The three original easings are all monotone, which is why `--ease-arrive` was ad
 The Plan⇄Trip switch is the product's most meaningful moment. Crucially it is **not a light-to-dark flip** — that would conflate **mode** with **theme**, two orthogonal axes:
 
 - **Mode** (Plan/Trip) rides on **durable, theme-independent** channels: the chrome's **temperature** (violet ⇄ indigo+amber), the **drafting grid** (plan only), and the board's **glow + pulse** (trip "live"), plus the mode pill. In the light theme the app **body stays paper in both modes** — only the header hue, the hero, the grid, and the glow move.
-- **Theme** (light/dark) is the separate **luminance** axis (see "Dark mode readiness"): in dark mode _both_ modes go dark (plan = violet-tinted dark, trip = indigo dark + amber glow). A transition built on luminance would break the moment dark mode ships — so the switch must never touch it, and must read identically in either theme.
+- **Theme** (light/dark) is the separate **luminance** axis (see "Dark mode"): in dark mode _both_ modes go dark (plan = violet-tinted dark, trip = indigo dark + amber glow). A transition built on luminance would break the moment dark mode ships — so the switch must never touch it, and must read identically in either theme.
 
 **"Go live / Stand down", direction-aware** (studied in `mockups/mode-switch-transition-v1.html`, implemented in `App.css` `[data-switching]` + `screens.css` `board-power`, driven by the Shell in `App.tsx`):
 
@@ -307,18 +307,70 @@ Scoped to **pathname** changes, so an in-trip tab switch keeps `.body`'s fade an
 - Touch targets ≥ 44×44px. Focus-visible outlines stay teal on light surfaces, amber on dark; keep them.
 - The mockup uses tap-to-expand rather than swipe (swipe breaks in prototypes); revisit real swipe gestures in the build with care.
 
-## Dark mode readiness
+## Dark mode
 
-Dark mode is a **token remap, not a redesign**. Because every component reads `var(--token)`, dark mode ships by re-mapping the same token names under `:root[data-theme='dark']` — the block already exists in `frontend/src/styles/tokens.css` and is **inert** until something sets `data-theme="dark"` on `<html>`.
+Dark mode is a **token remap, not a redesign**: every component reads
+`var(--token)`, so the theme ships by re-mapping the same names under
+`:root[data-theme='dark']`. **Designed to shippable in [ADR-0157](../decisions/0157-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md); the build is phased in that ADR's §10 and has not started.** Until phase 4 lands, the block in
+`tokens.css` is still inert.
 
 **Principles:**
 
-- **The board stays the loudest.** In dark mode everything gets dark, so the board keeps hierarchy differently: it owns the _darkest_ surface (`#0A1120`) plus its amber glow, while cards sit on lighter dark surfaces. Elevation flips to "lighter = closer".
-- **Ink/paper swap.** `--ink` becomes light text, `--screen`/`--card` become deep surfaces. `--paper` keeps its _warmth_ in a dark value so badges stay warm.
-- **Semantic hues survive, brightened.** Amber/teal/violet keep their meanings with higher-luminance dark variants for contrast. Never introduce new meanings in dark mode.
-- **CTA is a pair.** `--cta`/`--cta-text` flip together (dark: light button, dark text).
-- **Pulse and mode rules unchanged.** Night/Day mode identity holds in dark mode via hue temperature + drafting grid + mode pill — plan-mode dark chrome is violet-tinted dark, trip-mode chrome stays indigo.
-- **Trip mode wants dark.** OLED battery savings matter abroad; a sensible default is trip mode following system theme (or defaulting dark at night).
+- **The board stays the loudest — but not by being the darkest.** This is the
+  correction ADR-0157 made by rendering it. Board→screen measures **ΔL\* 2.6** in
+  dark (against 84.8 in light), which is not a visible edge: the board has no
+  boundary against the body at all. What carries it is **amber density** — every
+  amber element on the screen is inside the board. So the hierarchy **inverts**
+  rather than weakening: in light the board is the object and the cards are
+  quiet; in dark the cards are the objects and the board is the field they sit
+  above.
+- **Therefore amber density _is_ the ration in dark mode.** In light, a stray
+  amber accent elsewhere is survivable because the board's darkness still
+  separates it. In dark there is no second channel, so amber spent anywhere else
+  comes straight out of the board's prominence. "Amber = time & commitment" stops
+  being only a semantic rule and becomes a hierarchy one.
+- **Ink/paper swap.** `--ink` becomes light text, `--screen`/`--card` become deep
+  surfaces. `--paper` keeps its _warmth_ in a dark value so badges stay warm.
+- **Semantic hues survive, brightened** — and a brightened fill therefore takes
+  **dark** ink. That is `--on-fill`, below. Never introduce new meanings in dark.
+- **Pulse and mode rules unchanged.** Mode identity holds via hue temperature +
+  drafting grid + mode pill. Note what ADR-0157 found: ADR-0028 never listed
+  luminance as one of the channels, which is what lets mode identity survive a
+  remap — but it is also why the plan hero rendering _brighter_ than the trip
+  board inverted the modes until `--plan-surface` fixed it.
+- **Trip mode wants dark.** OLED battery savings matter abroad; the default is
+  `system`.
+
+### The ink a surface carries is a token
+
+The rule ADR-0157 added, and the one that governs everything below: **when a
+colour is painted _onto_ something, the ink is its own token, named for what it
+sits on.** Three families, all shaped like the `--amber` / `--amber-ink` pair
+that already existed:
+
+| Family                        | Tokens                                                                                                         | For                                                                                                                                                                                                                                       |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **On a semantic fill**        | `--on-fill` (`#FFFFFF` / `#12203A`), `--on-amber` (`#3A2405` both)                                             | Ink on `--cta`/`--plan`/`--ok`/`--miss`/`--teal`/`--muted`. The fill re-maps **across the midpoint**, so the ink flips with it. `--cta-text` is an alias of `--on-fill`.                                                                  |
+| **On an always-dark surface** | `--on-dark-strong` `#FFFFFF` · `--on-dark` `#EAF0FF` · `--on-dark-dim` `#93A2C4` · `--on-dark-faint` `#7688AC` | Ink on the board, the indigo chrome, the day strip, `/login`, `/join`, the ticket, the trip hero, the plan hero. **Theme-fixed in both themes** — these surfaces are dark in light mode too. Folds 18 drifted hex values across 53 sites. |
+| **The chrome's contract**     | `--chrome-bg` · `--chrome-ink` · `--chrome-ink-dim` · `--chrome-wash`/`-2` · `--chrome-ring`                   | Set once per mode. 53 chrome declarations assume a dark chrome; these make that a set value rather than an assumption, and stop a third hand-written copy.                                                                                |
+
+**The distinction that had been written down as one rule and is two:** a
+_re-mapping fill_ flips its ink with it (`--on-fill`); _always-dark chrome_ keeps
+light ink in both themes (`--on-dark-*`). Dark ink on dark `--indigo` measures
+**1.01:1**, which is what conflating them costs.
+
+A `/* fixed: … */` marker now means only what a token cannot say: ink on the
+Google brand mark, and the light/dark swatches in the theme control, which are a
+picture of the option rather than chrome.
+
+### Surface tokens, not accent tokens
+
+A loud surface gets its **own** tokens. The trip hero always had them
+(`--board`/`--board-2`); the plan hero was painting itself out of the _accent_
+tokens, and an accent brightens on dark where a surface must not — so in dark it
+rendered at L\* 68, the brightest surface in the app, in the calm mode.
+`--plan-surface` `#6E59D6` / `#2A2158` and `--plan-surface-2` `#5747B4` /
+`#332866` fix it, light values byte-identical to what they replace.
 
 **Dark remap table** (as wired in `tokens.css`):
 
@@ -340,28 +392,14 @@ Dark mode is a **token remap, not a redesign**. Because every component reads `v
 | `--cta` / `--cta-text`     | `#16233D` / `#FFF`    | `#E7EAF2` / `#12203A`                                                                      |
 | `--ok` / `--miss`          | `#3C9A6B` / `#C2584E` | `#4CBF85` / `#E07A6E`                                                                      |
 
-**Status — shippable behind the `data-theme` toggle** (U-08 / ADR-0082 tail):
+**Status — designed, not built.** ADR-0157 §10 phases it: (1) on-fill ink,
+(2) the `--on-dark-*` ramp, (3) surface + chrome tokens, (4) the theme itself —
+`lib/theme.ts`, the pre-paint script, the three-rung `/settings` control,
+`meta[name=theme-color]`, ADR-0105's dark boot and the night map style,
+(5) the light theme's own four contrast failures, (6) **the device pass**.
+Phases 1–3 change no light-mode pixels by construction.
 
-The hardcoded-hex sweep is **done**. `App.css` and `screens.css` now read tokens for
-every themeable color; the remaining literal hexes are intentionally theme-fixed and
-carry a `/* fixed: … */` (or `/* brand */`) marker — light ink painted on the
-always-dark trip-mode chrome (header, dormant board, join/land boards, ticket,
-trip-hero), ink that rides a semantic fill (dark ink on an amber pill; white on a
-plan / ok / miss / cta / ink fill), light ink on the always-violet plan hero, the
-shared white spinner, ink on colored avatars, and the Google brand mark. Two tokens
-were added to carry drifted values onto the remap: `--faint` (faint hint/placeholder
-text) and `--amber-ink` (dark-amber text on a light amber tint). The dark block in
-`tokens.css` now covers every color token.
-
-**Before flipping it on for users** (what's left is verification, not wiring):
-
-1. **Live contrast pass** in a real dark render. Computed WCAG ratios (light + dark)
-   were checked during the sweep and clear AA for body text (e.g. `--ink` on
-   `--card`, `--muted`/`--faint` on `--card`) and AA-large / UI for the amber-on-board
-   and on-fill pairs; these need one in-browser confirmation (no runtime existed at
-   sweep time). Amber on dark stays reserved for **numbers/short labels ≥12px bold**.
-2. **Component QA on the board:** the glow radials use literal rgba — acceptable (glow
-   is amber-semantic) — but verify against the darker dark board value (`#0A1120`).
-3. **A theme toggle + persistence** (and the trip-mode "follow system / default dark
-   at night" default, above) still need wiring — the remap is inert until something
-   sets `data-theme="dark"`.
+Every number in ADR-0157 is a Chromium render at 411×914.
+[ADR-0125](../decisions/0125-map-canvas-terrain-vocabulary.md) is this repo's
+precedent for a palette that measured fine and read as one hue on real glass,
+which is why phase 6 exists and is not a formality.

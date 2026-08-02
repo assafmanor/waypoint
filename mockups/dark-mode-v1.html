@@ -100,8 +100,9 @@ was hiding the other's bug class.
 <td>Already designed; one rule. Makes boot→login one continuous surface in dark.</td></tr>
 <tr><td>Night map style</td><td><span class="tag rec">ship now</span> import + flip</td>
 <td>Authored, Map ID minted, <code>readMapsConfig(env, theme)</code> already takes a theme and <code>Map.tsx</code> latches it at mount, so ADR-0121 §4's no-re-instantiate rule is safe for free.</td></tr>
-<tr><td><code>/login</code> + <code>/join</code> theme?</td><td><span class="tag rec">no</span> — mark them <code>fixed:</code></td>
+<tr><td><code>/login</code> + <code>/join</code> theme?</td><td><span class="tag rec">no</span> — and §3b tokenises their inks</td>
 <td>They are already at the dark end of the axis; theming means giving them a light state they have never had, and it re-choreographs ADR-0142/0143. Mark the ~21 inks so the next reader can tell deliberate from missed.</td></tr>
+<tr><td>Ink on always-dark surfaces</td><td><span class="tag rec">ship now</span> four <code>--on-dark-*</code></td><td>18 distinct hex values across 53 sites doing three jobs. Retires the narrower "mark them <code>fixed:</code>" plan — a token states what a comment could only assert — and generalises the <code>.wp-tzshift.on-dark</code> one-off.</td></tr>
 <tr><td>Chrome dependency</td><td><span class="tag rec">ship now</span> tokenise the contract</td>
 <td>53 colour declarations assume the chrome is dark and only 4 are marked. Plan mode already hand-wrote a second copy; tokens stop a third.</td></tr>
 <tr><td><b>Light trip chrome</b></td><td><span class="tag now">own session</span> — indigo 12% is the answer</td>
@@ -182,6 +183,38 @@ dark in both.</div>
 <div class="note warn"><b>The fill that must NOT join the family:</b> <code>--indigo</code>. It is always-dark
 chrome, so it keeps light ink in both themes — dark ink on it measures <b>1.01:1</b>. Two different rules were
 written down as one, which is exactly how this shipped.</div>
+</section>
+
+<section>
+<h2><span class="n">§3b</span> The bigger half of the same fold: ink on an always-dark surface</h2>
+<p class="s">Following the chrome sweep out to every always-dark surface — the board, the indigo chrome, the day
+strip, <code>/login</code>, <code>/join</code>, the ticket, the trip hero, the plan hero, the zero-state head —
+there are <b>53 light-ink declarations carrying 18 distinct hex values, doing three jobs</b>. This is ADR-0082's
+argument in a different channel: the type ramp drifted to 11.5/12.5/13.5/15/16/19px because it lived only in
+prose, and the fix was to put the ramp in the CSS.</p>
+<table>
+<tr><th>Token</th><th>Value</th><th>Job</th><th>Folds these</th><th>Sites</th></tr>
+<tr><td class="v">--on-dark-strong</td><td class="v">#FFFFFF</td><td>titles, the loud numeral</td><td class="v">#fff</td><td>15</td></tr>
+<tr><td class="v">--on-dark</td><td class="v">#EAF0FF</td><td>body ink on a dark surface</td><td class="v">#eef2fb #eaf0ff #e4ebf8 #dfe6f5 #dce3f2 #cdd8ef</td><td>12</td></tr>
+<tr><td class="v">--on-dark-dim</td><td class="v">#93A2C4</td><td>secondary / labels</td><td class="v">#c3cee8 #b9c4de #aeb9d4 #9fb0d2 #9daac8 #93a2c4 #8ea1c6 #8fa0c4 #8494b5</td><td>22</td></tr>
+<tr><td class="v">--on-dark-faint</td><td class="v">#7688AC</td><td>tertiary</td><td class="v">#7e8fb4 #7688ac</td><td>3</td></tr>
+</table>
+<div class="note good"><b>This retires §7's "mark the ~21 literals" plan, and it is a better answer.</b> A
+<code>fixed:</code> marker is a comment <i>asserting</i> intent; a token named <code>--on-dark-dim</code>
+<i>states</i> it, cannot drift, and needs no comment. It also scales past the two screens that prompted the
+question — the same 18 values are in the board, the chrome, the ticket and the day strip.</div>
+<div class="note"><b>The one-off to generalise is already in the tree.</b>
+<code>ui/zone-shift-pill.css</code> carries <code>.wp-tzshift.on-dark</code> — one component that invented this
+exact concept for itself. Rule 8 says generalise <i>that</i> rather than write a second beside it.
+<br><br><b>And the modal value is also the correct one:</b> <code>#93A2C4</code> is the most-used of the nine dim
+values (11 sites), and the runtime sweep caught <code>.wp-daypill .l</code> at <b>4.02:1</b> in light —
+because the pill's 5% white wash lightens the ground under <code>#8494b5</code>. Folding to
+<code>#93A2C4</code> clears it, so the ramp fixes a live failure rather than only tidying.</div>
+<div class="note warn"><b>Not folded, deliberately:</b> five amber-ish and two teal-ish inks on the board
+(<code>#f0c785</code>, <code>#c9b78a</code>, <code>#b9985c</code>, <code>#7fd8cc</code>, <code>#5ec5b6</code>).
+Those are <i>hue-bearing</i> — they are the semantic accents at small sizes on dark, not neutral ink — and folding
+them into a blue-grey would spend the budget the wrong way. A luminance-only tiering wanted to; that is the
+tiering being wrong, not the values.</div>
 </section>
 
 <section>
