@@ -56,6 +56,15 @@ Three rules the mockup's nine states forced, each of which would otherwise have 
 
 Pending writes dim the row; **failed writes deliberately do not** (ADR-0092) — a refusal must stay prominent.
 
+**Amended (2026-08-02, session 206, owner's report) — a row's tap opens a READ surface, and the editor is one press inside it.** The tap opened the editor, which is the wrong answer to _"what does this say"_ twice over: the row's title line clamps to two lines, so a long note could not be read **at all** without entering a form; and entering a form to read is both a risk (an accidental edit on a surface whose primary is `שמירה`) and the wrong posture. The owner reported it plainly: _"on the note view, there's no preview for note, clicking on a note row leads to the note editing form. We should probably use something similar (but fitted for notes) to the booking preview."_
+
+- **It is `BookingDetail`'s grammar rather than a new shape** (`NoteDetail`): a read-only sheet, `עריכה` as its one visible action, and the head/body/facts blocks that surface already ships. The badge is the resolved category glyph, so the preview is visibly the row you tapped.
+- **The head is a rule, not a layout.** A titled note heads with its title; an **untitled** one heads with the noun `פתק` and its words read below it, unclamped — the words are the CONTENT, and printing them as heading _and_ body is this section's own "same sentence twice" failure. The host is named **once**, under the head (`פתק כללי` when there is none); a first draft also put it in a fact below and it stuttered on every untitled hosted note.
+- **Delete stays on the `⋯`.** A destructive verb does not belong on a surface an ordinary tap opens — which is also §8's division: the menu holds verbs, this holds content.
+- **The rule is the note's, not this screen's.** A host's own note section (`HostNotes`, §8) clamps its lines exactly as these rows do, so its tap opens the same preview. Sending one tap to a reader and the other to an author would have left the four host surfaces with no way to read a long note either.
+
+Same-shaped mistake as the one ADR-0152 §6's amendment fixes on the same day, one surface over: **a reader was being sent into an author's surface.** Worth naming as a pair, because neither was a layout bug and no test could have failed.
+
 ### 5. The editor has one refusal, and v1 has no host picker
 
 Body is the primary field; title and url optional. The single refusal — neither body nor url — is marked **on both fields that can cure it, in one call** (ADR-0150; a refusal that stops at the first problem sends the user round the loop again). The primary is never `disabled` as a stand-in for it.

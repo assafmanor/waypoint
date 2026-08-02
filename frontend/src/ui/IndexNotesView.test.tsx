@@ -308,6 +308,52 @@ describe('IndexNotesView (ADR-0153)', () => {
     });
   });
 
+  // ADR-0153 §4's 2026-08-02 amendment. The row clamps to two lines, so before this a long
+  // note could not be read at all without entering a form — a reader sent into an author's
+  // surface, and one accidental keystroke from changing what it says.
+  describe('the preview a row’s tap opens', () => {
+    const tap = (note: Note) =>
+      fireEvent.click(screen.getByRole('button', { name: note.title ?? note.body ?? '' }));
+
+    it('reads the note in full, and is not the editor', () => {
+      show();
+      tap(bodyOnly);
+      expect(document.querySelector('.note-read')?.textContent).toBe(bodyOnly.body);
+      expect(screen.queryByLabelText(t.notes.sheet.bodyLabel)).toBeNull();
+    });
+
+    it('names the host once — in the head, never also as a fact', () => {
+      show();
+      tap(titleAndBody);
+      expect(document.querySelector('.bk-type')?.textContent).toBe(hotel.title);
+      expect(document.querySelectorAll('.bk-fact')).toHaveLength(1);
+    });
+
+    it('says a general note is general rather than leaving the line blank', () => {
+      show();
+      tap(bodyOnly);
+      expect(document.querySelector('.bk-type')?.textContent).toBe(t.notes.preview.general);
+    });
+
+    // The note's words are the CONTENT, so an untitled note's head is the noun — printing
+    // them as both heading and body is the same sentence twice.
+    it('heads an untitled note with the noun, not with its own words', () => {
+      show();
+      tap(bodyOnly);
+      expect(document.querySelector('.bk-title')?.textContent).toBe(t.notes.one);
+    });
+
+    it('offers edit, and leaves delete on the ⋯ where a destructive verb belongs', () => {
+      show();
+      tap(titleAndBody);
+      expect(screen.queryByText(t.notes.manage.delete)).toBeNull();
+
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.preview.edit) }));
+      const body = screen.getByLabelText(t.notes.sheet.bodyLabel) as HTMLTextAreaElement;
+      expect(body.value).toBe(titleAndBody.body);
+    });
+  });
+
   describe('the editor', () => {
     const openCreate = () => fireEvent.click(screen.getByText(t.notes.add));
 

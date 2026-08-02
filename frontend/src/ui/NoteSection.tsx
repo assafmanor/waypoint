@@ -23,8 +23,11 @@ export function NoteSection({
   notes: Note[];
   users: User[];
   now: Date;
-  onAdd: () => void;
-  /** Tapping a note opens it — the same editor every other entrance reaches. */
+  /** Absent when the surface has its own way in — the host FORM carries a composer that
+   *  rides its save (ADR-0152 §6b), and two add paths on one screen is one too many. */
+  onAdd?: () => void;
+  /** Tapping a note opens it to READ — the line here clamps, so this is the way to the
+   *  whole thing; the editor is a press inside that (ADR-0153 §4's amendment). */
   onOpen: (note: Note) => void;
 }) {
   return (
@@ -33,9 +36,11 @@ export function NoteSection({
         <span className="t">
           <Icon name="clipboard" /> {t.notes.section.title}
         </span>
-        <button type="button" className="add" onClick={onAdd}>
-          <Icon name="plus" /> {t.notes.section.add}
-        </button>
+        {onAdd && (
+          <button type="button" className="add" onClick={onAdd}>
+            <Icon name="plus" /> {t.notes.section.add}
+          </button>
+        )}
       </div>
       {notes.length === 0 ? (
         <p className="note-item-m">{t.notes.section.empty}</p>

@@ -133,7 +133,14 @@ export function noteCategory(
 /** The badge glyph: the resolved category's, else the no-category fallback. `📌`
  *  (`DEFAULT_EVENT_ICON`) rather than a glyph invented for this surface. */
 export function noteGlyph(note: Note, hosts: Map<string, NoteHostRef>): string {
-  const category = noteCategory(note, hosts);
+  return noteGlyphFor(note, noteHost(note, hosts));
+}
+
+/** The same glyph, for a surface that already HOLDS the host rather than a lookup — a host's
+ *  own note section knows its host as a fact (ADR-0153 §5). Same precedence, one implementation:
+ *  resolving it a second way is how two surfaces end up disagreeing about one note. */
+export function noteGlyphFor(note: Note, host?: NoteHostRef): string {
+  const category = note.category ?? host?.category;
   return category ? iconForCategory(category) : DEFAULT_EVENT_ICON;
 }
 

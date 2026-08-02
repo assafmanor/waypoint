@@ -618,6 +618,9 @@ export const t = {
     // save — one box, and a blank one writes nothing.
     composer: {
       label: 'פתקים · לא חובה',
+      // On a form that ALSO lists the host's existing notes (editing an event), two headings
+      // reading `פתקים` one under the other is one heading twice — this box is the new one.
+      labelMore: 'פתק חדש · לא חובה',
       placeholder: 'משהו שכדאי לזכור על זה',
       another: 'פתק נוסף',
       add: 'פתק נוסף',
@@ -626,6 +629,15 @@ export const t = {
       // A host with no category of its own (a document, a place) has nothing to inherit, so
       // the hint does not promise it.
       hintPlain: '＋ רק אם רוצים עוד אחד',
+    },
+    // The preview a row's tap opens (ADR-0153 §4's 2026-08-02 amendment): a READ surface,
+    // in `BookingDetail`'s grammar. Editing is one deliberate press inside it.
+    preview: {
+      general: 'פתק כללי',
+      written: 'נכתב',
+      by: (author: string, when: string) => `${author} · ${when}`,
+      edit: 'עריכה',
+      openLink: 'פתיחת הקישור',
     },
     // The note section on a detail surface, where the body lives.
     section: {

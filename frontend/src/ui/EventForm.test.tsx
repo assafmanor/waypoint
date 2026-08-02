@@ -36,6 +36,10 @@ const tripState = {
   indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
   // Notes written on the way (ADR-0152 §6b): the form queues them BEHIND their host.
   noteVerbs: { createNote: vi.fn(() => Promise.resolve(undefined)) },
+  // …and read on the way back: editing an existing event renders `HostNotes`, which reads
+  // the trip's notes and members straight from here.
+  notes: [] as unknown[],
+  users: [] as unknown[],
 };
 vi.mock('../state/trip-state', () => ({ useTrip: () => tripState }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
@@ -78,6 +82,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
     // `tripState`, so without a reset a later test reads the previous one's calls.
     tripState.noteVerbs.createNote.mockReset();
     tripState.noteVerbs.createNote.mockResolvedValue(undefined);
+    tripState.notes = [];
     startErrand.mockClear();
   });
   afterEach(() => {
@@ -663,24 +668,59 @@ describe('EventForm (folded into Modal, U-01)', () => {
       });
     });
 
-    // An existing event's notes are read and written where its body lives (its `⋯` sheet),
-    // so a second way to write the same thing is deliberately absent here.
-    it('is absent when editing an existing event', () => {
-      const existing = {
-        id: 'ev-1',
-        tripId: 't1',
-        date: '2026-07-20',
-        title: 'ארוחת ערב',
-        kind: 'soft',
-        status: 'planned',
-        sortOrder: 0,
-        source: 'manual',
-        createdAt: '2026-07-19T00:00:00.000Z',
-        updatedAt: '2026-07-19T00:00:00.000Z',
-        updatedBy: 'u1',
-      } as unknown as Parameters<typeof EventForm>[0]['event'];
+    // ADR-0152 §6b's last paragraph, missed when this form was first wired: on edit the
+    // existing notes read ABOVE the same one box. It matters most in **Plan mode**, where
+    // this form is the only way into an event at all — until now a whole mode could neither
+    // read an event's notes nor write one, which is how the owner found it.
+    const existing = {
+      id: 'ev-1',
+      tripId: 't1',
+      date: '2026-07-20',
+      title: 'ארוחת ערב',
+      kind: 'soft',
+      status: 'planned',
+      sortOrder: 0,
+      source: 'manual',
+      createdAt: '2026-07-19T00:00:00.000Z',
+      updatedAt: '2026-07-19T00:00:00.000Z',
+      updatedBy: 'u1',
+    } as unknown as Parameters<typeof EventForm>[0]['event'];
+
+    it('lists the existing notes above the box when editing, with one way to add', () => {
+      tripState.notes = [
+        {
+          id: 'n1',
+          tripId: 't1',
+          eventId: 'ev-1',
+          body: 'הכניסה מאחור',
+          source: 'member',
+          createdBy: 'u1',
+          createdAt: '2026-07-19T00:00:00.000Z',
+          updatedAt: '2026-07-19T00:00:00.000Z',
+          updatedBy: 'u1',
+        },
+      ];
       render(wrapNav(<EventForm event={existing} onClose={() => {}} />));
-      expect(document.querySelector('.note-compose-in')).toBeNull();
+
+      const section = document.querySelector('.note-sec') as HTMLElement;
+      expect(section.textContent).toContain('הכניסה מאחור');
+      // ONE way to add, and it is the box — the section's `＋ פתק` would open a second
+      // sheet over a form that is already asking for a save.
+      expect(section.querySelector('.add')).toBeNull();
+      const box = document.querySelector('.note-compose-in') as HTMLElement;
+      expect(section.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('writes a note typed while editing onto the event being edited', async () => {
+      render(wrapNav(<EventForm event={existing} onClose={() => {}} />));
+      fireEvent.change(composer(), { target: { value: 'לבקש את שולחן הגג' } });
+      fireEvent.click(screen.getByText(t.common.save));
+
+      await waitFor(() => expect(tripState.noteVerbs.createNote).toHaveBeenCalledTimes(1));
+      expect(tripState.noteVerbs.createNote).toHaveBeenCalledWith({
+        body: 'לבקש את שולחן הגג',
+        eventId: 'ev-1',
+      });
     });
   });
 });
