@@ -135,6 +135,7 @@ describe('MapPlaceForm — a derived glyph is not a choice', () => {
       icon: iconForCategory(EVENT_CATEGORY.NATURE),
       iconTouched: false,
       category: EVENT_CATEGORY.NATURE,
+      notes: [],
     });
   });
 

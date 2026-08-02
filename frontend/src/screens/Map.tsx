@@ -20,7 +20,15 @@
 //     `comparePlacesBySchedule`'s day sequence (`buildPinOrderIndex`), computed over
 //     the whole scoped set before any chip applies — so gaps like `1, 3, 4` are
 //     correct and say something is filtered out.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   EVENT_STATUS,
   matchesAnyTerm,
@@ -33,7 +41,7 @@ import {
 import { useTrip } from '../state/trip-state';
 import { useMode } from '../state/mode-state';
 import { useMapScope, usePlaceErrandReturn, type PlaceErrand } from '../state/map-scope-state';
-import { useIsOffline } from '../lib/outbox';
+import { useIsOffline, withChangeGroup } from '../lib/outbox';
 import {
   buildPlaceUsageIndex,
   comparePlacesBySchedule,
@@ -62,6 +70,7 @@ import {
   nextDestination,
 } from '../lib/places';
 import { PLACE_REF_KIND, placeRefs, soleIdeaFor } from '../lib/place-refs';
+import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import {
   buildPinOrderIndex,
   isAsidePin,
@@ -132,6 +141,8 @@ import { PlaceResearch, ResultRow } from './PlaceResearch';
 import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
+import { HostNotes } from '../ui/HostNotes';
+import { NoteMark } from '../ui/domain/NoteMark';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { SettleControl } from '../ui/domain/SettleControl';
 import { EmptyState, StatusBanner } from '../ui/feedback';
@@ -171,6 +182,15 @@ interface RefEntry {
   };
 }
 
+/** **Did this event come out of the row's note section?** The section is CONTENT inside a row
+ *  that is itself a `role="button"` running `select` — so without this, tapping a note or
+ *  `＋ פתק` also re-selects the place, which re-frames the camera and scrolls the list under
+ *  you. Every other control in that row calls `stopPropagation` for the same reason; this is
+ *  the one case where the controls belong to a shared component (`NoteSection`, five hosts),
+ *  so the row declines the event instead of the section swallowing it. */
+const fromNotes = (target: EventTarget | null): boolean =>
+  target instanceof Element && !!target.closest('.note-sec');
+
 /** The glyph to carry onto the created idea — a human's PICK only, so an untouched derivation
  *  leaves `verbs.addMaybe` to supply the shelf's own default. Same rule as `Place.icon`'s write
  *  below, stated once: a derived glyph is not a choice, and storing one stops the thing
@@ -192,6 +212,8 @@ export function MapView() {
     // `updatePlace`. Neither is a search, so neither goes through `usePlaceSearch` — its
     // session, its debounce and its dedup are all about a query, and a canvas gesture has none.
     indexVerbs,
+    notes,
+    noteVerbs,
   } = useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
@@ -1423,8 +1445,10 @@ export function MapView() {
 
   const [addingResultId, setAddingResultId] = useState<string | null>(null);
   const [addResultFailed, setAddResultFailed] = useState(false);
+  /** Returns the place it added, so the caller can hang what the human authored on it — the
+   *  notes need an id, and this is the one path where the place is obtained rather than made. */
   const addResult = useCallback(
-    async (result: PlaceResult, authored?: MapPlaceFormValue): Promise<boolean> => {
+    async (result: PlaceResult, authored?: MapPlaceFormValue): Promise<Place | null> => {
       setAddingResultId(result.googlePlaceId);
       setAddResultFailed(false);
       try {
@@ -1437,10 +1461,10 @@ export function MapView() {
           icon: authoredIcon(authored),
           category: authored?.category,
         });
-        return true;
+        return named;
       } catch {
         setAddResultFailed(true);
-        return false;
+        return null;
       } finally {
         setAddingResultId(null);
       }
@@ -1681,18 +1705,33 @@ export function MapView() {
     if (!draft || savingDraft) return;
     setSavingDraft(true);
     setDraftFailed(false);
+    // **The notes, after their host and inside the same change group** (ADR-0152 §6b). Ordering
+    // is the whole reason this is a step of its own: offline the outbox is FIFO, so a note
+    // queued after its place still finds its host on the server, and a note queued before it
+    // would be refused. Nothing waits on a network round trip — a place's id is
+    // client-generated on the drop path and already in hand on the other two.
+    const writeNotes = (placeId: string) =>
+      value.notes.length === 0
+        ? undefined
+        : withChangeGroup(async () => {
+            for (const body of value.notes) await noteVerbs.createNote({ body, placeId });
+          });
     try {
       if (draft.kind === 'result') {
         // Its own path because the resolve is the research hook's (free, and it owns the
         // row's busy/failed state), but it lands through the same branch as everything else.
-        if (await addResult(draft.result, value)) cancelDraft();
-        else setDraftFailed(true);
+        const added = await addResult(draft.result, value);
+        if (added) {
+          await writeNotes(added.id);
+          cancelDraft();
+        } else setDraftFailed(true);
         return;
       }
       if (draft.kind === 'rename') {
         // No landing: the place is already in the trip, so there is nothing to reference and
         // nowhere to return. Renaming is `applyAuthored` and nothing else.
         await applyAuthored.current(draft.place, value);
+        await writeNotes(draft.place.id);
         cancelDraft();
         return;
       }
@@ -1705,6 +1744,7 @@ export function MapView() {
         lng: draft.at.lng,
         icon: value.iconTouched ? value.icon : undefined,
       });
+      await writeNotes(placeId);
       cancelDraft();
       landPlace.current(placeId, {
         title: value.name,
@@ -1965,6 +2005,10 @@ export function MapView() {
       return entries;
     });
 
+  // Built once per note-list change rather than filtered per row: this list can be the whole
+  // trip's places, and the mark is on every row that has one (ADR-0152 §6c).
+  const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+
   const renderRow =
     (opts: {
       onSelect?: (placeId: string) => void;
@@ -2003,6 +2047,15 @@ export function MapView() {
           distance={distanceLabel(usage)}
           distanceStale={staleDistances}
           selected={selected}
+          notes={noteCountFor(noteCounts, 'place', usage.placeId)}
+          // Connected here rather than inside the row, which stays presentational — and gated
+          // on `selected` for the same reason the refs are: the list can hold dozens of rows,
+          // and a note section per unselected row is a section nobody is looking at.
+          notesSlot={
+            selected ? (
+              <HostNotes host={{ kind: 'place', id: place.id, name: place.name }} />
+            ) : undefined
+          }
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           refs={selected ? refEntriesFor(usage, opts) : undefined}
           onSchedule={
@@ -2854,6 +2907,8 @@ function PlaceRow({
   distance,
   distanceStale,
   selected,
+  notes,
+  notesSlot,
   refs,
   onSchedule,
   onSelect,
@@ -2900,6 +2955,19 @@ function PlaceRow({
   distanceStale?: boolean;
   /** This row is the one selection — its pin carries the same ring (ADR-0121 §8). */
   selected?: boolean;
+  /** How many notes this place carries (ADR-0152 §6c on a third meta grammar). **The mark is
+   *  the LAST item in the meta line**, after the rating, which is the whole of its layout
+   *  rule: `.map-m` has wrapped since it shipped and every fact in it is already its own
+   *  element, so the mark is one more item in a line built to take them — and rendering it
+   *  last means the thing that wraps first is the mark, never a semantic tag. That is why
+   *  this row needed none of `EventCard`'s three changes (§6c): there the meta is a joined
+   *  string on a line that must not grow. */
+  notes?: number;
+  /** **Where a place's notes are read and written** — the connected `<HostNotes>`, present
+   *  only while selected, which is what gives a place a body at all: it has no row menu and
+   *  no detail surface of its own, and this same row IS its card at the `map` stop
+   *  (ADR-0153 §8's amendment). One node, two surfaces, because `renderRow` is shared. */
+  notesSlot?: ReactNode;
   /** The way in to each reference, present only while selected. */
   refs?: RefEntry[];
   /** **Put this place on a day** (ADR-0135 §1) — the block's one primary action, in its own
@@ -2972,12 +3040,14 @@ function PlaceRow({
             role: 'button',
             tabIndex: 0,
             'aria-pressed': selected,
-            onClick: onSelect,
+            onClick: (e: React.MouseEvent) => {
+              if (!fromNotes(e.target)) onSelect();
+            },
             onKeyDown: (e: React.KeyboardEvent) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                onSelect();
-              }
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              if (fromNotes(e.target)) return;
+              e.preventDefault();
+              onSelect();
             },
           }
         : null)}
@@ -3058,6 +3128,10 @@ function PlaceRow({
               <Icon name="star" /> {place.rating.toFixed(1)}
             </span>
           )}
+          {/* LAST, deliberately: it is the item this line drops to the next row first, so a
+              crowded row can never lose a semantic tag to it. Not a `.map-tag` — a note is
+              context, not one of this row's claims (ADR-0028 has no colour to lend it). */}
+          <NoteMark count={notes} />
         </span>
       </span>
       <span className="map-right">
@@ -3106,6 +3180,12 @@ function PlaceRow({
           />
         )}
       </span>
+      {/* **WHAT WE KNOW ABOUT THIS PLACE, between the facts and the verbs.** The order is
+          `BookingDetail`'s (facts → notes) and the idea sheet's (notes → verbs); notes last,
+          under the schedule footer, would put content below a primary action, which is the
+          one arrangement no surface here uses. A full-width line in a row that has wrapped
+          one of those since it shipped (`.map-refs`), so it needs one declaration. */}
+      {notesSlot}
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is
           also why the meta line's own 11.5px tags are not the link. */}
       {refs && refs.length > 0 && (
@@ -3142,21 +3222,26 @@ function PlaceRow({
               )}
             </span>
           ))}
-          {/* The block's own footer, so the create is visibly not a fourth reference. */}
-          {onSchedule && (
-            <span className="map-refs-foot">
-              <button
-                type="button"
-                className="map-addmaybe"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSchedule();
-                }}
-              >
-                <Icon name="plus" /> {t.map.scheduleToDay}
-              </button>
-            </span>
-          )}
+        </span>
+      )}
+      {/* **The ROW's footer, not the reference block's** — moved out of `.map-refs` when the
+          note section arrived, and it corrects two things at once. It is the row's one primary
+          action rather than a fourth reference, so a selected place with NO references now
+          offers it too (it used to render only inside a non-empty `.map-refs`, which is
+          precisely the place most likely to want scheduling). And in the bounded card it is
+          what the grid can PIN: a foot inside a scrolling block cannot stay in view. */}
+      {onSchedule && (
+        <span className="map-refs-foot">
+          <button
+            type="button"
+            className="map-addmaybe"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSchedule();
+            }}
+          >
+            <Icon name="plus" /> {t.map.scheduleToDay}
+          </button>
         </span>
       )}
     </div>

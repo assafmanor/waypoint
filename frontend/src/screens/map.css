@@ -512,7 +512,13 @@
    nothing to measure and nothing to keep in step: 100% of `.map-split`, minus the controls row
    it must clear, minus the sheet, minus Google's attribution and its gap. Scoped with `:has`
    to the card that holds a FORM — the selection card is a 73px row and wants none of this. */
-.map-placecard:has(> .map-draft) {
+/* AMENDED 2026-08-02: the selection card is bounded too, once it can hold a note section.
+   "The selection card is a 73px row and wants none of this" was true of a row that could only
+   show facts; a place's notes grow without bound (ADR-0153 §8's amendment), so the same
+   arithmetic — already written, already reasoned about — extends to it. A SELECTOR change and
+   not new maths, which is the whole reason this bound was written as arithmetic. */
+.map-placecard:has(> .map-draft),
+.map-placecard:has(.note-sec) {
   display: flex;
   max-height: calc(
     100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) - 8px
@@ -521,9 +527,85 @@
 /* A flex item in a container with a max-height: the container settles at
    `min(content, cap)` and stretch sizes the card to it, which is what makes the cap apply to
    the CARD rather than merely clipping it. `min-height: 0` is what lets it shrink at all. */
-.map-placecard:has(> .map-draft) > .map-draft {
+.map-placecard:has(> .map-draft) > .map-draft,
+.map-placecard:has(.note-sec) > .place {
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* **ONLY THE NOTES SCROLL; EVERYTHING ELSE IS PINNED** (owner, on `notes-on-a-place-v1.html`:
+   _"only the notes themselves should be scrollable, everything else is locked"_, and earlier
+   _"the שבץ ליום button should be sticky and always be visible"_). The card takes `.map-draft`'s
+   own grammar rather than a near-miss of it: the identity row, the section's header with its
+   `＋ פתק`, the way-in block and the primary action are all things you must be able to reach at
+   any scroll position, and the note list is the only part that can grow without bound.
+
+   `.place` becomes a GRID in this one variant, and it has to: as a wrapping flex row it can
+   only distribute space between LINES, so no single wrapped line can be made the flexible one.
+   The grid puts the row's three existing children on line 1 and gives each block below its own
+   row, with the list as the single `minmax(0, 1fr)` — the same shape and the same reason as
+   `grid-template-rows: auto minmax(0, 1fr) auto` on the form card (ADR-0148 §1).
+
+   Scoped by `:has(.note-sec)` to the CARD, so a row in the LIST — which has no bound to be
+   flexible inside — keeps the plain wrapping-line version above. */
+.map-placecard:has(.note-sec) > .place {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0 11px;
+  overflow: hidden;
+}
+.map-placecard:has(.note-sec) > .place > .map-badge {
+  grid-row: 1;
+  grid-column: 1;
+}
+.map-placecard:has(.note-sec) > .place > .map-main {
+  grid-row: 1;
+  grid-column: 2;
+  min-width: 0;
+}
+.map-placecard:has(.note-sec) > .place > .map-right {
+  grid-row: 1;
+  grid-column: 3;
+}
+/* `contents` so the section's header can pin while its list scrolls — they have to be siblings
+   in the grid for one to be the flexible track. The separator moves to the header, which is
+   now the section's top edge. */
+.map-placecard:has(.note-sec) > .place > .note-sec {
+  display: contents;
+}
+.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-h {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+/* THE ONE SCROLLING REGION. `min-height: 0` is what lets a grid row shrink below its content at
+   all — without it the track sizes to the notes and the card overflows, the same trap the form
+   card's middle documents. `align-self: stretch` is load-bearing beside it: `align-items:
+   center` leaves an item at its CONTENT height inside a 0px track, so the list overflowed the
+   card while the track itself measured 0 — invisible to the track sizing, and measured. */
+.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  align-self: stretch;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list::-webkit-scrollbar {
+  width: 0;
+}
+.map-placecard:has(.note-sec) > .place > .map-refs {
+  grid-row: 4;
+  grid-column: 1 / -1;
+}
+.map-placecard:has(.note-sec) > .place > .map-refs-foot {
+  grid-row: 5;
+  grid-column: 1 / -1;
 }
 
 .map-draft {
@@ -1105,6 +1187,18 @@
    Each entry is labelled in the reference's own words, not a generic "details", so
    the control says where it goes — which is also what earns it a row. Full-width and
    ≥40px, so it is a real touch target (ADR-0017) rather than a tappable 11px tag. */
+/* ── פתקים ON A PLACE (ADR-0153 §8's 2026-08-02 amendment) ─────────────────────
+   A place has no row menu and no detail surface of its own, so its notes live in the row —
+   which is exactly what `.map-refs` above already is: a full-width line that appears on
+   selection in a row that has wrapped since it shipped. One declaration, no new grammar.
+   ORDER in the DOM is facts → notes → verbs, the order `BookingDetail` and the idea sheet
+   both read in; notes under the schedule footer would put content below a primary action. */
+.place > .note-sec {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
 .map-refs {
   flex-basis: 100%;
   display: flex;
@@ -1319,6 +1413,10 @@
   display: flex;
   justify-content: center;
   margin-top: 8px;
+  /* The ROW's own child since the note section arrived (it used to sit inside `.map-refs`), so
+     it is the same full-width line it always was — and, in the bounded card, one the grid can
+     pin while the notes scroll. */
+  flex-basis: 100%;
 }
 /* The one size change, and it is a floor rather than a taste: on a result row this pill is a
    trailing chip in a dense 68px row (~29px). Here it is the selected row's primary action, so
