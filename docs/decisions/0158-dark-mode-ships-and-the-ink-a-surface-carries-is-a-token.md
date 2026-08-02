@@ -607,6 +607,46 @@ captures real DOM from the running app, so extending it to walk more routes **an
 open overlays** takes it from 6 frames to ~25 and closes §12's "routes, not
 states" hole for good. Backlogged, not done.
 
+## §16 — A mockup now ships BOTH themes, with a toggle (owner, 2026-08-02)
+
+**The rule, in one line: from now on every mockup renders in light and in dark,
+and carries a control to switch between them.** Not a side-by-side pair of
+frames — a toggle, so the same frame is judged twice on the same ground.
+
+It follows from what §12–§15 cost. Dark mode shipped, and then four separate
+owner reports found four defects that a mockup could have caught before a line
+was written: an accent that assumed a neutral ground (§14), a selection that
+was legible in both themes and distinguishable in neither (§14), a graphic mark
+with no contrast of its own (§14), and an inverted surface where the deep
+variant inverts the wrong way (§15). Every one of them is a **drawing** problem.
+The reason none was drawn is that a mockup only ever rendered one theme, so
+"does this read in dark?" was a question the design stage structurally could not
+ask.
+
+Mechanically it is almost free, and that is the other half of the argument.
+Mockups already inline the app's real stylesheets
+(`mockups/tools/inline-app-css.mjs`), so the dark remap is **already in the
+file** — inert, exactly as it is in the app, until something sets `data-theme`.
+The toggle is therefore three lines: two buttons and
+`document.documentElement.dataset.theme = …`, which is the same attribute
+`lib/theme.ts` writes (§8). A mockup that spends anything more than that on
+theming is re-declaring a colour it should be reading.
+
+Two consequences worth stating, because both were found the first time it was
+done (`mockups/day-gaps-and-layovers-v1.html`):
+
+- **The mockup's own chrome has to flip too.** The page around the frames is
+  hand-written `mk-*` CSS with literal light values, so a dark frame would be
+  judged on a white page — a ground the app never has. The chrome gets its own
+  handful of variables and a `:root[data-theme='dark']` block **after** the
+  light one, never inside `:root` (the split `frontend/CLAUDE.md` warns about).
+- **Existing mockups are not retrofitted.** They are dated records of a decision
+  taken in light mode, and rewriting them would edit the record. The rule binds
+  a mockup when it is **created or revised**, which is also when someone is
+  looking at it.
+
+`docs/design/mockups.md` states the rule where a mockup author will meet it.
+
 ## §10 — The build, in phases
 
 Each phase is independently shippable and independently revertible. Phases 1–3
