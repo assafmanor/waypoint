@@ -33,12 +33,12 @@
   display: block;
   width: 1px;
   height: 11px;
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--chrome-ink) 20%, transparent);
 }
 .wp-monthdiv span {
   font-size: 9.5px;
   font-weight: 700;
-  color: #8494b5;
+  color: var(--chrome-ink-dim);
   white-space: nowrap;
 }
 
@@ -61,8 +61,8 @@
   font-weight: 600;
   border: none;
   border-radius: 12px;
-  color: #8494b5;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--chrome-ink-dim);
+  background: color-mix(in srgb, var(--chrome-ink) 5%, transparent);
   cursor: pointer;
 }
 .wp-daypill .l {
@@ -75,7 +75,7 @@
   font-family: var(--font-mono);
   font-size: 15px;
   line-height: 1.1;
-  color: #b9c4de;
+  color: var(--chrome-ink-num);
 }
 .wp-daypill.on {
   background: var(--amber);
@@ -101,12 +101,12 @@
 }
 /* sel-history: a non-today selected day is a neutral highlight. */
 .wp-daypill.sel-history {
-  background: rgba(255, 255, 255, 0.16);
-  color: #eaf0ff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+  background: color-mix(in srgb, var(--chrome-ink) 16%, transparent);
+  color: var(--on-dark);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chrome-ink) 28%, transparent);
 }
 .wp-daypill.sel-history .n {
-  color: #fff;
+  color: var(--chrome-ink);
 }
 /* sel-future: a selected future day is violet (plan-ahead). */
 .wp-daypill.sel-future {
@@ -114,7 +114,7 @@
   color: var(--on-fill);
 }
 .wp-daypill.sel-future .n {
-  color: #fff;
+  color: var(--on-fill);
 }
 .wp-daypill.future {
   opacity: 0.6;

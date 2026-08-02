@@ -138,8 +138,8 @@
    `.app[data-mode]` alone would already cover it in place. */
 .header,
 .mode-chrome {
-  background: var(--indigo);
-  color: #fff;
+  background: var(--chrome-bg);
+  color: var(--chrome-ink);
   position: relative;
 }
 /* The drafting grid is a plan-mode texture cue (design-language: mode identity).
@@ -219,15 +219,15 @@
   height: 44px;
   padding-inline: 11px 9px;
   border-radius: var(--radius-999);
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: color-mix(in srgb, var(--chrome-ink) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chrome-ink) 16%, transparent);
   color: inherit;
   font: inherit;
   cursor: pointer;
   transition: background-color var(--t-quick) var(--ease-standard);
 }
 .hdr-trip:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--chrome-ink) 15%, transparent);
 }
 .hdr-trip:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -277,7 +277,7 @@
   height: 20px;
   margin-inline-start: auto;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
+  background: color-mix(in srgb, var(--chrome-ink) 14%, transparent);
   font-size: 11px;
 }
 /* Offline / pending, POSITIONED rather than in flow (ADR-0149 §5) — which is the
@@ -294,7 +294,7 @@
   display: grid;
   place-items: center;
   font-size: 10px;
-  border: 2px solid var(--indigo);
+  border: 2px solid var(--chrome-ring);
   background: var(--muted);
   color: var(--on-fill);
   animation: hdr-badge-settle var(--t-base) var(--ease-arrive) both;
@@ -352,7 +352,7 @@
   place-items: center;
   background: none;
   border: 0;
-  color: #9daac8;
+  color: var(--chrome-ink-dim);
   font-size: 18px;
   cursor: pointer;
 }
@@ -361,7 +361,7 @@
 }
 .gear-btn:hover,
 .chrome-ghost-btn:hover {
-  color: #fff;
+  color: var(--chrome-ink);
 }
 .gear-btn:focus-visible,
 .chrome-ghost-btn:focus-visible {
@@ -411,13 +411,13 @@
   color: #12203a;
   font-weight: 700;
   font-size: 12.5px;
-  border: 2px solid var(--indigo);
+  border: 2px solid var(--chrome-ring);
   margin-inline-start: -9px;
 }
 /* overflow bubble when there are more members than the visible cap */
 .av.more {
-  background: rgba(255, 255, 255, 0.14);
-  color: #dce3f2;
+  background: color-mix(in srgb, var(--chrome-ink) 14%, transparent);
+  color: var(--chrome-ink-mid);
   font-size: 11px;
 }
 /* An account avatar that is clearly "you" — ADR-0043: the shipped border was too
@@ -467,9 +467,9 @@
   gap: 6px;
   padding: 4px 10px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #8fa0c4;
+  background: color-mix(in srgb, var(--chrome-ink) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chrome-ink) 16%, transparent);
+  color: var(--chrome-ink-dim);
   font-size: 11.5px;
   font-weight: 600;
 }
@@ -522,14 +522,14 @@
 .hdr-anchor .cap {
   font-size: 9px;
   font-weight: 700;
-  color: #8494b5;
+  color: var(--chrome-ink-dim);
   line-height: 1;
 }
 .hdr-anchor .num {
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 700;
-  color: #b9c4de;
+  color: var(--chrome-ink-num);
   line-height: 1.1;
 }
 .hdr-anchor.is-back {
@@ -562,7 +562,7 @@
   height: 44px;
   margin-inline-start: 8px;
   border-radius: var(--radius-999);
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--chrome-ink) 8%, transparent);
 }
 .hdr-mode button {
   display: grid;
@@ -583,7 +583,7 @@
   height: 36px;
   min-width: 38px;
   border-radius: var(--radius-999);
-  color: #93a2c4;
+  color: var(--chrome-ink-dim);
   transition:
     background-color var(--t-quick) var(--ease-standard),
     color var(--t-quick) var(--ease-standard);
@@ -709,8 +709,8 @@
    Design: mockups/zero-state-v1.html. The board renders where it will live
    once a trip exists, but stays unpowered: no amber/teal/pulse (ADR-0028). */
 .zero-head {
-  background: var(--indigo);
-  color: #fff;
+  background: var(--chrome-bg);
+  color: var(--chrome-ink);
   padding: 14px 20px 18px;
 }
 .zero-head-row {
@@ -951,8 +951,8 @@
    the draft preview card is soft grammar (see .item.soft in screens.css).
    Design: mockups/create-trip-v1.html. */
 .new-head {
-  background: var(--indigo);
-  color: #fff;
+  background: var(--chrome-bg);
+  color: var(--chrome-ink);
   padding: 14px 20px 18px;
 }
 .new-head-row {
@@ -962,9 +962,9 @@
 }
 .back {
   font: inherit;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #dce3f2;
+  background: color-mix(in srgb, var(--chrome-ink) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chrome-ink) 14%, transparent);
+  color: var(--chrome-ink-mid);
   width: 34px;
   height: 34px;
   border-radius: 11px;
@@ -1687,7 +1687,7 @@
 .nav {
   position: sticky;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   display: flex;

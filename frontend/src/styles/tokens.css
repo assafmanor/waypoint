@@ -69,6 +69,43 @@
   --on-dark: #eaf0ff; /* body ink on a dark surface */
   --on-dark-dim: #93a2c4; /* secondary, labels, meta */
   --on-dark-faint: #7688ac; /* tertiary — rail ends, footnotes */
+
+  /* ── The chrome's contract (ADR-0158 §5) ───────────────────────────────────
+     53 colour declarations on the trip chrome assume it is DARK, and only four
+     said so. None is wrong — each is correct *given a dark chrome* — but the
+     dependency was recorded nowhere, so the first person to try a light one
+     rediscovers it a rule at a time. Plan mode already did exactly that: when
+     its chrome went light it re-specified the whole set by hand, which is why
+     `.app[data-mode='plan'] .av { border-color: var(--card) }` exists.
+
+     These names make the dependency a value instead of an assumption. A mode
+     sets them once; the chrome's children read them and never learn which mode
+     they are in. The values below are trip-dark's CURRENT ones verbatim, so
+     this is a no-op refactor — and it is what makes a light trip chrome (§9,
+     deferred to Hero 2.0) seven lines instead of nineteen rules.
+
+     Note --chrome-wash: it is not one value but a BASE. Each element mixes its
+     own alpha off it (`color-mix(… var(--chrome-ink) 9%, transparent)`), which
+     preserves every existing alpha exactly AND makes the wash flip with the
+     ink — a white wash on dark chrome becomes an ink wash on a light one, with
+     no per-element rule to rewrite. */
+  --chrome-bg: var(--indigo);
+  --chrome-ink: #ffffff; /* titles, active glyphs — also the wash base */
+  --chrome-ink-mid: #dce3f2; /* control glyphs: the back chevron, the +N count */
+  --chrome-ink-num: #b9c4de; /* numerals — the day number, the anchor's value */
+  --chrome-ink-dim: #8494b5; /* labels and captions */
+  --chrome-ring: var(--indigo); /* the ring separating overlapping avatars */
+
+  /* Plan's LOUD SURFACE, the counterpart of --board/--board-2 (ADR-0158 §4).
+     The prep hero used to paint itself out of the ACCENT tokens (--plan-deep →
+     --plan), which is fine in light and wrong in dark: an accent BRIGHTENS on
+     dark, a surface must not. Left alone the hero rendered at L* 68 — the
+     brightest surface in the whole dark app, in the mode the design language
+     calls calm, with its own ink at 2.16:1, INVERTING the mode identity
+     ADR-0028 makes non-negotiable. These light values are byte-identical to the
+     gradient they replace, so light mode does not move. */
+  --plan-surface: #6e59d6;
+  --plan-surface-2: #5747b4;
   /* Status mini-palette (distinct from the semantic trio) */
   --ok: #3c9a6b;
   --miss: #c2584e;
@@ -361,6 +398,16 @@ body {
      Said out loud, because an absent line in this block otherwise reads as an
      oversight rather than a decision. */
   --on-fill: #12203a;
+
+  /* Plan's hero goes DEEP, not bright — the plan-mode counterpart of the night
+     board. Ink clears 12.7:1 on it, and at L* 17-21 against the L* 7.7 ground it
+     is unmistakably the loud thing on a plan screen while staying calm. This is
+     also what keeps the two modes as distinguishable in dark as they are in
+     light: trip is near-black with amber inside it, plan is a lifted violet slab
+     with white on it. The --chrome-* names above are NOT restated: trip chrome
+     is always-dark, so its contract is theme-fixed. */
+  --plan-surface: #2a2158;
+  --plan-surface-2: #332866;
 
   --ink: #e7eaf2;
   --indigo: #131f38;

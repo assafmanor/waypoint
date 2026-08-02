@@ -1174,7 +1174,7 @@
 
 /* prep hero — the single expressive surface on this screen */
 .prep {
-  background: linear-gradient(180deg, var(--plan-deep), var(--plan));
+  background: linear-gradient(180deg, var(--plan-surface-2), var(--plan-surface));
   border-radius: 22px;
   padding: 18px 18px 16px;
   color: #f2effc; /* fixed: light ink on the always-violet plan hero */
