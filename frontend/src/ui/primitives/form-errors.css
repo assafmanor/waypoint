@@ -22,8 +22,11 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--miss) 20%, transparent);
 }
 
-/* The label reads as part of the refusal, so it stops being quiet chrome. */
-[data-invalid] > .field-label {
+/* The label reads as part of the refusal, so it stops being quiet chrome. `data-refused` is
+   the two-ended field (ADR-0150 §7): the shell holds the message and turns its label, but
+   does NOT mark — the controls did that themselves, at the end that is actually wrong. */
+[data-invalid] > .field-label,
+[data-refused] > .field-label {
   color: var(--miss);
 }
 

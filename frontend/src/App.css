@@ -967,7 +967,12 @@
 .field {
   margin-top: 18px;
 }
-.field label {
+/* `.field-label` as well as `label`: the `Field` primitive renders a SPAN when the caption
+   has no control to point at (a date range, an icon row), and this screen's caption is
+   12.5px with its own 6px gap — not the primitive's `--text-caption`. Matching both is what
+   let the birth form adopt `Field` without moving a pixel. */
+.field label,
+.field .field-label {
   display: block;
   font-size: 12.5px;
   font-weight: 700;
@@ -994,7 +999,10 @@
   outline-offset: 1px;
   border-color: transparent;
 }
-.field .hint {
+/* `.field-hint` alongside `.hint`, for the same reason as the label above: the primitive's
+   own hint slot renders that class, and this screen's hint is fainter and smaller. */
+.field .hint,
+.field .field-hint {
   font-size: 11.5px;
   color: var(--faint);
   margin-top: 5px;

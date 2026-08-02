@@ -688,9 +688,13 @@ export const t = {
       createTitle: 'פתק חדש',
       editTitle: 'עריכת פתק',
       bodyLabel: 'מה כדאי לדעת',
-      bodyPlaceholder: 'הכניסה מאחור, ליד חנות הפרחים',
+      // Both boxes say what goes in them, not what someone else wrote (owner, 2026-08-02).
+      // A sample note reads as content on a blank form — the same reason every other
+      // placeholder in this file is `שם ההזמנה` / `שם לזיהוי המסמך`. The url keeps its shape
+      // hint, which tells you the scheme is optional rather than showing you a note.
+      bodyPlaceholder: 'משהו שכדאי לזכור',
       titleLabel: 'כותרת · לא חובה',
-      titlePlaceholder: 'מזומן בלבד',
+      titlePlaceholder: 'כותרת קצרה',
       urlLabel: 'קישור · לא חובה',
       urlPlaceholder: 'instagram.com/p/',
       categoryLabel: 'קטגוריה',
