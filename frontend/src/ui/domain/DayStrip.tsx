@@ -17,8 +17,10 @@
 // Auto-scroll: the selected pill is centered in the strip on mount and on every
 // selection change, mirroring DayView's now-line centering (ADR-0027/0043) so a
 // trip with many days-before never leaves the active pill clipped at the edge.
-import { Fragment, useEffect, useRef } from 'react';
-import { prefersReducedMotion } from '../../lib/motion';
+// This strip's own copy of that effect became `lib/useCenterSelected` once the
+// category rows needed the same thing (root rule 8) — it is the shared one now.
+import { Fragment } from 'react';
+import { useCenterSelected } from '../../lib/useCenterSelected';
 import './day-strip.css';
 
 export interface DayStripDay {
@@ -106,19 +108,8 @@ export function DayStrip({
   dragging,
   overDate,
 }: DayStripProps) {
-  const selectedRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    // Don't force-scroll to a day that isn't visually selected (all-days scope).
-    if (allScope) return;
-    const el = selectedRef.current;
-    if (!el) return;
-    el.scrollIntoView({
-      block: 'nearest',
-      inline: 'center',
-      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-    });
-  }, [selected, allScope]);
+  // Don't force-scroll to a day that isn't visually selected (all-days scope).
+  const selectedRef = useCenterSelected<HTMLButtonElement>(selected, { active: !allScope });
 
   return (
     <div className="wp-daystrip" data-mode={mode}>

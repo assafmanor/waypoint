@@ -45,6 +45,11 @@ one.
   Every control that changes the list is animated: rows leaving/arriving collapse
   and reveal (so a row is hidden in place, never dropped from the array — count
   `countVisible(rows)`, not `rows.length`), and rows that merely move slide there.
+- **A selection inside a scroller** — `lib/useCenterSelected.ts`: the selected chip/pill/row
+  centres itself in its strip. Deliberately **not** `scrollIntoView`, which centres in every
+  scrollable ancestor and so drags the sheet a chip row sits in. Under **mandatory**
+  scroll-snap the selected child also needs `scroll-snap-align: center`, or the browser
+  re-snaps the centred offset back to a start-aligned boundary (`choice-grid.css`).
 - **Motion timed from JS** — `lib/motion.ts` (`motionDurationMs`), never a literal and
   never a raw `readDurationMs`. It answers **0** both under reduced motion and when the
   token is unreadable, which is what keeps a state that only exists _during_ an

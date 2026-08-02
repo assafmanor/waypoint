@@ -2,6 +2,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { ChoiceGrid } from './ChoiceGrid';
+import { fakeScroller } from '../../test/scroller-harness';
 
 const OPTIONS = [
   { value: 'a', icon: '📕', label: 'Alpha' },
@@ -49,6 +50,42 @@ describe('ChoiceGrid', () => {
     expect(container.querySelector('.choice-grid.pills')).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Alpha' }).className).toContain('choice-pill on');
     expect(screen.getByRole('radio', { name: 'Bravo' }).className).not.toContain('on');
+  });
+
+  // The selection centres itself in a scrolling row, the same as the day strip's pill
+  // (`lib/useCenterSelected`, which owns the behaviour and its own test). Here: that the row
+  // is wired to it at all, and only in the layout that scrolls.
+  describe('the selected pill centres itself in the row', () => {
+    const MANY = ['a', 'b', 'c', 'd', 'e'].map((v) => ({ value: v, icon: '📕', label: v }));
+
+    /** 5 pills of 100px in a 300px row: pill `a`'s centre is 100px before the row's, `c`'s
+     *  100px after (see the harness). */
+    function scrollableRow(layout: 'grid' | 'pills', value: string) {
+      const { container, rerender } = render(
+        <ChoiceGrid options={MANY} value={value} onChange={() => {}} layout={layout} />,
+      );
+      const row = container.querySelector<HTMLElement>('.choice-grid')!;
+      const pills = Array.from(container.querySelectorAll<HTMLElement>('button'));
+      return {
+        scroller: fakeScroller(row, pills),
+        pick: (next: string) =>
+          rerender(<ChoiceGrid options={MANY} value={next} onChange={() => {}} layout={layout} />),
+      };
+    }
+
+    it('scrolls the row so the newly selected pill sits in the middle', () => {
+      const { scroller, pick } = scrollableRow('pills', 'b');
+      pick('c');
+      expect(scroller.lastDelta()).toBe(100);
+      pick('a');
+      expect(scroller.lastDelta()).toBe(-100);
+    });
+
+    it('is pills-only: a grid has nothing to centre in', () => {
+      const { scroller, pick } = scrollableRow('grid', 'b');
+      pick('c');
+      expect(scroller.calls).toHaveLength(0);
+    });
   });
 
   // ADR-0122 §2: over a map the glyph is already the category's whole vocabulary

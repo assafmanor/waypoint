@@ -18,7 +18,7 @@ import { OVERNIGHT } from '../constants';
 import { t } from '../i18n/he';
 import { hoursPhrase } from '../lib/duration';
 import { Icon } from './Icon';
-import { TimeField, toMin, toHHMM, centreSelected } from './primitives/TimeField';
+import { TimeField, toMin, toHHMM, useCentredTimeRow } from './primitives/TimeField';
 
 export { nearestRoundSlot } from './primitives/TimeField';
 
@@ -83,6 +83,9 @@ export function TimePicker({
     duration != null && durPresets.length > 0 && !durPresets.includes(duration)
       ? durPresets.reduce((a, b) => (Math.abs(b - duration) < Math.abs(a - duration) ? b : a))
       : null;
+
+  // Exactly one preset matches: `suggestDur` is set only when `duration` isn't a preset.
+  const centredDur = useCentredTimeRow(open === 'dur', duration);
 
   // Same as `IconPicker` (ADR-0144): an anchored panel that deliberately bypasses `Modal`,
   // so it missed ADR-0140's enter/exit. `close` is already the one owner of leaving here —
@@ -200,10 +203,11 @@ export function TimePicker({
                   />
                 </div>
                 {note && <div className="tp-note">{note}</div>}
-                <div className="tp-list tp-list-dur" ref={centreSelected}>
+                <div className="tp-list tp-list-dur">
                   {durPresets.map((d) => (
                     <button
                       key={d}
+                      ref={d === duration || d === suggestDur ? centredDur : undefined}
                       type="button"
                       className={
                         d === duration

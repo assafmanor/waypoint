@@ -14,6 +14,7 @@
 // flex trigger, never an absolute popover the overflow-y:auto sheet would clip.
 import { useState } from 'react';
 import { useBackLayer } from '../../state/nav-state';
+import { useCenterSelected } from '../../lib/useCenterSelected';
 import { MINUTES_PER_DAY } from '../../constants';
 import { t } from '../../i18n/he';
 
@@ -33,11 +34,14 @@ export function nearestRoundSlot(min: number): number {
   return Math.min(Math.round(min / STEP) * STEP, MINUTES_PER_DAY - STEP);
 }
 
-/** Scroll the selected row — or the nearest-round suggestion — to the vertical
- *  centre of its list on open. Shared by the start list and the duration list. */
-export function centreSelected(list: HTMLDivElement | null) {
-  const on = list?.querySelector<HTMLElement>('.tp-list-on, .tp-list-suggest');
-  if (on && list) list.scrollTop = on.offsetTop - list.clientHeight / 2 + on.clientHeight / 2;
+/** The selected row — or the nearest-round suggestion — sits at the vertical centre of its
+ *  list on open. This list wrote its own `scrollTop` arithmetic before `useCenterSelected`
+ *  existed; both lists now attach that hook's ref to whichever row is the target, keyed on
+ *  the open state so each opening re-centres. `axis: 'block'` is the only difference from a
+ *  chip strip, and the reason the hook scrolls one scroller rather than calling
+ *  `scrollIntoView`: centring a row here must not also scroll the sheet behind it. */
+export function useCentredTimeRow(open: boolean, target: number | null) {
+  return useCenterSelected<HTMLButtonElement>(target, { axis: 'block', active: open });
 }
 
 export function TimeField({
@@ -67,6 +71,9 @@ export function TimeField({
 
   const min = value ? toMin(value) : null;
   const suggest = min != null && min % STEP !== 0 ? nearestRoundSlot(min) : null;
+  // Exactly one row matches: `suggest` is set only when `min` is off-grid, and every row is
+  // on the grid — so the two conditions below can never both find one.
+  const centredRow = useCentredTimeRow(open, min);
   const pick = (m: number) => {
     onChange(toHHMM(m));
     setOpen(false);
@@ -111,10 +118,11 @@ export function TimeField({
               onChange={(e) => e.target.value && pick(toMin(e.target.value))}
             />
           </div>
-          <div className="tp-list" ref={centreSelected}>
+          <div className="tp-list">
             {ALL_TIMES.map((m) => (
               <button
                 key={m}
+                ref={m === min || m === suggest ? centredRow : undefined}
                 type="button"
                 className={m === min ? 'tp-list-on' : m === suggest ? 'tp-list-suggest' : undefined}
                 onClick={() => pick(m)}

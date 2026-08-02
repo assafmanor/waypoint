@@ -4,6 +4,7 @@
 // controlled primitive so it stops being copy-pasted markup. Neutral chrome only
 // (selected = --cta ring), never a semantic hue (design-language color budget).
 import type { CSSProperties } from 'react';
+import { useCenterSelected } from '../../lib/useCenterSelected';
 import './choice-grid.css';
 
 export interface Choice<T extends string> {
@@ -55,6 +56,9 @@ export function ChoiceGrid<T extends string>({
   compact?: boolean;
 }) {
   const pills = layout === 'pills';
+  // The selected pill centres itself in the row (`lib/useCenterSelected`) — only in `pills`,
+  // since the grid doesn't scroll and has nothing to centre in.
+  const selectedRef = useCenterSelected<HTMLButtonElement>(value, { active: pills });
   return (
     <div
       className={'choice-grid' + (pills ? ' pills' : '') + (pills && compact ? ' compact' : '')}
@@ -69,6 +73,7 @@ export function ChoiceGrid<T extends string>({
         return (
           <button
             key={o.value}
+            ref={o.value === value ? selectedRef : undefined}
             type="button"
             role="radio"
             aria-checked={o.value === value}
