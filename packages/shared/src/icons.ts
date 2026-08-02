@@ -9,7 +9,7 @@
 // migration touches. UI copy (group labels) lives in the frontend i18n, keyed
 // by `IconGroup.id` — never here (this package is shapes + data, ADR-0009).
 
-import type { BookingType, EventCategory, TripEvent } from './entities';
+import type { BookingType, EventCategory, EventKind, TripEvent } from './entities';
 import { matchesAnyTerm } from './search-terms';
 
 /** A browse-group in the picker. `category` is the canonical semantic value
@@ -330,3 +330,77 @@ export const eventEndBoundary = (
   if (event.startsAt) return { kind: 'instant', at: Date.parse(event.startsAt) };
   return { kind: 'day', date: event.date };
 };
+
+/** **Per-booking-type shape profile (ADR-0154 §2).** The booking-type peer of
+ *  `CATEGORY_TIME_PROFILE` above, in the same file and the same idiom, and it exists
+ *  for the same reason that one does: so a per-type fact stops being a predicate
+ *  scattered across call sites.
+ *
+ *  It replaced **six** hand-written definitions of "is this transport?" in two
+ *  packages — two of them exported in parallel and imported by different call sites,
+ *  and written two different ways (`flight || train` in four places,
+ *  `categoryForBookingType(…) === 'transport'` in two). None was exhaustive, so a
+ *  surface that forgot the question compiled clean; that is exactly how `EventForm`
+ *  came to send a single `placeId` for a flight and get a 400 back from the server.
+ *
+ *  **The reframing is the point, not the table.** Every one of those call sites was
+ *  really asking *"does this carry a route?"* — so that is what the field is called,
+ *  and a future ferry or bus is one row here rather than a tour of two packages.
+ *  Same property `NOTE_HOST_FIELD` states for a sixth note host (ADR-0152 §2). */
+export interface BookingTypeProfile {
+  /** Which place shape this type carries (ADR-0048, enforced server-side): `route` =
+   *  `fromPlaceId`/`toPlaceId`, `single` = `placeId`. Mutually exclusive — a type has
+   *  one or the other, never both. */
+  places: 'route' | 'single';
+  /** Two endpoints that may fall on different days (departure→arrival,
+   *  check-in→check-out, start→end), versus a single point on one day. */
+  schedule: 'span' | 'point';
+  /** The commitment a freshly created booking of this type opens with (ADR-0011).
+   *  Orthogonal to booked-ness (ADR-0136 §4) — a restaurant booking is soft. */
+  defaultKind: EventKind;
+  /** How many journeys one save may author, and how a second derives from the first.
+   *  `mirrored` is the round trip: leg 2 reverses leg 1's route (ADR-0154 §4).
+   *
+   *  **Deliberately not derived from `places`.** The two are genuinely orthogonal: a
+   *  split hotel stay would be `places: 'single'` with more than one leg, and
+   *  collapsing the axes would block exactly the extension this table exists for. */
+  legs: 'single' | 'mirrored';
+}
+
+/** A route-shaped type: two endpoints, and a round trip is a mirror of them. */
+const TRANSPORT_PROFILE: BookingTypeProfile = {
+  places: 'route',
+  schedule: 'span',
+  defaultKind: 'hard',
+  legs: 'mirrored',
+};
+
+export const BOOKING_TYPE_PROFILE = {
+  flight: TRANSPORT_PROFILE,
+  train: TRANSPORT_PROFILE,
+  // A stay is two endpoints at ONE place — which is why `places` and `schedule` are
+  // separate axes rather than one "is it transport" flag.
+  hotel: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: 'single' },
+  activity: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: 'single' },
+  restaurant: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: 'single' },
+  other: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: 'single' },
+} as const satisfies Record<BookingType, BookingTypeProfile>;
+
+/** **Does this booking type carry a route** (`fromPlaceId`/`toPlaceId`) rather than a
+ *  single `placeId`? The one definition behind every surface that used to ask "is it
+ *  transport" — the form fields, the title, the map reference, the location fact, and
+ *  the server's own `assertPlaceShape` guard. */
+export const carriesRoute = (type: BookingType): boolean =>
+  BOOKING_TYPE_PROFILE[type].places === 'route';
+
+/** Two-endpoint schedule (start + end, may span days) rather than a point on a day. */
+export const hasSpanSchedule = (type: BookingType): boolean =>
+  BOOKING_TYPE_PROFILE[type].schedule === 'span';
+
+/** The commitment a fresh booking of this type opens with (ADR-0011 / ADR-0136 §4). */
+export const defaultKindForBookingType = (type: BookingType): EventKind =>
+  BOOKING_TYPE_PROFILE[type].defaultKind;
+
+/** Can one save of this type author a mirrored return leg (ADR-0154 §4)? */
+export const authorsRoundTrip = (type: BookingType): boolean =>
+  BOOKING_TYPE_PROFILE[type].legs === 'mirrored';

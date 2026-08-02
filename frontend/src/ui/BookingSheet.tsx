@@ -15,17 +15,13 @@ import {
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
   EVENT_KIND,
+  carriesRoute,
+  defaultKindForBookingType,
+  hasSpanSchedule,
   type Booking,
   type BookingType,
 } from '@waypoint/shared';
-import {
-  bookingSheetDraft,
-  bookingDefaultKind,
-  isSpanType,
-  isTransportType,
-  type BookingSeed,
-  type BookingSheetDraft,
-} from '../lib/booking-draft';
+import { bookingSheetDraft, type BookingSeed, type BookingSheetDraft } from '../lib/booking-draft';
 import { useTrip } from '../state/trip-state';
 
 // Re-exported so the sheet stays the obvious import for its own props (the derivation moved
@@ -35,10 +31,11 @@ import { Sheet } from './Sheet';
 import { IconPicker } from './IconPicker';
 import { Icon } from './Icon';
 import { RouteLabel } from './RouteLabel';
+import { RouteField } from './domain';
 import { Field } from './primitives/Field';
+import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { FormActions } from './primitives/FormActions';
-import { PlacePicker } from './primitives/PlacePicker';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { WhenField } from './primitives/WhenField';
 import { type ZoneChipProps } from './primitives/ZoneChip';
@@ -212,9 +209,9 @@ export function BookingSheet({
     [trip.timezone, places],
   );
 
-  const isTransport = isTransportType(type);
+  const isTransport = carriesRoute(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
-  const isSpan = isSpanType(type);
+  const isSpan = hasSpanSchedule(type);
   // The LIVE zone resolver — same rule as the draft's, over the CURRENT picks rather than
   // the ones the sheet opened with (`lib/booking-draft.ts` owns the opening ones).
   const zoneOf = (id: string | undefined, override: string | null) =>
@@ -280,7 +277,7 @@ export function BookingSheet({
   const changeType = (next: BookingType) => {
     setType(next);
     icon.redrive(BOOKING_TYPE_ICON[next]);
-    kind.redrive(bookingDefaultKind(next));
+    kind.redrive(defaultKindForBookingType(next));
   };
   const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
@@ -496,28 +493,18 @@ export function BookingSheet({
               transport endpoints carry coords + timezones like any other place. */}
           {isTransport && (
             <Field label={t.index.form.routeLabel} {...errors.field('route')}>
-              <div className="bs-route-pickers">
-                {/* TWO FIELDS, TWO ERRANDS — this is why `target.field` is not optional
-                    (ADR-0134 §2): without it a successful return could assign the right
-                    place to the wrong end of the journey. */}
-                <PlacePicker
-                  value={fromPlaceId}
-                  onChange={setFromPlaceId}
-                  ariaLabel={t.index.form.originLabel}
-                  placeholder={t.index.form.originShort}
-                  onFind={findPlace('fromPlaceId', t.index.form.originLabel)}
-                />
-                <PlacePicker
-                  value={toPlaceId}
-                  onChange={setToPlaceId}
-                  ariaLabel={t.index.form.destLabel}
-                  placeholder={t.index.form.destShort}
-                  onFind={findPlace('toPlaceId', t.index.form.destLabel)}
-                />
-              </div>
-              <div className="bs-route-hint">
-                <Icon name="pin" /> {t.index.form.routeHint}
-              </div>
+              {/* One component, two hosts (ADR-0154 §3) — `EventForm` renders the same
+                  field, which is how a booked transport event stopped sending a single
+                  `placeId` to a server that refuses one. The swap arrives here with it. */}
+              <RouteField
+                from={fromPlaceId}
+                to={toPlaceId}
+                onChange={({ from, to }) => {
+                  setFromPlaceId(from);
+                  setToPlaceId(to);
+                }}
+                onFind={(end, side) => findPlace(end, side)()}
+              />
             </Field>
           )}
 

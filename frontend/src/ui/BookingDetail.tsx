@@ -3,7 +3,7 @@
 // guard for a hard commitment (ADR-0011); editing is a deliberate tap. Edit
 // opens the merged BookingSheet. Delete lives on the row's "⋯" (BookingManageSheet),
 // not here — the detail carries edit only (ADR-0053 revision, 2026-07-17).
-import { BOOKING_TYPE, type Booking, type BookingType } from '@waypoint/shared';
+import { carriesRoute, type Booking } from '@waypoint/shared';
 import { bookingSheetDraft } from '../lib/booking-draft';
 import { useTrip } from '../state/trip-state';
 import { HostNotes } from './HostNotes';
@@ -30,8 +30,6 @@ interface Wifi {
   network?: string;
   password?: string;
 }
-
-const isTransport = (ty: BookingType) => ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
 
 // Displayed text is always the Hebrew UI locale, independent of the device
 // locale (which drives native date inputs, not app-rendered text).
@@ -92,7 +90,7 @@ export function BookingDetail({
   // a false bug report (a two-night hotel "missing from the map" was a hotel with no
   // place). Transport keeps the old gate: its places are the route endpoints, which
   // `routeRequired` already refuses to save without.
-  const showLocation = isTransport(booking.type) ? !!locationText : true;
+  const showLocation = carriesRoute(booking.type) ? !!locationText : true;
   // `＋ מיקום` is the same affordance the Map row gives a coordless Place-lite, on
   // the surface where you notice the absence — so the fix is one tap from here
   // (ADR-0110 §1's enrich flow, reused rather than reinvented).
@@ -115,11 +113,11 @@ export function BookingDetail({
   const startErrand = useStartPlaceErrand();
   // The banner names the target the way the rest of the app names it (ADR-0121 §8's
   // vocabulary): the booking's own title, or the route for a transport leg.
-  const errandLabel = isTransport(booking.type)
+  const errandLabel = carriesRoute(booking.type)
     ? routeTitle(from ?? '-', to ?? '-')
     : booking.title;
 
-  const isRoute = isTransport(booking.type) && !!(from || to);
+  const isRoute = carriesRoute(booking.type) && !!(from || to);
   // Accessible name only — the visible heading is the RouteLabel below, whose arrow
   // is an SVG. A screen reader gets the textual separator, with the FULL names: the
   // detail is the record (ADR-0059 §3 session-95 amendment).

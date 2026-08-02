@@ -62,6 +62,10 @@ vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 const startErrand = vi.fn();
 vi.mock('../state/map-scope-state', () => ({ useStartPlaceErrand: () => startErrand }));
 
+// Two real places, for the route-shape assertions below (ADR-0154 §1).
+const PLACE_A = { id: 'p-tlv', tripId: 't1', name: 'נתב״ג', timezone: 'Asia/Jerusalem' };
+const PLACE_B = { id: 'p-nrt', tripId: 't1', name: 'נריטה', timezone: 'Asia/Tokyo' };
+
 import { EventForm } from './EventForm';
 import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
@@ -399,7 +403,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
         ).toBe('true');
       });
 
-      // `other` is not a span type, so `bookingDefaultKind` makes it soft while flight and
+      // `other` is not a span type, so `defaultKindForBookingType` makes it soft while flight and
       // train are hard. Deliberately not special-cased: commitment has one source (§4).
       it('lets the kind follow the type, including other → soft', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
@@ -433,7 +437,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
         updatedBy: 'u1',
       };
 
-      // FAILS if the kind is re-derived from `bookingDefaultKind`: an `activity` booking is
+      // FAILS if the kind is re-derived from `defaultKindForBookingType`: an `activity` booking is
       // HARD, so this soft sightseeing event would silently harden on a toggle.
       it('PRESERVES the kind rather than re-deriving it', () => {
         render(wrapNav(<EventForm event={soft as never} onClose={() => {}} />));
@@ -510,6 +514,161 @@ describe('EventForm (folded into Modal, U-01)', () => {
       tripState.bookings = [];
     });
 
+    // ── ADR-0154 §1 · THE 400, PINNED ────────────────────────────────────────────
+    // This is the reproduction that found the bug, kept as the regression: the row used to
+    // send `placeId` whatever the type was, and `bookings.service.ts`'s `assertPlaceShape`
+    // rejects that pair for a route-shaped type. It asserts the PAYLOAD rather than a
+    // rendered string, because the payload is what the server refused.
+    describe('the place shape it sends (ADR-0154 §1)', () => {
+      const bookedPayload = () => verbs.book.mock.calls[0]?.[0];
+
+      // THE EXACT REPRODUCTION. Before the fix this produced
+      // `{ type: 'flight', title: '…', placeId: 'p-nrt' }` and the server threw
+      // `Transport bookings use fromPlaceId/toPlaceId, not placeId` — so a transport event
+      // that HAD a place could not be booked at all.
+      it('converts an existing transport event with a place without sending placeId', () => {
+        tripState.places = [PLACE_A, PLACE_B];
+        const existing = {
+          id: 'e-1',
+          tripId: 't1',
+          title: 'טיסה לטוקיו',
+          date: '2026-07-20',
+          kind: 'soft',
+          status: 'planned',
+          category: 'transport',
+          placeId: 'p-nrt',
+          source: 'manual',
+          updatedBy: 'u1',
+        };
+        tripState.events = [existing];
+        render(wrapNav(<EventForm event={existing as never} onClose={() => {}} />));
+        save();
+
+        const payload = bookedPayload();
+        expect(payload).toMatchObject({ type: 'flight' });
+        // The exact shape `assertPlaceShape` allows: `placeId` absent, route keys present.
+        expect('placeId' in payload).toBe(false);
+        // §3's origin seed — the event's one place cannot say which end it is, so it lands
+        // in the origin where one tap on the swap can move it.
+        expect(payload.fromPlaceId).toBe('p-nrt');
+        tripState.places = [];
+        tripState.events = [];
+      });
+
+      it('sends a route and no placeId for a fresh flight too', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        named('טיסה לטוקיו');
+        pickCategory('transport'); // defaults the row ON and the type to flight
+        save();
+
+        const payload = bookedPayload();
+        expect(payload).toMatchObject({ type: 'flight' });
+        expect('placeId' in payload).toBe(false);
+      });
+
+      // The other half of the same invariant, so a future change cannot fix one by
+      // breaking the other: a single-place type must never carry route keys.
+      it('sends a single placeId and NO route for a restaurant', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        named('ארוחת ערב');
+        pickCategory('food');
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(t.eventForm.bookedLabel) }));
+        save();
+
+        const payload = bookedPayload();
+        expect(payload).toMatchObject({ type: 'restaurant' });
+        expect('fromPlaceId' in payload).toBe(false);
+        expect('toPlaceId' in payload).toBe(false);
+        expect(payload).toHaveProperty('placeId');
+      });
+
+      // `🚌 אחר` is offered under transport but `other` is NOT route-shaped — the gap
+      // ADR-0154 states and deliberately leaves open. Pinned so closing it is a decision.
+      it('sends a single placeId for the bus/other transport type', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        named('אוטובוס לנמל');
+        pickCategory('transport');
+        fireEvent.click(
+          within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.other }),
+        );
+        save();
+
+        const payload = bookedPayload();
+        expect(payload).toMatchObject({ type: 'other' });
+        expect('fromPlaceId' in payload).toBe(false);
+        expect(payload).toHaveProperty('placeId');
+      });
+
+      // A picked route is an edit: closing with one unsaved must hit the discard guard,
+      // like every other field. It did not, because `dirty` listed nine fields by hand.
+      it('counts a picked route as an unsaved change', () => {
+        const onClose = vi.fn();
+        render(wrapNav(<EventForm onClose={onClose} />));
+        pickCategory('transport');
+        fireEvent.click(screen.getByRole('button', { name: t.index.form.originLabel }));
+        // The errand hands the draft over; re-opening with it is how the pick comes back.
+        cleanup();
+        const draft = startErrand.mock.calls[0]?.[0]?.draft;
+        render(wrapNav(<EventForm draft={{ ...draft, fromPlaceId: 'p-tlv' }} onClose={onClose} />));
+        fireEvent.keyDown(document, { key: 'Escape' });
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByText(t.common.discardTitle)).toBeTruthy();
+      });
+
+      // ADR-0107: a departure is typed in the ORIGIN's zone, the rule `bookingSheetDraft`
+      // already follows. Asserting the INSTANT rather than a chip, because a wrong zone
+      // here does not look wrong — it stores a different moment than the one typed.
+      it('encodes the times in the origin zone, not the trip primary', () => {
+        tripState.places = [PLACE_A, PLACE_B];
+        tripState.zoneEvidence = { ...tripState.zoneEvidence, places: [PLACE_A, PLACE_B] };
+        // Via the draft, so the date/time/origin are set without driving three widgets.
+        render(
+          wrapNav(
+            <EventForm
+              draft={
+                {
+                  title: 'טיסה לטוקיו',
+                  date: '2026-07-20',
+                  start: '22:15',
+                  end: '',
+                  kind: 'hard',
+                  kindTouched: false,
+                  icon: '✈️',
+                  iconTouched: false,
+                  booked: true,
+                  bookedTouched: true,
+                  code: '',
+                  bookingType: 'flight',
+                  category: 'transport',
+                  fromPlaceId: 'p-tlv',
+                  override: null,
+                } as never
+              }
+              onClose={() => {}}
+            />,
+          ),
+        );
+        save();
+
+        // 22:15 in Asia/Jerusalem (+03) is 19:15Z. Read in the trip's own Asia/Tokyo (+09)
+        // — which is what `placeId` would have resolved to with no place picked — it would
+        // be 13:15Z, so this fails loudly if the origin stops driving the zone.
+        const seed = verbs.book.mock.calls[0]?.[0]?.event as { startsAt?: string } | undefined;
+        expect(seed?.startsAt).toBe('2026-07-20T19:15:00.000Z');
+        tripState.places = [];
+      });
+
+      // An unbooked transport event is still a plain event with one place — the route
+      // field belongs to the BOOKING, so it must not appear when nothing is booked.
+      it('shows the single place field, not the route field, when nothing is booked', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        pickCategory('transport');
+        fireEvent.click(screen.getByRole('button', { name: new RegExp(t.eventForm.bookedLabel) }));
+        expect(screen.queryByRole('button', { name: t.index.form.originLabel })).toBeNull();
+        expect(screen.getByRole('button', { name: t.placePicker.open })).toBeTruthy();
+      });
+    });
+
     // ADR-0134 §2: the draft is the errand's hand-over blob, and a field missed there is
     // silently lost on a place errand — which for these fields means the save quietly does
     // something different on the way back.
@@ -521,10 +680,13 @@ describe('EventForm (folded into Modal, U-01)', () => {
       fireEvent.change(screen.getByPlaceholderText(t.eventForm.bookedCodePlaceholder), {
         target: { value: 'RN-4820' },
       });
-      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+      // A booked TRAIN is route-shaped (ADR-0154 §2), so the place field is the route
+      // field and the errand is per end — which is exactly why `target.field` exists.
+      fireEvent.click(screen.getByRole('button', { name: t.index.form.originLabel }));
 
       expect(startErrand).toHaveBeenCalledWith(
         expect.objectContaining({
+          target: expect.objectContaining({ kind: 'event', field: 'fromPlaceId' }),
           draft: expect.objectContaining({
             booked: true,
             bookedTouched: false,

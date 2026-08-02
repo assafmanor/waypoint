@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { EventCategory, TripEvent } from './entities';
+import type { BookingType, EventCategory, TripEvent } from './entities';
+import { BOOKING_TYPE, BOOKING_TYPE_TO_CATEGORY } from './constants';
 import {
+  authorsRoundTrip,
+  BOOKING_TYPE_PROFILE,
+  carriesRoute,
   CATEGORY_TIME_PROFILE,
+  defaultKindForBookingType,
+  hasSpanSchedule,
   eventDurationUnit,
   eventEndBoundary,
   eventTransitionKeys,
@@ -221,5 +227,72 @@ describe('eventEndBoundary', () => {
       kind: 'day',
       date: '2026-07-07',
     });
+  });
+});
+
+// ── ADR-0154 §2 · the booking-type shape profile ────────────────────────────────
+// These assert the PROPERTIES that made the table worth having, not a copy of its
+// rows: a row-by-row echo would pass just as happily with the bug the table exists
+// to prevent.
+describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
+  const ALL_TYPES = Object.values(BOOKING_TYPE) as BookingType[];
+
+  it('covers every booking type, so a new one cannot be silently defaulted', () => {
+    for (const type of ALL_TYPES) expect(BOOKING_TYPE_PROFILE[type]).toBeDefined();
+    expect(Object.keys(BOOKING_TYPE_PROFILE).sort()).toEqual([...ALL_TYPES].sort());
+  });
+
+  // The invariant the six scattered predicates were each half-stating, and the one
+  // the server enforces: a route-shaped type is exactly the transport-category one.
+  it('agrees with the category mapping about which types carry a route', () => {
+    for (const type of ALL_TYPES) {
+      expect(carriesRoute(type)).toBe(BOOKING_TYPE_TO_CATEGORY[type] === 'transport');
+    }
+  });
+
+  it('gives flight and train a route, and every other type a single place', () => {
+    expect(carriesRoute(BOOKING_TYPE.FLIGHT)).toBe(true);
+    expect(carriesRoute(BOOKING_TYPE.TRAIN)).toBe(true);
+    for (const type of [BOOKING_TYPE.HOTEL, BOOKING_TYPE.RESTAURANT, BOOKING_TYPE.ACTIVITY]) {
+      expect(carriesRoute(type)).toBe(false);
+    }
+    // `other` is the one that reads wrong to a human — `TRANSPORT_BOOKING_TYPES`
+    // offers it as 🚌 in the event form — and the model says it is not a route
+    // (ADR-0154's stated, deliberately-unclosed gap). Pinned so closing it later is
+    // a visible decision rather than a drift.
+    expect(carriesRoute(BOOKING_TYPE.OTHER)).toBe(false);
+  });
+
+  // `places` and `schedule` are separate axes on purpose: a hotel is two endpoints
+  // at ONE place. If someone ever collapses them, this is what fails.
+  it('keeps the place shape and the schedule shape independent', () => {
+    expect(hasSpanSchedule(BOOKING_TYPE.HOTEL)).toBe(true);
+    expect(carriesRoute(BOOKING_TYPE.HOTEL)).toBe(false);
+  });
+
+  it('spans exactly the types that have two endpoints', () => {
+    expect(ALL_TYPES.filter(hasSpanSchedule).sort()).toEqual(
+      [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.HOTEL, BOOKING_TYPE.ACTIVITY].sort(),
+    );
+  });
+
+  // ADR-0136 §4: booked-ness and commitment are different axes, and a restaurant
+  // booking being soft is the case that proves it.
+  it('opens a restaurant and an `other` booking soft, and the span types hard', () => {
+    expect(defaultKindForBookingType(BOOKING_TYPE.RESTAURANT)).toBe('soft');
+    expect(defaultKindForBookingType(BOOKING_TYPE.OTHER)).toBe('soft');
+    for (const type of ALL_TYPES.filter(hasSpanSchedule)) {
+      expect(defaultKindForBookingType(type)).toBe('hard');
+    }
+  });
+
+  // A mirrored leg reverses a route, so it can only belong to a type that has one.
+  it('only offers a mirrored return where there is a route to mirror', () => {
+    for (const type of ALL_TYPES) {
+      if (authorsRoundTrip(type)) expect(carriesRoute(type)).toBe(true);
+    }
+    expect(ALL_TYPES.filter(authorsRoundTrip).sort()).toEqual(
+      [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN].sort(),
+    );
   });
 });

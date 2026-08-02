@@ -1,0 +1,50 @@
+/* RouteField (ADR-0154 §3). Was `.booking-sheet .bs-route-pickers` +
+   `.bs-route-hint` in `screens.css`; the rules are unchanged, the host is gone
+   from the selector. That is the whole extraction: a rule scoped to one host is
+   wrong the moment there are two, and there are two now (`BookingSheet` and
+   `EventForm`). Logical properties only (RTL). */
+
+/* The two pickers, stacked (origin above destination) — phone-first, never a
+   cramped inline row. */
+.route-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The exchange, between the ends it exchanges. Quiet on purpose: it is a
+   correction, not one of the field's two subjects, so it reads at caption
+   weight in `--muted` and spends no hue (rule 4). `flex-start` keeps it off the
+   pickers' full width, so it cannot be mistaken for a third endpoint. */
+.route-field-swap {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.route-field-swap .icon {
+  inline-size: 15px;
+  block-size: 15px;
+}
+.route-field-swap:active {
+  transform: scale(var(--press-scale));
+}
+.route-field-swap:focus-visible {
+  outline: none;
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.route-field-hint {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-block-start: -6px;
+}

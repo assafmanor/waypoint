@@ -3,6 +3,7 @@
 // unlinked event owns its own placeId. Consumers resolve a display name through here
 // rather than reading a (now-removed) free-text location off the event.
 import {
+  carriesRoute,
   categoryForBookingType,
   eventDurationUnit,
   isAmbient,
@@ -17,11 +18,11 @@ import { deriveNow, eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from '.
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
 
-/** Whether a booking is transport (flight/train/…): its category is `transport`. */
-export function isTransportBooking(booking: Booking): boolean {
-  return categoryForBookingType(booking.type) === 'transport';
-}
-const isTransport = isTransportBooking;
+/** Whether a booking carries a route rather than a single place — one call into the
+ *  shared profile (ADR-0154 §2), which is where that question now lives for both
+ *  packages. Kept as a local alias only because it reads better over a `Booking`
+ *  than over its `.type` at the dozen call sites below. */
+const isTransport = (booking: Booking): boolean => carriesRoute(booking.type);
 
 /**
  * Every `placeId` actually referenced by a saved entity — the set that defines
@@ -574,7 +575,7 @@ export function eventDurationLabel(
   zones: Pick<EventZones, 'deltaMinutes'>,
 ): string | undefined {
   if (!event.startsAt || !event.endsAt) return undefined;
-  const transport = booking ? isTransportBooking(booking) : false;
+  const transport = booking ? isTransport(booking) : false;
   if (!transport && zones.deltaMinutes == null) return undefined;
   const minutes = (Date.parse(event.endsAt) - Date.parse(event.startsAt)) / 60000;
   return formatDuration(minutes, eventDurationUnit(event)) ?? undefined;

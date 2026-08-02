@@ -16,8 +16,14 @@
 //
 // Pure and clock-free: the screen supplies the wording and the zone, exactly as
 // it does for the row's meta line.
-import { isMultiDay, type Booking, type MaybeItem, type TripEvent } from '@waypoint/shared';
-import { bookingPlaceId, eventPlaceId, isTransportBooking } from './places';
+import {
+  carriesRoute,
+  isMultiDay,
+  type Booking,
+  type MaybeItem,
+  type TripEvent,
+} from '@waypoint/shared';
+import { bookingPlaceId, eventPlaceId } from './places';
 
 /** What kind of thing references the place — which decides where the entry goes:
  *  a booking → `BookingDetail`, an event → its day, an idea → the shelf. */
@@ -96,7 +102,7 @@ export function placeRefs(
     // Transport contributes BOTH endpoints, each at its own moment: the origin
     // when you depart, the destination when you land.
     const endpoints: { id?: string | null; edge: 'start' | 'end' }[] =
-      booking && isTransportBooking(booking)
+      booking && carriesRoute(booking.type)
         ? [
             { id: booking.fromPlaceId, edge: 'start' },
             { id: booking.toPlaceId, edge: 'end' },
@@ -127,7 +133,7 @@ export function placeRefs(
   const linked = new Set(events.map((e) => e.bookingId).filter(Boolean));
   for (const booking of bookings) {
     if (linked.has(booking.id)) continue;
-    const ids = isTransportBooking(booking)
+    const ids = carriesRoute(booking.type)
       ? [
           { id: booking.fromPlaceId, edge: 'start' as const },
           { id: booking.toPlaceId, edge: 'end' as const },
