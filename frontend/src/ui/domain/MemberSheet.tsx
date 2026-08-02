@@ -93,7 +93,7 @@ export function MemberSheet({
               ? [
                   {
                     label: t.settings.removeMember,
-                    icon: CONTROL_ICON.leave,
+                    icon: CONTROL_ICON.removeMember,
                     danger: true,
                     onSelect: onRemove,
                   } as RowAction,

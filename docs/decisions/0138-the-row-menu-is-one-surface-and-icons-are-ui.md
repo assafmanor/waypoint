@@ -319,3 +319,29 @@ it is §2's "split the vocabulary at its source", applied to the last holdouts.
 - The plane is authored **nose-left** and the bracket **opening left**, for the
   reason `exit` is authored mirrored: forward and inward are leftward in RTL, and
   this app has no LTR mode to transform back to.
+
+## Fourth amendment (2026-08-02) — a door says nothing about whose it is
+
+Asked of the two trip-settings screenshots: _"the icon for leave group or remove
+from group — is it inverted in Hebrew? Should it face the other side?"_
+
+**The direction is right and stays.** `exit` is authored mirrored from the LTR
+log-out convention — door on the trailing side, arrow leading away leftward, which is
+forward in RTL — the same call the plane and the bracket make in this ADR's third
+amendment. What the question caught is one step earlier than direction: the **same
+mark** was drawing two different verbs. `הסר מהטיול` (remove that member) and
+`עזוב את הטיול` (leave, yourself) both rendered `CONTROL_ICON.leave`, so a row aimed
+at someone else's name wore the mark for walking out of your own trip. A door frame
+carries no subject, so nothing in the shape distinguished them — the arrow pointing
+away from a person's name is what read as backwards.
+
+`Icon` gains `userMinus` (one figure + a minus, badge on the trailing side where a
+mirrored `user-minus` puts it) and `CONTROL_ICON` gains `removeMember`. That is §2's
+split applied once more: **one verb, one mark, and a verb that takes an object does
+not share with one that doesn't** — the rule already stated here for `swap`/`sync`,
+where one emoji had served two meanings. `exit` keeps trip settings' own leave row,
+which is now its only job.
+
+The direction is pinned by a geometry test (`Icon.test.tsx`) rather than a comment,
+because "un-inverting" the mark back to the LTR original is exactly the well-meant
+change a future reader might make.

@@ -56,6 +56,7 @@ export type IconName =
   | 'navigate'
   | 'crown'
   | 'exit'
+  | 'userMinus'
   // Bottom nav (ADR-0138 §4 — the owner's call to cross this line).
   | 'home'
   | 'map'
@@ -232,13 +233,26 @@ const PATHS: Record<IconName, string> = {
   // Replaces 👑 — `MemberSheet`'s promote-to-admin.
   crown:
     'M3.4 7.2 6.8 12l5.2-6.8L17.2 12l3.4-4.8v10a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z',
-  // A door with an arrow leading AWAY from it. Replaces 🚪 — remove-from-trip,
-  // and trip settings' own leave row. Two directional decisions, both load-bearing:
-  // the arrow points OUT of the frame (drawn the other way round it is the sign-IN
-  // mark), and the whole thing is authored mirrored from the LTR convention, door
-  // on the trailing side, because leaving moves leftward in an RTL layout. Authored
-  // that way rather than transformed — this app has no LTR mode to flip back to.
+  // A door with an arrow leading AWAY from it. Replaces 🚪 — trip settings' leave row.
+  // Two directional decisions, both load-bearing: the arrow points OUT of the frame
+  // (drawn the other way round it is the sign-IN mark), and the whole thing is authored
+  // mirrored from the LTR convention, door on the trailing side, because leaving moves
+  // leftward in an RTL layout. Authored that way rather than transformed — this app has
+  // no LTR mode to flip back to.
+  //
+  // **`I` leave. It never means "remove THEM"** (ADR-0138's fourth amendment) — that is
+  // `userMinus` below. A door says nothing about whose it is, so one mark on both rows
+  // left `הסר מהטיול` looking like the leave row aimed at someone else's name.
   exit: 'M14.6 20.4H18.4a2 2 0 0 0 2-2V5.6a2 2 0 0 0-2-2h-3.8 M8 16.6 3.4 12 8 7.4 M3.4 12h11.2',
+  // One person + a minus — remove a MEMBER. The subject is the person, which is the
+  // whole distinction from `exit`: this verb takes an object and that one doesn't.
+  // A single figure, not `members`' pair, for the same reason.
+  //
+  // The badge sits on the TRAILING side (left), where `exit`'s arrow goes and where a
+  // mirrored `user-minus` puts it — a badge hangs off a figure in the direction the
+  // layout flows, so in RTL the person leads and the minus follows.
+  userMinus:
+    'M17.6 8a3.1 3.1 0 1 1-6.2 0 3.1 3.1 0 0 1 6.2 0 M21 20.6v-1.7a3.5 3.5 0 0 0-3.5-3.5h-6a3.5 3.5 0 0 0-3.5 3.5v1.7 M2 11.4h5.6',
   // ── Bottom nav. Four shapes, one per tab (ADR-0138 §4).
   home: 'M3.4 10.2 12 3.4l8.6 6.8v9.2a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6Z M9.4 21V13h5.2v8',
   // A folded map. NOT `pin` — that shape already means "our marker" (ADR-0121
