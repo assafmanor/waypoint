@@ -424,9 +424,19 @@ we serve an avatar would be a vulnerability.
 - **The ramp had its first visual pass in this session, and it changed the answer.** The hues were
   chosen numerically against stated constraints, then **rendered against the shipped CSS** — which cut
   the sixth (§5) and found the two defects in §10. ADR-0125 is the precedent for why this matters: a
-  palette that measured fine and read as one hue on a real screen. What is still unseen is the ramp on a
-  **real device** and in **dark mode** (the remap values are unwritten), and at `xs` size in the chrome,
-  where `plum` and `rose` are closest. Judge those before calling the values final.
+  palette that measured fine and read as one hue on a real screen.
+
+  **Closed 2026-08-02 ([ADR-0158](0158-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md)
+  §12), with no change to the values.** The pass this bullet owed has run, in both themes, at every
+  size the ramp ships at. `plum`/`rose` is ΔE00 13.4 light / 12.1 dark and separable at 26px. Two
+  corrections to what this ADR assumed: the dark remap values were **written** all along (Phase 1 put
+  all five in the `[data-theme='dark']` block) — what was missing was that nothing set `data-theme`,
+  so they had never rendered; and the risk was not plum-vs-rose but **identity-vs-category**, since
+  §5's chroma margin measures collapsed in dark (`--id-moss` 25.5 against `--cat-leisure` 26.2). That
+  one did not survive the render either — a saturated teardrop on a canvas and a muted disc with an
+  initial stay different objects. What the pass did settle: §5's one-ink-for-every-hue rule is now
+  **measured** — `#12203A` clears 5.42 minimum in light and 6.61 in dark.
+
 - **The mockup is bound to the app's CSS, not a copy of it.** It carries an `APP-CSS` manifest, so
   `tokens.css` + `App.css` + `screens.css` are inlined verbatim and any shell change shows up in its
   `git diff`. Re-run `mockups/tools/inline-app-css.mjs` after touching those files.

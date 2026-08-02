@@ -50,10 +50,12 @@ button.wp-av:focus-visible {
   font-size: 38px;
 }
 
-/* "This is you" — a gap then a bright ring, so it reads as a ring rather than a
-   border (the shipped `.account-btn` treatment, generalised here). */
+/* "This is you" — a gap then a PROMINENT ring, so it reads as a ring rather than
+   a border (the shipped `.account-btn` treatment, generalised here). The ring is
+   the host surface's ink, not white: white is only "prominent" while the surface
+   under it is dark, and this primitive is used on cards too. */
 .wp-av-ring {
   box-shadow:
     0 0 0 2px var(--card),
-    0 0 0 3.5px rgba(255, 255, 255, 0.6);
+    0 0 0 3.5px color-mix(in srgb, var(--ink) 60%, transparent);
 }

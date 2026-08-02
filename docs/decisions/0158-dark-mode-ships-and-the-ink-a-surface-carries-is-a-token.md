@@ -366,6 +366,85 @@ rule landed — sitting next to a real disabled button and reading identically. 
 is `frontend/CLAUDE.md`'s own "reusing a component and inheriting its DEFAULTS"
 anti-pattern, and it took a theming review to notice.
 
+## §12 — Phase 6, and the second hole in the sweep
+
+Phase 6 was scoped as "look at it on a phone". Looking at it turned up four
+things, and **three of them were invisible to the sweep for one shared reason**:
+the sweep walked **routes**, and these live in **states**.
+
+**1. `--indigo` as heading ink — 1.10:1 in dark, on `.modal-title`.** Every modal
+title in the app, plus the zero state's `h1`, the two `.placeholder` headings and
+the document-upload head. `--indigo` is the chrome's ground; used as text it
+follows the ground into near-black exactly when the page does. Fourth instance of
+§1, and the largest: `.modal-title` is one selector behind every sheet, dialog
+and confirm in the app.
+
+**Why the route sweep could not see it.** It visited eight URLs as one seeded
+user with trips. That user never opens an overlay and never has zero trips — so
+the modal never mounted and the zero state never rendered. **A sweep over routes
+is not a sweep over the app.** The static sweep now takes the captured frames
+_plus_ a modal and a zero state, which is where these four surfaced.
+
+**2. `--miss` is a fill being read as ink.** `#C2584E` at L\* 50.7 is right for a
+dot, a dashed border and the settle mark, and **4.38:1 as text on white** — under
+AA at all 37 sites that write with it, in the theme that shipped first. Same
+split `--amber`/`--amber-deep` already runs, so: `--miss-deep`, a scalar along
+the same RGB ray. **Three call sites converted, 34 left** — each needs its own
+ground checked (a `--miss` label on an always-dark surface wants the bright one,
+not the deep one), so a blanket rename would be wrong. The backlog carries them.
+
+**3. Plan's nav accent stopped one step short.** Phase 5 corrected the trip nav's
+`--indigo`→`--ink` and left `.app[data-mode='plan'] .nav { --nav-accent:
+var(--plan) }` alone. An accent read as ink needs the deep variant: bare `--plan`
+puts the **active** tab's own label at 4.32:1 in dark.
+
+**4. The identity ramp is fine, and the measurement said otherwise.** §5 keeps an
+identity hue from reading as a category pin by **chroma** — the pin is chromatic,
+the avatar muted. In dark that margin measures collapsed: `--id-moss` vs
+`--cat-leisure` went from 27.6-vs-35.8 to 25.5-vs-**26.2**, ΔE00 6.5, because the
+two sets were lifted for the dark board independently, months apart. Rendered at
+26/31/44/92px, **it does not reproduce**: the pin is a saturated teardrop on a
+canvas, the avatar a muted disc with an initial, and they stay obviously
+different. plum/rose, the pair §5 flagged, is 13.4→12.1 and separable at 26px.
+The single-ink rule is now **verified rather than asserted**: `#12203A` clears
+5.42 minimum in light and 6.61 in dark across all five hues.
+
+No change made. Recorded because the honest outcome of a device pass is
+sometimes "the number was scarier than the pixels", and ADR-0125 cuts both ways.
+
+### The chrome went light, which §9 deferred and the owner then asked for
+
+`--chrome-bg` is now the mode's accent at **12% over `--screen`**: trip indigo,
+plan violet, so identity rides **hue** where it used to ride luminance. Four
+grounds were rendered on the captured DOM; 12%-into-`--screen` won, and
+12%-into-white lost by merging with the page — a chrome that does not read as a
+band is not chrome.
+
+Three things fell out of it that the deferral had not priced:
+
+- **The dark chrome had the same defect, unnoticed.** `--indigo` #131F38 against
+  `--screen` #0F1726 is 4.3 L\* and 1.09:1, with `--card` (L\* 15.7) floating
+  _higher_ than the band that carries mode identity. Same 12% answer mixed the
+  other way — the accent over `--card` — which restores the plane order. §5's
+  "trip chrome is always-dark, so its contract is theme-fixed" is **withdrawn**:
+  once light has its own band, the `:root` values are the _light_ chrome and the
+  dark block must restate them.
+- **A light chrome's ink ramp is tighter than a dark one's.** Four rungs inside
+  21 L\*, because the washes are mixed off `--chrome-ink` and therefore _darken_
+  the ground beneath the very ink sitting on them. Each rung is the lightest that
+  clears 4.5 on the heaviest wash it is actually painted on — 16% for `--mid`,
+  8% for `--dim`, 5% for `--num`. One ramp serves both modes: plan's band is the
+  lighter, so trip's rungs clear on it.
+- **Plan's chrome was the duplication §5 predicted, and it is gone.** Nineteen
+  hand-written rules restating `--card`/`--muted`/`--ink` because plan's chrome
+  went light in July and re-specified the set by hand. They are now one line —
+  plan declares `--chrome-bg` and inherits the rest. The day strip's plan block
+  went with them, which is also what fixed the eleven labels that dropped under
+  AA the moment the band stopped being white.
+
+**Verified on the captured frames, against `origin/main` on the same frames:**
+light **10 → 0** failing text nodes, dark **6 → 0**.
+
 ## §10 — The build, in phases
 
 Each phase is independently shippable and independently revertible. Phases 1–3
@@ -379,7 +458,7 @@ on in phase 4.
 | **3** | **Surface tokens**          | `--plan-surface`/`-2` on `.prep`; the five `--chrome-*` set once per mode, trip-dark keeping today's values; `.nav` onto `color-mix`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | None in light by construction; verify with a screenshot diff.                           |
 | **4** | **The theme itself**        | `lib/theme.ts` (pick constants, resolve, `matchMedia`, apply); the pre-paint inline script in `index.html`; `meta[name=theme-color]`; the `/settings` control + `i18n/he.ts` strings; the ADR-0105 dark boot rule. The night map needs **no map code at all** — `readMapsConfig(env, theme)` already picks the dark Map ID, `documentMapTheme()` already reads `data-theme`, `Map.tsx:514` already latches at mount so a theme flip cannot bill a second map, and the `Dockerfile` already declares the `ARG`. What it does need is a **👤 human Cloud-console step** that no phase can do: importing `waypoint-map-night.json` and associating it with the `waypoint-night` Map ID (`prerequisites-checklist.md` §4, still unticked, **~6h propagation**). Unimported, that Map ID renders Google-default — not broken, and easily misread as a code bug. | The first user-visible change.                                                          |
 | **5** | **Light-theme corrections** | `--muted`, `--amber-deep`; `--faint` narrowed to placeholders with its hint call sites moved to `--muted`; update `design-language.md`'s palette and ramp entries.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Visible in light mode; ship separately so it can be judged and reverted on its own.     |
-| **6** | **The device pass**         | Both themes, both modes, on a real phone: the amber-density claim in §1 of the mockup, the deep-violet plan hero, the identity ramp at `xs` in the chrome (ADR-0133's owed pass), and the night map style rendered.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | This is where ADR-0125 says the answer actually comes from.                             |
+| **6** | **The device pass**         | Both themes, both modes, on a real phone: the amber-density claim in §1 of the mockup, the deep-violet plan hero, the identity ramp at `xs` in the chrome (ADR-0133's owed pass), and the night map style rendered. **What it found is §12**, which is more than a pass: four contrast defects the route sweep structurally could not reach, plus §9's light chrome brought forward at the owner's ask.                                                                                                                                                                                                                                                                                                                                                                                                                                                    | This is where ADR-0125 says the answer actually comes from.                             |
 
 Phase 4 is what unblocks the four stalled backlog lines (U-08's dark-mode tail,
 ADR-0105's dark boot, ADR-0133's identity-ramp dark pass, and the Phase-6 night

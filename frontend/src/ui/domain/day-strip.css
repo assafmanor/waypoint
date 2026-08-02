@@ -122,32 +122,41 @@
 
 /* ── Plan mode ── no day is "now": selection is violet; empty days show the
    dashed red-number gap marker (mockups/plan-mode-v1.html). */
+/* The inks here are the CHROME's, not the page's. They used to be --muted /
+   --ink / #fff, which was correct while plan's chrome was white and wrong the
+   moment it became a violet band: eleven labels and numerals dropped under AA
+   at once (ADR-0158 §12). Reading --chrome-* instead means this strip never
+   learns which mode or theme it is in — the same fix the trip strip above
+   already had. */
 .wp-daystrip[data-mode='plan'] .wp-daypill {
-  background: rgba(22, 35, 61, 0.05);
-  color: var(--muted);
+  background: color-mix(in srgb, var(--chrome-ink) 5%, transparent);
+  color: var(--chrome-ink-dim);
 }
 .wp-daystrip[data-mode='plan'] .wp-daypill .n {
-  color: var(--ink);
+  color: var(--chrome-ink-num);
 }
 .wp-daystrip[data-mode='plan'] .wp-monthdiv i {
   background: var(--line);
 }
 .wp-daystrip[data-mode='plan'] .wp-monthdiv span {
-  color: var(--muted);
+  color: var(--chrome-ink-dim);
 }
 .wp-daystrip[data-mode='plan'] .wp-daypill.on {
   background: var(--plan);
   color: var(--on-fill);
 }
 .wp-daystrip[data-mode='plan'] .wp-daypill.on .n {
-  color: #fff;
+  color: var(--on-fill);
 }
 .wp-daystrip[data-mode='plan'] .wp-daypill.empty:not(.on) {
   border: 1px dashed var(--soft-line);
   background: transparent;
 }
+/* The gap marker stays RED — it means "nothing planned here", and that meaning
+   is --miss's. What changes is that it is written rather than painted, so it
+   takes the ink variant. */
 .wp-daystrip[data-mode='plan'] .wp-daypill.empty:not(.on) .n {
-  color: var(--miss);
+  color: var(--miss-deep);
 }
 
 /* Spring-loaded while a drag is in flight (ADR-0116 session-119): resting on a pill
