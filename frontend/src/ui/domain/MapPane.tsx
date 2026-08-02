@@ -363,6 +363,11 @@ function MapPaneInner({
           // a new map is a billed load (§4/§11 — which is also why there are no
           // per-mode map styles).
           mapId={config.mapId}
+          // A Map ID holds BOTH a light and a dark style; this is what picks one.
+          // Google's default is LIGHT, so without it the night Map ID renders its
+          // light slot — the failure that reads exactly like an unimported style
+          // (ADR-0158 §12). Construction-time too, and latched by the same memo.
+          colorScheme={config.colorScheme}
           defaultCenter={defaultCentre ?? { lat: 0, lng: 0 }}
           defaultZoom={defaultCentre ? MAP_ZOOM.PLACE : MAP_ZOOM.WORLD}
           // Google's controls are Google-chromed, unlabelled and unaware of an RTL

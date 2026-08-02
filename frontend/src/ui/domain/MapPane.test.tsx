@@ -30,6 +30,7 @@ vi.mock('@vis.gl/react-google-maps', () => ({
     <div
       data-map
       data-mapid={String(props.mapId)}
+      data-colorscheme={String(props.colorScheme)}
       data-gestures={String(props.gestureHandling)}
       data-nodefaultui={String(props.disableDefaultUI)}
       data-clickableicons={String(props.clickableIcons)}
@@ -164,10 +165,11 @@ class FakeZoomMap {
 
 import { MapPane, type MapPin } from './MapPane';
 import { PIN_TIER } from '../../lib/map-pins';
+import { MAP_COLOR_SCHEME } from '../../lib/map-config';
 import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS, MAP_CONNECTOR, MAP_ZOOM } from '../../constants';
 import { t } from '../../i18n/he';
 
-const CONFIG = { apiKey: 'k', mapId: 'waypoint-day' };
+const CONFIG = { apiKey: 'k', mapId: 'waypoint-day', colorScheme: MAP_COLOR_SCHEME.light };
 
 const pin = (partial: Partial<MapPin> & Pick<MapPin, 'placeId'>): MapPin => ({
   lat: 35.6,
@@ -226,6 +228,11 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(document.querySelectorAll('[data-map]')).toHaveLength(1);
     // A `mapId` is the price of admission: advanced markers do not load without one.
     expect(map.dataset.mapid).toBe('waypoint-day');
+    // And the ID alone does not choose a style: it names a light/dark PAIR, and
+    // Google renders the light one unless asked otherwise. Shipping the night Map
+    // ID without this is what left the canvas light under a dark app — a prop
+    // silently not forwarded, which is precisely what this stub exists to catch.
+    expect(map.dataset.colorscheme).toBe('LIGHT');
     // Google's controls are un-styleable, unlabelled and RTL-unaware (§12).
     expect(map.dataset.nodefaultui).toBe('true');
     // The default demands two fingers inside a scrollable page (§12).
