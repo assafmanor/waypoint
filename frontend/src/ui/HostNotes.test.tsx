@@ -130,6 +130,20 @@ describe('HostNotes', () => {
     expect(document.querySelector('button.note-open-host')).toBeNull();
   });
 
+  // The row here prints title-or-body, so a note carrying both a body and a link showed
+  // nothing of the link at all — the foot is where it becomes visible AND openable.
+  it('opens the note’s url from the foot, on a host that never printed it', () => {
+    tripNotes = [
+      note({ id: 'n1', body: 'התפריט מתעדכן', url: 'tabelog.com/tokyo/A1303', documentId: 'd1' }),
+    ];
+    open('document', 'd1');
+    expect(screen.queryByRole('link')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'התפריט מתעדכן' }));
+    const link = screen.getByRole('link', { name: t.notes.open.openLink });
+    expect(link.getAttribute('href')).toBe('https://tabelog.com/tokyo/A1303');
+  });
+
   it('opens an existing note into the same editor and updates it', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');

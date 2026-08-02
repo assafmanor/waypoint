@@ -18,6 +18,7 @@ import { useAuth } from '../state/auth-state';
 import { useAppBack } from '../state/nav-state';
 import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { FormError } from '../ui/primitives/FormError';
 import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { Icon } from '../ui/Icon';
@@ -558,21 +559,13 @@ function DetailsEditor({
       <div className="set-fld" ref={nameMark.ref} data-invalid={nameMark.error ? '' : undefined}>
         <label htmlFor="s-name">{t.settings.nameLabel}</label>
         <input id="s-name" value={name} onChange={(e) => setName(e.target.value)} />
-        {nameMark.error && (
-          <div className="field-error" role="alert">
-            {nameMark.error}
-          </div>
-        )}
+        <FormError>{nameMark.error}</FormError>
       </div>
       <div className="set-fld" ref={destMark.ref} data-invalid={destMark.error ? '' : undefined}>
         <label htmlFor="dest">{t.settings.destinationLabel}</label>
         <DestinationPicker value={destination} onPick={handleDestination} />
         {candidateZones && <p className="dest-tz-note">{t.shell.newTrip.tzMultiNote}</p>}
-        {destMark.error && (
-          <div className="field-error" role="alert">
-            {destMark.error}
-          </div>
-        )}
+        <FormError>{destMark.error}</FormError>
       </div>
       <div className="set-fld">
         <label>{t.settings.iconLabel}</label>
@@ -612,11 +605,7 @@ function DetailsEditor({
             />
           </label>
         </div>
-        {(datesInvalid || datesMark.error) && (
-          <div className="field-error" role="alert">
-            {datesInvalid ? t.shell.newTrip.dateError : datesMark.error}
-          </div>
-        )}
+        <FormError>{datesInvalid ? t.shell.newTrip.dateError : datesMark.error}</FormError>
       </div>
       <div className="set-fld">
         <label htmlFor="s-tz">{t.settings.timezoneLabel}</label>

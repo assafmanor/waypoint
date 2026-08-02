@@ -76,9 +76,19 @@ Same-shaped mistake as ADR-0152 §6's amendment, one surface over: **a reader wa
 
 ### 5. The editor has one refusal, and v1 has no host picker
 
-Body is the primary field; title and url optional. The single refusal — neither body nor url — is marked **on both fields that can cure it, in one call** (ADR-0150; a refusal that stops at the first problem sends the user round the loop again). The primary is never `disabled` as a stand-in for it.
+Body is the primary field; title and url optional. The single refusal — neither body nor url — is one problem with two cures, so it is one `report` call (ADR-0150; a refusal that stops at the first problem sends the user round the loop again). The primary is never `disabled` as a stand-in for it.
+
+**Amended 2026-08-02 (owner):** it marked **both** curable fields, and it read as a bug because both marks stated something untrue. Reddening the url contradicts its own `לא חובה` label; reddening the body calls a field mandatory when _"they can just add urls"_ — a link on its own is a whole note. Every field on this form is optional **individually**, so the refusal belongs to no field: it is the form's (`field: null`, ADR-0150's own slot for a refusal with nothing to point at), it reads once above the actions in the words `כדי לשמור צריך לכתוב משהו או להוסיף קישור`, and **nothing turns red**.
+
+This does not weaken ADR-0150 — the caption it replaced was below the fold in a scroll container, naming a field it did not point at; this one is against the button that was just pressed and points at nothing because there is nothing to point at. Two consequences worth stating: the hook's per-field `dismissAt` cannot retire a refusal with no field, so the form clears on any keystroke instead; and the general rule sharpens to **mark the field that is wrong, and when no single field is, say so at the form**.
 
 **A note created from the notes screen is always general.** A host picker is a sub-surface — search across five entity types — and it is not built. This is a real limitation, accepted knowingly: attachment is established from the host's side, which is where it is natural anyway.
+
+### 5b. A note's url is a link, and it opens from the open note (2026-08-02, owner)
+
+It was readable in three places and openable in none. It opens from `NoteOpenFoot` — the one surface both the notes screen and a host's section already share — as its own line above the verbs, rather than from the row: §8's argument against making the ~16px link **mark** an entrance is the same argument against making it a link, and the row's whole width is already one open target. On a host this is also the only place the url is legible at all, since that row prints title-or-body and a note with both a body and a link showed no sign of the link.
+
+The href comes from `externalHref` (`lib/external-url.ts`), which shipped **with this section unbuilt** — the helper, its tests and the `פתיחת הקישור` copy were all in place and nothing rendered a link, which is why the report was that urls are readable everywhere and openable nowhere. Nothing new was needed: it supplies the scheme a scheme-less url lacks (the field's own placeholder is one, and a relative href re-enters the app — in the installed PWA, with no address bar to escape from), and it allowlists http/https/mailto/tel so a `javascript:` in a group-visible text field answers `null` and renders as text.
 
 ### 6. On a host, a note is a mark in the meta line — and that costs `EventCard` three changes
 

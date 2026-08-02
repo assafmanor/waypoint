@@ -357,6 +357,7 @@ function NoteLi({
       {open && (
         <NoteOpenFoot
           host={host}
+          url={note.url}
           onGoToHost={reachable ? () => wayIn.goTo(host!) : undefined}
           onEdit={() => onEdit(note)}
         />

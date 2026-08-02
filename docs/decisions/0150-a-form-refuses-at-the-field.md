@@ -42,6 +42,8 @@ if (errors.report(problems)) return;   // problems: { field, message }[]
 
 `report` takes the whole list. A form with two empty mandatory fields marks **both** and says so once — the old first-failure `return` sent the user round the save loop to be told the next thing. A `field: null` problem is the form's own (a failed save, a shape the schema refused after every check passed) and keeps the one place it can read: the form-level slot, which is all that still renders down there.
 
+**Amended 2026-08-02:** two things about `field: null` that the original left implicit and a third form found the hard way (ADR-0153 §5's amendment). It also covers **a rule no single field owns** — a note needs a body _or_ a url, and marking either one states something false about a field that is individually optional; when nothing is wrong with any box, the refusal is the form's. And that slot is now the `FormError` primitive (`ui/primitives/FormError.tsx`), not markup each form writes: three copies of the same `<p className="field-error" role="alert">` was two more than this ADR meant by "one place". Note the consequence, since the hook cannot help here — `dismissAt` retires a mark by matching the field that was typed in, so a refusal with **no** field is never retired by it, and a form using this must clear on input itself.
+
 ### 3. The marks
 
 - **Outline** — the control in `--miss`, plus a 3px 20% halo, and the label goes `--miss` with it. Nothing new in the palette: a refusal is a **status**, and `--ok`/`--miss` is where statuses live (ADR-0028). Carried by **one attribute**, `data-invalid`, on whatever shell owns the field — which is what lets `Field`, a screen's own field div, and a single control inside a two-control date range all refuse identically.

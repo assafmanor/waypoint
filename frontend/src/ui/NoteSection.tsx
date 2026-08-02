@@ -80,7 +80,7 @@ export function NoteSection({
                   .filter(Boolean)
                   .join(' · ')}
               </span>
-              {openId === note.id && <NoteOpenFoot onEdit={() => onEdit(note)} />}
+              {openId === note.id && <NoteOpenFoot url={note.url} onEdit={() => onEdit(note)} />}
             </div>
           ))
         )}

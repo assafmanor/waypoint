@@ -47,6 +47,7 @@ import { useToast } from '../ui/Toast';
 import { IconPicker } from '../ui/IconPicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { Field } from '../ui/primitives/Field';
 import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { Icon } from '../ui/Icon';
 import {
@@ -222,13 +223,13 @@ export function CreateTrip() {
           {t.shell.newTrip.lede}
         </p>
 
-        <div
-          className="field birth-in"
+        <Field
+          className="birth-in"
           style={{ '--i': 1 } as React.CSSProperties}
-          ref={destMark.ref}
-          data-invalid={destMark.error ? '' : undefined}
+          label={t.shell.newTrip.destLabel}
+          htmlFor="dest"
+          {...destMark}
         >
-          <label htmlFor="dest">{t.shell.newTrip.destLabel}</label>
           <DestinationPicker value={destination} onPick={handleDestination} />
           {destination && (
             <div className="dest-tz">
@@ -245,11 +246,6 @@ export function CreateTrip() {
               {candidateZones && <p className="dest-tz-note">{t.shell.newTrip.tzMultiNote}</p>}
             </div>
           )}
-          {destMark.error && (
-            <div className="field-error" role="alert">
-              {destMark.error}
-            </div>
-          )}
           {tzPickerOpen && (
             <ZonePicker
               value={timezone}
@@ -261,14 +257,25 @@ export function CreateTrip() {
               onClose={() => setTzPickerOpen(false)}
             />
           )}
-        </div>
+        </Field>
 
-        <div
-          className="field birth-in"
+        {/* `controlsMarked`: each date input decides for itself whether it is the wrong one
+            (ADR-0150 §7), so the shell carries the message without marking — a shell mark
+            would redden the end that is fine. */}
+        <Field
+          className="birth-in"
           style={{ '--i': 2 } as React.CSSProperties}
+          label={t.shell.newTrip.datesLabel}
           ref={datesMark.ref}
+          controlsMarked
+          error={
+            datesInvalid
+              ? startInPast || endInPast
+                ? t.shell.newTrip.datePast
+                : t.shell.newTrip.dateError
+              : datesMark.error
+          }
         >
-          <label>{t.shell.newTrip.datesLabel}</label>
           <div className="date-row">
             <input
               type="date"
@@ -292,24 +299,16 @@ export function CreateTrip() {
               onChange={(e) => setEndDate(e.target.value)}
             />
           </div>
-          {(datesInvalid || datesMark.error) && (
-            <div className="field-error" role="alert">
-              {datesInvalid
-                ? startInPast || endInPast
-                  ? t.shell.newTrip.datePast
-                  : t.shell.newTrip.dateError
-                : datesMark.error}
-            </div>
-          )}
-        </div>
+        </Field>
 
-        <div
-          className="field birth-in"
+        <Field
+          className="birth-in"
           style={{ '--i': 3 } as React.CSSProperties}
-          ref={nameMark.ref}
-          data-invalid={nameMark.error ? '' : undefined}
+          label={t.shell.newTrip.nameLabel}
+          htmlFor="tripName"
+          hint={t.shell.newTrip.nameHint}
+          {...nameMark}
         >
-          <label htmlFor="tripName">{t.shell.newTrip.nameLabel}</label>
           <div className="title-row">
             <IconPicker
               icon={icon.value}
@@ -326,13 +325,7 @@ export function CreateTrip() {
               onChange={(e) => name.set(e.target.value.slice(0, MAX_TRIP_NAME_LENGTH))}
             />
           </div>
-          <div className="hint">{t.shell.newTrip.nameHint}</div>
-          {nameMark.error && (
-            <div className="field-error" role="alert">
-              {nameMark.error}
-            </div>
-          )}
-        </div>
+        </Field>
 
         {/* The shared card's slot in the form. It reserves the space; the card
             itself is rendered once by `Birth` and positioned over whichever slot

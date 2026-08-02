@@ -362,6 +362,25 @@ describe('IndexNotesView (ADR-0153)', () => {
       expect(foot()?.querySelector('.note-open-host.plain')).toBeTruthy();
     });
 
+    // A note's link was readable everywhere and openable nowhere. It opens from the foot,
+    // and a scheme-less url (the field's own placeholder is one) must not be read as an
+    // in-app path.
+    it('makes the url a real link, and gives a bare host a scheme', () => {
+      show();
+      tap(withLink);
+      const link = screen.getByRole('link', { name: t.notes.open.openLink });
+      expect(link.getAttribute('href')).toBe(`https://${withLink.url}`);
+      expect(link.getAttribute('target')).toBe('_blank');
+      expect(link.getAttribute('rel')).toContain('noopener');
+      expect(link.textContent).toContain(withLink.url!);
+    });
+
+    it('offers no link on a note that has none', () => {
+      show();
+      tap(bodyOnly);
+      expect(screen.queryByRole('link', { name: t.notes.open.openLink })).toBeNull();
+    });
+
     it('offers edit, and leaves delete on the ⋯ where a destructive verb belongs', () => {
       show();
       tap(titleAndBody);
@@ -376,16 +395,28 @@ describe('IndexNotesView (ADR-0153)', () => {
   describe('the editor', () => {
     const openCreate = () => fireEvent.click(screen.getByText(t.notes.add));
 
-    it('refuses a note with neither body nor url, marking BOTH curable fields at once', () => {
+    // Every field here is optional on its own, so the refusal marks NONE of them: a red
+    // body calls it mandatory when a link alone would do, and a red url contradicts its own
+    // `לא חובה` label. It is the form's, and it reads in the form's slot.
+    it('refuses a note with neither body nor url without marking any field', () => {
       show();
       openCreate();
       fireEvent.click(screen.getByText(t.notes.sheet.save));
 
-      const marked = document.querySelectorAll('.field[data-invalid]');
-      expect(marked).toHaveLength(2);
-      expect(screen.getByText(t.notes.sheet.needsBodyOrUrl)).toBeTruthy();
-      expect(screen.getByText(t.notes.sheet.needsBodyOrUrlHere)).toBeTruthy();
+      expect(document.querySelectorAll('[data-invalid]')).toHaveLength(0);
+      expect(screen.getByRole('alert').textContent).toBe(t.notes.sheet.needsBodyOrUrl);
       expect(created).toHaveLength(0);
+    });
+
+    it('retires the refusal as soon as either cure is typed', () => {
+      show();
+      openCreate();
+      fireEvent.click(screen.getByText(t.notes.sheet.save));
+      // `input`, not `change`: the dismissal rides the event a keystroke actually fires.
+      fireEvent.input(screen.getByPlaceholderText(t.notes.sheet.urlPlaceholder), {
+        target: { value: 'example.com/x' },
+      });
+      expect(screen.queryByRole('alert')).toBeNull();
     });
 
     // ADR-0150 §8: a primary is disabled only when a press could not work, never as a

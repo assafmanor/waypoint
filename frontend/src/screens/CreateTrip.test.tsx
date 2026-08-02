@@ -182,6 +182,20 @@ describe('CreateTrip — the birth sequence (ADR-0142)', () => {
     ).toBe(true);
   });
 
+  // The range's own end is what is wrong, so the start must not be reddened with it
+  // (ADR-0150 §7 — the reason the dates shell says `controlsMarked`).
+  it('accuses the end of a backwards range, not the start', () => {
+    render(wrapNav(<CreateTrip />));
+    const [start, end] = document.querySelectorAll('input[type="date"]');
+    fireEvent.change(start, { target: { value: '2026-09-23' } });
+    fireEvent.change(end, { target: { value: '2026-09-12' } });
+
+    expect(end.hasAttribute('data-invalid')).toBe(true);
+    expect(start.hasAttribute('data-invalid')).toBe(false);
+    expect(start.closest('.field')?.hasAttribute('data-invalid')).toBe(false);
+    expect(screen.getByText(t.shell.newTrip.dateError)).toBeTruthy();
+  });
+
   it('does not arm on a date range that is invalid', () => {
     render(wrapNav(<CreateTrip />));
     fireEvent.click(screen.getByTestId('pick-japan'));

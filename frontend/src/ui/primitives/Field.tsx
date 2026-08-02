@@ -8,6 +8,7 @@ import {
   cloneElement,
   isValidElement,
   useId,
+  type CSSProperties,
   type ReactElement,
   type ReactNode,
   type Ref,
@@ -24,6 +25,9 @@ export function Field({
   error,
   hint,
   htmlFor,
+  className,
+  style,
+  controlsMarked,
   ref,
   children,
 }: {
@@ -31,6 +35,18 @@ export function Field({
   label?: ReactNode;
   /** When present, the message is shown in the error slot and announced. */
   error?: string | null;
+  /** Extra classes on the shell — a screen's own arrival/stagger modifier, not a second
+   *  field system. `.field` is always present, so the shared chrome cannot be opted out of. */
+  className?: string;
+  /** For a screen that drives its shell from a custom property (the birth form's `--i`
+   *  stagger). Layout the primitive owns is not settable this way; there is nothing here
+   *  a call site can use to become a different field. */
+  style?: CSSProperties;
+  /** The controls inside carry their own `data-invalid` (ADR-0150 §7: a two-ended field can
+   *  be wrong at ONE end), so the shell must not mark — `[data-invalid] input` reddens every
+   *  control under it, which on a date range accuses the end that is fine. The message still
+   *  reads, and the label still turns. */
+  controlsMarked?: boolean;
   /** A quiet note under the control — what this value is for, or what leaving it
    *  empty costs. The error slot's peer, and deliberately not a variant of it: a
    *  hint never blocks a save and never announces itself as an alert. It exists so
@@ -69,7 +85,13 @@ export function Field({
   // on the control, the label's hue, and what the nudge animates are all this one
   // attribute — so nothing has to be styled per form.
   return (
-    <div className="field" ref={ref} data-invalid={showError ? '' : undefined}>
+    <div
+      className={className ? `field ${className}` : 'field'}
+      style={style}
+      ref={ref}
+      data-invalid={showError && !controlsMarked ? '' : undefined}
+      data-refused={showError && controlsMarked ? '' : undefined}
+    >
       {label != null &&
         (htmlFor ? (
           <label className="field-label" htmlFor={htmlFor}>

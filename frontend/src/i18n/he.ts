@@ -681,22 +681,26 @@ export const t = {
       body: 'דברים קטנים שכדאי לזכור: איפה הכניסה, מה השעה האחרונה, קישור ששלחו לכם.',
       action: 'כתיבת פתק',
     },
-    // The editor. The body leads; title and url are optional. Its one refusal is marked on
-    // BOTH fields that can cure it, in one call (ADR-0150).
+    // The editor. The body leads, but EVERY field here is optional on its own — a link is a
+    // whole note — so the one refusal is about the note, not about a field, and reads in the
+    // form's slot rather than reddening a box (ADR-0150, owner 2026-08-02).
     sheet: {
       createTitle: 'פתק חדש',
       editTitle: 'עריכת פתק',
       bodyLabel: 'מה כדאי לדעת',
-      bodyPlaceholder: 'הכניסה מאחור, ליד חנות הפרחים',
+      // Both boxes say what goes in them, not what someone else wrote (owner, 2026-08-02).
+      // A sample note reads as content on a blank form — the same reason every other
+      // placeholder in this file is `שם ההזמנה` / `שם לזיהוי המסמך`. The url keeps its shape
+      // hint, which tells you the scheme is optional rather than showing you a note.
+      bodyPlaceholder: 'משהו שכדאי לזכור',
       titleLabel: 'כותרת · לא חובה',
-      titlePlaceholder: 'מזומן בלבד',
+      titlePlaceholder: 'כותרת קצרה',
       urlLabel: 'קישור · לא חובה',
       urlPlaceholder: 'instagram.com/p/',
       categoryLabel: 'קטגוריה',
       save: 'שמירה',
       cancel: 'ביטול',
-      needsBodyOrUrl: 'צריך גוף או קישור, לפחות אחד מהם',
-      needsBodyOrUrlHere: 'או כאן',
+      needsBodyOrUrl: 'כדי לשמור צריך לכתוב משהו או להוסיף קישור',
     },
     // The composer on a host's form (ADR-0152 §6b). No title field, no category, no second
     // save — one box, and a blank one writes nothing.

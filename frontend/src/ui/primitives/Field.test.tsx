@@ -47,6 +47,36 @@ describe('Field', () => {
     expect(screen.getByRole('textbox').getAttribute('aria-invalid')).toBeNull();
   });
 
+  // ADR-0150 §7: a two-ended field can be wrong at ONE end, and `[data-invalid] input`
+  // reddens every control under it — so a date range whose end is backwards must not have
+  // its perfectly good start accused too. The message still reads and the label still turns.
+  it('leaves the shell unmarked when the controls mark themselves', () => {
+    const { container } = render(
+      <Field label="תאריכים" error="שגיאה" controlsMarked>
+        <input aria-label="מ" />
+        <input aria-label="עד" data-invalid="" />
+      </Field>,
+    );
+    const shell = container.querySelector('.field')!;
+    expect(shell.hasAttribute('data-invalid')).toBe(false);
+    // …but it is still a refused field, which is what turns the label.
+    expect(shell.hasAttribute('data-refused')).toBe(true);
+    expect(screen.getByRole('alert').textContent).toBe('שגיאה');
+    expect(screen.getByLabelText('מ').hasAttribute('data-invalid')).toBe(false);
+  });
+
+  // A host may add its own arrival/stagger modifier, but never opt out of `.field` itself.
+  it('keeps its own class while taking the host’s', () => {
+    const { container } = render(
+      <Field className="birth-in" style={{ marginTop: '4px' }}>
+        <input />
+      </Field>,
+    );
+    const shell = container.querySelector('.field') as HTMLElement;
+    expect(shell.classList.contains('birth-in')).toBe(true);
+    expect(shell.style.marginTop).toBe('4px');
+  });
+
   // The hint is the error slot's quiet peer: it never blocks a save, so it must not
   // announce itself as an alert or claim the control's `aria-describedby`.
   it('renders a hint without making it an alert', () => {
