@@ -367,6 +367,14 @@
   cursor: pointer;
   font: inherit;
   color: inherit;
+  /* Held off the row's trailing edge, because `.hdr-top` CLIPS (its `overflow`
+     is what makes the condense collapse) and the two things this control draws
+     outside its own box — your ring, and the focus outline — land there. With
+     co-members the outer circle is a plain one and nothing bleeds, which is why
+     this only ever showed on a solo trip: alone, you ARE the outer circle and
+     the row shaved your ring. 5px clears the wider of the two (outline: 2px
+     offset + 2.5px; the ring is 3.5px). */
+  margin-inline-end: 5px;
 }
 .hdr-people:focus-visible {
   outline: 2.5px solid var(--teal);
