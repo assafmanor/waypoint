@@ -234,23 +234,29 @@ const PATHS: Record<IconName, string> = {
   crown:
     'M3.4 7.2 6.8 12l5.2-6.8L17.2 12l3.4-4.8v10a1.4 1.4 0 0 1-1.4 1.4H4.8a1.4 1.4 0 0 1-1.4-1.4Z',
   // A door with an arrow leading AWAY from it. Replaces 🚪 — trip settings' leave row.
-  // Two directional decisions, both load-bearing: the arrow points OUT of the frame
-  // (drawn the other way round it is the sign-IN mark), and the whole thing is authored
-  // mirrored from the LTR convention, door on the trailing side, because leaving moves
-  // leftward in an RTL layout. Authored that way rather than transformed — this app has
-  // no LTR mode to flip back to.
+  // The arrow points OUT of the frame; drawn the other way round it is the sign-IN mark.
   //
-  // **`I` leave. It never means "remove THEM"** (ADR-0138's fourth amendment) — that is
-  // `userMinus` below. A door says nothing about whose it is, so one mark on both rows
-  // left `הסר מהטיול` looking like the leave row aimed at someone else's name.
-  exit: 'M14.6 20.4H18.4a2 2 0 0 0 2-2V5.6a2 2 0 0 0-2-2h-3.8 M8 16.6 3.4 12 8 7.4 M3.4 12h11.2',
+  // **This one is NOT mirrored for RTL** — door on the LEFT, arrow pointing RIGHT, i.e.
+  // the LTR-canonical orientation. Owner's call on the device (ADR-0138's fourth amendment),
+  // after the mirrored version shipped and read as backwards: the mark is an IDIOM, the
+  // exit sign everyone already knows, not a claim about which way you walk. Mirroring it
+  // bought consistency with `NavArrow` that nobody was asking for and cost the
+  // recognition that made the shape worth drawing. `flight` and `bracket` below still
+  // mirror, and the line between them is real — those two describe motion and enclosure
+  // ALONG the reading axis, so the axis owns them.
+  //
+  // **`I` leave. It never means "remove THEM"** (same amendment) — that is `userMinus`
+  // below. A door says nothing about whose it is, so one mark on both rows left
+  // `הסר מהטיול` looking like the leave row aimed at someone else's name.
+  exit: 'M9.4 20.4H5.6a2 2 0 0 1-2-2V5.6a2 2 0 0 1 2-2h3.8 M16 16.6 20.6 12 16 7.4 M20.6 12H9.4',
   // One person + a minus — remove a MEMBER. The subject is the person, which is the
   // whole distinction from `exit`: this verb takes an object and that one doesn't.
   // A single figure, not `members`' pair, for the same reason.
   //
-  // The badge sits on the TRAILING side (left), where `exit`'s arrow goes and where a
-  // mirrored `user-minus` puts it — a badge hangs off a figure in the direction the
-  // layout flows, so in RTL the person leads and the minus follows.
+  // The badge sits on the trailing side (left): a badge hangs off a figure in the
+  // direction the layout flows, so in RTL the person leads and the minus follows. That is
+  // a POSITION, which the layout owns — unlike `exit`'s arrow, which is part of a fixed
+  // idiom and therefore keeps its LTR orientation. Two different rules on purpose.
   userMinus:
     'M17.6 8a3.1 3.1 0 1 1-6.2 0 3.1 3.1 0 0 1 6.2 0 M21 20.6v-1.7a3.5 3.5 0 0 0-3.5-3.5h-6a3.5 3.5 0 0 0-3.5 3.5v1.7 M2 11.4h5.6',
   // ── Bottom nav. Four shapes, one per tab (ADR-0138 §4).
@@ -270,10 +276,12 @@ const PATHS: Record<IconName, string> = {
   // ID mark.
   //
   // A plane in plan view, nose LEADING — authored pointing left because that is
-  // forward in an RTL layout, the same call `exit` makes above (authored mirrored,
-  // not transformed; this app has no LTR mode to flip back to). `Board`'s transit
-  // track slides this along at 13px as the flight progresses, so a nose-up plane
-  // would be flying sideways down the track.
+  // forward in an RTL layout, and authored that way rather than transformed since this app
+  // has no LTR mode to flip back to. **`exit` above no longer shares this call**, and the
+  // difference is why: `Board`'s transit track slides this shape along at 13px as the
+  // flight progresses, so the nose has to face the direction of actual travel — a
+  // nose-right plane would fly backwards down the track. This icon describes motion along
+  // the reading axis; a door mark describes a place.
   //
   // Filled, unlike its stroked neighbours: at 13px an outlined fuselage is two
   // strokes a couple of pixels apart, which fills in and reads as a smudge. The
