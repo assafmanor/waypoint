@@ -1,0 +1,15 @@
+-- ADR-0156: a third transport mode.
+--
+-- `TRANSPORT_BOOKING_TYPES` has offered a `🚌 אחר` pill since the picker shipped, but it
+-- wrote `other` — which is not route-shaped — so a bus saved with a single `placeId`,
+-- never got a route field, and could never be given one. `transit` is the type that pill
+-- always meant: bus, ferry, car hire, cable car.
+--
+-- Additive only. Postgres cannot remove an enum value without rewriting the type, and
+-- there is nothing to remove: `other` stays exactly what it is, a non-transport booking.
+--
+-- **No backfill, deliberately.** An existing `other` booking might be a bus or might be a
+-- shopping reservation, and nothing stored distinguishes them — a guess would silently
+-- re-type real rows, and re-typing one to `transit` would then demand a route the row does
+-- not have. Existing rows keep their type; the pill writes the right one from now on.
+ALTER TYPE "BookingType" ADD VALUE IF NOT EXISTS 'transit' AFTER 'train';

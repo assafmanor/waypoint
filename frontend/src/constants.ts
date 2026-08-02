@@ -1,6 +1,11 @@
 // App-wide tunables and non-copy literals. UI copy lives in i18n/; domain enum
 // values live in @waypoint/shared. Keep magic numbers/strings out of logic.
-import type { BookingType, DocumentType, EventCategory } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  type BookingType,
+  type DocumentType,
+  type EventCategory,
+} from '@waypoint/shared';
 import type { NoteHostKind } from './lib/notes';
 import type { SnapStop } from './lib/snap-sheet';
 import type { IconName } from './ui/Icon';
@@ -210,6 +215,7 @@ export const BOOKING_TYPE_ICON = {
   hotel: '🏨',
   restaurant: '🍜',
   train: '🚄',
+  transit: '🚌',
   activity: '🎟️',
   other: '📄',
 } as const satisfies Record<BookingType, string>;
@@ -245,17 +251,20 @@ export const CATEGORY_DEFAULT_BOOKED = {
  *  every train booked from `EventForm` arrived as a flight for someone to fix later.
  *
  *  So `transport` — and only `transport` — asks. Ordered as shown, flight first, because it
- *  is also the derived default. `other` covers the bus/car/ferry/cable-car half of the
- *  transport icon group; its glyph is `🚌` rather than `BOOKING_TYPE_ICON.other`'s `📄`,
- *  because all three pills answer "which transport" and a document among two vehicles reads
- *  as a different kind of answer. Note `other` is not a span type, so `defaultKindForBookingType`
- *  makes it **soft** while flight and train are hard — deliberately not special-cased, since
- *  commitment has one source (ADR-0136 §4). */
+ *  is also the derived default.
+ *
+ *  **The third pill is a real type now** (ADR-0156). It used to be `other`, which made the
+ *  picker lie in a way nothing on screen admitted: `other` is not route-shaped, so a bus
+ *  saved with a single `placeId`, `BookingSheet` never offered it a route field, and it
+ *  could never be given one. The glyph had to be spelled `🚌` here rather than taken from
+ *  `BOOKING_TYPE_ICON`, because that table said `📄` — a document among two vehicles. Both
+ *  of those were the same symptom. `transit` carries `TRANSPORT_PROFILE`, so the glyph comes
+ *  from the table like everyone else's and the pill means what it says. */
 export const TRANSPORT_BOOKING_TYPES = [
-  { value: 'flight', icon: '✈️' },
-  { value: 'train', icon: '🚄' },
-  { value: 'other', icon: '🚌' },
-] as const satisfies readonly { value: BookingType; icon: string }[];
+  BOOKING_TYPE.FLIGHT,
+  BOOKING_TYPE.TRAIN,
+  BOOKING_TYPE.TRANSIT,
+] as const satisfies readonly BookingType[];
 
 /** Glyph per document type, for the Index documents section badges. */
 export const DOCUMENT_TYPE_ICON = {

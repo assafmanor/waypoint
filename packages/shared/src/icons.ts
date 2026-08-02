@@ -170,6 +170,7 @@ export const CATEGORY_DEFAULT_ICON: Record<EventCategory, string> = {
 export const BOOKING_TYPE_CATEGORY: Record<BookingType, EventCategory> = {
   flight: 'transport',
   train: 'transport',
+  transit: 'transport',
   hotel: 'lodging',
   restaurant: 'food',
   activity: 'activity',
@@ -378,6 +379,11 @@ const TRANSPORT_PROFILE: BookingTypeProfile = {
 export const BOOKING_TYPE_PROFILE = {
   flight: TRANSPORT_PROFILE,
   train: TRANSPORT_PROFILE,
+  // **The third transport mode** (ADR-0156). It shares the profile verbatim, which is the
+  // whole claim ADR-0154 §2 made for this table: a bus, a ferry or a car hire carries a
+  // route, spans two instants, is a real commitment and can be bought as a round trip —
+  // exactly like the two above. One row, no new branch anywhere.
+  transit: TRANSPORT_PROFILE,
   // A stay is two endpoints at ONE place — which is why `places` and `schedule` are
   // separate axes rather than one "is it transport" flag.
   hotel: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: 'single' },
