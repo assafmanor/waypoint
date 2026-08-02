@@ -13,8 +13,9 @@
 // Pure: everything it needs is passed in. No hooks, no clock — the sheet is authored in the
 // zones the trip's own places resolve (ADR-0107), never in "now".
 import {
+  carriesRoute,
+  defaultKindForBookingType,
   BOOKING_TYPE,
-  EVENT_KIND,
   type Booking,
   type BookingType,
   type Place,
@@ -64,14 +65,6 @@ interface Wifi {
   password?: string;
 }
 
-export const isTransportType = (ty: BookingType) =>
-  ty === BOOKING_TYPE.FLIGHT || ty === BOOKING_TYPE.TRAIN;
-
-/** Two-endpoint schedule (start + end, may span days): transport departure→arrival, a hotel
- *  check-in→check-out, an activity start→end. Restaurant/other are a single point on a day. */
-export const isSpanType = (ty: BookingType) =>
-  isTransportType(ty) || ty === BOOKING_TYPE.HOTEL || ty === BOOKING_TYPE.ACTIVITY;
-
 /** **EVERY `Booking` FIELD, CLASSIFIED** — the compile-time tie between the entity and this
  *  draft (owner, session 173: _"make sure that the booking draft schema is updated on any
  *  booking schema update"_).
@@ -112,10 +105,6 @@ export const BOOKING_FIELD_COVERAGE = {
   provider: 'unused',
 } as const satisfies Record<keyof Booking, 'form' | 'identity' | 'unused'>;
 
-/** A type's default commitment: a span type is a real commitment (ADR-0011). */
-export const bookingDefaultKind = (ty: BookingType): 'hard' | 'soft' =>
-  isSpanType(ty) ? EVENT_KIND.HARD : EVENT_KIND.SOFT;
-
 /** The form state a booking (or a seed, or neither) opens with. */
 export function bookingSheetDraft(input: {
   booking?: Booking | null;
@@ -142,12 +131,12 @@ export function bookingSheetDraft(input: {
   // place can answer (a coordless Place-lite, or nothing picked yet).
   const overrides = bookingZoneOverrides(booking ?? undefined);
   const startOverride = overrides.start ?? null;
-  const endOverride = (isTransportType(type) ? overrides.end : null) ?? null;
+  const endOverride = (carriesRoute(type) ? overrides.end : null) ?? null;
   const zoneOf = (id: string | undefined, override: string | null) =>
     override ?? placeTimezone(places, id) ?? trip.timezone;
   // Each leg reads in its own endpoint's zone (ADR-0107): a flight's departure in its
   // origin, its arrival in its destination; a single-place booking in its place.
-  const transport = isTransportType(type);
+  const transport = carriesRoute(type);
   const startZone = transport
     ? zoneOf(fromPlaceId || undefined, startOverride)
     : zoneOf(placeId, startOverride);
@@ -174,7 +163,7 @@ export function bookingSheetDraft(input: {
     end: linkedEvent?.endsAt ? isoToTimeInput(linkedEvent.endsAt, endZone) : '',
     spanStart: linkedEvent?.startsAt ? isoToDateTimeLocal(linkedEvent.startsAt, startZone) : '',
     spanEnd: linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, endZone) : '',
-    kind: linkedEvent?.kind ?? bookingDefaultKind(type),
+    kind: linkedEvent?.kind ?? defaultKindForBookingType(type),
     kindTouched: false,
   };
 }

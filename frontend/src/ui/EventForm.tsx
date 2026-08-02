@@ -5,6 +5,8 @@
 // presentation container. A dirty close is guarded by a discard confirm (U-05).
 import { useId, useMemo, useState, type FormEvent } from 'react';
 import {
+  carriesRoute,
+  defaultKindForBookingType,
   createEventSchema,
   updateEventSchema,
   iconForCategory,
@@ -28,7 +30,6 @@ import { useStartPlaceErrand } from '../state/map-scope-state';
 import { getNow } from '../lib/useClock';
 import { zonedIso, isoToTimeInput, hardConflicts, formatTime, resolveEndIso } from '../lib/time';
 import { useUnsavedGuard } from '../lib/useUnsavedGuard';
-import { bookingDefaultKind } from '../lib/booking-draft';
 import { useDerivedField } from '../lib/useDerivedField';
 import { buildEventSeed } from '../lib/booking-edit';
 import {
@@ -54,6 +55,7 @@ import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { HostNotes } from './HostNotes';
+import { RouteField } from './domain';
 
 /** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
  *  state that no URL addresses, so sending its place field off to the Map tab means the
@@ -88,6 +90,12 @@ export interface EventFormDraft {
   bookingType: BookingType | null;
   category?: EventCategory;
   placeId?: string;
+  /** The two route ends, for a booked transport event (ADR-0154 §1/§3). Named for the
+   *  `Booking` columns on purpose: `usePlaceErrandReturn` assigns its result with
+   *  `draft[target.field]`, so the draft key, the errand field and the column are one
+   *  string end to end. */
+  fromPlaceId?: string;
+  toPlaceId?: string;
   override: string | null;
 }
 
@@ -204,6 +212,11 @@ export function EventForm({
   const [placeId, setPlaceId] = useState<string | undefined>(
     draft ? draft.placeId : initialPlaceId,
   );
+  // A booked transport event carries a ROUTE, not a place (ADR-0154 §3). Held separately
+  // from `placeId` so flipping the booking type back and forth loses neither: the save
+  // sends whichever shape the type actually has.
+  const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(draft?.fromPlaceId);
+  const [toPlaceId, setToPlaceId] = useState<string | undefined>(draft?.toPlaceId);
   // Every refusal this form can make, marked at the field it is about (ADR-0150).
   const errors = useFormErrors<'title' | 'date' | 'time'>();
   const noteId = useId();
@@ -223,13 +236,48 @@ export function EventForm({
   // The type the save will write: an explicit pick, else the category's guess. Only `transport`
   // offers the pick, because it is the only category the mapping cannot answer (§2).
   const derivedType: BookingType = bookingType ?? CATEGORY_TO_BOOKING_TYPE[category ?? 'other'];
+  // **THE FIX FOR THE 400** (ADR-0154 §1). A route-shaped booking carries
+  // `fromPlaceId`/`toPlaceId` and a single-place one carries `placeId` — mutually
+  // exclusive, and `bookings.service.ts`'s `assertPlaceShape` throws on the wrong pair.
+  // This row used to send `placeId` whatever the type was, so a transport event WITH a
+  // place could not be booked at all, and one without produced a route-less booking four
+  // other surfaces cannot read. One fact, read by the field below and by the save.
+  const routeShaped = booked.value && showBooked && carriesRoute(derivedType);
+  // The single place seeds the ORIGIN — an existing transport event carries one place and
+  // cannot say which end it is, so it lands here and the swap moves it (§3). "Sensibly
+  // defaulted, trivially fixable", the posture ADR-0113/0116 §1 set.
+  const routeFrom = fromPlaceId ?? placeId;
+
+  /** **ONE hand-over blob for all three place errands** (ADR-0134 §2). It was written out
+   *  inline when there was one errand; there are three now (the place and the two route
+   *  ends), and a field missed in one copy is silently lost on the way back — which is the
+   *  failure that §2 exists to name. Built at call time so it captures the latest state. */
+  const errandDraft = (): EventFormDraft => ({
+    title,
+    date,
+    start,
+    end,
+    kind: kind.value,
+    kindTouched: kind.touched,
+    icon: icon.value,
+    iconTouched: icon.touched,
+    booked: booked.value,
+    bookedTouched: booked.touched,
+    code,
+    bookingType,
+    category,
+    placeId,
+    fromPlaceId: routeFrom,
+    toPlaceId,
+    override,
+  });
   const askBookingType = category === EVENT_CATEGORY.TRANSPORT;
 
-  // While untouched the kind follows the booking type's own default (`bookingDefaultKind`) —
+  // While untouched the kind follows the booking type's own default (`defaultKindForBookingType`) —
   // hard for a flight, train, hotel or activity; SOFT for a restaurant, which is exactly why
   // "hard ⇒ booked" could never have been the trigger (§1/§4).
   const deriveKind = (nextBooked: boolean, nextType: BookingType) =>
-    kind.redrive(nextBooked ? bookingDefaultKind(nextType) : EVENT_KIND.SOFT);
+    kind.redrive(nextBooked ? defaultKindForBookingType(nextType) : EVENT_KIND.SOFT);
 
   const pickCategory = (next: EventCategory) => {
     setCategory(next);
@@ -277,7 +325,11 @@ export function EventForm({
     // with any of them unsaved has to hit the discard guard like every other field.
     booked.touched ||
     code !== '' ||
-    bookingType != null;
+    bookingType != null ||
+    // A picked route is an edit like any other (ADR-0154 §3). `fromPlaceId` rather than
+    // `routeFrom`, which falls back to `placeId` and so is dirty whenever the place is.
+    fromPlaceId != null ||
+    toPlaceId != null;
   const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
   const requestClose = () => guardedClose(onClose);
 
@@ -404,7 +456,11 @@ export function EventForm({
             // Sent only when one was typed: the code creates nothing, and an empty string here
             // would be the "clear it" intent, which makes no sense on a create.
             confirmationCode: code.trim() || undefined,
-            placeId: parsed.data.placeId,
+            // Mutually exclusive by type (ADR-0048), which is the whole bug: sending the
+            // wrong one is a 400, and sending neither is a booking with no route.
+            ...(routeShaped
+              ? { fromPlaceId: routeFrom, toPlaceId }
+              : { placeId: parsed.data.placeId }),
             ...(event
               ? {}
               : {
@@ -564,51 +620,62 @@ export function EventForm({
             </p>
           )}
 
-          {/* The same note the booking form carries under an empty location, from the
-              same key: an event with no place loses the same five things, and the two
+          {/* A booked transport event is authored as a ROUTE, not a place (ADR-0154 §3) —
+              the same `RouteField` the booking sheet uses, so the two forms cannot disagree
+              about what a journey looks like. Neither end is required: ADR-0136's "requires
+              nothing" is the whole posture of this row, and the fix must not spend it.
+
+              Otherwise the single place, with the same note the booking form carries under
+              an empty one — an event with no place loses the same five things, and the two
               authoring forms must not disagree about whether that is worth saying. */}
-          {showPlace && (
-            <Field
-              label={t.eventForm.locationLabel}
-              hint={placeId ? undefined : t.placePicker.noLocationHint}
-            >
-              {/* THE MAP IS WHERE A PLACE COMES FROM (ADR-0134 §1): the field launches an
-                  errand instead of opening a picker sheet here, because a place is
-                  disambiguated BY PLACE and the map's own search answers both corpora —
-                  the trip's own places from the first character, free and offline, before
-                  Google is touched. The form writes the DRAFT, since only it knows what
-                  else is half-typed. `startErrand` is null only where there is no Map tab
-                  to route to, which no host of this form is (ADR-0134 §9). */}
-              <PlacePicker
-                value={placeId}
-                onChange={setPlaceId}
-                placeholder={t.eventForm.locationPlaceholder}
-                onFind={() =>
-                  startErrand?.({
-                    target: { kind: 'event', id: event?.id, field: 'placeId' },
-                    label: title.trim() || t.map.errand.untitledEvent,
-                    draft: {
-                      title,
-                      date,
-                      start,
-                      end,
-                      kind: kind.value,
-                      kindTouched: kind.touched,
-                      icon: icon.value,
-                      iconTouched: icon.touched,
-                      booked: booked.value,
-                      bookedTouched: booked.touched,
-                      code,
-                      bookingType,
-                      category,
-                      placeId,
-                      override,
-                    } satisfies EventFormDraft,
-                  })
-                }
-              />
-            </Field>
-          )}
+          {showPlace &&
+            (routeShaped ? (
+              <Field label={t.index.form.routeLabel}>
+                <RouteField
+                  from={routeFrom}
+                  to={toPlaceId}
+                  onChange={({ from, to }) => {
+                    setFromPlaceId(from);
+                    setToPlaceId(to);
+                  }}
+                  onFind={(end, side) =>
+                    startErrand?.({
+                      target: { kind: 'event', id: event?.id, field: end },
+                      label: [title.trim() || t.map.errand.untitledEvent, side]
+                        .filter(Boolean)
+                        .join(` ${DOT_SEPARATOR} `),
+                      draft: errandDraft(),
+                    })
+                  }
+                  hint={t.index.form.routeHintOptional}
+                />
+              </Field>
+            ) : (
+              <Field
+                label={t.eventForm.locationLabel}
+                hint={placeId ? undefined : t.placePicker.noLocationHint}
+              >
+                {/* THE MAP IS WHERE A PLACE COMES FROM (ADR-0134 §1): the field launches an
+                    errand instead of opening a picker sheet here, because a place is
+                    disambiguated BY PLACE and the map's own search answers both corpora —
+                    the trip's own places from the first character, free and offline, before
+                    Google is touched. The form writes the DRAFT, since only it knows what
+                    else is half-typed. `startErrand` is null only where there is no Map tab
+                    to route to, which no host of this form is (ADR-0134 §9). */}
+                <PlacePicker
+                  value={placeId}
+                  onChange={setPlaceId}
+                  placeholder={t.eventForm.locationPlaceholder}
+                  onFind={() =>
+                    startErrand?.({
+                      target: { kind: 'event', id: event?.id, field: 'placeId' },
+                      label: title.trim() || t.map.errand.untitledEvent,
+                      draft: errandDraft(),
+                    })
+                  }
+                />
+              </Field>
+            ))}
 
           {/* ── `יש הזמנה` (ADR-0136 §1) ─────────────────────────────────────
               You are always creating an event; this says it is ALSO booked, which is exactly

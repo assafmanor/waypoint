@@ -248,7 +248,7 @@ export const CATEGORY_DEFAULT_BOOKED = {
  *  is also the derived default. `other` covers the bus/car/ferry/cable-car half of the
  *  transport icon group; its glyph is `🚌` rather than `BOOKING_TYPE_ICON.other`'s `📄`,
  *  because all three pills answer "which transport" and a document among two vehicles reads
- *  as a different kind of answer. Note `other` is not a span type, so `bookingDefaultKind`
+ *  as a different kind of answer. Note `other` is not a span type, so `defaultKindForBookingType`
  *  makes it **soft** while flight and train are hard — deliberately not special-cased, since
  *  commitment has one source (ADR-0136 §4). */
 export const TRANSPORT_BOOKING_TYPES = [

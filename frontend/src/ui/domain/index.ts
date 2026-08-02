@@ -38,3 +38,6 @@ export type { ChangeFeedProps } from './ChangeFeed';
 
 export { SettleControl } from './SettleControl';
 export type { SettleOutcome, SettleVariant } from './SettleControl';
+
+export { RouteField } from './RouteField';
+export type { RouteFieldProps, RouteEnd } from './RouteField';

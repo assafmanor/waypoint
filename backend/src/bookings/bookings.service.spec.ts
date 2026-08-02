@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { EVENT_KIND } from '@waypoint/shared';
+import { BOOKING_TYPE, carriesRoute, EVENT_KIND } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -322,5 +322,26 @@ describe('BookingsService', () => {
     await expect(
       service.create(tripId, DEV_USER, { type: 'flight', title: 'Flight', placeId }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  // ADR-0154 §2: the guard reads `BOOKING_TYPE_PROFILE` now rather than its own
+  // `flight || train`, so this asserts it FOLLOWS the shared table for every type. A
+  // profile row changed without the server agreeing is the drift the table removes —
+  // and `train` was never covered by the two spot-checks above.
+  it('refuses the wrong place shape for every booking type, per the shared profile', async () => {
+    const tripId = await newTrip();
+    const placeId = await newPlace(tripId, 'Shape guard place');
+
+    for (const type of Object.values(BOOKING_TYPE)) {
+      const wrong = carriesRoute(type)
+        ? { type, title: `${type} wrong`, placeId }
+        : { type, title: `${type} wrong`, fromPlaceId: placeId };
+      await expect(service.create(tripId, DEV_USER, wrong)).rejects.toThrow(BadRequestException);
+
+      const right = carriesRoute(type)
+        ? { type, title: `${type} right`, fromPlaceId: placeId }
+        : { type, title: `${type} right`, placeId };
+      await expect(service.create(tripId, DEV_USER, right)).resolves.toBeDefined();
+    }
   });
 });

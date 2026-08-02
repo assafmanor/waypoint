@@ -13,6 +13,7 @@
 // map-specific logic, deliberately not a generalization of the booking helpers
 // (ADR-0110 §2, CLAUDE.md rule 8).
 import {
+  carriesRoute,
   categoryForBookingType,
   EVENT_KIND,
   EVENT_STATUS,
@@ -88,8 +89,7 @@ export interface PlaceUsage {
   pin: { category: EventCategory | null; commitment: PinCommitment };
 }
 
-const isTransport = (booking: Booking): boolean =>
-  categoryForBookingType(booking.type) === 'transport';
+const isTransport = (booking: Booking): boolean => carriesRoute(booking.type);
 
 /** Calendar dates spanned by an event, inclusive. Parsed/stepped in UTC so the
  *  whole-day step is DST-safe (calendar dates carry no zone).

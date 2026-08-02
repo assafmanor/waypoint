@@ -1,6 +1,6 @@
 # 0154 — Transport authoring: a route is a **shape**, a round trip is a **control**, and a pair is **derived**
 
-**Status:** Accepted (owner sign-off 2026-08-02; built in phases — §1 first and alone)
+**Status:** Accepted (owner sign-off 2026-08-02). **§1–3 built 2026-08-02** — see the build log at the foot; §4–6 remain.
 **Date:** 2026-08-02
 **Design reference:** [`mockups/booking-round-trip-v1.html`](../../mockups/booking-round-trip-v1.html) — every number below is read from that file's live DOM in a headless browser, not estimated. Its §6 and the stepping question belong to [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md).
 
@@ -102,3 +102,32 @@ It surfaces twice and quietly. On `BookingDetail`, **one fact, last** in `bk-fac
 - **A `pairId` column.** Rejected in §5, with its three costs.
 - **Keeping `isTransport` and adding a seventh copy.** Rejected — this is the pile 0078, 0079, 0094 and 0095 all exist to undo.
 - **A free-text destination in `EventForm`** instead of a second `PlacePicker`, to avoid a Map errand. Rejected: session 86 deliberately upgraded transport endpoints from name-only lites to picked places because 0107's zones need coordinates, and this would walk it back. Both endpoints being **optional** already buys the cheapness that motivated it.
+
+## Build log — §1–3, 2026-08-02
+
+Three things the build found that the design had not, recorded because each would
+otherwise be re-derived:
+
+- **The six predicates were three implementations, not one repeated.** Four sites asked
+  `flight || train`; `places.ts` and `place-usage.ts` asked
+  `categoryForBookingType(…) === 'transport'`. They agreed on today's enum and would have
+  diverged the moment a type's category and its place shape stopped lining up — which is
+  exactly what a third transport mode does. `carriesRoute` is now the only spelling, and
+  `icons.test.ts` pins the two answers against each other rather than restating the table.
+
+- **§2 retired a fourth helper the ADR had not counted.** `bookingDefaultKind` was a
+  frontend wrapper over `isSpanType`, so it moved too (`defaultKindForBookingType`). Both
+  exported names are gone rather than kept as one-line aliases: two names for one question
+  is what the ADR is about, and an alias is still a second name.
+
+- **The route field is optional in `EventForm` and required in `BookingSheet`, and that is
+  deliberate.** `BookingSheet` keeps `routeRequired` (a booking written on its own surface
+  should name its journey); `EventForm` refuses nothing, because ADR-0136's "requires
+  nothing" is that row's whole posture and a fix that spent it would be a different
+  regression. The shared component therefore carries no validation of its own — the host
+  decides, which is also why `RouteField` takes no `error` prop.
+
+**The reproduction is the regression test**, and it was verified to fail without the fix:
+reverting the payload conditional turns two `EventForm` specs red. The backend's guard
+gained a loop over every `BookingType` asserting it follows the shared profile in both
+directions, so a profile row changed without the server agreeing now fails there too.

@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Booking as PrismaBooking } from '@prisma/client';
 import {
-  BOOKING_TYPE,
+  carriesRoute,
   ENTITY_TYPE,
   ERROR_CODE,
   EVENT_KIND,
@@ -22,9 +22,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { assertPlacesInTrip } from '../common/trip-scope.util';
 import { toBookingDto, toEventDto } from '../trips/trips.mapper';
-
-const isTransport = (type: BookingType): boolean =>
-  type === BOOKING_TYPE.FLIGHT || type === BOOKING_TYPE.TRAIN;
 
 @Injectable()
 export class BookingsService {
@@ -392,7 +389,7 @@ export class BookingsService {
     type: BookingType,
     input: { placeId?: string; fromPlaceId?: string; toPlaceId?: string },
   ): void {
-    if (isTransport(type)) {
+    if (carriesRoute(type)) {
       if (input.placeId) {
         throw new BadRequestException('Transport bookings use fromPlaceId/toPlaceId, not placeId');
       }

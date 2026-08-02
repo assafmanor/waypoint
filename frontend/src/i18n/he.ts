@@ -514,6 +514,13 @@ export const t = {
       // Title-row preview when neither endpoint is picked yet.
       routePreviewGhost: 'בחרו מוצא ויעד',
       routeHint: 'מקומות אמיתיים · מזינים את המפה ואזורי הזמן',
+      // The swap between the two endpoints (ADR-0154 §3). An existing transport event
+      // carries one place and cannot say which end it is, so it lands in the origin and
+      // this moves it — the correction that makes the guess safe.
+      swapRoute: 'החלפת כיוון',
+      // `EventForm`'s own route hint: there both ends are optional (ADR-0136's "requires
+      // nothing" survives), and what is given is what the map and the zones can read.
+      routeHintOptional: 'שני הקצוות אופציונליים · מה שיימסר ייקרא במפה ובאזורי הזמן',
       // Which-zone caption under a booking's schedule (ADR-0107). Cities aren't
       // named (the route pickers show them); the point is "each end is local
       // time" + how far apart. `mag` is the Hebrew hour phrase (שעה/שעתיים/…);
