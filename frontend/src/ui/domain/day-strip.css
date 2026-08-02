@@ -87,7 +87,11 @@
 .wp-daypill.past {
   opacity: 0.45;
 }
-/* today-anchor: amber dot marking the live day wherever you browse. */
+/* today-anchor: amber dot marking the live day wherever you browse.
+   `--amber-deep`, not `--amber`: a 6px dot is a GRAPHIC and owes 3:1 against
+   what it sits on. Bright amber cleared 8.06 on the old dark chrome and **1.39**
+   on the light band — a mark you cannot see is not a mark. "Deep" means further
+   from the ground, so the one token serves both (3.63 light / 5.92 dark). */
 .wp-daypill.today-anchor::after {
   content: '';
   position: absolute;
@@ -96,8 +100,8 @@
   width: 6px;
   height: 6px;
   border-radius: var(--radius-999);
-  background: var(--amber);
-  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.25);
+  background: var(--amber-deep);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber-deep) 25%, transparent);
 }
 /* sel-history: a non-today selected day is a neutral highlight. */
 .wp-daypill.sel-history {

@@ -498,6 +498,54 @@ from outside the stylesheet entirely. Three device reports, three method holes.
 The pattern is not that the audits were sloppy — it is that **an audit answers
 the question it encodes, and dark mode kept asking a different one.**
 
+## §14 — What a HUED chrome costs: two accents that assumed a neutral ground
+
+The light chrome shipped in §13 gave the app its first **hued** surface. Two
+things immediately broke on it, and neither is a defect in the band — they are
+accents whose expression had silently depended on the ground being either dark
+or neutral.
+
+**1. The Map's list/map toggle.** Its track was `color-mix(var(--ink) 6%,
+transparent)` and its thumb `var(--card)`. `--ink` **inverts** between themes, so
+the ink wash darkens the track in light and _lightens_ it in dark — until it
+passes the thumb sitting on it. Measured, the thumb was **11.7 L\* above the
+track in light and 1.6 in dark**: both labels perfectly legible, and no way to
+tell which one was selected. The track is now a wash of `--board`, which is dark
+in _both_ themes, so it recesses in both (thumb +12.0 / +8.0).
+
+> **A raised chip written as `--card` only reads as raised while `--card` is the
+> lightest surface.** In dark it is one step off the screen. Give the thing it
+> sits ON a direction that does not flip.
+
+Its unselected label also moved from `--muted` to `--ink` — 4.09 on the recessed
+track is under AA, and the rule the file already stated ("the thumb draws the
+fill, only the ink weight says which is live") turns out never to have set a
+weight. It does now.
+
+**2. Amber on the chrome, which the owner saw as "weird".** Precisely: amber sits
+at hue **+72°** and the light band at **−83°** — near-complementary. A 16% amber
+veil over near-black indigo read as a warm glow; the identical veil over a cool
+light band **cancels**, computing to `#CDCBD0` at chroma **2.8**. That
+desaturated warm-grey is the khaki. `--amber` written on it measured **1.31:1**,
+and the 6px today dot — a graphic owing 3:1 — measured **1.39** where it had been
+8.06 on the dark chrome.
+
+Two fixes, both rules that already existed. The chip stops being a veil and
+becomes an object: amber mixed into `--paper`, which is warm in **both** themes
+by design, so one expression serves both (+8.1 L\* light, +8.7 dark). And the ink
+and the dot take `--amber-deep`, the fill/ink split `--amber`/`--amber-deep`
+already encodes.
+
+> **A translucent accent is a wash of whatever is behind it.** Its appearance is
+> a property of the ground, not of the accent.
+
+**The blast radius is bounded, and worth stating so nobody sweeps 67 sites.**
+There are 67 hardcoded `rgba(233, 166, 60, α)` values in the app; **zero** of the
+remaining ones sit on the chrome. Every other one is over `--card`, `--screen` or
+`--board` — all **neutral**, where a warm wash simply warms. Cancellation needs a
+hued, near-complementary ground, and the chrome is the only hued surface the app
+has. This class of bug can only occur there.
+
 ## §10 — The build, in phases
 
 Each phase is independently shippable and independently revertible. Phases 1–3
