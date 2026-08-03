@@ -8780,9 +8780,19 @@ textarea {
         inset: 0;
         z-index: 8;
         pointer-events: none;
+        /* A CLOSED LAYER PAINTS NOTHING, and this line is a fixed defect rather
+           than a precaution (owner, v1: *"even the closed hero has an X sign on
+           the top left"*). Without it the lifted hero rendered over Home the
+           whole time — the measuring pass writes a box and clears its own
+           `visibility`, so measurement left the thing it measured on screen.
+           `visibility` and not `display`, because the hero still has to be
+           MEASURABLE while closed: that is how its landing box is read off the
+           real content instead of being written as a constant. */
+        visibility: hidden;
       }
       .hero-layer[data-open='1'] {
         pointer-events: auto;
+        visibility: visible;
       }
 
       /* The backdrop is the only NEW ground in this proposal, and it is the one
@@ -8814,7 +8824,11 @@ textarea {
         position: absolute;
         display: flex;
         flex-direction: column;
-        /* top / left / width / height are written from JS, off a MEASURED box. */
+        /* top / left / width / height are written from JS, off a MEASURED box.
+           The zeros are only so an un-lifted hero has a defined box rather than
+           an auto static position — nothing reads them. */
+        top: 0;
+        left: 0;
       }
 
       /* A and B animate the BOX, so no glyph is ever scaled and the text is
@@ -8846,9 +8860,49 @@ textarea {
 
       /* THE EXIT IS NOT THE ENTRANCE REVERSED. `--ease-arrive` overshoots and
          ADR-0140 §4 scopes it to entrances of real objects, never an exit — an
-         object that overshoots on its way DOWN reads as dropped, not put back. */
+         object that overshoots on its way DOWN reads as dropped, not put back.
+         `--ease-exit` accelerates INTO its end, which is already the curve of
+         something being set down. */
       .hero-lifted[data-phase='out'] {
         transition-timing-function: var(--ease-exit);
+        transition-duration: var(--t-lift-out, var(--t-lift));
+      }
+      /* THREE EXITS (§2), because "a small animation of going back to normal"
+         (owner) is a real question and the entrance's mirror is only one answer.
+         The duration is the whole difference between the first two. */
+      .phone[data-exit='drop'] .hero-lifted[data-phase='out'],
+      .phone[data-exit='settle'] .hero-lifted[data-phase='out'] {
+        transition-duration: var(--t-quick);
+      }
+
+      /* THE LANDING BEAT. One shot on the board that comes BACK, so the object
+         visibly touches down instead of the flight simply stopping.
+
+         It is deliberately the same mechanism as the rebuff and as the form's
+         `.is-nudging` before it — a one-shot class, `linear` because the keyframe
+         offsets ARE the timing, symmetric so no `--dir`. That makes three beats
+         in this app answering three different "no destination" moments, which is
+         an argument for one shared primitive rather than a third copy (rule 8);
+         see the notes. Tiny on purpose: 2.5% on one axis. A squash big enough to
+         notice as a squash is a bounce, and a bounce is what forbidding
+         `--ease-arrive` on exits exists to prevent. */
+      @keyframes hero-land {
+        0% {
+          transform: scaleY(1);
+        }
+        40% {
+          transform: scaleY(0.975);
+        }
+        100% {
+          transform: scaleY(1);
+        }
+      }
+      .wp-board.is-landing {
+        transform-origin: 50% 100%;
+        animation: hero-land var(--t-quick) linear both;
+      }
+      [data-rm='1'] .wp-board.is-landing {
+        animation: none;
       }
 
       /* Lifted, the board is a floating surface, so it takes the floating
@@ -9758,8 +9812,11 @@ textarea {
         </div>`;
 
       /** One frame: a phone with Home in it, plus the layer the hero lifts into. */
-      const frame = (char, board) => `
-        <div class="phone" data-char="${char}" style="width:${W}px;height:${H()}px">
+      /* `liftChar` is the LIFTED hero's character and `char` is the frame's id —
+         separate, because §2 and §5 demonstrate the chosen character (ג) under
+         their own headings and must not be renamed to get it. */
+      const frame = (char, board, exit = 'mirror', liftChar = char) => `
+        <div class="phone" data-char="${char}" data-exit="${exit}" style="width:${W}px;height:${H()}px">
           ${chromeBar()}
           <div class="fbody">
             ${board}
@@ -9767,7 +9824,7 @@ textarea {
           </div>
           <div class="hero-layer" data-open="0">
             <div class="hero-backdrop"></div>
-            ${liftedHero(char)}
+            ${liftedHero(liftChar)}
           </div>
           <div class="foldline"></div>
         </div>`;
@@ -9840,7 +9897,7 @@ textarea {
         const inline = frameEl.querySelector('.wp-board.inline');
         const layer = frameEl.querySelector('.hero-layer');
         const lifted = frameEl.querySelector('.hero-lifted');
-        const char = frameEl.dataset.char;
+        const swing = lifted.dataset.char === 'C';
         if (layer.dataset.open === '1') return;
 
         /* THE REBUFF. The trigger is DERIVED, not a variant check: a free board
@@ -9874,24 +9931,28 @@ textarea {
         lifted.style.left = g.from.left + 'px';
         lifted.style.width = g.from.w + 'px';
         lifted.style.height = g.from.h + 'px';
-        if (char === 'C') {
+        if (swing) {
           lifted.style.transform = `perspective(900px) rotateX(${SWING_DEG}deg) translateZ(-${SWING_Z}px)`;
         }
         lifted.dataset.phase = 'in';
         lifted.dataset.open = '0';
         inline.classList.add('is-hidden');
+        /* The LAYER opens here and the hero's own target lands next frame, so the
+           collapsed start box paints for one frame first. Opening both together
+           makes the element visible in the same frame its destination is written,
+           and the flight starts from wherever the browser got to. */
+        layer.dataset.open = '1';
         void lifted.offsetWidth; // commit the start box before the transition
         lifted.style.transition = '';
 
         /* Step 4 — the target box. */
         requestAnimationFrame(() => {
-          layer.dataset.open = '1';
           lifted.dataset.open = '1';
           lifted.style.top = g.restTop + 'px';
           lifted.style.left = g.targetLeft + 'px';
           lifted.style.width = g.targetW + 'px';
           lifted.style.height = g.targetH + 'px';
-          if (char === 'C') lifted.style.transform = 'perspective(900px) rotateX(0deg) translateZ(0px)';
+          if (swing) lifted.style.transform = 'perspective(900px) rotateX(0deg) translateZ(0px)';
         });
       };
 
@@ -9900,7 +9961,7 @@ textarea {
         const layer = frameEl.querySelector('.hero-layer');
         const lifted = frameEl.querySelector('.hero-lifted');
         if (layer.dataset.open !== '1') return;
-        const char = frameEl.dataset.char;
+        const swing = lifted.dataset.char === 'C';
         const g = geom(frameEl);
 
         /* The exit takes `--ease-exit`, never `--ease-arrive` (ADR-0140 §4). */
@@ -9912,7 +9973,7 @@ textarea {
         lifted.style.left = g.from.left + 'px';
         lifted.style.width = g.from.w + 'px';
         lifted.style.height = g.from.h + 'px';
-        if (char === 'C') {
+        if (swing) {
           lifted.style.transform = `perspective(900px) rotateX(${SWING_DEG}deg) translateZ(-${SWING_Z}px)`;
         }
 
@@ -9920,18 +9981,37 @@ textarea {
            duration from the token rather than a literal, which is what
            `motionDurationMs` does in the app and why it answers 0 under reduced
            motion (ADR-0140 §5). */
-        const ms = readDur();
-        setTimeout(() => inline.classList.remove('is-hidden'), ms);
+        const ms = readDur(frameEl.dataset.exit);
+        setTimeout(() => {
+          inline.classList.remove('is-hidden');
+          /* The landing beat, on the board that came back. Same one-shot
+             discipline as the rebuff: the class comes off at `animationend`, so a
+             state that only exists during an animation cannot outlive it. */
+          if (frameEl.dataset.exit === 'settle') {
+            inline.classList.remove('is-landing');
+            void inline.offsetWidth;
+            inline.classList.add('is-landing');
+            inline.addEventListener(
+              'animationend',
+              () => inline.classList.remove('is-landing'),
+              { once: true },
+            );
+          }
+        }, ms);
       };
 
       /** The app's `motionDurationMs`, in one line: read the token, and answer 0
-       *  when motion is reduced. Never a literal in a timer. */
-      const readDur = () => {
+       *  when motion is reduced. Never a literal in a timer. `exit` names which
+       *  of §2's three characters is timing this flight. */
+      const readDur = (exit) => {
         if (document.querySelector('.wrap').dataset.rm === '1') return 0;
-        const v = getComputedStyle(document.documentElement)
-          .getPropertyValue(DUR === 'base' ? '--t-base' : '--t-deliberate')
-          .trim();
-        return parseFloat(v) || 0;
+        const name =
+          exit === 'drop' || exit === 'settle'
+            ? '--t-quick'
+            : DUR === 'base'
+              ? '--t-base'
+              : '--t-deliberate';
+        return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
       };
 
       /* ─────────────────────────────────────────────────────────────────
@@ -9950,7 +10030,7 @@ textarea {
         },
         {
           k: 'C',
-          name: 'ג · ההטיה',
+          name: 'ג · ההטיה · נבחרה',
           sub: 'אותו יעד כמו ב׳, ובנוסף מתיישר אל המסתכל: מתחיל שכוב אחורה ורחוק, וקם. רך רק תוך כדי.',
         },
       ];
@@ -9961,10 +10041,12 @@ textarea {
           <section class="case">
             <h2>§1 · שלוש דמויות להרמה · נקישה על הלוח בכל מסגרת</h2>
             <p class="note">
-              אותו אופק בשלושתן, אותו לוח מכובה, אותו משך. מה שמשתנה הוא <b>מה מונפש</b>: א׳ וב׳
-              מנפישות את הקופסה עצמה, ולכן שום גליף לא נמתח; ג׳ מנפישה טרנספורם, וזאת הדמות היחידה
-              שבה הרצף האופטי מושלם והטקסט רך תוך כדי. לחצו על <b>הרימו את שלושתן</b> למעלה כדי
-              להרגיש את ההבדל באותו רגע.
+              אותו אופק בשלושתן, אותו לוח מכובה, אותו משך. מה שמשתנה הוא <b>מה נוסע</b>: א׳ עוגנת
+              בקצה העליון ומשאירה את הכרום, ב׳ עולה מעליו עד ראש המסך, וג׳ מוסיפה לב׳ את ההתיישרות
+              אל המסתכל. שלושתן מנפישות את הקופסה, ולכן הטקסט חד בשני הקצוות; בג׳ הוא רך רק כל עוד
+              הזווית לא 0. לחצו על <b>הרימו את שלושתן</b> למעלה כדי להרגיש את ההבדל באותו רגע.
+              <b>ג׳ נבחרה</b> (החלטת הבעלים, סשן 210), ומכאן §2 ו-§5 מדגימות אותה. שתי האחרות
+              נשארות כאן כרשומה של מה שנשקל, לא כהצעות פתוחות.
             </p>
             <div class="pair">
               ${CHARS.map(
@@ -9980,20 +10062,34 @@ textarea {
           </section>
 
           <section class="case">
-            <h2>§2 · היציאה · והיא לא ההרמה במהופך</h2>
+            <h2>§2 · החזרה למקום · שלוש יציאות ל<b>ההטיה</b>, שנבחרה</h2>
             <p class="note">
               <code>--ease-arrive</code> היא ההאטה היחידה באפליקציה שחורגת מעל היעד, ו-ADR-0140 §4
               מגדיר אותה ל<b>כניסות של עצמים אמיתיים בלבד, לעולם לא ליציאה</b>. עצם שחורג מעל היעד
-              בדרך <b>למטה</b> נשמע כמו הופל, לא כמו הוחזר. לכן היציאה לוקחת
-              <code>--ease-exit</code>, ורק אחריה הלוח הפנימי חוזר להיראות. בינתיים הוא שומר את
+              בדרך <b>למטה</b> נשמע כמו הופל, לא כמו הוחזר. אז היציאה לוקחת
+              <code>--ease-exit</code>, שממילא <b>מאיצה אל הסוף שלה</b>, וזאת בדיוק העקומה של משהו
+              שמונח. מה שנשאר לבחור הוא מה שהתבקש בסשן הזה: <b>האם יש רגע של חזרה למקום</b>. שלוש
+              תשובות, וכולן על ההטיה. אחרי שהטיסה נגמרת הלוח הפנימי חוזר להיראות; עד אז הוא שומר את
               המקום שלו עם <code>visibility</code>, כך שדף הבית לא נע מתחת לאצבע.
             </p>
             <div class="pair">
-              <div class="col" data-col="B2">
-                <span class="tag plain">ב · הרמה ואז יציאה</span>
-                <span class="sub">אותה מסגרת, שתי ההאטות. השהייה למעלה מכוונת כדי שהיציאה תיראה לבד.</span>
-                ${frame('B2', collapsedBoard())}
-                <button type="button" class="replay" data-cycle="B2">הרימו · המתינו · החזירו</button>
+              <div class="col" data-col="X1">
+                <span class="tag plain">א · מראה</span>
+                <span class="sub">הכניסה במהופך, באותו משך. שוכב אחורה חזרה ומצטמק אל הקופסה הקטנה.</span>
+                ${frame('X1', collapsedBoard(), 'mirror', 'C')}
+                <button type="button" class="replay" data-cycle="X1">הרימו · המתינו · החזירו</button>
+              </div>
+              <div class="col" data-col="X2">
+                <span class="tag plain">ב · נפילה</span>
+                <span class="sub">אותה דרך ב-140ms. סגירה לא אמורה להשהות אותך, ויציאה מהירה מכניסה היא המקובלת.</span>
+                ${frame('X2', collapsedBoard(), 'drop', 'C')}
+                <button type="button" class="replay" data-cycle="X2">הרימו · המתינו · החזירו</button>
+              </div>
+              <div class="col" data-col="X3">
+                <span class="tag after">ג · הנחה · מומלצת</span>
+                <span class="sub">הנפילה, ועוד פעימת נחיתה אחת על הלוח שחוזר: 2.5% על ציר אחד, ‎linear. הוא נוגע.</span>
+                ${frame('X3', collapsedBoard(), 'settle', 'C')}
+                <button type="button" class="replay" data-cycle="X3">הרימו · המתינו · החזירו</button>
               </div>
             </div>
           </section>
@@ -10017,7 +10113,7 @@ textarea {
                 <button type="button" class="replay" data-replay="R1">נקישה</button>
               </div>
               <div class="col" data-col="R2">
-                <span class="tag plain">§3ב · הריאקציה אומרת פעם אחת</span>
+                <span class="tag after">§3ב · הריאקציה אומרת פעם אחת · נבחרה</span>
                 <span class="sub">אותה תנועה, ושורה אחת שנחשפת איתה ונעלמת. שקטה, ‎--on-dark-faint.</span>
                 ${frame('R2', freeBoard(true))}
                 <button type="button" class="replay" data-replay="R2">נקישה</button>
@@ -10097,7 +10193,7 @@ textarea {
               <div class="col" data-col="RM">
                 <span class="tag plain">המצב המורם, סטטי</span>
                 <span class="sub">אותה מסגרת. עם מוגבל תנועה דלוק אין כניסה, ויש רק מצב.</span>
-                ${frame('RM', collapsedBoard())}
+                ${frame('RM', collapsedBoard(), 'settle', 'C')}
                 <button type="button" class="replay" data-replay="RM">הרימו · והחזירו</button>
               </div>
             </div>
@@ -10379,16 +10475,34 @@ textarea {
 
         <h3>מה נשאר פתוח · והמלצה לכל אחד</h3>
         <ul>
-          <li><b>איזו דמות</b>, וההכרעה האמיתית בין א׳ לב׳ היא לא כיוון תנועה אלא
-            <b>האם ההירו מכסה את הכרום</b>. א׳ משאיר אותו, ואז זהות המצב נשארת קריאה מעל ההירו
-            המורם אבל ההרמה מוגבלת לגדילה למטה. ב׳ עולה מעליו, ומקבל את כל המסך ואת התחושה
-            הפיזית, במחיר של כיסוי הפס שADR-0028 מגדיר כזהות המצב. ההמלצה היא <b>ב׳</b>, כי המצב
-            המורם הוא ממילא מודאלי ומצב אחד קיים בו בלבד, ויש לזה גם טיעון שלישי שהטבלה מצאה:
-            ב-360×640 הגרסה העוגנת <b>חייבת גולל</b> וההרמה מעל הכרום לא, כי היא לא משלמת את 72px
-            שלו. אבל זאת קריאה שצריך לאשר במכשיר. ג׳
-            מוסיפה לב׳ את ההטיה, ושווה לשאול עליה בנפרד: היא הקריאה המילולית של החזון, והסיכון שלה
-            הוא שעל כרטיס בגובה 584px זווית עלולה להיקרא כגימיק. <b>שלושתן צריכות להרגיש במכשיר
-            לפני החלטה</b>, וזאת כל הסיבה שהקובץ הזה קיים.</li>
+          <li><b>הדמות · הוכרעה (בעלים, סשן 210): ג׳ · ההטיה.</b> וההכרעה שנסחפה איתה, כי היא
+            נמצאת בתוך ב׳ שג׳ בנויה עליה, היא ש<b>ההירו המורם מכסה את הכרום</b> — 72px, כלומר את כל
+            הפס שנושא את זהות המצב (ADR-0028, ואחרי ש-ADR-0158 §12 נתן למצב בהיר פס משלו). זה מתיישב
+            עם עצמו: המצב המורם הוא מודאלי וקיים בו מצב אחד בלבד, ולכן זהות שאין ממה להבדיל אותה לא
+            נדרשת שם. שני רווחים נלווים שהטבלה מצאה: ההרמה מעל הכרום היא מה שמבטל את הצורך בגולל
+            ב-360×640, וההטיה היא הערוץ היחיד שקורא כ"אל העיניים" על משטח שרוחבו כמעט לא משתנה
+            (×1.045). המחיר, ושווה מבט על מכשיר: זווית על כרטיס בגובה 584px עלולה להיקרא כגימיק, והטקסט
+            רך כל עוד הזווית לא 0. <b>א׳ וב׳ נשארות מצוירות כרשומה של מה שנשקל.</b></li>
+          <li><b>היציאה · שלוש מועמדות, וההמלצה היא ג׳ · הנחה</b> (§2, מבקשת הבעלים: *"אנימציה
+            קטנה של חזרה למצב נורמלי בסגירה"*). <code>--ease-exit</code> ממילא מאיצה אל הסוף שלה,
+            שזאת העקומה של משהו שמונח, ולכן הדרך עצמה כבר נכונה בשלושתן ומה שנבחר הוא רק מה שקורה
+            <b>ברגע הנגיעה</b>. א׳ (מראה) היא הכניסה במהופך באותו משך, וסגירה שלוקחת כמו פתיחה משהה
+            אותך לחינם. ב׳ (נפילה) מקצרת ל-140ms וזאת המקובלת, אבל היא נגמרת בכך ששום דבר לא קורה.
+            ג׳ מוסיפה פעימת נחיתה אחת של 2.5% על ציר אחד, וזה בדיוק מה שהתבקש: העצם <b>נוגע</b>
+            במקום שהטיסה סתם תיעצר. הסיכון נאמר במקום: ריסוק שגדול מספיק כדי להיקרא כריסוק הוא
+            קפיצה, וקפיצה היא מה שאיסור <code>--ease-arrive</code> ביציאות קיים כדי למנוע — ולכן
+            <code>linear</code>, ולכן 2.5% ולא יותר.</li>
+          <li><b>שלוש פעימות חד-פעמיות הן פרימיטיב אחד, לא עותק שלישי</b> (כלל 8, ושווה קו בבקלוג
+            לפני שנכתב העותק הבא). לאפליקציה יש כרגע <code>.is-nudging</code> (טופס מסרב),
+            <code>.is-rebuffing</code> (נקישה בלי מה לפתוח) ו-<code>.is-landing</code> (משטח מורם
+            נוגע). שלושתן: מחלקה חד-פעמית שמוסרת ב-<code>animationend</code>, <code>linear</code> כי
+            היסטי הזמן הם התזמון, סימטריות ולכן בלי <code>--dir</code>, ומשך מטוקן. ההבדל ביניהן הוא
+            הציר והמשמעות, כלומר בדיוק החלק שכן ראוי להיות פר-מקרה. ADR-0139 הוא התקדים: שם שלוש
+            העתקות של אותו פקד התפצלו על ארבעה צירים לפני שמישהו ספר אותן.</li>
+          <li><b>הריאקציה · הוכרעה: §3ב, אומרת פעם אחת.</b> הרמה שחוזרת קריאה כ"אין כאן כלום" רק
+            למי שכבר ידע שהרמה אפשרית, ובאחר צהריים פנוי אף אחד לא ידע. הטענה שנגדה נשארת רשומה: זה
+            טקסט שנחשף ונעלם על המשטח הרם ביותר באפליקציה, ואם הוא יופיע בכל נקישה הוא ייקרא כנזיפה
+            — כלומר יש כאן החלטת תדירות לקבל בבנייה, לא רק החלטת נוכחות.</li>
           <li><b>שוליים מורמים.</b> הכפתור למעלה מציע 8px, 4px ורוחב מלא. 16px←8px הוא חריגה של
             8px לכל צד, וזה רמז קטן; רוחב מלא הוא ההצהרה החזקה, במחיר שהלוח מאבד את הפינות שלו
             כמשטח. נמדד ולא מוכרע.</li>
