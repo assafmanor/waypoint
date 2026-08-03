@@ -4,13 +4,23 @@
 // every state: now (hard/soft), in-transit (a flight in the air — teal "where
 // you are"), group-split (concurrent soft events as equals), and free/empty,
 // plus the next-row + day-progress rail (hidden in transit, when the flight IS
-// the current activity) and the quiet "ועוד N עכשיו" concurrency expander.
+// the current activity) and the quiet "ועוד N עכשיו" concurrency readout.
 //
 // Presentational only (dependency direction, §12): all data + title nodes come
 // via props; no trip-state, no derivations. Domain UI may use the shared
 // copy/label helpers (not state) — it does for the fixed board copy + transition
 // labels. The board is rationed to one per screen (design-language).
-import { useState, type ReactNode } from 'react';
+//
+// HERO 2.0, PHASE 1 (ADR-0160 §4). The board is becoming a tap target, and that
+// forced a change with nothing to do with taste: a tappable board is a
+// `<button>`, and the `ועוד N עכשיו` expander was a `<button>` INSIDE it. Chrome
+// does not merely call that invalid — it closes the outer element at the nested
+// one and reparents everything after it, so the divider, the next row and the day
+// rail land outside the board (measured in `mockups/hero-horizon-v1.html`: 1 of 4
+// children left inside). So the expander is gone, replaced by a READOUT — the
+// count must stay legible without a tap — and its rows move to the lifted hero in
+// phase 3. This was the board's only interactive child, so it now has none.
+import type { ReactNode } from 'react';
 import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { ZoneShiftPill } from '../ZoneShiftPill';
@@ -103,6 +113,12 @@ export interface BoardProps {
   progress?: number;
   windowStartHour?: string;
   windowEndHour?: string;
+
+  /** Press the whole board to lift it (ADR-0160 §1). Present → the board renders
+   *  as a `<button>` and takes the large press step; absent → a plain `<div>`, as
+   *  it shipped. The CALLER decides which variants are liftable and whether there
+   *  is anything to lift — the board stays presentational and asks neither. */
+  onLift?: () => void;
 }
 
 function AlsoRow({ row }: { row: BoardRow }) {
@@ -143,12 +159,12 @@ export function Board(props: BoardProps) {
     progress = 0,
     windowStartHour,
     windowEndHour,
+    onLift,
   } = props;
   const inTransit = variant === 'in-transit';
-  const [alsoOpen, setAlsoOpen] = useState(false);
 
-  return (
-    <div className={'wp-board' + (inTransit ? ' transit' : '')}>
+  const body = (
+    <>
       <div className="wp-board-top">
         <div className={'wp-board-live' + (inTransit ? ' loc' : '')}>
           <span className="blip" />
@@ -255,27 +271,14 @@ export function Board(props: BoardProps) {
               <TitleLabel title={conflict.title} /> {t.event.conflictWarn.after(conflict.atLabel)}
             </div>
           )}
+          {/* The concurrency READOUT (ADR-0160 §4) — the count, not a control.
+              Same dot and same words as the expander it replaces; what is gone is
+              the chevron, the press target and the open state. The rows live in
+              the lifted hero from phase 3. */}
           {alsoNow && alsoNow.length > 0 && (
-            <div className="wp-board-also-now">
-              <button
-                type="button"
-                className="wp-board-also-toggle"
-                onClick={() => setAlsoOpen((v) => !v)}
-                aria-expanded={alsoOpen}
-              >
-                <span className="dot" aria-hidden="true" />
-                {t.board.alsoNow(alsoNow.length)}
-                <span className="chev" aria-hidden="true">
-                  <Icon name="caret" dir={alsoOpen ? 'up' : 'down'} />
-                </span>
-              </button>
-              {alsoOpen && (
-                <div className="wp-board-also-list">
-                  {alsoNow.map((r) => (
-                    <AlsoRow key={r.key} row={r} />
-                  ))}
-                </div>
-              )}
+            <div className="wp-board-also-read">
+              <span className="dot" aria-hidden="true" />
+              {t.board.alsoNow(alsoNow.length)}
             </div>
           )}
         </>
@@ -343,6 +346,20 @@ export function Board(props: BoardProps) {
           </div>
         </>
       )}
-    </div>
+    </>
+  );
+
+  const cls = 'wp-board' + (inTransit ? ' transit' : '');
+
+  // A `<button>` only when there is somewhere to go. `is-tappable` carries the
+  // element reset and the large press step (ADR-0140 §2: a full-width card at the
+  // control step reads as collapsing), and it is one class rather than a bespoke
+  // transform.
+  return onLift ? (
+    <button type="button" className={cls + ' is-tappable'} onClick={onLift}>
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }

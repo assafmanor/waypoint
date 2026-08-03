@@ -165,35 +165,52 @@
   margin: 15px 0 13px;
 }
 
-/* Concurrency (ADR-0041): the quiet "ועוד N עכשיו" expander + the group-split
-   list. Board-dark palette so it stays subordinate to the one loud now-title. */
-.wp-board-also-now {
+/* THE BOARD IS A TAP TARGET (ADR-0160 §1). A `<button>` brings its own UA
+   defaults, so the reset is here rather than at the call site: the board already
+   owns its gradient, radius and padding, and a button would otherwise centre its
+   text and draw a border.
+
+   The press step is the LARGE one, which is the single line every new large
+   surface owes (ADR-0140 §2) — a full-width card at the control step reads as
+   collapsing rather than pressing. Scale, never colour: this surface is a dark
+   gradient under a radial glow, and a colour press-state would need a per-surface
+   table and would spend from the semantic budget. */
+.wp-board.is-tappable {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  border: 0;
+  cursor: pointer;
+  --press-scale: var(--press-scale-lg);
+}
+
+/* Concurrency (ADR-0041 §6 as amended by ADR-0160 §4): the count is a READOUT,
+   not a control. The expander it replaces was the board's only interactive child
+   and could not survive the board becoming a button — Chrome closes the outer
+   element at a nested one and evicts everything after it. Same dot, same words,
+   same slot; no chevron and no press target. The rows it used to reveal are in the
+   lifted hero.
+
+   `--on-dark-dim`, one rung quieter than the expander's `--on-dark`: a statement
+   of fact is not a thing you are being invited to press. */
+.wp-board-also-read {
   margin-top: var(--space-3);
   border-top: 1px dashed rgba(147, 162, 196, 0.25);
   padding-top: 11px;
-}
-.wp-board-also-toggle {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
   font-size: var(--text-secondary);
   font-weight: 700;
-  color: var(--on-dark);
-  cursor: pointer;
+  color: var(--on-dark-dim);
 }
-.wp-board-also-toggle .dot {
+.wp-board-also-read .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #6f83ad;
-}
-.wp-board-also-toggle .chev {
-  color: var(--on-dark-dim);
-  font-size: var(--text-caption);
+  flex: none;
 }
 .wp-board-also-list {
   display: flex;
