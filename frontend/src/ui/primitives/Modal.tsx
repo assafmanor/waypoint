@@ -1,10 +1,17 @@
 // The single overlay primitive (ADR-0079). Every sheet/dialog in the app is a
 // Modal: one place carries the overlay-stack registration (so back — system-
 // back, a shell back button — closes it first, ADR-0035/0090) and the focus
-// contract (focus-in + Escape + focus-restore, optional Tab-trap, F-08). Three
-// variants — a bottom `sheet`, a centered `dialog`, and a full-viewport `full`
-// (ADR-0101) — share all that machinery; only shape and position differ
-// (modal.css). `Sheet` is a thin wrapper over `variant="sheet"`; the
+// contract (focus-in + Escape + focus-restore, optional Tab-trap, F-08). Four
+// variants — a bottom `sheet`, a centered `dialog`, a full-viewport `full`
+// (ADR-0101) and a top-anchored `lift` (ADR-0160) — share all that machinery;
+// only shape and position differ (modal.css).
+//
+// `lift` is the lifted hero, and it is the reason to read ADR-0160 §2 before
+// touching it: a promotion FEELS like it is not an overlay (one object gaining
+// elevation, never a layer arriving over the page) but architecturally it is one,
+// because it can be dismissed — so ADR-0103/0090 give it no exemption and it goes
+// through here like everything else. What it rejects is the sheet's grammar, not
+// the back contract. `Sheet` is a thin wrapper over `variant="sheet"`; the
 // `.confirm-*`/`.event-form-*` families fold on in Wave 2.
 import { useId, useRef, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -13,7 +20,7 @@ import { useDialogFocus } from '../../lib/useDialogFocus';
 import { useExitTransition } from '../../lib/useExitTransition';
 import './modal.css';
 
-export type ModalVariant = 'sheet' | 'dialog' | 'full';
+export type ModalVariant = 'sheet' | 'dialog' | 'full' | 'lift';
 
 export function Modal({
   variant,

@@ -23,12 +23,20 @@ import './settle-control.css';
  *  third state, and the commonest one. Tied to `EVENT_STATUS` so the two cannot drift. */
 export type SettleOutcome = typeof EVENT_STATUS.DONE | typeof EVENT_STATUS.SKIPPED;
 
-/** The host's density. Not three controls — three sizes of one.
+/** The host's density. Not four controls — four sizes of one.
  *  - `prompt`  — the Trip-mode card's inline strip, which asks in words (ADR-0043).
  *  - `sheet`   — Plan mode's archive chooser, two equal answers in a bottom sheet (ADR-0044).
  *  - `compact` — the Map's reference row, icon-only beside a label that needs the width
- *                (ADR-0139 §3); there the ASKING is the row's amber wash, not words. */
-export type SettleVariant = 'prompt' | 'sheet' | 'compact';
+ *                (ADR-0139 §3); there the ASKING is the row's amber wash, not words.
+ *  - `board`   — the lifted hero (ADR-0160 §11). The one density whose difference is the
+ *                GROUND rather than the size: every other host is paper, and this one is
+ *                the app's always-dark surface, where `.wp-settle-btn`'s `var(--card)` /
+ *                `var(--ink)` read as a light chip in light mode and vanish in dark. That
+ *                is ADR-0158 §15's "an inverted surface is the limit" arriving on a new
+ *                host, and the fix invents nothing — it is the low-alpha-fill-plus-
+ *                brightened-ink recipe `.wp-board-countdown`, `.code` and `.tlabel`
+ *                already use on this board. The words, marks and hues are unchanged. */
+export type SettleVariant = 'prompt' | 'sheet' | 'compact' | 'board';
 
 export function SettleControl({
   variant,

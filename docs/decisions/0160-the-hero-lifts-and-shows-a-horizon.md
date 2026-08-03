@@ -1,6 +1,6 @@
 # 0160 — The hero **lifts**, and what it lifts is a **horizon**
 
-**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Phase 1 built 2026-08-03** (§4: the board is a tap target and the `ועוד N` expander is a readout); phases 2-5 unbuilt — see the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md).
+**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Phases 1-3 built 2026-08-03** (§4 the readout and the tappable board, §3/§9/§12 the horizon derivation, then the lifted hero rendering with its `Modal` `lift` variant and `SettleControl`'s `board` density); **phases 4-5 unbuilt** — the MOTION (the measured FLIP, the swing, the landing beat) and the rebuff are still to come, so what ships today opens with a placeholder fade — see the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md).
 **Date:** 2026-08-03
 **Design reference:** [`mockups/hero-lift-v1.html`](../../mockups/hero-lift-v1.html) (the motion) + [`mockups/hero-horizon-v1.html`](../../mockups/hero-horizon-v1.html) (the content). Every measurement below is read from those files' live DOM, at 390×844 and 360×640, in both themes.
 

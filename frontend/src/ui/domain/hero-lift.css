@@ -1,0 +1,229 @@
+/* The lifted hero (ADR-0160). It IS `.wp-board` — same class, same gradient, same
+   glow, same `--on-dark` ramp — which is the whole thesis: one object that gained
+   elevation, not a second surface wearing the board's clothes. Nothing about the
+   board's appearance is re-declared here; what this file adds is the three regions
+   the bounded form needs and the horizon's own parts.
+
+   Every ink is `--on-dark*` (ADR-0158 §3's ramp for always-dark surfaces) and hue is
+   spent only where the grammar already licenses it: teal for location, amber for
+   time and commitment (root rule 4). No new colour, no new token. */
+
+/* ── The three regions ────────────────────────────────────────────────────────
+   Head pinned, ONE scroller, foot pinned — ADR-0148 §1's bounded card, second
+   consumer. The board pads itself; the lifted form pads its regions instead, so the
+   scroller's edge IS the card's edge and a scrolled row never appears to slide out
+   of a margin. */
+.wp-board.hero-lifted {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* The card's box comes from the `lift` Modal variant (top-anchored, 8px inset,
+     capped). Content-sized within that cap: a thin hero is short, which is §8's
+     owner call — a screen-sized one would put ~400px of empty dark board under a
+     flight, and empty space on the app's one glowing surface reads as a failure. */
+  max-height: 100%;
+  box-shadow: var(--elevation-floating);
+}
+.hero-head {
+  flex: 0 0 auto;
+  padding: 18px 18px 0;
+}
+.hero-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* The lifted hero is the top layer; a scroll that reaches its end must not become
+     a scroll of whatever is behind it. */
+  overscroll-behavior: contain;
+  padding: 0 18px;
+}
+.hero-foot {
+  flex: 0 0 auto;
+  padding: 0 18px 16px;
+}
+
+.hero-head-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* A real 44×44 target (ADR-0017) with a visually smaller mark, and negative margin
+   so the target does not push the clock off the row. */
+.hero-x {
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px -10px 0;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--on-dark-dim);
+  cursor: pointer;
+}
+.hero-x .icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* ── The horizon's parts ──────────────────────────────────────────────────── */
+.hero-part {
+  padding-top: 13px;
+}
+.hero-lbl {
+  display: block;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--on-dark-faint);
+  margin-bottom: 5px;
+}
+.hero-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-where-nm {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-secondary);
+  color: var(--on-dark);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A hand-off chip. Same recipe as every other chip on this board — a low-alpha
+   semantic fill under a brightened ink (`.wp-board-countdown`, `.code`, `.tlabel`) —
+   so it needs no new value and stays inside ADR-0028's budget. Teal reads location
+   and amber reads time/commitment, which is why the map way-in is teal and the
+   booking reach is amber rather than either being a decorative choice. */
+.hero-act {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  /* Not 44px: these sit in a row of two or three inside a bounded card, and the
+     44px floor is a *target* rule for a control standing alone. The row's own
+     padding carries the rest of the reach. */
+  min-height: 34px;
+  padding: 0 11px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--on-dark);
+}
+.hero-act .icon {
+  width: 14px;
+  height: 14px;
+}
+.hero-act.loc {
+  background: rgba(44, 156, 144, 0.16);
+  border-color: rgba(44, 156, 144, 0.34);
+  color: #7fd8cc;
+}
+.hero-act.time {
+  background: rgba(233, 166, 60, 0.14);
+  border-color: rgba(233, 166, 60, 0.32);
+  color: #f0c785;
+}
+.hero-note {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+.hero-note-ic {
+  flex: none;
+  color: var(--on-dark-dim);
+  margin-top: 1px;
+}
+.hero-note-ic .icon {
+  width: 15px;
+  height: 15px;
+}
+.hero-note-tx {
+  font-size: var(--text-secondary);
+  line-height: 1.55;
+  color: var(--on-dark);
+}
+.hero-note-more {
+  display: block;
+  margin-top: 5px;
+  padding-inline-start: 24px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--on-dark-faint);
+}
+
+/* ── A group-split equal ──────────────────────────────────────────────────────
+   ADR-0041 §6 gives that variant its existence on there being NO primary, so every
+   equal carries the same depth and none is promoted. Separated by a hairline rather
+   than a card: a card inside the app's one surface allowed to be loud would read as
+   a second board. The hairline is the board's own divider value. */
+.hero-point + .hero-point {
+  margin-top: 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+.hero-equal-hd {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding-top: 13px;
+}
+.hero-equal-hd .ic {
+  flex: none;
+}
+.hero-equal-hd .nm {
+  font-family: var(--font-head);
+  font-size: var(--text-h3);
+  color: var(--on-dark-strong);
+  min-width: 0;
+}
+.hero-equal-hd .tm {
+  margin-inline-start: auto;
+  font-size: var(--text-caption);
+  color: var(--on-dark-dim);
+  white-space: nowrap;
+}
+/* An equal's parts sit one step in, so "this belongs to that one" reads differently
+   from "this is the horizon's next point". Indent rather than a box, and this is
+   level 1 of the ~2 ADR-0041 §4 caps at. */
+.hero-point:not(.lead) .hero-part {
+  padding-inline-start: 10px;
+}
+
+/* ── אחר כך ───────────────────────────────────────────────────────────────────
+   One line, and it stays one (ADR-0160 §12). No place, no note, no control and
+   nothing to press — the type it renders carries no id, so there is nothing here to
+   grow a hand-off from. If this rule ever needs a second row, the request underneath
+   it is "make the hero the Day tab", and the answer is the Day tab. */
+.hero-then {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--on-dark-dim);
+}
+.hero-then-lbl {
+  margin: 0;
+  flex: none;
+}
+.hero-then .tm {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--on-dark);
+}
+.hero-then-nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
