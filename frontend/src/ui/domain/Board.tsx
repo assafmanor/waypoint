@@ -131,6 +131,84 @@ export interface BoardProps {
   lifted?: boolean;
 }
 
+/**
+ * **The day rail**, and the transit progress that replaces it (ADR-0059 §2, ADR-0160 §10).
+ *
+ * Both are exported because the LIFTED hero pins one of them as its foot, and phase 3
+ * shipped the day rail as a hand-written copy in `Home.tsx` — beside a `rail` prop whose
+ * own comment claimed it was "the same node the collapsed board renders, passed in rather
+ * than rebuilt so the two cannot drift". It was rebuilt. Rule 8's answer is to generalize
+ * the one-off rather than add a second one beside it, so the copy is gone and there is one
+ * of each.
+ */
+export function DayRail({
+  progress,
+  startHour,
+  endHour,
+}: {
+  /** Day progress, 0..100. */
+  progress: number;
+  startHour?: string;
+  endHour?: string;
+}) {
+  return (
+    <div className="wp-board-progress" aria-hidden="true">
+      <div className="track">
+        <div className="fill" style={{ width: `${progress}%` }} />
+        <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
+      </div>
+      <div className="ends">
+        <span dir="auto">{startHour}</span>
+        <span>{t.common.now}</span>
+        <span dir="auto">{endHour}</span>
+      </div>
+    </div>
+  );
+}
+
+/** The flight in the air: a track, a plane at the progress point, and the two ends with
+ *  their own times. Absent unless both ends are known — a progress bar between one time and
+ *  nothing is a bar that cannot say where it is. */
+export function TransitProgress({ transit }: { transit: BoardTransit }) {
+  if (!transit.startTime || !transit.endTime) return null;
+  return (
+    <div className="wp-board-transit-prog">
+      <div className="tp-track">
+        <div className="tp-fill" style={{ width: `${transit.progress * 100}%` }} />
+        <div className="tp-plane" style={{ insetInlineStart: `${transit.progress * 100}%` }}>
+          <Icon name="flight" />
+        </div>
+      </div>
+      <div className="tp-ends">
+        <span className="tp-end">
+          <span className="mono" dir="auto">
+            {transit.startTime}
+          </span>
+          {transit.fromPlace && <span className="pl">{transit.fromPlace}</span>}
+        </span>
+        {transit.showCountdown && (
+          <span className="tp-left">
+            {t.board.until}{' '}
+            <span className="mono" dir="auto">
+              {transit.endTime}
+            </span>
+          </span>
+        )}
+        <span className="tp-end end">
+          {transit.toPlace && <span className="pl">{transit.toPlace}</span>}
+          <span className="mono" dir="auto">
+            {transit.endTime}
+          </span>
+          {/* The two ends are in their own zones now (ADR-0107), so the shift has to sit
+              where they're read together — otherwise a 07:15 → 11:00 flight reads as 3h45
+              instead of 6h45. */}
+          {transit.shift != null && <ZoneShiftPill minutes={transit.shift} className="on-dark" />}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function AlsoRow({ row }: { row: BoardRow }) {
   return (
     <div className="wp-board-also-row">
@@ -204,47 +282,7 @@ export function Board(props: BoardProps) {
               </span>
             )}
           </div>
-          {transit.startTime && transit.endTime && (
-            <div className="wp-board-transit-prog">
-              <div className="tp-track">
-                <div className="tp-fill" style={{ width: `${transit.progress * 100}%` }} />
-                <div
-                  className="tp-plane"
-                  style={{ insetInlineStart: `${transit.progress * 100}%` }}
-                >
-                  <Icon name="flight" />
-                </div>
-              </div>
-              <div className="tp-ends">
-                <span className="tp-end">
-                  <span className="mono" dir="auto">
-                    {transit.startTime}
-                  </span>
-                  {transit.fromPlace && <span className="pl">{transit.fromPlace}</span>}
-                </span>
-                {transit.showCountdown && (
-                  <span className="tp-left">
-                    {t.board.until}{' '}
-                    <span className="mono" dir="auto">
-                      {transit.endTime}
-                    </span>
-                  </span>
-                )}
-                <span className="tp-end end">
-                  {transit.toPlace && <span className="pl">{transit.toPlace}</span>}
-                  <span className="mono" dir="auto">
-                    {transit.endTime}
-                  </span>
-                  {/* The two ends are in their own zones now (ADR-0107), so the
-                      shift has to sit where they're read together — otherwise a
-                      07:15 → 11:00 flight reads as 3h45 instead of 6h45. */}
-                  {transit.shift != null && (
-                    <ZoneShiftPill minutes={transit.shift} className="on-dark" />
-                  )}
-                </span>
-              </div>
-            </div>
-          )}
+          <TransitProgress transit={transit} />
         </>
       ) : variant === 'group-split' ? (
         <div className="wp-board-now-split">
@@ -344,17 +382,7 @@ export function Board(props: BoardProps) {
             )}
           </div>
 
-          <div className="wp-board-progress" aria-hidden="true">
-            <div className="track">
-              <div className="fill" style={{ width: `${progress}%` }} />
-              <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
-            </div>
-            <div className="ends">
-              <span dir="auto">{windowStartHour}</span>
-              <span>{t.common.now}</span>
-              <span dir="auto">{windowEndHour}</span>
-            </div>
-          </div>
+          <DayRail progress={progress} startHour={windowStartHour} endHour={windowEndHour} />
         </>
       )}
     </>

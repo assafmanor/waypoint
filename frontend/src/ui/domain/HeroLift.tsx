@@ -85,9 +85,14 @@ export interface HeroLiftProps {
   nextCode?: string;
   countdown?: { value?: string; unit: string } | null;
   then?: HeroLiftThen;
-  /** The day rail, pinned as the foot — the same node the collapsed board renders,
-   *  passed in rather than rebuilt so the two cannot drift. */
-  rail?: ReactNode;
+  /** Whatever the collapsed board pins at its bottom, pinned here too — the day rail
+   *  normally, and **the flight's own progress in transit**, which is ADR-0059 §2's rule
+   *  that the transit progress replaces the rail (ADR-0160 §10).
+   *
+   *  Named `foot` rather than `rail` because it carries either, and the screen passes the
+   *  same COMPONENT the board renders rather than a copy of its markup. Phase 3 called this
+   *  `rail` and claimed exactly that, while `Home` hand-wrote a duplicate beside it. */
+  foot?: ReactNode;
   /** The collapsed board this was lifted out of — the box the flight starts from and
    *  descends back to (ADR-0160 §5). Absent → no flight, and the hero is simply there,
    *  which is the correct static state under reduced motion anyway. */
@@ -235,7 +240,7 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
 }
 
 export function HeroLift(props: HeroLiftProps) {
-  const { clock, now, split, next, nextLabel, nextTime, nextCode, countdown, then, rail } = props;
+  const { clock, now, split, next, nextLabel, nextTime, nextCode, countdown, then, foot } = props;
 
   return (
     <Modal variant="lift" ariaLabel={t.hero.title} onClose={props.onClose}>
@@ -336,7 +341,7 @@ export function HeroLift(props: HeroLiftProps) {
             )}
           </div>
 
-          {rail && <div className="hero-foot">{rail}</div>}
+          {foot && <div className="hero-foot">{foot}</div>}
         </Lifted>
       )}
     </Modal>

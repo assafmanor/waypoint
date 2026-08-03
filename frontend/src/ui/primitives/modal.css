@@ -288,6 +288,13 @@
   max-width: none;
   max-height: calc(100% - 18px);
   background: none;
+  /* `border: 0` and not just `border-radius: 0`, and the pair is the whole point: the base
+     `.modal-card` carries `1px solid var(--line)`, so resetting only the radius left a
+     SQUARE stroke boxing in the rounded hero, 1px outside it on every side. Reported from a
+     phone. The card is a transparent shell in this variant — the hero inside owns every
+     visible edge — so each paint property the base rule sets has to be given back here, and
+     this one was missed because a border with no radius reads as someone else's outline. */
+  border: 0;
   border-radius: 0;
   box-shadow: none;
   padding: 0;

@@ -84,3 +84,19 @@ The habit that produced all four findings is the same one: **break the code and 
 ### Left undone, deliberately
 
 `in-transit` liftability. §10 asks that variant for new **content** — the seat, the landing zone shift, what is first on the ground — plus the transit progress standing in for the day rail. That is phase-3-shaped work, and folding it into the motion PR is exactly what splitting 3 from 4 was meant to prevent. It is now its own phase in the build plan rather than a line item nobody owns.
+
+## Plan mode, and the last variant (same session)
+
+Two small closes, and both turned on the same question: **what does this surface actually summarise, and where does that live?**
+
+**Plan mode does not lift** (ADR-0160 §H). Asked directly, and the answer is structural: the lift exists to close a distance to depth that lives elsewhere, and Plan's `.prep` hero has none — its depth is the checklist rendered directly beneath it. A lifted Plan hero would show the checklist to someone looking at the checklist. What it gets instead is §9's **rebuff**, which had been designed for the Trip board, retired when the board started lifting in gaps, and now returns for the surface that actually has the condition it described. Not the form-refusal `NUDGE`, whose lateral shake means _something is wrong_; and not a `<button>`, because announcing a control that does nothing on activation is ADR-0150 §8 read backwards.
+
+**`in-transit` lifts** (§I), and the interesting part is how little it needed. §10 listed four content items and three were already in the horizon — the booking is the `Reach` part any point with one gets, "what is first on the ground" is literally `הבא בתור` (the flight is `now`, so the next IS the first thing after landing), and the landing zone shift rides with the transit progress. Reading a spec as four features when it is one gate plus three things you already built is a cheap mistake to make and an expensive one to act on.
+
+The fourth item is the one worth recording: **§10 asked for "the seat" and this app does not store a seat.** No schema field, no form input. What the app actually does is in its own test fixtures — `מושב ליד החלון בשתי הטיסות` is a _note on the flight booking_, which the lifted hero already reads. So the choice was to invent a field to fill a designed slot, or to notice that the need is already met in the app's idiom and say so. ADR-0045 makes that easy: a fixture for an unbuilt feature is not allowed on Home, and a seat field added to satisfy a hero slot is exactly that.
+
+### One duplication found while wiring the foot
+
+Phase 3's `rail` prop said: _"the same node the collapsed board renders, passed in rather than rebuilt so the two cannot drift."_ `Home` hand-wrote a copy of `.wp-board-progress` beside it. The comment described the intent and enforced nothing, and nothing failed for two phases.
+
+The generalisation that fixes it is small — `DayRail` and `TransitProgress` exported from `Board.tsx`, both hosts rendering the same components — but the lesson is about the comment, not the CSS: **a claim that two surfaces share a node is documentation, not a constraint.** If sharing matters, the shared thing has to be a single importable unit, or the copy will be written and no test will notice.

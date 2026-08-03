@@ -73,6 +73,31 @@ const bookingFixture: Booking = {
   updatedBy: 'u1',
 };
 
+/** A flight IN THE AIR: `transport` is the bracketed category, so `deriveHeroBooking`
+ *  answers `in-transit` while the clock sits between its ends (ADR-0059 §1). */
+const flight = (over: Partial<TripEvent> = {}): TripEvent =>
+  ev('fl', {
+    title: 'FR 8123',
+    category: 'transport',
+    kind: EVENT_KIND.HARD,
+    bookingId: 'bk-fl',
+    startsAt: `${DAY}T11:00:00Z`,
+    endsAt: `${DAY}T14:00:00Z`,
+    ...over,
+  });
+
+const flightBooking: Booking = {
+  id: 'bk-fl',
+  tripId: 't1',
+  type: BOOKING_TYPE.FLIGHT,
+  title: 'FR 8123',
+  confirmationCode: 'ABC123',
+  source: BOOKING_SOURCE.MANUAL,
+  createdAt: `${DAY}T00:00:00Z`,
+  updatedAt: `${DAY}T00:00:00Z`,
+  updatedBy: 'u1',
+};
+
 /** Swapped per test before rendering. */
 let tripEvents: TripEvent[] = [];
 let tripNotes: Note[] = [];
@@ -309,5 +334,68 @@ describe('Home — the lift wiring', () => {
     const then = document.querySelector('.hero-then')!;
     expect(then.textContent).toContain('ארוחת ערב');
     expect(then.querySelectorAll('button, a')).toHaveLength(0);
+  });
+
+  // ── IN TRANSIT (ADR-0160 §10) ─────────────────────────────────────────────────
+  // The variant that was deliberately NOT liftable through phases 1-4, because §10 asks it
+  // for its own content rather than just the gate.
+
+  it('a flight in the air is liftable, and the hero leads with the flight', () => {
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    // The collapsed board is in its transit costume…
+    expect(board()!.className).toContain('transit');
+    expect(board()!.tagName).toBe('BUTTON');
+    fireEvent.click(board()!);
+    // …and the lifted hero leads with the same flight, not with something else the
+    // horizon happened to derive.
+    expect(document.querySelector('.hero-lifted')).toBeTruthy();
+    expect(screen.getAllByText(/FR 8123/).length).toBeGreaterThan(0);
+  });
+
+  // "A flight you are sitting inside settles itself by landing" — not a density question
+  // but a nonsense one, and the one part of §10 that is a REMOVAL.
+  it('drops the settle verbs on the flight', () => {
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-lifted')).toBeTruthy();
+    expect(document.querySelector('.wp-settle')).toBeNull();
+    expect(screen.queryByRole('button', { name: t.actions.wasThere })).toBeNull();
+  });
+
+  // …while a soft event running concurrently with the flight keeps its own, because the
+  // rule is about the flight and not about the state.
+  it('keeps the verbs on an event running alongside the flight', () => {
+    tripEvents = [flight(), ev('walk', { startsAt: `${DAY}T12:00:00Z` })];
+    tripBookings = [flightBooking];
+    show();
+    fireEvent.click(board()!);
+    expect(document.querySelector('.wp-settle')).toBeTruthy();
+  });
+
+  // ADR-0059 §2's rule, reaching the lifted state: the flight IS the current activity, so
+  // its own progress stands where the day rail would.
+  it('pins the transit progress as the foot instead of the day rail', () => {
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    fireEvent.click(board()!);
+    const foot = document.querySelector('.hero-foot')!;
+    expect(foot.querySelector('.wp-board-transit-prog')).toBeTruthy();
+    expect(foot.querySelector('.wp-board-progress')).toBeNull();
+  });
+
+  // The ordinary case, asserted beside it so the swap is a swap rather than a loss.
+  it('pins the day rail as the foot when nothing is in the air', () => {
+    tripEvents = [ev('now', { placeId: 'p1' })];
+    tripPlaces = [place];
+    show();
+    fireEvent.click(board()!);
+    const foot = document.querySelector('.hero-foot')!;
+    expect(foot.querySelector('.wp-board-progress')).toBeTruthy();
+    expect(foot.querySelector('.wp-board-transit-prog')).toBeNull();
   });
 });

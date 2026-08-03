@@ -4,7 +4,7 @@
 **Design:** ADR-0160 · mockups [`hero-lift-v1`](../../mockups/hero-lift-v1.html) + [`hero-horizon-v1`](../../mockups/hero-horizon-v1.html)
 **Shape:** five phases, one PR each. Phase order is by dependency, not by visibility.
 
-**Status (end of session 210):** phases 1-4 built and merged. **Phase 5 is deleted, not deferred** — it was the rebuff, and ADR-0160's amendment §A withdrew it on the owner's call before it was built. What phase 4 did not carry is `in-transit` liftability: §10 asks that variant for new CONTENT (the seat, the landing zone shift, what is first on the ground) plus the transit progress as the foot, and folding new content into the motion PR is exactly what splitting phases 3 and 4 was for. It is its own small phase.
+**Status (end of session 210): BUILT — every phase.** Phases 1-4, then Plan mode's answer (ADR-0160 §H) and `in-transit` (§I). **Phase 5 is deleted, not deferred** — it was the rebuff, and ADR-0160's amendment §A withdrew it on the owner's call before it was built. What phase 4 did not carry is `in-transit` liftability: §10 asks that variant for new CONTENT (the seat, the landing zone shift, what is first on the ground) plus the transit progress as the foot, and folding new content into the motion PR is exactly what splitting phases 3 and 4 was for. It is its own small phase.
 
 ## Read this first: three things the ADRs do not answer
 
@@ -100,9 +100,11 @@ Two more things not to rediscover: the start box must be **committed before** th
 
 Not deferred. ADR-0160's amendment §A withdrew it on the owner's call (_"No nudge when nothing to lift etc."_) in the same round that made a gap liftable: once the board lifts in a gap, an empty tap is the rare end-of-day case rather than the common one, and it stays silent. `BEAT.REBUFF` came back out of `lib/one-shot.ts` rather than being left as a name nobody claims.
 
-## Phase 5 (was 6) — `in-transit` becomes liftable
+## Phase 5 (was 6) — `in-transit` becomes liftable — **BUILT**
 
-The one part of §10 still unbuilt, and it is content rather than motion, which is why it is not in phase 4: the transit hero gains the booking, **the seat**, the landing zone shift and **what is first on the ground** — the "next 30 minutes" question asked at altitude. It drops the settle verbs (a flight you are sitting inside settles itself by landing) and keeps ADR-0059 §2's rule that the transit progress replaces the day rail, which means the hero's foot needs the progress node rather than the rail.
+§10's content list read as four new things and three were already there (ADR-0160 §I): the booking is the `Reach` part any point with one gets, **what is first on the ground** is simply `הבא בתור` (during transit the flight is `now`, so `deriveNow`'s next IS the first thing after landing), and the landing zone shift rides in with the transit progress where ADR-0107 already put it. The fourth, **the seat**, is a datum the app does not store and was deliberately not invented — the group writes it as a note on the booking today, which the hero already reads.
+
+So what shipped is the gate, the per-POINT drop of the settle verbs (derived by asking whether the point is the flight you are sitting inside, so a concurrent soft event keeps its own), and the foot swapping to the flight's own progress. That last one also removed a duplication phase 3 had shipped: `Home` hand-wrote a copy of `.wp-board-progress` beside a `rail` prop whose comment claimed it was the board's own node. `DayRail` and `TransitProgress` are exported from `Board.tsx` now, both hosts render the same components, and the prop is `foot`.
 
 ## What this plan does not build
 
