@@ -1,0 +1,84 @@
+# Hero 2.0 — the build plan
+
+**Date:** 2026-08-03 (session 210, written after [ADR-0160](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) was accepted)
+**Design:** ADR-0160 · mockups [`hero-lift-v1`](../../mockups/hero-lift-v1.html) + [`hero-horizon-v1`](../../mockups/hero-horizon-v1.html)
+**Shape:** five phases, one PR each. Phase order is by dependency, not by visibility.
+
+## Read this first: three things the ADRs do not answer
+
+These are the gaps the plan found, and each one changes a phase.
+
+**1. The board has no "is there anything to lift?" input, and the derivation does not exist.** ADR-0160 §9 makes the rebuff trigger **derived** — the hero lifts when the expanded state carries something the collapsed one does not. Nothing computes that today. `deriveNow` returns `now`/`next`/`nowAll`/`nextAll` (ADR-0041 §6) and knows nothing about notes, places or the third point. So the predicate is **net-new derivation** over four inputs (`note?`, `place?`, `alsoNow.length`, `then?`), it belongs in `lib/` as a pure function next to `deriveNow`, and it must be unit-tested independently of the component — it is the one piece of this feature that can silently answer "nothing to lift" on a board that has plenty.
+
+**2. The horizon needs the note resolved for the now/next event, and that reach does not exist on Home.** ADR-0152's `NOTE_HOST_FIELD` gives a note a typed nullable host FK, and ADR-0153's build found that **every note render needs its host resolved across five types** — net-new derivation the reuse audit did not account for. Home has never read notes at all. Phase 2 is where that lands, and it is bigger than it looks for exactly that reason.
+
+**3. `Board.tsx` is presentational and must stay that way, but the horizon needs ~9 more props.** The component already models four variants before adding one more (the brief said so). The plan's answer is in Phase 3: the horizon's data arrives as **one `BoardHorizon` object** rather than nine sibling props, assembled by `Home.tsx`, so the dependency direction (§12) holds and the prop list stays readable. If that object starts growing behaviour, the split has gone wrong.
+
+## Phase 1 — the collapsed board becomes a tap target, and loses its only child
+
+**This is first because it is the forced part** (ADR-0160 §4) and because it is independently correct: it ships a board that presses and reveals nothing, which is a smaller diff than it sounds and unblocks every later phase.
+
+- `.wp-board` becomes a `<button>` in the `now` / `group-split` / `free` variants, with `--press-scale: var(--press-scale-lg)` (one line — the default step is the control one).
+- `ועוד N עכשיו` retires: `.wp-board-also-toggle` (`<button>`, chevron, `alsoOpen` state) → `.wp-board-also-read`, same dot, same `t.board.alsoNow(n)` copy, no chevron, no state. **`useState` leaves `Board.tsx` entirely.**
+- The `alsoNow` rows stop rendering collapsed. They have no home until Phase 3, so this phase deliberately **loses a feature for one PR** — say so in the PR body rather than hiding it.
+- `in-transit` does **not** become a button yet (Phase 4 owns it).
+
+**Tests.** The board renders a `button` per variant and `free` renders one too; **no `button` descendant inside it** (this is the regression guard for §4 — assert `queryAllByRole('button')` inside the board is empty, because the parser failure is invisible to a snapshot); the readout shows the count and is not clickable; `onLift` fires on press.
+
+**Watch for:** `.wp-board` has `overflow: hidden` and a `::before` glow. A `<button>` resets `font`, `text-align` and `border` — the CSS in §11 of the mockup already carries the four-line reset, copy it rather than rediscovering it.
+
+## Phase 2 — the horizon's data, with no UI
+
+Pure `lib/` + `Home.tsx` wiring, nothing rendered. Ships behind the Phase 1 board doing nothing new.
+
+- `heroHorizon(...)` in `lib/` — assembles `{ now, alsoNow, next, then }` with per-point depth (`place`, `note`, `settleOutcome`), from trip state, the clock, and the note index.
+- **The note reach**: resolve the note for an event / its linked booking. Reuse `HostNotes`' existing resolution rather than writing a second lookup — see gap 2. If a general resolver does not exist, extract one; do not add a Home-local copy.
+- `canLift(horizon)` — gap 1's predicate. Pure, exhaustive over the four inputs.
+- `then` is the **third** point: one line, from the same day's ordered events. No place, no note, no control (ADR-0160 §12's condition — encode it by giving the type no room for them, not by remembering).
+
+**Tests.** `canLift` across all four inputs including the "valid `now`, empty horizon" case ADR-0160 §9 calls out; the note resolves for an event, for a booking-backed event, and is absent when there is none; `then` is absent at end of day; **the clock is pinned** (`setSimulatedNow`, reset in `afterEach`) and both day scopes are asserted.
+
+## Phase 3 — the lifted hero, static
+
+The whole horizon, rendering, with **no lift animation** — it opens instantly. Splitting the motion out is deliberate: it is what makes the content reviewable and the motion independently bisectable.
+
+- `HeroLift` in `ui/domain/` — a `Modal`, so back/Escape/backdrop/`✕` reach one handler for free (never a hand-rolled portal; lint blocks it).
+- The three regions: head pinned, **one** scroller, foot pinned (ADR-0148 §1's pattern — `.place` became a grid in that one variant for the same reason; check whether the same is needed here before reaching for flex).
+- The parts: `איפה` (+ map way-in and `ניווט`), `פתק`, `הסדרה`, `ועוד עכשיו`, `הבא בתור` (+ the two hand-offs), `אחר כך`.
+- `SettleControl` gains its **`board`** density (ADR-0160 §11) — a variant on the existing component, its own file's CSS, **no new words, marks or hues**.
+- Content-sized with a max, so a thin hero is short (§8).
+
+**Tests.** `SettleControl`'s new variant renders the same two verbs with the same words; each part is absent when its datum is; the scroller is the only scrolling region; the hero renders through `Modal` (needs `wrapNav` — do not open-code the provider stack); a tap on `הסדרה` calls the verb and does **not** dismiss the hero.
+
+**Watch for:** ADR-0107. The hero shows more times than the collapsed board, so more `ZoneShiftPill`s. Count the sites — the mockup only drew the transit one and says so.
+
+## Phase 4 — the motion
+
+- FLIP off the **measured** collapsed box. `frontend/CLAUDE.md` records three bugs from writing a landing position as a constant; this must measure and must be asserted in an **e2e against the settled box**, because jsdom reports every rect as zero and the unit suite cannot see this class of bug.
+- The swing: `perspective(900px) rotateX(9deg) translateZ(-46px)` → identity, on top of the box animation. `--ease-arrive` in, `--ease-exit` out, `--t-base` / `--t-quick`. **Not `--t-cinematic`** (ADR-0140's budget).
+- The inline board holds its space with `visibility` (never `display`).
+- **The layer paints nothing while closed** — the defect the mockup shipped and fixed. `visibility: hidden`, not `display: none`, because the hero must stay measurable while closed.
+- Open the layer one frame **before** writing the target box.
+- `.is-landing` on the returning board, and the shared one-shot beat: ADR-0160 §7 says `.is-nudging` / `.is-rebuffing` / `.is-landing` are **one primitive**. Extract it here (a small hook or util beside `useFormErrors`' `nudge`) rather than writing the third copy — that is rule 8, and ADR-0139 is what happens if we don't.
+- Every duration from `motionDurationMs`, which answers **0** under reduced motion; the lifted state must be correct as a **static** state.
+- `in-transit` becomes liftable (§10: no settle verbs, no day rail).
+
+**Tests.** Unit: the beat class is applied and removed at `animationend`; reduced motion yields no animation and a correct static state. E2E: the aim lands on the settled box; back/Escape/backdrop each dismiss; the inline board is hidden during flight and visible after.
+
+## Phase 5 — the rebuff
+
+Last, because it is the cheapest and depends on `canLift`.
+
+- `.is-rebuffing` through Phase 4's shared beat: 7px up, settle back, `linear`, **no colour**, **no text**.
+- Wired to `!canLift(horizon)`, which is where `free` gets it for free — no variant check anywhere (§9).
+
+**Tests.** A `free` board rebuffs and does not open a layer; a valid `now` board with an empty horizon rebuffs identically; the class comes off; reduced motion does nothing visible and still opens nothing.
+
+## What this plan does not build
+
+Everything ADR-0160 §13 names, restated so a phase does not quietly absorb it: no time edits or authoring, **no note on the next event**, no third day slot under `אחר כך`, no lift for `free`, and no change to which booking moments reach the hero (ADR-0059 §1 still owns that).
+
+## Two standing obligations
+
+- **Re-measure on a device with the real fonts.** Every number in both mockups came from a sandbox with no network, so from a fallback font. Nothing measured there may become a build constant without being re-read — the same caveat already sitting on ADR-0152/0153.
+- **`pnpm install` before `pnpm format`.** Without `node_modules` the format script silently falls through to an unpinned `prettier` on `PATH` and rewrites files CI then rejects.
