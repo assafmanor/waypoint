@@ -1,6 +1,6 @@
 # 0136 — An event can also be **booked**, and it is one tap rather than a schema question
 
-**Status:** Accepted — extracted 2026-07-30 (session 183) from [ADR-0135](0135-a-place-becomes-an-event-or-a-booking.md), which designed it inside a map phase; **its trigger was replaced 2026-07-30 (session 184)** after the owner rejected keying on a confirmation code. **It is not a map decision** — owner's call: _"independently from the maps, events in general."_ **Built 2026-07-31 (session 185)**, with two amendments made in place while building: §1's "no new primitive" was wrong (a `ToggleChip` was extracted), and §2 now **asks** the booking type for `transport`, on the owner's call. The numbers in §5 are read from the live DOM of the mockup named below, in a headless browser.
+**Status:** Accepted — extracted 2026-07-30 (session 183) from [ADR-0135](0135-a-place-becomes-an-event-or-a-booking.md), which designed it inside a map phase; **its trigger was replaced 2026-07-30 (session 184)** after the owner rejected keying on a confirmation code. **It is not a map decision** — owner's call: _"independently from the maps, events in general."_ **Built 2026-07-31 (session 185)**, with two amendments made in place while building: §1's "no new primitive" was wrong (a `ToggleChip` was extracted), and §2 now **asks** the booking type for `transport`, on the owner's call. **§2 amended again 2026-08-03 (session 187)** on the owner's field report: an existing event's saved state is an answer rather than a missing one, and `transport` no longer defaults the row on. The numbers in §5 are read from the live DOM of the mockup named below, in a headless browser.
 **Date:** 2026-07-30
 
 **Leaves** [0011](0011-hard-soft-event-model.md) **entirely alone**, and that is a correction: two earlier passes tried to read its "hard = real commitment (flight, reservation code)" as a rule the app could execute. §4 is why that fails — commitment and booked-ness are different axes, and the app's own `bookingDefaultKind` says so by making a restaurant booking **soft**.
@@ -49,9 +49,27 @@ That reframing is what makes a one-tap control honest rather than a shortcut. "E
 
 ### 2. What the category _does_ decide: the row's default, and the booking's type
 
-**The row defaults from the category.** `lodging` and `transport` open **on** — a hotel or a flight you are putting on a day is near-certainly booked — and everything else opens **off**. That is the inference doing the one thing it can do honestly: offering a starting position, not deciding a fact. It is the "sensibly defaulted, trivially fixable, never a forced choice" posture of ADR-0113 and ADR-0116 §1.
+**The row defaults from the category.** `lodging` opens **on** — a hotel you are putting on a day is near-certainly booked — and everything else opens **off**. That is the inference doing the one thing it can do honestly: offering a starting position, not deciding a fact. It is the "sensibly defaulted, trivially fixable, never a forced choice" posture of ADR-0113 and ADR-0116 §1.
 
 **And it stops moving the moment a human touches it** — `bookedTouched`, the same guard `BookingSheet` already carries for `kind`. Changing the category after that re-derives the type and leaves the fact alone.
+
+> **Amended 2026-08-03 (session 187, owner's field report).** This paragraph used to read _"`lodging` **and `transport`** open on — a hotel **or a flight** you are putting on a day is near-certainly booked"_, and it stated the default as a fact about a **new** event only by omission. Both halves were wrong, and the owner met them in one sitting: _"adding transit events default to 'I have a reservation' … sometimes users will want to simply add a quick event for 'this is when we're off driving, or taking a bus'"_ and, worse, _"opening the event for editing brings back the 'I have a reservation'."_
+>
+> **a. A saved event is an answer, not a missing one.** The row's initial value read the category and never the event, so an existing **unlinked** event had `bookingId == null` — a fact its author stated by saving — re-guessed on every edit. §4 had already decided this for `kind` (_"an existing event counts as touched"_) and the icon does the same; `booked` was the one of the three that did not, and it is the one where being wrong costs most. Three symptoms, and the third went unreported because nothing on screen showed it:
+>
+> 1. the row re-opened on every edit;
+> 2. `routeShaped` follows it, so the **location field was swapped for a route field** — the saved place silently re-read as an origin, beside an empty destination the form appeared to be demanding;
+> 3. `dirty` does not count an untouched row, so **no discard guard fired** and the next save of _any_ field took the booked branch — creating a `Booking`, moving the place onto it, and performing §3's **one-way** conversion. A default the user never touched was writing an entity they cannot undo from this form.
+>
+> So the seed is `!event && …` and the guard is `Boolean(event)`, the same pair `kind` carries ten lines above it. **Turning the row on is a tap; leaving it on by mistake is irreversible** — with error costs that lopsided, an edit starts from what was saved.
+>
+> **b. `transport` is no longer the second `true`, and [ADR-0156](0156-a-bus-is-transport-the-third-mode-the-picker-always-meant.md) is why the premise moved.** The sentence above argued from _a flight_ and applied the answer to the whole category, which was defensible while the third transport pill was — in 0156's own words — lying. Now that `transit` is real, `transport` also covers the bus, the ferry, the car hire and the drive, which are mostly **not** booked; and the booked flight tends to arrive through the Index's own booking path (§6), which asks the schema question correctly because you went there to make a booking. The category's population changed under a default that was never re-read.
+>
+> The same asymmetry settles it: wrongly **off** is one tap, while wrongly **on** hides the location field, costs ~136px (§5: 696px against 560px) and ends in a conversion. And the kind follows correctly with no special case — `deriveKind` reads the row, so the unbooked journey is **soft**, free to move and in the ripple, while tapping the row for a real flight re-derives `hard` through `defaultKindForBookingType` (§4). One value in `CATEGORY_DEFAULT_BOOKED`, which is a compiler-checked `Record` precisely so this is one value.
+>
+> **c. What was rejected, and it is the more interesting half.** The obvious better guess is the **glyph**: `ICON_SET`'s transport group already separates `✈️ 🚆 🚄` from `🚌 🚗 ⛴️`, the form already has the picker, and `useDerivedField` would have flipped the row for free as you reached for the car — a better default at zero pixels and no new control. **The owner rejected it:** _"glyphs should always be decorative and not dictate any behavior."_ Recorded because the reasoning survives the rejection — anything that makes the badge load-bearing is a control that does not look like one, and the next session to notice `categoryForIcon` will want to argue from it.
+>
+> Also rejected: **hoisting the three mode pills out of the collapsible** so `transport` asks "which mode" first and derives the reservation from that. It is the honest version of the glyph idea and it inverts the cost — a permanent +54px row, and a question, on the walk-to-the-station event this change exists to make free.
 
 **The type derives from the same category**, via a new `CATEGORY_TO_BOOKING_TYPE` in `@waypoint/shared`, the inverse of the shipped `BOOKING_TYPE_TO_CATEGORY`, `as const satisfies Record<EventCategory, BookingType>`:
 
@@ -177,7 +195,7 @@ That is the price of one authoring model instead of two, stated rather than buri
 ## The device pass, and what it owns
 
 - **Whether `יש הזמנה` is noticed at all** by someone who would say yes. It is one chip in a form of seven fields, and an unticked chip is easy to walk past.
-- **Whether defaulting it ON for lodging and transport reads as helpful or as presumptuous**, especially the first time someone saves a hotel event they did not book.
+- ~~**Whether defaulting it ON for lodging and transport reads as helpful or as presumptuous**, especially the first time someone saves a hotel event they did not book.~~ **Answered for `transport` (session 187): presumptuous.** See §2's amendment — the default is off there now. It stands for `lodging`, which nobody has reported.
 - **Whether +78px of permanently-visible form is worth it on the day view and the builder**, where a code is rarer than on a place just picked. If not, the line moves behind the create-flow entry point rather than living in the form.
 - **Whether a statement that moves under the category pill reads as clever or as unstable.** It is the only live derivation on any authoring surface.
 - **Whether conversion is legible as a conversion**, given one toggle stands in for creating an entity and moving two fields off the one being edited.

@@ -226,21 +226,29 @@ export const BOOKING_TYPE_ICON = {
   other: '📄',
 } as const satisfies Record<BookingType, string>;
 
-/** **Does `EventForm`'s `יש הזמנה` row open on?** (ADR-0136 §2.) A hotel or a flight you
- *  are putting on a day is near-certainly booked; everything else is genuinely either, so it
- *  opens off. This is inference doing the one thing it can do honestly — offering a starting
+/** **Does `EventForm`'s `יש הזמנה` row open on?** (ADR-0136 §2, amended session 187.) A hotel
+ *  you are putting on a day is near-certainly booked; everything else is genuinely either, so
+ *  it opens off. This is inference doing the one thing it can do honestly — offering a starting
  *  position, never deciding the fact — and it stops moving the instant a human touches the
  *  row (`bookedTouched`).
  *
- *  A per-enum `Record` rather than a `cat === 'lodging' || cat === 'transport'` at the call
- *  site: the compiler then flags a new `EventCategory` here instead of silently defaulting it
- *  off. It stays frontend-side because it is a **form default**, not cross-layer vocabulary —
- *  the server never asks this question (`packages/shared/CLAUDE.md`: promote only once a
- *  second layer needs the same values). Its sibling `CATEGORY_TO_BOOKING_TYPE` maps between
- *  two shared enums, which is why that one does live in `@waypoint/shared`. */
+ *  **`transport` used to be the second `true`, and ADR-0156 is why it is not.** §2 argued from
+ *  _"a hotel or a **flight**"_ and applied the answer to the whole category — defensible while
+ *  the third transport pill was, in 0156's own words, lying. Now that `transit` is real, the
+ *  category also covers the bus, the ferry, the car hire and the drive, which are mostly not
+ *  booked; and the two errors do not cost the same. Wrongly off is one tap. Wrongly on hides
+ *  the location field behind a route field, adds ~136px, and performs §3's ONE-WAY conversion
+ *  on the next save.
+ *
+ *  A per-enum `Record` rather than a `cat === 'lodging'` at the call site: the compiler then
+ *  flags a new `EventCategory` here instead of silently defaulting it off. It stays
+ *  frontend-side because it is a **form default**, not cross-layer vocabulary — the server
+ *  never asks this question (`packages/shared/CLAUDE.md`: promote only once a second layer
+ *  needs the same values). Its sibling `CATEGORY_TO_BOOKING_TYPE` maps between two shared
+ *  enums, which is why that one does live in `@waypoint/shared`. */
 export const CATEGORY_DEFAULT_BOOKED = {
   lodging: true,
-  transport: true,
+  transport: false,
   food: false,
   sightseeing: false,
   nature: false,

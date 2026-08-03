@@ -321,25 +321,41 @@ describe('EventForm (folded into Modal, U-01)', () => {
     // FAILS if `bookedTouched` is ignored: the category's default must move the row only
     // until a human has said something, and then never again.
     describe('the category default', () => {
-      it('opens the row ON for lodging and transport, OFF for the rest', () => {
+      it('opens the row ON for lodging, and OFF for the rest — transport included', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         pickCategory('lodging');
         expect(bookedChip().getAttribute('aria-pressed')).toBe('true');
         pickCategory('food');
         expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+        // `transport` used to be the second `true`, and ADR-0156 is why it no longer is: the
+        // category covers the bus, the ferry and the drive as well as the flight, so the
+        // unbooked journey is the common case and the reservation is the tap.
         pickCategory('transport');
-        expect(bookedChip().getAttribute('aria-pressed')).toBe('true');
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+        // `Collapsible` keeps its children mounted for the motion, so shut is the class,
+        // never the absence of the pills.
+        expect(document.querySelector('.wp-collapsible.on')).toBeNull();
       });
 
-      it('stops moving once a human has touched the row', () => {
+      it('stops moving once a human has touched the row, in both directions', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         // A human says "no, this hotel is not booked".
         pickCategory('lodging');
         fireEvent.click(bookedChip());
         expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
-        // Changing the category must NOT put it back on.
-        pickCategory('transport');
+        // Coming back to the one category that still defaults ON must NOT put it back on.
+        pickCategory('food');
+        pickCategory('lodging');
         expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+
+        cleanup();
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        // …and the other way, which the flipped default makes the commoner one: "yes, this
+        // bus IS booked" has to survive a category change too.
+        pickCategory('transport');
+        fireEvent.click(bookedChip());
+        pickCategory('food');
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('true');
       });
     });
 
@@ -351,8 +367,14 @@ describe('EventForm (folded into Modal, U-01)', () => {
         pickCategory('food');
         expect(typeGroup()).toBeNull();
 
-        pickCategory('transport'); // defaults the row ON
+        // The category alone no longer opens it (session 187), so the mode question waits
+        // for the reservation to be stated rather than arriving with it.
+        pickCategory('transport');
+        expect(document.querySelector('.wp-collapsible.on')).toBeNull();
+
+        fireEvent.click(bookedChip());
         expect(typeGroup()).toBeTruthy();
+        expect(document.querySelector('.wp-collapsible.on')).toBeTruthy();
 
         fireEvent.click(bookedChip()); // …and off again
         expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
@@ -363,6 +385,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         named('שינקנסן לקיוטו');
         pickCategory('transport');
+        fireEvent.click(bookedChip());
         const group = typeGroup()!;
         expect(
           within(group)
@@ -378,6 +401,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
       it('states the derived type in words, and the statement follows the pick', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         pickCategory('transport');
+        fireEvent.click(bookedChip());
         const derived = () => document.querySelector('.ef-derived')!.textContent!;
         expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.flight));
 
@@ -391,9 +415,12 @@ describe('EventForm (folded into Modal, U-01)', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         named('שינקנסן');
         pickCategory('transport');
+        fireEvent.click(bookedChip());
         fireEvent.click(
           within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.train }),
         );
+        // The row itself is touched now, so it stays on across both changes — what must not
+        // survive them is the explicit TYPE.
         pickCategory('food');
         pickCategory('transport');
         expect(
@@ -414,6 +441,12 @@ describe('EventForm (folded into Modal, U-01)', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         pickCategory('transport');
         const on = () => document.querySelector('.kind-toggle button.on')!.textContent!.trim();
+        // The quick journey nobody booked is SOFT — free to move, and in the ripple. This is
+        // the flipped default's own consequence, and it needs no special case: `deriveKind`
+        // reads the row, and the row is off.
+        expect(on()).toBe(t.eventForm.kindSoft);
+
+        fireEvent.click(bookedChip());
         expect(on()).toBe(t.eventForm.kindHard);
 
         for (const type of [t.index.bookingType.train, t.index.bookingType.transit]) {
@@ -481,6 +514,63 @@ describe('EventForm (folded into Modal, U-01)', () => {
         expect(document.querySelector('.ef-derived')!.textContent).toContain(
           t.eventForm.bookedDerivedConvert(t.index.bookingType.activity),
         );
+      });
+    });
+
+    // ── A SAVED EVENT IS AN ANSWER (§2's session-187 amendment) ───────────────
+    // The row's initial value read the category and never the event, so `bookingId == null`
+    // — a fact the user stated by saving — was re-guessed on every edit. `kind` and `icon`
+    // had refused to do exactly that since ADR-0136 §4; this field was the one that didn't.
+    describe('reopening an event that was saved unbooked', () => {
+      const unbooked = (category: string) => ({
+        id: 'ev-9',
+        tripId: 't1',
+        date: '2026-07-20',
+        title: 'נסיעה להאקונה',
+        kind: 'soft',
+        category,
+        placeId: 'pl-1',
+        status: 'planned',
+        sortOrder: 1,
+        source: 'manual',
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: 'u1',
+      });
+
+      // FAILS if the row seeds from the category on an existing event. Both categories,
+      // because this is about the EVENT being saved, not about which default it would have
+      // had — flipping `transport` alone would leave the hotel case broken.
+      it.each(['transport', 'lodging'])('leaves the row off for a saved %s event', (category) => {
+        render(wrapNav(<EventForm event={unbooked(category) as never} onClose={() => {}} />));
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
+      });
+
+      // THE WORST SYMPTOM, and the one nobody reported: `dirty` does not count an untouched
+      // row, so nothing warned — and then the next save of ANY field took the booked branch,
+      // performing §3's ONE-WAY conversion and moving the place onto a new booking.
+      it('saves an ordinary edit as an event, never as a booking', () => {
+        render(wrapNav(<EventForm event={unbooked('transport') as never} onClose={() => {}} />));
+        named('נסיעה להאקונה, מעודכן');
+        save();
+        expect(verbs.book).not.toHaveBeenCalled();
+        expect(verbs.update).toHaveBeenCalledTimes(1);
+      });
+
+      // …and the visible one: the location it was saved with must still read as a location,
+      // not as one end of a journey with an empty slot beside it.
+      it('keeps the single place field rather than swapping in a route', () => {
+        render(wrapNav(<EventForm event={unbooked('transport') as never} onClose={() => {}} />));
+        expect(screen.queryByRole('button', { name: t.index.form.originLabel })).toBeNull();
+        expect(screen.getByRole('button', { name: t.placePicker.open })).toBeTruthy();
+      });
+
+      // The `Boolean(event)` half of the fix: an existing event counts as TOUCHED, so
+      // re-categorising one mid-edit must not re-arm the row either.
+      it('does not re-arm the row when the category changes mid-edit', () => {
+        render(wrapNav(<EventForm event={unbooked('transport') as never} onClose={() => {}} />));
+        pickCategory('lodging');
+        expect(bookedChip().getAttribute('aria-pressed')).toBe('false');
       });
     });
 
@@ -552,6 +642,9 @@ describe('EventForm (folded into Modal, U-01)', () => {
         };
         tripState.events = [existing];
         render(wrapNav(<EventForm event={existing as never} onClose={() => {}} />));
+        // The row no longer arrives on for an existing event (session 187), so a conversion
+        // is a human tapping it — which is what this reproduction was always about.
+        fireEvent.click(bookedChip());
         save();
 
         const payload = bookedPayload();
@@ -568,7 +661,8 @@ describe('EventForm (folded into Modal, U-01)', () => {
       it('sends a route and no placeId for a fresh flight too', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         named('טיסה לטוקיו');
-        pickCategory('transport'); // defaults the row ON and the type to flight
+        pickCategory('transport');
+        fireEvent.click(bookedChip()); // …which defaults the type to flight
         save();
 
         const payload = bookedPayload();
@@ -600,6 +694,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         named('אוטובוס לנמל');
         pickCategory('transport');
+        fireEvent.click(bookedChip());
         fireEvent.click(
           within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.transit }),
         );
@@ -617,6 +712,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
         const onClose = vi.fn();
         render(wrapNav(<EventForm onClose={onClose} />));
         pickCategory('transport');
+        fireEvent.click(bookedChip());
         fireEvent.click(screen.getByRole('button', { name: t.index.form.originLabel }));
         // The errand hands the draft over; re-opening with it is how the pick comes back.
         cleanup();
@@ -674,8 +770,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
       // field belongs to the BOOKING, so it must not appear when nothing is booked.
       it('shows the single place field, not the route field, when nothing is booked', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
-        pickCategory('transport');
-        fireEvent.click(screen.getByRole('button', { name: new RegExp(t.eventForm.bookedLabel) }));
+        pickCategory('transport'); // …which now leaves the row off by itself
         expect(screen.queryByRole('button', { name: t.index.form.originLabel })).toBeNull();
         expect(screen.getByRole('button', { name: t.placePicker.open })).toBeTruthy();
       });
@@ -688,6 +783,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
       render(wrapNav(<EventForm onClose={() => {}} />));
       named('רמן נאגי');
       pickCategory('transport');
+      fireEvent.click(bookedChip());
       fireEvent.click(within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.train }));
       fireEvent.change(screen.getByPlaceholderText(t.eventForm.bookedCodePlaceholder), {
         target: { value: 'RN-4820' },
@@ -701,7 +797,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
           target: expect.objectContaining({ kind: 'event', field: 'fromPlaceId' }),
           draft: expect.objectContaining({
             booked: true,
-            bookedTouched: false,
+            bookedTouched: true,
             code: 'RN-4820',
             bookingType: 'train',
             kindTouched: false,

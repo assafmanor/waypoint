@@ -225,12 +225,24 @@ export function EventForm({
   const composer = useNoteComposer();
 
   // ── `יש הזמנה` (ADR-0136) ──────────────────────────────────────────────────
-  // The row DEFAULTS from the category — lodging and transport open on, everything else off —
-  // which is inference doing the one thing it can do honestly: offering a starting position,
-  // never deciding a fact. It stops moving the moment a human touches it.
+  // On a NEW event the row defaults from the category (`CATEGORY_DEFAULT_BOOKED` — lodging
+  // opens on, everything else off), which is inference doing the one thing it can do honestly:
+  // offering a starting position, never deciding a fact. It stops moving the moment a human
+  // touches it.
+  //
+  // **An existing unlinked event is a stated fact, not a missing answer** (§2's session-187
+  // amendment). It has been saved with no booking, so re-guessing that from the category is
+  // what `kind` and `icon` above already refuse to do — and this is the field where getting it
+  // wrong is worst: the guess re-opened the row on every edit, swapped the location field for a
+  // route field, and then converted the event on the next save of ANY field, one-way (§3),
+  // without ever counting as dirty.
   const booked = useDerivedField(
-    draft ? draft.booked : initialCategory ? CATEGORY_DEFAULT_BOOKED[initialCategory] : false,
-    draft?.bookedTouched ?? false,
+    draft
+      ? draft.booked
+      : !event && initialCategory
+        ? CATEGORY_DEFAULT_BOOKED[initialCategory]
+        : false,
+    draft?.bookedTouched ?? Boolean(event),
   );
   const [code, setCode] = useState(draft?.code ?? '');
   const [bookingType, setBookingType] = useState<BookingType | null>(draft?.bookingType ?? null);
