@@ -1,0 +1,155 @@
+# 0160 — The hero **lifts**, and what it lifts is a **horizon**
+
+**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Design only — not built.**
+**Date:** 2026-08-03
+**Design reference:** [`mockups/hero-lift-v1.html`](../../mockups/hero-lift-v1.html) (the motion) + [`mockups/hero-horizon-v1.html`](../../mockups/hero-horizon-v1.html) (the content). Every measurement below is read from those files' live DOM, at 390×844 and 360×640, in both themes.
+
+**Closes the [Hero 2.0 brief](../planning/2026-07-28-hero-2-0-design-brief.md)** (raised 2026-07-28, session 148) and all six of its sub-questions.
+**Closes [0121](0121-embedded-map-phase-6-design.md)'s 2026-07-28 amendment §4**, which backed the map way-in off the board and said the hero's own redesign was "the shape it actually wants there". This is that shape, and the way-in lands in §3.
+**Closes the [notes brief](../planning/2026-08-01-notes-design-brief.md) §C3**, which put no mark on the Board on purpose and handed the board's note-reach here.
+**Extends** [0041](0041-parallel-overlapping-events.md) §6 (the `ועוד N` expander is retired; `group-split` gains depth per equal), [0059](0059-booking-presentation-on-home-and-index.md) §1/§2 (the in-transit hero gains a below-decks), [0139](0139-one-settle-control-three-hosts.md) (a fourth `SettleControl` density), [0140](0140-motion-foundations-overlays-arrive-taps-answer-routes-have-a-direction.md) (a third one-shot answer beat, and the lift's own entrance/exit), [0148](0148-the-place-form-has-the-room-it-needs.md) §1 (the bounded-card-with-one-scroller pattern, second consumer).
+**Applies unchanged** [0011](0011-hard-soft-event-model.md) (the hero offers no time edit, so the guard is never reached), [0017](0017-mobile-first-phone-primary.md) (44×44, measured at both widths), [0018](0018-derived-state-not-stored.md)/[0027](0027-no-derived-persistence.md) (now/next and the lift's own trigger are derived), [0028](0028-plan-violet-color-budget-dark-ready.md) / root rule 4 (no new hue), [0090](0090-back-is-computed-from-nav-state.md) + [0103](0103-one-back-action.md) (it is a back layer), [0107](0107-per-place-timezones-and-multi-zone-time.md) (more times means more pills), [0045](0045-trip-home-real-data-only.md) (real data only), [0158](0158-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md) §3 (`--on-dark` ramp) and §15 (an inverted surface is where a paper component breaks).
+
+## Context
+
+Map epic Phase 5's rule was "every event and booking has an easy way to its pin". Applied literally it put a teal ring and a pin marker on the board's now/next icons, and it read **too loud** — the board is the app's one dark, glowing, pulsing surface, rationed to one per screen. It was backed out (ADR-0121's amendment §4) and the owner's reaction named the real shape: **the hero should not grow controls, it should open.**
+
+The brief called one question load-bearing: expansion or overlay? Both answers were wrong, and the owner's own description is the third thing neither word covers:
+
+> _"the hero is expanding 'towards' the eyes of the user in an animation so that it pops out of the home screen. It doesn't render the hero twice like you described the overlay, instead the hero becomes the overlay 'lifting' from the screen."_
+
+An **expansion** is a pane of Home, so it reflows the page under your thumb. An **overlay** as the brief drew it is a second surface rendering the same facts, which throws away the glance value the board exists for. What the owner described is neither: one object, one identity, gaining elevation.
+
+## Decision
+
+### 1. It is a **promotion**, not an expansion and not a second surface
+
+The board **lifts**. One element, measured off its own collapsed box, that leaves Home's flow and comes back.
+
+The mechanism already exists and is not a `Modal` invention: `.wp-dragghost` (`tokens.css:405`) is the shelf's drag clone — sized and positioned from JS off the source element's measured box, `position: fixed`, `--shadow` and a scale so it reads as picked up. Its own comment settles the fact the lift depends on: **no ancestor establishes a containing block for it.**
+
+**The inline board holds its space with `visibility`, never `display`.** Home must not reflow under the thumb; that is the failure an expansion has by construction and the lift must not inherit it.
+
+### 2. It is still a back layer, and that is not negotiable
+
+It can be dismissed, so ADR-0103's amendments and ADR-0090 apply with no exemption: it registers through `Modal`/`useOverlay`, and the `✕`, the backdrop, Escape and the Android gesture run **one** function.
+
+What this ADR rejects is the **sheet's grammar**, never the back contract. The alternative was live and wrong: `SnapSheet` is a pane that registers nothing (ADR-0121 §5), and on that model a system back would leave the tab with the hero still up.
+
+### 3. What it lifts is a **horizon**, and only three things earn the interaction
+
+`CLAUDE.md` says what the app is for: _"what now / what next / what do I need in the next 30 minutes."_ The collapsed board answers the first two. The lifted hero is the third, which gives a shape rather than a list: **the collapsed board shows two POINTS, the lifted hero shows a HORIZON with depth on each point** — `עכשיו → ועוד עכשיו → הבא בתור → אחר כך`.
+
+Only three things pass the brief's own test ("worth an interaction, not a reflow of the same facts"), because the collapsed board already carries title, kind, until-time, code, countdown, zone shift and concurrency:
+
+- **`איפה`** — the place, the way to its pin, and the `ניווט` hand-off. The board has **never** carried a place in any form. This is Phase 5's affordance, and the lift is what makes it affordable: it now lives in a state you asked for, not on the glance surface whose budget was already spent.
+- **`פתק`** — the note the group wrote about this stop. Genuinely new content, handed here on purpose by ADR-0152/0153.
+- **`הסדרה`** — whether it happened.
+
+**Reads, hand-offs and settles. No time edits, and no ±30 nudge** (owner's call). That is why ADR-0011 is listed as applying _unchanged_ rather than extended: the hero never reaches the guard, because settling **records an outcome** rather than editing a commitment, and `SettleControl` already treats every event as settleable rather than only the passed ones. The ±30 stays on `EventCard`, one tab away.
+
+### 4. `ועוד N עכשיו` is retired, and it is **forced** rather than tidy
+
+The brief's sub-question 4 guessed the board's two expanding things "most likely become one". It is stronger: if the whole board is the tap target it is a `<button>`, and `.wp-board-also-toggle` is a `<button>` inside it.
+
+**This is not a theoretical validity point — the parser destroys the board.** Drawn once in the horizon mockup, Chrome **closed `.wp-board` at the nested button** and reparented everything after it, so the divider, `הבא בתור` and the day rail landed on the page background in dark ink. A detached-tree probe in that file reports it as a number: **1 of 4 children left inside the board.**
+
+So the count becomes a **readout** — same dot, same words, no chevron, no press target — because it must stay legible without a tap, and its rows move into the horizon. This was the board's **only** interactive child, so afterwards the collapsed board has none.
+
+### 5. The character is **the swing**, and it decides that the hero covers the chrome
+
+Three characters were drawn. **Chosen: ההטיה** — the box travels to the top of the screen while the hero straightens up toward the viewer from 9° back and 46px away.
+
+Two of the three were **rewritten by the measurement**, and neither correction was reachable by reasoning:
+
+- "Rise to just under the chrome" measured **4px**. The board is the first thing on Home, so there is nowhere to rise to that is not _over_ the chrome.
+- "Approach as a scale-up" measured **×1.045**. The board is already near-full-width (358 → 374px), so a width-keyed FLIP has no scale in it to spend; the lift's entire visible budget is **height (×2.01) and elevation**. A literal "toward the eyes" therefore has to be a 3D swing, which is the one channel that reads as depth when width does not change.
+
+**So the lifted hero covers the chrome** — 72px, the whole band ADR-0028 names as mode identity and ADR-0158 §12 has just given light mode its own version of. That is consistent with itself: the lifted state is modal and only one mode exists inside it, so an identity with nothing to distinguish it from is not needed there. It also buys the 72px that keeps most cases off a scroller (§8).
+
+**All three animate the box, so text is crisp at both ends**; the swing makes it soft only while the angle is non-zero. `--ease-arrive` is licensed here (an entrance of a real object) and forbidden on the way back.
+
+### 6. `--t-cinematic` is not available
+
+ADR-0140's budget rule is one line and absolute: exactly one cinematic moment, the Plan→Trip switch. The app's signature surface lifting is precisely the thing that would ask for 600ms and it cannot have it. **`--t-base` (240ms) in, `--t-quick` (140ms) out.**
+
+### 7. The return has a **landing**, and the exit is not the entrance reversed
+
+`--ease-exit` accelerates _into_ its end, which is already the curve of something being set down, so the path is right; what was chosen is what happens at the moment of contact. **The drop plus one landing beat** on the board that comes back: `scaleY(0.975)` at 40%, `linear`, `--t-quick`, origin at the bottom edge. The object visibly touches down instead of the flight merely stopping.
+
+Deliberately tiny. A squash big enough to read as a squash is a bounce, and a bounce is exactly what forbidding `--ease-arrive` on exits exists to prevent.
+
+**This makes three one-shot answer beats, and they are one primitive.** `.is-nudging` (a form refuses, ADR-0150), `.is-rebuffing` (§9), `.is-landing` (here). All three: a class applied imperatively for one shot and removed at `animationend`, `linear` because the keyframe offsets **are** the timing, symmetric so no `--dir`, duration from a token. They differ only in axis and meaning, which is the part that should be per-case. ADR-0139 is the precedent for what happens otherwise: three copies of one control drifted on four axes before anyone counted them.
+
+### 8. The hero is sized by its **content**, and it is bounded with one scroller
+
+**Content-sized** (owner's call), not screen-sized. The surface is exactly as big as it has something to say, which also keeps it continuous with the small box it grew from. The cost is accepted and recorded: `בטיסה` claims **49%** of the screen, so a thin case leaves the backdrop nearly empty. The rejected alternative is worse — a screen-sized hero puts ~400px of empty dark board under a flight, and empty space on the app's one glowing surface reads as something that failed to load.
+
+When the content does exceed the room, the hero becomes a **bounded card**: head pinned, foot pinned, **one** scroller in the middle. Not a new pattern — it is ADR-0148 §1's answer for the Map's place card, reached for the same reason.
+
+**The fit is measured, because this is the number that could have made "lift" a euphemism for "second screen":**
+
+| case                              | 390×844 (826px room) | 360×640 (622px room) |
+| --------------------------------- | -------------------- | -------------------- |
+| thin / typical / full             | fits                 | fits                 |
+| heavy (3-line note, 3 concurrent) | fits                 | 72px over            |
+| `group-split`, 2 equals           | fits                 | 92px over            |
+| `group-split`, 3 equals           | 9px over             | 255px over           |
+| `in-transit`                      | fits (49%)           | fits                 |
+
+The common case is not a scroller. Note the row that reasoning would have missed: **a two-way group split scrolls on a small phone**, and two is that variant's commonest form.
+
+### 9. A tap with nothing to open gets the **rebuff**, and the trigger is derived
+
+A tap must be answered. The rebuff is a vertical lift of 7px that settles back — `linear` keyframes, `--t-base`, **no colour at all** (`--miss` is a refusal-of-error; this is a refusal-of-content).
+
+**No text** (owner's call, revised in session from a one-shot line). A line that appears and disappears on the app's loudest surface reads as a scolding. Three things fall out of that and they make it the better answer rather than merely the smaller one: no frequency question survives into the build, no new string or translation exists, and the answer stays in the channel the question was asked in — you touched the surface, the surface moved. The argument against is recorded: a lift that returns reads as "nothing here" mainly to someone who has seen a real lift, so the **first** encounter is the un-teaching one. If that proves real on a device the answer is a one-time hint, not permanent copy.
+
+**The trigger is derived, not a variant check.** The hero lifts when the expanded state carries something the collapsed one does not. A perfectly valid `now` board whose event has no note, no place, no code and nothing concurrent has the same nothing to open as a `free` board, and a `variant` test would have missed it.
+
+### 10. Per-variant rules, and the two that are about meaning rather than room
+
+- **`now`** — the full horizon.
+- **`group-split`** — every equal carries the **same** depth, separated by a hairline rather than a card (a card inside the one loud surface reads as a second board). ADR-0041 §6 grants this variant its existence on there being **no primary**, so expanding one row would manufacture the primary it denies. That makes it the densest variant by construction.
+- **`in-transit`** — gains the booking, the seat, the landing zone shift and **what is first on the ground**, which is the "next 30 minutes" question asked at altitude. It **drops the settle verbs**: not a density question but a nonsense one, since a flight you are sitting inside settles itself by landing. It also keeps ADR-0059 §2's rule that the transit progress replaces the day rail.
+- **`free`** — **does not lift**, and the reason is not that it is empty: `GlanceCard` is already Home's "what could we do" surface two inches lower, so a hero lifting into the shelf would compete with a shipped one. It takes §9's rebuff.
+
+### 11. `SettleControl` gains a **board** density, and only the ground changes
+
+ADR-0139's rule holds exactly: a fourth host adds a **density**, and the words, marks and hues are not its to choose. What must change is the ground, and this is a defect the mockup found rather than a preference: `.wp-settle-btn` is `background: var(--card); color: var(--ink)` — built for paper. On the board that is a light paper chip in light mode and a chip that vanishes in dark. It is **ADR-0158 §15's "an inverted surface is the limit"** arriving on a new surface.
+
+The fix invents nothing. The board already carries semantic hues as low-alpha fills with a brightened ink (`.wp-board-countdown`, `.code`, `.tlabel`), so the `board` density is that recipe with `--ok`/`--miss` in it. The focus ring stays the shipped teal.
+
+### 12. `אחר כך` earns its line, on a stated condition
+
+The third point costs **28px** (4.8% of the full horizon) and is kept: a two-slot board cannot carry it in any form, and on the ground "and after that?" is genuinely asked when the next thing is ten minutes away.
+
+**The condition is recorded here so it is not rediscovered as a regression:** it is **one line** — no place, no note, no control, no way in. The moment someone asks to add a hand-off to it, that is the request to turn the hero into the Day tab, and the answer is the tab. A hero that grows a third slot has started competing with a screen that already has day navigation, gaps, hours and controls.
+
+### 13. What this does not do
+
+- No time edits, no ±30, no authoring of any kind.
+- No note on the **next** event. Sometimes exactly what you want before leaving ("ask for a high room", "the gate code is 1408"), but it is the part that turns the typical case into the heavy one. Deliberately unbuilt and named so it cannot arrive quietly.
+- No change to which booking moments reach the hero at all — ADR-0059 §1 still owns that.
+- No lift for `free`.
+
+## Consequences
+
+- **The board becomes interactive for the first time**, and loses its only interactive child in the same change (§4). Its collapsed markup becomes a `<button>`, taking `--press-scale-lg` in one line.
+- **`Board.tsx` stops being purely presentational in one narrow sense**: it gains an "is there anything to lift?" input. That stays **derived and passed in** — the component still takes all data via props and holds no trip state.
+- **A third overlay grammar exists.** The app had sheets (arrive from an edge) and dialogs; now it has a promotion. The risk is a fourth surface copying the lift because it looks nice. It is scoped here to the one surface ADR-0028 names as the app's single loud element.
+- **Every pixel number in both mockups is webfont-dependent** and was measured in a sandbox with no network, i.e. on a fallback font. Re-measure on a device with the real fonts before treating any of them as a build constant. The same caveat already sits on ADR-0152/0153.
+- **The lifted hero must never write a landing box as a constant.** `frontend/CLAUDE.md` records three bugs from exactly that shortcut (ADR-0142's `--birth-card-top: 118px`, ADR-0143's `58px`, the trip handoff's target), and jsdom reports every rect as zero, so this class of bug is invisible to the unit suite by construction. The aim needs an e2e assertion against the settled box.
+
+## Alternatives considered
+
+- **An expansion (a pane of Home, no back registration).** Rejected: it reflows the page under the thumb, and `SnapSheet`'s register-nothing model would let a system back leave the tab with the hero open.
+- **An overlay as the brief drew it** (a `Modal` rendering the same facts again). Rejected: it prints title/kind/time twice and abandons the glance value that is the board's whole purpose.
+- **The lid (anchored, chrome preserved)** and **the rise (travelled, no swing)**. Both drawn and kept in `hero-lift-v1` as the record. The lid additionally needs a scroller at 360×640 where the risen hero does not, because it spends the chrome's 72px.
+- **A scale-up "approach".** Refuted by measurement: ×1.045 of scale available.
+- **`--t-cinematic` for the lift.** Refused on ADR-0140's budget rule, not on taste.
+- **A screen-sized hero.** Rejected: ~400px of empty dark board under a flight reads as a load failure on the one glowing surface.
+- **"Tips and tricks" in the hero.** Refused on two existing decisions rather than opinion: ADR-0045 makes Home real-data-only with no fixtures for unbuilt features, and ADR-0004 makes integrations pipes rather than screens. A tip the app actually holds **is a note**.
+- **A third day slot / a list under `אחר כך`.** Rejected per §12 — that is the Day tab.
+- **The rebuff saying `אין מה לפתוח כרגע` once.** Drawn, and rejected by the owner: text that flashes on the loudest surface reads as a rebuke.
+- **A per-entity control on the collapsed board** (Phase 5's original). Already rejected in ADR-0121's amendment §4; this ADR is the alternative it asked for.
