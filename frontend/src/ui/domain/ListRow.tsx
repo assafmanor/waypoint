@@ -10,7 +10,7 @@
 // Presentational only (dependency direction, §12): all data + copy come via
 // props; no trip-state, no domain types beyond ReactNode. Rows live inside the
 // screen's `.listcard` container, which owns the card frame + row dividers.
-import { type ReactNode } from 'react';
+import { type MouseEvent, type ReactNode } from 'react';
 import { Sheet } from '../Sheet';
 import { Icon, type IconName } from '../Icon';
 import { PlaceBadge } from './PlaceBadge';
@@ -24,8 +24,13 @@ export interface ListRowProps {
   /** Leading badge content — an emoji/icon (content, not a UI control). */
   icon: ReactNode;
   badgeTone?: BadgeTone;
-  /** Opens the row's primary target (a detail view / viewer). */
-  onOpen: () => void;
+  /** Opens the row's primary target (a detail view / viewer).
+   *
+   *  Receives the click, because `onClick={onOpen}` has always passed it and a caller
+   *  that wants to measure the row it came from needs it — an overlay growing out of the
+   *  thing you tapped is one `overlayOriginOffset(e.currentTarget)` away. Widening a
+   *  `() => void` is backwards compatible, so no existing call site changes. */
+  onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
   /** Accessible name for the open button (the row's title as a string). */
   openLabel: string;
   /** Disables the open button (e.g. a still-uploading document). */

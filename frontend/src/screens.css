@@ -3605,18 +3605,65 @@
 }
 
 /* Viewer overlay: near-fullscreen, above sheets (z 30). */
+/* ── The viewer arrives as a SEQUENCE (ADR-0140's 2026-08-02 amendment) ───────────
+   `DocumentViewer` is a lint-allowlisted bespoke portal, so ADR-0140 §G1 never reached
+   it: this used to be `animation: fade 0.18s ease` on `.doc-viewer` — the CARD'S
+   ANCESTOR — so scrim and card faded as one flat image, the card never travelled, and
+   `0.18s` was off the ramp entirely. There was no exit at all.
+
+   The first fix was still one event: four channels sharing one start and one duration,
+   which measured 87% opacity and 99.2% of full scale at 25% of the way through, then
+   75% of drift nobody can see. That reads as a pop followed by dead time, and the owner
+   called it choppy. Simultaneity was the whole problem — one event gives one thing to
+   perceive.
+
+   So: four actors, four clocks, each behaving like what it is.
+     the scrim    atmosphere; it LEADS, because a card arriving over an undimmed screen
+                  (measured: 40% opaque against an 11% scrim) has no depth.
+     the mount    a physical object; it TRAVELS. `.88` and the tapped row's offset, not
+                  `.94` — which on a 252px card is 7.6px of edge travel, a nudge.
+     the chrome   furniture ON the object, so it lands after it and the card reads as
+                  assembling rather than as a picture of a card.
+     the document its own clock entirely — its bytes land 40ms or 1.4s later, so it can
+                  never be a member of the arrival sequence.
+   Worked through in `mockups/document-viewer-motion-v2.html`, which plots each channel.
+
+   Opacity is deliberately SPLIT off the transform and finishes in `--t-quick`: the card
+   is solid early, so the rest of the arrival is spent perceiving movement rather than a
+   fade. That is the actual fix for "over in the first quarter".
+
+   The exit is NOT the entrance reversed — see the block at the top of `modal.css` for
+   why `reverse` does not even run. It is also a different SHAPE: the order inverts
+   (chrome first, scrim last, so the card clears against a still-dimmed room) and the
+   mount drops away at a shallow `.96` rather than retracing to `.88`, because retracing
+   is what makes an exit read as a rewind. */
 .doc-viewer {
   position: fixed;
   inset: 0;
   z-index: 30;
-  background: rgba(22, 35, 61, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  animation: fade 0.18s ease;
+}
+/* The scrim is a pseudo-element for the same reason it is one in `modal.css`: this
+   element is the card's ancestor, so fading it fades the card with it. */
+.doc-viewer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 35, 61, 0.72);
+  animation: dv-scrim-in var(--t-deliberate) var(--ease-standard) both;
+}
+.doc-viewer.is-closing::before {
+  animation: dv-scrim-out var(--t-base) var(--ease-exit) var(--stagger-step) both;
+}
+/* While the exit plays the overlay is on screen but no longer a target. */
+.doc-viewer.is-closing {
+  pointer-events: none;
 }
 .doc-viewer-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -3625,6 +3672,16 @@
   background: var(--card);
   border-radius: 16px;
   overflow: hidden;
+  /* Measured off the tapped row (`overlayOriginOffset`), so the card grows out of the
+     thing you pressed. Unset — a note deep link, which has no row — is dead centre, and
+     that is the honest answer rather than a fallback. */
+  transform-origin: 50% calc(50% + var(--dv-origin-dy, 0px));
+  animation:
+    dv-mount-in var(--t-deliberate) var(--ease-arrive) var(--stagger-step) both,
+    dv-mount-fade var(--t-quick) var(--ease-standard) var(--stagger-step) both;
+}
+.doc-viewer.is-closing .doc-viewer-card {
+  animation: dv-mount-out var(--t-base) var(--ease-exit) both;
 }
 .doc-viewer-head {
   display: flex;
@@ -3633,6 +3690,11 @@
   gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
+  /* Three steps behind the mount — the furniture lands on the object, not with it. */
+  animation: dv-chrome-in var(--t-base) var(--ease-standard) calc(var(--stagger-step) * 3) both;
+}
+.doc-viewer.is-closing .doc-viewer-head {
+  animation: dv-chrome-out var(--t-quick) var(--ease-exit) both;
 }
 .doc-viewer-title {
   font-weight: 700;
@@ -3653,9 +3715,28 @@
   cursor: pointer;
   padding: 2px 6px;
 }
+/* ── The frame holds still, and its size is decided by the document TYPE ─────────
+   The card used to be ~100px tall while the spinner ran and jumped to the image's
+   height when the bytes landed — measured at +253px on a 564px screen, the largest
+   single movement in the whole interaction and an unintended one. The mime type is
+   known before any bytes exist, so the frame can be reserved while the spinner is
+   still running.
+
+   Two rules, not one, and neither is a plain floor. An IMAGE gets a FIXED frame: a
+   floor does not hold a frame unless it happens to exceed where the content lands
+   (at a 46vh floor the jump only fell 253 -> 93px), and a constant frame is what
+   ADR-0062's pinch/pan wants to pan within anyway, with `object-fit: contain`
+   letterboxing inside it. It is `flex-basis` and not `block-size` because this is a
+   `flex: 1` child, whose flex base size wins over any height — the first attempt set
+   `block-size` and was silently inert.
+
+   The ADR-0052 §1 hand-off panel (a PDF, an undecodable HEIC) gets a floor instead,
+   sized to its own known content: a fixed image frame would strand that compact block
+   in a mostly empty card. Measured after: image 253 -> 0px, hand-off 126 -> 15px. */
 .doc-viewer-body {
   flex: 1;
   min-height: 0;
+  min-block-size: 15rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3663,6 +3744,42 @@
      transform, not native scroll, so hidden keeps the pan inside the viewer. */
   overflow: hidden;
   background: var(--paper);
+  /* Own stacking context, so the mount layer below can sit at z-index -1: above this
+     background, beneath the page. */
+  position: relative;
+  isolation: isolate;
+}
+.doc-viewer-body[data-expect='image'] {
+  flex: 1 1 78vh;
+}
+/* ── The mount opens around the page ─────────────────────────────────────────────
+   The document is the subject, and giving it the same plain fade as everything else
+   was the other half of "not varied enough". So the letterbox opens: it starts at the
+   card's own fill and resolves to `--paper` as the page lands, which reads as a frame
+   opening around a document rather than a document appearing inside a frame that was
+   already there.
+
+   A LAYER whose opacity animates, not an animated `background` — colour is a paint
+   property, so ramping it across the full frame would repaint every frame, which is
+   an odd price to pay in the one change whose subject is smoothness. `z-index: -1`
+   inside the body's own stacking context puts it above the `--paper` background and
+   below the image.
+
+   Nothing but opacity ever touches the image itself: `transform` belongs to
+   ADR-0062's pinch handler, whose `originOf()` derives its focal point from a rect a
+   running animation would be part-way through. */
+.doc-viewer-body.is-opening::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--dv-mount, var(--card));
+  animation: dv-mount-open var(--t-deliberate) var(--ease-standard) both;
+}
+.doc-viewer-img.is-fresh,
+.doc-viewer-handoff.is-fresh {
+  animation: dv-content-in var(--t-base) var(--ease-standard) both;
 }
 .doc-viewer-img {
   max-width: 100%;
@@ -3695,6 +3812,87 @@
   color: var(--muted);
   padding: 40px 20px;
 }
+/* One `@keyframes` per direction — never an entrance played `reverse`, which does not
+   run at all (the block at the top of `modal.css` has the measurements). */
+@keyframes dv-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dv-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dv-mount-in {
+  from {
+    transform: scale(0.88) translateY(var(--dv-origin-travel, 0px));
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes dv-mount-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* Shallower than the entrance on purpose: a thing that leaves does not un-arrive, and
+   retracing to `.88` is exactly what makes an exit read as a rewind. */
+@keyframes dv-mount-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(10px);
+  }
+}
+@keyframes dv-chrome-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dv-chrome-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dv-mount-open {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dv-content-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* Hand-off panel (ADR-0052 §1): a PDF / undecodable image opens or downloads
    rather than rendering blank inline. */
 .doc-viewer-handoff {
@@ -4167,7 +4365,7 @@
   transform-origin: bottom center;
 }
 .icon-panel.is-closing {
-  animation: panel-open var(--t-quick) var(--ease-exit) reverse both;
+  animation: panel-close var(--t-quick) var(--ease-exit) both;
 }
 /* The time panel wraps BELOW its trigger row in flow (see its base rule), so it grows
    from the top edge too — but it must not animate `height`, which would reflow the form
@@ -4177,7 +4375,7 @@
   animation: panel-open var(--t-base) var(--ease-arrive) both;
 }
 .tp-panel.is-closing {
-  animation: panel-open var(--t-quick) var(--ease-exit) reverse both;
+  animation: panel-close var(--t-quick) var(--ease-exit) both;
 }
 @keyframes panel-open {
   from {
@@ -4189,5 +4387,20 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+/* The fold-away, written out rather than `panel-open ... reverse` — reusing the
+   entrance's name retargets the running animation instead of starting a new one, so it
+   is already past its end by the time a panel closes and snaps. Same defect and same
+   fix as the four in `modal.css`; see the block at the top of that file (ADR-0140's
+   2026-08-02 amendment, which amends ADR-0144 with it). */
+@keyframes panel-close {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scaleY(0.88) translateY(-4px);
   }
 }

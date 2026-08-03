@@ -316,6 +316,63 @@ discipline (no new token, no new beat) and it is the honest trade for a surface 
 lie about how much there is to read. Reduced motion is unaffected: §5's global kill takes
 out the transition whatever property it names.
 
+## §8 — The exit never ran (amendment, 2026-08-02)
+
+**§1's exit has been in production since 2026-07-31 and has never played a single
+frame.** This section corrects it; the mechanism is fixed, the argument for one of its
+stated benefits is withdrawn.
+
+§1 wrote each channel as one `@keyframes` played forwards to enter and `reverse` to
+leave, and gave a reason: _"so an exit cannot drift out of sync with its entrance by
+being written twice."_ That reason is sound and the technique does not work.
+
+**Why.** The same `animation-name` is the same animation. Changing only duration,
+easing and direction on `.is-closing` does not start a new animation — it retargets the
+running one, which keeps its **current time**. By the time anyone closes an overlay,
+that current time is however long the overlay has been open, which is far past the new
+`--t-quick` duration. The animation is therefore already complete, and `fill: both`
+paints the reversed **end** state on the first frame.
+
+Measured against this repo's own `modal.css`, driving a real engine:
+
+| sheet open for | state the instant `.is-closing` lands            |
+| -------------- | ------------------------------------------------ |
+| 60ms           | `y=130`, scrim `0.35` — a partial exit plays     |
+| 120ms          | `y=191` — essentially gone                       |
+| ≥200ms         | `y=200`, scrim `0` — **snapped, no exit at all** |
+
+So §1's own premise — _"no overlay in the app has an exit at all"_ — remained true after
+§1 shipped. What a dismissal actually did was hold the portal mounted for `--t-quick`
+displaying the already-gone state, then unmount.
+
+**Six rules carried it:** `modal-scrim-in`, `modal-sheet-in`, `modal-dialog-in`,
+`modal-full-in`, and both `panel-open` rules in `screens.css` — so this **amends
+[ADR-0144](0144-the-anchored-panels-arrive-and-leave.md) too**, whose anchored panels
+inherited the technique along with the mechanism.
+
+**How it survived review, which is the part worth keeping.** Two independent blind
+spots, and neither was carelessness:
+
+- This ADR's own build log says the durations were _"verified by sampling computed
+  styles mid-flight in Chromium"_. Mid-flight is the **one window in which this works** —
+  sample within ~140ms of opening and the retargeted animation is still inside its new
+  duration, so it really does animate. The verification method and the bug were the same
+  shape.
+- jsdom has no CSS engine, so `motionDurationMs` answers 0 and the entire unit suite
+  takes the no-animation branch. §5 calls that "the correctness case", and it is — but it
+  also means **no unit test in this repo can ever observe an exit animation**, working or
+  not.
+
+**The fix, and its cost.** Every exit gets its own `@keyframes` name. Two names per
+channel is two things to keep in sync, which is exactly the drift §1 wanted to avoid, and
+it is the price of either of them running at all. The benefit §1 claimed is hereby
+withdrawn as unavailable, not traded away for something better.
+
+Guarded by `frontend/src/styles/exit-animations.contract.test.ts`, which fails the build
+on any `animation: … reverse` in `frontend/src` and on any animation naming keyframes
+that do not exist. It is a text test rather than a rendering one **by necessity**: the
+defect is invisible to jsdom by construction, and the rule is one line of CSS grammar.
+
 ## Build log
 
 **Session 190 (2026-07-31)** — built in the order the brief set out (G1 → G3 → G2), each
