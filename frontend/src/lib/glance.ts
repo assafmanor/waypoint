@@ -5,7 +5,7 @@
 // the last event). Overlap/containment collapses to top-level roots
 // (buildTimeTree, ADR-0041); full nesting/cluster fidelity stays in the day
 // view. Skipped events are excluded from buildTimeTree, so they're layered back
-// in as struck segments (never counted in "remaining").
+// in as struck segments (never counted in "remaining", never given an anchor).
 import {
   CATEGORY_DEFAULT_ICON,
   EVENT_STATUS,
@@ -191,7 +191,14 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
  *  (check-out / arrival) when `endDate ?? date` is `date`. The single shared
  *  derivation behind BOTH the Home glance markers and the day-screen transition
  *  entries, so the two can never diverge. Reads `isBracketed` + the event's
- *  `transitions` — by mode, not just category (ADR-0063); nothing is stored. */
+ *  `transitions` — by mode, not just category (ADR-0063); nothing is stored.
+ *
+ *  A **skipped** booking has no transitions: it is on the shelf, not on the day
+ *  (ADR-0027 §2), and an amber pill is a statement of time & commitment
+ *  (ADR-0028) that a skipped bus leg no longer makes. Filtered here, in the one
+ *  shared derivation, so the glance's anchors and the day's transition rows drop
+ *  it together. The skipped event keeps its struck *block* on the glance rail —
+ *  that is ADR-0045's texture, and it is deliberately a different statement. */
 export interface BookingTransition {
   event: TripEvent;
   edge: 'start' | 'end';
@@ -206,6 +213,7 @@ export function bookingTransitionsOnDate(events: TripEvent[], date: string): Boo
   const out: BookingTransition[] = [];
   for (const e of events) {
     if (!isBracketed(e) || e.category == null) continue;
+    if (e.status === EVENT_STATUS.SKIPPED) continue;
     const trans = eventTransitionKeys(e);
     if (!trans) continue;
     if (e.date === date && e.startsAt) {
