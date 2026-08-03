@@ -251,3 +251,50 @@
     transform: translateX(calc(var(--dir) * 100%));
   }
 }
+
+/* ── lift — the promoted hero (ADR-0160) ─────────────────────────────────────
+   Top-anchored and CONTENT-SIZED, which is what makes it none of the three above:
+   a sheet is bottom-anchored, a dialog is centred, a full replaces the screen. The
+   lifted hero is as tall as it has something to say (§8, owner's call) and it sits
+   OVER the trip chrome (§5's consequence) — 72px of mode-identity band, which is
+   consistent because the lifted state is modal and only one mode exists inside it.
+
+   `align-items: flex-start` plus the card's own `margin-block-start` rather than
+   overlay padding, so the card can also declare its own max-height and become the
+   bounded card with one scroller (ADR-0148 §1's pattern) without fighting a
+   centring rule for the space.
+
+   The ENTRANCE HERE IS A PLACEHOLDER, and saying so is the point: phase 4 replaces
+   it with the FLIP off the collapsed board's MEASURED box plus the 9°/46px swing.
+   A fade is the honest stand-in for a phase whose subject is shape, not motion —
+   it is not the designed character and no one should read it as approval of one. */
+.modal-overlay[data-variant='lift'] {
+  align-items: flex-start;
+}
+.modal-overlay[data-variant='lift'] .modal-card {
+  margin: 8px;
+  width: calc(100% - 16px);
+  max-width: none;
+  max-height: calc(100% - 18px);
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  overflow: visible;
+  animation: modal-lift-in var(--t-base) var(--ease-arrive) both;
+}
+/* BOTH halves, and never `reverse` — the rule at the top of this file, which
+   `styles/exit-animations.contract.test.ts` fails the build over. */
+.modal-overlay[data-variant='lift'].is-closing .modal-card {
+  animation: modal-lift-out var(--t-quick) var(--ease-exit) both;
+}
+@keyframes modal-lift-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes modal-lift-out {
+  to {
+    opacity: 0;
+  }
+}

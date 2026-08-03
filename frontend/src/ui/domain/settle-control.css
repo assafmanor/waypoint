@@ -139,3 +139,57 @@
   color: var(--miss);
   border-color: color-mix(in srgb, var(--miss) 45%, transparent);
 }
+
+/* ── board — the lifted hero, and the only density whose change is the GROUND ───
+   ADR-0139's rule holds exactly: a fourth host adds a density, and the words, the
+   marks and the hues are not its to choose. What it must change is what they sit
+   on. `.wp-settle-btn` is `background: var(--card)` with `color: var(--ink)` —
+   built for paper — so on the app's always-dark board it is a light paper chip in
+   light mode and a chip that disappears in dark. That is ADR-0158 §15's "an
+   INVERTED surface is the limit" arriving on a new host, found by drawing it in
+   both themes (`mockups/hero-horizon-v1.html` §4) rather than in review.
+
+   The recipe is not new either: this board already carries semantic hues as a
+   low-alpha fill under a brightened ink (`.wp-board-countdown`, `.code`,
+   `.tlabel`). So `--ok` / `--miss` keep the meaning and only the ground is mixed.
+   The focus ring is the shipped teal and is not restated. */
+.wp-settle.board {
+  gap: 8px;
+}
+.wp-settle.board .wp-settle-btn {
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 6px;
+}
+.wp-settle.board .wp-settle-btn .icon {
+  width: 15px;
+  height: 15px;
+}
+.wp-settle.board .wp-settle-btn.done {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 42%, transparent);
+  color: #7fd6a6;
+}
+.wp-settle.board .wp-settle-btn.skip {
+  background: color-mix(in srgb, var(--miss) 16%, transparent);
+  border-color: color-mix(in srgb, var(--miss) 40%, transparent);
+  color: #f0a09b;
+}
+/* A settled record on this ground: the tag keeps its hue and gains the ramp's ink
+   for the undo beside it, which on paper comes from `--ink` and here cannot. */
+.wp-settle.board .wp-settle-tag.ok {
+  color: #7fd6a6;
+}
+.wp-settle.board .wp-settle-tag.miss {
+  color: #f0a09b;
+}
+.wp-settle.board .wp-settle-btn.undo {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: transparent;
+  color: var(--on-dark);
+  min-height: 34px;
+  padding: 0 10px;
+}

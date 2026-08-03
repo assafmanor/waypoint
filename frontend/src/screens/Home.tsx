@@ -14,6 +14,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useVerbs } from '../state/verbs';
 import { useToast } from '../ui/Toast';
 import { EventTitle } from '../ui/EventTitle';
 import {
@@ -33,9 +34,11 @@ import {
   liveZoneContext,
   eventRoute,
   eventZones,
+  mapsDirectionsUrl,
   nextDestination,
 } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
+import { transitionLabel } from '../lib/transitions';
 import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import {
   countdownParts,
@@ -51,6 +54,9 @@ import {
 } from '../lib/time';
 import { buildDayGlance, ambientEventsOnDate } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
+import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
+import { HeroLift, type HeroLiftPoint } from '../ui/domain/HeroLift';
+import { useShowPlaceOnMap } from '../state/map-scope-state';
 import {
   CODE_PREFIX,
   DAY_WINDOW,
@@ -78,12 +84,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     bookings,
     places,
     events,
+    notes,
     zoneEvidence,
     activeDate,
     changeFeed,
     dismissChange,
     clearChangeFeed,
   } = useTrip();
+  const verbs = useVerbs();
   const toast = useToast();
   const navigate = useNavigate();
   const now = useClock();
@@ -104,7 +112,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Their transitions surface via the hero-booking derivation below; before
   // check-in a hotel stays in, so it can be the natural "next" fairly.
   const scheduleEvents = events.filter((e) => !(isAmbient(e) && nowMs >= Date.parse(e.startsAt!)));
-  const { now: nowEvent, next: nextEvent, nowAll } = deriveNow(scheduleEvents, now);
+  const { now: nowEvent, next: nextEvent, nowAll, nextAll } = deriveNow(scheduleEvents, now);
   const dayEvents = events.filter((e) => e.date === activeDate);
 
   // A bracketed booking surfaces on the hero only at its transition moments
@@ -141,6 +149,57 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const nextCode = nextBooking?.confirmationCode
     ? `${CODE_PREFIX}${nextBooking.confirmationCode}`
     : undefined;
+  // ── THE LIFTED HERO (ADR-0160) ─────────────────────────────────────────────
+  // The horizon is DERIVED from what the board is already showing, never
+  // re-derived from the clock: `nowAll` and the board's own `shownNext` go in, so
+  // the collapsed and lifted states cannot disagree about what is happening.
+  //
+  // `shownNext` and not `nextAll` is the load-bearing bit. A hotel CHECK-OUT is an
+  // END transition `deriveNow` cannot surface (see above), so the board sometimes
+  // shows a next that is not `deriveNow`'s — and a horizon built off `nextAll`
+  // would name a different "next" than the board it grew out of.
+  const horizon = heroHorizon({
+    events: dayEvents,
+    nowAll,
+    nextAll: shownNext ? [shownNext] : nextAll.slice(0, 0),
+    bookings,
+    places,
+    notes,
+  });
+  const liftable = canLift(horizon);
+  const [lifted, setLifted] = useState(false);
+  const showPlaceOnMap = useShowPlaceOnMap();
+
+  /** A horizon point, made view-ready: titles become nodes, times are formatted in
+   *  the point's OWN zone (ADR-0107 §2-3), and the hand-offs become callbacks the
+   *  presentational layer can fire without knowing how a route is built. */
+  const liftPoint = (p: HeroPoint, key: string): HeroLiftPoint => {
+    const zones = eventZones(p.event, zoneCtx);
+    const dest = p.placeId ? places.find((pl) => pl.id === p.placeId) : undefined;
+    return {
+      key,
+      title: <EventTitle event={p.event} bookings={bookings} places={places} />,
+      icon: p.event.icon,
+      kind: p.event.kind === EVENT_KIND.HARD ? 'hard' : 'soft',
+      until: p.event.endsAt ? formatTime(p.event.endsAt, zones?.endZone ?? tz) : undefined,
+      shift: zones?.deltaMinutes,
+      place: p.place ? shortPlaceLabel(p.place) : undefined,
+      note: p.notes[0]?.body,
+      noteMore: Math.max(0, p.notes.length - 1),
+      settled: p.settled,
+      // The Map's focus channel is absent when its provider is not mounted, so the
+      // way-in is absent too rather than a control that cannot work (ADR-0150 §8).
+      onMap: p.placeId && showPlaceOnMap ? () => showPlaceOnMap(p.placeId!) : undefined,
+      navigateUrl: mapsDirectionsUrl(dest) ?? undefined,
+      onBooking: p.bookingId
+        ? () => navigate(`/?${TAB_PARAM}=index&booking=${p.bookingId}`)
+        : undefined,
+      onDone: () => verbs.done(p.event),
+      onSkip: () => verbs.skip(p.event),
+      onUndo: () => verbs.restore(p.event),
+    };
+  };
+
   const progress = Math.round(dayProgress(now, tz) * 100);
   // Board countdown: minutes/hours while the next event is under a day out; past
   // that, a calendar-relative day word (ADR-0085) — "מחר"/"מחרתיים" derived from
@@ -362,6 +421,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
 
       <Board
         variant={boardVariant}
+        onLift={liftable && !inTransit ? () => setLifted(true) : undefined}
         clock={formatTime(now, tz)}
         nowIcon={boardNowEvent?.icon}
         nowTitle={
@@ -388,6 +448,41 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         windowStartHour={hourLabel(DAY_WINDOW.START_HOUR)}
         windowEndHour={hourLabel(DAY_WINDOW.END_HOUR)}
       />
+
+      {/* The board, promoted (ADR-0160). Mounted only while lifted, so it registers
+          its back layer exactly when there is something to peel — the rule that
+          orders the overlay stack with no reasoning about component trees. */}
+      {lifted && (
+        <HeroLift
+          clock={formatTime(now, tz)}
+          now={horizon.now.map((p, i) => liftPoint(p, `now-${i}`))}
+          split={groupSplit}
+          next={horizon.next ? liftPoint(horizon.next, 'next') : undefined}
+          nextLabel={nextLabelKey ? transitionLabel(nextLabelKey) : undefined}
+          nextTime={boardNext?.time}
+          nextCode={nextCode}
+          countdown={countdown}
+          then={
+            horizon.then
+              ? { title: horizon.then.title, time: formatTime(horizon.then.startsAt, tz) }
+              : undefined
+          }
+          rail={
+            <div className="wp-board-progress" aria-hidden="true">
+              <div className="track">
+                <div className="fill" style={{ width: `${progress}%` }} />
+                <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
+              </div>
+              <div className="ends">
+                <span dir="auto">{hourLabel(DAY_WINDOW.START_HOUR)}</span>
+                <span>{t.common.now}</span>
+                <span dir="auto">{hourLabel(DAY_WINDOW.END_HOUR)}</span>
+              </div>
+            </div>
+          }
+          onClose={() => setLifted(false)}
+        />
+      )}
 
       {/* Group change-feed (ADR-0081, U-09): a quiet strip below the board that
           narrates recent peer edits (attributed). Auto-collapses when empty, so

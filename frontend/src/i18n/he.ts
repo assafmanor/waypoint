@@ -1179,6 +1179,24 @@ export const t = {
     inTransitLive: 'בטיסה',
     inTransitLabel: 'כרגע · בדרך',
   },
+  // The LIFTED hero (ADR-0160 §3). Its own section rather than more `board` keys,
+  // because these label the horizon's parts and the collapsed board has none of
+  // them. `הבא בתור`, `עד`, `עכשיו · במקביל`, `קשיח`/`גמיש`, `היינו`/`דילגנו` are
+  // NOT here — the lifted hero reads the board's and the settle control's own words,
+  // which is what keeps one surface from renaming a thing the other already names.
+  hero: {
+    title: 'עכשיו והבא בתור',
+    close: 'סגירה',
+    where: 'איפה',
+    note: 'פתק',
+    then: 'אחר כך',
+    onMap: 'במפה',
+    navigate: 'ניווט',
+    toBooking: 'להזמנה',
+    // The hero shows ONE note and says how many it is not showing, so a group that
+    // wrote three does not read as a group that wrote one.
+    moreNotes: (n: number) => `ועוד ${n} פתקים`,
+  },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture
   // until the FE supports it.
