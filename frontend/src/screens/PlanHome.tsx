@@ -8,10 +8,11 @@
 // lodging), seeds the day builder, or the settings invite — not a bare tab
 // switch. Completed checks collapse into a summary. Only rows we can honestly
 // derive appear; Gmail / Google-connection / WhatsApp stay out (ADR-0045/0004).
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { BEAT, playBeat } from '../lib/one-shot';
 import { useClock } from '../lib/useClock';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
@@ -73,6 +74,20 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+
+  /** The prep hero answers a tap with a beat and nothing else (ADR-0160 §H).
+   *
+   *  **Not a `<button>`, deliberately.** Trip's board is one because it opens the lifted
+   *  horizon; this hero opens nothing, because what it summarises — the readiness percent —
+   *  is the checklist rendered immediately below it. Announcing a control to a screen reader
+   *  and then doing nothing when it is activated is the shape ADR-0150 §8 argues against
+   *  from the other direction: the affordance has to match what a press can achieve. So
+   *  there is no role and no tab stop, and the beat is for the finger that already touched
+   *  it. */
+  const prepRef = useRef<HTMLDivElement>(null);
+  const rebuff = () => {
+    if (prepRef.current) playBeat(prepRef.current, BEAT.REBUFF);
+  };
 
   const total = dayNumberOf(trip.endDate, trip.startDate);
 
@@ -196,7 +211,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   return (
     <>
-      <div className="prep">
+      <div className="prep" ref={prepRef} onClick={rebuff}>
         {/* No "היציאה" label once the trip is underway — the countdown line
             reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly).
             The "בעוד" connective rides with the count (ADR-0085), so a near date

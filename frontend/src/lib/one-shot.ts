@@ -6,12 +6,19 @@
 //
 //   `.is-nudging`    — a form refuses a save (ADR-0150).
 //   `.is-landing`    — a lifted hero touches back down (ADR-0160 §7).
+//   `.is-rebuffing`  — a tap on a hero with nothing to open (ADR-0160 §9).
 //
-// A third was designed and then retired before it was built: `.is-rebuffing`, for a
-// tap on the hero with nothing to open. ADR-0160's 2026-08-03 amendment §A withdrew
-// it — the hero now lifts in a gap too, so an empty tap is the rare end-of-day case
-// and stays silent. The name is deliberately NOT kept as a placeholder: an unclaimed
-// constant reads as a feature someone forgot to finish.
+// **The rebuff was designed, retired, and then claimed by a different surface** — worth
+// knowing because the history is in three ADR amendments and looks like churn. §9 wrote it
+// for the Trip board; §A withdrew it, because once the board lifts in a gap an empty tap is
+// the rare end-of-day case and silence is right there. What brought it back is **Plan
+// mode's prep hero**, which genuinely never opens (§H): its depth is the checklist rendered
+// directly beneath it, so there is nothing to lift, and a tap that answers with nothing at
+// all reads as a dead surface rather than a calm one.
+//
+// It is deliberately NOT `NUDGE` reused. That beat is a horizontal shake meaning *something
+// is wrong*, and a tap on the prep hero is not an error — it is a tap on something that was
+// never a control.
 //
 // All three share the same four properties, and every one of them is a thing that
 // was got wrong once somewhere in this repo:
@@ -37,12 +44,16 @@ import { motionDurationMs } from './motion';
 
 /** The three beats, named so a call site cannot invent a fourth spelling. Each has
  *  its keyframes beside the surface that owns them: `form-errors.css`,
- *  `board.css`, `hero-lift.css`. */
+ *  `board.css`, `screens.css`. */
 export const BEAT = {
   /** A form refuses: a horizontal shake, because something IS wrong. */
   NUDGE: 'is-nudging',
   /** A lifted surface touching down: one small compression on the axis it landed on. */
   LANDING: 'is-landing',
+  /** A tap on a surface with nothing to open: a small rise that settles back. Vertical
+   *  rather than lateral on purpose — it answers "there is nothing above this" and must
+   *  not read as the refusal `NUDGE` is. No colour and no text (ADR-0160 §9). */
+  REBUFF: 'is-rebuffing',
 } as const;
 
 export type Beat = (typeof BEAT)[keyof typeof BEAT];
