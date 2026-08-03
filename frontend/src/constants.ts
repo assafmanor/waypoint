@@ -765,12 +765,25 @@ export const MAP_REFIT_FILL_SHARE = 0.4;
  *  and not the loud figure (ADR-0106 §C) — which leaves solid + amber unspent for a
  *  real Routes polyline later.
  *
- *  `COLOR` duplicates `--soft-line`'s light-theme value, the same concession
- *  `LIST_MOVE_EASING` makes for the Web Animations API: the Maps JS API takes a
- *  colour value, not a CSS variable. Keep the two in step. The Maps API has no
- *  dash array either, so a dash is a repeating symbol along a transparent stroke. */
+ *  `COLOR` is PER THEME, and the reason is a small cautionary tale. It used to be
+ *  one value mirroring `--soft-line`'s light entry, with a comment saying "keep
+ *  the two in step" — and nothing could, because this is a TypeScript constant
+ *  and the Maps JS API takes a colour value, not a CSS variable. So it sat out
+ *  the entire dark-mode remap that re-mapped `--soft-line` beside it, and no CSS
+ *  sweep could see it. On the night style's land (`#191E2C`) the shipped value
+ *  measured **1.01:1** — invisible, which is exactly how it was reported.
+ *
+ *  It also no longer mirrors `--soft-line`, deliberately: that token is a
+ *  hairline on a card, and this is a 2.5px dash over a map canvas. A graphic owes
+ *  3:1 against what it crosses, and `--soft-line`'s alpha does not reach it —
+ *  light measured **1.77** on the day land, so this was under the floor before
+ *  dark mode existed. Both values below are the lowest alpha that clears 3:1,
+ *  because ADR-0106 §C's quiet base is still the intent: 3.03 light, 3.5 dark. */
 export const MAP_CONNECTOR = {
-  COLOR: 'rgba(22, 35, 61, 0.28)',
+  COLOR: {
+    light: 'rgba(22, 35, 61, 0.5)',
+    dark: 'rgba(231, 234, 242, 0.42)',
+  },
   WEIGHT: 2.5,
   DASH_SCALE: 3,
   DASH_REPEAT: '13px',
