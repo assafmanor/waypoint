@@ -25,9 +25,11 @@
 //     the five has it, which is precisely why it belongs in the shared mechanism: the next
 //     field that wants one shouldn't have to invent it.
 //
-// Dirtiness is deliberately NOT decided here. The two forms disagree on purpose — `BookingSheet`
-// excludes its two ("not state the user typed"), `EventForm` counts `bookedTouched` — so it
-// stays at the call site, where the policy is, and `touched` is exposed for it to read.
+// **`touched` is not dirtiness, and reading it as such shipped a bug.** It answers *may the
+// derivation still move this?* — which `initiallyTouched` makes true before a human has done
+// anything, so the two questions coincide only for a field nothing seeds. `EventForm` read it
+// for its booked row, ADR-0136 §2's amendment seeded that row from the event, and every edit of
+// every event opened dirty. A dirty check diffs the VALUE against the seed; both forms do.
 import { useCallback, useState } from 'react';
 
 export interface DerivedField<T> {
@@ -43,8 +45,10 @@ export interface DerivedField<T> {
   /** **Hand it back to the derivation** (`BookingSheet`'s revert): take the derived value now,
    *  and resume following it. */
   reset: (derived: T) => void;
-  /** Whether a human has spoken. For the call site's own dirty check, and for a revert control
-   *  that should only appear once there is something to revert. */
+  /** Whether the derivation has been switched off — because a human spoke, or because
+   *  `initiallyTouched` said the starting value already counts as their answer. For a revert
+   *  control that should only appear once there is something to revert. **Not a dirty
+   *  check** (see the header): diff `value` against the seed for that. */
   touched: boolean;
 }
 
