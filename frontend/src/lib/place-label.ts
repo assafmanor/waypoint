@@ -39,11 +39,15 @@ const MIN_LABEL_CHARS = 2;
  *  match, so it's kept whole. Ordered longest-first within a family so the more
  *  specific phrase wins. */
 const CATEGORY_NOISE: readonly RegExp[] = [
-  // Hebrew — leading
-  /^נמל התעופה(?: הבינלאומי)?\s+/,
-  /^שדה התעופה\s+/,
-  /^תחנת ה?רכבת(?: המרכזית)?\s+/,
-  /^תחנת ה?אוטובוס(?:ים)?(?: המרכזית)?\s+/,
+  // Hebrew — leading. The optional `של` is not decoration: Google's Hebrew names come in
+  // both bindings — `נמל התעופה בן גוריון` and `נמל התעופה של פרנקפורט` — and stripping the
+  // category phrase out of the second one without its genitive particle leaves a label that
+  // opens with "of": `של פרנקפורט`. Ungrammatical, and it shipped on the app's loudest
+  // surface. The particle belongs to the phrase being removed, so it goes with it.
+  /^נמל התעופה(?: הבינלאומי)?\s+(?:של\s+)?/,
+  /^שדה התעופה\s+(?:של\s+)?/,
+  /^תחנת ה?רכבת(?: המרכזית)?\s+(?:של\s+)?/,
+  /^תחנת ה?אוטובוס(?:ים)?(?: המרכזית)?\s+(?:של\s+)?/,
   // English — trailing
   /\s+International Airport$/i,
   /\s+Airport$/i,
@@ -55,8 +59,13 @@ const CATEGORY_NOISE: readonly RegExp[] = [
 /** A remainder that's only a category modifier is no better than the full name —
  *  it happens when a name is the category phrase plus its qualifier and nothing
  *  else (`תחנת הרכבת המרכזית` → `המרכזית`, `International Airport` →
- *  `International`). Treated as "nothing real left", so the original is kept. */
-const MODIFIER_ONLY = /^(?:ה?בינלאומית?|ה?מרכזית?|international|central)$/i;
+ *  `International`). Treated as "nothing real left", so the original is kept.
+ *
+ *  `של` is in here for the trailing case the pattern above cannot reach: a name ending in the
+ *  particle with nothing after it (`נמל התעופה של`) has no `\s+` for the optional group to
+ *  consume, so the strip leaves the bare particle — two characters, which clears
+ *  `MIN_LABEL_CHARS` and would otherwise be returned as a place name. */
+const MODIFIER_ONLY = /^(?:ה?בינלאומית?|ה?מרכזית?|international|central|של)$/i;
 
 /** The distinctive part of a place's name, for width-starved surfaces (the day
  *  timeline row). Returns the name unchanged when there's no known category
