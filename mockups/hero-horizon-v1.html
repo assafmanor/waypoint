@@ -8206,35 +8206,52 @@ textarea {
   margin: 15px 0 13px;
 }
 
-/* Concurrency (ADR-0041): the quiet "ועוד N עכשיו" expander + the group-split
-   list. Board-dark palette so it stays subordinate to the one loud now-title. */
-.wp-board-also-now {
+/* THE BOARD IS A TAP TARGET (ADR-0160 §1). A `<button>` brings its own UA
+   defaults, so the reset is here rather than at the call site: the board already
+   owns its gradient, radius and padding, and a button would otherwise centre its
+   text and draw a border.
+
+   The press step is the LARGE one, which is the single line every new large
+   surface owes (ADR-0140 §2) — a full-width card at the control step reads as
+   collapsing rather than pressing. Scale, never colour: this surface is a dark
+   gradient under a radial glow, and a colour press-state would need a per-surface
+   table and would spend from the semantic budget. */
+.wp-board.is-tappable {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: start;
+  border: 0;
+  cursor: pointer;
+  --press-scale: var(--press-scale-lg);
+}
+
+/* Concurrency (ADR-0041 §6 as amended by ADR-0160 §4): the count is a READOUT,
+   not a control. The expander it replaces was the board's only interactive child
+   and could not survive the board becoming a button — Chrome closes the outer
+   element at a nested one and evicts everything after it. Same dot, same words,
+   same slot; no chevron and no press target. The rows it used to reveal are in the
+   lifted hero.
+
+   `--on-dark-dim`, one rung quieter than the expander's `--on-dark`: a statement
+   of fact is not a thing you are being invited to press. */
+.wp-board-also-read {
   margin-top: var(--space-3);
   border-top: 1px dashed rgba(147, 162, 196, 0.25);
   padding-top: 11px;
-}
-.wp-board-also-toggle {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
   font-size: var(--text-secondary);
   font-weight: 700;
-  color: var(--on-dark);
-  cursor: pointer;
+  color: var(--on-dark-dim);
 }
-.wp-board-also-toggle .dot {
+.wp-board-also-read .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: #6f83ad;
-}
-.wp-board-also-toggle .chev {
-  color: var(--on-dark-dim);
-  font-size: var(--text-caption);
+  flex: none;
 }
 .wp-board-also-list {
   display: flex;
@@ -8907,42 +8924,48 @@ textarea {
         padding-inline-start: 10px;
       }
 
-      /* ── The collapsed board's forced diff (§4) ───────────────────────
-         `ועוד N עכשיו` stops being a `<button>` because the board became one.
-         The dot and the words are kept verbatim; what goes is the chevron and
-         the press target. It is a READOUT: the count must stay legible without
-         a tap, and the rows it used to reveal are in the horizon now. */
-      .wp-board-also-read {
+      /* ── §4's BEFORE frame draws a RETIRED rule ──────────────────────
+         `.wp-board-also-toggle` no longer exists in `board.css` — phase 1 deleted
+         it — so without a local copy the "as shipped today" frame renders a bare
+         UA `<button>`, which reads as broken rather than as what it replaced. This
+         block is therefore a HISTORICAL record, not a proposal: it is the rule as
+         it stood before ADR-0160 §4, kept only so the comparison stays drawable.
+         Do not read it as something to build. */
+      .wp-board-also-now {
         margin-top: var(--space-3);
         border-top: 1px dashed rgba(147, 162, 196, 0.25);
         padding-top: 11px;
+      }
+      .wp-board-also-toggle {
         display: flex;
         align-items: center;
         gap: var(--space-2);
+        background: none;
+        border: 0;
+        padding: 0;
+        font: inherit;
         font-size: var(--text-secondary);
         font-weight: 700;
-        color: var(--on-dark-dim);
+        color: var(--on-dark);
+        cursor: pointer;
       }
-      .wp-board-also-read .dot {
+      .wp-board-also-toggle .dot {
         width: 7px;
         height: 7px;
         border-radius: 50%;
         background: #6f83ad;
-        flex: none;
+      }
+      .wp-board-also-toggle .chev {
+        color: var(--on-dark-dim);
+        font-size: var(--text-caption);
       }
 
-      /* The collapsed board IS the tap target now, so it takes the large press
-         step — one line, the one `frontend/CLAUDE.md` names for every new large
-         surface (the default step is the control one). */
-      .wp-board.is-tappable {
-        --press-scale: var(--press-scale-lg);
-        cursor: pointer;
-        display: block;
-        width: 100%;
-        text-align: start;
-        font: inherit;
-        border: 0;
-      }
+      /* ── §4's two rules have SHIPPED (phase 1) ───────────────────────
+         `.wp-board-also-read` and `.wp-board.is-tappable` now live in
+         `ui/domain/board.css` and arrive through the APP-CSS block above, so the
+         proposal no longer declares them. What §4's frames draw from here on is
+         what the app draws — which is the point of inlining, and the check that
+         the build matched the design. */
 
       /* ══════════════════════════════════════════════════════════════════
          mk-* — this file's own chrome. Nothing below ships. Theme-aware
@@ -9783,8 +9806,8 @@ textarea {
             </p>
             <div class="pair">
               <div class="col">
-                <span class="tag before">כמו שנשלח היום · הלוח אינו כפתור</span>
-                <span class="sub">המרחיב עובד היום, וזה תקין: הלוח הוא <code>div</code>, אז הכפתור היחיד בו הוא הוא.</span>
+                <span class="tag before">כמו שהיה · המרחיב, שנמחק בשלב 1</span>
+                <span class="sub">המרחיב עבד כל עוד הלוח היה <code>div</code>. ה-CSS שלו נמחק בשלב 1 ומצויר כאן מקומית, לרשומה בלבד.</span>
                 ${plain(collapsedBoard(false, false), 400)}
               </div>
               <div class="col">
