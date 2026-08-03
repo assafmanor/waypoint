@@ -1,165 +1,111 @@
 <!doctype html>
-<!-- ההרמה של הלוח — HERO 2.0, THE LIFT: THREE CHARACTERS AND A REBUFF — v1
-     (2026-08-03, session 210. Brief: `planning/2026-07-28-hero-2-0-design-brief.md`;
-     backlog: "Hero 2.0 — the board opens instead of growing controls".)
+<!-- האופק — HERO 2.0, WHAT THE LIFTED HERO CARRIES — v1
+     (2026-08-03, session 210. Companion to `hero-lift-v1.html`, which owns the
+     MOTION and whose ההטיה character + הנחה exit are settled. Brief:
+     `planning/2026-07-28-hero-2-0-design-brief.md`.)
 
-     WHAT THIS IS. The brief asks "expansion or overlay?" and calls that question
-     load-bearing. The owner's answer is NEITHER, and it needs a third word:
-     the hero is not a pane that grows and not a layer that arrives over the
-     page — it is ONE object that gains elevation. It lifts off Home toward the
-     eyes and comes back down. This file draws THREE CHARACTERS for that lift so
-     the feel can be picked on a device, plus the case the owner raised second:
-     what a tap does when there is nothing to open.
+     WHAT THIS IS. The lift is decided; this file decides what is worth lifting.
+     It answers the brief's sub-question 1 — *"what does the expanded state show
+     that the collapsed one cannot? Whatever expansion adds has to be worth an
+     interaction, not a reflow of the same facts"* — and then tests that answer
+     against the three board variants that lift and the one that does not.
 
-     THIS FILE IS ABOUT MOTION. The expanded hero's CONTENT is drawn here only
-     well enough that the lift has a real payload to land on — the horizon, its
-     four board variants and what each carries are the next mockup's subject.
+     THE ORGANIZING IDEA. `CLAUDE.md` says what the app is for: *"what now / what
+     next / what do I need in the next 30 minutes."* The collapsed board answers
+     the first two. The lifted hero is the third, and that gives a shape rather
+     than a list: **the collapsed board shows two POINTS, the lifted hero shows a
+     HORIZON with depth on each point.**
 
-     ─────────────────────────────────────────────────────────────────────────
-     SIX THINGS READING THE CODE CHANGED, and only the first was in the brief.
+       עכשיו → ועוד עכשיו → הבא בתור → אחר כך
 
-     1. THE MECHANISM ALREADY EXISTS, AND IT IS NOT A MODAL. `.wp-dragghost`
-        (`tokens.css:405`) is the shelf's drag clone: sized and positioned from
-        JS off the source element's measured box, `position: fixed`, `--shadow`
-        plus `scale(1.04)` so it reads as picked up. Its comment settles the one
-        fact the lift depends on — *"no ancestor establishes a containing block
-        for it"* — so a lifted hero can leave Home's flow without a wrapper
-        change. That is rule 8's cheapest form: the lift is a second reading of
-        a mechanism that shipped in session 113.
+     with three things on the live one that the collapsed board cannot carry:
 
-     2. IT IS STILL A BACK LAYER, AND THAT IS NOT OPTIONAL. ADR-0103's two
-        amendments plus ADR-0090: if a surface can be dismissed at all, the
-        dismissal is in the back stack, and the `✕`, the backdrop, Escape and
-        the Android gesture run ONE function. So the lifted hero registers
-        through `Modal`/`useOverlay` even though it must not FEEL like the app's
-        slide-up sheets. What this file rejects is the sheet's grammar, never the
-        back contract. The alternative was live: `SnapSheet` is a pane that
-        registers nothing, and a lifted hero on that model would leave the tab on
-        a system back with the hero still up.
+       איפה  — the board has NEVER carried a place. Not a name, not a way to the
+               pin, not a hand-off to Maps. This is the affordance Phase 5 tried
+               to put on the COLLAPSED board and backed out for reading too loud
+               (ADR-0121's 2026-07-28 amendment §4); the lift is what makes it
+               affordable, because it now lives in a state you asked for.
+       פתק   — the note the group wrote about this stop. The candidate answer the
+               notes work handed here on purpose (ADR-0152/0153; the notes brief's
+               §C3 put NO mark on the Board precisely so this session could).
+       הסדרה — whether it happened. `SettleControl`'s fourth density.
 
-     3. `--t-cinematic` IS NOT AVAILABLE. ADR-0140's budget rule is one line and
-        absolute: *"exactly one --t-cinematic moment, the Plan→Trip switch."* The
-        app's signature surface lifting is exactly the thing that would ask for
-        600ms, and it cannot have it. All three characters are drawn at
-        `--t-base` (240ms) with `--t-deliberate` (400ms) on the toggle, so the
-        question is asked honestly rather than answered by helping itself to the
-        reserved token.
+     Everything else considered was a reflow of title / kind / until / code /
+     countdown / zone shift / concurrency, which the collapsed board already has.
 
-     4. THE DIP IS ALREADY BUILT AND IT IS HALF THE POP. ADR-0140 §2 gives every
-        large surface `--press-scale-lg` (0.985) and makes the press instant both
-        ways. So the board already sinks under the finger; the lift is what
-        happens on RELEASE. Press down, then it comes up — the physical
-        antecedent is free and no character has to invent it.
-
-     5. `--ease-arrive` IS LICENSED HERE AND FORBIDDEN ON THE WAY BACK. It is the
-        app's only overshooting easing, scoped in ADR-0140 §4 to *"entrances of
-        real objects only; never an exit"*. A hero arriving IS that; a hero
-        settling back is an exit and takes `--ease-exit`. So the collapse is NOT
-        the lift reversed, which §2 draws rather than asserts.
-
-     6. THE SETTLE CONTROL DOES NOT SURVIVE THE DARK BOARD AS SHIPPED. Trip's
-        `SettleControl` earns the hero by ADR-0139 (a fourth host adds a density,
-        and the words/marks/hues are not the host's to choose) — but
-        `.wp-settle-btn` is `background: var(--card); color: var(--ink)`, built
-        for paper. On the board that is a light chip in light mode and a chip that
-        vanishes in dark. This is ADR-0158 §15's *"an INVERTED surface is the
-        limit"* arriving on a new surface, and §4 draws both so it is a seen
-        problem rather than a build-time surprise. The fix needs no invention: the
-        board already carries semantic hues as low-alpha fills with a brightened
-        ink (`.wp-board-countdown`, `.code`, `.tlabel`), so the `board` density is
-        that recipe with `--ok`/`--miss` in it.
+     EVERY HERO HERE IS DRAWN AT REST. No lift runs in this file. That is
+     deliberate: motion is `hero-lift-v1.html`'s subject, and drawing these at
+     rest is what lets four variants and four load levels sit side by side and be
+     compared. The geometry is the chosen character's settled box — over the
+     chrome, 8px inset — written in CSS rather than measured from a gesture.
 
      ─────────────────────────────────────────────────────────────────────────
-     THE THREE CHARACTERS. Each one differs in what it animates, and that is not
-     an implementation detail — it is the character, because what you animate
-     decides whether the text stays crisp.
+     FIVE THINGS READING THE CODE AND THE ADRs CHANGED.
 
-     (A) הפתיחה · THE LID. The top edge does not move. The box grows downward and
-         outward past Home's 16px margins. Animates top/left/width/height, so
-         nothing scales and every glyph stays crisp. Maximum object continuity:
-         the now-title is at the same pixel before and after. Risk: it may read
-         as an accordion, which is the thing the brief rejected.
+     1. `ועוד N עכשיו` DOES NOT BECOME A READOUT AS A SIMPLIFICATION — IT IS
+        FORCED. The brief's sub-question 4 guessed the board's two expanding
+        things "most likely become one". It is stronger than that: if the whole
+        board is the tap target it is a `<button>`, and `.wp-board-also-toggle`
+        is a `<button>` inside it. Nested interactive content is invalid and
+        un-hittable, so the expander cannot survive in any form. The count still
+        has to be READABLE while collapsed (you need to know two more things are
+        running without tapping), so it becomes text and the rows move into the
+        horizon. §4 draws it. This is the app's ONE existing board control, so
+        after this the collapsed board has no interactive child at all.
 
-     (B) ההרמה · THE RISE. The box also TRAVELS — up OVER the chrome, to the top
-         of the screen. Same crisp box animation, deeper shadow. Reads as picked
-         up off the page rather than opened in place, and it is the closest thing
-         to `.wp-dragghost`'s existing language.
+     2. THE HERO'S OWN COPY WAS BEING PARAPHRASED, in `hero-lift-v1` too. Shipped
+        is `הבא בתור` (not `הבא`) and `פנוי` / `זמן חופשי` (not a sentence). Both
+        files now read `i18n/he.ts`'s actual strings. Worth naming because a
+        mockup that inlines the app's real CSS and then hand-writes its copy is
+        only half against the app.
 
-     (C) ההטיה · THE SWING. B's target, plus the hero straightening up toward the
-         viewer: it starts laid back 9° and 46px away and comes upright. Same
-         crisp box animation underneath, so the text is soft only while the angle
-         is non-zero rather than for the whole lift.
+     3. IN TRANSIT, THE SETTLE VERBS ARE ABSURD AND MUST BE DROPPED. ADR-0139 is
+        right that every event is settleable rather than only the passed ones —
+        that is what keeps undo reachable. But offering `דילגנו` on a flight you
+        are sitting inside is not a density question, it is a nonsense question:
+        the flight settles itself by landing. So the fourth density is not
+        applied to the `in-transit` variant. This is a per-variant rule, and the
+        first one in the file that is about MEANING rather than room.
 
-     BOTH B AND C ARE SECOND DRAFTS, AND THE MEASUREMENT IS WHAT KILLED THE
-     FIRST ONES. Written from reasoning, they were "rise to just under the chrome"
-     and "scale up from the collapsed box". The panel then said:
+     4. THE GROUP SPLIT CANNOT COLLAPSE ONE OF ITS EQUALS. ADR-0041 §6 gives
+        `group-split` its own variant precisely because there is **no primary**
+        (≥2 concurrent soft events, `byPrimaryNow` finds no winner). So expanding
+        one row and not the others would manufacture the primary the variant
+        exists to deny. All equals carry the same depth, which makes this the
+        densest variant by construction and the one §2's load control is for.
 
-     - THE BOARD IS THE FIRST THING ON HOME, so "just under the chrome" is **4px**
-       from where it already sits, and B was A with extra steps. There is nowhere
-       to rise to that is not over the chrome — which promotes B from a tuning
-       value to a real decision, because the chrome is where mode identity lives
-       (ADR-0028) and ADR-0158 §12 has just given light mode its own band. A hero
-       that covers it is claiming to be the whole screen's subject.
-
-     - THE BOARD IS ALREADY NEARLY FULL-WIDTH: 358px collapsed against a 374px
-       target, so a width-keyed FLIP carries a scale of **×1.045**. The lift's
-       entire visible budget is HEIGHT (×2.01) and elevation. So a literal
-       "approach" cannot be a scale-up — there is no scale in it to spend — and C
-       became a 3D swing, which is the one channel that reads as depth on a
-       surface whose width does not change.
-
-     Neither could have been reasoned out; both took the numbers. That is the
-     argument for the measurement panel over a static drawing.
-
-     ─────────────────────────────────────────────────────────────────────────
-     THE REBUFF (owner, this session): *"there should probably be an animation
-     even for 'there's nothing to open', some kind of a gentle lift and then go
-     back to normal."* Right, and it generalizes past where it was aimed:
-
-     - THE APP ALREADY REFUSES IN A MOTION and the vocabulary is reusable.
-       `useFormErrors` adds `.is-nudging` for one shot, `linear` because the
-       keyframe offsets ARE the timing of an oscillation, symmetric so it needs
-       no `--dir` (`form-errors.css`). The REBUFF borrows all three of those
-       properties and none of its gesture: a shake sideways means "you did
-       something wrong", and nothing is wrong here. So the rebuff is vertical,
-       and it spends NO colour — `--miss` is a refusal-of-error and this is a
-       refusal-of-content.
-
-     - IT IS NOT THE `free` VARIANT, IT IS AN EMPTY HORIZON. §3c draws a normal
-       `now` board whose event has no note, no place, no code and nothing
-       concurrent. It has the same nothing to open, and a variant check would
-       have missed it. So the trigger is DERIVED — the hero lifts when the
-       expanded state carries something the collapsed one does not — which is
-       also the brief's own non-negotiable (ADR-0018/0027, derived never stored).
+     5. `free` DOES NOT LIFT, AND THE REASON IS NOT THAT IT IS EMPTY. It is that
+        the answer already exists two inches lower: `GlanceCard` is Home's "what
+        could we do" surface. A hero that lifted into the shelf would compete
+        with a shipped surface rather than add one — and Home still gets exactly
+        one loud element. So `free` takes the rebuff `hero-lift-v1` §3 settled,
+        and this file draws it once to close the question rather than leave it
+        listed as open.
 
      ─────────────────────────────────────────────────────────────────────────
-     WHAT THIS FILE MEASURES rather than asserts: every number the lift needs is
-     read off the live DOM at both widths — the collapsed box, the measured
-     content height, whether the hero has to become a bounded scroller at
-     360×640, B's travel distance, C's scale factor and its height mismatch, and
-     the three durations read from the shipped tokens. No landing position in
-     this file is a constant: `frontend/CLAUDE.md` records three bugs from
-     exactly that shortcut (ADR-0142's `--birth-card-top: 118px`, ADR-0143's
-     `58px` stamp offset, the trip handoff's target).
+     WHAT THIS FILE MEASURES rather than asserts: whether the horizon FITS. The
+     obvious failure mode is a hero that is a scroller in every real case, which
+     would make "lift" a euphemism for "second screen". So §2 drives the same
+     variant at four load levels (the note's length and the number of concurrent
+     rows are what actually grow), the panel reads each variant's natural height
+     off the live DOM at both widths, and it names what falls below the fold.
 
-     TWO SUBSTITUTIONS, both because a mockup has no viewport of its own: the
-     lifted hero is `position: absolute` in a `position: relative` frame where
-     the app will use `position: fixed`, and reduced motion is EMULATED by a
-     button (a page cannot set `prefers-reduced-motion`). In the app that path is
-     `motionDurationMs` answering 0 (ADR-0140 §5), which is why §5 checks that
-     the lifted state is correct as a STATIC state and not only as an arrival.
+     Two numbers to hold while reading it: the chosen character rises OVER the
+     chrome, which buys 72px, and `hero-lift-v1`'s panel measured the room at
+     826px (390×844) and 622px (360×640).
 
-     RENDERS THE APP'S REAL CSS. The shipped stylesheets are inlined by
-     `mockups/tools/inline-app-css.mjs` from the `APP-CSS:` manifest below —
-     re-run it after changing any of them. Two things are this file's own and
-     each is fenced: THE PROPOSAL (new CSS, written in the app's own naming so it
-     reads as the diff) and `mk-*` chrome.
+     RENDERS THE APP'S REAL CSS. Inlined by `mockups/tools/inline-app-css.mjs`
+     from the `APP-CSS:` manifest below — re-run it after changing any of them.
+     Two things are this file's own and each is fenced: THE PROPOSAL (new CSS,
+     written in the app's own naming so it reads as the diff) and `mk-*` chrome.
+     The horizon's part CSS is shared verbatim with `hero-lift-v1.html` — same
+     class names, same values — so the two files cannot drift into two designs.
   -->
 <html lang="he" dir="rtl" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ההרמה של הלוח · Hero 2.0 — v1</title>
+    <title>האופק · מה ההירו המורם נושא — v1</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -167,8 +113,8 @@
       rel="stylesheet"
     />
 
-    <!-- Regenerate with `node mockups/tools/inline-app-css.mjs mockups/hero-lift-v1.html`. -->
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/domain/board.css, ui/domain/settle-control.css, ui/domain/place-badge.css, ui/primitives/form-errors.css -->
+    <!-- Regenerate with `node mockups/tools/inline-app-css.mjs mockups/hero-horizon-v1.html`. -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/domain/board.css, ui/domain/settle-control.css, ui/domain/place-badge.css, ui/zone-shift-pill.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -8696,229 +8642,66 @@ textarea {
    board expands it and actions become possible in place, which is the shape this
    affordance actually wants there. */
 
-/* ═══ ui/primitives/form-errors.css — generated, do not edit here ═══ */
-/* How a form says no (ADR-0150). Two marks, both carried by ONE attribute —
-   `data-invalid` on whatever shell owns the field — so a `Field`, a screen's own
-   field div and a bare row all refuse identically, and a new form gets it by
-   spreading `useFormErrors().field(name)` rather than by styling anything.
-
-   Color is `--miss` and nothing else: a refusal is a status, and the status
-   mini-palette is where statuses live (design-language, ADR-0028). */
-
-/* The mark sits on the field shell, which is what nudges — but a field with TWO
-   controls (a date range) can be wrong at one end only, so a control may carry it
-   itself and be the whole refusal. Both forms, one rule.
-
-   The `:focus-visible` half is not belt-and-braces: a refusal FOCUSES the field it
-   names, so it is focused the instant it is marked — and `field.css`'s focus rule
-   (border-color: teal) would otherwise out-specify this one and paint the refused
-   control as the healthy focused one. */
-[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field),
-[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field):focus-visible,
-:is(input, textarea, select, .pp-trigger, .tp-field)[data-invalid],
-:is(input, textarea, select, .pp-trigger, .tp-field)[data-invalid]:focus-visible {
-  border-color: var(--miss);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--miss) 20%, transparent);
+/* ═══ ui/zone-shift-pill.css — generated, do not edit here ═══ */
+/* ZoneShiftPill (ADR-0107) — the one amber time-shift pill. The three
+   copy-pasted surface classes it replaced (`.wp-event-tzdelta`, `.tr-tzdelta`,
+   `.bld-tzdelta`) were identical but for a 0.5px of font-size and their
+   margins, so those tweaks stay at the surface and the pill itself is one rule. */
+.wp-tzshift {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--amber-deep);
+  background: rgba(233, 166, 60, 0.14);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
 }
 
-/* The label reads as part of the refusal, so it stops being quiet chrome. `data-refused` is
-   the two-ended field (ADR-0150 §7): the shell holds the message and turns its label, but
-   does NOT mark — the controls did that themselves, at the end that is actually wrong. */
-[data-invalid] > .field-label,
-[data-refused] > .field-label {
-  color: var(--miss);
-}
-
-/* THE NUDGE. Added imperatively for one shot (`useFormErrors`), because the
-   refusal has to be felt again on a REPEAT attempt at the same field — a mark that
-   is already on screen changes nothing when you press save a second time.
-
-   `linear`, deliberately: the keyframe offsets ARE the timing of an oscillation,
-   and an easing curve resamples them into a different shape entirely (ADR-0140 §7
-   is the same lesson from the other side). And no `--dir`: a shake is symmetric,
-   so unlike every other translate in this app it has no inline direction to
-   express — mirroring it for RTL would produce the identical animation. */
-.is-nudging {
-  animation: field-nudge var(--t-base) linear both;
-}
-
-@keyframes field-nudge {
-  0% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-5px);
-  }
-  50% {
-    transform: translateX(4px);
-  }
-  75% {
-    transform: translateX(-2px);
-  }
-  100% {
-    transform: translateX(0);
-  }
+/* On the dark board the deep amber-on-wash reads as a smudge — the same pill
+   inverts to a light amber on a stronger wash so it stays legible against the
+   one dark surface (design-language: the board is the only dark surface). */
+.wp-tzshift.on-dark {
+  color: #f0c785;
+  background: rgba(233, 166, 60, 0.2);
 }
 </style>
 
     <style>
       /* ══════════════════════════════════════════════════════════════════
-         THE PROPOSAL. Written in the app's own naming so it reads as the diff.
-         Nothing here declares a colour that is not already a token.
+         THE PROPOSAL. Shared verbatim with `hero-lift-v1.html` — same class
+         names, same values — so the motion file and the content file cannot
+         drift into two different designs.
          ══════════════════════════════════════════════════════════════════ */
 
-      /* ── The layer ────────────────────────────────────────────────────
-         In the app: the `Modal` primitive's own layer, so the backdrop tap,
-         Escape and the Android gesture arrive at one handler (ADR-0103).
-         Here: absolute inside the frame, which stands in for the viewport.
-
-         `pointer-events` gates on the open state rather than on visibility,
-         because a transparent layer that still swallows taps is how a
-         collapsed hero would make Home inert. */
+      /* ── The layer, at rest ───────────────────────────────────────────
+         In the app this is `Modal`'s layer and the geometry is written from a
+         measured box (`hero-lift-v1`). Here every hero is settled, so the box is
+         the chosen character's resting geometry stated in CSS: over the chrome,
+         8px inset, bounded by the frame. */
       .hero-layer {
         position: absolute;
         inset: 0;
         z-index: 8;
-        pointer-events: none;
-        /* A CLOSED LAYER PAINTS NOTHING, and this line is a fixed defect rather
-           than a precaution (owner, v1: *"even the closed hero has an X sign on
-           the top left"*). Without it the lifted hero rendered over Home the
-           whole time — the measuring pass writes a box and clears its own
-           `visibility`, so measurement left the thing it measured on screen.
-           `visibility` and not `display`, because the hero still has to be
-           MEASURABLE while closed: that is how its landing box is read off the
-           real content instead of being written as a constant. */
-        visibility: hidden;
       }
-      .hero-layer[data-open='1'] {
-        pointer-events: auto;
-        visibility: visible;
-      }
-
-      /* The backdrop is the only NEW ground in this proposal, and it is the one
-         composition four ADRs could not have predicted: light mode's chrome went
-         light in ADR-0158 §12, so a dimmed light chrome now sits behind a lifted
-         dark hero. Judged in both themes by the toggle above. */
       .hero-backdrop {
         position: absolute;
         inset: 0;
         background: rgba(8, 14, 28, 0.5);
-        opacity: 0;
-        transition: opacity var(--t-lift) var(--ease-standard);
       }
-      .hero-layer[data-open='1'] .hero-backdrop {
-        opacity: 1;
-      }
-
-      /* ── The lifted hero ──────────────────────────────────────────────
-         It IS `.wp-board` — same class, same gradient, same glow, same
-         `--on-dark` ramp — which is the whole thesis. Nothing about the board's
-         appearance is re-declared; it only gains a box that is written from JS.
-
-         PHYSICAL `left`/`top`, deliberately NOT the logical `inset-inline-*`
-         this codebase otherwise prefers. `getBoundingClientRect` is physical and
-         the app is RTL, where the logical property resolves to the RIGHT edge —
-         mixing the two is exactly the bug `.wp-dragghost` records having fixed
-         (`tokens.css:409`). */
       .hero-lifted {
         position: absolute;
+        top: 8px;
+        left: 8px;
+        right: 8px;
+        max-height: calc(100% - 18px);
         display: flex;
         flex-direction: column;
-        /* top / left / width / height are written from JS, off a MEASURED box.
-           The zeros are only so an un-lifted hero has a defined box rather than
-           an auto static position — nothing reads them. */
-        top: 0;
-        left: 0;
-      }
-
-      /* A and B animate the BOX, so no glyph is ever scaled and the text is
-         crisp end to end. C animates a TRANSFORM, and pays for the continuity
-         with a soft tween — the fork §1 exists to make visible. */
-      .hero-lifted {
-        transition:
-          top var(--t-lift) var(--ease-arrive),
-          left var(--t-lift) var(--ease-arrive),
-          width var(--t-lift) var(--ease-arrive),
-          height var(--t-lift) var(--ease-arrive),
-          box-shadow var(--t-lift) var(--ease-standard);
-      }
-      /* C adds a 3D swing ON TOP of the same box animation — hinged low so the
-         top edge tips toward the viewer. It is an addition rather than a rival
-         technique, which is what makes it judgeable: A vs B asks "does it travel
-         over the chrome", B vs C asks "does it swing". The text is soft only
-         while the rotation is non-zero, not for the whole lift. */
-      .hero-lifted[data-char='C'] {
-        transform-origin: 50% 88%;
-        transition:
-          top var(--t-lift) var(--ease-arrive),
-          left var(--t-lift) var(--ease-arrive),
-          width var(--t-lift) var(--ease-arrive),
-          height var(--t-lift) var(--ease-arrive),
-          transform var(--t-lift) var(--ease-arrive),
-          box-shadow var(--t-lift) var(--ease-standard);
-      }
-
-      /* THE EXIT IS NOT THE ENTRANCE REVERSED. `--ease-arrive` overshoots and
-         ADR-0140 §4 scopes it to entrances of real objects, never an exit — an
-         object that overshoots on its way DOWN reads as dropped, not put back.
-         `--ease-exit` accelerates INTO its end, which is already the curve of
-         something being set down. */
-      .hero-lifted[data-phase='out'] {
-        transition-timing-function: var(--ease-exit);
-        transition-duration: var(--t-lift-out, var(--t-lift));
-      }
-      /* THREE EXITS (§2), because "a small animation of going back to normal"
-         (owner) is a real question and the entrance's mirror is only one answer.
-         The duration is the whole difference between the first two. */
-      .phone[data-exit='drop'] .hero-lifted[data-phase='out'],
-      .phone[data-exit='settle'] .hero-lifted[data-phase='out'] {
-        transition-duration: var(--t-quick);
-      }
-
-      /* THE LANDING BEAT. One shot on the board that comes BACK, so the object
-         visibly touches down instead of the flight simply stopping.
-
-         It is deliberately the same mechanism as the rebuff and as the form's
-         `.is-nudging` before it — a one-shot class, `linear` because the keyframe
-         offsets ARE the timing, symmetric so no `--dir`. That makes three beats
-         in this app answering three different "no destination" moments, which is
-         an argument for one shared primitive rather than a third copy (rule 8);
-         see the notes. Tiny on purpose: 2.5% on one axis. A squash big enough to
-         notice as a squash is a bounce, and a bounce is what forbidding
-         `--ease-arrive` on exits exists to prevent. */
-      @keyframes hero-land {
-        0% {
-          transform: scaleY(1);
-        }
-        40% {
-          transform: scaleY(0.975);
-        }
-        100% {
-          transform: scaleY(1);
-        }
-      }
-      .wp-board.is-landing {
-        transform-origin: 50% 100%;
-        animation: hero-land var(--t-quick) linear both;
-      }
-      [data-rm='1'] .wp-board.is-landing {
-        animation: none;
-      }
-
-      /* Lifted, the board is a floating surface, so it takes the floating
-         elevation the token already names (`--elevation-floating`, tokens.css's
-         "floating = strong (board, toasts, sheets)"). Collapsed it keeps its own
-         inline shadow, which is what the ramp travels between. */
-      .hero-lifted[data-open='1'] {
         box-shadow: var(--elevation-floating);
       }
 
-      /* ── Bounded, with ONE scroller ───────────────────────────────────
-         At 360×640 the horizon does not fit, so the hero becomes a bounded card:
-         head pinned, foot pinned, the middle the only thing that scrolls. Not a
-         new pattern — it is ADR-0148 §1's answer for the Map's place card,
-         reached for the same reason (a wrapping flex row cannot distribute space
-         between lines, so the bounded variant becomes a grid). */
+      /* Bounded, with ONE scroller: head pinned, foot pinned, the middle the only
+         thing that scrolls (ADR-0148 §1's answer for the Map's place card). */
       .hero-head {
         flex: 0 0 auto;
         padding: 18px 18px 0;
@@ -8934,21 +8717,14 @@ textarea {
         flex: 0 0 auto;
         padding: 0 18px 16px;
       }
-      /* `.wp-board` pads itself; the lifted hero pads its three regions instead,
-         so the scroller's edge is the card's edge and a scrolled row does not
-         appear to slide out of a margin. */
       .hero-lifted.wp-board {
         padding: 0;
       }
-
       .hero-head-end {
         display: flex;
         align-items: center;
         gap: 10px;
       }
-      /* The `✕` is a real 44×44 target (ADR-0017) with a visually smaller mark.
-         It runs the SAME handler as the backdrop and back — one dismissal,
-         three entrances (ADR-0103). */
       .hero-x {
         width: 44px;
         height: 44px;
@@ -8966,37 +8742,10 @@ textarea {
         height: 17px;
       }
 
-      /* ── The staggered reveal ─────────────────────────────────────────
-         `--stagger-step` (ADR-0140 §4) with the multiplier capped at the call
-         site, which is that ADR's own rule and the reveal's before it: an
-         uncapped stagger turns a long horizon into a queue.
-
-         `--ease-standard`, monotone, and only two keyframes. ADR-0140 §7 is the
-         reason both matter: under `--ease-arrive` a keyframe `offset` is sampled
-         against a front-loaded progress, so an `offset: 0.6` fires in the first
-         fifth. Nothing in this file puts an offset under an overshoot. */
-      @keyframes hero-part-in {
-        from {
-          opacity: 0;
-          transform: translateY(7px);
-        }
-      }
-      .hero-layer[data-open='1'] .hero-part {
-        animation: hero-part-in var(--t-base) var(--ease-standard) both;
-        animation-delay: calc(min(var(--i), 5) * var(--stagger-step));
-      }
-      /* Reduced motion is a correctness case (ADR-0140 §5): the reveal is the
-         one thing here that would leave content at `opacity: 0` if its duration
-         went to zero without `both` being reconsidered, so it is stated. */
-      [data-rm='1'] .hero-layer[data-open='1'] .hero-part {
-        animation: none;
-      }
-
-      /* ── The horizon's own parts ──────────────────────────────────────
-         Indicative in this file; the next mockup's subject. Everything reads on
-         `--on-dark*` (ADR-0158 §3's ramp for always-dark surfaces) and spends
-         hue only where the grammar already licenses it: teal for location,
-         amber for time and commitment (rule 4). */
+      /* ── The horizon's parts ──────────────────────────────────────────
+         Everything reads on `--on-dark*` (ADR-0158 §3's ramp for always-dark
+         surfaces) and spends hue only where the grammar licenses it: teal for
+         location, amber for time and commitment (rule 4). */
       .hero-part {
         padding-top: 13px;
       }
@@ -9008,12 +8757,6 @@ textarea {
         color: var(--on-dark-faint);
         margin-bottom: 5px;
       }
-
-      /* WHERE. Teal, and not as a decoration: the board has never carried a
-         place at all, and teal-for-location is the grammar (rule 4). This is the
-         affordance Phase 5 tried to put on the COLLAPSED board and backed out
-         (ADR-0121's amendment §4) — the whole point of the lift is that it lives
-         in a state you asked for. */
       .hero-where-row {
         display: flex;
         align-items: center;
@@ -9030,9 +8773,6 @@ textarea {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      /* A hand-off, not an edit — so it takes the board's chip recipe (a
-         low-alpha semantic fill and a brightened ink), which is how `.code`,
-         `.tlabel` and `.wp-board-countdown` already sit on this ground. */
       .hero-act {
         flex: 0 0 auto;
         display: inline-flex;
@@ -9063,11 +8803,6 @@ textarea {
         border-color: rgba(233, 166, 60, 0.32);
         color: #f0c785;
       }
-
-      /* NOTE. The candidate answer to the brief's sub-question 1, and the reason
-         the notes work put NO mark on the Board and handed its reach here
-         (ADR-0152/0153, notes brief §C3). One `clipboard` silhouette, which is
-         the mark notes already ship on five hosts — not a new glyph. */
       .hero-note-row {
         display: flex;
         gap: 9px;
@@ -9088,11 +8823,11 @@ textarea {
         color: var(--on-dark);
       }
 
-      /* SETTLE — the fourth `SettleControl` density (ADR-0139: a fourth host
-         adds a density, and the words/marks/hues are NOT its to choose). What it
-         changes is only the ground, because `.wp-settle-btn`'s `var(--card)` /
-         `var(--ink)` were written for paper and this surface is inverted in both
-         themes (ADR-0158 §15). Same recipe as every other chip on this board. */
+      /* The fourth `SettleControl` density (ADR-0139: a fourth host adds a
+         density; the words, marks and hues are NOT its to choose). Only the
+         ground changes, because `.wp-settle-btn`'s `var(--card)`/`var(--ink)`
+         were written for paper and this surface is inverted in both themes
+         (ADR-0158 §15). Same recipe as every other chip on this board. */
       .wp-settle.board {
         gap: 8px;
       }
@@ -9118,11 +8853,11 @@ textarea {
         border-color: color-mix(in srgb, var(--miss) 40%, transparent);
         color: #f0a09b;
       }
-      /* The focus ring is the shipped one and stays teal — not restated here. */
 
-      /* THEN. The third thing, which the collapsed board cannot carry (it has
-         two slots). One line, never a list: the day IS a tab, and a hero that
-         grows a third slot has started competing with it. */
+      /* אחר כך — the third point, which the two-slot collapsed board cannot
+         carry. ONE line and never a list: the day is a tab, and a hero that
+         grows a third slot has started competing with it. §3 is the case for
+         and against it. */
       .hero-then {
         display: flex;
         align-items: baseline;
@@ -9136,100 +8871,84 @@ textarea {
         color: var(--on-dark);
       }
 
-      /* ══════════════════════════════════════════════════════════════════
-         THE REBUFF. A tap that has nothing to open still answers.
-         ══════════════════════════════════════════════════════════════════
-         Borrowed from `.is-nudging` (`form-errors.css`, ADR-0150): applied
-         imperatively for ONE shot so a repeat tap is felt again, `linear`
-         because the keyframe offsets ARE the timing of the oscillation, and no
-         `--dir` because the gesture is symmetric about its axis.
-
-         What is NOT borrowed: the axis and the colour. Sideways is "you did
-         something wrong"; nothing is wrong here, so the rebuff is vertical. And
-         `--miss` is a refusal-of-error — this is a refusal-of-content, so it
-         spends nothing from the budget at all. */
-      @keyframes hero-rebuff {
-        0% {
-          transform: translateY(0);
-          box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
-        }
-        32% {
-          transform: translateY(-7px);
-          box-shadow: 0 26px 40px -18px rgba(8, 14, 28, 0.95);
-        }
-        58% {
-          transform: translateY(-5px);
-          box-shadow: 0 24px 38px -19px rgba(8, 14, 28, 0.94);
-        }
-        100% {
-          transform: translateY(0);
-          box-shadow: 0 20px 34px -20px rgba(8, 14, 28, 0.9);
-        }
+      /* ── An EQUAL, in the group-split horizon ─────────────────────────
+         The variant denies there is a primary (ADR-0041 §6), so every equal
+         carries the same depth. A hairline separates them rather than a card,
+         because a card inside the one loud surface would read as a second board
+         and the board's own divider is already this hairline's value. */
+      .hero-equal + .hero-equal {
+        margin-top: 13px;
+        border-top: 1px solid rgba(255, 255, 255, 0.09);
       }
-      .wp-board.is-rebuffing {
-        animation: hero-rebuff var(--t-lift) linear both;
+      .hero-equal-hd {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        padding-top: 13px;
       }
-      [data-rm='1'] .wp-board.is-rebuffing {
-        animation: none;
+      .hero-equal-hd .ic {
+        flex: none;
       }
-
-      /* Candidate 2 — the rebuff also SAYS why, once. The argument for it: a
-         lift that returns is legible as "nothing here" only if you already knew
-         a lift was possible, and on a free afternoon you never have. The
-         argument against is below in the notes. */
-      .hero-rebuff-say {
-        overflow: hidden;
-        max-height: 0;
-        opacity: 0;
-        transition:
-          max-height var(--t-quick) var(--ease-standard),
-          opacity var(--t-quick) var(--ease-standard),
-          margin-top var(--t-quick) var(--ease-standard);
+      .hero-equal-hd .nm {
+        font-family: var(--font-head);
+        font-size: var(--text-h3);
+        color: var(--on-dark-strong);
+      }
+      .hero-equal-hd .tm {
+        margin-inline-start: auto;
         font-size: var(--text-caption);
-        font-weight: 600;
-        color: var(--on-dark-faint);
-        margin-top: 0;
+        color: var(--on-dark-dim);
+        white-space: nowrap;
       }
-      .wp-board[data-said='1'] .hero-rebuff-say {
-        max-height: 20px;
-        opacity: 1;
-        margin-top: 10px;
+      /* An equal's own parts sit one step in, so the eye can tell "this belongs
+         to that one" from "this is the horizon's next point". Indent, not a box:
+         ADR-0041 §4 caps indent at ~2 levels and this is level 1. */
+      .hero-equal .hero-part {
+        padding-inline-start: 10px;
       }
 
-      /* ── The frames' own pressability ─────────────────────────────────
-         One line, and it is the line `frontend/CLAUDE.md` names for every new
-         large surface: the default press step is the CONTROL one, and a
-         full-width card at 0.97 reads as collapsing. */
+      /* ── The collapsed board's forced diff (§4) ───────────────────────
+         `ועוד N עכשיו` stops being a `<button>` because the board became one.
+         The dot and the words are kept verbatim; what goes is the chevron and
+         the press target. It is a READOUT: the count must stay legible without
+         a tap, and the rows it used to reveal are in the horizon now. */
+      .wp-board-also-read {
+        margin-top: var(--space-3);
+        border-top: 1px dashed rgba(147, 162, 196, 0.25);
+        padding-top: 11px;
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        font-size: var(--text-secondary);
+        font-weight: 700;
+        color: var(--on-dark-dim);
+      }
+      .wp-board-also-read .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #6f83ad;
+        flex: none;
+      }
+
+      /* The collapsed board IS the tap target now, so it takes the large press
+         step — one line, the one `frontend/CLAUDE.md` names for every new large
+         surface (the default step is the control one). */
       .wp-board.is-tappable {
         --press-scale: var(--press-scale-lg);
         cursor: pointer;
-      }
-      /* The dip toggle exaggerates the SHIPPED press so it can be judged beside
-         the lift. Off by default, because ADR-0140 §2 makes the press instant
-         both ways on purpose and slowing it is a change to be decided, not a
-         default to be assumed. */
-      [data-dip='1'] .wp-board.is-tappable {
-        transition: transform var(--t-quick) var(--ease-standard);
-      }
-      [data-dip='1'] .wp-board.is-tappable.is-dipping {
-        transform: scale(var(--press-scale-lg));
-      }
-      .wp-board.is-hidden {
-        /* `visibility`, not `display` — the inline board must keep its space or
-           Home reflows under the thumb, which is the failure an expansion has by
-           construction and a lift must not inherit. This is the one place where
-           "a rect that is not visibility" (frontend/CLAUDE.md) is the point. */
-        visibility: hidden;
+        display: block;
+        width: 100%;
+        text-align: start;
+        font: inherit;
+        border: 0;
       }
 
       /* ══════════════════════════════════════════════════════════════════
-         mk-* — this file's own chrome. Nothing below ships.
-
-         THEME-AWARE TOO (ADR-0158 §16): the toggle sets `data-theme` on <html>
-         exactly as `lib/theme.ts` does, so the app tokens inside every frame
-         flip on their own. If the page around them stayed white, half the frames
-         would be judged on a ground the app never has. Its own four variables,
-         and a dark block AFTER the light one — never inside `:root`.
+         mk-* — this file's own chrome. Nothing below ships. Theme-aware
+         (ADR-0158 §16): the toggle sets `data-theme` on <html> exactly as
+         `lib/theme.ts` does, so every frame is the shipped remap. Own four
+         variables, dark block AFTER the light one, never inside `:root`.
          ══════════════════════════════════════════════════════════════════ */
       :root {
         --mk-page: #eef1f6;
@@ -9263,7 +8982,7 @@ textarea {
         margin: 0 0 8px;
       }
       .doc-h p {
-        margin: 0;
+        margin: 0 0 8px;
         font-size: 13px;
         line-height: 1.8;
         color: var(--mk-prose);
@@ -9319,11 +9038,6 @@ textarea {
         border-color: var(--cta);
         color: var(--cta);
         background: color-mix(in srgb, var(--cta) 12%, transparent);
-      }
-      .controls button.go {
-        border-color: var(--cta);
-        background: var(--cta);
-        color: #fff;
       }
       section.case {
         background: var(--mk-surface);
@@ -9387,21 +9101,17 @@ textarea {
         font-size: 11px;
         line-height: 1.6;
         color: var(--faint);
-        max-width: 200px;
+        max-width: 210px;
         margin: 0 auto 8px;
       }
-      .col .replay {
+      .col .rd {
         display: block;
-        margin: 9px auto 0;
-        font: inherit;
-        font-size: 11.5px;
-        font-weight: 700;
-        padding: 5px 12px;
-        border-radius: 999px;
-        border: 1px solid var(--line);
-        background: var(--mk-surface);
+        text-align: center;
+        font:
+          700 11px 'JetBrains Mono',
+          monospace;
         color: var(--muted);
-        cursor: pointer;
+        margin-top: 8px;
       }
       .phone {
         background: var(--screen);
@@ -9412,15 +9122,6 @@ textarea {
       }
       .phone .fbody {
         padding: 12px 16px 0;
-      }
-      .phone .foldline {
-        position: absolute;
-        inset-inline: 0;
-        bottom: 0;
-        height: 26px;
-        background: linear-gradient(to top, var(--screen), transparent);
-        pointer-events: none;
-        z-index: 9;
       }
       .panel {
         background: var(--mk-surface);
@@ -9459,6 +9160,12 @@ textarea {
         font-family: 'JetBrains Mono', monospace;
         font-weight: 700;
         text-align: center;
+      }
+      table.m td.bad {
+        color: var(--miss);
+      }
+      table.m td.good {
+        color: var(--ok);
       }
       .notes {
         background: var(--mk-surface);
@@ -9499,12 +9206,17 @@ textarea {
   <body>
     <div class="wrap">
       <div class="doc-h">
-        <h1>ההרמה של הלוח · שלוש דמויות ותשובה לנקישה ריקה</h1>
+        <h1>האופק · מה ההירו המורם נושא</h1>
         <p>
-          הלוח לא גדל ולא נפתח מעליו מסך חדש. הוא <b>אותו עצם</b> שמתרומם מהמסך אל העיניים וחוזר.
-          שלוש דמויות להרמה הזאת, כדי לבחור את התחושה במכשיר ולא על הנייר; היציאה, שהיא לא ההרמה
-          במהופך; והמקרה שבו אין מה לפתוח, שמסתבר שהוא לא מצב <code>free</code> אלא אופק ריק. כל
-          מסגרת נבדקת בשני רוחבים ובשתי ערכות הנושא, וכל מספר נקרא מה-DOM החי.
+          ההרמה הוכרעה בקובץ השני (<code>hero-lift-v1.html</code>); כאן מוכרע מה שווה להרים. הלוח
+          המכובה מראה שתי <b>נקודות</b>; המורם מראה <b>אופק עם עומק על כל נקודה</b>: עכשיו · ועוד
+          עכשיו · הבא בתור · אחר כך, ועל החי שלושה דברים שהלוח המכובה לא יכול לשאת מבחינה מבנית -
+          <b>איפה</b> (הלוח מעולם לא נשא מקום), <b>פתק</b> (מה שהקבוצה כתבה על העצירה) ו<b>הסדרה</b>
+          (האם זה קרה).
+        </p>
+        <p>
+          <b>כל הירו כאן מצויר במנוחה.</b> שום הרמה לא רצה בקובץ הזה, וזה במכוון: התנועה היא הנושא של
+          הקובץ השני, וציור במנוחה הוא מה שמאפשר להעמיד ארבעה מצבים וארבע דרגות עומס אחד ליד השני.
         </p>
       </div>
 
@@ -9515,22 +9227,9 @@ textarea {
         <span class="lbl sp">ערכת נושא</span>
         <button type="button" data-theme="light" aria-pressed="true">בהיר</button>
         <button type="button" data-theme="dark">כהה</button>
-        <span class="lbl sp">משך</span>
-        <button type="button" data-t="base" aria-pressed="true">‎240ms</button>
-        <button type="button" data-t="deliberate">‎400ms</button>
-        <span class="lbl sp">שוליים מורמים</span>
-        <button type="button" data-inset="8" aria-pressed="true">‎8px</button>
-        <button type="button" data-inset="4">‎4px</button>
-        <button type="button" data-inset="0">‎0 · לרוחב מלא</button>
-        <span class="lbl sp">שקיעה בלחיצה</span>
-        <button type="button" data-dip="0" aria-pressed="true">כמו בקוד</button>
-        <button type="button" data-dip="1">מוגזמת</button>
-        <span class="lbl sp">מוגבל תנועה</span>
-        <button type="button" data-rm="0" aria-pressed="true">כבוי</button>
-        <button type="button" data-rm="1">דלוק</button>
-        <span class="lbl sp"></span>
-        <button type="button" class="go" id="playall">הרימו את שלושתן</button>
-        <button type="button" id="closeall">החזירו</button>
+        <span class="lbl sp">אחר כך</span>
+        <button type="button" data-then="1" aria-pressed="true">מוצג</button>
+        <button type="button" data-then="0">מוסתר</button>
       </div>
 
       <div id="frames"></div>
@@ -9538,21 +9237,17 @@ textarea {
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
-          שלוש שאלות שאפשר להכשיל בהן את הרעיון, וכולן מספרים: האם האופק בכלל נכנס למסך, כמה דרך
-          הלוח עושה, ואיפה בכלל נמצא התקציב החזותי של ההרמה. שנו את הרוחב למעלה כדי לראות את הטבלה
-          משתנה. <b>שתי הדמויות ב׳ וג׳ נכתבו מחדש בגלל הטבלה הזאת</b>, וזה הטיעון לפאנל מדידה במקום
-          שרטוט: "עלייה עד מתחת לכרום" יצאה 4px, ו"התקרבות כהגדלה" יצאה ×1.045.
-        </p>
-        <p>
-          <b>אזהרה על המספרים.</b> אם הקובץ נפתח בלי רשת, הגופנים של Google לא נטענו והמדידות רצו
-          על גופן חלופי. כל מספר פיקסלים כאן תלוי-גופן וצריך להימדד שוב על מכשיר עם רשת לפני שהוא
-          נכנס ל-ADR. זאת בדיוק ההערה שהבקלוג כבר נושא על ADR-0152/0153.
+          השאלה היחידה שיכולה להפוך את "הרמה" לשם נעים ל"מסך שני" היא <b>האם האופק נכנס</b>. אם כל
+          מקרה אמיתי הוא גולל, ההבטחה לא נשמרה. הטבלה מודדת את הגובה הטבעי של כל מצב ושל כל דרגת
+          עומס מול החדר שיש, בשני הרוחבים. החדר נמדד לפי הדמות שנבחרה, כלומר <b>מעל הכרום</b>.
         </p>
         <table class="m">
           <thead>
             <tr>
               <th>מה נמדד</th>
-              <th>ערך</th>
+              <th>גובה טבעי</th>
+              <th>% מהמסך</th>
+              <th>נכנס?</th>
               <th>הערה</th>
             </tr>
           </thead>
@@ -9580,74 +9275,95 @@ textarea {
         ticket:
           'M4 8.4A1.4 1.4 0 0 1 5.4 7h13.2A1.4 1.4 0 0 1 20 8.4v2a2.2 2.2 0 0 0 0 4.4v1.8a1.4 1.4 0 0 1-1.4 1.4H5.4A1.4 1.4 0 0 1 4 16.6v-1.8a2.2 2.2 0 0 0 0-4.4v-2Z',
         gear: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z M19.6 12a7.6 7.6 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-2-1.2L14.8 3h-3.9l-.4 2.6a7.6 7.6 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2.5l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 2 1.2l.4 2.6h3.9l.4-2.6a7.6 7.6 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2Z',
+        flight: 'M20.5 12 3.5 5.5l2.4 6.5-2.4 6.5L20.5 12Z',
       };
       const ic = (n, cls = '') =>
         `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
 
       let W = 390;
-      let DUR = 'base';
+      let THEN = 1;
       const H = () => (W === 390 ? 844 : 640);
 
-      /* Home's own inline padding, which is what the lift escapes. Read from the
-         frame rather than assumed, so the travel is never a constant. */
-      let LIFT_INSET = 8;
+      /* The chosen character's resting geometry, from `hero-lift-v1`'s panel:
+         it rises OVER the chrome, so the room is the frame minus the inset and
+         the bottom gap — not minus the chrome. */
+      const LIFT_INSET = 8;
       const LIFT_BOTTOM_GAP = 10;
-
-      /* C's swing, and both numbers are here rather than inline because they are
-         the whole of its character: how far back it starts and how far away. */
-      const SWING_DEG = 9;
-      const SWING_Z = 46;
+      const room = () => H() - LIFT_INSET - LIFT_BOTTOM_GAP;
 
       /* ─────────────────────────────────────────────────────────────────
-         THE COLLAPSED BOARD — the shipped tree, `ui/domain/Board.tsx`
-         variant `now` with `alsoNow`. Every class here exists in
-         `board.css`; nothing is invented, which is what makes the
-         collapsed half of every frame genuinely the shipped board.
+         COPY. Read off `i18n/he.ts` rather than paraphrased — `הבא בתור`,
+         `פנוי`, `זמן חופשי`, `עכשיו · במקביל`, `בטיסה`, `כרגע · בדרך`,
+         `היינו`/`דילגנו`. The horizon's own new labels are the only strings
+         this file invents, and they are named here so the ADR can copy them.
          ───────────────────────────────────────────────────────────────── */
+      const T = {
+        now: 'עכשיו',
+        until: 'עד',
+        nextLabel: 'הבא בתור',
+        endOfDay: 'סוף היום',
+        freeLabel: 'פנוי',
+        freeTitle: 'זמן חופשי',
+        concurrentNow: 'עכשיו · במקביל',
+        inTransitLive: 'בטיסה',
+        inTransitLabel: 'כרגע · בדרך',
+        hard: 'קשיח',
+        soft: 'גמיש',
+        didThis: 'היינו',
+        skipped: 'דילגנו',
+        alsoNow: (n) => `ועוד ${n} עכשיו`,
+        // NEW in this file.
+        where: 'איפה',
+        note: 'פתק',
+        alsoLbl: 'ועוד עכשיו',
+        then: 'אחר כך',
+        onGround: 'על הקרקע',
+        booking: 'ההזמנה',
+        onMap: 'במפה',
+        navigate: 'ניווט',
+        toBooking: 'להזמנה',
+      };
+
       const FIX = {
         clock: '14:12',
         nowTitle: 'סיור אוכל בספניולי',
         nowIcon: '🍕',
         nowUntil: '15:30',
         place: 'Via dei Tribunali 32',
-        note: 'הכניסה מהחצר האחורית, לשאול את יוסי',
-        alsoTitle: 'שוק בורקרו',
-        alsoUntil: '16:00',
+        noteShort: 'הכניסה מהחצר האחורית',
+        noteLong:
+          'הכניסה מהחצר האחורית, לשאול את יוסי. יש תור אחרי 14:00 אז כדאי להגיע לפני, והם לוקחים רק מזומן.',
         nextTitle: 'מלון סנטרו',
         nextIcon: '🏨',
         nextTime: '16:00',
         nextCode: '#7QK4LM',
+        nextPlace: 'Piazza Bellini 9',
         thenTime: '19:30',
         thenTitle: 'ארוחת ערב בטרטוריה',
         countdown: '1:48',
       };
 
-      const boardTop = (live = 'עכשיו') => `
+      const ALSO = [
+        { ic: '🛍️', nm: 'שוק בורקרו', tm: '16:00' },
+        { ic: '☕', nm: 'קפה בגמבינוס', tm: '15:00' },
+        { ic: '⛪', nm: 'סן סוורו', tm: '17:00' },
+      ];
+
+      /* ─── Shared bits of the shipped board tree ──────────────────────── */
+      const boardTop = (live = T.now, loc = false) => `
         <div class="wp-board-top">
-          <div class="wp-board-live"><span class="blip"></span>${live}</div>
+          <div class="wp-board-live${loc ? ' loc' : ''}"><span class="blip"></span>${live}</div>
           <div class="wp-board-clock" dir="auto">${FIX.clock}</div>
         </div>`;
 
-      const nowBlock = () => `
-        <div class="wp-board-now-label">גמיש</div>
-        <div class="wp-board-now-title"><span class="wp-board-ic">${FIX.nowIcon}</span>${FIX.nowTitle}</div>
-        <div class="wp-board-now-meta">עד <span dir="auto">${FIX.nowUntil}</span></div>`;
-
-      const nextBlock = () => `
-        <div class="wp-board-next-row">
-          <div>
-            <div class="wp-board-next-label">הבא בתור</div>
-            <div class="wp-board-next-title"><span class="wp-board-ic">${FIX.nextIcon}</span>${FIX.nextTitle}</div>
-            <div class="wp-board-next-meta">
-              <span class="tlabel">צ׳ק-אין</span>
-              <span dir="auto">${FIX.nextTime}</span>
-              <span class="lockmini">${ic('lock')} קשיח</span>
-              <span class="code" dir="auto">${FIX.nextCode}</span>
+      const headRow = (live = T.now, loc = false) => `
+        <div class="hero-head">
+          <div class="wp-board-top">
+            <div class="wp-board-live${loc ? ' loc' : ''}"><span class="blip"></span>${live}</div>
+            <div class="hero-head-end">
+              <div class="wp-board-clock" dir="auto">${FIX.clock}</div>
+              <button type="button" class="hero-x" aria-label="סגירה">${ic('close')}</button>
             </div>
-          </div>
-          <div class="wp-board-countdown">
-            <div class="t" dir="auto">${FIX.countdown}</div>
-            <div class="u">עד הבא</div>
           </div>
         </div>`;
 
@@ -9657,141 +9373,277 @@ textarea {
             <div class="fill" style="width:52%"></div>
             <div class="knob" style="inset-inline-start:52%"></div>
           </div>
-          <div class="ends"><span dir="auto">07:00</span><span>עכשיו</span><span dir="auto">23:00</span></div>
+          <div class="ends"><span dir="auto">07:00</span><span>${T.now}</span><span dir="auto">23:00</span></div>
         </div>`;
 
-      /** The collapsed board. `empty` drops the note/place/also-now source so the
-       *  horizon has nothing to add — §3c's case, and NOT a variant. */
-      const collapsedBoard = (opts = {}) => `
-        <div class="wp-board inline is-tappable" data-empty="${opts.empty ? '1' : '0'}">
+      /* ─── The horizon's parts, each a function so a variant can compose
+             exactly the ones it earns ──────────────────────────────────── */
+      const partWhere = (place = FIX.place) => `
+        <div class="hero-part">
+          <span class="hero-lbl">${T.where}</span>
+          <div class="hero-where-row">
+            <span class="hero-where-nm" dir="auto">${place}</span>
+            <a class="hero-act loc">${ic('pin')} ${T.onMap}</a>
+            <a class="hero-act loc">${ic('navigate')} ${T.navigate}</a>
+          </div>
+        </div>`;
+
+      const partNote = (txt) => `
+        <div class="hero-part">
+          <span class="hero-lbl">${T.note}</span>
+          <div class="hero-note-row">
+            <span class="hero-note-ic">${ic('clipboard')}</span>
+            <span class="hero-note-tx">${txt}</span>
+          </div>
+        </div>`;
+
+      const partSettle = () => `
+        <div class="hero-part">
+          <span class="wp-settle board">
+            <button type="button" class="wp-settle-btn done">${ic('check')}<span class="wp-settle-word">${T.didThis}</span></button>
+            <button type="button" class="wp-settle-btn skip">${ic('skip')}<span class="wp-settle-word">${T.skipped}</span></button>
+          </span>
+        </div>`;
+
+      const partAlso = (n) => `
+        <div class="hero-part">
+          <span class="hero-lbl">${T.alsoLbl}</span>
+          <div class="wp-board-also-list">
+            ${ALSO.slice(0, n)
+              .map(
+                (r) => `
+              <div class="wp-board-also-row">
+                <span class="ic">${r.ic}</span>
+                <span class="nm">${r.nm}</span>
+                <span class="tm">${T.until} <span dir="auto">${r.tm}</span></span>
+              </div>`,
+              )
+              .join('')}
+          </div>
+        </div>`;
+
+      /* NEXT, enriched: the collapsed board already shows the label, title, time,
+         lock and code — what the horizon adds is the two hand-offs, i.e. the WAY
+         THROUGH rather than a second printing of the code. */
+      const partNext = () => `
+        <div class="hero-part">
+          <div class="wp-board-next-row">
+            <div>
+              <div class="wp-board-next-label">${T.nextLabel}</div>
+              <div class="wp-board-next-title"><span class="wp-board-ic">${FIX.nextIcon}</span>${FIX.nextTitle}</div>
+              <div class="wp-board-next-meta">
+                <span class="tlabel">צ׳ק-אין</span>
+                <span dir="auto">${FIX.nextTime}</span>
+                <span class="lockmini">${ic('lock')} ${T.hard}</span>
+                <span class="code" dir="auto">${FIX.nextCode}</span>
+              </div>
+            </div>
+            <div class="wp-board-countdown">
+              <div class="t" dir="auto">${FIX.countdown}</div>
+              <div class="u">עד הבא</div>
+            </div>
+          </div>
+          <div class="hero-where-row" style="margin-top:10px">
+            <a class="hero-act time">${ic('ticket')} ${T.toBooking}</a>
+            <a class="hero-act loc">${ic('navigate')} ${T.navigate}</a>
+          </div>
+        </div>`;
+
+      const partThen = () =>
+        THEN
+          ? `<div class="hero-part hero-then">
+               <span class="hero-lbl" style="margin:0">${T.then}</span>
+               <span class="tm" dir="auto">${FIX.thenTime}</span>
+               <span>${FIX.thenTitle}</span>
+             </div>`
+          : '';
+
+      /* ═════════════════════════════════════════════════════════════════
+         THE FOUR VARIANTS, EXPANDED.
+         ═════════════════════════════════════════════════════════════════ */
+
+      /** `now` — the main case. `load` drives what a real event actually has:
+       *  most have no note and some have no place, which is what §2 tests. */
+      const heroNow = (load = 'full') => {
+        const note =
+          load === 'full' ? FIX.noteShort : load === 'heavy' ? FIX.noteLong : load === 'thin' ? null : null;
+        const alsoN = load === 'heavy' ? 3 : load === 'full' ? 1 : 0;
+        const place = load === 'thin' ? null : FIX.place;
+        return `
+        <div class="wp-board hero-lifted">
+          ${headRow()}
+          <div class="hero-scroll">
+            <div class="hero-part">
+              <div class="wp-board-now-label">${T.soft}</div>
+              <div class="wp-board-now-title"><span class="wp-board-ic">${FIX.nowIcon}</span>${FIX.nowTitle}</div>
+              <div class="wp-board-now-meta">${T.until} <span dir="auto">${FIX.nowUntil}</span></div>
+            </div>
+            ${place ? partWhere(place) : ''}
+            ${note ? partNote(note) : ''}
+            ${partSettle()}
+            ${alsoN ? partAlso(alsoN) : ''}
+            <div class="wp-board-divider"></div>
+            ${partNext()}
+            ${partThen()}
+          </div>
+          <div class="hero-foot">${dayRail()}</div>
+        </div>`;
+      };
+
+      /** `group-split` — ADR-0041 §6: no primary, so every equal carries the SAME
+       *  depth. Expanding one and not the others would manufacture the primary
+       *  the variant exists to deny, which is why this is the densest case. */
+      const heroSplit = (n = 2) => {
+        const equals = [
+          { ic: '🍕', nm: 'סיור אוכל', tm: `${T.until} 15:30`, place: FIX.place, note: FIX.noteShort },
+          { ic: '🛍️', nm: 'שוק בורקרו', tm: `${T.until} 16:00`, place: 'Via Toledo 148', note: null },
+          { ic: '☕', nm: 'קפה בגמבינוס', tm: `${T.until} 15:00`, place: 'Piazza Trieste 12', note: null },
+        ].slice(0, n);
+        return `
+        <div class="wp-board hero-lifted">
+          ${headRow()}
+          <div class="hero-scroll">
+            <div class="hero-part"><div class="wp-board-now-label">${T.concurrentNow}</div></div>
+            ${equals
+              .map(
+                (e) => `
+              <div class="hero-equal">
+                <div class="hero-equal-hd">
+                  <span class="ic">${e.ic}</span>
+                  <span class="nm">${e.nm}</span>
+                  <span class="tm">${e.tm}</span>
+                </div>
+                ${partWhere(e.place)}
+                ${e.note ? partNote(e.note) : ''}
+                ${partSettle()}
+              </div>`,
+              )
+              .join('')}
+            <div class="wp-board-divider"></div>
+            ${partNext()}
+            ${partThen()}
+          </div>
+          <div class="hero-foot">${dayRail()}</div>
+        </div>`;
+      };
+
+      /** `in-transit` — a flight in the air. Two things are deliberately absent:
+       *  the SETTLE verbs (offering `דילגנו` on a flight you are inside is not a
+       *  density question, it is a nonsense one — the flight settles itself by
+       *  landing) and the day rail (ADR-0059 §2: in transit the flight IS the
+       *  current activity, so the transit progress replaces it). What it adds is
+       *  the booking, the landing zone, and WHAT IS FIRST ON THE GROUND, which is
+       *  the "next 30 minutes" question asked at altitude. */
+      const heroTransit = () => `
+        <div class="wp-board transit hero-lifted">
+          ${headRow(T.inTransitLive, true)}
+          <div class="hero-scroll">
+            <div class="hero-part">
+              <div class="wp-board-now-label loc">${T.inTransitLabel}</div>
+              <div class="wp-board-now-title">
+                <span class="wp-board-ic">${ic('flight')}</span>
+                <span class="route">נאפולי <span class="arr">←</span> תל אביב</span>
+              </div>
+            </div>
+            <div class="hero-part">
+              <div class="wp-board-transit-prog" style="margin-top:0">
+                <div class="tp-track">
+                  <div class="tp-fill" style="width:64%"></div>
+                  <div class="tp-plane" style="inset-inline-start:64%">${ic('flight')}</div>
+                </div>
+                <div class="tp-ends">
+                  <span class="tp-end"><span class="mono" dir="auto">07:15</span><span class="pl">תל אביב</span></span>
+                  <span class="tp-left">${T.until} <span class="mono" dir="auto">11:00</span></span>
+                  <span class="tp-end end"><span class="pl">נאפולי</span><span class="mono" dir="auto">11:00</span>
+                    <span class="wp-tzshift on-dark" title="הפרש שעות">${ic('clock')} ⁦+1⁩ ש׳</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="hero-part">
+              <span class="hero-lbl">${T.booking}</span>
+              <div class="hero-where-row">
+                <span class="hero-where-nm" dir="auto">‎W6 2345 · 14C</span>
+                <a class="hero-act time">${ic('ticket')} ${T.toBooking}</a>
+              </div>
+            </div>
+            ${partNote('שער B12, הוא משתנה. לבדוק במסך אחרי הנחיתה')}
+            <div class="wp-board-divider"></div>
+            <div class="hero-part">
+              <span class="hero-lbl">${T.onGround}</span>
+              <div class="wp-board-next-row">
+                <div>
+                  <div class="wp-board-next-title"><span class="wp-board-ic">${FIX.nextIcon}</span>${FIX.nextTitle}</div>
+                  <div class="wp-board-next-meta">
+                    <span class="tlabel">צ׳ק-אין</span>
+                    <span dir="auto">14:30</span>
+                    <span class="lockmini">${ic('lock')} ${T.hard}</span>
+                    <span class="code" dir="auto">${FIX.nextCode}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="hero-where-row" style="margin-top:10px">
+                <a class="hero-act loc">${ic('pin')} ${T.onMap}</a>
+                <a class="hero-act time">${ic('ticket')} ${T.toBooking}</a>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      /* ─── The COLLAPSED board, and §4's forced diff ──────────────────── */
+      const collapsedBoard = (readout, tappable = true) => `
+        <${tappable ? 'button type="button"' : 'div'} class="wp-board${tappable ? ' is-tappable' : ''}">
           ${boardTop()}
-          ${nowBlock()}
+          <div class="wp-board-now-label">${T.soft}</div>
+          <div class="wp-board-now-title"><span class="wp-board-ic">${FIX.nowIcon}</span>${FIX.nowTitle}</div>
+          <div class="wp-board-now-meta">${T.until} <span dir="auto">${FIX.nowUntil}</span></div>
           ${
-            opts.empty
-              ? ''
+            readout
+              ? `<div class="wp-board-also-read"><span class="dot" aria-hidden="true"></span>${T.alsoNow(1)}</div>`
               : `<div class="wp-board-also-now">
                    <button type="button" class="wp-board-also-toggle" aria-expanded="false">
-                     <span class="dot" aria-hidden="true"></span>ועוד 1 עכשיו
+                     <span class="dot" aria-hidden="true"></span>${T.alsoNow(1)}
                      <span class="chev" aria-hidden="true">${ic('caret')}</span>
                    </button>
                  </div>`
           }
           <div class="wp-board-divider"></div>
-          ${nextBlock()}
+          <div class="wp-board-next-row">
+            <div>
+              <div class="wp-board-next-label">${T.nextLabel}</div>
+              <div class="wp-board-next-title"><span class="wp-board-ic">${FIX.nextIcon}</span>${FIX.nextTitle}</div>
+              <div class="wp-board-next-meta">
+                <span class="tlabel">צ׳ק-אין</span>
+                <span dir="auto">${FIX.nextTime}</span>
+                <span class="lockmini">${ic('lock')} ${T.hard}</span>
+                <span class="code" dir="auto">${FIX.nextCode}</span>
+              </div>
+            </div>
+            <div class="wp-board-countdown">
+              <div class="t" dir="auto">${FIX.countdown}</div>
+              <div class="u">עד הבא</div>
+            </div>
+          </div>
           ${dayRail()}
-        </div>`;
+        </${tappable ? 'button' : 'div'}>`;
 
-      /** The FREE board (`variant: 'free'`), plus the rebuff's optional one line. */
-      const freeBoard = (say) => `
-        <div class="wp-board inline is-tappable" data-free="1">
+      /** `free` — does NOT lift. Drawn once, with the rebuff's line, to close the
+       *  question rather than leave it listed as open. */
+      const freeBoard = () => `
+        <button type="button" class="wp-board is-tappable">
           ${boardTop()}
-          <div class="wp-board-now-label">פנוי</div>
-          <div class="wp-board-now-title">זמן חופשי</div>
-          ${say ? '<div class="hero-rebuff-say">אין מה לפתוח כרגע</div>' : ''}
+          <div class="wp-board-now-label">${T.freeLabel}</div>
+          <div class="wp-board-now-title">${T.freeTitle}</div>
           <div class="wp-board-divider"></div>
           <div class="wp-board-next-row">
             <div>
-              <div class="wp-board-next-label">הבא בתור</div>
-              <div class="wp-board-next-title">סוף היום</div>
+              <div class="wp-board-next-label">${T.nextLabel}</div>
+              <div class="wp-board-next-title">${T.endOfDay}</div>
             </div>
           </div>
           ${dayRail()}
-        </div>`;
+        </button>`;
 
-      /* ─────────────────────────────────────────────────────────────────
-         THE LIFTED HERO — THE HORIZON.
-
-         The organizing idea, and the answer to the brief's sub-question 1:
-         the collapsed board shows two POINTS, the lifted hero shows a
-         HORIZON with depth on each point. `now → ועוד עכשיו → הבא → אחר כך`,
-         and on the live one the three things the collapsed board
-         structurally cannot carry — where it is, what the group wrote about
-         it, and whether it happened.
-
-         Reads and hand-offs and settles. No time edits and no ±30 nudge, so
-         ADR-0011's guard is never in play (owner's call this session), and
-         every verb here already exists elsewhere: the map way-in, `ניווט`,
-         the booking reach, `SettleControl`'s two words.
-
-         Three regions, because at 360×640 this does not fit: head pinned,
-         ONE scroller, foot pinned (ADR-0148 §1's bounded card).
-         ───────────────────────────────────────────────────────────────── */
-      const liftedHero = (char) => `
-        <div class="wp-board hero-lifted" data-char="${char}">
-          <div class="hero-head">
-            <div class="wp-board-top">
-              <div class="wp-board-live"><span class="blip"></span>עכשיו</div>
-              <div class="hero-head-end">
-                <div class="wp-board-clock" dir="auto">${FIX.clock}</div>
-                <button type="button" class="hero-x" aria-label="סגירה">${ic('close')}</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="hero-scroll">
-            <div class="hero-part" style="--i:0">${nowBlock()}</div>
-
-            <div class="hero-part" style="--i:1">
-              <span class="hero-lbl">איפה</span>
-              <div class="hero-where-row">
-                <span class="hero-where-nm" dir="auto">${FIX.place}</span>
-                <a class="hero-act loc">${ic('pin')} במפה</a>
-                <a class="hero-act loc">${ic('navigate')} ניווט</a>
-              </div>
-            </div>
-
-            <div class="hero-part" style="--i:2">
-              <span class="hero-lbl">פתק</span>
-              <div class="hero-note-row">
-                <span class="hero-note-ic">${ic('clipboard')}</span>
-                <span class="hero-note-tx">${FIX.note}</span>
-              </div>
-            </div>
-
-            <div class="hero-part" style="--i:3">
-              <span class="wp-settle board">
-                <button type="button" class="wp-settle-btn done">${ic('check')}<span class="wp-settle-word">היינו</span></button>
-                <button type="button" class="wp-settle-btn skip">${ic('skip')}<span class="wp-settle-word">דילגנו</span></button>
-              </span>
-            </div>
-
-            <div class="hero-part" style="--i:4">
-              <span class="hero-lbl">ועוד עכשיו</span>
-              <div class="wp-board-also-list">
-                <div class="wp-board-also-row">
-                  <span class="ic">🛍️</span>
-                  <span class="nm">${FIX.alsoTitle}</span>
-                  <span class="tm">עד <span dir="auto">${FIX.alsoUntil}</span></span>
-                </div>
-              </div>
-            </div>
-
-            <div class="wp-board-divider"></div>
-
-            <div class="hero-part" style="--i:5">
-              ${nextBlock()}
-              <div class="hero-where-row" style="margin-top:10px">
-                <a class="hero-act time">${ic('ticket')} להזמנה</a>
-                <a class="hero-act loc">${ic('navigate')} ניווט</a>
-              </div>
-            </div>
-
-            <div class="hero-part hero-then" style="--i:6">
-              <span class="hero-lbl" style="margin:0">אחר כך</span>
-              <span class="tm" dir="auto">${FIX.thenTime}</span>
-              <span>${FIX.thenTitle}</span>
-            </div>
-          </div>
-
-          <div class="hero-foot">${dayRail()}</div>
-        </div>`;
-
-      /* ─────────────────────────────────────────────────────────────────
-         HOME AROUND IT. Reproduced to the depth the lift needs and no
-         further: the chrome is the ground the backdrop dims, and light
-         mode's chrome went LIGHT in ADR-0158 §12, so the one composition
-         no ADR has seen is a dimmed light band behind a lifted dark hero.
-         ───────────────────────────────────────────────────────────────── */
+      /* ─── Home behind it, to the depth the backdrop needs ────────────── */
       const chromeBar = () => `
         <header class="header mode-chrome" data-mode="trip">
           <div class="hdr-top">
@@ -9803,729 +9655,331 @@ textarea {
           </div>
         </header>`;
 
-      const homeTail = () => `
-        <div class="sec-title">גישה מהירה</div>
-        <div class="quick" style="grid-template-columns:repeat(3,1fr)">
-          <button class="qa" type="button"><span class="ic">${ic('ticket')}</span><span class="lb">הכרטיס הבא</span><span class="code" dir="auto">${FIX.nextCode}</span></button>
-          <button class="qa" type="button"><span class="ic">${ic('navigate')}</span><span class="lb">ניווט לבא</span><span class="sub name">מלון סנטרו</span></button>
-          <button class="qa empty" type="button"><span class="ic">${ic('clipboard')}</span><span class="lb">מסמכים</span><span class="sub">הוסיפו</span></button>
-        </div>`;
-
-      /** One frame: a phone with Home in it, plus the layer the hero lifts into. */
-      /* `liftChar` is the LIFTED hero's character and `char` is the frame's id —
-         separate, because §2 and §5 demonstrate the chosen character (ג) under
-         their own headings and must not be renamed to get it. */
-      const frame = (char, board, exit = 'mirror', liftChar = char) => `
-        <div class="phone" data-char="${char}" data-exit="${exit}" style="width:${W}px;height:${H()}px">
+      /** A frame with a LIFTED hero at rest over a dimmed Home. */
+      const lifted = (heroHtml, h = H()) => `
+        <div class="phone" style="width:${W}px;height:${h}px">
           ${chromeBar()}
-          <div class="fbody">
-            ${board}
-            ${homeTail()}
-          </div>
-          <div class="hero-layer" data-open="0">
+          <div class="fbody">${collapsedBoard(true)}</div>
+          <div class="hero-layer">
             <div class="hero-backdrop"></div>
-            ${liftedHero(liftChar)}
+            ${heroHtml}
           </div>
-          <div class="foldline"></div>
         </div>`;
 
-      /* ═════════════════════════════════════════════════════════════════
-         THE LIFT ITSELF.
-
-         FLIP off a MEASURED box, in four steps, and step 2 is the one this
-         repo has got wrong three times (`frontend/CLAUDE.md`: ADR-0142's
-         `--birth-card-top: 118px`, ADR-0143's `58px`, the trip handoff):
-
-           1. read the collapsed board's rect
-           2. MEASURE the lifted hero's natural height at the target width,
-              then bound it to the room available — never a constant
-           3. paint the lifted hero at the collapsed rect, hide the inline
-              board with `visibility` so Home keeps its space
-           4. next frame, write the target box and let CSS tween it
-
-         The one thing a mockup cannot stand in for is `position: fixed`:
-         here the frame is the viewport, so the layer is absolute. The app's
-         own precedent that this works unwrapped is `.wp-dragghost`.
-         ═════════════════════════════════════════════════════════════════ */
-      const geom = (frameEl) => {
-        const inline = frameEl.querySelector('.wp-board.inline');
-        const lifted = frameEl.querySelector('.hero-lifted');
-        const fr = frameEl.getBoundingClientRect();
-        const br = inline.getBoundingClientRect();
-        const chromeEl = frameEl.querySelector('.header');
-        const chromeBottom = chromeEl.getBoundingClientRect().bottom - fr.top;
-
-        const from = {
-          top: br.top - fr.top,
-          left: br.left - fr.left,
-          w: br.width,
-          h: br.height,
-        };
-
-        const targetLeft = LIFT_INSET;
-        const targetW = fr.width - LIFT_INSET * 2;
-
-        /* THE LID anchors its top edge and leaves the chrome alone. THE RISE and
-           THE SWING travel OVER the chrome to the top of the screen.
-
-           v1 had them stop just under the chrome and the measurement killed it:
-           the board is the FIRST thing on Home, so "under the chrome" is 4px from
-           where it already sits, and B was A with extra steps. There is nowhere
-           to rise to that is not over the chrome — which turns B into a real
-           question rather than a tuning value, because the chrome is where mode
-           identity lives (ADR-0028, and ADR-0158 §12 just gave light mode its own
-           band). A hero that covers it says it is the whole screen's subject. */
-        const restTop = frameEl.dataset.char === 'A' ? from.top : LIFT_INSET;
-
-        /* Step 2 — measure, then bound. */
-        lifted.style.transition = 'none';
-        lifted.style.visibility = 'hidden';
-        lifted.style.top = restTop + 'px';
-        lifted.style.left = targetLeft + 'px';
-        lifted.style.width = targetW + 'px';
-        lifted.style.height = 'auto';
-        lifted.style.transform = 'none';
-        const natural = lifted.offsetHeight;
-        const room = fr.height - restTop - LIFT_BOTTOM_GAP;
-        const targetH = Math.min(natural, room);
-        lifted.style.visibility = '';
-
-        return { from, restTop, targetLeft, targetW, targetH, natural, room, chromeBottom };
-      };
-
-      const lift = (frameEl) => {
-        const inline = frameEl.querySelector('.wp-board.inline');
-        const layer = frameEl.querySelector('.hero-layer');
-        const lifted = frameEl.querySelector('.hero-lifted');
-        const swing = lifted.dataset.char === 'C';
-        if (layer.dataset.open === '1') return;
-
-        /* THE REBUFF. The trigger is DERIVED, not a variant check: a free board
-           and a bare `now` event whose horizon adds nothing get the same answer.
-           `both` on a one-shot class needs the class taken off again, which is
-           what `animationend` is for — a state that only exists during an
-           animation must not outlive it (ADR-0140 §5). */
-        if (inline.dataset.free === '1' || inline.dataset.empty === '1') {
-          inline.classList.remove('is-rebuffing');
-          void inline.offsetWidth;
-          inline.classList.add('is-rebuffing');
-          if (inline.querySelector('.hero-rebuff-say')) {
-            inline.dataset.said = '1';
-            setTimeout(() => delete inline.dataset.said, 1400);
-          }
-          inline.addEventListener(
-            'animationend',
-            () => inline.classList.remove('is-rebuffing'),
-            { once: true },
-          );
-          return;
-        }
-
-        const g = geom(frameEl);
-
-        /* Step 3 — paint at the collapsed box. All three animate the box, so the
-           text is crisp at both ends; C also starts laid back and far, which is
-           the only channel that actually reads as "toward the eyes" on a surface
-           whose width barely changes. */
-        lifted.style.top = g.from.top + 'px';
-        lifted.style.left = g.from.left + 'px';
-        lifted.style.width = g.from.w + 'px';
-        lifted.style.height = g.from.h + 'px';
-        if (swing) {
-          lifted.style.transform = `perspective(900px) rotateX(${SWING_DEG}deg) translateZ(-${SWING_Z}px)`;
-        }
-        lifted.dataset.phase = 'in';
-        lifted.dataset.open = '0';
-        inline.classList.add('is-hidden');
-        /* The LAYER opens here and the hero's own target lands next frame, so the
-           collapsed start box paints for one frame first. Opening both together
-           makes the element visible in the same frame its destination is written,
-           and the flight starts from wherever the browser got to. */
-        layer.dataset.open = '1';
-        void lifted.offsetWidth; // commit the start box before the transition
-        lifted.style.transition = '';
-
-        /* Step 4 — the target box. */
-        requestAnimationFrame(() => {
-          lifted.dataset.open = '1';
-          lifted.style.top = g.restTop + 'px';
-          lifted.style.left = g.targetLeft + 'px';
-          lifted.style.width = g.targetW + 'px';
-          lifted.style.height = g.targetH + 'px';
-          if (swing) lifted.style.transform = 'perspective(900px) rotateX(0deg) translateZ(0px)';
-        });
-      };
-
-      const drop = (frameEl) => {
-        const inline = frameEl.querySelector('.wp-board.inline');
-        const layer = frameEl.querySelector('.hero-layer');
-        const lifted = frameEl.querySelector('.hero-lifted');
-        if (layer.dataset.open !== '1') return;
-        const swing = lifted.dataset.char === 'C';
-        const g = geom(frameEl);
-
-        /* The exit takes `--ease-exit`, never `--ease-arrive` (ADR-0140 §4). */
-        lifted.dataset.phase = 'out';
-        lifted.dataset.open = '0';
-        layer.dataset.open = '0';
-
-        lifted.style.top = g.from.top + 'px';
-        lifted.style.left = g.from.left + 'px';
-        lifted.style.width = g.from.w + 'px';
-        lifted.style.height = g.from.h + 'px';
-        if (swing) {
-          lifted.style.transform = `perspective(900px) rotateX(${SWING_DEG}deg) translateZ(-${SWING_Z}px)`;
-        }
-
-        /* The inline board comes back only when the flight is over — reading the
-           duration from the token rather than a literal, which is what
-           `motionDurationMs` does in the app and why it answers 0 under reduced
-           motion (ADR-0140 §5). */
-        const ms = readDur(frameEl.dataset.exit);
-        setTimeout(() => {
-          inline.classList.remove('is-hidden');
-          /* The landing beat, on the board that came back. Same one-shot
-             discipline as the rebuff: the class comes off at `animationend`, so a
-             state that only exists during an animation cannot outlive it. */
-          if (frameEl.dataset.exit === 'settle') {
-            inline.classList.remove('is-landing');
-            void inline.offsetWidth;
-            inline.classList.add('is-landing');
-            inline.addEventListener(
-              'animationend',
-              () => inline.classList.remove('is-landing'),
-              { once: true },
-            );
-          }
-        }, ms);
-      };
-
-      /** The app's `motionDurationMs`, in one line: read the token, and answer 0
-       *  when motion is reduced. Never a literal in a timer. `exit` names which
-       *  of §2's three characters is timing this flight. */
-      const readDur = (exit) => {
-        if (document.querySelector('.wrap').dataset.rm === '1') return 0;
-        const name =
-          exit === 'drop' || exit === 'settle'
-            ? '--t-quick'
-            : DUR === 'base'
-              ? '--t-base'
-              : '--t-deliberate';
-        return parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
-      };
+      /** A frame with no hero — just Home, for §4's collapsed comparison. */
+      const plain = (boardHtml, h) => `
+        <div class="phone" style="width:${W}px;height:${h}px">
+          ${chromeBar()}
+          <div class="fbody">${boardHtml}</div>
+        </div>`;
 
       /* ─────────────────────────────────────────────────────────────────
          RENDER
          ───────────────────────────────────────────────────────────────── */
-      const CHARS = [
-        {
-          k: 'A',
-          name: 'א · הפתיחה',
-          sub: 'הקצה העליון לא זז. הקופסה גדלה למטה והחוצה מעבר לשולי הדף. הטקסט חד מקצה לקצה.',
-        },
-        {
-          k: 'B',
-          name: 'ב · ההרמה',
-          sub: 'הקופסה גם נוסעת למעלה, מעל הכרום, עד ראש המסך. ההירו הוא כל המסך, וזהות המצב מוסתרת.',
-        },
-        {
-          k: 'C',
-          name: 'ג · ההטיה · נבחרה',
-          sub: 'אותו יעד כמו ב׳, ובנוסף מתיישר אל המסתכל: מתחיל שכוב אחורה ורחוק, וקם. רך רק תוך כדי.',
-        },
-      ];
-
       const render = () => {
-        const wrap = document.getElementById('frames');
-        wrap.innerHTML = `
+        document.getElementById('frames').innerHTML = `
           <section class="case">
-            <h2>§1 · שלוש דמויות להרמה · נקישה על הלוח בכל מסגרת</h2>
+            <h2>§1 · שלושת המצבים שמתרוממים · והרביעי שלא</h2>
             <p class="note">
-              אותו אופק בשלושתן, אותו לוח מכובה, אותו משך. מה שמשתנה הוא <b>מה נוסע</b>: א׳ עוגנת
-              בקצה העליון ומשאירה את הכרום, ב׳ עולה מעליו עד ראש המסך, וג׳ מוסיפה לב׳ את ההתיישרות
-              אל המסתכל. שלושתן מנפישות את הקופסה, ולכן הטקסט חד בשני הקצוות; בג׳ הוא רך רק כל עוד
-              הזווית לא 0. לחצו על <b>הרימו את שלושתן</b> למעלה כדי להרגיש את ההבדל באותו רגע.
-              <b>ג׳ נבחרה</b> (החלטת הבעלים, סשן 210), ומכאן §2 ו-§5 מדגימות אותה. שתי האחרות
-              נשארות כאן כרשומה של מה שנשקל, לא כהצעות פתוחות.
-            </p>
-            <div class="pair">
-              ${CHARS.map(
-                (c) => `
-                <div class="col" data-col="${c.k}">
-                  <span class="tag plain">${c.name}</span>
-                  <span class="sub">${c.sub}</span>
-                  ${frame(c.k, collapsedBoard())}
-                  <button type="button" class="replay" data-replay="${c.k}">הרימו · והחזירו</button>
-                </div>`,
-              ).join('')}
-            </div>
-          </section>
-
-          <section class="case">
-            <h2>§2 · החזרה למקום · שלוש יציאות ל<b>ההטיה</b>, שנבחרה</h2>
-            <p class="note">
-              <code>--ease-arrive</code> היא ההאטה היחידה באפליקציה שחורגת מעל היעד, ו-ADR-0140 §4
-              מגדיר אותה ל<b>כניסות של עצמים אמיתיים בלבד, לעולם לא ליציאה</b>. עצם שחורג מעל היעד
-              בדרך <b>למטה</b> נשמע כמו הופל, לא כמו הוחזר. אז היציאה לוקחת
-              <code>--ease-exit</code>, שממילא <b>מאיצה אל הסוף שלה</b>, וזאת בדיוק העקומה של משהו
-              שמונח. מה שנשאר לבחור הוא מה שהתבקש בסשן הזה: <b>האם יש רגע של חזרה למקום</b>. שלוש
-              תשובות, וכולן על ההטיה. אחרי שהטיסה נגמרת הלוח הפנימי חוזר להיראות; עד אז הוא שומר את
-              המקום שלו עם <code>visibility</code>, כך שדף הבית לא נע מתחת לאצבע.
-            </p>
-            <div class="pair">
-              <div class="col" data-col="X1">
-                <span class="tag plain">א · מראה</span>
-                <span class="sub">הכניסה במהופך, באותו משך. שוכב אחורה חזרה ומצטמק אל הקופסה הקטנה.</span>
-                ${frame('X1', collapsedBoard(), 'mirror', 'C')}
-                <button type="button" class="replay" data-cycle="X1">הרימו · המתינו · החזירו</button>
-              </div>
-              <div class="col" data-col="X2">
-                <span class="tag plain">ב · נפילה</span>
-                <span class="sub">אותה דרך ב-140ms. סגירה לא אמורה להשהות אותך, ויציאה מהירה מכניסה היא המקובלת.</span>
-                ${frame('X2', collapsedBoard(), 'drop', 'C')}
-                <button type="button" class="replay" data-cycle="X2">הרימו · המתינו · החזירו</button>
-              </div>
-              <div class="col" data-col="X3">
-                <span class="tag after">ג · הנחה · מומלצת</span>
-                <span class="sub">הנפילה, ועוד פעימת נחיתה אחת על הלוח שחוזר: 2.5% על ציר אחד, ‎linear. הוא נוגע.</span>
-                ${frame('X3', collapsedBoard(), 'settle', 'C')}
-                <button type="button" class="replay" data-cycle="X3">הרימו · המתינו · החזירו</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="case">
-            <h2>§3 · אין מה לפתוח · והמקרה הזה הוא לא מצב, הוא אופק ריק</h2>
-            <p class="note">
-              נקישה חייבת להיענות. שתי מועמדות לתשובה, ומקרה שלישי שמראה למה הטריגר חייב להיות
-              <b>נגזר</b>: §3ג הוא לוח <code>now</code> תקין לגמרי, עם אירוע שאין לו פתק, אין לו
-              מקום, אין לו קוד ואין איתו שום דבר במקביל. אין לו מה לפתוח בדיוק כמו ללוח הפנוי, ובדיקה
-              לפי <code>variant</code> הייתה מפספסת אותו. הריאקציה שאולה מ<code>.is-nudging</code>
-              של הטפסים בשלוש תכונות (זריקה אחת, <code>linear</code>, סימטרית) ובאף אחת מהמחוות שלה:
-              רעידה לצדדים אומרת "עשית משהו לא נכון", וכאן לא קרה שום דבר לא נכון. ולכן גם בלי
-              <code>--miss</code> ובלי אף גוון.
-            </p>
-            <div class="pair">
-              <div class="col" data-col="R1">
-                <span class="tag after">§3א · הריאקציה לבד · נבחרה</span>
-                <span class="sub">מתרומם 7px, נעצר לרגע, חוזר. לא אומר כלום.</span>
-                ${frame('R1', freeBoard(false))}
-                <button type="button" class="replay" data-replay="R1">נקישה</button>
-              </div>
-              <div class="col" data-col="R2">
-                <span class="tag before">§3ב · אומרת פעם אחת · נדחתה</span>
-                <span class="sub">אותה תנועה, ושורה אחת שנחשפת ונעלמת. נדחתה: טקסט שמהבהב על המשטח הרם ביותר נקרא כנזיפה.</span>
-                ${frame('R2', freeBoard(true))}
-                <button type="button" class="replay" data-replay="R2">נקישה</button>
-              </div>
-              <div class="col" data-col="R3">
-                <span class="tag plain">§3ג · לוח תקין, אופק ריק</span>
-                <span class="sub">אירוע עכשיו בלי פתק, בלי מקום, בלי קוד ובלי מקביל. אותה תשובה.</span>
-                ${frame('R3', collapsedBoard({ empty: true }))}
-                <button type="button" class="replay" data-replay="R3">נקישה</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="case">
-            <h2>§4 · פקד ההסדרה על רקע כהה · המחיר שאף ADR לא ראה</h2>
-            <p class="note">
-              הפקד מגיע להירו לפי ADR-0139: מאחז רביעי מוסיף <b>צפיפות</b>, והמילים, הסימנים
-              והגוונים אינם שלו לבחור. אבל <code>.wp-settle-btn</code> הוא
-              <code>background: var(--card)</code> עם <code>color: var(--ink)</code>, כלומר נבנה
-              לנייר. על הלוח זה שבב בהיר במצב בהיר, ושבב שנעלם במצב כהה. זה בדיוק
-              <b>ADR-0158 §15</b> ("משטח <b>הפוך</b> הוא הגבול") שמגיע אל משטח חדש. הצד הימני הוא
-              הצפיפות המוצעת, ובלי להמציא כלום: ללוח כבר יש מתכון לשבב בגוון סמנטי על כהה, והוא
-              מילוי בשקיפות נמוכה עם דיו מובהר (<code>.wp-board-countdown</code>,
-              <code>.code</code>, <code>.tlabel</code>). החליפו ערכת נושא למעלה ותראו את שתיהן.
+              <b>עכשיו</b> הוא המקרה הראשי. <b>עכשיו · במקביל</b> הוא הצפוף ביותר מעצם הגדרתו:
+              ADR-0041 §6 נותן לו מצב נפרד בדיוק כי <b>אין ראשי</b>, ולכן להרחיב שורה אחת ולא את
+              האחרות היה מייצר את הראשי שהמצב קיים כדי להכחיש - כל שווה נושא אותו עומק.
+              <b>בטיסה</b> הוא כנראה המקרה הרווחי ביותר, והוא היחיד שמשמיט שני חלקים בכוונה:
+              <b>פקדי ההסדרה</b> (להציע "דילגנו" על טיסה שאתם יושבים בתוכה זה לא שאלת צפיפות אלא
+              שאלת שטות - הטיסה מסדירה את עצמה בנחיתה) ו<b>פס היום</b> (ADR-0059 §2: בטיסה,
+              ההתקדמות של הטיסה היא הפס). <b>פנוי</b> לא מתרומם, והנימוק הוא לא שהוא ריק אלא
+              שהתשובה קיימת שתי אצבעות מתחתיו: <code>GlanceCard</code> הוא משטח "מה אפשר לעשות"
+              של דף הבית, והירו שהיה מתרומם אל המדף היה מתחרה במשטח שנשלח. הנקישה עליו נענית
+              בריאקציה לבד, בלי טקסט (הכרעת הבעלים, סשן 210), ולכן הלוח כאן מצויר בדיוק כמו שהוא
+              נשלח היום.
             </p>
             <div class="pair">
               <div class="col">
-                <span class="tag before">כמו שנשלח · prompt</span>
-                <span class="sub">שני שבבים על נייר, על משטח שאינו נייר.</span>
-                <div class="phone" style="width:${W}px;height:190px">
-                  <div class="fbody">
-                    <div class="wp-board">
-                      ${boardTop()}
-                      ${nowBlock()}
-                      <div style="padding-top:13px">
-                        <span class="wp-settle prompt">
-                          <span class="wp-settle-ask">הייתם שם?</span>
-                          <button type="button" class="wp-settle-btn done">${ic('check')}<span class="wp-settle-word">היינו</span></button>
-                          <button type="button" class="wp-settle-btn skip">${ic('skip')}<span class="wp-settle-word">דילגנו</span></button>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <span class="tag plain">עכשיו</span>
+                <span class="sub">עומק על החי: איפה, פתק, הסדרה. ואז ועוד עכשיו, הבא בתור, אחר כך.</span>
+                ${lifted(heroNow('full'))}
               </div>
               <div class="col">
-                <span class="tag after">מוצע · board</span>
-                <span class="sub">אותן מילים, אותם סימנים, אותם גוונים. רק הרקע הוא של הלוח.</span>
-                <div class="phone" style="width:${W}px;height:190px">
-                  <div class="fbody">
-                    <div class="wp-board">
-                      ${boardTop()}
-                      ${nowBlock()}
-                      <div style="padding-top:13px">
-                        <span class="wp-settle board">
-                          <button type="button" class="wp-settle-btn done">${ic('check')}<span class="wp-settle-word">היינו</span></button>
-                          <button type="button" class="wp-settle-btn skip">${ic('skip')}<span class="wp-settle-word">דילגנו</span></button>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <span class="tag plain">עכשיו · במקביל · שני שווים</span>
+                <span class="sub">כל שווה עם אותו עומק, מופרד בקו שיער ולא בכרטיס. כרטיס בתוך המשטח הרם היה לוח שני.</span>
+                ${lifted(heroSplit(2))}
+              </div>
+              <div class="col">
+                <span class="tag plain">בטיסה</span>
+                <span class="sub">ההזמנה, המושב, הפרש השעות בנחיתה, ומה ראשון על הקרקע. בלי הסדרה ובלי פס יום.</span>
+                ${lifted(heroTransit())}
+              </div>
+              <div class="col">
+                <span class="tag before">פנוי · לא מתרומם</span>
+                <span class="sub">נקישה מקבלת את הריאקציה שהוכרעה בקובץ התנועה: התנועה לבד, בלי טקסט. הלוח לא משתנה בכלל.</span>
+                ${plain(freeBoard(), 420)}
               </div>
             </div>
           </section>
 
           <section class="case">
-            <h2>§5 · מוגבל תנועה · המצב המורם חייב להיות נכון גם בלי אף אנימציה</h2>
+            <h2>§2 · דרגות עומס · כי לרוב האירועים אין פתק</h2>
             <p class="note">
-              ADR-0140 §5 קובע שמוגבל תנועה הוא <b>מקרה של נכונות</b>, ו<code>motionDurationMs</code>
-              מחזיר 0 גם תחת ההגדרה וגם כשהטוקן לא נקרא. לכן הבדיקה כאן היא לא "האם ההרמה מתקצרת"
-              אלא "האם המצב המורם עומד לבד": ההיערמות של החלקים כבויה לגמרי (אחרת תוכן היה נשאר
-              ב-<code>opacity: 0</code>), הריאקציה לא רצה, והלוח פשוט <b>נמצא</b>. לחצו
-              <b>מוגבל תנועה · דלוק</b> למעלה ואז הרימו.
+              זאת הבדיקה שיכולה להפיל את הרעיון. אם ההירו שווה הרמה רק כשיש פתק ארוך ושלושה דברים
+              במקביל, הוא לא שווה הרמה - כי המקרה השכיח הוא <b>אירוע עם מקום ובלי פתק</b>. ארבע
+              דרגות: <b>דל</b> (בלי מקום ובלי פתק, כלומר רק הסדרה ואחר כך), <b>שכיח</b> (מקום, בלי
+              פתק), <b>מלא</b> (מקום, פתק בשורה, אחד במקביל) ו<b>כבד</b> (פתק בן שלוש שורות, שלושה
+              במקביל). המספרים בטבלה למטה.
             </p>
             <div class="pair">
-              <div class="col" data-col="RM">
-                <span class="tag plain">המצב המורם, סטטי</span>
-                <span class="sub">אותה מסגרת. עם מוגבל תנועה דלוק אין כניסה, ויש רק מצב.</span>
-                ${frame('RM', collapsedBoard(), 'settle', 'C')}
-                <button type="button" class="replay" data-replay="RM">הרימו · והחזירו</button>
+              <div class="col">
+                <span class="tag plain">דל</span>
+                <span class="sub">בלי מקום, בלי פתק. מה שנשאר הוא הסדרה, המשך של הבא בתור, ואחר כך.</span>
+                ${lifted(heroNow('thin'), 560)}
+              </div>
+              <div class="col">
+                <span class="tag after">שכיח</span>
+                <span class="sub">מקום בלי פתק. זה המקרה שצריך להצדיק את ההרמה, לא המלא.</span>
+                ${lifted(heroNow('typical'), 560)}
+              </div>
+              <div class="col">
+                <span class="tag plain">כבד</span>
+                <span class="sub">פתק בן שלוש שורות, שלושה במקביל. כאן הגולל נכנס לתמונה.</span>
+                ${lifted(heroNow('heavy'))}
+              </div>
+              <div class="col">
+                <span class="tag plain">במקביל · שלושה שווים</span>
+                <span class="sub">המקרה הצפוף ביותר בכל הקובץ. שלושה שווים × ארבעה חלקים.</span>
+                ${lifted(heroSplit(3))}
+              </div>
+            </div>
+          </section>
+
+          <section class="case">
+            <h2>§4 · הלוח המכובה משתנה גם הוא · וזה כפוי, לא ניקיון</h2>
+            <p class="note">
+              תת-שאלה 4 בתמצית ניחשה ששני המתרחבים "כנראה הופכים לאחד". זה חזק מזה: אם כל הלוח הוא
+              מטרת הנקישה הוא <code>&lt;button&gt;</code>, ו<code>.wp-board-also-toggle</code> הוא
+              <code>&lt;button&gt;</code> בתוכו. תוכן אינטראקטיבי מקונן הוא לא תקין ולא ניתן
+              ללחיצה, ולכן <b>המרחיב לא יכול לשרוד באף צורה</b>. המספר עדיין חייב להיות
+              <b>קריא</b> בלי נקישה (צריך לדעת שיש עוד שני דברים עכשיו), ולכן הוא הופך
+              ל<b>קריאה</b>: אותה נקודה ואותן מילים, בלי השברון ובלי מטרת הלחיצה, והשורות עצמן
+              עברו לאופק. זה הפקד <b>היחיד</b> שהיה ללוח, כך שאחרי זה לא נשאר בו אף ילד
+              אינטראקטיבי.
+            </p>
+            <div class="pair">
+              <div class="col">
+                <span class="tag before">כמו שנשלח היום · הלוח אינו כפתור</span>
+                <span class="sub">המרחיב עובד היום, וזה תקין: הלוח הוא <code>div</code>, אז הכפתור היחיד בו הוא הוא.</span>
+                ${plain(collapsedBoard(false, false), 400)}
+              </div>
+              <div class="col">
+                <span class="tag after">מוצע · קריאה</span>
+                <span class="sub">אותה נקודה, אותן מילים, בלי שברון. הלוח כולו הוא הנקישה.</span>
+                ${plain(collapsedBoard(true), 400)}
               </div>
             </div>
           </section>`;
 
-        wire();
         measure();
       };
 
       /* ─────────────────────────────────────────────────────────────────
-         WIRING. Every dismissal runs ONE function, which is ADR-0103's rule
-         and the reason the `✕` and the backdrop are bound together here
-         rather than to two handlers that drift.
-         ───────────────────────────────────────────────────────────────── */
-      const wire = () => {
-        document.querySelectorAll('.phone').forEach((f) => {
-          const board = f.querySelector('.wp-board.inline');
-          if (!board) return;
-
-          board.addEventListener('click', () => lift(f));
-          board.addEventListener('pointerdown', () => board.classList.add('is-dipping'));
-          ['pointerup', 'pointercancel', 'pointerleave'].forEach((e) =>
-            board.addEventListener(e, () => board.classList.remove('is-dipping')),
-          );
-
-          const dismiss = () => drop(f);
-          f.querySelector('.hero-backdrop').addEventListener('click', dismiss);
-          f.querySelector('.hero-x').addEventListener('click', dismiss);
-        });
-
-        document.querySelectorAll('[data-replay]').forEach((b) => {
-          b.addEventListener('click', () => {
-            const f = document.querySelector(`.phone[data-char='${b.dataset.replay}']`);
-            const layer = f.querySelector('.hero-layer');
-            layer.dataset.open === '1' ? drop(f) : lift(f);
-          });
-        });
-        document.querySelectorAll('[data-cycle]').forEach((b) => {
-          b.addEventListener('click', () => {
-            const f = document.querySelector(`.phone[data-char='${b.dataset.cycle}']`);
-            lift(f);
-            setTimeout(() => drop(f), readDur() + 900);
-          });
-        });
-      };
-
-      document.getElementById('playall').addEventListener('click', () => {
-        CHARS.forEach((c) => lift(document.querySelector(`.phone[data-char='${c.k}']`)));
-      });
-      document.getElementById('closeall').addEventListener('click', () => {
-        document.querySelectorAll('.phone').forEach((f) => {
-          if (f.querySelector('.wp-board.inline')) drop(f);
-        });
-      });
-
-      /* Escape, and it is here for the same reason the app forbids a private
-         Escape handler per surface: ONE listener, the same dismissal
-         (ADR-0103's 2026-08-01 amendment — Escape reaches back through the
-         stack, never through a local `onClose`). */
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        document.querySelectorAll('.phone').forEach((f) => {
-          if (f.querySelector('.wp-board.inline')) drop(f);
-        });
-      });
-
-      /* ─────────────────────────────────────────────────────────────────
-         THE MEASUREMENT. Read off the live DOM, at the selected width.
+         THE MEASUREMENT. Each variant is built into an off-screen probe at
+         the real width and its natural height read from the DOM — the same
+         discipline as the lift file: measure the content, never state a
+         landing size.
          ───────────────────────────────────────────────────────────────── */
       const measure = () => {
-        const f = document.querySelector(".phone[data-char='A']");
-        const fB = document.querySelector(".phone[data-char='B']");
-        const gA = geom(f);
-        const gB = geom(fB);
-        const s = gA.from.w / gA.targetW;
-        const cs = getComputedStyle(document.documentElement);
-        const tok = (n) => cs.getPropertyValue(n).trim();
+        const probe = document.createElement('div');
+        probe.style.cssText = `position:fixed;left:-9999px;top:0;width:${W - LIFT_INSET * 2}px;background:var(--screen)`;
+        document.body.appendChild(probe);
 
+        const natural = (html) => {
+          // `max-height` is what bounds a lifted hero in the frame, so the probe
+          // has to have it removed or every measurement reads back as the cap.
+          probe.innerHTML = html;
+          const el = probe.querySelector('.hero-lifted');
+          el.style.position = 'static';
+          el.style.maxHeight = 'none';
+          return el.offsetHeight;
+        };
+
+        const R = room();
         const rows = [
-          [
-            'הלוח המכובה',
-            `${gA.from.w.toFixed(0)}×${gA.from.h.toFixed(0)}px`,
-            `בתוך שולי דף הבית · הקצה שלו הוא ${gA.from.left.toFixed(0)}px מקצה המסך`,
-          ],
-          [
-            'האופק · גובה טבעי',
-            `${gA.natural}px`,
-            `הגובה שהתוכן מבקש ברוחב ${gA.targetW.toFixed(0)}px · נמדד, לא קבוע`,
-          ],
-          [
-            'החדר שיש לו · א׳ מול ב׳',
-            `${gA.room.toFixed(0)}px · ${gB.room.toFixed(0)}px`,
-            `מתוך ${H()}px מסך · א׳ מתחיל מתחת לכרום, ב׳ מראש המסך, ולשניהם מרווח תחתון של ${LIFT_BOTTOM_GAP}px`,
-          ],
-          /* Per character, because the answer differs and that is a finding: at
-             360×640 the anchored lid needs a scroller and the risen hero does
-             not, purely because it does not spend the chrome's height. */
-          [
-            'האם צריך לגלול · א׳',
-            gA.natural > gA.room ? `כן · חסרים ${(gA.natural - gA.room).toFixed(0)}px` : 'לא',
-            gA.natural > gA.room
-              ? 'ההירו הופך לכרטיס חסום: ראש נעוץ, רגל נעוצה, גולל אחד באמצע (ADR-0148 §1)'
-              : 'האופק נכנס שלם · אין גולל, ולכן אין מה לנעוץ',
-          ],
-          [
-            'האם צריך לגלול · ב׳',
-            gB.natural > gB.room ? `כן · חסרים ${(gB.natural - gB.room).toFixed(0)}px` : 'לא',
-            gB.natural > gB.room
-              ? 'גם מעל הכרום זה לא נכנס'
-              : 'ההרמה מעל הכרום קונה בדיוק את הגובה שהופך את הגולל למיותר · טיעון שלישי לב׳',
-          ],
-          [
-            'החוצה מעבר לשוליים',
-            `${(gA.from.left - LIFT_INSET).toFixed(0)}px לכל צד`,
-            'שום משטח אחר באפליקציה לא חורג משולי הדף · זה רמז ההרמה, והוא לא עולה גוון',
-          ],
-          [
-            'תקציב ההרמה · גובה',
-            `×${(gA.targetH / gA.from.h).toFixed(2)}`,
-            `${gA.from.h.toFixed(0)}px ← ${gA.targetH.toFixed(0)}px · כאן נמצאת כל התנועה הנראית`,
-          ],
-          [
-            'תקציב ההרמה · רוחב',
-            `×${(1 / s).toFixed(3)}`,
-            'הלוח כבר כמעט ברוחב מלא, ולכן ל-FLIP לפי רוחב אין כמעט סקייל · זה מה שפסל "התקרבות" כהגדלה',
-          ],
-          [
-            'ב · דרך שהלוח עושה',
-            `${(gA.from.top - gB.restTop).toFixed(0)}px למעלה`,
-            `א׳ נשאר ב-${gA.from.top.toFixed(0)}px ומשאיר את הכרום · ב׳ עולה מעליו אל ${gB.restTop}px מראש המסך`,
-          ],
-          [
-            'ב · כמה מהכרום מכוסה',
-            `${gA.chromeBottom.toFixed(0)}px`,
-            'כל הפס שנושא את זהות המצב (ADR-0028) · זאת ההכרעה של ב׳ ולא כיוון של תנועה',
-          ],
-          [
-            'ג · ההטיה',
-            `${SWING_DEG}° · ${SWING_Z}px`,
-            'הערוץ היחיד שנקרא כ"אל העיניים" על משטח שרוחבו לא משתנה · טקסט רך רק כל עוד הזווית לא 0',
-          ],
-          [
-            'המשכים · מהטוקנים',
-            `${tok('--t-base')} · ${tok('--t-deliberate')}`,
-            `--t-cinematic (${tok('--t-cinematic')}) שמור לרגע אחד, מצב תכנון→טיול · לא זמין כאן`,
-          ],
-          [
-            'ההאטות',
-            'arrive · exit',
-            `${tok('--ease-arrive')} בכניסה · ${tok('--ease-exit')} ביציאה`,
-          ],
+          ['עכשיו · דל', natural(heroNow('thin'))],
+          ['עכשיו · שכיח', natural(heroNow('typical'))],
+          ['עכשיו · מלא', natural(heroNow('full'))],
+          ['עכשיו · כבד', natural(heroNow('heavy'))],
+          ['במקביל · שני שווים', natural(heroSplit(2))],
+          ['במקביל · שלושה שווים', natural(heroSplit(3))],
+          ['בטיסה', natural(heroTransit())],
         ];
-        document.getElementById('mbody').innerHTML = rows
-          .map(
-            (r) =>
-              `<tr><td>${r[0]}</td><td class="n" dir="auto">${r[1]}</td><td style="color:var(--muted)">${r[2]}</td></tr>`,
-          )
+
+        // What `אחר כך` actually costs, measured both ways rather than guessed.
+        const wasThen = THEN;
+        THEN = 1;
+        const withThen = natural(heroNow('full'));
+        THEN = 0;
+        const withoutThen = natural(heroNow('full'));
+        THEN = wasThen;
+
+        probe.remove();
+
+        const body = rows
+          .map(([name, h]) => {
+            const fits = h <= R;
+            const share = Math.round((Math.min(h, R) / H()) * 100);
+            return `<tr><td>${name}</td><td class="n">${h}px</td><td class="n">${share}%</td><td class="n ${fits ? 'good' : 'bad'}">${
+              fits ? 'כן' : `לא · ${h - R}px`
+            }</td><td style="color:var(--muted)">${
+              fits
+                ? 'נכנס שלם · אין גולל'
+                : 'ראש נעוץ, רגל נעוצה, גולל אחד באמצע · מה שיורד מתחת לקו הוא אחר כך ואז הבא בתור'
+            }</td></tr>`;
+          })
           .join('');
+
+        /* §4's claim, PROVED rather than drawn. The invalid nesting is parsed in a
+           detached container so it cannot restructure the page, and what the
+           browser actually did to it is read back. v1 drew it inline and Chrome
+           closed the board at the nested button, dropping half the board's
+           content onto the page in dark ink — informative, and it also made the
+           section unreadable. So it is measured here instead. */
+        const parserProbe = () => {
+          const host = document.createElement('div');
+          host.innerHTML = `<button class="wp-board"><div class="a">x</div><button class="wp-board-also-toggle">y</button><div class="wp-board-divider"></div><div class="z">z</div></button>`;
+          const board = host.querySelector('button.wp-board');
+          const toggle = host.querySelector('.wp-board-also-toggle');
+          const after = host.querySelector('.z');
+          return {
+            evicted: !board.contains(toggle),
+            lostAfter: !board.contains(after),
+            childrenLeft: board.children.length,
+          };
+        };
+        const pp = parserProbe();
+
+        const extra = `
+          <tr><td><b>כפתור בתוך כפתור</b> · מה הפרסר עושה</td>
+            <td class="n ${pp.evicted ? 'bad' : 'good'}">${pp.evicted ? 'מפנה החוצה' : 'משאיר'}</td>
+            <td class="n">—</td>
+            <td class="n ${pp.lostAfter ? 'bad' : 'good'}">${pp.lostAfter ? 'וגם את מה שאחריו' : 'שומר'}</td>
+            <td style="color:var(--muted)">נבדק על עץ מנותק · מהלוח נשארו ${pp.childrenLeft} ילדים מתוך 4, כלומר הלוח נסגר במרחיב והשאר נחת מחוצה לו · זה מה שהופך את §4 מניקיון לתנאי</td></tr>
+          <tr><td>החדר שיש · הדמות שנבחרה</td><td class="n">${R}px</td><td class="n">${Math.round((R / H()) * 100)}%</td><td class="n">—</td>
+            <td style="color:var(--muted)">מתוך ${H()}px מסך · מעל הכרום, כלומר ה-72px שלו נחסכים</td></tr>
+          <tr><td>המחיר של <b>אחר כך</b></td><td class="n">${withThen - withoutThen}px</td><td class="n">—</td><td class="n">—</td>
+            <td style="color:var(--muted)">שורה אחת · ${(((withThen - withoutThen) / withThen) * 100).toFixed(1)}% מהאופק המלא · §3 בהערות</td></tr>`;
+
+        document.getElementById('mbody').innerHTML = body + extra;
       };
 
-      /* The theme switch is the app's own mechanism, not a mockup invention:
-         `data-theme` on <html> is exactly what `lib/theme.ts` writes and what
-         `tokens.css`'s dark block keys off (ADR-0158 §8). So every frame is the
-         shipped remap and nothing here re-declares a colour. */
       document
-        .querySelectorAll(
-          '.controls button[data-w], .controls button[data-theme], .controls button[data-t], .controls button[data-dip], .controls button[data-rm], .controls button[data-inset]',
-        )
+        .querySelectorAll('.controls button[data-w], .controls button[data-theme], .controls button[data-then]')
         .forEach((b) => {
           b.addEventListener('click', () => {
-            const group = b.dataset.w
-              ? 'w'
-              : b.dataset.theme
-                ? 'theme'
-                : b.dataset.t
-                  ? 't'
-                  : b.dataset.dip
-                    ? 'dip'
-                    : b.dataset.inset != null
-                      ? 'inset'
-                      : 'rm';
+            const group = b.dataset.w ? 'w' : b.dataset.theme ? 'theme' : 'then';
             document
               .querySelectorAll(`.controls button[data-${group}]`)
               .forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
-            const wrap = document.querySelector('.wrap');
-            if (group === 'w') {
-              W = +b.dataset.w;
-              render();
-            } else if (group === 'theme') {
+            if (group === 'theme') {
               document.documentElement.dataset.theme = b.dataset.theme;
-            } else if (group === 't') {
-              DUR = b.dataset.t;
-              /* One variable carries the lift's duration everywhere, so the
-                 toggle cannot leave one channel on the old value — the shape of
-                 bug ADR-0140 §7 records from the other side. */
-              document.documentElement.style.setProperty(
-                '--t-lift',
-                DUR === 'base' ? 'var(--t-base)' : 'var(--t-deliberate)',
-              );
-            } else if (group === 'dip') {
-              wrap.dataset.dip = b.dataset.dip;
-            } else if (group === 'inset') {
-              LIFT_INSET = +b.dataset.inset;
-              render();
-            } else {
-              wrap.dataset.rm = b.dataset.rm;
-              document.documentElement.style.setProperty(
-                '--t-lift',
-                b.dataset.rm === '1' ? '0ms' : DUR === 'base' ? 'var(--t-base)' : 'var(--t-deliberate)',
-              );
+              return;
             }
+            if (group === 'w') W = +b.dataset.w;
+            else THEN = +b.dataset.then;
+            render();
           });
         });
 
-      document.documentElement.style.setProperty('--t-lift', 'var(--t-base)');
-      document.querySelector('.wrap').dataset.dip = '0';
-      document.querySelector('.wrap').dataset.rm = '0';
       render();
-      window.addEventListener('resize', measure);
 
       /* ─────────────────────────────────────────────────────────────────
-         THE NOTES — what is chosen, what is rejected, what is still open.
+         THE NOTES
          ───────────────────────────────────────────────────────────────── */
       document.getElementById('notes').innerHTML = `
         <h2>הערות · מה נבחר, מה נדחה, ומה נשאר פתוח</h2>
 
         <h3>מה נבחר</h3>
         <ul>
-          <li><b>מילה שלישית לשאלה שהתמצית מציגה כבינארית.</b> לא הרחבה ולא שכבה, אלא
-            <b>הרמה</b>: עצם אחד שמקבל גובה. ההרחבה נדחית כי היא מזיזה את דף הבית מתחת לאצבע,
-            והשכבה כפי שהתמצית ציירה אותה נדחית כי היא מרנדרת את אותן עובדות פעמיים ומאבדת את
-            המבט המהיר, שהוא כל הסיבה שהלוח קיים.</li>
-          <li><b>וזאת עדיין שכבת חזרה.</b> ADR-0103 ו-ADR-0090 לא משאירים בחירה: אם אפשר לסגור
-            משטח, הסגירה נמצאת במחסנית החזרה, וה-<code>✕</code>, הרקע, Escape והמחווה של אנדרואיד
-            מריצים <b>פונקציה אחת</b>. מה שנדחה כאן הוא הדקדוק של הגיליון, לא החוזה של החזרה.
-            החלופה הייתה חיה: <code>SnapSheet</code> הוא פאנל שלא נרשם לכלום, ולפי המודל שלו חזרה
-            מערכתית הייתה יוצאת מהטאב עם ההירו למעלה.</li>
-          <li><b>המכניזם קיים.</b> <code>.wp-dragghost</code> הוא שיבוט שממוקם מ-JS לפי הקופסה
-            הנמדדת של המקור, עם <code>position: fixed</code> וצל, וההערה שלו קובעת שאף אב לא יוצר
-            לו בלוק מכיל. ההרמה היא קריאה שנייה של מכניזם שנשלח בסשן 113, לא מכניזם חדש.</li>
-          <li><b>האופק, כתשובה לתת-שאלה 1.</b> הלוח המכובה מראה שתי <b>נקודות</b>; המורם מראה
-            <b>אופק עם עומק על כל נקודה</b>. שלושת הדברים שהמכובה לא יכול לשאת מבחינה מבנית הם איפה
-            זה, מה הקבוצה כתבה על זה, והאם זה קרה. כל השאר היה סידור מחדש של עובדות שכבר שם, וזה
-            בדיוק מה שהתמצית אוסרת.</li>
-          <li><b>קריאות והעברות והסדרה. בלי עריכות זמן.</b> ולכן ADR-0011 לא נכנס לתמונה בכלל, ולא
-            צריך שומר: הסדרה <b>מתעדת</b> מה קרה, היא לא עורכת התחייבות, ו<code>SettleControl</code>
-            כבר מתייחס לכל אירוע כמו לניתן להסדרה ולא רק לאלה שעברו.</li>
-          <li><b>המרחיב <code>ועוד N עכשיו</code> נעלם, ושני המתרחבים הופכים לאחד.</b> זאת
-            הפשטות שתת-שאלה 4 ביקשה לתבוע: השורות המקבילות נמצאות בתוך המצב המורם, והמספר נשאר
-            במכובה כ<b>קריאה</b> ולא כפקד. אחרי זה הלוח כולו הוא מטרת הנקישה, ואין בו יותר אף
-            כפתור משל עצמו.</li>
-          <li><b>הריאקציה שואלת מהסירוב הקיים ולא ממציאה שני.</b> זריקה אחת,
-            <code>linear</code> כי היסטי הזמן <b>הם</b> התזמון, סימטרית ולכן בלי
-            <code>--dir</code>. ומה שלא נשאל: הציר והגוון.</li>
-          <li><b>הטריגר של הריאקציה נגזר, לא לפי variant.</b> ההירו מתרומם כשיש לו מה להוסיף.
-            §3ג מוכיח למה: לוח <code>now</code> תקין עם אופק ריק הוא אותו מקרה בדיוק, ובדיקה לפי
-            מצב הייתה מפספסת אותו. גם בהתאמה ל-ADR-0018/0027 שהתמצית מונה כלא-נתון-למשא-ומתן.</li>
+          <li><b>האופק, ולא רשימת תוספות.</b> התמצית דורשת שמה שההרחבה מוסיפה יהיה "שווה
+            אינטראקציה, לא סידור מחדש של אותן עובדות". שלושה דברים עומדים בזה מבחינה מבנית:
+            <b>איפה</b> (הלוח מעולם לא נשא מקום - לא שם, לא דרך לסיכה, לא העברה למפה),
+            <b>פתק</b> ו<b>הסדרה</b>. כל השאר שנשקל היה כותרת, סוג, שעת סיום, קוד, ספירה לאחור,
+            הפרש שעות או מקביליות, כלומר דברים שכבר על הלוח.</li>
+          <li><b>איפה לפני פתק.</b> למקום יש כמעט תמיד ערך ולפתק רק לפעמים, והפתק נקרא <b>על</b>
+            המקום ולכן בא אחריו בסדר הטבעי. הטבלה מראה שהסדר בכל מקרה כמעט לא משנה לקו הקיפול,
+            כי בדמות שנבחרה רוב המקרים נכנסים שלמים.</li>
+          <li><b>המקום מגיע לכאן ולא ללוח המכובה</b> - וזה בדיוק מה שההרמה קונה. הטבעת הטורקיז
+            והסיכה על הלוח המכובה נקראו רם מדי ובוטלו (ADR-0121, תיקון 2026-07-28 §4). אותה
+            העברה בדיוק, במצב שביקשתם לפתוח, היא בתקציב.</li>
+          <li><b>בטיסה משמיט את ההסדרה ואת פס היום.</b> הראשון מסיבה של <b>משמעות</b> ולא של
+            מקום, וזאת החלטה פר-מצב הראשונה בקובץ; השני כי ADR-0059 §2 כבר קובע שבטיסה, הטיסה
+            היא הפעילות הנוכחית.</li>
+          <li><b>שווה בפיצול נושא אותו עומק כמו כל שווה אחר</b>, ומופרד בקו שיער ולא בכרטיס.
+            כרטיס בתוך המשטח היחיד שמותר לו להיות רם היה נקרא כלוח שני.</li>
+          <li><b>המרחיב הופך לקריאה, וזה כפוי.</b> ראו §4. חשוב כי זה משנה את הטענה: זאת לא
+            הפשטה שאפשר לדחות לגרסה הבאה, זה תנאי לכך שהלוח יהיה מטרת נקישה בכלל.</li>
+          <li><b>הקופי נקרא מ<code>i18n/he.ts</code> ולא מנוסח מחדש.</b> <code>הבא בתור</code>
+            ולא <code>הבא</code>, <code>פנוי</code> / <code>זמן חופשי</code> ולא משפט. תוקן גם
+            בקובץ התנועה. מוקאפ שמזריק את ה-CSS האמיתי ואז כותב קופי ביד הוא רק חצי מול
+            האפליקציה.</li>
         </ul>
 
         <h3>מה נדחה</h3>
         <ul>
-          <li><span class="rej">נדחה</span> <b><code>--t-cinematic</code>.</b> 600ms הוא בדיוק מה
-            שמשטח החתימה של האפליקציה היה מבקש, וכלל התקציב של ADR-0140 הוא שורה אחת ומוחלטת: רגע
-            קינמטי <b>אחד</b>, מצב תכנון→טיול. שלוש הדמויות מצוירות ב-240ms עם 400ms על הכפתור, כדי
-            שהשאלה תישאל ולא תיענה בעזרת טוקן שמור.</li>
-          <li><span class="rej">נדחה</span> <b>"טיפים וטריקים" בהירו.</b> ADR-0045 עושה את דף הבית
-            נתונים אמיתיים בלבד, בלי מלית לפיצ׳רים שלא נבנו, ו-ADR-0004 קובע שאינטגרציות הן צינורות
-            ולא מסכים. טיפ שהאפליקציה באמת מחזיקה <b>הוא פתק</b>, שנכתב על ידי הקבוצה על העצירה
-            הזאת. אם תימצא בעתיד תוכן עורכי, הוא מקור לפתק, לא אזור בהירו.</li>
+          <li><span class="rej">נדחה</span> <b>עריכות זמן בהירו</b> (הכרעת הבעלים, סשן 210):
+            קריאות, העברות והסדרה בלבד. לכן ADR-0011 לא נכנס לתמונה ואין שומר לכתוב, וה-±30
+            נשאר על <code>EventCard</code> טאב אחד משם.</li>
+          <li><span class="rej">נדחה</span> <b>"טיפים וטריקים"</b>. ADR-0045 עושה את דף הבית
+            נתונים אמיתיים בלבד ו-ADR-0004 קובע שאינטגרציות הן צינורות ולא מסכים. טיפ שהאפליקציה
+            מחזיקה <b>הוא פתק</b>.</li>
+          <li><span class="rej">נדחה</span> <b>פנוי מתרומם אל המדף</b>. <code>GlanceCard</code>
+            כבר שם, שתי אצבעות מתחת.</li>
+          <li><span class="rej">נדחה</span> <b>הרחבה של שווה אחד בפיצול</b>. היא מייצרת ראשי
+            שהמצב מכחיש (ADR-0041 §6).</li>
           <li><span class="rej">נדחה</span> <b>סליל שלישי ליום.</b> <code>אחר כך</code> הוא שורה
-            אחת ולא רשימה. היום הוא טאב, והירו שגדל סליל שלישי התחיל להתחרות בו.</li>
-          <li><span class="rej">נדחה</span> <b><code>--ease-arrive</code> ביציאה</b> (ADR-0140 §4),
-            ו<b>היסט היסטה מתחת להאטה חורגת</b> (§7): כלום כאן לא שם <code>offset</code> מתחת
-            לחריגה, וההיערמות מונפשת ב-<code>--ease-standard</code> עם שני היסטים בלבד.</li>
-          <li><span class="rej">נדחה</span> <b><code>display: none</code> ללוח הפנימי.</b> הוא
-            שומר את המקום שלו עם <code>visibility</code>, אחרת דף הבית נע מתחת לאצבע. זאת הכשלה
-            שההרחבה סובלת ממנה מעצם היותה, וההרמה לא צריכה לרשת אותה.</li>
+            אחת ולא רשימה, וגם עליה יש ויכוח למטה.</li>
         </ul>
 
-        <h3>מה נשאר פתוח · והמלצה לכל אחד</h3>
+        <h3>§3 · <code>אחר כך</code> · הטיעון לשני הכיוונים, וההמלצה</h3>
+        <p>
+          <b>בעד:</b> זאת הנקודה השלישית, ולוח עם שני סלילים לא יכול לשאת אותה בשום צורה - כלומר
+          היא עוברת את המבחן של תת-שאלה 1 בקלות. ובמצב הקרקע שההירו נבנה בשבילו ("מה אני צריך
+          ב-30 הדקות הבאות") השאלה "ומה אחרי זה" נשאלת בפועל, במיוחד כשהבא בתור הוא בעוד עשר דקות.
+          המחיר נמדד בטבלה והוא שורה אחת.
+        </p>
+        <p>
+          <b>נגד, וזאת הטענה החזקה:</b> אין לזה סוף. אם הנקודה השלישית מגיעה, למה לא הרביעית -
+          וברגע שיש שלוש נקודות ההירו התחיל להיות <b>תצוגת היום</b>, שהיא טאב קיים עם ניווט ימים,
+          פערים, שעות ופקדים. הירו שמתחרה בטאב הוא בדיוק סוג הכפילות ש-ADR-0004 קיים כדי למנוע,
+          בניסוח אחר.
+        </p>
+        <p>
+          <b>ההמלצה: להשאיר אותו, בתנאי אחד שנרשם עכשיו ולא מתגלה אחר כך</b> - הוא שורה אחת, בלי
+          מקום, בלי פתק, בלי פקד ובלי דרך להיכנס אליו. ברגע שמישהו מבקש להוסיף לו העברה, זאת הבקשה
+          להפוך את ההירו ליום, והתשובה לה היא הטאב. הכפתור למעלה מסתיר אותו כדי שאפשר יהיה לשפוט את
+          שתי הגרסאות במכשיר.
+        </p>
+
+        <h3>מה נשאר פתוח</h3>
         <ul>
-          <li><b>הדמות · הוכרעה (בעלים, סשן 210): ג׳ · ההטיה.</b> וההכרעה שנסחפה איתה, כי היא
-            נמצאת בתוך ב׳ שג׳ בנויה עליה, היא ש<b>ההירו המורם מכסה את הכרום</b> — 72px, כלומר את כל
-            הפס שנושא את זהות המצב (ADR-0028, ואחרי ש-ADR-0158 §12 נתן למצב בהיר פס משלו). זה מתיישב
-            עם עצמו: המצב המורם הוא מודאלי וקיים בו מצב אחד בלבד, ולכן זהות שאין ממה להבדיל אותה לא
-            נדרשת שם. שני רווחים נלווים שהטבלה מצאה: ההרמה מעל הכרום היא מה שמבטל את הצורך בגולל
-            ב-360×640, וההטיה היא הערוץ היחיד שקורא כ"אל העיניים" על משטח שרוחבו כמעט לא משתנה
-            (×1.045). המחיר, ושווה מבט על מכשיר: זווית על כרטיס בגובה 584px עלולה להיקרא כגימיק, והטקסט
-            רך כל עוד הזווית לא 0. <b>א׳ וב׳ נשארות מצוירות כרשומה של מה שנשקל.</b></li>
-          <li><b>היציאה · שלוש מועמדות, וההמלצה היא ג׳ · הנחה</b> (§2, מבקשת הבעלים: *"אנימציה
-            קטנה של חזרה למצב נורמלי בסגירה"*). <code>--ease-exit</code> ממילא מאיצה אל הסוף שלה,
-            שזאת העקומה של משהו שמונח, ולכן הדרך עצמה כבר נכונה בשלושתן ומה שנבחר הוא רק מה שקורה
-            <b>ברגע הנגיעה</b>. א׳ (מראה) היא הכניסה במהופך באותו משך, וסגירה שלוקחת כמו פתיחה משהה
-            אותך לחינם. ב׳ (נפילה) מקצרת ל-140ms וזאת המקובלת, אבל היא נגמרת בכך ששום דבר לא קורה.
-            ג׳ מוסיפה פעימת נחיתה אחת של 2.5% על ציר אחד, וזה בדיוק מה שהתבקש: העצם <b>נוגע</b>
-            במקום שהטיסה סתם תיעצר. הסיכון נאמר במקום: ריסוק שגדול מספיק כדי להיקרא כריסוק הוא
-            קפיצה, וקפיצה היא מה שאיסור <code>--ease-arrive</code> ביציאות קיים כדי למנוע — ולכן
-            <code>linear</code>, ולכן 2.5% ולא יותר.</li>
-          <li><b>שלוש פעימות חד-פעמיות הן פרימיטיב אחד, לא עותק שלישי</b> (כלל 8, ושווה קו בבקלוג
-            לפני שנכתב העותק הבא). לאפליקציה יש כרגע <code>.is-nudging</code> (טופס מסרב),
-            <code>.is-rebuffing</code> (נקישה בלי מה לפתוח) ו-<code>.is-landing</code> (משטח מורם
-            נוגע). שלושתן: מחלקה חד-פעמית שמוסרת ב-<code>animationend</code>, <code>linear</code> כי
-            היסטי הזמן הם התזמון, סימטריות ולכן בלי <code>--dir</code>, ומשך מטוקן. ההבדל ביניהן הוא
-            הציר והמשמעות, כלומר בדיוק החלק שכן ראוי להיות פר-מקרה. ADR-0139 הוא התקדים: שם שלוש
-            העתקות של אותו פקד התפצלו על ארבעה צירים לפני שמישהו ספר אותן.</li>
-          <li><b>הריאקציה · הוכרעה (בעלים, סשן 210): §3א, התנועה לבד, בלי טקסט.</b> §3ב נדחתה,
-            ולא בגלל שהיא לא עובדת אלא בגלל מה שהיא עולה: שורה שנחשפת ונעלמת על <b>המשטח הרם ביותר
-            באפליקציה</b> נקראת כנזיפה, ולוח שמעיר לך על נקישה הוא לא הלוח הזה. שלושה רווחים
-            שנגררים עם ההכרעה, ושווה למנות אותם כי הם הופכים אותה מ"פחות" ל"נכון יותר":
-            <b>אין שאלת תדירות</b> - היא הייתה נשארת פתוחה לבנייה, ותנועה זהה בכל נקישה לא צריכה
-            לשאול אותה; <b>אין קופי חדש</b>, כלומר גם לא תרגום, גם לא ניסוח, וגם לא שורה שתתיישן;
-            ו<b>התשובה נשארת באותו ערוץ שבו נשאלה השאלה</b> - נגעת במשטח, המשטח נע. הטענה שנשארה
-            רשומה נגד: הרמה שחוזרת קריאה כ"אין כאן כלום" בעיקר למי שכבר ראה הרמה אמיתית, ולכן
-            <b>הפעם הראשונה</b> היא זו שנשארת לא-מלמדת. אם זה יתגלה כבעיה על מכשיר, התשובה היא
-            כנראה הדרכה של פעם אחת ולא טקסט קבוע בכל נקישה.</li>
-          <li><b>שוליים מורמים.</b> הכפתור למעלה מציע 8px, 4px ורוחב מלא. 16px←8px הוא חריגה של
-            8px לכל צד, וזה רמז קטן; רוחב מלא הוא ההצהרה החזקה, במחיר שהלוח מאבד את הפינות שלו
-            כמשטח. נמדד ולא מוכרע.</li>
-          <li><b>השקיעה בלחיצה.</b> חצי מהפופ קיים בחינם: ADR-0140 §2 נותן לכל משטח גדול
-            <code>--press-scale-lg</code>, והלחיצה מיידית לשני הכיוונים במכוון. הכפתור למעלה מגזים
-            אותה כדי שאפשר יהיה לשפוט אם היא צריכה משך. ההמלצה: <b>להשאיר כמו בקוד</b>, ולתת
-            להרמה להיות כל התנועה.</li>
-          <li><b>האם הריאקציה אומרת משהו.</b> §3ב מול §3א. ההמלצה היא <b>§3ב</b>, כי הרמה שחוזרת
-            קריאה כ"אין כאן כלום" רק למי שכבר ידע שהרמה אפשרית, ובאחר צהריים פנוי אף אחד לא ידע.
-            הטענה נגד: זה טקסט שנחשף ונעלם על המשטח הרם ביותר באפליקציה, ואם הוא יופיע בכל נקישה
-            הוא ייקרא כנזיפה.</li>
-          <li><b>הרקע מעמעם את הכרום, וזה ההרכב שאף ADR לא ראה.</b> מצב בהיר קיבל כרום בהיר
-            ב-ADR-0158 §12, ולכן היום מעל להירו הכהה יש פס בהיר שהרקע מכהה. שווה מבט אנושי בשתי
-            הערכות לפני שמחליטים על עומק הרקע.</li>
-          <li><b>שאר המצבים.</b> <code>in-transit</code> הוא כנראה המקרה הטוב ביותר להרמה (ההזמנה,
-            המושב, הקוד, הפרש השעות בנחיתה, ומה ראשון על הקרקע) ו-<code>group-split</code> הופך
-            שורות שוות לשורות עם עומק. שניהם, ומה שכל אחד נושא, הם הנושא של הקובץ הבא ולא של זה.</li>
+          <li><b>הפתק של הבא בתור.</b> האופק מראה פתק על <b>החי</b> בלבד. פתק על הבא הוא לפעמים
+            בדיוק מה שצריך לפני שיוצאים ("לבקש חדר גבוה", "הקוד לשער הוא 1408"), אבל הוא גם עוד
+            חלק, והוא זה שהופך את המקרה השכיח לכבד. לא מצויר, ונרשם כאן במפורש כדי שלא ייכנס
+            בשקט בבנייה.</li>
+          <li><b>האם ההירו נמדד לפי התוכן או לפי המסך.</b> זה עלה מהציור ולא מהתכנון: העמודה
+            <code>% מהמסך</code> מראה ש<b>בטיסה</b> תופס פחות ממחצית הגובה, כלומר הירו שגדל לפי
+            תוכנו משאיר במקרה הדק רקע מעומעם וכמעט ריק מתחתיו. שתי התשובות אמיתיות. <b>לפי תוכן</b>
+            (מה שמצויר כאן) הוא כנה - משטח בגודל מה שיש לו לומר - ומשמר את הרצף עם הקופסה הקטנה
+            שממנה הוא עלה. <b>לפי מסך</b> נותן משטח אחיד וצפוי, במחיר של שטח כהה ריק בדיוק במצבים
+            הדלים. לא מוכרע כאן, וצריך מבט על מכשיר: הפער בין 415px ל-826px הוא ההבדל בין "כרטיס
+            שהורם" ל"מסך".</li>
+          <li><b>תדירות השורה של הריאקציה</b> (מקובץ התנועה): נוכחות הוכרעה, תדירות לא. אם היא
+            תופיע בכל נקישה היא תיקרא כנזיפה.</li>
+          <li><b>גלילה בתוך משטח מורם על מכשיר אמיתי.</b> הטבלה אומרת מי צריך גולל, אבל לא איך
+            זה מרגיש: גולל בתוך כרטיס צף שנפתח במחווה הוא בדיוק המקום שבו הופעל בורר שנחתך פעמיים
+            בערב אחד (ADR-0148, תיקון שלישי). למדוד באצבע, לא ב-DOM.</li>
+          <li><b>שכבת האזורים.</b> ADR-0107: כל שעה נקראת באזור של עצמה, וההירו המורם מראה יותר
+            שעות - כלומר יותר גלולות. מצויר רק על בטיסה, שם ההפרש הוא העיקר. לספור את שאר
+            המקרים לפני הבנייה.</li>
+          <li><b>המספרים תלויי-גופן.</b> אם הקובץ נפתח בלי רשת, Google Fonts לא נטענו והמדידה
+            רצה על גופן חלופי. למדוד שוב על מכשיר עם רשת לפני שמספר נכנס ל-ADR.</li>
         </ul>`;
     </script>
   </body>
