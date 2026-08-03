@@ -147,6 +147,21 @@ The session-94 rail treated a too-long route as a layout problem. It isn't: two 
 - **Consistency is by component, not by screen.** The two shared title components shorten — `EventTitle` (events: Trip day row, Plan builder row, board hero) and `BookingTitle` (bookings: Index row, Index "next" preview) — so a flight reads the same on every glanceable surface in both modes. The **booking detail** (the record) and the **booking form** (the editor) deliberately keep full names. The visible route arrow is `NavArrow` (SVG) on every one of them; `t.arrows.route`'s text `←` remains only for the stored title string and screen-reader labels, which must be text. _(Extended by the session-101 amendment below: "by component" left the surfaces that receive a title **string** unshortened, and `t.arrows.route` became `lib/route-title.ts`'s `ROUTE_TITLE_ARROW`.)_
 - **Deleted:** the stacked rail, its three `Icon` members (`route-origin`/`route-line`/`route-dest`), its CSS, and the session-93 whole-title clamp — routes are handled structurally now, and nothing else on the card needed clamping.
 
+## Amendment (2026-08-03) — the genitive binding, found on a device in the lifted hero
+
+The session-95 shortener strips a **leading** Hebrew category phrase, on the model `נמל התעופה <name>`. Google also returns the **genitive** binding — `נמל התעופה של פרנקפורט` — and on that one the strip left the particle behind:
+
+| name                                                   | before                                      | after                                    |
+| ------------------------------------------------------ | ------------------------------------------- | ---------------------------------------- |
+| `נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)` | `של פרנקפורט (Frankfurter Flughafen – FRA)` | `פרנקפורט (Frankfurter Flughafen – FRA)` |
+| `נמל התעופה של פרנקפורט`                               | `של פרנקפורט`                               | `פרנקפורט`                               |
+
+So the label opened with "of" — ungrammatical Hebrew, on the app's loudest surface. **The particle belongs to the phrase being removed**, so each Hebrew leading pattern now consumes an optional `של\s+` after its own boundary. This changes nothing for the non-genitive binding, which is what every existing test covers.
+
+Two things this keeps from the original design. It is still **generic**: `של` is grammar, not a place, so the list still grows with kinds of place rather than with places. And it still **fails to "no change"**: a name ending in the bare particle (`נמל התעופה של`) has no whitespace for the optional group to consume, so the strip would leave a two-character `של` — which clears `MIN_LABEL_CHARS` and would have been returned as if it were a name. `של` therefore joins `MODIFIER_ONLY`, and that name is kept whole.
+
+**Not changed, and it is a separate decision:** the trailing bracketed alias (`(Frankfurter Flughafen – FRA)`) survives, and it is most of what makes the title wrap. Whether a parenthetical counts as noise everywhere — the day row, the board, the index, the hero — is a display call rather than a bug, and it is deliberately left open rather than folded into a defect fix. Note the irony for whoever picks it up: this ADR says "there's no IATA", and Google put one inside the parens.
+
 ## Amendment (2026-07-24, session 101) — the stored title is route-aware too, so shortening reaches every surface
 
 Session 95 said "consistency is by component, not by screen" and shortened inside `EventTitle`/`BookingTitle`. That covers the surfaces that render an **entity**; it does not cover the surfaces that render a **title**. A transport title is stored as `origin ← destination` (`routeTitle`), and that string still reached:

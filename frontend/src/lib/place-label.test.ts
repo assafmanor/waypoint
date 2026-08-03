@@ -57,4 +57,37 @@ describe('shortPlaceLabel — leftover-modifier guard', () => {
     expect(shortPlaceLabel('International Airport')).toBe('International Airport');
     expect(shortPlaceLabel('Central Station')).toBe('Central Station');
   });
+
+  // A name ending in the particle has no whitespace after it for the pattern's optional
+  // group to consume, so the strip leaves a bare `של` — two characters, which clears
+  // MIN_LABEL_CHARS and would otherwise be returned as if it were a place.
+  it('keeps a name that is the category phrase plus a dangling particle', () => {
+    expect(shortPlaceLabel('נמל התעופה של')).toBe('נמל התעופה של');
+  });
+});
+
+// Google's Hebrew names come in BOTH bindings, and the genitive one shipped broken: the
+// category phrase was stripped without the particle that binds it to the name, so the label
+// opened with "of". Seen on a device, in the lifted hero's `הבא בתור` title.
+describe('shortPlaceLabel — the genitive binding', () => {
+  it('takes `של` with the category phrase instead of leaving it dangling', () => {
+    expect(shortPlaceLabel('נמל התעופה של פרנקפורט')).toBe('פרנקפורט');
+    expect(shortPlaceLabel('שדה התעופה של איסטנבול')).toBe('איסטנבול');
+    expect(shortPlaceLabel('תחנת הרכבת של ברלין')).toBe('ברלין');
+    expect(shortPlaceLabel('תחנת האוטובוסים המרכזית של רומא')).toBe('רומא');
+  });
+
+  // The exact string from the report, parenthetical and all. The bracketed alias is NOT
+  // stripped — that is a separate decision about what counts as noise, and this change is
+  // only about the particle.
+  it('is the reported case, minus the particle and nothing else', () => {
+    expect(shortPlaceLabel('נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)')).toBe(
+      'פרנקפורט (Frankfurter Flughafen – FRA)',
+    );
+  });
+
+  it('leaves the non-genitive binding exactly as it was', () => {
+    expect(shortPlaceLabel('נמל התעופה בן גוריון')).toBe('בן גוריון');
+    expect(shortPlaceLabel('תחנת הרכבת המרכזית חיפה')).toBe('חיפה');
+  });
 });
