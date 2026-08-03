@@ -46,7 +46,7 @@ Only three things pass the brief's own test ("worth an interaction, not a reflow
 - **`פתק`** — the note the group wrote about this stop. Genuinely new content, handed here on purpose by ADR-0152/0153.
 - **`הסדרה`** — whether it happened.
 
-**Reads, hand-offs and settles. No time edits, and no ±30 nudge** (owner's call). That is why ADR-0011 is listed as applying *unchanged* rather than extended: the hero never reaches the guard, because settling **records an outcome** rather than editing a commitment, and `SettleControl` already treats every event as settleable rather than only the passed ones. The ±30 stays on `EventCard`, one tab away.
+**Reads, hand-offs and settles. No time edits, and no ±30 nudge** (owner's call). That is why ADR-0011 is listed as applying _unchanged_ rather than extended: the hero never reaches the guard, because settling **records an outcome** rather than editing a commitment, and `SettleControl` already treats every event as settleable rather than only the passed ones. The ±30 stays on `EventCard`, one tab away.
 
 ### 4. `ועוד N עכשיו` is retired, and it is **forced** rather than tidy
 
@@ -62,7 +62,7 @@ Three characters were drawn. **Chosen: ההטיה** — the box travels to the t
 
 Two of the three were **rewritten by the measurement**, and neither correction was reachable by reasoning:
 
-- "Rise to just under the chrome" measured **4px**. The board is the first thing on Home, so there is nowhere to rise to that is not *over* the chrome.
+- "Rise to just under the chrome" measured **4px**. The board is the first thing on Home, so there is nowhere to rise to that is not _over_ the chrome.
 - "Approach as a scale-up" measured **×1.045**. The board is already near-full-width (358 → 374px), so a width-keyed FLIP has no scale in it to spend; the lift's entire visible budget is **height (×2.01) and elevation**. A literal "toward the eyes" therefore has to be a 3D swing, which is the one channel that reads as depth when width does not change.
 
 **So the lifted hero covers the chrome** — 72px, the whole band ADR-0028 names as mode identity and ADR-0158 §12 has just given light mode its own version of. That is consistent with itself: the lifted state is modal and only one mode exists inside it, so an identity with nothing to distinguish it from is not needed there. It also buys the 72px that keeps most cases off a scroller (§8).
@@ -75,7 +75,7 @@ ADR-0140's budget rule is one line and absolute: exactly one cinematic moment, t
 
 ### 7. The return has a **landing**, and the exit is not the entrance reversed
 
-`--ease-exit` accelerates *into* its end, which is already the curve of something being set down, so the path is right; what was chosen is what happens at the moment of contact. **The drop plus one landing beat** on the board that comes back: `scaleY(0.975)` at 40%, `linear`, `--t-quick`, origin at the bottom edge. The object visibly touches down instead of the flight merely stopping.
+`--ease-exit` accelerates _into_ its end, which is already the curve of something being set down, so the path is right; what was chosen is what happens at the moment of contact. **The drop plus one landing beat** on the board that comes back: `scaleY(0.975)` at 40%, `linear`, `--t-quick`, origin at the bottom edge. The object visibly touches down instead of the flight merely stopping.
 
 Deliberately tiny. A squash big enough to read as a squash is a bounce, and a bounce is exactly what forbidding `--ease-arrive` on exits exists to prevent.
 
@@ -89,13 +89,13 @@ When the content does exceed the room, the hero becomes a **bounded card**: head
 
 **The fit is measured, because this is the number that could have made "lift" a euphemism for "second screen":**
 
-| case | 390×844 (826px room) | 360×640 (622px room) |
-| --- | --- | --- |
-| thin / typical / full | fits | fits |
-| heavy (3-line note, 3 concurrent) | fits | 72px over |
-| `group-split`, 2 equals | fits | 92px over |
-| `group-split`, 3 equals | 9px over | 255px over |
-| `in-transit` | fits (49%) | fits |
+| case                              | 390×844 (826px room) | 360×640 (622px room) |
+| --------------------------------- | -------------------- | -------------------- |
+| thin / typical / full             | fits                 | fits                 |
+| heavy (3-line note, 3 concurrent) | fits                 | 72px over            |
+| `group-split`, 2 equals           | fits                 | 92px over            |
+| `group-split`, 3 equals           | 9px over             | 255px over           |
+| `in-transit`                      | fits (49%)           | fits                 |
 
 The common case is not a scroller. Note the row that reasoning would have missed: **a two-way group split scrolls on a small phone**, and two is that variant's commonest form.
 
