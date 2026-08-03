@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_STATUS } from '@waypoint/shared';
+import { DayRail } from './Board';
 import { HeroLift, type HeroLiftPoint } from './HeroLift';
 import { t } from '../../i18n/he';
 import { wrapNav } from '../../test/nav-harness';
@@ -36,19 +37,19 @@ describe('HeroLift', () => {
       nextTime: '16:00',
       nextCode: '#7QK4LM',
       then: { title: 'ארוחת ערב', time: '19:30' },
-      rail: <div className="wp-board-progress" />,
+      foot: <DayRail progress={48} startHour="07:00" endHour="23:00" />,
     });
     expect(container.querySelector('.hero-lifted')).toBeTruthy();
     expect(screen.getByText('סיור אוכל')).toBeTruthy();
     expect(screen.getByText('מלון סנטרו')).toBeTruthy();
     expect(container.querySelector('.wp-board-next-meta .code')?.textContent).toBe('#7QK4LM');
     expect(container.querySelector('.hero-then')?.textContent).toContain('ארוחת ערב');
-    // The rail is the collapsed board's own node, passed in — pinned as the foot.
+    // The foot is the collapsed board's own COMPONENT, not a copy of its markup.
     expect(container.querySelector('.hero-foot .wp-board-progress')).toBeTruthy();
   });
 
   it('has exactly one scroller, with the head and foot outside it', () => {
-    const container = show({ rail: <div className="wp-board-progress" /> });
+    const container = show({ foot: <DayRail progress={48} startHour="07:00" endHour="23:00" /> });
     expect(container.querySelectorAll('.hero-scroll')).toHaveLength(1);
     const scroll = container.querySelector('.hero-scroll')!;
     expect(scroll.querySelector('.hero-head')).toBeNull();

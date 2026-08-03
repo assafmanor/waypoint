@@ -20,7 +20,9 @@ import { EventTitle } from '../ui/EventTitle';
 import {
   Board,
   ChangeFeed,
+  DayRail,
   GlanceCard,
+  TransitProgress,
   type BoardNext,
   type BoardRow,
   type BoardTransit,
@@ -214,9 +216,17 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       onBooking: p.bookingId
         ? () => navigate(`/?${TAB_PARAM}=index&booking=${p.bookingId}`)
         : undefined,
-      onDone: () => verbs.done(p.event),
-      onSkip: () => verbs.skip(p.event),
-      onUndo: () => verbs.restore(p.event),
+      // **A flight you are sitting inside settles itself by landing** (ADR-0160 §10), so
+      // the transit point drops the verbs — not a density question but a nonsense one.
+      // Derived from the point rather than threaded as a flag, so a concurrent event during
+      // a flight keeps its own.
+      ...(transitEvent && p.event.id === transitEvent.id
+        ? {}
+        : {
+            onDone: () => verbs.done(p.event),
+            onSkip: () => verbs.skip(p.event),
+            onUndo: () => verbs.restore(p.event),
+          }),
     };
   };
 
@@ -443,7 +453,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         variant={boardVariant}
         lifted={lifted}
         onLift={
-          liftable && !inTransit
+          liftable
             ? (el) => {
                 boardEl.current = el;
                 setLifted(true);
@@ -496,18 +506,19 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               ? { title: horizon.then.title, time: formatTime(horizon.then.startsAt, tz) }
               : undefined
           }
-          rail={
-            <div className="wp-board-progress" aria-hidden="true">
-              <div className="track">
-                <div className="fill" style={{ width: `${progress}%` }} />
-                <div className="knob" style={{ insetInlineStart: `${progress}%` }} />
-              </div>
-              <div className="ends">
-                <span dir="auto">{hourLabel(DAY_WINDOW.START_HOUR)}</span>
-                <span>{t.common.now}</span>
-                <span dir="auto">{hourLabel(DAY_WINDOW.END_HOUR)}</span>
-              </div>
-            </div>
+          foot={
+            // The SAME component the collapsed board pins, not a copy of its markup — and
+            // in transit the flight's own progress replaces the day rail, which is
+            // ADR-0059 §2's rule reaching the lifted state (ADR-0160 §10).
+            inTransit && transit ? (
+              <TransitProgress transit={transit} />
+            ) : (
+              <DayRail
+                progress={progress}
+                startHour={hourLabel(DAY_WINDOW.START_HOUR)}
+                endHour={hourLabel(DAY_WINDOW.END_HOUR)}
+              />
+            )
           }
           onClose={() => setLifted(false)}
         />
