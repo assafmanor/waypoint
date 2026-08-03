@@ -53,6 +53,12 @@ describe('dayTransitions', () => {
     expect(last[0].atMs).toBe(ms('2026-07-09', '11:00'));
   });
 
+  it('yields nothing for a skipped booking — it is on the shelf, not on the day', () => {
+    const skipped = { ...hotel2Nights, status: EVENT_STATUS.SKIPPED };
+    expect(dayTransitions([skipped], '2026-07-07')).toHaveLength(0);
+    expect(dayTransitions([skipped], '2026-07-09')).toHaveLength(0);
+  });
+
   it('yields no transition entries for a same-day flight (single span row stays)', () => {
     const sameDayFlight = ev({
       id: 'flight',

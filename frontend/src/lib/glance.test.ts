@@ -187,6 +187,49 @@ describe('buildDayGlance', () => {
     }
   });
 
+  // Reported from the phone: two skipped bus legs sat in the day's shelf and still
+  // drew amber pills on the glance, reading exactly like the two flights that were
+  // really happening. The struck block stays (ADR-0045); the commitment doesn't.
+  it('gives a skipped bracketed booking a struck block but no anchor', () => {
+    const events = [
+      ev({
+        id: 'flight',
+        category: 'transport',
+        kind: EVENT_KIND.HARD,
+        startsAt: at('09:00'),
+        endsAt: at('11:00'),
+      }),
+      ev({
+        id: 'bus',
+        category: 'transport',
+        status: EVENT_STATUS.SKIPPED,
+        startsAt: at('12:00'),
+        endsAt: at('13:00'),
+      }),
+    ];
+    const g = buildDayGlance(events, DATE, ms('08:00'), day07, day23, TZ);
+    expect(g.anchors.map((a) => a.key)).toEqual(['flight']);
+    const bus = g.segs.find((s) => s.key === 'bus')!;
+    expect(bus.phase).toBe('skipped');
+    expect(bus.spanned).toBe(false); // no pill above it to tie the block to
+    expect(g.remaining).toBe(1);
+  });
+
+  it('is empty on a day whose only bracketed booking is skipped and ambient', () => {
+    const events = [
+      ev({
+        id: 'stay',
+        category: 'lodging',
+        date: DATE,
+        endDate: '2026-07-09',
+        status: EVENT_STATUS.SKIPPED,
+        startsAt: at('15:00'),
+        endsAt: at('11:00', '2026-07-09'),
+      }),
+    ];
+    expect(buildDayGlance(events, DATE, ms('12:00'), day07, day23, TZ).empty).toBe(true);
+  });
+
   // An event created with no category keeps the form's DEFAULT pin, and editing it
   // later to add one does NOT re-derive the glyph (`EventForm` treats an existing
   // event's icon as chosen). So a categorised event can still be carrying `📌` —
