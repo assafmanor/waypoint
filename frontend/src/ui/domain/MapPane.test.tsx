@@ -186,7 +186,7 @@ const pin = (partial: Partial<MapPin> & Pick<MapPin, 'placeId'>): MapPin => ({
 function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
   return render(
     <MapPane
-      config={CONFIG}
+      config={props.config ?? CONFIG}
       pins={props.pins ?? [pin({ placeId: 'a' })]}
       setSignal={props.setSignal ?? 'day'}
       onSelectPin={props.onSelectPin ?? vi.fn()}
@@ -504,7 +504,23 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     });
     const line = document.querySelector('[data-polyline]') as HTMLElement;
     expect(line.dataset.points).toBe('3');
-    expect(line.dataset.color).toBe(MAP_CONNECTOR.COLOR);
+    expect(line.dataset.color).toBe(MAP_CONNECTOR.COLOR.light);
+  });
+
+  // The dash is a TS constant handed to Google, so it sat out the CSS remap entirely
+  // and measured 1.01:1 on the night style's land — invisible (ADR-0158 §16). It now
+  // follows the LATCHED colour scheme rather than `documentTheme()`, so the line and
+  // the canvas it is drawn on cannot disagree after a theme flip.
+  it('takes the connector colour from the canvas it was built for, not the document', () => {
+    paint({
+      config: { ...CONFIG, colorScheme: MAP_COLOR_SCHEME.dark },
+      connector: [
+        { lat: 1, lng: 1 },
+        { lat: 2, lng: 2 },
+      ],
+    });
+    const line = document.querySelector('[data-polyline]') as HTMLElement;
+    expect(line.dataset.color).toBe(MAP_CONNECTOR.COLOR.dark);
   });
 
   it('draws no connector when none is given (Trip mode, or all-days scope)', () => {

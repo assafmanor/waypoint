@@ -26,7 +26,7 @@ import {
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
-import type { MapsConfig } from '../../lib/map-config';
+import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
 import { MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
 import { TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
@@ -426,7 +426,7 @@ function MapPaneInner({
           ))}
           {me && <MeMarker at={me} />}
           {draftMarker && <DraftMarker marker={draftMarker} />}
-          <DayConnector path={connector} />
+          <DayConnector path={connector} scheme={config.colorScheme} />
         </Map>
         {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
@@ -665,7 +665,18 @@ const DRAFT_MARKER_Z = 950;
  *  which also leaves **solid + amber** unspent for a real Routes polyline later.
  *  The Maps API has no `strokeDasharray`, so a dash is a repeating symbol along a
  *  fully transparent stroke. */
-const DayConnector = memo(function DayConnector({ path }: { path?: readonly LatLng[] }) {
+const DayConnector = memo(function DayConnector({
+  path,
+  scheme,
+}: {
+  path?: readonly LatLng[];
+  /** The canvas's OWN slot, not `documentTheme()`. The map latches its style at
+   *  mount (§4: a re-instantiation is a billed load), so after a theme flip the
+   *  document says dark while the canvas Google is still painting is light.
+   *  Taking the scheme from the same latched config the canvas was built from
+   *  makes the line and the ground it is drawn on agree by construction. */
+  scheme: MapColorScheme;
+}) {
   const icons = useMemo(
     () => [
       {
@@ -685,7 +696,9 @@ const DayConnector = memo(function DayConnector({ path }: { path?: readonly LatL
   return (
     <Polyline
       path={[...path]}
-      strokeColor={MAP_CONNECTOR.COLOR}
+      strokeColor={
+        scheme === MAP_COLOR_SCHEME.dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light
+      }
       strokeOpacity={0}
       icons={icons}
       // It carries no arrowheads: the numbers are the order, and at phone size an

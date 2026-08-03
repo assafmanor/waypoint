@@ -587,6 +587,40 @@ An inventory says this is one site and not a family: **23 surfaces fill with
 `--ink`/`--cta`**, and the toast's undo was the only one painting a semantic
 accent as ink on that inverted ground.
 
+### §16 — A colour in TypeScript cannot join a CSS remap
+
+The Map's plan-mode connector was reported almost invisible in dark. Measured
+against the night style's own land (`#191E2C`), the shipped dash was **1.01:1**.
+
+`MAP_CONNECTOR.COLOR` lived in `constants.ts` as `rgba(22, 35, 61, 0.28)` —
+light `--ink` at an alpha, frozen in **TypeScript**, because the Maps JS API takes
+a colour value and not a CSS variable. Its own comment said it mirrored
+`--soft-line` and to _"keep the two in step"_. Nothing could: `--soft-line` was
+re-mapped in the dark block and this constant sat the whole remap out.
+
+**A new class, and the last blind spot of every sweep in this ADR.** §12's hole
+was routes-vs-states, §13's was a literal behind an indirection — both still
+_inside_ CSS. This one is outside it entirely, so no `.css` sweep could ever have
+found it. A TS sweep now exists; it flags **one** other theme-blind colour worth
+knowing about, `JoinTrip`'s `AVATAR_COLORS`, which is harmless only because
+`/join` is theme-fixed dark (§9) and is stale relative to the `--id-*` ramp.
+
+Two things fixed rather than one, because the measurement exposed both:
+
+- **The dark value.** Now light `--ink`'s counterpart at dark polarity.
+- **The light value, which was already under the floor.** A 2.5px dash is a
+  **graphic**, owing 3:1 against what it crosses, and it measured **1.77** on the
+  day land. So the connector was too faint before dark mode existed. Both values
+  are the _lowest_ alpha clearing 3:1 (3.03 / 3.5), because ADR-0106 §C's quiet
+  base is still the intent — and the connector deliberately stops mirroring
+  `--soft-line`, which is a hairline on a card and not a dash over a canvas.
+
+**And it reads the LATCHED scheme, not `documentTheme()`.** The map latches its
+style at mount (§4 — a re-instantiation is a billed load), so after a theme flip
+the document says dark while the canvas Google is painting is still light. Taking
+the scheme from the same `config` the canvas was built from makes the line and its
+ground agree by construction. Asserted in `MapPane`'s stub.
+
 ### What is actually covered, stated so nobody reads §12-§14 as "done"
 
 Four literal classes are now swept clean and can be re-checked with a grep:
