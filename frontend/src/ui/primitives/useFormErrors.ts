@@ -12,7 +12,8 @@
 import { useCallback, useRef, useState, type RefCallback } from 'react';
 // The marks it applies are drawn by `form-errors.css`, which `App.tsx` loads
 // globally — the attribute is a contract screens honour without this hook.
-import { motionDurationMs, prefersReducedMotion } from '../../lib/motion';
+import { prefersReducedMotion } from '../../lib/motion';
+import { BEAT, playBeat } from '../../lib/one-shot';
 
 /** One refusal. `field: null` is the form's own — a failed save, an unexpected
  *  shape — which has no field to point at and reads in the form-level slot. */
@@ -28,7 +29,7 @@ export interface FieldMark {
   ref?: RefCallback<HTMLElement>;
 }
 
-const NUDGE_CLASS = 'is-nudging';
+const NUDGE_CLASS = BEAT.NUDGE;
 /** The nudge's own duration token, so the class comes off when the animation ends
  *  — and immediately under reduced motion, where none plays (ADR-0140 §5). */
 const NUDGE_TOKEN = '--t-base';
@@ -115,14 +116,14 @@ const NONE: readonly never[] = [];
 const inDocumentOrder = (a: HTMLElement, b: HTMLElement) =>
   a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
 
-/** Restart the animation on an element that may still be marked from the previous
- *  attempt: a CSS animation does not replay because an attribute changed value, so
- *  the class comes off, the reflow is forced, and it goes back on. */
+/** The refusal's beat. The mechanism moved to `lib/one-shot.ts` when the hero's
+ *  rebuff and landing needed the same four properties (ADR-0160 §7) — one shot
+ *  applied imperatively so a repeat attempt is felt again, `linear` so the keyframe
+ *  offsets stay the timing, symmetric so no `--dir`, and a duration from a token so
+ *  the class is never left on an element whose animation never ran. What stayed here
+ *  is which class and which token; the axis and the meaning belong to the surface. */
 function nudge(el: HTMLElement) {
-  el.classList.remove(NUDGE_CLASS);
-  void el.offsetWidth;
-  el.classList.add(NUDGE_CLASS);
-  window.setTimeout(() => el.classList.remove(NUDGE_CLASS), motionDurationMs(NUDGE_TOKEN));
+  playBeat(el, NUDGE_CLASS, NUDGE_TOKEN);
 }
 
 /** A refusal the user cannot see is the bug this whole file exists for. Focus goes
