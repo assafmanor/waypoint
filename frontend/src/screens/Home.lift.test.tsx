@@ -25,6 +25,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
+import { BEAT } from '../lib/one-shot';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
 
@@ -214,6 +215,54 @@ describe('Home — the lift wiring', () => {
     fireEvent.click(screen.getByRole('button', { name: t.hero.close }));
     expect(document.querySelector('.hero-lifted')).toBeNull();
     expect(board()?.tagName).toBe('BUTTON');
+  });
+
+  // The collapsed board and the lifted hero are the SAME object (ADR-0160 §1), so both
+  // being on screen at once is the overlay grammar the promotion exists to reject —
+  // reported from a phone as _"rendering the hero twice instead of lifting up"_.
+  it('hides the collapsed board while the hero is lifted out of it', () => {
+    tripEvents = [ev('now', { placeId: 'p1' })];
+    tripPlaces = [place];
+    show();
+    expect(board()!.className).not.toContain('is-lifted');
+    fireEvent.click(board()!);
+    expect(board()!.className).toContain('is-lifted');
+  });
+
+  // The trap this guards is React's, not the animation's: `className` is a controlled
+  // attribute, so dropping `is-lifted` rewrites the whole thing — and a beat class added
+  // imperatively in the close handler, before that reconcile, is silently wiped by it.
+  // Hence the effect. In jsdom `--t-quick` is unreadable, so `playBeat` schedules the
+  // removal on a 0ms timer and the class is observable until it runs.
+  it('plays the landing beat on the board that comes back', () => {
+    vi.useFakeTimers();
+    try {
+      tripEvents = [ev('now', { placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      fireEvent.click(board()!);
+      fireEvent.click(screen.getByRole('button', { name: t.hero.close }));
+      expect(board()!.className).toContain(BEAT.LANDING);
+      expect(board()!.className).not.toContain('is-lifted');
+      // `advanceTimersByTime`, not `runAllTimers`: Home is a live surface and its
+      // clock re-arms every second, so draining every timer never terminates.
+      vi.advanceTimersByTime(1);
+      expect(board()!.className).not.toContain(BEAT.LANDING);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not land a beat on a board nobody lifted', () => {
+    vi.useFakeTimers();
+    try {
+      tripEvents = [ev('now', { placeId: 'p1' })];
+      tripPlaces = [place];
+      show();
+      expect(board()!.className).not.toContain(BEAT.LANDING);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a booking-backed event reaches the hero with its booking’s place', () => {

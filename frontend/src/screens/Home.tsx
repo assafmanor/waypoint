@@ -4,7 +4,7 @@
 // glance are derived from the clock + events, never stored (ADR-0018). The
 // board + glance render via the D0 domain components (ui/domain, U-03); this
 // screen orchestrates the data and feeds them, layout lives in the components.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   EVENT_KIND,
@@ -55,6 +55,7 @@ import {
 import { buildDayGlance, ambientEventsOnDate } from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
+import { BEAT, playBeat } from '../lib/one-shot';
 import { HeroLift, type HeroLiftPoint } from '../ui/domain/HeroLift';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
 import {
@@ -168,7 +169,26 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   });
   const liftable = canLift(horizon);
   const [lifted, setLifted] = useState(false);
+  /** The board element that was pressed — the box the hero flies from and back to
+   *  (ADR-0160 §5). Held rather than measured here: a rect read at press time would be
+   *  the PRESSED box, since `--press-scale-lg` is still applied under the finger and
+   *  `getBoundingClientRect` includes transforms. The flight measures it a frame later,
+   *  after `:active` has been released. */
+  const boardEl = useRef<HTMLElement | null>(null);
+  const wasLifted = useRef(false);
   const showPlaceOnMap = useShowPlaceOnMap();
+
+  // The landing beat (ADR-0160 §7), played AFTER the render that reveals the board —
+  // not in the close handler, which is where it was first written and would not have
+  // survived. React owns `className` on that node, so a class added imperatively before
+  // its next reconcile is overwritten by it: dropping `is-lifted` rewrites the whole
+  // attribute and takes `is-landing` with it.
+  useEffect(() => {
+    if (wasLifted.current && !lifted && boardEl.current) {
+      playBeat(boardEl.current, BEAT.LANDING, '--t-quick');
+    }
+    wasLifted.current = lifted;
+  }, [lifted]);
 
   /** A horizon point, made view-ready: titles become nodes, times are formatted in
    *  the point's OWN zone (ADR-0107 §2-3), and the hand-offs become callbacks the
@@ -421,7 +441,15 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
 
       <Board
         variant={boardVariant}
-        onLift={liftable && !inTransit ? () => setLifted(true) : undefined}
+        lifted={lifted}
+        onLift={
+          liftable && !inTransit
+            ? (el) => {
+                boardEl.current = el;
+                setLifted(true);
+              }
+            : undefined
+        }
         clock={formatTime(now, tz)}
         nowIcon={boardNowEvent?.icon}
         nowTitle={
@@ -454,6 +482,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           orders the overlay stack with no reasoning about component trees. */}
       {lifted && (
         <HeroLift
+          origin={boardEl.current}
           clock={formatTime(now, tz)}
           now={horizon.now.map((p, i) => liftPoint(p, `now-${i}`))}
           split={groupSplit}

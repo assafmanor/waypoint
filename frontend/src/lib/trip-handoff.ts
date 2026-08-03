@@ -26,7 +26,7 @@
 // source rect"; folding them together would mean reworking a live gesture path, which
 // rule 8 says to ask about rather than do quietly.
 import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
-import { prefersReducedMotion } from './motion';
+import { measuredBox, prefersReducedMotion } from './motion';
 
 /** The tile that was tapped: where it is, and the paint that makes a stand-in
  *  indistinguishable from it. Read off the element rather than declared, so the paper
@@ -89,8 +89,8 @@ function snapshot(): TripHandoff {
  *  pill's glyph hidden waiting for a flight that cannot land. */
 export function beginTripHandoff(tile: Element | null, tripId: string): boolean {
   if (!tile || !(tile instanceof HTMLElement) || prefersReducedMotion()) return false;
-  const box = tile.getBoundingClientRect();
-  if (box.width === 0 || box.height === 0) return false;
+  const box = measuredBox(tile);
+  if (!box) return false;
   const paint = getComputedStyle(tile);
   store = {
     origin: {

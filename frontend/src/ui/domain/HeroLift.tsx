@@ -13,11 +13,12 @@
 // resolves no zone and formats no time — `screens/Home.tsx` does all three, from
 // `lib/hero-horizon.ts`.
 //
-// PHASE 3 OF THE BUILD: this renders. It does not yet ANIMATE — the `lift`
-// variant's entrance is a placeholder fade, and phase 4 replaces it with the FLIP
-// off the collapsed board's measured box plus the swing. Nothing here should be
-// read as the designed motion.
-import type { ReactNode } from 'react';
+// The MOTION is `lib/useLiftFlight.ts` and it needs one thing from this file: the
+// element that is the hero. That is the board below, not the modal card around it — in
+// this variant the card is a transparent shell, so flying it would leave a
+// content-sized board overflowing a box animating independently of it.
+import { useRef, type ReactNode } from 'react';
+import { useLiftFlight } from '../../lib/useLiftFlight';
 import { Modal } from '../primitives/Modal';
 import { Icon } from '../Icon';
 import { ZoneShiftPill } from '../ZoneShiftPill';
@@ -87,6 +88,10 @@ export interface HeroLiftProps {
   /** The day rail, pinned as the foot — the same node the collapsed board renders,
    *  passed in rather than rebuilt so the two cannot drift. */
   rail?: ReactNode;
+  /** The collapsed board this was lifted out of — the box the flight starts from and
+   *  descends back to (ADR-0160 §5). Absent → no flight, and the hero is simply there,
+   *  which is the correct static state under reduced motion anyway. */
+  origin?: HTMLElement | null;
   onClose: () => void;
 }
 
@@ -234,8 +239,8 @@ export function HeroLift(props: HeroLiftProps) {
 
   return (
     <Modal variant="lift" ariaLabel={t.hero.title} onClose={props.onClose}>
-      {(close) => (
-        <div className="wp-board hero-lifted">
+      {(close, closing) => (
+        <Lifted origin={props.origin ?? null} closing={closing}>
           <div className="hero-head">
             <div className="wp-board-top">
               <div className="wp-board-live">
@@ -332,8 +337,32 @@ export function HeroLift(props: HeroLiftProps) {
           </div>
 
           {rail && <div className="hero-foot">{rail}</div>}
-        </div>
+        </Lifted>
       )}
     </Modal>
+  );
+}
+
+/** The hero itself, and the one component that holds a ref to it.
+ *
+ *  Split out for a reason that is not tidiness: the flight is a hook, and inside
+ *  `HeroLift` it would have to be called above the `Modal` — where the card, and so the
+ *  hero, does not exist yet. A component rendered as the Modal's child mounts with the
+ *  hero, so its layout effect runs with a real box to measure. */
+function Lifted({
+  origin,
+  closing,
+  children,
+}: {
+  origin: HTMLElement | null;
+  closing: boolean;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLiftFlight({ subject: ref, origin, closing });
+  return (
+    <div className="wp-board hero-lifted" ref={ref}>
+      {children}
+    </div>
   );
 }

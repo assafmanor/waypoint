@@ -38,10 +38,31 @@
     opacity: 0;
   }
 }
-.app[data-mode='trip'] .wp-board {
-  animation: wp-board-power var(--t-cinematic) var(--ease-emphasized) 0.12s both;
+/* Two things here were found by measuring the lift in a real browser, and neither was
+   reachable by reading the CSS (ADR-0160's phase-4 build).
+
+   **`:not(.hero-lifted)`** — the lifted hero IS a `.wp-board`; that is the whole point of a
+   promotion. So it matched this rule and replayed the **Plan→Trip going-live climax** every
+   time it opened: 600ms of `--t-cinematic` from brightness 0.55. That is why the lifted
+   card read as flat and dim beside the board it came from, and it is also an ADR-0140
+   budget violation — the app's one cinematic moment, re-spent on a state you can enter all
+   day.
+
+   **The empty second slot** is how the landing beat (§7) coexists with this one. It cannot
+   simply be its own rule: this selector is more specific than `.wp-board.is-landing`, so it
+   won the `animation` property and the beat never played. Excluding `.is-landing` here
+   instead was measured and is worse — dropping out of this rule and back in RESTARTS the
+   power-on, so the board flashed dim and ramped up over 600ms after every close.
+
+   An element cannot append to an `animation` list from another rule, but it can fill a slot
+   this rule leaves open. `animation-name` stays `wp-board-power` in position 0 either way,
+   so that animation keeps its own clock and is never restarted; only position 1 changes. */
+.app[data-mode='trip'] .wp-board:not(.hero-lifted) {
+  animation:
+    wp-board-power var(--t-cinematic) var(--ease-emphasized) 0.12s both,
+    var(--board-beat, none);
 }
-.app[data-mode='trip'] .wp-board::before {
+.app[data-mode='trip'] .wp-board:not(.hero-lifted)::before {
   animation: wp-board-glow var(--t-cinematic) var(--ease-emphasized) 0.12s both;
 }
 
@@ -183,6 +204,33 @@
   border: 0;
   cursor: pointer;
   --press-scale: var(--press-scale-lg);
+}
+
+/* While the hero is lifted, this board is the SAME OBJECT one elevation up (ADR-0160
+   §1) — so it must not be on screen at the same time. Without this the lift reads as a
+   panel over a board rather than a promotion, which is how it was reported from a
+   phone: _"a simple overlay rendering the hero twice instead of lifting up"_.
+
+   `visibility`, never `display`. It has to keep its box for two separate reasons: the
+   descent MEASURES it on the way back down (`lib/useLiftFlight.ts`), and Home's layout
+   must not collapse and re-expand around the hero opening. */
+.wp-board.is-lifted {
+  visibility: hidden;
+}
+
+/* The contact (ADR-0160 §7) — the object visibly touches down instead of the flight
+   merely stopping. Deliberately tiny: a squash big enough to read as a squash is a
+   bounce, and a bounce is what forbidding `--ease-arrive` on the way back exists to
+   prevent. `linear` because the keyframe offset IS the timing (`lib/one-shot.ts`).
+   Fills the slot the power-on rule above leaves open, for the reason recorded there. */
+.wp-board.is-landing {
+  transform-origin: bottom;
+  --board-beat: board-landing var(--t-quick) linear;
+}
+@keyframes board-landing {
+  40% {
+    transform: scaleY(0.975);
+  }
 }
 
 /* Concurrency (ADR-0041 §6 as amended by ADR-0160 §4): the count is a READOUT,

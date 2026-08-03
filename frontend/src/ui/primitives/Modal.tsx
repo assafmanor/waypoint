@@ -3,8 +3,8 @@
 // back, a shell back button — closes it first, ADR-0035/0090) and the focus
 // contract (focus-in + Escape + focus-restore, optional Tab-trap, F-08). Four
 // variants — a bottom `sheet`, a centered `dialog`, a full-viewport `full`
-// (ADR-0101) and a top-anchored `lift` (ADR-0160) — share all that machinery;
-// only shape and position differ (modal.css).
+// (ADR-0101) and a centred `lift` (ADR-0160, centred by its amendment §B) —
+// share all that machinery; only shape and position differ (modal.css).
 //
 // `lift` is the lifted hero, and it is the reason to read ADR-0160 §2 before
 // touching it: a promotion FEELS like it is not an overlay (one object gaining
@@ -55,8 +55,14 @@ export function Modal({
    *  leaving it un-animated would make ADR-0140 half-true. Take the function form
    *  and bind that control to the `close` it hands you, which is the same path the
    *  backdrop, a back and Escape all take. (A function rather than a context so no
-   *  call site has to extract an inner component just to read one.) */
-  children: ReactNode | ((close: () => void) => ReactNode);
+   *  call site has to extract an inner component just to read one.)
+   *
+   *  The second argument is that exit **in progress**, for a variant whose leaving is
+   *  not expressible in CSS: the lifted hero descends to a box it has to measure, so it
+   *  needs the same window `useExitTransition` is already waiting out rather than a
+   *  second timer that could disagree with it (ADR-0160 §7). Ignore it otherwise — every
+   *  other overlay's exit is keyed by `.is-closing` in `modal.css`. */
+  children: ReactNode | ((close: () => void, closing: boolean) => ReactNode);
 }) {
   // ── The exit (ADR-0140 §1, mechanism extracted to `useExitTransition` in ADR-0144) ──
   // `onClose` is ALREADY the one owner of leaving: the backdrop calls it, the overlay
@@ -116,7 +122,7 @@ export function Modal({
             {title}
           </div>
         )}
-        {typeof children === 'function' ? children(beginClose) : children}
+        {typeof children === 'function' ? children(beginClose, closing) : children}
       </div>
     </div>,
     document.body,
