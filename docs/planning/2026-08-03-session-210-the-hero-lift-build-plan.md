@@ -59,7 +59,25 @@ The whole horizon, rendering, with **no lift animation** — it opens instantly.
 - **(a) Make the lift card `position: fixed`** and drive `top`/`left`/`width`/`height` from CSS custom properties that JS writes off the measured box. Keeps §5's promise exactly — the box animates, nothing scales, text stays crisp — and `.wp-dragghost`'s comment already confirms `position: fixed` resolves against the viewport unwrapped in this shell. Cost: the card stops participating in the overlay's flex centring, so its settled box becomes this variant's own responsibility, and the two must not drift.
 - **(b) A transform FLIP** — translate + scale from the measured delta to identity. Cheaper and compositor-friendly, and what most FLIP implementations do. Cost: it **scales the text**, which is the thing §5 says only the swing should do and only while its angle is non-zero. It would make the crispness claim false for the whole tween.
 
-**Take (a).** (b) contradicts a decision the owner made on a device, and "it is the usual way" is not a reason to spend a property the ADR reserved. Write the settled box once, in the variant, and have the entrance read the measured start from the vars.
+**Take (a) — but it needs a TWO-PASS measure, which the first write-up of this section missed.** The naive reading is "declare the settled box in the variant, animate from the measured start". That does not work, and it fails on the one channel that matters: **`height` does not interpolate to `auto`.** Measured in Chromium rather than assumed:
+
+| from → to         | mid-flight height                                      |
+| ----------------- | ------------------------------------------------------ |
+| `290px` → `auto`  | **290px, then 432px** — a jump, no intermediate values |
+| `290px` → `584px` | `420.7px` — interpolates                               |
+
+The lifted hero is **content-sized** (§8, owner's call), so its settled height IS `auto` — and the height is where ADR-0160 §5 measured the entire visible budget (×2.01, against ×1.045 of width). An entrance that snaps the height is not the designed character; it is the placeholder with extra steps.
+
+So the FLIP is First-Last-Invert-Play properly:
+
+1. **First** — measure the collapsed board's rect on press (never a constant: three prior bugs, `frontend/CLAUDE.md`).
+2. **Last** — mount the card at its settled box with `height: auto` and measure what that resolved to. This is the pass the first write-up skipped, and it has to happen after layout.
+3. **Invert + Play** — write both boxes as px into custom properties and animate px → px.
+4. **Release** — put `height` back to `auto` when the animation ends, or the card stops being content-sized the moment its content changes (a note arriving, a peer's edit). Time that release off `motionDurationMs`, which answers 0 under reduced motion, so the release is not a state that outlives an animation nobody played (ADR-0140 §5).
+
+Step 4 is the part to be careful about: it is exactly the "state that only exists during an animation" shape ADR-0140 §5 exists for, and the beat primitive already learned the 0ms half of it the hard way (`lib/one-shot.ts`'s own comment).
+
+**Still not (b).** Everything above is machinery; (b) would be less machinery and a broken promise — it scales the text, which §5 reserves for the swing and only while its angle is non-zero.
 
 Two more things not to rediscover: the start box must be **committed before** the transition (a forced reflow between writing it and writing the target), and the layer must be **opened one frame before** the target box is written — otherwise the element becomes visible in the same frame its destination is set and the flight starts from wherever the browser got to. Both were found in `hero-lift-v1.html`.
 
