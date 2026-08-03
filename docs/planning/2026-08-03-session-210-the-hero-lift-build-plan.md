@@ -54,12 +54,21 @@ The whole horizon, rendering, with **no lift animation** — it opens instantly.
 
 ## Phase 4 — the motion
 
+**One thing phase 3 surfaced that the ADR does not answer, and it decides how the FLIP is written.** ADR-0160 §5 says all three characters "animate the box, so text is crisp at both ends" — but the `lift` Modal variant positions its card with **flex plus a margin**, and a flex-positioned box cannot be animated from an arbitrary measured rect. Two ways out, and they are not equivalent:
+
+- **(a) Make the lift card `position: fixed`** and drive `top`/`left`/`width`/`height` from CSS custom properties that JS writes off the measured box. Keeps §5's promise exactly — the box animates, nothing scales, text stays crisp — and `.wp-dragghost`'s comment already confirms `position: fixed` resolves against the viewport unwrapped in this shell. Cost: the card stops participating in the overlay's flex centring, so its settled box becomes this variant's own responsibility, and the two must not drift.
+- **(b) A transform FLIP** — translate + scale from the measured delta to identity. Cheaper and compositor-friendly, and what most FLIP implementations do. Cost: it **scales the text**, which is the thing §5 says only the swing should do and only while its angle is non-zero. It would make the crispness claim false for the whole tween.
+
+**Take (a).** (b) contradicts a decision the owner made on a device, and "it is the usual way" is not a reason to spend a property the ADR reserved. Write the settled box once, in the variant, and have the entrance read the measured start from the vars.
+
+Two more things not to rediscover: the start box must be **committed before** the transition (a forced reflow between writing it and writing the target), and the layer must be **opened one frame before** the target box is written — otherwise the element becomes visible in the same frame its destination is set and the flight starts from wherever the browser got to. Both were found in `hero-lift-v1.html`.
+
 - FLIP off the **measured** collapsed box. `frontend/CLAUDE.md` records three bugs from writing a landing position as a constant; this must measure and must be asserted in an **e2e against the settled box**, because jsdom reports every rect as zero and the unit suite cannot see this class of bug.
 - The swing: `perspective(900px) rotateX(9deg) translateZ(-46px)` → identity, on top of the box animation. `--ease-arrive` in, `--ease-exit` out, `--t-base` / `--t-quick`. **Not `--t-cinematic`** (ADR-0140's budget).
 - The inline board holds its space with `visibility` (never `display`).
 - **The layer paints nothing while closed** — the defect the mockup shipped and fixed. `visibility: hidden`, not `display: none`, because the hero must stay measurable while closed.
 - Open the layer one frame **before** writing the target box.
-- `.is-landing` on the returning board, and the shared one-shot beat: ADR-0160 §7 says `.is-nudging` / `.is-rebuffing` / `.is-landing` are **one primitive**. Extract it here (a small hook or util beside `useFormErrors`' `nudge`) rather than writing the third copy — that is rule 8, and ADR-0139 is what happens if we don't.
+- `.is-landing` on the returning board. **The shared beat primitive is already done** — `lib/one-shot.ts`'s `playBeat` + `BEAT`, extracted from `useFormErrors`' private `nudge` and shipped ahead of the rest of this phase because it is a refactor of live code and reviews better alone. Its test records the regression the extraction introduced and the shipped nudge's own test caught: removing the class inline at 0ms means it is never observable, and jsdom always reports 0. What phase 4 still owes is the **keyframes** for `.is-landing` (and phase 5 for `.is-rebuffing`), which live with the surface that owns them.
 - Every duration from `motionDurationMs`, which answers **0** under reduced motion; the lifted state must be correct as a **static** state.
 - `in-transit` becomes liftable (§10: no settle verbs, no day rail).
 
