@@ -288,6 +288,48 @@ test.describe('the lifted hero (ADR-0160)', () => {
     await expect(page.locator(BOARD)).toBeVisible();
   });
 
+  // **Plan's hero is the other half of the same decision** (ADR-0160 §H): it does not lift,
+  // because its depth is the checklist rendered directly beneath it — but a tap that
+  // produces nothing at all reads as a dead surface, so it answers with the rebuff.
+  //
+  // This is in a browser for the reason the board taught in phase 4: a beat can be written
+  // correctly, applied correctly, and still never run because some other rule owns the
+  // `animation` property. Only a real engine can say the keyframes fired.
+  test('Plan mode: the prep hero rebuffs instead of lifting', async ({ page }) => {
+    await boot(page);
+    await page.getByRole('button', { name: 'תכנון', exact: true }).click();
+    await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
+    // Wait for `.prep-dates`, not for `.prep`. `PlanHome` is lazy-loaded and
+    // `HomeSkeleton` renders its own placeholder `.prep` in the meantime — which has no
+    // handler, so a spec that clicks the first `.prep` it sees clicks the skeleton and
+    // reports the beat as broken. It cost a round of diagnosis; the real hero is the one
+    // with the trip's dates in it.
+    const hero = page.locator('.prep:has(.prep-dates)');
+    await expect(hero).toBeVisible();
+
+    // Not a control: it opens nothing, so it announces nothing.
+    expect(await hero.evaluate((el) => el.tagName)).toBe('DIV');
+
+    const beat = await page.evaluate(async () => {
+      const el = document.querySelector('.prep:has(.prep-dates)') as HTMLElement;
+      el.click();
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const running = el.getAnimations();
+      return {
+        names: running.map((a) => a.animationName),
+        duration: running[0]?.effect?.getTiming().duration,
+        easing: running[0]?.effect?.getTiming().easing,
+        className: el.className,
+      };
+    });
+    expect(beat.names).toContain('prep-rebuff');
+    expect(beat.duration).toBe(240);
+    // `linear`, because in a beat the keyframe offsets ARE the timing (ADR-0140 §7).
+    expect(beat.easing).toBe('linear');
+    // …and nothing lifted.
+    await expect(page.locator(HERO)).toHaveCount(0);
+  });
+
   // A user who asked for less motion did not ask for a different outcome: they get the
   // horizon, immediately, with no flight and no hero left mid-air.
   test('reduced motion: no flight, and the lifted state is still correct', async ({ page }) => {
