@@ -207,19 +207,30 @@ describe('canLift', () => {
     return heroHorizon(input({ nowAll: [event], events: [event], ...rest }));
   };
 
-  it('is false when nothing is happening — which is the whole of free’s case (§10)', () => {
-    // No variant is consulted anywhere. A `free` board has no now point by
-    // definition, and "what could we do instead" is GlanceCard's job.
-    expect(canLift(heroHorizon(input()))).toBe(false);
-    // Even with a rich NEXT and a third point, an empty now does not lift.
+  // OWNER CORRECTION from real use (2026-08-03): the first version returned false on
+  // an empty `now`, which made the board un-pressable through every GAP — most of a
+  // real day. "Nothing is happening" is not "nothing to show".
+  it('is TRUE in a gap, when the next thing has depth', () => {
     const n = ev('n', { startsAt: '2026-08-03T14:00:00Z', placeId: 'p1' });
+    const h = heroHorizon(input({ nextAll: [n], events: [n], places: [place('p1', 'the hotel')] }));
+    expect(h.now).toEqual([]);
+    expect(canLift(h)).toBe(true);
+  });
+
+  it('is TRUE in a gap on the third point alone', () => {
+    const n = ev('n', { startsAt: '2026-08-03T14:00:00Z' });
     const later = ev('later', { startsAt: '2026-08-03T19:30:00Z' });
-    const rich = heroHorizon(
-      input({ nextAll: [n], events: [n, later], places: [place('p1', 'somewhere')] }),
-    );
-    expect(rich.next?.place).toBe('somewhere');
-    expect(rich.then).toBeTruthy();
-    expect(canLift(rich)).toBe(false);
+    expect(canLift(heroHorizon(input({ nextAll: [n], events: [n, later] })))).toBe(true);
+  });
+
+  it('is false only when the whole horizon adds nothing', () => {
+    // No now, no next, no then — end of day. Nothing to open, and nothing pretends
+    // otherwise: the board is simply not pressable.
+    expect(canLift(heroHorizon(input()))).toBe(false);
+    // A gap whose next carries no place, no note and no booking, and nothing after
+    // it: the collapsed board already shows that next's title and time.
+    const n = ev('n', { startsAt: '2026-08-03T14:00:00Z' });
+    expect(canLift(heroHorizon(input({ nextAll: [n], events: [n] })))).toBe(false);
   });
 
   it('is false for a valid now board whose horizon adds nothing (§9’s own example)', () => {

@@ -16,8 +16,8 @@ describe('playBeat', () => {
   });
 
   it('puts the class on synchronously, so it is observable', () => {
-    playBeat(el, BEAT.REBUFF);
-    expect(el.classList.contains(BEAT.REBUFF)).toBe(true);
+    playBeat(el, BEAT.LANDING);
+    expect(el.classList.contains(BEAT.LANDING)).toBe(true);
   });
 
   // The regression the shipped nudge's own test caught while this was being
@@ -54,12 +54,12 @@ describe('playBeat', () => {
 
   it('leaves other classes alone', () => {
     el.className = 'wp-board is-tappable';
-    playBeat(el, BEAT.REBUFF);
+    playBeat(el, BEAT.LANDING);
     vi.runAllTimers();
     expect(el.className.split(' ').sort()).toEqual(['is-tappable', 'wp-board']);
   });
 
-  it('the three beats are distinct classes', () => {
-    expect(new Set(Object.values(BEAT)).size).toBe(3);
+  it('every beat is a distinct class', () => {
+    expect(new Set(Object.values(BEAT)).size).toBe(Object.values(BEAT).length);
   });
 });

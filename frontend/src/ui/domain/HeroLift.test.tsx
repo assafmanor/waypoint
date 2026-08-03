@@ -136,7 +136,7 @@ describe('HeroLift', () => {
     });
     expect(screen.getByText(t.board.concurrentNow)).toBeTruthy();
     // No point is the lead, and both carry a place and a settle strip.
-    expect(container.querySelectorAll('.hero-point.lead')).toHaveLength(0);
+    expect(container.querySelectorAll('.hero-point[data-lead]')).toHaveLength(0);
     expect(container.querySelectorAll('.hero-equal-hd')).toHaveLength(2);
     expect(container.querySelectorAll('.wp-settle.board')).toHaveLength(2);
     expect(container.querySelectorAll('.hero-where-nm')).toHaveLength(2);

@@ -1,6 +1,6 @@
 # 0160 — The hero **lifts**, and what it lifts is a **horizon**
 
-**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Phases 1-3 built 2026-08-03** (§4 the readout and the tappable board, §3/§9/§12 the horizon derivation, then the lifted hero rendering with its `Modal` `lift` variant and `SettleControl`'s `board` density); **phases 4-5 unbuilt** — the MOTION (the measured FLIP, the swing, the landing beat) and the rebuff are still to come, so what ships today opens with a placeholder fade — see the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md).
+**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Phases 1-3 built 2026-08-03, then AMENDED from a device the same day — read the amendment at the end before §5, §9 or §10** (the rebuff is withdrawn, the landing is centred, and a class collision laid the horizon out in a row). (§4 the readout and the tappable board, §3/§9/§12 the horizon derivation, then the lifted hero rendering with its `Modal` `lift` variant and `SettleControl`'s `board` density); **phases 4-5 unbuilt** — the MOTION (the measured FLIP, the swing, the landing beat) and the rebuff are still to come, so what ships today opens with a placeholder fade — see the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md).
 **Date:** 2026-08-03
 **Design reference:** [`mockups/hero-lift-v1.html`](../../mockups/hero-lift-v1.html) (the motion) + [`mockups/hero-horizon-v1.html`](../../mockups/hero-horizon-v1.html) (the content). Every measurement below is read from those files' live DOM, at 390×844 and 360×640, in both themes.
 
@@ -153,3 +153,29 @@ The third point costs **28px** (4.8% of the full horizon) and is kept: a two-slo
 - **A third day slot / a list under `אחר כך`.** Rejected per §12 — that is the Day tab.
 - **The rebuff saying `אין מה לפתוח כרגע` once.** Drawn, and rejected by the owner: text that flashes on the loudest surface reads as a rebuke.
 - **A per-entity control on the collapsed board** (Phase 5's original). Already rejected in ADR-0121's amendment §4; this ADR is the alternative it asked for.
+
+## Amendment (2026-08-03) — three corrections from the built hero on a real phone
+
+Phases 1-3 shipped, the owner opened it on a device, and three of the decisions above were wrong. All three are recorded here rather than in a new ADR, because each one narrows or reverses a specific numbered section.
+
+### A. §9's rebuff is WITHDRAWN, and §10's "`free` does not lift" with it
+
+The report was _"it does lift but only when there's an event happening"_ — and the diagnosis is that `canLift` required a non-empty `now`. **A gap is most of a real day**, so the board sat there un-pressable through nearly all of it.
+
+§9 and §10 both rested on a conflation this ADR made and did not notice: **"nothing is happening now" is not "nothing to show."** In a gap the horizon still holds `הבא בתור` with its place, its note and its booking reach, plus `אחר כך` — and that is arguably the moment the lift is worth the most, because "I am free now, what is next and where is it" is a question no other surface on Home answers. §10's argument was about the **shelf** (`GlanceCard` answers "what could we do instead"), which was never the same question.
+
+So `canLift` asks only "does the lifted state add anything", of the whole horizon. A board that adds nothing is now the rare end-of-day case rather than the common one, and it stays **silent** — the owner's call, in the same round: no nudge for an empty tap. §7's third beat (`.is-landing`) is unaffected; `.is-rebuffing` is retired before it was built, and `BEAT.REBUFF` should come out of `lib/one-shot.ts` when nothing has claimed it.
+
+### B. §5's top-anchored landing becomes CENTRED
+
+> _"I was imagining the hero to lift to the center of the screen, not to the top."_
+
+§5 argued for the top from the mockup's measurement — it was the only way to keep the anchored character off a scroller at 360×640. On a real phone that argument turns out to be answering the wrong question: **a top-anchored card reads as a panel that arrived from somewhere**, which is the sheet grammar §2 rejects, and centred is what reads as the object coming toward you.
+
+The `lift` variant is `align-items: center`. It still covers the chrome whenever it is tall enough to, so §5's consequence holds for the cases that motivated it; a short hero now leaves the chrome visible above it, which is the honest reading of content-sizing (§8).
+
+### C. A class-name collision, and the convention that would have prevented it
+
+`HeroLift` marked its primary point with `className="hero-point lead"`. **`.lead` is already a global class** in `screens.css` — the Glance card's row, at `display: flex; align-items: baseline; justify-content: space-between` — so the lead point inherited it and laid its parts out in a **row**: the title, the note and the settle strip side by side in one band. Visible immediately on a device; invisible to every test, because each part rendered correctly and only their arrangement was wrong.
+
+It is now `data-lead`, an attribute, which cannot collide with a class at all. The lesson is the one the codebase already had and this file broke: **every class this app adds is prefixed** (`wp-`, `hero-`, `map-`, `prep-`). An unprefixed modifier is a global, and `lead`/`big`/`row`/`main` are all already taken.
