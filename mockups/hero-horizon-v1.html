@@ -9275,10 +9275,29 @@ textarea {
         ticket:
           'M4 8.4A1.4 1.4 0 0 1 5.4 7h13.2A1.4 1.4 0 0 1 20 8.4v2a2.2 2.2 0 0 0 0 4.4v1.8a1.4 1.4 0 0 1-1.4 1.4H5.4A1.4 1.4 0 0 1 4 16.6v-1.8a2.2 2.2 0 0 0 0-4.4v-2Z',
         gear: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z M19.6 12a7.6 7.6 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-2-1.2L14.8 3h-3.9l-.4 2.6a7.6 7.6 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2.5l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 2 1.2l.4 2.6h3.9l.4-2.6a7.6 7.6 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2Z',
-        flight: 'M20.5 12 3.5 5.5l2.4 6.5-2.4 6.5L20.5 12Z',
+        flight:
+          'M2.6 12c0-1.1.9-2 2-2h5.2l4.4-6.4h2.9l-2.6 6.4h4.6l1.8-2.4h1.6l-1.2 4.4 1.2 4.4h-1.6l-1.8-2.4h-4.6l2.6 6.4h-2.9L9.8 14H4.6c-1.1 0-2-.9-2-2Z',
       };
-      const ic = (n, cls = '') =>
-        `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+      /* `Icon.tsx` renders a FILLED set as `fill: currentColor; stroke: none` and
+         everything else as a stroke. Drawing a filled silhouette with a stroke
+         turns it into an outline, so the set is honoured here rather than
+         approximated — `caret` is the one this file was already getting wrong. */
+      const FILLED = new Set(['caret', 'flight', 'star']);
+      const ic = (n, cls = '') => {
+        const f = FILLED.has(n);
+        return `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="${
+          f ? 'currentColor' : 'none'
+        }" stroke="${f ? 'none' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+      };
+
+      /* THE DIRECTIONAL ARROW IS A COMPONENT, NOT A GLYPH (`ui/NavArrow.tsx`).
+         Two reasons this file got wrong by hardcoding `←` (owner report): it is an
+         SVG so it optically centres in its box on every platform, and it is keyed
+         to a LOGICAL direction — drawn for RTL (forward points left) and mirrored
+         by `[dir='ltr'] .nav-arrow-forward` in `App.css`, so direction flips for
+         free. A literal arrow character does neither. */
+      const navArrow = (variant = 'forward') =>
+        `<svg class="nav-arrow nav-arrow-${variant}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m6-6l-6 6 6 6"/></svg>`;
 
       let W = 390;
       let THEN = 1;
@@ -9542,7 +9561,7 @@ textarea {
               <div class="wp-board-now-label loc">${T.inTransitLabel}</div>
               <div class="wp-board-now-title">
                 <span class="wp-board-ic">${ic('flight')}</span>
-                <span class="route">נאפולי <span class="arr">←</span> תל אביב</span>
+                <span class="route"><bdi>תל אביב</bdi><span class="arr">${navArrow()}</span><bdi>נאפולי</bdi></span>
               </div>
             </div>
             <div class="hero-part">

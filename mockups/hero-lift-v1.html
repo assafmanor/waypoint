@@ -9581,8 +9581,18 @@ textarea {
           'M4 8.4A1.4 1.4 0 0 1 5.4 7h13.2A1.4 1.4 0 0 1 20 8.4v2a2.2 2.2 0 0 0 0 4.4v1.8a1.4 1.4 0 0 1-1.4 1.4H5.4A1.4 1.4 0 0 1 4 16.6v-1.8a2.2 2.2 0 0 0 0-4.4v-2Z',
         gear: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z M19.6 12a7.6 7.6 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-2-1.2L14.8 3h-3.9l-.4 2.6a7.6 7.6 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2.5l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 2 1.2l.4 2.6h3.9l.4-2.6a7.6 7.6 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.06-.4.1-.8.1-1.2Z',
       };
-      const ic = (n, cls = '') =>
-        `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+      /* `Icon.tsx` renders a FILLED set as `fill: currentColor; stroke: none` and
+         everything else as a stroke. Drawing a filled silhouette with a stroke
+         turns it into an outline, so the set is honoured here rather than
+         approximated — `caret` is the one this file was already getting wrong. */
+      const FILLED = new Set(['caret', 'flight', 'star']);
+      const ic = (n, cls = '') => {
+        const f = FILLED.has(n);
+        return `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="${
+          f ? 'currentColor' : 'none'
+        }" stroke="${f ? 'none' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${P[n]}"/></svg>`;
+      };
+
 
       let W = 390;
       let DUR = 'base';
