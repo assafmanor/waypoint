@@ -140,6 +140,75 @@ describe('EventForm (folded into Modal, U-01)', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  // ── AN UNTOUCHED EDIT IS NOT DIRTY (owner, 2026-08-03) ─────────────────────
+  // The regression that made this a report: ADR-0136 §2's session-187 amendment gave the
+  // booked row `Boolean(event)` as its touched flag so the category cannot re-guess a saved
+  // fact — and `dirty` was still reading that flag as "the human turned the row on". So
+  // every edit of every event was dirty before a key was pressed, and leaving one cost a
+  // confirm. Worst in Plan mode, where a tap on a row IS this form.
+  describe('opening an existing event and leaving it alone', () => {
+    const saved = (extra: Record<string, unknown> = {}) => ({
+      id: 'ev-7',
+      tripId: 't1',
+      date: '2026-07-20',
+      title: 'ארוחת ערב',
+      kind: 'soft',
+      icon: '🍜',
+      category: 'food',
+      placeId: 'p-tlv',
+      status: 'planned',
+      sortOrder: 1,
+      source: 'manual',
+      createdAt: '',
+      updatedAt: '',
+      updatedBy: 'u1',
+      ...extra,
+    });
+
+    // Both exits, because they are the two the report named: the ✕/backdrop/system-back
+    // path and the explicit `ביטול`.
+    it('closes on Escape with no discard confirm', () => {
+      const onClose = vi.fn();
+      render(wrapNav(<EventForm event={saved() as never} onClose={onClose} />));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByText(t.common.discardTitle)).toBeNull();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes on ביטול with no discard confirm', () => {
+      const onClose = vi.fn();
+      render(wrapNav(<EventForm event={saved() as never} onClose={onClose} />));
+      fireEvent.click(screen.getByRole('button', { name: t.common.cancel }));
+      expect(screen.queryByText(t.common.discardTitle)).toBeNull();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    // The linked case runs the OTHER branch — `showBooked` is false, so there is no row at
+    // all and the flag was doubly meaningless there.
+    it('closes an already-linked event with no discard confirm', () => {
+      tripState.bookings = [{ id: 'bk-1', title: 'רמן נאגי', type: 'restaurant' }];
+      const onClose = vi.fn();
+      render(
+        wrapNav(<EventForm event={saved({ bookingId: 'bk-1' }) as never} onClose={onClose} />),
+      );
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByText(t.common.discardTitle)).toBeNull();
+      expect(onClose).toHaveBeenCalledTimes(1);
+      tripState.bookings = [];
+    });
+
+    // …and the guard still guards. ADR-0136 §2.a's third symptom: turning the row on is
+    // §3's one-way conversion on the next save, so it is exactly the edit that must warn.
+    it('still prompts once the booked row is turned on', () => {
+      const onClose = vi.fn();
+      render(wrapNav(<EventForm event={saved() as never} onClose={onClose} />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.eventForm.bookedLabel) }));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.getByText(t.common.discardTitle)).toBeTruthy();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
   // ADR-0107 §6 — the zone chip: the resolved zone is stated and correctable, and
   // a correction is a manual override on the event, never a cache of the derived
   // value (§7 / ADR-0110 §94-99).

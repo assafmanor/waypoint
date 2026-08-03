@@ -236,12 +236,14 @@ export function EventForm({
   // wrong is worst: the guess re-opened the row on every edit, swapped the location field for a
   // route field, and then converted the event on the next save of ANY field, one-way (§3),
   // without ever counting as dirty.
+  //
+  // Hoisted rather than written inline because the dirty check below has to diff against it:
+  // `touched` is true from the first render on an existing event, so it answers "may the
+  // category still move this?", never "did the user change anything?".
+  const initialBooked =
+    !event && initialCategory ? CATEGORY_DEFAULT_BOOKED[initialCategory] : false;
   const booked = useDerivedField(
-    draft
-      ? draft.booked
-      : !event && initialCategory
-        ? CATEGORY_DEFAULT_BOOKED[initialCategory]
-        : false,
+    draft ? draft.booked : initialBooked,
     draft?.bookedTouched ?? Boolean(event),
   );
   const [code, setCode] = useState(draft?.code ?? '');
@@ -339,9 +341,16 @@ export function EventForm({
     icon.value !== initialIcon ||
     category !== initialCategory ||
     placeId !== initialPlaceId ||
-    // A row the human turned on, a typed code, or a chosen type are all real edits — closing
+    // A row whose position moved, a typed code, or a chosen type are all real edits — closing
     // with any of them unsaved has to hit the discard guard like every other field.
-    booked.touched ||
+    //
+    // **The VALUE, never `touched`** — which is what this read until §2's session-187
+    // amendment made an existing event count as touched from the first render (so the
+    // category cannot re-guess a saved fact). The two fixes collided: every edit of every
+    // event opened dirty, so the discard confirm fired on a form nobody had typed in — worst
+    // in Plan mode, where a tap on a row IS the edit form and backing out of one costs a
+    // dialog. `BookingSheet` states the same rule for its own two derived fields.
+    booked.value !== initialBooked ||
     code !== '' ||
     bookingType != null ||
     // A picked route is an edit like any other (ADR-0154 §3). `fromPlaceId` rather than
