@@ -288,6 +288,34 @@ test.describe('the lifted hero (ADR-0160)', () => {
     await expect(page.locator(BOARD)).toBeVisible();
   });
 
+  // The card is a TRANSPARENT SHELL in this variant — the hero inside owns every visible
+  // edge. Resetting only `border-radius` left the base rule's 1px `--line` border as a
+  // square stroke boxing in the rounded hero, which is what it looked like on a phone. A
+  // computed-style assertion, because that is the whole defect: no geometry moved.
+  test('the modal card paints nothing around the hero', async ({ page }) => {
+    await boot(page);
+    await page.locator(BOARD).click();
+    await expect(page.locator(HERO)).toBeAttached();
+    const shell = await page.locator('.modal-card').evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        borderWidth: cs.borderTopWidth,
+        background: cs.backgroundImage === 'none' ? cs.backgroundColor : cs.backgroundImage,
+        boxShadow: cs.boxShadow,
+        padding: cs.paddingTop,
+      };
+    });
+    expect(shell.borderWidth).toBe('0px');
+    expect(shell.background).toBe('rgba(0, 0, 0, 0)');
+    expect(shell.boxShadow).toBe('none');
+    expect(shell.padding).toBe('0px');
+    // …while the hero itself keeps the board's own rounded edge.
+    const radius = await page
+      .locator(HERO)
+      .evaluate((el) => parseFloat(getComputedStyle(el).borderTopLeftRadius));
+    expect(radius).toBeGreaterThan(8);
+  });
+
   // **Plan's hero is the other half of the same decision** (ADR-0160 §H): it does not lift,
   // because its depth is the checklist rendered directly beneath it — but a tap that
   // produces nothing at all reads as a dead surface, so it answers with the rebuff.

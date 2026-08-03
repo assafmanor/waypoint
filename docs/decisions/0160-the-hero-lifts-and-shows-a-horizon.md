@@ -252,3 +252,13 @@ So what this actually builds is three things: the gate opens, the settle verbs g
 **The foot is a slot, and phase 3's `rail` prop was lying.** Its comment said "the same node the collapsed board renders, passed in rather than rebuilt so the two cannot drift" — and `Home` hand-wrote a duplicate of `.wp-board-progress` beside it. So `DayRail` and `TransitProgress` are now exported from `Board.tsx` and both hosts render the same components; the prop is `foot`, because in transit it carries the flight's progress instead (ADR-0059 §2's rule reaching the lifted state) and calling that a rail would be the same kind of untruth.
 
 That duplication is worth naming as a pattern rather than a slip: **a prop comment claiming two surfaces share a node is not enforcement.** Nothing failed while the copy existed, and nothing would have.
+
+### J. The card is a transparent shell, so it must give back every paint property
+
+Reported from a phone: a **square stroke boxing in the rounded hero**, 1px outside it on every side.
+
+`.modal-card`'s base rule carries `border: 1px solid var(--line)`, and the `lift` variant reset `background`, `border-radius`, `box-shadow` and `padding` — but not `border`. So the border stayed at `border-radius: 0` and drew a rectangle around a 22px-rounded card.
+
+The rule this makes explicit: **in this variant the card paints nothing at all** — the hero inside owns every visible edge (§1, one object gaining elevation, not a card containing one). So each paint property the base rule sets has to be handed back here, and a checklist beats an inventory of the ones somebody remembered. This one was missed because a border with no radius does not read as a border; it reads as somebody else's focus ring, which is what it was first diagnosed as.
+
+Guarded by a computed-style assertion rather than a geometry one, because no geometry moved: the e2e asserts the card's border width, background, shadow and padding are all inert while the hero keeps a non-zero corner radius.
