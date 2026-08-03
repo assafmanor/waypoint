@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  measuredBox,
   motionDurationMs,
   prefersReducedMotion,
   readDurationMs,
@@ -109,5 +110,40 @@ describe('overlayOriginOffset', () => {
   // test could see through, and the class of bug frontend/CLAUDE.md warns about twice.
   it('is null for an unmeasurable element rather than reporting dead centre', () => {
     expect(overlayOriginOffset(withViewport(800, { top: 0, height: 0, width: 0 }))).toBeNull();
+  });
+});
+
+describe('measuredBox', () => {
+  const withRect = (rect: Partial<DOMRect>) =>
+    ({
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 0, height: 0, ...rect }),
+    }) as Element;
+
+  it('is the element box', () => {
+    expect(measuredBox(withRect({ left: 8, top: 120, width: 358, height: 290 }))).toEqual({
+      left: 8,
+      top: 120,
+      width: 358,
+      height: 290,
+    });
+  });
+
+  it('is null with no element', () => {
+    expect(measuredBox(null)).toBeNull();
+    expect(measuredBox(undefined)).toBeNull();
+  });
+
+  // The whole reason this is a named function: jsdom answers zero for every rect, so a
+  // flight measured there would interpolate from the top-left corner at no size, and no
+  // unit test could see it.
+  it('is null for an unmeasurable element', () => {
+    expect(measuredBox(withRect({}))).toBeNull();
+  });
+
+  // Stricter than `overlayOriginOffset`, deliberately: for an offset a flat element still
+  // has a meaningful centre, but a box flight to a zero-height end is a collapse.
+  it('is null when either axis alone is zero', () => {
+    expect(measuredBox(withRect({ width: 358, height: 0 }))).toBeNull();
+    expect(measuredBox(withRect({ width: 0, height: 290 }))).toBeNull();
   });
 });

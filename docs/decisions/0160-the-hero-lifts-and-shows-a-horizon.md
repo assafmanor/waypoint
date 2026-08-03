@@ -1,6 +1,6 @@
 # 0160 — The hero **lifts**, and what it lifts is a **horizon**
 
-**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Phases 1-3 built 2026-08-03, then AMENDED from a device the same day — read the amendment at the end before §5, §9 or §10** (the rebuff is withdrawn, the landing is centred, and a class collision laid the horizon out in a row). (§4 the readout and the tappable board, §3/§9/§12 the horizon derivation, then the lifted hero rendering with its `Modal` `lift` variant and `SettleControl`'s `board` density); **phases 4-5 unbuilt** — the MOTION (the measured FLIP, the swing, the landing beat) and the rebuff are still to come, so what ships today opens with a placeholder fade — see the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md).
+**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Built 2026-08-03 — phases 1-4 — and AMENDED TWICE from a device the same day, so read both amendments at the end before §5, §7, §9 or §10.** Round one withdrew the rebuff, centred the landing and fixed a class collision that laid the horizon out in a row; round two built the motion (the measured two-pass FLIP, the swing, the landing beat) and records four things only a real browser could say — chiefly that the lifted hero was inheriting the app's one cinematic moment. **Phase 5 no longer exists**: it was the rebuff, retired by amendment §A before it was built. See the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md). Still unbuilt: **`in-transit` liftability** (§10's own content list — the seat, and what is first on the ground).
 **Date:** 2026-08-03
 **Design reference:** [`mockups/hero-lift-v1.html`](../../mockups/hero-lift-v1.html) (the motion) + [`mockups/hero-horizon-v1.html`](../../mockups/hero-horizon-v1.html) (the content). Every measurement below is read from those files' live DOM, at 390×844 and 360×640, in both themes.
 
@@ -179,3 +179,42 @@ The `lift` variant is `align-items: center`. It still covers the chrome whenever
 `HeroLift` marked its primary point with `className="hero-point lead"`. **`.lead` is already a global class** in `screens.css` — the Glance card's row, at `display: flex; align-items: baseline; justify-content: space-between` — so the lead point inherited it and laid its parts out in a **row**: the title, the note and the settle strip side by side in one band. Visible immediately on a device; invisible to every test, because each part rendered correctly and only their arrangement was wrong.
 
 It is now `data-lead`, an attribute, which cannot collide with a class at all. The lesson is the one the codebase already had and this file broke: **every class this app adds is prefixed** (`wp-`, `hero-`, `map-`, `prep-`). An unprefixed modifier is a global, and `lead`/`big`/`row`/`main` are all already taken.
+
+## Amendment (2026-08-03, second round) — the motion, and four things only a browser could say
+
+Phase 4 built the FLIP. The report that triggered it was one sentence, on a device: _"now it became a simple overlay rendering the hero twice instead of lifting up"_ — with a screenshot of the collapsed board sitting behind the lifted card. That is the grammar §1 rejects, arrived at by building §1's own design, and the causes were mundane.
+
+### D. Two boards on screen was the actual defect, and it was not a motion bug
+
+Phase 3 shipped a hero that rendered correctly and a board that stayed exactly where it was. Nothing hid it. So there were two boards, and a fade between two copies of one object is an overlay by definition, whatever the ADR calls it.
+
+**The collapsed board now hides while lifted** (`.wp-board.is-lifted`), with `visibility` and never `display`, for two reasons that are both load-bearing: the descent MEASURES that box on the way back down, and Home's layout must not collapse and re-expand around the hero opening. The e2e's first assertion is therefore a count, not a measurement — one visible `.wp-board` at any moment.
+
+The second cause was that the entrance was still §5's placeholder fade. **It is gone rather than kept alongside the flight:** an object that travels _and_ fades is still two boards cross-dissolving. This variant now has no CSS entrance or exit at all, which is a deliberate asymmetry with every other overlay — the box it travels from belongs to a different element on the page underneath, and no stylesheet can know where that is.
+
+### E. How the FLIP is written, and the one property that dictates it
+
+`width`/`height` animate as **real layout**, `transform` carries the swing alone, and the card takes `position: fixed` only for the duration of the flight. That combination is forced rather than chosen:
+
+- §5 promised text crisp at both ends, so the box animates and nothing scales. Verified in the e2e by asserting no `scale` appears and that the transform's matrix is a rotation relaxing to identity.
+- **`height` does not interpolate to `auto`** (`290px → auto` reports 290, then 432, nothing between), and the hero is content-sized (§8), so its settled height _is_ `auto`. Hence the two-pass measure: mount at the settled box, measure what CSS resolved to, then animate px → px.
+- CSS therefore stays the single owner of where the hero settles. JS only ever **reads** it — the alternative, declaring the settled box so JS has a target, puts the same geometry in two places and lets them drift.
+
+The Web Animations API rather than a transition, following `useFlipRows`' precedent: it leaves no inline styles for React to diff against, and there is no "release the height back to `auto`" timer to get wrong — which is the ADR-0140 §5 shape this would otherwise have taken.
+
+### F. The lifted hero was replaying the app's one cinematic moment
+
+`.app[data-mode='trip'] .wp-board` matched the lifted hero too — it _is_ a `.wp-board`, which is the whole point of a promotion. So every open replayed the **Plan→Trip going-live climax**: 600ms of `--t-cinematic` from `brightness(0.55) saturate(0.55)`. That is why the lifted card read flat and dim beside the board it came from, and it is an ADR-0140 budget violation — the one cinematic moment in the app, re-spent on a state you can enter all day.
+
+The same selector is also more specific than `.wp-board.is-landing`, so it silently won the `animation` property and **§7's landing beat never played at all**. The first fix was to exclude `.is-landing` from the power-on rule; measured, that is worse — dropping out of the rule and back in RESTARTS the power-on, so the board flashed dim and ramped up over 600ms after every close. The beat therefore fills a **second animation slot** the power-on rule leaves open, so `animation-name` in position 0 never changes and that animation keeps its own clock.
+
+### G. What jsdom could not see, and what a probe could not either
+
+The unit suite covers which boxes the code aims at; it cannot check whether those boxes are where the hero is, because jsdom answers zero for every rect. So there is now an **e2e spec** (`frontend/e2e/hero-lift.spec.ts`) asserting the flight leaves the board's measured box and lands on the hero's own settled one, both measured independently of the animation between them.
+
+Two things about that spec are worth keeping, because both were wrong first:
+
+1. **It compares the last IN-FLIGHT frame, not the last sampled frame.** Once the flight releases its borrowed `position`, the hero snaps to the CSS box whatever the animation was aiming at — so the first version passed happily with the landing box hardcoded to the wrong rect. Verified by hardcoding it.
+2. **It does not read `effect.getKeyframes()`**, which is how ADR-0140's handoff spec reads its aim. Measured here, it reads back `left: 35.1875px, top: 422px` for keyframes passed `left: 9px, top: 273.5px` — the element's own resolved offsets, because this card's `left`/`top` are `auto` in CSS and only the animation supplies them.
+
+And the real bug that only the app could show: **a flight leaves the hero `position: fixed`, and measuring an element in that state answers its STATIC position.** React double-invokes effects in dev, so the second run measured 422 instead of 273.5 and flew to the wrong place — while a standalone harness of the same components, rendered without StrictMode, measured perfectly. Any remount does the same thing. The entrance effect now restores what it borrowed on cleanup, which is what makes its own measurement correct the second time.

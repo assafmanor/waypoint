@@ -117,8 +117,18 @@ export interface BoardProps {
   /** Press the whole board to lift it (ADR-0160 §1). Present → the board renders
    *  as a `<button>` and takes the large press step; absent → a plain `<div>`, as
    *  it shipped. The CALLER decides which variants are liftable and whether there
-   *  is anything to lift — the board stays presentational and asks neither. */
-  onLift?: () => void;
+   *  is anything to lift — the board stays presentational and asks neither.
+   *
+   *  Hands back the element that was pressed, because the lift is a FLIP off this
+   *  board's box and a landing position may never be a constant (`frontend/CLAUDE.md`
+   *  records three bugs from writing one). Reporting what was pressed is still
+   *  presentational: the board measures nothing and decides nothing. */
+  onLift?: (board: HTMLElement) => void;
+
+  /** The hero is currently lifted out of this board (ADR-0160 §1). Hides it without
+   *  giving up its box — it is the same object one elevation up, and two of them on
+   *  screen is the overlay grammar the promotion exists to avoid. */
+  lifted?: boolean;
 }
 
 function AlsoRow({ row }: { row: BoardRow }) {
@@ -160,6 +170,7 @@ export function Board(props: BoardProps) {
     windowStartHour,
     windowEndHour,
     onLift,
+    lifted,
   } = props;
   const inTransit = variant === 'in-transit';
 
@@ -349,14 +360,14 @@ export function Board(props: BoardProps) {
     </>
   );
 
-  const cls = 'wp-board' + (inTransit ? ' transit' : '');
+  const cls = 'wp-board' + (inTransit ? ' transit' : '') + (lifted ? ' is-lifted' : '');
 
   // A `<button>` only when there is somewhere to go. `is-tappable` carries the
   // element reset and the large press step (ADR-0140 §2: a full-width card at the
   // control step reads as collapsing), and it is one class rather than a bespoke
   // transform.
   return onLift ? (
-    <button type="button" className={cls + ' is-tappable'} onClick={onLift}>
+    <button type="button" className={cls + ' is-tappable'} onClick={(e) => onLift(e.currentTarget)}>
       {body}
     </button>
   ) : (

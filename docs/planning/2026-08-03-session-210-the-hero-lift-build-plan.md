@@ -4,6 +4,8 @@
 **Design:** ADR-0160 · mockups [`hero-lift-v1`](../../mockups/hero-lift-v1.html) + [`hero-horizon-v1`](../../mockups/hero-horizon-v1.html)
 **Shape:** five phases, one PR each. Phase order is by dependency, not by visibility.
 
+**Status (end of session 210):** phases 1-4 built and merged. **Phase 5 is deleted, not deferred** — it was the rebuff, and ADR-0160's amendment §A withdrew it on the owner's call before it was built. What phase 4 did not carry is `in-transit` liftability: §10 asks that variant for new CONTENT (the seat, the landing zone shift, what is first on the ground) plus the transit progress as the foot, and folding new content into the motion PR is exactly what splitting phases 3 and 4 was for. It is its own small phase.
+
 ## Read this first: three things the ADRs do not answer
 
 These are the gaps the plan found, and each one changes a phase.
@@ -59,6 +61,8 @@ The whole horizon, rendering, with **no lift animation** — it opens instantly.
 - **(a) Make the lift card `position: fixed`** and drive `top`/`left`/`width`/`height` from CSS custom properties that JS writes off the measured box. Keeps §5's promise exactly — the box animates, nothing scales, text stays crisp — and `.wp-dragghost`'s comment already confirms `position: fixed` resolves against the viewport unwrapped in this shell. Cost: the card stops participating in the overlay's flex centring, so its settled box becomes this variant's own responsibility, and the two must not drift.
 - **(b) A transform FLIP** — translate + scale from the measured delta to identity. Cheaper and compositor-friendly, and what most FLIP implementations do. Cost: it **scales the text**, which is the thing §5 says only the swing should do and only while its angle is non-zero. It would make the crispness claim false for the whole tween.
 
+**Built as (a) with the two-pass measure, and four things the plan did not predict are recorded in ADR-0160's second amendment (§D-§G).** The short version: hiding the collapsed board mattered more than any of the motion (it was the actual reported defect); the placeholder fade had to be DELETED rather than kept alongside the flight; the lifted hero was matching `.app[data-mode='trip'] .wp-board` and replaying the Plan→Trip climax on every open, which also silently beat the landing beat's `animation`; and the flight's own `position: fixed` corrupts a second measurement, which React's StrictMode double-invoke turns from a latent bug into a certain one.
+
 **Take (a) — but it needs a TWO-PASS measure, which the first write-up of this section missed.** The naive reading is "declare the settled box in the variant, animate from the measured start". That does not work, and it fails on the one channel that matters: **`height` does not interpolate to `auto`.** Measured in Chromium rather than assumed:
 
 | from → to         | mid-flight height                                      |
@@ -81,7 +85,7 @@ Step 4 is the part to be careful about: it is exactly the "state that only exist
 
 Two more things not to rediscover: the start box must be **committed before** the transition (a forced reflow between writing it and writing the target), and the layer must be **opened one frame before** the target box is written — otherwise the element becomes visible in the same frame its destination is set and the flight starts from wherever the browser got to. Both were found in `hero-lift-v1.html`.
 
-- FLIP off the **measured** collapsed box. `frontend/CLAUDE.md` records three bugs from writing a landing position as a constant; this must measure and must be asserted in an **e2e against the settled box**, because jsdom reports every rect as zero and the unit suite cannot see this class of bug.
+- FLIP off the **measured** collapsed box. `frontend/CLAUDE.md` records three bugs from writing a landing position as a constant; this must measure and must be asserted in an **e2e against the settled box**, because jsdom reports every rect as zero and the unit suite cannot see this class of bug. (Built: `frontend/e2e/hero-lift.spec.ts`. Two traps in writing it are in ADR-0160 §G — compare the last IN-FLIGHT frame rather than the last sampled one, and do not read the aim out of `effect.getKeyframes()` the way the handoff spec does.)
 - The swing: `perspective(900px) rotateX(9deg) translateZ(-46px)` → identity, on top of the box animation. `--ease-arrive` in, `--ease-exit` out, `--t-base` / `--t-quick`. **Not `--t-cinematic`** (ADR-0140's budget).
 - The inline board holds its space with `visibility` (never `display`).
 - **The layer paints nothing while closed** — the defect the mockup shipped and fixed. `visibility: hidden`, not `display: none`, because the hero must stay measurable while closed.
@@ -92,14 +96,13 @@ Two more things not to rediscover: the start box must be **committed before** th
 
 **Tests.** Unit: the beat class is applied and removed at `animationend`; reduced motion yields no animation and a correct static state. E2E: the aim lands on the settled box; back/Escape/backdrop each dismiss; the inline board is hidden during flight and visible after.
 
-## Phase 5 — the rebuff
+## Phase 5 — the rebuff — **DELETED**
 
-Last, because it is the cheapest and depends on `canLift`.
+Not deferred. ADR-0160's amendment §A withdrew it on the owner's call (_"No nudge when nothing to lift etc."_) in the same round that made a gap liftable: once the board lifts in a gap, an empty tap is the rare end-of-day case rather than the common one, and it stays silent. `BEAT.REBUFF` came back out of `lib/one-shot.ts` rather than being left as a name nobody claims.
 
-- `.is-rebuffing` through Phase 4's shared beat: 7px up, settle back, `linear`, **no colour**, **no text**.
-- Wired to `!canLift(horizon)`, which is where `free` gets it for free — no variant check anywhere (§9).
+## Phase 5 (was 6) — `in-transit` becomes liftable
 
-**Tests.** A `free` board rebuffs and does not open a layer; a valid `now` board with an empty horizon rebuffs identically; the class comes off; reduced motion does nothing visible and still opens nothing.
+The one part of §10 still unbuilt, and it is content rather than motion, which is why it is not in phase 4: the transit hero gains the booking, **the seat**, the landing zone shift and **what is first on the ground** — the "next 30 minutes" question asked at altitude. It drops the settle verbs (a flight you are sitting inside settles itself by landing) and keeps ADR-0059 §2's rule that the transit progress replaces the day rail, which means the hero's foot needs the progress node rather than the rail.
 
 ## What this plan does not build
 

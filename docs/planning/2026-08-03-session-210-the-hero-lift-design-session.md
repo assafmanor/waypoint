@@ -55,3 +55,32 @@ So the horizon file's "before" frame is now the board exactly as shipped, and th
 - **A note on the NEXT event.** Sometimes exactly what you want before leaving; also the part that turns the typical case into the heavy one. Named in ADR-0160 §13 so it cannot arrive quietly during the build.
 - **The rebuff's first-encounter problem.** A lift that returns reads as "nothing here" mainly to someone who has seen a real lift. If it bites on a device the answer is a one-time hint, not permanent copy.
 - **Every pixel number.** Measured in a sandbox with no network, so on a fallback font. Re-measure on a device before treating any as a build constant — the same caveat already sitting on ADR-0152/0153.
+
+## Phase 4 — the motion (same session, after the round-one amendment merged)
+
+The trigger was a screenshot and one sentence: _"now it became a simple overlay rendering the hero twice instead of lifting up"_. Worth recording that the complaint was **correct about the grammar and not about the code** — phases 1-3 built exactly what ADR-0160 §1 designed, and the result was still an overlay, because two of §1's own clauses had not been built yet. A design can be right and its half-built state can contradict it.
+
+**What actually fixed the report was not the FLIP.** It was `.wp-board.is-lifted` — one CSS rule hiding the collapsed board — plus deleting the placeholder fade. The flight is what makes it _good_; hiding the board is what makes it _not an overlay_. Ordering those correctly took a screenshot, because from the code the fade looked like the whole problem.
+
+### The three defects the browser found, and why nothing else could
+
+Every one of these was invisible to 2508 passing unit tests, and two were invisible to a standalone harness of the same components as well.
+
+1. **The lifted hero was replaying the app's one cinematic moment.** `.app[data-mode='trip'] .wp-board` matches the lifted hero, because the hero _is_ a `.wp-board` — that is what a promotion means. So every open ran the Plan→Trip going-live climax: 600ms from `brightness(0.55) saturate(0.55)`. The visible symptom was in the owner's screenshot all along (the lifted card looks flat and dim beside the board above it) and I read it as a scrim artefact.
+
+2. **That same rule silently ate the landing beat.** It is more specific than `.wp-board.is-landing`, so §7's beat never played. The first fix — excluding `.is-landing` — was **measured and rejected**: leaving and re-entering the rule restarts the power-on, so the board flashed dim and ramped up over 600ms after every close. The beat now fills a second animation slot the power-on rule leaves open, which keeps `animation-name` in position 0 unchanged.
+
+3. **A flight's own `position: fixed` corrupts the next measurement.** An element out of flow reports its _static_ position, so the second of React StrictMode's two effect invocations measured 422 instead of 273.5 and flew there. A standalone Vite harness of the real `Board` + `HeroLift` against the real stylesheets measured **perfectly** — because I had not wrapped it in StrictMode. That is the sharpest lesson of the phase: **a harness that omits the app's own dev wrappers can certify a bug as fixed.** The e2e in the real app is what caught it.
+
+### Two tests that passed for the wrong reason first
+
+Both were written, seen green, then broken on purpose — and only one of them actually bit.
+
+- The settled-box assertion compared the **last sampled frame** to the settled box. Those are the same box by construction once the flight releases its borrowed `position`, so it passed happily with the landing box hardcoded to `{8, 120, 374, 560}`. It now compares the last frame that still carries `position: fixed`, and fails by 153px on that same hardcode.
+- Reading the aim from `effect.getKeyframes()` — the technique ADR-0140's handoff spec uses — reads back the element's resolved `auto` offsets here (`top: 422px` for a keyframe passed `273.5px`), because this card has no `top`/`left` in CSS at all. The spec measures observed geometry instead, which is both honest and closer to what a user sees.
+
+The habit that produced all four findings is the same one: **break the code and check the test goes red.** Two of the four guards did not, and would have shipped as decoration.
+
+### Left undone, deliberately
+
+`in-transit` liftability. §10 asks that variant for new **content** — the seat, the landing zone shift, what is first on the ground — plus the transit progress standing in for the day rail. That is phase-3-shaped work, and folding it into the motion PR is exactly what splitting 3 from 4 was meant to prevent. It is now its own phase in the build plan rather than a line item nobody owns.

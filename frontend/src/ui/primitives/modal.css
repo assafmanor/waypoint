@@ -270,10 +270,15 @@
    holds for the cases that motivated it; a short hero now leaves the chrome visible
    above it, which is the honest reading of content-sizing.
 
-   The ENTRANCE HERE IS A PLACEHOLDER, and saying so is the point: phase 4 replaces
-   it with the FLIP off the collapsed board's MEASURED box plus the 9°/46px swing.
-   A fade is the honest stand-in for a phase whose subject is shape, not motion —
-   it is not the designed character and no one should read it as approval of one. */
+   **This variant has no entrance or exit of its own, and that is deliberate.** Every
+   other overlay's motion is CSS keyed on `.is-closing`; the lifted hero's is a
+   measured FLIP in `lib/useLiftFlight.ts`, because the box it travels from is a
+   different element on the page underneath and no stylesheet can know where that is.
+   The placeholder fade that stood here through phase 3 is GONE rather than kept as a
+   companion: a promoted object that also fades is two boards cross-dissolving, which
+   is precisely the overlay grammar §1 rejects, and it was reported as exactly that
+   on a phone. Under reduced motion nothing animates and the lifted state is simply
+   correct as a static state, which is the requirement anyway (ADR-0140 §5). */
 .modal-overlay[data-variant='lift'] {
   align-items: center;
 }
@@ -287,20 +292,4 @@
   box-shadow: none;
   padding: 0;
   overflow: visible;
-  animation: modal-lift-in var(--t-base) var(--ease-arrive) both;
-}
-/* BOTH halves, and never `reverse` — the rule at the top of this file, which
-   `styles/exit-animations.contract.test.ts` fails the build over. */
-.modal-overlay[data-variant='lift'].is-closing .modal-card {
-  animation: modal-lift-out var(--t-quick) var(--ease-exit) both;
-}
-@keyframes modal-lift-in {
-  from {
-    opacity: 0;
-  }
-}
-@keyframes modal-lift-out {
-  to {
-    opacity: 0;
-  }
 }

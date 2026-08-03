@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Board } from './Board';
 import { t } from '../../i18n/he';
@@ -261,5 +261,38 @@ describe('Board', () => {
       />,
     );
     expect(transit.container.querySelector('div.wp-board.transit')).toBeTruthy();
+  });
+
+  // The flight is a FLIP off THIS element's box, and a landing position may never be a
+  // constant (`frontend/CLAUDE.md` records three bugs from writing one). Reporting what
+  // was pressed keeps the board presentational: it measures nothing itself.
+  it('hands the pressed element to onLift', () => {
+    const lifted = vi.fn();
+    const { container } = render(
+      <Board variant="free" clock="14:30" next={null} onLift={lifted} />,
+    );
+    const board = container.querySelector('button.wp-board')!;
+    fireEvent.click(board);
+    expect(lifted).toHaveBeenCalledWith(board);
+  });
+
+  // The defect this guards was reported from a phone: two boards on screen at once reads
+  // as an overlay over the hero rather than the hero itself being promoted.
+  it('hides itself while the hero is lifted out of it, without giving up its box', () => {
+    const { container } = render(
+      <Board variant="free" clock="14:30" next={null} onLift={() => {}} lifted />,
+    );
+    const board = container.querySelector('.wp-board')!;
+    expect(board.className).toContain('is-lifted');
+    // `visibility`, never `display`: the descent measures this element on the way back
+    // down, and a `display: none` origin has no box to land on.
+    expect(board.className).not.toContain('is-hidden');
+  });
+
+  it('is not marked lifted when it is not', () => {
+    const { container } = render(
+      <Board variant="free" clock="14:30" next={null} onLift={() => {}} />,
+    );
+    expect(container.querySelector('.wp-board')!.className).not.toContain('is-lifted');
   });
 });
