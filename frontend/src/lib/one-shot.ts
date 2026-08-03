@@ -5,8 +5,13 @@
 // same kind of motion:
 //
 //   `.is-nudging`    — a form refuses a save (ADR-0150).
-//   `.is-rebuffing`  — a tap on the hero has nothing to open (ADR-0160 §9).
 //   `.is-landing`    — a lifted hero touches back down (ADR-0160 §7).
+//
+// A third was designed and then retired before it was built: `.is-rebuffing`, for a
+// tap on the hero with nothing to open. ADR-0160's 2026-08-03 amendment §A withdrew
+// it — the hero now lifts in a gap too, so an empty tap is the rare end-of-day case
+// and stays silent. The name is deliberately NOT kept as a placeholder: an unclaimed
+// constant reads as a feature someone forgot to finish.
 //
 // All three share the same four properties, and every one of them is a thing that
 // was got wrong once somewhere in this repo:
@@ -36,9 +41,6 @@ import { motionDurationMs } from './motion';
 export const BEAT = {
   /** A form refuses: a horizontal shake, because something IS wrong. */
   NUDGE: 'is-nudging',
-  /** A tap with nothing to open: a vertical lift that settles back, and NO colour —
-   *  `--miss` is a refusal-of-error and this is a refusal-of-content. */
-  REBUFF: 'is-rebuffing',
   /** A lifted surface touching down: one small compression on the axis it landed on. */
   LANDING: 'is-landing',
 } as const;

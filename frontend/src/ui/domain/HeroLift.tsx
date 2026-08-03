@@ -179,7 +179,12 @@ function Settle({ point }: { point: HeroLiftPoint }) {
  *  under it is what the collapsed board could not carry. */
 function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
   return (
-    <div className={lead ? 'hero-point lead' : 'hero-point'}>
+    // `data-lead`, NOT a `lead` class: `.lead` is already a GLOBAL class in
+    // `screens.css` (the Glance card's row — `display: flex; align-items: baseline;
+    // justify-content: space-between`), so `className="hero-point lead"` silently
+    // inherited it and laid the point's parts out in a ROW. Found on a device, not in
+    // review. An attribute cannot collide with a class, which is why this is one.
+    <div className="hero-point" data-lead={lead || undefined}>
       {lead ? (
         <div className="hero-part">
           {point.kind && (

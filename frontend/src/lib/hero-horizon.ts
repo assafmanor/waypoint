@@ -143,30 +143,37 @@ export function heroHorizon(input: HeroHorizonInput): HeroHorizon {
 }
 
 /**
- * **Is there anything to lift?** (ADR-0160 §9.) Derived, never a `variant` check —
- * the hero lifts when the expanded state carries something the collapsed one
- * cannot, and a tap that would open nothing gets the rebuff instead.
+ * **Is there anything to lift?** Derived, never a `variant` check — the hero lifts
+ * when the expanded state carries something the collapsed one cannot.
  *
- * Two things this encodes that are easy to get wrong, and one of them looks like a
- * contradiction in the ADR until you write it down:
+ * **This no longer requires anything to be IN PROGRESS**, and that is an owner
+ * correction from real use (2026-08-03): _"it does lift but only when there's an
+ * event happening"_. The first version returned false on an empty `now`, reasoning
+ * that with no current thing there was nothing to add depth to, and reading ADR-0160
+ * §10's "`free` does not lift" as covering it. Both were wrong in the same way —
+ * they conflated **nothing is happening now** with **nothing to show**:
  *
- * **§9 and §10 do not conflict.** §9 says the trigger is derived; §10 says `free`
- * does not lift. Both hold without a variant test, because "nothing is happening"
- * is itself derivable: with no `now` point there is no current thing to add depth
- * to, and the answer to "what could we do instead" is `GlanceCard`, two inches
- * further down Home. So an empty `now` is the whole of `free`'s case.
+ * - A **gap** is most of a real day. The board sits there un-pressable while the
+ *   horizon in fact holds `הבא בתור` with its place, its note and its booking reach,
+ *   plus `אחר כך`. That is arguably the moment the lift is worth the most: free now,
+ *   so what is next and where is it.
+ * - §10's argument was about the **shelf** — `GlanceCard` answers "what could we do
+ *   instead". It was never about "where is the next thing", which no other surface
+ *   on Home answers.
  *
- * **The settle verbs deliberately do not count.** Every event is settleable rather
- * than only the passed ones (ADR-0139 §2 — that is what keeps undo reachable), so
- * counting them would make this function `true` for every board with a now event,
- * and the rebuff would only ever fire on `free`. §9 is explicit that a valid `now`
- * board with no note, place, code or sibling has the same nothing to open. The
- * reason is the brief's own test: a lift that reveals two buttons and no new
- * information is animation for its own sake, and those two buttons are already on
- * `EventCard` one tab away.
+ * So the question is only ever "does the lifted state add anything", asked of the
+ * whole horizon. ADR-0160 §9's rebuff is withdrawn with the same change: a board
+ * that adds nothing is now the rare end-of-day case rather than the common one, and
+ * it stays silent.
+ *
+ * **The settle verbs still deliberately do not count.** Every event is settleable
+ * rather than only the passed ones (ADR-0139 §2 — that is what keeps undo
+ * reachable), so counting them would make this true for every board with a now
+ * event. The brief's own test is why: a lift that reveals two buttons and no new
+ * information is animation for its own sake, and those buttons are on `EventCard`
+ * one tab away.
  */
 export function canLift(horizon: HeroHorizon): boolean {
-  if (horizon.now.length === 0) return false;
   const hasDepth = (p: HeroPoint) => !!p.place || p.notes.length > 0 || !!p.bookingId;
   return (
     horizon.now.length > 1 ||

@@ -196,7 +196,7 @@
 /* An equal's parts sit one step in, so "this belongs to that one" reads differently
    from "this is the horizon's next point". Indent rather than a box, and this is
    level 1 of the ~2 ADR-0041 §4 caps at. */
-.hero-point:not(.lead) .hero-part {
+.hero-point:not([data-lead]) .hero-part {
   padding-inline-start: 10px;
 }
 

@@ -129,13 +129,39 @@ describe('Home — the lift wiring', () => {
     setSimulatedNow(null);
   });
 
-  it('a board with nothing to add is NOT a button — the rebuff’s case (§9)', () => {
+  it('a board whose whole horizon adds nothing is NOT a button', () => {
     // In progress, but no place, no note, no booking, nothing concurrent, nothing
-    // after. `canLift` is false, so Home offers no lift and phase 5's rebuff will
-    // have something to answer.
+    // after. The collapsed board already says everything there is, so there is
+    // nothing to open and the board is not pressable.
     tripEvents = [ev('now')];
     show();
     expect(board()?.tagName).toBe('DIV');
+  });
+
+  // THE OWNER'S REPORT, as a test: "it does lift but only when there's an event
+  // happening". A gap is most of a real day, and the horizon in it still holds the
+  // next thing's place, note and booking reach.
+  it('lifts in a GAP, with nothing in progress at all', () => {
+    tripEvents = [
+      ev('later', {
+        startsAt: `${DAY}T16:00:00Z`,
+        endsAt: `${DAY}T17:00:00Z`,
+        placeId: 'p1',
+        title: 'מלון סנטרו',
+      }),
+    ];
+    tripPlaces = [place];
+    show();
+    // Nothing is in progress: the collapsed board is the `free` variant.
+    expect(document.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
+    const b = board();
+    expect(b?.tagName).toBe('BUTTON');
+    fireEvent.click(b!);
+    expect(document.querySelector('.hero-lifted')).toBeTruthy();
+    // And what it opened onto is the next thing's where — the thing you actually
+    // want when you are free now.
+    expect(screen.getByText(t.hero.where)).toBeTruthy();
+    expect(screen.getByText(/Via dei Tribunali/)).toBeTruthy();
   });
 
   it('a board with a place IS a button, and pressing it opens the horizon', () => {
@@ -215,7 +241,7 @@ describe('Home — the lift wiring', () => {
     // assertion is scoped to the hero rather than global.
     expect(document.querySelector('.hero-lifted')?.textContent).toContain(t.board.concurrentNow);
     expect(document.querySelectorAll('.hero-equal-hd')).toHaveLength(2);
-    expect(document.querySelectorAll('.hero-point.lead')).toHaveLength(0);
+    expect(document.querySelectorAll('.hero-point[data-lead]')).toHaveLength(0);
   });
 
   it('אחר כך is the third point, one line, with nothing to press', () => {
