@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { dayPositions, POSITION_AT } from './day-positions';
+import { dayPositions, firstPositionFitting, POSITION_AT } from './day-positions';
 
 const TZ = 'Asia/Tokyo';
 const DATE = '2026-07-07';
@@ -91,6 +91,33 @@ describe('dayPositions', () => {
     });
   });
 
+  // Found by the e2e fixture, whose first event is start-only ON the day's opening: "before
+  // it" and "after it" are then the same 07:00 slot, and the day offered both.
+  describe('two positions that name the same instant', () => {
+    const open = ev('open', '07:00'); // start-only, on DAY_WINDOW.START_HOUR
+    const late = ev('late', '20:00');
+
+    it('offers it once', () => {
+      const positions = dayPositions([open, late], DATE, TZ);
+      expect(positions.map((p) => p.key)).toEqual([...new Set(positions.map((p) => p.key))]);
+      expect(positions.filter((p) => p.free.fill.start === '07:00')).toHaveLength(1);
+    });
+
+    it('keeps the roomier one, so the free time there is still reported', () => {
+      const at7 = dayPositions([open, late], DATE, TZ).find((p) => p.free.fill.start === '07:00')!;
+      expect(at7.free.minutes).toBe(780); // 07:00 → 20:00, not the head's zero
+      expect(at7.afterEvent?.id).toBe('open');
+    });
+
+    // A single start-only event collides with the day's TAIL the same way (`nextSlot` starts
+    // where it ends, which is where it starts).
+    it('collapses the head into the tail on a one-event day too', () => {
+      const positions = dayPositions([open], DATE, TZ);
+      expect(positions).toHaveLength(1);
+      expect(positions[0].free.fill.start).toBe('07:00');
+    });
+  });
+
   // The three days that can hang a position off nothing timed (ADR-0161 §2's amendment).
   describe('a day with nothing timed', () => {
     it('offers the whole day, once', () => {
@@ -106,5 +133,34 @@ describe('dayPositions', () => {
         POSITION_AT.WHOLE_DAY,
       ]);
     });
+  });
+});
+
+// ADR-0161 §4: what a surface prefills when it defaults rather than asking — Trip mode's
+// Tier-1 quick-schedule. Its default used to be "after everything".
+describe('firstPositionFitting', () => {
+  const positions = dayPositions(day, DATE, TZ);
+
+  it('takes the first position with room, not the last one on the day', () => {
+    // The day's head (09:00 window → 07:00 opening) has 120 minutes; the join after A has 30.
+    const fitting = firstPositionFitting(positions, 90)!;
+    expect(fitting.at).toBe(POSITION_AT.DAY_START);
+    // …and it is emphatically not the tail, which is what `nextSlot` would have given.
+    expect(fitting.key).not.toBe(positions.at(-1)!.key);
+  });
+
+  it('skips positions too small for it', () => {
+    // 150 minutes fits the 12:30→15:00 join but not the 30-minute one after A.
+    const fitting = firstPositionFitting(positions, 121)!;
+    expect(fitting.afterEvent?.id).toBe('B');
+  });
+
+  it('falls back to the last position when nothing on the day has room', () => {
+    const fitting = firstPositionFitting(positions, 10_000)!;
+    expect(fitting.key).toBe(positions.at(-1)!.key);
+  });
+
+  it('answers null only when there are no positions at all', () => {
+    expect(firstPositionFitting([], 60)).toBeNull();
   });
 });

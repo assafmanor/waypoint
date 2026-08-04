@@ -57,11 +57,15 @@ describe('DaySlotPicker', () => {
     expect(screen.queryByText(t.planDay.slotFree(''))).toBeNull();
   });
 
-  it('hands back the SLOT, not a time — the caller writes what a drop would have', () => {
+  // It hands back the OPTION, whose `fill` is the slot a drop on that position would land
+  // on — so the write is the same one the drag performs. The option rather than the bare slot
+  // because a host may need to join back to its own `DayPosition` for the ROOM there.
+  it('hands back the option, whose slot is what a drop would have used', () => {
     const onPick = vi.fn();
     picker({ onPick });
     fireEvent.click(screen.getByText('אחרי מוזיאון'));
-    expect(onPick).toHaveBeenCalledWith(OPTIONS[1].fill);
+    expect(onPick).toHaveBeenCalledWith(OPTIONS[1]);
+    expect(onPick.mock.calls[0][0].fill).toEqual(OPTIONS[1].fill);
   });
 
   it('offers עכשיו first and marks it, when the host says the day is today', () => {

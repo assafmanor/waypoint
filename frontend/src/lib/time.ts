@@ -17,6 +17,20 @@ import { ltrIsolate, measure } from './bidi';
  *  not the browser's (mirrors backend/prisma/seed.mjs's todayInTz). `at` is
  *  required (no `new Date()` default, ADR-0026): callers must source it from
  *  `useClock()`/`getNow()` so dev time-travel stays authoritative everywhere. */
+/** **A wall clock, as minutes since midnight, and back.** The pair every surface that does
+ *  arithmetic on an `HH:MM` needs.
+ *
+ *  It lived twice: `ui/primitives/TimeField` exported it (so `lib/gaps.ts` could not reach it
+ *  without a lib→ui import) and `lib/gaps.ts` kept a private, character-identical copy of
+ *  `toHHMM`. Consolidated here when a third caller wanted both (ADR-0161 §5's create block) —
+ *  a wall clock is time, and this is where time lives. */
+const pad = (n: number) => String(n).padStart(2, '0');
+export const toMin = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+};
+export const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+
 export function todayInTz(timeZone: string, at: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
 }

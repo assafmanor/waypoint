@@ -1,6 +1,6 @@
 # 0161 — A move names a **position**; an event owns its **length**
 
-**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. **Phase 2a built 2026-08-04** — §4, §5 and §7: the picker, the row's time as its way in, per-category lengths, and `הזז` out of the `⋯` sheet. What is left is §4's two remaining call sites (scheduling an idea, and a new event in a gap — "phase 2b"), §6 and §9; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
+**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. **Phase 2a built 2026-08-04** — §4, §5 and §7: the picker, the row's time as its way in, and `הזז` out of the `⋯` sheet. **Phase 2b built 2026-08-04** — §4's remaining call sites and §5's readers, so `שבץ` no longer offers "after everything" in either mode. What is left is §6 and §9; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
 **Date:** 2026-08-04
 **Design reference:** [`mockups/day-scheduling-grammar-v1.html`](../../mockups/day-scheduling-grammar-v1.html) — the move grammar, the slot picker, the replacement sheet, the row menu and the Trip-mode gap, in both themes. Measurements below are read from that file's live DOM at 390×844 and 360×640.
 
@@ -95,11 +95,14 @@ Each row **shows the clock it computes**, so the user reads the time without pic
 | -------------------------------------- | --------------------------- | ------------------------------------- | ----- |
 | **The row's time** (was `⋯ → הזז`, §7) | where does this go          | soft-peer list → slot permutation     | 2a    |
 | Overlap `הזז`                          | where does this go instead  | `ResolveSheet`'s bespoke before/after | 2a    |
-| Schedule an idea                       | where does this go          | `WhenField` prefilled at `nextSlot`   | 2b    |
-| Gap / seam fill → new event            | where, then what            | `EventForm` prefilled at the gap      | 2b    |
+| Schedule an idea (Plan)                | where does this go          | `WhenField` prefilled at `nextSlot`   | 2b    |
+| Schedule an idea (Trip)                | where, defaulted not asked  | `WhenField` prefilled at `nextSlot`   | 2b    |
+| Gap / seam fill → an idea              | how long, at this position  | the gap's flat hour                   | 2b    |
 | `החלף` (§6)                            | the displaced slot, implied | nothing                               | 3     |
 
 Drag stays the fast path for every one of these decisions. The picker is what makes them reachable **without** a pointer gesture, which is what `הזז` was for and never delivered.
+
+_Built 2026-08-04 (2b) for the two remaining call sites, and the shape differs by mode on purpose. **Plan mode asks**: `שיבוץ ליום` on an idea opens the picker, and the position chosen prefills the form — which is the mode that builds the day. **Trip mode defaults**, because its quick-schedule is a Tier-1 one-tap verb (ADR-0025): its prefill is `firstPositionFitting`, the first position on the day with room for the idea's typical length, instead of `nextSlot`'s end-of-the-last-event. One derivation behind both, so the two modes cannot disagree about where an idea should go._
 
 _Built 2026-08-04 (2a). Both one-offs are deleted, and the second gave more than expected: `ResolveSheet`'s `אחרי`/`לפני` pair computed a minute **delta** from the cluster's own bounds, and the picker replaces it with a **position** — because `freeBetween` over two overlapping rows resolves "after" to the earlier one's end, which is the same answer that pair hand-built, reached by the shared rule instead. `verbs.moveBy` went with it: nothing offsets an event by a delta any more, it is given a position. The positions come from a new `lib/day-positions.ts`, which walks the day flat and asks the same four `lib/gaps.ts` derivations the drag asks — so a sheet and a drag cannot disagree about a slot._
 
@@ -109,7 +112,9 @@ _Built 2026-08-04 (2a). Both one-offs are deleted, and the second gave more than
 
 No migration, no new field on an entity: it is a lookup over an existing closed enum, which is the whole reason 0063 put the table there.
 
-_Built 2026-08-04 (2a) as far as the **registry**: `CategoryTimeProfile.typicalMinutes` and `typicalMinutesFor` exist with the seeds above and their own tests. Its **readers** are phase 2b, and saying so is the point rather than wiring one early — the two surfaces that need a default length are the two creates (scheduling an idea, and a new event at a position), because anything that already exists carries its own length and §1 makes every move keep it. Until 2b, `GAP_FILL_MINUTES` is still what a create gets._
+_Built 2026-08-04: the registry in 2a, its readers in 2b through one function — `blockFor(free, minutes)`, which caps the length asked for by the room actually there, so nothing is ever created longer than the hole it went into. A position with no room (a seam) has nothing to cap against, so the block is offered whole and the create overlaps, which is §3's answer and the same rule `freeBetween` already applies to its own default block. A **new** event still gets the position's flat block rather than a category's: its category is the form's next question, so there is nothing to read one from yet._
+
+_Getting there needed a small consolidation first: `toMin`/`toHHMM` lived twice — exported from `ui/primitives/TimeField` (so `lib/gaps.ts` could not reach them without a lib→ui import) and duplicated character-for-character inside `gaps.ts`. They live in `lib/time.ts` now, which is where a wall clock belongs, and `TimeField` re-exports for its existing callers._
 
 ### 6. `החלף` is one atomic decision, taken **on the slot**.
 

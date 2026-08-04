@@ -68,6 +68,7 @@ import {
   type TimeItem,
 } from '../lib/time';
 import {
+  blockFor,
   earnsChip,
   freeAfterLast,
   freeBeforeFirst,
@@ -140,6 +141,7 @@ import { TitleLabel } from '../ui/TitleLabel';
 import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
 import { DaySlotPicker, type DaySlotOption } from '../ui/domain/DaySlotPicker';
 import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-positions';
+import { typicalMinutesFor } from '@waypoint/shared';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
@@ -273,7 +275,9 @@ export function PlanDay() {
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // A gap the user tapped "＋ שבץ" on — opens a chooser to drop an existing shelf
   // idea into the gap's slot, or start a fresh event there (#21).
-  const [gapChoice, setGapChoice] = useState<GapDefaults | null>(null);
+  // The POSITION a `＋ שבץ` chip was tapped on — the whole `Gap`, not just its slot, because
+  // filling it needs the room to cap a category's length against (ADR-0161 §5).
+  const [gapChoice, setGapChoice] = useState<Gap | null>(null);
   // An overlap cluster being resolved via "הזז" (ADR-0041). WHICH soft event moves is
   // the sheet's own first step now (ADR-0155) — it lived here only because the step
   // state was hand-rolled, and nothing outside the sheet ever read it.
@@ -530,12 +534,21 @@ export function PlanDay() {
   const forDayReasons = new Map(
     rankIdeas(shelf.forDay, places, activeDate, stops).map((r) => [r.item.id, r.reason]),
   );
-  /** Open the schedule form for an idea, prefilled with `fill` when the drop named a
-   *  slot (a gap chip) and with the day's next opening when it didn't. */
-  const openSchedule = (m: MaybeItem, fill?: GapDefaults) => {
-    setGapFill(fill ?? nextSlot(live.current.dayEvents, live.current.activeDate, tz));
+  /** Open the schedule form for an idea, prefilled at `fill` — the position a drop named, or
+   *  the one the picker was used to choose. */
+  const openSchedule = (m: MaybeItem, fill: GapDefaults) => {
+    setGapFill(fill);
     setScheduleMaybe(m);
   };
+  /** An idea being scheduled from its own sheet, i.e. with no position named yet: the picker
+   *  asks WHERE first (ADR-0161 §4). The prefill used to be `nextSlot` — the end of the day's
+   *  last event — so the app's opening offer for every idea was "after everything", on a day
+   *  with a three-hour hole in the middle of it. */
+  const [scheduleWhere, setScheduleWhere] = useState<MaybeItem | null>(null);
+  /** The block an idea gets at a position: its category's typical length (ADR-0161 §5),
+   *  capped by the room actually there. A flat hour made every meal an hour and every hike
+   *  an hour. */
+  const ideaBlock = (m: MaybeItem, free: Gap) => blockFor(free, typicalMinutesFor(m.category));
 
   // Drag a shelf card onto a gap (ADR-0116 §5). Deliberately the SAME mechanism as
   // the reorder grip above — pointer capture + a hit-test on the element under the
@@ -687,7 +700,11 @@ export function PlanDay() {
         return true;
       case SHELF_DROP_ACTION.CHOOSE_TIME:
         if (subject.kind !== SHELF_DRAG.IDEA) return false;
-        openSchedule(subject.item, action.fill);
+        // A drop already named the position, so there is nothing to ask: straight to the form,
+        // prefilled there. The one drop that names a DAY and no slot is the empty day's coarse
+        // zone, and its answer is that day's own single position (§2's amendment) rather than
+        // `nextSlot` over a day with nothing on it — same slot, derived rather than repeated.
+        openSchedule(subject.item, action.fill ?? freeWholeDay(live.current.activeDate, tz).fill);
         return true;
       case SHELF_DROP_ACTION.AIM_DAY:
         if (subject.kind !== SHELF_DRAG.IDEA) return false;
@@ -783,8 +800,10 @@ export function PlanDay() {
   });
   /** The day's positions with one event taken out, as picker options — the row's time button
    *  and the overlap resolve both ask for exactly this. */
-  const positionOptionsFor = (excludeId: string): DaySlotOption[] =>
-    dayPositions(dayEvents, activeDate, tz, { exclude: excludeId }).map(positionOption);
+  const positionOptionsFor = (excludeId: string | null): DaySlotOption[] =>
+    dayPositions(dayEvents, activeDate, tz, { exclude: excludeId ?? undefined }).map(
+      positionOption,
+    );
   /** Picking a position MOVES the event there, keeping its own length — the same write a
    *  drop on that position performs (`ROW_DROP_ACTION.MOVE_INTO`), through the same guard. */
   const pickPosition = (event: TripEvent, fill: GapDefaults) => {
@@ -852,7 +871,7 @@ export function PlanDay() {
       else setFormTarget(e);
     },
     onOpenDetail: setDetailTarget,
-    onGapFill: (fill) => setGapChoice(fill),
+    onGapFill: setGapChoice,
     onPickTime: setTimeTarget,
     overGap,
     onResolve: (cluster) => setResolveCluster(cluster),
@@ -1070,30 +1089,36 @@ export function PlanDay() {
 
       {gapChoice && (
         <GapFillSheet
-          gap={gapChoice}
+          gap={gapChoice.fill}
           // Ranked against THIS slot's own neighbours, not the whole day — the
           // sheet's only question is which idea fits here (ADR-0151 §3).
           ideas={rankIdeas(
             [...shelf.forDay, ...shelf.pool],
             places,
-            gapChoice.date,
-            slotStops(events, bookings, places, gapChoice.date, {
-              fromMs: Date.parse(zonedIso(gapChoice.date, gapChoice.start, tz)),
-              toMs: Date.parse(zonedIso(gapChoice.date, gapChoice.end, tz)),
+            gapChoice.fill.date,
+            slotStops(events, bookings, places, gapChoice.fill.date, {
+              fromMs: Date.parse(zonedIso(gapChoice.fill.date, gapChoice.fill.start, tz)),
+              toMs: Date.parse(zonedIso(gapChoice.fill.date, gapChoice.fill.end, tz)),
             }),
           )}
           onPickIdea={(m) => {
+            // The idea's own category decides how long it gets, capped by this position's room
+            // (ADR-0161 §5) — a meal is an hour and a half, a hike three hours, and the flat
+            // hour every create used to get was neither.
+            const block = ideaBlock(m, gapChoice);
             verbs.schedule(m, {
-              date: gapChoice.date,
+              date: block.date,
               title: m.title,
               kind: EVENT_KIND.SOFT,
-              startsAt: zonedIso(gapChoice.date, gapChoice.start, tz),
-              endsAt: zonedIso(gapChoice.date, gapChoice.end, tz),
+              startsAt: zonedIso(block.date, block.start, tz),
+              endsAt: block.end ? zonedIso(block.date, block.end, tz) : undefined,
             });
             setGapChoice(null);
           }}
           onNewEvent={() => {
-            setGapFill(gapChoice);
+            // A NEW event keeps the position's own default block: its category is the form's
+            // next question, so there is nothing yet to read a typical length from.
+            setGapFill(gapChoice.fill);
             setFormTarget('new');
             setGapChoice(null);
           }}
@@ -1106,12 +1131,43 @@ export function PlanDay() {
           <DaySlotPicker
             sub={t.planDay.slotWhen}
             options={positionOptionsFor(timeTarget.id)}
-            onPick={(fill) => pickPosition(timeTarget, fill)}
+            onPick={(option) => pickPosition(timeTarget, option.fill)}
             // The way out to ADR-0036's start+duration setter, which is `EventForm` — where
             // an exact time and a length were always set, and still are.
             onExact={() => {
               closeTimePicker();
               setFormTarget(timeTarget);
+            }}
+          />
+        </Sheet>
+      )}
+
+      {scheduleWhere && (
+        <Sheet
+          title={t.day.scheduleTitle(scheduleWhere.title)}
+          onClose={() => setScheduleWhere(null)}
+        >
+          <DaySlotPicker
+            sub={t.planDay.slotWhen}
+            // Nothing to exclude: an idea is not on the day yet, so every position is a
+            // candidate — including the two either side of where it will end up.
+            options={positionOptionsFor(null)}
+            onPick={(option) => {
+              const item = scheduleWhere;
+              setScheduleWhere(null);
+              // Joined back to the position by key, for its ROOM: the idea's category decides
+              // how long it gets and the room is what caps it (ADR-0161 §5).
+              const position = dayPositions(dayEvents, activeDate, tz).find(
+                (p) => p.key === option.key,
+              );
+              openSchedule(item, position ? ideaBlock(item, position.free) : option.fill);
+            }}
+            // The form with the day's next opening, which is what this path offered before —
+            // kept as the escape rather than removed, for when the position is not the point.
+            onExact={() => {
+              const item = scheduleWhere;
+              setScheduleWhere(null);
+              openSchedule(item, nextSlot(dayEvents, activeDate, tz));
             }}
           />
         </Sheet>
@@ -1123,7 +1179,7 @@ export function PlanDay() {
           onSchedule={() => {
             const item = ideaSheet;
             setIdeaSheet(null);
-            openSchedule(item);
+            setScheduleWhere(item);
           }}
           // Plan mode is where an idea can be removed (ADR-0116 §4), so the sheet carries
           // the same verb the tile's `✕` does rather than a second capability.
@@ -1309,7 +1365,7 @@ export function ResolveSheet({
         <DaySlotPicker
           sub={t.planDay.slotWhen}
           options={optionsFor(mover)}
-          onPick={(fill) => onPick(mover, fill)}
+          onPick={(option) => onPick(mover, option.fill)}
           onExact={() => onOther(mover)}
         />
       </FormStepPanel>
@@ -1426,7 +1482,7 @@ interface BuilderCtx {
   onEdit: (event: TripEvent) => void;
   // Tapping a transition row opens the read-only booking detail (ADR-0064).
   onOpenDetail: (booking: Booking) => void;
-  onGapFill: (fill: GapDefaults) => void;
+  onGapFill: (free: Gap) => void;
   /** Open the day-position picker for this row (ADR-0161 §7) — the row's time is a button. */
   onPickTime: (event: TripEvent) => void;
   onResolve: (cluster: TimeGroup) => void;
@@ -1484,7 +1540,8 @@ function FreeSlot({
   /** The seam's copy — its OUTCOME, like every other drop zone in the builder. */
   seamLabel: string;
   over: boolean;
-  onFill: (fill: GapDefaults) => void;
+  /** The whole position, not its slot: a filler needs the room to cap a length against. */
+  onFill: (free: Gap) => void;
 }) {
   // Asked of `lib/gaps.ts`, never re-derived here: the threshold that decides chip-vs-seam
   // is the same one `gapBetween` applies, and two copies of it would drift.
@@ -1503,7 +1560,7 @@ function FreeSlot({
       {isChip ? (
         <>
           <span className="gap-line" />
-          <button className="gap-add" onClick={() => onFill(free.fill)}>
+          <button className="gap-add" onClick={() => onFill(free)}>
             <Icon name="plus" /> {label}
           </button>
           <span className="gap-line" />

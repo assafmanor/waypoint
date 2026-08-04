@@ -16,6 +16,7 @@ import {
   type MaybeItem,
   type Place,
   type TripEvent,
+  typicalMinutesFor,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
 import {
@@ -58,7 +59,8 @@ import {
   type TimeItem,
 } from '../lib/time';
 import { dayStops, rankIdeas, shelfGroups, stopReasonText, tileReasonText } from '../lib/shelf';
-import { nextSlot } from '../lib/gaps';
+import { blockFor, nextSlot } from '../lib/gaps';
+import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import { dayTransitions, mergeDayEntries, type TransitionEntry } from '../lib/day-entries';
 import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
 import { nowLinePlacement } from '../lib/now-line';
@@ -200,6 +202,15 @@ export function DayView() {
   // the same pattern as the Index; editing from there opens the BookingSheet.
   const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
   const [scheduleItem, setScheduleItem] = useState<MaybeItem | null>(null);
+  /** Where a quick-schedule opens: the first position on the day with room for this idea, and
+   *  the block its category usually takes there (ADR-0161 §4/§5). One derivation shared with
+   *  Plan mode's picker, so the two modes cannot disagree about where an idea should go. */
+  const scheduleDefaults = (item: MaybeItem) => {
+    const zone = authoringZone({ placeId: item.placeId }, { date: activeDate }, zoneEvidence);
+    const minutes = typicalMinutesFor(item.category);
+    const position = firstPositionFitting(dayPositions(dayEvents, activeDate, zone), minutes);
+    return position ? blockFor(position.free, minutes) : nextSlot(dayEvents, activeDate, zone);
+  };
   // The idea's own surface (ADR-0116's 2026-08-01 amendment): a tap opens this, and
   // `שיבוץ ליום` inside it is what reaches `scheduleItem` above.
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
@@ -595,11 +606,15 @@ export function DayView() {
           item={scheduleItem}
           // The free slot is read on the same clock the sheet types on, so the
           // prefilled time means what the day means by it (ADR-0107 session 128).
-          defaults={nextSlot(
-            dayEvents,
-            activeDate,
-            authoringZone({ placeId: scheduleItem.placeId }, { date: activeDate }, zoneEvidence),
-          )}
+          // **The first position with room for it**, not the end of the day's last event
+          // (ADR-0161 §4/§5). Trip mode is Tier-1, so it defaults rather than asking — but the
+          // default used to be `nextSlot`, so the opening offer for every idea was "after
+          // everything", on days with a three-hour hole in the middle. The length is the
+          // idea's category's, capped by whatever room that position actually has.
+          //
+          // Read on the same clock the sheet types on, so the prefilled time means what the
+          // day means by it (ADR-0107 session 128).
+          defaults={scheduleDefaults(scheduleItem)}
           // The day is now part of the sheet (ADR-0116 §5), defaulting to the idea's
           // own pencilled-in day: putting something on Thursday stops requiring a
           // trip to Thursday first. Day-scope still gates the range — scheduling is

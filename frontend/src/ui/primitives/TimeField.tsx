@@ -19,12 +19,11 @@ import { MINUTES_PER_DAY } from '../../constants';
 import { t } from '../../i18n/he';
 
 const STEP = 15;
-const pad = (n: number) => String(n).padStart(2, '0');
-export const toMin = (hhmm: string) => {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-};
-export const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+// The wall-clock pair lives in `lib/time.ts` now — `lib/gaps.ts` needs it too and could not
+// import a UI primitive to get it (and kept a character-identical copy of `toHHMM` instead).
+// Re-exported here because every existing caller imports it from this file.
+import { toHHMM, toMin } from '../../lib/time';
+export { toHHMM, toMin };
 const ALL_TIMES = Array.from({ length: MINUTES_PER_DAY / STEP }, (_, i) => i * STEP);
 
 /** The nearest round (15-min) slot to a minute-of-day, capped at the last slot

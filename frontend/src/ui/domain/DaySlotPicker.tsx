@@ -53,7 +53,10 @@ export function DaySlotPicker({
   /** `עכשיו`, offered only while the day on screen IS today (the host decides that; this
    *  component has no clock). Same shape as any other option, drawn first and marked. */
   now?: DaySlotOption;
-  onPick: (fill: GapDefaults) => void;
+  /** The option that was picked, not just its slot: a host that needs more about the position
+   *  than the slot — how much room is there, to cap a category's length against — joins back
+   *  to its own `DayPosition` by `key`. Keeps this component's model presentational. */
+  onPick: (option: DaySlotOption) => void;
   /** The way out to ADR-0036's start+duration setter. */
   onExact: () => void;
   /** …and to another day, which is what made a cross-day move drag-only before ADR-0161. */
@@ -64,7 +67,7 @@ export function DaySlotPicker({
       key={option.key}
       type="button"
       className={'slotpick-opt' + (isNow ? ' now' : '')}
-      onClick={() => onPick(option.fill)}
+      onClick={() => onPick(option)}
     >
       <span className="ttl">
         {option.label}
