@@ -519,12 +519,12 @@ test.describe('a day with a wide gap between two events', () => {
     await touch(cdp, 'touchStart', start.x + start.width / 2, start.y + 8);
     await expect(page.locator('.bld.dragging')).toBeVisible();
 
-    // Aim at the seam's own line — the seam is zero-height, so the line is what has a box,
-    // and the 22px hit area around it is what catches the finger.
-    const seam = page.locator('.bld-seam').first();
-    const line = (await seam.locator('.bld-seam-line').first().boundingBox())!;
-    await touch(cdp, 'touchMove', line.x + line.width / 2, line.y + line.height / 2);
-    await expect(seam).toHaveClass(/drop-over/);
+    // Through `holdOver`, not a single move to a pre-measured point: the seam sits at the
+    // top of the list, so it can be inside the edge band — and then the finger arriving
+    // starts the auto-scroll, which moves the target out from under it. Converging is what
+    // this helper exists for. Its zero-height box is fine to aim at: the 22px `::after`
+    // reaches ±11px around it, which is what actually catches the finger.
+    await holdOver(cdp, page, '.bld-seam');
     await touch(cdp, 'touchEnd');
 
     // It landed somewhere else, and it is still an event on the day rather than an idea.
