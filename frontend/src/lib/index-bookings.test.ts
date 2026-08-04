@@ -12,10 +12,12 @@ import {
   CATEGORY_ALL,
   matchesCategory,
   matchesQuery,
+  typeChipAddsMeaning,
   scheduleLabel,
   splitBookings,
   visibleRows,
 } from './index-bookings';
+import { t } from '../i18n/he';
 import { FILTER_STAGGER_MAX_MS, FILTER_STAGGER_MS } from '../constants';
 
 const TZ = 'Asia/Tokyo';
@@ -378,5 +380,34 @@ describe('visibleRows (ADR-0098 §4 stagger)', () => {
     const upcoming = visibleRows(rows(2), CATEGORY_ALL, '');
     const past = visibleRows(rows(2), CATEGORY_ALL, '', upcoming.nextIndex);
     expect(past.rows.map((r) => r.delayMs)).toEqual([FILTER_STAGGER_MS * 2, FILTER_STAGGER_MS * 3]);
+  });
+});
+
+// **The chip that repeated the title** (ADR-0163's amendment, owner report 2026-08-04).
+// §3's fallback titles a hire with no company by its TYPE LABEL, which is right on every
+// title-only surface and made the Index row say `השכרת רכב` twice, adjacent.
+describe('typeChipAddsMeaning', () => {
+  it('drops the chip when the title is nothing but the type label', () => {
+    expect(typeChipAddsMeaning({ type: BOOKING_TYPE.CAR, title: t.index.bookingType.car })).toBe(
+      false,
+    );
+    // Whitespace should not smuggle the chip back in.
+    expect(
+      typeChipAddsMeaning({ type: BOOKING_TYPE.CAR, title: `  ${t.index.bookingType.car} ` }),
+    ).toBe(false);
+  });
+
+  it('keeps it whenever the two say different things', () => {
+    expect(typeChipAddsMeaning({ type: BOOKING_TYPE.CAR, title: 'Hertz' })).toBe(true);
+    expect(typeChipAddsMeaning({ type: BOOKING_TYPE.HOTEL, title: 'Granbell' })).toBe(true);
+    expect(typeChipAddsMeaning({ type: BOOKING_TYPE.FLIGHT, title: 'נתב״ג ← נריטה' })).toBe(true);
+  });
+
+  // Keyed on the strings, not on "is this a hire" — so any type that ends up named after
+  // itself is covered with no new branch.
+  it('covers a non-car type titled by its own label', () => {
+    expect(
+      typeChipAddsMeaning({ type: BOOKING_TYPE.HOTEL, title: t.index.bookingType.hotel }),
+    ).toBe(false);
   });
 });

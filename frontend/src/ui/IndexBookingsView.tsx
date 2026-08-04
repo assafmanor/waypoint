@@ -17,9 +17,10 @@ import {
   countByCategory,
   scheduleLabel,
   splitBookings,
-  visibleRows,
   type BookingRow,
   type CategoryFilter,
+  typeChipAddsMeaning,
+  visibleRows,
 } from '../lib/index-bookings';
 import { countVisible } from '../lib/filter-reveal';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
@@ -388,7 +389,11 @@ function BookingLi({
               <Icon name="lock" />
             </span>
           )}
-          <span className="tag-type">{t.index.bookingType[booking.type]}</span>
+          {/* Dropped when it would only repeat the title (ADR-0163's amendment) — a hire
+              with no company is titled by its type label, so the chip said it twice. */}
+          {typeChipAddsMeaning(booking) && (
+            <span className="tag-type">{t.index.bookingType[booking.type]}</span>
+          )}
         </>
       }
       meta={

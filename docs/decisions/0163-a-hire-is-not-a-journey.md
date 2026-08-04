@@ -64,6 +64,23 @@ This deletes the route from every surface that receives only a title — the amb
 
 This was a **prerequisite, not a tidy-up**: three copies means three places to thread a per-type unit through, and three chances for one of them to keep saying "night". It is ADR-0096's shape and the fourth such collapse this area has needed (0078, 0079, 0094, 0095, 0162's `BOOKING_TYPE_CATEGORY`).
 
+## Amendment (2026-08-04, same day) — §3 applies to the DISPLAY derivations, not just the stored title
+
+Shipped incomplete, and the owner caught it immediately: _"the title for a booking is now the '&lt;pickup location&gt; -&gt; &lt;dropoff location&gt;', and even worse when it's the same location, then it becomes '&lt;pickup location&gt; -&gt; -'"_.
+
+§3 changed what the form **stores**. It did not change the two derivations that **rebuild** a route for display from the place FKs, ignoring the title entirely:
+
+- `lib/places.ts`'s `eventRoute` — read by `EventTitle`, the day rows in `DayView`/`PlanDay` via `routeDisplay`, and Home's in-transit hero.
+- `ui/BookingTitle.tsx` — read by the Index bookings row, the row-manage sheet, and the Index landing tile.
+
+Both gated on the **category** / `carriesRoute`, which is exactly the conflation §3 exists to undo — so a hire drew `נריטה ← נריטה` no matter what its title said. The dash is the same bug's second face: `RouteLabel` fills a missing endpoint with `-` (its documented "no value" placeholder), and a hire's return place is often unset, so it rendered `נריטה ← -`.
+
+**Both now ask `titlesFromRoute`.** The lesson worth carrying: introducing an axis is not the same as applying it. The grep that would have caught this is for the _old_ predicate at every site that renders a name — `carriesRoute` and `categoryForBookingType(...) === 'transport'` — not for the new one.
+
+**And the missing return is fixed at the source too.** `HireEndsField` writes the two ends equal while the answer is "same counter", but only when the toggle or picker is touched — so a place arriving from a **map errand** (which assigns `draft.fromPlaceId` directly) and a pre-0163 row opened and saved untouched both left it null. `BookingSheet` now normalises on read (`toPlaceId ?? fromPlaceId` for a hire), which makes the gap unrepresentable rather than patching each writer.
+
+**Three test files gained the coverage whose absence let this ship**, and one of them (`BookingTitle.test.tsx`) did not exist at all — a component deciding a title's whole shape, with no test.
+
 ## Consequences
 
 - **`carriesRoute` is no longer the question a title site asks.** Four axes now hang off `BOOKING_TYPE_PROFILE` — `places`, `schedule`, `legs`, `titleFrom` — and 0154 §2's claim that they are separate on purpose has now been _needed_ three times rather than argued once.

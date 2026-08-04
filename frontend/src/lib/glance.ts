@@ -6,6 +6,8 @@
 // (buildTimeTree, ADR-0041); full nesting/cluster fidelity stays in the day
 // view. Skipped events are excluded from buildTimeTree, so they're layered back
 // in as struck segments (never counted in "remaining", never given an anchor).
+// "remaining" counts same-day blocks plus an ambient span's own edges on this day
+// (ADR-0164) — a stay's middle nights still count nothing.
 import {
   CATEGORY_DEFAULT_ICON,
   EVENT_STATUS,
@@ -129,7 +131,10 @@ export interface DayGlance {
   /** Now's position in the window (0..1), or null when now is outside it
    *  (i.e. a past/future day being browsed). */
   nowFrac: number | null;
-  /** Top-level blocks still ahead (now + upcoming); skipped/done/passed drop out. */
+  /** **What you can still miss today** (ADR-0045, widened by ADR-0164): top-level blocks
+   *  still now/upcoming — skipped/done/passed drop out — PLUS an ambient span's own edge
+   *  landing today and not yet reached (a check-in, a check-out, a car's pick-up or
+   *  return). A multi-day booking's MIDDLE days still count nothing. */
   remaining: number;
 }
 
@@ -409,10 +414,29 @@ export function buildDayGlance(
     });
   }
 
-  const remaining = tree.filter((g) => {
+  // **What is still ahead of you today** (ADR-0045), and it counts two different things
+  // for one reason — a thing you can still miss (ADR-0164).
+  //
+  // The counted BLOCKS: top-level groups still now/upcoming, so overlaps never inflate the
+  // day (ADR-0041) and a passed-unmarked event drops out.
+  const remainingBlocks = tree.filter((g) => {
     const p = groupPhase(g, nowMs);
     return p === 'now' || p === 'upcoming';
   }).length;
+  // …plus an AMBIENT span's own EDGE landing today and not yet reached: a check-in with
+  // luggage, a check-out by 10:00, a car collected at 10:00 or due back at 10:00. ADR-0054
+  // rightly keeps a multi-night stay off the counted rail so it cannot distort the day, and
+  // ADR-0077 said "marking a transition is not counting a block" — but a day whose only real
+  // commitment was returning the car read `0 נותרו היום`, which is the opposite of what this
+  // number is for (owner report 2026-08-04). Middle days still count nothing, because
+  // nothing about the room or the car needs doing on them.
+  //
+  // **`isAmbient` is the guard against double-counting**, not a hire-shaped special case: a
+  // same-day flight is already a block in `tree` AND has anchors, so counting its
+  // transitions too would say 2 for one journey. Only spans that were EXCLUDED above can
+  // add themselves back here, and each edge is one thing to do.
+  const remainingEdges = transitions.filter((t) => isAmbient(t.event) && t.atMs > nowMs).length;
+  const remaining = remainingBlocks + remainingEdges;
 
   // Time-anchors (ADR-0077) derive from the one shared function (ADR-0064) —
   // every bracketed booking's start/end that lands on this day, grouped by

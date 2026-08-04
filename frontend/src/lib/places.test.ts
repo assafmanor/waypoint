@@ -100,6 +100,43 @@ describe('eventRoute', () => {
     expect(eventRoute(event({ bookingId: 'bk' }), [bk], PLACES)).toBeNull();
   });
 
+  // **The bug this shipped with** (ADR-0163 §3's miss, owner report 2026-08-04). §3 made a
+  // hire's stored TITLE its company, and this derivation kept rebuilding a route from the
+  // place FKs — so the day row and the Index row printed `נריטה ← נריטה` regardless, and
+  // `נריטה ← -` whenever the return place was unset. The gate is `titlesFromRoute`, not the
+  // category and not `carriesRoute`: a hire HAS a route and is not NAMED by one.
+  it('returns null for a car hire, which carries a route but is named by its company', () => {
+    const sameCounter = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.CAR,
+      fromPlaceId: 'pl-nrt',
+      toPlaceId: 'pl-nrt',
+    });
+    expect(eventRoute(event({ bookingId: 'bk' }), [sameCounter], PLACES)).toBeNull();
+    // The one-way hire too — the route is real, it is just not this row's name.
+    const oneWay = booking({
+      id: 'bk',
+      type: BOOKING_TYPE.CAR,
+      fromPlaceId: 'pl-tlv',
+      toPlaceId: 'pl-nrt',
+    });
+    expect(eventRoute(event({ bookingId: 'bk' }), [oneWay], PLACES)).toBeNull();
+    // …and the half-filled one, which is what produced the visible `-`.
+    const noReturn = booking({ id: 'bk', type: BOOKING_TYPE.CAR, fromPlaceId: 'pl-nrt' });
+    expect(eventRoute(event({ bookingId: 'bk' }), [noReturn], PLACES)).toBeNull();
+  });
+
+  // The three travelling modes are untouched by the narrowing.
+  it('still resolves a route for every mode that IS named by one', () => {
+    for (const type of [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.TRANSIT]) {
+      const bk = booking({ id: 'bk', type, fromPlaceId: 'pl-tlv', toPlaceId: 'pl-nrt' });
+      expect(eventRoute(event({ bookingId: 'bk' }), [bk], PLACES)).toEqual({
+        from: 'נתב״ג',
+        to: 'נריטה',
+      });
+    }
+  });
+
   it('returns null for an unlinked event (it never carries a route)', () => {
     expect(eventRoute(event({ bookingId: undefined, placeId: 'pl-tlv' }), [], PLACES)).toBeNull();
   });
