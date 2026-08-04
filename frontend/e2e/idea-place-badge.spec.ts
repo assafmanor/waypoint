@@ -124,6 +124,29 @@ async function tiles(page: Page) {
             )
           : 0,
         badgeIsControl: badge.getAttribute('role') === 'button',
+        // The teal ring is a `box-shadow`, so it takes the shape of the box it sits on — and
+        // this host's glyph is inline content, which gave it square corners (owner, 2026-08-04).
+        badgeRadius: parseFloat(getComputedStyle(badge).borderStartStartRadius),
+        // A bare pin, not a pin in a disc: nothing behind the glyph.
+        markHasDisc: mark ? getComputedStyle(mark).backgroundColor !== 'rgba(0, 0, 0, 0)' : false,
+        // The marker's size, and how much of the badge it takes. It was a flat 17px drawn
+        // against the 32–40px badges of the three hosts that shipped it, and arrived here at
+        // 80% of a 21×17px glyph (owner: "too large").
+        markW: m ? Math.round(m.width) : 0,
+        markRatio: m ? +(m.width / c.width).toFixed(2) : 0,
+        // The tap area, which the badge grows out of flow because this glyph is far smaller
+        // than the boxes the pattern was drawn on (ADR-0017).
+        hit: (() => {
+          const grow = parseFloat(getComputedStyle(badge, '::after').insetBlockStart || '0');
+          const b = badge.getBoundingClientRect();
+          return {
+            box: [Math.round(b.width - 2 * grow), Math.round(b.height - 2 * grow)],
+            // Zero, always: a tap on the words must open the row, never the map.
+            overTitle: Math.round(
+              Math.max(0, Math.min(b.right - grow, tt.right) - Math.max(b.left + grow, tt.left)),
+            ),
+          };
+        })(),
       };
     }),
   );
@@ -156,6 +179,35 @@ for (const width of WIDTHS) {
     });
 
     // Plan's tile is the crowded one: a `✕` at one top corner and the note mark at the other.
+    // **The marker is proportional to the badge it sits on** (owner, 2026-08-04: "the icon for
+    // the map pin is too large"). The flat 17px was 42% of `EventCard`'s 40px badge and 80% of
+    // this glyph, so the size became a variable this host re-points — and the numbers are the
+    // reason the variable exists, so they are asserted rather than described.
+    test('wears a marker sized for THIS badge, not for a box twice as big', async ({ page }) => {
+      await toDays(page);
+      const [badged] = await tiles(page);
+      expect(badged.markW).toBeLessThan(17); // the flat size the big badges were drawn with
+      expect(badged.markRatio).toBeLessThan(0.7);
+    });
+
+    // 21×17 is a long way under ADR-0017's floor, and this host is the one that introduced a
+    // badge that small. The target grows out of flow, as far as the card's own padding allows.
+    // Both halves of the owner's second report (2026-08-04).
+    test('wears a bare teal pin, on a ring with rounded corners', async ({ page }) => {
+      await toDays(page);
+      const [badged] = await tiles(page);
+      expect(badged.markHasDisc).toBe(false);
+      expect(badged.badgeRadius).toBeGreaterThan(0);
+    });
+
+    test('grows its tap area without any of it landing on the title', async ({ page }) => {
+      await toDays(page);
+      const [badged] = await tiles(page);
+      expect(badged.hit.box[0]).toBeGreaterThan(30);
+      expect(badged.hit.box[1]).toBeGreaterThan(26);
+      expect(badged.hit.overTitle).toBe(0);
+    });
+
     test('stays clear of the ✕ and the note mark, in Plan mode', async ({ page }) => {
       await page.getByRole('button', { name: 'תכנון', exact: true }).click();
       await toDays(page);
