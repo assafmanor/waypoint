@@ -26,7 +26,11 @@
 // reach of any automated test (ADR-0017 still wants a real-device pass).
 import { test, expect, type Page, type CDPSession } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
-import { DRAG_EDGE_SCROLL_RELEASE_PX, DRAG_EDGE_SCROLL_ZONE_PX } from '../src/constants';
+import {
+  DRAG_EDGE_SCROLL_RELEASE_PX,
+  DRAG_EDGE_SCROLL_ZONE_PX,
+  DRAG_GHOST_LIFT_PX,
+} from '../src/constants';
 
 // Phone-sized and touch-capable: the drag is a touch gesture on a ~390px screen
 // (ADR-0017), and `hasTouch` is what makes the browser arbitrate scroll-vs-drag
@@ -450,10 +454,19 @@ test.describe('a day with a wide gap between two events', () => {
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(ghost).toBeVisible();
 
-    // It starts where the card is: the grab offset is the point of it, so the clone
-    // appears under the finger rather than snapping its own corner there.
+    // It starts where the card is: the grab offset is the point of it, so the clone appears
+    // under the finger rather than snapping its own corner there — LIFTED clear of it by
+    // `DRAG_GHOST_LIFT_PX`, so the target the finger is over is never underneath the clone
+    // (ADR-0161 §8).
+    //
+    // The offset is asserted against that constant rather than against zero with a fuzzy
+    // tolerance, which is how this caught the lift in the first place: the old bound was
+    // `< 12` and the lift is exactly 12, so the test failed by a pixel and was right to.
+    // The finger grabbed the card's centre, so nothing else should displace the clone —
+    // hence 3px, tighter than the 12 it replaces.
     const lifted = (await ghost.boundingBox())!;
-    expect(Math.abs(lifted.y + lifted.height / 2 - card.y)).toBeLessThan(12);
+    const offset = lifted.y + lifted.height / 2 - card.y;
+    expect(Math.abs(offset + DRAG_GHOST_LIFT_PX), `offset was ${offset}`).toBeLessThan(3);
 
     // …and it goes where the finger goes.
     await touch(cdp, 'touchMove', card.x, bands.middleFrom);
