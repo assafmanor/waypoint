@@ -366,3 +366,17 @@ should reach for the second bullet first, because the confound is the cheaper ex
 and it was the true one. If the leave row still reads wrong on a device now that the
 member row no longer wears a door, this is a one-line path swap and the test above says
 so out loud.
+
+## Amendment (2026-08-04, session 211) — §8's `הזז` leaves the menu for the row's own time
+
+Decided in [ADR-0161](0161-a-move-names-a-position-and-an-event-owns-its-length.md) §7 and recorded here because it moves a control §8 placed.
+
+**§8's rule stands: reorder must be reachable without a drag.** What changes is where it is reachable from. ADR-0161 makes the builder row's time (`.bld-time`, which already renders `10:00–12:00` and the duration beneath it) a **button** opening the day-position picker — so `הזז` and a duration edit are the same control, and that control is the thing the answer is written on. A focusable button in the row satisfies §8's requirement more directly than a menu row does, and `10:00–12:00` is a better name for "move this" than the word `הזז`.
+
+**What put it here was this file's own §1 being read as a destination.** ADR-0161's first draft added five verbs to the sheet, which rendered as eight rows that scroll, with the destructive verb below the fold and two unrelated verbs (`משך`, `דחה את שאר היום`) reaching for the same `clock` glyph. The owner rejected it off the mockup, and the glyph collision was the diagnosis: **§1 says the row menu is ONE surface, not that it is where a verb goes.** The rule that follows, and the one to apply before adding a row here:
+
+> A verb goes on the object it changes, if that object is on screen. The menu is the residue.
+
+By that test the sheet keeps four rows (`ערוך` · `שכפל` · `העבר למדף` · `מחק`) — the same count it had before ADR-0161, with `הזז` out and `שכפל` in, because a copy is the one verb with no object on the row to hang off.
+
+**§1's actual claims are untouched:** there is still exactly one row-menu component (`RowActionList`), it still partitions danger into its own group, its icons are still SVG and never emoji, and its subject line still names kind and slot. Nothing here reopens the fifth-copy problem §1 solved.

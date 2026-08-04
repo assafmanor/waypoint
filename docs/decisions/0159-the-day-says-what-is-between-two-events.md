@@ -115,3 +115,15 @@ It is keyed by place **and day** — an airport you change planes at on the way 
 - **Edge strips** (before the first row, after the last). Plan has them because they can be filled. "The day starts in 3 hours" adds nothing to the time printed on the first row.
 - **One booking with several legs.** ADR-0047 §1 rejected 1:many `Booking→Event` and the reason is unchanged: these are independent hard events with their own instants, arrivals, zones and `done`/`skipped`.
 - **A separate `Connection` entity, or a `journeyId` column.** Same three costs as ADR-0154 §5's `pairId`, plus a migration for a fact that is already in the data.
+
+## Amendment (2026-08-04, session 211) — §1's gap becomes tappable, and keeps everything else
+
+Decided in [ADR-0161](0161-a-move-names-a-position-and-an-event-owns-its-length.md) §8 and recorded here because it revises §1 directly.
+
+**§1's reasoning was right about the two modes and wrong about the capability.** "Plan's chip is a control, and a control belongs to the mode that builds the day" holds — but [ADR-0025](0025-trip-mode-edit-capability-tiers.md)'s Tier-1 list has always contained _"Schedule-from-shelf onto today"_, so filling a hole while you are standing in it is on-the-ground work by an older decision. The shipped result was the one surface that states a hole being the one surface that cannot act on it.
+
+**So the strip becomes a `<button>` that still says a measurement.** What is unchanged: the derivation (`gapBetween`), the `GAP_MIN_MINUTES` floor, the flex row, the dashed hairline, the 9px rhythm, `--faint`, and §2's read-out word for word (`hoursPhrase`, `פנוי · 2:40 שע׳`). What is added: a trailing `＋` and a 44px target (ADR-0017), opening ADR-0161 §6's slot-fill sheet for that slot. What is **not** added: Plan's violet, its fill, its border, and the word `שבץ` — those are the mode confusion §1 correctly diagnosed, and none of them come over.
+
+The strip measures **17px as a `<div>` and 44px as a `<button>`** (read from `mockups/day-scheduling-grammar-v1.html` §7 at both widths). That 27px is the whole cost of the amendment, and it buys the verb the tier map already promised.
+
+**The claim §1 was actually making survives**: the two modes differ in **posture**, not in capability. Plan offers; Trip answers when asked.
