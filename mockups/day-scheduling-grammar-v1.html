@@ -10188,6 +10188,31 @@ textarea {
         <div class="pair" id="s8"></div>
       </section>
 
+      <!-- ══════════════════════════ §9 ══════════════════════════ -->
+      <section class="case">
+        <h2>§9 · שלושים מקומות במדף · שני התיקונים הזולים</h2>
+        <p class="note">
+          לא מ-ADR-0161 · שני תיקונים לזרימה שהבעלים תיארו (הרבה מקומות נוספים למפה, ואז רוצים
+          לשבץ אותם), שנכנסו כתיקונים ל-ADR-ים שמחזיקים את הכללים · <b>לא כהחלטות חדשות</b>.
+          מצוירים כאן כי זה הקובץ של תכנון היום. <b>אחד ·</b> התג של ADR-0121 §8 («לכל אירוע והזמנה
+          יש דרך קלה לסיכה שלו, בשני המצבים») יושב על כרטיס האירוע, על שורת הבונה ועל שורת
+          המעבר · ולא על <code>MaybeCard</code>. זו הישות הלא נכונה לפספס: <b>רעיון הוא הדבר שהסיכוי
+          הגבוה ביותר שהוא מקום</b>, כי כל מקום שנוסף מהמפה נעשה אחד. עם שלושים רעיונות «איפה
+          זה?» היא השאלה הראשונה, והמדף לא יודע לענות. <b>שתיים ·</b> הדירוג היום מודד מול
+          <b>היום שבמסך</b>, אז רעיון אומר «200 מ׳ מהמוזיאון» רק כשמסתכלים על היום שהוא קרוב אליו ·
+          ושותק בכל יום אחר. אסטרטגיה שנייה (<code>fits-a-day</code>, רישום ברגיסטרי של ADR-0151,
+          שזו בדיוק הטענה שהוא טען) נותנת לרעיון חסר-תאריך לומר <b>לאיזה יום הוא שייך</b>, והסכמה
+          איתה היא הקשה אחת · <code>verbs.setMaybeDay</code>, שכבר קיים.
+        </p>
+        <div class="pair" id="s9"></div>
+        <p class="note" style="border-block-end: 0; border-block-start: 1px solid var(--line)">
+          מה שנשאר <b>אינו</b> כאן, וזה בכוונה: לשבץ כמה מהרעיונות האלה ליום <b>בבת אחת</b> דורש
+          תנוחה שלמפה אין (סיכת מדף חסרת-תאריך היא <code>aside</code> לפי ADR-0130 §3 · בלי שורה
+          בגיליון, בלי מצלמה · נכון לקריאת יום והפוך למילוי שלו), את הבחירה-מרובה הראשונה
+          באפליקציה, וסדר גיאוגרפי. זו פגישת עיצוב משלה, אחרי הבנייה של ADR-0161.
+        </p>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -10255,6 +10280,8 @@ textarea {
       // is one of the three defects that made that rule).
       const ICON = {
         more: 'M6 12h.02 M12 12h.02 M18 12h.02',
+        check: 'M5 12.6l4.7 4.7L19 7.4',
+        pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
         plus: 'M12 4.8v14.4 M4.8 12h14.4',
         lock: 'M7.4 10.4V7.6a4.6 4.6 0 0 1 9.2 0v2.8 M5.8 10.4h12.4a1.4 1.4 0 0 1 1.4 1.4v8a1.4 1.4 0 0 1-1.4 1.4H5.8a1.4 1.4 0 0 1-1.4-1.4v-8a1.4 1.4 0 0 1 1.4-1.4Z',
         caret: 'M4.6 8.6 12 16l7.4-7.4',
@@ -10599,6 +10626,86 @@ textarea {
         col(T.before, 'מצהיר על החור ואין דרך למלא אותו · במשטח היחיד שמצהיר עליו', s7(false)) +
         col(T.after, 'אותה מדידה, אותה רצועה · ＋ בקצה, וגובה מגע של 44', s7(true));
 
+      /* ══ §9 — the two cheap wins on the shelf tile. The card is `MaybeCard`'s own
+            markup; what differs between the frames is the badge (a `PlaceBadge`, so the
+            tile reaches its pin) and the meta line (a `fits-a-day` reason instead of
+            silence), plus the one-tap agree the suggestion needs. */
+      // `MaybeCard`'s real classes (`maybe-card.css`), and `PlaceBadge`'s real markup:
+      // the host's own class PLUS `wp-placebadge`, with the pin mark inside it — which is
+      // exactly how the badge composes onto its other three hosts.
+      //
+      // NO ACTION LINE ON THE TILE, and that is not a simplification: session 203 took the
+      // per-card `＋ שבץ ליום` out precisely because the tile's 76px came out of it, and
+      // ADR-0151's own amendment then refused a SECOND META LINE here for the same 8px. So
+      // the suggestion is a sentence on the tile and its verb lives one tap in, in the
+      // sheet — which is where the tile's verbs already live (ADR-0116's 2026-08-01
+      // amendment). Which also means the copy has to FIT ONE LINE at 140px, and that is
+      // measured below rather than assumed.
+      const tile = (glyph, title, meta, { pin = false } = {}) =>
+        `<div class="wp-maybecard compact">
+          <span class="wp-maybecard-ic${pin ? ' wp-placebadge' : ''}">${glyph}${
+            pin
+              ? `<span class="wp-placebadge-mark" aria-hidden="true">${icon('pin')}</span>`
+              : ''
+          }</span>
+          <span class="wp-maybecard-main">
+            <span class="wp-maybecard-title">${title}</span>
+            <span class="wp-maybecard-meta">${meta}</span>
+          </span>
+        </div>`;
+      const strip = (cards) =>
+        `<div class="phone" style="width:var(--fw)"><div class="fbody">
+          <div class="sec-title">מדף האולי<span class="hint">לחצו לפתיחה · לחיצה ארוכה לגרירה ליום</span></div>
+          <div class="shelf">${cards}</div>
+        </div></div>`;
+      // Two copies for the same fact, because the long one may cost the tile a line. The
+      // measurement table prices both; the frame draws the short one.
+      const S9_LONG = 'יום 4 · 300 מ׳ מהמוזיאון';
+      const S9_SHORT = 'יום 4 · 300 מ׳';
+      document.getElementById('s9').innerHTML =
+        `<div class="col">${T.before}<span class="sub">אין דרך לסיכה, ורעיון חסר-תאריך לא אומר כלום ביום שהוא לא קרוב אליו</span>${strip(
+          [
+            tile('🛍️', 'שוק אמייוקו', '-'),
+            tile('🌸', 'פארק אואנו', '-'),
+            tile('🍡', 'דנגו ביאנאקה', '-'),
+          ].join(''),
+        )}</div>` +
+        `<div class="col">${T.after}<span class="sub">תג שמגיע לסיכה, ומשפט שאומר לאיזה יום הרעיון שייך · הפועל יושב בגיליון, הקשה אחת פנימה</span>${strip(
+          [
+            tile('🛍️', 'שוק אמייוקו', S9_SHORT, { pin: true }),
+            tile('🌸', 'פארק אואנו', 'יום 4 · 1.1 ק״מ', { pin: true }),
+            tile('🍡', 'דנגו ביאנאקה', 'יום 2 · 240 מ׳', { pin: true }),
+          ].join(''),
+        )}</div>` +
+        `<div class="col">${T.after}<span class="sub">והגיליון · «שיבוץ ליום» כפי שהוא, ומעליו ההסכמה עם ההצעה</span>` +
+        `<div class="phone" style="width:var(--fw)"><div class="fbody"><div class="sheetbox">
+          <div class="modal-title">שוק אמייוקו<span class="wp-row-subject">${S9_LONG}</span></div>
+          <div class="wp-row-actions">
+            ${act('check', 'סמנו ליום 4')}
+            ${act('calendar', 'שיבוץ ליום…')}
+          </div>
+          <div class="wp-row-actions wp-row-actions-danger">${act('trash', 'הסר', true)}</div>
+        </div></div></div></div>`;
+      // Both copies, off-frame, so the wrap question is answered by measurement.
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;visibility:hidden;inset-inline-start:-9999px';
+      // The WORST case is the one that matters, and session 203 already learned it the
+       // hard way: one long name is what made a shelf group taller than its sibling. So the
+       // probe pairs each copy with a title that already takes the full 2-line clamp.
+      const S9_LONGTITLE = 'מוזיאון טוקיו הלאומי אואנו';
+      // ONE STRIP PER CASE. The first probe put all three in one `.shelf`, which is a flex
+      // row: `align-items: stretch` made every card the height of the tallest and reported
+      // three identical numbers. That is the same defect session 203's amendment #1 records
+      // from the other side (two shelf groups rendering at different heights because each
+      // sized to its own tallest card) — a strip is not a neutral place to measure a card.
+      probe.innerHTML = [
+        strip(tile('🛍️', S9_LONGTITLE, S9_LONG)),
+        strip(tile('🛍️', S9_LONGTITLE, S9_SHORT)),
+        strip(tile('🛍️', 'שוק אמייוקו', S9_LONG)),
+      ].join('');
+      probe.id = 's9-probe';
+      document.body.appendChild(probe);
+
       /* ══ Controls: theme + width. `data-theme` on <html> is exactly what
             `lib/theme.ts` writes, so the app tokens inside every frame flip on
             their own and nothing here has to know about colour. */
@@ -10650,6 +10757,13 @@ textarea {
           return el ? Math.round(el.getBoundingClientRect().width * 10) / 10 : null;
         };
         const rowH = h('#s1 .bld');
+        /* §9's two copy variants, measured off-frame: the tile is 140px wide and its
+           76px floor came OUT of the action line, so a meta that wraps spends exactly
+           what session 203 bought. Index 0 is the long copy, 1 the short. */
+        const tileMeta = (i) => {
+          const cards = document.querySelectorAll('#s9-probe .wp-maybecard');
+          return cards[i] ? Math.round(cards[i].getBoundingClientRect().height * 10) / 10 : 0;
+        };
         /* The same EVENT, today's row against the proposed one — the only honest way
            to price a control that shares a row with a wrapping title. Found by
            measuring: the museum row already wraps at 360px, so it costs nothing,
@@ -10757,6 +10871,25 @@ textarea {
             'גיליון ההחלפה · שורת רעיון',
             h('#s5 .gapfill-row') + 'px',
             'זהה בשני הגיליונות · רכיב אחד',
+          ],
+          [
+            'אריח · כותרת ארוכה + המשך קצר',
+            tileMeta(1) + 'px',
+            'רצפת האריח היא 76px · ADR-0116/session-203',
+          ],
+          [
+            'אריח · כותרת ארוכה + המשך ארוך (<code>+ שם העצירה</code>)',
+            tileMeta(0) + 'px',
+            tileMeta(0) > tileMeta(1)
+              ? 'עולה ' +
+                Math.round(tileMeta(0) - tileMeta(1)) +
+                'px · בדיוק ה-8px ש-ADR-0151 סירב להם, ולכן שם העצירה נשאר בגיליון'
+              : 'אין תוספת · הרצפה בולעת את השבירה',
+          ],
+          [
+            'אריח · כותרת קצרה + המשך ארוך',
+            tileMeta(2) + 'px',
+            'המקרה שהטעה בפעם הראשונה · הרצפה בלעה את השבירה, אז הוא לא המקרה הגרוע',
           ],
           [
             'תוספת הגובה ליום בגרירה',

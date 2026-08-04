@@ -117,3 +117,41 @@ It is also the honest limit. We are stating a fact we computed, never taste we d
 - **Persist suggestions as `MaybeItem`s with a `suggested` flag.** Rejected (§6): it reproduces the crowding at machine volume, and it puts rows in the trip that no human chose.
 - **Normalise scores across strategies into one ranking.** Rejected (§2): distance and popularity are not two readings of one quantity, and a normalised blend is false precision that reads as authority.
 - **One strategy with a `mode` parameter** instead of a registry. Rejected: it is the `if`/`else` chain ADR-0094 exists to have already replaced once, and the placement split (§2) would live inside a branch rather than in the registration.
+
+## Amendment (2026-08-04, session 211) — the second strategy, and it answers "which day"
+
+§2 said the registry's point was that _"the second strategy is a registration and not an edit to every surface that ranks something"_, and left `SUGGESTION_STRATEGIES` holding one. This is the second, and it is registered rather than bolted on — which is the claim §2 was making, now tested.
+
+**What is missing today.** `near-the-day` ranks the pool **against the focused day**: `rankIdeas(pool, places, activeDate, dayStops(…))`. So an idea says `200 מ׳ מהמוזיאון` while you are looking at the day it is near, and says nothing useful on any other day. The consequence only shows at volume: with thirty researched places on the shelf, discovering that eight of them cluster around Thursday's plan means **visiting each day and reading the shelf again**. The fact is computable from data already in the browser, and nothing surfaces it.
+
+**`fits-a-day` (LOCAL).** For an idea with **no `targetDate`**, measure it against every day's stops (`dayStops` per date, the same derivation) and keep the best. It answers a different question from `near-the-day` — _which day does this belong to_, not _how does this rank for the day I am on_ — so it is a second strategy and not a parameter on the first (§2's own rejected alternative).
+
+**One new reason code**, because the existing one cannot carry the answer: `NEAR_STOP` has `meters` + `stopName` and no date, and a suggestion that cannot name the day has not answered the question.
+
+```ts
+/** Nearest to a stop on ANOTHER day than the one being ranked — the day this idea
+ *  looks like it belongs to. Params: `date`, `meters`, `stopName`. */
+FITS_DAY: 'fits-day',
+```
+
+A code rather than an optional `date` on `NEAR_STOP`: the union is discriminated and exhaustively rendered, so a new code makes every consumer declare what it says, while an optional field lets one silently print a distance with no day attached.
+
+**Where it surfaces, and the tile priced it.** The pool card's meta line already renders a reason through `tileReasonText`, so a dateless idea gains a sentence where it previously had nothing to say. **But not the whole sentence** — measured in `mockups/day-scheduling-grammar-v1.html` §9, at 140px, each case in its own strip:
+
+| Tile                                    | Height   |
+| --------------------------------------- | -------- |
+| long title + `יום 4 · 300 מ׳`           | **76px** |
+| long title + `יום 4 · 300 מ׳ מהמוזיאון` | **84px** |
+| short title + the long copy             | 76px     |
+
+The stop name wraps the meta and costs the tile **8px** — the same 8px this ADR's own earlier amendment refused when it kept the ranking reason to one line on a 76px tile just redesigned to save them. So the tile says `יום 4 · 300 מ׳` and **the stop name stays in the sheet**, which is where the full sentence has room.
+
+(Two earlier attempts at this measurement were wrong in opposite directions, and both are worth knowing: measuring with a short title let the `min-height: 76px` floor absorb the wrap, and measuring all three cards in one `.shelf` returned three identical numbers, because a flex row stretches its children to the tallest — which is session 203's amendment #1 read from the other side. **A strip is not a neutral place to measure a card.**)
+
+**The verb is not on the tile either.** Session 203 took the per-card `＋ שבץ ליום` out precisely because the tile's height came out of it, so agreeing with the suggestion lives one tap in, in `MaybeManageSheet` beside `שיבוץ ליום` — which is where the tile's verbs already live (ADR-0116's 2026-08-01 amendment). It is a verb the app already has: `verbs.setMaybeDay(item, date)`, ADR-0116 §2's pencil mark, unchanged.
+
+Its glyph is **`check`**, not a second calendar. `שיבוץ ליום` keeps `CONTROL_ICON.schedule` (the calendar) because that is what it has always been, and the new row is not another kind of scheduling — it is **agreeing with a proposal**, which is what a tick means everywhere else in this app. Worth one sentence because the first draft gave the two rows a calendar and a clock, which is precisely the collision ADR-0161 §7 was written about: when two rows reach for one glyph, one of them has not been thought about.
+
+**What this deliberately is not.** It does not set `targetDate` itself, and it does not reorder anything already planned. It is a sentence with a source and a reason (§1) that a human accepts or ignores — the boundary §6 drew for external candidates, applied to a local one.
+
+**Still open, and larger:** slotting several of those ideas into a day at once, which needs a posture the Map does not have (its dateless shelf pins are deliberately `aside` — ADR-0130 §3 — which is right for reading a day and backwards for filling one). Its own design session; see [backlog](../backlog.md).

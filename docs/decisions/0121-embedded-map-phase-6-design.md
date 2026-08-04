@@ -473,3 +473,13 @@ Recorded so a rejected or reversed call is not re-proposed; each is already fold
 9. **The `מה נשאר` chip's count was mislabelled** in the mockup (`4` where `5` rows survive), reproducing ADR-0119's bug within minutes of adding a third axis — which is why §9 states the coupling requirement rather than implying it.
 10. **Transit layers were considered and dropped** (§14), with the reason recorded so "it's free" does not reopen it.
 11. **Still open by decision:** whether proximity promotes a ghost to a full pin (§6), and whether a pin tap opens an info window (§8). Both are judged better on a real rendered map than on paper.
+
+## Amendment (2026-08-04, session 211) — §8's rule reaches the shelf idea, which it had skipped
+
+§8's badge (the 2026-07-28 amendment: _"every event and booking has an easy way to its pin, in both modes"_) is on `EventCard`, `BuilderRow` and `TransitionRow`. It is **not** on `MaybeCard`, whose sheet (`MaybeManageSheet`) offers exactly `שיבוץ ליום` and `הסר`.
+
+That is the wrong entity to have missed. An idea is the thing in this app **most likely to be a place**: every place added from the map outside an errand becomes one (`Map.tsx`'s `landPlace` → `verbs.addMaybe(title, { placeId })`), so the shelf is where map research accumulates. With thirty ideas on it, _"where is this one?"_ is the first question asked and the shelf cannot answer it — while a hotel booking three taps away can.
+
+**So `MaybeCard`'s icon slot becomes a `PlaceBadge`,** on the host's own class exactly as the other three do (`.wp-maybecard-ic` in, no geometry change out). Absent when the idea carries no place or the place has no coordinates — "absent, not broken", the rule the badge already follows. Nothing else about the card, the sheet or the drag changes.
+
+Recorded here rather than in a new ADR because it is this section's rule applied to a host it always implied, which is an omission and not a decision. The **workflow** it is part of — thirty researched places, and slotting them being the slow part — is its own brief; see [backlog](../backlog.md).

@@ -1,6 +1,6 @@
 # 2026-08-04 · session 211 — the day's scheduling grammar (design session)
 
-**Outcome:** [ADR-0161](../decisions/0161-a-move-names-a-position-and-an-event-owns-its-length.md) + [`mockups/day-scheduling-grammar-v1.html`](../../mockups/day-scheduling-grammar-v1.html). Four slices approved for build; nothing built in this session.
+**Outcome:** [ADR-0161](../decisions/0161-a-move-names-a-position-and-an-event-owns-its-length.md) + [`mockups/day-scheduling-grammar-v1.html`](../../mockups/day-scheduling-grammar-v1.html), plus in-place amendments to [0138 §8](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md), [0159 §1](../decisions/0159-the-day-says-what-is-between-two-events.md), [0121 §8](../decisions/0121-embedded-map-phase-6-design.md) and [0151](../decisions/0151-a-suggestion-has-a-source-and-a-reason.md). Four slices approved for build; nothing built in this session.
 
 ## What the owner brought
 
@@ -101,3 +101,29 @@ Three things, all ADR-0017 questions and none answerable from a desktop render �
 
 - Whether an 18px seam is findable under a thumb, and whether the seam labels read as promises or as noise mid-drag.
 - **The drag clone's opacity and lift.** Defaults are 0.78 and 12px; the mockup carries both as toggles (0.85 · 0.78 · 0.65 and 0 · 12 · 20) precisely so the pair is chosen on a phone, with a finger actually covering the thing.
+
+## A fourth round: thirty places on the map, and slotting them
+
+_"I'm guessing that a common workflow will be adding lots and lots of places to the map, then people will want to slot these places. Currently added places are automatically added to the shelf, but we want to make it super easy to choose from there."_
+
+The premise checks out in the code: `Map.tsx`'s `landPlace` calls `verbs.addMaybe(title, { placeId })` for every place added outside an errand, so the shelf **is** where map research accumulates — and `SHELF_POOL_CAP` is **5**, so at thirty places the shelf shows five and the rest live behind the Map's `אולי` facet.
+
+**Five gaps, and the second one is sharper than the premise.**
+
+1. **An idea cannot reach its pin.** `MaybeManageSheet` offers `שיבוץ ליום` and `הסר`; `MaybeCard` renders its glyph in a badge-shaped slot but not through `PlaceBadge`. So ADR-0121 §8's rule — every event and booking reaches its pin, in both modes — skips the entity **most likely to be a place**.
+2. **The day-scoped map deliberately subordinates exactly the ideas you are trying to place.** A dateless shelf idea is `PIN_TIER.shelf`, which `isAsidePin` groups with ghosts: no row in the list sheet, no camera pull, quiet paint (ADR-0130 §3, ADR-0121 §7). That is _right_ for reading a day and backwards for filling one. Nothing is broken — the Map has one posture and this workflow needs the other. The precedent for withdrawing the flag already exists: search does it (ADR-0131 §4).
+3. **Everything is one at a time.** `＋ שיבוץ ליום` slots one place; a drag slots one card. The workflow is plural and spatial.
+4. **Nothing suggests which day an idea belongs to.** `near-the-day` ranks against the focused day only, so discovering that eight ideas cluster around Thursday means visiting every day and re-reading the shelf.
+5. **No geographic help with order.** `haversineMeters` exists; ADR-0159 §13 refused a crow-flies **duration** claim, which is not the same claim as a **sequence**.
+
+**Owner's call: take 1 and 4 now, design 2/3/5 after ADR-0161 ships.** Both went in as **amendments to the ADRs that own the rules** rather than as sections of 0161, whose subject is moves — 1 to [ADR-0121 §8](../decisions/0121-embedded-map-phase-6-design.md) (its rule reaching a host it always implied, an omission and not a decision) and 4 to [ADR-0151](../decisions/0151-a-suggestion-has-a-source-and-a-reason.md) as `fits-a-day`, the second strategy its registry was built for and had never had.
+
+**The tile priced gap 4, in three attempts, and the first two were wrong in opposite directions.** The question was whether `יום 4 · 300 מ׳ מהמוזיאון` fits the 140×76 tile:
+
+- Measured with a **short title**: 76px, no cost — the `min-height` floor absorbed the wrap.
+- Measured with all three cards **in one `.shelf`**: three identical numbers, because a flex row stretches its children to the tallest. That is session 203's amendment #1 read from the other side, and the rule it gives is **a strip is not a neutral place to measure a card**.
+- Measured properly (long title, one strip per case): **76px → 84px**. The stop name costs the tile exactly the **8px** ADR-0151's earlier amendment refused when it kept the reason to one line.
+
+So the tile says `יום 4 · 300 מ׳` and the stop name stays in the sheet. And the verb is not on the tile either — session 203 removed the per-card action line, so agreeing lives one tap in, beside `שיבוץ ליום`, wearing **`check`** (agreeing with a proposal) rather than a second calendar. That last detail is the ADR-0161 §7 collision repeating itself within the hour: when two rows reach for one glyph, one of them has not been thought about.
+
+**What is left is one design session, not three items**, and its shape is in the [backlog](../backlog.md): pick a day, the unslotted ideas become the **subject** instead of the context, select several, drop them into the day's free time, the app proposes an order and times, you see it and confirm. Explicitly **not** auto-arranging, which ADR-0161 §10 refuses and which survives intact — you chose the things, you chose the hole, nothing already planned moves, and nothing commits before you look at it.
