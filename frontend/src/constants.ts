@@ -222,6 +222,7 @@ export const BOOKING_TYPE_ICON = {
   restaurant: '🍜',
   train: '🚄',
   transit: '🚌',
+  car: '🚗',
   activity: '🎟️',
   other: '📄',
 } as const satisfies Record<BookingType, string>;
@@ -273,11 +274,18 @@ export const CATEGORY_DEFAULT_BOOKED = {
  *  could never be given one. The glyph had to be spelled `🚌` here rather than taken from
  *  `BOOKING_TYPE_ICON`, because that table said `📄` — a document among two vehicles. Both
  *  of those were the same symptom. `transit` carries `TRANSPORT_PROFILE`, so the glyph comes
- *  from the table like everyone else's and the pill means what it says. */
+ *  from the table like everyone else's and the pill means what it says.
+ *
+ *  **The fourth pill is a hire** (ADR-0162), and it is here rather than folded into the
+ *  third because the question the pills answer is the SHAPE, not just the glyph: a hire is
+ *  the one transport mode you drive yourself, so it has no return leg to buy and no
+ *  connection to make. 0156 counted car hire under `נסיעה`; nobody looking for it found it
+ *  there, which is what this row fixes. */
 export const TRANSPORT_BOOKING_TYPES = [
   BOOKING_TYPE.FLIGHT,
   BOOKING_TYPE.TRAIN,
   BOOKING_TYPE.TRANSIT,
+  BOOKING_TYPE.CAR,
 ] as const satisfies readonly BookingType[];
 
 /** Glyph per document type, for the Index documents section badges. */

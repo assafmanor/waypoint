@@ -9,6 +9,7 @@
 // migration touches. UI copy (group labels) lives in the frontend i18n, keyed
 // by `IconGroup.id` — never here (this package is shapes + data, ADR-0009).
 
+import { BOOKING_TYPE_TO_CATEGORY } from './constants';
 import type { BookingType, EventCategory, EventKind, TripEvent } from './entities';
 import { matchesAnyTerm } from './search-terms';
 
@@ -166,19 +167,15 @@ export const CATEGORY_DEFAULT_ICON: Record<EventCategory, string> = {
 };
 
 /** Booking type → canonical category (ADR-0038 Tier-B auto-suggest). A booked
- *  event derives its category from the linked `Booking.type`. */
-export const BOOKING_TYPE_CATEGORY: Record<BookingType, EventCategory> = {
-  flight: 'transport',
-  train: 'transport',
-  transit: 'transport',
-  hotel: 'lodging',
-  restaurant: 'food',
-  activity: 'activity',
-  other: 'other',
-};
-
+ *  event derives its category from the linked `Booking.type`.
+ *
+ *  **The table lives in `constants.ts`, and used to live in both.** A private
+ *  `BOOKING_TYPE_CATEGORY` sat here with identical contents and exactly one reader —
+ *  this function — so every new booking type had to be answered twice with nothing but
+ *  the `Record<BookingType, …>` on each to notice (ADR-0095's shape, ADR-0162 collapsed
+ *  it). One table, and its inverse `CATEGORY_TO_BOOKING_TYPE` is beside it there. */
 export const categoryForBookingType = (type: BookingType): EventCategory =>
-  BOOKING_TYPE_CATEGORY[type];
+  BOOKING_TYPE_TO_CATEGORY[type];
 
 export const iconForCategory = (category: EventCategory): string => CATEGORY_DEFAULT_ICON[category];
 
@@ -241,10 +238,11 @@ const ORDINARY_PROFILE: CategoryTimeProfile = {
 };
 
 export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> = {
-  // Generic transport wording (departure/arrival) is correct for every mode — a
-  // train, bus, ferry or car all leave and arrive. A mode whose vocabulary
-  // differs (aviation's take-off/landing) refines it per-glyph via
-  // `ICON_TRANSITION_KEYS`; nothing hard-codes flight words for the category.
+  // Generic transport wording (departure/arrival) is correct for every mode that
+  // CARRIES you — a train, a bus or a ferry all leave and arrive. A mode that disagrees
+  // refines it per-glyph via `ICON_TIME_PROFILE`: aviation's take-off/landing, and a
+  // hire's pick-up/return (ADR-0162, which is also why a car is no longer in that list).
+  // Nothing hard-codes flight words for the category.
   transport: {
     bracketed: true,
     ambientWhenMultiDay: true,
@@ -271,14 +269,31 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   other: ORDINARY_PROFILE,
 };
 
-/** Per-glyph transition-wording overrides for modes whose ends read differently
- *  from their category default (ADR-0063 refinement). A flight's ends are
- *  take-off / landing, not the generic departure / arrival every other transport
- *  mode uses. Bounded and declarative like the icon set itself (ADR-0038): a new
- *  mode with distinct wording adds a glyph here and every time-aware surface
- *  (hero, glance markers, day entries) picks it up — no per-screen branching. */
-export const ICON_TRANSITION_KEYS: Record<string, { startKey: string; endKey: string }> = {
-  '✈️': { startKey: 'flightDeparture', endKey: 'flightArrival' },
+/** **Per-glyph refinements of the category profile**, for modes whose time reads
+ *  differently from the category they belong to (ADR-0063 refinement, widened in
+ *  ADR-0162). A flight's ends are take-off / landing, not the generic departure /
+ *  arrival every other transport mode uses. Bounded and declarative like the icon set
+ *  itself (ADR-0038): a new mode adds a glyph here and every time-aware surface (hero,
+ *  glance markers, day entries) picks it up — no per-screen branching.
+ *
+ *  **It used to refine `transitions` only, and the car hire is why it no longer does.**
+ *  A hire is `transport`, so it inherited that category's hours and a five-day one read
+ *  "120 ש׳" wherever an EVENT was the subject — the booking surfaces were already right,
+ *  because they ask the type (`bookingTypeDurationUnit`). Rather than add a second
+ *  glyph table beside this one for the second field, the values became a `Partial` of
+ *  the profile: whatever a mode disagrees with, it states here.
+ *
+ *  A glyph is a weaker carrier than a type — the icon is the user's to change, so a hire
+ *  re-badged ⭐ falls back to its category. That is the same looseness a flight's wording
+ *  has always had, and it is why the type-keyed path exists for anything booked. */
+export const ICON_TIME_PROFILE: Record<string, Partial<CategoryTimeProfile>> = {
+  '✈️': { transitions: { startKey: 'flightDeparture', endKey: 'flightArrival' } },
+  // A hire is picked up and returned, not departed and arrived — and it is measured in
+  // the days you hold it (ADR-0162). Both halves of `transport` that a car disagrees with.
+  '🚗': {
+    transitions: { startKey: 'carPickup', endKey: 'carDropoff' },
+    durationUnit: 'auto',
+  },
 };
 
 /** The profile for an event's category. A null/unset category (ADR-0038) uses
@@ -290,24 +305,33 @@ const profileFor = (category: EventCategory | null | undefined): CategoryTimePro
 export const typicalMinutesFor = (category: EventCategory | null | undefined): number =>
   profileFor(category).typicalMinutes;
 
-/** The two i18n transition keys for a bracketed event's ends, or `undefined`
- *  when its category isn't bracketed. Resolves finer than category so wording is
- *  by mode, not hard-coded: an event's own glyph (`ICON_TRANSITION_KEYS`) wins
- *  over the category default — a train reads departure/arrival, a flight reads
- *  take-off/landing — with the category profile as the fallback for every other
- *  glyph and for manual (non-booking) events (ADR-0063 §4). */
-export const eventTransitionKeys = (
-  event: Pick<TripEvent, 'category' | 'icon'>,
-): { startKey: string; endKey: string } | undefined => {
-  const override = event.icon != null ? ICON_TRANSITION_KEYS[event.icon] : undefined;
-  return override ?? profileFor(event.category).transitions;
+/** An event's time profile: its category's, refined by whatever its own glyph
+ *  disagrees with (`ICON_TIME_PROFILE`). The one resolution both readers below share,
+ *  so a mode never reads its wording from the glyph and its unit from the category. */
+const timeProfileFor = (event: Pick<TripEvent, 'category' | 'icon'>): CategoryTimeProfile => {
+  const base = profileFor(event.category);
+  const refinement = event.icon != null ? ICON_TIME_PROFILE[event.icon] : undefined;
+  return refinement ? { ...base, ...refinement } : base;
 };
 
-/** The unit an event's duration reads in, from its category profile (ADR-0063
- *  extension). Keys on `category` so every surface formats duration the same way
- *  — no per-type branching. A null/unset category uses the ordinary 'auto'. */
-export const eventDurationUnit = (event: Pick<TripEvent, 'category'>): DurationUnit =>
-  profileFor(event.category).durationUnit;
+/** The two i18n transition keys for a bracketed event's ends, or `undefined`
+ *  when its category isn't bracketed. Resolves finer than category so wording is
+ *  by mode, not hard-coded: an event's own glyph (`ICON_TIME_PROFILE`) wins
+ *  over the category default — a train reads departure/arrival, a flight reads
+ *  take-off/landing, a hire reads pick-up/return — with the category profile as the
+ *  fallback for every other glyph and for manual (non-booking) events (ADR-0063 §4). */
+export const eventTransitionKeys = (
+  event: Pick<TripEvent, 'category' | 'icon'>,
+): { startKey: string; endKey: string } | undefined => timeProfileFor(event).transitions;
+
+/** The unit an event's duration reads in — its category's, unless its glyph names a
+ *  different one (ADR-0063 extension, ADR-0162's refinement). A null/unset category
+ *  uses the ordinary 'auto'.
+ *
+ *  For anything with a BOOKING behind it, prefer `bookingTypeDurationUnit`: the type
+ *  is the authority and the glyph is only its badge. */
+export const eventDurationUnit = (event: Pick<TripEvent, 'category' | 'icon'>): DurationUnit =>
+  timeProfileFor(event).durationUnit;
 
 type TimedEvent = Pick<TripEvent, 'category' | 'date' | 'endDate'>;
 
@@ -406,6 +430,15 @@ export interface BookingTypeProfile {
      *  bags and a terminal, 20 minutes is a short one on a platform. */
     sequence: ConnectionWindow | null;
   };
+  /** **How long one of these reads, when the type disagrees with its category**
+   *  (ADR-0162). Absent for every type whose category already answers correctly —
+   *  which was all of them until the car hire, where `transport`'s hours turned a
+   *  five-day booking into "120 ש׳".
+   *
+   *  Optional rather than a required column, so the category stays the default and
+   *  this table only carries the exceptions. Read through `bookingTypeDurationUnit`,
+   *  never off the profile directly. */
+  durationUnit?: DurationUnit;
 }
 
 /** What makes two bookings one journey, and what makes the join a tight one. */
@@ -442,6 +475,22 @@ export const BOOKING_TYPE_PROFILE = {
   // real commitment, can be bought as a round trip and can be changed halfway — exactly
   // like the two above, and on a platform's timescale rather than an airport's.
   transit: transportProfile({ maxGapMinutes: 6 * MINUTES_PER_HOUR, tightMinutes: 20 }),
+  // **The fourth transport mode** (ADR-0162) — and the first that is NOT
+  // `transportProfile`, which is the whole point of it. A hire carries a route
+  // (pick-up → drop-off) and spans two instants like the three above, but the `legs`
+  // axis inverts: you are driving the vehicle, so there is no return leg to buy
+  // (`mirrored` would author a SECOND rental) and no connection to make (two hires
+  // four hours apart are two hires, not one journey with a change).
+  //
+  // `durationUnit` is the other half: `transport` reads in hours because a flight is
+  // hours even overnight, and a five-day hire read "120 ש׳". You hold a car in days.
+  car: {
+    places: 'route',
+    schedule: 'span',
+    defaultKind: 'hard',
+    legs: ONE_JOURNEY,
+    durationUnit: 'auto',
+  },
   // A stay is two endpoints at ONE place — which is why `places` and `schedule` are
   // separate axes rather than one "is it transport" flag.
   hotel: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: ONE_JOURNEY },
@@ -464,6 +513,18 @@ export const hasSpanSchedule = (type: BookingType): boolean =>
 /** The commitment a fresh booking of this type opens with (ADR-0011 / ADR-0136 §4). */
 export const defaultKindForBookingType = (type: BookingType): EventKind =>
   BOOKING_TYPE_PROFILE[type].defaultKind;
+
+/** **The unit a BOOKING of this type reads its length in** — the type's own answer
+ *  where it has one (ADR-0162), else its category's. The type is the authority here
+ *  and the category is the fallback, which is the same precedence `bookingDurationUnit`
+ *  already documented: a booked event's category is icon-overridable, so a hire badged
+ *  ⭐ must still read in days. */
+export const bookingTypeDurationUnit = (type: BookingType): DurationUnit => {
+  // Widened to the interface deliberately: `as const satisfies` narrows each row to its
+  // own literal shape, on which an OPTIONAL field simply isn't a property to read.
+  const profile: BookingTypeProfile = BOOKING_TYPE_PROFILE[type];
+  return profile.durationUnit ?? CATEGORY_TIME_PROFILE[BOOKING_TYPE_TO_CATEGORY[type]].durationUnit;
+};
 
 /** Can one save of this type author a mirrored return leg (ADR-0154 §4)? */
 export const authorsRoundTrip = (type: BookingType): boolean =>

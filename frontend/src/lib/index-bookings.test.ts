@@ -309,6 +309,40 @@ describe('matchesQuery (ADR-0098 §2 search)', () => {
     expect(matchesQuery(booking('b3', 'x', BOOKING_TYPE.ACTIVITY), 'טיול')).toBe(true);
     expect(matchesQuery(booking('b3', 'x', BOOKING_TYPE.ACTIVITY), 'כרטיס')).toBe(true);
   });
+
+  // **The vocabulary split ADR-0162 §4 makes**, asserted in both directions — the whole
+  // reason the car words MOVED off `transit` instead of being listed on both types.
+  it('sends the car words to the hire and the vehicle words to the journey', () => {
+    const hire = booking('b1', 'x', BOOKING_TYPE.CAR);
+    const journey = booking('b2', 'x', BOOKING_TYPE.TRANSIT);
+
+    for (const q of ['השכרת רכב', 'רכב שכור', 'מכונית', 'hertz']) {
+      expect(matchesQuery(hire, q)).toBe(true);
+      // The point: a bus no longer answers a search for a rental.
+      expect(matchesQuery(journey, q)).toBe(false);
+    }
+    for (const q of ['אוטובוס', 'מעבורת', 'הסעה', 'רכבל']) {
+      expect(matchesQuery(journey, q)).toBe(true);
+      expect(matchesQuery(hire, q)).toBe(false);
+    }
+  });
+
+  // The bare word is NOT a discriminator, and that is `matchesAnyTerm`'s substring
+  // semantics rather than a synonym-list mistake: `רכב` is a prefix of both `רכבת` (train)
+  // and `רכבל` (cable car). Pinned so nobody "fixes" the lists over it — the cure would be
+  // word-boundary matching for every search in the app, which is a separate decision.
+  it('matches a train and a cable car for a bare "רכב", by substring', () => {
+    expect(matchesQuery(booking('b1', 'x', BOOKING_TYPE.CAR), 'רכב')).toBe(true);
+    expect(matchesQuery(booking('b2', 'x', BOOKING_TYPE.TRAIN), 'רכב')).toBe(true); // רכבת
+    expect(matchesQuery(booking('b3', 'x', BOOKING_TYPE.TRANSIT), 'רכב')).toBe(true); // רכבל
+    // …and the same in the other direction: `אוטו` is a prefix of `אוטובוס`, so the
+    // colloquial word for a car reaches the bus. Kept in the list anyway — it IS what
+    // people type, and the alternative is a car nobody finds by its everyday name.
+    expect(matchesQuery(booking('b1', 'x', BOOKING_TYPE.CAR), 'אוטו')).toBe(true);
+    expect(matchesQuery(booking('b3', 'x', BOOKING_TYPE.TRANSIT), 'אוטו')).toBe(true);
+    // A word that shares no prefix is still cleanly excluded.
+    expect(matchesQuery(booking('b4', 'x', BOOKING_TYPE.HOTEL), 'רכב')).toBe(false);
+  });
 });
 
 describe('visibleRows (ADR-0098 §4 stagger)', () => {

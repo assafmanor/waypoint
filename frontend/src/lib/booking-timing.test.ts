@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { BOOKING_TYPE, type TripEvent } from '@waypoint/shared';
-import { bookingDurationUnit, formatBookingDuration } from './booking-timing';
+import { bookingDurationUnit, formatBookingDuration, timingLabels } from './booking-timing';
+import { t } from '../i18n/he';
 
 const TZ = 'UTC';
 const ev = (e: Partial<TripEvent>) => e as Parameters<typeof formatBookingDuration>[0];
@@ -122,5 +123,60 @@ describe('bookingDurationUnit', () => {
     expect(bookingDurationUnit(BOOKING_TYPE.FLIGHT)).toBe('hours');
     expect(bookingDurationUnit(BOOKING_TYPE.TRAIN)).toBe('hours');
     expect(bookingDurationUnit(BOOKING_TYPE.RESTAURANT)).toBe('auto');
+  });
+
+  // ADR-0162: the type overrides its category where the two disagree. A hire is
+  // `transport`, and reading a five-day one in that category's hours gave "120 ש׳".
+  it('reads a car hire in the days you hold it, not transport hours', () => {
+    expect(bookingDurationUnit(BOOKING_TYPE.CAR)).toBe('auto');
+    expect(
+      formatBookingDuration(
+        ev({
+          category: 'transport',
+          date: '2026-07-15',
+          endDate: '2026-07-20',
+          startsAt: '2026-07-15T09:00:00Z',
+          endsAt: '2026-07-20T09:00:00Z',
+        }),
+        TZ,
+        bookingDurationUnit(BOOKING_TYPE.CAR),
+      ),
+    ).toBe('5 ימים');
+  });
+});
+
+describe('timingLabels (ADR-0162: a Record, not a fall-through)', () => {
+  it('gives a hire its counter wording', () => {
+    expect(timingLabels(BOOKING_TYPE.CAR)).toEqual({
+      start: t.index.form.pickupLabel,
+      end: t.index.form.dropoffLabel,
+    });
+  });
+
+  // The bug the if-chain hid: `transit` fell past every branch to the generic
+  // התחלה/סיום, where a bus departs and arrives exactly like the train above it.
+  it('gives a bus or a ferry the same departure/arrival a train gets', () => {
+    expect(timingLabels(BOOKING_TYPE.TRANSIT)).toEqual(timingLabels(BOOKING_TYPE.TRAIN));
+    expect(timingLabels(BOOKING_TYPE.TRANSIT)).toEqual({
+      start: t.index.form.departLabel,
+      end: t.index.form.arriveLabel,
+    });
+  });
+
+  it('still answers every type it answered before', () => {
+    expect(timingLabels(BOOKING_TYPE.HOTEL)).toEqual({
+      start: t.index.form.checkinLabel,
+      end: t.index.form.checkoutLabel,
+    });
+    expect(timingLabels(BOOKING_TYPE.FLIGHT)).toEqual({
+      start: t.index.form.flightDepartLabel,
+      end: t.index.form.flightArriveLabel,
+    });
+    for (const type of [BOOKING_TYPE.ACTIVITY, BOOKING_TYPE.RESTAURANT, BOOKING_TYPE.OTHER]) {
+      expect(timingLabels(type)).toEqual({
+        start: t.index.form.startLabel,
+        end: t.index.form.endLabel,
+      });
+    }
   });
 });

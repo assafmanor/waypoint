@@ -1,0 +1,19 @@
+-- ADR-0162: a car hire is the fourth transport mode, and the first that is not a journey.
+--
+-- ADR-0156 listed car hire among the four things `transit` covers. That was right about
+-- the category and too coarse about the shape: `transit` carries `transportProfile`, so a
+-- hire was offered a mirrored return leg (which authors a SECOND rental), was eligible to
+-- be joined to another hire six hours away as one journey with a connection, and read its
+-- length in `transport`'s hours — "120 ש׳" for a five-day rental.
+--
+-- Additive only, like 0156's own migration. Postgres cannot remove an enum value without
+-- rewriting the type, and there is nothing to remove: `transit` keeps meaning the bus, the
+-- ferry, the shuttle and the cable car.
+--
+-- **No backfill, deliberately** — 0156 §3's reasoning, one level down. An existing
+-- `transit` row might be a bus or might be a car hire, and nothing stored distinguishes
+-- them; a guess over free text would silently re-type real rows. Existing rows keep their
+-- type and the new pill writes the right one from now on. Re-typing an old hire is one tap
+-- in the edit sheet, and unlike 0156's case it cannot invalidate the row: both types are
+-- route-shaped and span-scheduled, so every field the booking already holds stays legal.
+ALTER TYPE "BookingType" ADD VALUE IF NOT EXISTS 'car' AFTER 'transit';

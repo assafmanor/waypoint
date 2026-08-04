@@ -46,6 +46,7 @@ enum BookingType {
   restaurant
   train
   transit
+  car
   activity
   other
 }

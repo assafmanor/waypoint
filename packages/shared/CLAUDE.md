@@ -22,9 +22,14 @@ clock.
   `EventCategory`, …) is one line in its `entities.ts` union and one line in
   the matching `constants.ts` object/lookup — extend the existing set, don't
   start a second parallel lookup for "just this one new type." `icons.ts`'s
-  `CATEGORY_TIME_PROFILE`/`BOOKING_TYPE_CATEGORY`/`CATEGORY_DEFAULT_ICON` are
-  the model: one `Record<EnumType, T>`, exhaustively typed so the compiler
-  flags a missing case.
+  `CATEGORY_TIME_PROFILE`/`BOOKING_TYPE_PROFILE`/`CATEGORY_DEFAULT_ICON` and
+  `constants.ts`'s `BOOKING_TYPE_TO_CATEGORY` are the model: one
+  `Record<EnumType, T>`, exhaustively typed so the compiler flags a missing case.
+  **`BOOKING_TYPE_CATEGORY` used to be named here and is gone** — it was a
+  private second copy of `BOOKING_TYPE_TO_CATEGORY` in `icons.ts` with one
+  reader, so a new type had to be answered twice (ADR-0162 collapsed it). That
+  it sat in this list as an exemplar is the lesson: a duplicate reads as the
+  pattern until someone counts the readers.
 - **A derived fact about an entity that both layers need** (is this event
   bracketed? multi-day? what's its closing boundary?) belongs here as a pure
   function over the shape, not re-implemented once in a Nest service and again

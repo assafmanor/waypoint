@@ -338,6 +338,9 @@ describe('EventForm (folded into Modal, U-01)', () => {
         target: { value: title },
       });
     const save = () => fireEvent.click(screen.getByText(t.eventForm.save));
+    /** The event seed inside the booked payload — `AnyFields` makes its values `unknown`,
+     *  so the nested read needs one narrowing rather than a cast per assertion. */
+    const bookedEventSeed = () => verbs.book.mock.calls[0][0].event as AnyFields;
     const pickCategory = (category: keyof typeof t.iconPicker.categories) =>
       fireEvent.click(
         within(screen.getByRole('radiogroup', { name: t.eventForm.categoryLabel })).getByRole(
@@ -467,6 +470,63 @@ describe('EventForm (folded into Modal, U-01)', () => {
         expect(verbs.book.mock.calls[0][0].type).toBe('train');
       });
 
+      // **The gap ADR-0162 closes**, asserted as the user hit it: a hire was reachable only
+      // by knowing that `נסיעה` covered it, which nobody did. The pill is the fix, so the
+      // test names all four modes rather than only the new one.
+      it('offers a car hire as its own pill, and writes `car`', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        named('רכב לשבוע בהוקאידו');
+        pickCategory('transport');
+        fireEvent.click(bookedChip());
+        const group = typeGroup()!;
+        expect(
+          within(group)
+            .getAllByRole('radio')
+            .map((r) => r.textContent),
+        ).toEqual([
+          expect.stringContaining(t.index.bookingType.flight),
+          expect.stringContaining(t.index.bookingType.train),
+          expect.stringContaining(t.index.bookingType.transit),
+          expect.stringContaining(t.index.bookingType.car),
+        ]);
+
+        fireEvent.click(within(group).getByRole('radio', { name: t.index.bookingType.car }));
+        save();
+        expect(verbs.book.mock.calls[0][0].type).toBe('car');
+      });
+
+      // The glyph follows the TYPE, not just the category (ADR-0162). It matters beyond the
+      // badge: an event's icon carries its time vocabulary through `ICON_TIME_PROFILE`, so
+      // while every transport booking arrived as ✈️ the day rail read `המראה` over a hire.
+      it('badges the linked event with the picked mode, not the category default', () => {
+        render(wrapNav(<EventForm onClose={() => {}} />));
+        named('רכב לשבוע');
+        pickCategory('transport');
+        fireEvent.click(bookedChip());
+        // The category's own default is the plane — that part is unchanged.
+        const group = typeGroup()!;
+        fireEvent.click(within(group).getByRole('radio', { name: t.index.bookingType.car }));
+        save();
+        expect(bookedEventSeed().icon).toBe('🚗');
+      });
+
+      it('does the same for the two modes that were also arriving as ✈️', () => {
+        for (const [label, glyph] of [
+          [t.index.bookingType.train, '🚄'],
+          [t.index.bookingType.transit, '🚌'],
+        ] as const) {
+          verbs.book.mockClear();
+          const { unmount } = render(wrapNav(<EventForm onClose={() => {}} />));
+          named('נסיעה');
+          pickCategory('transport');
+          fireEvent.click(bookedChip());
+          fireEvent.click(within(typeGroup()!).getByRole('radio', { name: label }));
+          save();
+          expect(bookedEventSeed().icon).toBe(glyph);
+          unmount();
+        }
+      });
+
       it('states the derived type in words, and the statement follows the pick', () => {
         render(wrapNav(<EventForm onClose={() => {}} />));
         pickCategory('transport');
@@ -518,7 +578,13 @@ describe('EventForm (folded into Modal, U-01)', () => {
         fireEvent.click(bookedChip());
         expect(on()).toBe(t.eventForm.kindHard);
 
-        for (const type of [t.index.bookingType.train, t.index.bookingType.transit]) {
+        for (const type of [
+          t.index.bookingType.train,
+          t.index.bookingType.transit,
+          // The fourth mode (ADR-0162) is a span type too, so it is hard for the same
+          // reason and with no special case: you have committed to the dates.
+          t.index.bookingType.car,
+        ]) {
           fireEvent.click(within(typeGroup()!).getByRole('radio', { name: type }));
           expect(on()).toBe(t.eventForm.kindHard);
         }

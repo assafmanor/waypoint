@@ -314,6 +314,12 @@ export function EventForm({
   const pickBookingType = (next: BookingType) => {
     setBookingType(next);
     deriveKind(booked.value, next);
+    // **The glyph follows the type too, for the same reason the kind does** (ADR-0162): the
+    // type is finer than the category, and `iconForCategory(transport)` is ✈️ — so a train,
+    // a bus and a hire all arrived badged as a plane. That is not only a wrong badge: the
+    // event's glyph is what carries its time vocabulary (`ICON_TIME_PROFILE`), so the day
+    // rail read `המראה` over a car hire. `redrive` means a deliberate pick still wins.
+    icon.redrive(BOOKING_TYPE_ICON[next]);
   };
 
   // The zone in force right now: the pinned override, else re-derived from the
@@ -760,9 +766,11 @@ export function EventForm({
                     The tail differs because the operations do: a create can be completed
                     later; a conversion moves two fields off the event being edited (§3). */}
                 <p className="ef-derived">
-                  <span aria-hidden="true">
-                    {iconForCategory(category ?? EVENT_CATEGORY.OTHER)}
-                  </span>
+                  {/* The TYPE's glyph, not the category's. The sentence names the booking
+                      type, so `iconForCategory` put a ✈️ beside `רכבת` and — once ADR-0162
+                      added the fourth pill — beside `השכרת רכב`, because `transport`'s
+                      default icon is the plane. Wrong for three of the four modes. */}
+                  <span aria-hidden="true">{BOOKING_TYPE_ICON[derivedType]}</span>
                   <span>
                     {event
                       ? t.eventForm.bookedDerivedConvert(t.index.bookingType[derivedType])

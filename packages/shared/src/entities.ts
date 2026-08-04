@@ -29,9 +29,14 @@ export const bookingTypeSchema = z.enum([
   'hotel',
   'restaurant',
   'train',
-  // The third transport mode (ADR-0156): bus, ferry, car hire, cable car, shuttle.
-  // Everything that carries you somewhere and is neither a flight nor a train.
+  // The third transport mode (ADR-0156): bus, ferry, cable car, shuttle. Everything
+  // that carries you somewhere on someone else's schedule and is neither a flight
+  // nor a train.
   'transit',
+  // The fourth transport mode (ADR-0162), and the first that is NOT `transportProfile`:
+  // you hold the car for days, so it has no return leg to mirror and no connection to
+  // make. ADR-0156 counted car hire under `transit`; ADR-0162 §1 is why that was too coarse.
+  'car',
   'activity',
   'other',
 ]);
