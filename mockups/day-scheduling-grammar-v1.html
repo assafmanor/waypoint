@@ -9554,6 +9554,55 @@ textarea {
         opacity: 1;
       }
 
+      /* §7 — the row's time becomes a button (the whole of ADR-0161 §7). It keeps
+         `.bld-time`'s own type, colour and column layout — this adds the target
+         and the affordance and nothing else, which is why it is a modifier class
+         and not a second time element. `PlaceBadge`'s pattern, one slot over. */
+      button.bld-time {
+        font: inherit;
+        font-family: var(--font-mono);
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        justify-content: center;
+        padding: 4px 7px;
+        margin-inline-end: -3px;
+        border-radius: 9px;
+        /* THE TARGET GROWS, THE ROW DOES NOT. A `min-height: 44px` here was measured
+           first and it took the row from 58px to 75px — a 29% taller list on every
+           row, to make one control meet the floor. So the chip keeps its natural
+           height and the touch target is an inset overlay reaching into the row's
+           own vertical padding, which no other control occupies. Vertical only:
+           `.bld-icon` is the horizontal neighbour. */
+        position: relative;
+        /* A tappable thing has to look tappable — `PlaceBadge`'s own rule, and the
+           reason it carries a pin rather than nothing. The mark here is a hairline
+           chip, which is `.tp-field`'s grammar (the app's existing "a time you can
+           change") at its faintest: no hue is spent, and the row keeps its weight. */
+        background: none;
+        border: 1px solid var(--soft-line);
+      }
+      button.bld-time::after {
+        content: '';
+        position: absolute;
+        inset: -8px 0;
+      }
+      button.bld-time:hover {
+        border-color: var(--plan);
+        background: var(--plan-tint);
+      }
+      /* A row with no time holds nothing at all today, so the only way in is the
+         whole edit form. Same slot, same target, dashed so it reads as absence. */
+      button.bld-time.empty {
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+        color: var(--plan-deep);
+        font-family: inherit;
+        font-size: 11.5px;
+        border-style: dashed;
+      }
+
       /* §4 — the slot picker. Geometry lifted verbatim off `.resolve-opt`,
          which is one of the two one-offs it replaces; the additions are the
          free-time note and the "now" row. */
@@ -9987,13 +10036,33 @@ textarea {
 
       <!-- ══════════════════════════ §6 ══════════════════════════ -->
       <section class="case">
-        <h2>§6 · תפריט השורה · חמש הפעולות שחסרו</h2>
+        <h2>§6 · השעה בשורה היא כפתור · והתפריט נשאר באורכו</h2>
         <p class="note">
-          אף אחת מהן אינה מסך חדש · כולן נכנסות ל-<code>⋯</code> שכבר קיים (ADR-0138). מה שהיה
-          חסר בשם ובמקום: <b>משך</b> (הפריסטים של ADR-0036 בלי לפתוח את הטופס), <b>הזז</b> שנעשה
-          הבורר של §4 ומקבל <code>ליום אחר…</code> כך שהעברה בין ימים מפסיקה להיות גרירה בלבד,
-          <b>שכפל</b> (בוקר קבוע בשלושה ימים הופך משלוש יצירות לשתי הקשות), ו<b>דחיית שאר היום</b>
-          · טלאי אחד לכל אירוע גמיש מאוחר יותר, דרך אותה כתיבה אטומית, כלומר ביטול אחד.
+          <b>הגרסה הראשונה של המקטע הזה שמה את כל חמש הפעולות ב-<code>⋯</code>, וזו היתה טעות.</b>
+          מצוירת, היא שמונה שורות שנגללות, <code>מחק</code> נדחק מתחת לקיפול, ושתי פעולות לא
+          קשורות (<code>משך</code> ו<code>דחה את שאר היום</code>) חובשות אותו אייקון שעון · «יותר
+          מדי פעולות, וזה נעשה מציף במקום קל לשימוש» (הבעלים, קורא את הפריים). התנגשות האייקונים
+          היא הסימן: תפריט הוא לא מקום לשים בו דברים, הוא מה שנשאר <b>אחרי</b> ששואלים לאן כל
+          פעולה שייכת.
+        </p>
+        <p class="note">
+          ולשעה, המקום הוא <b>השעה</b>. השורה כבר מציירת <code>10:00–12:00</code> ו<b>שעתיים</b>
+          בקצה · אותו <code>span</code> נעשה <b>כפתור</b> שפותח את הבורר של §4, כך שכל שאלת הזמן
+          (מתי, ולכמה) יש לה פתח אחד, והוא הדבר שהתשובה כתובה עליו. זה לא ניב חדש · זה בדיוק
+          <code>PlaceBadge</code> (ADR-0121 §8) · <b>נוגעים בדבר כדי לקבל את הצורה האחרת שלו</b>.
+          אחרי זה כל איבר בשורה עושה את מה שהוא מצייר: התג הוא המקום, הגוף הוא האירוע, השעה היא
+          השעה, ו-<code>⋯</code> הוא כל השאר. <b>שורה בלי שעה מקבלת דווקא את מה שהיה חסר לה</b> ·
+          במקום כלום, <code>＋ שעה</code> באותו יעד מגע.
+        </p>
+        <p class="note">
+          מה שיצא: <code>הזז</code> <b>עוזב</b> את התפריט (וזו התיקון של ADR-0138 §8 · הכלל שלו,
+          שסידור מחדש נגיש בלי גרירה, נשמר · רק המקום זז, וכפתור שאומר <code>10:00–12:00</code>
+          הוא שם טוב יותר ל"הזז את זה" מהמילה <code>הזז</code>). <code>החלף</code> <b>נשאר פעולה
+          של כרטיס במצב טיול</b> ואינו מצטרף לתפריט התכנון · במצב תכנון אותה כוונה כבר מהירה יותר
+          בגרירת רעיון מהמדף. ו<code>דחה את שאר היום</code> <b>נדחה עם נימוק</b> במקום לקחת שורה ·
+          המנגנון קיים (סרגל הריפל), ומה שחסר הוא רק דרך לבקש אותו בלי להזיז אירוע מסוים קודם,
+          וזו בקרה <b>ברמת היום</b> ולא תכונה של השורה שפתחתם. נשאר: ארבע שורות לפני, ארבע אחרי,
+          אחת מהן חדשה.
         </p>
         <div class="pair" id="s6"></div>
       </section>
@@ -10103,6 +10172,22 @@ textarea {
       const icon = (name, cls = '') =>
         `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[name]}"/></svg>`;
 
+      /* ── The row's time slot. `tap: false` is today (a `<span>`), `tap: true` is
+            §7 (a `<button>` opening §4's picker), and `time: null` is the untimed
+            row, which holds nothing at all today. One function so the three cannot
+            drift in type, colour or column. */
+      const timeSlot = (e) => {
+        if (!e.tap && !e.time) return '';
+        if (!e.time)
+          return `<button class="bld-time empty">${icon('plus')} שעה</button>`;
+        const inner = `<span dir="auto">${e.time}</span>${
+          e.dur ? `<span class="bld-timemeta"><span class="bld-dur">${e.dur}</span></span>` : ''
+        }`;
+        return e.tap
+          ? `<button class="bld-time" aria-label="שעה ומשך">${inner}</button>`
+          : `<span class="bld-time">${inner}</span>`;
+      };
+
       /* ── One builder row (`screens.css`'s `.bld`), exactly as `BuilderRow`
             emits it: badge, main button, time, and the one trailing `⋯`. */
       const row = (e) => {
@@ -10123,9 +10208,7 @@ textarea {
           <button class="bld-main"><span class="bld-t"><span class="bld-ttl">${e.title}</span>${tag}${
             e.seamTag ? `<span class="seam-tag">⧉ ${e.seamTag}</span>` : ''
           }</span>${e.meta ? `<span class="bld-m">${e.meta}</span>` : ''}</button>
-          <span class="bld-time"><span dir="auto">${e.time}</span>${
-            e.dur ? `<span class="bld-timemeta"><span class="bld-dur">${e.dur}</span></span>` : ''
-          }</span>
+          ${timeSlot(e)}
           <button class="bld-icon" aria-label="פעולות">${icon('more')}</button>
         </div>`;
       };
@@ -10299,24 +10382,48 @@ textarea {
         `<button class="wp-row-action${danger ? ' danger' : ''}"><span class="wp-row-action-ic">${icon(
           ic,
         )}</span>${label}</button>`;
-      const s6 = `<div class="sheetbox">
-        <div class="modal-title">מוזיאון טוקיו הלאומי<span class="wp-row-subject">גמיש · 10:00–12:00</span></div>
-        <div class="wp-row-actions">
-          ${act('edit', 'ערוך')}
-          ${act('clock', 'משך')}
-          ${act('swap', 'הזז')}
-          ${act('cards', 'החלף')}
-          ${act('calendar', 'שכפל')}
-          ${act('shelf', 'העבר למדף')}
-          ${act('clock', 'דחה את שאר היום')}
-        </div>
+      const menu = (verbs) => `<div class="sheetbox">
+        <div class="modal-title">מוזיאון טוקיו הלאומי<span class="wp-row-subject">גמיש · ${ltr(
+          '10:00–12:00',
+        )}</span></div>
+        <div class="wp-row-actions">${verbs.map(([i, l]) => act(i, l)).join('')}</div>
         <div class="wp-row-actions wp-row-actions-danger">${act('trash', 'מחק', true)}</div>
       </div>`;
-      document.getElementById('s6').innerHTML = col(
-        T.after,
-        'משטח אחד לפעולות השורה · ARD-0138. ארבע פעולות חדשות, אפס מסכים חדשים',
-        s6,
-      );
+      // Kept drawn, not deleted: the rejected version is the argument for the kept
+      // one, and a file that shows only the answer cannot be checked.
+      const s6bad = menu([
+        ['edit', 'ערוך'],
+        ['clock', 'משך'],
+        ['swap', 'הזז'],
+        ['cards', 'החלף'],
+        ['calendar', 'שכפל'],
+        ['shelf', 'העבר למדף'],
+        ['clock', 'דחה את שאר היום'],
+      ]);
+      const s6good = menu([
+        ['edit', 'ערוך'],
+        ['calendar', 'שכפל'],
+        ['shelf', 'העבר למדף'],
+      ]);
+      // The row itself, which is where §7 actually happens: a timed row whose time
+      // is now a button, and the untimed row that had no way in at all.
+      const s6row = [
+        row({ icon: '🏛️', title: 'מוזיאון טוקיו הלאומי', time: '10:00–12:00', dur: 'שעתיים', tap: true }),
+        row({ icon: '🍜', title: 'ראמן באיצ׳ירן', time: '15:45–16:45', dur: 'שעה', tap: true }),
+        row({ icon: '🛍️', title: 'שוק אמייוקו', time: null, tap: true }),
+      ].join('');
+      document.getElementById('s6').innerHTML =
+        col(
+          '<span class="tag before">נדחה</span>',
+          'שמונה שורות · נגללות, ומחק מתחת לקיפול. שני שעונים שונים על שתי פעולות לא קשורות',
+          s6bad,
+        ) +
+        col(T.after, 'ארבע שורות · בדיוק כמו היום, ואחת מהן חדשה', s6good) +
+        col(
+          T.after,
+          'ושם הפעולות באמת קרו · השעה בשורה. השורה השלישית היא בלי שעה, שם היום אין שום דרך פנימה',
+          s6row,
+        );
 
       /* ══ §7 — the Trip-mode gap strip, before and after. */
       const evcard = (ic, ttl, tm) => `<div class="wp-event soft"><div class="wp-event-face static">
@@ -10374,6 +10481,29 @@ textarea {
           return el ? Math.round(el.getBoundingClientRect().width * 10) / 10 : null;
         };
         const rowH = h('#s1 .bld');
+        /* The same EVENT, today's row against the proposed one — the only honest way
+           to price a control that shares a row with a wrapping title. Found by
+           measuring: the museum row already wraps at 360px, so it costs nothing,
+           and the short row costs 2px. */
+        const find = (sel, txt) =>
+          [...document.querySelectorAll(sel)].find((n) => n.textContent.includes(txt));
+        const same = (txt) => ({
+          today: Math.round(find('#s2 .col:first-child .bld', txt).getBoundingClientRect().height),
+          proposed: Math.round(find('#s6 .col:last-child .bld', txt).getBoundingClientRect().height),
+        });
+        const timeWidths = () => {
+          const t = Math.round(
+            find('#s2 .col:first-child .bld', 'מוזיאון')
+              .querySelector('.bld-time')
+              .getBoundingClientRect().width,
+          );
+          const p = Math.round(
+            find('#s6 .col:last-child .bld', 'מוזיאון')
+              .querySelector('.bld-time')
+              .getBoundingClientRect().width,
+          );
+          return { today: t, proposed: p, delta: p - t };
+        };
         const rows = [
           ['שורת אירוע (<code>.bld</code>)', rowH + 'px', 'הבסיס שכל השאר נמדד ביחס אליו'],
           [
@@ -10395,6 +10525,48 @@ textarea {
             'שורת בורר (<code>.slotpick-opt</code>)',
             h('#s4 .slotpick-opt') + 'px',
             'רצפת המגע היא 44px · ADR-0017',
+          ],
+          [
+            'השעה בשורה · <code>span</code> היום',
+            h('#s2 .col:first-child .bld-time') + 'px',
+            'טקסט · אין בו יעד מגע',
+          ],
+          [
+            'השעה בשורה · השבב בהצעה',
+            h('#s6 button.bld-time') + 'px',
+            'הגובה הנראה · יעד המגע הוא ' +
+              (h('#s6 button.bld-time') + 16) +
+              'px דרך שכבה פנימית, כדי שהשורה לא תגדל',
+          ],
+          ...['מוזיאון', 'ראמן'].map((txt) => {
+            const s = same(txt);
+            const d = s.proposed - s.today;
+            return [
+              'אותו אירוע · ' + (txt === 'מוזיאון' ? 'כותרת ארוכה' : 'כותרת קצרה'),
+              s.today + 'px → ' + s.proposed + 'px',
+              d === 0
+                ? 'אפס תוספת · הכותרת נשברת לשתי שורות כבר היום ברוחב הזה'
+                : '+' + d + 'px · זה כל המחיר בגובה ברוחב הזה',
+            ];
+          }),
+          [
+            'רוחב שנלקח מהכותרת',
+            timeWidths().delta + 'px',
+            'השבב ' +
+              timeWidths().today +
+              'px → ' +
+              timeWidths().proposed +
+              'px · ההשוואה שהרגה פקד נפרד ב-ADR-0121 §8 עלתה שם 58px',
+          ],
+          [
+            'תפריט שנדחה · שמונה שורות',
+            h('#s6 .col:first-child .sheetbox') + 'px',
+            'מול 640px מסך · לכן הגלילה',
+          ],
+          [
+            'תפריט ההצעה · ארבע שורות',
+            h('#s6 .col:nth-child(2) .sheetbox') + 'px',
+            'אותו אורך כמו התפריט של היום',
           ],
           [
             'רצועת פער כ-<code>div</code> · מצב טיול היום',

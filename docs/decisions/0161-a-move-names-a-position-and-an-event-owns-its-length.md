@@ -7,7 +7,8 @@
 **Amends [0159](0159-the-day-says-what-is-between-two-events.md) §1 in place** (§8 below): the Trip-mode gap keeps its measurement and gains one tap. Its "a `<span>` where Plan has a `<button>`" becomes "a button that says a measurement, not a control that says `שבץ`".
 **Supersedes** `lib/reorder.ts`'s slot-permutation model outright (§1).
 **Closes [0116](0116-day-aware-shelf-and-idea-target-day.md) §5's deferred "dropping an idea onto an occupied row (needs ripple semantics)"** — the answer is that displacement is a **decision**, not a drop (§6), which is what §5 suspected when it rejected the drop target.
-**Extends** [0036](0036-event-time-setter.md) (the start+duration setter stays, and stops being the only way in), [0063](0063-category-time-behaviour-profile.md) (the profile gains a typical length), [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §8 (the `הזז` step becomes the shared picker), [0151](0151-a-suggestion-has-a-source-and-a-reason.md) (the replacement sheet is ranked and says why), [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md) (the picker is a step, never a second sheet).
+**Amends [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §8** (§7 below): `הזז` leaves the `⋯` sheet for the row's own time, which is now a button. §8's rule — reorder is reachable without a drag — is kept; only its placement changes, and the menu keeps its length.
+**Extends** [0036](0036-event-time-setter.md) (the start+duration setter stays, and stops being the only way in), [0063](0063-category-time-behaviour-profile.md) (the profile gains a typical length), [0121](0121-embedded-map-phase-6-design.md) §8 (`PlaceBadge`'s "tap the thing to get its other form" is the precedent §7 follows, and now the second row element to do it), [0151](0151-a-suggestion-has-a-source-and-a-reason.md) (the replacement sheet is ranked and says why), [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md) (the picker is a step, never a second sheet).
 **Applies unchanged** [0011](0011-hard-soft-event-model.md) (a hard event is never a drag source, never a swap target, and never moved by anything here), [0017](0017-mobile-first-device-targets.md) (44×44 at both widths), [0025](0025-trip-mode-edit-capability-tiers.md) (§8's tap is the Tier-1 verb the tier map already lists), [0028](0028-plan-violet-color-budget-dark-ready.md) + root rule 4 (no new hue), [0041](0041-parallel-overlapping-events.md) (the overlap cluster is the collision's answer, §3), [0103](0103-back-navigation-typed-layer-model.md) (every new surface is a back layer, and the picker is a step so the primitive owns it).
 
 ## Context
@@ -111,15 +112,41 @@ Picking one is **a single write, a single toast, a single undo**:
 
 **It is the same component as the gap fill,** because "which idea fits this slot" is already precisely what that sheet is: `GapFillSheet` becomes `SlotFillSheet` with two headers — `מילוי הפער · 15:00–18:00` and `החלפה · <title>` — and one extra behaviour behind a prop (park the displaced event). This is the app's sixth instance of the rule that collected the settle control: a second sheet here would drift on its ranking, its cap, its search threshold and its empty state.
 
-### 7. The elementary verbs, named and placed.
+### 7. **The time on the row is a button.** (Amends [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §8.)
 
-All five live in the row's existing `⋯` sheet (ADR-0138's one surface) or beside an existing control. None is a new screen.
+The first draft of this section put all five new verbs in the row's `⋯` sheet, because that sheet is where row verbs live. Drawn, it was eight rows that **scrolled**, with the destructive `מחק` pushed off the bottom and two unrelated verbs (`משך`, `דחה את שאר היום`) wearing the same `clock` glyph — owner, reading §6 of the mockup: _"too much actions and it's becoming overwhelming instead of easy to use."_ Correct, and the icon collision was the tell: a menu is not a place to put things, it is what is left after asking where each verb belongs.
 
-- **`משך`** — the duration presets from ADR-0036's setter, reached without opening the form. The presets are `TimePicker`'s own `DUR_PRESETS`, unchanged.
-- **`הזז`** — becomes §4's picker, and gains **`ליום אחר…`**, so a cross-day move stops being drag-only.
-- **`שכפל`** — duplicate to a position, through the same picker (including another day). The one verb that turns a three-morning routine into two taps.
-- **`דחה את שאר היום`** — the explicit push, with the delay presets. It writes one patch per later **soft** event through the one atomic multi-patch applier (`applyReorder`, renamed `applyEventPatches` for what it actually is), so it is one undo. Hard events are excluded, by ADR-0011.
-- **The delay pair gains steps.** `DELAY_STEP_MINUTES` (30) stays the one-tap default; a long-press opens the same presets.
+**Where it belongs, for a time, is the time.** The row already renders `10:00–12:00` and `שעתיים` in its trailing slot (`.bld-time`). That span becomes a **button**, and it opens §4's picker — so the whole time question, "when" and "how long", has exactly one entry point and it is the thing the answer is written on. `שעה מדויקת…` inside the picker reaches ADR-0036's start+duration setter, which is where `DUR_PRESETS` already live.
+
+This is not a new idiom. It is `PlaceBadge`'s (ADR-0121 §8): **tap the thing to get that thing's other form.** After this, every element of a builder row does what it depicts — the badge is the place, the body is the event, the time is the time, the `⋯` is the rest:
+
+| Target           | Opens                          | New?                               |
+| ---------------- | ------------------------------ | ---------------------------------- |
+| `.bld-bd` badge  | the place, on the map          | no (ADR-0121 §8)                   |
+| `.bld-main` body | the edit form                  | no                                 |
+| **`.bld-time`**  | **§4's picker · where + long** | **yes, and it is the whole of §7** |
+| `.bld-icon` `⋯`  | the row's remaining verbs      | no                                 |
+
+**An untimed row gains the affordance it most needed.** With no time there is nothing to render in that slot, so today it holds nothing at all and the only way to give an event a time is the whole edit form. It now holds `＋ שעה`, at the same target size. That is the one case where this section adds a control rather than promoting one.
+
+**A tappable thing has to look tappable**, which is `PlaceBadge`'s own rule and the reason it carries a pin rather than nothing. The mark here is a **hairline chip** — `.tp-field`'s grammar (the app's existing "a time you can change") at its faintest, so no hue is spent and rule 4's amber stays with the now-line and the commitment tags. The untimed variant is the same chip, dashed, because it marks an absence.
+
+**The target grows; the row does not.** `min-height: 44px` on the chip was measured first and took the row from 58px to 75px — a 29% taller list on every row to make one control meet ADR-0017's floor. So the chip keeps its natural **39px** and the target is an inset overlay reaching into the row's own vertical padding, which no other control occupies: **55px**, vertical only, since `.bld-icon` is the horizontal neighbour. Measured cost of the whole section, same event, today against proposed: **+2px** at 360px and **+3px** at 390px of row height, and **16px** off the title's width. Worth stating against the comparison that killed a separate trailing control in ADR-0121 §8 — that one cost the title **58px** and wrapped a place name.
+
+**`הזז` therefore leaves the `⋯` sheet**, which is why this amends ADR-0138 §8. That section put reorder in the menu because it was otherwise pointer-only and the `הקדם`/`אחר` pair it replaced was a blind one-slot swap; a focusable button in the row satisfies the same requirement more directly than a menu row, and a control that says `10:00–12:00` is a better name for "move this" than the word `הזז` ever was. §8's actual rule — reorder must be reachable without a drag — is kept, not weakened.
+
+**So the menu keeps its length.** Four rows before this ADR, four rows after, one of them new:
+
+`ערוך` · **`שכפל`** · `העבר למדף` · `מחק`
+
+`שכפל` duplicates through the same picker, including onto another day, and it is the one verb here with no object on the row to hang off — a copy is not a property of anything visible, so a menu is its right home rather than its cheapest one.
+
+**Two verbs from the first draft are not placed anywhere, and that is the decision:**
+
+- **`החלף` stays a Trip-mode card verb** and does **not** join the Plan row menu. It already lives on the card, where ADR-0025 puts it (Tier 1), and the question it answers — "we're not doing this, what else?" — is an on-the-ground question. In Plan mode the same intent is already faster by dragging an idea off the shelf, which is the mode's fast path. One verb, one mode, no duplication.
+- **`דחה את שאר היום` is deferred**, with its reason named rather than its row taken. The mechanism exists: delaying an event raises the ripple bar, which offers exactly this and applies it as one write. What is missing is only a way to ask for it **without** moving a specific event first — "we're running an hour late" — and that is a **day-level** control on an on-the-ground surface, not a property of whichever row you happened to open. Placing it on a row is what made it look like eight verbs fit in one sheet. Backlog.
+
+The delay pair keeps `DELAY_STEP_MINUTES` (30) and gains no long-press: with the card's time tappable in Trip mode too (the same button, Tier-2 scoped sheet), an arbitrary delay is two taps on the number that is wrong, and a hidden long-press on a control that already works is exactly the kind of second path this section exists to refuse.
 
 ### 8. Trip mode's gap gains one tap. (Amends 0159 §1.)
 
@@ -132,7 +159,8 @@ The two modes now differ in **posture**, which was 0159's actual claim, rather t
 ### 9. Deliberately not doing
 
 - **A proportional timeline.** A time-height day at 360px is unreadable, and it is the reason the list is ordinal in the first place (ADR-0017). The whole of §2 exists because the list is an ordering; drawing it as a clock would be the other, worse answer.
-- **Drag-to-resize.** The gesture needs the proportional axis it does not have. §7's `משך` is the answer.
+- **Drag-to-resize.** The gesture needs the proportional axis it does not have. §7's tappable time is the answer.
+- **A day-level "we're running late, push everything".** Real, and deferred with its reasoning in §7 rather than parked on a row. The ripple already performs it; what is missing is a way to ask without moving one event first, and that is a Trip-mode day control.
 - **Multi-select / bulk arrange.** Tier 3 with no report behind it.
 - **Auto-arranging the day.** No. The app suggests (ADR-0151) and never rearranges.
 - **A crow-flies travel-time check between positions.** 0159 §13 refused it for the gap strip and the reasoning is unchanged: the app has no routing (ADR-0109 §7), and a number that looks like an answer is worse than none.
@@ -145,6 +173,7 @@ The two modes now differ in **posture**, which was 0159's actual claim, rather t
 - **`החלף` becomes a Tier-1 verb for the first time,** and the displaced event lands somewhere recoverable instead of being skipped into the archive.
 - **0159's Trip-mode gap is now a control,** which was explicitly not its decision. The amendment is here and in 0159; the read-out, the floor and the derivation are untouched, so the two modes still cannot disagree about what a hole **is**.
 - **`CATEGORY_TIME_PROFILE` gains its third behaviour** (bracketed, ambient, typical length). A new category declares one number and every scheduling surface follows.
+- **The row menu does not grow** (four rows before, four after), and the row gains one affordance instead of five menu entries. The general rule this session paid for: **a verb goes on the object it changes if that object is on screen, and in the menu only if it is not.** Every row of a `⋯` sheet is a verb that failed that test — which is why `שכפל` is the only new one there.
 - **What this does not fix:** an untimed event still has no position of its own (it renders below the day and is not a swap target), and `nextSlot` survives as the foot-of-the-day add button's prefill, where "after everything" is the right answer.
 
 ## Alternatives considered
@@ -155,3 +184,5 @@ The two modes now differ in **posture**, which was 0159's actual claim, rather t
 - **Put the slot picker in the event form instead of a sheet of its own.** Rejected: four of its five call sites do not open a form, and the two it replaces are not forms either. It is a chooser, so it passes no `errors` and no `validate` (ADR-0155 §5).
 - **Make `החלף` a drag** (drop an idea onto an occupied row). This is ADR-0116 §5's rejected target, and the reason it gave — displacing a scheduled event is a decision, not a drop — is the reason §6 is a sheet. Kept rejected.
 - **Give Trip mode Plan's violet gap chip.** Rejected: that is the mode confusion 0159 correctly diagnosed. The posture differs; only the tap is shared.
+- **Put the five new verbs in the row's `⋯` sheet** — this ADR's own first draft, rejected by the owner off the mockup's §6 render and replaced by §7. Eight rows, a scrolling sheet, `מחק` below the fold, and `משך`/`דחה את שאר היום` colliding on one glyph. Recorded rather than quietly rewritten because the failure mode generalises: a menu is the **residue** of asking where each verb belongs, and reaching for it first is how a surface that already shows the answer ends up with a list of words about it.
+- **A long-press for a bigger delay step.** Rejected as a second, hidden path to something §7 already makes two taps: the number that is wrong is on screen and now tappable.

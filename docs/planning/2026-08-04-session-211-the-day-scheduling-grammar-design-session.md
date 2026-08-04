@@ -44,14 +44,36 @@ Two things, and the second is a shipped defect:
 - **The seam's real cost, measured rather than guessed.** 18px live, 0px at rest, 31% of an event row; five seams add 90px to a four-event day and only while a finger is down. That number is what makes "a seam between _every_ pair" affordable, and it could not be argued from the CSS.
 - **`t.planDay.gapFillTitle` reverses its own range.** It builds `מילוי הפער · ${start}–${end}` with no ltr isolate, so the shipped gap-fill header reads `18:00–15:00` for a 15:00–18:00 gap. ADR-0118 already forbids this; its lint guard reads `dir="ltr"` attributes and cannot see a template string in `he.ts`. Fixed with slice 3, since it is the same line. (Also noticed in passing: `btn-primary` on `.gapfill-new` has no rule anywhere in the app's CSS — a dead class, dropped when that button is touched.)
 
+## The round the owner sent back, and what it changed
+
+§7's first draft put all five new verbs in the row's `⋯` sheet, on the reasoning that the sheet is where row verbs live. Rendered, it was **eight rows that scroll** (543px of a 640px screen), `מחק` below the fold, and `משך` and `דחה את שאר היום` wearing the same `clock` glyph. Owner: _"Isn't your suggestion for the 3 dot menu too much? … Do we need everything there? Could anything be replaced by an intuitive gesture or another UI way to do it?"_
+
+Both halves of that were right, and the icon collision was the tell — two unrelated verbs reaching for one glyph means neither had been placed, only filed. The rule that came out of it, and the thing worth carrying past this ADR:
+
+> **A verb goes on the object it changes, if that object is on screen. The menu is what is left over.**
+
+Applied, the five collapse to one affordance and one menu row:
+
+| Verb              | First draft | Where it went                                                                |
+| ----------------- | ----------- | ---------------------------------------------------------------------------- |
+| `משך`             | menu row    | **the time on the row**, which is a button now                               |
+| `הזז`             | menu row    | same button (amends ADR-0138 §8; its rule is kept, its placement is not)     |
+| `החלף`            | menu row    | stays a **Trip-mode card** verb; Plan already has the shelf drag             |
+| `דחה את שאר היום` | menu row    | **deferred** — it is a day-level control, and the ripple already performs it |
+| `שכפל`            | menu row    | **stays** — a copy has no object on the row to hang off                      |
+
+So the menu is four rows before and four after. The row's time was already the answer written down; it just wasn't tappable.
+
+Two measurements decided its shape, and neither could be argued from the CSS: `min-height: 44px` on the chip took the row from **58px to 75px**, so the target became a 55px inset overlay over a 39px chip (**+2px** at 360, **+3px** at 390); and the chip takes **16px** off the title, against the **58px** that killed a separate trailing control in ADR-0121 §8 — which is why that ADR's answer was the badge and this one's is the time.
+
 ## Build order
 
 1. **The move grammar** — `planSwap`/`planInsert` over starts, seams between every pair, drop-on-row = swap.
 2. **The picker** — `DaySlotPicker`, five call sites, `CATEGORY_TIME_PROFILE.typicalMinutes`.
-3. **`החלף`** — `GapFillSheet` → `SlotFillSheet`, park-and-replace as one write.
-4. **The elementary verbs** — `משך`, `הזז → ליום אחר…`, `שכפל`, `דחה את שאר היום`, delay presets, and §8's Trip-mode tap.
+3. **`החלף`** — `GapFillSheet` → `SlotFillSheet`, park-and-replace as one write, plus the `gapFillTitle` isolate.
+4. **The row's time is a button** (§7), `שכפל`, and §8's Trip-mode gap tap.
 
-Slices 1 and 2 are the ones the reports are actually about; 3 and 4 are cheap once 1 and 2 exist, because both consume the picker.
+Slices 1 and 2 are the ones the reports are actually about; 3 and 4 are cheap once 1 and 2 exist, because all of them consume the picker.
 
 ## Deliberately left for the device pass
 
