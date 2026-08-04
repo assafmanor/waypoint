@@ -12,6 +12,8 @@ import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import { ResolveSheet } from './PlanDay';
 import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
+import type { DaySlotOption } from '../ui/domain/DaySlotPicker';
+import type { GapDefaults } from '../lib/gaps';
 
 const NOW = '2026-07-01T00:00:00Z';
 const TZ = 'Asia/Tokyo';
@@ -43,16 +45,31 @@ const clusterOf = (...events: TripEvent[]) =>
     items: events.map((event) => ({ event, children: [] })),
   }) satisfies Parameters<typeof ResolveSheet>[0]['cluster'];
 
+/** Step two is the shared `DaySlotPicker` since ADR-0161 §4, so its options come from the
+ *  HOST — the sheet knows a cluster, not a day. One position is enough to test the wiring;
+ *  what the day's positions actually are is `lib/day-positions.ts`'s subject. */
+const AFTER_THE_REST: DaySlotOption = {
+  key: 'after',
+  label: 'אחרי רך ב',
+  time: '11:30',
+  fill: { date: '2026-07-07', start: '11:30', end: '12:30' },
+};
+
 function open(
   events: TripEvent[],
-  opts: { onMove?: () => void; onOther?: () => void; onClose?: () => void } = {},
+  opts: {
+    onPick?: (mover: TripEvent, fill: GapDefaults) => void;
+    onOther?: () => void;
+    onClose?: () => void;
+  } = {},
 ) {
   return render(
     wrapNav(
       <ResolveSheet
         cluster={clusterOf(...events)}
         tz={TZ}
-        onMove={opts.onMove ?? vi.fn()}
+        optionsFor={() => [AFTER_THE_REST]}
+        onPick={opts.onPick ?? vi.fn()}
         onOther={opts.onOther ?? vi.fn()}
         onClose={opts.onClose ?? vi.fn()}
       />,
@@ -61,7 +78,7 @@ function open(
 }
 
 const pick = (title: string) => fireEvent.click(screen.getByText(title));
-const onStepTwo = () => !!screen.queryByText(t.planDay.resolveOther);
+const onStepTwo = () => !!screen.queryByText(t.planDay.slotExactTime);
 
 describe('ResolveSheet — step one asks which event moves', () => {
   afterEach(() => cleanup());
@@ -81,27 +98,33 @@ describe('ResolveSheet — step one asks which event moves', () => {
     expect(onStepTwo()).toBe(false);
     pick('רך א');
     expect(onStepTwo()).toBe(true);
-    expect(screen.getByText(t.planDay.resolveOther)).toBeTruthy();
+    expect(screen.getByText(t.planDay.slotExactTime)).toBeTruthy();
   });
 });
 
 describe('ResolveSheet — step two moves it', () => {
   afterEach(() => cleanup());
 
-  it('hands back the chosen event and a minute offset', () => {
-    const onMove = vi.fn();
-    open([SOFT_A, SOFT_B], { onMove });
+  // It used to hand back a MINUTE OFFSET, computed here from the cluster's own bounds, and
+  // the two options were built by hand (ADR-0161 §4's one-off pair). Now it hands back the
+  // position's SLOT — the same thing a drop on that position hands back, through the same
+  // write, which is the whole point of the picker being shared.
+  it('hands back the chosen event and the position’s slot', () => {
+    const onPick = vi.fn();
+    open([SOFT_A, SOFT_B], { onPick });
     pick('רך א');
-    // `אחרי` puts it after the rest of the cluster: B ends 11:30, A starts 10:00 → +90.
-    fireEvent.click(screen.getByText(t.planDay.resolveAfter, { exact: false }));
-    expect(onMove).toHaveBeenCalledWith(expect.objectContaining({ id: 'רך א' }), 90);
+    fireEvent.click(screen.getByText(AFTER_THE_REST.label as string));
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'רך א' }),
+      AFTER_THE_REST.fill,
+    );
   });
 
   it('hands the exact time-setter the same event', () => {
     const onOther = vi.fn();
     open([SOFT_A, SOFT_B], { onOther });
     pick('רך ב');
-    fireEvent.click(screen.getByText(t.planDay.resolveOther));
+    fireEvent.click(screen.getByText(t.planDay.slotExactTime));
     expect(onOther).toHaveBeenCalledWith(expect.objectContaining({ id: 'רך ב' }));
   });
 });

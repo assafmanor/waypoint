@@ -1,13 +1,13 @@
 # 0161 — A move names a **position**; an event owns its **length**
 
-**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. §4-§7 and §9 are phases 2-4; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
+**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. **Phase 2a built 2026-08-04** — §4, §5 and §7: the picker, the row's time as its way in, per-category lengths, and `הזז` out of the `⋯` sheet. What is left is §4's two remaining call sites (scheduling an idea, and a new event in a gap — "phase 2b"), §6 and §9; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
 **Date:** 2026-08-04
 **Design reference:** [`mockups/day-scheduling-grammar-v1.html`](../../mockups/day-scheduling-grammar-v1.html) — the move grammar, the slot picker, the replacement sheet, the row menu and the Trip-mode gap, in both themes. Measurements below are read from that file's live DOM at 390×844 and 360×640.
 
 **Amends [0159](0159-the-day-says-what-is-between-two-events.md) §1 in place** (§9 below): the Trip-mode gap keeps its measurement and gains one tap. Its "a `<span>` where Plan has a `<button>`" becomes "a button that says a measurement, not a control that says `שבץ`".
 **Supersedes** `lib/reorder.ts`'s slot-permutation model outright (§1).
 **Closes [0116](0116-day-aware-shelf-and-idea-target-day.md) §5's deferred "dropping an idea onto an occupied row (needs ripple semantics)"** — the answer is that displacement is a **decision**, not a drop (§6), which is what §5 suspected when it rejected the drop target.
-**Amends [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §8** (§7 below): `הזז` leaves the `⋯` sheet for the row's own time, which is now a button. §8's rule — reorder is reachable without a drag — is kept; only its placement changes, and the menu keeps its length.
+**Amends [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §8** (§7 below): `הזז` leaves the `⋯` sheet for the row's own time, which is now a button. §8's rule — reorder is reachable without a drag — is kept; only its placement changes, and the menu ends up one row shorter.
 **Extends** [0036](0036-event-time-setter.md) (the start+duration setter stays, and stops being the only way in), [0063](0063-category-time-behaviour-profile.md) (the profile gains a typical length), [0121](0121-embedded-map-phase-6-design.md) §8 (`PlaceBadge`'s "tap the thing to get its other form" is the precedent §7 follows, and now the second row element to do it), [0151](0151-a-suggestion-has-a-source-and-a-reason.md) (the replacement sheet is ranked and says why), [0155](0155-a-stepped-form-is-one-primitive-and-it-commits-once.md) (the picker is a step, never a second sheet).
 **Applies unchanged** [0011](0011-hard-soft-event-model.md) (a hard event is never a drag source, never a swap target, and never moved by anything here), [0017](0017-mobile-first-device-targets.md) (44×44 at both widths), [0025](0025-trip-mode-edit-capability-tiers.md) (§9's tap is the Tier-1 verb the tier map already lists), [0028](0028-plan-violet-color-budget-dark-ready.md) + root rule 4 (no new hue), [0041](0041-parallel-overlapping-events.md) (the overlap cluster is the collision's answer, §3), [0103](0103-back-navigation-typed-layer-model.md) (every new surface is a back layer, and the picker is a step so the primitive owns it).
 
@@ -91,21 +91,25 @@ Each row **shows the clock it computes**, so the user reads the time without pic
 
 **This is a generalisation, not an addition** (root rule 8). Two one-offs already do half of it and are replaced by it: `ResolveSheet`'s `אחרי`/`לפני <title> · <time>` pair, and `BuilderRow`'s `הזז` step, which lists soft peers with their times and then hands the id to the deleted slot permutation. Five call sites take the one picker:
 
-| Call site                   | What it asks                | Was                                   |
-| --------------------------- | --------------------------- | ------------------------------------- |
-| `⋯ → הזז`                   | where does this go          | soft-peer list → slot permutation     |
-| Schedule an idea            | where does this go          | `WhenField` prefilled at `nextSlot`   |
-| Gap / seam fill → new event | where, then what            | `EventForm` prefilled at the gap      |
-| `החלף` (§6)                 | the displaced slot, implied | nothing                               |
-| Overlap `הזז`               | where does this go instead  | `ResolveSheet`'s bespoke before/after |
+| Call site                              | What it asks                | Was                                   | Built |
+| -------------------------------------- | --------------------------- | ------------------------------------- | ----- |
+| **The row's time** (was `⋯ → הזז`, §7) | where does this go          | soft-peer list → slot permutation     | 2a    |
+| Overlap `הזז`                          | where does this go instead  | `ResolveSheet`'s bespoke before/after | 2a    |
+| Schedule an idea                       | where does this go          | `WhenField` prefilled at `nextSlot`   | 2b    |
+| Gap / seam fill → new event            | where, then what            | `EventForm` prefilled at the gap      | 2b    |
+| `החלף` (§6)                            | the displaced slot, implied | nothing                               | 3     |
 
 Drag stays the fast path for every one of these decisions. The picker is what makes them reachable **without** a pointer gesture, which is what `הזז` was for and never delivered.
+
+_Built 2026-08-04 (2a). Both one-offs are deleted, and the second gave more than expected: `ResolveSheet`'s `אחרי`/`לפני` pair computed a minute **delta** from the cluster's own bounds, and the picker replaces it with a **position** — because `freeBetween` over two overlapping rows resolves "after" to the earlier one's end, which is the same answer that pair hand-built, reached by the shared rule instead. `verbs.moveBy` went with it: nothing offsets an event by a delta any more, it is given a position. The positions come from a new `lib/day-positions.ts`, which walks the day flat and asks the same four `lib/gaps.ts` derivations the drag asks — so a sheet and a drag cannot disagree about a slot._
 
 ### 5. A duration has a default, and it comes from the category.
 
 `GAP_FILL_MINUTES` (a flat 60) stops being the answer for everything. [ADR-0063](0063-category-time-behaviour-profile.md)'s `CATEGORY_TIME_PROFILE` — already the registry for "how a kind of thing behaves over time" — gains `typicalMinutes`, and the picker and the gap fill read it. Seeds (tunable, and deliberately coarse): `food` 90, `sightseeing` 120, `nature` 180, `activity` 120, `shopping` 90, `services` 60, `transport`/`lodging`/`other` 60. A block is still clamped to the space the position actually has.
 
 No migration, no new field on an entity: it is a lookup over an existing closed enum, which is the whole reason 0063 put the table there.
+
+_Built 2026-08-04 (2a) as far as the **registry**: `CategoryTimeProfile.typicalMinutes` and `typicalMinutesFor` exist with the seeds above and their own tests. Its **readers** are phase 2b, and saying so is the point rather than wiring one early — the two surfaces that need a default length are the two creates (scheduling an idea, and a new event at a position), because anything that already exists carries its own length and §1 makes every move keep it. Until 2b, `GAP_FILL_MINUTES` is still what a create gets._
 
 ### 6. `החלף` is one atomic decision, taken **on the slot**.
 

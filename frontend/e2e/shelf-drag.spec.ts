@@ -870,12 +870,18 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
 
   // The grip is gone (session-119): the row arms on a hold from wherever your thumb
   // lands, exactly like a shelf card, and there is no ⠿ or ▲/▼ left on it.
+  //
+  // It used to also assert `.bld-move` was absent — the `הזז` step's container. That class no
+  // longer exists anywhere in the app (ADR-0161 §7 moved the move to the row's own time), so
+  // the assertion had become vacuously true while reading as "the row carries no way to move
+  // it", which is now the opposite of the case. Replaced with the two things that are true: no
+  // retired grip, and the row's time IS the control.
   test('arms from anywhere on the row, and the row carries no handle or arrows', async ({
     page,
   }) => {
     const cdp = await page.context().newCDPSession(page);
     await expect(page.locator('.bld-grip')).toHaveCount(0);
-    await expect(page.locator('.bld-move')).toHaveCount(0);
+    await expect(page.locator('button.bld-time').first()).toBeVisible();
 
     const box = await boxOf(page, '[data-bld-id="ev-1"]');
     const spots = [

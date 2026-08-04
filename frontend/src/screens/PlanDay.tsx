@@ -138,6 +138,8 @@ import { Sheet } from '../ui/Sheet';
 import { FormStepPanel, useFormSteps } from '../ui/primitives/FormSteps';
 import { TitleLabel } from '../ui/TitleLabel';
 import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
+import { DaySlotPicker, type DaySlotOption } from '../ui/domain/DaySlotPicker';
+import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-positions';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
@@ -742,6 +744,54 @@ export function PlanDay() {
   /** Nothing on the day at all — not even a booking's transition point. */
   const isEmptyDay = dayEvents.length === 0 && transitions.length === 0;
 
+  // ── THE DAY AS A TIME PICKER (ADR-0161 §4/§7) ─────────────────────────────────────
+  // Opened by tapping a row's own time. The options are `lib/day-positions.ts`'s, so the
+  // sheet and the drag cannot disagree about where a position is or what slot it offers;
+  // this only turns each one into words and performs the pick.
+  const [timeTarget, setTimeTarget] = useState<TripEvent | null>(null);
+  const closeTimePicker = () => setTimeTarget(null);
+  /** A position, said in the same words the drag's seams use — deliberately, so the two
+   *  ways to reach a position do not name it differently. */
+  const positionOption = (p: DayPosition): DaySlotOption => ({
+    key: p.key,
+    label:
+      p.at === POSITION_AT.AFTER && p.afterEvent ? (
+        // The row above, and the one below when it is a HARD anchor: "before the flight" is
+        // the more useful half of that pair, and the anchor is what the day is built around.
+        <>
+          {t.planDay.seamAfter('')}
+          <TitleLabel title={p.afterEvent.title} />
+          {p.beforeEvent?.kind === EVENT_KIND.HARD && (
+            <span className="slotpick-before">
+              {DOT_SEPARATOR} {t.planDay.seamBefore('')}
+              <TitleLabel title={p.beforeEvent.title} />
+            </span>
+          )}
+        </>
+      ) : p.at === POSITION_AT.DAY_END ? (
+        t.planDay.seamDayEnd
+      ) : p.at === POSITION_AT.WHOLE_DAY ? (
+        t.planDay.slotWholeDay
+      ) : (
+        t.planDay.seamDayStart
+      ),
+    time: p.free.fill.start,
+    // `earnsChip`, not a second comparison against the threshold: the picker says "free
+    // 2 hours" exactly where the day would have drawn a chip rather than a seam.
+    free: earnsChip(p.free) ? t.planDay.slotFree(gapLabel(p.free.minutes)) : undefined,
+    fill: p.free.fill,
+  });
+  /** The day's positions with one event taken out, as picker options — the row's time button
+   *  and the overlap resolve both ask for exactly this. */
+  const positionOptionsFor = (excludeId: string): DaySlotOption[] =>
+    dayPositions(dayEvents, activeDate, tz, { exclude: excludeId }).map(positionOption);
+  /** Picking a position MOVES the event there, keeping its own length — the same write a
+   *  drop on that position performs (`ROW_DROP_ACTION.MOVE_INTO`), through the same guard. */
+  const pickPosition = (event: TripEvent, fill: GapDefaults) => {
+    closeTimePicker();
+    verbs.update(event, { date: fill.date, ...slotFor(event, fill) });
+  };
+
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
   const weekday = new Intl.DateTimeFormat('he-IL', {
@@ -803,6 +853,7 @@ export function PlanDay() {
     },
     onOpenDetail: setDetailTarget,
     onGapFill: (fill) => setGapChoice(fill),
+    onPickTime: setTimeTarget,
     overGap,
     onResolve: (cluster) => setResolveCluster(cluster),
   };
@@ -1050,6 +1101,22 @@ export function PlanDay() {
         />
       )}
 
+      {timeTarget && (
+        <Sheet title={t.planDay.slotMoveTitle(timeTarget.title)} onClose={closeTimePicker}>
+          <DaySlotPicker
+            sub={t.planDay.slotWhen}
+            options={positionOptionsFor(timeTarget.id)}
+            onPick={(fill) => pickPosition(timeTarget, fill)}
+            // The way out to ADR-0036's start+duration setter, which is `EventForm` — where
+            // an exact time and a length were always set, and still are.
+            onExact={() => {
+              closeTimePicker();
+              setFormTarget(timeTarget);
+            }}
+          />
+        </Sheet>
+      )}
+
       {ideaSheet && (
         <MaybeManageSheet
           item={ideaSheet}
@@ -1072,9 +1139,10 @@ export function PlanDay() {
         <ResolveSheet
           cluster={resolveCluster}
           tz={tz}
-          onMove={(mover, minutes) => {
-            verbs.moveBy(mover, minutes);
+          optionsFor={(mover) => positionOptionsFor(mover.id)}
+          onPick={(mover, fill) => {
             closeResolve();
+            pickPosition(mover, fill);
           }}
           onOther={(mover) => {
             closeResolve();
@@ -1134,8 +1202,6 @@ export function PlanDay() {
 
 /** Pick which soft event moves, then pick where. */
 const RESOLVE_STEPS = [{ id: 'which' }, { id: 'where' }] as const;
-/** The row's verb list, then the `הזז` position step (ADR-0138 §8). */
-const MENU_STEPS = [{ id: 'menu' }, { id: 'move' }] as const;
 
 // The "הזז" overlap-resolve (ADR-0041): pick which SOFT event to move (hard
 // members show as disabled anchors), then a one-tap clean slot before/after the
@@ -1152,20 +1218,23 @@ const MENU_STEPS = [{ id: 'menu' }, { id: 'move' }] as const;
 export function ResolveSheet({
   cluster,
   tz,
-  onMove,
+  optionsFor,
+  onPick,
   onOther,
   onClose,
 }: {
   cluster: Extract<TimeGroup, { kind: 'cluster' }>;
   tz: string;
-  onMove: (mover: TripEvent, minutes: number) => void;
+  /** The day's positions with the mover taken out (`lib/day-positions.ts`), as the picker's
+   *  options. Supplied by the screen: this sheet knows a cluster, not a day. */
+  optionsFor: (mover: TripEvent) => DaySlotOption[];
+  onPick: (mover: TripEvent, fill: GapDefaults) => void;
   onOther: (mover: TripEvent) => void;
   onClose: () => void;
 }) {
   const members = cluster.items.map((i) => i.event);
   const softMovers = members.filter((e) => e.kind === EVENT_KIND.SOFT);
   const hardAnchors = members.filter((e) => e.kind === EVENT_KIND.HARD);
-  const fmt = (ms: number) => formatTime(new Date(ms), tz);
   const [mover, setMover] = useState<TripEvent | null>(null);
 
   // Neither step can refuse — you advance by CHOOSING, and a chooser has nothing to
@@ -1220,14 +1289,6 @@ export function ResolveSheet({
     );
   }
 
-  const others = members.filter((e) => e.id !== mover.id);
-  const mStart = Date.parse(mover.startsAt!);
-  const dur = Date.parse(mover.endsAt ?? mover.startsAt!) - mStart;
-  const othersStart = Math.min(...others.map((e) => Date.parse(e.startsAt!)));
-  const othersEnd = Math.max(...others.map((e) => Date.parse(e.endsAt ?? e.startsAt!)));
-  const afterStart = othersEnd;
-  const beforeStart = othersStart - dur;
-
   return (
     <Sheet title={t.planDay.resolveFor(mover.title)} onClose={onClose}>
       <FormStepPanel steps={steps}>
@@ -1239,33 +1300,18 @@ export function ResolveSheet({
         <button className="resolve-backbtn" onClick={back}>
           <NavArrow variant="back" /> {t.planDay.resolveBack}
         </button>
-        <button
-          className="resolve-opt"
-          onClick={() => onMove(mover, Math.round((afterStart - mStart) / 60000))}
-        >
-          <span className="ttl">
-            {t.planDay.resolveAfter} ·{' '}
-            {others.length === 1 ? others[0].title : t.planDay.overlapping}
-          </span>
-          <span className="tm" dir="auto">
-            {fmt(afterStart)}
-          </span>
-        </button>
-        <button
-          className="resolve-opt"
-          onClick={() => onMove(mover, Math.round((beforeStart - mStart) / 60000))}
-        >
-          <span className="ttl">
-            {t.planDay.resolveBefore} ·{' '}
-            {others.length === 1 ? others[0].title : t.planDay.overlapping}
-          </span>
-          <span className="tm" dir="auto">
-            {fmt(beforeStart)}
-          </span>
-        </button>
-        <button className="resolve-opt other" onClick={() => onOther(mover)}>
-          {t.planDay.resolveOther}
-        </button>
+        {/* **This step WAS the second half of ADR-0161 §4's one-off pair**: two hand-built
+            options, `אחרי`/`לפני` the rest of the cluster, computed here from the cluster's
+            own bounds. It is the shared picker now, and it subsumes them rather than
+            approximating them — the position "after" an overlapping row resolves through
+            `freeBetween` to that row's end, which is exactly what `אחרי` meant, and the list
+            offers every other position in the day besides. */}
+        <DaySlotPicker
+          sub={t.planDay.slotWhen}
+          options={optionsFor(mover)}
+          onPick={(fill) => onPick(mover, fill)}
+          onExact={() => onOther(mover)}
+        />
       </FormStepPanel>
     </Sheet>
   );
@@ -1381,6 +1427,8 @@ interface BuilderCtx {
   // Tapping a transition row opens the read-only booking detail (ADR-0064).
   onOpenDetail: (booking: Booking) => void;
   onGapFill: (fill: GapDefaults) => void;
+  /** Open the day-position picker for this row (ADR-0161 §7) — the row's time is a button. */
+  onPickTime: (event: TripEvent) => void;
   onResolve: (cluster: TimeGroup) => void;
   /** Is a drag currently over this gap? Either drag can be (ADR-0116 §5, extended to
    *  the row drag in session-123), and both light it the same way. */
@@ -1651,16 +1699,11 @@ function BuilderNode({
         dragProps={soft && !ctx.readOnly ? ctx.rowDragProps(e.id) : undefined}
         dragging={ctx.drag?.id === e.id}
         over={ctx.drag?.overId === e.id}
-        // Soft rows only: `reorder` permutes the SOFT slot set, and a hard event
-        // is a pinned anchor that is never in it (ADR-0011, lib/reorder.ts).
-        reorder={
-          soft
-            ? {
-                peers: ctx.softEvents,
-                onMoveTo: (targetId) => ctx.verbs.swapPositions(ctx.dayEvents, e.id, targetId),
-              }
-            : undefined
-        }
+        // The row's own time opens the day-position picker (ADR-0161 §7). Offered on any
+        // editable row, hard included: a hard event's time is a commitment, so the write
+        // goes through `applyGuardedUpdate` and asks — the same gate every other hard edit
+        // passes. What it never does is MOVE one without being asked (ADR-0011).
+        onPickTime={ctx.readOnly ? undefined : () => ctx.onPickTime(e)}
         nestedCount={hasKids ? countDescendants(item) : undefined}
         overlapNote={overlapNote}
         // Finished-trip archive: soft rows settle in place (ADR-0044). Hard
@@ -1705,7 +1748,7 @@ export function BuilderRow({
   dragProps,
   dragging,
   over,
-  reorder,
+  onPickTime,
   nestedCount,
   overlapNote,
   settle,
@@ -1744,19 +1787,15 @@ export function BuilderRow({
   dragProps?: HoldToDragProps;
   dragging?: boolean;
   over?: boolean;
-  /** Reorder without a pointer — the ⋯ sheet's `הזז` step (ADR-0138 §8).
+  /** **Open the day-position picker for this row** (ADR-0161 §4/§7). Reached by tapping the
+   *  row's own time — which is also where an untimed row's `＋ שעה` goes, the one slot that
+   *  held nothing at all before.
    *
-   *  This replaced `הקדם`/`אחר`, which were a BLIND one-slot swap: you tapped and
-   *  hoped, and because each was dropped at its end of the list the menu changed
-   *  length per row, moving `מחק` under your thumb. Dragging is still the primary
-   *  gesture, but it is a pointer gesture, and reorder is not reachable through
-   *  `ערוך` — `lib/reorder.ts` permutes which soft event holds which SLOT, so
-   *  doing it by hand means two edits through a collision.
-   *
-   *  `peers` is the day's soft events in render order (including this one, so the
-   *  step can mark where you are). Absent, or fewer than two peers, and the action
-   *  is omitted — there is nothing to reorder against. */
-  reorder?: { peers: TripEvent[]; onMoveTo: (targetId: string) => void };
+   *  This replaces the `reorder` prop and the `הזז` step it fed. That step was itself a
+   *  replacement for `הקדם`/`אחר` (a blind one-slot swap), and it inherited their model:
+   *  it listed the day's soft peers and handed an id to a SLOT PERMUTATION, which is the
+   *  defect ADR-0161 §1 exists to undo. Absent on a read-only archive. */
+  onPickTime?: () => void;
   // Set on an envelope row that nests others: the "כולל N" contents count.
   nestedCount?: number;
   // Set on a cluster member that overlaps an earlier one: the seam tag text.
@@ -1793,20 +1832,11 @@ export function BuilderRow({
   // `menu` = the verb list; `move` = the `הזז` position step (ADR-0138 §8), which
   // is a step INSIDE the sheet rather than a second sheet.
   const [menuOpen, setMenuOpen] = useState(false);
-  // The verb list, then the `הזז` position step (ADR-0138 §8) — a step INSIDE the sheet,
-  // not a second sheet. On the shared primitive since ADR-0155, which owns the step's
-  // back layer; this component only has to be the Modal's PARENT, which it is.
-  const steps = useFormSteps({ steps: MENU_STEPS, onCommit: () => setMenuOpen(false) });
-  const closeMenu = () => {
-    setMenuOpen(false);
-    steps.reset();
-  };
+  const closeMenu = () => setMenuOpen(false);
   const runAction = (fn: () => void) => {
     closeMenu();
     fn();
   };
-  const movePeers = reorder?.peers ?? [];
-  const canReorder = movePeers.length > 1;
   // The archive settle control replaces the (hidden) ⋯ slot; an unresolved row
   // opens this chooser to record "we were there / skip" (ADR-0044).
   const [settleOpen, setSettleOpen] = useState(false);
@@ -1881,8 +1911,8 @@ export function BuilderRow({
         (() => {
           const startZone = zones?.startZone ?? tz;
           const endZone = zones?.endZone ?? tz;
-          return (
-            <span className="bld-time">
+          const inner = (
+            <>
               <span dir="auto">
                 {formatTime(event.startsAt, startZone)}
                 {event.endsAt && `–${formatTime(event.endsAt, endZone)}`}
@@ -1901,9 +1931,35 @@ export function BuilderRow({
                   )}
                 </span>
               )}
-            </span>
+            </>
+          );
+          // **THE TIME IS A BUTTON** (ADR-0161 §7). The row already renders the answer; the
+          // control is the thing it is written on, which is `PlaceBadge`'s idiom (ADR-0121
+          // §8) one slot over. That is also what let `הזז` leave the `⋯` sheet: a focusable
+          // control in the row satisfies ADR-0138 §8's rule (reorder without a drag) more
+          // directly than a menu row, and `10:00–12:00` is a better name for "move this"
+          // than the word `הזז`.
+          return onPickTime ? (
+            <button
+              type="button"
+              className="bld-time"
+              onClick={onPickTime}
+              aria-label={t.planDay.slotMoveTitle(event.title)}
+            >
+              {inner}
+            </button>
+          ) : (
+            <span className="bld-time">{inner}</span>
           );
         })()}
+      {/* A row with no time holds NOTHING in that slot today, so the only way to give an
+          event a time is the whole edit form — the one case where §7 adds a control rather
+          than promoting one. Same slot, same target, dashed because it marks an absence. */}
+      {!event.startsAt && onPickTime && (
+        <button type="button" className="bld-time empty" onClick={onPickTime}>
+          <Icon name="plus" /> {t.planDay.slotAddTime}
+        </button>
+      )}
       {!readOnly && (
         <button
           className="bld-icon"
@@ -1983,69 +2039,30 @@ export function BuilderRow({
           }
           onClose={closeMenu}
         >
-          <FormStepPanel steps={steps}>
-            {steps.isFirst ? (
-              <RowActionList
-                actions={[
-                  {
-                    label: t.actions.edit,
-                    icon: CONTROL_ICON.edit,
-                    onSelect: () => runAction(onEdit),
-                  },
-                  ...(canReorder
-                    ? [
-                        {
-                          label: t.planDay.move,
-                          icon: CONTROL_ICON.swap,
-                          onSelect: () => steps.next(),
-                        } as RowAction,
-                      ]
-                    : []),
-                  ...(onPark
-                    ? [
-                        {
-                          label: t.actions.toShelf,
-                          icon: CONTROL_ICON.toShelf,
-                          onSelect: () => runAction(onPark),
-                        } as RowAction,
-                      ]
-                    : []),
-                  {
-                    label: t.actions.delete,
-                    icon: CONTROL_ICON.trash,
-                    danger: true,
-                    onSelect: () => runAction(onDelete),
-                  },
-                ]}
-              />
-            ) : (
-              // Step 2: WHERE it goes. The whole soft list, with the row you came
-              // from marked — so you pick a destination you can see, instead of
-              // tapping `הקדם` twice and checking afterwards.
-              <div className="bld-move">
-                <div className="bld-move-sub">{t.planDay.moveChoose}</div>
-                {movePeers.map((peer) => {
-                  const isSelf = peer.id === event.id;
-                  return (
-                    <button
-                      key={peer.id}
-                      className={'bld-move-slot' + (isSelf ? ' is-self' : '')}
-                      disabled={isSelf}
-                      onClick={() => runAction(() => reorder?.onMoveTo(peer.id))}
-                    >
-                      <span className="tm" dir="auto">
-                        {peer.startsAt ? formatTime(peer.startsAt, tz) : ''}
-                      </span>
-                      <span className="nm">
-                        <TitleLabel title={peer.title} />
-                      </span>
-                      {isSelf && <span className="here">{t.planDay.moveHere}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </FormStepPanel>
+          {/* **A plain list again, not a stepped surface.** `הזז` was this sheet's second
+              step (ADR-0138 §8) and it has moved to the row's own time (§7), so the step
+              machinery, its back layer and its panel all go with it — the sheet is what it
+              was before that step existed, one row shorter than today. */}
+          <RowActionList
+            actions={[
+              { label: t.actions.edit, icon: CONTROL_ICON.edit, onSelect: () => runAction(onEdit) },
+              ...(onPark
+                ? [
+                    {
+                      label: t.actions.toShelf,
+                      icon: CONTROL_ICON.toShelf,
+                      onSelect: () => runAction(onPark),
+                    } as RowAction,
+                  ]
+                : []),
+              {
+                label: t.actions.delete,
+                icon: CONTROL_ICON.trash,
+                danger: true,
+                onSelect: () => runAction(onDelete),
+              },
+            ]}
+          />
         </Sheet>
       )}
       {settle && settleOpen && (

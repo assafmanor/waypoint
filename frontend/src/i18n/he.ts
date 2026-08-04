@@ -1442,12 +1442,11 @@ export const t = {
     settleTitle: (title: string) => `הסדרת «${title}»`,
     settleUnresolved: 'הסדר: היינו או דלג',
     addToDay: 'הוסף אירוע',
-    // Reorder from the ⋯ sheet (ADR-0138 §8). One item, always present, opening a
-    // step that shows WHERE the event lands — replacing the הקדם/אחר pair, which
-    // was a blind one-slot swap that also came and went with the row's position.
-    move: 'הזז',
-    moveChoose: 'לאיזה מקום להזיז?',
-    moveHere: 'כאן עכשיו',
+    // `move`/`moveChoose`/`moveHere` were the ⋯ sheet's `הזז` step (ADR-0138 §8) and went
+    // with it: the row's own time opens the shared picker now (ADR-0161 §7), and its words
+    // are the `slot*` and `seam*` keys above — one vocabulary for a position, however you
+    // reach it. `resolveAfter`/`resolveBefore`/`resolveOther` went the same way, being the
+    // other half of the pair the picker replaced.
     pinned: 'אירוע קשיח · מעוגן בזמן',
     rowActions: 'פעולות',
     gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
@@ -1484,6 +1483,9 @@ export const t = {
     // makes "right after the flight" a thing you can say.
     seamAfter: (title: string) => `אחרי ${title}`,
     seamDayStart: 'בתחילת היום',
+    // The other half of the pair, used where naming the row BELOW is the more useful thing
+    // to say — before a hard anchor, which is what the day is built around.
+    seamBefore: (title: string) => `לפני ${title}`,
     // The whole day as one position (ADR-0161 §2, extended): an empty day, a day of
     // untimed rows, or one whose only entries are booking transition points. It says the
     // day is free rather than measuring a "gap of 17 hours", which is true and useless.
@@ -1501,6 +1503,20 @@ export const t = {
     // violet group, plus a seam tag on the colliding row.
     overlapping: 'חופפים',
     overlapSeam: (label: string) => `חופף ${label}`,
+    // THE DAY AS A TIME PICKER (ADR-0161 §4). The question, and the two ways out of it.
+    // Each row's own words are built from the day: `seamAfter`/`seamDayStart`/`seamDayEnd`
+    // above are the same phrases the drag's seams use, which is deliberate — the two paths
+    // to a position should not name it differently.
+    slotWhen: 'לאיזה מקום ביום?',
+    slotFree: (label: string) => `פנוי ${label}`,
+    slotNow: 'עכשיו',
+    slotExactTime: 'שעה מדויקת…',
+    // The single position a day with nothing timed on it offers (ADR-0161 §2's amendment).
+    slotWholeDay: 'בשעה הראשונה של היום',
+    // …and what an untimed row's empty time slot offers instead of nothing at all.
+    slotAddTime: 'שעה',
+    slotOtherDay: 'ליום אחר…',
+    slotMoveTitle: (title: string) => `להזיז · ${title}`,
     // "הזז" resolve sheet: choose which soft event to move, then a clean slot.
     resolve: 'הזז',
     resolveTitle: 'פתרו את החפיפה',
@@ -1508,9 +1524,6 @@ export const t = {
     resolveAnchor: 'עוגן · לא זז',
     resolveFor: (title: string) => `להזיז את ${title}`,
     resolveBack: 'אירוע אחר',
-    resolveAfter: 'אחרי',
-    resolveBefore: 'לפני',
-    resolveOther: 'זמן אחר…',
   },
   event: {
     hard: 'קשיח',
@@ -1584,7 +1597,6 @@ export const t = {
     onWayShared: 'שותף לקבוצה · בדרך',
     scheduled: (title: string, time: string) => `${title} שובץ ל-${time}`,
     rippleApplied: 'האירועים הבאים נדחו',
-    eventMoved: 'האירוע הוזז',
     hardConfirmRequired: 'שינוי אירוע קשיח מחייב אישור',
     writeFailed: 'משהו השתבש · אפשר לנסות שוב',
     moveIntoPast: 'אי אפשר לשבץ אירוע לשעה שכבר עברה',

@@ -17,6 +17,7 @@ import {
   isBracketed,
   isMultiDay,
   searchVibeIcons,
+  typicalMinutesFor,
 } from './icons';
 
 const ORDINARY_CATEGORIES: EventCategory[] = [
@@ -55,23 +56,56 @@ describe('CATEGORY_TIME_PROFILE', () => {
       ambientWhenMultiDay: true,
       transitions: { startKey: 'departure', endKey: 'arrival' },
       durationUnit: 'hours',
+      typicalMinutes: 60,
     });
     expect(CATEGORY_TIME_PROFILE.lodging).toEqual({
       bracketed: true,
       ambientWhenMultiDay: true,
       transitions: { startKey: 'checkIn', endKey: 'checkOut' },
       durationUnit: 'nights',
+      typicalMinutes: 60,
     });
   });
 
-  it('seeds every other category as ordinary', () => {
+  // `toMatchObject`, not `toEqual`, and the change is the point: since ADR-0161 §5 these
+  // categories are ordinary in BEHAVIOUR and no longer identical, because typical length is
+  // the one axis they differ on. Asserted below rather than here.
+  it('seeds every other category as ordinary in behaviour', () => {
     for (const category of ORDINARY_CATEGORIES) {
-      expect(CATEGORY_TIME_PROFILE[category]).toEqual({
+      expect(CATEGORY_TIME_PROFILE[category]).toMatchObject({
         bracketed: false,
         ambientWhenMultiDay: false,
         durationUnit: 'auto',
       });
     }
+  });
+});
+
+// ADR-0161 §5: the default length offered when something is placed at a position and has
+// no length of its own. The values are tunable; what is asserted is that every category has
+// one, that it varies where the ADR says it should, and that the two ends of the range are
+// the ones intended — a flat 60 for everything is what this replaced.
+describe('typicalMinutesFor', () => {
+  it('answers for every category, and for an unset one', () => {
+    for (const category of Object.keys(CATEGORY_TIME_PROFILE) as EventCategory[]) {
+      expect(typicalMinutesFor(category), category).toBeGreaterThan(0);
+    }
+    expect(typicalMinutesFor(null)).toBe(60);
+    expect(typicalMinutesFor(undefined)).toBe(60);
+  });
+
+  it('varies by category rather than offering an hour for everything', () => {
+    expect(typicalMinutesFor('food')).toBe(90);
+    expect(typicalMinutesFor('sightseeing')).toBe(120);
+    expect(typicalMinutesFor('nature')).toBe(180);
+    expect(typicalMinutesFor('services')).toBe(60);
+  });
+
+  // A bracketed category's length comes from its two ends, so its value is the ordinary
+  // one and carries no claim — asserted so a future tuning pass does not read meaning into it.
+  it('leaves the bracketed categories on the default', () => {
+    expect(typicalMinutesFor('transport')).toBe(60);
+    expect(typicalMinutesFor('lodging')).toBe(60);
   });
 });
 
