@@ -166,3 +166,20 @@ That is reuse, not a new mechanism: `setActiveDate` is already context-aware (AD
 **What this deliberately is not.** The suggestion does not set `targetDate` by itself, and nothing here reorders anything already planned. It is a sentence with a source and a reason (§1) that a human accepts or ignores — the boundary §6 drew for external candidates, applied to a local one.
 
 **Still open, and larger:** slotting several of those ideas into a day at once, which needs a posture the Map does not have (its dateless shelf pins are deliberately `aside` — ADR-0130 §3 — which is right for reading a day and backwards for filling one). Its own design session; see [backlog](../backlog.md).
+
+### Built 2026-08-04 — and the composition needed a decision this section had not made
+
+**Two `LOCAL` strategies both point at shelf ideas, and `suggestFor` emitted one suggestion per strategy per idea.** The consumer maps a suggestion to a ROW, so the pool would have rendered every idea twice. §2's rule covers scores (never sort a merged list by them) and says nothing about two strategies naming the same thing — because until now nothing did.
+
+**`suggestFor` dedupes by ref, keeping the first, and `fits-a-day` is registered FIRST** (owner's call, from three options). That is a property of **merging**, not of ranking, so §2 is intact: nothing compares scores across strategies. Registering it second would have made it dead code — `near-the-day` emits every idea and would win every ref. The consequence, accepted deliberately: the few ideas `fits-a-day` can speak about lead the pool, which is the right reading — _"this one fits Thursday, 300m from the museum"_ is a stronger thing to know than _"added recently"_.
+
+**It speaks only where it has an answer**, which is what keeps it out of the way: an idea with a `targetDate` is spoken for, one with no coordinates has nothing to measure, the day being ranked is excluded (_"it fits today"_ is `near-the-day`'s sentence), and a day past `FAR_M` scores 0 and is dropped rather than reported as a proposal with no content.
+
+**Two things the build had to add that this section assumed:**
+
+- **`suggestFor` needed every day's stops.** `dayStops` is one day's, and this asks about the others — so `SuggestionContext` gained `days`, and only the shelf passes it. That is also how the gap sheet is unaffected: it passes none, so the strategy stays silent there.
+- **The full sentence had nowhere to go.** This section says the stop name "stays in the sheet, which is where the full sentence has room" — and `MaybeManageSheet` rendered no reason at all. It does now, quiet under the subject.
+
+**`acceptDay` is one verb, not two calls at each host**, because "sets the day" and "goes to it" must not drift apart between Trip mode and Plan mode.
+
+**One consequence worth knowing, which looks like a bug and is not:** undo reverts the write, not the navigation — you stay on the day you were taken to, and there the idea is dateless again and the proposal is **silent**, because the strategy never proposes the day being ranked. Pinned in `e2e/fits-a-day.spec.ts` so nobody "fixes" it.

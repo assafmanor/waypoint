@@ -209,6 +209,18 @@
   line-height: 1.45;
 }
 
+/* **Why the ranking put this idea where it did**, said in full (ADR-0151 §8 and its 2026-08-04
+   amendment). The tile's meta line carries the same fact with the stop name dropped, because
+   there it wraps and costs the tile 8px — this is the room that measurement pushed it into, so
+   it reads as a sentence rather than a token. Quiet like the subject above it: it explains an
+   order, it does not ask for anything. */
+.idea-why {
+  margin-block: var(--space-2) 0;
+  font-size: var(--text-caption);
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 /* ── The destructive verb partitions, it does not just recolour (§5) ────────
    `מחק` and `ערוך` shipped as identical cards differing by text hue alone. A
    hairline and a gap — 13px total — is the whole fix, and it costs the sheet

@@ -135,6 +135,19 @@ export interface RankedIdea {
   reason: SuggestionReason;
 }
 
+/** Every day of the trip and where it stops — the input `fits-a-day` needs to answer "which
+ *  day does this belong to" (ADR-0151's 2026-08-04 amendment). `dayStops` per date, the same
+ *  derivation the focused day uses, so the two strategies cannot disagree about where a day
+ *  goes. Days with nothing located contribute nothing and are dropped by the strategy. */
+export function tripDayStops(
+  dates: string[],
+  events: TripEvent[],
+  bookings: Booking[],
+  places: Place[],
+): { date: string; stops: SuggestionStop[] }[] {
+  return dates.map((date) => ({ date, stops: dayStops(events, bookings, places, date) }));
+}
+
 /**
  * The pool, ranked (ADR-0116 session-202 §3). `shelfGroups` above is untouched:
  * this reorders what it already grouped and attaches each idea's reason. It goes
@@ -144,6 +157,10 @@ export interface RankedIdea {
  *
  * `stops` is the anchor to rank against: the day's own stops for the shelf, the
  * events either side of a slot for the gap sheet. Same strategy, narrower context.
+ *
+ * `days` is what lets `fits-a-day` speak (the 2026-08-04 amendment) — the shelf passes it and
+ * every other caller passes nothing, which is exactly how that strategy stays out of the gap
+ * sheet's answer.
  */
 export function rankIdeas(
   ideas: MaybeItem[],
@@ -151,6 +168,7 @@ export function rankIdeas(
   date: string,
   stops: SuggestionStop[],
   limit?: number,
+  days?: { date: string; stops: SuggestionStop[] }[],
 ): RankedIdea[] {
   const placeById = new Map(places.map((p) => [p.id, p]));
   const byId = new Map(ideas.map((m) => [m.id, m]));
@@ -163,6 +181,7 @@ export function rankIdeas(
       date,
       dayStops: stops,
       ideas: ideas.map((item) => ({ item, at: at(item) })),
+      days,
       limit,
     },
     SUGGESTION_PLACEMENT.LOCAL,
@@ -232,6 +251,14 @@ export function reasonText(reason: SuggestionReason, today: string): string {
       return t.day.why.aimedAtDay(relativeDayLabel(reason.targetDate, today));
     case SUGGESTION_REASON.RECENTLY_ADDED:
       return t.day.why.recentlyAdded;
+    // The whole sentence, stop name included — this is the sheet, which has the room the
+    // tile does not (ADR-0151's amendment, measured).
+    case SUGGESTION_REASON.FITS_DAY:
+      return t.day.why.fitsDayFull(
+        relativeDayLabel(reason.date, today),
+        formatDistance(reason.meters),
+        reason.stopName,
+      );
   }
 }
 
@@ -254,7 +281,19 @@ export function tileReasonText(reason: SuggestionReason, today: string): string 
       return relativeDayLabel(reason.targetDate, today);
     case SUGGESTION_REASON.RECENTLY_ADDED:
       return undefined;
+    // The day and the distance, and NOT the stop name — which wraps this line and costs the
+    // tile 8px (ADR-0151's amendment, measured). `reasonText` above says the whole sentence,
+    // in the sheet, which has room for it.
+    case SUGGESTION_REASON.FITS_DAY:
+      return t.day.why.fitsDay(relativeDayLabel(reason.date, today), formatDistance(reason.meters));
   }
+}
+
+/** **The day a `fits-a-day` proposal named**, or null when this idea carries no proposal — so a
+ *  host offers the "agree" verb exactly where there is something to agree with (ADR-0151's
+ *  2026-08-04 amendment). One predicate, because both shelves ask it. */
+export function proposedDay(reason?: SuggestionReason): string | null {
+  return reason?.code === SUGGESTION_REASON.FITS_DAY ? reason.date : null;
 }
 
 /** The tile line for the day's OWN group, which states a distance or nothing: the
