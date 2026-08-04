@@ -155,11 +155,119 @@ describe('buildDayGlance', () => {
       ev({ id: 'c', startsAt: at('15:00'), endsAt: at('16:00') }), // upcoming
     ];
     const g = buildDayGlance(events, DATE, now, day07, day23, TZ);
-    // The hotel neither distorts the window (no multi-day stretch) nor counts.
+    // The hotel neither distorts the window (no multi-day stretch) nor draws a block.
     expect(g.windowEndMs).toBe(day23);
     expect(g.segs.some((s) => s.key === 'hotel')).toBe(false);
     expect(g.segs).toHaveLength(2);
-    expect(g.remaining).toBe(2); // b + c only — the hotel is backdrop
+    // **Its CHECK-IN still counts** (ADR-0164). This assertion read `2` — b + c only —
+    // while ADR-0077's "marking a transition is not counting a block" applied to the
+    // number as well as to the rail. It does not any more: a 15:00 check-in with luggage
+    // is a timed thing you can miss, and it lands on THIS day. The stay is still off the
+    // counted rail, which is what ADR-0054 actually protects.
+    expect(g.remaining).toBe(3); // b + c + the check-in ahead at 15:00
+  });
+
+  // The other half of the same rule, and the one that keeps ADR-0054 intact: a middle
+  // night has nothing to do about the room, so it counts nothing.
+  it('counts nothing for an ambient stay on a MIDDLE night (ADR-0164)', () => {
+    const hotel = ev({
+      id: 'hotel',
+      category: 'lodging',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('15:00'),
+      endsAt: at('11:00', '2026-07-11'),
+      endDate: '2026-07-11',
+    });
+    const g = buildDayGlance(
+      [hotel],
+      '2026-07-09',
+      ms('12:30', '2026-07-09'),
+      ms('07:00', '2026-07-09'),
+      ms('23:00', '2026-07-09'),
+      TZ,
+    );
+    expect(g.remaining).toBe(0);
+    expect(g.anchors).toHaveLength(0);
+  });
+
+  it("counts an ambient span's CHECK-OUT on its own day, and not once it has passed", () => {
+    const hotel = ev({
+      id: 'hotel',
+      category: 'lodging',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('15:00'),
+      endsAt: at('11:00', '2026-07-11'),
+      endDate: '2026-07-11',
+    });
+    const before = buildDayGlance(
+      [hotel],
+      '2026-07-11',
+      ms('09:00', '2026-07-11'),
+      ms('07:00', '2026-07-11'),
+      ms('23:00', '2026-07-11'),
+      TZ,
+    );
+    expect(before.remaining).toBe(1); // check-out at 11:00 still ahead
+    const after = buildDayGlance(
+      [hotel],
+      '2026-07-11',
+      ms('12:00', '2026-07-11'),
+      ms('07:00', '2026-07-11'),
+      ms('23:00', '2026-07-11'),
+      TZ,
+    );
+    expect(after.remaining).toBe(0); // behind you now
+  });
+
+  // **The guard against double-counting**, and the reason the rule keys on `isAmbient`
+  // rather than on "has transitions": a same-day journey is already a counted block.
+  it('does not count a same-day flight twice, block and transition', () => {
+    const flight = ev({
+      id: 'fl',
+      category: 'transport',
+      icon: '✈️',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('14:00'),
+      endsAt: at('16:00'),
+    });
+    const g = buildDayGlance([flight], DATE, ms('09:00'), day07, day23, TZ);
+    expect(g.remaining).toBe(1);
+    expect(g.anchors).toHaveLength(1); // drawn as a span anchor, counted once
+  });
+
+  // A multi-day CAR HIRE is the report that found this, and it must behave exactly like
+  // the stay above — the rule is about spans, not about cars (ADR-0164).
+  it("counts a car hire's pick-up and return, but not the days between", () => {
+    const hire = ev({
+      id: 'car',
+      category: 'transport',
+      icon: '🚗',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('10:00'),
+      endsAt: at('10:00', '2026-07-12'),
+      endDate: '2026-07-12',
+    });
+    expect(buildDayGlance([hire], DATE, ms('08:00'), day07, day23, TZ).remaining).toBe(1); // pick-up
+    expect(
+      buildDayGlance(
+        [hire],
+        '2026-07-09',
+        ms('08:00', '2026-07-09'),
+        ms('07:00', '2026-07-09'),
+        ms('23:00', '2026-07-09'),
+        TZ,
+      ).remaining,
+    ).toBe(0);
+    expect(
+      buildDayGlance(
+        [hire],
+        '2026-07-12',
+        ms('08:00', '2026-07-12'),
+        ms('07:00', '2026-07-12'),
+        ms('23:00', '2026-07-12'),
+        TZ,
+      ).remaining,
+    ).toBe(1); // return
   });
 
   it('pairs a same-day flight into one span anchor over its counted block', () => {
@@ -459,10 +567,12 @@ describe('buildDayGlance', () => {
     const a = g.anchors[0];
     expect(a.kind).toBe('point');
     if (a.kind === 'point') expect(a.labelKey).toBe('checkOut');
-    expect(g.remaining).toBe(0);
+    // Was `0` — the day drew the marker and counted nothing, so a day whose only real
+    // commitment was being out of the room by 11:00 read `0 נותרו היום` (ADR-0164).
+    expect(g.remaining).toBe(1);
   });
 
-  it('marks an ambient hotel check-in on its check-in day, uncounted', () => {
+  it('marks an ambient hotel check-in on its check-in day (off the rail, but counted)', () => {
     const events = [
       ev({
         id: 'hotel',

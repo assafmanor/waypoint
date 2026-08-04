@@ -1029,6 +1029,35 @@ describe('BookingSheet — a car hire', () => {
     expect(input.title).toBe(t.index.bookingType.car);
   });
 
+  // **The `נריטה ← -` the owner saw.** The hire field writes the two ends equal while the
+  // answer is "same counter", but only when it is touched — so a place arriving from a MAP
+  // ERRAND, or a pre-0163 row opened and saved untouched, left the return null and every
+  // route-drawing surface filled it with `RouteLabel`'s dash. Normalised on read now.
+  it('saves the return equal to the pick-up when it was never set', async () => {
+    const halfFilled: Booking = { ...hire, toPlaceId: undefined };
+    render(wrapNav(<BookingSheet booking={halfFilled} onClose={() => {}} />));
+    toLastStep();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, patch] = indexVerbs.updateBooking.mock.calls[0] as [
+      unknown,
+      { fromPlaceId?: string; toPlaceId?: string },
+    ];
+    expect(patch.fromPlaceId).toBe('pl-nrt');
+    expect(patch.toPlaceId).toBe('pl-nrt');
+  });
+
+  // …and a one-way hire's real return is not overwritten by the same normalisation.
+  it("leaves a one-way hire's own return place alone", async () => {
+    const oneWay: Booking = { ...hire, fromPlaceId: 'pl-nrt', toPlaceId: 'pl-tlv' };
+    render(wrapNav(<BookingSheet booking={oneWay} onClose={() => {}} />));
+    toLastStep();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, patch] = indexVerbs.updateBooking.mock.calls[0] as [unknown, { toPlaceId?: string }];
+    expect(patch.toPlaceId).toBe('pl-tlv');
+  });
+
   // The rule is per type, so the three travelling modes must be untouched by it.
   it('leaves a flight titled by its route', async () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));

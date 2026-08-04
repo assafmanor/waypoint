@@ -15,6 +15,26 @@ import { plainTimingLabel, timingLabels } from './booking-timing';
 import { revealRows, type Revealed } from './filter-reveal';
 import { t } from '../i18n/he';
 
+/** **Does the type chip beside a booking's title say anything the title does not?**
+ *  (ADR-0163's amendment, owner's call 2026-08-04.)
+ *
+ *  A row draws the title and a small type chip. That reads well while the two differ
+ *  (`Shinjuku Granbell` + `לינה`), and badly when they are the same string — which
+ *  ADR-0163 §3 made reachable: a hire with no company entered falls back to its **type
+ *  label** for a title, so the row said `השכרת רכב` twice, adjacent, on a 360px phone.
+ *
+ *  The fallback itself is right — on the surfaces that receive only a title (the change
+ *  feed, a confirm) `השכרת רכב` is self-describing where a bare counter name is not. So
+ *  the fix is the chip, not the title: it is dropped exactly when it would repeat. Same
+ *  rule `EventForm`'s `יש הזמנה` row already applies to its own missing label ("the same
+ *  word twice for 20px").
+ *
+ *  Keyed on the rendered strings rather than on "is this a hire with no provider",
+ *  because the redundancy is a property of the two labels — any type whose title happens
+ *  to be its own name gets the same treatment, with no new branch. */
+export const typeChipAddsMeaning = (booking: Pick<Booking, 'type' | 'title'>): boolean =>
+  booking.title.trim() !== t.index.bookingType[booking.type];
+
 /** The bookings-screen category filter (ADR-0098 §2): every `BookingType` plus
  *  an "all" option. Kept beside the type it filters, not a bare string literal
  *  at each call site. */

@@ -4,7 +4,7 @@
 // rather than reading a (now-removed) free-text location off the event.
 import {
   carriesRoute,
-  categoryForBookingType,
+  titlesFromRoute,
   eventDurationUnit,
   isAmbient,
   type Booking,
@@ -95,7 +95,14 @@ export interface Route {
 export function eventRoute(event: TripEvent, bookings: Booking[], places: Place[]): Route | null {
   if (!event.bookingId) return null;
   const booking = bookings.find((b) => b.id === event.bookingId);
-  if (!booking || categoryForBookingType(booking.type) !== 'transport') return null;
+  // **Only a type NAMED by its route draws one** (ADR-0163 §3, extended here after the
+  // owner reported the miss). Asking the category — or `carriesRoute` — was right while
+  // every transport type was a journey: a car hire carries two counters and is called
+  // Hertz, so re-deriving a route for display printed `נריטה ← נריטה` on the day row and
+  // `נריטה ← -` whenever the return place was not set. §3 changed the STORED title and
+  // these display derivations kept rebuilding one from the place FKs, which is the same
+  // bug one layer down. A hire's pick-up and return live in its detail facts.
+  if (!booking || !titlesFromRoute(booking.type)) return null;
   const from = placeName(places, booking.fromPlaceId);
   const to = placeName(places, booking.toPlaceId);
   return from || to ? { from, to } : null;

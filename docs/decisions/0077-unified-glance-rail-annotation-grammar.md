@@ -4,6 +4,12 @@
 **Date:** 2026-07-19
 **Refines:** [0059](0059-booking-presentation-on-home-and-index.md) (§4's glance transition markers, whose amber-pill-per-edge treatment this replaces), [0054](0054-ambient-span-events-off-the-day-schedule.md) (the 2026-07-18 amendment's uncounted check-in/out markers this re-expresses), [0064](0064-day-transition-entries-and-home-band-trim.md) (the shared `bookingTransitionsOnDate` derivation this pairs by day; the day-view transition **rows** are unchanged), [0041](0041-parallel-overlapping-events.md) (the overlap/containment count chips this folds into the shared primitive), [0045](0045-trip-home-real-data-only.md) (the derived day-at-a-glance card this restyles), [0063](0063-category-time-behaviour-profile.md) (the `bracketed` profile every rule keys on), [0028](0028-plan-violet-color-budget-dark-ready.md) (the amber/teal/neutral colour budget this obeys)
 
+## Amendment (2026-08-04, ADR-0164) — the count was not this rule's to make
+
+This ADR's _"marking a transition is not counting a block"_ is right about the **rail** and was wrongly applied to the **number**. A day whose only real commitment was an 11:00 check-out drew the anchor and reported `0 נותרו היום`, so the two annotations contradicted each other on the day the count matters most.
+
+[ADR-0164](0164-a-spans-own-edge-is-something-you-can-still-miss.md) adds an ambient span's own edge — a check-in, check-out, car pick-up or return landing today and not yet reached — to `remaining`. **Nothing about the rail changes**: the span still draws no block and still cannot stretch the window, and a stay's middle nights still count nothing. `isAmbient` gates it, which is what keeps a same-day flight from being counted as both a block and its two transitions.
+
 ## Context
 
 The Trip-mode Home glance ("היום במבט", ADR-0045) carries **two unrelated annotation systems that share no visual language**:

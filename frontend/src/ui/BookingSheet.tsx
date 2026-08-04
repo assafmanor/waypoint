@@ -290,9 +290,17 @@ export function BookingSheet({
   // profile says a journey of this kind can be broken by one, and only on a create.
   const offersStops = isCreate && connectionWindow(type) != null;
   const stops = offersStops ? stopPlaceIds : EMPTY_STOPS;
+  /** **A hire's return defaults to its pick-up** (ADR-0163 §1, hardened after the owner
+   *  reported `נריטה ← -`). The field writes the two equal while the answer is "same
+   *  counter", but that only fires when the toggle or the picker is touched — so a place
+   *  arriving from a MAP ERRAND (which assigns `draft.fromPlaceId` directly) and a
+   *  pre-0163 row opened and saved untouched both left the return null. Normalising on
+   *  READ makes the gap unrepresentable rather than fixing it at each writer, which is
+   *  the same choice the leg-resize below makes one line down. */
+  const hireReturnId = isHire ? (toPlaceId ?? fromPlaceId) : toPlaceId;
   /** The journey's points in travel order: origin, every stop, destination. Legs run
    *  between consecutive points, so `legCount` is one less than this. */
-  const routePoints = [fromPlaceId, ...stops, toPlaceId];
+  const routePoints = [fromPlaceId, ...stops, hireReturnId];
   const legCount = isSpan ? routePoints.length - 1 : 1;
   // Read through a resize rather than kept in sync by a setter: state can lag the
   // number of stops for one render, and normalising on READ makes that unrepresentable
@@ -315,7 +323,7 @@ export function BookingSheet({
   const startZone = isTransport
     ? zoneOf(fromPlaceId, startOverride)
     : zoneOf(placeId, startOverride);
-  const endZone = isTransport ? zoneOf(toPlaceId, endOverride) : zoneOf(placeId, startOverride);
+  const endZone = isTransport ? zoneOf(hireReturnId, endOverride) : zoneOf(placeId, startOverride);
   /** **A leg reads in the zones of ITS OWN two points** (ADR-0107, extended over a
    *  sequence). Only the journey's outer ends can carry a pinned override — an interior
    *  stop has a picked place, which is what the chip exists to stand in for when nothing
@@ -679,7 +687,7 @@ export function BookingSheet({
             event,
             ...startPatch,
             ...endPatch,
-            ...(isTransport ? { fromPlaceId, toPlaceId } : { placeId }),
+            ...(isTransport ? { fromPlaceId, toPlaceId: hireReturnId } : { placeId }),
           });
         }
 

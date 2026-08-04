@@ -25,6 +25,7 @@ import { formatTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX, DOT_SEPARATOR } from '../constants';
+import { typeChipAddsMeaning } from '../lib/index-bookings';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
 
@@ -160,7 +161,11 @@ export function BookingDetail({
           <div className={'bk-badge' + (badgeTint ? ` ${badgeTint}` : '')}>{icon}</div>
           <div className="bk-headtext">
             <div className="bk-title">{isRoute ? <RouteLabel from={from} to={to} /> : heading}</div>
-            <div className="bk-type">{t.index.bookingType[booking.type]}</div>
+            {/* Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped
+                rather than echoing a title that is already the type's own name. */}
+            {typeChipAddsMeaning(booking) && (
+              <div className="bk-type">{t.index.bookingType[booking.type]}</div>
+            )}
           </div>
         </div>
 
