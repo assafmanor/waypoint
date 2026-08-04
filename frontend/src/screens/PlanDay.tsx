@@ -72,6 +72,7 @@ import {
   freeAfterLast,
   freeBeforeFirst,
   freeBetween,
+  freeWholeDay,
   nextSlot,
   type Gap,
   type GapDefaults,
@@ -724,6 +725,22 @@ export function PlanDay() {
         before: freeBeforeFirst(dayEvents, activeDate, tz),
         after: freeAfterLast(dayEvents, activeDate, tz),
       };
+  /** The day's first and last TIMED rows, which the edge positions sit beside — so a drag
+   *  of either one can suppress the edge it is already at (the same rule the between-row
+   *  positions apply in `BuilderGroups`). */
+  const timed = dayEvents.filter((e) => e.startsAt);
+  /** Is the held row already AT this edge, with no room there to make the drop mean
+   *  anything? Same rule as between two rows: a chip is kept (it is a real move into free
+   *  time), a seam beside the row being dragged is not. */
+  const heldAtEdge = (free: Gap | null, edge: TripEvent | undefined) =>
+    free != null && drag != null && edge?.id === drag.id && !earnsChip(free);
+  /** **The day itself, when nothing timed can hold a position** — an empty day, a day of
+   *  untimed rows, or one whose only entries are booking transition points. All three
+   *  render a list (or an empty state) and all three used to accept a drop nowhere, because
+   *  both edges answer null with no timed event to measure from. */
+  const wholeDayFree = readOnly || edgeFree.before ? null : freeWholeDay(activeDate, tz);
+  /** Nothing on the day at all — not even a booking's transition point. */
+  const isEmptyDay = dayEvents.length === 0 && transitions.length === 0;
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
   const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
@@ -827,7 +844,7 @@ export function PlanDay() {
           </div>
         )}
 
-        {dayEvents.length === 0 && transitions.length === 0 ? (
+        {isEmptyDay && (
           // An empty day has no gap chips, so it had nothing to drop a card onto —
           // the one day where dragging an idea in is most obviously the point
           // (session-117). While a drag is in flight the empty state itself becomes
@@ -852,11 +869,26 @@ export function PlanDay() {
                   ? t.planDay.pastEmpty
                   : t.planDay.empty}
           </div>
-        ) : (
+        )}
+        {/* …and the day itself as a POSITION, which is what `שבץ` means: a drop here lands
+            at a time on this day rather than carrying whatever clock time the event already
+            had. It sits inside/below the empty state deliberately rather than replacing it,
+            so the coarser "move it to this day, keep its time" target stays available — the
+            chip is more specific, and `resolveRowDrop` already prefers a slot over a day. */}
+        {wholeDayFree && (
+          <FreeSlot
+            free={wholeDayFree}
+            label={t.planDay.gapWholeDay}
+            seamLabel={t.planDay.seamDayStart}
+            over={overGap(wholeDayFree.fill)}
+            onFill={setGapChoice}
+          />
+        )}
+        {!isEmptyDay && (
           <div>
             {/* The day's head: free time before the first event, which `freeBetween`
                 cannot see because it has an event on one side only (session-123). */}
-            {edgeFree.before && (
+            {edgeFree.before && !heldAtEdge(edgeFree.before, timed[0]) && (
               <FreeSlot
                 free={edgeFree.before}
                 label={t.planDay.gapBefore(gapLabel(edgeFree.before.minutes))}
@@ -887,7 +919,7 @@ export function PlanDay() {
               ))}
             {/* …and its tail, below the untimed rows: they hold no clock position, so
                 nothing sits "after the last event" but this. */}
-            {edgeFree.after && (
+            {edgeFree.after && !heldAtEdge(edgeFree.after, timed[timed.length - 1]) && (
               <FreeSlot
                 free={edgeFree.after}
                 label={t.planDay.gapAfter(gapLabel(edgeFree.after.minutes))}
@@ -1411,9 +1443,10 @@ function FreeSlot({
   const isChip = earnsChip(free);
   return (
     <div
-      // A seam is a `.gap` with a modifier, never a second block: the two densities share
-      // the chip's flex row, rhythm and spacing, and only what differs is overridden.
-      className={'gap' + (isChip ? '' : ' seam') + (over ? ' drop-over' : '')}
+      // Two classes, one shared geometry block in `screens.css`. Deliberately NOT
+      // `.gap.seam`: `.gap` means "the chip" to app code, tests and the e2e spec that
+      // counts them, and a seam is not one.
+      className={(isChip ? 'gap' : 'bld-seam') + (over ? ' drop-over' : '')}
       data-gap-key={gapKey(free.fill)}
       data-gap-date={free.fill.date}
       data-gap-start={free.fill.start}
@@ -1489,10 +1522,24 @@ function BuilderGroups({
         }
         const g = entry.group;
         const prevEnd = prevEventGroup && groupEndEvent(prevEventGroup);
-        const free =
+        // **A position touching the row being dragged is not offered.** "Insert this
+        // immediately above itself" and "…immediately below itself" are the two places it
+        // already is, so drawing them invites a gesture that either does nothing or nudges
+        // the event by its own length — reported as "the line appears even for the same slot
+        // we're moving from". Only the ROW drag has a position in the day; a shelf card has
+        // none, so for it every seam is meaningful and none is suppressed.
+        const held = ctx.drag?.id;
+        const touchesHeld =
+          held != null && (prevEnd?.id === held || groupStartEvent(g).id === held);
+        const between =
           depth === 0 && prevEnd && !ctx.readOnly
             ? freeBetween(prevEnd, groupStartEvent(g), ctx.tz)
             : null;
+        // A SEAM touching the held row is suppressed; a CHIP is not. The distinction is the
+        // whole of it: a chip means "into that free afternoon", which is a real move however
+        // adjacent it is, while a seam beside the held row means "start where you already
+        // end" — a nudge by its own length, or nothing at all.
+        const free = between && touchesHeld && !earnsChip(between) ? null : between;
         prevEventGroup = g;
         const key = g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
         return (

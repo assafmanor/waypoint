@@ -1850,10 +1850,18 @@
    ring, which is now the mode's rule rather than this chooser's own. */
 
 /* gap chip between events — fill-a-gap is a plan action (violet) */
-.gap {
+/* ONE row shape for both densities of a position (ADR-0161 §2) — the `שבץ` chip and the
+   drag-only seam below. Shared so their rhythm cannot drift, and NOT by making a seam a
+   `.gap` modifier: `.gap` means "the chip" to app code, to unit tests and to
+   `e2e/shelf-drag.spec.ts` (which counts them), so widening it would have quietly changed
+   what every one of those selectors matches. */
+.gap,
+.bld-seam {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.gap {
   margin: 0 0 9px;
   padding: 2px 6px;
 }
@@ -1897,7 +1905,7 @@
 
    `.gap.seam` and the classes below are `.bld-seam-*`, not `.seam-*`, because `.seam-tag`
    already means the overlap tag on a cluster member. */
-.gap.seam {
+.bld-seam {
   display: none;
 }
 /* Gated on the class `useHoldToDrag` already parks on `<body>` for the length of an armed
@@ -1905,11 +1913,41 @@
    wanted: there is one answer to "is a drag in flight" (this screen had been about to
    hand-roll a union of its two drag states), and a seam therefore appears for EITHER
    drag — the builder row and the shelf card both land in a position, so both should be
-   able to see them. */
-body.wp-dragging .gap.seam {
+   able to see them.
+   
+   **IT COSTS NO LAYOUT**, and that is not an optimisation — it is a correctness fix. An
+   18px seam per adjacency added ~90px to a four-event day *at the moment the drag armed*,
+   which shifts every target below the finger down as you reach for it: the drag's own
+   comment ("content moving under a stationary finger changes the answer just as much as
+   the finger moving") describes the auto-scroll, and this would have made the LIST do it.
+   So the seam is zero-height with no margin, which lands it inside the 9px `.bld` already
+   leaves between rows, and its line paints over that gap. `align-items: center` on a
+   zero-height flex box overflows its children equally above and below the line; nothing in
+   `.builder`/`.builder-main` clips (neither has a rule at all). */
+body.wp-dragging .bld-seam {
   display: flex;
-  margin: -4px 0 5px;
-  padding: 3px 6px;
+  height: 0;
+  margin: 0;
+  position: relative;
+}
+/* **The hit area, out of flow.** Zero height buys the layout invariant above and costs the
+   thing a drop target exists for: a box with no area is not returned by
+   `elementFromPoint` at all, so the seam would only catch a finger within the 3px of its
+   own line. This reaches into the row gap and a little over each neighbour, so the target
+   is ~22px while the layout stays 0 — the same trade `button.bld-time` makes for the row's
+   time chip (ADR-0161 §7), for the same reason.
+   
+   A pseudo-element rather than a child: `elementFromPoint` returns the ORIGINATING element,
+   so a hit anywhere in here resolves to `.bld-seam` and `gapAt`'s `closest('[data-gap-key]')`
+   finds the slot on the first step. Taking a few px off each neighbouring row's own swap
+   target is deliberate — the boundary between "trade with this row" and "insert here"
+   belongs at the row's edge. */
+body.wp-dragging .bld-seam::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: -11px;
+  height: 22px;
 }
 .bld-seam-line {
   flex: 1;
@@ -1925,11 +1963,11 @@ body.wp-dragging .gap.seam {
   opacity: 0;
   transition: opacity 0.12s;
 }
-body.wp-dragging .gap.seam.drop-over .bld-seam-line {
+body.wp-dragging .bld-seam.drop-over .bld-seam-line {
   background: var(--plan);
   height: 4px;
 }
-body.wp-dragging .gap.seam.drop-over .bld-seam-lbl {
+body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   opacity: 1;
 }
 
