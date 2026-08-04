@@ -22,7 +22,8 @@ import {
 } from '@waypoint/shared';
 import { eventPlaceId } from './places';
 import { formatDistance } from './distance';
-import { relativeDayLabel } from './time';
+import { relativeDayLabel, zonedIso } from './time';
+import type { GapDefaults } from './gaps';
 import { t } from '../i18n/he';
 
 export interface ShelfGroups {
@@ -174,7 +175,42 @@ export function rankIdeas(
   });
 }
 
-/** The reason as a full sentence, for the gap sheet's full-width row. The contract
+/**
+ * **The shelf, ranked against one slot** — the whole input `SlotFillSheet` needs, in one
+ * call (ADR-0161 §6).
+ *
+ * This was four nested calls inline at the gap-fill call site, and `החלף` needs the same
+ * four in the same order: the shelf's two groups joined, the slot's own instants derived
+ * from its wall clock, `slotStops` for the neighbours, `rankIdeas` for the order. Two
+ * copies of that would be two chances to rank a replacement differently from a gap fill,
+ * on the one sheet whose entire promise is that they are the same question.
+ *
+ * `zonedIso` is the only reason this is not in the pure part of the file: the slot is a
+ * wall clock and the stops are instants, so someone has to name the zone.
+ */
+export function shelfForSlot(
+  shelf: { forDay: MaybeItem[]; pool: MaybeItem[] },
+  slot: GapDefaults,
+  tz: string,
+  context: { events: TripEvent[]; bookings: Booking[]; places: Place[] },
+): RankedIdea[] {
+  const { events, bookings, places } = context;
+  return rankIdeas(
+    [...shelf.forDay, ...shelf.pool],
+    places,
+    slot.date,
+    // Ranked against THIS slot's own neighbours, not the whole day — the sheet's only
+    // question is which idea fits here (ADR-0151 §3).
+    slotStops(events, bookings, places, slot.date, {
+      fromMs: Date.parse(zonedIso(slot.date, slot.start, tz)),
+      // A slot with no end (a late tail, ADR-0036) is an instant, and its "after" neighbour
+      // is then everything following it — which is the honest reading.
+      toMs: Date.parse(zonedIso(slot.date, slot.end || slot.start, tz)),
+    }),
+  );
+}
+
+/** The reason as a full sentence, for the slot sheet's full-width row. The contract
  *  carries the fact and the frontend spells it (ADR-0151 §8, and `packages/shared`
  *  holds no UI copy). `today` is the date the relative phrasing is read against —
  *  the day being viewed, so "מחר" means the day after the one on screen. */

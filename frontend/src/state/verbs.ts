@@ -113,6 +113,16 @@ type UndoDescriptor =
     }
   | { kind: 'maybeDay'; item: MaybeItem }
   | { kind: 'park'; event: TripEvent; maybeId: string }
+  /** **`החלף`** (ADR-0161 §6), which is a park and a schedule to the app and one decision to
+   *  the user — so it gets one descriptor, like `book` below, and reversing it reverses both
+   *  halves. The two fields are exactly the `park` and `create` descriptors those halves
+   *  would each have written, and the reversal runs the same two reversals in the order that
+   *  keeps every note alive. */
+  | {
+      kind: 'replace';
+      park: { event: TripEvent; maybeId: string };
+      created: { id: string; maybeId: string };
+    }
   /** A booked save (ADR-0136), which is ONE action to the user and up to three writes
    *  underneath — so it gets one descriptor, and undoing it undoes all of them.
    *
@@ -489,6 +499,33 @@ export async function applyBookEvent(
   return booking;
 }
 
+/** **The writes a schedule performs**, with no dispatch and no descriptor of its own — so
+ *  `החלף` can run them after a park inside ONE action (ADR-0161 §6) instead of copying the
+ *  sequence, including the two ordering rules its comments below are about. */
+async function scheduleWrites(deps: VerbDeps, event: TripEvent, maybeId: string): Promise<void> {
+  const input = toCreateEventInput(event);
+  const canonical = await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
+    createEvent(deps.tripId, input),
+  );
+  if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
+  // What the group wrote about the idea is about the thing, not about the shelf it was
+  // sitting on — so it follows the idea onto the day. After the create, because the event
+  // has to exist before a note can point at it (offline: FIFO).
+  await carryNotes(deps, { kind: 'maybeItemId', id: maybeId }, { kind: 'eventId', id: event.id });
+  // Persists the consumed flag server-side (T-058) so a resync after an
+  // offline reconnect doesn't revert this maybe-item back to unscheduled.
+  // Separate call rather than a combined backend "schedule" endpoint because
+  // the event is built here (icon, default slot, carried-over placeId) —
+  // if that derivation ever moves server-side, drop this call and the
+  // consume() service method (backend/src/maybe-items/maybe-items.service.ts)
+  // together in favor of one endpoint.
+  await restOrQueue(
+    deps.tripId,
+    { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: maybeId },
+    () => consumeMaybeItem(deps.tripId, maybeId),
+  );
+}
+
 export async function applySchedule(
   deps: VerbDeps,
   event: TripEvent,
@@ -496,28 +533,8 @@ export async function applySchedule(
 ): Promise<void> {
   deps.dispatch({ type: TRIP_ACTION.SCHEDULE, event, maybeId });
   deps.lastAction.current = { kind: 'create', id: event.id, maybeId };
-  const input = toCreateEventInput(event);
   try {
-    const canonical = await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
-      createEvent(deps.tripId, input),
-    );
-    if (canonical) deps.dispatch({ type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });
-    // What the group wrote about the idea is about the thing, not about the shelf it was
-    // sitting on — so it follows the idea onto the day. After the create, because the event
-    // has to exist before a note can point at it (offline: FIFO).
-    await carryNotes(deps, { kind: 'maybeItemId', id: maybeId }, { kind: 'eventId', id: event.id });
-    // Persists the consumed flag server-side (T-058) so a resync after an
-    // offline reconnect doesn't revert this maybe-item back to unscheduled.
-    // Separate call rather than a combined backend "schedule" endpoint because
-    // the event is built here (icon, default slot, carried-over placeId) —
-    // if that derivation ever moves server-side, drop this call and the
-    // consume() service method (backend/src/maybe-items/maybe-items.service.ts)
-    // together in favor of one endpoint.
-    await restOrQueue(
-      deps.tripId,
-      { verb: OUTBOX_VERB.CONSUME_MAYBE_ITEM, maybeItemId: maybeId },
-      () => consumeMaybeItem(deps.tripId, maybeId),
-    );
+    await scheduleWrites(deps, event, maybeId);
   } catch (err) {
     deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
@@ -783,9 +800,10 @@ export async function applyDeletePlace(
 // Park an event onto the shelf: turn it into a maybe idea (title/icon/place) and
 // remove it from the day — so any event can become a reschedulable idea, not
 // just ones that started on the shelf. Offline-capable (Tier-3 build action), one undo.
-export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeItem): Promise<void> {
-  deps.dispatch({ type: TRIP_ACTION.PARK_EVENT, eventId: event.id, item });
-  deps.lastAction.current = { kind: 'park', event, maybeId: item.id };
+/** **The writes a park performs**, extracted for the same reason as `scheduleWrites`: `החלף`
+ *  parks the event it displaces, and this is where the note ordering that makes parking safe
+ *  is written down. */
+async function parkWrites(deps: VerbDeps, event: TripEvent, item: MaybeItem): Promise<void> {
   const input = {
     id: item.id,
     title: item.title,
@@ -794,20 +812,69 @@ export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeIte
     placeId: item.placeId,
     targetDate: item.targetDate,
   };
+  await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
+    createMaybeItem(deps.tripId, input),
+  );
+  // **BETWEEN the two writes, and that is the whole point.** Parking deletes the event,
+  // and the note FKs are `onDelete: Cascade` — so notes still pointing at it when the
+  // delete lands are destroyed in the database, not merely stranded. Moved after the idea
+  // exists and before the event goes.
+  await carryNotes(deps, { kind: 'eventId', id: event.id }, { kind: 'maybeItemId', id: item.id });
+  await restOrQueue(
+    deps.tripId,
+    { verb: OUTBOX_VERB.DELETE, eventId: event.id, confirm: false },
+    () => deleteEvent(deps.tripId, event.id),
+  );
+}
+
+export async function applyPark(deps: VerbDeps, event: TripEvent, item: MaybeItem): Promise<void> {
+  deps.dispatch({ type: TRIP_ACTION.PARK_EVENT, eventId: event.id, item });
+  deps.lastAction.current = { kind: 'park', event, maybeId: item.id };
   try {
-    await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE_MAYBE_ITEM, input }, () =>
-      createMaybeItem(deps.tripId, input),
-    );
-    // **BETWEEN the two writes, and that is the whole point.** Parking deletes the event,
-    // and the note FKs are `onDelete: Cascade` — so notes still pointing at it when the
-    // delete lands are destroyed in the database, not merely stranded. Moved after the idea
-    // exists and before the event goes.
-    await carryNotes(deps, { kind: 'eventId', id: event.id }, { kind: 'maybeItemId', id: item.id });
-    await restOrQueue(
-      deps.tripId,
-      { verb: OUTBOX_VERB.DELETE, eventId: event.id, confirm: false },
-      () => deleteEvent(deps.tripId, event.id),
-    );
+    await parkWrites(deps, event, item);
+  } catch (err) {
+    deps.dispatch({ type: TRIP_ACTION.UNDO });
+    writeErrorToast(deps.toast, err);
+  }
+}
+
+/**
+ * **`החלף`: one decision, one write, one undo** (ADR-0161 §6).
+ *
+ * `החלף` used to `skip` the event and post a toast telling you to go and find a replacement
+ * yourself — so the verb emptied the slot and then left, which is the whole of the owner's
+ * report that it is _"confusing and hard to understand how to use"_. It now takes the
+ * decision on the slot: the displaced event goes to the shelf as an idea (`park`, not `skip` —
+ * the thing you displaced is the thing you are most likely to re-slot, ADR-0027), and the
+ * replacement takes its **exact** start and end.
+ *
+ * The two halves are `parkWrites` and `scheduleWrites`, in that order — the slot is never
+ * empty to the user because there is one dispatch, and it is never empty on the server for
+ * longer than the round trip. One reducer action so the undo snapshot spans both, and one
+ * descriptor so reversing puts the day back exactly as it was.
+ */
+export async function applyReplace(
+  deps: VerbDeps,
+  displaced: TripEvent,
+  parked: MaybeItem,
+  event: TripEvent,
+  maybeId: string,
+): Promise<void> {
+  deps.dispatch({
+    type: TRIP_ACTION.REPLACE_EVENT,
+    displacedId: displaced.id,
+    parked,
+    event,
+    maybeId,
+  });
+  deps.lastAction.current = {
+    kind: 'replace',
+    park: { event: displaced, maybeId: parked.id },
+    created: { id: event.id, maybeId },
+  };
+  try {
+    await parkWrites(deps, displaced, parked);
+    await scheduleWrites(deps, event, maybeId);
   } catch (err) {
     deps.dispatch({ type: TRIP_ACTION.UNDO });
     writeErrorToast(deps.toast, err);
@@ -844,6 +911,40 @@ export async function applyRippleApply(
 /** Put a consumed idea back on the shelf, server-side — the compensating write BOTH undo paths
  *  owe (a plain schedule and a booked save that consumed one). Queued when offline like every
  *  other write, so an undo made on a plane still lands. */
+/** **Undoing a create**, extracted so `replace` can reverse its schedule half with the same
+ *  three writes and the same order rather than a copy of them. */
+async function reverseCreate(deps: VerbDeps, id: string, maybeId?: string): Promise<void> {
+  // The notes ride BACK first, for the same reason parking moves them before its delete:
+  // this delete cascades, so a note still pointing at the event would be destroyed by
+  // the undo of the very action that gave it that host.
+  if (maybeId) {
+    await carryNotes(deps, { kind: 'eventId', id }, { kind: 'maybeItemId', id: maybeId });
+  }
+  await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.DELETE, eventId: id, confirm: false }, () =>
+    deleteEvent(deps.tripId, id),
+  );
+  // A scheduled idea goes back on the shelf. The reducer's snapshot has already done this
+  // locally; before `restore` existed there was nothing to tell the server, so the next
+  // resync re-consumed the idea and it vanished a second time.
+  if (maybeId) await restoreConsumed(deps, maybeId);
+}
+
+/** **Undoing a park**: drop the idea and put the event back. ORDER, and it is not the obvious
+ *  one — the event is re-created FIRST, because the notes parking moved onto the idea have to
+ *  reach it before the idea is deleted and its own cascade takes them. */
+async function reversePark(deps: VerbDeps, event: TripEvent, maybeId: string): Promise<void> {
+  const input = toCreateEventInput(event);
+  await restOrQueue(deps.tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
+    createEvent(deps.tripId, input),
+  );
+  await carryNotes(deps, { kind: 'maybeItemId', id: maybeId }, { kind: 'eventId', id: event.id });
+  await restOrQueue(
+    deps.tripId,
+    { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: maybeId },
+    () => deleteMaybeItem(deps.tripId, maybeId),
+  );
+}
+
 async function restoreConsumed(deps: VerbDeps, maybeId: string): Promise<void> {
   await restOrQueue(
     deps.tripId,
@@ -872,25 +973,7 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       return;
     }
     case 'create':
-      // The notes ride BACK first, for the same reason parking moves them before its delete:
-      // this delete cascades, so a note still pointing at the event would be destroyed by
-      // the undo of the very action that gave it that host.
-      if (desc.maybeId) {
-        await carryNotes(
-          deps,
-          { kind: 'eventId', id: desc.id },
-          { kind: 'maybeItemId', id: desc.maybeId },
-        );
-      }
-      await restOrQueue(
-        tripId,
-        { verb: OUTBOX_VERB.DELETE, eventId: desc.id, confirm: false },
-        () => deleteEvent(tripId, desc.id),
-      );
-      // A scheduled idea goes back on the shelf. The reducer's snapshot has already done this
-      // locally; before `restore` existed there was nothing to tell the server, so the next
-      // resync re-consumed the idea and it vanished a second time.
-      if (desc.maybeId) await restoreConsumed(deps, desc.maybeId);
+      await reverseCreate(deps, desc.id, desc.maybeId);
       return;
     case 'rippleApply':
       await Promise.all(
@@ -1017,26 +1100,18 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       await restoreNotes(deps, desc.notes);
       return;
     }
-    case 'park': {
-      // Un-park: drop the idea and put the event back. ORDER, and it is not the obvious one:
-      // the event is re-created FIRST, because the notes parking moved onto the idea have to
-      // reach it before the idea is deleted and its own cascade takes them.
-      const input = toCreateEventInput(desc.event);
-      await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
-        createEvent(tripId, input),
-      );
-      await carryNotes(
-        deps,
-        { kind: 'maybeItemId', id: desc.maybeId },
-        { kind: 'eventId', id: desc.event.id },
-      );
-      await restOrQueue(
-        tripId,
-        { verb: OUTBOX_VERB.DELETE_MAYBE_ITEM, maybeItemId: desc.maybeId },
-        () => deleteMaybeItem(tripId, desc.maybeId),
-      );
+    case 'park':
+      await reversePark(deps, desc.event, desc.maybeId);
       return;
-    }
+    case 'replace':
+      // Both halves, in the reverse of the order that made them (ADR-0161 §6). The schedule
+      // goes first for the same reason its own undo carries notes before deleting: the
+      // replacement's delete cascades, and its notes have to reach the idea it came from
+      // while that idea still exists. Only then is the displaced event put back, which is
+      // what re-creates the host the parked idea's notes belong to.
+      await reverseCreate(deps, desc.created.id, desc.created.maybeId);
+      await reversePark(deps, desc.park.event, desc.park.maybeId);
+      return;
     case 'book': {
       // ONE undo for the whole booked save (ADR-0136 §3). Order matters twice over.
       //
@@ -1156,6 +1231,32 @@ export function useVerbs() {
   const authorId = me?.user.id ?? trip.updatedBy;
   const undo = () => void applyUndo(deps);
 
+  /** **The idea an event becomes when it leaves the day.** Two verbs make one now — `park`
+   *  and `החלף` (ADR-0161 §6) — and a parked event is the same thing either way, so the
+   *  shape is here rather than twice at the call sites. `targetDate` overrides the day it
+   *  lands on: `null` is "someday", which is what dropping a row on the shelf's pool group
+   *  means (ADR-0116 session-118); `undefined` keeps the event's own day. */
+  const parkedIdea = (event: TripEvent, targetDate: string | null | undefined): MaybeItem => {
+    const now = new Date(getNow()).toISOString();
+    return {
+      id: crypto.randomUUID(),
+      tripId: trip.id,
+      title: event.title,
+      icon: event.icon,
+      // Parking is "not in this slot", not "not this day" (ADR-0116 §4): the category comes
+      // along (it used to be dropped, so a parked restaurant lost its pin hue) and the date
+      // survives as the idea's pencilled-in day.
+      category: event.category,
+      placeId: event.placeId,
+      targetDate: targetDate === undefined ? event.date : (targetDate ?? undefined),
+      createdBy: authorId,
+      consumed: false,
+      createdAt: now,
+      updatedAt: now,
+      updatedBy: authorId,
+    };
+  };
+
   return {
     done: (e: TripEvent) => {
       void applySetStatus(deps, e, EVENT_STATUS.DONE);
@@ -1169,10 +1270,9 @@ export function useVerbs() {
       void applySetStatus(deps, e, EVENT_STATUS.PLANNED);
       toast(CONTROL_ICON.restore, t.toast.restored, undo);
     },
-    swap: (e: TripEvent) => {
-      void applySetStatus(deps, e, EVENT_STATUS.SKIPPED);
-      toast(CONTROL_ICON.swap, t.toast.swapPrompt, undo);
-    },
+    // `swap` used to live here and it did not swap: it SKIPPED the event and posted a toast
+    // telling you to find a replacement yourself, which is the report ADR-0161 §6 answers.
+    // `replace` below is the verb it was describing.
     delay: (e: TripEvent) => {
       void applyGuardedDelay(deps, e, DELAY_STEP_MINUTES).then((applied) => {
         if (!applied) return;
@@ -1256,26 +1356,29 @@ export function useVerbs() {
     // what dropping a row on the shelf's pool group means (ADR-0116 session-118).
     // Omitted keeps the default below.
     park: (event: TripEvent, opts: { targetDate?: string | null } = {}) => {
-      const now = new Date(getNow()).toISOString();
-      const item: MaybeItem = {
-        id: crypto.randomUUID(),
-        tripId: trip.id,
-        title: event.title,
-        icon: event.icon,
-        // Parking is "not in this slot", not "not this day" (ADR-0116 §4): the
-        // category comes along (it used to be dropped, so a parked restaurant lost
-        // its pin hue) and the date survives as the idea's pencilled-in day.
-        category: event.category,
-        placeId: event.placeId,
-        targetDate: opts.targetDate === undefined ? event.date : (opts.targetDate ?? undefined),
-        createdBy: authorId,
-        consumed: false,
-        createdAt: now,
-        updatedAt: now,
-        updatedBy: authorId,
-      };
-      void applyPark(deps, event, item);
+      void applyPark(deps, event, parkedIdea(event, opts.targetDate));
       toast(CONTROL_ICON.toShelf, t.toast.movedToShelf, undo);
+    },
+    /** **`החלף`, taken on the slot** (ADR-0161 §6): the displaced event goes to the shelf and
+     *  `m` takes its exact start and end. One toast and one undo for both, because it is one
+     *  decision — see `applyReplace`. */
+    replace: (displaced: TripEvent, m: MaybeItem) => {
+      const now = new Date(getNow()).toISOString();
+      const event = buildScheduleEvent(trip, displaced.date, m, now, authorId, {
+        date: displaced.date,
+        title: m.title,
+        // Soft, always: what a replacement inherits is the SLOT, not the commitment. A hard
+        // event is never displaced in the first place (ADR-0011 — `החלף` is not offered on
+        // one), so this only ever replaces something soft with something soft.
+        kind: EVENT_KIND.SOFT,
+        // The slot, not a slot of its own: same start, same length. Nothing else on the day
+        // moves, which is what makes this a replacement rather than an insertion (§1's rule,
+        // applied to the one verb that puts one thing where another was).
+        startsAt: displaced.startsAt,
+        endsAt: displaced.endsAt,
+      });
+      void applyReplace(deps, displaced, parkedIdea(displaced, undefined), event, m.id);
+      toast(CONTROL_ICON.swap, t.toast.replaced(m.title), undo);
     },
     /** Resolves when the event's own write has been sent or queued — which is what lets a
      *  caller queue something BEHIND it. The form writing notes on the way (ADR-0152 §6b)

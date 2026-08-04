@@ -1,0 +1,141 @@
+/* **The slot-fill chooser** (ADR-0161 §6): pick a shelf idea for a gap, or as a
+   replacement for the event holding a slot. Rendered inside the neutral Sheet.
+
+   THE ACCENT FOLLOWS THE MODE, and that is the reason this block moved out of
+   `screens.css` along with the component. It was plan violet throughout, which was
+   correct while the sheet was Plan mode's alone — and would be a rule-4 violation
+   (design-language mode identity, ADR-0028: `--plan` is plan mode only) now that
+   `החלף` shows the same sheet in Trip mode. One local variable holds the accent,
+   defaulting to the neutral `--cta`; `data-mode='plan'` re-points it.
+
+   Self-scoped on the surface's OWN `data-mode`, not `.app[data-mode]`, because a
+   `Modal` portals to `document.body` and so sits outside the `.app` subtree — the
+   same mechanism, and the same reason, as `.header`/`.mode-chrome` in `App.css`. */
+.slotfill {
+  --slotfill-accent: var(--cta);
+  /* No deepen in the neutral variant, deliberately: every other `--cta` fill in the
+     app has no hover state either, because the app is touch-first and a hover-only
+     affordance is not one (root rule 6). Plan mode's violet pair below does deepen,
+     which it already did. */
+  --slotfill-accent-deep: var(--cta);
+  --slotfill-tint: var(--indigo-tint); /* the documented Trip-mode wash */
+  --slotfill-on-accent: var(--cta-text);
+}
+.slotfill[data-mode='plan'] {
+  --slotfill-accent: var(--plan);
+  --slotfill-accent-deep: var(--plan-deep);
+  --slotfill-tint: var(--plan-tint);
+  --slotfill-on-accent: var(--on-fill);
+}
+/* What a replacement inherits, said once above the list: same hour, same length. */
+.slotfill-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+}
+.slotfill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* This list is BOTH the reveal host and a scroll container, and to a scroller the
+     reveal's bleed (`.wp-reveal-inner`'s negative margin, ADR-0120) is real overflow
+     — 8px on every side. On the inline axis that is a scrollbar for an axis with
+     nothing to scroll to. Hold the bleed inside the scroller's own padding; the
+     margins subtract it back, so the outer spacing is still 4px / 0 / 12px. */
+  padding: var(--reveal-bleed, 8px);
+  margin: -4px calc(var(--reveal-bleed, 8px) * -1) 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.slotfill-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.slotfill-row:hover {
+  border-color: var(--slotfill-accent);
+  background: var(--slotfill-tint);
+}
+.slotfill-row:focus-visible {
+  outline: 2.5px solid var(--slotfill-accent);
+  outline-offset: 2px;
+}
+.slotfill-ic {
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+.slotfill-main {
+  flex: 1;
+  min-width: 0;
+}
+.slotfill-t {
+  display: block;
+  font-weight: 700;
+  font-size: 14px;
+}
+.slotfill-m {
+  display: block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.slotfill-add {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--slotfill-accent-deep);
+}
+.slotfill-empty {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 14px 8px;
+}
+/* The way past the cap (ADR-0116 session-202 §4). Neutral `--cta` in BOTH modes: it
+   reveals the rest of a list, so it is not a plan action and does not spend plan
+   violet (ADR-0028, root rule 4) even where the accent above does. */
+.slotfill-more {
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--cta);
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-12);
+  padding: 9px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+/* The shared `SearchField` primitive; only its placement in this sheet is here. */
+.slotfill-search {
+  margin: 0 0 var(--space-3);
+}
+.slotfill-new {
+  width: 100%;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--slotfill-on-accent);
+  background: var(--slotfill-accent);
+  border: 0;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+.slotfill-new:hover {
+  background: var(--slotfill-accent-deep);
+}
+.slotfill-new:focus-visible {
+  outline: 2.5px solid var(--slotfill-accent);
+  outline-offset: 2px;
+}

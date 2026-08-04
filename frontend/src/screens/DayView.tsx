@@ -33,6 +33,7 @@ import {
   eventPlaceName,
   eventRoute,
   eventShowOnMap,
+  eventDisplayZones,
   eventZones,
   dayZoneContext,
   isDayOver,
@@ -50,16 +51,25 @@ import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
   buildTimeTree,
+  clockRange,
   eventPhase,
   formatTime,
+  isoToTimeInput,
   hardConflicts,
   zonedIso,
   resolveEndIso,
   type TimeGroup,
   type TimeItem,
 } from '../lib/time';
-import { dayStops, rankIdeas, shelfGroups, stopReasonText, tileReasonText } from '../lib/shelf';
-import { blockFor, nextSlot } from '../lib/gaps';
+import {
+  dayStops,
+  rankIdeas,
+  shelfForSlot,
+  shelfGroups,
+  stopReasonText,
+  tileReasonText,
+} from '../lib/shelf';
+import { blockFor, nextSlot, type GapDefaults } from '../lib/gaps';
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import { dayTransitions, mergeDayEntries, type TransitionEntry } from '../lib/day-entries';
 import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
@@ -82,6 +92,7 @@ import { shortPlaceLabel } from '../lib/place-label';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
+import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
 import { HostNotes } from '../ui/HostNotes';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
@@ -172,12 +183,17 @@ export function DayView() {
   const showMaybesOnMap = useShowMaybesOnMap();
   const [openId, setOpenId] = useState<string | null>(null);
   const [formTarget, setFormTarget] = useState<'new' | TripEvent | null>(null);
+  /** The slot a new event opens on, when something chose it — the slot a replacement was
+   *  going into (ADR-0161 §6). Unset means the day's next opening, which is what a plain
+   *  `＋` means. */
+  const [formSlot, setFormSlot] = useState<GapDefaults | null>(null);
   // RE-OPENING AFTER A PLACE ERRAND (ADR-0134 §2). The form went to the Map tab to have a
   // location picked, which unmounted it — so it comes back from its own draft with the
   // chosen place already in the named field, rather than from whatever the entity holds.
   const [formDraft, setFormDraft] = useState<EventFormDraft | null>(null);
   const closeForm = () => {
     setFormTarget(null);
+    setFormSlot(null);
     setFormDraft(null);
   };
   usePlaceErrandReturn<EventFormDraft>('event', 'days', (returned) => {
@@ -210,6 +226,18 @@ export function DayView() {
     const minutes = typicalMinutesFor(item.category);
     const position = firstPositionFitting(dayPositions(dayEvents, activeDate, zone), minutes);
     return position ? blockFor(position.free, minutes) : nextSlot(dayEvents, activeDate, zone);
+  };
+  /** The event `החלף` was pressed on — the one being displaced (ADR-0161 §6). */
+  const [replaceTarget, setReplaceTarget] = useState<TripEvent | null>(null);
+  /** An event's own slot as a wall clock, read in the zone the day shows it in (ADR-0107) —
+   *  what the replacement inherits, and what the shelf is ranked against. */
+  const slotOf = (e: TripEvent): GapDefaults => {
+    const zones = eventDisplayZones(e, zoneCtx);
+    return {
+      date: e.date,
+      start: e.startsAt ? isoToTimeInput(e.startsAt, zones.start) : '',
+      end: e.endsAt ? isoToTimeInput(e.endsAt, zones.end) : '',
+    };
   };
   // The idea's own surface (ADR-0116's 2026-08-01 amendment): a tap opens this, and
   // `שיבוץ ליום` inside it is what reaches `scheduleItem` above.
@@ -312,6 +340,7 @@ export function DayView() {
       if (booking) setBookingTarget(booking);
       else setFormTarget(e);
     },
+    onReplace: setReplaceTarget,
     onOpenDetail: setDetailTarget,
     showPlaceOnMap,
   };
@@ -468,7 +497,9 @@ export function DayView() {
         <EventForm
           event={formTarget === 'new' ? null : formTarget}
           defaults={
-            formTarget === 'new' ? nextSlot(dayEvents, activeDate, trip.timezone) : undefined
+            formTarget === 'new'
+              ? (formSlot ?? nextSlot(dayEvents, activeDate, trip.timezone))
+              : undefined
           }
           draft={formDraft}
           onClose={closeForm}
@@ -639,6 +670,44 @@ export function DayView() {
           onClose={() => setScheduleItem(null)}
         />
       )}
+
+      {/* **`החלף`, taken on the slot** (ADR-0161 §6). The same sheet the gap fill uses, with
+          its other header: pick a replacement, the displaced event goes to the shelf, and the
+          replacement takes its exact start and length — one write, one toast, one undo. The
+          verb used to skip the event and tell you to go looking. */}
+      {replaceTarget && (
+        <SlotFillSheet
+          title={t.slotFill.replaceTitle(replaceTarget.title)}
+          sub={t.slotFill.replaceSub(
+            clockRange(slotOf(replaceTarget).start, slotOf(replaceTarget).end),
+          )}
+          mode="trip"
+          date={replaceTarget.date}
+          ideas={shelfForSlot(shelf, slotOf(replaceTarget), trip.timezone, {
+            events,
+            bookings,
+            places,
+          })}
+          onPickIdea={(m) => {
+            verbs.replace(replaceTarget, m);
+            setReplaceTarget(null);
+          }}
+          // **Nothing on the shelf fits, so build it** — and this branch is deliberately TWO
+          // actions where a pick is one (ADR-0161 §6's amendment). The displaced event goes to
+          // the shelf now, and the form opens on the slot it freed. Not one atomic write,
+          // because there is nothing to write yet: the form can be cancelled, and the two
+          // separate undos are the better shape for that — backing out of the form leaves the
+          // event on the shelf, which is a decision the user did make, and one more undo puts
+          // it back on the day.
+          onNewEvent={() => {
+            verbs.park(replaceTarget);
+            setFormSlot(slotOf(replaceTarget));
+            setFormTarget('new');
+            setReplaceTarget(null);
+          }}
+          onClose={() => setReplaceTarget(null)}
+        />
+      )}
     </>
   );
 }
@@ -679,6 +748,9 @@ interface DayCtx {
   dayEvents: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
   onEdit: (event: TripEvent) => void;
+  /** `החלף` — open the slot's own chooser (ADR-0161 §6). The screen owns the sheet, because
+   *  the sheet needs the shelf and the day; the row only says which event. */
+  onReplace: (event: TripEvent) => void;
   onOpenDetail: (booking: Booking) => void;
   /** `מפה` — show this place on OUR map (ADR-0121 §8), not Google's. */
   /** Absent outside the trip shell, where there is no Map tab to route to. */
@@ -806,7 +878,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       onEarlier={() => ctx.verbs.earlier(e)}
       onOnWay={() => ctx.verbs.onWay(e)}
       onRestore={() => ctx.verbs.restore(e)}
-      onSwap={() => ctx.verbs.swap(e)}
+      onReplace={ctx.readOnly ? undefined : () => ctx.onReplace(e)}
       onPark={ctx.readOnly ? undefined : () => ctx.verbs.park(e)}
       onEdit={() => ctx.onEdit(e)}
       onRemove={() => ctx.verbs.remove(e)}

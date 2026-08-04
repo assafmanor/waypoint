@@ -13,11 +13,10 @@
 //
 // Domain UI may use the shared copy/icon/time helpers (not state); it does.
 import { useState, type ReactNode } from 'react';
-import { formatTime, crossesMidnightZoned } from '../../lib/time';
+import { clockRange, formatTime, crossesMidnightZoned } from '../../lib/time';
 import type { EventZones } from '../../lib/places';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { CONTROL_ICON, DELAY_STEP_MINUTES, DOT_SEPARATOR } from '../../constants';
-import { ltrIsolate } from '../../lib/bidi';
 import { Icon } from '../Icon';
 import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
@@ -110,7 +109,10 @@ export interface EventCardProps {
   onEarlier?: () => void;
   onOnWay?: () => void;
   onRestore?: () => void;
-  onSwap?: () => void;
+  /** `החלף` — open the slot's own chooser: pick a replacement, this event goes to the shelf,
+   *  the replacement takes its exact start and length (ADR-0161 §6). Soft events only, and
+   *  absent where the day-scope gate forbids a write (a past day, ADR-0029). */
+  onReplace?: () => void;
   /** "Back to the shelf" — the event becomes a shelf idea, keeping its title,
    *  place, category and date (ADR-0116 §4). Soft events only; absent where the
    *  day-scope gate forbids it (a past day, ADR-0029). */
@@ -204,7 +206,7 @@ export function EventCard(props: EventCardProps) {
     onEarlier,
     onOnWay,
     onRestore,
-    onSwap,
+    onReplace,
     onPark,
     onEdit,
     onRemove,
@@ -327,11 +329,11 @@ export function EventCard(props: EventCardProps) {
   }
 
   const menuActions: RowAction[] = [];
-  if (!isDone && !isHard && onSwap) {
+  if (!isDone && !isHard && onReplace) {
     menuActions.push({
       label: t.actions.swap,
       icon: CONTROL_ICON.swap,
-      onSelect: () => runAction(onSwap),
+      onSelect: () => runAction(onReplace),
     });
   }
   if (!isDone && !isHard && onPark) {
@@ -364,10 +366,7 @@ export function EventCard(props: EventCardProps) {
   // takes its own isolate (ADR-0118).
   const menuSubject = [
     isHard ? t.event.hard : t.event.soft,
-    startsAt &&
-      ltrIsolate(
-        formatTime(startsAt, startZone) + (endsAt ? `–${formatTime(endsAt, endZone)}` : ''),
-      ),
+    startsAt && clockRange(formatTime(startsAt, startZone), endsAt && formatTime(endsAt, endZone)),
   ]
     .filter(Boolean)
     .join(` ${DOT_SEPARATOR} `);

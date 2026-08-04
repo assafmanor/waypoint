@@ -23,6 +23,7 @@ import {
   applyAddMaybe,
   applyGuardedUpdate,
   applyPark,
+  applyReplace,
   applySetMaybeDay,
   applyRemoveMaybe,
   applyEventPatches,
@@ -1166,6 +1167,128 @@ describe('applyPark (move a soft event to the maybe shelf)', () => {
     await applyPark(deps, event, item);
 
     expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.PARK_EVENT, eventId: event.id, item });
+    expect(deps.actions.at(-1)).toEqual({ type: TRIP_ACTION.UNDO });
+    expect(deps.toast).toHaveBeenCalledTimes(1);
+  });
+});
+
+// **`החלף` is one decision** (ADR-0161 §6). It used to `skip` the event and post a toast
+// telling you to go and find a replacement yourself — so the slot was emptied and the verb
+// left. What this file pins is the two things that make the new one honest: ONE reducer action
+// (two would take two undo snapshots, and the second would capture a day the first already
+// emptied), and an undo that reverses both halves.
+describe('applyReplace (החלף, taken on the slot)', () => {
+  const displaced = EVENTS.find((e) => e.id === 'ev-goldengai')!; // soft
+  const parked = {
+    id: 'mb-displaced',
+    tripId: 'trip-japan-26',
+    title: displaced.title,
+    icon: displaced.icon,
+    createdBy: 'u-assaf',
+    consumed: false,
+    createdAt: 'now',
+    updatedAt: 'now',
+    updatedBy: 'u-assaf',
+  };
+  /** The replacement, already built on the displaced event's own slot — which is the rule
+   *  the verb wrapper applies and this asserts is what arrives. */
+  const replacement = {
+    ...displaced,
+    id: 'ev-replacement',
+    title: 'אודן קאשימה',
+  };
+
+  /** Answers each write with a body of the right SHAPE — the responses are parsed, so an
+   *  event handed back from `/maybe-items` is refused and the whole verb rolls back. */
+  const ok = (calls: Array<{ url: string; method?: string }>) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const href = String(url);
+        calls.push({ url: href, method: init?.method });
+        const body = href.includes('/maybe-items') ? parked : replacement;
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 201 }));
+      }),
+    );
+
+  it('dispatches exactly ONE action, so the undo snapshot spans both halves', async () => {
+    ok([]);
+    const deps = fakeDeps();
+
+    await applyReplace(deps, displaced, parked, replacement, 'mb-chosen');
+
+    expect(deps.actions.filter((a) => a.type === TRIP_ACTION.REPLACE_EVENT)).toEqual([
+      {
+        type: TRIP_ACTION.REPLACE_EVENT,
+        displacedId: displaced.id,
+        parked,
+        event: replacement,
+        maybeId: 'mb-chosen',
+      },
+    ]);
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.PARK_EVENT)).toBe(false);
+    expect(deps.actions.some((a) => a.type === TRIP_ACTION.SCHEDULE)).toBe(false);
+  });
+
+  it('parks the displaced event, then creates the replacement and consumes its idea', async () => {
+    const calls: Array<{ url: string; method?: string }> = [];
+    ok(calls);
+
+    await applyReplace(fakeDeps(), displaced, parked, replacement, 'mb-chosen');
+
+    const trail = calls.map((c) => `${c.method ?? 'GET'} ${c.url.replace(/^.*\/trips/, '')}`);
+    // The park's two writes first — the idea has to exist before the event goes, or the note
+    // cascade destroys what parking is meant to carry — then the replacement's create and the
+    // chosen idea's consume.
+    expect(trail[0]).toContain('/maybe-items');
+    expect(trail[1]).toContain(`DELETE`);
+    expect(trail[1]).toContain(displaced.id);
+    expect(trail[2]).toContain('/events');
+    expect(trail.at(-1)).toContain('mb-chosen');
+  });
+
+  it('leaves ONE undo descriptor carrying both halves', async () => {
+    ok([]);
+    const deps = fakeDeps();
+
+    await applyReplace(deps, displaced, parked, replacement, 'mb-chosen');
+
+    expect(deps.lastAction.current).toEqual({
+      kind: 'replace',
+      park: { event: displaced, maybeId: parked.id },
+      created: { id: replacement.id, maybeId: 'mb-chosen' },
+    });
+  });
+
+  it('undoing it deletes the replacement, restores its idea, and puts the event back', async () => {
+    ok([]);
+    const deps = fakeDeps();
+    await applyReplace(deps, displaced, parked, replacement, 'mb-chosen');
+
+    const calls: Array<{ url: string; method?: string }> = [];
+    ok(calls);
+    await applyUndo(deps);
+
+    const trail = calls.map((c) => `${c.method ?? 'GET'} ${c.url}`);
+    // The schedule half unwinds FIRST: the replacement's delete cascades, so its notes have to
+    // reach the idea it came from while that idea still exists.
+    expect(trail[0]).toContain(replacement.id);
+    expect(trail[0]).toContain('DELETE');
+    expect(trail.some((c) => c.includes('mb-chosen') && c.includes('restore'))).toBe(true);
+    // …and only then is the displaced event re-created and its parked idea dropped.
+    const recreate = trail.findIndex((c) => c.startsWith('POST') && c.endsWith('/events'));
+    const dropIdea = trail.findIndex((c) => c.includes('DELETE') && c.includes(parked.id));
+    expect(recreate).toBeGreaterThan(-1);
+    expect(dropIdea).toBeGreaterThan(recreate);
+  });
+
+  it('rolls back and toasts when a write fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    const deps = fakeDeps();
+
+    await applyReplace(deps, displaced, parked, replacement, 'mb-chosen');
+
+    expect(deps.actions[0].type).toBe(TRIP_ACTION.REPLACE_EVENT);
     expect(deps.actions.at(-1)).toEqual({ type: TRIP_ACTION.UNDO });
     expect(deps.toast).toHaveBeenCalledTimes(1);
   });

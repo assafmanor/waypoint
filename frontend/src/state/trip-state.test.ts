@@ -84,6 +84,35 @@ describe('reducer verbs + undo', () => {
     expect(s2.maybeItems.find((m) => m.id === 'mb-skytree')!.consumed).toBe(false);
   });
 
+  // **`החלף` in one action** (ADR-0161 §6). The whole reason it is not `PARK_EVENT` followed by
+  // `SCHEDULE`: each dispatch takes its own snapshot, so the second would capture a day the
+  // first had already emptied — and one undo would then put the replacement back while leaving
+  // the displaced event on the shelf.
+  it('REPLACE_EVENT swaps the slot in one step, and ONE undo puts the day back', () => {
+    const s0 = initialState();
+    const displaced = s0.events[0];
+    const parked = { ...s0.maybeItems[0], id: 'mb-displaced', consumed: false };
+    const event = { ...displaced, id: 'ev-replacement', title: 'אודן קאשימה' };
+
+    const s1 = reducer(s0, {
+      type: TRIP_ACTION.REPLACE_EVENT,
+      displacedId: displaced.id,
+      parked,
+      event,
+      maybeId: 'mb-skytree',
+    });
+    expect(s1.events.some((e) => e.id === displaced.id)).toBe(false);
+    expect(s1.events.some((e) => e.id === 'ev-replacement')).toBe(true);
+    expect(s1.maybeItems.some((m) => m.id === 'mb-displaced')).toBe(true);
+    expect(s1.maybeItems.find((m) => m.id === 'mb-skytree')!.consumed).toBe(true);
+
+    const s2 = reducer(s1, { type: TRIP_ACTION.UNDO });
+    expect(s2.events.some((e) => e.id === displaced.id)).toBe(true);
+    expect(s2.events.some((e) => e.id === 'ev-replacement')).toBe(false);
+    expect(s2.maybeItems.some((m) => m.id === 'mb-displaced')).toBe(false);
+    expect(s2.maybeItems.find((m) => m.id === 'mb-skytree')!.consumed).toBe(false);
+  });
+
   it('RECONCILE_EVENT replaces the optimistic entry with the canonical one', () => {
     const canonical = { ...EVENTS[0], title: 'server truth' };
     const s1 = reducer(initialState(), { type: TRIP_ACTION.RECONCILE_EVENT, event: canonical });

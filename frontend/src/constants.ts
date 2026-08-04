@@ -121,12 +121,13 @@ export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
  *  ADR-0119, and the group header states how many there are in total. */
 export const SHELF_POOL_CAP = 5;
 
-/** The gap sheet's two thresholds (ADR-0116 session-202 §4). The cap is what keeps
+/** The slot-fill sheet's two thresholds (ADR-0116 session-202 §4). The cap is what keeps
  *  the sheet a decision rather than a list — the mockup measured six rows visible
  *  without scrolling at the primary width — and the search only appears once the
- *  pool is big enough to need one, so a shelf of six never grows a control. */
-export const GAP_FILL_CAP = 6;
-export const GAP_FILL_SEARCH_AT = 8;
+ *  pool is big enough to need one, so a shelf of six never grows a control.
+ *  Named for the sheet, which serves a gap and a replacement both (ADR-0161 §6). */
+export const SLOT_FILL_CAP = 6;
+export const SLOT_FILL_SEARCH_AT = 8;
 
 /** Where a near-me distance chip changes precision (ADR-0109 §7): sub-kilometre
  *  distances round to a walkable 10 m, then read as one decimal of a kilometre,

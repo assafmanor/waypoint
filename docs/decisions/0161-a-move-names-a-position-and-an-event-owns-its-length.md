@@ -1,6 +1,6 @@
 # 0161 — A move names a **position**; an event owns its **length**
 
-**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. **Phase 2a built 2026-08-04** — §4, §5 and §7: the picker, the row's time as its way in, and `הזז` out of the `⋯` sheet. **Phase 2b built 2026-08-04** — §4's remaining call sites and §5's readers, so `שבץ` no longer offers "after everything" in either mode. What is left is §6 and §9; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
+**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. **Phase 2a built 2026-08-04** — §4, §5 and §7: the picker, the row's time as its way in, and `הזז` out of the `⋯` sheet. **Phase 2b built 2026-08-04** — §4's remaining call sites and §5's readers, so `שבץ` no longer offers "after everything" in either mode. **Phase 3 built 2026-08-04** — §6: `החלף` is one decision taken on the slot, on the gap sheet generalised into `SlotFillSheet`. What is left is §9; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
 **Date:** 2026-08-04
 **Design reference:** [`mockups/day-scheduling-grammar-v1.html`](../../mockups/day-scheduling-grammar-v1.html) — the move grammar, the slot picker, the replacement sheet, the row menu and the Trip-mode gap, in both themes. Measurements below are read from that file's live DOM at 390×844 and 360×640.
 
@@ -128,6 +128,12 @@ Picking one is **a single write, a single toast, a single undo**:
 `skip` remains its own verb for "this isn't happening". `החלף` finally means what it says, and the slot is never empty in between.
 
 **It is the same component as the gap fill,** because "which idea fits this slot" is already precisely what that sheet is: `GapFillSheet` becomes `SlotFillSheet` with two headers — `מילוי הפער · 15:00–18:00` and `החלפה · <title>` — and one extra behaviour behind a prop (park the displaced event). This is the app's sixth instance of the rule that collected the settle control: a second sheet here would drift on its ranking, its cap, its search threshold and its empty state.
+
+**Built 2026-08-04 (phase 3), with three things worth recording:**
+
+1. **The accent had to become mode-aware, and that is what made the reuse legal.** The sheet was plan violet throughout — correct while it was Plan mode's alone, and a root-rule-4 violation the moment `החלף` showed it in Trip mode. It is one local variable now (`--slotfill-accent`), defaulting to the neutral `--cta` and re-pointed by the surface's own `data-mode` — the `.header`/`.mode-chrome` mechanism, because a `Modal` portals outside `.app` and `.app[data-mode]` cannot reach it. Moving a component to a second mode is not free, and the accent is where the bill arrives.
+2. **`אירוע חדש` on a replacement is deliberately TWO actions, not one atomic write.** The displaced event goes to the shelf, then the form opens on the slot it freed. There is nothing to make atomic: the form has not been saved and can be cancelled — and two separate undos are the better shape for that, since backing out of the form leaves the event on the shelf, which is a decision the user did make, and one more undo puts it back on the day. §6's single-write rule holds where the decision is a single tap, which is the pick.
+3. **`החלף` had no test at any level**, which is how "skip it and post a toast telling the user to go looking" shipped and stayed. It now has the reducer's single-snapshot property, the verb's write order and undo order, the row's two exclusions (hard, done), and an e2e over the whole flow in Trip mode.
 
 ### 7. **The time on the row is a button.** (Amends [0138](0138-the-row-menu-is-one-surface-and-icons-are-ui.md) §8.)
 

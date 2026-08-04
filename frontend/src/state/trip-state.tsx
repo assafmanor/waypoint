@@ -142,6 +142,7 @@ export const TRIP_ACTION = {
   REMOVE_MAYBE: 'REMOVE_MAYBE',
   UPDATE_MAYBE: 'UPDATE_MAYBE',
   PARK_EVENT: 'PARK_EVENT',
+  REPLACE_EVENT: 'REPLACE_EVENT',
   DELETE_PLACE: 'DELETE_PLACE',
   REMOTE_PLACE_DELETED: 'REMOTE_PLACE_DELETED',
   RECONCILE_EVENT: 'RECONCILE_EVENT',
@@ -182,6 +183,22 @@ export type Action =
   // Park an event onto the shelf: it leaves the day and becomes a maybe idea,
   // atomically (one undo snapshot).
   | { type: typeof TRIP_ACTION.PARK_EVENT; eventId: string; item: MaybeItem }
+  // **`החלף` — one decision, taken on the slot** (ADR-0161 §6). A park and a schedule
+  // together: the displaced event leaves the day as an idea, and the chosen idea takes its
+  // exact slot. ONE action rather than `PARK_EVENT` then `SCHEDULE`, for the reason stated
+  // all over this union — two dispatches take two snapshots, and the second would capture a
+  // day the first had already emptied, so undo would put the replacement back and leave the
+  // displaced event on the shelf.
+  | {
+      type: typeof TRIP_ACTION.REPLACE_EVENT;
+      /** The event being displaced, and the idea it becomes. */
+      displacedId: string;
+      parked: MaybeItem;
+      /** The replacement, already built on the displaced event's own start and end. */
+      event: TripEvent;
+      /** The shelf idea it came from, which this consumes. */
+      maybeId: string;
+    }
   // **A place was deleted, so everything here that pointed at it loses its location**
   // (ADR-0157 §3) — the reducer's half of a cascade Postgres performs with no `Change` row
   // of its own. Two actions, one transform: ours snapshots (the delete is undoable and the
@@ -325,6 +342,14 @@ export function reducer(state: State, action: Action): State {
         ripple: null,
         undo: snapshotOf(state),
       };
+    case TRIP_ACTION.REPLACE_EVENT: {
+      const events = [...state.events.filter((e) => e.id !== action.displacedId), action.event];
+      const maybeItems = [
+        ...state.maybeItems.map((m) => (m.id === action.maybeId ? { ...m, consumed: true } : m)),
+        action.parked,
+      ];
+      return { ...state, events, maybeItems, ripple: null, undo: snapshotOf(state) };
+    }
     case TRIP_ACTION.DELETE_PLACE: {
       const cleared = placeCleared(state, action.placeId);
       const maybeItems = action.ideaId

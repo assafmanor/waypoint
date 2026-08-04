@@ -1453,13 +1453,8 @@ export const t = {
     // other half of the pair the picker replaced.
     pinned: 'אירוע קשיח · מעוגן בזמן',
     rowActions: 'פעולות',
-    gapFillTitle: (start: string, end: string) => `מילוי הפער · ${start}–${end}`,
-    gapFillEmpty: 'אין רעיונות במדף · הוסף אירוע חדש',
-    // The sheet is capped at the best few; these are the way past the cap and the
-    // search that only appears once the pool is big enough to need one.
-    gapFillSearch: 'חיפוש ברעיונות',
-    gapFillSearchClear: 'נקה חיפוש',
-    gapFillAll: (n: number) => `כל ${n} הרעיונות`,
+    // The sheet's own copy moved to `slotFill` below: it serves two headers on two screens
+    // now (ADR-0161 §6), so it stopped being Plan mode's.
     // Plan mode's shelf also drags (ADR-0116 §5): the hint teaches the hold, since
     // a press-and-hold is the one part of the gesture nobody guesses — and it is now
     // the FAST path for slotting, which is what makes the tap's extra step affordable.
@@ -1529,6 +1524,22 @@ export const t = {
     resolveFor: (title: string) => `להזיז את ${title}`,
     resolveBack: 'אירוע אחר',
   },
+  /** **"Which idea fits this slot"** — one sheet, two questions (ADR-0161 §6). Filling a gap
+   *  names the slot, because a gap has no other name; a replacement names the event being
+   *  displaced, because that is the thing you are deciding about. Both are answered from the
+   *  same ranked shelf, so the rest of the copy is shared. */
+  slotFill: {
+    gapTitle: (range: string) => `מילוי הפער · ${range}`,
+    replaceTitle: (title: string) => `החלפה · ${title}`,
+    /** Under a replacement header: the slot the replacement inherits, whole. */
+    replaceSub: (range: string) => `אותה שעה, אותו אורך · ${range}`,
+    empty: 'אין רעיונות במדף · הוסף אירוע חדש',
+    // The sheet is capped at the best few; these are the way past the cap and the
+    // search that only appears once the pool is big enough to need one.
+    search: 'חיפוש ברעיונות',
+    searchClear: 'נקה חיפוש',
+    all: (n: number) => `כל ${n} הרעיונות`,
+  },
   event: {
     hard: 'קשיח',
     soft: 'גמיש',
@@ -1594,7 +1605,10 @@ export const t = {
     markedDone: 'סומן כבוצע',
     removed: 'הוסר מהיום',
     restored: 'האירוע חזר למקום',
-    swapPrompt: 'נבחר להחלפה · בוחרים תחליף מהמדף',
+    // `החלף` used to say "picked for replacement · choose a replacement from the shelf" and
+    // then leave the slot empty, which was the report against it (ADR-0161 §6). It is one
+    // decision now, so it gets one toast: what took the slot, and where the other one went.
+    replaced: (title: string) => `${title} נכנס לשעה הזו · הקודם עבר למדף`,
     hardDelayed: 'נדחה · צריך לעדכן גם את ההזמנה',
     softDelayed: (minutes: number) => `נדחה ב-${minutes} דקות`,
     softEarlier: (minutes: number) => `הוקדם ב-${minutes} דקות`,
