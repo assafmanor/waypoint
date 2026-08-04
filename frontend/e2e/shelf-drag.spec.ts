@@ -287,11 +287,17 @@ test.describe('a plain tap on an idea (ADR-0116 §5a)', () => {
     await expect(sheet.locator('.note-sec')).toBeVisible();
     await expect(sheet.locator('.wp-row-action').first()).toContainText('שיבוץ ליום');
 
-    // And one press deeper is where the tap used to land: the schedule form, on a day.
+    // And one press deeper is the day's own positions (ADR-0161 §4) — not the clock the
+    // form used to open on. The picker asks WHERE, in the day's words.
     await sheet.getByRole('button', { name: 'שיבוץ ליום' }).click();
     await expect(page.getByRole('dialog').getByRole('button', { name: 'שיבוץ ליום' })).toHaveCount(
       0,
     );
+    const positions = page.getByRole('dialog').locator('.slotpick-opt:not(.escape)');
+    await expect(positions.first()).toBeVisible();
+
+    // Picking one lands where the tap used to: the schedule form, on that position's slot.
+    await positions.first().click();
     await expect(page.locator('.wf-date').first()).toBeVisible();
   });
 

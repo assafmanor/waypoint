@@ -58,6 +58,24 @@ export interface DayPosition {
 const keyOf = (fill: GapDefaults) => `${fill.date}T${fill.start}`;
 
 /**
+ * Two positions can name the **same instant**, and then they are one position: a first event
+ * sitting on the day's opening with no duration makes "before it" and "after it" the same
+ * slot, so the day's head collides with whatever follows it. A chooser showing 07:00 twice is
+ * the visible half; the duplicate React key is the loud one.
+ *
+ * Keeps the roomier of the two, because the head's zero minutes would otherwise hide the free
+ * time the other one is reporting — thirteen hours, in the case that found this.
+ */
+const oncePerSlot = (positions: DayPosition[]): DayPosition[] => {
+  const best = new Map<string, DayPosition>();
+  for (const position of positions) {
+    const seen = best.get(position.key);
+    if (!seen || position.free.minutes > seen.free.minutes) best.set(position.key, position);
+  }
+  return [...best.values()]; // Map keeps insertion order, so the day's order survives.
+};
+
+/**
  * Every position in a day, in day order.
  *
  * `exclude` is the event being moved: the positions **immediately** either side of it are
@@ -116,7 +134,7 @@ export function dayPositions(
       free: tail,
     });
   }
-  return out;
+  return oncePerSlot(out);
 }
 
 /**
