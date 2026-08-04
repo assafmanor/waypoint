@@ -172,6 +172,22 @@ export function formatTime(at: Date | string, timeZone: string) {
   }).format(d);
 }
 
+/**
+ * **A clock range as one LTR island**: `15:00–18:00`, and it stays in that order inside
+ * Hebrew copy (ADR-0118).
+ *
+ * The isolate is the whole point. Two `HH:MM` runs either side of a dash in an RTL flow are
+ * two separate numeric islands, so the layout puts the SECOND one first and the sheet's
+ * header read `18:00–15:00` — a range that means nothing, on the one surface whose header is
+ * the slot. Two call sites already isolated the pair by hand and a third did not; this is
+ * that derivation, once.
+ *
+ * `end` is optional because a start-only event is the common builder shape.
+ */
+export function clockRange(start: string, end?: string | null): string {
+  return ltrIsolate(end ? `${start}${EN_DASH}${end}` : start);
+}
+
 export interface NowNext {
   /** The primary in-progress event (see byPrimaryNow), or undefined in a gap. */
   now?: TripEvent;

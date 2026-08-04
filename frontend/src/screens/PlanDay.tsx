@@ -27,7 +27,6 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   isAmbient,
-  matchesAnyTerm,
   type Booking,
   type EventCategory,
   type MaybeItem,
@@ -61,6 +60,7 @@ import {
 import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
+  clockRange,
   formatTime,
   zonedIso,
   crossesMidnightZoned,
@@ -81,17 +81,12 @@ import {
 import {
   dayStops,
   rankIdeas,
-  reasonText,
+  shelfForSlot,
   shelfGroups,
-  slotStops,
   stopReasonText,
   tileReasonText,
-  type RankedIdea,
 } from '../lib/shelf';
-import { SearchField } from '../ui/primitives/SearchField';
-import { RevealList } from '../ui/primitives/RevealList';
-import { countVisible, revealRows } from '../lib/filter-reveal';
-import { GAP_FILL_CAP, GAP_FILL_SEARCH_AT, SHELF_POOL_CAP } from '../constants';
+import { SHELF_POOL_CAP } from '../constants';
 import {
   resolveRowDrop,
   resolveShelfDrop,
@@ -115,7 +110,6 @@ import {
   MS_PER_DAY,
   MINUTES_PER_HOUR,
 } from '../constants';
-import { ltrIsolate } from '../lib/bidi';
 import {
   dayTransitions,
   groupEndEvent,
@@ -144,6 +138,7 @@ import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-position
 import { typicalMinutesFor } from '@waypoint/shared';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
+import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
@@ -1088,19 +1083,11 @@ export function PlanDay() {
       )}
 
       {gapChoice && (
-        <GapFillSheet
-          gap={gapChoice.fill}
-          // Ranked against THIS slot's own neighbours, not the whole day — the
-          // sheet's only question is which idea fits here (ADR-0151 §3).
-          ideas={rankIdeas(
-            [...shelf.forDay, ...shelf.pool],
-            places,
-            gapChoice.fill.date,
-            slotStops(events, bookings, places, gapChoice.fill.date, {
-              fromMs: Date.parse(zonedIso(gapChoice.fill.date, gapChoice.fill.start, tz)),
-              toMs: Date.parse(zonedIso(gapChoice.fill.date, gapChoice.fill.end, tz)),
-            }),
-          )}
+        <SlotFillSheet
+          title={t.slotFill.gapTitle(clockRange(gapChoice.fill.start, gapChoice.fill.end))}
+          mode="plan"
+          date={gapChoice.fill.date}
+          ideas={shelfForSlot(shelf, gapChoice.fill, tz, { events, bookings, places })}
           onPickIdea={(m) => {
             // The idea's own category decides how long it gets, capped by this position's room
             // (ADR-0161 §5) — a meal is an hour and a half, a hike three hours, and the flat
@@ -1369,88 +1356,6 @@ export function ResolveSheet({
           onExact={() => onOther(mover)}
         />
       </FormStepPanel>
-    </Sheet>
-  );
-}
-
-// Gap-fill chooser (#21): drop an existing shelf idea into the gap's slot, or
-// start a fresh event there. Scheduling an idea reuses verbs.schedule with the
-// gap's exact start/end so it lands in the hole, not the old default slot.
-//
-// It used to be handed `maybeItems.filter((m) => !m.consumed)` — the WHOLE pool,
-// unsorted and unsearchable — on the one surface whose entire question is "which
-// idea fits THIS slot" (ADR-0116's session-202 amendment §4). Now it is ranked
-// against its own slot rather than the whole day, capped, searchable once the pool
-// is big enough to need it, and it finally renders `.gapfill-m` — a meta slot
-// styled in `screens.css` since the sheet shipped and never once emitted.
-export function GapFillSheet({
-  gap,
-  ideas,
-  onPickIdea,
-  onNewEvent,
-  onClose,
-}: {
-  gap: GapDefaults;
-  /** Already ranked against this gap's own neighbours, each with its reason. */
-  ideas: RankedIdea[];
-  onPickIdea: (m: MaybeItem) => void;
-  onNewEvent: () => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState(false);
-  // A control that only appears once it is needed: a shelf of six never grows a
-  // search box. Past the threshold the cap is what keeps the sheet a decision
-  // rather than a list, and `expanded` is the way past it.
-  const searchable = ideas.length > GAP_FILL_SEARCH_AT;
-  const searching = query.trim().length > 0;
-  const shown = searching || expanded ? ideas : ideas.slice(0, GAP_FILL_CAP);
-  const hidden = ideas.length - shown.length;
-
-  // The shared reveal (ADR-0120), not a `.filter()`: a row that stops matching
-  // collapses in place instead of being dropped from the array.
-  const { rows } = revealRows(shown, ({ item }) => matchesAnyTerm(query, [item.title]));
-
-  return (
-    <Sheet title={t.planDay.gapFillTitle(gap.start, gap.end)} onClose={onClose}>
-      {searchable && (
-        <SearchField
-          className="gapfill-search"
-          value={query}
-          onChange={setQuery}
-          placeholder={t.planDay.gapFillSearch}
-          clearLabel={t.planDay.gapFillSearchClear}
-        />
-      )}
-      <RevealList
-        rows={rows}
-        className="gapfill-list"
-        getKey={({ item }) => item.id}
-        renderRow={({ item: m, reason }) => (
-          <button className="gapfill-row" onClick={() => onPickIdea(m)}>
-            <span className="gapfill-ic">{m.icon}</span>
-            <span className="gapfill-main">
-              <span className="gapfill-t">{m.title}</span>
-              {/* The ranking REASON, never a score and never a star: it says which
-                  fact put this row here, so a wrong order is arguable instead of
-                  magic (ADR-0151 §8). */}
-              <span className="gapfill-m">{reasonText(reason, gap.date)}</span>
-            </span>
-            <span className="gapfill-add">
-              <Icon name="plus" />
-            </span>
-          </button>
-        )}
-      />
-      {countVisible(rows) === 0 && <div className="gapfill-empty">{t.planDay.gapFillEmpty}</div>}
-      {hidden > 0 && (
-        <button className="gapfill-more" onClick={() => setExpanded(true)}>
-          {t.planDay.gapFillAll(ideas.length)}
-        </button>
-      )}
-      <button className="btn-primary gapfill-new" onClick={onNewEvent}>
-        <Icon name="plus" /> {t.actions.newEvent}
-      </button>
     </Sheet>
   );
 }
@@ -2084,9 +1989,9 @@ export function BuilderRow({
                 {[
                   isHard ? t.event.hard : t.event.soft,
                   event.startsAt &&
-                    ltrIsolate(
-                      formatTime(event.startsAt, tz) +
-                        (event.endsAt ? `–${formatTime(event.endsAt, tz)}` : ''),
+                    clockRange(
+                      formatTime(event.startsAt, tz),
+                      event.endsAt && formatTime(event.endsAt, tz),
                     ),
                 ]
                   .filter(Boolean)

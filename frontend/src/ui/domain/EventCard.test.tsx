@@ -174,6 +174,46 @@ describe('EventCard', () => {
     expect(onEdit).toHaveBeenCalledTimes(1);
   });
 
+  // **`החלף`** (ADR-0161 §6), which had no test at all — which is how it shipped as a `skip`
+  // and a toast telling you to go looking for a replacement yourself. The row is a request to
+  // the screen now (which owns the shelf and the slot chooser); what this pins is WHEN it is
+  // offered, because both exclusions are rules rather than styling.
+  describe('the החלף row', () => {
+    // `onEdit` throughout so the sheet has something else in it: with no actions at all the
+    // card drops the ⋯ button entirely, and "the menu is gone" would pass for the wrong reason.
+    const menu = (props: Partial<Parameters<typeof EventCard>[0]>) => {
+      cleanup();
+      render(
+        wrapNav(<EventCard {...base} isOpen onEdit={() => {}} onReplace={() => {}} {...props} />),
+      );
+      fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+    };
+
+    it('is offered on a planned soft event', () => {
+      menu({});
+      expect(screen.getByRole('button', { name: t.actions.swap })).toBeTruthy();
+    });
+
+    it('is never offered on a hard event — a commitment is not displaced (ADR-0011)', () => {
+      menu({ kind: 'hard' });
+      expect(screen.queryByRole('button', { name: t.actions.swap })).toBeNull();
+    });
+
+    it('is not offered once the event is done — there is nothing left to replace', () => {
+      menu({ phase: 'done' });
+      expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.actions.swap })).toBeNull();
+    });
+
+    it('is absent when the screen passes no handler (a past day, ADR-0029)', () => {
+      cleanup();
+      render(wrapNav(<EventCard {...base} isOpen onEdit={() => {}} />));
+      fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
+      expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.actions.swap })).toBeNull();
+    });
+  });
+
   it('read-only past day: forward verbs hidden, no ⋯ menu (settle/navigate still allowed)', () => {
     const { container } = render(
       wrapNav(

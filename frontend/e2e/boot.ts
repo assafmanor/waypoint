@@ -175,6 +175,41 @@ export async function bootIntoTrip(
   );
   // Shelf writes, so parking a row (create-idea then delete-event) survives to the
   // assertion instead of rolling back. Echoes what was sent.
+  // Event CREATES are answered for the same reason edits are (see above): without this the
+  // POST 404s against the dev server, the app correctly rolls itself back, and a spec asserting
+  // what a write PRODUCED would silently be asserting the rollback instead. Echoes the sent
+  // input, which is the contract's shape — the client reconciles against it.
+  await page.route(
+    (u) => u.pathname === '/trips/t1/events',
+    async (route, request) => {
+      if (request.method() !== 'POST') return route.fallback();
+      const now = new Date().toISOString();
+      await route.fulfill({
+        status: 201,
+        json: {
+          tripId: 't1',
+          status: 'planned',
+          source: 'manual',
+          sortOrder: 0,
+          createdAt: now,
+          updatedAt: now,
+          updatedBy: 'u1',
+          ...(request.postDataJSON() ?? {}),
+        },
+      });
+    },
+  );
+  // A shelf idea's own writes: consume (a schedule), restore (its undo) and delete (un-parking).
+  // Answered as a group because one verb can take all three — `החלף` consumes the idea it slots
+  // and its undo both restores that one and deletes the idea the displaced event became.
+  await page.route(
+    (u) => /^\/trips\/t1\/maybe-items\/[^/]+(\/(consume|restore))?$/.test(u.pathname),
+    async (route, request) => {
+      if (request.method() === 'DELETE') return route.fulfill({ status: 204, body: '' });
+      if (request.method() !== 'POST') return route.fallback();
+      await route.fulfill({ status: 204, body: '' });
+    },
+  );
   await page.route(
     (u) => u.pathname === '/trips/t1/maybe-items',
     async (route, request) => {
