@@ -118,3 +118,23 @@ export function dayPositions(
   }
   return out;
 }
+
+/**
+ * **The first position with room for something of `minutes`** — the opening offer when a
+ * surface has to prefill one rather than ask (ADR-0161 §4).
+ *
+ * Trip mode's quick-schedule is that surface: it is a Tier-1 one-tap verb (ADR-0025), so it
+ * defaults rather than asking, and its default used to be `nextSlot` — the end of the day's
+ * LAST event. So the app's opening offer for every idea was "after everything", including on
+ * a day with a three-hour hole in the middle of it, which is the second half of the `שבץ`
+ * report.
+ *
+ * Falls back to the last position, which is that same "after everything" — the honest answer
+ * when nothing on the day has room for this.
+ */
+export function firstPositionFitting(
+  positions: DayPosition[],
+  minutes: number,
+): DayPosition | null {
+  return positions.find((p) => p.free.minutes >= minutes) ?? positions.at(-1) ?? null;
+}

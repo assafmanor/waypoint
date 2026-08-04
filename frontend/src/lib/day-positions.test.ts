@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { dayPositions, POSITION_AT } from './day-positions';
+import { dayPositions, firstPositionFitting, POSITION_AT } from './day-positions';
 
 const TZ = 'Asia/Tokyo';
 const DATE = '2026-07-07';
@@ -106,5 +106,34 @@ describe('dayPositions', () => {
         POSITION_AT.WHOLE_DAY,
       ]);
     });
+  });
+});
+
+// ADR-0161 §4: what a surface prefills when it defaults rather than asking — Trip mode's
+// Tier-1 quick-schedule. Its default used to be "after everything".
+describe('firstPositionFitting', () => {
+  const positions = dayPositions(day, DATE, TZ);
+
+  it('takes the first position with room, not the last one on the day', () => {
+    // The day's head (09:00 window → 07:00 opening) has 120 minutes; the join after A has 30.
+    const fitting = firstPositionFitting(positions, 90)!;
+    expect(fitting.at).toBe(POSITION_AT.DAY_START);
+    // …and it is emphatically not the tail, which is what `nextSlot` would have given.
+    expect(fitting.key).not.toBe(positions.at(-1)!.key);
+  });
+
+  it('skips positions too small for it', () => {
+    // 150 minutes fits the 12:30→15:00 join but not the 30-minute one after A.
+    const fitting = firstPositionFitting(positions, 121)!;
+    expect(fitting.afterEvent?.id).toBe('B');
+  });
+
+  it('falls back to the last position when nothing on the day has room', () => {
+    const fitting = firstPositionFitting(positions, 10_000)!;
+    expect(fitting.key).toBe(positions.at(-1)!.key);
+  });
+
+  it('answers null only when there are no positions at all', () => {
+    expect(firstPositionFitting([], 60)).toBeNull();
   });
 });

@@ -9,11 +9,9 @@
 // disagree about what free time IS or about what a drop into it lands on.
 import type { TripEvent } from '@waypoint/shared';
 import { DAY_WINDOW } from '../constants';
-import { isoToTimeInput, zonedIso } from './time';
+import { isoToTimeInput, toHHMM, toMin, zonedIso } from './time';
 
 const LAST_MINUTE_OF_DAY = 23 * 60 + 59; // 23:59 — the prefill slot stays same-day
-const pad = (n: number) => String(n).padStart(2, '0');
-const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
 /** Minutes since the day's own local midnight. An overnight end (02:00 the next
  *  morning, ADR-0037) reads as ≥ 1440 rather than as an early-morning slot. */
@@ -159,6 +157,27 @@ export function gapBeforeFirst(dayEvents: TripEvent[], date: string, tz: string)
 
 export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
   return floored(freeAfterLast(dayEvents, date, tz));
+}
+
+/**
+ * **The block a CREATE gets at a position** (ADR-0161 §5): the position's own start, and the
+ * length asked for — capped by the room actually there, so nothing is ever created longer
+ * than the hole it went into.
+ *
+ * This is where `typicalMinutesFor` lands: a shelf idea or a new event has no length of its
+ * own, so it takes its category's typical one instead of the flat `GAP_FILL_MINUTES` every
+ * create used to get. Anything that already EXISTS never comes through here — §1 makes every
+ * move keep the length it has.
+ *
+ * A position with no room (a seam) has nothing to cap against, so the block is offered whole
+ * and the create overlaps, which is §3's accepted outcome — the same rule `freeBetween`
+ * applies to its own default block.
+ */
+export function blockFor(free: Gap, minutes: number): GapDefaults {
+  const startMin = toMin(free.fill.start);
+  const wanted = free.minutes > 0 ? Math.min(minutes, free.minutes) : minutes;
+  const endMin = Math.min(startMin + wanted, LAST_MINUTE_OF_DAY);
+  return { ...free.fill, end: endMin > startMin ? toHHMM(endMin) : '' };
 }
 
 /**

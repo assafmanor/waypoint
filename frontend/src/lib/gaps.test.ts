@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
   GAP_MIN_MINUTES,
+  blockFor,
   earnsChip,
   freeAfterLast,
   freeBeforeFirst,
@@ -297,5 +298,43 @@ describe('freeWholeDay (the day itself as a position)', () => {
     }
     // …and the whole-day position always answers.
     expect(freeWholeDay(DATE, TZ).fill.start).toBe('07:00');
+  });
+});
+
+// ADR-0161 §5: the block a CREATE gets at a position. Its input is the category's typical
+// length (`typicalMinutesFor`); this is the capping, which is the part with edges.
+describe('blockFor', () => {
+  const at = (start: string, minutes: number) => ({
+    minutes,
+    fill: { date: DATE, start, end: '00:00' },
+  });
+
+  it('gives the length asked for when the room allows it', () => {
+    expect(blockFor(at('12:00', 180), 90).end).toBe('13:30');
+  });
+
+  it('never creates something longer than the position it goes into', () => {
+    // A 45-minute hole and a category that usually wants 90: it gets the 45.
+    expect(blockFor(at('12:00', 45), 90).end).toBe('12:45');
+  });
+
+  it('offers the whole length at a position with no room — the overlap is §3’s answer', () => {
+    // A seam has nothing to cap against. Capping there would hand out a zero-length slot,
+    // which is the defect the same rule fixed in `freeBetween`.
+    expect(blockFor(at('12:00', 0), 90).end).toBe('13:30');
+  });
+
+  it('keeps the position’s own date and start — only the end is its business', () => {
+    const block = blockFor(at('12:00', 180), 90);
+    expect(block.date).toBe(DATE);
+    expect(block.start).toBe('12:00');
+  });
+
+  it('clamps to the end of the day rather than spilling past midnight (ADR-0036)', () => {
+    expect(blockFor(at('23:30', 180), 120).end).toBe('23:59');
+  });
+
+  it('drops the end entirely when the start leaves no room at all', () => {
+    expect(blockFor(at('23:59', 180), 60).end).toBe('');
   });
 });
