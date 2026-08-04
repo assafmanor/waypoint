@@ -20,6 +20,7 @@ import {
   carriesRoute,
   defaultKindForBookingType,
   hasSpanSchedule,
+  titlesFromRoute,
   type Booking,
   type BookingType,
 } from '@waypoint/shared';
@@ -160,6 +161,11 @@ export function BookingSheet({
   );
   const [title, setTitle] = useState(draft ? draft.title : initial.title);
   const [code, setCode] = useState(draft ? draft.code : initial.code);
+  // **The company** (ADR-0163 §2). `Booking.provider` has existed since the schema was
+  // written and `BookingDetail` has always rendered it — no form ever wrote it, so an
+  // airline and a hotel chain were as unenterable as a rental company. Collected for
+  // EVERY type: the column and the read-out are not car-specific, and only the LABEL is.
+  const [provider, setProvider] = useState(draft ? draft.provider : initial.provider);
   const [fromPlaceId, setFromPlaceId] = useState<string | undefined>(
     draft ? draft.fromPlaceId : initial.fromPlaceId,
   );
@@ -233,6 +239,7 @@ export function BookingSheet({
         icon: icon.value,
         title,
         code,
+        provider,
         fromPlaceId,
         toPlaceId,
         placeId,
@@ -265,7 +272,14 @@ export function BookingSheet({
   );
 
   const isTransport = carriesRoute(type);
+  // **Two counters, not a journey** (ADR-0163 §1). A hire carries a route like the three
+  // travelling modes, and asks a completely different question about it.
+  const isHire = isTransport && !titlesFromRoute(type);
   const isHotel = type === BOOKING_TYPE.HOTEL;
+  // **What the provider is CALLED, per type** (ADR-0163 §2) — a `Record` over the enum, so
+  // a new booking type has to answer rather than silently inheriting "ספק".
+  const providerLabel = t.index.sheet.providerLabel[type];
+  const providerPlaceholder = t.index.sheet.providerPlaceholder[type];
   const isSpan = hasSpanSchedule(type);
   // Offered only where there is a route to mirror, and only on a create: editing a leg
   // opens ADR-0047 §2's merged surface unchanged, and turning a saved single leg into a
@@ -375,12 +389,22 @@ export function BookingSheet({
   };
   const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
-  // Transport is identified by its route, not a name (ADR-0059 §3): the stored title is
+  // A JOURNEY is identified by its route, not a name (ADR-0059 §3): the stored title is
   // derived from origin→destination (it backs the linked event's title and any place-less
   // fallback), so a flight never carries a hand-typed name.
-  const finalTitle = isTransport
+  //
+  // **A HIRE is not** (ADR-0163 §3). It is called Hertz, and deriving its title from two
+  // counters that are usually the same one produced `נריטה ← נריטה` — printed wherever a
+  // surface gets a title and nothing else, the day's ambient strip included. So the rule
+  // keys on `titlesFromRoute`, which is now its own axis, and a hire's name is its rental
+  // company. With no company entered it falls back to the TYPE LABEL rather than to a
+  // place: `השכרת רכב` says what the row is, where a bare counter name does not.
+  const hireTitle = () => provider.trim() || t.index.bookingType[type];
+  const finalTitle = titlesFromRoute(type)
     ? routeTitle(placeName(places, fromPlaceId) ?? '', placeName(places, toPlaceId) ?? '')
-    : title.trim();
+    : isHire
+      ? hireTitle()
+      : title.trim();
 
   /** **Every refusal this form can make, in one place** — and it stays one place now that
    *  the form is stepped (ADR-0155 §3). A step gate and the save both read THIS and filter
@@ -518,14 +542,19 @@ export function BookingSheet({
           // "clear the code" intent (undefined would be dropped by JSON.stringify and
           // read as "leave unchanged"). The backend normalizes empty → null.
           confirmationCode: code.trim(),
+          // Same rule as the code above, for the same reason: an empty string is an
+          // explicit "clear it", where `undefined` would be dropped and read as
+          // "leave unchanged" (ADR-0163 §2).
+          provider: provider.trim(),
           details,
         };
 
         /** **One leg, as a booking + its linked event.** The journey's shared facts come
          *  from `base` by construction — the code, the icon and the kind cannot drift
          *  between legs — and everything that differs is derived from the two points the
-         *  leg runs between: its route, its title (ADR-0059 §3, so nobody types a name)
-         *  and its two zones. Only the journey's OUTER ends carry a zone override. */
+         *  leg runs between: its route, its title (ADR-0059 §3, so nobody types a name —
+         *  unless the type names itself, which since ADR-0163 §3 is the car hire) and its
+         *  two zones. Only the journey's OUTER ends carry a zone override. */
         const legBooking = (side: LegSide, index: number, times: LegTimes) => {
           const points = side === 'out' ? routePoints : reversed;
           const from = points[index];
@@ -558,7 +587,13 @@ export function BookingSheet({
           return {
             type,
             ...base,
-            title: routeTitle(placeName(places, from) ?? '', placeName(places, to) ?? ''),
+            // A leg of a JOURNEY is named by the two points it runs between (ADR-0059 §3).
+            // A hire reaches this path too — it is route-shaped and span-scheduled, so it
+            // is written as a one-leg "journey" — and it must NOT be, which is the whole
+            // of ADR-0163 §3: it takes the company-derived title every other surface sees.
+            title: titlesFromRoute(type)
+              ? routeTitle(placeName(places, from) ?? '', placeName(places, to) ?? '')
+              : finalTitle,
             fromPlaceId: from,
             toPlaceId: to,
             event: seed ? { ...seed, id: crypto.randomUUID() } : undefined,
@@ -793,7 +828,20 @@ export function BookingSheet({
                       // (ADR-0038), so the picker's category suggestion is ignored here.
                       onChange={icon.set}
                     />
-                    {isTransport ? (
+                    {isHire ? (
+                      // **A hire's identity is its company** (ADR-0163 §3), so the preview
+                      // shows the title this form will actually save — the company once it
+                      // is typed, and the type label until then, which is the real fallback
+                      // rather than a ghost. It stays READ-ONLY like the route preview it
+                      // replaced: the name is entered in the field that owns it, and the
+                      // journey ghost (`בחרו מוצא ויעד`) was the last place on this form
+                      // still asking a hire for a route.
+                      <div className="bs-route-preview">
+                        <span className={provider.trim() ? undefined : 'bs-route-ghost'}>
+                          {hireTitle()}
+                        </span>
+                      </div>
+                    ) : isTransport ? (
                       // A flight's identity is its route, not a name (ADR-0059 §3). The
                       // endpoints are now picked places, so the title row shows a derived
                       // read-only route preview; the two PlacePickers live in the route
@@ -841,7 +889,10 @@ export function BookingSheet({
                 {/* The route field: two real place pickers (origin → destination), so
               transport endpoints carry coords + timezones like any other place. */}
                 {isTransport && (
-                  <Field label={t.index.form.routeLabel} {...errors.field('route')}>
+                  <Field
+                    label={isHire ? t.index.form.hireEndsLabel : t.index.form.routeLabel}
+                    {...errors.field('route')}
+                  >
                     {/* **The direction control** (ADR-0154 §4), in the ROUTE field rather than
                   beside the schedule: what it describes is the shape of the journey
                   between these two places, and putting it here makes the `⇄` in the
@@ -881,6 +932,8 @@ export function BookingSheet({
                       stops={offersStops ? stopPlaceIds : undefined}
                       onStopsChange={offersStops ? setStopPlaceIds : undefined}
                       onFindStop={(index, side) => findStop(index, side)}
+                      // **A hire asks about counters, not a direction** (ADR-0163 §1).
+                      shape={isHire ? 'hire' : 'journey'}
                     />
                   </Field>
                 )}
@@ -1023,6 +1076,21 @@ export function BookingSheet({
 
             {steps.step === 'more' && (
               <>
+                {/* **The company** (ADR-0163 §2), above the code because it is the thing
+                    you remember and the code is the thing you look up. `dir="ltr"` for the
+                    same reason the code has it: these are brand names, typed latin far
+                    more often than not — and ADR-0118 permits it on an `<input>`, which is
+                    the one element where `auto` would left-anchor a Hebrew placeholder. */}
+                <Field label={providerLabel} htmlFor="bs-provider">
+                  <input
+                    id="bs-provider"
+                    dir="ltr"
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value)}
+                    placeholder={providerPlaceholder}
+                  />
+                </Field>
+
                 <Field
                   label={t.index.sheet.codeLabel}
                   htmlFor="bs-code"

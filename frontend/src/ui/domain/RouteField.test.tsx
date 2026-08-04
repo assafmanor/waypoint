@@ -80,3 +80,81 @@ describe('RouteField', () => {
     expect(document.body.textContent).toContain(t.index.form.routeHintOptional);
   });
 });
+
+// ── THE HIRE SHAPE (ADR-0163 §1) ───────────────────────────────────────────────
+// Same two columns, a different question. What is worth pinning here is the state the
+// DATA cannot express: "return it somewhere else, and I have not said where yet".
+describe('RouteField · shape="hire"', () => {
+  afterEach(cleanup);
+
+  const pickup = () => screen.getByRole('button', { name: t.index.form.pickupPlaceLabel });
+  const dropoff = () => screen.queryByRole('button', { name: t.index.form.dropoffPlaceLabel });
+  const sameChoice = () => screen.getByRole('radio', { name: t.index.form.returnSame });
+  const otherChoice = () => screen.getByRole('radio', { name: t.index.form.returnElsewhere });
+
+  const hire = (props: Partial<Parameters<typeof RouteField>[0]> = {}) =>
+    render(<RouteField shape="hire" onChange={vi.fn()} onFind={vi.fn()} {...props} />);
+
+  it('asks for a pick-up, and offers no return picker while it is the same counter', () => {
+    hire({ from: 'p-nrt', to: 'p-nrt' });
+    expect(pickup().textContent).toContain('נריטה');
+    expect(sameChoice().getAttribute('aria-checked')).toBe('true');
+    expect(dropoff()).toBeNull();
+  });
+
+  // A hire cannot reverse its ends — you do not return the car before collecting it.
+  it('has no swap', () => {
+    hire({ from: 'p-nrt', to: 'p-tlv' });
+    expect(screen.queryByRole('button', { name: new RegExp(t.index.form.swapRoute) })).toBeNull();
+  });
+
+  it('opens on "elsewhere" when the two ends already differ', () => {
+    hire({ from: 'p-nrt', to: 'p-tlv' });
+    expect(otherChoice().getAttribute('aria-checked')).toBe('true');
+    expect(dropoff()!.textContent).toContain('נתב״ג');
+  });
+
+  // **The reason the toggle is local state.** Choosing "elsewhere" clears the return, so a
+  // toggle DERIVED from `to === from` would snap back to "same" on the next render and the
+  // second picker would vanish under the finger that asked for it.
+  it('keeps the return picker open after clearing it to choose a new place', () => {
+    const onChange = vi.fn();
+    hire({ from: 'p-nrt', to: 'p-nrt', onChange });
+    fireEvent.click(otherChoice());
+    expect(onChange).toHaveBeenCalledWith({ from: 'p-nrt', to: undefined });
+    expect(dropoff()).toBeTruthy();
+    expect(otherChoice().getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('points the return back at the pick-up when the answer goes back to "same"', () => {
+    const onChange = vi.fn();
+    hire({ from: 'p-nrt', to: 'p-tlv', onChange });
+    fireEvent.click(sameChoice());
+    expect(onChange).toHaveBeenCalledWith({ from: 'p-nrt', to: 'p-nrt' });
+    expect(dropoff()).toBeNull();
+  });
+
+  // While the ends are the same counter the return FOLLOWS the pick-up — otherwise a
+  // corrected pick-up would silently leave the car being returned to the old place.
+  it('moves the return with the pick-up while they are the same', () => {
+    const onChange = vi.fn();
+    hire({ from: 'p-nrt', to: 'p-nrt', onChange });
+    fireEvent.click(screen.getAllByRole('button', { name: t.placePicker.clear })[0]);
+    expect(onChange).toHaveBeenCalledWith({ from: undefined, to: undefined });
+  });
+
+  it('names the right end for each errand', () => {
+    const onFind = vi.fn();
+    hire({ from: 'p-nrt', to: 'p-tlv', onFind });
+    fireEvent.click(pickup());
+    expect(onFind).toHaveBeenLastCalledWith('fromPlaceId', t.index.form.pickupPlaceLabel);
+    fireEvent.click(dropoff()!);
+    expect(onFind).toHaveBeenLastCalledWith('toPlaceId', t.index.form.dropoffPlaceLabel);
+  });
+
+  it('states the hire note rather than the journey one', () => {
+    hire();
+    expect(document.body.textContent).toContain(t.index.form.hireHint);
+    expect(document.body.textContent).not.toContain(t.index.form.routeHint);
+  });
+});

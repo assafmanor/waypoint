@@ -9,6 +9,7 @@
 import {
   CATEGORY_DEFAULT_ICON,
   EVENT_STATUS,
+  eventDurationUnit,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
@@ -22,7 +23,8 @@ import {
   type TimeItem,
 } from './time';
 import { eventEdgeZone, eventZones, type EventZones, type ZoneContext } from './places';
-import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
+import { chosenIcon, DEFAULT_EVENT_ICON, MS_PER_DAY } from '../constants';
+import { t } from '../i18n/he';
 
 export type SegPhase = 'done' | 'passed' | 'now' | 'upcoming' | 'skipped';
 
@@ -185,6 +187,61 @@ const endMsOf = (e: TripEvent) => (e.endsAt ? Date.parse(e.endsAt) : Date.parse(
 export function ambientEventsOnDate(events: TripEvent[], date: string): TripEvent[] {
   return events.filter((e) => isAmbient(e) && e.date <= date && date <= e.endDate!);
 }
+
+/** **Where you are inside an ambient span, and how long the whole span is** — the
+ *  `2` and the `4` of `לילה 2 מתוך 4` (ADR-0054 / ADR-0163).
+ *
+ *  **One derivation, and it used to be three.** `DayView`, `PlanDay` and `Home` each
+ *  carried a hand-copied `stayNight`/`stayNights` pair with identical arithmetic — the
+ *  shape ADR-0096 exists to stop, and it had to be collapsed before the phrase could
+ *  take a per-type unit: three copies means three places to pass a unit through, and
+ *  three chances for one of them to keep saying "night".
+ *
+ *  UTC-anchored `Date.parse` on the two YYYY-MM-DD strings, so a DST boundary inside
+ *  the span cannot shift the count. The `total` floors at 1 (a same-day `endDate` is not
+ *  an ambient span at all, but the arithmetic should not answer 0) and `position` is
+ *  clamped to it, so a date outside the span cannot read `5 מתוך 4`. */
+export function ambientSpanPosition(
+  event: Pick<TripEvent, 'date' | 'endDate'>,
+  date: string,
+): { position: number; total: number } {
+  const total = Math.max(
+    1,
+    Math.round((Date.parse(event.endDate!) - Date.parse(event.date)) / MS_PER_DAY),
+  );
+  const position = Math.min(
+    total,
+    Math.max(1, Math.round((Date.parse(date) - Date.parse(event.date)) / MS_PER_DAY) + 1),
+  );
+  return { position, total };
+}
+
+/** The ambient strip's right-hand read-out, in the unit the event's own type reads in
+ *  (ADR-0163 §4). `nights` for a stay — the traveller's unit, and a stay always crosses
+ *  one — and days for everything else, which today means the car hire: you hold a car
+ *  for days, and `לילה 2 מתוך 5` was lodging's word on a vehicle.
+ *
+ *  The unit comes from `eventDurationUnit`, i.e. from ADR-0162's profile tables, so this
+ *  is not a second place deciding what a type is measured in. */
+export function ambientSpanLabel(
+  event: Pick<TripEvent, 'category' | 'icon' | 'date' | 'endDate'>,
+  date: string,
+): string {
+  const { position, total } = ambientSpanPosition(event, date);
+  return countsNights(event)
+    ? t.glance.ambientNight(position, total)
+    : t.glance.ambientDay(position, total);
+}
+
+/** **Is this ambient span counted in nights** — i.e. is it a stay? (ADR-0163 §4.)
+ *  Read off `eventDurationUnit`, so the answer comes from ADR-0162's profile rather
+ *  than from a `category === 'lodging'` at a call site.
+ *
+ *  Exported because Home's mid-stay strip needs the same answer in a different shape:
+ *  its markup is a mono fraction with a dismiss control, not this one string, and it
+ *  also swaps a VERB — `שוהים ב־` is true of a hotel and false of a car. */
+export const countsNights = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
+  eventDurationUnit(event) === 'nights';
 
 /** A bracketed booking's transition landing on `date` (ADR-0064): its start
  *  (check-in / departure) when the event's own `date` is `date`, and/or its end

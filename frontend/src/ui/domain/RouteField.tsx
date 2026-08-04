@@ -1,4 +1,6 @@
-// **A journey's two endpoints, and the one control that reverses them** (ADR-0154 §3).
+// **A journey's two endpoints, and the one control that reverses them** (ADR-0154 §3) —
+// and, since ADR-0163 §1, a HIRE's two counters, which are the same two columns asking a
+// different question. `shape` picks between them; see that prop and `HireEndsField`.
 //
 // Extracted from `BookingSheet`, which owned this markup inline while it was the only
 // surface that could author a route. `EventForm` is the second host, and the reason the
@@ -19,7 +21,9 @@
 // `ui/domain/`: presentational, every value via props. It composes `PlacePicker`, which
 // resolves its own name from trip-state — that is that primitive's existing contract, not
 // something added here.
+import { useState } from 'react';
 import { PlacePicker } from '../primitives/PlacePicker';
+import { ChoiceGrid } from '../primitives/ChoiceGrid';
 import { Icon } from '../Icon';
 import { MAX_ROUTE_STOPS } from '../../constants';
 import { t } from '../../i18n/he';
@@ -50,9 +54,124 @@ export interface RouteFieldProps {
   /** The errand for one stop. Separate from `onFind` because a stop is addressed by
    *  INDEX, not by a `Booking` column: the two are genuinely different targets. */
   onFindStop?: (index: number, sideLabel: string) => void;
+  /** **Which question the two ends answer** (ADR-0163 §1). `'journey'` is the original:
+   *  מוצא → יעד, reversible, optionally with stops. `'hire'` is a car: the ends are two
+   *  COUNTERS, usually the same one, so it asks איסוף and then whether the return is
+   *  elsewhere — and it has no swap, because a pick-up and a return cannot trade places.
+   *
+   *  A variant rather than a sibling component, for what the two genuinely share: two
+   *  `PlacePicker`s over the same two `Booking` columns, with the same errand plumbing
+   *  that ADR-0134 §2 made per-field. A copy would fork that. */
+  shape?: 'journey' | 'hire';
 }
 
 export function RouteField({
+  from,
+  to,
+  onChange,
+  onFind,
+  hint,
+  stops,
+  onStopsChange,
+  onFindStop,
+  shape = 'journey',
+}: RouteFieldProps) {
+  if (shape === 'hire') {
+    return <HireEndsField from={from} to={to} onChange={onChange} onFind={onFind} hint={hint} />;
+  }
+  return (
+    <JourneyField
+      from={from}
+      to={to}
+      onChange={onChange}
+      onFind={onFind}
+      hint={hint}
+      stops={stops}
+      onStopsChange={onStopsChange}
+      onFindStop={onFindStop}
+    />
+  );
+}
+
+/** **A hire's two counters** (ADR-0163 §1). One picker, then a question — and the second
+ *  picker only if the answer is "somewhere else".
+ *
+ *  The toggle is LOCAL state seeded from the props, not derived on every render, and that
+ *  is the one subtle thing here: "same place" writes `to = from`, so a derived reading
+ *  (`to === from`) would flip straight back to "same" the moment the user chose
+ *  "elsewhere" and the return picker was still empty. The seed is what lets the field
+ *  hold an answer the data cannot yet express.
+ *
+ *  Storing `to = from` rather than leaving it blank is deliberate: every existing reader of
+ *  these columns — the map pins, the per-end zones, the server's `assertPlaceShape` — then
+ *  needs no special case for a hire, and `undefined` would be indistinguishable from
+ *  "not answered yet". */
+function HireEndsField({
+  from,
+  to,
+  onChange,
+  onFind,
+  hint,
+}: Pick<RouteFieldProps, 'from' | 'to' | 'onChange' | 'onFind' | 'hint'>) {
+  const [returnsElsewhere, setReturnsElsewhere] = useState(() => !!to && to !== from);
+
+  const setPickup = (id: string | undefined) =>
+    // While the return is the same counter it FOLLOWS the pick-up: changing where you
+    // collect the car changes where you bring it back, with no second tap.
+    onChange({ from: id, to: returnsElsewhere ? to : id });
+
+  const chooseSame = (elsewhere: boolean) => {
+    setReturnsElsewhere(elsewhere);
+    // Leaving "elsewhere" re-points the return at the pick-up; entering it clears the
+    // slot so the picker opens empty rather than pre-filled with the pick-up's name.
+    onChange({ from, to: elsewhere ? undefined : from });
+  };
+
+  return (
+    <>
+      <div className="route-field">
+        <PlacePicker
+          value={from}
+          onChange={setPickup}
+          ariaLabel={t.index.form.pickupPlaceLabel}
+          placeholder={t.index.form.pickupPlaceShort}
+          onFind={() => onFind('fromPlaceId', t.index.form.pickupPlaceLabel)}
+        />
+      </div>
+      <div className="route-field-return">
+        <ChoiceGrid
+          layout="pills"
+          options={[
+            // No glyph on either: this is a question about a place, and ChoiceGrid's
+            // empty string is the documented way to omit the slot (as the direction
+            // control does for the same reason).
+            { value: 'same', icon: '', label: t.index.form.returnSame },
+            { value: 'other', icon: '', label: t.index.form.returnElsewhere },
+          ]}
+          value={returnsElsewhere ? 'other' : 'same'}
+          onChange={(v) => chooseSame(v === 'other')}
+          ariaLabel={t.index.form.returnWhereLabel}
+        />
+        {returnsElsewhere && (
+          <div className="route-field">
+            <PlacePicker
+              value={to}
+              onChange={(id) => onChange({ from, to: id })}
+              ariaLabel={t.index.form.dropoffPlaceLabel}
+              placeholder={t.index.form.dropoffPlaceShort}
+              onFind={() => onFind('toPlaceId', t.index.form.dropoffPlaceLabel)}
+            />
+          </div>
+        )}
+      </div>
+      <div className="route-field-hint">
+        <Icon name="pin" /> {hint ?? t.index.form.hireHint}
+      </div>
+    </>
+  );
+}
+
+function JourneyField({
   from,
   to,
   onChange,

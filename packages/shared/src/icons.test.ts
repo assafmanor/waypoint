@@ -6,6 +6,7 @@ import {
   bookingTypeDurationUnit,
   connectionWindow,
   isTightConnection,
+  titlesFromRoute,
   BOOKING_TYPE_PROFILE,
   carriesRoute,
   CATEGORY_TIME_PROFILE,
@@ -403,6 +404,23 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     // …and two hires four hours apart are two hires, not one journey with a change.
     expect(connectionWindow(BOOKING_TYPE.CAR)).toBeNull();
     expect(isTightConnection(BOOKING_TYPE.CAR, 30)).toBe(false);
+  });
+
+  // **`titleFrom` is its own axis** (ADR-0163 §3), and this is the assertion that says why:
+  // it is NOT the same question as `carriesRoute`. A hire has a route AND a name, and
+  // asking the route question to decide the title is what saved `נריטה ← נריטה`.
+  it('separates having a route from being named by it', () => {
+    for (const type of [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.TRANSIT]) {
+      expect(carriesRoute(type)).toBe(true);
+      expect(titlesFromRoute(type)).toBe(true);
+    }
+    // The one row where the two answers differ — the whole reason for the column.
+    expect(carriesRoute(BOOKING_TYPE.CAR)).toBe(true);
+    expect(titlesFromRoute(BOOKING_TYPE.CAR)).toBe(false);
+    // Nothing without a route can be titled by one.
+    for (const type of ALL_TYPES) {
+      if (titlesFromRoute(type)) expect(carriesRoute(type)).toBe(true);
+    }
   });
 
   // The `durationUnit` column exists for exactly one row, so the test says so: it is an

@@ -9,7 +9,13 @@ import {
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
-import { buildDayGlance, ambientEventsOnDate } from './glance';
+import {
+  ambientEventsOnDate,
+  ambientSpanLabel,
+  ambientSpanPosition,
+  buildDayGlance,
+  countsNights,
+} from './glance';
 import { DEFAULT_EVENT_ICON } from '../constants';
 import { tripZoneCrossings, type ZoneContext } from './places';
 
@@ -552,6 +558,63 @@ describe('buildDayGlance', () => {
     expect(ambientEventsOnDate(events, '2026-07-10').map((e) => e.id)).toEqual(['hotel']);
     expect(ambientEventsOnDate(events, '2026-07-11')).toHaveLength(0);
     expect(ambientEventsOnDate(events, '2026-07-06')).toHaveLength(0);
+  });
+
+  // ── THE AMBIENT STRIP'S READ-OUT (ADR-0163 §4) ────────────────────────────────
+  // One derivation, and it replaced three hand-copied `stayNight`/`stayNights` pairs in
+  // `DayView`, `PlanDay` and `Home` — so these are the first assertions the arithmetic
+  // has ever had.
+  describe('ambientSpanPosition / ambientSpanLabel', () => {
+    const hotel = ev({
+      category: 'lodging',
+      icon: '🏨',
+      date: '2026-07-07',
+      endDate: '2026-07-11', // four nights
+    });
+    // A hire is `transport` + `🚗`, which is what carries its unit (ADR-0162 §3).
+    const hire = ev({
+      category: 'transport',
+      icon: '🚗',
+      date: '2026-07-07',
+      endDate: '2026-07-12', // five days
+    });
+
+    it('counts the span and where the date falls inside it', () => {
+      expect(ambientSpanPosition(hotel, '2026-07-07')).toEqual({ position: 1, total: 4 });
+      expect(ambientSpanPosition(hotel, '2026-07-09')).toEqual({ position: 3, total: 4 });
+      expect(ambientSpanPosition(hotel, '2026-07-11')).toEqual({ position: 4, total: 4 });
+    });
+
+    // A date outside the span cannot read `6 מתוך 4`, and a zero-length one cannot
+    // read `0` — both clamped, because the caller decides which days show the strip.
+    it('clamps to the span rather than counting past its ends', () => {
+      expect(ambientSpanPosition(hotel, '2026-07-20').position).toBe(4);
+      expect(ambientSpanPosition(hotel, '2026-07-01').position).toBe(1);
+      const sameDay = ev({ category: 'lodging', date: '2026-07-07', endDate: '2026-07-07' });
+      expect(ambientSpanPosition(sameDay, '2026-07-07')).toEqual({ position: 1, total: 1 });
+    });
+
+    // **The report.** A stay reads in nights; a hire read in nights too, which is a
+    // hotel's word on a vehicle.
+    it('reads a stay in nights and a hire in days', () => {
+      expect(countsNights(hotel)).toBe(true);
+      expect(countsNights(hire)).toBe(false);
+      expect(ambientSpanLabel(hotel, '2026-07-09')).toBe('לילה 3 מתוך 4');
+      expect(ambientSpanLabel(hire, '2026-07-09')).toBe('יום 3 מתוך 5');
+    });
+
+    // The unit follows the GLYPH, not the category — so a hire keeps its days even
+    // though it shares `transport` with every bus (ADR-0162 §3's refinement).
+    it('leaves other transport on the category answer', () => {
+      const bus = ev({
+        category: 'transport',
+        icon: '🚌',
+        date: '2026-07-07',
+        endDate: '2026-07-09',
+      });
+      expect(countsNights(bus)).toBe(false);
+      expect(ambientSpanLabel(bus, '2026-07-08')).toBe('יום 2 מתוך 2');
+    });
   });
 
   it('does not treat a multi-day non-ambient event as ambient (profile-keyed)', () => {

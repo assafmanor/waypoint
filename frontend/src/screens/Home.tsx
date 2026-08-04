@@ -54,7 +54,12 @@ import {
   todayInTz,
   zonedIso,
 } from '../lib/time';
-import { buildDayGlance, ambientEventsOnDate } from '../lib/glance';
+import {
+  ambientEventsOnDate,
+  ambientSpanPosition,
+  buildDayGlance,
+  countsNights,
+} from '../lib/glance';
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
@@ -304,19 +309,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Same-day (non-ambient) events drive the day's own end / hard-anchor stats —
   // a multi-night hotel's check-out is days away and must not skew them.
   const sameDayEvents = dayEvents.filter((e) => !isAmbient(e));
-  const stayNights = (e: TripEvent) =>
-    Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
-  const stayNight = (e: TripEvent) =>
-    Math.min(
-      stayNights(e),
-      Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
-    );
   // "Inside a booking now" (ADR-0059 §2): the ambient stay whose span currently
   // contains the clock — a slim, dismissible teal strip subordinate to the hero.
   const stayNow = ambientStays.find(
     (e) =>
       e.startsAt && e.endsAt && Date.parse(e.startsAt) <= nowMs && nowMs < Date.parse(e.endsAt),
   );
+  // Where the strip's span has got to, computed once for its mono fraction.
+  const stayProgress = stayNow ? ambientSpanPosition(stayNow, activeDate) : null;
   // A dismiss persists across reload/navigation but self-expires on the next
   // night or the next hotel: it is keyed to (trip + stay + day), and the strip
   // is hidden only while the stored key still matches the one showing now.
@@ -431,11 +431,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           <span className="ss-ic" aria-hidden="true">
             {stayNow.icon ?? DEFAULT_STAY_ICON}
           </span>
+          {/* **The verb and the unit are the span's, not lodging's** (ADR-0163 §4). This
+              strip fires for any ambient event whose span contains the clock, so a car
+              hire reached it and read `שוהים ב־Hertz · לילה 2/5` — wrong twice. A stay
+              keeps `שוהים ב־` and its nights; anything else states itself and counts days,
+              with no prefix rather than a contrived one (a hire whose company was never
+              entered is titled `השכרת רכב`, and `הרכב מ־השכרת רכב` is worse than nothing). */}
           <span className="ss-txt">
-            {t.glance.stayingPrefix}
-            <b>{stayNow.title}</b> · {t.glance.nightLabel}{' '}
+            {countsNights(stayNow) && t.glance.stayingPrefix}
+            <b>{stayNow.title}</b> ·{' '}
+            {countsNights(stayNow) ? t.glance.nightLabel : t.glance.dayLabel}{' '}
             <span className="mono" dir="auto">
-              {stayNight(stayNow)}/{stayNights(stayNow)}
+              {stayProgress!.position}/{stayProgress!.total}
             </span>
           </span>
           <button
