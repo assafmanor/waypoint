@@ -158,12 +158,19 @@ export function ResultRow({
         {DEFAULT_PLACE_ICON}
       </span>
       <span className="map-main">
+        {/* Both halves are Google's own strings in whatever script the place has, so
+            each sniffs its own direction (ADR-0118) — the secondary text is an address
+            and reorders in the RTL flow when it opens with a numeral run. */}
         <span className="map-t">
-          <span className="map-name">{result.primaryText}</span>
+          <span className="map-name" dir="auto">
+            {result.primaryText}
+          </span>
         </span>
         {result.secondaryText && (
           <span className="map-m">
-            <span className="map-tag">{result.secondaryText}</span>
+            <span className="map-tag" dir="auto">
+              {result.secondaryText}
+            </span>
           </span>
         )}
       </span>

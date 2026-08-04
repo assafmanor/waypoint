@@ -147,7 +147,9 @@ export interface RowAction {
  *  anonymous rows floating over a scrim with the thing you were deleting hidden
  *  behind it. `subject` is the quiet fact line under the title (a type, a time,
  *  a state), written in the app's `·` grammar so the sheet reads as the row it
- *  came from. A numeric run inside it needs `ltrIsolate` (ADR-0118).
+ *  came from. It sniffs its own direction (`dir="auto"`), because one caller passes a
+ *  stored **address** rather than the app's own words (ADR-0118); a numeric run built
+ *  into Hebrew copy still needs `ltrIsolate`, which `auto` deliberately reads past.
  *
  *  **Destructive actions partition rather than recolour.** `danger` items are
  *  collected into a second group below a hairline instead of sitting flush in
@@ -179,7 +181,11 @@ export function RowManageSheet({
       title={
         <>
           {title}
-          {subject != null && <span className="wp-row-subject">{subject}</span>}
+          {subject != null && (
+            <span className="wp-row-subject" dir="auto">
+              {subject}
+            </span>
+          )}
         </>
       }
       onClose={onClose}

@@ -235,6 +235,64 @@ describe('BookingDetail — the linked-event facts still read (regression guard)
   });
 });
 
+// **A fact's value is stored content, so it sniffs its own direction** (ADR-0118). The
+// reported read was `2-14-5 Kabukicho, Shinjuku, Tokyo` rendering as `Kabukicho, Shinjuku,
+// Tokyo 2-14-5`: with no `dir` the value inherited the sheet's RTL, and the space between
+// the numeral run and the letters is a neutral between two runs the bidi algorithm reads as
+// opposite, so it took the paragraph's own level and cut the address in two.
+//
+// jsdom lays out no bidi, so what is asserted is the attribute — which is the whole fix, and
+// the same standard ADR-0118's own tests set. The `.bk-loc` box deliberately keeps NO `dir`:
+// the island is the value, never the value together with the Hebrew links beside it.
+describe('BookingDetail — a fact never inherits the sheet direction (ADR-0118)', () => {
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripPlaces = [placed, lite];
+    tripEvents = [];
+    showPlaceOnMap = null;
+    startErrand = () => {};
+  });
+  afterEach(() => {
+    cleanup();
+    setSimulatedNow(null);
+  });
+
+  it('sniffs the direction of a stored address, without flipping the links beside it', () => {
+    open(bk({ id: 'b9', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
+    expect(screen.getByText('2-14-5 Kabukicho').getAttribute('dir')).toBe('auto');
+    expect(document.querySelector('.bk-fact-v.bk-loc')?.getAttribute('dir')).toBeNull();
+  });
+
+  // Including the muted "no location" line, which is Hebrew — `auto` resolves it RTL, which
+  // is why the attribute can sit on the element unconditionally instead of on the text it
+  // happens to hold today.
+  it('sniffs the Hebrew absence line the same way', () => {
+    open(bk({ id: 'b10', type: BOOKING_TYPE.HOTEL }));
+    expect(screen.getByText(t.index.detail.noLocation).getAttribute('dir')).toBe('auto');
+  });
+
+  // The mono branch forced `dir="ltr"` through a ternary the lint guard read past, so a
+  // Hebrew provider or room in that slot would have laid out backwards. Every value slot
+  // now says the same thing, code and prose alike.
+  it('forces no direction on any value, mono included', () => {
+    open(
+      bk({
+        id: 'b11',
+        type: BOOKING_TYPE.HOTEL,
+        placeId: 'pl-1',
+        confirmationCode: 'ABC123',
+        provider: 'בוקינג',
+        details: { room: '1204', wifi: { network: 'granbell', password: 'guest2026' } },
+      }),
+    );
+    // `.bk-loc` is excluded by the same rule, from the other side: it holds the Hebrew
+    // links as well as the value, so its island is the inner span asserted above.
+    const values = [...document.querySelectorAll('.bk-fact-v:not(.bk-loc)')];
+    expect(values.length).toBeGreaterThan(3);
+    for (const v of values) expect(v.getAttribute('dir')).toBe('auto');
+  });
+});
+
 // **The derived pair** (ADR-0154 §5). Nothing on either booking says they belong
 // together — the relation is worked out from what they ARE, so these tests hand the
 // detail a trip with two legs in it and assert what the sheet then says.

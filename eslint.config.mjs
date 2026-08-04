@@ -119,12 +119,17 @@ const CONTROL_EMOJI_SELECTORS = [
 //
 // `<input>` is exempt: a code/time field's value is Latin by construction, and for
 // date/time controls `dir` also drives the native control's own layout.
+//
+// The selector matches the `'ltr'` literal ANYWHERE under the attribute, not just as its
+// value: the original rule keyed on `value.value` and so read past a computed one, which
+// is how `BookingDetail`'s `dir={mono ? 'ltr' : undefined}` survived the ADR-0118 sweep of
+// 75 sites and kept forcing a base direction onto stored content.
 const BIDI_SELECTORS = [
   {
     selector:
-      'JSXOpeningElement[name.name!="input"] > JSXAttribute[name.name="dir"][value.value="ltr"]',
+      'JSXOpeningElement[name.name!="input"] > JSXAttribute[name.name="dir"] Literal[value="ltr"]',
     message:
-      'Use dir="auto" (or no dir) — a hardcoded dir="ltr" flips a number+unit token in Hebrew ("9 ק״מ" → "ק״מ 9"). Isolate the numeric run instead: ltrIsolate/measure in lib/bidi.ts (ADR-0118).',
+      'Use dir="auto" (or no dir) — a hardcoded dir="ltr" flips a number+unit token in Hebrew ("9 ק״מ" → "ק״מ 9") and reverses stored content that is not Latin. Isolate the numeric run instead: ltrIsolate/measure in lib/bidi.ts (ADR-0118).',
   },
 ];
 

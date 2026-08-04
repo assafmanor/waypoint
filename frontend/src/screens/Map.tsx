@@ -3253,7 +3253,14 @@ function PlaceRow({
       </PlaceBadge>
       <span className="map-main">
         <span className="map-t">
-          <span className="map-name">{place.name}</span>
+          {/* Both stored strings on this row come from Google and carry their own
+              direction, so both sniff it (ADR-0118): a name that opens with a numeral
+              run (`7-Eleven Shinjuku`) reorders in the RTL flow exactly as an address
+              does, and `meta` below is an address, a Hebrew transition word or a
+              category, depending on the row. */}
+          <span className="map-name" dir="auto">
+            {place.name}
+          </span>
           {isHard && (
             <span className="map-lock" aria-hidden="true">
               <Icon name="lock" />
@@ -3301,7 +3308,11 @@ function PlaceRow({
               {outcome === 'done' ? t.event.didThis : t.event.skipped}
             </span>
           )}
-          {meta && <span className="map-tag">{meta}</span>}
+          {meta && (
+            <span className="map-tag" dir="auto">
+              {meta}
+            </span>
+          )}
           {isPureIdea && <span className="map-tag mbadge">{t.map.shelfTag}</span>}
           {place.rating != null && (
             <span className="map-tag rate" dir="auto">

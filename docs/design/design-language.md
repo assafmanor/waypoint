@@ -112,6 +112,8 @@ The pulsing blip is a claim: _something is happening this minute._
 
 **The island is the run, never the run plus its unit.** `dir="ltr"` sets the base direction of the whole element, so a token that also carries a Hebrew unit lays out left-to-right and the Hebrew reader meets the unit first: `9 ק״מ` reads `ק״מ 9`, `+3 ש׳` reads `ש׳ 3+`. So a number-and-unit token is built with `measure(9, 'ק״מ')` — the numeral isolated, the unit outside the isolate in the RTL flow — and its element carries no forced direction. `dir="ltr"` in JSX is lint-blocked outside `<input>` for exactly this reason; the same care applies to `direction: ltr` in CSS, which lint can't see (its three current uses are Latin-only content: a date input, an IANA zone name).
 
+**Stored content sniffs its own direction — that is not optional** (ADR-0118's 2026-08-04 amendment). A value the app did not write — a place's address or name, a trip's destination, a provider, a room — arrives in whatever script the world gave it, so the element rendering it carries `dir="auto"`. With none, it inherits the page's RTL and a value that opens with a numeral run comes apart: `2-14-5 Kabukicho, Shinjuku, Tokyo` renders `Kabukicho, Shinjuku, Tokyo 2-14-5`. Two rules bound it: the `dir` goes on the element holding **the value and nothing else** (a box that also holds Hebrew labels or links would lay those out left-to-right too), and never on an `<input>`, where `auto` sniffs the _value_ and so left-anchors a Hebrew placeholder while the field is empty.
+
 New screens must pick from these ramps instead of inventing values.
 
 **Type ramp** (Assistant unless noted):

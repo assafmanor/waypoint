@@ -135,6 +135,25 @@ describe('RowManageSheet', () => {
     expect(screen.getByText('מסעדה · לא משובצת במסלול')).toBeTruthy();
   });
 
+  // The subject line is usually the app's own `·` grammar, but the Map passes a stored
+  // ADDRESS into it, so the slot sniffs its own direction (ADR-0118) rather than inheriting
+  // the sheet's RTL — a numeral-led address reorders under one and reads under the other.
+  // Asserted on a Hebrew subject on purpose: `auto` has to be right for both callers, which
+  // is what lets the attribute sit on the primitive instead of at one call site.
+  it('lets its subject say which way it reads, whoever wrote it', () => {
+    render(
+      wrapNav(
+        <RowManageSheet
+          title="7-Eleven Shinjuku"
+          subject="2-14-5 Kabukicho, Shinjuku, Tokyo"
+          onClose={() => {}}
+          actions={[{ label: 'מחק', icon: 'trash', danger: true, onSelect: vi.fn() }]}
+        />,
+      ),
+    );
+    expect(screen.getByText('2-14-5 Kabukicho, Shinjuku, Tokyo').getAttribute('dir')).toBe('auto');
+  });
+
   it('partitions destructive actions into their own group, not just a red hue', () => {
     render(
       wrapNav(
