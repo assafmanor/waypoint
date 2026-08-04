@@ -147,6 +147,10 @@ export const createPlaceSchema = z.object({
    *  form reopened. `timezone` deliberately stays absent: the server resolves it from the
    *  coordinates, and a client-supplied zone would be a second source of truth. */
   icon: z.string().optional(),
+  /** What a human said this place is (ADR-0165). Writable on the same two paths and for the
+   *  same reason as `icon` above: the canvas's form asks for both at once, and reopening it on
+   *  a place already in the trip is a rename. */
+  category: eventCategorySchema.optional(),
   /** **Google's aggregate rating, writable only so an undone delete can hand it back.**
    *  Every other field a deleted place carries is either user-authored or re-derived
    *  server-side (`timezone` from the coordinates), so the restore reproduces the row

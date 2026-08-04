@@ -2535,8 +2535,30 @@ describe('the embedded map’s shell (ADR-0121)', () => {
           lng: 139.7967,
           // Untouched, so nothing is stored and the place keeps deriving its glyph.
           icon: undefined,
+          // Nobody said what it is either — and a drop has no references to derive one from,
+          // so the pin stays `leisure` until someone does (ADR-0165).
+          category: undefined,
         });
         // Created WITH what was authored, so there is no second write to name it.
+        expect(indexVerbs.updatePlace).not.toHaveBeenCalled();
+      });
+
+      // The category rides along on the CREATE, like the name and the glyph, so a dropped pin
+      // never exists un-authored and there is no second request to categorise it (ADR-0165).
+      it('a dropped pin is created with the category the pills chose', async () => {
+        seed();
+        indexVerbs.createPlace.mockResolvedValue('p-drop');
+        render(wrap(<MapView />));
+        holdCanvas();
+        nameIt('רמן נאגי');
+        fireEvent.click(
+          within(draftForm()!).getByRole('radio', { name: t.iconPicker.categories.food }),
+        );
+        confirm();
+        await vi.waitFor(() => expect(indexVerbs.createPlace).toHaveBeenCalled());
+        expect(indexVerbs.createPlace).toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'רמן נאגי', category: 'food' }),
+        );
         expect(indexVerbs.updatePlace).not.toHaveBeenCalled();
       });
 
@@ -2637,8 +2659,45 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         expect(indexVerbs.updatePlace).not.toHaveBeenCalled();
       });
 
+      // ── THE PILLS WRITE (ADR-0165) ──────────────────────────────────────────────
+      // The bug this replaces: a rename whose only act was a category tap wrote **nothing** —
+      // the pills drove the glyph, the glyph was dropped for being derived, and the category
+      // had no column to land in. No request, no error, no change; a control that did nothing.
+      // Pinned as a VALUE on the write, because "the form reports it" was already true and is
+      // not what was broken.
+      it('a category tap on a rename is stored on the place', async () => {
+        seedNamed();
+        render(wrap(<MapView />));
+        fireEvent.click(row('רמן נאגי')!);
+        fireEvent.click(pencil());
+        fireEvent.click(
+          within(draftForm()!).getByRole('radio', { name: t.iconPicker.categories.food }),
+        );
+        confirm(t.map.make.save);
+        await vi.waitFor(() => expect(indexVerbs.updatePlace).toHaveBeenCalled());
+        expect(indexVerbs.updatePlace).toHaveBeenCalledWith('museum', { category: 'food' });
+      });
+
+      // …and re-choosing the category it already has still costs nothing, which is the same
+      // diff `name` has always been subject to.
+      it('re-picking the category the place already has writes nothing', async () => {
+        seedNamed({ category: 'food' });
+        render(wrap(<MapView />));
+        fireEvent.click(row('רמן נאגי')!);
+        fireEvent.click(pencil());
+        fireEvent.click(
+          within(draftForm()!).getByRole('radio', { name: t.iconPicker.categories.food }),
+        );
+        confirm(t.map.make.save);
+        await waitFor(() => expect(draftForm()).toBeNull());
+        expect(indexVerbs.updatePlace).not.toHaveBeenCalled();
+      });
+
       // A glyph PICKED in the form is stored on the place; one the CATEGORY derived is not —
-      // storing a derived one would freeze the icon and shadow the category from then on.
+      // storing a derived one would freeze the icon at whatever the category said that day and
+      // shadow the category from then on. **That rule survives ADR-0165 and is now load-bearing
+      // rather than lossy:** the category itself persists, so the glyph it derives is a
+      // rendering of stored data, not something to also write.
       it('stores a picked glyph on the place, and a derived one nowhere', async () => {
         seedNamed();
         render(wrap(<MapView />));
@@ -2649,14 +2708,15 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         );
         confirm(t.map.make.save);
         await waitFor(() => expect(draftForm()).toBeNull());
-        expect(indexVerbs.updatePlace).not.toHaveBeenCalled();
+        // The category, and NOT the glyph it derived.
+        expect(indexVerbs.updatePlace).toHaveBeenCalledWith('museum', { category: 'food' });
 
         fireEvent.click(pencil());
         fireEvent.click(within(draftForm()!).getByRole('button', { name: t.map.make.iconLabel }));
         fireEvent.click(screen.getByRole('button', { name: '🍜', hidden: true }));
         confirm(t.map.make.save);
-        await vi.waitFor(() => expect(indexVerbs.updatePlace).toHaveBeenCalled());
-        expect(indexVerbs.updatePlace).toHaveBeenCalledWith('museum', { icon: '🍜' });
+        await vi.waitFor(() => expect(indexVerbs.updatePlace).toHaveBeenCalledTimes(2));
+        expect(indexVerbs.updatePlace).toHaveBeenLastCalledWith('museum', { icon: '🍜' });
       });
 
       // ── EXACTLY ONE CARD ON THIS CANVAS (ADR-0125 §6) ───────────────────────────

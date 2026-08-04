@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { EVENT_CATEGORY } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -238,15 +239,37 @@ describe('PlacesService', () => {
     expect(listed.icon).toBe('☕');
   });
 
+  // The same three steps for the category (ADR-0165), because it is the same kind of field: a
+  // human's word about the place, on the place. What it must not do is arrive and vanish — the
+  // defect that ADR pins one layer up is a category with nowhere to be written.
+  it('carries a chosen category through create, update and list', async () => {
+    const tripId = await newTrip();
+    const created = await service.create(tripId, DEV_USER, {
+      name: 'רמן נאגי',
+      category: EVENT_CATEGORY.FOOD,
+    });
+    expect(created.category).toBe(EVENT_CATEGORY.FOOD);
+
+    const changed = await service.update(tripId, created.id, DEV_USER, {
+      category: EVENT_CATEGORY.LODGING,
+    });
+    expect(changed.category).toBe(EVENT_CATEGORY.LODGING);
+
+    const [listed] = await service.list(tripId);
+    expect(listed.category).toBe(EVENT_CATEGORY.LODGING);
+  });
+
   // **THE POLICY ADR-0147 GAVE A SURFACE TO**, and it is implemented as an ABSENCE: what a
   // human authored about a place outranks what Google says about it. `enrichExisting` adopts
-  // the id, address, coordinates and zone — and neither the name nor the icon. Adding a field
-  // to that `data` object hands it back to Google, so this is the test that notices.
-  it('enriching a place never overwrites the name or the icon a human authored', async () => {
+  // the id, address, coordinates and zone — and none of the name, the icon or the category.
+  // Adding a field to that `data` object hands it back to Google, so this is the test that
+  // notices.
+  it('enriching a place never overwrites what a human authored', async () => {
     const tripId = await newTrip();
     const mine = await service.create(tripId, DEV_USER, {
       name: 'הרמן ליד המלון',
       icon: '🍜',
+      category: EVENT_CATEGORY.FOOD,
     });
 
     const enriched = await service.resolvePlace(tripId, DEV_USER, {
@@ -260,14 +283,15 @@ describe('PlacesService', () => {
     expect(enriched.googlePlaceId).toBe(SHIBUYA_DETAILS.googlePlaceId);
     expect(enriched.address).toBe(SHIBUYA_DETAILS.address);
     expect(enriched.timezone).toBe('Asia/Tokyo');
-    // …and the two user-authored fields survived it.
+    // …and the three user-authored fields survived it.
     expect(enriched.name).toBe('הרמן ליד המלון');
     expect(enriched.icon).toBe('🍜');
+    expect(enriched.category).toBe(EVENT_CATEGORY.FOOD);
   });
 
   // A fresh pick has nothing authored, so it takes Google's name and carries no icon — the
   // other half of the same rule, and what keeps the chain deriving from the category.
-  it('a place Google mints carries no icon, so its glyph keeps deriving', async () => {
+  it('a place Google mints carries no icon and no category, so both keep deriving', async () => {
     const tripId = await newTrip();
     const place = await service.resolvePlace(tripId, DEV_USER, {
       googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
@@ -275,6 +299,7 @@ describe('PlacesService', () => {
     });
     expect(place.name).toBe('Shibuya Crossing');
     expect(place.icon).toBeUndefined();
+    expect(place.category).toBeUndefined();
   });
 
   it('create() with an already-present googlePlaceId returns the existing row (dedup, not 404)', async () => {

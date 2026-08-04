@@ -183,6 +183,7 @@ export const toPlaceDto = (p: Place): SharedPlace => ({
   lng: p.lng ?? undefined,
   timezone: p.timezone ?? undefined,
   icon: p.icon ?? undefined,
+  category: p.category ?? undefined,
   rating: p.rating ?? undefined,
   userRatingsTotal: p.userRatingsTotal ?? undefined,
   createdAt: p.createdAt.toISOString(),

@@ -61,8 +61,12 @@ export interface MapPlaceFormSpec {
    *  `initiallyTouched`**, which is the whole of rename's special-casing: a place that already
    *  carries a glyph counts as chosen, so tapping a category will not stomp it. */
   icon?: string;
-  /** The category the referencing entities agree on, so the pills open where the place already
-   *  is rather than at nothing. */
+  /** The category in force — the place's own if a human set one, else what the referencing
+   *  entities agree on — so the pills open where the place already is rather than at nothing,
+   *  and the glyph chip opens showing what the pin already shows. **Its presence is NOT
+   *  `initiallyTouched`**, unlike `icon`'s: a category the references derived is not the place's
+   *  own answer, so treating the seed as a choice is how a save nobody aimed at the pills would
+   *  stamp a derived value onto the row (the `booked`-row defect, ADR-0136 §2). */
   category?: EventCategory;
   /** The FREE `place_id` deep link, present only where there is something to vet before
    *  spending (ADR-0115 §2). A dropped pin needs none — you chose the spot. */
@@ -86,6 +90,11 @@ export interface MapPlaceFormValue {
   iconTouched: boolean;
   /** The category, or `undefined` if none was ever chosen or inherited. */
   category?: EventCategory;
+  /** **Whether a human actually chose that category** — the same call-site policy `iconTouched`
+   *  carries, for the same reason (ADR-0165): the host writes `Place.category` only when this is
+   *  true, so a rename that only fixes a typo does not also stamp the referencing entities'
+   *  derived category onto the place. */
+  categoryTouched: boolean;
   /** **The notes typed on the way** (ADR-0152 §6b) — bodies, in order, none of them written
    *  yet. The host writes them behind the place, because only the host knows which of the four
    *  sources produced it and therefore when its id exists. Empty is the common case. */
@@ -124,7 +133,12 @@ export function MapPlaceForm({
   const errors = useFormErrors<'name'>();
   const nameMark = errors.field('name');
   const [name, setName] = useState(spec.name);
-  const [category, setCategory] = useState<EventCategory | undefined>(spec.category);
+  // **THE CATEGORY IS DERIVED UNTIL A HUMAN TAPS A PILL**, through the same mechanism the icon
+  // uses one line down — because it is the same shape: the seed is what the place's references
+  // say, and only a tap makes it the place's own answer (ADR-0165). Nothing ever `redrive`s it;
+  // what the host needs is `touched`, and a second hand-rolled flag pair beside `icon`'s is
+  // exactly what `useDerivedField` exists to prevent.
+  const category = useDerivedField<EventCategory | undefined>(spec.category);
   // **A CATEGORY DRIVES THE ICON UNTIL A HUMAN SAYS OTHERWISE**, through the one mechanism
   // that already does this job — `useDerivedField`, extracted because five hand-rolled
   // `*Touched` pairs said the same thing five times. The starting glyph is the place's own
@@ -141,7 +155,8 @@ export function MapPlaceForm({
       name: name.trim(),
       icon: icon.value,
       iconTouched: icon.touched,
-      category,
+      category: category.value,
+      categoryTouched: category.touched,
       notes: composer.pending(),
       ...next,
     });
@@ -157,7 +172,8 @@ export function MapPlaceForm({
       name: trimmed,
       icon: icon.value,
       iconTouched: icon.touched,
-      category,
+      category: category.value,
+      categoryTouched: category.touched,
       // Whatever is in the box counts, committed or not — which is what makes `＋` optional and
       // one note type-and-save.
       notes: composer.pending(),
@@ -244,13 +260,17 @@ export function MapPlaceForm({
           <ChoiceGrid
             layout="pills"
             options={EVENT_CATEGORY_OPTIONS}
-            value={category}
+            value={category.value}
             onChange={(next) => {
-              setCategory(next);
+              category.set(next);
               // `redrive` answers with the value now in force — derived, or whatever a human
               // already set — so the report reads the truth rather than a `useState` React has
               // not flushed yet. That return value is exactly why the hook has one.
-              report({ category: next, icon: icon.redrive(iconForCategory(next)) });
+              report({
+                category: next,
+                categoryTouched: true,
+                icon: icon.redrive(iconForCategory(next)),
+              });
             }}
             ariaLabel={t.map.make.categoryLabel}
           />

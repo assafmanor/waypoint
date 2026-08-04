@@ -434,8 +434,9 @@ export function pinClearanceFor(canvasHeightPx: number): number {
  * Through `chosenIcon`, so a stored placeholder does not shadow a category that actually says
  * something — a *default* `📌` is not a pick, which is the refinement `constants.ts` records.
  *
- * @param category the category the REFERENCING entities agree on (`usage.pin.category`), or
- *                 `undefined` when nothing categorises this place yet.
+ * @param category the place's resolved category (`usage.pin.category` — its own if a human set
+ *                 one, else what the referencing entities agree on, ADR-0165), or `undefined`
+ *                 when nothing categorises this place yet.
  */
 export function placeGlyph(
   place: { icon?: string | null },
