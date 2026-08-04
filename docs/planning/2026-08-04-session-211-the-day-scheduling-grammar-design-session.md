@@ -60,9 +60,29 @@ Applied, the five collapse to one affordance and one menu row:
 | `הזז`             | menu row    | same button (amends ADR-0138 §8; its rule is kept, its placement is not)     |
 | `החלף`            | menu row    | stays a **Trip-mode card** verb; Plan already has the shelf drag             |
 | `דחה את שאר היום` | menu row    | **deferred** — it is a day-level control, and the ripple already performs it |
-| `שכפל`            | menu row    | **stays** — a copy has no object on the row to hang off                      |
+| `שכפל`            | menu row    | **dropped** in round three, and the two questions that did it are below      |
 
-So the menu is four rows before and four after. The row's time was already the answer written down; it just wasn't tappable.
+The row's time was already the answer written down; it just wasn't tappable.
+
+## The round after that, which took one more row out
+
+_"Is duplicate event that important to be one of only four actions on the 3 dot menu? How does it work anyway?"_
+
+Both questions answered it, and the second is the sharper one. `שכפל` was the only item in §7 with **no report behind it** — I inferred it while enumerating what the code lacked — and "how does it work" had no answer written down anywhere. A verb whose interaction was never specified had not earned a permanent row on the app's most-used sheet. That is this session's own rule applied to this session's own addition, which is the test it should have passed first.
+
+What it left behind, so a future attempt starts further along: the cases that motivated it (breakfast on three mornings) are **recurrence**, not copying. Recurrence is a property of an event stated once; copies are N things to edit when the time changes. Different and larger decision, and it belongs to whoever actually reports it.
+
+**So the menu shrinks.** Four rows today (`ערוך` · `הזז` · `העבר למדף` · `מחק`), three after — `הזז` leaves for the row's time and nothing arrives. Measured at 322px → 267px. The ADR adds four capabilities to the day and the sheet comes out **one row lighter** than it started, which is the only real check on whether §7 is placement or hoarding.
+
+## And the drag clone, which was a third report in the same message
+
+_"when dragging a maybe/event, it should be somewhat transparent — right now it isn't, and because events take the entire row, it's hard to see where you're landing and read the controls."_
+
+Read against `.wp-dragghost` this is three separate omissions, not one: `opacity: 1` (nothing reads through, and a builder row is the full width of every target it covers), `transform: scale(1.04)` (the clone is **larger** than the row it vacated, so it eats the seams above and below — the exact 18px §2 puts them in), and it is positioned **on** the finger, so the target under the pointer is hidden by construction. The pairing is also backwards today: the source slot fades to 0.45 while the clone sits at 1.0, so the real row looks like the ghost.
+
+The lift is the fix that actually answers the report — transparency alone still leaves a 10.5px seam label under the clone's own text. It is visual only: every hit-test reads the raw `clientX/clientY`, so which target is chosen does not change. A **full** displacement was rejected: `lift()` clones with the grab offset on purpose so the clone starts exactly where the original was, and jumping on pick-up trades this report for a worse one.
+
+Both numbers — the opacity and the lift — are **controls in the mockup, not decisions**. "Somewhat transparent" is judged with a finger, and this is the second thing in the file a desktop render cannot settle.
 
 Two measurements decided its shape, and neither could be argued from the CSS: `min-height: 44px` on the chip took the row from **58px to 75px**, so the target became a 55px inset overlay over a 39px chip (**+2px** at 360, **+3px** at 390); and the chip takes **16px** off the title, against the **58px** that killed a separate trailing control in ADR-0121 §8 — which is why that ADR's answer was the badge and this one's is the time.
 
@@ -71,10 +91,13 @@ Two measurements decided its shape, and neither could be argued from the CSS: `m
 1. **The move grammar** — `planSwap`/`planInsert` over starts, seams between every pair, drop-on-row = swap.
 2. **The picker** — `DaySlotPicker`, five call sites, `CATEGORY_TIME_PROFILE.typicalMinutes`.
 3. **`החלף`** — `GapFillSheet` → `SlotFillSheet`, park-and-replace as one write, plus the `gapFillTitle` isolate.
-4. **The row's time is a button** (§7), `שכפל`, and §8's Trip-mode gap tap.
+4. **The row's time is a button** (§7), the drag clone's three fixes (§8), and §9's Trip-mode gap tap.
 
 Slices 1 and 2 are the ones the reports are actually about; 3 and 4 are cheap once 1 and 2 exist, because all of them consume the picker.
 
 ## Deliberately left for the device pass
 
-Whether an 18px seam is findable under a thumb, and whether the seam labels read as promises or as noise mid-drag. Both are ADR-0017 questions and neither is answerable from a desktop render — the mockup says so rather than implying it was checked.
+Three things, all ADR-0017 questions and none answerable from a desktop render — the mockup says so rather than implying they were checked:
+
+- Whether an 18px seam is findable under a thumb, and whether the seam labels read as promises or as noise mid-drag.
+- **The drag clone's opacity and lift.** Defaults are 0.78 and 12px; the mockup carries both as toggles (0.85 · 0.78 · 0.65 and 0 · 12 · 20) precisely so the pair is chosen on a phone, with a finger actually covering the thing.

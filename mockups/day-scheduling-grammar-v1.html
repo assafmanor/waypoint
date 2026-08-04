@@ -59,8 +59,19 @@
      version, and the fix ships with ADR-0161 §6 — it is the same line.
 
      ─────────────────────────────────────────────────────────────────────────
-     Interactive: theme (light · dark), screen (360×640 · 390×844), and per-section
-     toggles — §1 flips today|proposed, §2 raises and lowers a live drag.
+     THIS FILE'S SECTIONS AGAINST THE ADR'S, since they are numbered separately
+     and both are referred to by number:
+
+       §1 the swap  → ADR §1 + §2      §5 fill / החלף   → ADR §6
+       §2 the seam  → ADR §2           §6 the row's time → ADR §7
+       §3 collision → ADR §3           §7 the drag clone → ADR §8
+       §4 the picker → ADR §4 + §5     §8 the Trip gap   → ADR §9
+
+     ─────────────────────────────────────────────────────────────────────────
+     Interactive: theme (light · dark), screen (360×640 · 390×844), and §7's two
+     numbers — ghost opacity and how far it lifts off the finger — which are a FEEL
+     call this file deliberately does not settle: the defaults are the
+     recommendation and a device pass owns the final pair.
      Measurements at the foot are read from THIS page's rendered DOM. -->
 <html lang="he" dir="rtl" data-theme="light">
   <head>
@@ -9554,7 +9565,7 @@ textarea {
         opacity: 1;
       }
 
-      /* §7 — the row's time becomes a button (the whole of ADR-0161 §7). It keeps
+      /* §6 here / ADR-0161 §7 — the row's time becomes a button. It keeps
          `.bld-time`'s own type, colour and column layout — this adds the target
          and the affordance and nothing else, which is why it is a modifier class
          and not a second time element. `PlaceBadge`'s pattern, one slot over. */
@@ -9657,7 +9668,7 @@ textarea {
         font-size: 12.5px;
       }
 
-      /* §7 — the Trip-mode gap keeps its measurement and becomes a button
+      /* §8 — the Trip-mode gap keeps its measurement and becomes a button
          (ADR-0161 §8, amending ADR-0159 §1). Everything about the strip's own
          look is inherited from `day-join.css`; this adds the trailing ＋ and the
          44px target, and nothing else. */
@@ -9684,6 +9695,49 @@ textarea {
       button.day-gap:hover .day-gap-add {
         color: var(--cta);
         background: color-mix(in srgb, var(--cta) 14%, transparent);
+      }
+
+      /* §7 — the drag clone. `.wp-dragghost` lives in `tokens.css` and is inlined
+         above; these are the three changes, written as overrides so the diff is
+         readable rather than as a replacement block. `.gh-today` reproduces the
+         shipped treatment for the comparison. */
+      .gh-frame {
+        position: relative;
+        overflow: hidden;
+      }
+      .gh {
+        position: absolute;
+        z-index: 15;
+        pointer-events: none;
+        inset-inline-start: 14px;
+      }
+      .gh > .bld {
+        margin: 0;
+        box-shadow:
+          0 0 0 2px color-mix(in srgb, var(--plan) 55%, transparent),
+          0 14px 28px -10px rgba(14, 23, 41, 0.45);
+      }
+      /* Shipped: opaque, 4% larger, sitting on the finger. */
+      .gh-today > .bld {
+        transform: scale(1.04);
+      }
+      /* Proposed: translucent on the WRAPPER (so ring and shadow fade with it), no
+         enlargement, and lifted clear of the pointer. */
+      .gh-prop {
+        opacity: var(--gop, 0.78);
+      }
+      /* The pointer, drawn so the occlusion is visible at all — this is the one thing
+         a static frame has to fake, and it is the whole subject of §7. */
+      .fingertip {
+        position: absolute;
+        z-index: 16;
+        width: 26px;
+        height: 26px;
+        margin: -13px 0 0 -13px;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--ink) 22%, transparent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 30%, transparent);
+        pointer-events: none;
       }
 
       /* ══════════════════════════════════════════════════════════════════════
@@ -9957,6 +10011,20 @@ textarea {
         <span class="lbl">מסך</span>
         <button type="button" data-w="360" aria-pressed="true">360×640</button>
         <button type="button" data-w="390">390×844</button>
+        <span class="sep"></span>
+        <!-- §7's two numbers are a FEEL call and this file cannot settle them: "somewhat
+             transparent" is judged with a finger on a phone, not in a desktop screenshot.
+             So they are controls, the defaults are the recommendation, and the ADR says a
+             device pass owns the final pair. -->
+        <span class="lbl">§7 · שקיפות</span>
+        <button type="button" data-gop="0.85">0.85</button>
+        <button type="button" data-gop="0.78" aria-pressed="true">0.78</button>
+        <button type="button" data-gop="0.65">0.65</button>
+        <span class="sep"></span>
+        <span class="lbl">§7 · הרמה</span>
+        <button type="button" data-glift="0">0</button>
+        <button type="button" data-glift="12" aria-pressed="true">12px</button>
+        <button type="button" data-glift="20">20px</button>
       </div>
 
       <!-- ══════════════════════════ §1 ══════════════════════════ -->
@@ -10043,7 +10111,11 @@ textarea {
           קשורות (<code>משך</code> ו<code>דחה את שאר היום</code>) חובשות אותו אייקון שעון · «יותר
           מדי פעולות, וזה נעשה מציף במקום קל לשימוש» (הבעלים, קורא את הפריים). התנגשות האייקונים
           היא הסימן: תפריט הוא לא מקום לשים בו דברים, הוא מה שנשאר <b>אחרי</b> ששואלים לאן כל
-          פעולה שייכת.
+          פעולה שייכת. <b>וסבב שני הוריד עוד אחת</b> · «האם שכפול אירוע כל כך חשוב שיהיה אחת מארבע
+          הפעולות היחידות? ואיך זה עובד בכלל?» · שתי השאלות עונות עליו, כי הוא היחיד כאן
+          <b>שהוסק ולא דווח</b>, ולשאלה השנייה לא היתה תשובה כתובה. פעולה שהאינטראקציה שלה לא
+          נוסחה לא הרוויחה שורה קבועה בגיליון הנפוץ באפליקציה, וזה בדיוק הכלל למעלה מוחל על
+          התוספת של המקטע הזה עצמו.
         </p>
         <p class="note">
           ולשעה, המקום הוא <b>השעה</b>. השורה כבר מציירת <code>10:00–12:00</code> ו<b>שעתיים</b>
@@ -10061,15 +10133,49 @@ textarea {
           של כרטיס במצב טיול</b> ואינו מצטרף לתפריט התכנון · במצב תכנון אותה כוונה כבר מהירה יותר
           בגרירת רעיון מהמדף. ו<code>דחה את שאר היום</code> <b>נדחה עם נימוק</b> במקום לקחת שורה ·
           המנגנון קיים (סרגל הריפל), ומה שחסר הוא רק דרך לבקש אותו בלי להזיז אירוע מסוים קודם,
-          וזו בקרה <b>ברמת היום</b> ולא תכונה של השורה שפתחתם. נשאר: ארבע שורות לפני, ארבע אחרי,
-          אחת מהן חדשה.
+          וזו בקרה <b>ברמת היום</b> ולא תכונה של השורה שפתחתם. מה שיוצא הוא שהתפריט
+          <b>מתקצר</b> · ארבע שורות היום, שלוש אחרי, כי <code>הזז</code> עוזב ושום דבר לא מגיע
+          במקומו. זו המדידה של השאלה אם §6 נכון: ה-ADR מוסיף ארבע יכולות ליום, והגיליון הנפוץ
+          באפליקציה יוצא ממנו <b>קל בשורה</b> ממה שנכנס.
         </p>
         <div class="pair" id="s6"></div>
       </section>
 
       <!-- ══════════════════════════ §7 ══════════════════════════ -->
       <section class="case">
-        <h2>§7 · מצב טיול · הפער נשאר מדידה, ונעשה לחיץ</h2>
+        <h2>§7 · הדבר שנגררים בו מפסיק להסתיר את מקום הנחיתה</h2>
+        <p class="note">
+          «כשגוררים אולי או אירוע, זה צריך להיות שקוף במידת מה · כרגע זה לא, ובגלל שאירועים
+          תופסים את כל השורה קשה לראות איפה נוחתים ולקרוא את הפקדים» (הבעלים). מול הקוד זו לא
+          השמטה אחת אלא <b>שלוש</b>, וכולן ב-<code>.wp-dragghost</code>: <code>opacity: 1</code>
+          (שום דבר לא נקרא מבעדו, ושורת בונה היא ברוחב <b>כל</b> הרשימה · וכך גם כל יעד שהיא
+          מכסה), <code>scale(1.04)</code> (העתק <b>גדול</b> מהשורה שממנה בא, ולכן מכסה יותר ממה
+          שפינה · כולל התפרים שמעליה ומתחתיה), ומיקום <b>על</b> האצבע · האצבע נמצאת על ההעתק, ולכן
+          היעד שמתחת למצביע מוסתר <b>מעצם הבנייה</b>, והוא בדיוק זה שמכוונים אליו. ועוד: הצימוד
+          הפוך · <code>.bld.dragging</code> מדהה את המשבצת המקורית ל-0.45, כך שהיום השורה האמיתית
+          נראית כרפאים וההעתק נראה כאמיתי.
+        </p>
+        <p class="note">
+          שלושה תיקונים, והשלישי הוא זה שבאמת פותר את הדיווח: <b>שקיפות</b> (על העוטף, כך שהטבעת
+          והצל מתעמעמים יחד איתו ולא מרחפים מעל כרטיס דהוי), <b>ביטול ההגדלה</b> ("הורם" כבר נאמר
+          בטבעת הסגולה ובצל · ה-4% כיסו את השכנים כדי לחזור על משהו שכבר נאמר, ובדיוק ב-18 הפיקסלים
+          שבהם §2 שם את התפרים), ו<b>הרמה מהאצבע</b> · המצביע יושב מתחת לקצה ההעתק, כך שמה שמכוונים
+          אליו לעולם לא נמצא מתחתיו. חזותי בלבד · כל בדיקת פגיעה קוראת את
+          <code>clientX/clientY</code> הגולמיים. הזזה <b>מלאה</b> נדחתה · <code>lift</code> משכפל
+          עם היסט האחיזה בכוונה, כדי שההעתק יתחיל בדיוק במקום שבו היה המקור, וקפיצה ברגע ההרמה
+          מחליפה את הדיווח הזה בגרוע ממנו.
+        </p>
+        <div class="pair" id="s7"></div>
+        <p class="note" style="border-block-end: 0; border-block-start: 1px solid var(--line)">
+          <b>מנגנון אחד, שתי הגרירות.</b> שלושת התיקונים יושבים ב-<code>.wp-dragghost</code>
+          וב-<code>paint()</code>, ששניהם כבר משותפים לכרטיס המדף ולשורת הבונה · אז הרעיון והאירוע
+          מתוקנים באותו שינוי, וזה מה שהדיווח ביקש בנשימה אחת.
+        </p>
+      </section>
+
+      <!-- ══════════════════════════ §8 ══════════════════════════ -->
+      <section class="case">
+        <h2>§8 · מצב טיול · הפער נשאר מדידה, ונעשה לחיץ</h2>
         <p class="note">
           ADR-0159 הפך את הפער במצב טיול למידע בלבד, ונתן טעם טוב · שבב הפער של מצב תכנון הוא
           <b>פקד</b>, ופקדים שייכים למצב שבונה את היום. אבל רשימת הדרגות של ADR-0025 כוללת כבר
@@ -10079,7 +10185,7 @@ textarea {
           <b>אינם</b> עוברים, והרצועה מקבלת <code>＋</code> בקצה וגובה מגע של 44 · מה שהיה
           <code>span</code> נעשה <code>button</code> שעדיין אומר מדידה.
         </p>
-        <div class="pair" id="s7"></div>
+        <div class="pair" id="s8"></div>
       </section>
 
       <div class="panel">
@@ -10400,9 +10506,18 @@ textarea {
         ['shelf', 'העבר למדף'],
         ['clock', 'דחה את שאר היום'],
       ]);
+      // Today's real menu, so the comparison has a baseline and not only two proposals.
+      const s6today = menu([
+        ['edit', 'ערוך'],
+        ['swap', 'הזז'],
+        ['shelf', 'העבר למדף'],
+      ]);
+      // And the proposal: `הזז` leaves for the row's time, and nothing arrives. `שכפל`
+      // was in this list for one round and the owner asked the two questions that
+      // removed it — it was inferred rather than reported, and its interaction was
+      // never specified (ADR-0161 §7).
       const s6good = menu([
         ['edit', 'ערוך'],
-        ['calendar', 'שכפל'],
         ['shelf', 'העבר למדף'],
       ]);
       // The row itself, which is where §7 actually happens: a timed row whose time
@@ -10418,14 +10533,52 @@ textarea {
           'שמונה שורות · נגללות, ומחק מתחת לקיפול. שני שעונים שונים על שתי פעולות לא קשורות',
           s6bad,
         ) +
-        col(T.after, 'ארבע שורות · בדיוק כמו היום, ואחת מהן חדשה', s6good) +
+        col(T.plain('היום'), 'ארבע שורות · ערוך, הזז, העבר למדף, מחק', s6today) +
+        col(T.after, 'שלוש · הזז עוזב לשעה שבשורה, ושום דבר לא מגיע במקומו', s6good) +
         col(
           T.after,
           'ושם הפעולות באמת קרו · השעה בשורה. השורה השלישית היא בלי שעה, שם היום אין שום דרך פנימה',
           s6row,
         );
 
-      /* ══ §7 — the Trip-mode gap strip, before and after. */
+      /* ══ §7 — the drag clone over the day it is trying to land in. Both frames are
+            the SAME day at the SAME pointer position; only the clone's treatment
+            differs, so what changes between them is exactly what is being decided.
+            The pointer is at the seam under the museum row, which is the target. */
+      let ghostLift = 12;
+      const s8 = (proposed) => {
+        const lift = proposed ? ghostLift : 0;
+        const day = [
+          row(s2day[0]),
+          seam('אחרי קפה ומאפה', false),
+          row({ ...s2day[1], dragging: true }),
+          seam('אחרי מוזיאון · לפני הטיסה', true),
+          row(s2day[2]),
+          gap('פער של שעתיים · שבץ', false),
+          row(s2day[3]),
+        ].join('');
+        // The clone sits over the row below the seam, which is what a finger on that
+        // seam actually produces — the grab offset keeps it under the hand.
+        return `<div class="phone dragging-live gh-frame" style="width:var(--fw)">
+          <div class="fbody"><div class="builder"><div class="builder-main">${day}</div></div></div>
+          <div class="gh ${proposed ? 'gh-prop' : 'gh-today'}" style="top:${150 - lift}px">
+            ${row({ ...s2day[1] })}
+          </div>
+          <span class="fingertip" style="top:186px; inset-inline-start:120px"></span>
+        </div>`;
+      };
+      const paintS8 = () => {
+        document.getElementById('s7').innerHTML =
+          `<div class="col">${T.before}<span class="sub">אטום, גדול ב-4%, ויושב על האצבע · התפר שמכוונים אליו נמצא מתחתיו</span>${s8(
+            false,
+          )}</div>` +
+          `<div class="col">${T.after}<span class="sub">שקוף, בגודל השורה, ומורם מהאצבע · התפר והתווית שלו נקראים</span>${s8(
+            true,
+          )}</div>`;
+      };
+      paintS8();
+
+      /* ══ §8 — the Trip-mode gap strip, before and after. */
       const evcard = (ic, ttl, tm) => `<div class="wp-event soft"><div class="wp-event-face static">
         <span class="wp-event-badge">${ic}</span>
         <span class="wp-event-t"><span class="wp-event-title-txt">${ttl}</span><span class="tag-soft">גמיש</span></span>
@@ -10442,7 +10595,7 @@ textarea {
         evcard('🏛️', 'מוזיאון טוקיו הלאומי', '10:30–12:30') +
         gapStrip(asButton) +
         evcard('🍜', 'ראמן באיצ׳ירן', '15:10–16:10');
-      document.getElementById('s7').innerHTML =
+      document.getElementById('s8').innerHTML =
         col(T.before, 'מצהיר על החור ואין דרך למלא אותו · במשטח היחיד שמצהיר עליו', s7(false)) +
         col(T.after, 'אותה מדידה, אותה רצועה · ＋ בקצה, וגובה מגע של 44', s7(true));
 
@@ -10468,6 +10621,22 @@ textarea {
         }),
       );
       document.documentElement.style.setProperty('--fw', '360px');
+
+      const opBtns = [...document.querySelectorAll('.controls button[data-gop]')];
+      const liftBtns = [...document.querySelectorAll('.controls button[data-glift]')];
+      opBtns.forEach((b) =>
+        b.addEventListener('click', () => {
+          document.documentElement.style.setProperty('--gop', b.dataset.gop);
+          press(opBtns, b);
+        }),
+      );
+      liftBtns.forEach((b) =>
+        b.addEventListener('click', () => {
+          ghostLift = Number(b.dataset.glift);
+          press(liftBtns, b);
+          paintS8();
+        }),
+      );
 
       /* ══ The measurement table. Read off the rendered boxes, never typed in —
             which is also how this file can be trusted after a token changes. */
@@ -10564,21 +10733,26 @@ textarea {
             'מול 640px מסך · לכן הגלילה',
           ],
           [
-            'תפריט ההצעה · ארבע שורות',
+            'תפריט היום · ארבע שורות',
             h('#s6 .col:nth-child(2) .sheetbox') + 'px',
-            'אותו אורך כמו התפריט של היום',
+            'ערוך · הזז · העבר למדף · מחק',
+          ],
+          [
+            'תפריט ההצעה · שלוש שורות',
+            h('#s6 .col:nth-child(3) .sheetbox') + 'px',
+            'קצר בשורה אחת מהיום · הזז עזב, ושום דבר לא הגיע',
           ],
           [
             'רצועת פער כ-<code>div</code> · מצב טיול היום',
-            h('#s7 .col:first-child .day-gap') + 'px',
+            h('#s8 .col:first-child .day-gap') + 'px',
             'מידע · אין בו יעד מגע',
           ],
           [
             'רצועת פער כ-<code>button</code> · ההצעה',
-            h('#s7 button.day-gap') + 'px',
+            h('#s8 button.day-gap') + 'px',
             'רצפת המגע היא 44px · ADR-0017',
           ],
-          ['<code>＋</code> בקצה הרצועה', w('#s7 .day-gap-add') + 'px', 'בתוך יעד של 44px'],
+          ['<code>＋</code> בקצה הרצועה', w('#s8 .day-gap-add') + 'px', 'בתוך יעד של 44px'],
           [
             'גיליון ההחלפה · שורת רעיון',
             h('#s5 .gapfill-row') + 'px',
