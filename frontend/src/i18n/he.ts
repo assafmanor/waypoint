@@ -1,6 +1,7 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
+import { type BookingType } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
@@ -640,6 +641,33 @@ export const t = {
       editTitle: 'עריכת הזמנה',
       titlePlaceholder: 'שם ההזמנה',
       codeLabel: 'קוד אישור',
+      // **Whose booking this is** (ADR-0163 §2). One `Booking.provider` column, and the
+      // word for it differs enough per type that a single `ספק` would be the vague
+      // option everywhere: you know you booked with `Hertz`, and calling that a
+      // "supplier" is how a field stops getting filled in. A `Record` over the enum
+      // rather than a ternary, so a new type answers at compile time.
+      providerLabel: {
+        car: 'חברת ההשכרה',
+        flight: 'חברת התעופה',
+        train: 'חברת הרכבות',
+        transit: 'המפעילה',
+        hotel: 'הרשת או המפעיל',
+        restaurant: 'ספק',
+        activity: 'המפעיל',
+        other: 'ספק',
+      } satisfies Record<BookingType, string>,
+      // Real examples beat an abstract label — the placeholder is what tells you the
+      // field wants `Hertz` and not `רכב שכור בטוקיו`.
+      providerPlaceholder: {
+        car: 'Hertz · Europcar · Toyota',
+        flight: 'El Al · ANA',
+        train: 'JR East',
+        transit: 'Willer · Keisei',
+        hotel: 'Granbell · Airbnb',
+        restaurant: '',
+        activity: 'Klook · GetYourGuide',
+        other: '',
+      } satisfies Record<BookingType, string>,
       locationLabel: 'מיקום',
       roomLabel: 'חדר',
       notesLabel: 'הערות',
@@ -662,6 +690,20 @@ export const t = {
       // Title-row preview when neither endpoint is picked yet.
       routePreviewGhost: 'בחרו מוצא ויעד',
       routeHint: 'מקומות אמיתיים · מזינים את המפה ואזורי הזמן',
+      // ── A HIRE'S TWO ENDS (ADR-0163 §1) ──────────────────────────────────
+      // Not מוצא/יעד: a hire has two counters, and usually one. The same two
+      // columns underneath (`fromPlaceId`/`toPlaceId`), different question.
+      // The field's own heading. `מסלול` is a journey's word; a hire's two ends are
+      // where you take the car and where you leave it.
+      hireEndsLabel: 'איסוף והחזרה',
+      pickupPlaceLabel: 'איסוף 🔑',
+      pickupPlaceShort: 'איפה לוקחים את הרכב',
+      dropoffPlaceLabel: 'החזרה 🏁',
+      dropoffPlaceShort: 'איפה מחזירים',
+      returnWhereLabel: 'מקום ההחזרה',
+      returnSame: 'באותו מקום',
+      returnElsewhere: 'במקום אחר',
+      hireHint: 'רוב ההשכרות חוזרות לאותו דלפק',
       // The swap between the two endpoints (ADR-0154 §3). An existing transport event
       // carries one place and cannot say which end it is, so it lands in the origin and
       // this moves it — the correction that makes the guess safe.
@@ -1267,9 +1309,15 @@ export const t = {
     emptyTitle: 'היום עוד פתוח',
     emptySub: 'אין אירועים מתוכננים · יום חופשי',
     emptyAdd: 'הוסיפו אירוע',
-    // Ambient-span backdrop (a hotel / multi-day booking) shown across its nights
-    // (ADR-0054) — not counted on the rail.
+    // Ambient-span backdrop (a hotel / multi-day booking) shown across the days it
+    // covers (ADR-0054) — not counted on the rail. **Two units, chosen by the event's
+    // own type** (ADR-0163 §4): a stay is counted in nights, which is the traveller's
+    // unit and the reason `לילה` was the only wording here; a car hire is counted in
+    // the days you hold it, and `לילה 2 מתוך 5` was a hotel's word on a vehicle. The
+    // choice is made in `lib/glance.ts`'s `ambientSpanLabel`, from the SAME
+    // `durationUnit` the booking surfaces read — not by a second rule here.
     ambientNight: (night: number, nights: number) => `לילה ${night} מתוך ${nights}`,
+    ambientDay: (day: number, days: number) => `יום ${day} מתוך ${days}`,
     // Amber transition markers on the rail + the shared booking grammar (ADR-0059
     // §3 / ADR-0063 profile keys): the two ends of a bracketed booking.
     // Wording is by mode, not hard-coded (ADR-0063 refinement): the generic
@@ -1286,8 +1334,11 @@ export const t = {
       carDropoff: 'החזרת הרכב',
     },
     // "Inside a booking" mid-stay strip (ADR-0059 §2) — teal "where you are".
+    // The mid-stay strip's verb — LODGING only (ADR-0163 §4). Anything else ambient
+    // states its own name; see the strip's comment in `screens/Home.tsx`.
     stayingPrefix: 'שוהים ב־',
     nightLabel: 'לילה',
+    dayLabel: 'יום',
     dismissStay: 'הסתר',
   },
   // Plan-mode Home — the prep dashboard (modes.md; mockups/plan-mode-v1.html).

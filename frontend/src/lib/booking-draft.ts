@@ -43,6 +43,9 @@ export interface BookingSheetDraft {
   icon: string;
   title: string;
   code: string;
+  /** **The company behind the booking** (ADR-0163 §2) — `Booking.provider`. Travels in
+   *  the draft like every other typed field, so a place errand to the Map cannot lose it. */
+  provider: string;
   fromPlaceId: string | undefined;
   toPlaceId: string | undefined;
   placeId: string | undefined;
@@ -126,8 +129,12 @@ export const BOOKING_FIELD_COVERAGE = {
   // by a draft string. `details.wifi` deliberately stays — it is a field with one reader
   // (`home-quick.ts`), not a note.
   details: 'form',
-  // Never surfaced in the sheet — an importer's name for where a booking came from.
-  provider: 'unused',
+  // **Now a form field** (ADR-0163 §2). This line read `'unused'`, with the comment
+  // "never surfaced in the sheet — an importer's name for where a booking came from" —
+  // which is how the gap survived: `BookingDetail` renders it as `ספק` for every type,
+  // so the value was displayable and unenterable at the same time, and a rental company
+  // had nowhere to go. The label is per type; the column is not.
+  provider: 'form',
 } as const satisfies Record<keyof Booking, 'form' | 'identity' | 'unused'>;
 
 /** The form state a booking (or a seed, or neither) opens with. */
@@ -175,6 +182,7 @@ export function bookingSheetDraft(input: {
     icon: chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[type],
     title: booking?.title ?? '',
     code: booking?.confirmationCode ?? '',
+    provider: booking?.provider ?? '',
     fromPlaceId: fromPlaceId || undefined,
     toPlaceId: toPlaceId || undefined,
     placeId,

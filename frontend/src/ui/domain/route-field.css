@@ -86,3 +86,14 @@
   outline: none;
   text-decoration: underline;
 }
+
+/* **A hire's return question** (ADR-0163 §1). The pills and the conditional second
+   picker are one block, so the picker that appears reads as the answer to the question
+   above it rather than as a third endpoint. `gap` matches `.route-field`'s so the two
+   pickers sit the same distance apart whichever branch is showing. */
+.route-field-return {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block-start: var(--space-2);
+}

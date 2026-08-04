@@ -930,3 +930,113 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     expect(screen.queryByText(t.index.form.addStop)).toBeNull();
   });
 });
+
+// ── A HIRE IS NOT A JOURNEY (ADR-0163) ────────────────────────────────────────
+// Three of the four reports against ADR-0162's build land here: the form's question, the
+// company field, and the title that was printing a route.
+describe('BookingSheet — a car hire', () => {
+  // Mocks are module-level and shared with every describe above, so a save assertion
+  // reading `mock.calls[0]` would otherwise read whichever test ran before it.
+  afterEach(() => {
+    cleanup();
+    indexVerbs.createBooking.mockClear();
+    indexVerbs.updateBooking.mockClear();
+  });
+
+  const hire: Booking = {
+    id: 'bk-car',
+    tripId: 't1',
+    type: BOOKING_TYPE.CAR,
+    title: 'טוקיו',
+    fromPlaceId: 'pl-nrt',
+    toPlaceId: 'pl-nrt',
+    provider: 'Hertz',
+    source: BOOKING_SOURCE.MANUAL,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u',
+  };
+  const openFresh = () =>
+    render(
+      wrapNav(<BookingSheet booking={null} seed={{ type: BOOKING_TYPE.CAR }} onClose={() => {}} />),
+    );
+
+  it('asks איסוף/החזרה, not מוצא/יעד, and offers no direction swap', () => {
+    render(wrapNav(<BookingSheet booking={hire} onClose={() => {}} />));
+    expect(screen.getByText(t.index.form.hireEndsLabel)).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.index.form.pickupPlaceLabel })).toBeTruthy();
+    expect(screen.queryByText(t.index.form.routeLabel)).toBeNull();
+    expect(screen.queryByRole('button', { name: t.index.form.originLabel })).toBeNull();
+    expect(screen.queryByRole('button', { name: new RegExp(t.index.form.swapRoute) })).toBeNull();
+    // Nor the round trip / stops controls — a hire has neither (ADR-0162's profile).
+    expect(screen.queryByText(t.index.form.roundTrip)).toBeNull();
+    expect(screen.queryByText(t.index.form.addStop)).toBeNull();
+  });
+
+  it('opens on "same counter" for a hire whose two ends match', () => {
+    render(wrapNav(<BookingSheet booking={hire} onClose={() => {}} />));
+    expect(
+      screen.getByRole('radio', { name: t.index.form.returnSame }).getAttribute('aria-checked'),
+    ).toBe('true');
+    expect(screen.queryByRole('button', { name: t.index.form.dropoffPlaceLabel })).toBeNull();
+  });
+
+  // **The company field** (§2). It exists on `Booking` and `BookingDetail` has always
+  // rendered it; no form ever wrote it.
+  it('collects the rental company, under a label that names it', () => {
+    render(wrapNav(<BookingSheet booking={hire} onClose={() => {}} />));
+    toLastStep();
+    const input = screen.getByLabelText(t.index.sheet.providerLabel.car) as HTMLInputElement;
+    expect(input.value).toBe('Hertz');
+    expect(t.index.sheet.providerLabel.car).not.toBe(t.index.sheet.providerLabel.flight);
+  });
+
+  it('sends the company on save', async () => {
+    render(wrapNav(<BookingSheet booking={hire} onClose={() => {}} />));
+    toLastStep();
+    fireEvent.change(screen.getByLabelText(t.index.sheet.providerLabel.car), {
+      target: { value: 'Europcar' },
+    });
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, patch] = indexVerbs.updateBooking.mock.calls[0] as [unknown, { provider: string }];
+    expect(patch.provider).toBe('Europcar');
+  });
+
+  // **The title** (§3). A journey is named by its route; a hire is named by its company,
+  // which is what stops `נריטה ← נריטה` reaching every title-only surface.
+  it('titles itself by the company, not by its two counters', async () => {
+    openFresh();
+    // Pick the same counter for both ends, the case that produced the doubled name.
+    fireEvent.click(screen.getByRole('radio', { name: t.index.form.returnSame }));
+    toLastStep();
+    fireEvent.change(screen.getByLabelText(t.index.sheet.providerLabel.car), {
+      target: { value: 'Hertz' },
+    });
+    save();
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalled());
+    const [input] = indexVerbs.createBooking.mock.calls[0] as [{ title: string }];
+    expect(input.title).toBe('Hertz');
+    expect(input.title).not.toContain('טוקיו');
+  });
+
+  it('falls back to the type label when no company was entered', async () => {
+    openFresh();
+    toLastStep();
+    save();
+    await waitFor(() => expect(indexVerbs.createBooking).toHaveBeenCalled());
+    const [input] = indexVerbs.createBooking.mock.calls[0] as [{ title: string }];
+    expect(input.title).toBe(t.index.bookingType.car);
+  });
+
+  // The rule is per type, so the three travelling modes must be untouched by it.
+  it('leaves a flight titled by its route', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    toLastStep();
+    save();
+    await waitFor(() => expect(indexVerbs.updateBooking).toHaveBeenCalled());
+    const [, patch] = indexVerbs.updateBooking.mock.calls[0] as [unknown, { title: string }];
+    expect(patch.title).toContain('תל אביב');
+    expect(patch.title).toContain('טוקיו');
+  });
+});

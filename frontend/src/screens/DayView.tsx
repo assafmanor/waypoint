@@ -78,6 +78,7 @@ import { bookingWhen } from '../lib/booking-journey';
 import { hoursPhrase } from '../lib/duration';
 import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
 import { CODE_PREFIX, DAY_NOON, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
+import { ambientSpanLabel } from '../lib/glance';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -287,13 +288,6 @@ export function DayView() {
   const middleStays = events.filter(
     (e) => isAmbient(e) && e.date < activeDate && activeDate < e.endDate!,
   );
-  const stayNights = (e: TripEvent) =>
-    Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
-  const stayNight = (e: TripEvent) =>
-    Math.min(
-      stayNights(e),
-      Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
-    );
   // The shelf, grouped (ADR-0116 §2) by one shared derivation both hosts call —
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
   // lot) the day's skipped soft events, durable and restorable in place.
@@ -429,7 +423,7 @@ export function DayView() {
                 {e.icon ?? DEFAULT_STAY_ICON}
               </span>
               <span className="an">{e.title}</span>
-              <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>
+              <span className="as">{ambientSpanLabel(e, activeDate)}</span>
             </div>
           ))}
         </div>

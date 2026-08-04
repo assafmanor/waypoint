@@ -119,6 +119,7 @@ import {
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
 import type { BookingTransition } from '../lib/glance';
+import { ambientSpanLabel } from '../lib/glance';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -295,13 +296,6 @@ export function PlanDay() {
   const middleStays = events.filter(
     (e) => isAmbient(e) && e.date < activeDate && activeDate < e.endDate!,
   );
-  const stayNights = (e: TripEvent) =>
-    Math.max(1, Math.round((Date.parse(e.endDate!) - Date.parse(e.date)) / MS_PER_DAY));
-  const stayNight = (e: TripEvent) =>
-    Math.min(
-      stayNights(e),
-      Math.round((Date.parse(activeDate) - Date.parse(e.date)) / MS_PER_DAY) + 1,
-    );
 
   // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
   // `dayEvents` — so their edge days would show nothing in the list. Interleave
@@ -903,7 +897,7 @@ export function PlanDay() {
                   {e.icon ?? DEFAULT_STAY_ICON}
                 </span>
                 <span className="an">{e.title}</span>
-                <span className="as">{t.glance.ambientNight(stayNight(e), stayNights(e))}</span>
+                <span className="as">{ambientSpanLabel(e, activeDate)}</span>
               </div>
             ))}
           </div>

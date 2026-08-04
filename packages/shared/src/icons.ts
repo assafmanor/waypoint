@@ -439,6 +439,15 @@ export interface BookingTypeProfile {
    *  this table only carries the exceptions. Read through `bookingTypeDurationUnit`,
    *  never off the profile directly. */
   durationUnit?: DurationUnit;
+  /** **Where this type's title comes from** (ADR-0163). `'route'` derives it from the
+   *  two endpoints (ADR-0059 §3: nobody names a flight, so `origin ← dest` IS its name);
+   *  `'name'` means the booking carries one of its own.
+   *
+   *  **A separate axis from `places`, and that is the whole point.** Until the car hire
+   *  the two moved together, so `carriesRoute` was doing both jobs and a hire — which
+   *  carries a route and is *called* Hertz — came out named `נריטה ← נריטה`. Read through
+   *  `titlesFromRoute`, never by asking whether the type has a route. */
+  titleFrom: 'route' | 'name';
 }
 
 /** What makes two bookings one journey, and what makes the join a tight one. */
@@ -462,6 +471,8 @@ const transportProfile = (sequence: ConnectionWindow): BookingTypeProfile => ({
   schedule: 'span',
   defaultKind: 'hard',
   legs: { mirrored: true, sequence },
+  // Nobody names a flight or a train (ADR-0059 §3) — the route IS the name.
+  titleFrom: 'route',
 });
 
 /** No second journey of any shape. */
@@ -484,19 +495,48 @@ export const BOOKING_TYPE_PROFILE = {
   //
   // `durationUnit` is the other half: `transport` reads in hours because a flight is
   // hours even overnight, and a five-day hire read "120 ש׳". You hold a car in days.
+  //
+  // `titleFrom: 'name'` is the third disagreement, and ADR-0163 is the report that found
+  // it: a hire is CALLED something — Hertz, Europcar — where a flight is not. Deriving
+  // its title from its route named a same-counter hire `נריטה ← נריטה`.
   car: {
     places: 'route',
     schedule: 'span',
     defaultKind: 'hard',
     legs: ONE_JOURNEY,
     durationUnit: 'auto',
+    titleFrom: 'name',
   },
   // A stay is two endpoints at ONE place — which is why `places` and `schedule` are
   // separate axes rather than one "is it transport" flag.
-  hotel: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: ONE_JOURNEY },
-  activity: { places: 'single', schedule: 'span', defaultKind: 'hard', legs: ONE_JOURNEY },
-  restaurant: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: ONE_JOURNEY },
-  other: { places: 'single', schedule: 'point', defaultKind: 'soft', legs: ONE_JOURNEY },
+  hotel: {
+    places: 'single',
+    schedule: 'span',
+    defaultKind: 'hard',
+    legs: ONE_JOURNEY,
+    titleFrom: 'name',
+  },
+  activity: {
+    places: 'single',
+    schedule: 'span',
+    defaultKind: 'hard',
+    legs: ONE_JOURNEY,
+    titleFrom: 'name',
+  },
+  restaurant: {
+    places: 'single',
+    schedule: 'point',
+    defaultKind: 'soft',
+    legs: ONE_JOURNEY,
+    titleFrom: 'name',
+  },
+  other: {
+    places: 'single',
+    schedule: 'point',
+    defaultKind: 'soft',
+    legs: ONE_JOURNEY,
+    titleFrom: 'name',
+  },
 } as const satisfies Record<BookingType, BookingTypeProfile>;
 
 /** **Does this booking type carry a route** (`fromPlaceId`/`toPlaceId`) rather than a
@@ -505,6 +545,15 @@ export const BOOKING_TYPE_PROFILE = {
  *  the server's own `assertPlaceShape` guard. */
 export const carriesRoute = (type: BookingType): boolean =>
   BOOKING_TYPE_PROFILE[type].places === 'route';
+
+/** **Is this type's title derived from its route** rather than carried as its own name
+ *  (ADR-0059 §3, made its own axis by ADR-0163)?
+ *
+ *  Deliberately NOT `carriesRoute` — the two answered together until the car hire, which
+ *  carries a route (two counters) and has a name (the rental company). Asking the wrong
+ *  one of the two is exactly how `נריטה ← נריטה` got saved as a booking's title. */
+export const titlesFromRoute = (type: BookingType): boolean =>
+  BOOKING_TYPE_PROFILE[type].titleFrom === 'route';
 
 /** Two-endpoint schedule (start + end, may span days) rather than a point on a day. */
 export const hasSpanSchedule = (type: BookingType): boolean =>

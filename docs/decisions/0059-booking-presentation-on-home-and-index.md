@@ -4,6 +4,14 @@
 **Date:** 2026-07-18
 **Refines:** [0063](0063-category-time-behaviour-profile.md) (this ADR applies its `bracketed` profile to the Home & Index — see the rebase note below), [0045](0045-trip-home-real-data-only.md) (the hero was declared "unchanged" there; it now gains booking-aware presentation), [0054](0054-ambient-span-events-off-the-day-schedule.md) (ambient hotels are backdrop on the day schedule — this decides how they surface on the hero and as an in-progress treatment), [0053](0053-index-booking-detail-view-and-merged-edit-reach.md) (the booking detail view whose appearance this improves), [0049](0049-index-tab-mode-and-lifecycle.md) (the Index booking row), [0011](0011-hard-soft-event-model.md) (a booking backs a hard event), [0004](0004-integrations-are-pipes.md) (bookings feed existing surfaces, never their own screen), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the Booking↔Event model + `Booking.details` the presentation reads)
 
+## Amendment (2026-08-04, ADR-0163) — §3's "no name" holds for a JOURNEY, not for a hire
+
+§3 established that a transport booking has no name and takes its title from `origin ← destination`. That is still right for `flight`, `train` and `transit`: nobody names a flight, so the route **is** its name, and everything §3 built on that stands.
+
+It is wrong for the fourth transport mode. A **car hire** (ADR-0162) is called Hertz, and it is route-shaped only in the sense that it has two counters — usually the same one. So §3's rule produced the title `נריטה ← נריטה`, printed wherever a surface receives a title and nothing else, the day's ambient strip included.
+
+[ADR-0163](0163-a-hire-is-not-a-journey.md) §3 narrows the rule rather than replacing it: **`titleFrom` becomes its own axis** on `BOOKING_TYPE_PROFILE`, and the question a title site asks is `titlesFromRoute(type)` — not `carriesRoute(type)`, which happened to give the same answer for every type that existed when §3 was written. A hire's title is its rental company, falling back to the type label. Read that ADR before adding a fifth transport mode: whether it is _named_ is now a separate question from whether it has a route.
+
 ## Amendment (2026-07-24) — transport endpoints become picked places; the route row reshapes
 
 §3 made the flight/train origin→destination the **editable title row** (two free-text inputs beside the icon), explicitly _not_ a read-only preview. That was right while endpoints were free text authored as name-only Place-lites. The Maps & Places timezone track (ADR-0113 follow-up) makes the endpoints **real picked places** (coords + timezone, so a zone-crossing flight can render each end in its own zone and the endpoints appear on the Map) — authored through the same `PlacePicker` as every other booking's place, which is a modal pick, not inline typing.
