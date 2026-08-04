@@ -70,6 +70,60 @@ describe('MaybeCard', () => {
   // The tile (ADR-0116's session-202 amendment §2). Geometry lives in CSS, which a
   // jsdom test cannot see — what it CAN assert is the markup that geometry needs,
   // and that the action line is genuinely gone rather than merely hidden.
+  // **The way to the idea's pin** (ADR-0121 §8's 2026-08-04 amendment). The glyph slot is a
+  // `PlaceBadge` now, as it is on the three hosts that already had one. The GEOMETRY claim —
+  // that this costs the tile nothing — is a browser one and lives in
+  // `e2e/idea-place-badge.spec.ts`; what is assertable here is which element it is and that
+  // the tap does not reach the card underneath.
+  describe('the place badge', () => {
+    it('makes the glyph a control when the idea has a place', () => {
+      render(<MaybeCard icon="🍜" title="ראמן" onOpen={vi.fn()} onShowOnMap={vi.fn()} />);
+      const badge = document.querySelector('.wp-maybecard-ic')!;
+      expect(badge.className).toContain('wp-placebadge');
+      expect(badge.getAttribute('role')).toBe('button');
+      expect(badge.querySelector('.wp-placebadge-mark')).toBeTruthy();
+    });
+
+    // "Absent, not broken" — the rule the badge follows on every host.
+    it('leaves the glyph exactly as it was without one', () => {
+      render(<MaybeCard icon="🍜" title="ראמן" onOpen={vi.fn()} />);
+      const badge = document.querySelector('.wp-maybecard-ic')!;
+      expect(badge.className).not.toContain('wp-placebadge');
+      expect(badge.getAttribute('role')).toBeNull();
+      expect(badge.getAttribute('aria-hidden')).toBe('true');
+      expect(badge.textContent).toBe('🍜');
+    });
+
+    // The whole card is a button on this host, so the badge's tap must not also open the
+    // idea's sheet — the one thing a nested control has to get right.
+    it('fires only the badge, never the card behind it', () => {
+      const onOpen = vi.fn();
+      const onShowOnMap = vi.fn();
+      render(<MaybeCard icon="🍜" title="ראמן" onOpen={onOpen} onShowOnMap={onShowOnMap} />);
+      fireEvent.click(document.querySelector('.wp-maybecard-ic')!);
+      expect(onShowOnMap).toHaveBeenCalledTimes(1);
+      expect(onOpen).not.toHaveBeenCalled();
+    });
+
+    it('works on the remove variant too, where the body is the button', () => {
+      const onOpen = vi.fn();
+      const onShowOnMap = vi.fn();
+      render(
+        <MaybeCard
+          icon="🍜"
+          title="ראמן"
+          onOpen={onOpen}
+          onRemove={vi.fn()}
+          removeLabel="הסר"
+          onShowOnMap={onShowOnMap}
+        />,
+      );
+      fireEvent.click(document.querySelector('.wp-maybecard-ic')!);
+      expect(onShowOnMap).toHaveBeenCalledTimes(1);
+      expect(onOpen).not.toHaveBeenCalled();
+    });
+  });
+
   describe('the compact tile', () => {
     it('carries the modifier and wraps title + meta so the row axis has a block', () => {
       const { container } = render(

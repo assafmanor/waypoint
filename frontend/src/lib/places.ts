@@ -747,6 +747,25 @@ export function bookingShowOnMap(
 }
 
 /**
+ * **The shelf-idea peer** (ADR-0121 §8's 2026-08-04 amendment), and the entity that most
+ * needed one: every place added from the map outside an errand becomes an idea, so the shelf
+ * is where map research accumulates — and it was the one host with no way back to the pin.
+ *
+ * Simpler than the two above because an idea's place is not derived from anything: it holds
+ * the `placeId` itself. What it shares with them is the part worth sharing — the coords check
+ * and the null-hook check collapsing into one `undefined`, so a call site never has to
+ * remember either.
+ */
+export function ideaShowOnMap(
+  item: { placeId?: string },
+  places: Place[],
+  show: ShowPlaceOnMap,
+): (() => void) | undefined {
+  const place = places.find((p) => p.id === item.placeId);
+  return hasCoords(place) && show ? () => show(place.id) : undefined;
+}
+
+/**
  * Where you are RIGHT NOW — the in-progress event's place, or `undefined`.
  *
  * It does not decide what "now" means; it **asks `deriveNow`**, the same resolver
