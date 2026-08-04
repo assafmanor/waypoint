@@ -251,6 +251,16 @@ export const placeSchema = z.object({
    *  data about a place, not a property of the entity Google describes, so a cross-trip
    *  global place cache cannot hold it (ADR-0147's Consequences). */
   icon: z.string().optional(),
+  /** **What a human said this place IS** (ADR-0165). The place's own answer, and it OUTRANKS
+   *  the one derived from the referencing entities (`place-usage.ts`'s most-committed
+   *  reference) on every place-scoped surface: its pin's hue, its badge glyph, the type facet
+   *  it answers to. An event still carries its own category for its own surfaces — the
+   *  deliberate choice at the nearest scope wins, exactly as the icon chain resolves.
+   *
+   *  Here rather than on the referencing `MaybeItem` for the same reason `icon` is (ADR-0147
+   *  §5): it must survive deleting the idea it was written through, and the referencing entity
+   *  that could hold it is ambiguous the moment two ideas point at one place. */
+  category: eventCategorySchema.optional(),
   /** Google's aggregate rating (0–5) and its count, cached on the pick (ADR-0109 §9). */
   rating: z.number().optional(),
   userRatingsTotal: z.number().optional(),

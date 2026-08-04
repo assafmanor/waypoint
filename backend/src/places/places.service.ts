@@ -167,6 +167,7 @@ export class PlacesService {
               lng: input.lng,
               timezone,
               icon: input.icon,
+              category: input.category,
               // Present only on an undo restoring a row we cached ourselves (ADR-0157 §4);
               // every ordinary create leaves them undefined and Google fills them on enrich.
               rating: input.rating,
@@ -226,6 +227,7 @@ export class PlacesService {
             ...(input.lat !== undefined && { lat: input.lat }),
             ...(input.lng !== undefined && { lng: input.lng }),
             ...(input.icon !== undefined && { icon: input.icon }),
+            ...(input.category !== undefined && { category: input.category }),
             ...(input.rating !== undefined && { rating: input.rating }),
             ...(input.userRatingsTotal !== undefined && {
               userRatingsTotal: input.userRatingsTotal,
@@ -372,10 +374,10 @@ export class PlacesService {
    *  name is preserved — ADR-0110 §1 adopts googlePlaceId/coords/timezone, not the
    *  label the user typed. `before` is the already-scope-checked row from resolvePlace.
    *
-   *  **`name` and `icon` are omitted on purpose, and that omission is the whole policy
-   *  ADR-0147 gave a surface to: what a human authored about a place outranks what Google
-   *  says about it.** It was implemented here as an absence long before there was a way to
-   *  author either from the app. Adding a field to this `data` object hands it back to
+   *  **`name`, `icon` and `category` are omitted on purpose, and that omission is the whole
+   *  policy ADR-0147 gave a surface to: what a human authored about a place outranks what
+   *  Google says about it.** It was implemented here as an absence long before there was a way
+   *  to author any of them from the app. Adding a field to this `data` object hands it back to
    *  Google — so anything user-authored stays out of it. */
   private async enrichExisting(
     tripId: string,

@@ -99,13 +99,15 @@ There is no `Day` resource — events carry `date` (ADR-0018); the client groups
 
 Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`); written here. Name-only rows are valid ("Place-lite"); the Places picker enriches `googlePlaceId`/`lat`/`lng`/`timezone` on a pick.
 
-| Method | Path                             | Body → Response                                                                       |
-| ------ | -------------------------------- | ------------------------------------------------------------------------------------- |
-| POST   | `/trips/:tripId/places`          | `createPlaceSchema` (`{ id?, name, googlePlaceId?, address?, lat?, lng? }`) → `Place` |
-| POST   | `/trips/:tripId/places/search`   | `searchPlacesSchema` (`{ input, sessionToken }`) → `PlacePrediction[]`                |
-| POST   | `/trips/:tripId/places/resolve`  | `resolvePlaceSchema` (`{ googlePlaceId, sessionToken?, enrichPlaceId? }`) → `Place`   |
-| PATCH  | `/trips/:tripId/places/:placeId` | partial → `Place` (manual field edit; Google enrichment goes through `resolve`)       |
-| DELETE | `/trips/:tripId/places/:placeId` | → `204` (a 404 is idempotent success — an outbox retry of an applied delete)          |
+| Method | Path                             | Body → Response                                                                                         |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| POST   | `/trips/:tripId/places`          | `createPlaceSchema` (`{ id?, name, googlePlaceId?, address?, lat?, lng?, icon?, category? }`) → `Place` |
+| POST   | `/trips/:tripId/places/search`   | `searchPlacesSchema` (`{ input, sessionToken }`) → `PlacePrediction[]`                                  |
+| POST   | `/trips/:tripId/places/resolve`  | `resolvePlaceSchema` (`{ googlePlaceId, sessionToken?, enrichPlaceId? }`) → `Place`                     |
+| PATCH  | `/trips/:tripId/places/:placeId` | partial → `Place` (manual field edit; Google enrichment goes through `resolve`)                         |
+| DELETE | `/trips/:tripId/places/:placeId` | → `204` (a 404 is idempotent success — an outbox retry of an applied delete)                            |
+
+**The three user-authored fields (`name`, `icon`, `category` — ADR-0147 §5, ADR-0165)** are writable on `POST` and `PATCH` and are the ones `resolve` never touches: `enrichExisting` adopts Google's id/address/coordinates/zone and omits all three, so a name you typed, a glyph you picked and a category you chose survive a re-pick. `PATCH` is where the map's place form lands them, as one diffed request per save.
 
 **Delete (ADR-0157).** One `place:delete` `Change` and nothing else: the referencing rows are the **database's** to update, and it does so silently. Four FKs are `onDelete: SetNull` (`Event.placeId`, `Booking.placeId`/`fromPlaceId`/`toPlaceId`, `MaybeItem.placeId`) — the event keeps its slot and loses its location — and `Note.placeId` is `onDelete: Cascade`, so the place's notes go with it. **Neither writes a `Change` row**, so a client derives both locally off the one delete it receives (the rule ADR-0152 §2 set for the note cascade; `lib/place-refs.ts`'s `clearPlaceRefsForChange` is its twin for the place FKs). An undone delete re-`POST`s the place under its own id — which is why `createPlaceSchema` accepts `rating`/`userRatingsTotal`, the two fields nothing else could restore without a second Place Details call.
 

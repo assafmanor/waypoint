@@ -122,7 +122,9 @@ Parked ideas on the "maybe" shelf.
 
 The trip-scoped location registry every `placeId` FK points to, and the cache the Map/Places work will enrich. Data-plane (created/updated through `ChangeService`). The **only** way a location is expressed — there is no free-text `Event.location`/`Booking.address` (ADR-0051); free text becomes a name-only Place ("Place-lite").
 
-- `id`, `tripId`, `googlePlaceId?` (null for manually-typed places), `name`, `address?`, `lat?`, `lng?`, `createdAt`, `updatedAt`, `updatedBy`
+- `id`, `tripId`, `googlePlaceId?` (null for manually-typed places), `name`, `address?`, `lat?`, `lng?`, `timezone?` (IANA, resolved server-side from the coordinates via `geo-tz`), `icon?`, `category?` (`EventCategory`), `rating?`, `userRatingsTotal?`, `createdAt`, `updatedAt`, `updatedBy`
+- **Three fields are user-authored — `name`, `icon` (ADR-0147 §5) and `category` (ADR-0165) — and Google never overwrites them.** `enrichExisting` adopts the id/address/coordinates/zone and omits those three by construction, which is how a name you typed has always survived a re-pick. `icon` and `category` are both **why `Place` stays trip-scoped** rather than a shared cross-trip record: they are this trip's view of the place, not a property of the entity Google describes.
+- `category` is the place's own answer to _what is this_, and it **outranks** the one derived from the referencing entities (`place-usage.ts`'s most-committed reference) on every place-scoped surface — its pin hue, its badge glyph, the type facet it answers to. An `Event` still carries its own category for its own surfaces: the deliberate choice at the nearest scope wins, and a place is the widest scope.
 - Referenced by `Event.placeId` (unlinked events only — see the authority rule, ADR-0051), `Booking.placeId` + `Booking.fromPlaceId`/`toPlaceId`, `MaybeItem.placeId`. All `onDelete: SetNull`.
 - Enrichment (hours, rating, photos) is added when the Maps work lands; `googlePlaceId`/`lat`/`lng` fill in when the Places picker replaces free-text entry. Orphaned rows are left (no GC yet); no within-trip dedup until `googlePlaceId` exists.
 

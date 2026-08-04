@@ -315,6 +315,10 @@ model Place {
   // and the reason a Place stays trip-scoped rather than a shared cross-trip record: a chosen
   // icon is data about this trip's view of the place, not about the entity Google describes.
   icon             String?
+  // What a human said this place IS (ADR-0165). Same argument as `icon` above — it has to
+  // survive deleting the idea it was written through — and it is why the map's category pills
+  // are no longer a control with nowhere to write.
+  category         EventCategory?
   rating           Float? // Google aggregate rating 0–5 (ADR-0109 §9)
   userRatingsTotal Int? // count behind `rating`
   createdAt        DateTime @default(now())

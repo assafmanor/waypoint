@@ -167,6 +167,42 @@ describe('buildPlaceUsageIndex', () => {
     expect(u.pin).toEqual({ category: 'food', commitment: 'hard' }); // hard event wins
   });
 
+  // ── THE PLACE'S OWN WORD BEATS THE REFERENCES' (ADR-0165) ──────────────────────
+  // The pin's hue, the badge's glyph and the type facet all read this one resolution, so what
+  // is pinned is the PRECEDENCE and not one surface's value. A human calling a place `food`
+  // while a hard sightseeing event is scheduled there is the case the whole column exists for:
+  // before it, that tap had nowhere to land and nothing to change.
+  it('a place’s own category wins the pin, over even a hard event’s', () => {
+    const idx = buildPlaceUsageIndex(
+      [event({ id: 'e', placeId: 'pl', category: 'sightseeing', kind: EVENT_KIND.HARD })],
+      [],
+      [],
+      [place('pl', { category: 'food' })],
+    );
+    const u = idx.get('pl')!;
+    expect(u.pin).toEqual({ category: 'food', commitment: 'hard' });
+    // …and the commitment is still the references' to say: it is about the plan, not the place.
+    expect([...u.categories].sort()).toEqual(['food', 'sightseeing']);
+  });
+
+  // A union, never a replacement — or saying what a place is would take it out of the chip its
+  // schedule earned, which is the one thing a filter must not do quietly.
+  it('a place’s own category joins the facet union rather than replacing it', () => {
+    const idx = buildPlaceUsageIndex(
+      [],
+      [],
+      [maybe({ id: 'm', placeId: 'pl' })],
+      [place('pl', { category: 'lodging' })],
+    );
+    const u = idx.get('pl')!;
+    expect(u.categories).toEqual(['lodging']);
+    expect(u.pin).toEqual({ category: 'lodging', commitment: 'idea' });
+    expect(
+      matchesPlaceFilter(u, { category: 'lodging', maybesOnly: false }),
+      'a place a human categorised must answer to that chip',
+    ).toBe(true);
+  });
+
   it('an idea pencilled in for a day gets that day — with no clock (ADR-0116 §1)', () => {
     const idx = buildPlaceUsageIndex(
       [],

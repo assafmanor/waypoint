@@ -10,6 +10,10 @@
 //      `Place.icon` from, so getting it wrong would freeze a place's icon at whatever its
 //      category happened to say that day and shadow the category from then on — the same defect
 //      `chosenIcon` exists to undo one rung down.
+//   3. **Nor is a derived CATEGORY** (ADR-0165). The pills open on what the place's references
+//      say, and `categoryTouched` is what the host writes `Place.category` from — so an
+//      untouched seed reported as a choice would stamp a derived category onto the row on any
+//      save, which is the `booked`-row defect (ADR-0136 §2) in a second form.
 //
 // A value test on one category would pass with the derivation wired to the wrong glyph, and a
 // value test on one flow would pass with `initiallyTouched` inverted — which is exactly the
@@ -135,6 +139,9 @@ describe('MapPlaceForm — a derived glyph is not a choice', () => {
       icon: iconForCategory(EVENT_CATEGORY.NATURE),
       iconTouched: false,
       category: EVENT_CATEGORY.NATURE,
+      // …and the pill tap IS a choice about the category, which is what the host writes off
+      // (ADR-0165). The two flags are independent for exactly this reason.
+      categoryTouched: true,
       notes: [],
     });
   });
@@ -154,6 +161,38 @@ describe('MapPlaceForm — a derived glyph is not a choice', () => {
     fireEvent.click(confirmBtn(t.map.make.save));
     expect(existing.onConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ icon: '🍜', iconTouched: true }),
+    );
+  });
+
+  // **THE SEED IS NOT A CHOICE** (ADR-0165). The pills open on the category the place's
+  // references derived — that is what makes the card open "where the place already is" — so a
+  // save that never touched them must report it as untouched, or the host writes a derived
+  // category onto the row every time anyone fixes a typo.
+  it('reports `categoryTouched: false` for the category it merely opened on', () => {
+    const { onConfirm } = mount({
+      category: EVENT_CATEGORY.FOOD,
+      name: 'רמן נאגי',
+      confirmLabel: t.map.make.save,
+    });
+    fireEvent.click(confirmBtn(t.map.make.save));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ category: EVENT_CATEGORY.FOOD, categoryTouched: false }),
+    );
+  });
+
+  // …including when the human taps the pill it is already on. The tap is the choice; that it
+  // agrees with the seed is the HOST's diff to make, and it makes it against the stored column,
+  // which the form cannot see.
+  it('reports `categoryTouched: true` for a tap on the pill already selected', () => {
+    const { onConfirm } = mount({
+      category: EVENT_CATEGORY.FOOD,
+      name: 'רמן נאגי',
+      confirmLabel: t.map.make.save,
+    });
+    fireEvent.click(pill(EVENT_CATEGORY.FOOD));
+    fireEvent.click(confirmBtn(t.map.make.save));
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({ category: EVENT_CATEGORY.FOOD, categoryTouched: true }),
     );
   });
 

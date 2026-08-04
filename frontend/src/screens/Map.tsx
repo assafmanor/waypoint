@@ -1462,9 +1462,9 @@ export function MapView() {
   // Google's for you to correct later (ADR-0147 §4, amending ADR-0131 §11's "picked → shelf").
   // Under an errand the control is `בחירה`, a different verb answering one question, and it
   // still commits directly: this function is that path.
-  // WHAT A HUMAN AUTHORED, WRITTEN ONTO THE PLACE. The name and the glyph are the only two
-  // user-owned fields on a `Place`, and this is the one write for both — rename is this call
-  // and nothing else, and the three add paths make it when what was typed differs from what
+  // WHAT A HUMAN AUTHORED, WRITTEN ONTO THE PLACE. The name, the glyph and the category are the
+  // three user-owned fields on a `Place`, and this is the one write for all of them — rename is
+  // this call and nothing else, and the add paths make it when what was typed differs from what
   // Google (or the existing row) already says. Skipped entirely when nothing differs, so an
   // add that accepts the name as offered costs no second request.
   const applyAuthored = useRef<(place: Place, value: MapPlaceFormValue) => Promise<Place>>(
@@ -1479,6 +1479,18 @@ export function MapView() {
       // shadow the category from then on — the same defect `chosenIcon` exists to undo one
       // layer down. `iconTouched` is the form telling us which it was.
       ...(value.iconTouched && value.icon !== place.icon && { icon: value.icon }),
+      // **And the category itself is stored** (ADR-0165), which is what makes the pills a
+      // control rather than a decoration: they used to drive the glyph and be dropped here, so
+      // a rename whose only act was a category tap wrote NOTHING — no request, no error, no
+      // change. Now the place carries its own, so the pin's hue moves with the pills too.
+      //
+      // **`categoryTouched`, for the same reason `iconTouched` is read one line up:** the pills
+      // OPEN on the category the references derived, and writing an untouched seed would stamp
+      // that derived value onto the row on any save — a conversion performed by a default nobody
+      // touched, which this repo has now fixed twice elsewhere (ADR-0136 §2).
+      ...(value.categoryTouched &&
+        value.category != null &&
+        value.category !== place.category && { category: value.category }),
     };
     if (Object.keys(patch).length === 0) return place;
     await indexVerbs.updatePlace(place.id, patch);
@@ -1785,13 +1797,14 @@ export function MapView() {
         return;
       }
       // A dropped pin, and it is FREE: no session, no Details, no reverse geocode (ADR-0147
-      // §3). The name and the icon ride along on the create, so it never exists un-authored and
-      // there is nothing to write over afterwards.
+      // §3). The name, the icon and the category ride along on the create, so it never exists
+      // un-authored and there is nothing to write over afterwards.
       const placeId = await indexVerbs.createPlace({
         name: value.name,
         lat: draft.at.lat,
         lng: draft.at.lng,
         icon: value.iconTouched ? value.icon : undefined,
+        category: value.category,
       });
       await writeNotes(placeId);
       cancelDraft();
@@ -2533,11 +2546,13 @@ export function MapView() {
           name: r.place.name,
           note: r.place.address,
           icon: r.place.icon,
-          // The category the referencing entities agree on, so the pills open where the place
-          // already is. It is not written back on a rename — a `Place` has no category and the
-          // referencing entity that does is ambiguous (`soleIdeaFor`'s recorded rule) — so
-          // here it is the ICON's driver, and the icon is what persists.
-          category: usage?.pin.category ?? undefined,
+          // The place's own category, else the one the referencing entities agree on — so the
+          // pills open where the place already is. `pin.category` already resolves that
+          // precedence (ADR-0165), and reading it rather than the column keeps this card and
+          // the pin under it answering with one value. **And it is written back now**: a
+          // `Place` carries a category of its own, which is what stopped the pills being a
+          // control with nowhere to write.
+          category: usage?.pin.category ?? r.place.category,
           confirmLabel: t.map.make.save,
         };
       }

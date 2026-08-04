@@ -74,7 +74,9 @@ export interface DayUsage {
 export interface PlaceUsage {
   placeId: string;
   days: DayUsage[];
-  /** Every referencing category (union), for the type facet + counts. */
+  /** Every referencing category (union), for the type facet + counts — **plus the place's
+   *  own** (ADR-0165), or a place a human called `food` would drop out of the `food` chip the
+   *  moment they said so. A union, so it never removes a facet the references earned. */
   categories: EventCategory[];
   isMaybe: boolean; // referenced by an unconsumed MaybeItem
   /** Referenced by a **skipped soft event** — parked on the shelf and restorable
@@ -85,7 +87,13 @@ export interface PlaceUsage {
   coordless: boolean; // lat/lng absent → not pinnable/measurable (listed-only)
   /** The most-committed reference: drives the pin/badge hue + hard/soft grammar.
    *  `category` is null when every reference is uncategorised (→ leisure hue at
-   *  the call site, ADR-0110 §2). */
+   *  the call site, ADR-0110 §2).
+   *
+   *  **`Place.category` wins it outright when a human set one** (ADR-0165) — the place's own
+   *  answer to *what is this* outranks one derived from what happens to be scheduled there,
+   *  which is the same precedence `placeGlyph` already gives `Place.icon` over the derived
+   *  glyph. Only the category: `commitment` stays the references' to say, because it is about
+   *  the plan (hard/soft), not about the place. */
   pin: { category: EventCategory | null; commitment: PinCommitment };
 }
 
@@ -335,6 +343,11 @@ export function buildPlaceUsageIndex(
   const out = new Map<string, PlaceUsage>();
   for (const [placeId, a] of acc) {
     const place = byId.get(placeId);
+    // The place's own word about itself, over the references' (ADR-0165) — the hue, the glyph
+    // and the facet all read this one resolution, so they cannot disagree about one place.
+    const own = place?.category;
+    if (own) a.categories.add(own);
+    const best = a.best ?? { category: null, commitment: 'idea' as PinCommitment };
     out.set(placeId, {
       placeId,
       days: [...a.days.values()].sort((x, y) => x.date.localeCompare(y.date)),
@@ -343,7 +356,7 @@ export function buildPlaceUsageIndex(
       isParked: a.isParked,
       isScheduled: a.isScheduled,
       coordless: place?.lat == null || place?.lng == null,
-      pin: a.best ?? { category: null, commitment: 'idea' },
+      pin: own ? { ...best, category: own } : best,
     });
   }
   return out;
