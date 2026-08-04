@@ -152,6 +152,17 @@ The stop name wraps the meta and costs the tile **8px** — the same 8px this AD
 
 Its glyph is **`check`**, not a second calendar. `שיבוץ ליום` keeps `CONTROL_ICON.schedule` (the calendar) because that is what it has always been, and the new row is not another kind of scheduling — it is **agreeing with a proposal**, which is what a tick means everywhere else in this app. Worth one sentence because the first draft gave the two rows a calendar and a clock, which is precisely the collision ADR-0161 §7 was written about: when two rows reach for one glyph, one of them has not been thought about.
 
-**What this deliberately is not.** It does not set `targetDate` itself, and it does not reorder anything already planned. It is a sentence with a source and a reason (§1) that a human accepts or ignores — the boundary §6 drew for external candidates, applied to a local one.
+**Agreeing switches the focused day, and without that this feature punishes agreement.** Found by asking where the idea goes (owner, 2026-08-04: _"when you mark a maybe for a specific day, does it move to `לְיום הזה` that already exists?"_). The answer is yes — `shelfGroups` puts `targetDate === date` in `forDay` — **but that group belongs to the day on screen**, and this strategy exists precisely to talk about the days you are _not_ on. Accept a `fits-a-day` suggestion for day 4 while standing on day 1 and today's shelf does this:
+
+- it is not in `לְיום הזה`, which is day 1's group;
+- it stays in the pool, where `near-the-day` **demotes it deliberately** — `TIER.AIMED_ELSEWHERE = 0` against `TIER.DATELESS = 1`, each owning half the score range, so an idea aimed elsewhere ranks below **every** dateless idea however close it is;
+- with `SHELF_POOL_CAP = 5` it can leave the strip altogether, into `עוד N · במפה`;
+- and its reason flips from `NEAR_STOP` to `AIMED_AT_DAY`, so the spatial fact that justified the suggestion vanishes the moment you agree with it.
+
+**The tier is right and stays.** It is ADR-0116 §2's partition, and a thing pencilled for Thursday should not compete for attention while you plan Monday. The defect is the **combination** — a correct demotion meeting a feature that encourages marking a day you are not on — so the fix is at the seam, not in the ranking: **accepting the suggestion sets the day and goes to it.** You tapped `סמנו ליום 4`; day 4 is where the idea now lives, in a group that shows it, on the surface where the next thing you want is to keep slotting.
+
+That is reuse, not a new mechanism: `setActiveDate` is already context-aware (ADR-0110), and `PlanDay` already encodes the rule that makes this safe — a mid-gesture day switch is scaffolding and gets reverted, while **a committed one keeps the new day**, because you just put something there. This is the committed case.
+
+**What this deliberately is not.** The suggestion does not set `targetDate` by itself, and nothing here reorders anything already planned. It is a sentence with a source and a reason (§1) that a human accepts or ignores — the boundary §6 drew for external candidates, applied to a local one.
 
 **Still open, and larger:** slotting several of those ideas into a day at once, which needs a posture the Map does not have (its dateless shelf pins are deliberately `aside` — ADR-0130 §3 — which is right for reading a day and backwards for filling one). Its own design session; see [backlog](../backlog.md).

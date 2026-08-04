@@ -127,3 +127,15 @@ The premise checks out in the code: `Map.tsx`'s `landPlace` calls `verbs.addMayb
 So the tile says `יום 4 · 300 מ׳` and the stop name stays in the sheet. And the verb is not on the tile either — session 203 removed the per-card action line, so agreeing lives one tap in, beside `שיבוץ ליום`, wearing **`check`** (agreeing with a proposal) rather than a second calendar. That last detail is the ADR-0161 §7 collision repeating itself within the hour: when two rows reach for one glyph, one of them has not been thought about.
 
 **What is left is one design session, not three items**, and its shape is in the [backlog](../backlog.md): pick a day, the unslotted ideas become the **subject** instead of the context, select several, drop them into the day's free time, the app proposes an order and times, you see it and confirm. Explicitly **not** auto-arranging, which ADR-0161 §10 refuses and which survives intact — you chose the things, you chose the hole, nothing already planned moves, and nothing commits before you look at it.
+
+## A fifth round, one question long, and it found a defect in round four
+
+_"When you mark a maybe for a specific day, does it move to `לְיום הזה` that already exists?"_
+
+Yes — `shelfGroups` puts `targetDate === date` in `forDay`, and both shelves render it under that header. But the question is better than the answer, because **that group belongs to the day on screen** and `fits-a-day` exists precisely to talk about the days you are not on.
+
+Accept a suggestion for day 4 while standing on day 1 and the shelf punishes you for it: the idea is not in `לְיום הזה` (that is day 1's group), it stays in the pool where `near-the-day` **demotes it deliberately** (`TIER.AIMED_ELSEWHERE = 0` against `TIER.DATELESS = 1`, each owning half the score range, so it ranks below every dateless idea however close it is), with `SHELF_POOL_CAP = 5` it can leave the strip entirely, and its reason flips from `NEAR_STOP` to `AIMED_AT_DAY` — so the spatial fact that justified the suggestion disappears the moment you agree with it.
+
+**The demotion is right and stays.** It is ADR-0116 §2's partition, and a thing pencilled for Thursday should not compete for attention while you plan Monday. What was wrong was the **combination** — a correct rule meeting a new feature that encourages marking a day you are not on — so the fix belongs at the seam: **accepting sets the day and goes to it.** Reuse rather than mechanism: `setActiveDate` is already context-aware, and `PlanDay` already encodes the rule that makes it safe (a mid-gesture day switch is scaffolding and reverts; a **committed** one keeps the new day, because you just put something there).
+
+The lesson for the remaining design session is the transferable part: **a feature that speaks about another day has to answer where it leaves you.** Two of the three deferred gaps (the Map's posture, and batch slotting) are about other days by construction, so they inherit the question.
