@@ -435,7 +435,12 @@ function ReadRow({
       <span className="fi">{icon}</span>
       <div className="main">
         <div className="fl">{label}</div>
-        <div className={`fv${mono ? ' mono' : ''}`} dir={mono ? 'ltr' : undefined}>
+        {/* The twin of `BookingDetail`'s fact row, and it carried the same mistake: a
+            ternary `dir="ltr"` the ADR-0118 lint guard read past, over values that are
+            stored content in whatever script the trip has — a name someone typed, a
+            destination Google named. `dir="auto"` resolves the zone and the budget LTR
+            exactly as before and stops reversing the two that are not Latin. */}
+        <div className={`fv${mono ? ' mono' : ''}`} dir="auto">
           {value}
         </div>
       </div>

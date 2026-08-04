@@ -1,6 +1,6 @@
 # 0118 — A number and its Hebrew unit: the LTR island is the number, never the token
 
-**Status:** Accepted (2026-07-25)
+**Status:** Accepted (2026-07-25). **Amended 2026-08-04** — the decision below covers strings the app _builds_; the amendment at the end covers the values it merely _renders_ (an address, a place name, a destination), which need `dir="auto"` rather than the absence of a `dir`, and it records that the lint guard was widened to see a computed `'ltr'` — which found a second live instance the original sweep of 75 sites had walked past. Read it before touching a `dir` anywhere.
 **Date:** 2026-07-25
 **Relates:** [0028](0028-plan-violet-color-budget-dark-ready.md) (the design language this sharpens — its RTL + mono-typography rules are where `dir="ltr"` came from), [0109](0109-map-tab-design.md) (the distance chip this fixes), [0107](0107-per-place-timezones-and-multi-zone-time.md) (the zone-shift pill this fixes, session-90 amendment), [0096](0096-per-domain-claude-md-guides.md) (reuse-before-adding — one bidi mechanism, not a per-call-site fix), [0114](0114-elapsed-duration-ladder.md) (the sibling "one rule for a formatted quantity" ADR)
 
@@ -45,6 +45,21 @@ Assaf's ask was explicit: fix the two, and generalize so it cannot happen again.
 - One CSS selector keyed off the old attribute value (`.wp-board-progress .ends span[dir='ltr']`, mono for the progress clocks) now keys off `span[dir]`.
 - `design-language.md`'s RTL and mono paragraphs are sharpened from "wrap Latin strings in `dir="ltr"`" to the run-vs-token distinction, since the old wording is what licensed the defect.
 - Not covered by lint: `direction: ltr` in CSS. The three current uses are on Latin-only content and documented as such; a new one on a token would reintroduce the bug silently. The convention is written down (design-language.md, `frontend/CLAUDE.md`) rather than enforced — there is no stylelint in the toolchain, and adding one for a single rule is not worth its own dependency.
+
+## Amendment (2026-08-04) — stored content is the other half, and the guard could not see a ternary
+
+Reported from a rendered mockup (2026-07-28, session 148) and fixed here: `2-14-5 Kabukicho, Shinjuku, Tokyo` rendered as `Kabukicho, Shinjuku, Tokyo 2-14-5` in a booking's location fact. The 75-site sweep above was a sweep of the wrong direction — it removed forced `dir="ltr"`, and this class of bug is the **absence** of a `dir`.
+
+**The mechanism generalizes as it stands; what was missing is the second content class it applies to.** The decision above is about strings _the app builds_ (a number and its Hebrew unit). A value the app did **not** build — a place's address or name, a trip's destination, a provider, a room, Google's prediction text — has no direction we can know at the call site, so its element carries **`dir="auto"`**, which is the platform's answer to exactly that question. With no `dir` it inherits the RTL flow, and a value that opens with a numeral run comes apart: the space between the digits and the letters is a neutral between two runs the algorithm reads as opposite (an `EN` run acts as `R` toward its neighbours), so it takes the paragraph's own level and the two halves reorder around it. `dir="auto"` skips numbers when it sniffs, finds the `K`, and the address reads.
+
+Two boundaries, both load-bearing and both already paid for once:
+
+- **The `dir` goes on the element holding the value and nothing else.** `.bk-fact-v.bk-loc` holds the address _and_ the two Hebrew map links, so the attribute sits on the inner text span — a base direction on the box would lay the links out left-to-right, which is the same mistake as the original defect one level up.
+- **Never on an `<input>`.** `auto` sniffs the _value_, so an empty field has no strong character and falls back to LTR, left-anchoring a Hebrew placeholder — found on a phone while building ADR-0147's place form and pinned in its test. A field inherits the page's RTL; a rendered text node sniffs.
+
+**The lint guard was widened, and it immediately found a second live instance.** The original selector keyed on `value.value="ltr"`, so it matched only a literal attribute and read straight past a computed one — which is how `BookingDetail`'s `dir={mono ? 'ltr' : undefined}` survived the sweep of 75 sites. It now matches the `'ltr'` literal anywhere under a `dir` attribute, and CI failed on `TripSettings`'s `ReadRow`: the same fact-row shape, the same ternary, over a trip name and a destination. Both are now `dir="auto"`, which for a code, an IANA zone and a budget resolves LTR exactly as the forced version did.
+
+Swept the same way: the Map row's name and meta (a numeral-led **name** — `7-Eleven Shinjuku` — is the identical defect), `PlaceResearch`'s result card, `DestinationPicker`'s predictions, `PlacePicker`'s trigger label, `RowManageSheet`'s `subject` (one caller passes a raw address), and `MapPlaceForm`'s hint. Not swept: the numeric run inside a stored address that is _itself_ mixed Hebrew and Latin (`רחוב 5 Main Street`), which would need per-run isolation of text we do not parse; `dir="auto"` leaves that case exactly as it was, and no such address has been seen.
 
 ## Alternatives considered
 

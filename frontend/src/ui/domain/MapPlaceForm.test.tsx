@@ -260,6 +260,15 @@ describe('MapPlaceForm — the card’s chrome', () => {
     }
   });
 
+  // **The HINT is the opposite case, and the difference is the input.** `dir="auto"` on a field
+  // sniffs its VALUE, which is why the name above must not carry it; the hint is a rendered text
+  // node, and for two of the three sources it is a stored ADDRESS — so it sniffs, or a numeral-led
+  // one reorders in the card's RTL (ADR-0118). One quiet line, either script, one rule.
+  it('lets the address in its hint say which way it reads', () => {
+    mount({ note: '2-14-5 Kabukicho, Shinjuku, Tokyo' });
+    expect(screen.getByText('2-14-5 Kabukicho, Shinjuku, Tokyo').getAttribute('dir')).toBe('auto');
+  });
+
   // **AND IT DOES NOT TAKE THE FOCUS** (owner, on a phone: _"it starts by opening the keyboard
   // and immediately closing"_). The gesture that opens this form ends with a finger lifting off
   // the canvas, so a field focused during the press loses focus to the release — the keyboard

@@ -55,7 +55,10 @@ export function PlacePicker({
         <span className="pp-trigger-icon" aria-hidden>
           <Icon name="pin" />
         </span>
-        <span className="pp-trigger-label">
+        {/* A picked place's name is stored content in its own script; the empty state is
+            Hebrew copy. `dir="auto"` is right for both, which is the whole reason it is the
+            app's answer rather than a forced direction (ADR-0118). */}
+        <span className="pp-trigger-label" dir="auto">
           {current ? current.name : (placeholder ?? t.placePicker.empty)}
         </span>
       </button>

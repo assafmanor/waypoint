@@ -168,10 +168,14 @@ export function MapPlaceForm({
     <div className="map-draft" {...errors.formProps}>
       {/* The host's failure and the form's own refusal share the slot; a failure the host is
           still reporting outranks a mark the user has since retired by typing. */}
+      {/* The hint is a stored **address** for two of the three sources and the app's own
+          Hebrew for the third, so it sniffs its own direction rather than inheriting the
+          card's RTL (ADR-0118). Wrapped here rather than in `Field`, whose hint is the app's
+          own copy everywhere else. */}
       <Field
         label={spec.title}
         htmlFor={nameId}
-        hint={spec.note}
+        hint={spec.note == null ? undefined : <span dir="auto">{spec.note}</span>}
         {...nameMark}
         error={error ?? nameMark.error}
       >

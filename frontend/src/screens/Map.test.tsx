@@ -1255,6 +1255,32 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(metaOf('idea')).toContain('Barshavski St 7');
     });
 
+    // **Both stored strings on the row sniff their own direction** (ADR-0118). The name and
+    // the meta are the two slots that hold Google's words rather than ours, and an address
+    // opening with a numeral run reordered in the RTL flow — `2-14-5 Kabukicho, Shinjuku,
+    // Tokyo` read as `Kabukicho, Shinjuku, Tokyo 2-14-5`. A numeral-led NAME is the same
+    // defect, which is why the fixture uses one.
+    it('lets the name and the address say which way they read', () => {
+      tripPlaces = [
+        {
+          ...place('store', true),
+          name: '7-Eleven Shinjuku',
+          address: '2-14-5 Kabukicho, Shinjuku, Tokyo',
+        } as Place,
+      ];
+      tripMaybes = [maybe({ id: 'm', placeId: 'store' })];
+      render(wrap(<MapView />));
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.map.allDays) }));
+      const row = [...document.querySelectorAll('.place')].find(
+        (r) => r.querySelector('.map-name')?.textContent === '7-Eleven Shinjuku',
+      )!;
+      expect(row.querySelector('.map-name')?.getAttribute('dir')).toBe('auto');
+      const address = [...row.querySelectorAll('.map-tag')].find(
+        (tag) => tag.textContent === '2-14-5 Kabukicho, Shinjuku, Tokyo',
+      );
+      expect(address?.getAttribute('dir')).toBe('auto');
+    });
+
     it('a mid-stay night says nothing back — the hotel’s own name is not news', () => {
       tripPlaces = [{ ...place('hotel', true), address: 'Some St 1' } as Place];
       tripEvents = [

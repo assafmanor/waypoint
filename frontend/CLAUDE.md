@@ -310,7 +310,20 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   string is `measure(9, 'ק״מ')`, never a hand-built template. A signed number
   needs the isolate independently: in the RTL flow the `−` of `−3` drifts to the
   wrong side of the digits. Same care for `direction: ltr` in CSS, which lint
-  can't see.
+  can't see. **The guard reads the `'ltr'` literal anywhere under the attribute**
+  — it used to key on the attribute's value and so walked past
+  `dir={mono ? 'ltr' : undefined}`, which is how two copies of the same fact row
+  kept forcing a direction through the whole sweep that was meant to end it.
+- **Rendering stored content with NO `dir` at all** — the other half of the same
+  ADR, and the absence is the bug. An address, a place name, a trip destination,
+  a provider: the app did not write it, so its element carries `dir="auto"` or it
+  inherits the page's RTL and a value opening with a numeral run comes apart
+  (`2-14-5 Kabukicho, Shinjuku, Tokyo` → `Kabukicho, Shinjuku, Tokyo 2-14-5`).
+  Two boundaries: the attribute goes on the element holding **the value and
+  nothing else** (a box that also holds Hebrew links would lay those out LTR
+  too), and **never on an `<input>`**, where `auto` sniffs the value and so
+  left-anchors a Hebrew placeholder while the field is empty — a field inherits
+  the page, a rendered text node sniffs.
 
 ## Testing
 

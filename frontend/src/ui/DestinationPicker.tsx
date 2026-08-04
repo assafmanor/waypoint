@@ -131,9 +131,15 @@ function DestinationPickerSheet({
                 disabled={busy}
                 onClick={() => pickPrediction(prediction)}
               >
-                <span className="pp-primary">{prediction.primaryText}</span>
+                {/* Google's strings, in the destination's own script — each sniffs its
+                    own direction rather than inheriting the sheet's RTL (ADR-0118). */}
+                <span className="pp-primary" dir="auto">
+                  {prediction.primaryText}
+                </span>
                 {prediction.secondaryText && (
-                  <span className="pp-secondary">{prediction.secondaryText}</span>
+                  <span className="pp-secondary" dir="auto">
+                    {prediction.secondaryText}
+                  </span>
                 )}
               </button>
             </li>

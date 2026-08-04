@@ -90,3 +90,18 @@ describe('TripSettings — the details form refuses at the field', () => {
     expect(updateSettings.mock.calls[0][0]).toMatchObject({ endDate: '2026-07-26' });
   });
 });
+
+// **The read rows hold stored content, so each says which way it reads** (ADR-0118). The
+// `mono` branch forced `dir="ltr"` through a ternary the lint guard read past — the same
+// mistake as `BookingDetail`'s fact row, in the app's other copy of that shape — which set a
+// base direction for the whole value instead of isolating the run inside it. `auto` keeps the
+// zone and the budget LTR and stops a Hebrew name or a numeral-led destination reversing.
+describe('TripSettings — a read row never inherits the screen direction', () => {
+  it('lets every value say which way it reads, mono included', () => {
+    render(wrapNav(<TripSettings />));
+    const values = [...document.querySelectorAll('.set-row .fv')];
+    expect(values.length).toBeGreaterThan(3);
+    for (const v of values) expect(v.getAttribute('dir')).toBe('auto');
+    expect(document.querySelector('.set-row .fv.mono')?.textContent).toBe('Asia/Tokyo');
+  });
+});

@@ -286,7 +286,15 @@ function LocationFact({
     <div className="bk-fact">
       <span className="bk-fact-k">{t.index.detail.location}</span>
       <span className="bk-fact-v bk-loc">
-        <span className={text ? undefined : 'bk-loc-none'}>
+        {/* `dir="auto"` on the TEXT, never on `.bk-loc` around it (ADR-0118's run-vs-token
+            distinction, in markup): a Latin-led address resolves LTR, and the Hebrew links
+            are its siblings — a base direction on the flex container would lay them out
+            left-to-right too. Without it a stored address beginning with a numeral run
+            reorders, `2-14-5 Kabukicho, Shinjuku, Tokyo` reading as `Kabukicho, Shinjuku,
+            Tokyo 2-14-5`: the space between the digits and the letters is a neutral between
+            two runs the algorithm reads as opposite, so it takes the RTL flow's own level
+            and splits the address in two. */}
+        <span className={text ? undefined : 'bk-loc-none'} dir="auto">
           {text ?? t.index.detail.noLocation}
         </span>
         {(dirUrl || onShowOnMap || onAddLocation) && (
@@ -359,11 +367,17 @@ function RelatedFact({
   );
 }
 
+/** A fact's value is **free-direction stored content** — a Latin address, a Hebrew
+ *  provider, a code, a `measure` token — so it carries `dir="auto"` and never
+ *  `dir="ltr"` (ADR-0118). The mono branch used to force LTR through a ternary the
+ *  lint guard could not see, which is a base direction for the whole value: a Hebrew
+ *  one would have read backwards. `auto` skips isolated content when it sniffs, so a
+ *  duration built by `measure` still resolves RTL and keeps its number in front. */
 function Fact({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
     <div className="bk-fact">
       <span className="bk-fact-k">{k}</span>
-      <span className={'bk-fact-v' + (mono ? ' mono' : '')} dir={mono ? 'ltr' : undefined}>
+      <span className={'bk-fact-v' + (mono ? ' mono' : '')} dir="auto">
         {v}
       </span>
     </div>
