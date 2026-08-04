@@ -710,7 +710,27 @@ describe('buildDayGlance', () => {
       expect(countsNights(hotel)).toBe(true);
       expect(countsNights(hire)).toBe(false);
       expect(ambientSpanLabel(hotel, '2026-07-09')).toBe('לילה 3 מתוך 4');
-      expect(ambientSpanLabel(hire, '2026-07-09')).toBe('יום 3 מתוך 5');
+      // Jul 7 → Jul 12 is FIVE nights and SIX days — the hire's total said 5 until
+      // ADR-0163 §4's amendment, because the unit changed and the count did not.
+      expect(ambientSpanLabel(hire, '2026-07-09')).toBe('יום 3 מתוך 6');
+    });
+
+    // **The owner's example, exactly** (2026-08-04): a car held over days 1–3 of the trip
+    // is three days, where the same dates are two nights in a room. This is the whole
+    // difference between the two units, so it gets its own assertion rather than living
+    // inside the one above.
+    it('counts days 1→3 as three days for a hire and two nights for a stay', () => {
+      const dates = { date: '2026-07-07', endDate: '2026-07-09' };
+      const car = ev({ category: 'transport', icon: '🚗', ...dates });
+      const room = ev({ category: 'lodging', icon: '🏨', ...dates });
+
+      expect(ambientSpanPosition(car, '2026-07-07')).toEqual({ position: 1, total: 3 });
+      expect(ambientSpanPosition(car, '2026-07-08')).toEqual({ position: 2, total: 3 });
+      expect(ambientSpanPosition(car, '2026-07-09')).toEqual({ position: 3, total: 3 });
+      expect(ambientSpanLabel(car, '2026-07-07')).toBe('יום 1 מתוך 3');
+
+      expect(ambientSpanPosition(room, '2026-07-07')).toEqual({ position: 1, total: 2 });
+      expect(ambientSpanLabel(room, '2026-07-08')).toBe('לילה 2 מתוך 2');
     });
 
     // The unit follows the GLYPH, not the category — so a hire keeps its days even
@@ -723,7 +743,9 @@ describe('buildDayGlance', () => {
         endDate: '2026-07-09',
       });
       expect(countsNights(bus)).toBe(false);
-      expect(ambientSpanLabel(bus, '2026-07-08')).toBe('יום 2 מתוך 2');
+      // Three dates, so three days — the inclusive count applies to every non-nights
+      // span, not only to the hire that exposed it.
+      expect(ambientSpanLabel(bus, '2026-07-08')).toBe('יום 2 מתוך 3');
     });
   });
 

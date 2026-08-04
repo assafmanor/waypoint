@@ -193,6 +193,16 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
   return events.filter((e) => isAmbient(e) && e.date <= date && date <= e.endDate!);
 }
 
+/** **Is this ambient span counted in nights** — i.e. is it a stay? (ADR-0163 §4.)
+ *  Read off `eventDurationUnit`, so the answer comes from ADR-0162's profile rather
+ *  than from a `category === 'lodging'` at a call site.
+ *
+ *  Exported because Home's mid-stay strip needs the same answer in a different shape:
+ *  its markup is a mono fraction with a dismiss control, not this one string, and it
+ *  also swaps a VERB — `שוהים ב־` is true of a hotel and false of a car. */
+export const countsNights = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
+  eventDurationUnit(event) === 'nights';
+
 /** **Where you are inside an ambient span, and how long the whole span is** — the
  *  `2` and the `4` of `לילה 2 מתוך 4` (ADR-0054 / ADR-0163).
  *
@@ -207,13 +217,22 @@ export function ambientEventsOnDate(events: TripEvent[], date: string): TripEven
  *  an ambient span at all, but the arithmetic should not answer 0) and `position` is
  *  clamped to it, so a date outside the span cannot read `5 מתוך 4`. */
 export function ambientSpanPosition(
-  event: Pick<TripEvent, 'date' | 'endDate'>,
+  event: Pick<TripEvent, 'category' | 'icon' | 'date' | 'endDate'>,
   date: string,
 ): { position: number; total: number } {
-  const total = Math.max(
-    1,
-    Math.round((Date.parse(event.endDate!) - Date.parse(event.date)) / MS_PER_DAY),
-  );
+  const spanDays = Math.round((Date.parse(event.endDate!) - Date.parse(event.date)) / MS_PER_DAY);
+  // **NIGHTS are the gaps between the dates; DAYS are the dates themselves** (ADR-0163 §4's
+  // 2026-08-04 amendment). A stay checked in on day 1 and out of on day 3 is TWO nights —
+  // you slept twice — and a car collected on day 1 and returned on day 3 is THREE days,
+  // because you have it on all three. The total was a night count for both, so a hire read
+  // `יום 1 מתוך 2` for a three-day rental.
+  //
+  // The same inclusive count `formatBookingDuration` already makes for a date-only span
+  // ("an all-day event across N calendar dates reads in those (inclusive) days"), which is
+  // why the +1 belongs to the UNIT rather than to the caller.
+  const total = Math.max(1, countsNights(event) ? spanDays : spanDays + 1);
+  // Already inclusive and 1-based, so it needs no unit: day 1 of the span is `1` whether
+  // you are counting the nights after it or the days it is one of.
   const position = Math.min(
     total,
     Math.max(1, Math.round((Date.parse(date) - Date.parse(event.date)) / MS_PER_DAY) + 1),
@@ -237,16 +256,6 @@ export function ambientSpanLabel(
     ? t.glance.ambientNight(position, total)
     : t.glance.ambientDay(position, total);
 }
-
-/** **Is this ambient span counted in nights** — i.e. is it a stay? (ADR-0163 §4.)
- *  Read off `eventDurationUnit`, so the answer comes from ADR-0162's profile rather
- *  than from a `category === 'lodging'` at a call site.
- *
- *  Exported because Home's mid-stay strip needs the same answer in a different shape:
- *  its markup is a mono fraction with a dismiss control, not this one string, and it
- *  also swaps a VERB — `שוהים ב־` is true of a hotel and false of a car. */
-export const countsNights = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
-  eventDurationUnit(event) === 'nights';
 
 /** A bracketed booking's transition landing on `date` (ADR-0064): its start
  *  (check-in / departure) when the event's own `date` is `date`, and/or its end

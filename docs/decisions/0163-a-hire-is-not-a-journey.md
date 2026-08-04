@@ -64,6 +64,21 @@ This deletes the route from every surface that receives only a title — the amb
 
 This was a **prerequisite, not a tidy-up**: three copies means three places to thread a per-type unit through, and three chances for one of them to keep saying "night". It is ADR-0096's shape and the fourth such collapse this area has needed (0078, 0079, 0094, 0095, 0162's `BOOKING_TYPE_CATEGORY`).
 
+## Amendment (2026-08-04) — §4 changed the unit and not the count
+
+Owner: _"say i'm renting for days 1 to 3 of the trip, it will count it as two days and then display day 1 out of 2, which makes sense in hotels because hotels count in nights, but in car rentals i would expect it to count to 3, right?"_ — yes.
+
+§4 swapped `לילה` for `יום` and left the arithmetic alone, and the arithmetic was a **night** count: `endDate − date`. That is right for a stay and wrong for a hire, because the two units measure different things:
+
+- **Nights are the gaps between the dates.** Check in on day 1, out on day 3 → you slept twice → 2.
+- **Days are the dates themselves**, inclusive of both ends. Collect the car on day 1, return it on day 3 → you have it on all three → 3.
+
+So the total gains a `+1` when the span is not counted in nights. **`position` needed nothing**: it was already inclusive and 1-based, so day 1 of a span is `1` whether you are counting the nights after it or the days it is one of.
+
+The `+1` lives with the **unit**, not at the call site, which also fixes Home's mid-stay strip (a mono fraction over the same derivation) with no change there. And it is the same inclusive count `formatBookingDuration` already makes for a date-only span — _"an all-day event across N calendar dates reads in those (inclusive) days"_ — so this brings the strip in line with a rule the codebase had already written down once.
+
+**One difference this leaves standing, deliberately.** For a hire with clock times — collected 10:00 on the 5th, returned 10:00 on the 10th — the Index row reads `5 ימים` (elapsed 24-hour periods, which is what a rental company charges for) while the strip's total is **6** (calendar dates you have the car on). Both are correct answers to different questions, and neither should be "fixed" into the other: the row states the rental's length, the strip states which of the days you are in.
+
 ## Amendment (2026-08-04, same day) — §3 applies to the DISPLAY derivations, not just the stored title
 
 Shipped incomplete, and the owner caught it immediately: _"the title for a booking is now the '&lt;pickup location&gt; -&gt; &lt;dropoff location&gt;', and even worse when it's the same location, then it becomes '&lt;pickup location&gt; -&gt; -'"_.
