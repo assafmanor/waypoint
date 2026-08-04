@@ -1184,14 +1184,11 @@ export function useVerbs() {
       void applyDelay(deps, e, -DELAY_STEP_MINUTES);
       toast(CONTROL_ICON.delay, t.toast.softEarlier(DELAY_STEP_MINUTES), undo);
     },
-    // Move a soft event by an arbitrary delta — the "הזז" overlap-resolve
-    // (ADR-0041), a manual ripple: shift to a clean slot, duration preserved, and
-    // any new downstream overlap flows through the same ripple suggestion.
-    moveBy: (e: TripEvent, minutes: number) => {
-      if (minutes === 0) return;
-      void applyDelay(deps, e, minutes);
-      toast(CONTROL_ICON.delay, t.toast.eventMoved, undo);
-    },
+    // `moveBy` lived here — an arbitrary minute delta, for the `הזז` overlap-resolve's two
+    // hand-built options (ADR-0041). It is gone with them: a position is named, not offset,
+    // so the resolve sheet writes through `update` with the slot the picker handed back —
+    // the same write a drop on that position performs (ADR-0161 §4). `delay`/`earlier` above
+    // keep their fixed step, which is a nudge rather than a move to somewhere.
     onWay: (_e: TripEvent) => toast(CONTROL_ICON.share, t.toast.onWayShared),
     // Place a shelf idea onto a day. With `fields` (from the builder's
     // EventForm picker) the user chose the day/time/kind; without them it's the

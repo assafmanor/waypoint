@@ -1,0 +1,79 @@
+/* The day as a time picker (ADR-0161 §4) — `ui/domain/DaySlotPicker.tsx`.
+
+   The geometry is `.resolve-opt`'s, moved here rather than re-invented: that rule was one of
+   the two one-offs this component replaces (`ResolveSheet`'s before/after pair), so this is
+   where it lives now. What is new is the free-time note, the `עכשיו` row and the escapes. */
+
+.slotpick-sub {
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: 0 2px 12px;
+}
+
+.slotpick-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  /* 44px, which `.resolve-opt`'s padding alone did not guarantee: this list is the primary
+     way to move an event now, not a two-option fork at the end of a rarer flow (ADR-0017). */
+  min-height: 44px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: 11px 13px;
+  margin-bottom: 8px;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.slotpick-opt:hover {
+  border-color: var(--plan);
+  background: var(--plan-tint);
+}
+.slotpick-opt:focus-visible {
+  outline: 2.5px solid var(--plan);
+  outline-offset: 2px;
+}
+
+.slotpick-opt .ttl {
+  font-weight: 700;
+  font-size: 13.5px;
+  min-width: 0;
+}
+/* The free time at this position, under its name. A second line rather than beside it: the
+   name can be a long row title, and this must not compete with it for width. */
+.slotpick-opt .ttl .free {
+  display: block;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* The clock the position resolves to — read, never picked. Mono and plan-violet, the same
+   treatment the rest of Plan mode gives a derived time. */
+.slotpick-opt .tm {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--plan-deep);
+  flex: none;
+}
+
+/* `עכשיו`, when the day on screen is today. Tinted rather than a different shape: it is one
+   of the positions, not a different kind of thing. */
+.slotpick-opt.now {
+  border-color: rgba(110, 89, 214, 0.35);
+  background: var(--plan-tint);
+}
+
+/* The ways out — an exact time (ADR-0036's setter) and another day. Centred and dashed, the
+   `.resolve-opt.other` treatment, because neither answers the question this list asks. */
+.slotpick-opt.escape {
+  justify-content: center;
+  gap: 6px;
+  border-style: dashed;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 12.5px;
+}

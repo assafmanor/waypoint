@@ -213,15 +213,31 @@ export interface CategoryTimeProfile {
    *  calendar day, days when it spans days. Derived display only; the frontend
    *  formatter turns it into words. */
   durationUnit: DurationUnit;
+  /** **How long one of these usually takes**, in minutes (ADR-0161 §5). The default
+   *  length offered when something is placed at a position and has no length of its own —
+   *  a shelf idea being scheduled, a new event started in a gap. Replaces a flat 60 for
+   *  everything, which made every meal an hour and every hike an hour.
+   *
+   *  Coarse on purpose: it is an opening offer that the user adjusts, not an estimate. A
+   *  block is still clamped to the room the position actually has (`lib/gaps.ts`), so this
+   *  never makes an event longer than the gap it went into.
+   *
+   *  `transport` and `lodging` carry the ordinary value and mean nothing by it: both are
+   *  bracketed, so their length comes from their two ends rather than from a default. */
+  typicalMinutes: number;
 }
 
 /** The unit a category's duration is expressed in (ADR-0063 extension). */
 export type DurationUnit = 'hours' | 'nights' | 'auto';
 
+/** The default default: an hour, which is what everything used to get. */
+const TYPICAL_MINUTES_DEFAULT = 60;
+
 const ORDINARY_PROFILE: CategoryTimeProfile = {
   bracketed: false,
   ambientWhenMultiDay: false,
   durationUnit: 'auto',
+  typicalMinutes: TYPICAL_MINUTES_DEFAULT,
 };
 
 export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> = {
@@ -234,18 +250,23 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
     ambientWhenMultiDay: true,
     transitions: { startKey: 'departure', endKey: 'arrival' },
     durationUnit: 'hours',
+    typicalMinutes: TYPICAL_MINUTES_DEFAULT,
   },
   lodging: {
     bracketed: true,
     ambientWhenMultiDay: true,
     transitions: { startKey: 'checkIn', endKey: 'checkOut' },
     durationUnit: 'nights',
+    typicalMinutes: TYPICAL_MINUTES_DEFAULT,
   },
-  food: ORDINARY_PROFILE,
-  sightseeing: ORDINARY_PROFILE,
-  nature: ORDINARY_PROFILE,
-  activity: ORDINARY_PROFILE,
-  shopping: ORDINARY_PROFILE,
+  // The categories that actually differ. Values are the owner's to re-tune and carry no
+  // reasoning beyond "a meal is not a hike": a sit-down meal runs to an hour and a half, a
+  // museum or a hike to two or three hours, an errand to an hour.
+  food: { ...ORDINARY_PROFILE, typicalMinutes: 90 },
+  sightseeing: { ...ORDINARY_PROFILE, typicalMinutes: 120 },
+  nature: { ...ORDINARY_PROFILE, typicalMinutes: 180 },
+  activity: { ...ORDINARY_PROFILE, typicalMinutes: 120 },
+  shopping: { ...ORDINARY_PROFILE, typicalMinutes: 90 },
   services: ORDINARY_PROFILE,
   other: ORDINARY_PROFILE,
 };
@@ -264,6 +285,10 @@ export const ICON_TRANSITION_KEYS: Record<string, { startKey: string; endKey: st
  *  the ordinary profile (a plain point/block). */
 const profileFor = (category: EventCategory | null | undefined): CategoryTimeProfile =>
   category != null ? CATEGORY_TIME_PROFILE[category] : ORDINARY_PROFILE;
+/** How long to offer for something placed at a position, by category (ADR-0161 §5). A
+ *  null/unset category (ADR-0038) gets the ordinary hour. */
+export const typicalMinutesFor = (category: EventCategory | null | undefined): number =>
+  profileFor(category).typicalMinutes;
 
 /** The two i18n transition keys for a bracketed event's ends, or `undefined`
  *  when its category isn't bracketed. Resolves finer than category so wording is

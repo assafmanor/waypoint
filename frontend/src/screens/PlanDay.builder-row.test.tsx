@@ -1,34 +1,44 @@
 // @vitest-environment jsdom
 //
-// The Plan builder row's ⋯ sheet — specifically the `הזז` step that replaced the
-// `הקדם`/`אחר` pair (ADR-0138 §8). Three things are worth pinning here and none of
-// them are reachable from `lib/reorder.ts`'s own tests, which cover the slot
-// arithmetic but know nothing about the surface that calls it:
+// The Plan builder row's two controls for "when is this" — **the row's own time** (ADR-0161
+// §7) and the `⋯` sheet it took `הזז` out of.
 //
-//   1. the pair is GONE, and the one item that replaced them does not come and go
-//      with the row's position (which is what moved `מחק` under the thumb);
-//   2. the step lists the day's soft rows and hands `verbs.reorder` the one you
-//      pick — the whole point of the redesign is that you SEE where it lands;
-//   3. the step is a back layer, so system back peels it to the menu instead of
-//      dismissing the sheet (frontend/CLAUDE.md's "a step INSIDE an overlay").
+// This file used to pin the `הזז` STEP (ADR-0138 §8): that the retired `הקדם`/`אחר` pair was
+// gone, that the step listed the day's soft rows and handed `verbs.reorder` the one you
+// picked, and that the step was a back layer. All three are obsolete, and the middle one is
+// why — the step's model was "pick a peer, permute the slots", which is the defect ADR-0161
+// §1 exists to undo. So the subject moved rather than the assertions changing:
+//
+//   1. the row's TIME is a button, and an untimed row's empty time slot is one too — the one
+//      place that held nothing at all before;
+//   2. the `⋯` sheet is a plain list again, with no `הזז` and no step, so it is the same
+//      shape wherever the row sits (which is what the retired pair got wrong);
+//   3. a read-only archive row offers neither.
+//
+// The picker the button OPENS is `ui/domain/DaySlotPicker` with `lib/day-positions.ts`'s
+// options; both are tested where they live. This is about the row.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import { BuilderRow } from './PlanDay';
 import { wrapNav } from '../test/nav-harness';
-import { useAppBack } from '../state/nav-state';
 import { t } from '../i18n/he';
 
 const NOW = '2026-07-01T00:00:00Z';
-const ev = (id: string, kind: TripEvent['kind'], hhmm: string, order: number): TripEvent => ({
+const ev = (
+  id: string,
+  kind: TripEvent['kind'],
+  hhmm: string | null,
+  order: number,
+): TripEvent => ({
   id,
   tripId: 't1',
   date: '2026-07-07',
   title: id,
   kind,
   status: EVENT_STATUS.PLANNED,
-  startsAt: `2026-07-07T${hhmm}:00+09:00`,
-  endsAt: `2026-07-07T${hhmm}:59+09:00`,
+  startsAt: hhmm ? `2026-07-07T${hhmm}:00+09:00` : undefined,
+  endsAt: hhmm ? `2026-07-07T${hhmm}:59+09:00` : undefined,
   sortOrder: order,
   source: 'manual',
   createdAt: NOW,
@@ -37,14 +47,14 @@ const ev = (id: string, kind: TripEvent['kind'], hhmm: string, order: number): T
 });
 
 const A = ev('A', EVENT_KIND.SOFT, '10:00', 1);
-const C = ev('C', EVENT_KIND.SOFT, '14:00', 3);
 const D = ev('D', EVENT_KIND.SOFT, '17:00', 4);
-const SOFT = [A, C, D];
+const UNTIMED = ev('U', EVENT_KIND.SOFT, null, 9);
+const HARD = ev('H', EVENT_KIND.HARD, '13:00', 2);
 const TZ = 'Asia/Tokyo';
 
 function row(
   event: TripEvent,
-  opts: { onMoveTo?: (id: string) => void; peers?: TripEvent[] } = {},
+  opts: { onPickTime?: () => void; onPark?: () => void; readOnly?: boolean } = {},
 ) {
   return render(
     wrapNav(
@@ -53,116 +63,104 @@ function row(
         tz={TZ}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
-        reorder={{ peers: opts.peers ?? SOFT, onMoveTo: opts.onMoveTo ?? vi.fn() }}
+        onPark={opts.onPark}
+        readOnly={opts.readOnly}
+        onPickTime={opts.readOnly ? undefined : (opts.onPickTime ?? vi.fn())}
       />,
     ),
   );
 }
 
 const openMenu = () => fireEvent.click(screen.getByRole('button', { name: t.planDay.rowActions }));
+const timeButton = (event: TripEvent) =>
+  screen.queryByRole('button', { name: t.planDay.slotMoveTitle(event.title) });
 
-/** The app's own back, as a clickable — `useAppBack` is what the platform's back
- *  gesture and every in-app back control both run (ADR-0090/0103). */
-function BackButton() {
-  const back = useAppBack();
-  return <button data-testid="back" onClick={() => back()} />;
-}
-
-describe('BuilderRow ⋯ sheet — the הזז step (ADR-0138 §8)', () => {
+describe('the row’s time is the way to change it (ADR-0161 §7)', () => {
   afterEach(() => cleanup());
 
-  it('offers one הזז item and neither of the retired הקדם/אחר', () => {
-    row(A);
-    openMenu();
-    expect(screen.getByRole('button', { name: t.planDay.move })).toBeTruthy();
-    expect(screen.queryByText('הקדם')).toBeNull();
-    expect(screen.queryByText('אחר')).toBeNull();
+  it('renders the time as a button and opens the picker with it', () => {
+    const onPickTime = vi.fn();
+    row(A, { onPickTime });
+    const button = timeButton(A);
+    expect(button).toBeTruthy();
+    fireEvent.click(button!);
+    expect(onPickTime).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the menu the same shape at BOTH ends of the soft list', () => {
-    // The old pair dropped one item at the top and the other at the bottom, so
-    // `מחק` sat at a different position depending on which row you opened. The
-    // replacement is position-independent — that is the fix, so it is asserted at
-    // the two positions where the old menu differed.
+  it('still shows the time itself — the control IS the answer, not a label beside it', () => {
+    row(A);
+    expect(timeButton(A)!.textContent).toContain('10:00');
+  });
+
+  // A hard event's time is a commitment, so the WRITE is guarded (`applyGuardedUpdate`) —
+  // but the control is offered, because ADR-0011 forbids moving one unasked, not editing one.
+  it('is offered on a hard row too', () => {
+    row(HARD);
+    expect(timeButton(HARD)).toBeTruthy();
+  });
+
+  // The one case where §7 adds a control rather than promoting one: with no time there is
+  // nothing in that slot at all, so the only way in was the whole edit form.
+  it('offers ＋ שעה on an untimed row, in the same slot', () => {
+    const onPickTime = vi.fn();
+    row(UNTIMED, { onPickTime });
+    const add = screen.getByRole('button', { name: new RegExp(t.planDay.slotAddTime) });
+    fireEvent.click(add);
+    expect(onPickTime).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers neither on a read-only archive row', () => {
+    row(A, { readOnly: true });
+    expect(timeButton(A)).toBeNull();
+    expect(screen.queryByRole('button', { name: new RegExp(t.planDay.slotAddTime) })).toBeNull();
+  });
+});
+
+describe('the ⋯ sheet, after הזז left it (amends ADR-0138 §8)', () => {
+  afterEach(() => cleanup());
+
+  // Literals, deliberately: `t.planDay.move` is gone from `he.ts` with the step, so there is
+  // no key left to assert against — and a test that referenced one would have kept it alive.
+  it('no longer offers הזז, nor the הקדם/אחר pair it had replaced', () => {
+    row(A);
+    openMenu();
+    for (const gone of ['הזז', 'הקדם', 'אחר']) expect(screen.queryByText(gone)).toBeNull();
+  });
+
+  /** The verb labels inside the sheet's own action list, in order. Scoped to
+   *  `.wp-row-actions` rather than every button on screen: the row's time is a button too
+   *  now, and its accessible name carries the row's TITLE — so a page-wide sweep reports a
+   *  different list per row and says nothing about the menu. */
+  const menuLabels = () =>
+    [...document.querySelectorAll('.wp-row-actions button')]
+      .map((b) => b.textContent?.trim())
+      .filter((label): label is string => Boolean(label));
+
+  it('is a fixed list: edit, shelf, delete — with delete last', () => {
+    row(A, { onPark: vi.fn() });
+    openMenu();
+    expect(menuLabels()).toEqual([t.actions.edit, t.actions.toShelf, t.actions.delete]);
+  });
+
+  // The retired pair dropped one item at the top of the list and the other at the bottom, so
+  // `מחק` sat at a different index depending on which row you opened — moving a destructive
+  // verb under the thumb. Nothing in this menu depends on position now, so it is asserted at
+  // two rows that used to differ.
+  it('is the same shape wherever the row sits', () => {
     const labelsAt = (event: TripEvent) => {
       cleanup();
-      row(event);
+      row(event, { onPark: vi.fn() });
       openMenu();
-      return [...document.querySelectorAll('.wp-row-action')].map((b) => b.textContent);
+      return menuLabels();
     };
     expect(labelsAt(A)).toEqual(labelsAt(D));
   });
 
-  it('lists the day’s soft rows and reorders onto the one picked', () => {
-    const onMoveTo = vi.fn();
-    row(A, { onMoveTo });
+  // A hard event cannot be parked (ADR-0011), so its menu is shorter — the one legitimate
+  // way this list varies, and it varies by the ROW's nature rather than by its position.
+  it('drops the shelf verb on a row that cannot be parked', () => {
+    row(HARD);
     openMenu();
-    fireEvent.click(screen.getByRole('button', { name: t.planDay.move }));
-
-    const slots = [...document.querySelectorAll('.bld-move-slot')];
-    expect(slots.length).toBe(SOFT.length);
-    // The row you came from is shown but not a target — a gap in the list would
-    // be harder to read than a marked row.
-    const self = document.querySelector('.bld-move-slot.is-self') as HTMLButtonElement;
-    expect(self.textContent).toContain(t.planDay.moveHere);
-    expect(self.disabled).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: /D/ }));
-    expect(onMoveTo).toHaveBeenCalledWith('D');
-  });
-
-  it('peels the step back to the menu on back, leaving the sheet open', () => {
-    // Driven through `useAppBack` — the app's own back, which is what the layer
-    // stack answers. The step registers ABOVE the Modal's own close layer (child
-    // effects run first), so one back peels the step and the sheet survives.
-    render(
-      wrapNav(
-        <>
-          <BackButton />
-          <BuilderRow
-            event={A}
-            tz={TZ}
-            onEdit={vi.fn()}
-            onDelete={vi.fn()}
-            reorder={{ peers: SOFT, onMoveTo: vi.fn() }}
-          />
-        </>,
-      ),
-    );
-    openMenu();
-    fireEvent.click(screen.getByRole('button', { name: t.planDay.move }));
-    expect(document.querySelector('.bld-move')).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('back'));
-    expect(document.querySelector('.bld-move')).toBeNull();
-    expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
-
-    // And the NEXT back leaves the sheet — the step did not swallow the layer.
-    fireEvent.click(screen.getByTestId('back'));
-    expect(screen.queryByRole('button', { name: t.actions.edit })).toBeNull();
-  });
-
-  // ADR-0103 §2, built 2026-08-01. Escape used to call the Modal's own `onClose`
-  // directly, reaching PAST the step's layer and dismissing the whole sheet — so it
-  // and system back disagreed on the one surface where a second layer exists.
-  it('peels the step on Escape too, exactly as back does', () => {
-    row(A);
-    openMenu();
-    fireEvent.click(screen.getByRole('button', { name: t.planDay.move }));
-    expect(document.querySelector('.bld-move')).toBeTruthy();
-
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(document.querySelector('.bld-move')).toBeNull();
-    expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
-
-    // And the next one leaves the sheet — one press, one layer, same as back.
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('button', { name: t.actions.edit })).toBeNull();
-  });
-
-  it('omits הזז when there is nothing to reorder against', () => {
-    row(A, { peers: [A] });
-    openMenu();
-    expect(screen.queryByRole('button', { name: t.planDay.move })).toBeNull();
+    expect(screen.queryByRole('button', { name: t.actions.toShelf })).toBeNull();
   });
 });
