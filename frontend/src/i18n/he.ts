@@ -1477,6 +1477,14 @@ export const t = {
     parkDropHere: 'שחררו כאן להעברה למדף · ליום הזה',
     parkSomedayDropHere: 'שחררו כאן להעברה למדף · מתישהו',
     gap: (label: string) => `פער של ${label} · שבץ`,
+    // A SEAM (ADR-0161 §2): the same position a gap chip offers, below the chip
+    // threshold — including zero, two rows that touch. It exists only while a drag is
+    // live, so it names its OUTCOME the way every other drop zone in the builder does
+    // rather than describing itself. `seamAfter` takes the row above it, which is what
+    // makes "right after the flight" a thing you can say.
+    seamAfter: (title: string) => `אחרי ${title}`,
+    seamDayStart: 'בתחילת היום',
+    seamDayEnd: 'בסוף היום',
     // The day's edges (session-123): free time with an event on one side only, so the
     // chip says which side it is on rather than calling itself a gap "between".
     gapBefore: (label: string) => `פנוי לפני · ${label} · שבץ`,
@@ -1583,7 +1591,10 @@ export const t = {
     // toast — and its undo reverses the booking, the link and the consume together.
     eventBooked: 'האירוע נוסף, וגם ההזמנה',
     eventDeleted: 'האירוע נמחק',
-    reordered: 'הסדר עודכן',
+    // Two events traded positions, each keeping its own length (ADR-0161 §1). It was
+    // `reordered: 'הסדר עודכן'`, which was true of the old slot permutation and is the
+    // wrong word for a swap: what changed is where two things are, not the day's order.
+    swappedPositions: 'האירועים החליפו מקומות',
     scheduledDay: (title: string) => `${title} נוסף ליום`,
     maybeAdded: 'הרעיון נוסף למדף',
     // Re-aiming an idea between the shelf's two groups (ADR-0116 §2) — a pencil

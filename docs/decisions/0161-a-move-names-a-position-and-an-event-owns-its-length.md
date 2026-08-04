@@ -1,6 +1,6 @@
 # 0161 — A move names a **position**; an event owns its **length**
 
-**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session)
+**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. §4-§7 and §9 are phases 2-4; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
 **Date:** 2026-08-04
 **Design reference:** [`mockups/day-scheduling-grammar-v1.html`](../../mockups/day-scheduling-grammar-v1.html) — the move grammar, the slot picker, the replacement sheet, the row menu and the Trip-mode gap, in both themes. Measurements below are read from that file's live DOM at 390×844 and 360×640.
 
@@ -45,7 +45,9 @@ The through-line: **the day list is an ordering, and the app keeps asking the us
 
 ### 1. An event owns its length. The slot-permutation model is deleted.
 
-`planReorder` goes. Every move — a drop on a row, a drop on a seam, the `הזז` step, a drop on a gap chip, a drop on a day pill — writes a **start**, and carries the existing duration with it. `lib/reorder.ts` becomes `planSwap`/`planInsert` over `{startsAt, endsAt}` only; `sortOrder` is untouched, because the list sorts by start and `sortOrder` breaks ties among untimed rows, which no move here reorders.
+`planReorder` goes. Every move — a drop on a row, a drop on a seam, the `הזז` step, a drop on a gap chip, a drop on a day pill — writes a **start**, and carries the existing duration with it. `lib/reorder.ts` becomes `planSwap` over `{startsAt, endsAt}` only; `sortOrder` is untouched, because the list sorts by start and `sortOrder` breaks ties among untimed rows, which no move here reorders.
+
+_Built 2026-08-04: this section said "`planSwap`/`planInsert`" and there is **no `planInsert`**. Inserting at a position is what a gap drop already did — `slotFor` + the `MOVE_INTO` action — and §2 makes a seam the same derivation as a gap, so it arrives at the same place with the same slot. A second implementation of "start here, keep your length" would have been the parallel copy rule 8 exists to prevent. The absence is recorded in the file's own header._
 
 An untimed event has no length to carry, so it takes the position's own block (`GAP_FILL_MINUTES`, or §5's category length) — which is exactly what `slotFor` already decided for a gap drop and is now true everywhere.
 

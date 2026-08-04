@@ -8,9 +8,12 @@
 // Editing reuses EventForm (add + edit, incl. hard↔soft flip, time, and
 // cross-day via its date field). A soft row is dragged by a press-and-hold from
 // anywhere on it (session-119, no grip and no ▲/▼ pair — those live in the ⋯ sheet
-// now): dropping on another row reassigns the day's soft slots (verbs.reorder →
-// planReorder), on a shelf group parks it, on the day strip moves it to that day.
-// The list stays time-ordered and hard events are pinned anchors (ADR-0011).
+// now). **Where it lands names a POSITION and the event keeps its own length**
+// (ADR-0161): dropping on another row TRADES POSITIONS with it (verbs.swapPositions →
+// planSwap), on a seam or a gap chip moves it into that slot, on a shelf group parks it,
+// on the day strip moves it to that day. The list stays time-ordered and hard events are
+// pinned anchors (ADR-0011) — never a drag source, never a swap target, but the seams on
+// either side of one are both.
 import {
   Fragment,
   useMemo,
@@ -65,9 +68,10 @@ import {
   type TimeItem,
 } from '../lib/time';
 import {
-  gapAfterLast,
-  gapBeforeFirst,
-  gapBetween,
+  earnsChip,
+  freeAfterLast,
+  freeBeforeFirst,
+  freeBetween,
   nextSlot,
   type Gap,
   type GapDefaults,
@@ -187,9 +191,10 @@ const gapKey = (fill: GapDefaults) => `${fill.date}T${fill.start}-${fill.end}`;
 
 // What is under the pointer, asked the same way by both drags (session-123 — the row
 // drag reads gaps and the empty day now, so these stopped being the card drag's own).
-/** The gap chip under the pointer, and the slot it offers. The slot travels on the
- *  element itself, so no lookup table and no id has to be minted for a chip that only
- *  exists for this render. */
+/** The POSITION under the pointer, and the slot it offers — a gap chip or a seam, since
+ *  both carry the same `data-gap-*` and are therefore one target here (ADR-0161 §2). The
+ *  slot travels on the element itself, so no lookup table and no id has to be minted for
+ *  something that only exists for this render. */
 const gapAt = (el: Element | null): { key: string; fill: GapDefaults } | null => {
   const chip = el?.closest('[data-gap-key]') as HTMLElement | null;
   const { gapKey: key, gapDate, gapStart, gapEnd } = chip?.dataset ?? {};
@@ -411,9 +416,9 @@ export function PlanDay() {
     const overRow = overId && overId !== d.id && softIndex.has(overId) ? overId : null;
     const overShelf = shelfAt(el);
     const overDate = dayPillAt(el);
-    // Free time takes the row too now (session-123): the same chips, read the same way
-    // as the card drag reads them, so a row carried to another day has somewhere to land
-    // that isn't the shelf.
+    // A position takes the row too (session-123): the same chips AND, since ADR-0161 §2,
+    // the seams between every pair — read the same way the card drag reads them, so a row
+    // carried anywhere has somewhere to land that isn't the shelf.
     const gap = gapAt(el);
     const overDay = dayDropAt(el);
     if (
@@ -457,8 +462,8 @@ export function PlanDay() {
       day,
     );
     switch (action.kind) {
-      case ROW_DROP_ACTION.REORDER:
-        verbs.reorder(rows, target.id, action.targetId);
+      case ROW_DROP_ACTION.SWAP:
+        verbs.swapPositions(rows, target.id, action.targetId);
         return true;
       case ROW_DROP_ACTION.PARK:
         verbs.park(event, { targetDate: action.day });
@@ -705,17 +710,19 @@ export function PlanDay() {
    *  even though the drop means opposite things (re-aim a card / park a row). */
   const overShelf = (group: ShelfDrop) =>
     ideaDrag?.overShelf === group || drag?.overShelf === group;
-  /** …and so is a gap: both drags land in free time, so both light it (session-123). */
+  /** …and so is a position — a gap chip or a seam, which are one target in two densities
+   *  (ADR-0161 §2). Both drags land in one, so both light it (session-123). */
   const overGap = (fill: GapDefaults) =>
     ideaDrag?.overGap === gapKey(fill) || drag?.overGap === gapKey(fill);
-  /** The day's edge gaps (session-123): the free time before the first event and after
-   *  the last, which `gapBetween` cannot see because each has an event on one side
-   *  only. Absent on a read-only archive, exactly like every other gap chip. */
-  const edgeGaps = readOnly
+  /** The day's edge positions (session-123): the free time before the first event and
+   *  after the last, which `freeBetween` cannot see because each has an event on one side
+   *  only. Unfloored — `FreeSlot` decides whether each is a chip or a seam (ADR-0161 §2).
+   *  Absent on a read-only archive, exactly like every other drop target. */
+  const edgeFree = readOnly
     ? { before: null, after: null }
     : {
-        before: gapBeforeFirst(dayEvents, activeDate, tz),
-        after: gapAfterLast(dayEvents, activeDate, tz),
+        before: freeBeforeFirst(dayEvents, activeDate, tz),
+        after: freeAfterLast(dayEvents, activeDate, tz),
       };
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
@@ -786,6 +793,11 @@ export function PlanDay() {
   const closeResolve = () => setResolveCluster(null);
 
   return (
+    // No drag-live class of this screen's own: `useHoldToDrag` already parks `wp-dragging`
+    // on `<body>` for the length of an armed drag, and `screens.css` reveals §2's seams off
+    // that. So the day at rest is byte-for-byte the day it was before ADR-0161, and there
+    // is exactly one answer to "is a drag in flight" rather than this screen's union of
+    // its own two drag states.
     <div className="builder">
       <div className="builder-main">
         <div className="sec-title">
@@ -842,13 +854,14 @@ export function PlanDay() {
           </div>
         ) : (
           <div>
-            {/* The day's head: free time before the first event, which `gapBetween`
+            {/* The day's head: free time before the first event, which `freeBetween`
                 cannot see because it has an event on one side only (session-123). */}
-            {edgeGaps.before && (
-              <GapChip
-                gap={edgeGaps.before}
-                label={t.planDay.gapBefore(gapLabel(edgeGaps.before.minutes))}
-                over={overGap(edgeGaps.before.fill)}
+            {edgeFree.before && (
+              <FreeSlot
+                free={edgeFree.before}
+                label={t.planDay.gapBefore(gapLabel(edgeFree.before.minutes))}
+                seamLabel={t.planDay.seamDayStart}
+                over={overGap(edgeFree.before.fill)}
                 onFill={setGapChoice}
               />
             )}
@@ -874,11 +887,12 @@ export function PlanDay() {
               ))}
             {/* …and its tail, below the untimed rows: they hold no clock position, so
                 nothing sits "after the last event" but this. */}
-            {edgeGaps.after && (
-              <GapChip
-                gap={edgeGaps.after}
-                label={t.planDay.gapAfter(gapLabel(edgeGaps.after.minutes))}
-                over={overGap(edgeGaps.after.fill)}
+            {edgeFree.after && (
+              <FreeSlot
+                free={edgeFree.after}
+                label={t.planDay.gapAfter(gapLabel(edgeFree.after.minutes))}
+                seamLabel={t.planDay.seamDayEnd}
+                over={overGap(edgeFree.after.fill)}
                 onFill={setGapChoice}
               />
             )}
@@ -1364,46 +1378,73 @@ function overlapSeam(items: TimeItem[], idx: number): string | undefined {
   return best > 0 ? t.planDay.overlapSeam(gapLabel(Math.round(best / 60000))) : undefined;
 }
 
-/** Free time, as a chip. It is the day's one honest drop target for a drag (ADR-0116
- *  §5 — no displacement, so no ripple decision to make), and a tap on it opens the
- *  gap-fill chooser. ONE component for all three kinds of gap — between two events,
- *  before the first, after the last (session-123) — so they cannot drift apart in what
- *  they accept. The slot travels on the element itself (`data-gap-*`), which is what
- *  both hit-tests read. */
-function GapChip({
-  gap,
+/** **A position between two rows**, in one of two densities (ADR-0161 §2).
+ *
+ *  Past `GAP_MIN_MINUTES` it is the `שבץ` **chip** it always was: free time worth
+ *  offering, tappable, a drop target. Below that — including zero, two rows that touch —
+ *  it is a **seam**: a violet hairline that exists only while a drag is live, carries no
+ *  tap, and says what a drop there would do. That is what made "right after the flight"
+ *  expressible; before it, a position needed 60 free minutes to exist at all.
+ *
+ *  ONE component for both densities and for all three places a position occurs — between
+ *  two events, before the first, after the last — because the invariant that matters is
+ *  that they **accept the same drop**. The slot travels on the element itself
+ *  (`data-gap-*`), which is what both hit-tests read, so a seam and a chip are one target
+ *  to every caller downstream. */
+function FreeSlot({
+  free,
   label,
+  seamLabel,
   over,
   onFill,
 }: {
-  gap: Gap;
+  free: Gap;
+  /** The chip's copy, when there is enough free time to earn one. */
   label: string;
+  /** The seam's copy — its OUTCOME, like every other drop zone in the builder. */
+  seamLabel: string;
   over: boolean;
   onFill: (fill: GapDefaults) => void;
 }) {
+  // Asked of `lib/gaps.ts`, never re-derived here: the threshold that decides chip-vs-seam
+  // is the same one `gapBetween` applies, and two copies of it would drift.
+  const isChip = earnsChip(free);
   return (
     <div
-      className={'gap' + (over ? ' drop-over' : '')}
-      data-gap-key={gapKey(gap.fill)}
-      data-gap-date={gap.fill.date}
-      data-gap-start={gap.fill.start}
-      data-gap-end={gap.fill.end}
+      // A seam is a `.gap` with a modifier, never a second block: the two densities share
+      // the chip's flex row, rhythm and spacing, and only what differs is overridden.
+      className={'gap' + (isChip ? '' : ' seam') + (over ? ' drop-over' : '')}
+      data-gap-key={gapKey(free.fill)}
+      data-gap-date={free.fill.date}
+      data-gap-start={free.fill.start}
+      data-gap-end={free.fill.end}
     >
-      <span className="gap-line" />
-      <button className="gap-add" onClick={() => onFill(gap.fill)}>
-        <Icon name="plus" /> {label}
-      </button>
-      <span className="gap-line" />
+      {isChip ? (
+        <>
+          <span className="gap-line" />
+          <button className="gap-add" onClick={() => onFill(free.fill)}>
+            <Icon name="plus" /> {label}
+          </button>
+          <span className="gap-line" />
+        </>
+      ) : (
+        <>
+          <span className="bld-seam-line" />
+          <span className="bld-seam-lbl">{seamLabel}</span>
+          <span className="bld-seam-line" />
+        </>
+      )}
     </div>
   );
 }
 
 // One sibling level: partial-overlap clusters get a violet "חופפים" box, lone
-// items render directly. Gap chips sit only between top-level groups (depth 0).
+// items render directly. Positions (a gap chip, or a drag-only seam — ADR-0161 §2) sit
+// only between top-level groups (depth 0).
 // At depth 0 the day's multi-day-bracket transition points are interleaved by
 // instant (ADR-0064 §B) as read-only reference rows — they are not builder rows
 // (no grip/drag/⋯/edit, not a drop target), and they neither open nor close a
-// plannable gap, so gap chips stay computed between consecutive EVENT groups.
+// plannable position, so joins stay computed between consecutive EVENT groups.
 function BuilderGroups({
   groups,
   depth,
@@ -1424,8 +1465,8 @@ function BuilderGroups({
   // marker is static rather than live, which is a difference in the INSTANT it is given
   // and nothing else.
   const nowRefIndex = nowRefMs === null ? -1 : nowLinePlacement(entries, nowRefMs).index;
-  // Gaps are measured between consecutive EVENT groups only — a transition point
-  // interleaved between two groups doesn't break their adjacency for gap-fill.
+  // Positions are measured between consecutive EVENT groups only — a transition point
+  // interleaved between two groups doesn't break their adjacency.
   let prevEventGroup: TimeGroup | null = null;
   return (
     <>
@@ -1447,20 +1488,22 @@ function BuilderGroups({
           );
         }
         const g = entry.group;
-        const gap =
-          depth === 0 && prevEventGroup && !ctx.readOnly
-            ? gapBetween(groupEndEvent(prevEventGroup), groupStartEvent(g), ctx.tz)
+        const prevEnd = prevEventGroup && groupEndEvent(prevEventGroup);
+        const free =
+          depth === 0 && prevEnd && !ctx.readOnly
+            ? freeBetween(prevEnd, groupStartEvent(g), ctx.tz)
             : null;
         prevEventGroup = g;
         const key = g.kind === 'cluster' ? `cl-${g.items[0].event.id}` : g.item.event.id;
         return (
           <Fragment key={key}>
             {nowRef}
-            {gap && (
-              <GapChip
-                gap={gap}
-                label={t.planDay.gap(gapLabel(gap.minutes))}
-                over={ctx.overGap(gap.fill)}
+            {free && prevEnd && (
+              <FreeSlot
+                free={free}
+                label={t.planDay.gap(gapLabel(free.minutes))}
+                seamLabel={t.planDay.seamAfter(prevEnd.title)}
+                over={ctx.overGap(free.fill)}
                 onFill={ctx.onGapFill}
               />
             )}
@@ -1567,7 +1610,7 @@ function BuilderNode({
           soft
             ? {
                 peers: ctx.softEvents,
-                onMoveTo: (targetId) => ctx.verbs.reorder(ctx.dayEvents, e.id, targetId),
+                onMoveTo: (targetId) => ctx.verbs.swapPositions(ctx.dayEvents, e.id, targetId),
               }
             : undefined
         }

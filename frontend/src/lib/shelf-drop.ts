@@ -107,33 +107,38 @@ export function resolveShelfDrop(
  *  symmetric: a card can come off the shelf onto the day, and a row can go the other
  *  way (ADR-0116 session-118). */
 export interface RowDropTarget {
-  /** Another soft row, by id — the reorder target this drag always had. */
+  /** Another soft row, by id — trade positions with it. */
   overRowId: string | null;
   /** A shelf group, which means park it: off the day, onto the shelf. */
   overShelf: ShelfDrop | null;
   /** A day pill on the header strip, which means move it to that day. */
   overDate: string | null;
-  /** A gap chip's slot — free time, on this day or on the one the drag walked to
-   *  (session-123). The same target a shelf card has always had. */
+  /** A gap chip's or a **seam's** slot — a position on this day or on the one the drag
+   *  walked to. The same target a shelf card has always had, and since ADR-0161 §2 it
+   *  exists between every pair of rows rather than only where 60 minutes are free: a
+   *  seam is `freeBetween` below the chip threshold, so both arrive here identically
+   *  and `MOVE_INTO` already keeps the row's own length. */
   fill?: GapDefaults;
   /** The empty day's drop zone: it names a day but has no slot to offer. */
   overDay?: boolean;
 }
 
 export const ROW_DROP_ACTION = {
-  /** Reassign the day's soft slots so the dragged row takes this one's place. */
-  REORDER: 'reorder',
+  /** Trade positions with this row: each takes the other's start and keeps its own
+   *  length (ADR-0161 §2). It was `REORDER` and it reassigned SLOTS, which traded the
+   *  two events' durations along with their places — see `lib/reorder.ts`. */
+  SWAP: 'swap',
   /** Off the day and onto the shelf as an idea, keeping `day` as its pencil mark. */
   PARK: 'park',
   /** Onto another day, keeping the event's own clock time. */
   MOVE_TO_DAY: 'moveToDay',
-  /** Into free time — the gap's day and start, the event's own length. */
+  /** Into a position — the slot's day and start, the event's own length. */
   MOVE_INTO: 'moveInto',
   NONE: 'none',
 } as const;
 
 export type RowDropAction =
-  | { kind: typeof ROW_DROP_ACTION.REORDER; targetId: string }
+  | { kind: typeof ROW_DROP_ACTION.SWAP; targetId: string }
   | { kind: typeof ROW_DROP_ACTION.PARK; day: string | null }
   | { kind: typeof ROW_DROP_ACTION.MOVE_TO_DAY; day: string }
   | { kind: typeof ROW_DROP_ACTION.MOVE_INTO; fill: GapDefaults }
@@ -174,8 +179,11 @@ export function resolveRowDrop(
       ? { kind: ROW_DROP_ACTION.NONE }
       : { kind: ROW_DROP_ACTION.MOVE_TO_DAY, day: target.overDate };
   }
-  // Free time, on this day or on the one the drag walked to. Unlike a pill this is
-  // never a no-op: the gap says a time as well as a day, and the row is not in it.
+  // A position, on this day or on the one the drag walked to — a gap chip or a seam,
+  // which are one target in two densities. Unlike a pill this is never a no-op: the slot
+  // says a time as well as a day, and the row is not in it. It sits ABOVE the row test
+  // deliberately: a seam lies between two rows, so when the finger is on one the more
+  // specific answer is "here", not "trade with the row below".
   if (target.fill) return { kind: ROW_DROP_ACTION.MOVE_INTO, fill: target.fill };
   // A day with nothing on it has no gap chip to offer, so the empty state is the
   // target instead (the same one an idea gets) — and it can only ever be another
@@ -192,7 +200,7 @@ export function resolveRowDrop(
     };
   }
   if (target.overRowId && target.overRowId !== dragged.id) {
-    return { kind: ROW_DROP_ACTION.REORDER, targetId: target.overRowId };
+    return { kind: ROW_DROP_ACTION.SWAP, targetId: target.overRowId };
   }
   return { kind: ROW_DROP_ACTION.NONE };
 }

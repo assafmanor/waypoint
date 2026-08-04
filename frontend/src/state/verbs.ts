@@ -57,7 +57,7 @@ import { eventDisplayZones } from '../lib/places';
 import { soleIdeaFor, type PlaceLink } from '../lib/place-refs';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
-import { planReorder } from '../lib/reorder';
+import { planSwap } from '../lib/reorder';
 import {
   DEFAULT_MAYBE_ICON,
   DELAY_STEP_MINUTES,
@@ -624,13 +624,17 @@ export async function applyGuardedDelete(deps: VerbDeps, event: TripEvent): Prom
   return true;
 }
 
-// Reorder soft events on a day: reassign their time slots (patches computed by
-// lib/reorder.ts's planReorder). One REORDER dispatch (single undo snapshot) +
-// one persisted update per moved event. Only soft events are ever in `patches`
-// (hard events are pinned anchors, ADR-0011), so there's no hard-edit gate here.
-// `affected` is the day's events, used to record each moved event's prior slot
-// for undo.
-export async function applyReorder(
+// **The one atomic multi-event write**: N slot patches, one undo. One REORDER dispatch
+// (a single undo snapshot) + one persisted update per patched event. Only soft events are
+// ever in `patches` (hard events are pinned anchors, ADR-0011), so there is no hard-edit
+// gate here. `affected` is the day's events, used to record each event's prior slot for
+// undo.
+//
+// Named for what it does rather than for its first caller (ADR-0161 §7): it was
+// `applyReorder` when a reorder was the only thing that patched several events at once,
+// and it is the path every multi-row move now takes — a position swap today, and whatever
+// else needs "these events, these starts, one undo" next.
+export async function applyEventPatches(
   deps: VerbDeps,
   patches: { id: string; patch: UpdateEventInput }[],
   affected: TripEvent[],
@@ -1318,13 +1322,13 @@ export function useVerbs() {
         if (applied) toast(CONTROL_ICON.trash, t.toast.placeDeleted, undo);
       });
     },
-    // Plan-mode builder: move soft event `movedId` to occupy `targetId`'s slot
-    // (drag drop target, or the ▲/▼ soft neighbour). Hard events are pinned.
-    reorder: (dayEvents: TripEvent[], movedId: string, targetId: string) => {
-      const patches = planReorder(dayEvents, movedId, targetId);
+    // Plan-mode builder: two soft events **trade positions**, each keeping its own
+    // length (ADR-0161 §1/§2). Hard events are pinned and never in the patch set.
+    swapPositions: (dayEvents: TripEvent[], aId: string, bId: string) => {
+      const patches = planSwap(dayEvents, aId, bId);
       if (patches.length === 0) return;
-      void applyReorder(deps, patches, dayEvents);
-      toast(CONTROL_ICON.swap, t.toast.reordered, undo);
+      void applyEventPatches(deps, patches, dayEvents);
+      toast(CONTROL_ICON.swap, t.toast.swappedPositions, undo);
     },
     rippleApply: () => {
       if (!ripple) return;

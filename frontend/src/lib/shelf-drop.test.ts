@@ -102,7 +102,7 @@ describe('resolveRowDrop (ADR-0116 session-118)', () => {
 
   it('dropped on another soft row, reorders', () => {
     const action = resolveRowDrop(ROW, { ...nowhere, overRowId: 'ev-2' }, DAY);
-    expect(action).toEqual({ kind: ROW_DROP_ACTION.REORDER, targetId: 'ev-2' });
+    expect(action).toEqual({ kind: ROW_DROP_ACTION.SWAP, targetId: 'ev-2' });
   });
 
   // The mirror of dragging a card onto a gap: the same two groups, the opposite

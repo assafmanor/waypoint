@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { useDragGhost, type DragGhost } from './useDragGhost';
+import { DRAG_GHOST_LIFT_PX } from '../constants';
 
 /** The thing the drag starts from, at a known place on screen and with the kind of
  *  attributes a real draggable carries. jsdom reports a zero rect for everything, so
@@ -64,24 +65,34 @@ describe('useDragGhost (ADR-0116 sessions 117-118)', () => {
     expect(host().style.height).toBe('56px');
   });
 
-  // The point of the grab offset: the clone appears exactly where the original was,
-  // rather than snapping its own top-left corner under the finger.
-  it('keeps the clone under the finger where the source was grabbed', () => {
+  // The point of the grab offset: the clone appears where the original was, rather than
+  // snapping its own top-left corner under the finger — LIFTED clear of it in the block
+  // direction (ADR-0161 §8), so the drop target the finger is over is never underneath.
+  it('keeps the clone under the finger where the source was grabbed, lifted clear of it', () => {
     const { ghost, host } = harness();
     // Grabbed 30px in and 20px down from the corner…
     ghost.lift(source(200, 400), { clientX: 230, clientY: 420 });
-    // …so a finger at (330, 520) puts the corner at (300, 500).
+    // …so a finger at (330, 520) puts the corner at (300, 500), minus the lift.
     ghost.track({ clientX: 330, clientY: 520 });
-    expect(host().style.transform).toBe('translate3d(300px, 500px, 0)');
+    expect(host().style.transform).toBe(`translate3d(300px, ${500 - DRAG_GHOST_LIFT_PX}px, 0)`);
+  });
+
+  // The lift is why translucency alone does not answer the report: the finger sits ON the
+  // clone, so a seam label under it stays unreadable however transparent it is.
+  it('lifts the clone by exactly DRAG_GHOST_LIFT_PX and nothing horizontal', () => {
+    const { ghost, host } = harness();
+    ghost.lift(source(0, 0), { clientX: 0, clientY: 0 });
+    ghost.track({ clientX: 40, clientY: 100 });
+    expect(host().style.transform).toBe(`translate3d(40px, ${100 - DRAG_GHOST_LIFT_PX}px, 0)`);
   });
 
   it('follows every move', () => {
     const { ghost, host } = harness();
     ghost.lift(source(0, 0), { clientX: 0, clientY: 0 });
     ghost.track({ clientX: 5, clientY: 5 });
-    expect(host().style.transform).toBe('translate3d(5px, 5px, 0)');
+    expect(host().style.transform).toBe(`translate3d(5px, ${5 - DRAG_GHOST_LIFT_PX}px, 0)`);
     ghost.track({ clientX: 5, clientY: 200 });
-    expect(host().style.transform).toBe('translate3d(5px, 200px, 0)');
+    expect(host().style.transform).toBe(`translate3d(5px, ${200 - DRAG_GHOST_LIFT_PX}px, 0)`);
   });
 
   // The host renders a frame AFTER the lift (it only exists once the drag is in
@@ -99,7 +110,9 @@ describe('useDragGhost (ADR-0116 sessions 117-118)', () => {
     show = true;
     rerender(<Host />);
     expect(getByTestId('ghost').firstElementChild).not.toBeNull();
-    expect(getByTestId('ghost').style.transform).toBe('translate3d(100px, 100px, 0)');
+    expect(getByTestId('ghost').style.transform).toBe(
+      `translate3d(100px, ${100 - DRAG_GHOST_LIFT_PX}px, 0)`,
+    );
   });
 
   it('tracking before anything mounted is not an error', () => {

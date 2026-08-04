@@ -1883,6 +1883,56 @@
   outline-offset: 2px;
 }
 
+/* A SEAM — the same position a `.gap` chip offers, below the chip threshold (ADR-0161
+   §2). Zero-height and inert at rest, so the day at rest is exactly the day it was: the
+   only reason a position can exist between EVERY pair of rows without crowding the list.
+
+   **It IS a `.gap`**, with a modifier — not a second block that repeats the flex row, the
+   8px gap, the margin and the padding. One component renders both densities and claims
+   they cannot drift in what they accept; letting their geometry drift instead would make
+   that claim half true, and the seam's whole job is to sit in the same rhythm the chip
+   does. So the base rule above is shared and this overrides only what differs: it is
+   hidden at rest, it is tighter (no button to make room for), and its line is a solid bar
+   rather than the chip's dashed rule.
+
+   `.gap.seam` and the classes below are `.bld-seam-*`, not `.seam-*`, because `.seam-tag`
+   already means the overlap tag on a cluster member. */
+.gap.seam {
+  display: none;
+}
+/* Gated on the class `useHoldToDrag` already parks on `<body>` for the length of an armed
+   drag, NOT on a second drag-live flag of this screen's own. Two consequences, both
+   wanted: there is one answer to "is a drag in flight" (this screen had been about to
+   hand-roll a union of its two drag states), and a seam therefore appears for EITHER
+   drag — the builder row and the shelf card both land in a position, so both should be
+   able to see them. */
+body.wp-dragging .gap.seam {
+  display: flex;
+  margin: -4px 0 5px;
+  padding: 3px 6px;
+}
+.bld-seam-line {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--plan-tint);
+}
+.bld-seam-lbl {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--plan-deep);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+body.wp-dragging .gap.seam.drop-over .bld-seam-line {
+  background: var(--plan);
+  height: 4px;
+}
+body.wp-dragging .gap.seam.drop-over .bld-seam-lbl {
+  opacity: 1;
+}
+
 /* add-event affordance at the foot of the day */
 .addbtn {
   width: 100%;

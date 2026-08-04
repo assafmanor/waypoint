@@ -17,6 +17,7 @@
 // re-render the whole builder for each one. That cost is not hypothetical — a churning
 // render is what broke the hold in session 116.
 import { useCallback, useMemo, useRef } from 'react';
+import { DRAG_GHOST_LIFT_PX } from '../constants';
 import type { DragPoint } from './edge-autoscroll';
 
 export interface DragGhost {
@@ -71,8 +72,14 @@ export function useDragGhost(): DragGhost {
     }
     // translate3d, not top/left: a per-frame update belongs on the compositor rather
     // than in layout.
+    //
+    // **Lifted clear of the finger** (ADR-0161 §8): the pointer is ON the clone, so the
+    // drop target directly under it is hidden by construction — and that is the one you
+    // are aiming at. Subtracting the lift puts the finger just below the clone's edge.
+    // Physical `clientY` arithmetic, so this is a plain minus in both directions; the
+    // hit-tests read the untouched `point`, so what a drop CHOOSES is unaffected.
     const x = at.current.clientX - grab.current.x;
-    const y = at.current.clientY - grab.current.y;
+    const y = at.current.clientY - grab.current.y - DRAG_GHOST_LIFT_PX;
     el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
   }, []);
 
