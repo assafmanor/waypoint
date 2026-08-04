@@ -468,6 +468,70 @@ test.describe('a day with a wide gap between two events', () => {
     await expect(ghost).toHaveCount(0);
   });
 
+  // **A seam costs no layout, and only a real browser can say so** (ADR-0161 §2). A
+  // position now exists between every pair of rows rather than only where 60 free minutes
+  // are, which is what makes "right after the flight" expressible — but the first version
+  // gave each one an 18px box, so arming a drag grew the list by ~90px on a four-event day
+  // and every target below the finger slid down as you reached for it. The seam is
+  // zero-height now, painting into the 9px `.bld` already leaves between rows.
+  //
+  // jsdom cannot see this class of bug at all (every rect is zero), and `holdOver` would
+  // hide it by converging, so the invariant is asserted here directly: the rows do not move
+  // when the drag arms.
+  test('arming a drag reveals the seams without moving the rows', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const card = await centre(page, '.wp-maybecard');
+    const lastRow = page.locator('.bld').last();
+    // Asserted on the seam's LINE, not on the seam: the seam is zero-height by design, and
+    // a box with no area reads as hidden to Playwright exactly as it does to
+    // `elementFromPoint`. The line is the 3px that actually paints.
+    const seamLine = page.locator('.bld-seam .bld-seam-line').first();
+
+    await expect(seamLine).toBeHidden();
+    const before = (await lastRow.boundingBox())!;
+
+    await touch(cdp, 'touchStart', card.x, card.y);
+    await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
+    // The seam is there. This fixture has exactly one — its 07:00 first event sits on the
+    // window's own opening, so the day's head has no free time and never earned a chip,
+    // which is precisely the position ADR-0161 §2 made reachable.
+    await expect(seamLine).toBeVisible();
+    expect(await page.locator('.bld-seam').count()).toBe(1);
+    // …and the row below them has not budged.
+    const after = (await lastRow.boundingBox())!;
+    expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+
+    await touch(cdp, 'touchEnd');
+    await expect(seamLine).toBeHidden();
+  });
+
+  // **The seam as a drop target, end to end** — the whole of ADR-0161 §2, and the one
+  // claim about it that no unit test can make: a position between two rows with LESS than
+  // `GAP_MIN_MINUTES` of free time is reachable by a finger and moves the row into it.
+  // The fixture's two events are 07:00 and 20:00, so the seam under test is the day's
+  // head — before the first row, where no chip has ever been.
+  test('a row dropped on a seam moves into that position', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const row = page.locator('[data-bld-id="ev-2"]');
+    const timeBefore = await row.locator('.bld-time').innerText();
+    const start = (await boxOf(page, '[data-bld-id="ev-2"]'))!;
+
+    await touch(cdp, 'touchStart', start.x + start.width / 2, start.y + 8);
+    await expect(page.locator('.bld.dragging')).toBeVisible();
+
+    // Aim at the seam's own line — the seam is zero-height, so the line is what has a box,
+    // and the 22px hit area around it is what catches the finger.
+    const seam = page.locator('.bld-seam').first();
+    const line = (await seam.locator('.bld-seam-line').first().boundingBox())!;
+    await touch(cdp, 'touchMove', line.x + line.width / 2, line.y + line.height / 2);
+    await expect(seam).toHaveClass(/drop-over/);
+    await touch(cdp, 'touchEnd');
+
+    // It landed somewhere else, and it is still an event on the day rather than an idea.
+    await expect(row).toBeVisible();
+    await expect(row.locator('.bld-time')).not.toHaveText(timeBefore);
+  });
+
   // An idea becoming an event is a CREATE, so the drop opens the form rather than
   // committing a slot the user never saw — the same thing an empty day already did
   // (session-120). Everything that already EXISTS still moves silently.

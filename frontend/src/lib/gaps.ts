@@ -119,12 +119,20 @@ export function freeBeforeFirst(dayEvents: TripEvent[], date: string, tz: string
   // An event before the day's window — a 05:30 flight — still has the small hours
   // in front of it, and that is exactly when "add something before it" is asked.
   const floorMin = firstMin >= DAY_WINDOW.START_HOUR * 60 ? DAY_WINDOW.START_HOUR * 60 : 0;
+  const minutes = Math.max(0, firstMin - floorMin);
+  // With room, the block ENDS at the first event: that is what "before the first" means.
+  // With none — a first event sitting on the window's own opening, which is the seam case
+  // the chip never reached — the same rule as `freeBetween`: offer a real default block at
+  // the position and let the drop overlap (ADR-0161 §3). Otherwise the head seam hands out
+  // a zero-length slot, which is no droppable position at all.
+  const block = { start: toHHMM(firstMin), end: toHHMM(firstMin + GAP_FILL_MINUTES) };
   return {
-    minutes: Math.max(0, firstMin - floorMin),
+    minutes,
     fill: {
       date,
-      start: toHHMM(Math.max(floorMin, firstMin - GAP_FILL_MINUTES)),
-      end: toHHMM(firstMin),
+      ...(minutes > 0
+        ? { start: toHHMM(Math.max(floorMin, firstMin - GAP_FILL_MINUTES)), end: toHHMM(firstMin) }
+        : block),
     },
   };
 }
@@ -151,6 +159,34 @@ export function gapBeforeFirst(dayEvents: TripEvent[], date: string, tz: string)
 
 export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
   return floored(freeAfterLast(dayEvents, date, tz));
+}
+
+/**
+ * **The whole day as one position**, for the days that can hang a position off nothing
+ * else (ADR-0161 §2, extended):
+ *
+ * - an **empty** day, where the only target used to be "move it here, keeping the clock
+ *   time it already had" — which is not what `שבץ` means;
+ * - a day of **untimed** events only, and
+ * - a day whose only entries are booking **transition** points (a hotel check-out
+ *   interleaved by instant, ADR-0064 §B).
+ *
+ * The last two are why this exists rather than being an empty-day special case: both
+ * render the ordinary list, and both make `freeBeforeFirst`/`freeAfterLast` answer null
+ * because neither has a timed event to measure from — so the day showed rows and accepted
+ * a drop nowhere. One rule covers all three: **with nothing timed to sit beside, the
+ * position is the day.**
+ *
+ * Its slot is the day's own opening, which is exactly what the foot-of-the-day add button
+ * offers (`nextSlot`), so the two cannot drift. Its `minutes` is the window, so it reads
+ * as a chip rather than a seam: an empty day has all of its time free, and saying so is
+ * more useful than a hairline.
+ */
+export function freeWholeDay(date: string, tz: string): Gap {
+  return {
+    minutes: LAST_MINUTE_OF_DAY - DAY_WINDOW.START_HOUR * 60,
+    fill: nextSlot([], date, tz),
+  };
 }
 
 /** A GAP_FILL_MINUTES block starting where the day's last event ends (the open

@@ -1484,6 +1484,10 @@ export const t = {
     // makes "right after the flight" a thing you can say.
     seamAfter: (title: string) => `אחרי ${title}`,
     seamDayStart: 'בתחילת היום',
+    // The whole day as one position (ADR-0161 §2, extended): an empty day, a day of
+    // untimed rows, or one whose only entries are booking transition points. It says the
+    // day is free rather than measuring a "gap of 17 hours", which is true and useless.
+    gapWholeDay: 'היום פנוי · שבץ',
     seamDayEnd: 'בסוף היום',
     // The day's edges (session-123): free time with an event on one side only, so the
     // chip says which side it is on rather than calling itself a gap "between".

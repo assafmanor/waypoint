@@ -6,6 +6,7 @@ import {
   freeAfterLast,
   freeBeforeFirst,
   freeBetween,
+  freeWholeDay,
   gapAfterLast,
   gapBeforeFirst,
   gapBetween,
@@ -258,8 +259,43 @@ describe('the day edges, unfloored', () => {
     expect(gapAfterLast(day, DATE, TZ)).toBeNull();
   });
 
+  // The e2e fixture's own day (first event at 07:00, the window's opening) is exactly this,
+  // which is how it was found: the head seam existed and offered nowhere to land.
+  it('offers a real block at a head with no room, rather than a zero-length slot', () => {
+    const day = [ev('dawn', '07:00', '08:00')];
+    const free = freeBeforeFirst(day, DATE, TZ)!;
+    expect(free.minutes).toBe(0);
+    expect(earnsChip(free)).toBe(false);
+    expect(free.fill.start).toBe('07:00');
+    expect(free.fill.end).toBe('08:00'); // a default block, not start === end
+  });
+
   it('has no edge position at all on an untimed-only day', () => {
     expect(freeBeforeFirst([untimed('a')], DATE, TZ)).toBeNull();
     expect(freeAfterLast([untimed('a')], DATE, TZ)).toBeNull();
+  });
+});
+
+// ADR-0161 §2, extended: three kinds of day can hang a position off nothing timed, and all
+// three used to accept a drop nowhere at all.
+describe('freeWholeDay (the day itself as a position)', () => {
+  it('reads as a chip, not a seam — an empty day has all its time free', () => {
+    const free = freeWholeDay(DATE, TZ);
+    expect(earnsChip(free)).toBe(true);
+  });
+
+  it('offers the day’s own opening, the same slot the foot-of-day add button does', () => {
+    expect(freeWholeDay(DATE, TZ).fill).toEqual(nextSlot([], DATE, TZ));
+  });
+
+  // The three days it exists for. Each renders rows (or an empty state) and each answers
+  // null at BOTH edges, which is what left them with nowhere to drop.
+  it('covers the days whose edges answer nothing', () => {
+    for (const day of [[], [untimed('a')], [untimed('a'), untimed('b')]]) {
+      expect(freeBeforeFirst(day, DATE, TZ)).toBeNull();
+      expect(freeAfterLast(day, DATE, TZ)).toBeNull();
+    }
+    // …and the whole-day position always answers.
+    expect(freeWholeDay(DATE, TZ).fill.start).toBe('07:00');
   });
 });
