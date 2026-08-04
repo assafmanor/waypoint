@@ -45,12 +45,16 @@ No integration gets its own screen. Each one **feeds the two existing surfaces**
 - **Feeds:** practical layer / a shared album.
 - **v1.1+.**
 
-### Web / AI enrichment (future pipe 🔭)
+### Web enrichment of places — **decided, [ADR-0166](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md)** (2026-08-04)
 
-- **Feeds:** existing `Event` / `Booking` / `MaybeItem` entities with auto-pulled detail (opening hours, photos, descriptions, local tips; filling booking fields from a confirmation).
-- **Why it fits:** it's a textbook pipe — enrich the entities, never a new screen (ADR-0004).
-- **Keep-open requirements (so v1 doesn't block it):** preserve `source`/provenance on entities so enriched data is distinguishable and re-fetchable; keep `placeId` and free-text separable as stable keys to hang enrichment on.
-- **Phase:** vNext, not v1. Recorded so the data model stays compatible (see product/modes.md).
+Was "a future pipe 🔭". Its two keep-open requirements — **provenance per value** and **a stable key to hang enrichment on** — turned out to be the load-bearing parts of the design, not preamble.
+
+- **Feeds:** existing surfaces with auto-pulled detail (image/thumbnail, summary, opening hours). A pipe, never a screen (ADR-0004).
+- **The constraint that shapes it:** **Google Places content may not be cached** (`place_id` exempt, coordinates ~30 days; names/ratings/photos/phone are request-live-and-attribute, and a photo name must not be cached at all). So the cacheable fields come from cacheable sources: **open-licensed sources are the own-and-cache tier, Google is the live tier.** Multi-source is what makes caching legal, not a nice-to-have.
+- **Sources:** Wikidata (CC0), Wikipedia (CC BY-SA), Wikimedia Commons (per-file license), OpenStreetMap/Overpass (ODbL). Google is a provider whose policy forbids storing — so **no Google-sourced value ever reaches the global store**.
+- **Where it lands:** a **global** `PlaceEnrichment` row (no `tripId`), keyed by our own id with `googlePlaceId`/`wikidataQid`/`osmRef` as alias columns. The trip-scoped `Place` is unchanged and keeps the trip's _opinion_ (`icon`, `category`, a renamed `name`); the global row holds the world's _facts_. If two trips could legitimately disagree about it, it is not enrichment.
+- **ETA is explicitly not this pipe** — it is a property of `(origin, destination, mode, departure time)` and traffic-sensitive; Routes API per ADR-0108 §4, a short-TTL keyed derivation, never the place store.
+- **Phase:** 1 — summary + image; 2 — opening hours; 3 — ETA (the only one that spends).
 
 ## Rule for adding any future integration
 
