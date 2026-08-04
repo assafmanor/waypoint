@@ -190,6 +190,44 @@ test.describe('החלף on a soft event', () => {
   });
 });
 
+// **THE BLANK SCREEN** (reported 2026-08-04, off the shipped build). `החלף` was offered on an
+// untimed row, which has no slot to be replaced — so the shelf was ranked against a slot with no
+// clock, `zonedIso(date, '', tz)` built an Invalid Date, `toISOString()` threw, and the whole day
+// view unmounted. Two rules now: the verb is not offered there, and the derivation refuses to
+// invent an instant it was not given.
+//
+// A browser is the only place this can be caught: the throw happens during render, so what it
+// produces is an EMPTY tree — jsdom would have to be asked the same question to see it, and no
+// unit test was asking.
+test('an untimed row is never offered החלף, and nothing crashes on the way', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await bootIntoTrip(page, {
+    // No `startsAt` at all — the shape that took the screen down.
+    events: [
+      { ...museum, id: 'ev-untimed', title: 'משהו', startsAt: undefined, endsAt: undefined },
+    ],
+    maybeItems: IDEAS,
+    now: NOW(),
+    dates: shortLiveTripDates(),
+  });
+  await page.goto('/');
+  await expect(page.locator('nav.nav')).toBeVisible();
+  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+
+  const card = page.locator('.wp-event', { hasText: 'משהו' });
+  await card.locator('.wp-event-face').click();
+  await card.locator('.wp-event-act.more').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'החלף' })).toHaveCount(0);
+
+  // The day is still standing, which is the actual report.
+  await expect(page.locator('.wp-event', { hasText: 'משהו' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('a hard event is never offered החלף — a commitment is not displaced (ADR-0011)', async ({
   page,
 }) => {

@@ -179,12 +179,23 @@ describe('EventCard', () => {
   // the screen now (which owns the shelf and the slot chooser); what this pins is WHEN it is
   // offered, because both exclusions are rules rather than styling.
   describe('the החלף row', () => {
-    // `onEdit` throughout so the sheet has something else in it: with no actions at all the
-    // card drops the ⋯ button entirely, and "the menu is gone" would pass for the wrong reason.
+    // Two defaults the harness has to supply. `onEdit` so the sheet has something else in it:
+    // with no actions at all the card drops the ⋯ button entirely, and "the menu is gone" would
+    // pass for the wrong reason. And `startsAt`, because `base` is untimed and an untimed row is
+    // now one of the exclusions below — the positive case needs a slot to replace.
     const menu = (props: Partial<Parameters<typeof EventCard>[0]>) => {
       cleanup();
       render(
-        wrapNav(<EventCard {...base} isOpen onEdit={() => {}} onReplace={() => {}} {...props} />),
+        wrapNav(
+          <EventCard
+            {...base}
+            isOpen
+            startsAt="2026-07-20T05:00:00.000Z"
+            onEdit={() => {}}
+            onReplace={() => {}}
+            {...props}
+          />,
+        ),
       );
       fireEvent.click(screen.getByRole('button', { name: t.actions.more }));
     };
@@ -201,6 +212,15 @@ describe('EventCard', () => {
 
     it('is not offered once the event is done — there is nothing left to replace', () => {
       menu({ phase: 'done' });
+      expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.actions.swap })).toBeNull();
+    });
+
+    // **The blank screen** (reported 2026-08-04). An untimed row has no slot to be replaced —
+    // ADR-0161 §10 says so outright — and offering the verb anyway asked the shelf to be ranked
+    // against a slot with no clock, which threw `Invalid time value` and took the day view down.
+    it('is not offered on an untimed row — there is no slot to take it on', () => {
+      menu({ startsAt: undefined });
       expect(screen.getByRole('button', { name: t.actions.edit })).toBeTruthy();
       expect(screen.queryByRole('button', { name: t.actions.swap })).toBeNull();
     });

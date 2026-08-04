@@ -329,7 +329,12 @@ export function EventCard(props: EventCardProps) {
   }
 
   const menuActions: RowAction[] = [];
-  if (!isDone && !isHard && onReplace) {
+  // **`החלף` needs a slot to be taken on** (ADR-0161 §6), and an untimed row has none —
+  // §10 says so outright: an untimed event holds no position of its own. Offering it anyway
+  // asked the shelf to be ranked against a slot with no clock, and the day view went blank on
+  // an `Invalid time value` (reported 2026-08-04). The rule is the same shape as the two
+  // beside it, and as `onNavigate`'s "no location, no button".
+  if (!isDone && !isHard && startsAt && onReplace) {
     menuActions.push({
       label: t.actions.swap,
       icon: CONTROL_ICON.swap,

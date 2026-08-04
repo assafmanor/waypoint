@@ -11,6 +11,7 @@ import {
   dayStops,
   rankIdeas,
   reasonText,
+  shelfForSlot,
   shelfGroups,
   slotStops,
   stopReasonText,
@@ -160,6 +161,45 @@ describe('slotStops — the gap sheet ranks against its own neighbours', () => {
 
   it('a day with no located events has none, and the strategy falls back honestly', () => {
     expect(slotStops(events, [], [], DAY, slot)).toEqual([]);
+  });
+});
+
+// The whole input the slot sheet needs, in one call (ADR-0161 §6) — so a replacement and a gap
+// fill cannot be ranked differently on the one sheet whose promise is that they are the same
+// question.
+describe('shelfForSlot', () => {
+  const places = [located('p-before', 'לפני', 0), located('p-after', 'אחרי', 500)];
+  const events = [
+    at('before', '09:00', 'p-before', { endsAt: `${DAY}T10:00:00.000Z` }),
+    at('after', '15:00', 'p-after'),
+  ];
+  const shelf = { forDay: [idea('m-day', DAY)], pool: [idea('m-pool')] };
+  const ctx = { events, bookings: [], places };
+  const slot = { date: DAY, start: '12:00', end: '14:00' };
+
+  it('joins both shelf groups and ranks them against the slot’s own neighbours', () => {
+    const ranked = shelfForSlot(shelf, slot, 'UTC', ctx);
+    expect(ranked.map((r) => r.item.id).sort()).toEqual(['m-day', 'm-pool']);
+  });
+
+  // **The blank screen** (reported 2026-08-04): `החלף` was offered on an untimed row, so this
+  // was handed a slot with no clock — `zonedIso(date, '', tz)` builds an Invalid Date and
+  // `toISOString()` throws on it, which took the whole day view down. It ranks against the day
+  // rather than inventing an instant it was not given.
+  it('does not build an instant from a slot with no clock', () => {
+    const clockless = { date: DAY, start: '', end: '' };
+    expect(() => shelfForSlot(shelf, clockless, 'UTC', ctx)).not.toThrow();
+    expect(
+      shelfForSlot(shelf, clockless, 'UTC', ctx)
+        .map((r) => r.item.id)
+        .sort(),
+    ).toEqual(['m-day', 'm-pool']);
+  });
+
+  it('still answers when the slot has a start but no end', () => {
+    expect(() =>
+      shelfForSlot(shelf, { date: DAY, start: '12:00', end: '' }, 'UTC', ctx),
+    ).not.toThrow();
   });
 });
 
