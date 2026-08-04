@@ -69,7 +69,7 @@ import {
   stopReasonText,
   tileReasonText,
 } from '../lib/shelf';
-import { blockFor, nextSlot, type GapDefaults } from '../lib/gaps';
+import { blockFor, ideaBlock, nextSlot, type Gap, type GapDefaults } from '../lib/gaps';
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import { dayTransitions, mergeDayEntries, type TransitionEntry } from '../lib/day-entries';
 import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
@@ -147,9 +147,22 @@ const shortPlaceName = (places: Place[], id: string | undefined) => {
  *  time; a connection names the stop and how long you are in it, and only ever renders
  *  inside a `.journey` block, because that is what makes it part of an object instead
  *  of a mark between two cards. */
-function JoinRow({ join, places }: { join: DayJoin; places: Place[] }) {
+function JoinRow({
+  join,
+  places,
+  onFillGap,
+}: {
+  join: DayJoin;
+  places: Place[];
+  /** What a tap on a gap opens (ADR-0161 §9), or absent where a write is gated. A connection
+   *  never takes one: you are inside a commitment for the whole of it, so there is nothing
+   *  free there to fill. */
+  onFillGap?: (free: Gap) => void;
+}) {
   const length = hoursPhrase(join.minutes);
-  if (join.kind === 'gap') return <GapStrip length={length} />;
+  if (join.kind === 'gap') {
+    return <GapStrip length={length} onFill={onFillGap && (() => onFillGap(join.free))} />;
+  }
   return (
     <ConnectionBand
       word={t.day.join.word[join.type] ?? t.day.join.word.flight}
@@ -230,6 +243,10 @@ export function DayView() {
   };
   /** The event `החלף` was pressed on — the one being displaced (ADR-0161 §6). */
   const [replaceTarget, setReplaceTarget] = useState<TripEvent | null>(null);
+  /** The free slot a gap strip was tapped on (ADR-0161 §9). The same sheet `החלף` opens, with
+   *  the gap's own header — filling a hole on the ground is Tier-1 work (ADR-0025), and the one
+   *  surface that states the hole was the one place it could not be done. */
+  const [gapTarget, setGapTarget] = useState<Gap | null>(null);
   /** An event's own slot as a wall clock, read in the zone the day shows it in (ADR-0107) —
    *  what the replacement inherits, and what the shelf is ranked against. */
   const slotOf = (e: TripEvent): GapDefaults => {
@@ -443,7 +460,13 @@ export function DayView() {
             >
               {/* The join reads BEFORE the now-line: it is a fact about the plan, and
                   the now-line is the clock arriving inside it. */}
-              {join && <JoinRow join={join} places={places} />}
+              {join && (
+                <JoinRow
+                  join={join}
+                  places={places}
+                  onFillGap={readOnly ? undefined : setGapTarget}
+                />
+              )}
               {showNowLine && index === nowLineIndex && (
                 <NowLine ref={nowLineRef} now={now} tz={nowZone} />
               )}
@@ -700,6 +723,38 @@ export function DayView() {
             setReplaceTarget(null);
           }}
           onClose={() => setReplaceTarget(null)}
+        />
+      )}
+
+      {/* **A tap on the day's free time** (ADR-0161 §9), through the same sheet with its other
+          header. The idea's category decides how long it gets, capped by the room actually
+          there (§5) — one derivation shared with Plan mode's chip, so the two modes cannot put
+          the same idea in two different slots. */}
+      {gapTarget && (
+        <SlotFillSheet
+          title={t.slotFill.gapTitle(clockRange(gapTarget.fill.start, gapTarget.fill.end))}
+          mode="trip"
+          date={gapTarget.fill.date}
+          ideas={shelfForSlot(shelf, gapTarget.fill, trip.timezone, { events, bookings, places })}
+          onPickIdea={(m) => {
+            const block = ideaBlock(m.category, gapTarget);
+            verbs.schedule(m, {
+              date: block.date,
+              title: m.title,
+              kind: EVENT_KIND.SOFT,
+              startsAt: zonedIso(block.date, block.start, trip.timezone),
+              endsAt: block.end ? zonedIso(block.date, block.end, trip.timezone) : undefined,
+            });
+            setGapTarget(null);
+          }}
+          // A NEW event keeps the gap's own default block: its category is the form's next
+          // question, so there is nothing yet to read a typical length from.
+          onNewEvent={() => {
+            setFormSlot(gapTarget.fill);
+            setFormTarget('new');
+            setGapTarget(null);
+          }}
+          onClose={() => setGapTarget(null)}
         />
       )}
     </>

@@ -1,6 +1,6 @@
 # 0161 — A move names a **position**; an event owns its **length**
 
-**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. **Phase 2a built 2026-08-04** — §4, §5 and §7: the picker, the row's time as its way in, and `הזז` out of the `⋯` sheet. **Phase 2b built 2026-08-04** — §4's remaining call sites and §5's readers, so `שבץ` no longer offers "after everything" in either mode. **Phase 3 built 2026-08-04** — §6: `החלף` is one decision taken on the slot, on the gap sheet generalised into `SlotFillSheet`. What is left is §9; the build order is in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
+**Status:** Accepted (owner sign-off 2026-08-04, from four reports read together in session). **Phase 1 built 2026-08-04** — §1, §2, §3 and §8, i.e. every drag-driven path: `planSwap`, seams between every pair of rows, and the drag clone. **Phase 2a built 2026-08-04** — §4, §5 and §7: the picker, the row's time as its way in, and `הזז` out of the `⋯` sheet. **Phase 2b built 2026-08-04** — §4's remaining call sites and §5's readers, so `שבץ` no longer offers "after everything" in either mode. **Phase 3 built 2026-08-04** — §6: `החלף` is one decision taken on the slot, on the gap sheet generalised into `SlotFillSheet`. **Phase 4 built 2026-08-04** — §9: Trip mode's gap states its measurement and answers when tapped. **Every section is built.** The build order was in the [session note](../planning/2026-08-04-session-211-the-day-scheduling-grammar-design-session.md).
 **Date:** 2026-08-04
 **Design reference:** [`mockups/day-scheduling-grammar-v1.html`](../../mockups/day-scheduling-grammar-v1.html) — the move grammar, the slot picker, the replacement sheet, the row menu and the Trip-mode gap, in both themes. Measurements below are read from that file's live DOM at 390×844 and 360×640.
 
@@ -210,6 +210,14 @@ A **full** displacement (finger at the clone's corner, or beside it) is rejected
 So: **the strip keeps its measurement and becomes tappable.** `פנוי · 2:40 שע׳` through `hoursPhrase` is unchanged (0159 §2's "a statement has to be a measurement" stands), the violet chip and the word `שבץ` do **not** come over, and the strip gains a trailing `+` at the 44px floor. The tap opens §6's `SlotFillSheet` for that slot. What was a `<span>` becomes a `<button>` that still says a measurement.
 
 The two modes now differ in **posture**, which was 0159's actual claim, rather than in capability: Plan offers, Trip answers when asked.
+
+**Built 2026-08-04 (phase 4).** Three notes:
+
+- **The join carries its slot now.** `joinBetween` derived a `Gap` and kept only its `minutes`; the strip's tap has to open the **same** slot Plan's chip offers, and the room is what caps a category's length there (§5), so the whole `Gap` rides on the join. Two derivations of "where does this drop land" is exactly what §2 collapsed into one.
+- **The touch target is an out-of-flow `::after`, not height.** This row's height _is_ the list's rhythm — 44px of real box would push the two events it sits between apart by half a card. Same trick, and same reason, as the drag seam's in phase 1. ADR-0017's floor is met by the target, not by the paint.
+- **`ideaBlock` moved into `lib/gaps`.** Three surfaces read it now (Plan's chip, Plan's `שיבוץ ליום`, Trip's gap) and they must agree: the same idea in the same hole gets the same block whichever mode asked.
+
+`DayJoinRow` also gained the test file it never had, which is how the `<span>`/`<button>` distinction had stayed a matter of reading the source.
 
 ### 10. Deliberately not doing
 

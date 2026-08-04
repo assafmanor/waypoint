@@ -10,6 +10,7 @@ import { connectionStops, dayBlocks, joinBetween } from './day-joins';
 import { bookingWhen } from './booking-journey';
 import { mergeDayEntries } from './day-entries';
 import { buildTimeTree } from './time';
+import { gapBetween } from './gaps';
 
 const TZ = 'Asia/Tokyo';
 const STAMP = '2026-07-01T00:00:00Z';
@@ -69,7 +70,28 @@ describe('joinBetween', () => {
       endsAt: '2026-07-12T13:20:00+09:00',
     });
     const show = ev({ id: 'show', startsAt: '2026-07-12T16:00:00+09:00' });
-    expect(joinBetween(lunch, show, ctxFor([lunch, show]))).toEqual({ kind: 'gap', minutes: 160 });
+    expect(joinBetween(lunch, show, ctxFor([lunch, show]))).toMatchObject({
+      kind: 'gap',
+      minutes: 160,
+    });
+  });
+
+  // ADR-0161 §9: the strip is tappable, so the join carries the SLOT a fill lands on —
+  // `gapBetween`'s own, which it used to derive and throw away. The tap has to open the same
+  // slot Plan mode's chip offers, and the room is what caps a category's length there.
+  it('carries the slot a fill lands on, not just the measurement', () => {
+    const lunch = ev({
+      id: 'lunch',
+      startsAt: '2026-07-12T12:30:00+09:00',
+      endsAt: '2026-07-12T13:20:00+09:00',
+    });
+    const show = ev({ id: 'show', startsAt: '2026-07-12T16:00:00+09:00' });
+    const join = joinBetween(lunch, show, ctxFor([lunch, show]))!;
+    expect(join.kind).toBe('gap');
+    if (join.kind !== 'gap') return;
+    expect(join.free).toEqual(gapBetween(lunch, show, TZ));
+    // The block starts where the free time does — 13:20, the end of lunch.
+    expect(join.free.fill.start).toBe('13:20');
   });
 
   it('says nothing about a hole under the floor', () => {
@@ -140,7 +162,7 @@ describe('dayBlocks', () => {
     const show = ev({ id: 'show', startsAt: '2026-07-12T16:00:00+09:00' });
     const blocks = blocksFor([lunch, show]);
     expect(blocks.map((b) => b.journey)).toEqual([false, false]);
-    expect(blocks[1].entries[0].join).toEqual({ kind: 'gap', minutes: 160 });
+    expect(blocks[1].entries[0].join).toMatchObject({ kind: 'gap', minutes: 160 });
   });
 
   it('keeps the index the now-line is placed against, across a block boundary', () => {

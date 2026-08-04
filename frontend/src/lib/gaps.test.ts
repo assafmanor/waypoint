@@ -3,6 +3,7 @@ import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
   GAP_MIN_MINUTES,
   blockFor,
+  ideaBlock,
   earnsChip,
   freeAfterLast,
   freeBeforeFirst,
@@ -336,5 +337,31 @@ describe('blockFor', () => {
 
   it('drops the end entirely when the start leaves no room at all', () => {
     expect(blockFor(at('23:59', 180), 60).end).toBe('');
+  });
+});
+
+// The one-liner over `blockFor` that three surfaces share (ADR-0161 §5/§9): Plan's gap chip,
+// Plan's `שיבוץ ליום`, and — since the Trip-mode strip became tappable — Trip's gap. It is here
+// rather than at the call sites precisely so the same idea in the same hole gets the same block
+// whichever mode asked.
+describe('ideaBlock', () => {
+  const at = (start: string, minutes: number) => ({
+    minutes,
+    fill: { date: DATE, start, end: '00:00' },
+  });
+
+  it('takes the length that category usually wants', () => {
+    // Food is 90 minutes, nature 180 (`typicalMinutesFor`) — the flat hour every create used
+    // to get was neither.
+    expect(ideaBlock('food', at('12:00', 300)).end).toBe('13:30');
+    expect(ideaBlock('nature', at('12:00', 300)).end).toBe('15:00');
+  });
+
+  it('is still capped by the room actually there', () => {
+    expect(ideaBlock('nature', at('12:00', 45)).end).toBe('12:45');
+  });
+
+  it('falls back to the default block for an idea with no category', () => {
+    expect(ideaBlock(undefined, at('12:00', 300)).end).toBe('13:00');
   });
 });

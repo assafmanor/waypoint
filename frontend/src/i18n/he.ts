@@ -1422,8 +1422,13 @@ export const t = {
     // no `שבץ`. `פנוי · <משך>` and not `<משך> פנויות`, because the adjective has to
     // agree with a number the phrase does not expose (שעה פנויה / שעתיים פנויות /
     // 45 דקות פנויות) — the same dodge Plan's own edge chips already make.
+    //
+    // The strip is tappable now (ADR-0161 §9) and the VISIBLE words did not change: the tap
+    // is a `＋`, and what the fact reads is still a measurement. `fillFree` is the accessible
+    // name only — a screen reader needs the verb the glyph is standing in for.
     join: {
       free: (length: string) => `פנוי · ${length}`,
+      fillFree: (length: string) => `שיבוץ לזמן הפנוי · ${length}`,
       // A connection is not free time, so it is named rather than measured: what the
       // stop is called, and how long you are in it. One word per transport mode —
       // a train changes, a flight stops over (ADR-0156's third mode says החלפה too:
