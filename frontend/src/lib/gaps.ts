@@ -7,7 +7,7 @@
 // two rows that touch — the same slot is a drag-only seam. The `free*` functions answer
 // without a threshold and the `gap*` wrappers apply it, so a gap and a seam cannot
 // disagree about what free time IS or about what a drop into it lands on.
-import type { TripEvent } from '@waypoint/shared';
+import { typicalMinutesFor, type EventCategory, type TripEvent } from '@waypoint/shared';
 import { DAY_WINDOW } from '../constants';
 import { isoToTimeInput, toHHMM, toMin, zonedIso } from './time';
 
@@ -178,6 +178,18 @@ export function blockFor(free: Gap, minutes: number): GapDefaults {
   const wanted = free.minutes > 0 ? Math.min(minutes, free.minutes) : minutes;
   const endMin = Math.min(startMin + wanted, LAST_MINUTE_OF_DAY);
   return { ...free.fill, end: endMin > startMin ? toHHMM(endMin) : '' };
+}
+
+/**
+ * **The block a shelf idea gets at a position** — `blockFor` with the length the idea's own
+ * category usually takes (ADR-0161 §5).
+ *
+ * One line, and it is here rather than at the call sites because there are three of them now
+ * (Plan's gap chip, Plan's `שיבוץ ליום`, and Trip's tappable gap since §9) and they must agree:
+ * the same idea dropped in the same hole has to get the same block whichever mode asked.
+ */
+export function ideaBlock(category: EventCategory | undefined, free: Gap): GapDefaults {
+  return blockFor(free, typicalMinutesFor(category));
 }
 
 /**

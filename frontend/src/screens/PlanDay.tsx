@@ -68,12 +68,12 @@ import {
   type TimeItem,
 } from '../lib/time';
 import {
-  blockFor,
   earnsChip,
   freeAfterLast,
   freeBeforeFirst,
   freeBetween,
   freeWholeDay,
+  ideaBlock,
   nextSlot,
   type Gap,
   type GapDefaults,
@@ -136,7 +136,6 @@ import { TitleLabel } from '../ui/TitleLabel';
 import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
 import { DaySlotPicker, type DaySlotOption } from '../ui/domain/DaySlotPicker';
 import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-positions';
-import { typicalMinutesFor } from '@waypoint/shared';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
@@ -534,10 +533,6 @@ export function PlanDay() {
    *  last event — so the app's opening offer for every idea was "after everything", on a day
    *  with a three-hour hole in the middle of it. */
   const [scheduleWhere, setScheduleWhere] = useState<MaybeItem | null>(null);
-  /** The block an idea gets at a position: its category's typical length (ADR-0161 §5),
-   *  capped by the room actually there. A flat hour made every meal an hour and every hike
-   *  an hour. */
-  const ideaBlock = (m: MaybeItem, free: Gap) => blockFor(free, typicalMinutesFor(m.category));
 
   // Drag a shelf card onto a gap (ADR-0116 §5). Deliberately the SAME mechanism as
   // the reorder grip above — pointer capture + a hit-test on the element under the
@@ -1086,7 +1081,7 @@ export function PlanDay() {
             // The idea's own category decides how long it gets, capped by this position's room
             // (ADR-0161 §5) — a meal is an hour and a half, a hike three hours, and the flat
             // hour every create used to get was neither.
-            const block = ideaBlock(m, gapChoice);
+            const block = ideaBlock(m.category, gapChoice);
             verbs.schedule(m, {
               date: block.date,
               title: m.title,
@@ -1141,7 +1136,7 @@ export function PlanDay() {
               const position = dayPositions(dayEvents, activeDate, tz).find(
                 (p) => p.key === option.key,
               );
-              openSchedule(item, position ? ideaBlock(item, position.free) : option.fill);
+              openSchedule(item, position ? ideaBlock(item.category, position.free) : option.fill);
             }}
             // The form with the day's next opening, which is what this path offered before —
             // kept as the escape rather than removed, for when the position is not the point.

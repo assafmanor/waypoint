@@ -20,6 +20,7 @@ const PHONE = { width: 390, height: 844 };
  *  clocks the day view shows. */
 const NOW = () => todayAt('02:00');
 const today = () => new Date().toISOString().slice(0, 10);
+const yesterday = () => new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
 const stamps = {
   createdAt: '2024-01-01T00:00:00.000Z',
@@ -73,9 +74,28 @@ const IDEAS = [idea('m-oden', 'אודן קאשימה'), idea('m-garden', 'גן �
 
 /** Trip mode's day view — where `החלף` lives. The cold boot lands on the trip Home, so the
  *  tab is a navigation like every other day-view spec's. */
+/** The same pair on a day that is already over — the read-only archive (ADR-0029). Seeded here
+ *  rather than in its own spec so the gap being STATED and not OFFERED is one comparison. */
+const pastPair = [
+  {
+    ...museum,
+    id: 'ev-museum-past',
+    date: yesterday(),
+    startsAt: `${yesterday()}T05:00:00.000Z`,
+    endsAt: `${yesterday()}T07:00:00.000Z`,
+  },
+  {
+    ...flight,
+    id: 'ev-flight-past',
+    kind: 'soft',
+    date: yesterday(),
+    startsAt: `${yesterday()}T11:00:00.000Z`,
+  },
+];
+
 async function boot(page: Page): Promise<void> {
   await bootIntoTrip(page, {
-    events: [museum, flight],
+    events: [museum, flight, ...pastPair],
     maybeItems: IDEAS,
     now: NOW(),
     dates: shortLiveTripDates(),
@@ -187,6 +207,64 @@ test.describe('החלף on a soft event', () => {
     await expect(page.locator('.shelf').getByText('מוזיאון אדו')).toBeVisible();
     // The form opens on the freed slot, not on the day's next opening.
     await expect(page.locator('.tp-fields .tp-field').first()).toContainText('05:00');
+  });
+});
+
+// **THE DAY'S FREE TIME ANSWERS WHEN TAPPED** (ADR-0161 §9, amending ADR-0159 §1).
+//
+// ADR-0159 made the Trip-mode gap information-only and gave a good reason: a control belongs to
+// the mode that builds the day. But ADR-0025's Tier-1 list already contains "schedule-from-shelf
+// onto today", so filling a hole on the ground is on-the-ground work — and the one shipped
+// surface that STATES the hole was the one place it could not be done.
+//
+// A browser, because both halves of the claim are things jsdom cannot see: that the strip is
+// still the quietest row on the list (it keeps its words and spends no hue), and that the tap
+// reaches the same sheet `החלף` opens, over a real day list.
+test.describe('the gap between two rows', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await boot(page);
+  });
+
+  test('states the free time and offers to fill it, in the same row', async ({ page }) => {
+    const strip = page.locator('button.day-gap').first();
+    await expect(strip).toBeVisible();
+    // The words are still a MEASUREMENT — no verb, no `שבץ` (ADR-0159 §2 stands).
+    await expect(strip).toContainText('פנוי');
+    await expect(strip.locator('.day-gap-add')).toBeVisible();
+    // …and Plan's violet did not come over with the tap (root rule 4).
+    const [add, plan] = await strip.locator('.day-gap-add').evaluate((el) => {
+      const style = getComputedStyle(el);
+      return [style.color, getComputedStyle(document.documentElement).getPropertyValue('--plan')];
+    });
+    expect(add).not.toBe(plan.trim());
+  });
+
+  test('the tap opens the slot sheet on that gap, and a pick lands in it', async ({ page }) => {
+    await page.locator('button.day-gap').first().click();
+
+    const sheet = page.getByRole('dialog');
+    await expect(sheet).toBeVisible();
+    // The gap's own header — the slot, because a gap has no other name.
+    await expect(sheet).toContainText('מילוי הפער');
+    await expect(sheet.locator('.slotfill-row')).toHaveCount(IDEAS.length);
+
+    await sheet.locator('.slotfill-row', { hasText: 'אודן קאשימה' }).click();
+    // 07:00 is where the museum ends, so that is where the gap starts.
+    const created = page.locator('.wp-event', { hasText: 'אודן קאשימה' });
+    await expect(created).toBeVisible();
+    await expect(created).toContainText('07:00');
+  });
+
+  test('a past day states the gap and does not offer it — the archive is read-only', async ({
+    page,
+  }) => {
+    // A day that is over is a read-only archive (ADR-0029), so the write is gated — and the
+    // strip goes back to being the statement it was, rather than a control that refuses.
+    await page.goto(`/?tab=days&day=${yesterday()}`);
+    await expect(page.locator('.wp-event', { hasText: 'מוזיאון אדו' })).toBeVisible();
+    await expect(page.locator('.day-gap')).toBeVisible();
+    await expect(page.locator('button.day-gap')).toHaveCount(0);
   });
 });
 

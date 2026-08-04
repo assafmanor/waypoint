@@ -12,6 +12,44 @@
   margin: 0 0 9px;
   padding: 2px 6px;
 }
+/* **Tappable, and it still looks like a statement** (ADR-0161 §9). Everything a button
+   brings with it is taken back off — the background, the border, the inherited system
+   font — because what changed is that the fact ANSWERS when asked, not how loud it is.
+
+   The touch target is an out-of-flow `::after` rather than height, for the same reason
+   the drag seam's is (`screens.css`): this row's height is the list's rhythm, and 44px
+   of real box here would push the two events it sits between apart by half a card.
+   ADR-0017's floor is met by the target, not by the paint. */
+button.day-gap {
+  position: relative;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+button.day-gap::after {
+  content: '';
+  position: absolute;
+  inset: -14px 0;
+}
+button.day-gap:focus-visible {
+  outline: 2.5px solid var(--cta);
+  outline-offset: 4px;
+  border-radius: var(--radius-8, 8px);
+}
+/* The one mark that says it is a control — `--faint` like the words, because free time
+   still has no hue to spend (rule 4 has no fourth colour, and Plan's violet is Plan's). */
+.day-gap-add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--faint);
+}
+button.day-gap:hover .day-gap-add,
+button.day-gap:hover .day-gap-lbl {
+  color: var(--muted);
+}
 .day-gap-line {
   flex: 1;
   height: 1px;

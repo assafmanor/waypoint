@@ -118,12 +118,14 @@ It is keyed by place **and day** — an airport you change planes at on the way 
 
 ## Amendment (2026-08-04, session 211) — §1's gap becomes tappable, and keeps everything else
 
-Decided in [ADR-0161](0161-a-move-names-a-position-and-an-event-owns-its-length.md) §8 and recorded here because it revises §1 directly.
+Decided in [ADR-0161](0161-a-move-names-a-position-and-an-event-owns-its-length.md) §9 and recorded here because it revises §1 directly. **Built 2026-08-04.**
 
 **§1's reasoning was right about the two modes and wrong about the capability.** "Plan's chip is a control, and a control belongs to the mode that builds the day" holds — but [ADR-0025](0025-trip-mode-edit-capability-tiers.md)'s Tier-1 list has always contained _"Schedule-from-shelf onto today"_, so filling a hole while you are standing in it is on-the-ground work by an older decision. The shipped result was the one surface that states a hole being the one surface that cannot act on it.
 
 **So the strip becomes a `<button>` that still says a measurement.** What is unchanged: the derivation (`gapBetween`), the `GAP_MIN_MINUTES` floor, the flex row, the dashed hairline, the 9px rhythm, `--faint`, and §2's read-out word for word (`hoursPhrase`, `פנוי · 2:40 שע׳`). What is added: a trailing `＋` and a 44px target (ADR-0017), opening ADR-0161 §6's slot-fill sheet for that slot. What is **not** added: Plan's violet, its fill, its border, and the word `שבץ` — those are the mode confusion §1 correctly diagnosed, and none of them come over.
 
-The strip measures **17px as a `<div>` and 44px as a `<button>`** (read from `mockups/day-scheduling-grammar-v1.html` §7 at both widths). That 27px is the whole cost of the amendment, and it buys the verb the tier map already promised.
+The strip measured **17px as a `<div>` and 44px as a `<button>`** in the mockup (`mockups/day-scheduling-grammar-v1.html` §7, both widths), and that 27px was called the whole cost of the amendment.
+
+**Built, it costs nothing.** The mockup grew the row to reach ADR-0017's floor; the shipped strip keeps its 17px and puts the 44px target in an out-of-flow `::after` instead — the same trick, for the same reason, as ADR-0161 §2's drag seam. This row's height **is** the list's rhythm, so 27px here is not padding, it is half a card of daylight between the two events the strip sits between, on every gap in the day. **The floor is a property of the target, not of the paint**, and the mockup's measurement was of the wrong thing.
 
 **The claim §1 was actually making survives**: the two modes differ in **posture**, not in capability. Plan offers; Trip answers when asked.

@@ -18,12 +18,21 @@ import {
   type BookingWhen,
   type TripEvent,
 } from '@waypoint/shared';
-import { gapBetween } from './gaps';
+import { gapBetween, type Gap } from './gaps';
 import type { DayEntry } from './day-entries';
 import { groupEndEvent, groupStartEvent } from './day-entries';
 
 export type DayJoin =
-  | { kind: 'gap'; minutes: number }
+  | {
+      kind: 'gap';
+      minutes: number;
+      /** **The free time here, and the slot a fill lands on** (ADR-0161 §9) — `gapBetween`'s
+       *  own `Gap`, which the strip used to derive and throw away. Carried whole because Trip
+       *  mode's gap is tappable now: the tap has to open the SAME slot Plan mode's chip offers
+       *  (two derivations of "where does this drop land" is what §2 collapsed into one), and
+       *  the ROOM is what caps a category's length there (§5). */
+      free: Gap;
+    }
   | {
       kind: 'connection';
       minutes: number;
@@ -69,7 +78,7 @@ export function joinBetween(prev: TripEvent, next: TripEvent, ctx: JoinContext):
     }
   }
   const gap = gapBetween(prev, next, ctx.tz);
-  return gap ? { kind: 'gap', minutes: gap.minutes } : null;
+  return gap ? { kind: 'gap', minutes: gap.minutes, free: gap } : null;
 }
 
 /** One row of the day, with whatever sits above it. */
