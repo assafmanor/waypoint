@@ -1467,6 +1467,11 @@ export const t = {
       actions: 'פעולות על הרעיון',
       subject: (author?: string) => (author ? `רעיון · נוסף על ידי ${author}` : 'רעיון'),
       schedule: 'שיבוץ ליום',
+      // **Agreeing with a `fits-a-day` proposal** (ADR-0151's 2026-08-04 amendment). Not a
+      // second kind of scheduling — `שיבוץ ליום` keeps the calendar glyph because that is what
+      // it has always been — so this one is a tick: it is agreement, which is what a tick means
+      // everywhere else in this app.
+      markForDay: (relativeDay: string) => `סמנו ל${relativeDay}`,
       remove: 'הסרה',
     },
     // Why a suggestion sits where it does (ADR-0151 §8). The contract carries the
@@ -1476,6 +1481,14 @@ export const t = {
       nearStop: (distance: string, stop: string) => `${distance} מ${stop}`,
       aimedAtDay: (relativeDay: string) => `מכוון ל${relativeDay}`,
       recentlyAdded: 'נוסף לאחרונה',
+      // **Which day this dateless idea looks like it belongs to** (ADR-0151's 2026-08-04
+      // amendment). Two densities, and the split is a MEASUREMENT, not a preference: the stop
+      // name wraps the tile's meta line and costs it 8px on a 76px tile drawn to save them
+      // (measured in `mockups/day-scheduling-grammar-v1.html` §9), so the tile says the day and
+      // the distance and the full sentence waits for the sheet, which has room.
+      fitsDay: (relativeDay: string, distance: string) => `${relativeDay} · ${distance}`,
+      fitsDayFull: (relativeDay: string, distance: string, stop: string) =>
+        `${relativeDay} · ${distance} מ${stop}`,
     },
     scheduleTitle: (title: string) => `שיבוץ · ${title}`,
     // Concurrency (ADR-0041): a cluster of partially-overlapping events, and the

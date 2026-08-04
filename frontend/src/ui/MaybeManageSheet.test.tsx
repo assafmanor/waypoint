@@ -112,4 +112,37 @@ describe('MaybeManageSheet', () => {
       expect.objectContaining({ body: 'לקחת נעליים שקל לחלוץ', maybeItemId: 'm1' }),
     );
   });
+
+  // **Agreeing with a `fits-a-day` proposal** (ADR-0151's 2026-08-04 amendment). The row exists
+  // only where there is a proposal, and it is a TICK — `שיבוץ ליום` keeps the calendar, because
+  // this is not a second kind of scheduling.
+  describe('the mark-for-a-day row', () => {
+    it('is absent when the idea carries no proposal', () => {
+      open();
+      expect(actionLabels()).toEqual([t.day.idea.schedule]);
+    });
+
+    it('sits after שיבוץ ליום, named for the day, and fires once', () => {
+      const onSelect = vi.fn();
+      open({ markForDay: { label: 'סמנו למחר', onSelect } });
+      expect(actionLabels()).toEqual([t.day.idea.schedule, 'סמנו למחר']);
+      fireEvent.click(screen.getByRole('button', { name: 'סמנו למחר' }));
+      expect(onSelect).toHaveBeenCalledTimes(1);
+    });
+
+    // Two rows reaching for one glyph is how ADR-0161 §7's collision happened; the tick says
+    // "agree" and the calendar says "schedule", and they must not swap.
+    it('wears the tick, leaving the calendar to שיבוץ ליום', () => {
+      open({ markForDay: { label: 'סמנו למחר', onSelect: vi.fn() } });
+      const rows = [...document.querySelectorAll('.wp-row-action')];
+      const glyph = (n: Element) =>
+        n.querySelector('svg')?.querySelector('path')?.getAttribute('d');
+      expect(glyph(rows[0])).not.toBe(glyph(rows[1]));
+    });
+
+    it('still comes before הסרה, which stays last and destructive', () => {
+      open({ markForDay: { label: 'סמנו למחר', onSelect: vi.fn() }, onRemove: vi.fn() });
+      expect(actionLabels()).toEqual([t.day.idea.schedule, 'סמנו למחר', t.day.idea.remove]);
+    });
+  });
 });

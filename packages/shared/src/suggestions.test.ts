@@ -46,10 +46,18 @@ const ids = (ctx: SuggestionContext) =>
   );
 
 describe('the registry and its seam', () => {
-  it('registers exactly one strategy, and it is LOCAL (ADR-0151 §3)', () => {
-    expect(SUGGESTION_STRATEGIES).toHaveLength(1);
-    expect(SUGGESTION_STRATEGIES[0].source).toBe(SUGGESTION_SOURCE.NEAR_THE_DAY);
-    expect(SUGGESTION_STRATEGIES[0].placement).toBe(SUGGESTION_PLACEMENT.LOCAL);
+  // Two now (ADR-0151's 2026-08-04 amendment), both LOCAL — and the ORDER is a decision, not
+  // an accident: `suggestFor` dedupes by ref keeping the first, so `fits-a-day` leading is
+  // what lets its sentence win for the few ideas it can speak about. Registered second it
+  // would be dead code, because `near-the-day` emits every idea.
+  it('registers both LOCAL strategies, fits-a-day first (ADR-0151 §3 + amendment)', () => {
+    expect(SUGGESTION_STRATEGIES.map((s) => s.source)).toEqual([
+      SUGGESTION_SOURCE.FITS_A_DAY,
+      SUGGESTION_SOURCE.NEAR_THE_DAY,
+    ]);
+    expect(SUGGESTION_STRATEGIES.every((s) => s.placement === SUGGESTION_PLACEMENT.LOCAL)).toBe(
+      true,
+    );
   });
 
   // §4's endpoint is reserved, not built. Asking for REMOTE must be empty rather
@@ -140,6 +148,160 @@ describe('near-the-day', () => {
   it('ranks without stops at all, which is the offline/no-places day', () => {
     const ideas = [{ item: idea({ id: 'a' }) }, { item: idea({ id: 'b' }) }];
     expect(ids(ctxOf(ideas, { dayStops: [] }))).toEqual(['b', 'a']);
+  });
+});
+
+// **ADR-0151's second strategy** (2026-08-04 amendment). It answers a different question from
+// `near-the-day` — WHICH DAY does this dateless idea belong to, rather than how does it rank for
+// the day I am on — which is why it is a strategy and not a parameter on that one.
+describe('fits-a-day', () => {
+  const DAY_1 = '2026-07-20';
+  const DAY_4 = '2026-07-23';
+  const DAY_5 = '2026-07-24';
+  /** Day 4 stops at the museum; day 5 stops at lunch, across town. Day 1 (the focused one)
+   *  has its own stops from `ctxOf`. */
+  const days = [
+    { date: DAY_1, stops: [LUNCH] },
+    { date: DAY_4, stops: [MUSEUM] },
+    { date: DAY_5, stops: [LUNCH] },
+  ];
+  /** 300m from the museum, which is day 4's only stop. */
+  const nearMuseum = {
+    lat: MUSEUM.at.lat + 300 / 111_320,
+    lng: MUSEUM.at.lng,
+  };
+  const fits = (ctx: SuggestionContext) =>
+    suggestFor(ctx, SUGGESTION_PLACEMENT.LOCAL).filter(
+      (s) => s.source === SUGGESTION_SOURCE.FITS_A_DAY,
+    );
+
+  it('names the day a dateless idea sits nearest to, and how far', () => {
+    const [only] = fits(
+      ctxOf([{ item: idea({ id: 'oden' }), at: nearMuseum }], { date: DAY_1, days }),
+    );
+    expect(only.reason).toEqual({
+      code: SUGGESTION_REASON.FITS_DAY,
+      date: DAY_4,
+      meters: expect.closeTo(300, 0),
+      stopName: MUSEUM.name,
+    });
+  });
+
+  // The one answer, not every day it happens to be near — the question has one.
+  it('keeps the best day only', () => {
+    const twoNear = [
+      { date: DAY_4, stops: [MUSEUM] },
+      // Day 5 also stops at the museum, but 1km away rather than 300m.
+      {
+        date: DAY_5,
+        stops: [{ name: 'רחוק', at: { lat: MUSEUM.at.lat + 0.009, lng: MUSEUM.at.lng } }],
+      },
+    ];
+    const out = fits(
+      ctxOf([{ item: idea({ id: 'oden' }), at: nearMuseum }], { date: DAY_1, days: twoNear }),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].reason).toMatchObject({ date: DAY_4 });
+  });
+
+  // "It fits today" is `near-the-day`'s sentence, not a second opinion on it. Note what this
+  // does NOT claim: standing on day 4, an idea beside the museum is still ~3km from lunch on
+  // days 1 and 5, so it may well propose one of those. The rule is that it never proposes the
+  // day you are on — not that it goes quiet there.
+  it('never proposes the day being ranked, whatever else it has to say', () => {
+    const onDay4 = ctxOf([{ item: idea({ id: 'oden' }), at: nearMuseum }], {
+      date: DAY_4,
+      days,
+      dayStops: [MUSEUM],
+    });
+    for (const s of fits(onDay4)) {
+      expect(s.reason).toMatchObject({ code: SUGGESTION_REASON.FITS_DAY });
+      if (s.reason.code === SUGGESTION_REASON.FITS_DAY) expect(s.reason.date).not.toBe(DAY_4);
+    }
+    // …and with day 4 the only day that has stops, it has nothing left to say.
+    expect(
+      fits(
+        ctxOf([{ item: idea({ id: 'oden' }), at: nearMuseum }], {
+          date: DAY_4,
+          days: [{ date: DAY_4, stops: [MUSEUM] }],
+          dayStops: [MUSEUM],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('says nothing about an idea already pencilled in for a day', () => {
+    const aimed = ctxOf([{ item: idea({ id: 'oden', targetDate: DAY_5 }), at: nearMuseum }], {
+      date: DAY_1,
+      days,
+    });
+    expect(fits(aimed)).toEqual([]);
+  });
+
+  it('says nothing about an idea with no coordinates to measure', () => {
+    expect(fits(ctxOf([{ item: idea({ id: 'oden' }) }], { date: DAY_1, days }))).toEqual([]);
+  });
+
+  // A proposal with no content is not a proposal: past FAR_M it is "not near this day either".
+  it('says nothing when the nearest day is too far to mean anything', () => {
+    const faraway = { lat: MUSEUM.at.lat + 0.5, lng: MUSEUM.at.lng };
+    expect(
+      fits(ctxOf([{ item: idea({ id: 'oden' }), at: faraway }], { date: DAY_1, days })),
+    ).toEqual([]);
+  });
+
+  // Every surface except the shelf passes no days at all, and must be unaffected.
+  it('stays silent with no days given', () => {
+    expect(fits(ctxOf([{ item: idea({ id: 'oden' }), at: nearMuseum }]))).toEqual([]);
+  });
+
+  it('respects the category filter, like the strategy beside it', () => {
+    const ctx = ctxOf([{ item: idea({ id: 'oden', category: 'food' }), at: nearMuseum }], {
+      date: DAY_1,
+      days,
+      category: 'nature',
+    });
+    expect(fits(ctx)).toEqual([]);
+  });
+});
+
+// **One suggestion per thing suggested.** Two strategies can point at the same idea — the two
+// LOCAL ones do, by design — and a consumer maps a suggestion to a ROW, so a duplicate ref is a
+// duplicate row. First wins, which is why registry order is a decision and not an accident.
+describe('merging, when two strategies name the same idea', () => {
+  const DAY_4 = '2026-07-23';
+  const nearMuseum = { lat: MUSEUM.at.lat + 300 / 111_320, lng: MUSEUM.at.lng };
+  const days = [{ date: DAY_4, stops: [MUSEUM] }];
+
+  it('emits each idea exactly once', () => {
+    const ctx = ctxOf(
+      [{ item: idea({ id: 'oden' }), at: nearMuseum }, { item: idea({ id: 'plain' }) }],
+      { days },
+    );
+    expect(ids(ctx).sort()).toEqual(['oden', 'plain']);
+  });
+
+  // `fits-a-day` is registered FIRST, so for the idea it can speak about, its sentence is the
+  // one that survives — and that idea leads the pool. Registered second it would be dead code,
+  // because `near-the-day` emits every idea and would win every ref.
+  it('lets fits-a-day own the reason for the idea it can speak about, and lead', () => {
+    const ctx = ctxOf(
+      [{ item: idea({ id: 'plain' }) }, { item: idea({ id: 'oden' }), at: nearMuseum }],
+      { days },
+    );
+    const out = suggestFor(ctx, SUGGESTION_PLACEMENT.LOCAL);
+    expect(out[0].source).toBe(SUGGESTION_SOURCE.FITS_A_DAY);
+    expect(out[0].reason.code).toBe(SUGGESTION_REASON.FITS_DAY);
+    expect(out.filter((s) => s.source === SUGGESTION_SOURCE.NEAR_THE_DAY)).toHaveLength(1);
+  });
+
+  // The dedupe runs BEFORE the limit, or a duplicate would spend one of the N slots.
+  it('does not let a duplicate spend one of the limited slots', () => {
+    const ctx = ctxOf(
+      [{ item: idea({ id: 'oden' }), at: nearMuseum }, { item: idea({ id: 'plain' }) }],
+      { days, limit: 2 },
+    );
+    expect(ids(ctx).sort()).toEqual(['oden', 'plain']);
   });
 });
 

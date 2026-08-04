@@ -67,6 +67,8 @@ import {
   crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
+  tripDates,
+  relativeDayLabel,
 } from '../lib/time';
 import {
   earnsChip,
@@ -81,7 +83,10 @@ import {
 } from '../lib/gaps';
 import {
   dayStops,
+  proposedDay,
   rankIdeas,
+  reasonText,
+  tripDayStops,
   shelfForSlot,
   shelfGroups,
   stopReasonText,
@@ -515,7 +520,17 @@ export function PlanDay() {
   const stops = dayStops(events, bookings, places, activeDate);
   // Capped, with the tail handed to the Map's אולי facet (§5) — which is what keeps
   // the strip's width independent of how many ideas the trip has accumulated.
-  const rankedPool = rankIdeas(shelf.pool, places, activeDate, stops, SHELF_POOL_CAP);
+  // `fits-a-day` needs every day's stops, not just this one's (ADR-0151's 2026-08-04
+  // amendment) — so a dateless idea can name the day it belongs to instead of saying
+  // "added recently" on every day of the trip.
+  const rankedPool = rankIdeas(
+    shelf.pool,
+    places,
+    activeDate,
+    stops,
+    SHELF_POOL_CAP,
+    tripDayStops(tripDates(trip.startDate, trip.endDate), events, bookings, places),
+  );
   const poolTail = shelf.pool.length - rankedPool.length;
   const reasonById = new Map(rankedPool.map((r) => [r.item.id, r.reason]));
   // The day's own group keeps its order (it is small by construction) and gains
@@ -796,6 +811,30 @@ export function PlanDay() {
   const pickPosition = (event: TripEvent, fill: GapDefaults) => {
     closeTimePicker();
     verbs.update(event, { date: fill.date, ...slotFor(event, fill) });
+  };
+
+  /** Each pooled idea's reason, by id — the sheet needs the one for the idea it opened on,
+   *  and the tiles need them anyway. */
+  const poolReasonById = new Map(rankedPool.map((r) => [r.item.id, r.reason]));
+  /** **The "agree with the proposal" row**, or nothing when this idea carries no proposal
+   *  (ADR-0151's 2026-08-04 amendment). The day comes from the ranking's own reason, so the
+   *  sheet cannot offer a day the tile did not name. */
+  /** The full sentence for the idea's own sheet — the tile drops the stop name, this does not
+   *  (ADR-0151's amendment). Absent when the ranking had nothing to say about it. */
+  const ideaWhy = (m: MaybeItem) => {
+    const reason = poolReasonById.get(m.id) ?? forDayReasons.get(m.id);
+    return reason ? reasonText(reason, activeDate) : undefined;
+  };
+  const markForDay = (m: MaybeItem) => {
+    const date = proposedDay(poolReasonById.get(m.id));
+    if (!date) return undefined;
+    return {
+      label: t.day.idea.markForDay(relativeDayLabel(date, activeDate)),
+      onSelect: () => {
+        verbs.acceptDay(m, date);
+        setIdeaSheet(null);
+      },
+    };
   };
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
@@ -1160,6 +1199,8 @@ export function PlanDay() {
             setIdeaSheet(null);
             setScheduleWhere(item);
           }}
+          markForDay={markForDay(ideaSheet)}
+          why={ideaWhy(ideaSheet)}
           // Plan mode is where an idea can be removed (ADR-0116 §4), so the sheet carries
           // the same verb the tile's `✕` does rather than a second capability.
           onRemove={() => {

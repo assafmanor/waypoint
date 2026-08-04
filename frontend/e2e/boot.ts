@@ -199,14 +199,33 @@ export async function bootIntoTrip(
       });
     },
   );
-  // A shelf idea's own writes: consume (a schedule), restore (its undo) and delete (un-parking).
-  // Answered as a group because one verb can take all three — `החלף` consumes the idea it slots
-  // and its undo both restores that one and deletes the idea the displaced event became.
+  // A shelf idea's own writes: consume (a schedule), restore (its undo), delete (un-parking) and
+  // PATCH (re-aiming it at a day, ADR-0116 §2). Answered as a group because one verb can take
+  // several — `החלף` consumes the idea it slots and its undo both restores that one and deletes
+  // the idea the displaced event became.
+  //
+  // The PATCH echoes the seeded item merged with the patch, for the same reason the event one
+  // above does: without it the write 404s, the app correctly rolls itself back, and a spec
+  // asserting what the write PRODUCED is really asserting the rollback. That is exactly what the
+  // first run of `fits-a-day.spec.ts` was doing.
+  const seededIdeas = (opts.maybeItems ?? SNAPSHOT.maybeItems) as { id: string }[];
   await page.route(
     (u) => /^\/trips\/t1\/maybe-items\/[^/]+(\/(consume|restore))?$/.test(u.pathname),
     async (route, request) => {
-      if (request.method() === 'DELETE') return route.fulfill({ status: 204, body: '' });
-      if (request.method() !== 'POST') return route.fallback();
+      const method = request.method();
+      if (method === 'DELETE') return route.fulfill({ status: 204, body: '' });
+      if (method === 'PATCH') {
+        const id = new URL(request.url()).pathname.split('/').pop();
+        const before = seededIdeas.find((m) => m.id === id) ?? { id };
+        return route.fulfill({
+          json: {
+            ...before,
+            ...(request.postDataJSON() ?? {}),
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      }
+      if (method !== 'POST') return route.fallback();
       await route.fulfill({ status: 204, body: '' });
     },
   );

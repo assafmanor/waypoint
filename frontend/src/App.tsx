@@ -88,7 +88,7 @@ import {
   type TabId,
 } from './constants';
 import { type Mode } from './lib/mode';
-import { addDays, monthLabelFor } from './lib/time';
+import { monthLabelFor, tripDates } from './lib/time';
 import { liveToday } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
@@ -254,8 +254,8 @@ export function Header({
   const pendingCount = usePendingChangeCount();
   const syncFailures = useSyncFailures();
   const [syncReviewOpen, setSyncReviewOpen] = useState(false);
-  const total =
-    Math.round((Date.parse(trip.endDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
+  const dates = tripDates(trip.startDate, trip.endDate);
+  const total = dates.length;
   const dayNumber =
     Math.round((Date.parse(activeDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
   const weekdayLetter = new Intl.DateTimeFormat('he-IL', {
@@ -263,8 +263,7 @@ export function Header({
     timeZone: trip.timezone,
   });
   let prevDate: string | undefined;
-  const days = Array.from({ length: total }, (_, i) => {
-    const date = addDays(trip.startDate, i);
+  const days = dates.map((date) => {
     const monthLabel = monthLabelFor(date, prevDate);
     prevDate = date;
     return {

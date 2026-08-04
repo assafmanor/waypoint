@@ -42,6 +42,17 @@ export function addDays(date: string, delta: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** **Every calendar day of a trip**, inclusive, as `YYYY-MM-DD`. Calendar dates, so read in
+ *  UTC like every other date here — a trip's span is not an instant.
+ *
+ *  One derivation because there are three readers now: the header's day strip built this inline,
+ *  and the two shelves need the same list to ask which day a dateless idea fits (ADR-0151's
+ *  2026-08-04 amendment). Three copies of a `+ 1` is how two of them end up off by a day. */
+export function tripDates(startDate: string, endDate: string): string[] {
+  const total = Math.round((Date.parse(endDate) - Date.parse(startDate)) / MS_PER_DAY) + 1;
+  return Array.from({ length: Math.max(0, total) }, (_, i) => addDays(startDate, i));
+}
+
 /** Clamp a YYYY-MM-DD date string into [min, max] — lexical compare is valid
  *  since ISO date strings sort chronologically. */
 export function clampDate(date: string, min: string, max: string): string {

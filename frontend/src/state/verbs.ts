@@ -1178,6 +1178,7 @@ export function useVerbs() {
     maybeItems,
     ripple,
     activeDate,
+    setActiveDate,
     zoneEvidence,
     indexVerbs,
     notes,
@@ -1338,6 +1339,29 @@ export function useVerbs() {
     removeMaybe: (m: MaybeItem) => {
       void applyRemoveMaybe(deps, m);
       toast(CONTROL_ICON.trash, t.toast.maybeRemoved, undo);
+    },
+    /**
+     * **Agreeing with a `fits-a-day` proposal** (ADR-0151's 2026-08-04 amendment): pencil the
+     * idea in for the day the suggestion named, **and go to that day**.
+     *
+     * The second half is the whole verb, and without it the feature punishes agreement. The
+     * day it names is by definition one you are NOT on, and `shelfGroups` puts an idea in
+     * `לְיום הזה` only for the day on screen — so accepting a proposal for day 4 from day 1
+     * left it in the pool, where `near-the-day` demotes an idea aimed elsewhere below every
+     * dateless one (`TIER.AIMED_ELSEWHERE`), possibly out of `SHELF_POOL_CAP` altogether, with
+     * its reason flipped from the spatial fact that justified the suggestion to `aimed-at-day`.
+     *
+     * The tier is right and stays — ADR-0116 §2's partition, and a thing pencilled for Thursday
+     * should not compete while you plan Monday. The defect was the COMBINATION, so the fix is
+     * at the seam: you tapped `סמנו ליום 4`, and day 4 is where the idea now lives.
+     *
+     * One verb rather than two calls at each host, because "sets the day" and "goes to it" must
+     * not drift apart between Trip mode and Plan mode.
+     */
+    acceptDay: (m: MaybeItem, targetDate: string) => {
+      void applySetMaybeDay(deps, m, targetDate);
+      toast(CONTROL_ICON.done, t.toast.maybeAimedAtDay, undo);
+      setActiveDate(targetDate);
     },
     // Drag an idea between the shelf's two groups (ADR-0116 §2): onto this day
     // pencils it in, back to the pool clears it. Not a schedule — no time, no slot.

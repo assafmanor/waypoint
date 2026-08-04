@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SUGGESTION_REASON,
   EVENT_KIND,
   EVENT_SOURCE,
   EVENT_STATUS,
@@ -10,8 +11,10 @@ import {
 import {
   dayStops,
   rankIdeas,
+  proposedDay,
   reasonText,
   shelfForSlot,
+  tripDayStops,
   shelfGroups,
   slotStops,
   stopReasonText,
@@ -167,6 +170,89 @@ describe('slotStops — the gap sheet ranks against its own neighbours', () => {
 // The whole input the slot sheet needs, in one call (ADR-0161 §6) — so a replacement and a gap
 // fill cannot be ranked differently on the one sheet whose promise is that they are the same
 // question.
+// **ADR-0151's second strategy, from the frontend's side** (2026-08-04 amendment): the input it
+// needs, the two densities its sentence has, and the predicate that decides whether a host
+// offers the "agree" verb at all.
+describe('fits-a-day, rendered', () => {
+  const DAY_1 = '2026-07-20';
+  const DAY_4 = '2026-07-23';
+  const museum = located('p-museum', 'מוזיאון אדו', 0);
+  const nearby = located('p-near', 'אודן', 300);
+  const events = [at('museum', '10:00', 'p-museum', { date: DAY_4 })];
+
+  it('gives every day its own stops, from the same derivation the focused day uses', () => {
+    const days = tripDayStops([DAY_1, DAY_4], events, [], [museum, nearby]);
+    expect(days).toEqual([
+      { date: DAY_1, stops: [] },
+      { date: DAY_4, stops: [{ name: 'מוזיאון אדו', at: expect.anything() }] },
+    ]);
+  });
+
+  it('names the day a dateless idea belongs to, from the shelf', () => {
+    const pool = [idea('oden')];
+    const withPlace = [{ ...pool[0], placeId: 'p-near' } as MaybeItem];
+    const ranked = rankIdeas(
+      withPlace,
+      [museum, nearby],
+      DAY_1,
+      [],
+      undefined,
+      tripDayStops([DAY_1, DAY_4], events, [], [museum, nearby]),
+    );
+    expect(ranked[0].reason).toMatchObject({
+      code: SUGGESTION_REASON.FITS_DAY,
+      date: DAY_4,
+    });
+  });
+
+  // The split is a MEASUREMENT: the stop name wraps the tile's meta line and costs it 8px on a
+  // 76px tile drawn to save them, so the tile says the day and the distance and the sheet says
+  // the whole sentence.
+  describe('two densities, and the stop name is the difference', () => {
+    const reason = {
+      code: SUGGESTION_REASON.FITS_DAY,
+      date: DAY_4,
+      meters: 300,
+      stopName: 'מוזיאון אדו',
+    } as const;
+
+    it('the tile says the day and the distance, and NOT the stop', () => {
+      const line = withoutBidiControls(tileReasonText(reason, DAY_1)!);
+      expect(line).toContain('300');
+      expect(line).not.toContain('מוזיאון אדו');
+    });
+
+    it('the sheet says all three', () => {
+      const line = withoutBidiControls(reasonText(reason, DAY_1));
+      expect(line).toContain('300');
+      expect(line).toContain('מוזיאון אדו');
+    });
+  });
+
+  // The verb exists only where there is a proposal to agree with.
+  describe('proposedDay', () => {
+    it('answers the day a proposal named', () => {
+      expect(
+        proposedDay({
+          code: SUGGESTION_REASON.FITS_DAY,
+          date: DAY_4,
+          meters: 300,
+          stopName: 'x',
+        }),
+      ).toBe(DAY_4);
+    });
+
+    it('answers null for every other reason, and for none at all', () => {
+      expect(proposedDay({ code: SUGGESTION_REASON.RECENTLY_ADDED })).toBeNull();
+      expect(proposedDay({ code: SUGGESTION_REASON.AIMED_AT_DAY, targetDate: DAY_4 })).toBeNull();
+      expect(
+        proposedDay({ code: SUGGESTION_REASON.NEAR_STOP, meters: 1, stopName: 'x' }),
+      ).toBeNull();
+      expect(proposedDay(undefined)).toBeNull();
+    });
+  });
+});
+
 describe('shelfForSlot', () => {
   const places = [located('p-before', 'לפני', 0), located('p-after', 'אחרי', 500)];
   const events = [
