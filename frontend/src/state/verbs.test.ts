@@ -25,7 +25,7 @@ import {
   applyPark,
   applySetMaybeDay,
   applyRemoveMaybe,
-  applyReorder,
+  applyEventPatches,
   applySchedule,
   applySetStatus,
   applyUndo,
@@ -816,7 +816,7 @@ describe('offline write outbox (T-013)', () => {
   });
 });
 
-describe('applyReorder', () => {
+describe('applyEventPatches', () => {
   const a = EVENTS.find((e) => e.id === 'ev-tsukiji')!; // soft
   const b = EVENTS.find((e) => e.id === 'ev-senso')!; // soft
   const patches = [
@@ -836,7 +836,7 @@ describe('applyReorder', () => {
         ),
     );
     const deps = fakeDeps();
-    await applyReorder(deps, patches, [a, b]);
+    await applyEventPatches(deps, patches, [a, b]);
 
     expect(deps.actions[0]).toEqual({ type: TRIP_ACTION.REORDER, patches });
     expect(deps.actions.filter((x) => x.type === TRIP_ACTION.RECONCILE_EVENT)).toHaveLength(2);
@@ -846,14 +846,14 @@ describe('applyReorder', () => {
   it('rolls back and toasts on a failed request', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
     const deps = fakeDeps();
-    await applyReorder(deps, patches, [a, b]);
+    await applyEventPatches(deps, patches, [a, b]);
     expect(deps.actions.some((x) => x.type === TRIP_ACTION.UNDO)).toBe(true);
     expect(deps.toast).toHaveBeenCalled();
   });
 
   it('is a no-op with no patches', async () => {
     const deps = fakeDeps();
-    await applyReorder(deps, [], [a, b]);
+    await applyEventPatches(deps, [], [a, b]);
     expect(deps.actions).toHaveLength(0);
   });
 });

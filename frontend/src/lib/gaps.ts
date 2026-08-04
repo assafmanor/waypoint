@@ -1,6 +1,12 @@
-// Gap detection for the Plan-mode builder: an empty stretch of a day, surfaced as
-// a "fill this gap" chip — between two consecutive events, and (session-123) at the
-// day's two edges, before the first event and after the last.
+// **Positions in a day** for the Plan-mode builder: the free time between two
+// consecutive events, and (session-123) at the day's two edges, before the first event
+// and after the last.
+//
+// Each one comes in two densities and the derivation is ONE (ADR-0161 §2). Past
+// `earnsChip` it is the `שבץ` chip it always was; below that — including zero minutes,
+// two rows that touch — the same slot is a drag-only seam. The `free*` functions answer
+// without a threshold and the `gap*` wrappers apply it, so a gap and a seam cannot
+// disagree about what free time IS or about what a drop into it lands on.
 import type { TripEvent } from '@waypoint/shared';
 import { DAY_WINDOW } from '../constants';
 import { isoToTimeInput, zonedIso } from './time';
@@ -19,7 +25,10 @@ const startsOf = (dayEvents: TripEvent[]) =>
 const endsOf = (dayEvents: TripEvent[]) =>
   dayEvents.map((e) => e.endsAt ?? e.startsAt).filter((v): v is string => Boolean(v));
 
-/** Below this, the gap is just breathing room — no chip. */
+/** Below this, the free time is just breathing room — no chip. It is **not** the floor
+ *  on whether a drop can land there: a seam is this same derivation below the threshold,
+ *  drawn only while a drag is live (ADR-0161 §2). The threshold lives in exactly one
+ *  place, `earnsChip` below, which the renderer reads too. */
 export const GAP_MIN_MINUTES = 60;
 
 /** Default length of an event dropped into a gap. A big (e.g. 9h) gap shouldn't
@@ -30,28 +39,50 @@ export const GAP_FILL_MINUTES = 60;
 /** Prefill for a new/scheduled event dropped into the gap: the gap's own slot. */
 export type GapDefaults = { date: string; start: string; end: string };
 
-/** Free time, and the slot a drop into it lands on. */
+/** Free time, and the slot a drop into it lands on. `minutes` can be **zero**: back-to-back
+ *  rows still have a position between them, which is what a seam is (ADR-0161 §2). */
 export type Gap = { minutes: number; fill: GapDefaults };
 
+/** **The one place the chip threshold is applied.** Above it the free time is worth a
+ *  `שבץ` chip; below it — including zero — the same slot is a drag-only seam.
+ *
+ *  Exported because the RENDERER needs the same answer, and asking it twice is how the
+ *  two densities would drift: `PlanDay` reads this rather than comparing against
+ *  `GAP_MIN_MINUTES` itself, so "is this a chip or a seam" has exactly one definition. */
+export const earnsChip = (free: Gap): boolean => free.minutes >= GAP_MIN_MINUTES;
+
+const floored = (free: Gap | null): Gap | null => (free && earnsChip(free) ? free : null);
+
 /**
- * Minutes of dead time between event `a` and the next event `b`, plus the gap's
- * wall-clock endpoints for prefilling. Null unless the gap clears the threshold.
+ * The free time between event `a` and the next event `b`, and the slot a drop into it
+ * lands on — **with no threshold**. Null only when there is no position to describe at
+ * all, i.e. one of the two has no clock time.
  *
  * Measures from `a`'s end to `b`'s start — but most builder events are created
  * start-only (the form's end time is optional), so an event with no `endsAt`
- * is treated as its start instant rather than disqualifying the gap. Otherwise
+ * is treated as its start instant rather than disqualifying the position. Otherwise
  * a day of start-only events would never surface a single gap (the bug the
  * screenshot caught).
+ *
+ * `minutes: 0` is a real answer and the reason this function exists separately from
+ * `gapBetween`: two rows that touch still have somewhere between them to drop a row,
+ * and before ADR-0161 that position was inexpressible unless 60 minutes happened to
+ * be free there.
  */
-export function gapBetween(a: TripEvent, b: TripEvent, tz: string): Gap | null {
+export function freeBetween(a: TripEvent, b: TripEvent, tz: string): Gap | null {
   const aEnd = a.endsAt ?? a.startsAt;
   if (!aEnd || !b.startsAt) return null;
   const startMs = Date.parse(aEnd);
   const nextMs = Date.parse(b.startsAt);
   const minutes = Math.round((nextMs - startMs) / 60000);
-  if (minutes < GAP_MIN_MINUTES) return null;
-  // Prefill a default-length block at the gap's start, never the whole gap.
-  const fillEndMs = Math.min(startMs + GAP_FILL_MINUTES * 60000, nextMs);
+  // Prefill a default-length block at the position's start, never the whole gap — but the
+  // cap only applies when there is free time to cap AGAINST. A seam has none, and capping
+  // there gave it a zero-length slot, i.e. no droppable position at all (caught by its own
+  // test). So a seam offers the plain default block and a drop into it overlaps, which is
+  // ADR-0161 §3's accepted outcome rather than something to prevent by arithmetic.
+  const blockMs = GAP_FILL_MINUTES * 60000;
+  const room = Math.max(0, nextMs - startMs);
+  const fillEndMs = startMs + (room > 0 ? Math.min(blockMs, room) : blockMs);
   return {
     minutes,
     fill: {
@@ -62,8 +93,13 @@ export function gapBetween(a: TripEvent, b: TripEvent, tz: string): Gap | null {
   };
 }
 
+/** `freeBetween` past the chip threshold — the gap that gets a `שבץ` chip. */
+export function gapBetween(a: TripEvent, b: TripEvent, tz: string): Gap | null {
+  return floored(freeBetween(a, b, tz));
+}
+
 /**
- * The day's two EDGE gaps — the free time `gapBetween` structurally cannot see,
+ * The day's two EDGE positions — the free time `freeBetween` structurally cannot see,
  * because each has an event on one side only (session-123).
  *
  * Both hug the event they are named for: "before the first" prefills the block
@@ -72,11 +108,10 @@ export function gapBetween(a: TripEvent, b: TripEvent, tz: string): Gap | null {
  * never the thing they aim at — dropping something "before the 10:00 tour" and
  * getting a 07:00 slot would answer a question nobody asked.
  *
- * Null whenever the edge has no room: no timed event to hang off (an untimed-only
- * day), less than GAP_MIN_MINUTES of space, or a last event that already runs past
- * midnight (ADR-0037) and so leaves no same-day tail at all (ADR-0036).
+ * Unfloored, like `freeBetween`: null only when there is no timed event to hang off
+ * (an untimed-only day). `gapBeforeFirst`/`gapAfterLast` below apply the threshold.
  */
-export function gapBeforeFirst(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
+export function freeBeforeFirst(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
   const starts = startsOf(dayEvents);
   if (starts.length === 0) return null;
   const dayStartMs = localMidnight(date, tz);
@@ -84,10 +119,8 @@ export function gapBeforeFirst(dayEvents: TripEvent[], date: string, tz: string)
   // An event before the day's window — a 05:30 flight — still has the small hours
   // in front of it, and that is exactly when "add something before it" is asked.
   const floorMin = firstMin >= DAY_WINDOW.START_HOUR * 60 ? DAY_WINDOW.START_HOUR * 60 : 0;
-  const minutes = firstMin - floorMin;
-  if (minutes < GAP_MIN_MINUTES) return null;
   return {
-    minutes,
+    minutes: Math.max(0, firstMin - floorMin),
     fill: {
       date,
       start: toHHMM(Math.max(floorMin, firstMin - GAP_FILL_MINUTES)),
@@ -96,16 +129,28 @@ export function gapBeforeFirst(dayEvents: TripEvent[], date: string, tz: string)
   };
 }
 
-export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
+export function freeAfterLast(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
   const ends = endsOf(dayEvents);
   if (ends.length === 0) return null;
   const dayStartMs = localMidnight(date, tz);
   const lastMin = Math.max(...ends.map((v) => minutesInto(v, dayStartMs)));
-  const minutes = LAST_MINUTE_OF_DAY - lastMin;
-  if (minutes < GAP_MIN_MINUTES) return null;
   // The slot itself is the day's next opening — the same one the foot-of-the-day
   // add button offers, so the chip and the button cannot drift apart.
-  return { minutes, fill: nextSlot(dayEvents, date, tz) };
+  return {
+    minutes: Math.max(0, LAST_MINUTE_OF_DAY - lastMin),
+    fill: nextSlot(dayEvents, date, tz),
+  };
+}
+
+/** The day's two EDGE positions past the chip threshold. A last event that already runs
+ *  past midnight (ADR-0037) leaves no same-day tail, which `freeAfterLast` reports as
+ *  zero and this drops (ADR-0036). */
+export function gapBeforeFirst(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
+  return floored(freeBeforeFirst(dayEvents, date, tz));
+}
+
+export function gapAfterLast(dayEvents: TripEvent[], date: string, tz: string): Gap | null {
+  return floored(freeAfterLast(dayEvents, date, tz));
 }
 
 /** A GAP_FILL_MINUTES block starting where the day's last event ends (the open

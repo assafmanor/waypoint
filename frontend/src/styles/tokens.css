@@ -319,6 +319,13 @@
   --press-scale: 0.97; /* controls: buttons, chips, icon buttons, nav items */
   --press-scale-lg: 0.985; /* surfaces: cards, tiles, full-width rows and CTAs */
 
+  /* How opaque the thing you are dragging is (ADR-0161 §8). Low enough that a seam, a
+     gap chip's label and a lit day pill read through the clone that is covering them;
+     high enough that the clone still reads as the row you picked up rather than as a
+     hole in the list. The pair with `DRAG_GHOST_LIFT_PX` (constants.ts) is a feel call
+     and owes a device pass — the mockup carries both as toggles for exactly that. */
+  --drag-ghost-opacity: 0.78;
+
   /* How far an arriving shell screen travels (ADR-0140). Small on purpose — see the
      route-transition block in App.css for why this is an offset rather than the
      full-width push the design brief drew. */
@@ -418,16 +425,27 @@ body.wp-dragging .wp-maybecard.dragging {
   /* Size and position are written from JS (the source's box, then the finger), so
      nothing here may declare a width, height or transform of its own. */
   will-change: transform;
+  /* **TRANSLUCENT, so the target under it can be read** (ADR-0161 §8). A builder row is
+     the full width of the list and so is every drop target it covers, so an opaque clone
+     hides the seam, the gap chip's label and the lit day pill — the things the drop is
+     aimed at. On the WRAPPER rather than the clone, so the ring and shadow below fade
+     with it instead of floating over a faded card. */
+  opacity: var(--drag-ghost-opacity);
 }
 /* The clone reads as picked up. A spread `box-shadow` follows whatever radius the
    cloned element already has — a card's 15px, a row's own — which is why the ring
    isn't drawn on the wrapper (session 113: an outline at the wrong radius is exactly
-   what read as a "choppy" stroke). */
+   what read as a "choppy" stroke).
+   
+   **No `transform: scale()`** (ADR-0161 §8). It was 1.04, which made the clone LARGER
+   than the row it vacated — so it covered more than the space it freed, including the
+   seams above and below it, which are 18px each. "Picked up" is already said by the ring
+   and the shadow, which is how the platform says it; the enlargement was covering the
+   neighbours to repeat something already stated. */
 .wp-dragghost > * {
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--plan) 55%, transparent),
     0 14px 28px -10px rgba(14, 23, 41, 0.45);
-  transform: scale(1.04);
 }
 
 html,

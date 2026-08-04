@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
-import { gapAfterLast, gapBeforeFirst, gapBetween, nextSlot } from './gaps';
+import {
+  GAP_MIN_MINUTES,
+  earnsChip,
+  freeAfterLast,
+  freeBeforeFirst,
+  freeBetween,
+  gapAfterLast,
+  gapBeforeFirst,
+  gapBetween,
+  nextSlot,
+} from './gaps';
 
 const TZ = 'Asia/Tokyo';
 const NOW = '2026-07-01T00:00:00Z';
@@ -184,5 +194,72 @@ describe('nextSlot', () => {
     const slot = nextSlot([club], '2026-07-07', TZ);
     expect(slot.start).toBe('23:59');
     expect(slot.end).toBe('');
+  });
+});
+
+// ══ ADR-0161 §2: the same derivation below the chip threshold is a SEAM, and it is what
+// makes a position exist between EVERY pair of rows. `gapBetween` is `freeBetween` plus
+// `earnsChip`, so these tests are about the pair rather than about a second function.
+describe('freeBetween (unfloored: the seam half of a position)', () => {
+  it('answers zero for two rows that touch, where gapBetween answers nothing', () => {
+    const a = ev('a', '09:00', '10:00');
+    const b = ev('b', '10:00', '11:00');
+    const free = freeBetween(a, b, TZ)!;
+    expect(free.minutes).toBe(0);
+    expect(earnsChip(free)).toBe(false);
+    // The position before ADR-0161: inexpressible.
+    expect(gapBetween(a, b, TZ)).toBeNull();
+  });
+
+  it('answers below the threshold, where gapBetween still answers nothing', () => {
+    const free = freeBetween(ev('a', '09:00', '10:00'), ev('b', '10:30'), TZ)!;
+    expect(free.minutes).toBe(GAP_MIN_MINUTES / 2);
+    expect(earnsChip(free)).toBe(false);
+    expect(gapBetween(ev('a', '09:00', '10:00'), ev('b', '10:30'), TZ)).toBeNull();
+  });
+
+  it('offers a droppable slot at the position even with no free time in it', () => {
+    // The whole point: a seam is a DROP TARGET, so it must carry a real slot.
+    const free = freeBetween(ev('a', '09:00', '10:00'), ev('b', '10:00'), TZ)!;
+    expect(free.fill.date).toBe(DATE);
+    expect(free.fill.start).toBe('10:00');
+    expect(free.fill.end).toBe('11:00'); // the default block, uncapped by a gap
+  });
+
+  it('agrees with gapBetween above the threshold — one derivation, one answer', () => {
+    const a = ev('a', '09:00', '10:00');
+    const b = ev('b', '13:00');
+    expect(freeBetween(a, b, TZ)).toEqual(gapBetween(a, b, TZ));
+  });
+
+  it('still needs two clock times to describe a position at all', () => {
+    expect(freeBetween(untimed('a'), ev('b', '10:00'), TZ)).toBeNull();
+    expect(freeBetween(ev('a', '09:00'), untimed('b'), TZ)).toBeNull();
+  });
+});
+
+describe('the day edges, unfloored', () => {
+  it('reports a sub-threshold head as its real minutes rather than as nothing', () => {
+    // The window opens at DAY_WINDOW.START_HOUR (07:00), so a first event at 07:30
+    // leaves 30 minutes in front of it: a position, but not a chip's worth.
+    const day = [ev('first', '07:30', '10:30')];
+    const free = freeBeforeFirst(day, DATE, TZ)!;
+    expect(free.minutes).toBe(30);
+    expect(earnsChip(free)).toBe(false);
+    expect(gapBeforeFirst(day, DATE, TZ)).toBeNull();
+    expect(free.fill.end).toBe('07:30'); // still hugs the first event
+  });
+
+  it('reports a full day as a zero-minute tail, so the seam after the last row exists', () => {
+    const day = [ev('late', '22:00', '23:59')];
+    const free = freeAfterLast(day, DATE, TZ)!;
+    expect(free.minutes).toBe(0);
+    expect(earnsChip(free)).toBe(false);
+    expect(gapAfterLast(day, DATE, TZ)).toBeNull();
+  });
+
+  it('has no edge position at all on an untimed-only day', () => {
+    expect(freeBeforeFirst([untimed('a')], DATE, TZ)).toBeNull();
+    expect(freeAfterLast([untimed('a')], DATE, TZ)).toBeNull();
   });
 });

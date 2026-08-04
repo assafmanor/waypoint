@@ -372,6 +372,15 @@ export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
  *  it splits, and not before. */
 export const DRAG_HOLD_MS = 500;
 export const DRAG_HOLD_SLOP_PX = 8;
+/** How far the drag clone sits ABOVE the finger (ADR-0161 §8), so the pointer lands just
+ *  below its edge and the target being aimed at is never underneath it. The finger is on
+ *  the clone by construction, which is why translucency alone does not answer the report:
+ *  a 10.5px seam label still sits under the clone's own text.
+ *
+ *  Visual only — every hit-test reads the raw `clientX/clientY` — and deliberately small:
+ *  `useDragGhost.lift` clones with the grab offset so the clone starts exactly where the
+ *  original was, and a full displacement would trade this report for a jump on pick-up. */
+export const DRAG_GHOST_LIFT_PX = 12;
 /** How long the "swallow the click a completed drag fires" listener stays armed
  *  before disarming itself. Only a fallback: it normally disarms on that click. */
 export const DRAG_CLICK_SWALLOW_MS = 400;
