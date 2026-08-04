@@ -87,7 +87,7 @@ A block on the timeline. **Hard or soft** — the decisive field (ADR-0011).
 
 An entry in the central index. Backs hard events and stands alone in the index.
 
-- `id` (client-generated), `tripId`, `type` (`flight` | `hotel` | `restaurant` | `train` | `activity` | `other`)
+- `id` (client-generated), `tripId`, `type` (`flight` | `hotel` | `restaurant` | `train` | `transit` | `car` | `activity` | `other`) — the four **transport** modes are `flight`, `train`, `transit` (bus/ferry/shuttle/cable car, ADR-0156) and `car` (a hire, ADR-0162). Per-type shape (route vs single place, span vs point, default commitment, whether one save can author a return leg or a connection) is `BOOKING_TYPE_PROFILE` in `@waypoint/shared`, which the server's own place-shape guard reads — see ADR-0154 §2.
 - `title`, `confirmationCode?`, `provider?`
 - `placeId?` — **FK → Place** (single-place types; mutually exclusive with from/to). Transport bookings instead carry `fromPlaceId?`/`toPlaceId?` (FK → Place) for origin/destination; the linked Event's map-pin/navigate-to-next target derives as the **origin** (ADR-0048/0051).
 - Time lives on the **linked Event** (the sole time authority — ADR-0048); a hotel across nights is **one** Booking whose Event carries the range via `endDate` (ADR-0018). Booking has no `startsAt`/`endsAt` of its own.

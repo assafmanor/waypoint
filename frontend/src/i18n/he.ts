@@ -520,10 +520,13 @@ export const t = {
       hotel: 'לינה',
       restaurant: 'מסעדה',
       train: 'רכבת',
-      // The third transport mode (ADR-0156): a bus, a ferry, a car hire, a cable car.
-      // `נסיעה` is the word that covers all four without naming any — `אוטובוס` would
+      // The third transport mode (ADR-0156): a bus, a ferry, a shuttle, a cable car.
+      // `נסיעה` is the word that covers all of them without naming any — `אוטובוס` would
       // be wrong on a ferry, and `תחבורה` is the CATEGORY's name, not a booking's.
       transit: 'נסיעה',
+      // The fourth (ADR-0162). The ACT, not the object: `רכב שכור` names the car you end
+      // up with, where every other label here names the thing you booked (owner's call).
+      car: 'השכרת רכב',
       activity: 'פעילות',
       other: 'אחר',
     },
@@ -538,6 +541,7 @@ export const t = {
       restaurant: 'מסעדות',
       train: 'רכבות',
       transit: 'נסיעות',
+      car: 'השכרות רכב',
       activity: 'פעילויות',
       other: 'אחר',
     },
@@ -553,19 +557,15 @@ export const t = {
       // `transit` is the one type whose LABEL nobody would search by: you look for the
       // vehicle you booked, not the generic word for a journey. So unlike `train` and
       // `other`, this list is the point rather than padding.
-      transit: [
-        'אוטובוס',
-        'אוטובוסים',
-        'מעבורת',
-        'מעבורות',
-        'רכב',
-        'רכב שכור',
-        'השכרת רכב',
-        'הסעה',
-        'הסעות',
-        'שאטל',
-        'רכבל',
-      ],
+      //
+      // The car words moved to `car` in ADR-0162 rather than staying in both: leaving them
+      // here would make every bus answer a search for `השכרת רכב`, and the noise is worse
+      // than the one pre-0162 hire that now needs re-typing to be found by them.
+      transit: ['אוטובוס', 'אוטובוסים', 'מעבורת', 'מעבורות', 'הסעה', 'הסעות', 'שאטל', 'רכבל'],
+      // `רכב` alone is the likeliest thing typed, and the brands are how people actually
+      // remember which hire it was — a provider field holds the name, but the search box
+      // is where they reach for it first.
+      car: ['רכב', 'רכב שכור', 'מכונית', 'אוטו', 'השכרה', 'רנט א קאר', 'hertz', 'avis', 'sixt'],
       hotel: [
         'מלון',
         'מלונות',
@@ -728,6 +728,8 @@ export const t = {
       flightArriveLabel: 'נחיתה 🛬',
       checkinLabel: 'צ׳ק-אין 🏨',
       checkoutLabel: 'צ׳ק-אאוט 🧳',
+      pickupLabel: 'איסוף 🔑',
+      dropoffLabel: 'החזרה 🏁',
       startLabel: 'התחלה 🎬',
       endLabel: 'סיום 🏁',
       kindLabel: 'סוג אירוע',
@@ -1271,8 +1273,8 @@ export const t = {
     // Amber transition markers on the rail + the shared booking grammar (ADR-0059
     // §3 / ADR-0063 profile keys): the two ends of a bracketed booking.
     // Wording is by mode, not hard-coded (ADR-0063 refinement): the generic
-    // departure/arrival covers every surface transport (train, bus, ferry, car);
-    // a flight refines to take-off/landing via ICON_TRANSITION_KEYS.
+    // departure/arrival covers every surface transport (train, bus, ferry); a flight
+    // refines to take-off/landing and a hire to pick-up/return, via ICON_TIME_PROFILE.
     transition: {
       checkIn: 'צ׳ק-אין',
       checkOut: 'צ׳ק-אאוט',
@@ -1280,6 +1282,8 @@ export const t = {
       arrival: 'הגעה',
       flightDeparture: 'המראה',
       flightArrival: 'נחיתה',
+      carPickup: 'איסוף הרכב',
+      carDropoff: 'החזרת הרכב',
     },
     // "Inside a booking" mid-stay strip (ADR-0059 §2) — teal "where you are".
     stayingPrefix: 'שוהים ב־',

@@ -43,6 +43,7 @@ export const BOOKING_TYPE = {
   RESTAURANT: 'restaurant',
   TRAIN: 'train',
   TRANSIT: 'transit',
+  CAR: 'car',
   ACTIVITY: 'activity',
   OTHER: 'other',
 } as const satisfies Record<string, BookingType>;
@@ -83,6 +84,7 @@ export const BOOKING_TYPE_TO_CATEGORY = {
   flight: 'transport',
   train: 'transport',
   transit: 'transport',
+  car: 'transport',
   hotel: 'lodging',
   restaurant: 'food',
   activity: 'activity',

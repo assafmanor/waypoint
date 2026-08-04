@@ -3,6 +3,7 @@ import type { BookingType, EventCategory, TripEvent } from './entities';
 import { BOOKING_TYPE, BOOKING_TYPE_TO_CATEGORY } from './constants';
 import {
   authorsRoundTrip,
+  bookingTypeDurationUnit,
   connectionWindow,
   isTightConnection,
   BOOKING_TYPE_PROFILE,
@@ -146,8 +147,11 @@ describe('isMultiDay', () => {
 });
 
 describe('eventTransitionKeys', () => {
-  it('resolves generic departure/arrival for a train (or any non-flight transport)', () => {
-    for (const icon of ['🚄', '🚆', '🚌', '⛴️', '🚗']) {
+  it('resolves generic departure/arrival for a train (or any transport that carries you)', () => {
+    // `🚗` was in this list until ADR-0162 — a hire is the one transport mode you drive
+    // yourself, so it is picked up and returned rather than departed and arrived. It has
+    // its own case below; the modes left here are the ones the generic wording fits.
+    for (const icon of ['🚄', '🚆', '🚌', '⛴️', '🚡']) {
       expect(eventTransitionKeys(ev({ category: 'transport', icon }))).toEqual({
         startKey: 'departure',
         endKey: 'arrival',
@@ -167,6 +171,17 @@ describe('eventTransitionKeys', () => {
       startKey: 'flightDeparture',
       endKey: 'flightArrival',
     });
+  });
+
+  // The second glyph refinement, and the reason `ICON_TIME_PROFILE` holds a `Partial` of
+  // the profile rather than a transitions pair (ADR-0162): a hire disagrees with its
+  // category about BOTH its wording and its unit.
+  it('refines to pick-up/return for a car hire (🚗), and reads it in days not hours', () => {
+    const hire = ev({ category: 'transport', icon: '🚗' });
+    expect(eventTransitionKeys(hire)).toEqual({ startKey: 'carPickup', endKey: 'carDropoff' });
+    expect(eventDurationUnit(hire)).toBe('auto');
+    // The category it belongs to is untouched — a bus still reads in hours.
+    expect(eventDurationUnit(ev({ category: 'transport', icon: '🚌' }))).toBe('hours');
   });
 
   it('resolves check-in/check-out for lodging', () => {
@@ -286,9 +301,12 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     }
   });
 
-  it('gives the three transport modes a route, and every other type a single place', () => {
+  it('gives the four transport modes a route, and every other type a single place', () => {
     expect(carriesRoute(BOOKING_TYPE.FLIGHT)).toBe(true);
     expect(carriesRoute(BOOKING_TYPE.TRAIN)).toBe(true);
+    // A hire's route is its counters: picked up at one, dropped at another (ADR-0162).
+    // Both ends may be the same place, which a route already allows.
+    expect(carriesRoute(BOOKING_TYPE.CAR)).toBe(true);
     // **The gap ADR-0154 pinned open is closed** (ADR-0156). This assertion used to read
     // `carriesRoute(OTHER) === false` with a comment saying the picker offered `other` as
     // 🚌 and the model disagreed. It does not any more: the pill writes `transit`, which
@@ -314,6 +332,7 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
         BOOKING_TYPE.FLIGHT,
         BOOKING_TYPE.TRAIN,
         BOOKING_TYPE.TRANSIT,
+        BOOKING_TYPE.CAR,
         BOOKING_TYPE.HOTEL,
         BOOKING_TYPE.ACTIVITY,
       ].sort(),
@@ -368,5 +387,33 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     expect(isTightConnection(BOOKING_TYPE.TRAIN, 90)).toBe(false);
     // Nothing about a hotel is a short connection, and asking is not an error.
     expect(isTightConnection(BOOKING_TYPE.HOTEL, 5)).toBe(false);
+  });
+
+  // **The claim ADR-0162 rests on**, and the reason a hire is not just `transit` with a
+  // different glyph. ADR-0154 §2 promised a new mode would be one row; 0156 proved that
+  // for a row that was a COPY of `transportProfile`. This is the first row that isn't,
+  // and each of the three assertions below is a behaviour that was wrong while car hire
+  // was folded into `transit`.
+  it('gives a car hire a route and a span, but no return leg and no connection', () => {
+    expect(carriesRoute(BOOKING_TYPE.CAR)).toBe(true);
+    expect(hasSpanSchedule(BOOKING_TYPE.CAR)).toBe(true);
+    expect(defaultKindForBookingType(BOOKING_TYPE.CAR)).toBe('hard');
+    // You are driving it: a "return" is not a second rental to buy…
+    expect(authorsRoundTrip(BOOKING_TYPE.CAR)).toBe(false);
+    // …and two hires four hours apart are two hires, not one journey with a change.
+    expect(connectionWindow(BOOKING_TYPE.CAR)).toBeNull();
+    expect(isTightConnection(BOOKING_TYPE.CAR, 30)).toBe(false);
+  });
+
+  // The `durationUnit` column exists for exactly one row, so the test says so: it is an
+  // exception to the category, not a new default for everyone (ADR-0162).
+  it('reads a hire in the days you hold it, and every other transport in hours', () => {
+    expect(bookingTypeDurationUnit(BOOKING_TYPE.CAR)).toBe('auto');
+    for (const type of [BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, BOOKING_TYPE.TRANSIT]) {
+      expect(bookingTypeDurationUnit(type)).toBe('hours');
+    }
+    // Untouched types still answer from their category — that is the fallback working.
+    expect(bookingTypeDurationUnit(BOOKING_TYPE.HOTEL)).toBe('nights');
+    expect(bookingTypeDurationUnit(BOOKING_TYPE.RESTAURANT)).toBe('auto');
   });
 });
