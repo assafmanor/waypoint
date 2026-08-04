@@ -27,6 +27,7 @@ import {
 import { prefersReducedMotion } from '../lib/motion';
 import {
   authoringZone,
+  ideaShowOnMap,
   eventDirectionsUrl,
   eventDurationLabel,
   eventEdgeZone,
@@ -577,6 +578,7 @@ export function DayView() {
                     title={m.title}
                     meta={stopReasonText(forDayReasons.get(m.id))}
                     notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                    onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
                     onOpen={() => setIdeaSheet(m)}
                   />
                 ))}
@@ -593,6 +595,7 @@ export function DayView() {
                     meta={t.day.skippedTag}
                     // A skipped event's tap still restores it in place: it HAS a surface of
                     // its own (its day row), so the gesture change is the idea's alone.
+                    onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
                     onOpen={() => verbs.restore(e)}
                   />
                 ))}
@@ -620,6 +623,7 @@ export function DayView() {
                     title={m.title}
                     meta={tileReasonText(reason, activeDate)}
                     notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+                    onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
                     onOpen={() => setIdeaSheet(m)}
                   />
                 ))}

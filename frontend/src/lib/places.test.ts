@@ -20,6 +20,7 @@ import {
   eventMapPlace,
   eventRoute,
   eventShowOnMap,
+  ideaShowOnMap,
   eventZones,
   bookingEndZones,
   currentZone,
@@ -1195,11 +1196,11 @@ describe('isDayOver — a day ends when its LAST clock says so (ADR-0029 session
   });
 });
 
-// The two handler builders every `מפה` call site goes through (ADR-0121 §8
-// amendment). They exist so a call site is one expression and cannot forget EITHER
-// reason to have no button — no mappable place, or no Map tab to route to — which is
-// what "absent, not broken" means in practice.
-describe('eventShowOnMap / bookingShowOnMap', () => {
+// The handler builders every `מפה` call site goes through (ADR-0121 §8 amendment). They exist
+// so a call site is one expression and cannot forget EITHER reason to have no button — no
+// mappable place, or no Map tab to route to — which is what "absent, not broken" means in
+// practice.
+describe('eventShowOnMap / bookingShowOnMap / ideaShowOnMap', () => {
   const withCoords = place('pl-c', 'מלון', { lat: 35.68, lng: 139.76 });
   const coordless = place('pl-lite', 'שם בלבד');
   const PL = [withCoords, coordless];
@@ -1250,5 +1251,22 @@ describe('eventShowOnMap / bookingShowOnMap', () => {
     const stay = booking({ id: 'b4', type: BOOKING_TYPE.HOTEL, placeId: 'pl-c' });
     bookingShowOnMap(stay, PL, show(calls))!();
     expect(calls).toEqual(['pl-c']);
+  });
+
+  // **The shelf idea** (§8's 2026-08-04 amendment), which had no builder and no badge — the
+  // one entity most likely to BE a place, since every place added from the map outside an
+  // errand becomes one. Simpler than the two above because an idea holds its `placeId`
+  // directly; what it shares is the pair of no-button cases collapsing into one `undefined`.
+  it('focuses a shelf idea’s own place', () => {
+    const calls: string[] = [];
+    ideaShowOnMap({ placeId: 'pl-c' }, PL, show(calls))!();
+    expect(calls).toEqual(['pl-c']);
+  });
+
+  it('drops the affordance for an idea with no place, a coordless one, or no Map tab', () => {
+    const nop = () => {};
+    expect(ideaShowOnMap({}, PL, nop)).toBeUndefined();
+    expect(ideaShowOnMap({ placeId: 'pl-lite' }, PL, nop)).toBeUndefined();
+    expect(ideaShowOnMap({ placeId: 'pl-c' }, PL, null)).toBeUndefined();
   });
 });

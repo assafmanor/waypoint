@@ -26,10 +26,16 @@ import type { HoldToDragProps } from '../../lib/useHoldToDrag';
 import './maybe-card.css';
 import { Icon } from '../Icon';
 import { NoteMark } from './NoteMark';
+import { PlaceBadge } from './PlaceBadge';
 
 export interface MaybeCardProps {
   /** Idea glyph (emoji content). */
   icon: ReactNode;
+  /** **The way to this idea's pin** (ADR-0121 §8's 2026-08-04 amendment): the glyph slot
+   *  becomes a `PlaceBadge`, exactly as it is on `EventCard`, `BuilderRow` and
+   *  `TransitionRow`. Absent when the idea carries no place, or the place has no
+   *  coordinates — "absent, not broken", the rule the badge already follows. */
+  onShowOnMap?: () => void;
   title: ReactNode;
   /** Real derived meta (source / added-by / …). Omitted → the line is not shown. */
   meta?: ReactNode;
@@ -65,6 +71,7 @@ export interface MaybeCardProps {
 
 export function MaybeCard({
   icon,
+  onShowOnMap,
   title,
   meta,
   action,
@@ -83,7 +90,9 @@ export function MaybeCard({
   // and the block the row axis stacks on under `.compact`.
   const inner = (
     <>
-      <span className="wp-maybecard-ic">{icon}</span>
+      <PlaceBadge className="wp-maybecard-ic" onShowOnMap={onShowOnMap}>
+        {icon}
+      </PlaceBadge>
       <span className="wp-maybecard-main">
         <span className="wp-maybecard-title">{title}</span>
         {meta != null && <span className="wp-maybecard-meta">{meta}</span>}

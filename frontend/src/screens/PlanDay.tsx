@@ -49,6 +49,7 @@ import {
   eventPlaceName,
   eventRoute,
   eventShowOnMap,
+  ideaShowOnMap,
   eventZones,
   dayZoneContext,
   liveToday,
@@ -631,6 +632,7 @@ export function PlanDay() {
           meta={t.day.skippedTag}
           // A skipped event's tap still restores it in place — it has a surface of its own
           // (its day row), so the gesture change is the idea's alone.
+          onShowOnMap={eventShowOnMap(e, bookings, places, showPlaceOnMap)}
           onOpen={() => verbs.restore(e)}
           dragProps={skippedDragProps(e)}
           dragging={dragging}
@@ -652,6 +654,7 @@ export function PlanDay() {
             : stopReasonText(forDayReasons.get(m.id))
         }
         notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
+        onShowOnMap={ideaShowOnMap(m, places, showPlaceOnMap)}
         onOpen={() => setIdeaSheet(m)}
         onRemove={() => verbs.removeMaybe(m)}
         removeLabel={t.planDay.removeIdea}
