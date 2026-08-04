@@ -187,6 +187,14 @@ export function rankIdeas(
  *
  * `zonedIso` is the only reason this is not in the pure part of the file: the slot is a
  * wall clock and the stops are instants, so someone has to name the zone.
+ *
+ * **A slot with no clock ranks against the whole day**, and that is a real case rather than
+ * defensive padding: `zonedIso(date, '', tz)` builds an Invalid Date and `toISOString()`
+ * throws on it, which took the day view blank when `החלף` was offered on an untimed row
+ * (reported 2026-08-04). The caller-side rule is that an untimed row has no slot to replace
+ * and so is not offered the verb; this is the derivation refusing to invent an instant it was
+ * not given. Ranking against no stops is what `slotStops` itself falls back to on a day with
+ * nothing located — recency, which is honest about what it knows.
  */
 export function shelfForSlot(
   shelf: { forDay: MaybeItem[]; pool: MaybeItem[] },
@@ -195,8 +203,10 @@ export function shelfForSlot(
   context: { events: TripEvent[]; bookings: Booking[]; places: Place[] },
 ): RankedIdea[] {
   const { events, bookings, places } = context;
+  const ideas = [...shelf.forDay, ...shelf.pool];
+  if (!slot.start) return rankIdeas(ideas, places, slot.date, []);
   return rankIdeas(
-    [...shelf.forDay, ...shelf.pool],
+    ideas,
     places,
     slot.date,
     // Ranked against THIS slot's own neighbours, not the whole day — the sheet's only
