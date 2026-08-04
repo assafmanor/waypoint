@@ -8,9 +8,27 @@
 .wp-placebadge {
   position: relative;
   cursor: pointer;
+  /* **The marker's size is the badge's business, not a constant.** It was a flat 17px, drawn
+     against the 32–40px badge boxes of the three hosts that shipped it — 42% of the box, which
+     reads as a marker ON something. `MaybeCard`'s glyph slot has no box at all (it is inline
+     content, ~21×17px), so the same 17px arrived at 80% of its host and read as a blob beside
+     the title (owner, 2026-08-04). Named here with the shipped default, so a host with a
+     smaller badge re-points one value instead of the component growing a second geometry. */
+  --placebadge-mark: 17px;
+  /* **How far the tap area reaches past the badge's own box**, which is 32–40px square on the
+     three hosts that shipped it and inline content (~21×17px) on `MaybeCard`'s tile. Zero by
+     default — those three were signed off as they are — and the small host opens it up, out of
+     flow, the way the drag seam and the gap strip do (ADR-0161 §2/§9). Never far enough to
+     reach the title beside it: a tap on the words must still open the row. */
+  --placebadge-hit: 0px;
   /* The category tint stays; the ring is the only thing added, and it reads as
      "this one is a control" against the identical inert badges around it. */
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 40%, transparent);
+}
+.wp-placebadge::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--placebadge-hit) * -1);
 }
 .wp-placebadge:hover {
   box-shadow: 0 0 0 2px var(--teal);
@@ -20,27 +38,38 @@
   outline-offset: 2px;
 }
 
-/* The corner marker: a real pin, not a dot. A dot says "there is something here";
-   the pin says what the tap does, in the silhouette of what you land on (ADR-0087's
-   marker). The `--card` ring lifts it off the badge so it reads as an overlay rather
-   than part of the glyph. */
+/* The corner marker: a real pin, not a dot. A dot says "there is something here"; the pin says
+   what the tap does, in the silhouette of what you land on (ADR-0087's marker).
+ 
+   **A bare teal pin, not a pin in a teal disc** (owner, 2026-08-04). The disc was doing two
+   jobs — carrying the teal and lifting the glyph off the badge — and it paid for them in size:
+   a filled circle plus a `--card` ring plus an inset glyph needs ~17px before the pin inside it
+   is legible, which is why it read as a blob on a 17px badge. The pin carries the teal itself,
+   so the mark is now exactly the glyph, at the size the glyph needs and no more. The `--card`
+   outline stays as a thin halo, because the badge behind it is a tinted surface and a teal
+   stroke on a category tint has no separation of its own. */
 .wp-placebadge-mark {
   position: absolute;
-  inset-block-end: -5px;
-  inset-inline-end: -5px;
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  background: var(--teal);
-  color: var(--on-fill);
+  inset-block-end: calc(var(--placebadge-mark) / -2.6);
+  inset-inline-end: calc(var(--placebadge-mark) / -2.6);
   display: grid;
-  place-items: center;
-  font-size: 11px;
-  box-shadow: 0 0 0 2px var(--card);
+  color: var(--teal);
+  font-size: var(--placebadge-mark);
 }
-/* The pin's stroke needs to survive at 11px, where the shared 2px looks spindly. */
+/* The halo, drawn by the same path stroked wider underneath — one element, so nothing can
+   drift out of register the way a second positioned copy would. */
 .wp-placebadge-mark .icon {
-  stroke-width: 2.4;
+  /* FILLED, which the shared `pin` path is not by default (`Icon`'s `FILLED` set decides, and
+     `pin` is outlined for the row-sized uses). At 13px an outlined teardrop with a 2-unit
+     stroke and a 2.2-radius hole is mush — a solid silhouette is what survives, and it is also
+     what a map marker looks like. `fill` here beats the SVG's own presentation attribute.
+     The stroke becomes the halo, under the fill, with round joins so the tip stays soft. */
+  fill: currentColor;
+  paint-order: stroke fill;
+  stroke: var(--card);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
 }
 
 /* NOT on the departure board, deliberately (owner, 2026-07-28). It was wired there

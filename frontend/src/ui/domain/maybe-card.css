@@ -120,6 +120,19 @@
   font-size: 17px;
   line-height: 1;
   flex: 0 0 auto;
+  /* This host's badge is inline content, not one of the 32–40px boxes `PlaceBadge`'s marker
+     was drawn against — so it re-points the marker's size rather than inheriting a proportion
+     meant for a box twice as big (ADR-0121 §8's amendment, owner's report 2026-08-04). */
+  --placebadge-mark: 13px;
+  /* 6px, which is what the card's own 10px padding and the 8px gap to the title leave — so the
+     target grows to ~33×29 without any of it landing on the words. */
+  --placebadge-hit: 6px;
+  /* **The ring needs a radius of its own here.** `PlaceBadge`'s teal ring is a `box-shadow`, so
+     it takes the shape of the box it is on — and the other three hosts are rounded squares
+     (`--radius-12`, 10px) while this glyph is inline content with no radius at all, so the ring
+     came out a sharp-cornered rectangle (owner, 2026-08-04). A radius only: no padding, because
+     the tile's geometry was measured and the badge costs it nothing. */
+  border-radius: 6px;
 }
 /* The note mark (ADR-0153 §7): the tile's corner, inside the padding the card
    already has, so it costs ZERO height — the meta line belongs to ADR-0151's
