@@ -3776,9 +3776,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   background: var(--dv-mount, var(--card));
   animation: dv-mount-open var(--t-deliberate) var(--ease-standard) both;
 }
+/* `backwards`, not `both`, and the difference is invisible until something else wants a say:
+   an animation's forwards fill outranks every normal declaration for the rest of the
+   element's life, so `[data-lifted]`'s `opacity: 0` below lost to a fade that finished
+   seconds ago (measured at 0.978 while the picture was supposed to be gone). The `to` state
+   here IS the element's own state, so filling it forwards was never doing anything. */
 .doc-viewer-img.is-fresh,
 .doc-viewer-handoff.is-fresh {
-  animation: dv-content-in var(--t-base) var(--ease-standard) both;
+  animation: dv-content-in var(--t-base) var(--ease-standard) backwards;
 }
 /* Fills the frame, which is the frame's own ratio — so a small scan is shown at the size
    the viewer has rather than as a stamp in the middle of it, and `contain` never has a
@@ -3789,12 +3794,56 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   max-inline-size: 100%;
   max-block-size: 100%;
   object-fit: contain;
-  /* ADR-0062: the one zoom exception. The pointer handler in DocumentViewer.tsx
-     owns pinch + pan, so the browser must not consume the gesture itself; the
-     transform-origin matches the handler's focal math. */
+  /* ADR-0062: the one zoom exception. `MediaViewer.tsx` owns the pinch, so the browser
+     must not consume the gesture itself. This element no longer TRANSFORMS — it is the
+     gesture's target and the lifted copy below is what moves. */
   touch-action: none;
+}
+/* ── The pinch lifts the picture out of the card (ADR-0062's 2026-08-05 amendment) ──
+   Owner: _"the image zooms out of the box and auto resets to the original size when
+   lifting the finger"_ — the Instagram gesture, replacing the sticky pinch/pan/double-tap
+   that lived inside the frame's `overflow: hidden`.
+
+   The copy is `fixed` and born at the original's own viewport box, so at rest it is
+   pixel-identical to what it covers and the lift is invisible until a finger moves. It is
+   a sibling of `.doc-viewer-card`, which is the only way to be whole: the frame clips and
+   the card is rounded. `transform-origin: 0 0` because the focal maths in `pinchTransform`
+   measures from that corner.
+
+   `pointer-events: none` is load-bearing twice over — the gesture's target stays the
+   in-flow `<img>` underneath (which holds the pointer capture and must still be hit-testable
+   for the second finger), and a copy that swallowed the backdrop tap would break the ONE
+   close (ADR-0103 §2). */
+.doc-viewer-img[data-lifted] {
+  opacity: 0;
+}
+.doc-viewer-lift {
+  position: fixed;
+  z-index: 2;
+  pointer-events: none;
+  object-fit: contain;
   transform-origin: 0 0;
   will-change: transform;
+}
+/* The room dims while the picture is out of it, exactly as the app's other scrims do —
+   `Modal`'s dialog value rather than the viewer's own `0.72`, which is already under this
+   and would stack to near black. */
+.doc-viewer-lift-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgba(22, 35, 61, 0.45);
+  animation: dv-scrim-in var(--t-quick) var(--ease-standard) both;
+}
+/* Going home. The copy was born with no transform, so the release only has to put it back —
+   and both channels ride the same clock as the JS timer that unmounts it (`--t-base` via
+   `motionDurationMs`), or the picture disappears mid-flight. */
+.doc-viewer-lift[data-settling] {
+  transition: transform var(--t-base) var(--ease-exit);
+}
+.doc-viewer-lift-scrim[data-settling] {
+  animation: dv-scrim-out var(--t-base) var(--ease-exit) both;
 }
 .doc-viewer-msg {
   font-size: 13px;

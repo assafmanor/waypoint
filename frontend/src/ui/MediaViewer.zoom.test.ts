@@ -1,5 +1,8 @@
+// The pinch's arithmetic. The GESTURE it serves — the picture leaving the card and going home
+// when a finger lifts — is in `MediaViewer.test.tsx`; this file is only the maths, which is
+// what makes the focal point assertable at all without a layout engine.
 import { describe, expect, it } from 'vitest';
-import { clampZoom, pinchTransform, zoomAtPoint, type PinchStart } from './MediaViewer';
+import { clampZoom, pinchTransform, type PinchStart } from './MediaViewer';
 
 const start: PinchStart = {
   dist: 100,
@@ -37,15 +40,5 @@ describe('pinchTransform', () => {
 
   it('respects the max-zoom clamp', () => {
     expect(pinchTransform(start, start.mid, 1000).scale).toBe(4);
-  });
-});
-
-describe('zoomAtPoint', () => {
-  it('leaves the tapped point stationary', () => {
-    const point = { x: 120, y: 90 };
-    const r = zoomAtPoint(point, { x: 0, y: 0 }, { scale: 1, tx: 0, ty: 0 }, 2.5);
-    // screen = origin + t + scale * contentPoint; the tapped point maps back to itself.
-    expect(r.tx + r.scale * point.x).toBeCloseTo(point.x, 5);
-    expect(r.ty + r.scale * point.y).toBeCloseTo(point.y, 5);
   });
 });

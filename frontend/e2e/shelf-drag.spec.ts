@@ -26,6 +26,7 @@
 // reach of any automated test (ADR-0017 still wants a real-device pass).
 import { test, expect, type Page, type CDPSession } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
+import { dispatchTouch } from './touch';
 import {
   DRAG_EDGE_SCROLL_RELEASE_PX,
   DRAG_EDGE_SCROLL_ZONE_PX,
@@ -79,17 +80,15 @@ const EVENTS = [event('ev-1', '07:00', 'בוקר'), event('ev-2', '20:00', 'ער
 const IDEAS = [idea('mb-1', 'מגדל אייפל'), idea('mb-2', 'קולוסיאום'), idea('mb-3', 'רעיון טוב')];
 
 /** Touch input has to go through CDP: `page.touchscreen` only taps, and this
- *  whole file is about what happens BETWEEN touchstart and touchend. */
+ *  whole file is about what happens BETWEEN touchstart and touchend. One finger,
+ *  which is what every gesture here is; `touch.ts` is the shape underneath it. */
 async function touch(
   cdp: CDPSession,
   type: 'touchStart' | 'touchMove' | 'touchEnd',
   x = 0,
   y = 0,
 ): Promise<void> {
-  await cdp.send('Input.dispatchTouchEvent', {
-    type,
-    touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
-  });
+  await dispatchTouch(cdp, type, [{ x, y }]);
 }
 
 const scrollTop = (page: Page) => page.locator('.body').evaluate((el) => el.scrollTop);
