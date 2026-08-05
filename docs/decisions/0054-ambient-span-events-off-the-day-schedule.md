@@ -4,6 +4,23 @@
 **Date:** 2026-07-17
 **Refines:** [0045](0045-trip-home-real-data-only.md) (the day-at-a-glance card this fixes), [0041](0041-parallel-overlapping-events.md) (`buildTimeTree` / the block model an ambient span must sit outside of), [0018](0018-timeline-data-model-shape.md) (the `endDate` ambient-span field that becomes the discriminator), [0047](0047-booking-event-linkage-and-notes.md) (a hotel = one Booking backing one Event with an `endDate` span), [0037](0037-overnight-events.md) (distinguishes a true multi-day span from a single overnight tail), [0011](0011-hard-soft-event-model.md) (hard/soft is orthogonal; ambient is a third, presentational axis)
 
+## Amendment (2026-08-05, session 215) — ambient is how a span RENDERS; a journey is what its middle IS
+
+Owner, from the shipped hero: _"when the flight (or anything really) crossed the day boundary, the hero doesn't recognize it as currently happening and just has the landing as the next event."_
+
+This ADR's discriminator turned out to be answering two questions with one flag. `ambientWhenMultiDay` was written for **lodging** and extended to `transport` for the multi-day **car hire** — both spans whose middle is genuinely passive. But the same flag catches an **overnight flight**, because the booking form sets `endDate` whenever the end lands on a later calendar day (`buildSpanSeed`), and a red-eye then satisfies `isAmbient` exactly.
+
+Everything downstream followed the flag off a cliff. `Home` drops every started ambient event from `deriveNow` (so the board stopped seeing the flight the moment it took off), and `deriveHeroBooking`'s ambient branch knows only check-in/check-out windows — so a flight in the air could at best surface near its end as a check-out-shaped transition, which is the landing, offered as something upcoming. Precisely the report.
+
+**Both halves of this ADR were right; they were being asked to decide one thing too many.** So the split is now explicit, and it uses the field [ADR-0160](0160-the-hero-lifts-and-shows-a-horizon.md) §Q added rather than a new one:
+
+- **`isAmbient` keeps its meaning, unchanged** — a rendering fact: this span draws as a backdrop across the days it covers and stays off the counted schedule. An overnight flight is genuinely that on the day it lands.
+- **`midSpan.kind` says what the middle IS** — a `journey` you are inside, or a `held` resource whose middle is passive. That is what the hero and the mid-stay strip needed all along, and only ever had `isAmbient` to ask.
+
+Three call sites take the distinction (`isJourney`), and each was wrong in the same direction: `hero-booking.ts`'s classify (a journey never takes the ambient branch, however many days it crosses — the bracketed-point path's windows are **instants** and have never cared what day it is), `Home`'s `deriveNow` filter, and the "inside a booking now" strip from §2's family, which would otherwise have claimed the flight in parallel with the board — `בטיסה` above and `LH692 · יום 1 מתוך 2` below it.
+
+**What deliberately did not change:** the day view still draws a multi-day journey as a backdrop with its two ends as transition markers (the amendment above), and a multi-day hire or stay behaves exactly as before. Nor did `currentDestination`, which still answers nothing mid-journey — you are not standing anywhere, and the origin airport is the one place you are certainly not.
+
 ## Amendment (2026-08-04, ADR-0164) — off the RAIL, but its edges are counted
 
 This ADR keeps an ambient span off the counted schedule so a four-night stay cannot distort a day, and that protection is unchanged: it draws no block and does not stretch the glance window.

@@ -11,6 +11,7 @@ import {
   eventTransitionKeys,
   isAmbient,
   isBracketed,
+  isJourney,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -120,7 +121,15 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // they'd otherwise hijack the hero for the whole stay (ADR-0059 §1 / ADR-0054).
   // Their transitions surface via the hero-booking derivation below; before
   // check-in a hotel stays in, so it can be the natural "next" fairly.
-  const scheduleEvents = events.filter((e) => !(isAmbient(e) && nowMs >= Date.parse(e.startsAt!)));
+  //
+  // **A journey is exempt, and that exemption is a red-eye's whole bug.** An overnight
+  // flight has an `endDate`, so it is `isMultiDay` and therefore ambient — and this filter
+  // dropped it from `deriveNow` the moment it took off, which is why the board stopped
+  // seeing it as happening at all. Ambient says how a span RENDERS across days; what its
+  // middle IS is `midSpan.kind`, and a journey's middle is you, inside it.
+  const scheduleEvents = events.filter(
+    (e) => !(isAmbient(e) && !isJourney(e) && nowMs >= Date.parse(e.startsAt!)),
+  );
   const { now: nowEvent, next: nextEvent, nowAll, nextAll } = deriveNow(scheduleEvents, now);
   const dayEvents = events.filter((e) => e.date === activeDate);
 
@@ -362,9 +371,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const sameDayEvents = dayEvents.filter((e) => !isAmbient(e));
   // "Inside a booking now" (ADR-0059 §2): the ambient stay whose span currently
   // contains the clock — a slim, dismissible teal strip subordinate to the hero.
+  //
+  // **A journey is not something you are "inside" in this sense**, and without the guard a
+  // red-eye would be in two places at once the moment the hero learned to keep it: the
+  // board saying `בטיסה` and this strip saying `LH692 · יום 1 מתוך 2` underneath. The strip
+  // is for a span whose middle is passive, which is exactly `midSpan.kind === 'held'`.
   const stayNow = ambientStays.find(
     (e) =>
-      e.startsAt && e.endsAt && Date.parse(e.startsAt) <= nowMs && nowMs < Date.parse(e.endsAt),
+      !isJourney(e) &&
+      e.startsAt &&
+      e.endsAt &&
+      Date.parse(e.startsAt) <= nowMs &&
+      nowMs < Date.parse(e.endsAt),
   );
   // Where the strip's span has got to, computed once for its mono fraction.
   const stayProgress = stayNow ? ambientSpanPosition(stayNow, activeDate) : null;
