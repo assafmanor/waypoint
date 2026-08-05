@@ -81,6 +81,9 @@ export function PlaceKnowledge({
   // The block holds the prose, and on the collapsed row it also holds the way in — which is what
   // keeps a picture reachable on a place we have an image for and no words about.
   const showsSummaryBlock = !!summary || (density === KNOWLEDGE_DENSITY.COLLAPSED && !!onExpand);
+  // Only the collapsed state has somewhere to go: the expanded card is already there, and the
+  // deciding card has nothing to expand into.
+  const opensOnTap = density === KNOWLEDGE_DENSITY.COLLAPSED && !!onExpand;
 
   return (
     <>
@@ -104,7 +107,25 @@ export function PlaceKnowledge({
           failed to load credits nothing. */}
       {heroUrl && image && <span className="map-credit">{placeCredit(image)}</span>}
       {showsSummaryBlock && (
-        <span className={SUMMARY_CLASS[density]}>
+        // **THE WHOLE BLOCK OPENS THE CARD** (owner, 2026-08-05: _"I would like clicking on the
+        // summary to also expand, not only when clicking on עוד"_). The clamped text is the thing
+        // you are trying to read, so it is the natural target — `עוד ›` stays as the block's
+        // NAMED, focusable control (the tap target grows; the accessible control does not move,
+        // and a second `role="button"` around it would nest one interactive element in another).
+        //
+        // `stopPropagation` for the reason every other control on this row does it: the row's own
+        // tap re-selects the place, which re-frames the camera and scrolls the list under you.
+        <span
+          className={SUMMARY_CLASS[density]}
+          onClick={
+            opensOnTap
+              ? (e) => {
+                  e.stopPropagation();
+                  onExpand?.();
+                }
+              : undefined
+          }
+        >
           {/* Inline before the prose and a SIBLING of it, not inside it: `dir="auto"` sniffs the
               first strong character, so a Hebrew chip inside the prose element would make an
               English extract read as RTL — and the clamp needs an element whose content is text,
@@ -119,7 +140,7 @@ export function PlaceKnowledge({
               The clamp hides text by design, so without this the rest of a summary would be
               unreachable — which is why it sits inside the block rather than in the footer with
               the verbs. */}
-          {density === KNOWLEDGE_DENSITY.COLLAPSED && onExpand && (
+          {opensOnTap && (
             <button
               type="button"
               className="map-know-more"

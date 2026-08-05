@@ -1312,15 +1312,34 @@ export function MapView() {
     // selected row is centred, since `nearest` would leave a row that is already barely
     // visible exactly where it was.
     if (sheetView === MAP_SHEET_VIEW.map) return;
-    // The place's row, WHEREVER it is. Normally that is its trip row; when Google's half is
-    // what matched it, the trip list has no row for it and its row is the result row. Two
-    // selectors rather than one because the row genuinely moves between two hosts — the same
-    // fact the card and the ghost row are both about (ADR-0122 §7).
-    const resultId = ownedResults.get(placeId);
+    centreSelectedRow.current(placeId, ownedResults.get(placeId));
+  };
+
+  /**
+   * **Bring the selected row to the middle of the list.**
+   *
+   * Two callers, and the second is why this is a function rather than the inline block it was:
+   * a pin tap at a list stop (above), and **leaving the map extreme with something already
+   * selected** (the effect below).
+   *
+   * The place's row, WHEREVER it is. Normally that is its trip row; when Google's half is what
+   * matched it, the trip list has no row for it and its row is the result row. Two selectors
+   * rather than one because the row genuinely moves between two hosts — the same fact the card
+   * and the ghost row are both about (ADR-0122 §7).
+   *
+   * A ref, not a `useCallback`: this screen re-renders every second and both callers want the
+   * latest `sheetRef`, never a closure from an earlier tick (ADR-0121 §4's latest-ref idiom).
+   */
+  const centreSelectedRow = useRef<(placeId?: string | null, resultId?: string | null) => void>(
+    () => {},
+  );
+  centreSelectedRow.current = (placeId, resultId) => {
+    // Deferred a frame so a row that has just grown its reveal is measured at its real height,
+    // and so a stop change has committed the sheet's new box before we scroll inside it.
     requestAnimationFrame(() => {
       const scope = sheetRef.current;
       const row =
-        scope?.querySelector(`[data-place="${placeId}"]`) ??
+        (placeId ? scope?.querySelector(`[data-place="${placeId}"]`) : null) ??
         (resultId ? scope?.querySelector(`[data-result="${resultId}"]`) : null);
       row?.scrollIntoView({ block: 'center' });
     });
@@ -1760,6 +1779,28 @@ export function MapView() {
     // the control it mirrors says it does.
     return { remainsActive: false };
   }, expandedId != null);
+
+  // **LEAVING THE MAP EXTREME BRINGS THE SELECTION WITH YOU** (owner, 2026-08-05, with a
+  // screenshot of the selected card opening below the fold).
+  //
+  // A selection made at the `map` stop cannot scroll anything — there is no list on screen, which
+  // is why `select` returns early there and why the tapped place surfaces as a card on the canvas
+  // instead (ADR-0122 §7). Switching to `רשימה` then showed the list at whatever offset it was
+  // left at, with the selected row — the one thing you were looking at, now carrying a summary, a
+  // note section and a footer — wherever it happened to be, often clipped by the tab bar.
+  //
+  // Keyed on the STOP, so it fires on the toggle, on a drag that lands at a new stop, and on the
+  // `liftToList` normalisation — everything that puts the list on screen — and not on the
+  // selection itself, which `select` already handles at the stop where it can.
+  useEffect(() => {
+    if (sheetView === MAP_SHEET_VIEW.map) return;
+    if (!selectedId && !selectedResultId) return;
+    centreSelectedRow.current(selectedId, selectedResultId);
+    // The STOP is the trigger and the only dep on purpose: a change of SELECTION is `select`'s
+    // own job (it centres, or normalises the sheet first), and re-running here on it would
+    // scroll the same row twice — the second time with `center`, undoing the `nearest` a row
+    // tap deliberately chose so it would not shove the row you are looking at.
+  }, [sheetView]);
 
   // The full picture, one level below the expanded card (ADR-0167 §11.1). The viewer registers
   // its own layer, so back peels the picture, then the expansion, then the selection.
