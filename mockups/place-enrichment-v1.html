@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>מקום מעושר — Place enrichment (ADR-0166 §10)</title>
+    <style>
+      :root {
+        --ink: #16233d;
+        --indigo: #1b2a4a;
+        --screen: #e7eaef;
+        --card: #ffffff;
+        --amber: #e9a63c;
+        --teal: #2c9c90;
+        --muted: #6c7488;
+        --faint: #98a0b0;
+        --line: rgba(22, 35, 61, 0.12);
+        --soft-line: rgba(22, 35, 61, 0.28);
+        --ok: #3f8f6b;
+        --miss: #c2584e;
+        --cta: #1b2a4a;
+        --font-body: 'Assistant', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--screen);
+        color: var(--ink);
+        font-family: var(--font-body);
+        line-height: 1.5;
+        padding: 24px 14px 60px;
+      }
+      .head {
+        text-align: center;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        max-width: 780px;
+        margin: 0 auto 8px;
+        font-size: 14px;
+      }
+      .warn {
+        max-width: 780px;
+        margin: 0 auto 22px;
+        font-size: 13px;
+        color: var(--miss);
+        border: 1px dashed rgba(194, 88, 78, 0.5);
+        border-radius: 10px;
+        padding: 8px 12px;
+        background: rgba(194, 88, 78, 0.05);
+      }
+      h2 {
+        font-size: 16px;
+        margin: 34px 0 2px;
+        text-align: center;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 13px;
+        max-width: 780px;
+        margin: 0 auto 16px;
+        text-align: center;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .col {
+        width: 360px;
+        max-width: 100%;
+      }
+      .cap {
+        font-size: 12px;
+        color: var(--faint);
+        margin: 0 0 6px;
+        text-align: center;
+      }
+
+      /* ── the row, as it ships (73px) ─────────────────────────────────── */
+      .place {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 11px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 11px 12px;
+        margin-bottom: 9px;
+        box-shadow: 0 1px 2px rgba(14, 23, 41, 0.04);
+      }
+      .place.selected {
+        border-color: var(--ink);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 12%, transparent);
+      }
+      .place.soft {
+        border-style: dashed;
+        border-color: var(--soft-line);
+      }
+
+      /* THE BADGE — 40×40, r12, unchanged geometry. What changes is its FILL. */
+      .map-badge {
+        position: relative;
+        flex: 0 0 auto;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        line-height: 1;
+        background: rgba(44, 156, 144, 0.14);
+        overflow: hidden;
+      }
+      /* THE HUE RING SURVIVES A PHOTO — but an `inset` box-shadow does NOT: it paints
+         above the background and BELOW the children, so the image covers it completely.
+         Found by rendering, not by reading. The ring has to be an overlay ABOVE the
+         image, which also gives it a hairline to sit against a bright sky. */
+      .map-badge.photo {
+        background: none;
+        --ring: var(--teal);
+      }
+      .map-badge.photo::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow:
+          inset 0 0 0 2px var(--ring),
+          inset 0 0 0 3px rgba(255, 255, 255, 0.5);
+        pointer-events: none;
+      }
+      .map-badge.photo.cat-food {
+        --ring: #c98a3c;
+      }
+      .map-badge img,
+      .map-badge .synth {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .map-badge.nocoord {
+        background: none;
+        box-shadow: inset 0 0 0 2px var(--soft-line);
+        color: var(--faint);
+      }
+
+      /* SYNTHETIC PHOTOS — gradients standing in for real pixels (see the banner).
+         Sky on top, structure below, so a centre-crop's damage is visible. */
+      .synth {
+        background:
+          linear-gradient(#bcd7ea 0 42%, #9db6c9 42% 55%, #6b5f57 55% 100%),
+          linear-gradient(90deg, #8a7f74 0 100%);
+        position: relative;
+      }
+      .synth::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 0;
+        width: 26%;
+        height: 62%;
+        background: linear-gradient(#b8442f 0 18%, #8d3626 18% 100%);
+      }
+      .synth.tall::after {
+        width: 18%;
+        height: 78%;
+      }
+      .synth.wide::after {
+        width: 40%;
+        height: 42%;
+      }
+
+      .map-main {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .map-name {
+        font-weight: 600;
+        font-size: 15px;
+      }
+      .map-m {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 3px;
+        align-items: center;
+      }
+      .map-tag {
+        font-size: 11.5px;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.05);
+        border-radius: 6px;
+        padding: 1px 6px;
+      }
+      .map-tag.time {
+        color: #8a5a12;
+        background: rgba(233, 166, 60, 0.16);
+      }
+      .map-tag.mbadge {
+        color: var(--muted);
+        border: 1px dashed var(--soft-line);
+        background: none;
+      }
+      .map-right {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        flex: 0 0 auto;
+      }
+      .nav {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--cta);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 5px 10px;
+        background: #fff;
+      }
+
+      /* ── the revealed third line (.map-refs), where enrichment lands ─── */
+      .map-refs {
+        flex-basis: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+      }
+      .hero {
+        width: 100%;
+        height: 132px;
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
+      }
+      .hero .synth {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      /* THE CREDIT IS LATIN, SO `dir="auto"` MAKES THE WHOLE ELEMENT LTR — which
+         right-orders the text correctly and then aligns it to the LEFT edge, orphaning it
+         from the RTL card and from the image it credits. Also found by rendering. The
+         element stays RTL (so it aligns with everything else) and the Latin run is
+         isolated inside it — the `ltrIsolate` half of ADR-0118, not the `dir` half. */
+      .credit {
+        font-size: 11px;
+        color: var(--faint);
+        text-align: start;
+        unicode-bidi: isolate;
+      }
+      .summary {
+        font-size: 13.5px;
+        color: var(--ink);
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .lang {
+        font-size: 11px;
+        color: var(--muted);
+        background: rgba(22, 35, 61, 0.05);
+        border-radius: 6px;
+        padding: 1px 6px;
+        margin-inline-end: 5px;
+      }
+      .hours {
+        font-size: 13px;
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+      }
+      .hours b {
+        font-weight: 600;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .hours .val {
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+      .asof {
+        font-size: 11px;
+        color: var(--faint);
+      }
+      .refs-foot {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding-top: 2px;
+      }
+      .gbtn {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--cta);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 6px 11px;
+        background: #fff;
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .gbtn.sole {
+        border-color: rgba(27, 42, 74, 0.35);
+      }
+      .nothing {
+        font-size: 12.5px;
+        color: var(--faint);
+      }
+
+      /* ── crop proof ──────────────────────────────────────────────────── */
+      .crop {
+        display: flex;
+        gap: 14px;
+        justify-content: center;
+        align-items: flex-end;
+        flex-wrap: wrap;
+      }
+      .cropitem {
+        text-align: center;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .full {
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 0 auto 4px;
+        border: 1px solid var(--line);
+      }
+      .b40 {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        overflow: hidden;
+        margin: 0 auto 4px;
+      }
+      .h132 {
+        width: 150px;
+        height: 76px;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 0 auto 4px;
+      }
+
+      /* ── dark ────────────────────────────────────────────────────────── */
+      .dark {
+        background: #10192b;
+        padding: 14px;
+        border-radius: 18px;
+      }
+      .dark .place {
+        background: #182339;
+        border-color: rgba(255, 255, 255, 0.14);
+        color: #e8ecf4;
+        box-shadow: none;
+      }
+      .dark .place.selected {
+        border-color: rgba(255, 255, 255, 0.5);
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+      }
+      .dark .map-name {
+        color: #e8ecf4;
+      }
+      .dark .map-tag {
+        background: rgba(255, 255, 255, 0.08);
+        color: #aab4c6;
+      }
+      .dark .map-tag.time {
+        color: #e9bd77;
+        background: rgba(233, 166, 60, 0.18);
+      }
+      .dark .map-refs {
+        border-top-color: rgba(255, 255, 255, 0.14);
+      }
+      .dark .summary {
+        color: #dbe2ee;
+      }
+      .dark .credit,
+      .dark .asof,
+      .dark .nothing {
+        color: #7f8ba1;
+      }
+      .dark .hours b,
+      .dark .lang {
+        color: #aab4c6;
+      }
+      .dark .lang {
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .dark .nav,
+      .dark .gbtn {
+        background: #202d47;
+        color: #e8ecf4;
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+      .legend {
+        max-width: 780px;
+        margin: 26px auto 0;
+        font-size: 13px;
+        color: var(--muted);
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      .legend h3 {
+        font-size: 14px;
+        margin: 0 0 6px;
+        color: var(--ink);
+      }
+      .legend li {
+        margin-bottom: 5px;
+      }
+      code {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        background: rgba(22, 35, 61, 0.06);
+        padding: 1px 4px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <h1>מקום מעושר</h1>
+      <p class="sub">
+        ADR-0166 §10's design pass: where a thumbnail goes, where attribution renders, how an
+        English summary is marked, and where the way through to Google sits. Every name, summary,
+        credit, opening-hours string and aspect ratio below is
+        <b>real data from the coverage spike</b> — 43 places, measured 2026-08-04.
+      </p>
+      <p class="warn">
+        <b>The photographs are synthetic.</b> This session could not reach
+        <code>upload.wikimedia.org</code> (egress policy), so each image is a CSS gradient rendered
+        at the <b>real file's aspect ratio</b> — sky above, structure below, so a crop's damage is
+        visible. Layout, crop behaviour and density are honest here; whether a real photo is legible
+        at 40px is the one question this mockup cannot answer.
+      </p>
+    </div>
+
+    <h2>1 · The badge becomes the frame</h2>
+    <p class="note">
+      No new slot. The 40×40 rounded square already leads every row and is always filled, so a photo
+      fills its interior and the category hue moves from fill to ring. Rows without an image look
+      exactly as they do today — which matters, because most rows have none.
+    </p>
+    <div class="grid">
+      <div class="col">
+        <p class="cap">has a photo · no icon picked</p>
+        <div class="place">
+          <span class="map-badge photo"><span class="synth"></span></span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Sensō-ji</span>
+            <span class="map-m">
+              <span class="map-tag time">שני · <span dir="auto">09:00</span></span>
+              <span class="map-tag" dir="auto">Asakusa</span>
+            </span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+        </div>
+      </div>
+      <div class="col">
+        <p class="cap">a human picked 🍜 · the pick wins</p>
+        <div class="place">
+          <span class="map-badge" style="background: rgba(201, 138, 60, 0.16)">🍜</span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Fuunji</span>
+            <span class="map-m">
+              <span class="map-tag time">שני · <span dir="auto">19:30</span></span>
+              <span class="map-tag mbadge">על המדף</span>
+            </span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+        </div>
+      </div>
+      <div class="col">
+        <p class="cap">no photo, no pick · today's look</p>
+        <div class="place">
+          <span class="map-badge">⛩</span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Meiji Jingū</span>
+            <span class="map-m">
+              <span class="map-tag time">שלישי · <span dir="auto">10:00</span></span>
+            </span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+        </div>
+      </div>
+      <div class="col">
+        <p class="cap">coordless Place-lite · unchanged</p>
+        <div class="place soft">
+          <span class="map-badge nocoord">📍</span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">מסעדה של יוסי</span>
+            <span class="map-m"><span class="map-tag mbadge">על המדף</span></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <h2>2 · Selection reveals the enrichment</h2>
+    <p class="note">
+      Enrichment lands in <code>.map-refs</code> — the full-width third line that already appears on
+      selection and already carries a <code>border-top</code>. An unselected row pays nothing, which
+      is the same bargain <code>.map-rename</code> struck.
+    </p>
+    <div class="grid">
+      <div class="col">
+        <p class="cap">Hebrew summary · hours · credit · way through</p>
+        <div class="place selected">
+          <span class="map-badge photo"><span class="synth tall"></span></span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Tokyo Skytree</span>
+            <span class="map-m">
+              <span class="map-tag time">רביעי · <span dir="auto">14:00</span></span>
+            </span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+          <span class="map-refs">
+            <span class="hero"><span class="synth tall"></span></span>
+            <span class="credit">Kakidai · CC BY-SA 3.0</span>
+            <span class="summary" dir="auto">
+              עץ השמיים (ביפנית: 東京スカイツリー) הוא מגדל תקשורת, מסעדה ומגדל תצפית הממוקם
+              בסומידה, טוקיו. הוא הפך למבנה הגבוה ביותר ביפן ב־2010.
+            </span>
+            <span class="hours">
+              <b>שעות פתיחה</b>
+              <span class="val" dir="auto">08:00–22:00</span>
+              <span class="asof">· נבדק אתמול</span>
+            </span>
+            <span class="refs-foot"><span class="gbtn">עוד בגוגל</span></span>
+          </span>
+        </div>
+      </div>
+      <div class="col">
+        <p class="cap">English summary · the language marker</p>
+        <div class="place selected">
+          <span class="map-badge photo"><span class="synth"></span></span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Shinjuku Gyoen</span>
+            <span class="map-m">
+              <span class="map-tag time">חמישי · <span dir="auto">09:30</span></span>
+            </span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+          <span class="map-refs">
+            <span class="hero"><span class="synth"></span></span>
+            <span class="credit">Kakidai · CC BY-SA 3.0</span>
+            <span class="summary">
+              <span class="lang">באנגלית</span>
+              <span dir="auto"
+                >Shinjuku Gyo-en is a large public garden in Shinjuku and Shibuya, Tokyo, Japan.
+                Originally a residence of the Naitō family in the Edo period.</span
+              >
+            </span>
+            <span class="hours">
+              <b>שעות פתיחה</b>
+              <span class="val" dir="auto">09:00–16:30</span>
+              <span class="asof">· שני סגור</span>
+            </span>
+            <span class="refs-foot"><span class="gbtn">עוד בגוגל</span></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <h2>3 · The common case: we know nothing</h2>
+    <p class="note">
+      Tokyo restaurants scored <b>0 of 7</b>. So the empty card is not an edge state — it is the
+      majority, and the way through to Google is the whole of it. Nothing is drawn where a summary
+      would be: the app does not offer what it does not have (ADR-0109 §7).
+    </p>
+    <div class="grid">
+      <div class="col">
+        <p class="cap">no image · no summary · no hours</p>
+        <div class="place selected">
+          <span class="map-badge" style="background: rgba(201, 138, 60, 0.16)">🍜</span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Fuunji</span>
+            <span class="map-m">
+              <span class="map-tag time">שני · <span dir="auto">19:30</span></span>
+              <span class="map-tag mbadge">על המדף</span>
+            </span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+          <span class="map-refs">
+            <span class="refs-foot">
+              <span class="gbtn sole">עוד בגוגל</span>
+              <span class="nothing">שעות, תמונות וביקורות</span>
+            </span>
+          </span>
+        </div>
+      </div>
+      <div class="col">
+        <p class="cap">image, but no article in any language we read</p>
+        <div class="place selected">
+          <span class="map-badge photo"><span class="synth wide"></span></span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Omoide Yokochō</span>
+            <span class="map-m"><span class="map-tag mbadge">על המדף</span></span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+          <span class="map-refs">
+            <span class="hero"><span class="synth wide"></span></span>
+            <span class="credit">MaedaAkihiko · CC BY-SA 4.0</span>
+            <span class="refs-foot">
+              <span class="gbtn">עוד בגוגל</span>
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <h2>4 · Crop proof · the measured range is 0.54 to 1.78</h2>
+    <p class="note">
+      Six of 32 files are portrait. A square centre-crop at 40px keeps the subject in every case
+      here, because the subject is central; the 132px hero is where a 0.54 portrait actually
+      suffers, and <code>object-fit: cover</code> on a fixed height is what decides it.
+    </p>
+    <div class="crop">
+      <div class="cropitem">
+        <div class="full" style="width: 46px; height: 85px">
+          <span class="synth tall" style="display: block; height: 100%"></span>
+        </div>
+        Eiffel Tower<br /><span dir="auto">0.54</span>
+      </div>
+      <div class="cropitem">
+        <div class="b40"><span class="synth tall" style="display: block; height: 100%"></span></div>
+        badge 40px
+      </div>
+      <div class="cropitem">
+        <div class="h132">
+          <span class="synth tall" style="display: block; height: 100%"></span>
+        </div>
+        hero 132px · <b>the loss</b>
+      </div>
+      <div class="cropitem">
+        <div class="full" style="width: 96px; height: 54px">
+          <span class="synth wide" style="display: block; height: 100%"></span>
+        </div>
+        Shibuya Crossing<br /><span dir="auto">1.78</span>
+      </div>
+      <div class="cropitem">
+        <div class="b40"><span class="synth wide" style="display: block; height: 100%"></span></div>
+        badge 40px
+      </div>
+      <div class="cropitem">
+        <div class="h132">
+          <span class="synth wide" style="display: block; height: 100%"></span>
+        </div>
+        hero 132px · fits
+      </div>
+    </div>
+
+    <h2>5 · Dark</h2>
+    <p class="note">
+      ADR-0158 §15: an inverted surface is where a paper component breaks. A photo carries its own
+      light, so the credit line under it is the thing to check — it sits on the card, not on the
+      image, precisely so it never fights a bright sky.
+    </p>
+    <div class="grid">
+      <div class="col dark">
+        <div class="place selected">
+          <span class="map-badge photo"><span class="synth tall"></span></span>
+          <span class="map-main">
+            <span class="map-name" dir="auto">Tokyo Skytree</span>
+            <span class="map-m">
+              <span class="map-tag time">רביעי · <span dir="auto">14:00</span></span>
+            </span>
+          </span>
+          <span class="map-right"><span class="nav">ניווט</span></span>
+          <span class="map-refs">
+            <span class="hero"><span class="synth tall"></span></span>
+            <span class="credit">Kakidai · CC BY-SA 3.0</span>
+            <span class="summary" dir="auto">
+              עץ השמיים (ביפנית: 東京スカイツリー) הוא מגדל תקשורת, מסעדה ומגדל תצפית הממוקם
+              בסומידה, טוקיו.
+            </span>
+            <span class="refs-foot"><span class="gbtn">עוד בגוגל</span></span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <h3>What this mockup decides</h3>
+      <ul>
+        <li>
+          <b>The badge is the thumbnail's frame</b> — same 40×40, same <code>r12</code>, same tap
+          target ("the way to the pin"). The category hue moves from fill to a 2px inset ring, so no
+          hue leaves the budget and no slot is added to a 73px row.
+        </li>
+        <li>
+          <b>A picked icon beats a fetched photo.</b> ADR-0147 stores an icon only when a human
+          picked one, and ADR-0166's founding line is that the trip's opinion is never overwritten
+          by the world's facts. Order: picked icon → photo → derived glyph.
+        </li>
+        <li>
+          <b>Enrichment lands in <code>.map-refs</code></b> on selection, in a fixed order: hero,
+          credit, summary, hours, way-through. An unselected row costs nothing.
+        </li>
+        <li>
+          <b>Attribution renders on the card, under the image</b> — photographer
+          <span dir="auto">·</span> license, muted, 11px. 27 of 32 files require it, so this is the
+          default line, not an exception. The 40px badge carries none; it leads here.
+        </li>
+        <li>
+          <b>An English summary is marked with <code>באנגלית</code></b> and nothing else changes —
+          the text itself takes <code>dir="auto"</code>, which is what keeps a Latin run from
+          reordering in the RTL flow (ADR-0118).
+        </li>
+        <li>
+          <b><code>עוד בגוגל</code> is always present and is never <code>ניווט</code>.</b> The
+          collapsed row keeps exactly one Google exit, so ADR-0121 §8 holds where it was aimed; the
+          second is revealed, differently labelled, and answers a different question. When we know
+          nothing, it is the only thing in the block — which is the 0-of-7 case, so it is the state
+          to get right.
+        </li>
+        <li>
+          <b>Hours carry an "as of".</b> They are the one semi-volatile field, and a stale "open
+          until 18:00" read at 17:50 is this feature's worst failure.
+        </li>
+      </ul>
+
+      <h3>What rendering it found (Chromium, 390×844, DPR 2)</h3>
+      <ul>
+        <li>
+          <b>The hue ring did not survive the photo, as first written.</b> An
+          <code>inset</code> box-shadow paints above the background and <b>below</b> the children,
+          so the image covered it completely and the badge lost its category entirely. It needs an
+          overlay <code>::after</code> above the image — which also buys a hairline so a dark ring
+          survives a bright sky. Reading the CSS would not have caught this.
+        </li>
+        <li>
+          <b>The credit line orphaned itself to the wrong edge.</b> It is Latin, so
+          <code>dir="auto"</code> made the whole element LTR — correct internal ordering, then
+          aligned <b>left</b> while every other line in the card sits right. The element must stay
+          RTL and isolate the Latin run inside it: the <code>ltrIsolate</code> half of ADR-0118, not
+          the <code>dir</code> half. This is the mirror of the bug that ADR forbids, and it will
+          recur on every enriched Latin string.
+        </li>
+        <li>
+          <b>Measured heights.</b> Collapsed rows stay at <b>69–71px</b> — the badge-as-frame costs
+          nothing, which was the whole claim. A fully enriched card is
+          <b>392px, 46% of a 390×844 viewport</b>; the empty one is <b>134px</b> with a 44px refs
+          block.
+        </li>
+        <li>
+          <b>Shrinking the hero barely helps, so keep it.</b> Sweeping 132 → 96px moves the card
+          only 392 → 356px, because the height is five stacked elements and not the image. Measured,
+          not guessed: the hero is not the lever it looked like.
+        </li>
+        <li>
+          <b>No horizontal overflow at 390px</b>, and the embedded Japanese run inside the Hebrew
+          summary orders correctly under the browser's own bidi algorithm — worth checking because
+          an enriched summary is third-party prose that can carry any script.
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>
