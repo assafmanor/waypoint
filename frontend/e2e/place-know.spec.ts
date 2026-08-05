@@ -65,14 +65,45 @@ const summary = (lang: string, value: string) => ({
   ref: 'Q1054134',
 });
 
+/** A real delivered image, so the expanded card has a hero and a credit to measure. */
+const IMAGE = {
+  url: '/enrichment/images/enr_11111111-2222-3333-4444-555555555555',
+  mimeType: 'image/png',
+  width: 840,
+  height: 600,
+  sizeBytes: 1024,
+  source: 'commons',
+  license: 'CC BY-SA 4.0',
+  attribution: 'Kakidai',
+  fetchedAt: '2026-08-05T10:00:00.000Z',
+  confidence: 1,
+  method: 'settled_id',
+  ref: 'Nezu.jpg',
+};
+
 async function boot(page: Page, width: number, lang = 'en'): Promise<void> {
   await page.setViewportSize({ width, height: 844 });
+  // The hero's bytes. A 1x1 PNG is enough here — this spec measures boxes, and
+  // `place-photo-frame.spec.ts` is where a real decode is asserted.
+  await page.route(
+    (u) => u.pathname.startsWith('/enrichment/images/'),
+    (r) =>
+      r.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==',
+          'base64',
+        ),
+      }),
+  );
   await bootIntoTrip(page, {
     places,
     events,
     // Only the first place knows anything. The second is the majority case (ADR-0166 §11.3) and
     // the comparison: the same row, same title, without a block.
-    enrichments: { 'pl-known': { summary: { [lang]: summary(lang, LONG_EN) } } },
+    enrichments: {
+      'pl-known': { summary: { [lang]: summary(lang, LONG_EN) }, image: IMAGE },
+    },
     now: todayAt('02:00'),
     dates: shortLiveTripDates(),
   });
@@ -253,4 +284,100 @@ test('a place we know nothing about draws no block, and still offers עוד בג
   // A different question from `נווט`, which the row still carries — and it opens away from us.
   await expect(google).toHaveAttribute('target', '_blank');
   await expect(blank.locator('.map-navbtn')).toBeVisible();
+});
+
+// **EXPANDING IS A MODE CHANGE, NOT GROWTH** (ADR-0167 §11.1). Measured here because the claim is
+// about boxes: the itinerary blocks LEAVE, which is what dissolved §10.2's problem — a hero
+// revealed inside the collapsed card left the notes scroller 31px.
+test.describe('the research card @390', () => {
+  test.beforeEach(({ page }) => boot(page, 390));
+
+  test('swaps the blocks rather than adding to them', async ({ page }) => {
+    await selectKnown(page);
+    const before = await measure(page);
+    // Collapsed: two clamped lines, the notes section, the references, the footer's three verbs.
+    expect(before.prose.h).toBeLessThanOrEqual(Math.round(2 * before.lineHeight) + 1);
+
+    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    const hero = page.locator('.map-hero');
+    await expect(hero).toBeVisible();
+
+    const after = await page.evaluate(() => {
+      const row = document.querySelector('.map-list .place.selected') as HTMLElement;
+      const heroEl = row.querySelector('.map-hero') as HTMLElement;
+      const prose = row.querySelector('.map-sum-t') as HTMLElement;
+      return {
+        heroH: Math.round(heroEl.getBoundingClientRect().height),
+        heroFills: Math.round(
+          (heroEl.querySelector('img') as HTMLElement).getBoundingClientRect().width,
+        ),
+        heroW: Math.round(heroEl.getBoundingClientRect().width),
+        // The clamp is gone, so the whole extract is on screen.
+        clamped: prose.scrollHeight > prose.clientHeight + 1,
+        lineClamp: getComputedStyle(prose).webkitLineClamp,
+        credit: (row.querySelector('.map-credit') as HTMLElement | null)?.textContent ?? null,
+        // **The itinerary blocks are not on screen at the same time.**
+        hasNotes: !!row.querySelector('.note-sec'),
+        hasRefs: !!row.querySelector('.map-refs'),
+        back: !!row.querySelector('.map-backrow'),
+      };
+    });
+
+    // The mockup's own number for the hero.
+    expect(after.heroH).toBe(130);
+    expect(after.heroFills).toBe(after.heroW);
+    expect(after.lineClamp).toBe('none');
+    expect(after.clamped).toBe(false);
+    expect(after.credit).toContain('CC BY-SA 4.0');
+    expect(after.hasNotes).toBe(false);
+    expect(after.hasRefs).toBe(false);
+    expect(after.back).toBe(true);
+  });
+
+  // The credit stays aligned with every other line on the card, which is §8.2's whole point: the
+  // bug was making the element LTR, which orphaned it to the opposite edge.
+  test('keeps the credit on the card’s own edge', async ({ page }) => {
+    await selectKnown(page);
+    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    const edges = await page.evaluate(() => {
+      const row = document.querySelector('.map-list .place.selected') as HTMLElement;
+      const credit = row.querySelector('.map-credit') as HTMLElement;
+      // The summary block, not the NAME: the name is inset by the badge and its gap (40 + 11px),
+      // while both of these are full-width blocks on the row's own content edge.
+      const block = row.querySelector('.map-sum') as HTMLElement;
+      const r = (el: HTMLElement) => Math.round(el.getBoundingClientRect().right);
+      return {
+        credit: r(credit),
+        block: r(block),
+        dir: getComputedStyle(credit).direction,
+        // The defect §8.2 records is the line orphaning itself to the OPPOSITE edge, so the
+        // distance from the row's left edge is what would collapse if it recurred.
+        fromLeft: Math.round(
+          credit.getBoundingClientRect().left - row.getBoundingClientRect().left,
+        ),
+      };
+    });
+    // RTL, so "the start edge" is the right one — the same edge every other block sits against.
+    expect(edges.dir).toBe('rtl');
+    expect(Math.abs(edges.credit - edges.block)).toBeLessThanOrEqual(1);
+    expect(edges.fromLeft).toBeLessThan(20);
+  });
+
+  test('comes back to the itinerary detail', async ({ page }) => {
+    await selectKnown(page);
+    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: 'חזרה לפרטי המקום', exact: true }).click();
+    await expect(page.locator('.map-hero')).toHaveCount(0);
+    await expect(page.locator('.map-list .place.selected .note-sec')).toBeVisible();
+  });
+
+  // §11.1 keeps the full-screen preview as the level below, reached from the hero — the app's own
+  // viewer, which is ADR-0062's one permitted zoom.
+  test('opens the full picture from the hero, credited', async ({ page }) => {
+    await selectKnown(page);
+    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.locator('.map-hero').click();
+    await expect(page.locator('.doc-viewer')).toBeVisible();
+    await expect(page.locator('.doc-viewer-caption')).toContainText('CC BY-SA 4.0');
+  });
 });

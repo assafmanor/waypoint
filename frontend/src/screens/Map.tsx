@@ -80,7 +80,9 @@ import {
   soleIdeaFor,
 } from '../lib/place-refs';
 import { badgePhoto } from '../lib/place-photo';
-import { placeSummary, type PlaceSummary } from '../lib/place-summary';
+import { placeCredit, placeSummary, type PlaceSummary } from '../lib/place-summary';
+import { useFailableImage } from '../lib/useFailableImage';
+import { MediaViewer } from '../ui/MediaViewer';
 import { apiAssetUrl } from '../lib/api-asset';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import {
@@ -556,6 +558,11 @@ export function MapView() {
   // Row ↔ pin are ONE selection (§8). Not `.nextstop`, whose amber means "the stop
   // you are heading to" — selecting a row must not claim that.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // **Which selected place has been EXPANDED into its research card** (ADR-0167 §11.1). A second
+  // id rather than a boolean, so changing the selection cannot leave the expansion behind on a
+  // place you are no longer looking at — the state that would otherwise need clearing in the
+  // five places `setSelectedId` is called.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   // A tapped ghost: its row is not in the sheet (the sheet is scoped), so the tap is
   // the only way to learn what it is — it surfaces that one row, named with its day.
   const [ghostId, setGhostId] = useState<string | null>(null);
@@ -1738,6 +1745,25 @@ export function MapView() {
     return { remainsActive: false };
   }, draft != null);
 
+  // **The expansion is a state this mounted screen enters and leaves, so it owes the back stack a
+  // layer** (ADR-0103; `frontend/CLAUDE.md` names this exact shape). The screen never unmounts, so
+  // it cannot express "there is something to peel" by existing — and there IS something: a visible
+  // `‹ חזרה לפרטי המקום`. Without this, a system back on the research card would deselect the
+  // place or leave the tab while that control sat on screen, which is precisely how the Map's
+  // disclosure row broke once. Gated on the state, so it lands ABOVE the selection's own layer and
+  // back peels the expansion first.
+  useBackLayer(() => {
+    setExpandedId(null);
+    // The place stays selected: collapsing returns you to its itinerary detail, which is what
+    // the control it mirrors says it does.
+    return { remainsActive: false };
+  }, expandedId != null);
+
+  // The full picture, one level below the expanded card (ADR-0167 §11.1). The viewer registers
+  // its own layer, so back peels the picture, then the expansion, then the selection.
+  const [fullPictureId, setFullPictureId] = useState<string | null>(null);
+  const fullPicture = fullPictureId ? enrichments[fullPictureId]?.image : undefined;
+
   // The three props `MapPane` takes, `useCallback(…, [])` over the latest-ref above. The pane
   // is memoized and this screen re-renders every second, so a fresh identity here re-diffs
   // every marker — the anti-pattern `frontend/CLAUDE.md` lists as already fixed once.
@@ -2137,6 +2163,17 @@ export function MapView() {
           // Gated on `selected` for the same reason the notes and the refs are: the list can hold
           // the whole trip, and a summary block per unselected row is 64px nobody is reading.
           summary={selected ? placeSummary(enrichments[usage.placeId]) : undefined}
+          // **The mode change** (ADR-0167 §11.1): expanding shows what an un-added research place
+          // shows, so the notes, the references and the schedule footer come OFF while the hero
+          // and the whole summary go on. One presentation in two states, not two cards.
+          expanded={selected && expandedId === usage.placeId}
+          // Offered only when there is something to expand INTO — a place we know nothing about
+          // has no hero and no more summary, so the control would open an empty room
+          // (ADR-0109 §7). `עוד בגוגל` in the footer is that place's way to more.
+          onExpand={() => setExpandedId(usage.placeId)}
+          onCollapse={() => setExpandedId(null)}
+          onFullPicture={() => setFullPictureId(usage.placeId)}
+          image={selected ? enrichments[usage.placeId]?.image : undefined}
           // Free, and present even when we know nothing (ADR-0167 §6) — but not under an errand,
           // where the tab answers one question and the verbs CHANGE rather than accumulate
           // (ADR-0134 §3), which is the same rule that takes `נווט` and the schedule verb off.
@@ -2893,6 +2930,20 @@ export function MapView() {
       )}
       {pinMenu}
       {deleteConfirm}
+      {/* **The full picture, one level below the expanded card** (ADR-0167 §11.1 + §10.2). The
+          app's own zoomable preview rather than a bigger thumbnail: ADR-0062 permits zoom in
+          exactly one place and this is it, and a 116px hero revealed inside the card was measured
+          leaving the notes scroller 31px. It carries the credit as its caption, because full
+          screen is the photograph's most prominent display. */}
+      {fullPicture && fullPictureId && (
+        <MediaViewer
+          title={placeById.get(fullPictureId)?.name ?? ''}
+          mimeType={fullPicture.mimeType}
+          source={{ kind: 'url', url: apiAssetUrl(fullPicture.url) }}
+          caption={placeCredit(fullPicture)}
+          onClose={() => setFullPictureId(null)}
+        />
+      )}
     </>
   );
 
@@ -3113,6 +3164,11 @@ function PlaceRow({
   notes,
   notesSlot,
   summary,
+  expanded,
+  onExpand,
+  onCollapse,
+  image,
+  onFullPicture,
   moreUrl,
   refs,
   onSchedule,
@@ -3134,6 +3190,19 @@ function PlaceRow({
    *  which language variant a reader gets, and the one word that marks it when it is not ours.
    *  Selection-gated by the caller, like the notes and the references. */
   summary?: PlaceSummary;
+  /** **This place is showing its research card** (ADR-0167 §11.1). Expanding is a MODE CHANGE,
+   *  not growth: the hero and the whole summary come on, and the notes, the references and the
+   *  schedule footer go off — which is what dissolved §10.2's measured problem, where a hero
+   *  revealed INSIDE the card left the notes scroller 31px. */
+  expanded?: boolean;
+  onExpand?: () => void;
+  onCollapse?: () => void;
+  /** The photograph itself, for the hero and its credit — the badge takes only the URL, since a
+   *  40px square carries no attribution and needs none (§4). */
+  image?: DeliveredImageValue;
+  /** Open the full picture (ADR-0167 §11.1: the preview stays as the level below the expanded
+   *  card, reached from the hero). Owned by the screen, because the viewer is a portal. */
+  onFullPicture?: () => void;
   /** **`עוד בגוגל`** (ADR-0167 §6): what Google knows about this place. Present whenever the
    *  reveal's footer is, including when we know nothing — that is when it matters most. */
   moreUrl?: string;
@@ -3229,6 +3298,16 @@ function PlaceRow({
   const isHard = usage.pin.commitment === 'hard';
   const isPureIdea = usage.isMaybe && !usage.isScheduled;
   const dirUrl = mapsDirectionsUrl(place);
+  // The hero's bytes, only while expanded — and through the same failable-image hook the badge
+  // uses, so a blob a refresh replaced degrades to no picture rather than to a broken one.
+  const { src: heroUrl, onError: heroFailed } = useFailableImage(
+    expanded && image ? apiAssetUrl(image.url) : undefined,
+  );
+  // **Is there a room to open?** A place we know nothing about must not offer the way in
+  // (ADR-0109 §7) — its way to more is `עוד בגוגל`. An image with no summary still counts: the
+  // hero is exactly what expanding would show, and without this the picture would be
+  // unreachable on that place.
+  const canExpand = !!image || !!summary;
   // What the meta line says, in priority order (ADR-0109 §1): what happens here,
   // else the address, else the category. The address is the fallback rather than the
   // headline — on a scheduled row it says nothing about why the place is on the list.
@@ -3428,16 +3507,58 @@ function PlaceRow({
           §9's arithmetic is why it can be here at all: hours ride the meta line at 0px, so the
           64px this costs is paid for rather than added. Absent — not empty — when we know
           nothing, which is the common case (ADR-0109 §7). */}
-      {summary && (
-        <span className="map-sum">
+      {/* **THE HERO, and it is the way to the full picture** (ADR-0167 §11.1 + §10.2). Only on the
+          expanded card: 132px of photograph on a place you have already committed to is the least
+          valuable block on a capped card (§9.4), and the badge already carries the picture at zero
+          cost. A button rather than a tappable div, so it is reachable and named — the image
+          itself says nothing. */}
+      {expanded && heroUrl && (
+        <button
+          type="button"
+          className="map-hero"
+          aria-label={t.map.know.fullPicture}
+          onClick={(e) => {
+            e.stopPropagation();
+            onFullPicture?.();
+          }}
+        >
+          <img src={heroUrl} alt="" loading="lazy" decoding="async" onError={heroFailed} />
+        </button>
+      )}
+      {/* **The credit, which licensing requires and §4 placed here** — under the picture, never
+          over it: an overlay fights whatever is behind it and has to be re-solved for dark mode.
+          It stays RTL and isolates its own Latin run (`placeCredit`), which is the half of
+          ADR-0118 that its lint guard cannot see (§8.2). */}
+      {expanded && heroUrl && image && <span className="map-credit">{placeCredit(image)}</span>}
+      {canExpand && (
+        <span className={expanded ? 'map-sum is-open' : 'map-sum'}>
           {/* Inline before the prose and a SIBLING of it, not inside it: `dir="auto"` sniffs the
               first strong character, so a Hebrew chip inside the prose element would make an
               English extract read as RTL — and the clamp needs an element whose content is
               text, since `-webkit-box` lays element children out as boxes. */}
-          {summary.marker && <span className="map-tag map-sum-lang">{summary.marker}</span>}
-          <span className="map-sum-t" dir="auto" lang={summary.lang}>
-            {summary.text}
-          </span>
+          {summary?.marker && <span className="map-tag map-sum-lang">{summary.marker}</span>}
+          {summary && (
+            <span className="map-sum-t" dir="auto" lang={summary.lang}>
+              {summary.text}
+            </span>
+          )}
+          {/* **The way in to the mode change**, and it is offered only when there is more to
+              show. The clamp above hides text by design, so without this the rest of a summary
+              would be unreachable — which is why it sits inside the block rather than in the
+              footer with the verbs. */}
+          {!expanded && onExpand && canExpand && (
+            <button
+              type="button"
+              className="map-know-more"
+              onClick={(e) => {
+                e.stopPropagation();
+                onExpand();
+              }}
+            >
+              {t.map.know.more}
+              <Icon name="caret" dir="left" />
+            </button>
+          )}
         </span>
       )}
       {/* **WHAT WE KNOW ABOUT THIS PLACE, between the facts and the verbs.** The order is
@@ -3445,10 +3566,10 @@ function PlaceRow({
           under the schedule footer, would put content below a primary action, which is the
           one arrangement no surface here uses. A full-width line in a row that has wrapped
           one of those since it shipped (`.map-refs`), so it needs one declaration. */}
-      {notesSlot}
+      {!expanded && notesSlot}
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is
           also why the meta line's own 11.5px tags are not the link. */}
-      {refs && refs.length > 0 && (
+      {!expanded && refs && refs.length > 0 && (
         <span className="map-refs">
           {refs.map((ref) => (
             /* THE ROW IS A CONTAINER, not the button it used to be (ADR-0139 §3). Buttons do
@@ -3490,7 +3611,37 @@ function PlaceRow({
           offers it too (it used to render only inside a non-empty `.map-refs`, which is
           precisely the place most likely to want scheduling). And in the bounded card it is
           what the grid can PIN: a foot inside a scrolling block cannot stay in view. */}
-      {(onSchedule || onDelete || moreUrl) && (
+      {/* **The way back, beside the one Google exit** (ADR-0167 §11.1's `.backrow`). It replaces the
+          footer rather than joining it: while you are looking at the place as a SUBJECT, the
+          schedule action and the delete are not on screen — that is what makes this a mode change
+          rather than a taller card. */}
+      {expanded && (
+        <span className="map-refs-foot map-backrow">
+          <button
+            type="button"
+            className="map-know-more"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCollapse?.();
+            }}
+          >
+            <Icon name="caret" dir="right" />
+            {t.map.know.back}
+          </button>
+          {moreUrl && (
+            <a
+              className="map-gbtn"
+              href={moreUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {t.map.know.moreOnGoogle}
+            </a>
+          )}
+        </span>
+      )}
+      {!expanded && (onSchedule || onDelete || moreUrl) && (
         <span className="map-refs-foot">
           {onSchedule && (
             <button

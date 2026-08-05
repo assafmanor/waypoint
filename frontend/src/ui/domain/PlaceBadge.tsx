@@ -37,8 +37,9 @@
 // Presentational: the host's own badge class in, one handler. The one piece of state is
 // whether the photo failed to load, which is a fact about this render and nothing else — see
 // `photoUrl`.
-import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../Icon';
+import { useFailableImage } from '../../lib/useFailableImage';
 import { t } from '../../i18n/he';
 import './place-badge.css';
 
@@ -73,12 +74,11 @@ export function PlaceBadge({
   photoUrl?: string;
 }) {
   // A blob a refresh replaced is a 404 (its URL is immutable, so it can never come back), and
-  // the no-image state has to be what that degrades to — otherwise the badge shows the
-  // browser's broken-image mark inside a 40px square. Keyed off the URL so a new photo gets a
-  // fresh chance rather than inheriting the last one's failure.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  useEffect(() => setFailedUrl(null), [photoUrl]);
-  const photo = photoUrl && photoUrl !== failedUrl ? photoUrl : undefined;
+  // the no-image state has to be what that degrades to — otherwise the badge shows the browser's
+  // broken-image mark inside a 40px square. `useFailableImage` owns that, because the hero on
+  // the expanded card needs the same answer (root rule 8) — including the part that is easy to
+  // lose: a REPLACEMENT gets a fresh chance rather than inheriting the last one's failure.
+  const { src: photo, onError } = useFailableImage(photoUrl);
 
   // The photo clips on an INNER element and the badge itself keeps no `overflow` (§11.2): this
   // badge hosts children that deliberately overhang it — the order counter at its corner, the
@@ -87,13 +87,7 @@ export function PlaceBadge({
   const frame = photo ? (
     <>
       <span className="wp-placebadge-photo" aria-hidden="true">
-        <img
-          src={photo}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailedUrl(photo)}
-        />
+        <img src={photo} alt="" loading="lazy" decoding="async" onError={onError} />
       </span>
       {/* Outside the clip and above the image — see the CSS. The badge's own two
           pseudo-elements are already the order counter and the hit area, which is why v2's

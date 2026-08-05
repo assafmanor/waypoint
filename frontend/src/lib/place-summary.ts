@@ -1,4 +1,10 @@
-// **Which summary a reader sees, and whether it has to be marked** (ADR-0167 §5).
+// **How an enrichment value reads** — the display answers for what the pipe delivers (ADR-0167).
+//
+// Two of them so far, and they belong together because both are "the stored value is not what
+// you render": the summary needs a language chosen and marked (§5), and the credit needs its
+// Latin run isolated inside an RTL line (§4/§8.2).
+//
+// ── the summary ────────────────────────────────────────────────────────────────────────────
 //
 // The resolution itself is `@waypoint/shared`'s (`resolveTextVariant` over
 // `SUMMARY_LANG_PREFERENCE`) because the variants map and its `he` → `en` fallback are the
@@ -12,8 +18,11 @@ import {
   SUMMARY_LANG_PREFERENCE,
   resolveTextVariant,
   type DeliveredEnrichmentFields,
+  type DeliveredImageValue,
 } from '@waypoint/shared';
 import { t } from '../i18n/he';
+import { DOT_SEPARATOR } from '../constants';
+import { ltrIsolate } from './bidi';
 
 /** The prose to render, plus the one word that names its language when it is not ours. */
 export interface PlaceSummary {
@@ -41,4 +50,30 @@ export function placeSummary(fields?: DeliveredEnrichmentFields): PlaceSummary |
     lang: variant.lang,
     marker: t.map.know.langMarker[variant.lang],
   };
+}
+
+/* ── the credit ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * **Photographer · license, as one RTL-safe line** (ADR-0167 §4).
+ *
+ * Two rules, both of which have already cost something:
+ *
+ *  - **The license string is rendered verbatim.** Nine distinct strings appeared across 32 files
+ *    (`CC BY-SA 3.0 de`, `CC BY-SA 2.5`, CC0, PD…), which is why ADR-0166 §4 stores the string
+ *    rather than an enum and why nothing here maps it to a label.
+ *  - **The Latin run is isolated, and the element stays RTL** (§8.2). `dir="auto"` on a Latin
+ *    credit turns the WHOLE element left-to-right: correct internal order, then aligned to the
+ *    opposite edge from every other line on the card, visually detached from the image it
+ *    credits. That is the mirror image of the bug ADR-0118 was written for, and its lint guard
+ *    cannot see it — the guard reads `dir` attributes, and here the defect is a missing isolate.
+ *
+ * Absent attribution is normal, not an error: 5 of 32 files owe no credit at all, and the
+ * license alone is then the whole line.
+ */
+export function placeCredit(image: DeliveredImageValue): string {
+  const license = ltrIsolate(image.license);
+  return image.attribution
+    ? `${ltrIsolate(image.attribution)} ${DOT_SEPARATOR} ${license}`
+    : license;
 }

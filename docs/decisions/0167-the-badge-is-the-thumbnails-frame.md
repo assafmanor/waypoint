@@ -1,6 +1,6 @@
 # 0167 — The badge is the thumbnail's frame, and selection is where a place says more
 
-**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **§1, §2, §5, §6 and §9.3 are built** — see §12 and §13; the expanded/research card, §10–§11, is not.) **AMENDED FIVE TIMES — read §11 first: it supersedes §10, and §9 supersedes §3 for a committed place. §12–§13 record what the build measured, including where §1's row numbers came from and the attribution gap §4 is currently resting on.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
+**Status:** Accepted, and **BUILT** (design; owner sign-off 2026-08-05 on three forks; §1–§11 shipped across build-plan Phases 4–6). **AMENDED SIX TIMES — read §11 first: it supersedes §10, and §9 supersedes §3 for a committed place. §12–§14 record what the build measured** — where §1's row numbers came from, the attribution gap §4 was resting on (now closed), and the two parts of this ADR that were dead by the time it was built. Hours (§7, §9.2) are the one section still unbuilt, blocked on ADR-0166's OSM provider. The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
 **Date:** 2026-08-05
 
 **Design reference:** [`mockups/place-enrichment-v1.html`](../../mockups/place-enrichment-v1.html) — rendered and measured in Chromium at 390×844 (DPR 2), in both themes. Every place name, summary, credit, opening-hours string and aspect ratio in it is real data from the [coverage spike](../planning/2026-08-04-session-213-place-enrichment-coverage-spike.md); **the photographs are synthetic** (see §8).
@@ -164,6 +164,18 @@ So the photo clips on an **inner element** and the badge stays unclipped. The ge
 **§5's marker is a sibling of the prose, not inline inside it.** Either reason settles it alone: `dir="auto"` sniffs the first strong character, so a Hebrew chip inside the prose element lays an English extract out RTL — the inversion §5 exists to prevent; and the two-line clamp needs `display: -webkit-box`, which lays element children out as boxes, so the chip would eat one of the two lines.
 
 **And the attribution gap this ADR opened: §4's argument for a credit-free badge is not true yet.** §4 permits the 40px badge to carry no credit because _"the badge leads to the card, one tap away, where the credit is"_ — and §9.3/§10.3 then moved the credit to the **expanded** card, which §11.1 made a mode change that is Phase 6's. So from Phase 4 until Phase 6 the app renders CC BY-SA photographs and prose with **no attribution anywhere**, against 84% of measured files requiring visible credit. Nothing here is wrong on its own; the three amendments moved the credit without re-checking what §4 was resting on. Phase 6 closes it, and this is the reason it is the next phase rather than a later one.
+
+### 14. Amendment (2026-08-05, seventh) — the card is built, and two things in this ADR were dead by the time it was
+
+§10–§11 are **built** ([session note](../planning/2026-08-05-place-enrichment-phase-6-built.md)). Three notes for whoever reads this ADR next.
+
+**§10's credit-line entry point was already retired, and the mockup proves it twice.** §11.1 says so in words, and `mockups/place-enrichment-v2.html` says so in code: its `.creditrow` and `.full` rules exist in the stylesheet and **no markup uses them**. Building `⤢ תמונה מלאה` from §10.3 would have shipped a control this ADR had withdrawn. The hero is the way to the picture.
+
+**The expanded card needs its own grid, which §11 did not anticipate.** The collapsed card's grid is selected by `:has(.note-sec)`, and the mode change stops rendering the notes — so every block would be unplaced. It gets a `:has(.map-hero)` shape whose flexible track is the **summary**, the one thing that can grow without bound in that state, exactly as the note list is in the other.
+
+**The expansion owes the back stack a layer**, and nothing in §11 says so. It is a state a mounted screen enters and leaves, with a visible way out, which is the case `frontend/CLAUDE.md` names — so back peels expansion → selection → tab. Worth adding here because the next surface built as "a mode of an existing screen" inherits the same obligation and the ADR that designs it will be as silent about it as this one was.
+
+**And the attribution gap §13 recorded is closed by this phase**, which was the reason it went next.
 
 ## What this does not settle
 

@@ -1,6 +1,6 @@
 # Place enrichment — build plan
 
-**Frame:** [ADR-0166](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md) (the pipe, §11–§13 amendments) + [ADR-0167](../decisions/0167-the-badge-is-the-thumbnails-frame.md) (the surface, §9–§11 amendments). Design reference [`mockups/place-enrichment-v2.html`](../../mockups/place-enrichment-v2.html). Nothing here is built yet.
+**Frame:** [ADR-0166](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md) (the pipe, §11–§13 amendments) + [ADR-0167](../decisions/0167-the-badge-is-the-thumbnails-frame.md) (the surface, §9–§11 amendments). Design reference [`mockups/place-enrichment-v2.html`](../../mockups/place-enrichment-v2.html). **All six phases are built** (2026-08-05) except hours, which is blocked on ADR-0166's OSM provider — each phase's own note is linked below it.
 
 **Read the amendments, not just the decisions.** Both ADRs were amended the same day they were written, and in each case the amendment reverses something the original said. ADR-0167 §11 supersedes §10; §9 supersedes §3 for a committed place. Building from §3 would build the wrong card.
 
@@ -68,6 +68,10 @@
 - **One presentation, not two.** The research card and the expanded card are the same component in the same state; the collapsed card is a collapse of it.
 - The hero opens the **full-screen zoomable preview** (ADR-0062 permits zoom exactly there).
 - **Ask before touching `DocumentViewer`** (ADR-0096): it is document-shaped (`doc: DocumentSummary`). Generalizing it may be a small extraction or a real refactor — look, then ask, rather than widening it silently or adding a second viewer beside it.
+
+**Built 2026-08-05** ([session note](2026-08-05-place-enrichment-phase-6-built.md)). The `DocumentViewer` question was asked and answered: a **small extraction** (four of 381 lines were document-shaped), approved, so `MediaViewer` now takes a discriminated source and `DocumentViewer` is a thin adapter over it. Three things the phase found: **§10.3's `⤢ תמונה מלאה` must NOT be built** — §11.1 retired it and the mockup's `.creditrow`/`.full` are dead CSS proving it; the expanded card needs **its own grid** because `:has(.note-sec)` stops matching once the notes are not rendered; and the expansion **owes the back stack a layer**, which no section of ADR-0167 says. Hours are still blocked upstream, so §9.2's tag and §7's "as of" remain unbuilt — the card now has the room the ADR promised them.
+
+**The whole build plan is now built, except hours.** What remains is not a phase: the device pass, and the recorded-not-built pre-save enrichment that would make the research card serve a place you have not added yet (which is what ADR-0167 §9.1 designed it for).
 
 ## Amendment (2026-08-05) — the phase this plan forgot: **the trigger**
 

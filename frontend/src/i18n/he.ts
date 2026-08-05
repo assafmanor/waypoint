@@ -398,6 +398,19 @@ export const t = {
       // ADR-0121 §8 refused, and the row's one Google exit stays `נווט`. This one answers
       // *what does Google know*, which our map does not.
       moreOnGoogle: 'עוד בגוגל',
+      // **Expanding is a MODE CHANGE, not growth** (ADR-0167 §11.1): the card becomes the one an
+      // un-added research place gets — picture, whole summary, credit — and the notes, the
+      // references and the schedule action are not on screen at the same time. So the way back
+      // says where it goes, in the app's own words for that surface, rather than `סגירה`.
+      // No caret in the string: the app renders `<Icon name="caret">` at the call site, so the
+      // glyph follows the text direction instead of being frozen into the copy
+      // (design-language.md, and lint-blocked). The mockup drew `›`/`‹` characters; this is the
+      // shipped idiom the refs row already uses.
+      more: 'עוד',
+      back: 'חזרה לפרטי המקום',
+      // The hero opens the full-screen zoomable preview (ADR-0062's one permitted zoom). Named
+      // for what the tap does, since the picture itself carries no label.
+      fullPicture: 'תמונה מלאה',
     },
     // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
     // the sheet, so tapping it is the only way to learn what it is: the tap
