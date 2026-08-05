@@ -1069,6 +1069,10 @@ export function MapView() {
       // word survives the day scope where every other pin's does not (see `transition`).
       const isNext = nextStopId === usage.placeId && !isAsidePin(tier);
       const isNow = nowStopId === usage.placeId && !isAsidePin(tier);
+      // Hoisted for the same reason those two are: the object below reads it once, and a ghost
+      // (which draws no fill) has to be able to opt out without asking the resolver twice.
+      const pinPhoto =
+        tier === PIN_TIER.ghost ? undefined : badgePhoto(place, enrichments[usage.placeId]);
       pinsNow.push({
         placeId: usage.placeId,
         lat: point.lat,
@@ -1076,6 +1080,12 @@ export function MapView() {
         hue: usage.pin.category ? CATEGORY_PIN_HUE[usage.pin.category] : 'leisure',
         // A ghost has no fill for a glyph to sit on, so it carries none.
         glyph: tier === PIN_TIER.ghost ? '' : placeGlyph(place, usage.pin.category),
+        // **THE SAME PHOTOGRAPH THE ROW'S BADGE CARRIES** (ADR-0167 §16, treatment B) — via the
+        // same `badgePhoto`, so §2's "a picked icon beats a fetched photo" cannot hold in the
+        // list and not on the canvas. A ghost draws no fill at all, so it draws no photo either.
+        // Whether it is DRAWN at this stop is CSS's call (a container query on the pane), which
+        // is what keeps a stop change from touching this array.
+        photoUrl: pinPhoto && apiAssetUrl(pinPhoto.url),
         tier,
         // WHICH KIND of behind-you it is (ADR-0117 §1 on the canvas). Derived from the
         // SAME context the tier is, so the grey and the mark can never describe two
@@ -1146,6 +1156,10 @@ export function MapView() {
         p.aside,
         p.match,
         p.order,
+        // In the key because enrichment ARRIVES while the tab is open — over the WS, on a
+        // place you just added (ADR-0166 §17) — and a pin whose photo changed but whose
+        // everything else did not would keep the glyph until something else moved.
+        p.photoUrl,
         // In the key because it is rendered text: a place settled, rescoped or re-edged
         // while the tab is open changes the tag and nothing else about the pin.
         p.transition,
@@ -1312,36 +1326,39 @@ export function MapView() {
     // selected row is centred, since `nearest` would leave a row that is already barely
     // visible exactly where it was.
     if (sheetView === MAP_SHEET_VIEW.map) return;
-    centreSelectedRow.current(placeId, ownedResults.get(placeId));
+    showRowInList.current(placeId, ownedResults.get(placeId), 'center');
   };
 
   /**
-   * **Bring the selected row to the middle of the list.**
+   * **Bring a row into the list's view**, in one of the two modes this screen means by it.
    *
-   * Two callers, and the second is why this is a function rather than the inline block it was:
-   * a pin tap at a list stop (above), and **leaving the map extreme with something already
-   * selected** (the effect below).
+   * Three callers now, which is why it is a function rather than the inline block it started as:
+   * a pin tap at a list stop (`center` — the row may be anywhere), **leaving the map extreme with
+   * something already selected** (`center`, same reason), and **a row that just GREW** — the
+   * expansion — which is `nearest`, because the row is already on screen and the job is only to
+   * bring what appeared below it into view. Shoving a row you are looking at is the failure mode
+   * `center` has there, and it is why ADR-0135 §8 chose `nearest` for the selection reveal.
    *
    * The place's row, WHEREVER it is. Normally that is its trip row; when Google's half is what
    * matched it, the trip list has no row for it and its row is the result row. Two selectors
    * rather than one because the row genuinely moves between two hosts — the same fact the card
    * and the ghost row are both about (ADR-0122 §7).
    *
-   * A ref, not a `useCallback`: this screen re-renders every second and both callers want the
+   * A ref, not a `useCallback`: this screen re-renders every second and every caller wants the
    * latest `sheetRef`, never a closure from an earlier tick (ADR-0121 §4's latest-ref idiom).
    */
-  const centreSelectedRow = useRef<(placeId?: string | null, resultId?: string | null) => void>(
-    () => {},
-  );
-  centreSelectedRow.current = (placeId, resultId) => {
-    // Deferred a frame so a row that has just grown its reveal is measured at its real height,
-    // and so a stop change has committed the sheet's new box before we scroll inside it.
+  const showRowInList = useRef<
+    (placeId?: string | null, resultId?: string | null, block?: ScrollLogicalPosition) => void
+  >(() => {});
+  showRowInList.current = (placeId, resultId, block = 'nearest') => {
+    // Deferred a frame so a row that has just grown is measured at its real height, and so a stop
+    // change has committed the sheet's new box before we scroll inside it.
     requestAnimationFrame(() => {
       const scope = sheetRef.current;
       const row =
         (placeId ? scope?.querySelector(`[data-place="${placeId}"]`) : null) ??
         (resultId ? scope?.querySelector(`[data-result="${resultId}"]`) : null);
-      row?.scrollIntoView({ block: 'center' });
+      row?.scrollIntoView({ block });
     });
   };
 
@@ -1780,6 +1797,23 @@ export function MapView() {
     return { remainsActive: false };
   }, expandedId != null);
 
+  // **AN EXPANDED CARD BRINGS ITS OWN BOTTOM INTO VIEW** (owner, 2026-08-05: _"Still cutoff when
+  // opening to half map half list"_, with the way back and `עוד בגוגל` under the tab bar).
+  //
+  // Expanding adds a 130px hero, a credit and the whole summary — some 300px — to a row inside a
+  // scroller that at `half` is about 380px tall. The reveal on SELECTION already had this problem
+  // and ADR-0135 §8 answered it (`nearest`, deferred a frame, "the action would be the half you
+  // cannot see"); the mode change is a bigger version of the same growth and inherited none of it.
+  //
+  // `nearest` rather than `center`: the row is on screen — you just tapped inside it — so the job
+  // is to bring what appeared BELOW it into view and nothing else. At the `map` stop the expansion
+  // happens on the canvas card, which is not in this scroller at all, so the query finds nothing
+  // and this is a no-op there (the card is bounded and scrolls itself, `map.css`).
+  useEffect(() => {
+    if (!expandedId) return;
+    showRowInList.current(expandedId);
+  }, [expandedId]);
+
   // **LEAVING THE MAP EXTREME BRINGS THE SELECTION WITH YOU** (owner, 2026-08-05, with a
   // screenshot of the selected card opening below the fold).
   //
@@ -1795,7 +1829,7 @@ export function MapView() {
   useEffect(() => {
     if (sheetView === MAP_SHEET_VIEW.map) return;
     if (!selectedId && !selectedResultId) return;
-    centreSelectedRow.current(selectedId, selectedResultId);
+    showRowInList.current(selectedId, selectedResultId, 'center');
     // The STOP is the trigger and the only dep on purpose: a change of SELECTION is `select`'s
     // own job (it centres, or normalises the sheet first), and re-running here on it would
     // scroll the same row twice — the second time with `center`, undoing the `nearest` a row

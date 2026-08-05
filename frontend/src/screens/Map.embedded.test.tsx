@@ -4220,6 +4220,88 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     });
   });
 
+  // **THE PIN CARRIES THE SAME PHOTOGRAPH THE ROW DOES** (ADR-0167 §16, treatment B). The
+  // screen's half of it is which photo each pin gets — the gate that decides whether it is
+  // DRAWN is a container query on the pane, which no unit test can see.
+  describe('the photograph reaches the canvas', () => {
+    const image = {
+      url: '/enrichment/images/enr_pin',
+      mimeType: 'image/jpeg',
+      width: 840,
+      height: 600,
+      sizeBytes: 1000,
+      source: 'commons',
+      license: 'CC BY-SA 4.0',
+      attribution: 'Kakidai',
+      fetchedAt: '2026-08-05T09:00:00Z',
+      confidence: 1,
+      method: 'settled_id',
+      ref: 'Museum.jpg',
+    } as DeliveredImageValue;
+    const pinFor = (placeId: string) =>
+      (paneProps.current.pins as { placeId: string; photoUrl?: string }[]).find(
+        (p) => p.placeId === placeId,
+      );
+
+    it('hands the pin the row’s own photo, origin-prefixed', () => {
+      seed();
+      tripEnrichments = { museum: { image } } as typeof tripEnrichments;
+      render(wrap(<MapView />));
+      expect(pinFor('museum')?.photoUrl).toBe(image.url);
+      // The majority of pins carry none, and are untouched.
+      expect(pinFor('lunch')?.photoUrl).toBeUndefined();
+    });
+
+    // §2 on the canvas: a human's pick wins over a fetched photo, and it has to win on BOTH
+    // surfaces or the same place says two different things about itself.
+    it('gives a picked icon precedence over the photograph, exactly as the badge does', () => {
+      seed();
+      tripPlaces = tripPlaces.map((p) => (p.id === 'museum' ? { ...p, icon: '🗿' } : p));
+      tripEnrichments = { museum: { image } } as typeof tripEnrichments;
+      render(wrap(<MapView />));
+      expect(pinFor('museum')?.photoUrl).toBeUndefined();
+    });
+  });
+
+  // **AN EXPANSION BRINGS ITS OWN BOTTOM INTO VIEW** (owner, 2026-08-05: _"Still cutoff when
+  // opening to half map half list"_). Expanding adds ~300px to a row in a ~380px scroller, so the
+  // way back and `עוד בגוגל` opened under the tab bar — the same failure ADR-0135 §8 fixed for the
+  // selection reveal, which the mode change inherited none of.
+  describe('the expanded card is not left below the fold', () => {
+    it('scrolls the row it just grew into view, with nearest', async () => {
+      seed();
+      tripEnrichments = {
+        museum: {
+          summary: {
+            en: {
+              value: 'A museum in Bloomsbury, London.',
+              lang: 'en',
+              source: 'wikipedia',
+              license: 'CC BY-SA 4.0',
+              fetchedAt: '2026-07-19T09:00:00Z',
+              confidence: 1,
+              method: 'settled_id',
+              ref: 'Q6373',
+            },
+          },
+        },
+      } as typeof tripEnrichments;
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+      await nextFrame();
+      scrollIntoView.mockClear();
+
+      fireEvent.click(screen.getByRole('button', { name: t.map.know.more }));
+      await nextFrame();
+
+      // `nearest`, not `center`: the row is on screen already, so the job is what grew below it —
+      // `center` would shove a row you are looking at.
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      const target = scrollIntoView.mock.instances.at(-1) as HTMLElement;
+      expect(target.getAttribute('data-place')).toBe('museum');
+    });
+  });
+
   // **LEAVING THE MAP EXTREME BRINGS THE SELECTION WITH YOU** (owner, 2026-08-05, with a
   // screenshot of the selected card opening below the fold). A selection made at `map` cannot
   // scroll anything — there is no list on screen, which is why `select` returns early there — so

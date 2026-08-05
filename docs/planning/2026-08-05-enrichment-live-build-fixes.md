@@ -4,6 +4,7 @@
 **Scope:** [ADR-0167 §16](../decisions/0167-the-badge-is-the-thumbnails-frame.md) (all four reports), [ADR-0166 §17](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md) (the delivery hole behind report 1).
 **Follows:** [before-you-save](2026-08-05-place-enrichment-before-you-save.md), merged, and then used on a device.
 **Owner's report:** _"Merged, working. for issues: 1. An enriched search result is saved to the shelf, and it doesn't retain the enrichment. Not even after waiting. 2. Going from map to list (or half view) doesn't scroll to the details. 3. I would like clicking on the summary to also expand, not only when clicking on עוד. 4. Map pins should also show the thumbnail (think how to do this aesthetically)."_
+**And two more, on the same surface, an hour later:** _"1. The text חזרה לפרטי המקום isn't line aligned correctly. 2. Still cutoff when opening to half map half list."_ — §5 and §6 below.
 
 ## 1. The place lost what we already knew about it
 
@@ -31,7 +32,7 @@ The clamped text is what you are trying to read, so tapping it is the way in. `�
 
 Only the collapsed density opens: the expanded card is already open, and the deciding card has nothing to swap off.
 
-## 4. A photograph on the pin — measured, not built
+## 4. A photograph on the pin — measured, then built
 
 §1 put the photograph in the badge, and ADR-0109 §3 calls the pin "the badge on the canvas", so this is the same decision one surface over. It is also the one report with a taste component, so it got a mockup rather than a commit: [`mockups/place-pin-thumbnail-v1.html`](../../mockups/place-pin-thumbnail-v1.html), against the app's **real** pin CSS.
 
@@ -51,13 +52,35 @@ Only the collapsed density opens: the expanded card is already open, and the dec
 - **A 45°-rotated element's client rect is its bounding box** — √2 too big. The first pass reported A as buying 28px where it buys 21px, which is the difference between "small" and "a texture". Measure `offsetWidth`.
 - **A board mixing 34px and 56px pins is a state the app cannot be in.** Size is per-stop, not per-pin, so the gate is a property of the canvas — drawing it per-pin made B look like a different feature than it is.
 
+## 5. The way back was 14px above its own line
+
+`.map-know-more` carries `align-self: flex-start`, and that is correct for its **first** host: inside `.map-sum` it sits beside baseline-aligned prose and has to hug the first line, or it drifts down a two-line block. Its second host is `.map-backrow`, where its neighbour is a 30px pill — so the same declaration pushed it **14px above the line**, which is what the owner saw.
+
+`frontend/CLAUDE.md` names this exact shape ("reusing a component onto a surface unlike the ones it grew up on, and inheriting its DEFAULTS with it"), and the fix it prescribes is to answer the default at the new host rather than to restyle the control: `.map-backrow .map-know-more { align-self: center }`.
+
+**Measured in a browser, and the measurement was checked against the defect**: 14px apart before, ≤1px after. jsdom cannot see this — it is two boxes' centres — so the assertion lives in `e2e/place-know.spec.ts`, and it was run against the reverted CSS to confirm it fails there.
+
+## 6. The expansion still opened below the fold
+
+Report 2's first round fixed the **stop change**; this is the other half of the same problem and it was still open. Expanding adds a 130px hero, a credit and the whole summary — some 300px — to a row inside a scroller that at `half` is about 380px tall, so the way back and `עוד בגוגל` opened under the tab bar (the owner's screenshot).
+
+The selection reveal already had this problem and [ADR-0135](../decisions/0135-a-place-becomes-an-event-or-a-booking.md) §8 answered it — `nearest`, deferred a frame, because _"the action would be the half you cannot see"_. The mode change is a bigger version of the same growth and inherited none of it. So the scroll helper now takes its **block mode** as a parameter and has three callers: `center` for a pin tap and for the stop change (the row may be anywhere), `nearest` for a row that just grew (it is already on screen; only what appeared below it needs bringing in).
+
+At the `map` stop this is a no-op by construction: the expansion happens on the canvas card, which is not in the sheet's scroller at all — and that card is bounded and scrolls itself (the `:has(.map-hero)` rules).
+
 ## Where the tests are
 
 - `enrichment.service.spec.ts` (+1) — a pass that fetches nothing still nudges the trips that hold the place, carrying the client read model. It is the one test here that needs a real `Place` row, because the store has no `tripId` (§1) and the fan-out is the only thing that can be observed.
 - `PlaceKnowledge.test.tsx` (+2) — the block opens the card and does not also fire the row's tap; the two densities with nowhere to go stay inert.
-- `Map.embedded.test.tsx` (+2) — the stop change centres the selected row, and scrolls nothing when there is no selection.
+- `Map.embedded.test.tsx` (+5) — the stop change centres the selected row and scrolls nothing without a selection; an expansion scrolls its own row with `nearest`; and the pin gets the row's photo, with a picked icon still winning (§2 on the canvas).
+- `MapPane.test.tsx` (+1) — the photograph's markup: clipped by an inner element (`.pin-b` must stay unclipped or the counter is cut), decorative, and the glyph left in the DOM for CSS to swap.
+- `e2e/place-know.spec.ts` (+1) — the way back centred against the Google exit, **verified against the reverted CSS**: 14px apart before, ≤1px after.
 
 ## Still open
 
-- **Report 4's build** follows on the owner's pick of B — the mockup and the ADR carry the decision, the code does not yet.
+- **Report 4 shipped after the fixes merged**, so it is a second change rather than part of this one: `MapPin.photoUrl` (from the
+  same `badgePhoto` the badge uses), the photo clipped inside `.pin-b` by an inner element, the hue moving from fill to ring, and the
+  gate as a `@container (min-height: 436px)` query — 48px of pin. Dropped at the **dot** tier for the same reason the glyph is.
+  **The one thing no test can reach**: the gate is a container query and a rendered canvas needs a Maps key, so what is asserted is
+  the markup and the resolution, and 35px legibility is the device pass.
 - **The device pass** still owes the one question no mockup can answer: whether a real Commons photograph reads at 40px in the list — and now at 35px on a pin.

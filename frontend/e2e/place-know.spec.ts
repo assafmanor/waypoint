@@ -363,6 +363,31 @@ test.describe('the research card @390', () => {
     expect(edges.fromLeft).toBeLessThan(20);
   });
 
+  // **THE WAY BACK SITS ON ITS ROW'S LINE** (owner, 2026-08-05: _"the text חזרה לפרטי המקום isn't
+  // line aligned correctly"_). `.map-know-more` carries `align-self: flex-start` for its FIRST
+  // host — inside `.map-sum` it hugs the first line of baseline-aligned prose — and in this row its
+  // neighbour is a 30px pill, so the same declaration pushed it ~10px above the line. jsdom cannot
+  // see it: this is two boxes' centres, which is why it is measured here.
+  test('centres the way back against the Google exit beside it', async ({ page }) => {
+    await selectKnown(page);
+    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    const m = await page.evaluate(() => {
+      const row = document.querySelector('.map-list .place.selected') as HTMLElement;
+      const foot = row.querySelector('.map-backrow') as HTMLElement;
+      const back = foot.querySelector('.map-know-more') as HTMLElement;
+      const google = foot.querySelector('.map-gbtn') as HTMLElement;
+      const mid = (el: HTMLElement) => {
+        const r = el.getBoundingClientRect();
+        return Math.round(r.top + r.height / 2);
+      };
+      return { back: mid(back), google: mid(google), footH: Math.round(foot.offsetHeight) };
+    });
+    // Two controls, one line: their centres agree to within a pixel of rounding.
+    expect(Math.abs(m.back - m.google)).toBeLessThanOrEqual(1);
+    // And the row did not grow to accommodate a second line while doing it.
+    expect(m.footH).toBeLessThan(60);
+  });
+
   test('comes back to the itinerary detail', async ({ page }) => {
     await selectKnown(page);
     await page.getByRole('button', { name: 'עוד', exact: true }).click();

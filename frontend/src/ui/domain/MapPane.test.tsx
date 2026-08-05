@@ -338,6 +338,36 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
 
   // All-days numbers nothing at all (§6), so the badge exists there PURELY for the
   // outcome — which is what stops the mark riding on the number's presence.
+  // **THE PHOTOGRAPH ON THE PIN** (ADR-0167 §16, treatment B). What this suite owns is the
+  // markup — the two traps it has to avoid are structural, and both cost something once:
+  // the clip is on an INNER element (`.pin-b` carries no `overflow`, because the counter
+  // overhangs it), and the glyph stays in the DOM for CSS to swap. **Whether the photo is
+  // DRAWN is a container query** (`map-pane.css`), so jsdom cannot see it and neither can the
+  // hermetic e2e, which has no Maps key: that half is the mockup's measurement and a device
+  // pass (ADR-0167 §16).
+  it('fills the pin with the photograph it is given, clipped inside the head', () => {
+    paint({
+      pins: [
+        pin({ placeId: 'tower', glyph: '🏛️', photoUrl: '/enrichment/images/enr_1', order: 2 }),
+        pin({ placeId: 'ramen', glyph: '🍜' }),
+      ],
+    });
+    const head = document.querySelector('[aria-label^="tower"] .pin-b')!;
+    const photo = head.querySelector('.pin-photo')!;
+    expect(photo.querySelector('img')?.getAttribute('src')).toBe('/enrichment/images/enr_1');
+    // Decorative: the pin's accessible name is the place, and the picture adds nothing to it.
+    expect(photo.getAttribute('aria-hidden')).toBe('true');
+    expect(photo.querySelector('img')?.getAttribute('alt')).toBe('');
+    // The clip is the photo's own box — `.pin-b` must stay unclipped or the counter is cut.
+    expect(head.classList.contains('pin-photo')).toBe(false);
+    // The counter is still `.pin-b`'s SIBLING, i.e. still free to overhang it.
+    expect(document.querySelector('[aria-label^="tower"] > .pin-n')?.textContent).toBe('2');
+    // The glyph stays in the markup; the container query hides it where the photo shows.
+    expect(head.querySelector('.pin-g')?.textContent).toBe('🏛️');
+    // The majority of pins have no photograph and are untouched.
+    expect(document.querySelector('[aria-label^="ramen"] .pin-photo')).toBeNull();
+  });
+
   it('draws the badge for an outcome even where nothing is numbered', () => {
     paint({
       pins: [pin({ placeId: 'been', tier: PIN_TIER.behind, glyph: '🍜', outcome: 'done' })],

@@ -120,6 +120,104 @@
   font-size: calc(var(--pin-u) * 0.38);
   line-height: 1;
 }
+
+/* ── THE PHOTOGRAPH ON THE PIN (ADR-0167 §16, treatment B) ────────────────────────────
+   The canvas half of §1: the badge became the thumbnail's frame in the list, and ADR-0109 §3
+   calls the pin "the badge on the canvas". Measured in
+   `mockups/place-pin-thumbnail-v1.html` against these very rules.
+
+   **Clipped by an inner element, never by `.pin-b`.** `.pin-b` carries no `overflow` on
+   purpose — the order counter overhangs it, and clipping the head cuts that counter into a
+   quarter-circle (§11.2's trap, which cost a release once). So the clip lives here.
+
+   **Counter-rotated and over-sized**, because the head is rotated 45° to point its tip at the
+   coordinate: an un-rotated photo shows the rotation's corners inside the head, and a photo at
+   100% leaves them empty. √2 (141%) is the smallest square that still covers a box rotated
+   45°, plus a hair. */
+.map-pin .pin-photo {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  /* Behind the counter and any outcome mark, which are `.pin-b`'s siblings and children — a
+     photo must not paint over what the pin SAYS. */
+  z-index: 0;
+}
+.map-pin .pin-photo img {
+  display: block;
+  width: 142%;
+  height: 142%;
+  margin: -21%;
+  transform: rotate(-45deg);
+  object-fit: cover;
+}
+
+/* **THE GATE, and it is a container query rather than a prop** (ADR-0167 §16's owner call:
+   treatment B). Pin size is a share of the canvas — `clamp(34px, 11cqh, 56px)`, ADR-0123 — so
+   whether a photograph can be READ is a fact about the canvas's height, which the pane already
+   publishes as a container. Consequences worth having: a stop change draws or drops every
+   photo with no re-render, no new `MapPane` prop, and no marker re-diff (ADR-0121 §4), and the
+   rule sits next to the pin's own sizing where the next person will look for it.
+
+   **436px is 48px of pin** (48 / 0.11), and 48px is where the head clears ~30px of picture. At
+   `half` on a phone the canvas is ~300px → a 34px pin → 21px of photo, which the mockup
+   measured as a texture rather than a subject: there the category glyph says more, so it keeps
+   the strip. Below this the photo is not rendered at all rather than faded, for the reason
+   ADR-0109 §7 gives everywhere else — we do not show a worse version of what we have.
+
+   This is the canvas's second content-by-size rule, not its first: every pin already degrades
+   to a dot below `MAP_ZOOM.DOT_BELOW`. "The pin says less when it is smaller" is grammar this
+   surface had before the photograph arrived. */
+.map-pin .pin-photo {
+  display: none;
+}
+@container (min-height: 436px) {
+  .map-pin .pin-photo {
+    display: block;
+  }
+  /* The hue moves from FILL to RING, exactly as the list badge's did (§1) — so a photographed
+     pin still says which kind of place it is, and no hue leaves ADR-0028's budget. The white
+     `--card` border stays where it is: it is what keeps a pin legible against a map, and it is
+     the same 0.06 ratio at every size (ADR-0123). */
+  .map-pin:has(> .pin-b > .pin-photo) .pin-b {
+    background: var(--card);
+    box-shadow:
+      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-leisure),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+  .map-pin.cat-food:has(> .pin-b > .pin-photo) .pin-b {
+    box-shadow:
+      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-food),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+  .map-pin.cat-lodging:has(> .pin-b > .pin-photo) .pin-b {
+    box-shadow:
+      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-lodging),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+  .map-pin.cat-transit:has(> .pin-b > .pin-photo) .pin-b {
+    box-shadow:
+      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-transit),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+  .map-pin.cat-services:has(> .pin-b > .pin-photo) .pin-b {
+    box-shadow:
+      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-services),
+      0 2px 5px rgba(22, 35, 61, 0.34);
+  }
+  /* The glyph goes where the photograph is: it is the same slot, and the picture IS the
+     answer the glyph was standing in for. An outcome mark is NOT dropped — `.pin-g.outcome`
+     is a claim about what happened here, which no photograph makes. */
+  .map-pin:has(> .pin-b > .pin-photo) .pin-b > .pin-g:not(.outcome) {
+    display: none;
+  }
+}
+/* A DOT carries no photograph. Below `MAP_ZOOM.DOT_BELOW` the pin is a 14px point that claims
+   position and nothing else (ADR-0128), and a picture at that size is noise with a border —
+   the same judgement the dot tier already made about the glyph and the numeral. */
+.map-pane[data-pins='dot'] .map-pin .pin-photo {
+  display: none;
+}
 /* The same five hues, same names as `.map-badge.cat-*`. */
 .map-pin.cat-food .pin-b {
   background: var(--cat-food);
