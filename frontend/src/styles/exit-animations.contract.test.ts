@@ -63,18 +63,85 @@ describe('exit animations', () => {
 
   // A hand-written `-out` pair is the cost of the rule above, and a typo in one is a
   // channel that silently does not animate — the same symptom, a different cause.
+  //
+  // **It resolves one level of `var()`, and that is the interesting half now.** Two rules in
+  // this app reach their keyframes through a custom property rather than naming them inline:
+  // the board fills a slot (`--board-beat`) because the Plan→Trip power-on already owns its
+  // `animation` property, and the shared rebuff declares the whole shorthand once
+  // (`--beat-rebuff`) so two surfaces cannot drift (ADR-0160 §Q). An indirection is exactly
+  // where a misspelled name hides best — nothing anywhere fails, the channel just never
+  // animates — so the guard follows it instead of skipping it.
   it('only references keyframes that exist', () => {
     const defined = new Set(
       FILES.flatMap(({ css }) => [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1])),
     );
+    /** Every custom property's declared value, so `var(--x)` inside an `animation` can be
+     *  resolved to whatever `--x` was set to. Last declaration wins, which is close enough:
+     *  what matters is that SOME rule declares a name, since a name nothing declares is the
+     *  bug this looks for. */
+    const customProps = new Map<string, string>(
+      FILES.flatMap(
+        ({ css }) =>
+          [...css.matchAll(/(--[\w-]+)\s*:\s*([^;}]+)/g)].map((m) => [m[1], m[2].trim()]) as [
+            string,
+            string,
+          ][],
+      ),
+    );
+    /** Split on TOP-LEVEL commas only. A naive `split(',')` cuts inside `cubic-bezier(…)`
+     *  and `steps(4, end)`, which is how the first version of this reported `end)` as a
+     *  missing keyframe — a false alarm is as bad as a miss in a guard nobody re-reads. */
+    const slots = (value: string): string[] => {
+      const out: string[] = [];
+      let depth = 0;
+      let current = '';
+      for (const ch of value) {
+        if (ch === '(') depth += 1;
+        if (ch === ')') depth -= 1;
+        if (ch === ',' && depth === 0) {
+          out.push(current);
+          current = '';
+        } else current += ch;
+      }
+      return [...out, current];
+    };
+
+    /** The animation-name candidates in one `animation` shorthand: every slot's leading
+     *  token, with a `var()` slot replaced by what it points at. */
+    const namesIn = (value: string): string[] =>
+      slots(value).flatMap((slot) => {
+        const trimmed = slot.trim();
+        const indirect = trimmed.match(/^var\(\s*(--[\w-]+)\s*(?:,([^)]*))?\)/);
+        if (!indirect) return [trimmed.split(/\s+/)[0] ?? ''];
+        // A `var()` slot contributes its target's leading token, plus its fallback's — the
+        // fallback is what paints when nothing sets the property, so it is also a reference.
+        const target = customProps.get(indirect[1]);
+        return [...(target ? namesIn(target) : []), ...(indirect[2] ? namesIn(indirect[2]) : [])];
+      });
+
     const missing = FILES.flatMap(({ name, css }) =>
-      [...css.matchAll(/animation\s*:\s*([\w-]+)/g)]
-        .map((m) => m[1])
-        // The shorthand may lead with a duration/keyword rather than the name.
-        .filter((token) => !/^(?:none|inherit|initial|unset|\d)/.test(token))
+      [...css.matchAll(/animation\s*:\s*([^;}]+)/g)]
+        .flatMap((m) => namesIn(m[1]))
+        // A slot may lead with a duration/keyword rather than the name.
+        .filter((token) => token && !/^(?:none|inherit|initial|unset|\d|var\()/.test(token))
         .filter((token) => !defined.has(token))
         .map((token) => `${name}: ${token}`),
     );
     expect(missing).toEqual([]);
+  });
+
+  // The guard above is only worth having if it can still fail, and an indirection is where
+  // it would quietly stop being able to: a `var()` it cannot resolve looks exactly like a
+  // clean sheet. So this asserts the resolution itself on the one rule that uses it. That the
+  // beat really RUNS on both surfaces is `e2e/hero-lift.spec.ts`'s job — a real engine is the
+  // only thing that can say so.
+  it('resolves a keyframe reached through a custom property', () => {
+    const beats = FILES.find((f) => f.name === path.join('styles', 'beats.css'));
+    expect(beats, 'the shared beat stylesheet moved — update this check with it').toBeTruthy();
+    // The rebuff names its keyframes once, in a custom property, and plugs that same value
+    // into the board's own animation slot (ADR-0160 §Q).
+    expect(beats!.css).toMatch(/--beat-rebuff\s*:\s*wp-rebuff\b/);
+    expect(beats!.css).toMatch(/animation\s*:\s*var\(\s*--beat-rebuff\s*\)/);
+    expect(beats!.css).toMatch(/@keyframes\s+wp-rebuff\b/);
   });
 });

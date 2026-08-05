@@ -1,0 +1,41 @@
+/* **The rebuff, once** — the CSS counterpart of `lib/one-shot.ts`'s `BEAT.REBUFF`.
+ *
+ * A tap on a surface that opens nothing is answered with a small rise that settles back:
+ * the surface acknowledges the touch and stays where it is. It is deliberately NOT the
+ * lateral shake of `.is-nudging` — that beat means something is WRONG, and pressing
+ * something that was never a control is not an error.
+ *
+ * **It lives here because two surfaces now play it, and they must not drift** (ADR-0160
+ * §Q). Plan's prep hero has had it since §H; the Trip board takes it too now that a press
+ * with nothing to lift is answered rather than swallowed. `screens.css` owned a
+ * `prep-rebuff` copy until this file existed, and a second copy in `board.css` would have
+ * been the shape ADR-0139 exists to warn about — one widget, four axes of silent drift.
+ * The rule `.is-nudging` already sets the precedent for a beat as a surface-agnostic
+ * class; this is the same, plus one plug-in for the one surface that cannot take a plain
+ * `animation` (below).
+ *
+ * The four properties every beat in `lib/one-shot.ts` shares hold here: one shot applied
+ * imperatively, `linear` because the keyframe offset IS the timing, symmetric so no
+ * `--dir`, and the duration from a token so `motionDurationMs` and the CSS cannot
+ * disagree. */
+.is-rebuffing {
+  /* Declared on the element that carries the class, so the plug-in below can reference the
+     same value rather than restating the triple. */
+  --beat-rebuff: wp-rebuff var(--t-base) linear;
+  animation: var(--beat-rebuff);
+}
+
+@keyframes wp-rebuff {
+  40% {
+    transform: translateY(-7px);
+  }
+}
+
+/* **The board plugs the beat into its own channel.** `.app[data-mode='trip'] .wp-board`
+   already owns `animation` for the Plan→Trip power-on, and that selector outranks a single
+   class — which is why `board.css` invented the `--board-beat` slot for the landing beat
+   and why the rule above cannot reach this surface. Same motion, same token, one value:
+   what differs is only where it is plugged in. */
+.wp-board.is-rebuffing {
+  --board-beat: var(--beat-rebuff);
+}

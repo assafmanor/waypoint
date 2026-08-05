@@ -531,6 +531,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               }
             : undefined
         }
+        // **A press with nothing to lift is answered** (ADR-0160 §Q, reversing §A's
+        // silence): the board rises 7px and settles, the same beat Plan's prep hero
+        // plays — one shared rule, not a second copy (`styles/beats.css`). It stays a
+        // `<div>`, so nothing announces a control that cannot open.
+        onRebuff={liftable ? undefined : (el) => playBeat(el, BEAT.REBUFF)}
         clock={formatTime(now, tz)}
         nowIcon={boardNowEvent?.icon}
         nowTitle={
