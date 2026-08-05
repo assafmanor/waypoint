@@ -28,4 +28,13 @@ class TestPointerEvent extends MouseEvent {
 
 window.PointerEvent = TestPointerEvent as unknown as typeof window.PointerEvent;
 
+// The other half of that gap, and it is not cosmetic: a handler that captures the pointer so a
+// gesture survives the finger leaving the element (`MediaViewer`'s pinch) THROWS here, taking
+// the whole handler with it. No-ops rather than a fake capture list — nothing in this app reads
+// the capture back, it only sets it so the browser keeps routing moves to the target.
+const noop = () => {};
+Element.prototype.setPointerCapture ??= noop;
+Element.prototype.releasePointerCapture ??= noop;
+Element.prototype.hasPointerCapture ??= () => false;
+
 export { TestPointerEvent };

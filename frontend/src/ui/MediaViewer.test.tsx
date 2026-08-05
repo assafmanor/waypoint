@@ -9,10 +9,10 @@
 // `styles/exit-animations.contract.test.ts`, which guards the one grammar mistake that
 // silently disables an exit.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import '../test/pointer-events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentViewer, MediaViewer } from './MediaViewer';
 import { wrapNav } from '../test/nav-harness';
-import { t } from '../i18n/he';
 
 vi.mock('../lib/api', () => ({
   fetchDocumentContent: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })),
@@ -45,34 +45,40 @@ afterEach(() => {
   document.documentElement.style.removeProperty('--stagger-step');
 });
 
-/** jsdom has no stylesheet, so `motionDurationMs` reads 0 and every close is
- *  synchronous — the correct default, and what the rest of this file exercises. Make
- *  the tokens readable to reach the ANIMATED branch, which is where the exit's
- *  idempotence guard lives. This is the recipe ADR-0140 §5 describes. */
 /** The ratio the frame is sized from (`screens.css` turns it into the box). jsdom has no
  *  layout, so this property is the whole of what the unit suite can see — the box it produces
  *  is measured in `e2e/media-viewer-fit.spec.ts`. */
 const aspectOf = () =>
   document.querySelector<HTMLElement>('.doc-viewer-body')!.style.getPropertyValue('--dv-aspect');
 
+/** jsdom has no stylesheet, so `motionDurationMs` reads 0 and every close is
+ *  synchronous — the correct default, and what the rest of this file exercises. Make
+ *  the tokens readable to reach the ANIMATED branch, which is where the exit's
+ *  idempotence guard lives. This is the recipe ADR-0140 §5 describes. */
 function withAnimation(ms = 30) {
   document.documentElement.style.setProperty('--t-base', `${ms}ms`);
   document.documentElement.style.setProperty('--stagger-step', '0ms');
 }
 
+const backdrop = () => document.querySelector('.doc-viewer')!;
+
 describe('DocumentViewer — every way out is the same way out', () => {
-  // ADR-0103 §2: a close control, a backdrop tap, Escape and the Android gesture must
-  // run ONE function, or an exit hung on some of them is a surface that snaps half the
-  // time. All three below go through `beginClose`.
-  it('closes from the ✕', () => {
-    const { onClose } = open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+  // ADR-0103 §2: a backdrop tap, Escape and the Android gesture must run ONE function, or an
+  // exit hung on some of them is a surface that snaps half the time. They all go through
+  // `beginClose`.
+  //
+  // **There is no ✕** (owner, 2026-08-05: _"this button is unnecessary"_), which is why the
+  // dismissal these tests drive is the backdrop: the whole screen around the card, and the one
+  // way out that costs the picture nothing.
+  it('has no close control at all', () => {
+    open();
+    expect(document.querySelector('.doc-viewer-close')).toBeNull();
+    expect(document.querySelector('.doc-viewer-head button')).toBeNull();
   });
 
   it('closes from a backdrop tap', () => {
     const { onClose } = open();
-    fireEvent.click(document.querySelector('.doc-viewer')!);
+    fireEvent.click(backdrop());
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -87,7 +93,7 @@ describe('DocumentViewer — every way out is the same way out', () => {
   // still holding focus for as long as that macrotask takes (ADR-0140 §5).
   it('closes synchronously when nothing is animating', () => {
     const { onClose } = open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
+    fireEvent.click(backdrop());
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -97,8 +103,8 @@ describe('DocumentViewer — every way out is the same way out', () => {
   it('ignores a second dismissal while the exit is playing', async () => {
     withAnimation();
     const { onClose } = open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
-    fireEvent.click(document.querySelector('.doc-viewer')!);
+    fireEvent.click(backdrop());
+    fireEvent.click(backdrop());
     // Still on screen: the exit owns the frames between the decision and the unmount.
     expect(onClose).not.toHaveBeenCalled();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
@@ -107,8 +113,8 @@ describe('DocumentViewer — every way out is the same way out', () => {
   it('marks the overlay as closing so the exit keyframes apply', () => {
     withAnimation();
     open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
-    expect(document.querySelector('.doc-viewer')!.classList.contains('is-closing')).toBe(true);
+    fireEvent.click(backdrop());
+    expect(backdrop().classList.contains('is-closing')).toBe(true);
   });
 });
 
@@ -260,9 +266,96 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
 
   // Every way out still runs the one close (ADR-0103 §2) — inherited, not re-implemented, which
   // is the whole argument for reusing this surface.
-  it('still closes from the ✕, like the document path', () => {
+  it('still closes from the backdrop, like the document path', () => {
     const { onClose } = openPhoto();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
+    fireEvent.click(document.querySelector('.doc-viewer')!);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // **THE PINCH LIFTS THE PICTURE OUT OF THE CARD, AND LETS GO OF IT WHEN YOU DO**
+  // (ADR-0062's 2026-08-05 amendment). What is assertable without a layout engine is the whole
+  // of the model: how many fingers make it a gesture, which element leaves the card, what the
+  // copy is transformed to, and when it stops existing. What is NOT is how it LOOKS out there —
+  // that the copy escapes the frame's clip and the card's rounding is geometry, and it is
+  // measured in `e2e/media-viewer-lift.spec.ts`.
+  const pinch = (img: Element, ...pts: { x: number; y: number }[]) =>
+    pts.forEach((p, i) =>
+      fireEvent.pointerDown(img, { pointerId: i + 1, clientX: p.x, clientY: p.y }),
+    );
+  const moveTo = (img: Element, ...pts: { x: number; y: number }[]) =>
+    pts.forEach((p, i) =>
+      fireEvent.pointerMove(img, { pointerId: i + 1, clientX: p.x, clientY: p.y }),
+    );
+  const lifted = () => document.querySelector<HTMLElement>('.doc-viewer-lift');
+
+  // One finger is not a gesture: with no zoom to keep, there is nothing for it to pan and
+  // nothing for a second tap to toggle.
+  it('does nothing under a single finger', () => {
+    openPhoto();
+    pinch(screen.getByAltText('Sensō-ji'), { x: 100, y: 100 });
+    expect(lifted()).toBeNull();
+  });
+
+  it('lifts a copy out of the card on the second finger', () => {
+    openPhoto();
+    const img = screen.getByAltText('Sensō-ji');
+    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
+    const copy = lifted()!;
+    // Out of the card — a sibling of it, in the overlay itself, which is what nothing clips.
+    expect(copy.parentElement!.className).toBe('doc-viewer');
+    expect(copy.getAttribute('src')).toBe('/enrichment/images/enr_1');
+    // A picture of a picture: no alt, hidden from the tree, and the original still labelled.
+    expect(copy.getAttribute('aria-hidden')).toBe('true');
+    expect(copy.getAttribute('alt')).toBe('');
+    // The original goes transparent rather than away — it is still holding the pointer capture
+    // and still has to be hit-testable for the second finger.
+    expect(img.hasAttribute('data-lifted')).toBe(true);
+    expect(document.querySelector('.doc-viewer-lift-scrim')).toBeTruthy();
+  });
+
+  it('scales the copy by the finger-distance ratio', () => {
+    openPhoto();
+    const img = screen.getByAltText('Sensō-ji');
+    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
+    moveTo(img, { x: 50, y: 100 }, { x: 250, y: 100 }); // 100px apart → 200px apart
+    expect(lifted()!.style.transform).toContain('scale(2)');
+  });
+
+  // **The first finger up ends it, not the last** — a gesture that has stopped being a pinch has
+  // stopped being a zoom. With no stylesheet there is no journey home to wait out, so the copy
+  // is gone now (the same ADR-0140 §5 correctness case every close in this file exercises).
+  it('sends the copy home when a finger lifts', () => {
+    openPhoto();
+    const img = screen.getByAltText('Sensō-ji');
+    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
+    moveTo(img, { x: 50, y: 100 }, { x: 250, y: 100 });
+    fireEvent.pointerUp(img, { pointerId: 2 });
+    expect(lifted()).toBeNull();
+    expect(img.hasAttribute('data-lifted')).toBe(false);
+  });
+
+  // With the tokens readable the copy stays for the length of the journey — untransformed, so
+  // the transition has somewhere to go — and only then stops existing.
+  it('keeps the copy for the journey home when there is one to play', async () => {
+    withAnimation();
+    openPhoto();
+    const img = screen.getByAltText('Sensō-ji');
+    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
+    moveTo(img, { x: 50, y: 100 }, { x: 250, y: 100 });
+    fireEvent.pointerUp(img, { pointerId: 2 });
+    const copy = lifted()!;
+    expect(copy.hasAttribute('data-settling')).toBe(true);
+    expect(copy.style.transform).toBe('translate(0px, 0px) scale(1)');
+    await waitFor(() => expect(lifted()).toBeNull());
+  });
+
+  // A cancelled pointer (the OS taking the gesture, a call arriving) is a release like any
+  // other: the one thing that must never happen is a picture stranded out of its card.
+  it('sends the copy home on a cancelled pointer too', () => {
+    openPhoto();
+    const img = screen.getByAltText('Sensō-ji');
+    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
+    fireEvent.pointerCancel(img, { pointerId: 1 });
+    expect(lifted()).toBeNull();
   });
 });

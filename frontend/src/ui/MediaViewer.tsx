@@ -5,7 +5,8 @@
 // image preview … and adds no surface". What it brings, and what a second viewer would have had
 // to re-earn: the portal, the ONE close that back / Escape / the gesture / the backdrop all run
 // through (ADR-0103 §2), the focus trap, the grow-out-of-the-tapped-row arrival, and ADR-0062's
-// **sole** zoom exception — pinch + pan + double-tap reset, hand-rolled, no dependency.
+// **sole** zoom exception — a pinch that lifts the picture out of the card and lets go of it
+// when you do, hand-rolled, no dependency (ADR-0062's 2026-08-05 amendment).
 //
 // Two sources, and they differ only in how the bytes are reached:
 //
@@ -36,6 +37,7 @@ import { fetchDocumentContent } from '../lib/api';
 import { useOverlay } from '../state/nav-state';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useExitTransition } from '../lib/useExitTransition';
+import { motionDurationMs } from '../lib/motion';
 import { Spinner } from './Spinner';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
@@ -85,8 +87,6 @@ function naturalSize(img: HTMLImageElement): IntrinsicSize | null {
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
-const DOUBLE_TAP_MS = 300;
-const DOUBLE_TAP_ZOOM = 2.5;
 
 export interface ZoomTransform {
   scale: number;
@@ -107,7 +107,6 @@ interface Point {
 
 const distance = (a: Point, b: Point): number => Math.hypot(a.x - b.x, a.y - b.y);
 const midpoint = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-const pickTranslate = (t2: ZoomTransform) => ({ tx: t2.tx, ty: t2.ty });
 
 export interface PinchStart {
   dist: number;
@@ -131,138 +130,142 @@ export function pinchTransform(start: PinchStart, curMid: Point, curDist: number
   };
 }
 
-// Zoom to a fixed scale centred on a tapped point (double-tap-to-zoom).
-export function zoomAtPoint(
-  point: Point,
-  origin: Point,
-  from: ZoomTransform,
-  scale: number,
-): ZoomTransform {
-  const focalX = (point.x - origin.x - from.tx) / from.scale;
-  const focalY = (point.y - origin.y - from.ty) / from.scale;
-  return {
-    scale,
-    tx: point.x - origin.x - scale * focalX,
-    ty: point.y - origin.y - scale * focalY,
-  };
+/** Where the picture sits on screen at the moment the pinch starts — the box the lifted copy
+ *  is born at and the box it goes home to. Viewport coordinates, because the copy is `fixed`. */
+export interface LiftRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
-// Imperative pinch/pan/double-tap on the image. State lives in refs and is written
-// straight to element.style so a drag never re-renders React.
+const rectOf = (el: Element): LiftRect => {
+  const r = el.getBoundingClientRect();
+  return { left: r.left, top: r.top, width: r.width, height: r.height };
+};
+
+/** **The pinch lifts the picture OUT of the card, and lets go of it when you do**
+ *  (owner, 2026-08-05: _"the image zooms out of the box and auto resets to the original size
+ *  when lifting the finger"_ — the Instagram gesture).
+ *
+ *  What replaced what, since ADR-0062 §Shipped-as describes the old model: zoom used to be
+ *  **sticky** — pinch to a scale, keep it, pan around inside the frame with one finger,
+ *  double-tap to 2.5× or back to fit. All of it happened *inside* `.doc-viewer-body`, whose
+ *  `overflow: hidden` is what "confined to the box" meant. Now zoom exists only while fingers
+ *  are down, so there is no zoomed state to pan around in, nothing for a double tap to toggle,
+ *  and no clipping to fight: the picture leaves the frame entirely.
+ *
+ *  **Two elements, and which is which matters.** The in-flow `<img>` stays exactly where it is
+ *  and stays the gesture's target — it holds the pointer capture, so every move lands on it
+ *  wherever the fingers travel, and it must remain hit-testable for the SECOND finger, which is
+ *  why it goes transparent rather than hidden. The lifted copy is a sibling of the card inside
+ *  the same portal (so no ancestor clips it, and ADR-0062's global suppressor still sees a
+ *  target inside `.doc-viewer`), is `pointer-events: none`, and is the only thing that scales.
+ *
+ *  React never re-renders during the gesture: the lift is one state change at the pinch, one at
+ *  the release, and every frame between them is written straight to `element.style`. */
 function useImageZoom() {
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const liftRef = useRef<HTMLImageElement | null>(null);
   const transform = useRef<ZoomTransform>({ ...IDENTITY });
   const pointers = useRef(new Map<number, Point>());
   const pinch = useRef<PinchStart | null>(null);
-  const pan = useRef<{ from: Point; tx: number; ty: number } | null>(null);
-  const lastTap = useRef(0);
+  /** The lifted copy's birth box — present exactly while the picture is out of its frame. */
+  const [lift, setLift] = useState<LiftRect | null>(null);
+  /** The copy is on its way home: still mounted, no longer following anything. */
+  const [settling, setSettling] = useState(false);
 
   const apply = useCallback(() => {
-    const img = imgRef.current;
-    if (!img) return;
+    const el = liftRef.current;
+    if (!el) return;
     const { scale, tx, ty } = transform.current;
-    img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-    img.style.cursor = scale > MIN_ZOOM ? 'grab' : 'zoom-in';
+    el.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
   }, []);
 
   const reset = useCallback(() => {
     transform.current = { ...IDENTITY };
-    apply();
-  }, [apply]);
-
-  // The image box's untransformed top-left: the transformed rect left is
-  // origin + tx (scale is about the top-left corner), so origin = rect.left - tx.
-  const originOf = useCallback((): Point => {
-    const rect = imgRef.current!.getBoundingClientRect();
-    return { x: rect.left - transform.current.tx, y: rect.top - transform.current.ty };
+    pinch.current = null;
+    pointers.current.clear();
+    setLift(null);
+    setSettling(false);
   }, []);
 
-  const onPointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLImageElement>) => {
-      const img = imgRef.current;
-      if (!img) return;
-      img.setPointerCapture(e.pointerId);
-      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      const pts = [...pointers.current.values()];
+  // **The release, which is the whole feature.** The copy was born at the picture's own box with
+  // no transform, so going home is just going back to `none` — the CSS transition does the rest.
+  // It stays mounted for the length of that transition and not a frame longer: `motionDurationMs`
+  // answers 0 under reduced motion (and in jsdom), so there the picture is simply back.
+  const settleTimer = useRef(0);
+  const settle = useCallback(() => {
+    pinch.current = null;
+    transform.current = { ...IDENTITY };
+    setSettling(true);
+    apply();
+    const land = () => {
+      setLift(null);
+      setSettling(false);
+    };
+    const ms = motionDurationMs('--t-base');
+    if (ms === 0) land();
+    else settleTimer.current = window.setTimeout(land, ms);
+  }, [apply]);
+  useEffect(() => () => window.clearTimeout(settleTimer.current), []);
 
-      if (pts.length === 2) {
-        pinch.current = {
-          dist: distance(pts[0], pts[1]),
-          mid: midpoint(pts[0], pts[1]),
-          transform: { ...transform.current },
-          origin: originOf(),
-        };
-        pan.current = null;
-        return;
-      }
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLImageElement>) => {
+    const img = imgRef.current;
+    if (!img) return;
+    img.setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = [...pointers.current.values()];
+    // One finger is not a gesture here: with nothing to pan and nothing to toggle, a single
+    // pointer only ever waits for its partner.
+    if (pts.length !== 2) return;
 
-      pan.current = { from: { x: e.clientX, y: e.clientY }, ...pickTranslate(transform.current) };
-
-      // performance.now(): a monotonic input clock, deliberately not the ADR-0026
-      // trip clock — double-tap timing must ignore dev time-travel.
-      const now = performance.now();
-      if (now - lastTap.current < DOUBLE_TAP_MS) {
-        lastTap.current = 0;
-        const point = { x: e.clientX, y: e.clientY };
-        transform.current =
-          transform.current.scale > MIN_ZOOM
-            ? { ...IDENTITY }
-            : zoomAtPoint(point, originOf(), transform.current, DOUBLE_TAP_ZOOM);
-        apply();
-      } else {
-        lastTap.current = now;
-      }
-    },
-    [apply, originOf],
-  );
+    const rect = rectOf(img);
+    // The copy is born at the picture's box with an identity transform, so the pinch's focal
+    // maths reads its origin off that box — the same `transform-origin: 0 0` the CSS declares.
+    pinch.current = {
+      dist: distance(pts[0], pts[1]),
+      mid: midpoint(pts[0], pts[1]),
+      transform: { ...IDENTITY },
+      origin: { x: rect.left, y: rect.top },
+    };
+    transform.current = { ...IDENTITY };
+    setSettling(false);
+    setLift(rect);
+  }, []);
 
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLImageElement>) => {
       if (!pointers.current.has(e.pointerId)) return;
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const pts = [...pointers.current.values()];
-
-      if (pts.length >= 2 && pinch.current) {
-        transform.current = pinchTransform(
-          pinch.current,
-          midpoint(pts[0], pts[1]),
-          distance(pts[0], pts[1]),
-        );
-        apply();
-      } else if (pts.length === 1 && pan.current && transform.current.scale > MIN_ZOOM) {
-        const { from, tx, ty } = pan.current;
-        transform.current = {
-          ...transform.current,
-          tx: tx + (e.clientX - from.x),
-          ty: ty + (e.clientY - from.y),
-        };
-        apply();
-      }
+      if (pts.length < 2 || !pinch.current) return;
+      transform.current = pinchTransform(
+        pinch.current,
+        midpoint(pts[0], pts[1]),
+        distance(pts[0], pts[1]),
+      );
+      apply();
     },
     [apply],
   );
 
+  // **The first finger up ends it**, not the last. Holding one finger down after a pinch used to
+  // mean "keep this zoom and pan it"; there is no such state now, so a gesture that has stopped
+  // being a pinch has stopped being a zoom.
   const onPointerEnd = useCallback(
     (e: ReactPointerEvent<HTMLImageElement>) => {
       pointers.current.delete(e.pointerId);
-      const remaining = [...pointers.current.entries()];
-      if (remaining.length < 2) pinch.current = null;
-      if (remaining.length === 1) {
-        // Rebase the pan so lifting one finger of a pinch doesn't jump the image.
-        const [, pt] = remaining[0];
-        pan.current = { from: pt, ...pickTranslate(transform.current) };
-      }
-      if (remaining.length === 0) {
-        pan.current = null;
-        // A pinch-out that bottomed out at MIN_ZOOM snaps back to a centred fit.
-        if (transform.current.scale <= MIN_ZOOM) reset();
-      }
+      if (pointers.current.size < 2 && pinch.current) settle();
     },
-    [reset],
+    [settle],
   );
 
   return {
     imgRef,
+    liftRef,
+    lift,
+    settling,
     reset,
     handlers: {
       onPointerDown,
@@ -330,7 +333,7 @@ export function MediaViewer({
   // rest). A caller that already knows wins outright — it knows before the bytes — and a
   // document, which cannot know, tells us on load.
   const [loadedSize, setLoadedSize] = useState<IntrinsicSize | null>(null);
-  const { imgRef, reset, handlers } = useImageZoom();
+  const { imgRef, liftRef, lift, settling, reset, handlers } = useImageZoom();
 
   // Pulled out of `source` as primitives so the effect's deps are values rather than an object
   // rebuilt on every render — the same reason `Map.tsx` memoizes what it hands `MapPane`.
@@ -396,7 +399,13 @@ export function MediaViewer({
   const canOpenInTab = isInlineOpenableDocumentMimeType(mimeType);
 
   return createPortal(
-    <div className={closing ? 'doc-viewer is-closing' : 'doc-viewer'} onClick={beginClose}>
+    <div
+      className={closing ? 'doc-viewer is-closing' : 'doc-viewer'}
+      /* The card's furniture stands down while the picture is out of its box — the ✕ over a
+         lifted photograph is chrome on top of the one thing you asked to see. */
+      data-lifted={lift ? '' : undefined}
+      onClick={beginClose}
+    >
       <div
         ref={cardRef}
         tabIndex={-1}
@@ -407,15 +416,12 @@ export function MediaViewer({
         onClick={(e) => e.stopPropagation()}
         style={originStyle(originY)}
       >
+        {/* **No ✕** (owner, 2026-08-05: _"this button is unnecessary"_). Every other way out
+            already runs the ONE close (ADR-0103 §2) and none of them is a control the picture
+            has to make room for: the backdrop — the whole screen around the card — plus system
+            back, the Android gesture and Escape. The head is the title now, nothing else. */}
         <div className="doc-viewer-head">
           <span className="doc-viewer-title">{title}</span>
-          <button
-            className="doc-viewer-close"
-            onClick={beginClose}
-            aria-label={t.docs.viewer.close}
-          >
-            <Icon name="close" />
-          </button>
         </div>
         {caption && <div className="doc-viewer-caption">{caption}</div>}
         {/* `data-expect` is the mime type, read before any bytes exist — which is what
@@ -437,6 +443,9 @@ export function MediaViewer({
             <img
               ref={imgRef}
               className="doc-viewer-img is-fresh"
+              /* Transparent, never hidden, while its copy is up: this element is still the
+                 gesture's target and still has to be hit-testable for the second finger. */
+              data-lifted={lift ? '' : undefined}
               src={url}
               alt={title}
               onLoad={(e) => setLoadedSize(naturalSize(e.currentTarget))}
@@ -463,6 +472,30 @@ export function MediaViewer({
           )}
         </div>
       </div>
+      {/* **The picture, out of its box.** A sibling of the card rather than a child of the
+          frame: the frame clips (ADR-0062's pan lived inside that clip) and the card has its
+          own rounded `overflow: hidden`, so the only place a lifted picture can be whole is
+          out here. Still inside `.doc-viewer`, which is what ADR-0062's global multi-touch
+          suppressor keys on. Purely a picture of a picture — no pointer events, nothing for a
+          screen reader, and the `<img>` it was cloned from keeps the alt text. */}
+      {lift && url && (
+        <>
+          <div
+            className="doc-viewer-lift-scrim"
+            data-settling={settling ? '' : undefined}
+            aria-hidden="true"
+          />
+          <img
+            ref={liftRef}
+            className="doc-viewer-lift"
+            data-settling={settling ? '' : undefined}
+            src={url}
+            alt=""
+            aria-hidden="true"
+            style={{ left: lift.left, top: lift.top, width: lift.width, height: lift.height }}
+          />
+        </>
+      )}
     </div>,
     document.body,
   );

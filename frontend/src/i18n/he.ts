@@ -994,7 +994,8 @@ export const t = {
       offline: 'אין חיבור · ההעלאה תמתין לרשת',
     },
     viewer: {
-      close: 'סגור',
+      // No `close`: the viewer has no ✕ (owner, 2026-08-05). Its ways out are the backdrop,
+      // system back and Escape, and none of them is labelled.
       loading: 'טוען ומפענח…',
       error: 'לא הצלחנו לפתוח את המסמך',
       open: 'פתח בכרטיסייה',

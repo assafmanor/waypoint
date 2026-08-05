@@ -28,10 +28,29 @@ Assaf (2026-07-18): "זום באפליקציה — צריך להיות מבוט�
 - **Must be verified on iOS Safari / the installed PWA** — that's precisely where the meta-only approach fails and the gesture approach is required. A desktop check alone is insufficient.
 - Does not affect the Plan-builder drag (`touch-action: none` grip) or the horizontal day-strip scroll (`pan-x` still allowed under `manipulation`).
 
+### Amendment (2026-08-05): the pinch lifts the picture out of the card, and lets go of it when you do
+
+Owner, on the shipped viewer: _"Right now the image is confined to the box. I want to change the zoom to be Instagram-like, i.e. the image zooms out of the box and auto resets to the original size when lifting the finger."_
+
+**The exception stays exactly where it was — what changes is what the gesture leaves behind.** The 2026-07-18 model was _sticky_: a pinch set a scale, the scale persisted, one finger panned inside the frame, a double tap toggled 2.5×. All of it happened inside `.doc-viewer-body`, whose `overflow: hidden` is the box being complained about — so at 4× you were reading a passport through a letterbox slot, moving the paper around behind it.
+
+Now zoom exists **only while two fingers are down**:
+
+- **A pinch lifts a copy of the picture out of the card.** It is a `fixed` sibling of `.doc-viewer-card` inside the same portal, born at the original's own viewport box with no transform — so at rest it is pixel-identical to what it covers, and nothing clips it: not the frame, not the card's rounding.
+- **It follows the fingers**, scale and pan from the same `pinchTransform` as before (the maths is unchanged, and still unit-tested). Still clamped to 1×–4×.
+- **The first finger up sends it home**, not the last: with no zoomed state left to pan, a gesture that has stopped being a pinch has stopped being a zoom. It rides `--t-base` back to no transform and then stops existing, so nothing can strand a picture outside its card.
+- **The in-flow `<img>` never moves.** It stays the gesture's target — it holds the pointer capture and must stay hit-testable for the _second_ finger — and goes transparent, not hidden, while its copy is up. The copy takes no pointer events at all, so the backdrop tap under it is still the ONE close (ADR-0103 §2).
+
+**The chrome got out of the way too, in both senses** (same session, owner: _"the X button should also go away"_ → _"I meant in general this button is unnecessary"_). The head fades and goes untappable while the picture is lifted, and **the viewer no longer has a ✕ at all**. ADR-0103 §2 is untouched by that: it requires every way out to run the ONE close, not that one of them wear a label — and the backdrop (the whole screen around the card), system back, the Android gesture and Escape all still do. What the removal buys is the thing this whole change is about: nothing between you and the picture. The **credit line stays** — it is ADR-0167 §4's licensing slot and is owed most when the picture is largest.
+
+**What is deliberately gone, and the trade it makes.** Sticky zoom, one-finger pan, and double-tap-to-zoom all disappear with the state they depended on. §Alternatives above justified the exception with _"inspecting a passport scan legitimately needs magnification"_, and that still holds — you magnify while pinching, which is how you read a document number on a phone you are already holding — but you can no longer **let go and keep it magnified**, and there is now no zoom at all with a mouse, since a trackpad pinch is not two pointers. Desktop is a graceful minimum (ADR-0017) and the phone is the target, so this was accepted; if hands-free magnification is wanted back, the honest form is a deliberate second mode, not a revived sticky pinch.
+
+**Untouched:** the global suppressor, its `.doc-viewer` exemption, `touch-action: none` on the image, and `frontend/index.html`'s hardcoded root. The page still must not zoom while the picture does — asserted in `e2e/media-viewer-lift.spec.ts`, which drives real CDP touch points because an untrusted `PointerEvent` has no active pointer behind it and `setPointerCapture` throws on one.
+
 ### Shipped as (2026-07-18)
 
 - Viewport meta gained `maximum-scale=1, user-scalable=no`; `touch-action: manipulation` sits on `html, body, #root` (tokens.css). The multi-touch suppressor is an inline `<script>` in `index.html` (document-level, runs before the app), `preventDefault`-ing `gesturestart`/`gesturechange`/`gestureend` (iOS Safari) and multi-touch `touchmove` (others) unless the event target is inside `.doc-viewer`.
-- The viewer image opts back in with the **hand-rolled pointer handler** (not `touch-action: pinch-zoom`, which zooms the visual viewport rather than the element): `.doc-viewer-img` sets `touch-action: none; transform-origin: 0 0`, and `DocumentViewer.tsx` owns pinch (focal-point scale, `1×`–`4×`), single-finger pan while zoomed, double-tap to reset (or zoom to `2.5×` at the tapped point), and a snap-back to fit when a pinch bottoms out at `1×`. The focal/clamp math is unit-tested (`DocumentViewer.zoom.test.ts`); pan bounds are intentionally omitted — reset/snap-back is the recovery.
+- The viewer image opts back in with the **hand-rolled pointer handler** (not `touch-action: pinch-zoom`, which zooms the visual viewport rather than the element): `.doc-viewer-img` sets `touch-action: none; transform-origin: 0 0`, and `DocumentViewer.tsx` owns pinch (focal-point scale, `1×`–`4×`), single-finger pan while zoomed, double-tap to reset (or zoom to `2.5×` at the tapped point), and a snap-back to fit when a pinch bottoms out at `1×`. The focal/clamp math is unit-tested (`DocumentViewer.zoom.test.ts`); pan bounds are intentionally omitted — reset/snap-back is the recovery. **(Superseded by the 2026-08-05 amendment above: the pan, the double tap and the persistence are gone; the pinch and its focal maths remain, now applied to a copy lifted out of the card.)**
 
 ## Alternatives considered
 
