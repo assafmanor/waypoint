@@ -41,6 +41,14 @@
   flex: 0 0 auto;
   padding: 0 18px 16px;
 }
+/* **With no foot, the scroller owns the bottom edge.** The foot used to supply the card's
+   bottom padding for every state, because every state had one — until in transit the rail
+   moved inside its point and the foot went away, and the last row sat flush against the
+   card's bottom edge (seen in a browser, not in review: jsdom has no padding to miss).
+   Matched to the foot's own 16px, so the two states end the same distance from the edge. */
+.hero-scroll:last-child {
+  padding-bottom: 16px;
+}
 
 .hero-head-end {
   display: flex;
@@ -181,15 +189,6 @@
   width: 15px;
   height: 15px;
   flex: none;
-}
-/* The destination's clock now, at the far end of the sentence that just explained the
-   jump: two facts on one line, and the second is what makes the first actionable. */
-.hero-clockshift .there {
-  margin-inline-start: auto;
-  color: var(--on-dark-dim);
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-  white-space: nowrap;
 }
 
 .hero-note {

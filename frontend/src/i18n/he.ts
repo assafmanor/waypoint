@@ -1284,9 +1284,6 @@ export const t = {
     clockShift: (length: string, direction: string) => `מזיזים את השעון ${length} ${direction}`,
     clockForward: 'קדימה',
     clockBack: 'אחורה',
-    /** The destination's clock right now, on the same line — what makes the sentence
-     *  actionable rather than trivia. */
-    clockThere: (place: string, time: string) => `${place} ${time}`,
   },
   // The LIFTED hero (ADR-0160 §3). Its own section rather than more `board` keys,
   // because these label the horizon's parts and the collapsed board has none of

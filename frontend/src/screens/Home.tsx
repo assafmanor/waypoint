@@ -268,18 +268,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               // The zone crossing in words, plus the destination's clock right now. The
               // pill stays on the collapsed board: same number, and this is the state you
               // asked for, so it can afford the sentence the pill cannot say.
-              ...(transitClockShift
-                ? {
-                    clockShift: transitClockShift,
-                    clockThere:
-                      transitRoute?.to && transitZones?.endZone
-                        ? t.board.clockThere(
-                            shortPlaceLabel(transitRoute.to),
-                            formatTime(now, transitZones.endZone),
-                          )
-                        : undefined,
-                  }
-                : {}),
+              ...(transitClockShift ? { clockShift: transitClockShift } : {}),
               // The SAME component the collapsed board renders, one level in — not a copy
               // of its markup, and not the card's foot, which is what made it read as the
               // next event's progress. A held span renders nothing here (the component

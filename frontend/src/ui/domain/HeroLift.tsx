@@ -58,12 +58,16 @@ export interface HeroLiftTransit {
   /** A HELD span's own line instead of a rail (`אצלנו מ־11:40`) — a car you are holding
    *  has no position between two places, and its end is a deadline. */
   held?: string;
-  /** The clock jump in words (`מזיזים את השעון שעה קדימה`), and the destination's clock
-   *  right now. The amber pill stays on the collapsed board — it is the glance form of the
-   *  same number, and this is the state you asked for, so it can afford a sentence.
-   *  Absent on a single-zone leg, which is the pill's own gate. */
+  /** The clock jump in words (`מזיזים את השעון שעה קדימה`). The amber pill stays on the
+   *  collapsed board — it is the glance form of the same number, and this is the state you
+   *  asked for, so it can afford a sentence. Absent on a single-zone leg, which is the
+   *  pill's own gate.
+   *
+   *  **No "the time there" beside it**, and that is a finding rather than a cut: mid-journey
+   *  the live zone IS the destination's (ADR-0107 §4 — the clock rolls at the crossing), so
+   *  the card's own clock is already the time there and a second copy was the same number
+   *  twice on one line. */
   clockShift?: string;
-  clockThere?: string;
 }
 
 /** One point on the horizon, view-ready. Mirrors `lib/hero-horizon.ts`'s `HeroPoint`
@@ -298,11 +302,6 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
                 <div className="hero-clockshift">
                   <Icon name="clock" />
                   {point.transit.clockShift}
-                  {point.transit.clockThere && (
-                    <span className="there" dir="auto">
-                      {point.transit.clockThere}
-                    </span>
-                  )}
                 </div>
               )}
             </>

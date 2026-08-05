@@ -506,9 +506,10 @@ describe('Home — the lift wiring', () => {
     show();
     fireEvent.click(board()!);
     const line = document.querySelector('.hero-clockshift')!;
-    expect(line.textContent).toContain(t.board.clockShift('7 שעות', t.board.clockForward));
-    // 12:30 UTC is 21:30 in Tokyo, and the destination's own name carries it.
-    expect(line.querySelector('.there')?.textContent).toBe(t.board.clockThere('Haneda', '21:30'));
+    expect(line.textContent).toBe(t.board.clockShift('7 שעות', t.board.clockForward));
+    // **And nothing beside it.** A "the time there" chip was drawn and then dropped: mid-
+    // journey the live zone IS the destination's (ADR-0107 §4), so the card's own clock is
+    // already the time there and the chip printed the same number twice.
     // The sentence is the LIFT's form of the pill; the collapsed board keeps the pill.
     expect(document.querySelector('.wp-board:not(.hero-lifted) .hero-clockshift')).toBeNull();
     expect(document.querySelector('.wp-board .wp-tzshift')).toBeTruthy();

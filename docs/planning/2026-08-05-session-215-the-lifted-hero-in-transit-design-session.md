@@ -1,6 +1,6 @@
 # Session 215 — the lifted hero in transit (design session)
 
-**Date:** 2026-08-05 · **Mockup:** [`mockups/hero-in-transit-v1.html`](../../mockups/hero-in-transit-v1.html) · **Amends when built:** [ADR-0160](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) §10, [ADR-0059](../decisions/0059-booking-presentation-on-home-and-index.md) §2 · **Status:** design only, nothing built, no ADR yet — the file exists to be chosen from.
+**Date:** 2026-08-05 · **Mockup:** [`mockups/hero-in-transit-v1.html`](../../mockups/hero-in-transit-v1.html) · **Amends when built:** [ADR-0160](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) §10, [ADR-0059](../decisions/0059-booking-presentation-on-home-and-index.md) §2 · **Status:** designed and BUILT in the same session — the owner accepted every recommendation, and the shipped behaviour is recorded in those two ADR amendments. This note keeps the reports, the measurements and the options that were rejected.
 
 ## What came in
 
@@ -37,7 +37,7 @@ So the lifted state is a generic hard now-event with the flight's own rail orpha
 - **`בטיסה` and the plane are hardcoded.** `t.board.inTransitLive` is a literal and `TransitProgress` renders `Icon name="flight"` for every mode — but `in-transit` fires for any bracketed transport whose clock is between its ends, so a **train reads `בטיסה` with a plane crossing its rail**, and a **same-day car hire** reaches the same state (a multi-day one is ambient and goes to the stay strip). This is ADR-0163 §4's bug one surface over: the verb and the unit belong to the span's own mode. The fix needs no new table and no new SVG — the travelling mark is the event's **own glyph** (the board already holds it as `nowIcon`; the app has no `train`/`bus` icon anyway, and the user may re-badge), and the live word comes off the same `ICON_TIME_PROFILE` that already gives a flight `המראה`/`נחיתה` and a hire `איסוף הרכב`/`החזרת הרכב`.
 - **`איפה` points backwards in transit.** It resolves to the flight's _own_ place — the airport you took off from — so today's lifted hero offers `ניווט` to where you left. Mid-journey the only useful pin is the destination.
 
-## What was recommended (owner's picks pending)
+## What was recommended, and accepted
 
 | §   | subject                        | recommendation                                                                                                                               |
 | --- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -55,3 +55,9 @@ Two build constraints worth carrying forward: the clock sentence is **direction-
 ## Left open on purpose
 
 `הבא בתור`'s countdown counts from the clock, so mid-flight it counts **through** the landing, when the traveller's question is "how long after we land". That is a decision about what the board's countdown _means_ — possibly per variant — not a layout change to this hero, so it is recorded in `backlog.md` rather than answered here.
+
+## Built (same session)
+
+All seven changes shipped, smallest-first, each with its own commit: the rail's middle slot (`נותרו X`, which also fixed the collapsed board); `midSpan` on the shared time profile, so the live word and the travelling mark come from the mode; `איפה` as a name line plus one action row; the lifted hero's in-transit grammar with the rail inside the point and an empty foot; the destination as `איפה` mid-journey; the clock sentence plus the destination's clock; and the held-resource shape for a same-day hire. Gate, seat, belt, delay and weather stayed out.
+
+Two things the build itself taught, both recorded in ADR-0160's amendment: the glyph is load-bearing (wording resolves per mode off the event's icon, so a fixture without one is a generic carrier — which is the correct answer for a manual transport event, and is now asserted as such), and the first wrap detector in the mockup was wrong in the same way the CSS was, by grouping a flex row's children by top edge instead of by line box.
