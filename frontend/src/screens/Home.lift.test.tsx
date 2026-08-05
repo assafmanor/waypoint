@@ -558,6 +558,47 @@ describe('Home — the lift wiring', () => {
     expect(document.querySelector('.wp-board-now-title')?.textContent).toContain('FR 8123');
   });
 
+  // **The follow-up the day-boundary fix earned** (owner: *"would we want to know that we
+  // land tomorrow, or we'd rather know how many hours/minutes to landing?"* — both, and the
+  // hours are already there). Once a red-eye can hold the board at all, its arrival time is
+  // the thing that misleads: `06:00` reads as this morning. So the day joins it, and only
+  // when there is something to disambiguate.
+  it('says which day a red-eye lands on, on the board and in the lifted hero', () => {
+    // 21:00 → 06:00 Rome, read at 21:30 the evening before: the landing is genuinely
+    // tomorrow in the zone you are standing in.
+    const NEXT = '2026-08-04';
+    tripEvents = [
+      flight({ startsAt: `${DAY}T19:00:00Z`, endsAt: `${NEXT}T04:00:00Z`, endDate: NEXT }),
+    ];
+    tripBookings = [flightBooking];
+    setSimulatedNow(Date.parse(`${DAY}T19:30:00Z`));
+    show();
+
+    const meta = () => document.querySelector('.wp-board-now-meta')!;
+    expect(meta().textContent).toContain('06:00');
+    expect(meta().textContent).toContain('מחר');
+    // Both facts, not one instead of the other: the hours are what you act on and they
+    // stay on the rail, the day is the disambiguator beside the time.
+    expect(document.querySelector('.tp-left')?.textContent).toContain(t.board.remaining);
+
+    // The lifted hero carries the same token — one widget, one answer (ADR-0139).
+    fireEvent.click(board()!);
+    const hero = document.querySelector('.hero-lifted')!;
+    expect(hero.querySelector('.wp-board-now-meta')?.textContent).toContain('מחר');
+    expect(hero.querySelector('.hero-eta')?.textContent).toBeTruthy();
+  });
+
+  // And the case that is nearly every case: a flight that lands the same afternoon says
+  // nothing about the day, because there is nothing to disambiguate.
+  it('says nothing about the day when the journey lands today', () => {
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    const meta = document.querySelector('.wp-board-now-meta')!;
+    expect(meta.textContent).toContain('16:00'); // 14:00Z, Rome
+    expect(meta.textContent).not.toContain('מחר');
+  });
+
   // **THE EXCLUSION** (owner: *"but not rental cars that are different"*). A same-day hire
   // reaches this exact state — only a MULTI-day span is ambient — so before session 215 it
   // announced `בטיסה`, drew a plane crossing a progress bar, and called its return an

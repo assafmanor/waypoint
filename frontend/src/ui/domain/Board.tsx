@@ -66,6 +66,12 @@ export interface BoardTransit {
   arriving?: boolean;
   /** Landing time (pre-formatted) — in the **destination's** zone (ADR-0107 §3). */
   endTime?: string;
+  /** `מחר` / `מחרתיים` beside that time, and **only when the landing is not today**
+   *  (ADR-0160 §M). The duration is the fact you act on and it is already on this row; the
+   *  day is a disambiguator for the one case where the time alone misleads — a red-eye
+   *  landing at 06:00 reads as this morning, and the zone jump breaks the arithmetic you
+   *  would use to check. Absent on every same-day journey, which is nearly all of them. */
+  endDay?: string;
   code?: string;
   /** Flight progress 0..1 (drives the fill + plane). */
   progress: number;
@@ -332,6 +338,9 @@ export function Board(props: BoardProps) {
               {transitionLabel(transit.labelKey)}
             </span>
             {transit.endTime && <span dir="auto">{transit.endTime}</span>}
+            {/* The day rides WITH the time it qualifies, never on the countdown: what is
+                ambiguous is `06:00`, not `בעוד 13 שעות`. */}
+            {transit.endDay && <span>{transit.endDay}</span>}
             {/* Only a HELD span says it here: a journey's rail carries `נותרו X` two lines
                 down, and printing both is the duplication this session removed from the
                 rail in the first place. */}

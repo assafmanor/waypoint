@@ -53,6 +53,7 @@ import {
   formatTime,
   hardConflicts,
   minutesUntil,
+  relativeDayLabel,
   todayInTz,
   zonedIso,
 } from '../lib/time';
@@ -178,6 +179,22 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const transitClockShift = transitZones?.deltaMinutes
     ? clockShiftSentence(transitZones.deltaMinutes)
     : null;
+  // **`מחר` beside the arrival, and ONLY when it is not today** (ADR-0160 §M, finally
+  // buildable). The duration is the fact you act on and it is already on the row; the
+  // calendar day is a disambiguator for the one case where the time alone misleads — a
+  // red-eye landing at 06:00 reads as this morning, and the zone jump breaks the arithmetic
+  // you would use to work it out, which is the same reason the clock shift is a sentence.
+  //
+  // The comparison is well-defined because both sides are read in the zone you are standing
+  // in: mid-journey the live zone IS the destination's (ADR-0107 §4), so `today` and the
+  // landing's own day are the same calendar. That is the fact that made the "time there"
+  // chip redundant, paying for itself twice.
+  const transitArrivalDay = (() => {
+    const zone = transitZones?.endZone;
+    if (!transitEvent?.endsAt || !zone) return undefined;
+    const landsOn = todayInTz(zone, new Date(transitEvent.endsAt));
+    return landsOn === today ? undefined : relativeDayLabel(landsOn, today);
+  })();
 
   const conflicts = nowEvent ? hardConflicts(nowEvent, dayEvents) : [];
   // Concurrency on the board (ADR-0041): one loud hero + a quiet "ועוד N" for the
@@ -272,6 +289,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               label: transit.label,
               endLabel: transitionLabel(transit.labelKey),
               endTime: transit.endTime,
+              endDay: transitArrivalDay,
               inPhrase: transitRemaining ? t.board.inPhrase(transitRemaining) : undefined,
               code: transitCode,
               // The zone crossing in words, plus the destination's clock right now. The
@@ -462,6 +480,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           fromPlace: transitRoute?.from ? shortPlaceLabel(transitRoute.from) : undefined,
           toPlace: transitRoute?.to ? shortPlaceLabel(transitRoute.to) : undefined,
           remaining: transitRemaining ?? undefined,
+          endDay: transitArrivalDay,
           shift: transitZones?.deltaMinutes,
           // A hire mid-hire is not a leg between two places: no rail, no travelling mark,
           // and its end is a deadline (ADR-0163 §4's rule — the verb and the unit belong to
