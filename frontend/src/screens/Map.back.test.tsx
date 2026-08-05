@@ -27,6 +27,12 @@ import type { Note, Place, TripEvent } from '@waypoint/shared';
 const ACTIVE_DATE = '2026-07-22';
 let tripPlaces: Place[] = [];
 let tripEnrichments: Record<string, unknown> = {};
+
+// jsdom has no layout engine and so no `scrollIntoView`, and selecting a row schedules one in a
+// `requestAnimationFrame` (`Map.tsx`'s "bring the selected row into view"). Nothing here selected
+// a row until the research-card tests below, so the absence surfaced as an UNHANDLED ERROR
+// alongside a fully green run — the same stub `Map.embedded.test.tsx` has had since it shipped.
+Element.prototype.scrollIntoView = vi.fn();
 const tripNotes: Note[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripEvents: TripEvent[] = [];
