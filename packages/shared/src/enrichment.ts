@@ -495,6 +495,29 @@ export type DeliveredEnrichmentFields = z.infer<typeof deliveredEnrichmentFields
 export const tripEnrichmentsSchema = z.record(z.string(), deliveredEnrichmentFieldsSchema);
 export type TripEnrichments = z.infer<typeof tripEnrichmentsSchema>;
 
+/**
+ * **What a client asks about a place the trip does not hold yet** (ADR-0166 §17) — the body of
+ * `POST /trips/:tripId/enrichment/lookup`.
+ *
+ * The snapshot join cannot answer for a Google search result: it is keyed by `placeId` and a
+ * candidate has none. So this is the first enrichment read a client **addresses** rather than
+ * receives, and the identity has to travel with the question — matching needs a name and a
+ * point, and the server holds neither for a place nobody has added.
+ *
+ * Same trust level as `resolvePlaceSchema.details`, and for the same reason: the Text Search
+ * call already returned these values, so asking Google for them again would be spending twice.
+ * The one thing that is genuinely new is where they land — the enrichment store is **global**,
+ * so a wrong name here mismatches a row other trips read. §17 takes that trade deliberately and
+ * records what bounds it.
+ */
+export const enrichmentLookupSchema = z.object({
+  googlePlaceId: z.string().min(1),
+  name: z.string().min(1).max(200),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+});
+export type EnrichmentLookupInput = z.infer<typeof enrichmentLookupSchema>;
+
 /** What the value of `field` looks like when present — `summary` is the variants map. */
 export type EnrichmentFieldValue<F extends EnrichmentField> = F extends 'summary'
   ? TextVariants

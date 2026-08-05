@@ -11,7 +11,10 @@
 // provider whose dependencies are not yet registered would silently fall back to a fuzzier
 // match instead of failing, which is the kind of bug that looks like bad coverage.
 import { Module } from '@nestjs/common';
+import { PlacesThrottlerGuard } from '../places/places-throttler.guard';
 import { SyncModule } from '../sync/sync.module';
+import { MembershipGuard } from '../trips/membership.guard';
+import { EnrichmentLookupController } from './enrichment-lookup.controller';
 import { EnrichmentImageController } from './enrichment.controller';
 import { EnrichmentRegistry } from './enrichment.registry';
 import { EnrichmentScheduler } from './enrichment.scheduler';
@@ -27,8 +30,16 @@ import { WikipediaProvider } from './providers/wikipedia.provider';
   // **not** `ChangeService`: a global row with no `tripId` has nothing to write a `Change`
   // against, which is the whole argument in §6.
   imports: [SyncModule],
-  controllers: [EnrichmentImageController],
+  // The bytes route (public, ADR-0166 §7) and the deciding surface's lookup (trip-scoped, §17).
+  controllers: [EnrichmentImageController, EnrichmentLookupController],
   providers: [
+    // Both guards the lookup route runs, registered as providers exactly as `PlacesModule`
+    // registers `MembershipGuard` from `trips/` — the classes are shared infra that happen to
+    // live in the module that needed them first, and a second copy of either is the anti-pattern
+    // (rule 8). Deliberately NOT `imports: [PlacesModule]`, which would be a cycle: places
+    // imports this module for the scheduler.
+    MembershipGuard,
+    PlacesThrottlerGuard,
     EnrichmentFetcher,
     EnrichmentImagePipeline,
     WikidataProvider,

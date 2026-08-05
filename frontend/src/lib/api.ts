@@ -3,6 +3,7 @@ import {
   accessTokenResponseSchema,
   bookingSchema,
   changeSchema,
+  deliveredEnrichmentFieldsSchema,
   inviteUrlSchema,
   invitePreviewSchema,
   destinationResultSchema,
@@ -30,8 +31,10 @@ import {
   type UpdateNoteInput,
   type CreatePlaceInput,
   type CreateTripInput,
+  type DeliveredEnrichmentFields,
   type DestinationResult,
   type DocumentType,
+  type EnrichmentLookupInput,
   type EventStatus,
   type MaybeItem,
   type Note,
@@ -652,6 +655,35 @@ export async function searchPlacesText(
   });
   if (!res.ok) return throwApiError(res);
   return placeResultSchema.array().parse(await res.json());
+}
+
+/**
+ * **What do we know about a place the trip does not hold yet** (ADR-0166 §17).
+ *
+ * The snapshot carries enrichment for the trip's own places, keyed by `placeId` — a Google result
+ * has none, so this is the one enrichment read a client asks for rather than receives. The
+ * identity travels with the question because matching needs a name and a point, and the server
+ * holds neither for a place nobody has added; those are the values the Text Search call already
+ * returned, exactly as `resolvePlace`'s `details` passes them.
+ *
+ * The server may run a pass before answering, so this can take a couple of seconds and can quite
+ * legitimately answer `{}` — that is the majority case (ADR-0166 §11.3), not an error. Online-only
+ * and never outboxed: it needs Wikimedia, and the search that produced the candidate needed
+ * Google.
+ */
+export async function lookupEnrichment(
+  tripId: string,
+  input: EnrichmentLookupInput,
+  signal?: AbortSignal,
+): Promise<DeliveredEnrichmentFields> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/enrichment/lookup`, {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  });
+  if (!res.ok) return throwApiError(res);
+  return deliveredEnrichmentFieldsSchema.parse(await res.json());
 }
 
 /** The terminating enrich-on-pick (create-or-link) call (ADR-0108 §3 / ADR-0110 §1).

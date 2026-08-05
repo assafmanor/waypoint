@@ -122,7 +122,18 @@ Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`);
 
 Facts about the real-world place a `Place` refers to — a summary, an image, opening hours — held in the **global** `PlaceEnrichment` table (no `tripId`, no FK to `Place`, §1/§4). **There is no write endpoint and there never will be:** enrichment is out-of-band and server-owned, so no client authors it and it deliberately does not go through `ChangeService` (§6). It is not on the data plane at all.
 
-**Reading it is the trip snapshot's job**, as a server-owned read model — not built yet (ADR-0166's Phase 3), which is why nothing but the image bytes appears below.
+**Reading it is mostly the trip snapshot's job**, as a server-owned read model keyed by `placeId` (see [Snapshot & change feed](#snapshot--change-feed-adr-0019) below). The one exception is a place the trip does **not** hold — a Google search result — which has no `placeId` to be keyed by, so it is the single enrichment read a client addresses itself.
+
+### A place the trip has not added (ADR-0166 §17)
+
+| Method | Path                               | Body → Response                                                                        |
+| ------ | ---------------------------------- | -------------------------------------------------------------------------------------- |
+| POST   | `/trips/:tripId/enrichment/lookup` | `{ googlePlaceId, name, lat?, lng? }` → `DeliveredEnrichmentFields` (200, may be `{}`) |
+
+- **A POST, and 200 rather than 201.** The identity a matcher needs travels in the body, and asking can start a pass — a question with a side effect. Nothing is created that the caller can address.
+- **`MembershipGuard` + `PlacesThrottlerGuard`.** The store is global, so this is the one route where a client names an arbitrary key: it is trip-scoped precisely so the existing membership check applies, and it carries per-member·trip minute/day windows like the paid proxy routes. What the limit bounds here is not our bill but Wikimedia's patience — this is the least selective of the three triggers (§17).
+- **It may take a few seconds, and `{}` is a normal answer.** The route runs a pass when the store holds nothing fresh and waits up to 5s for it, then answers with whatever is held — a bound, not a promise: the pass keeps running into the store, so a later ask is instant. An empty payload is the majority case (§11.3), not an error.
+- **The identity is client-supplied**, the same trust level `POST /places/resolve`'s `details` has and for the same reason (the Text Search call already returned it). §17.4 records what is new about it — these values feed a **global** row — and why the trade is accepted.
 
 ### Enrichment image bytes
 
