@@ -143,6 +143,38 @@ describe('HeroLift', () => {
     expect(container.querySelectorAll('.hero-where-nm')).toHaveLength(2);
   });
 
+  // Session 215's report: `ניווט` was pushed to its own line and `להזמנה` to a third.
+  // The DOM invariant that fixes it is what is asserted — one action row per point, the
+  // name outside it — because the wrap itself is a layout fact jsdom cannot see (every
+  // rect there is zero), and the measurement lives in `mockups/hero-in-transit-v1.html`.
+  it('every way out of a point is in ONE action row, with the name on its own line', () => {
+    const container = show({
+      now: [
+        point({
+          place: 'פרנקפורט (Frankfurter Flughafen – FRA)',
+          onMap: () => {},
+          navigateUrl: 'https://maps.google.com/?q=FRA',
+          onBooking: () => {},
+        }),
+      ],
+    });
+    const rows = container.querySelectorAll('.hero-acts');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelectorAll('.hero-act')).toHaveLength(3);
+    // The name is a sibling of the row, never inside it — that is what lets it ellipsize
+    // instead of pushing a chip onto a second line.
+    expect(rows[0].querySelector('.hero-where-nm')).toBeNull();
+    expect(container.querySelector('.hero-where-nm')?.textContent).toContain('FRA');
+  });
+
+  it('shows an action row with no place, and no bare label without one', () => {
+    // A booking-backed point with no place still has a way through; and the `איפה`
+    // label must not appear over an empty name.
+    const container = show({ now: [point({ onBooking: () => {} })] });
+    expect(container.querySelectorAll('.hero-acts .hero-act')).toHaveLength(1);
+    expect(screen.queryByText(t.hero.where)).toBeNull();
+  });
+
   it('what the horizon adds to NEXT is the way through, not a second code', () => {
     const onBooking = vi.fn();
     show({

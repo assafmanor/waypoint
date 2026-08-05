@@ -100,34 +100,66 @@ export interface HeroLiftProps {
   onClose: () => void;
 }
 
+/** `איפה` and every way out of this point: the place on its own line, the chips in ONE
+ *  row under it.
+ *
+ *  **It was a single wrapping row and could not hold one** (session 215). `.hero-row` is
+ *  `flex-wrap: wrap`, and flex breaks lines by each item's HYPOTHETICAL size — the
+ *  decision is made before `flex-shrink` runs, so `.hero-where-nm`'s `min-width: 0` and
+ *  its `text-overflow: ellipsis` were unreachable code and the CHIPS were what moved.
+ *  Measured on the reported flight: the name wants 247px and the two chips 153px against
+ *  308px (360px phone) or 338px (390px) of row, so it is 70-100px short at every phone
+ *  width — and it failed differently at each, which is why one report read as two bugs.
+ *
+ *  Giving the name its own line makes its ellipsis reachable and leaves the chips a row
+ *  of their own, where all THREE fit: 247px against 308px. That is also why the booking
+ *  reach moved in here — as its own `hero-part` it was a third stacked chip line under a
+ *  wrap that had already made two. `flex-wrap` stays on the chip row as the safety net
+ *  for a translation nobody has measured, but at 344px it is not reached. */
 function Where({ point }: { point: HeroLiftPoint }) {
-  if (!point.place) return null;
+  const acts = [point.onMap, point.navigateUrl, point.onBooking].some(Boolean);
+  if (!point.place && !acts) return null;
   return (
     <div className="hero-part">
-      <span className="hero-lbl">{t.hero.where}</span>
-      <div className="hero-row">
-        <span className="hero-where-nm" dir="auto">
-          {point.place}
-        </span>
-        {point.onMap && (
-          <button type="button" className="hero-act loc" onClick={point.onMap}>
-            <Icon name="pin" /> {t.hero.onMap}
-          </button>
-        )}
-        {/* An anchor, not a button: the hand-off out to Maps is a real link, so
-            long-press and share work and no popup blocker is involved — the same
-            choice Home's navigate tile and the day cards already make (ADR-0106 §F). */}
-        {point.navigateUrl && (
-          <a
-            className="hero-act loc"
-            href={point.navigateUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Icon name="navigate" /> {t.hero.navigate}
-          </a>
-        )}
-      </div>
+      {point.place && (
+        <>
+          <span className="hero-lbl">{t.hero.where}</span>
+          <span className="hero-where-nm" dir="auto">
+            {point.place}
+          </span>
+        </>
+      )}
+      {acts && (
+        <div className="hero-acts">
+          {point.onMap && (
+            <button type="button" className="hero-act loc" onClick={point.onMap}>
+              <Icon name="pin" /> {t.hero.onMap}
+            </button>
+          )}
+          {/* An anchor, not a button: the hand-off out to Maps is a real link, so
+              long-press and share work and no popup blocker is involved — the same
+              choice Home's navigate tile and the day cards already make (ADR-0106 §F). */}
+          {point.navigateUrl && (
+            <a
+              className="hero-act loc"
+              href={point.navigateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Icon name="navigate" /> {t.hero.navigate}
+            </a>
+          )}
+          {/* The way THROUGH to the booking — depth on any point that has one, not a
+              property of the `next` slot. Wiring it only on `next` left a now point's
+              booking unreachable while `canLift` counted it, which is the shape of bug
+              that makes a lift open onto less than it promised. */}
+          {point.onBooking && (
+            <button type="button" className="hero-act time" onClick={point.onBooking}>
+              <Icon name="ticket" /> {t.hero.toBooking}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -149,23 +181,6 @@ function Note({ point }: { point: HeroLiftPoint }) {
       {!!point.noteMore && (
         <span className="hero-note-more">{t.hero.moreNotes(point.noteMore)}</span>
       )}
-    </div>
-  );
-}
-
-/** The way THROUGH to the booking — depth on any point that has one, not a
- *  property of the `next` slot. Wiring it only on `next` left a now point's booking
- *  unreachable while `canLift` counted it, which is the shape of bug that makes a
- *  lift open onto less than it promised. */
-function Reach({ point }: { point: HeroLiftPoint }) {
-  if (!point.onBooking) return null;
-  return (
-    <div className="hero-part">
-      <div className="hero-row">
-        <button type="button" className="hero-act time" onClick={point.onBooking}>
-          <Icon name="ticket" /> {t.hero.toBooking}
-        </button>
-      </div>
     </div>
   );
 }
@@ -233,7 +248,6 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
       )}
       <Where point={point} />
       <Note point={point} />
-      <Reach point={point} />
       <Settle point={point} />
     </div>
   );
@@ -326,7 +340,6 @@ export function HeroLift(props: HeroLiftProps) {
                     collapsed board already shows above. */}
                 <Where point={next} />
                 <Note point={next} />
-                <Reach point={next} />
               </>
             )}
 

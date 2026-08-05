@@ -78,22 +78,31 @@
   color: var(--on-dark-faint);
   margin-bottom: 5px;
 }
-.hero-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
+/* The place name owns its LINE (session 215), which is what finally makes the ellipsis
+   below it reachable: while this sat inside a `flex-wrap: wrap` row, flex broke lines on
+   hypothetical sizes and pushed the chips off instead of ever asking the name to shrink.
+   A real airport name (`פרנקפורט (Frankfurter Flughafen – FRA)`) wants 247px against 308px
+   of row on a 360px phone — there was never a width where both fitted. */
 .hero-where-nm {
-  flex: 1 1 auto;
-  min-width: 0;
+  display: block;
   font-size: var(--text-secondary);
   color: var(--on-dark);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Every way out of a point, in ONE row: `במפה`, `ניווט`, `להזמנה`. Three chips measure
+   247px against that same 308px, so the small phone fits them with room to spare — and
+   the booking reach stops being a third stacked line of its own. `flex-wrap` is the
+   safety net for a translation nobody has measured yet, not the layout. */
+.hero-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 /* A hand-off chip. Same recipe as every other chip on this board — a low-alpha
