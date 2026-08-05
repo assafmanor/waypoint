@@ -24,11 +24,12 @@ import {
   type EnrichmentField,
   type EnrichmentSource,
 } from '@waypoint/shared';
-import type {
-  EnrichmentProvider,
-  PlaceIdentity,
-  ProviderFieldValues,
-  ProviderMatch,
+import {
+  inheritedConfidence,
+  type EnrichmentProvider,
+  type PlaceIdentity,
+  type ProviderFieldValues,
+  type ProviderMatch,
 } from '../enrichment.provider';
 import { EnrichmentFetcher } from '../outbound-fetch';
 
@@ -86,7 +87,9 @@ export class WikipediaProvider implements EnrichmentProvider {
       // The article title came from the item's sitelinks, which is an identity join —
       // never a guess about which page this is.
       method: MATCH_METHOD.SETTLED_ID,
-      confidence: 1,
+      // Exact on this hop, capped by how much the item it hangs off was trusted: an article
+      // reached through a fuzzy Wikidata match is only as good as that match.
+      confidence: inheritedConfidence(identity),
       evidence: { label: titles.he ?? titles.en },
       settled: { articleTitles: titles },
     };

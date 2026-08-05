@@ -26,8 +26,10 @@ import {
   type EnrichmentSource,
   type TextVariants,
 } from '@waypoint/shared';
+import { deleteObject } from '../common/storage';
 import { PrismaService } from '../prisma/prisma.service';
 import { effectiveLicense, fieldsWantingAttempt, valueRefusal } from './enrichment.policy';
+import { EnrichmentImagePipeline, type StoredImage } from './image-pipeline';
 import {
   mergeSettled,
   type EnrichmentProvider,
@@ -54,6 +56,7 @@ export class EnrichmentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: EnrichmentRegistry,
+    private readonly images: EnrichmentImagePipeline,
   ) {}
 
   /** What we hold for this place, or null if it has never been looked up. A read never
@@ -102,7 +105,26 @@ export class EnrichmentService {
       setFieldState(resolved, field, await this.resolveField(field, matches, now));
     }
 
-    return this.persist(existing?.id, running, resolved, now);
+    const stored = await this.persist(existing?.id, running, resolved, now);
+    // Only once the row is safely written: a refresh that replaced the image left the old
+    // bytes referenced by nothing, and an immutable-URL scheme means they can never be
+    // reached again. Deleting before the write would risk 404ing a live URL if the write
+    // then failed.
+    await this.dropReplacedImage(fields, resolved);
+    return stored;
+  }
+
+  /** Delete the blob an image refresh orphaned. Best-effort by design — a leaked blob costs
+   *  storage, while a throw here would fail a pass whose real work already succeeded. */
+  private async dropReplacedImage(
+    before: EnrichmentFields,
+    after: EnrichmentFields,
+  ): Promise<void> {
+    const previous = imageBlobKey(before);
+    if (!previous || previous === imageBlobKey(after)) return;
+    await deleteObject(previous).catch((err: unknown) => {
+      this.logger.warn(`could not delete replaced enrichment image: ${(err as Error).message}`);
+    });
   }
 
   /**
@@ -155,12 +177,23 @@ export class EnrichmentService {
         continue;
       }
 
+      // A value whose real payload is bytes has to become bytes WE hold before it can be
+      // stored (§7). This is the one step that can still fail after a value looked fine —
+      // an off-allowlist host, an oversized body, or bytes that are not the image they
+      // claim — and every one of those means **fall through to the next candidate**, which
+      // is exactly the behaviour §12.2 asks for on a file we must refuse.
+      const materialized = value.binary ? await this.materialize(value) : value;
+      if (!materialized) {
+        refusal = ENRICHMENT_ABSENCE_REASON.UNSTORABLE;
+        continue;
+      }
+
       // `wrap` branches on `field` at runtime to produce the variant that field's slot
       // accepts — a correspondence the compiler cannot follow through a union key. The real
       // check is `enrichmentFieldsSchema.parse` on the way into the column.
       return {
         state: 'present',
-        value: this.wrap(field, provider.id, match, value, now),
+        value: this.wrap(field, provider.id, match, materialized, now),
       } as FieldState;
     }
 
@@ -174,12 +207,24 @@ export class EnrichmentService {
     };
   }
 
+  /**
+   * Turn a pointer into bytes we own, through the subject-agnostic image pipeline.
+   *
+   * Here rather than inside the provider because a provider stays pure — no storage, no DB
+   * (§5.3) — which is what keeps it testable against recorded fixtures. Returns `null` when
+   * the bytes cannot be trusted, so the caller falls through.
+   */
+  private async materialize(value: ProviderValue): Promise<MaterializedValue | null> {
+    const stored = await this.images.store(value.binary!.url);
+    return stored ? { ...value, stored } : null;
+  }
+
   /** Wrap a provider's raw value in the provenance every stored value carries (§4). */
   private wrap(
     field: EnrichmentField,
     source: EnrichmentSource,
     match: ProviderMatch,
-    value: ProviderValue,
+    value: MaterializedValue,
     now: Date,
   ) {
     const provenance = {
@@ -191,6 +236,19 @@ export class EnrichmentService {
       method: match.method,
       ref: match.ref,
     };
+
+    if (field === ENRICHMENT_FIELD.IMAGE && value.stored && value.binary) {
+      return {
+        ...provenance,
+        ...value.stored,
+        // The dimensions of the bytes we hold, which carry the aspect ratio a bounded
+        // container needs to survive a 0.54 portrait (§11.4).
+        width: value.binary.width,
+        height: value.binary.height,
+        // The file page, so the credit line has somewhere to point (ADR-0167 §4).
+        sourceFile: value.value,
+      };
+    }
 
     if (field === ENRICHMENT_FIELD.SUMMARY) {
       // A text field holds localized VARIANTS keyed by language (§11.6) — so a second
@@ -324,6 +382,15 @@ interface EnrichmentRowData {
 
 /** One field's stored state, across all three fields. */
 type FieldState = NonNullable<EnrichmentFields[EnrichmentField]>;
+
+/** A provider value once its bytes (if it had any) are ours. */
+type MaterializedValue = ProviderValue & { stored?: StoredImage };
+
+/** The blob a payload's image points at, if it has one. */
+function imageBlobKey(fields: EnrichmentFields): string | undefined {
+  const state = fields.image;
+  return state?.state === 'present' ? state.value.blobKey : undefined;
+}
 
 /** Write a field's state into the payload. A plain `fields[field] = state` does not
  *  typecheck when `field` is the union: TypeScript requires the value to satisfy *every*

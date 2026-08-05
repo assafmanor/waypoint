@@ -6,6 +6,11 @@ export const SERVER_ROUTE_PREFIXES = [
   'api',
   'auth',
   'destinations',
+  // Stored enrichment image bytes (ADR-0166 §7 / Phase 2). Here for the SERVICE WORKER
+  // half, exactly as `users` is below: an enrichment thumbnail is loaded by a plain
+  // `<img src>`, so without this prefix the PWA would answer that request with the cached
+  // app shell and every photo would fail to decode.
+  'enrichment',
   'health',
   'invites',
   'me',

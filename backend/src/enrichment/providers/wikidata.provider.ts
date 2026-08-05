@@ -157,6 +157,12 @@ export class WikidataProvider implements EnrichmentProvider {
         commonsFilename: stringClaim(entity, CLAIM_IMAGE),
         articleTitles: articleTitlesOf(entity),
         ...coordinateOf(entity),
+        // **How much this identity is worth downstream.** Wikipedia and Commons both reach
+        // their content through an exact join off this item — but if this item was found by
+        // name and proximity, its article and its photograph are only that trustworthy, and
+        // a confidence-1 photo off a 0.7 match is exactly the "confidently wrong" failure
+        // §Context 3 is built to avoid.
+        identityConfidence: confidence,
       },
       // The second refusal reason (§11.2): a right match at the wrong granularity. Refuses
       // `summary` and leaves `image` alone, which is the asymmetry per-field precedence

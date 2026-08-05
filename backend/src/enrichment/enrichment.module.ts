@@ -11,23 +11,34 @@
 // provider whose dependencies are not yet registered would silently fall back to a fuzzier
 // match instead of failing, which is the kind of bug that looks like bad coverage.
 import { Module } from '@nestjs/common';
+import { EnrichmentImageController } from './enrichment.controller';
 import { EnrichmentRegistry } from './enrichment.registry';
 import { EnrichmentService } from './enrichment.service';
+import { EnrichmentImagePipeline } from './image-pipeline';
 import { EnrichmentFetcher } from './outbound-fetch';
+import { CommonsProvider } from './providers/commons.provider';
 import { WikidataProvider } from './providers/wikidata.provider';
 import { WikipediaProvider } from './providers/wikipedia.provider';
 
 @Module({
+  controllers: [EnrichmentImageController],
   providers: [
     EnrichmentFetcher,
+    EnrichmentImagePipeline,
     WikidataProvider,
     WikipediaProvider,
+    CommonsProvider,
     {
       provide: EnrichmentRegistry,
-      inject: [WikidataProvider, WikipediaProvider],
-      useFactory: (wikidata: WikidataProvider, wikipedia: WikipediaProvider) =>
-        // Wikidata first: it is the identity spine, and Wikipedia matches on what it settles.
-        new EnrichmentRegistry([wikidata, wikipedia]),
+      inject: [WikidataProvider, WikipediaProvider, CommonsProvider],
+      useFactory: (
+        wikidata: WikidataProvider,
+        wikipedia: WikipediaProvider,
+        commons: CommonsProvider,
+      ) =>
+        // Wikidata first: it is the identity spine, and both the others match on what it
+        // settles — Wikipedia on the sitelinks, Commons on the `P18` filename.
+        new EnrichmentRegistry([wikidata, wikipedia, commons]),
     },
     EnrichmentService,
   ],

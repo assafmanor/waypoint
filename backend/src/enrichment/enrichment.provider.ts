@@ -37,6 +37,15 @@ export interface PlaceIdentity {
    *  no `hewiki` sitelink means there is no Hebrew article, which is the case for 18 of 27
    *  Tokyo places (§11.5). */
   articleTitles?: Record<string, string>;
+  /** **How much the provider that settled this identity trusted it.**
+   *
+   *  A downstream provider reaching an article or a file through a settled QID is making an
+   *  exact join — but only to an item that may itself have been matched by name and
+   *  proximity. So a summary or a photo inherits the *weakest* link in the chain rather than
+   *  claiming the certainty of its own last hop; otherwise a fuzzy Wikidata match would
+   *  launder itself into a confidence-1 photograph, which is precisely the "confidently
+   *  wrong" failure §Context 3 is about. */
+  identityConfidence?: number;
 }
 
 /**
@@ -52,8 +61,20 @@ export interface PlaceIdentity {
  */
 export type SettledIdentity = Pick<
   PlaceIdentity,
-  'wikidataQid' | 'osmRef' | 'lat' | 'lng' | 'commonsFilename' | 'articleTitles'
+  | 'wikidataQid'
+  | 'osmRef'
+  | 'lat'
+  | 'lng'
+  | 'commonsFilename'
+  | 'articleTitles'
+  | 'identityConfidence'
 >;
+
+/** The confidence a provider may claim for a value reached through a settled identity: its
+ *  own exactness, capped by how much the identity itself was trusted. */
+export function inheritedConfidence(identity: PlaceIdentity, own = 1): number {
+  return Math.min(own, identity.identityConfidence ?? 1);
+}
 
 /** Merge what a match settled into the running identity, ignoring keys it had no answer
  *  for — a provider that returns `{ lat: undefined }` must not erase coordinates an earlier
@@ -103,6 +124,24 @@ export interface ProviderValue {
   /** Overrides `SourcePolicy.license` — mandatory for Commons, whose license is per file. */
   license?: string;
   attribution?: string;
+  /** Overrides `SourcePolicy.attributionRequired`, for a source where the obligation is also
+   *  **per file** rather than per source. Commons is exactly that: 27 of 32 spike files
+   *  require visible credit and 5 genuinely do not (2× CC0, 3× public domain, §12.2), and
+   *  `extmetadata` says which. Absent = trust the source policy. */
+  attributionRequired?: boolean;
+  /** **This value's real payload is bytes, at an allowlisted URL.**
+   *
+   *  A provider never stores anything itself (§5.3 keeps it pure), so an image arrives as a
+   *  *pointer plus the facts about it* and the orchestrator materializes it through the
+   *  subject-agnostic image pipeline. The URL is validated against the allowlist before it is
+   *  fetched — never followed because a response supplied it (§7). */
+  binary?: {
+    url: string;
+    /** The dimensions of the bytes at `url` — for an `iiurlwidth` thumbnail, the bucket's
+     *  own, not the original's. */
+    width: number;
+    height: number;
+  };
 }
 
 export type ProviderFieldValues = Partial<Record<EnrichmentField, ProviderValue>>;

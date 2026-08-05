@@ -126,6 +126,101 @@ export const restSummary = (options: {
   },
 });
 
+/**
+ * A Commons `imageinfo` response.
+ *
+ * `extmetadata` values arrive as **HTML** from the real API — `Artist` is very often an `<a>`
+ * to a user page — so the fixtures wrap the artist that way too. A fixture that handed back
+ * clean text would let a provider that forgot to strip tags pass.
+ *
+ * `thumbwidth` defaults to **840**, not the 800 we ask for: `iiurlwidth` rounds up to
+ * MediaWiki's own buckets (§12.1), and a fixture that echoed the requested width would hide
+ * any code that assumed it was honoured.
+ */
+export const imageInfo = (options: {
+  filename: string;
+  license: string;
+  artist?: string;
+  credit?: string;
+  attributionRequired?: string;
+  usageTerms?: string;
+  thumbWidth?: number;
+  thumbHeight?: number;
+  width?: number;
+  height?: number;
+  sizeBytes?: number;
+  mime?: string;
+  missing?: boolean;
+  noThumb?: boolean;
+}) => {
+  const encoded = encodeURIComponent(options.filename.replace(/ /g, '_'));
+  const meta: Record<string, { value: string }> = {};
+  if (options.license) meta.LicenseShortName = { value: options.license };
+  if (options.usageTerms) meta.UsageTerms = { value: options.usageTerms };
+  if (options.artist) {
+    meta.Artist = { value: `<a href="//commons.wikimedia.org/wiki/User:X">${options.artist}</a>` };
+  }
+  if (options.credit) meta.Credit = { value: options.credit };
+  if (options.attributionRequired) {
+    meta.AttributionRequired = { value: options.attributionRequired };
+  }
+
+  return {
+    query: {
+      pages: options.missing
+        ? { '-1': { title: `File:${options.filename}`, missing: '' } }
+        : {
+            '12345': {
+              title: `File:${options.filename}`,
+              imageinfo: [
+                {
+                  url: `https://upload.wikimedia.org/wikipedia/commons/a/ab/${encoded}`,
+                  descriptionurl: `https://commons.wikimedia.org/wiki/File:${encoded}`,
+                  ...(options.noThumb
+                    ? {}
+                    : {
+                        thumburl: `https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/${encoded}/840px-${encoded}`,
+                        thumbwidth: options.thumbWidth ?? 840,
+                        thumbheight: options.thumbHeight ?? 600,
+                      }),
+                  width: options.width ?? 3466,
+                  height: options.height ?? 2476,
+                  size: options.sizeBytes ?? 2_910_000,
+                  mime: options.mime ?? 'image/jpeg',
+                  extmetadata: meta,
+                },
+              ],
+            },
+          },
+    },
+  };
+};
+
+/** The nine distinct license strings the spike found across 32 files — including the two that
+ *  need no credit and the one we must refuse. Real values from `…-licenses.json`. */
+export const COMMONS_LICENSES = {
+  /** Sensō-ji. No credit owed: `AttributionRequired` is genuinely `false` for CC0. */
+  cc0: { license: 'CC0', artist: 'Akonnchiroll', attributionRequired: 'false' },
+  ccBySa3: { license: 'CC BY-SA 3.0', artist: 'Kakidai', attributionRequired: 'true' },
+  ccBySa4: { license: 'CC BY-SA 4.0', artist: 'Akonnchiroll', attributionRequired: 'true' },
+  ccBy4: { license: 'CC BY 4.0', artist: 'David Kernan', attributionRequired: 'true' },
+  /** A regional port — the reason the license is stored as a STRING, not an enum (§12.2). */
+  ccBySa3De: { license: 'CC BY-SA 3.0 de', artist: 'Arne Müseler', attributionRequired: 'true' },
+  ccBySa25: {
+    license: 'CC BY-SA 2.5',
+    artist: 'User IgKh on en.wikipedia',
+    attributionRequired: 'true',
+  },
+  publicDomain: {
+    license: 'Public domain',
+    artist: 'Benh LIEU SONG',
+    attributionRequired: 'false',
+  },
+  /** The Western Wall's `P18`: **GFDL 1.2 only**, with an empty machine-readable `License`
+   *  field. Treated as no image at all (§12.2). */
+  gfdlOnly: { license: 'GFDL 1.2', artist: 'Ralf Roletschek', attributionRequired: 'true' },
+} as const;
+
 /** Sensō-ji: Q615183, `P18` `Sensoji 2023.jpg` (CC0), English article only. */
 export const SENSOJI = {
   place: { name: 'Sensō-ji', lat: 35.7148, lng: 139.7967, googlePlaceId: 'ChIJ-sensoji' },
