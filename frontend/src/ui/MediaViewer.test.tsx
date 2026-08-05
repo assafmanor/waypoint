@@ -49,6 +49,12 @@ afterEach(() => {
  *  synchronous — the correct default, and what the rest of this file exercises. Make
  *  the tokens readable to reach the ANIMATED branch, which is where the exit's
  *  idempotence guard lives. This is the recipe ADR-0140 §5 describes. */
+/** The ratio the frame is sized from (`screens.css` turns it into the box). jsdom has no
+ *  layout, so this property is the whole of what the unit suite can see — the box it produces
+ *  is measured in `e2e/media-viewer-fit.spec.ts`. */
+const aspectOf = () =>
+  document.querySelector<HTMLElement>('.doc-viewer-body')!.style.getPropertyValue('--dv-aspect');
+
 function withAnimation(ms = 30) {
   document.documentElement.style.setProperty('--t-base', `${ms}ms`);
   document.documentElement.style.setProperty('--stagger-step', '0ms');
@@ -121,6 +127,14 @@ describe('DocumentViewer — the frame is reserved before the bytes arrive', () 
     expect(document.querySelector('.doc-viewer-body')?.hasAttribute('data-expect')).toBe(false);
   });
 
+  // **What it is reserved AT is the picture's ratio, not a constant** (2026-08-05). jsdom has
+  // no layout, so what is assertable here is the number the frame is sized FROM — the box it
+  // produces is `screens.css` and the e2e's to measure.
+  it('carries no ratio while a document is still a mime type', () => {
+    open();
+    expect(aspectOf()).toBe('');
+  });
+
   it('runs the mount layer once the page has landed, not before', async () => {
     open();
     const opening = () =>
@@ -163,7 +177,13 @@ describe('DocumentViewer — the arrival grows from the row that was tapped', ()
 describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   // The viewer is a PORTAL into `document.body`, so everything here queries the document —
   // the same way every test above it does.
-  const openPhoto = (over: { caption?: string; onClose?: () => void } = {}) => {
+  const openPhoto = (
+    over: {
+      caption?: string;
+      onClose?: () => void;
+      intrinsic?: { width: number; height: number };
+    } = {},
+  ) => {
     const onClose = over.onClose ?? vi.fn();
     render(
       wrapNav(
@@ -172,6 +192,7 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
           mimeType="image/jpeg"
           source={{ kind: 'url', url: '/enrichment/images/enr_1' }}
           caption={over.caption}
+          intrinsic={over.intrinsic}
           onClose={onClose}
         />,
       ),
@@ -206,6 +227,35 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
     document.body.innerHTML = '';
     openPhoto();
     expect(document.querySelector('.doc-viewer-caption')).toBeNull();
+  });
+
+  // **A delivered photo knows its own dimensions** (ADR-0166 §11.4), which is the difference
+  // between the two sources here: the frame is this picture's box on the FIRST render, with no
+  // load to wait for and so nothing to settle.
+  it('reserves the frame at the delivered dimensions, before any load', () => {
+    openPhoto({ intrinsic: { width: 840, height: 600 } });
+    expect(aspectOf()).toBe('840 / 600');
+  });
+
+  // A caller that knows nothing — the document path in the wild — settles on load instead, at
+  // the two integers the image reports rather than a float of our own. Asserted on this source
+  // because it is the one whose `<img>` reaches the DOM in jsdom: the blob path decodes first,
+  // and jsdom cannot decode, so a document renders the ADR-0052 §1 hand-off here.
+  it('settles the frame on load when nothing was passed', () => {
+    openPhoto();
+    const img = screen.getByAltText('Sensō-ji');
+    Object.defineProperty(img, 'naturalWidth', { value: 3024 });
+    Object.defineProperty(img, 'naturalHeight', { value: 4032 });
+    fireEvent.load(img);
+    expect(aspectOf()).toBe('3024 / 4032');
+  });
+
+  // A load reporting 0×0 (a broken decode) would be an invalid `aspect-ratio` — the frame keeps
+  // the placeholder rather than declaring one.
+  it('ignores a load that reports no size', () => {
+    openPhoto();
+    fireEvent.load(screen.getByAltText('Sensō-ji'));
+    expect(aspectOf()).toBe('');
   });
 
   // Every way out still runs the one close (ADR-0103 §2) — inherited, not re-implemented, which

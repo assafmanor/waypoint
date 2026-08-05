@@ -62,6 +62,27 @@ function originStyle(originY?: number | null): CSSProperties | undefined {
   } as CSSProperties;
 }
 
+/** The picture's own dimensions — whatever the frame is sized from. */
+interface IntrinsicSize {
+  width: number;
+  height: number;
+}
+
+/** The frame's ratio as a CSS `<ratio>`, i.e. `840 / 600` and never a computed float: the two
+ *  numbers are integers at both sources, so dividing them here would only lose precision and
+ *  make the declaration unreadable in DevTools. Absent size means no property, and the CSS
+ *  falls back to its own placeholder (screens.css). */
+function aspectStyle(size: IntrinsicSize | null): CSSProperties | undefined {
+  if (!size || size.width <= 0 || size.height <= 0) return undefined;
+  return { '--dv-aspect': `${size.width} / ${size.height}` } as CSSProperties;
+}
+
+function naturalSize(img: HTMLImageElement): IntrinsicSize | null {
+  return img.naturalWidth > 0 && img.naturalHeight > 0
+    ? { width: img.naturalWidth, height: img.naturalHeight }
+    : null;
+}
+
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const DOUBLE_TAP_MS = 300;
@@ -267,6 +288,7 @@ export function MediaViewer({
   caption,
   onClose,
   originY,
+  intrinsic,
 }: {
   /** Names the dialog, labels the image, and is the download filename. */
   title: string;
@@ -284,6 +306,11 @@ export function MediaViewer({
    *  which has no row — the card is then summoned at centre, which is correct rather
    *  than a fallback. */
   originY?: number | null;
+  /** The picture's dimensions **when the caller already knows them** — a delivered place photo
+   *  carries the bucket's real `width`/`height` (ADR-0166 §11.4), so the frame is reserved at
+   *  this picture's own ratio before a byte arrives. A document knows nothing until its bytes
+   *  decode, so it passes nothing and the frame settles on load. */
+  intrinsic?: IntrinsicSize | null;
 }) {
   // The exit runs `--t-base`, and its LAST channel is the scrim, delayed by one
   // `--stagger-step` so the card clears against a still-dimmed room — hence both
@@ -299,6 +326,10 @@ export function MediaViewer({
   // An image whose bytes the browser can't decode (HEIC, a corrupt scan) falls
   // back to the hand-off actions instead of a blank <img> (ADR-0052 §1).
   const [imageBroken, setImageBroken] = useState(false);
+  // **The frame is the picture's box, so it needs the picture's size** (screens.css has the
+  // rest). A caller that already knows wins outright — it knows before the bytes — and a
+  // document, which cannot know, tells us on load.
+  const [loadedSize, setLoadedSize] = useState<IntrinsicSize | null>(null);
   const { imgRef, reset, handlers } = useImageZoom();
 
   // Pulled out of `source` as primitives so the effect's deps are values rather than an object
@@ -335,6 +366,10 @@ export function MediaViewer({
           probe.src = objectUrl;
           try {
             await probe.decode();
+            // The decode is also where a DOCUMENT's dimensions first exist — a scan carries
+            // none in the snapshot — so the frame is right before the `<img>` mounts rather
+            // than settling after it paints.
+            if (!cancelled) setLoadedSize(naturalSize(probe));
           } catch {
             if (!cancelled) setImageBroken(true);
           }
@@ -389,6 +424,7 @@ export function MediaViewer({
         <div
           className={url ? 'doc-viewer-body is-opening' : 'doc-viewer-body'}
           data-expect={showInlineImage ? 'image' : undefined}
+          style={showInlineImage ? aspectStyle(intrinsic ?? loadedSize) : undefined}
         >
           {failed ? (
             <p className="doc-viewer-msg">{t.docs.viewer.error}</p>
@@ -403,6 +439,7 @@ export function MediaViewer({
               className="doc-viewer-img is-fresh"
               src={url}
               alt={title}
+              onLoad={(e) => setLoadedSize(naturalSize(e.currentTarget))}
               onError={() => setImageBroken(true)}
               {...handlers}
             />

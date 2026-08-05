@@ -28,61 +28,16 @@
 // `onFrame` only there — and the card only exists on a rendered canvas, which the hermetic run
 // has no key for. So the list badges here are the inert variant, and that a photo leaves the
 // handler, the role and the marker intact is asserted in `PlaceBadge.test.tsx`.
-import { deflateSync } from 'node:zlib';
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+import { pngBytes } from './png';
 
-/* ── a real PNG, built here ──────────────────────────────────────────────────────────────
-   PNG rather than JPEG because it can be written by hand: a deflate stream of raw scanlines
-   and three CRC'd chunks, all from `node:zlib`, with no image library in the toolchain. The
-   sniffer accepts it as a stored type (`image/png` is in the avatar allow-list the pipeline
-   reuses), so this is a body the real route could serve.
-
-   Wide on purpose — 3:2, inside the measured 0.54–1.78 aspect range (ADR-0166 §11.4) — because
+/* Wide on purpose — 3:2, inside the measured 0.54–1.78 aspect range (ADR-0166 §11.4) — because
    a square source would make `object-fit: cover` untestable: the one thing the badge must
-   never do is letterbox, and only a non-square image can show it does not. */
-const CRC_TABLE = (() => {
-  const table = new Int32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c;
-  }
-  return table;
-})();
-
-function chunk(type: string, body: Buffer): Buffer {
-  const typed = Buffer.concat([Buffer.from(type, 'ascii'), body]);
-  let crc = ~0;
-  for (const byte of typed) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  const length = Buffer.alloc(4);
-  length.writeUInt32BE(body.length);
-  const checksum = Buffer.alloc(4);
-  checksum.writeUInt32BE(~crc >>> 0);
-  return Buffer.concat([length, typed, checksum]);
-}
-
+   never do is letterbox, and only a non-square image can show it does not. The bytes
+   themselves come from `png.ts`, which says why they are real. */
 const PHOTO_WIDTH = 120;
 const PHOTO_HEIGHT = 80;
-
-function pngBytes(width: number, height: number, rgb: [number, number, number]): Buffer {
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // 8 bits per channel
-  ihdr[9] = 2; // truecolour RGB, so a scanline is width × 3 bytes
-  const scanline = Buffer.concat([
-    Buffer.from([0]), // filter: none
-    Buffer.from(Array.from({ length: width }, () => rgb).flat()),
-  ]);
-  const raw = Buffer.concat(Array.from({ length: height }, () => scanline));
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
 
 /* ── the fixture ─────────────────────────────────────────────────────────────────────────── */
 

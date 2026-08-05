@@ -3693,16 +3693,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
    known before any bytes exist, so the frame can be reserved while the spinner is
    still running.
 
-   Two rules, not one, and neither is a plain floor. An IMAGE gets a FIXED frame: a
+   Two rules, not one, and neither is a plain floor. An IMAGE gets a RESERVED frame: a
    floor does not hold a frame unless it happens to exceed where the content lands
-   (at a 46vh floor the jump only fell 253 -> 93px), and a constant frame is what
-   ADR-0062's pinch/pan wants to pan within anyway, with `object-fit: contain`
-   letterboxing inside it. It is `flex-basis` and not `block-size` because this is a
-   `flex: 1` child, whose flex base size wins over any height — the first attempt set
-   `block-size` and was silently inert.
+   (at a 46vh floor the jump only fell 253 -> 93px), and a held frame is what ADR-0062's
+   pinch/pan wants to pan within anyway.
 
    The ADR-0052 §1 hand-off panel (a PDF, an undecodable HEIC) gets a floor instead,
-   sized to its own known content: a fixed image frame would strand that compact block
+   sized to its own known content: a reserved image frame would strand that compact block
    in a mostly empty card. Measured after: image 253 -> 0px, hand-off 126 -> 15px. */
 .doc-viewer-body {
   flex: 1;
@@ -3720,8 +3717,39 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   position: relative;
   isolation: isolate;
 }
+/* ── …and what it is reserved AT is the picture's own ratio, never a constant ────
+   Amended 2026-08-05 (owner: the viewer _"shouldn't hardcode the size of the box, it
+   should fit the size of the image"_). The frame above was `flex: 1 1 78vh`, and that
+   constant is what the build log's last open question was about: a fixed frame
+   letterboxes where a content-sized one never did, and `--paper` is a warm `#2e2a20`
+   in dark, so the bands read as a stain. Measured on a 390px phone: a 3:2 photograph
+   sat in a 624px frame with ~200px of it above and below the picture.
+
+   The reservation was never the problem — the CONSTANT was. A ratio reserves a frame
+   just as firmly and lands exactly where the image lands, so there is nothing to
+   letterbox. Three sources, in order:
+
+     the caller   a delivered place photo carries the bucket's real `width`/`height`
+                  (ADR-0166 §11.4), so the frame is right before a byte arrives;
+     the image    on load — a document's bytes are the only thing that knows its size;
+     3 / 4        until then, because a document scan is portrait far more often than
+                  not. It decides how far the frame SETTLES, never where it lands.
+
+   So the +253px jump is 0 for anything whose size is known before its bytes, and for a
+   document — which cannot know — the transition turns what is left into a movement
+   rather than the snap the frame was reserved to prevent. Storing dimensions on
+   `DocumentSummary` would close that too; nobody has asked for the migration.
+
+   `inline-size` is declared rather than left to the flex stretch, because a ratio needs
+   a definite inline size to derive a block size from. The image then fills a frame it
+   matches — `object-fit: contain` still guards the one case flex-shrink can cap, a very
+   tall picture on a short screen, where the card's own `max-height` wins. */
 .doc-viewer-body[data-expect='image'] {
-  flex: 1 1 78vh;
+  flex: 0 1 auto;
+  inline-size: 100%;
+  min-block-size: 0;
+  aspect-ratio: var(--dv-aspect, 3 / 4);
+  transition: aspect-ratio var(--t-base) var(--ease-standard);
 }
 /* ── The mount opens around the page ─────────────────────────────────────────────
    The document is the subject, and giving it the same plain fade as everything else
@@ -3752,9 +3780,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 .doc-viewer-handoff.is-fresh {
   animation: dv-content-in var(--t-base) var(--ease-standard) both;
 }
+/* Fills the frame, which is the frame's own ratio — so a small scan is shown at the size
+   the viewer has rather than as a stamp in the middle of it, and `contain` never has a
+   band to draw. */
 .doc-viewer-img {
-  max-width: 100%;
-  max-height: 100%;
+  inline-size: 100%;
+  block-size: auto;
+  max-inline-size: 100%;
+  max-block-size: 100%;
   object-fit: contain;
   /* ADR-0062: the one zoom exception. The pointer handler in DocumentViewer.tsx
      owns pinch + pan, so the browser must not consume the gesture itself; the
@@ -3762,11 +3795,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   touch-action: none;
   transform-origin: 0 0;
   will-change: transform;
-}
-.doc-viewer-frame {
-  width: 100%;
-  height: 78vh;
-  border: none;
 }
 .doc-viewer-msg {
   font-size: 13px;
