@@ -338,3 +338,13 @@ The cause is not in this ADR — it is [ADR-0054](0054-ambient-span-events-off-t
 So `in-transit` is now reached by a journey **whatever calendar day it is**, which was always the intent — the bracketed-point windows are instants and have never cared about dates. Three readers take the distinction (`classify`, `Home`'s `deriveNow` filter, the mid-stay strip), and the third is worth naming: without it, a red-eye would have been claimed twice at once, `בטיסה` on the board and `LH692 · יום 1 מתוך 2` in the strip underneath.
 
 **One thing the fix left standing, and then didn't.** §M had deferred `נוחתים מחר` for want of a red-eye fixture to test against; this fix produced one (`hero-booking.test.ts`'s day-boundary block, plus the Home-level pair), and the day token shipped straight after on the owner's word. §M's bullet list carries it, because it belongs with the rest of what the lift says about a journey — not to a section of its own.
+
+### S. `free` lifts (§A) — and it took three amendments before it said anything
+
+Owner, from a device: _"when lifting the hero when it says `זמן חופשי` unlifted, the text disappears after lifting."_
+
+§A opened the gap to the lift and stopped there. It reversed §10's "`free` does not lift" as a question about **liftability** — is there anything worth opening onto — and never asked the second half, which is what the opened card shows where the now point would be. The answer was: nothing. `HeroLift` renders `now.map(…)`, an empty `now` renders zero blocks, and `פנוי` / `זמן חופשי` live only in `Board`'s final `else`. So the words the collapsed board was showing a frame earlier vanished mid-flight, on the one variant §A had just made pressable.
+
+**The lifted hero now carries them**, in the collapsed board's own markup and words — which is this ADR's own thesis (§1: one object at two elevations), and what every other state on the card already does. Nothing else is added: the free state's depth is the horizon under it, which §A already argued is the whole point of lifting in a gap.
+
+Worth naming for the next reader, because the shape recurs: `Board` expresses `free` as **the branch it falls through to**, while the hero has no variants at all — its states are the shapes of its data. A variant that is an `else` on one surface is an empty array on the other, and an empty array renders silence rather than a state. §K is the same finding from the other direction (`in-transit` was a variant the hero did not have); this one is a variant it did not know it had.

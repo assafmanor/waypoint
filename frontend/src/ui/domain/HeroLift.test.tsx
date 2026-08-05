@@ -113,6 +113,28 @@ describe('HeroLift', () => {
     expect(onUndo).toHaveBeenCalledOnce();
   });
 
+  // The gap, which is most of a real day and the state the lift is worth the most in.
+  // It shipped rendering nothing at all where the now point goes, so the words the
+  // collapsed board was showing disappeared as it lifted.
+  it('says זמן חופשי when nothing is in progress', () => {
+    const container = show({
+      now: [],
+      next: point({ key: 'next', title: <span>מלון סנטרו</span>, place: 'Via Toledo' }),
+      nextTime: '16:00',
+    });
+    expect(container.querySelector('.wp-board-now-label')?.textContent).toBe(t.board.freeLabel);
+    expect(container.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
+    // …and the horizon it opened onto is still there under it.
+    expect(screen.getByText('מלון סנטרו')).toBeTruthy();
+  });
+
+  // The free words belong to the empty case ALONE — a board with something in progress
+  // that also printed `זמן חופשי` would be the same bug from the other side.
+  it('says nothing about free time while a point is in progress', () => {
+    const container = show({ now: [point()] });
+    expect(container.querySelector('.hero-lifted')?.textContent).not.toContain(t.board.freeTitle);
+  });
+
   // ADR-0041 §6: the split exists on there being no primary, so no equal is
   // promoted and each carries the same depth.
   it('the group split promotes no equal and gives each the same depth', () => {
