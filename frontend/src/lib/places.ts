@@ -57,9 +57,28 @@ export function bookingPlaceId(booking: Booking): string | undefined {
   return isTransport(booking) ? booking.fromPlaceId : booking.placeId;
 }
 
-/** The effective placeId to show for an event, following the authority rule. */
-export function eventPlaceId(event: TripEvent, booking?: Booking): string | undefined {
-  if (event.bookingId && booking) return bookingPlaceId(booking);
+/** **Where a booking is headed**, which for transport is the other end of the same
+ *  authority rule (`bookingPlaceId` answers the origin). Only meaningful while you are
+ *  inside the span: a flight in the air is *at* nowhere and *going* somewhere, so the
+ *  origin airport — the one thing `bookingPlaceId` can answer — is the airport you have
+ *  already left (session 215). Anything not transport has one place and it is the answer
+ *  to both questions. */
+export function bookingDestinationId(booking: Booking): string | undefined {
+  return isTransport(booking) ? booking.toPlaceId : booking.placeId;
+}
+
+/** The effective placeId to show for an event, following the authority rule.
+ *
+ *  `heading` flips a transport event to its destination — used by the lifted hero for the
+ *  span you are inside, where the useful pin is where you are going. */
+export function eventPlaceId(
+  event: TripEvent,
+  booking?: Booking,
+  heading?: boolean,
+): string | undefined {
+  if (event.bookingId && booking) {
+    return heading ? bookingDestinationId(booking) : bookingPlaceId(booking);
+  }
   return event.placeId;
 }
 

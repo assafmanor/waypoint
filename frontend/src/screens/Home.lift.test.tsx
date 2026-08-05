@@ -454,6 +454,46 @@ describe('Home — the lift wiring', () => {
     expect(hero.textContent).not.toContain(t.board.midSpan.flightLive);
   });
 
+  // The owner's content idea, wired: the crossing said out loud, plus the destination's
+  // clock now. `Europe/Rome` (the trip) → `Asia/Tokyo` (the destination place) is +7 in
+  // August, and the direction must follow the sign.
+  it('says the clock jump in words, and what time it is there', () => {
+    const tokyo: Place = { ...place, id: 'p-tyo', name: 'Haneda', timezone: 'Asia/Tokyo' };
+    tripEvents = [flight()];
+    tripBookings = [{ ...flightBooking, fromPlaceId: 'p1', toPlaceId: 'p-tyo' }];
+    tripPlaces = [place, tokyo];
+    show();
+    fireEvent.click(board()!);
+    const line = document.querySelector('.hero-clockshift')!;
+    expect(line.textContent).toContain(t.board.clockShift('7 שעות', t.board.clockForward));
+    // 12:30 UTC is 21:30 in Tokyo, and the destination's own name carries it.
+    expect(line.querySelector('.there')?.textContent).toBe(t.board.clockThere('Haneda', '21:30'));
+    // The sentence is the LIFT's form of the pill; the collapsed board keeps the pill.
+    expect(document.querySelector('.wp-board:not(.hero-lifted) .hero-clockshift')).toBeNull();
+    expect(document.querySelector('.wp-board .wp-tzshift')).toBeTruthy();
+  });
+
+  it('says nothing about the clock on a single-zone leg', () => {
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-clockshift')).toBeNull();
+  });
+
+  // The other half of the same correction: mid-flight the pin is where you are GOING.
+  it('offers the destination in איפה, not the airport you left', () => {
+    const tokyo: Place = { ...place, id: 'p-tyo', name: 'Haneda' };
+    tripEvents = [flight()];
+    tripBookings = [{ ...flightBooking, fromPlaceId: 'p1', toPlaceId: 'p-tyo' }];
+    tripPlaces = [place, tokyo];
+    show();
+    fireEvent.click(board()!);
+    const where = document.querySelector('.hero-lifted .hero-where-nm')!;
+    expect(where.textContent).toContain('Haneda');
+    expect(where.textContent).not.toContain('Via dei Tribunali');
+  });
+
   // Report 3: "the least we can do is give the expanded hero more transit info such as
   // estimated time till arrival". Derived from the schedule — there is no live feed and
   // the copy must not imply one.

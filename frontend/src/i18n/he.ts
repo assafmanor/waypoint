@@ -1273,6 +1273,20 @@ export const t = {
     inPhrase: (length: string) => `בעוד ${length}`,
     /** A held span says since when it has been ours; its end is on the meta row above. */
     heldSince: (time: string) => `אצלנו מ־${time}`,
+    /** **The clock jump, in words** — the lifted hero's form of the amber `🕐 +1 ש׳` pill
+     *  the collapsed board keeps (owner, session 215: _"say explicitly מזיזים את השעון
+     *  שעה אחורה or something like that"_). The pill is correct and unreadable to anyone
+     *  who has not learned it: it does not say which way to turn the hands.
+     *
+     *  The length comes from the shared ladder (`hoursPhrase`), so no number word is
+     *  invented here — and the direction is the sign of the same `deltaMinutes` the pill
+     *  renders, never a guess. */
+    clockShift: (length: string, direction: string) => `מזיזים את השעון ${length} ${direction}`,
+    clockForward: 'קדימה',
+    clockBack: 'אחורה',
+    /** The destination's clock right now, on the same line — what makes the sentence
+     *  actionable rather than trivia. */
+    clockThere: (place: string, time: string) => `${place} ${time}`,
   },
   // The LIFTED hero (ADR-0160 §3). Its own section rather than more `board` keys,
   // because these label the horizon's parts and the collapsed board has none of

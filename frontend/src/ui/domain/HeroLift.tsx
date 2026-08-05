@@ -26,11 +26,6 @@ import { SettleControl, type SettleOutcome } from './SettleControl';
 import { t } from '../../i18n/he';
 import './hero-lift.css';
 
-/** One point on the horizon, view-ready. Mirrors `lib/hero-horizon.ts`'s `HeroPoint`
- *  with everything resolved: the title is a node (the screen passes `<EventTitle/>`,
- *  so a flight still reads as its route), times are pre-formatted in their own zone
- *  (ADR-0107), and the hand-offs are callbacks rather than hrefs the domain layer
- *  would have to know how to build. */
 /** **A span you are inside**, in the collapsed board's own words (session 215).
  *
  *  The lifted hero had no in-transit shape at all: a flight in the air arrived here as
@@ -60,8 +55,19 @@ export interface HeroLiftTransit {
    *  and not the card's. A held span (a car hire) passes none: its end is a deadline,
    *  not a distance travelled. */
   rail?: ReactNode;
+  /** The clock jump in words (`מזיזים את השעון שעה קדימה`), and the destination's clock
+   *  right now. The amber pill stays on the collapsed board — it is the glance form of the
+   *  same number, and this is the state you asked for, so it can afford a sentence.
+   *  Absent on a single-zone leg, which is the pill's own gate. */
+  clockShift?: string;
+  clockThere?: string;
 }
 
+/** One point on the horizon, view-ready. Mirrors `lib/hero-horizon.ts`'s `HeroPoint`
+ *  with everything resolved: the title is a node (the screen passes `<EventTitle/>`,
+ *  so a flight still reads as its route), times are pre-formatted in their own zone
+ *  (ADR-0107), and the hand-offs are callbacks rather than hrefs the domain layer
+ *  would have to know how to build. */
 export interface HeroLiftPoint {
   key: string;
   title: ReactNode;
@@ -278,6 +284,18 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
               {/* The rail, INSIDE the point whose journey it draws. As the `foot` it sat
                   under `הבא בתור` and read as that event's progress. */}
               {point.transit.rail && <div className="hero-transit">{point.transit.rail}</div>}
+              {/* The zone crossing, said out loud. Amber: a clock jump is time (rule 4). */}
+              {point.transit.clockShift && (
+                <div className="hero-clockshift">
+                  <Icon name="clock" />
+                  {point.transit.clockShift}
+                  {point.transit.clockThere && (
+                    <span className="there" dir="auto">
+                      {point.transit.clockThere}
+                    </span>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
