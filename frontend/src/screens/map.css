@@ -967,22 +967,58 @@
 }
 .map-badge.cat-food {
   background: var(--cat-food);
+  /* The ring's hue when a photo fills the badge (ADR-0167 §1) — declared beside the fill it
+     replaces, so a sixth category answers both in one place. */
+  --badge-ring: var(--cat-food);
 }
 .map-badge.cat-lodging {
   background: var(--cat-lodging);
+  /* The ring's hue when a photo fills the badge (ADR-0167 §1) — declared beside the fill it
+     replaces, so a sixth category answers both in one place. */
+  --badge-ring: var(--cat-lodging);
 }
 .map-badge.cat-transit {
   background: var(--cat-transit);
+  /* The ring's hue when a photo fills the badge (ADR-0167 §1) — declared beside the fill it
+     replaces, so a sixth category answers both in one place. */
+  --badge-ring: var(--cat-transit);
 }
 .map-badge.cat-leisure {
   background: var(--cat-leisure);
+  /* The ring's hue when a photo fills the badge (ADR-0167 §1) — declared beside the fill it
+     replaces, so a sixth category answers both in one place. */
+  --badge-ring: var(--cat-leisure);
 }
 .map-badge.cat-services {
   background: var(--cat-services);
+  /* The ring's hue when a photo fills the badge (ADR-0167 §1) — declared beside the fill it
+     replaces, so a sixth category answers both in one place. */
+  --badge-ring: var(--cat-services);
+}
+/* **The photo clears this host's fill** — and it has to be declared HERE, beside the five
+   rules it overrides, rather than only in `place-badge.css`. Both selectors are one class plus
+   one class, so they tie on specificity and import order decides: `map.css` loads after the
+   component's sheet, so the generic rule loses and the tint stays under the photo. Invisible
+   under an opaque image, but a thumbnail with alpha would composite over a saturated hue.
+
+   A future host that declares its badge fill with the same shape owes the same line. */
+.map-badge[data-photo] {
+  background: none;
 }
 .place.soft .map-badge {
   opacity: 0.72;
   box-shadow: inset 0 0 0 1.5px var(--soft-line);
+}
+/* **The soft line is the category hue's trap all over again** (ADR-0167 §8.1), on a rule that
+   section did not name: it is an `inset` box-shadow on the badge, so a photo covers it and a soft
+   place silently stops reading as soft. The opacity above survives (it inherits to the photo);
+   the line does not, so it is redrawn in the overlay that sits above the image. Hard/soft is
+   non-negotiable everywhere it touches (root rule 1), which is why this is not left to the
+   opacity alone. */
+.place.soft .map-badge[data-photo] .wp-placebadge-ring {
+  box-shadow:
+    inset 0 0 0 2px var(--badge-ring, transparent),
+    inset 0 0 0 3.5px var(--soft-line);
 }
 .place.skipped .map-badge {
   filter: saturate(0.5);

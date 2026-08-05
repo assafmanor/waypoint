@@ -1,6 +1,6 @@
 # 0167 — The badge is the thumbnail's frame, and selection is where a place says more
 
-**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **Nothing built** — this is the surface ADR-0166's Phase 1 fills in.) **AMENDED THREE TIMES the same day — read §11 first: it supersedes §10, and §9 supersedes §3 for a committed place.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
+**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **§1 and §2 are built** — see §12; the card, §3–§9, is not.) **AMENDED FOUR TIMES — read §11 first: it supersedes §10, and §9 supersedes §3 for a committed place. §12 records what the build measured, including where §1's row numbers came from.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
 **Date:** 2026-08-05
 
 **Design reference:** [`mockups/place-enrichment-v1.html`](../../mockups/place-enrichment-v1.html) — rendered and measured in Chromium at 390×844 (DPR 2), in both themes. Every place name, summary, credit, opening-hours string and aspect ratio in it is real data from the [coverage spike](../planning/2026-08-04-session-213-place-enrichment-coverage-spike.md); **the photographs are synthetic** (see §8).
@@ -144,6 +144,16 @@ The full-screen zoomable preview (§10's ADR-0062 reuse) is **not retired** — 
 **2. The badge must not clip its own children — and this would have shipped.** The owner spotted "a white quarter circle on the top right" of a thumbnail. It is a bug, and its cause is the design: I rounded the photo with `overflow: hidden` **on the badge**, and the badge hosts children that **deliberately overhang it** — the order counter at `-6px`, and the ring overlay. Clipping the badge clipped the counter to a quarter-circle in the corner. The shipped `.map-badge` carries **no `overflow`** at all, which is precisely why.
 
 So the photo clips on an **inner element** and the badge stays unclipped. The general rule, worth more than the fix: **`overflow: hidden` on a positioned host silently truncates anything designed to overhang it** — and on this badge the overhang is a numbered pin, so the failure looks like a rendering artifact rather than a layout decision, which is why it survived my own render pass and needed a human eye on a real device.
+
+### 12. Amendment (2026-08-05, fifth) — what the build measured, and where §1's numbers came from
+
+§1 and §2 are **built** ([session note](../planning/2026-08-05-place-enrichment-phase-4-built.md)). Three corrections, all found by measuring the shipped surface rather than by reading:
+
+**§1's "collapsed rows stay at 69–71px" is the MOCKUP's box, not the app's.** A real `.place` measures **64px**, and two adjacent rows are **73px** apart — the box plus its 9px `margin-bottom`, which is the 73px §Context already cites for the shipped row. Both numbers are right about different things, and the ADR did not say which was which. The e2e spec asserts the **pitch** and the two rows' equality; a future phase inheriting a number from `mockups/` should re-derive it the same way (`docs/design/mockups.md` says exactly this, and it is what found this).
+
+**§11.2's ring is a real element, not an `::after`.** Both of this badge's pseudo-elements are already spoken for — `::before` is the order counter and `::after` is the hit-area expander that makes the badge tappable at 40px. Same stacking, one more element.
+
+**Clearing the category fill takes a rule in the HOST's stylesheet too.** `background: none` on `[data-photo].map-badge` ties with `.map-badge.cat-food` on specificity — one class plus one class — so import order decides it, and `map.css` loads later. Only visible with an alpha thumbnail, which is why it needed a test rather than an eye.
 
 ## What this does not settle
 

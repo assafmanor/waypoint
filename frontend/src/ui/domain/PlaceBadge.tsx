@@ -24,8 +24,20 @@
 // silhouette of what you land on. Without a place the badge is exactly what it
 // always was — no ring, no marker, no role — which is "absent, not broken".
 //
-// Presentational only: the host's own badge class in, one handler, no state.
-import { type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+// **It is also the thumbnail's frame** (ADR-0167 §1). A fetched photograph fills the badge's
+// interior and the category hue moves from fill to a 2px ring, so no hue leaves ADR-0028's
+// budget and the row still says what kind of place it is. This costs the row no width and no
+// new slot — which is the whole reason it is possible: with restaurants at 0 of 7 for images
+// (ADR-0166 §11.3), a dedicated thumbnail slot would be empty on most rows and the list would
+// go ragged. Here the slot is always full, with a glyph as before or with a photo.
+//
+// Two traps live in this file, both measured in the mockup first (§8.1, §11.2) — see
+// `place-badge.css`, where the CSS that avoids them is commented at the rules that do it.
+//
+// Presentational: the host's own badge class in, one handler. The one piece of state is
+// whether the photo failed to load, which is a fact about this render and nothing else — see
+// `photoUrl`.
+import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon } from '../Icon';
 import { t } from '../../i18n/he';
 import './place-badge.css';
@@ -36,6 +48,7 @@ export function PlaceBadge({
   onShowOnMap,
   label,
   order,
+  photoUrl,
 }: {
   /** The host's own badge class (`wp-event-badge`, `bld-bd`, `tr-badge`, …), so the
    *  badge keeps its surface's size, tint and radius and this adds only the way in. */
@@ -52,11 +65,53 @@ export function PlaceBadge({
   /** The place's position in its day, stamped in the badge's corner (ADR-0121 §6). Only
    *  the Map's own badge carries one; the other hosts pass nothing. */
   order?: number;
+  /** **A fetched photograph to fill the badge's interior** (ADR-0167 §1), or absent for the
+   *  glyph — which is the majority of rows and looks exactly as it always did.
+   *
+   *  The caller decides, because only it knows whether the glyph beside it was PICKED or
+   *  derived, and a picked icon beats a photo (§2) — see `lib/place-photo.ts`. */
+  photoUrl?: string;
 }) {
+  // A blob a refresh replaced is a 404 (its URL is immutable, so it can never come back), and
+  // the no-image state has to be what that degrades to — otherwise the badge shows the
+  // browser's broken-image mark inside a 40px square. Keyed off the URL so a new photo gets a
+  // fresh chance rather than inheriting the last one's failure.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  useEffect(() => setFailedUrl(null), [photoUrl]);
+  const photo = photoUrl && photoUrl !== failedUrl ? photoUrl : undefined;
+
+  // The photo clips on an INNER element and the badge itself keeps no `overflow` (§11.2): this
+  // badge hosts children that deliberately overhang it — the order counter at its corner, the
+  // hit-area `::after` — and clipping the badge clips the counter into a quarter-circle. That
+  // shipped in the mockup and took a human eye on a real device to catch.
+  const frame = photo ? (
+    <>
+      <span className="wp-placebadge-photo" aria-hidden="true">
+        <img
+          src={photo}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedUrl(photo)}
+        />
+      </span>
+      {/* Outside the clip and above the image — see the CSS. The badge's own two
+          pseudo-elements are already the order counter and the hit area, which is why v2's
+          `::after` is a real element here. */}
+      <span className="wp-placebadge-ring" aria-hidden="true" />
+    </>
+  ) : null;
+
   if (!onShowOnMap) {
     return (
-      <span className={className} data-order={order} aria-hidden="true">
-        {children}
+      <span
+        className={className}
+        data-order={order}
+        data-photo={photo ? '' : undefined}
+        aria-hidden="true"
+      >
+        {frame}
+        {!photo && children}
       </span>
     );
   }
@@ -73,6 +128,7 @@ export function PlaceBadge({
     <span
       className={`${className} wp-placebadge`}
       data-order={order}
+      data-photo={photo ? '' : undefined}
       role="button"
       tabIndex={0}
       aria-label={label ?? t.actions.showOnMap}
@@ -82,7 +138,10 @@ export function PlaceBadge({
         if (e.key === 'Enter' || e.key === ' ') fire(e);
       }}
     >
-      {children}
+      {frame}
+      {/* The glyph and the photo are alternatives, never stacked: a photograph behind an
+          emoji is unreadable as either. */}
+      {!photo && children}
       <span className="wp-placebadge-mark" aria-hidden="true">
         <Icon name="pin" />
       </span>

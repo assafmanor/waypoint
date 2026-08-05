@@ -8,7 +8,8 @@
 // pairing, and the ring the account avatar wears. No call site does any of that
 // again — a call site picks a size and passes a person.
 import type { AvatarChoice, IdentityHue, User } from '@waypoint/shared';
-import { API_BASE_URL, AVATAR_INITIAL_LENGTH } from '../../constants';
+import { AVATAR_INITIAL_LENGTH } from '../../constants';
+import { apiAssetUrl } from '../../lib/api-asset';
 import './avatar.css';
 
 /** Named sizes rather than a number, so the set stays small and every surface reads
@@ -41,9 +42,7 @@ export type AvatarPerson = Pick<User, 'displayName' | 'avatarHue'> & {
 export function avatarPictureUrl(person: AvatarPerson): string | null {
   if (person.avatarChoice === 'google') return person.googleAvatarUrl ?? null;
   if (person.avatarChoice === 'upload') {
-    // A prefix, not a base for `new URL()`: same-origin production leaves
-    // API_BASE_URL empty, and the server's path is already root-relative.
-    return person.uploadedAvatarUrl ? `${API_BASE_URL}${person.uploadedAvatarUrl}` : null;
+    return person.uploadedAvatarUrl ? apiAssetUrl(person.uploadedAvatarUrl) : null;
   }
   return null;
 }

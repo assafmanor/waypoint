@@ -18,6 +18,8 @@ import {
   EVENT_SOURCE,
   EVENT_STATUS,
   type Booking,
+  type DeliveredEnrichmentFields,
+  type DeliveredImageValue,
   type MaybeItem,
   type Note,
   type Place,
@@ -84,6 +86,7 @@ let tripPlaces: Place[] = [];
 let tripNotes: Note[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripBookings: Booking[] = [];
+let tripEnrichments: Record<string, DeliveredEnrichmentFields> = {};
 let currentMode = 'trip';
 let isOffline = false;
 
@@ -119,6 +122,9 @@ vi.mock('../state/trip-state', () => ({
       primaryZone: 'Asia/Tokyo',
     },
     usingCachedSnapshot: false,
+    // What the world knows about these places (ADR-0166 §6). Mutable, because whether a row's
+    // badge frames a photo is one of the things this screen decides.
+    enrichments: tripEnrichments,
     indexVerbs,
     // A place is the fifth note host (ADR-0153 §8's amendment): the row carries the mark, the
     // selected row carries the section, and the make/rename form carries the composer.
@@ -513,6 +519,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     tripPlaces = [];
     tripNotes = [];
     tripBookings = [];
+    tripEnrichments = {};
     currentMode = 'trip';
     isOffline = false;
     paneProps.current = {};
@@ -3799,6 +3806,49 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       fireEvent.click(pin('museum')!);
       expect(paneProps.current.arrival).toBeNull();
+    });
+  });
+
+  // The badge is also the thumbnail's frame (ADR-0167 §1). The GEOMETRY of that — the row's
+  // height, the ring, the order counter's overhang — is measured in
+  // `e2e/place-photo-frame.spec.ts`, because jsdom loads no CSS and reports every rect as zero.
+  // What belongs here is the SCREEN's decision: which rows get a photo at all.
+  describe('a fetched photo fills the badge (ADR-0167 §1)', () => {
+    const image: DeliveredImageValue = {
+      url: '/enrichment/images/enr_1',
+      mimeType: 'image/jpeg',
+      width: 800,
+      height: 600,
+      sizeBytes: 120_000,
+      source: 'commons',
+      license: 'CC BY-SA 3.0',
+      attribution: 'Kakidai',
+      fetchedAt: '2026-07-19T09:00:00Z',
+      confidence: 1,
+      method: 'settled_id',
+      ref: 'Sensoji.jpg',
+    };
+    const badge = (name: string) => row(name)!.querySelector('.map-badge')!;
+
+    it('frames the row we know something about, and leaves the others alone', () => {
+      seed();
+      tripEnrichments = { museum: { image } };
+      render(wrap(<MapView />));
+      expect(badge('museum').querySelector('img')!.getAttribute('src')).toBe(image.url);
+      expect(badge('museum').hasAttribute('data-photo')).toBe(true);
+      // The common case, and the reason the frame had to be free: Tokyo restaurants scored
+      // 0 of 7 for images (ADR-0166 §11.3), so most rows render exactly as they always did.
+      expect(badge('lunch').querySelector('img')).toBeNull();
+      expect(badge('lunch').hasAttribute('data-photo')).toBe(false);
+    });
+
+    it('yields to an icon a human picked (§2)', () => {
+      seed();
+      tripPlaces = [{ ...place('museum'), icon: '🍜' }, ...tripPlaces.slice(1)];
+      tripEnrichments = { museum: { image } };
+      render(wrap(<MapView />));
+      expect(badge('museum').querySelector('img')).toBeNull();
+      expect(badge('museum').textContent).toBe('🍜');
     });
   });
 

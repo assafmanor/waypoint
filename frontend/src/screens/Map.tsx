@@ -34,6 +34,7 @@ import {
   EVENT_STATUS,
   matchesAnyTerm,
   type Booking,
+  type DeliveredImageValue,
   type EventCategory,
   type MaybeItem,
   type Place,
@@ -77,6 +78,8 @@ import {
   placeRefs,
   soleIdeaFor,
 } from '../lib/place-refs';
+import { badgePhoto } from '../lib/place-photo';
+import { apiAssetUrl } from '../lib/api-asset';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import {
   buildPinOrderIndex,
@@ -225,6 +228,9 @@ export function MapView() {
     indexVerbs,
     notes,
     noteVerbs,
+    // What the world knows about these places (ADR-0166 §6) — server-owned, and a missing key
+    // is the normal "we know nothing" state rather than a loading one.
+    enrichments,
   } = useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
@@ -2099,6 +2105,7 @@ export function MapView() {
       const selected = selectedId === usage.placeId;
       return (
         <PlaceRow
+          photo={badgePhoto(place, enrichments[usage.placeId])}
           key={usage.placeId}
           usage={usage}
           place={place}
@@ -3080,6 +3087,7 @@ export function MapView() {
 function PlaceRow({
   usage,
   place,
+  photo,
   order,
   ambient,
   behind,
@@ -3106,6 +3114,10 @@ function PlaceRow({
 }: {
   usage: PlaceUsage;
   place: Place;
+  /** **The photograph that fills the badge** (ADR-0167 §1), or absent for the glyph — which is
+   *  most rows and looks exactly as it always did. Resolved by `badgePhoto`, which is where the
+   *  "a picked icon beats a fetched photo" rule lives (§2). */
+  photo?: DeliveredImageValue;
   /** This place's position in the day's sequence — the SAME number its pin carries
    *  (`buildPinOrderIndex`), so the canvas and the list can't disagree about which
    *  stop is second. Absent for anything with no position in the schedule: a ghost,
@@ -3263,6 +3275,9 @@ function PlaceRow({
         order={order}
         onShowOnMap={onFrame}
         label={t.map.frameOnPlace}
+        // The stored `url` is root-relative and the API may be another origin, so it is
+        // prefixed here — the same resolution an uploaded avatar's bytes get.
+        photoUrl={photo && apiAssetUrl(photo.url)}
       >
         {glyph}
       </PlaceBadge>
