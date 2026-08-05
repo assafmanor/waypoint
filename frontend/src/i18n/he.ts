@@ -384,6 +384,21 @@ export const t = {
     // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
     // the schema — "event or booking?" is the app's question, not the traveller's.
     scheduleToDay: 'שיבוץ ליום',
+    // **What the world knows about this place** (ADR-0167 §5/§6), in the selection reveal.
+    know: {
+      // A summary in a language that is not ours, marked in ONE word and in the row's
+      // existing tag grammar — no new component and no second treatment of the prose.
+      // Keyed by the variant's own language: a language with no word here gets no marker
+      // rather than an invented one (`lib/place-summary.ts`), and only `he` → `en` can
+      // arrive today (ADR-0166 §11.5).
+      langMarker: { en: 'באנגלית' } as Record<string, string | undefined>,
+      // The way through to what Google holds — hours, photos, reviews, live busy-ness — for
+      // the places open sources cannot describe (ADR-0166 §13). **Never `מפה` or `צפה`:**
+      // a second control that reads as "view the location" is the competing destination
+      // ADR-0121 §8 refused, and the row's one Google exit stays `נווט`. This one answers
+      // *what does Google know*, which our map does not.
+      moreOnGoogle: 'עוד בגוגל',
+    },
     // A pin that is in view but not in this day (ADR-0121 §6). Its row is not in
     // the sheet, so tapping it is the only way to learn what it is: the tap
     // surfaces that one row, named with the day it belongs to.

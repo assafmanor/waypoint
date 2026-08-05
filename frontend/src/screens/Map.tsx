@@ -68,6 +68,7 @@ import {
   mapsDayRouteUrl,
   coordLabel,
   mapsDirectionsUrl,
+  mapsKnowledgeUrl,
   mapsPredictionUrl,
   nextDestination,
 } from '../lib/places';
@@ -79,6 +80,7 @@ import {
   soleIdeaFor,
 } from '../lib/place-refs';
 import { badgePhoto } from '../lib/place-photo';
+import { placeSummary, type PlaceSummary } from '../lib/place-summary';
 import { apiAssetUrl } from '../lib/api-asset';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import {
@@ -2132,6 +2134,13 @@ export function MapView() {
             ) : undefined
           }
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
+          // Gated on `selected` for the same reason the notes and the refs are: the list can hold
+          // the whole trip, and a summary block per unselected row is 64px nobody is reading.
+          summary={selected ? placeSummary(enrichments[usage.placeId]) : undefined}
+          // Free, and present even when we know nothing (ADR-0167 §6) — but not under an errand,
+          // where the tab answers one question and the verbs CHANGE rather than accumulate
+          // (ADR-0134 §3), which is the same rule that takes `נווט` and the schedule verb off.
+          moreUrl={selected && !pendingErrand ? mapsKnowledgeUrl(place) : undefined}
           refs={selected ? refEntriesFor(usage, opts) : undefined}
           onSchedule={
             // Absent under a place errand (ADR-0134 §3 / ADR-0135 §7): the tab is answering
@@ -3103,6 +3112,8 @@ function PlaceRow({
   selected,
   notes,
   notesSlot,
+  summary,
+  moreUrl,
   refs,
   onSchedule,
   onSelect,
@@ -3118,6 +3129,14 @@ function PlaceRow({
    *  most rows and looks exactly as it always did. Resolved by `badgePhoto`, which is where the
    *  "a picked icon beats a fetched photo" rule lives (§2). */
   photo?: DeliveredImageValue;
+  /** **The two-line summary block** (ADR-0167 §9.3), or absent when we know nothing — which is
+   *  the common case and draws nothing at all (ADR-0109 §7). Already resolved by `placeSummary`:
+   *  which language variant a reader gets, and the one word that marks it when it is not ours.
+   *  Selection-gated by the caller, like the notes and the references. */
+  summary?: PlaceSummary;
+  /** **`עוד בגוגל`** (ADR-0167 §6): what Google knows about this place. Present whenever the
+   *  reveal's footer is, including when we know nothing — that is when it matters most. */
+  moreUrl?: string;
   /** This place's position in the day's sequence — the SAME number its pin carries
    *  (`buildPinOrderIndex`), so the canvas and the list can't disagree about which
    *  stop is second. Absent for anything with no position in the schedule: a ghost,
@@ -3401,6 +3420,26 @@ function PlaceRow({
           />
         )}
       </span>
+      {/* **WHAT THE WORLD KNOWS, pinned under the identity** (ADR-0167 §9.3). Two lines,
+          always visible while the row is selected, and NOT inside the notes scroller: the
+          group's own writing does not share a region with fetched text (§9.5), and this block
+          is one of the four things the bounded card pins.
+
+          §9's arithmetic is why it can be here at all: hours ride the meta line at 0px, so the
+          64px this costs is paid for rather than added. Absent — not empty — when we know
+          nothing, which is the common case (ADR-0109 §7). */}
+      {summary && (
+        <span className="map-sum">
+          {/* Inline before the prose and a SIBLING of it, not inside it: `dir="auto"` sniffs the
+              first strong character, so a Hebrew chip inside the prose element would make an
+              English extract read as RTL — and the clamp needs an element whose content is
+              text, since `-webkit-box` lays element children out as boxes. */}
+          {summary.marker && <span className="map-tag map-sum-lang">{summary.marker}</span>}
+          <span className="map-sum-t" dir="auto" lang={summary.lang}>
+            {summary.text}
+          </span>
+        </span>
+      )}
       {/* **WHAT WE KNOW ABOUT THIS PLACE, between the facts and the verbs.** The order is
           `BookingDetail`'s (facts → notes) and the idea sheet's (notes → verbs); notes last,
           under the schedule footer, would put content below a primary action, which is the
@@ -3451,7 +3490,7 @@ function PlaceRow({
           offers it too (it used to render only inside a non-empty `.map-refs`, which is
           precisely the place most likely to want scheduling). And in the bounded card it is
           what the grid can PIN: a foot inside a scrolling block cannot stay in view. */}
-      {(onSchedule || onDelete) && (
+      {(onSchedule || onDelete || moreUrl) && (
         <span className="map-refs-foot">
           {onSchedule && (
             <button
@@ -3464,6 +3503,23 @@ function PlaceRow({
             >
               <Icon name="plus" /> {t.map.scheduleToDay}
             </button>
+          )}
+          {/* **The way through to what Google knows** (ADR-0166 §13, ADR-0167 §6) — the answer
+              to enrichment's coverage hole, and free. It is here and not on the collapsed row,
+              which keeps its single Google exit (`נווט`), so ADR-0121 §8's density argument
+              holds where it was aimed. **Always present when the row is selected**, including
+              when we know nothing at all — that is the majority case, and then this is the
+              whole content of the block rather than an empty state to apologise for. */}
+          {moreUrl && (
+            <a
+              className="map-gbtn"
+              href={moreUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {t.map.know.moreOnGoogle}
+            </a>
           )}
           {/* Quiet beside the primary, and `--miss` because that is the hue this app's
               destructive verbs already wear (`.wp-row-action.danger`) — never a second red

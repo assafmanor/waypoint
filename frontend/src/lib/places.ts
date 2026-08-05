@@ -650,6 +650,27 @@ export function mapsDayRouteUrl(stops: readonly { lat: number; lng: number }[]):
   return `${GOOGLE_MAPS}/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}`;
 }
 
+/** **`עוד בגוגל` — what Google knows about a place we already hold** (ADR-0166 §13,
+ *  ADR-0167 §6). The answer to enrichment's coverage hole: open sources described 0 of 7
+ *  Tokyo restaurants, and this hands over everything Google has for them — hours, photos,
+ *  reviews, phone, live busy-ness — for free, with no API call and no key.
+ *
+ *  **Not the retired `mapsPlaceUrl` coming back.** That one meant "view the location", which
+ *  is our map's job now (see the note above, ADR-0121 §8). This answers a different question,
+ *  which is why §6 insists the label is `עוד בגוגל` and never `מפה` or `צפה` — and why the
+ *  row's one Google exit is still `נווט`.
+ *
+ *  `query_place_id` is what opens Google's own panel for the place rather than a search, so a
+ *  place we picked from Google lands exactly on itself. Without one — a pin dropped by hand —
+ *  the address or the point disambiguates a name that could be anywhere. Never null: a name
+ *  search is a worse answer than a place panel and a much better one than no way through, and
+ *  §6 wants this present even when we know nothing at all. */
+export function mapsKnowledgeUrl(place: Place): string {
+  if (place.googlePlaceId) return mapsSearchUrl(place.name, place.googlePlaceId);
+  const where = place.address ?? (hasCoords(place) ? `${place.lat},${place.lng}` : undefined);
+  return mapsSearchUrl([place.name, where].filter(Boolean).join(' '));
+}
+
 /** "View this candidate" for a Google search result, which carries a name and a
  *  `googlePlaceId` but no coordinates until it is picked (ADR-0115 §2). */
 export function mapsPredictionUrl(prediction: PlacePrediction): string {
