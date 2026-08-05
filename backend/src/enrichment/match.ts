@@ -125,6 +125,22 @@ export function nameProximityConfidence(
   const from = asLatLng(place);
   const to = asLatLng(candidate);
 
+  // **A CANDIDATE WITH NO COORDINATES, WHEN WE KNOW WHERE OUR PLACE IS, IS PROBABLY NOT A
+  // PLACE AT ALL** (owner, 2026-08-05: _"Piccadilly Circus matched a song instead of the
+  // place"_). On Wikidata a real place carries `P625` as a matter of course, so an item with
+  // none — while we hold a Google pin for ours — is evidence about its **kind**: a song, an
+  // album, a film, a book named after the place. And its name matches perfectly, which is
+  // exactly what made it win: 1.0 × `NO_PROXIMITY_FACTOR` = 0.8, comfortably over the threshold.
+  //
+  // This is the asymmetry the branch below missed. "Absence of evidence is not evidence" is
+  // right when OUR side has no coordinates (a coordless Place-lite, §10) and wrong here, where
+  // the absence is the candidate's and is itself informative. Structural rather than a curated
+  // "not a place" type list, which would need a QID for every song, album, film and novel.
+  //
+  // Refusing costs nothing now that the coordinate-first route exists (§15): if the real
+  // Piccadilly Circus is not what the name search returned, the geosearch finds it.
+  if (from && !to) return { confidence: 0, nameSimilarity: similarity };
+
   if (!from || !to) {
     return {
       confidence: clampToFuzzyCeiling(similarity * NO_PROXIMITY_FACTOR),
@@ -143,6 +159,123 @@ export function nameProximityConfidence(
   }
   const blended = NAME_WEIGHT * similarity + (1 - NAME_WEIGHT) * proximityScore(distanceMeters);
   return { confidence: clampToFuzzyCeiling(blended), nameSimilarity: similarity, distanceMeters };
+}
+
+/* ── THE COORDINATE-FIRST ROUTE (ADR-0166 §15) ─────────────────────────────────────────────
+   Everything above finds a candidate **by name** and lets the coordinates corroborate it. That
+   has a recall hole with a hard floor: a name search only ever reaches an item labelled in a
+   language we thought to ask for, and the app saves Hebrew names (Google is asked with
+   `languageCode=he`) for places whose Wikidata items are often labelled only in English or
+   Japanese. So the route below inverts the roles — **the coordinates find it and the name
+   checks it** — which is the right order for a place the user picked off a map.
+
+   The whole subtlety is in one rule:
+
+   > **A name comparison across disjoint scripts is UNINFORMATIVE, not negative.**
+
+   `nameSimilarity` returns 0 for "these are different places" and 0 for "these are the same
+   place written in two alphabets", and treating the second as the first is precisely the bug
+   that made the first live run return `not_found` for `מגדל אייפל`. So the scripts are checked
+   before the score is believed: when they overlap, a disagreeing name still refuses the
+   candidate; when they do not, the name is set aside and the distance answers alone — under a
+   lower ceiling, because a claim nothing corroborated is a weaker claim. */
+
+/** Scripts we can tell apart, which is all we need: the question is only whether two names
+ *  are written in the same alphabet, never which alphabet that is. */
+const SCRIPT_PATTERNS: Readonly<Record<string, RegExp>> = {
+  latin: /\p{Script=Latin}/u,
+  hebrew: /\p{Script=Hebrew}/u,
+  arabic: /\p{Script=Arabic}/u,
+  cyrillic: /\p{Script=Cyrillic}/u,
+  greek: /\p{Script=Greek}/u,
+  // Japanese mixes three and Chinese shares one of them, so the CJK block is treated as one
+  // script: a name in kana and a label in kanji are the same alphabet for this purpose.
+  cjk: /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u,
+  thai: /\p{Script=Thai}/u,
+  devanagari: /\p{Script=Devanagari}/u,
+};
+
+/** Which of those a name uses. Digits and punctuation are deliberately not scripts: `7-Eleven`
+ *  and `7-אלוון` share their numerals and nothing that tells us they are the same place. */
+export function scriptsOf(name: string): Set<string> {
+  const found = new Set<string>();
+  for (const [script, pattern] of Object.entries(SCRIPT_PATTERNS)) {
+    if (pattern.test(name)) found.add(script);
+  }
+  return found;
+}
+
+/**
+ * **Can these two names be compared at all?** True when they share at least one script.
+ *
+ * A name with no recognised script on either side (pure digits, an emoji) answers `false`: we
+ * cannot read it either, and pretending we can is the failure this exists to prevent.
+ */
+export function namesComparable(a: string, b: string): boolean {
+  const left = scriptsOf(a);
+  if (left.size === 0) return false;
+  for (const script of scriptsOf(b)) if (left.has(script)) return true;
+  return false;
+}
+
+/** Full distance credit inside this radius, for a candidate the coordinates found. Tighter
+ *  than `MATCH_NEAR_METERS` by an order of magnitude, and it has to be: that radius is what a
+ *  *name* match is allowed to be wrong by, whereas here the distance is carrying the match on
+ *  its own. */
+const GEO_TRUST_METERS = 150;
+
+/**
+ * Confidence for the coordinate-first route: the distance found it, and the name is a check
+ * that can only refuse, never promote.
+ *
+ * - **Names comparable** → exactly the name route's arithmetic, so a candidate whose name
+ *   disagrees is refused just as it would be if the name had done the finding. The nearest
+ *   article to a ramen bar is often the district it sits in, and that is a real refusal.
+ * - **Names not comparable** → distance alone, capped at the `geosearch` ceiling. Nothing
+ *   contradicted us and nothing corroborated us either.
+ */
+export function geoProximityConfidence(
+  place: { name: string; lat?: number; lng?: number },
+  candidate: { name: string; lat?: number; lng?: number },
+): ProximityConfidence {
+  const from = asLatLng(place);
+  const to = asLatLng(candidate);
+  // The route does not exist without both: it is the coordinates that are doing the work.
+  if (!from || !to) return { confidence: 0, nameSimilarity: 0 };
+
+  const distanceMeters = haversineMeters(from, to);
+  if (namesComparable(place.name, candidate.name)) {
+    return nameProximityConfidence(place, candidate);
+  }
+  return {
+    confidence: Math.min(geoOnlyScore(distanceMeters), MATCH_METHOD_CONFIDENCE.geosearch),
+    // Zero because it was not compared, which is a different fact from "compared and did not
+    // match" — the stored evidence has to be able to say which happened (§12.3).
+    nameSimilarity: 0,
+    distanceMeters,
+  };
+}
+
+/** Distance as the whole evidence: full inside `GEO_TRUST_METERS`, decaying to nothing at
+ *  `MATCH_NEAR_METERS`, where a name match's own "same spot" radius ends. */
+function geoOnlyScore(distanceMeters: number): number {
+  if (distanceMeters <= GEO_TRUST_METERS) return MATCH_METHOD_CONFIDENCE.geosearch;
+  if (distanceMeters >= MATCH_NEAR_METERS) return 0;
+  const span = MATCH_NEAR_METERS - GEO_TRUST_METERS;
+  return MATCH_METHOD_CONFIDENCE.geosearch * (1 - (distanceMeters - GEO_TRUST_METERS) / span);
+}
+
+/**
+ * **The name alone, for a cheap pre-filter** — which is a different question from
+ * `nameProximityConfidence` and must not be answered by it.
+ *
+ * A search response carries no coordinates, so passing its hits through the full scorer would
+ * hit the "candidate has none" veto above and reject **every** candidate before the entity that
+ * carries the coordinate is ever read. That veto is about a real item's real absence of `P625`;
+ * a search hit's absence is an artefact of the endpoint.
+ */
+export function nameOnlyConfidence(place: { name: string }, candidateName: string): number {
+  return clampToFuzzyCeiling(nameSimilarity(place.name, candidateName) * NO_PROXIMITY_FACTOR);
 }
 
 const asLatLng = (p: { lat?: number; lng?: number }): LatLng | undefined =>

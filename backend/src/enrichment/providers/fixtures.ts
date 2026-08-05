@@ -37,8 +37,45 @@ export class FixtureFetcher {
   }
 }
 
-/** `wbsearchentities` hit for a name lookup. */
-export const search = (hits: { id: string; label: string }[]) => ({ search: hits });
+/** `wbsearchentities` hit for a name lookup.
+ *
+ *  `match` is what the real API returns and what the provider scores against: the string that
+ *  actually matched the query, in the query's own script. `label` is the item's name in the
+ *  RESPONSE language, which is a different thing — conflating the two is the bug the owner
+ *  found on the first live run (see `wikidata.provider.ts`'s scoring note). */
+export const search = (
+  hits: {
+    id: string;
+    label: string;
+    match?: { language?: string; text?: string };
+    aliases?: string[];
+  }[],
+) => ({ search: hits });
+
+/** A `generator=geosearch` response: the pages near a point, each carrying its own coordinate
+ *  and its `wikibase_item`. Keyed by pageid like the real API, and deliberately NOT in distance
+ *  order — the provider sorts, and a fixture that arrived pre-sorted would hide it if it stopped.
+ *
+ *  An empty one is the common case in these specs and means "nothing is there", which is what
+ *  keeps a name refusal a refusal (`nearbyWikidataItems` asks `en` then `he`, and one fixture
+ *  answers both). */
+export const geosearch = (
+  hits: { qid: string; title: string; lat: number; lng: number; noQid?: boolean }[],
+) => ({
+  query: {
+    pages: Object.fromEntries(
+      hits.map((hit, i) => [
+        String(1000 + i),
+        {
+          pageid: 1000 + i,
+          title: hit.title,
+          coordinates: [{ lat: hit.lat, lon: hit.lng }],
+          ...(hit.noQid ? {} : { pageprops: { wikibase_item: hit.qid } }),
+        },
+      ]),
+    ),
+  },
+});
 
 interface EntityOptions {
   qid: string;

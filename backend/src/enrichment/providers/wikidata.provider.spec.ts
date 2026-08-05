@@ -4,6 +4,7 @@ import type { EnrichmentFetcher } from '../outbound-fetch';
 import {
   entity,
   FixtureFetcher,
+  geosearch,
   MEGURO_RIVER,
   search,
   SENSOJI,
@@ -80,6 +81,9 @@ describe('WikidataProvider', () => {
   it('refuses rather than guessing when the only candidate is a namesake elsewhere', async () => {
     const { provider: p } = provider({
       wbsearchentities: search([{ id: 'Q243', label: 'Eiffel Tower' }]),
+      // Nothing at the coordinates either, so the name refusal is the whole answer (§15's
+      // route runs only when the name found nothing).
+      'generator=geosearch': geosearch([]),
       wbgetentities: entity({
         qid: 'Q243',
         labels: { en: 'Eiffel Tower' },
@@ -92,9 +96,306 @@ describe('WikidataProvider', () => {
     expect(await p.match(SENSOJI.place)).toBeNull();
   });
 
+  // **THE FIRST LIVE RUN'S BUG** (owner, 2026-08-05: matched `Stokksnes`, did not match
+  // `מגדל אייפל`). The app asks Google for `languageCode=he`, so a famous place is saved under
+  // its Hebrew name — and the search request was sending `uselang=en`, which is the language of
+  // the labels in the RESPONSE, not a search fallback. So every hit came back named in English
+  // and the saved Hebrew name was scored against `Eiffel Tower`: similarity ~0, refused, and the
+  // entity never read. The search had found the right item; the scoring threw it away.
+  //
+  // The place is a real one from the report, with the Eiffel Tower's real QID and coordinate.
+  const EIFFEL = { name: 'מגדל אייפל', lat: 48.8584, lng: 2.2945 };
+  const eiffelEntity = entity({
+    qid: 'Q243',
+    labels: { he: 'מגדל אייפל', en: 'Eiffel Tower' },
+    instanceOf: ['Q1440300'],
+    image: 'Tour Eiffel Wikimedia Commons.jpg',
+    lat: 48.8584,
+    lng: 2.2945,
+    sitelinks: { hewiki: 'מגדל אייפל', enwiki: 'Eiffel Tower' },
+  });
+
+  it('matches a Hebrew saved name against a hit whose label came back in English', async () => {
+    const { provider: p } = provider({
+      // What the real API returns: the label in the response language, and `match` carrying the
+      // string that actually matched — here the Hebrew label the query hit.
+      wbsearchentities: search([
+        { id: 'Q243', label: 'Eiffel Tower', match: { language: 'he', text: 'מגדל אייפל' } },
+      ]),
+      wbgetentities: eiffelEntity,
+    });
+    const match = await p.match(EIFFEL);
+
+    expect(match?.ref).toBe('Q243');
+    expect(match?.method).toBe(MATCH_METHOD.NAME_PROXIMITY);
+    expect(match?.evidence.distanceMeters).toBeLessThan(50);
+    expect(match?.settled?.articleTitles).toEqual({ he: 'מגדל אייפל', en: 'Eiffel Tower' });
+  });
+
+  it('matches when the query hit an ALIAS rather than the label', async () => {
+    const { provider: p } = provider({
+      wbsearchentities: search([{ id: 'Q243', label: 'Eiffel Tower', aliases: ['מגדל אייפל'] }]),
+      wbgetentities: eiffelEntity,
+    });
+    expect((await p.match(EIFFEL))?.ref).toBe('Q243');
+  });
+
+  // The entity read re-scores with the coordinate, and it must find the Hebrew label there too
+  // — otherwise the fix only moves the refusal one call later.
+  it('re-scores against the entity’s own Hebrew label, not just its English one', async () => {
+    const { provider: p } = provider({
+      // No `match` and no alias on the hit: the pre-filter has only the English label to go on,
+      // so this is the path where the search response carries nothing in the query's script.
+      wbsearchentities: search([{ id: 'Q243', label: 'מגדל אייפל' }]),
+      wbgetentities: eiffelEntity,
+    });
+    expect((await p.match(EIFFEL))?.ref).toBe('Q243');
+  });
+
+  // **The request itself**: `uselang=en` is what made every label English, so its absence is
+  // part of the fix rather than a detail of it.
+  it('does not ask for English labels in the search response', async () => {
+    const { provider: p, fetcher } = provider({
+      wbsearchentities: search([{ id: 'Q243', label: 'מגדל אייפל' }]),
+      wbgetentities: eiffelEntity,
+    });
+    await p.match(EIFFEL);
+    const url = fetcher.requested.find((u) => u.includes('wbsearchentities'))!;
+    expect(url).not.toContain('uselang');
+    expect(url).toContain('language=he');
+  });
+
+  // And the refusal still holds where it should: scoring against more names is not a licence to
+  // accept a namesake in the wrong city (§5.5). The distance veto sees whichever name won.
+  it('still refuses a namesake 9,000km away, however many names it offers', async () => {
+    const { provider: p } = provider({
+      wbsearchentities: search([
+        { id: 'Q243', label: 'Eiffel Tower', match: { language: 'he', text: 'מגדל אייפל' } },
+      ]),
+      'generator=geosearch': geosearch([]),
+      wbgetentities: eiffelEntity,
+    });
+    // The saved place is in Tokyo; the item is in Paris.
+    expect(await p.match({ name: 'מגדל אייפל', lat: 35.7148, lng: 139.7967 })).toBeNull();
+  });
+
   it('refuses when the name search comes back empty', async () => {
     const { provider: p } = provider({ wbsearchentities: search([]) });
     expect(await p.match({ name: 'ראמן קיוסק ללא ערך' })).toBeNull();
+  });
+
+  // **PICCADILLY CIRCUS MATCHED A SONG** (owner, 2026-08-05). The precision half of the same
+  // live run, and the mirror image of the recall bug above: a song named after a place has an
+  // EXACT name match and no `P625` at all, so it took the "no coordinates to corroborate"
+  // discount — 1.0 × 0.8 = 0.8, comfortably over the 0.6 threshold — and won.
+  describe('an item that is not a place at all', () => {
+    const PICCADILLY = { name: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 };
+    // A real Wikidata shape: an exact label, an `instance of` that is not a place, and no
+    // coordinate. The coordinate is the part that matters — the type list would need an entry
+    // for every song, album, film and novel ever named after somewhere.
+    const song = entity({
+      qid: 'Q7194656',
+      labels: { en: 'Piccadilly Circus' },
+      instanceOf: ['Q7366'],
+    });
+
+    it('refuses the song, however exactly its name matches', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([{ id: 'Q7194656', label: 'Piccadilly Circus' }]),
+        wbgetentities: song,
+        'generator=geosearch': geosearch([]),
+      });
+      expect(await p.match(PICCADILLY)).toBeNull();
+    });
+
+    // **AND THE TWO FIXES COMPOSE**, which is the point of doing them together: the name search
+    // returns only the song, that is refused, and the coordinates then find the place itself.
+    it('finds the real place through the coordinates once the song is refused', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([{ id: 'Q7194656', label: 'Piccadilly Circus' }]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q189040', title: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 },
+        ]),
+        wbgetentities: {
+          entities: {
+            ...song.entities,
+            ...entity({
+              qid: 'Q189040',
+              labels: { en: 'Piccadilly Circus', he: 'פיקדילי סירקוס' },
+              instanceOf: ['Q3153117'],
+              image: 'Piccadilly Circus at night.jpg',
+              lat: 51.51,
+              lng: -0.1348,
+            }).entities,
+          },
+        },
+      });
+      const match = await p.match(PICCADILLY);
+      expect(match?.ref).toBe('Q189040');
+      expect(match?.method).toBe(MATCH_METHOD.GEOSEARCH);
+      expect(match?.settled?.commonsFilename).toBe('Piccadilly Circus at night.jpg');
+    });
+
+    // The pre-filter must NOT apply the veto: a search hit carries no coordinates either, and
+    // rejecting on that would reject every candidate before the entity is read. Sensō-ji, whose
+    // item does have a coordinate, still matches by name.
+    it('still matches a real place by name, whose coordinate arrives with the entity', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([{ id: SENSOJI.qid, label: 'Sensō-ji' }]),
+        wbgetentities: SENSOJI.entity,
+      });
+      expect((await p.match(SENSOJI.place))?.method).toBe(MATCH_METHOD.NAME_PROXIMITY);
+    });
+  });
+
+  // ── THE COORDINATES DO THE FINDING (ADR-0166 §15) ────────────────────────────────────────
+  // The recall half of the same report. A name search only reaches an item labelled in a
+  // language we asked for; `list=geosearch` asks what is at a POINT, which has no language. The
+  // place here is the owner's own case, saved in Hebrew, against an item labelled only in
+  // English — the shape that no amount of fixing the comparison can reach, because the search
+  // returns nothing to compare.
+  describe('the coordinate-first route', () => {
+    const NEZU = { name: 'מוזיאון נזו', lat: 35.6656, lng: 139.7167 };
+    const nezuEntity = entity({
+      qid: 'Q1054134',
+      // English only, on purpose: this is why the name search could not find it.
+      labels: { en: 'Nezu Museum' },
+      instanceOf: ['Q207694'],
+      image: 'Nezu Museum 2018.jpg',
+      lat: 35.6656,
+      lng: 139.7167,
+      sitelinks: { enwiki: 'Nezu Museum' },
+    });
+
+    it('finds a place whose item is labelled in a language we did not search', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]), // the name found nothing at all
+        'generator=geosearch': geosearch([
+          { qid: 'Q1054134', title: 'Nezu Museum', lat: 35.6656, lng: 139.7167 },
+        ]),
+        wbgetentities: nezuEntity,
+      });
+      const match = await p.match(NEZU);
+
+      expect(match?.ref).toBe('Q1054134');
+      expect(match?.method).toBe(MATCH_METHOD.GEOSEARCH);
+      // Scored on distance alone — the name was not comparable, which is a fact we have no
+      // evidence about rather than evidence against.
+      expect(match?.evidence.nameSimilarity).toBe(0);
+      // …and capped below what a name-corroborated match can score, so a named route always wins.
+      expect(match?.confidence).toBeLessThanOrEqual(0.8);
+      expect(match?.settled?.commonsFilename).toBe('Nezu Museum 2018.jpg');
+    });
+
+    it('is not tried at all when the name search already answered', async () => {
+      const { provider: p, fetcher } = provider({
+        wbsearchentities: search([{ id: SENSOJI.qid, label: 'Sensō-ji' }]),
+        wbgetentities: SENSOJI.entity,
+      });
+      expect((await p.match(SENSOJI.place))?.method).toBe(MATCH_METHOD.NAME_PROXIMITY);
+      expect(fetcher.countMatching('geosearch')).toBe(0);
+    });
+
+    // A coordless Place-lite has nothing for this route to stand on, and it must not pretend
+    // otherwise — no call, no match (§10's unbuilt name-only route is still unbuilt).
+    it('does not exist for a place with no coordinates', async () => {
+      const { provider: p, fetcher } = provider({ wbsearchentities: search([]) });
+      expect(await p.match({ name: 'מוזיאון נזו' })).toBeNull();
+      expect(fetcher.countMatching('geosearch')).toBe(0);
+    });
+
+    // **Rule 2**: with the name uninformative, the nearest article being a district is evidence
+    // of the WRONG subject rather than a broader view of the right one — and its `P18` on a
+    // ramen bar is exactly the "confidently wrong" failure the ADR exists to prevent. §11.2's
+    // refuse-the-summary-keep-the-image asymmetry is for a match the NAME established.
+    it('skips a broader subject the coordinates merely landed near', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q217230', title: 'Minami-Aoyama', lat: 35.6657, lng: 139.7168 },
+        ]),
+        wbgetentities: entity({
+          qid: 'Q217230',
+          labels: { en: 'Minami-Aoyama' },
+          instanceOf: ['Q123705'], // neighborhood
+          image: 'Aoyama skyline.jpg',
+          lat: 35.6657,
+          lng: 139.7168,
+        }),
+      });
+      // No enrichment beats wrong enrichment, and a district's photograph on a museum is wrong.
+      expect(await p.match(NEZU)).toBeNull();
+    });
+
+    // …and it takes the next candidate rather than giving up, when the point has more than one.
+    it('passes over the district and takes the place itself', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q217230', title: 'Minami-Aoyama', lat: 35.66565, lng: 139.71675 },
+          { qid: 'Q1054134', title: 'Nezu Museum', lat: 35.6656, lng: 139.7167 },
+        ]),
+        // One call for both candidates.
+        wbgetentities: {
+          entities: {
+            ...entity({
+              qid: 'Q217230',
+              labels: { en: 'Minami-Aoyama' },
+              instanceOf: ['Q123705'],
+              lat: 35.66565,
+              lng: 139.71675,
+            }).entities,
+            ...nezuEntity.entities,
+          },
+        },
+      });
+      const match = await p.match(NEZU);
+      expect(match?.ref).toBe('Q1054134');
+    });
+
+    it('reads every candidate in ONE entities call', async () => {
+      const { provider: p, fetcher } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q1054134', title: 'Nezu Museum', lat: 35.6656, lng: 139.7167 },
+          { qid: 'Q217230', title: 'Minami-Aoyama', lat: 35.6657, lng: 139.7168 },
+        ]),
+        wbgetentities: nezuEntity,
+      });
+      await p.match(NEZU);
+      expect(fetcher.countMatching('wbgetentities')).toBe(1);
+      expect(fetcher.requested.some((u) => u.includes('Q1054134%7CQ217230'))).toBe(true);
+    });
+
+    // **A name we CAN read still has to agree.** Both Latin, 20m apart, and about different
+    // things: the coordinate is not a licence to accept whatever is nearest.
+    it('refuses a comparable name that disagrees, however close it is', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q999', title: 'Golden Gai', lat: 35.66562, lng: 139.71672 },
+        ]),
+        wbgetentities: entity({
+          qid: 'Q999',
+          labels: { en: 'Golden Gai' },
+          instanceOf: ['Q207694'],
+          lat: 35.66562,
+          lng: 139.71672,
+        }),
+      });
+      expect(await p.match({ name: 'Nezu Museum', lat: 35.6656, lng: 139.7167 })).toBeNull();
+    });
+
+    it('drops an article that carries no wikibase item — there is nothing to join on', async () => {
+      const { provider: p, fetcher } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'unused', title: 'Some list page', lat: 35.6656, lng: 139.7167, noQid: true },
+        ]),
+      });
+      expect(await p.match(NEZU)).toBeNull();
+      expect(fetcher.countMatching('wbgetentities')).toBe(0);
+    });
   });
 
   it('refuses the summary for a river, keeping the image (§11.2)', async () => {
