@@ -52,6 +52,25 @@ export const DOC_CACHE_DISABLED = 'DOC_CACHE_DISABLED'; // kill switch (any trut
  *  handful of passport scans / booking PDFs for a ~5-person trip. */
 export const DEFAULT_DOC_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 
+// Outbound enrichment fetches (ADR-0166 §7). A server that retrieves a URL which arrived
+// in a third-party API response is an SSRF seat, so the fetcher is host-allowlisted,
+// timeboxed and size-capped — these two tune the last two without a deploy. The allowlist
+// itself is code, not env: it is a fixed, known set of sources, and a host you can add by
+// setting a variable is not much of an allowlist.
+export const ENRICHMENT_FETCH_TIMEOUT_MS = 'ENRICHMENT_FETCH_TIMEOUT_MS';
+export const ENRICHMENT_JSON_MAX_BYTES = 'ENRICHMENT_JSON_MAX_BYTES';
+
+/** Per-request timeout for an enrichment fetch. Generous enough for a cold Wikidata
+ *  entity read, short enough that a slow source degrades one field rather than holding up
+ *  a pass (§5.4) — nothing user-facing is waiting on it either way (§6). */
+export const DEFAULT_ENRICHMENT_FETCH_TIMEOUT_MS = 8000;
+
+/** Ceiling on a JSON response body. A `wbgetentities` reply for one item with all its
+ *  claims is tens of KB; 2 MB is well clear of that and still bounds a hostile or broken
+ *  upstream, since the whole body is buffered to parse it. Image bytes pass their own,
+ *  larger cap explicitly (Phase 2). */
+export const DEFAULT_ENRICHMENT_JSON_MAX_BYTES = 2 * 1024 * 1024;
+
 /** Dev-only default for `FRONTEND_URL` (single-origin in prod, ADR-0020, so this
  *  fallback never applies there). */
 export const DEFAULT_FRONTEND_URL = 'http://localhost:5173';

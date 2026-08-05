@@ -15,6 +15,8 @@ User ──< Membership >── Trip ──< Event ──? Booking   (Event.book
                           ├──< MaybeItem
                           ├──< Place           (location registry; Event/Booking/MaybeItem placeId → Place)
                           └──< Change          (the sync/undo/feed substrate)
+
+PlaceEnrichment                               (GLOBAL — no tripId, no FK; joined to Place by alias, ADR-0166)
 ```
 
 There is **no `Day` table** — a day is a calendar date within the trip range (ADR-0018).
@@ -127,6 +129,19 @@ The trip-scoped location registry every `placeId` FK points to, and the cache th
 - `category` is the place's own answer to _what is this_, and it **outranks** the one derived from the referencing entities (`place-usage.ts`'s most-committed reference) on every place-scoped surface — its pin hue, its badge glyph, the type facet it answers to. An `Event` still carries its own category for its own surfaces: the deliberate choice at the nearest scope wins, and a place is the widest scope.
 - Referenced by `Event.placeId` (unlinked events only — see the authority rule, ADR-0051), `Booking.placeId` + `Booking.fromPlaceId`/`toPlaceId`, `MaybeItem.placeId`. All `onDelete: SetNull`.
 - Enrichment (hours, rating, photos) is added when the Maps work lands; `googlePlaceId`/`lat`/`lng` fill in when the Places picker replaces free-text entry. Orphaned rows are left (no GC yet); no within-trip dedup until `googlePlaceId` exists.
+- **The world's facts about the same place live on `PlaceEnrichment` below, not here** (ADR-0166 §1). The line is a rule rather than a judgement call: _if two different trips could legitimately disagree about it, it is not enrichment._
+
+### PlaceEnrichment (ADR-0166) — global, not trip-scoped
+
+Facts about the real-world entity a `Place` refers to: a summary, an image, opening hours. **Every trip that references the same place reads the same row.** Not data-plane: it has **no `tripId`**, no client ever authors it, and it is deliberately **outside `ChangeService`** (§6) — there is no trip to write a `Change` against, one writer (the server) so no LWW, and no action anyone performed so nothing to undo. The trip snapshot **joins** it as a server-owned read model (Phase 3).
+
+- `id` — **our own key**, so Google is not the identity spine of a store whose purpose is to not depend on Google, and a coordless Place-lite is not stranded (§4).
+- `googlePlaceId? @unique`, `wikidataQid? @unique`, `osmRef? @unique` — **alias columns**, the only things queried. `place_id` is the one Google field the terms let us hold indefinitely (§1); the others are added when a source matches. Adding an alias later is a column and an index, not a re-key.
+- `fields Json` — `Record<EnrichmentField, present | absent>`, validated by `enrichmentFieldsSchema` in `@waypoint/shared`. **One payload, not a column per field:** every value carries ~6 facts of its own provenance (source, license, attribution, `fetchedAt`, confidence, match method), which as columns is a migration per field _and_ per source for data nothing filters on.
+- `attemptedAt` — the **negative-cache** clock (§6.4). Per-field miss timers live inside `fields`; this is the queryable one. "We looked and nobody has a summary for this café" is stored, because most places are that case and without it every cold read re-attempts every provider forever.
+- **A text field holds localized _variants_** keyed by language, each a full value with its own source and license, and `lang` is **required** on any value carrying prose (§11.6) — the hook for translation and multi-language support, and the reason a summary can be marked `באנגלית`.
+- **No Google-sourced value is ever written here** (§2), enforced by each source's declared `storable` policy plus one guard (`enrichment.policy.ts`), not by anyone remembering the caching terms.
+- `Place` is **unchanged** by this table's existence — no migration, no column moved, no behaviour altered.
 
 ### Note (ADR-0152)
 
