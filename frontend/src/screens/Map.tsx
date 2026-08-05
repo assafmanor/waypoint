@@ -3083,6 +3083,9 @@ export function MapView() {
           mimeType={fullPicture.image.mimeType}
           source={{ kind: 'url', url: apiAssetUrl(fullPicture.image.url) }}
           caption={placeCredit(fullPicture.image)}
+          /* The delivered image carries its own dimensions, so the viewer's frame is this
+             picture's box from the first frame — nothing to letterbox and nothing to settle. */
+          intrinsic={fullPicture.image}
           onClose={() => setFullPicture(null)}
         />
       )}
