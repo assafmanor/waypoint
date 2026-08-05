@@ -1,16 +1,26 @@
 import 'reflect-metadata';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   ENRICHMENT_ABSENCE_REASON,
   ENRICHMENT_FIELD,
   ENRICHMENT_MISS_TTL_MS,
   ENRICHMENT_SOURCE,
+  isEnrichmentBlobKey,
   MATCH_METHOD,
   MATCH_REFUSAL,
+  SOURCE_POLICY,
+  type EnrichedImageValue,
   type EnrichedTextValue,
   type TextVariants,
 } from '@waypoint/shared';
+import { DOC_LOCAL_STORAGE_DIR } from '../common/env';
+import { getObject } from '../common/storage';
 import { PrismaService } from '../prisma/prisma.service';
+import { EnrichmentImagePipeline } from './image-pipeline';
+import type { EnrichmentFetcher } from './outbound-fetch';
 import type {
   EnrichmentProvider,
   PlaceIdentity,
@@ -27,6 +37,49 @@ import { EnrichmentService } from './enrichment.service';
 
 const NOW = new Date('2026-08-05T10:00:00.000Z');
 const SENSOJI: PlaceIdentity = { name: 'Sensō-ji', lat: 35.7148, lng: 139.7967 };
+
+/** Real JPEG signature bytes — the pipeline sniffs, so a placeholder would be rejected. */
+const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64)]);
+
+const THUMB_URL =
+  'https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Sensoji_2023.jpg/840px-Sensoji_2023.jpg';
+
+/** A fetcher stub for the image pipeline. */
+function fetcherReturning(result: Buffer | Error): EnrichmentFetcher {
+  return {
+    async fetch(url: string) {
+      if (result instanceof Error) throw result;
+      return { url, status: 200, contentType: 'image/jpeg', body: result };
+    },
+  } as unknown as EnrichmentFetcher;
+}
+
+/** A stub image provider, standing in for Commons: hands over a pointer, never stores. */
+function imageProvider(
+  options: { license?: string; attribution?: string; attributionRequired?: boolean } = {},
+): EnrichmentProvider {
+  return {
+    id: ENRICHMENT_SOURCE.COMMONS,
+    provides: [ENRICHMENT_FIELD.IMAGE],
+    policy: SOURCE_POLICY.commons,
+    match: vi.fn(async (identity: PlaceIdentity) => ({
+      ref: identity.commonsFilename ?? 'Sensoji 2023.jpg',
+      method: MATCH_METHOD.SETTLED_ID,
+      confidence: identity.identityConfidence ?? 1,
+      evidence: {},
+      settled: {},
+    })),
+    fetch: vi.fn(async () => ({
+      image: {
+        value: 'https://commons.wikimedia.org/wiki/File:Sensoji_2023.jpg',
+        license: options.license ?? 'CC0',
+        attribution: options.attribution,
+        attributionRequired: options.attributionRequired ?? false,
+        binary: { url: THUMB_URL, width: 840, height: 600 },
+      },
+    })),
+  };
+}
 
 /** A stub identity provider, standing in for Wikidata: settles aliases, supplies no value. */
 function identityProvider(
@@ -116,18 +169,48 @@ describe('EnrichmentService', () => {
   });
 
   const serviceWith = (...providers: EnrichmentProvider[]) =>
-    new EnrichmentService(prisma, new EnrichmentRegistry(providers));
+    new EnrichmentService(
+      prisma,
+      new EnrichmentRegistry(providers),
+      new EnrichmentImagePipeline(fetcherReturning(JPEG)),
+    );
+
+  /** The orchestrator with an image pipeline whose fetches are controlled by the test. */
+  const serviceWithImages = (
+    result: Buffer | Error,
+    ...providers: EnrichmentProvider[]
+  ): EnrichmentService =>
+    new EnrichmentService(
+      prisma,
+      new EnrichmentRegistry(providers),
+      new EnrichmentImagePipeline(fetcherReturning(result)),
+    );
 
   async function track<T extends { id: string }>(row: T): Promise<T> {
     createdIds.push(row.id);
     return row;
   }
 
+  let storageDir: string;
+
+  beforeEach(async () => {
+    storageDir = await mkdtemp(join(tmpdir(), 'enrichment-service-'));
+    vi.stubEnv(DOC_LOCAL_STORAGE_DIR, storageDir);
+  });
+
   afterEach(async () => {
     await prisma.placeEnrichment.deleteMany({ where: { id: { in: createdIds.splice(0) } } });
+    vi.unstubAllEnvs();
+    await rm(storageDir, { recursive: true, force: true });
   });
 
   afterAll(() => prisma.$disconnect());
+
+  const imageOf = (fields: { image?: unknown }): EnrichedImageValue => {
+    const state = fields.image as { state: string; value: EnrichedImageValue };
+    expect(state?.state).toBe('present');
+    return state.value;
+  };
 
   const variantsOf = (fields: { summary?: unknown }): TextVariants => {
     const state = fields.summary as { state: string; value: TextVariants };
@@ -375,9 +458,165 @@ describe('EnrichmentService', () => {
     const service = serviceWith(identityProvider(), summaryProvider());
     const stored = await track(await service.enrich(nextPlace(), NOW));
 
-    // `hours` names OSM and Phase 2 is blocked on the restaurant fill rate (§12.4); `image`
-    // names Commons, which Phase 2 adds. Both record an honest empty attempt.
+    // `hours` names OSM, and Phase 2 of ADR-0166 is still blocked on the restaurant fill
+    // rate (§12.4) — so the field records an honest empty attempt rather than erroring.
     expect(stored.fields.hours).toMatchObject({ state: 'absent', sources: [] });
-    expect(stored.fields.image).toMatchObject({ state: 'absent', sources: [] });
+  });
+
+  describe('the image pipeline (Phase 2)', () => {
+    it('materializes a provider pointer into bytes we own', async () => {
+      const service = serviceWith(identityProvider(), imageProvider());
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+
+      const image = imageOf(stored.fields);
+      expect(isEnrichmentBlobKey(image.blobKey)).toBe(true);
+      expect(image.mimeType).toBe('image/jpeg');
+      expect(image.sizeBytes).toBe(JPEG.byteLength);
+      // Ours, at our own origin — the whole reason §2 refused to hotlink.
+      await expect(getObject(image.blobKey)).resolves.toEqual(JPEG);
+    });
+
+    it('stores the dimensions the layout needs and the file the credit points at', async () => {
+      const service = serviceWith(identityProvider(), imageProvider());
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+
+      const image = imageOf(stored.fields);
+      expect(image.width).toBe(840);
+      expect(image.height).toBe(600);
+      expect(image.sourceFile).toContain('commons.wikimedia.org/wiki/File:');
+    });
+
+    it('stores the per-file license string with the value (§12.2)', async () => {
+      const service = serviceWith(
+        identityProvider(),
+        imageProvider({
+          license: 'CC BY-SA 3.0 de',
+          attribution: 'Arne Müseler',
+          attributionRequired: true,
+        }),
+      );
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+
+      const image = imageOf(stored.fields);
+      expect(image.license).toBe('CC BY-SA 3.0 de');
+      expect(image.attribution).toBe('Arne Müseler');
+    });
+
+    it('treats a GFDL-only file as no image (§12.2)', async () => {
+      const service = serviceWith(
+        identityProvider(),
+        imageProvider({
+          license: 'GFDL 1.2',
+          attribution: 'Ralf Roletschek',
+          attributionRequired: true,
+        }),
+      );
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+
+      // One file in 32, and its attribution terms are heavier than a thumbnail caption can
+      // discharge — so it falls through to the no-image state rather than shipping a breach.
+      expect(stored.fields.image).toMatchObject({
+        state: 'absent',
+        reason: ENRICHMENT_ABSENCE_REASON.UNSTORABLE,
+      });
+    });
+
+    it('never fetches bytes for a file it has already refused', async () => {
+      // The refusal is a licensing decision, so it must land before we spend a request on it.
+      const brokenFetch = new Error('should not have been fetched');
+      const service = serviceWithImages(
+        brokenFetch,
+        identityProvider(),
+        imageProvider({ license: 'GFDL 1.2', attribution: 'x', attributionRequired: true }),
+      );
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+      expect(stored.fields.image?.state).toBe('absent');
+    });
+
+    it('records no image when the bytes cannot be trusted', async () => {
+      const service = serviceWithImages(
+        Buffer.from('this is not an image'),
+        identityProvider(),
+        imageProvider(),
+      );
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+
+      // The sniffer refused, so the pass keeps its summary and simply has no photo.
+      expect(stored.fields.image).toMatchObject({
+        state: 'absent',
+        reason: ENRICHMENT_ABSENCE_REASON.UNSTORABLE,
+      });
+    });
+
+    it('records no image when the fetch itself fails, without failing the pass', async () => {
+      const service = serviceWithImages(
+        new Error('upload.wikimedia.org is down'),
+        identityProvider(),
+        summaryProvider(),
+        imageProvider(),
+      );
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+
+      expect(stored.fields.image?.state).toBe('absent');
+      // One source being down degrades that field and nothing else (§5.4).
+      expect(stored.fields.summary?.state).toBe('present');
+    });
+
+    it('refuses to store an image that owes credit and has none', async () => {
+      const service = serviceWith(
+        identityProvider(),
+        imageProvider({ license: 'CC BY-SA 4.0', attributionRequired: true }),
+      );
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+      expect(stored.fields.image).toMatchObject({
+        state: 'absent',
+        reason: ENRICHMENT_ABSENCE_REASON.ATTRIBUTION_MISSING,
+      });
+    });
+
+    it('keeps a CC0 image that owes nobody a credit line', async () => {
+      // 5 of 32 files genuinely require no attribution; refusing those would throw away a
+      // usable photograph for an obligation that does not exist.
+      const service = serviceWith(
+        identityProvider(),
+        imageProvider({ license: 'CC0', attributionRequired: false }),
+      );
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+      expect(imageOf(stored.fields).attribution).toBeUndefined();
+    });
+
+    it('deletes the blob a refresh replaced, rather than orphaning it', async () => {
+      const service = serviceWith(identityProvider(), imageProvider());
+      const place = nextPlace();
+      const first = await track(await service.enrich(place, NOW));
+      const firstKey = imageOf(first.fields).blobKey;
+
+      const later = new Date(NOW.getTime() + 200 * 24 * 3600_000);
+      const second = await service.enrich(place, later);
+      const secondKey = imageOf(second.fields).blobKey;
+
+      expect(secondKey).not.toBe(firstKey);
+      // The old URL was immutable and is now unreachable, so its bytes are dead weight.
+      await expect(getObject(firstKey)).rejects.toBeTruthy();
+      await expect(getObject(secondKey)).resolves.toEqual(JPEG);
+    });
+
+    it('inherits the identity confidence rather than claiming its own hop is exact', async () => {
+      const fuzzy: EnrichmentProvider = {
+        ...identityProvider(),
+        match: vi.fn(async () => ({
+          ref: 'Q615183',
+          method: MATCH_METHOD.NAME_PROXIMITY,
+          confidence: 0.71,
+          evidence: {},
+          settled: { wikidataQid: 'Q615183', identityConfidence: 0.71 },
+        })),
+      };
+      const service = serviceWith(fuzzy, imageProvider());
+      const stored = await track(await service.enrich(nextPlace(), NOW));
+
+      // A photo reached through a fuzzy Wikidata match must not record as certain.
+      expect(imageOf(stored.fields).confidence).toBe(0.71);
+    });
   });
 });

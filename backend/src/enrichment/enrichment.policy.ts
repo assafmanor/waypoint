@@ -12,6 +12,7 @@ import {
   ENRICHMENT_MISS_TTL_MS,
   enrichmentValueFetchedAt,
   enrichmentValueTtlMs,
+  isUnusableLicense,
   SOURCE_POLICY,
   type EnrichmentAbsenceReason,
   type EnrichmentField,
@@ -26,7 +27,7 @@ const PROSE_FIELDS: readonly EnrichmentField[] = [ENRICHMENT_FIELD.SUMMARY];
 /**
  * Why this value may **not** be written to the store, or `null` when it may.
  *
- * Four refusals, in the order they matter:
+ * Five refusals, in the order they matter:
  *
  *  1. **The source's policy forbids storing anything** — §2's invariant. Today only Google
  *     declares `storable: false`, and this is the guard that makes "no Google-sourced value
@@ -34,10 +35,14 @@ const PROSE_FIELDS: readonly EnrichmentField[] = [ENRICHMENT_FIELD.SUMMARY];
  *  2. **No license could be determined.** A value with no license is an obligation of
  *     unknown size; Commons in particular declares none at source level because it is per
  *     file (§12.2), so a Commons value that forgot to supply its own is refused here.
- *  3. **Credit is required and absent.** Storing it would mean rendering it unlawfully —
+ *  3. **The license is one we cannot discharge** — GFDL-only, §12.2. Refused *here* rather
+ *     than inside the Commons provider on purpose: this is the one place that decides what
+ *     may be kept, and a refusal here makes the resolver **fall through to the next candidate
+ *     or to the no-image state**, which is exactly what the ADR asks for.
+ *  4. **Credit is required and absent.** Storing it would mean rendering it unlawfully —
  *     ADR-0167 §4 renders the stored string, so a value with nothing to render cannot be
  *     shown, and an obligation we cannot discharge is not worth keeping.
- *  4. **Prose with no language** (§11.6). There is no defensible state where we hold a
+ *  5. **Prose with no language** (§11.6). There is no defensible state where we hold a
  *     sentence and don't know what it is written in — it could not be marked `באנגלית`,
  *     translated, or selected against a reader's locale.
  */
@@ -51,8 +56,12 @@ export function valueRefusal(
 
   const license = value.license ?? policy.license;
   if (!license) return ENRICHMENT_ABSENCE_REASON.UNSTORABLE;
+  if (isUnusableLicense(license)) return ENRICHMENT_ABSENCE_REASON.UNSTORABLE;
 
-  if (policy.attributionRequired && !value.attribution) {
+  // Per file where the source says so (Commons), per source otherwise. A CC0 photograph owes
+  // nobody a credit line, and refusing it for lacking one would throw away a usable image.
+  const attributionRequired = value.attributionRequired ?? policy.attributionRequired;
+  if (attributionRequired && !value.attribution) {
     return ENRICHMENT_ABSENCE_REASON.ATTRIBUTION_MISSING;
   }
 

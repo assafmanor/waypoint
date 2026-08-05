@@ -118,6 +118,26 @@ Trip-scoped location registry (ADR-0048). Read via the trip snapshot (`places`);
 - **`search`** relays Google Autocomplete (New) under the client-minted `sessionToken`; returns flattened `PlacePrediction`s (`{ googlePlaceId, primaryText, secondaryText? }`). Read-only, no spend when the session ends in a pick. `alreadyInTrip` is **not** returned — it's a client-side derivation over the snapshot (ADR-0110 §1).
 - **`resolve`** is the terminating enrich-on-pick / create-or-link. **Dedup-before-spend:** a `(tripId, googlePlaceId)` hit returns the cached row with **zero** Google spend; a miss spends one Place Details call (Pro-tier field mask, ADR-0111), resolves `timezone` once via `geo-tz`, and persists via `ChangeService.mutate`. `enrichPlaceId` enriches an existing coordless Place-lite **in place** instead of minting a new row (ADR-0110 §1). Google enrichment is online-only — the offline name-only fallback goes through the `POST /places` outbox path, not here. `rating`/`userRatingsTotal` columns exist but are not populated in Phase 1 (ADR-0111).
 
+## Place enrichment (ADR-0166)
+
+Facts about the real-world place a `Place` refers to — a summary, an image, opening hours — held in the **global** `PlaceEnrichment` table (no `tripId`, no FK to `Place`, §1/§4). **There is no write endpoint and there never will be:** enrichment is out-of-band and server-owned, so no client authors it and it deliberately does not go through `ChangeService` (§6). It is not on the data plane at all.
+
+**Reading it is the trip snapshot's job**, as a server-owned read model — not built yet (ADR-0166's Phase 3), which is why nothing but the image bytes appears below.
+
+### Enrichment image bytes
+
+| Method | Path                      | Response                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/enrichment/images/:key` | The stored image bytes, served **inline** for a plain `<img src>`. **Unauthenticated by design**, and the easiest such call in the app: these are published Commons files about public places, already served to the world under a free license. `Cache-Control: immutable` for a year, since the key _is_ the blob's id. A deleted or unknown key 404s, which must degrade to the no-image state |
+
+The URL is built by `enrichmentImageContentPath` in `@waypoint/shared`. `enrichment` is in `SERVER_ROUTE_PREFIXES`, which the **service worker** reads too — without it the PWA would answer an image request with the cached app shell, and the offline half of ADR-0166 §2 (enriched thumbnails survive a plane) would silently not work.
+
+**`:key` carries a mandatory `enr_` prefix, and that prefix is the access check.** `common/storage.ts` is one flat keyspace shared with document blobs and uploaded avatars, so without it this `@Public` route would be a way to ask for a document's ciphertext — trip-scoped, encrypted-at-rest content (ADR-0015/0034) that no unauthenticated caller should be handed in any form.
+
+**The type is sniffed from the bytes on the way in and again on the way out** (`common/image-sniff.ts`), never echoed from what Commons declared — a `P18` came back as a PNG under a `.jpg` name in the coverage spike (§12.5). Pinned with `nosniff`, `Content-Disposition: inline` and a `default-src 'none'; sandbox` CSP, exactly as the avatar route is and for the same reason: this is third-party content rendered into an `<img>`.
+
+**No Google-sourced image can ever appear here.** A Google photo name may not be cached at all (§1), so Google's provider policy declares `storable: false` and one guard enforces it (`enrichment.policy.ts`). A GFDL-only Commons file is likewise treated as no image (§12.2) — its attribution terms are heavier than a thumbnail caption can discharge.
+
 ## Destinations (trip creation)
 
 Trip-agnostic destination lookup for **trip creation** (ADR-0113): there's no trip yet, so these are distinct from the trip-scoped place proxy above — authed by the global `JwtAuthGuard`, **per-user** rate-limited (the shared throttler keys on the actor when there's no `tripId`), and **stateless** (nothing is persisted). Reuse the same `GooglePlacesClient` + `geo-tz`.

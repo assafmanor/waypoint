@@ -81,6 +81,51 @@ describe('valueRefusal', () => {
     ).toBeNull();
   });
 
+  it('refuses a GFDL-only file, which is what makes it fall through (§12.2)', () => {
+    // Refused HERE rather than in the Commons provider on purpose: one place decides what may
+    // be kept, and a refusal here is what sends the resolver to the next candidate.
+    expect(
+      valueRefusal(ENRICHMENT_FIELD.IMAGE, ENRICHMENT_SOURCE.COMMONS, {
+        value: 'https://commons.wikimedia.org/wiki/File:Western_Wall.jpg',
+        license: 'GFDL 1.2',
+        attribution: 'Ralf Roletschek',
+      }),
+    ).toBe(ENRICHMENT_ABSENCE_REASON.UNSTORABLE);
+  });
+
+  it('keeps a file that is GFDL alongside a usable license', () => {
+    expect(
+      valueRefusal(ENRICHMENT_FIELD.IMAGE, ENRICHMENT_SOURCE.COMMONS, {
+        value: 'x',
+        license: 'GFDL or CC BY-SA 3.0',
+        attribution: 'Someone',
+      }),
+    ).toBeNull();
+  });
+
+  it('honours a per-FILE attribution requirement over the source policy (§12.2)', () => {
+    // Commons' source policy says credit is required, because 27 of 32 files demand it. The
+    // other 5 genuinely do not, and `extmetadata` says which — refusing a CC0 photograph for
+    // lacking a credit nobody is owed would throw away a usable image.
+    expect(
+      valueRefusal(ENRICHMENT_FIELD.IMAGE, ENRICHMENT_SOURCE.COMMONS, {
+        value: 'x',
+        license: 'CC0',
+        attributionRequired: false,
+      }),
+    ).toBeNull();
+  });
+
+  it('still refuses when the file itself says credit is required', () => {
+    expect(
+      valueRefusal(ENRICHMENT_FIELD.IMAGE, ENRICHMENT_SOURCE.COMMONS, {
+        value: 'x',
+        license: 'CC BY-SA 4.0',
+        attributionRequired: true,
+      }),
+    ).toBe(ENRICHMENT_ABSENCE_REASON.ATTRIBUTION_MISSING);
+  });
+
   it('refuses a value that owes credit and arrived without any', () => {
     // ADR-0167 §4 renders the stored string, so there would be nothing to render — and an
     // obligation we cannot discharge is not worth keeping.

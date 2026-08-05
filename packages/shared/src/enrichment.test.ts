@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ENRICHMENT_BLOB_KEY_PREFIX,
   ENRICHMENT_FIELD,
   ENRICHMENT_FIELD_TTL_MS,
+  ENRICHMENT_IMAGE_NOMINAL_WIDTH_PX,
   ENRICHMENT_MISS_TTL_MS,
   ENRICHMENT_SOURCE,
+  enrichmentImageContentPath,
   enrichmentFieldsSchema,
   enrichmentValueFetchedAt,
   enrichmentValueTtlMs,
   FIELD_SOURCE_PRECEDENCE,
   governingAttribution,
+  isEnrichmentBlobKey,
+  isUnusableLicense,
   MATCH_CONFIDENCE_THRESHOLD,
+  MAX_ENRICHMENT_IMAGE_BYTES,
   MATCH_METHOD,
   MATCH_METHOD_CONFIDENCE,
   resolveTextVariant,
@@ -61,6 +67,66 @@ describe('source policy', () => {
 
   it('resolves an image through Commons, never Wikidata (§11.1)', () => {
     expect(FIELD_SOURCE_PRECEDENCE.image).toEqual([ENRICHMENT_SOURCE.COMMONS]);
+  });
+});
+
+describe('isUnusableLicense', () => {
+  it('refuses a GFDL-only file (§12.2)', () => {
+    // The Western Wall's `P18`: GFDL 1.2 only, with an empty machine-readable License field.
+    // A documentation license that contemplates reproducing its own text is not something an
+    // 11px credit line can discharge.
+    expect(isUnusableLicense('GFDL 1.2')).toBe(true);
+    expect(isUnusableLicense('GNU Free Documentation License 1.2')).toBe(true);
+  });
+
+  it('keeps a file that is GFDL AND something usable', () => {
+    // Commons files are often dual-licensed; refusing these would throw away most of the
+    // CC BY-SA corpus for no reason.
+    expect(isUnusableLicense('GFDL or CC BY-SA 3.0')).toBe(false);
+    expect(isUnusableLicense('GFDL 1.2, CC BY-SA 4.0')).toBe(false);
+  });
+
+  it('keeps every license the spike actually measured', () => {
+    for (const license of [
+      'CC0',
+      'CC BY-SA 3.0',
+      'CC BY-SA 4.0',
+      'CC BY 4.0',
+      'CC BY 2.0',
+      'CC BY-SA 3.0 de',
+      'CC BY-SA 2.5',
+      'Public domain',
+    ]) {
+      expect(isUnusableLicense(license), license).toBe(false);
+    }
+  });
+});
+
+describe('enrichment blob keys', () => {
+  it('marks an enrichment blob apart from the flat keyspace it shares', () => {
+    // storage.ts is one keyspace for document ciphertext, avatars and these — and the image
+    // route is @Public, so the prefix is what stops it serving a document.
+    expect(isEnrichmentBlobKey(`${ENRICHMENT_BLOB_KEY_PREFIX}abc`)).toBe(true);
+    expect(isEnrichmentBlobKey('7f3a-not-ours')).toBe(false);
+  });
+
+  it('builds the one content path clients read', () => {
+    expect(enrichmentImageContentPath('enr_abc')).toBe('/enrichment/images/enr_abc');
+  });
+});
+
+describe('image sizing', () => {
+  it('caps stored bytes far below a Commons original (§11.4)', () => {
+    // The spike found originals up to 26.3 MB; the cap doubles as a guard against ever
+    // fetching one by mistake.
+    expect(MAX_ENRICHMENT_IMAGE_BYTES).toBeLessThan(26 * 1024 * 1024);
+    expect(MAX_ENRICHMENT_IMAGE_BYTES).toBeGreaterThan(1024 * 1024);
+  });
+
+  it('asks a nominal width big enough for the hero at full row width', () => {
+    // ADR-0167 §3's hero is 132px tall across a ~390px row and wants more than one device
+    // pixel per CSS pixel.
+    expect(ENRICHMENT_IMAGE_NOMINAL_WIDTH_PX).toBeGreaterThanOrEqual(780);
   });
 });
 

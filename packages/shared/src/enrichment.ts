@@ -235,6 +235,69 @@ export const ENRICHMENT_ABSENCE_REASON = {
   ATTRIBUTION_MISSING: 'attribution_missing',
 } as const satisfies Record<string, EnrichmentAbsenceReason>;
 
+/** The width asked of Commons' own thumbnailer (`iiurlwidth`).
+ *
+ *  **`iiurlwidth` does not honour exact widths** — MediaWiki rounds up to its own
+ *  thumbnail buckets, and the spike's requests for 200/400/800 came back as 250/500/840–960
+ *  (§12.1). So this is a *nominal* ask and the bucket we get is the answer; nothing
+ *  downstream may assume the returned image is this wide.
+ *
+ *  800 rather than the spike's 400 because ADR-0167 §3's hero is 132px tall at full row
+ *  width (~390px) and wants more than one device pixel per CSS pixel. The spike measured the
+ *  500 bucket at 36–250 KB (median 71 KB), so this lands in the low hundreds of KB — worth it
+ *  for bytes we store once, serve immutably and cache offline. **The one number a device pass
+ *  should revisit**, since no bucket above 500 has been measured. */
+export const ENRICHMENT_IMAGE_NOMINAL_WIDTH_PX = 800;
+
+/** Ceiling on the image bytes we will accept and store.
+ *
+ *  Generous against the measured thumbnail range and still far below the **26.3 MB**
+ *  originals the spike found (§11.4), so it doubles as a guard: if a bug ever pointed the
+ *  fetch at a Commons *original* instead of a bucket, this refuses it rather than quietly
+ *  warehousing it. */
+export const MAX_ENRICHMENT_IMAGE_BYTES = 4 * 1024 * 1024;
+
+/** Prefix on every enrichment blob key.
+ *
+ *  `common/storage.ts` is **one flat keyspace** shared with document blobs and avatars, and
+ *  the enrichment image route is `@Public` — so the prefix is what stops that route being a
+ *  way to ask for any blob in the bucket. A document is encrypted at rest and auth-guarded
+ *  (ADR-0015/0034); handing out even its ciphertext to an unauthenticated caller is a
+ *  weakening nobody asked for, and one string comparison closes it. */
+export const ENRICHMENT_BLOB_KEY_PREFIX = 'enr_';
+
+export function isEnrichmentBlobKey(key: string): boolean {
+  return key.startsWith(ENRICHMENT_BLOB_KEY_PREFIX);
+}
+
+/** Where a stored enrichment image is served from — the mirror of `avatarContentPath`, and
+ *  same-origin for the same two reasons: an `<img>` cannot send a bearer token, and
+ *  same-origin immutable bytes are what let the service worker cache them so an enriched
+ *  thumbnail survives going offline (non-negotiable rule 5, ADR-0166 §2). */
+export function enrichmentImageContentPath(blobKey: string): string {
+  return `/enrichment/images/${blobKey}`;
+}
+
+/** Licenses whose obligations we cannot reasonably discharge in a thumbnail caption, so a
+ *  file carrying **only** one of them is treated as no image at all (ADR-0166 §12.2).
+ *
+ *  GFDL is the measured case — the Western Wall's `P18` is GFDL 1.2 only, with an empty
+ *  machine-readable `License` field. It is a *documentation* license: it contemplates
+ *  reproducing the license text alongside the work, which is not a thing a 40px badge or an
+ *  11px credit line can do. One file in 32, so refusing costs almost nothing and shipping an
+ *  obligation we silently breach costs a lot. */
+const UNUSABLE_LICENSE_PATTERN = /\bGFDL\b|\bGNU Free Documentation\b/i;
+
+/** Anything that makes a file usable *despite* also being GFDL — Commons files are often
+ *  dual-licensed, and refusing those would throw away most of the CC BY-SA corpus. */
+const USABLE_LICENSE_PATTERN = /\bCC[\s-]|\bcc0\b|public domain|\bPD\b/i;
+
+/** Is this license string one we must refuse? Only when the unusable term is the **whole**
+ *  story — a `GFDL or CC BY-SA 3.0` dual license is fine, and is common. */
+export function isUnusableLicense(license: string): boolean {
+  return UNUSABLE_LICENSE_PATTERN.test(license) && !USABLE_LICENSE_PATTERN.test(license);
+}
+
 /** Per-value provenance (ADR-0166 §4) — ~6 facts, on **every** value. This is the
  *  deliverable `integrations/overview.md` asked this pipe to preserve, not decoration:
  *  it is what makes a source removable, and it carries CC BY-SA's attribution
