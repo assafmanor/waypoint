@@ -155,6 +155,21 @@ export interface BoardProps {
    *  presentational: the board measures nothing and decides nothing. */
   onLift?: (board: HTMLElement) => void;
 
+  /** **The press when there is nothing to lift** (ADR-0160 §9, restored for this surface
+   *  by the owner: _"when there's nothing to lift, clicking currently does nothing. I want
+   *  the little nudge animation like in plan mode"_). Mutually exclusive with `onLift` by
+   *  construction — the caller has already asked whether the horizon adds anything.
+   *
+   *  It deliberately does **not** make the board a `<button>`, and that is Plan mode's own
+   *  reasoning (§H): a surface that opens nothing must not announce a control it cannot
+   *  honour, so there is no role and no tab stop, and the beat is for the finger that
+   *  already touched it. The board also keeps the plain press step rather than the large
+   *  one — nothing is being pressed INTO.
+   *
+   *  Hands back the pressed element for the same reason `onLift` does: the beat plays on
+   *  this box, and the board neither owns motion nor decides what a press means. */
+  onRebuff?: (board: HTMLElement) => void;
+
   /** The hero is currently lifted out of this board (ADR-0160 §1). Hides it without
    *  giving up its box — it is the same object one elevation up, and two of them on
    *  screen is the overlay grammar the promotion exists to avoid. */
@@ -280,6 +295,7 @@ export function Board(props: BoardProps) {
     windowStartHour,
     windowEndHour,
     onLift,
+    onRebuff,
     lifted,
   } = props;
   const inTransit = variant === 'in-transit';
@@ -448,11 +464,25 @@ export function Board(props: BoardProps) {
   // element reset and the large press step (ADR-0140 §2: a full-width card at the
   // control step reads as collapsing), and it is one class rather than a bespoke
   // transform.
-  return onLift ? (
-    <button type="button" className={cls + ' is-tappable'} onClick={(e) => onLift(e.currentTarget)}>
+  //
+  // With nothing to lift the board still ANSWERS a press (§9 as restored) — but as a
+  // `<div>`, not a control: the same shape Plan's prep hero has had since §H, for the
+  // same reason. A press that produces nothing at all reads as a dead surface; a
+  // control that does nothing when activated is a promise not kept.
+  if (onLift) {
+    return (
+      <button
+        type="button"
+        className={cls + ' is-tappable'}
+        onClick={(e) => onLift(e.currentTarget)}
+      >
+        {body}
+      </button>
+    );
+  }
+  return (
+    <div className={cls} onClick={onRebuff && ((e) => onRebuff(e.currentTarget))}>
       {body}
-    </button>
-  ) : (
-    <div className={cls}>{body}</div>
+    </div>
   );
 }

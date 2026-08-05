@@ -1203,17 +1203,9 @@
    already looking at. But a press that produces no response at all reads as a dead
    surface, so the surface acknowledges the touch and stays where it is.
 
-   7px up and back, `linear` because the keyframe offsets ARE the timing, and no colour or
-   text — the same four properties every beat in `lib/one-shot.ts` shares. Vertical, not
-   the lateral shake of `.is-nudging`: nothing here is wrong. */
-.prep.is-rebuffing {
-  animation: prep-rebuff var(--t-base) linear;
-}
-@keyframes prep-rebuff {
-  40% {
-    transform: translateY(-7px);
-  }
-}
+   The motion itself is no longer declared here: the Trip board answers an empty press the
+   same way now (ADR-0160 §Q), so the beat is one shared rule in `styles/beats.css` and this
+   surface needs nothing of its own. */
 .prep::before {
   content: '';
   position: absolute;

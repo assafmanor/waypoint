@@ -166,10 +166,59 @@ describe('Home — the lift wiring', () => {
   it('a board whose whole horizon adds nothing is NOT a button', () => {
     // In progress, but no place, no note, no booking, nothing concurrent, nothing
     // after. The collapsed board already says everything there is, so there is
-    // nothing to open and the board is not pressable.
+    // nothing to open — and it must not announce a control it cannot honour, which is
+    // Plan's prep-hero reasoning (ADR-0160 §H) reaching this surface.
     tripEvents = [ev('now')];
     show();
     expect(board()?.tagName).toBe('DIV');
+    expect(board()?.getAttribute('role')).toBeNull();
+    expect(board()?.getAttribute('tabindex')).toBeNull();
+  });
+
+  // **The owner's report, and it reverses §A's silence** (ADR-0160 §Q): _"when there's
+  // nothing to lift, clicking currently does nothing. I want the little nudge animation
+  // like in plan mode."_ Not a control, but not dead either.
+  it('answers a press with the rebuff beat when there is nothing to lift', () => {
+    vi.useFakeTimers();
+    try {
+      tripEvents = [ev('now')];
+      show();
+      expect(board()?.className).not.toContain(BEAT.REBUFF);
+      fireEvent.click(board()!);
+      expect(board()?.className).toContain(BEAT.REBUFF);
+      // Nothing opened: the beat is the whole answer.
+      expect(document.querySelector('.hero-lifted')).toBeNull();
+      // jsdom cannot read `--t-base`, so `motionDurationMs` answers 0 and the removal is
+      // the next task (`lib/one-shot.ts`) — which is also what lets a second press be
+      // felt again rather than doing nothing.
+      vi.advanceTimersByTime(1);
+      expect(board()?.className).not.toContain(BEAT.REBUFF);
+      fireEvent.click(board()!);
+      expect(board()?.className).toContain(BEAT.REBUFF);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // It is the RISE, not the form-refusal shake: pressing something that was never a
+  // control is not an error, and this is the one channel the answer has.
+  it('rebuffs rather than nudging', () => {
+    tripEvents = [ev('now')];
+    show();
+    fireEvent.click(board()!);
+    expect(board()?.className).toContain('is-rebuffing');
+    expect(board()?.className).not.toContain('is-nudging');
+  });
+
+  // A liftable board opens instead — the beat is for the empty case only, so it must not
+  // fire on the way into the horizon.
+  it('does not rebuff a board that has something to lift', () => {
+    tripEvents = [ev('now', { placeId: 'p1' })];
+    tripPlaces = [place];
+    show();
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-lifted')).toBeTruthy();
+    expect(document.querySelector(`.${BEAT.REBUFF}`)).toBeNull();
   });
 
   // THE OWNER'S REPORT, as a test: "it does lift but only when there's an event

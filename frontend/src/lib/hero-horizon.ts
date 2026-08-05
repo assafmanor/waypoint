@@ -174,9 +174,11 @@ export function heroHorizon(input: HeroHorizonInput): HeroHorizon {
  *   on Home answers.
  *
  * So the question is only ever "does the lifted state add anything", asked of the
- * whole horizon. ADR-0160 §9's rebuff is withdrawn with the same change: a board
- * that adds nothing is now the rare end-of-day case rather than the common one, and
- * it stays silent.
+ * whole horizon. **A `false` here is now a REBUFF rather than silence** (ADR-0160 §Q,
+ * reversing §A): the case is rare, which is not the same as unremarkable, and a press that
+ * produces nothing at all reads as a dead surface. The board answers with the beat Plan's
+ * prep hero plays and stays exactly where it is — so this predicate decides which of two
+ * answers a press gets, never whether a press is answered.
  *
  * **The settle verbs still deliberately do not count.** Every event is settleable
  * rather than only the passed ones (ADR-0139 §2 — that is what keeps undo

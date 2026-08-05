@@ -8,13 +8,16 @@
 //   `.is-landing`    — a lifted hero touches back down (ADR-0160 §7).
 //   `.is-rebuffing`  — a tap on a hero with nothing to open (ADR-0160 §9).
 //
-// **The rebuff was designed, retired, and then claimed by a different surface** — worth
-// knowing because the history is in three ADR amendments and looks like churn. §9 wrote it
-// for the Trip board; §A withdrew it, because once the board lifts in a gap an empty tap is
-// the rare end-of-day case and silence is right there. What brought it back is **Plan
-// mode's prep hero**, which genuinely never opens (§H): its depth is the checklist rendered
-// directly beneath it, so there is nothing to lift, and a tap that answers with nothing at
-// all reads as a dead surface rather than a calm one.
+// **The rebuff was designed, retired, claimed by a different surface, and then given back**
+// — worth knowing because the history is in four ADR amendments and looks like churn. §9
+// wrote it for the Trip board; §A withdrew it, because once the board lifts in a gap an
+// empty tap is the rare end-of-day case and silence is right there. What brought it back is
+// **Plan mode's prep hero**, which genuinely never opens (§H): its depth is the checklist
+// rendered directly beneath it, so there is nothing to lift, and a tap that answers with
+// nothing at all reads as a dead surface rather than a calm one. **§Q then returns it to the
+// Trip board** on that same argument, from the owner using the shipped surface — rare turned
+// out not to mean unremarkable. So two surfaces play it, which is why its CSS is now one
+// shared rule (`styles/beats.css`) rather than a copy each.
 //
 // It is deliberately NOT `NUDGE` reused. That beat is a horizontal shake meaning *something
 // is wrong*, and a tap on the prep hero is not an error — it is a tap on something that was
@@ -42,9 +45,10 @@
 // drifted on four axes before anyone counted them.
 import { motionDurationMs } from './motion';
 
-/** The three beats, named so a call site cannot invent a fourth spelling. Each has
- *  its keyframes beside the surface that owns them: `form-errors.css`,
- *  `board.css`, `screens.css`. */
+/** The three beats, named so a call site cannot invent a fourth spelling. A beat's
+ *  keyframes live beside the surface that owns them (`form-errors.css`, `board.css`) —
+ *  except the rebuff, which two surfaces play and which therefore lives once in
+ *  `styles/beats.css` (ADR-0160 §Q). */
 export const BEAT = {
   /** A form refuses: a horizontal shake, because something IS wrong. */
   NUDGE: 'is-nudging',
@@ -52,7 +56,12 @@ export const BEAT = {
   LANDING: 'is-landing',
   /** A tap on a surface with nothing to open: a small rise that settles back. Vertical
    *  rather than lateral on purpose — it answers "there is nothing above this" and must
-   *  not read as the refusal `NUDGE` is. No colour and no text (ADR-0160 §9). */
+   *  not read as the refusal `NUDGE` is. No colour and no text (ADR-0160 §9).
+   *
+   *  The one beat with more than one host (Plan's prep hero and the Trip board, §H/§Q), so
+   *  unlike its siblings its keyframes are NOT per-surface: they are one rule in
+   *  `styles/beats.css`, with a per-surface plug-in only where a surface cannot take a
+   *  plain `animation`. */
   REBUFF: 'is-rebuffing',
 } as const;
 
