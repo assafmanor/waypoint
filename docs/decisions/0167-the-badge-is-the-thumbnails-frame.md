@@ -1,6 +1,6 @@
 # 0167 — The badge is the thumbnail's frame, and selection is where a place says more
 
-**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **Nothing built** — this is the surface ADR-0166's Phase 1 fills in.)
+**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **Nothing built** — this is the surface ADR-0166's Phase 1 fills in.) **AMENDED the same day — §9 supersedes §3 for a committed place.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
 **Date:** 2026-08-05
 
 **Design reference:** [`mockups/place-enrichment-v1.html`](../../mockups/place-enrichment-v1.html) — rendered and measured in Chromium at 390×844 (DPR 2), in both themes. Every place name, summary, credit, opening-hours string and aspect ratio in it is real data from the [coverage spike](../planning/2026-08-04-session-213-place-enrichment-coverage-spike.md); **the photographs are synthetic** (see §8).
@@ -93,6 +93,27 @@ Two defects that reading the CSS would not have produced, and both will recur in
 - **The build inherits numbers, not intentions:** 69–71px collapsed, 392px enriched, 134px empty, 132px hero, three-line clamp.
 - **Two bugs are pre-empted** (§8) that the frontend lint guard cannot catch.
 - **New Hebrew copy:** `באנגלית`, `עוד בגוגל`, `שעות פתיחה`, and an "as of" phrasing — all in `i18n/he.ts`, all obeying the separator rule (`·`, no em dashes).
+
+### 9. Amendment (2026-08-05, same day) — v1 designed against the wrong card
+
+**The owner rejected v1 as incomplete, correctly.** It drew a stripped-down row. The real selection card carries an order counter, a lock, a rename, three meta tags, a notes section with its own header and list, one or two reference rows with their settle pairs, a primary `שיבוץ ליום` and a delete — and, decisively, **it is a grid with exactly one scrolling track**. Four of its five rows are pinned by the owner's own rule, quoted in `map.css`: _"only the notes themselves should be scrollable, everything else is locked."_ Bolting §3's 132px hero and 3-line summary onto **that** would have made a capped card ~538px, **64% of the screen**.
+
+The redesign is in [`mockups/place-enrichment-v2.html`](../../mockups/place-enrichment-v2.html), and the owner's brief for it was explicit: the summary must be **included and very easy to reach** (1–2 lines, expandable), rearranging what is already there is fair game, and _"I'm not afraid of drastic changes, the app is not GA yet."_
+
+**1. The governing principle: enrichment is for deciding, and once you have decided it compresses.** A photo and a summary of a place you have already committed to — whose booking you hold, whose notes your group has written — competes with content the traveller needs more. So the two surfaces diverge:
+
+- **A place you are still deciding on** (a Google result, a shelf idea) has no notes, no references and no schedule action, so the **hero and the summary get the room they are actually for**. Measured: 361px.
+- **A committed place** compresses. This is where the owner's brief bites, and it is answered by two rearrangements rather than by finding a corner.
+
+**2. Hours ride the meta line, and therefore cost nothing.** `פתוח עד 17:00` becomes another tag on the row's existing wrapping meta line beside the time and the area. **Measured: the meta line is 17px with or without it — 0px.** §7's own pinned line was costing 19px when it fitted and **43px when the freshness tail wrapped**, which is more than the hours were worth. The "as of" detail moves to the expanded state.
+
+**3. That buys the summary a pinned two-line block under the identity.** Always visible, `עוד ›` to expand. **Measured: 64px collapsed, 108px expanded** — and the extra 44px is borrowed from the **notes scroller**, which is the flexible track, so nothing is lost and the notes still have 114px at a 420px cap. The credit line appears with the expansion, where there is room for it.
+
+**4. The committed card gets no hero.** The badge already carries the photograph at zero cost (§1), and 132px of picture on a place you have already chosen is the least valuable block on a capped card. The hero stays on the deciding surfaces.
+
+**5. `פתקים` keeps its name and its scroller.** The rejected alternative put the summary _inside_ the scrolling track and renamed the section to `מה ידוע` — which costs no pinned height but makes the group's own writing share a region with fetched text, on a surface the owner specified personally. The pinned block keeps that boundary intact.
+
+**One more defect rendering caught**, and it is a specificity fight rather than a layout one: `.summary`'s `-webkit-line-clamp: 3` silently overrode the two-line clamp because it is declared later, so the "two-line" block rendered three lines and measured 20px more than designed. A clamp that varies by state has to be written on the compound selector, not as a sibling class.
 
 ## What this does not settle
 

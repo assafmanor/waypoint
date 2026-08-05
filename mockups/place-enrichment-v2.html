@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>מקום מעושר v2 — enrichment on the REAL card (ADR-0167)</title>
+    <style>
+      :root {
+        --ink: #e8ecf4;
+        --card: #182339;
+        --screen: #10192b;
+        --amber: #e9a63c;
+        --teal: #2c9c90;
+        --muted: #aab4c6;
+        --faint: #7f8ba1;
+        --line: rgba(255, 255, 255, 0.14);
+        --soft-line: rgba(255, 255, 255, 0.3);
+        --ok: #5fbf93;
+        --miss: #e0827a;
+        --cta: #e8ecf4;
+        --font-body: 'Assistant', system-ui, sans-serif;
+        --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--screen);
+        color: var(--ink);
+        font-family: var(--font-body);
+        line-height: 1.5;
+        padding: 22px 14px 60px;
+      }
+      .head {
+        text-align: center;
+      }
+      h1 {
+        font-size: 21px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        color: var(--muted);
+        max-width: 820px;
+        margin: 0 auto 8px;
+        font-size: 13.5px;
+      }
+      .warn {
+        max-width: 820px;
+        margin: 0 auto 20px;
+        font-size: 12.5px;
+        color: #f0a9a1;
+        border: 1px dashed rgba(224, 130, 122, 0.45);
+        border-radius: 10px;
+        padding: 8px 12px;
+        background: rgba(224, 130, 122, 0.07);
+      }
+      h2 {
+        font-size: 15.5px;
+        margin: 32px 0 2px;
+        text-align: center;
+      }
+      .note {
+        color: var(--muted);
+        font-size: 12.5px;
+        max-width: 820px;
+        margin: 0 auto 14px;
+        text-align: center;
+      }
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        justify-content: center;
+        align-items: flex-start;
+      }
+      .col {
+        width: 374px;
+        max-width: 100%;
+      }
+      .cap {
+        font-size: 12px;
+        color: var(--faint);
+        margin: 0 0 6px;
+        text-align: center;
+      }
+      .mm {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--teal);
+        text-align: center;
+        margin: 5px 0 0;
+      }
+
+      /* ── the card, as it ships: a GRID with ONE scrolling track ───────── */
+      .placecard {
+        background: var(--card);
+        border: 1px solid rgba(233, 166, 60, 0.45);
+        border-radius: 18px;
+        padding: 11px 12px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 0 11px;
+        overflow: hidden;
+        /* the real cap is the canvas; this stands in for it */
+        max-height: 460px;
+      }
+      /* today: identity · notes-head · NOTES(1fr) · refs · foot */
+      .rows-today {
+        grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+      }
+      /* A: one pinned hours line joins the facts */
+      .rows-a {
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+      }
+      /* B: the scroller becomes "what we know" — summary + notes */
+      .rows-b {
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+      }
+
+      .badge {
+        grid-row: 1;
+        grid-column: 1;
+        position: relative;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        background: rgba(120, 170, 220, 0.85);
+        overflow: hidden;
+      }
+      .badge.photo {
+        background: none;
+        --ring: var(--teal);
+      }
+      .badge.photo::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow:
+          inset 0 0 0 2px var(--ring),
+          inset 0 0 0 3px rgba(255, 255, 255, 0.45);
+      }
+      .badge .synth {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .ord {
+        position: absolute;
+        top: -6px;
+        inset-inline-start: -6px;
+        min-width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: #f2f4f8;
+        color: #16233d;
+        font-size: 11px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        z-index: 2;
+      }
+      .synth {
+        background: linear-gradient(#bcd7ea 0 42%, #9db6c9 42% 55%, #6b5f57 55% 100%);
+        position: relative;
+      }
+      .synth::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 0;
+        width: 26%;
+        height: 62%;
+        background: linear-gradient(#b8442f 0 18%, #8d3626 18% 100%);
+      }
+      .synth.tall::after {
+        width: 18%;
+        height: 78%;
+      }
+
+      .main {
+        grid-row: 1;
+        grid-column: 2;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .nm {
+        font-weight: 600;
+        font-size: 15px;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        justify-content: flex-start;
+      }
+      .nm .ic {
+        color: var(--faint);
+        font-size: 13px;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 2px;
+        align-items: center;
+        font-size: 11.5px;
+      }
+      .tag {
+        color: var(--muted);
+      }
+      .tag.time {
+        color: var(--amber);
+        font-family: var(--font-mono);
+      }
+      .tag.next {
+        color: var(--amber);
+        font-weight: 600;
+      }
+      .right {
+        grid-row: 1;
+        grid-column: 3;
+      }
+      .nav {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--teal);
+        border: 1px solid var(--teal);
+        border-radius: 20px;
+        padding: 6px 12px;
+        white-space: nowrap;
+      }
+
+      /* pinned section header */
+      .sec-h {
+        grid-column: 1 / -1;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12.5px;
+        color: var(--muted);
+      }
+      .sec-h .add {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      /* THE one scrolling track */
+      .scroller {
+        grid-column: 1 / -1;
+        align-self: stretch;
+        min-height: 0;
+        overflow-y: auto;
+        scrollbar-width: none;
+        font-size: 12.5px;
+        color: var(--faint);
+        padding: 4px 0;
+      }
+      .scroller::-webkit-scrollbar {
+        width: 0;
+      }
+      .notemock {
+        display: block;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 8px;
+        padding: 6px 9px;
+        margin-bottom: 5px;
+        color: var(--ink);
+        font-size: 12.5px;
+      }
+
+      /* THE SUMMARY BLOCK — pinned, two lines by default, tappable to expand. */
+      .sumblock {
+        grid-column: 1 / -1;
+        margin-top: 7px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .summary.clamp2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .more {
+        align-self: flex-start;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--teal);
+      }
+      .tag.open {
+        color: var(--ok);
+        font-weight: 600;
+      }
+
+      /* the enrichment line — one pinned row */
+      .enrich {
+        grid-column: 1 / -1;
+        margin-top: 7px;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        font-size: 12.5px;
+        flex-wrap: wrap;
+      }
+      .enrich b {
+        font-weight: 600;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .enrich .val {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--ink);
+      }
+      .enrich .asof {
+        color: var(--faint);
+        font-size: 11px;
+      }
+      .enrich .open {
+        color: var(--ok);
+        font-weight: 600;
+        font-size: 11.5px;
+      }
+
+      /* refs — pinned */
+      .refs {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        margin-top: 8px;
+      }
+      .ref {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .ref-open {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        gap: 7px;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 7px 9px;
+        font-size: 12.5px;
+      }
+      .ref-kind {
+        color: var(--faint);
+        flex: 0 0 auto;
+      }
+      .ref-label {
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .settle {
+        display: flex;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .settle span {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        display: grid;
+        place-items: center;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      /* foot — pinned */
+      .foot {
+        grid-column: 1 / -1;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 9px;
+      }
+      .primary {
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 22px;
+        padding: 8px 18px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .del {
+        color: var(--faint);
+        font-size: 12px;
+      }
+      .gbtn {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 6px 10px;
+        white-space: nowrap;
+      }
+
+      /* the DECIDING card — no notes, no refs, no schedule foot */
+      .decide .hero {
+        grid-column: 1 / -1;
+        height: 130px;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-top: 9px;
+      }
+      .decide .hero .synth {
+        display: block;
+        height: 100%;
+        width: 100%;
+      }
+      .credit {
+        grid-column: 1 / -1;
+        font-size: 11px;
+        color: var(--faint);
+        text-align: start;
+        unicode-bidi: isolate;
+        margin-top: 5px;
+      }
+      .summary {
+        font-size: 13px;
+        color: var(--ink);
+        margin-top: 5px;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .lang {
+        font-size: 11px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        padding: 1px 6px;
+        margin-inline-end: 5px;
+      }
+      .legend {
+        max-width: 820px;
+        margin: 26px auto 0;
+        font-size: 13px;
+        color: var(--muted);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      .legend h3 {
+        font-size: 14px;
+        margin: 12px 0 6px;
+        color: var(--ink);
+      }
+      .legend h3:first-child {
+        margin-top: 0;
+      }
+      .legend li {
+        margin-bottom: 6px;
+      }
+      code {
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 1px 4px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <h1>מקום מעושר · v2</h1>
+      <p class="sub">
+        v1 drew a stripped-down row and was rightly rejected: the real selection card is a
+        <b>grid with one scrolling track</b> that already carries notes, reference rows with their
+        settle pairs, and a pinned footer. This file puts enrichment into <b>that</b> card. The
+        governing constraint is the owner's own, quoted in <code>map.css</code>:
+        <b>"only the notes themselves should be scrollable, everything else is locked."</b>
+      </p>
+      <p class="warn">
+        Photographs are synthetic (no egress to <code>upload.wikimedia.org</code>) — real aspect
+        ratios, composed sky-above-structure. Names, hours strings and credits are real spike data.
+      </p>
+    </div>
+
+    <h2>0 · The card as it ships — the thing v1 forgot</h2>
+    <p class="note">
+      Five grid rows, four of them pinned. Notes are the only track that scrolls, and
+      <code>שיבוץ ליום</code> must stay reachable at any scroll position.
+    </p>
+    <div class="grid">
+      <div class="col">
+        <div class="placecard rows-today">
+          <span class="badge">✈<span class="ord">1</span></span>
+          <span class="main">
+            <span class="nm"
+              >נמל התעופה שארל דה גול <span class="ic">🔒</span><span class="ic">✎</span></span
+            >
+            <span class="meta"
+              ><span class="tag time">12:00</span><span class="tag next">היעד הבא</span
+              ><span class="tag">המראה</span></span
+            >
+          </span>
+          <span class="right"><span class="nav">ניווט</span></span>
+          <span class="sec-h"><span>פתקים</span><span class="add">＋ פתק</span></span>
+          <span class="scroller">אין פתקים על זה</span>
+          <span class="refs">
+            <span class="ref"
+              ><span class="ref-open"
+                ><span class="ref-kind">הזמנה</span
+                ><span class="ref-label">שארל דה גול ← פרנקפורט (FRA)</span><span>‹</span></span
+              ></span
+            >
+            <span class="ref"
+              ><span class="ref-open"
+                ><span class="ref-kind">אירוע</span
+                ><span class="ref-label">שארל דה גול ← פרנקפורט (FRA)</span><span>‹</span></span
+              ><span class="settle"><span>✕</span><span>✓</span></span></span
+            >
+          </span>
+          <span class="foot"
+            ><span class="primary">＋ שיבוץ ליום</span><span class="del">🗑 מחיקת המקום</span></span
+          >
+        </div>
+        <p class="mm" data-measure="today"></p>
+      </div>
+    </div>
+
+    <h2>1 · A committed place · the summary earns a pinned block</h2>
+    <p class="note">
+      Two rearrangements pay for it. <b>Hours join the meta line as another tag</b> — the row
+      already wraps tags, so <code>פתוח עד 17:00</code> costs <b>0px</b> instead of the 19–43px a
+      line of its own wanted. That buys the
+      <b>summary a two-line clamp directly under the identity</b>, always visible, tappable to
+      expand. Expanding borrows from the notes scroller, which is the flexible track — so nothing is
+      lost, it is just further down.
+    </p>
+    <div class="grid">
+      <div class="col">
+        <p class="cap">collapsed · two lines, always there</p>
+        <div class="placecard rows-a">
+          <span class="badge photo"><span class="synth"></span><span class="ord">1</span></span>
+          <span class="main">
+            <span class="nm">מוזיאון נזו <span class="ic">✎</span></span>
+            <span class="meta"
+              ><span class="tag time">10:30</span><span class="tag">מינאטו</span
+              ><span class="tag open">פתוח עד 17:00</span></span
+            >
+          </span>
+          <span class="right"><span class="nav">ניווט</span></span>
+          <span class="sumblock">
+            <span class="summary clamp2" dir="auto"
+              >מוזיאון נזו (ביפנית: 根津美術館) הוא מוזיאון לאמנות הממוקם ברובע מינאטו של העיר
+              טוקיו, יפן. אוסף הקבע כולל למעלה מ־7,400 פריטי אמנות יפנית ומזרח־אסייתית.</span
+            >
+            <span class="more">עוד ›</span>
+          </span>
+          <span class="sec-h"><span>פתקים</span><span class="add">＋ פתק</span></span>
+          <span class="scroller">
+            <span class="notemock">להזמין כרטיסים מראש, התור ארוך בסופ״ש</span>
+            <span class="notemock">הגן מאחורי המוזיאון שווה חצי שעה</span>
+          </span>
+          <span class="refs">
+            <span class="ref"
+              ><span class="ref-open"
+                ><span class="ref-kind">אירוע</span><span class="ref-label">ביקור במוזיאון נזו</span
+                ><span>‹</span></span
+              ><span class="settle"><span>✕</span><span>✓</span></span></span
+            >
+          </span>
+          <span class="foot"
+            ><span class="primary">＋ שיבוץ ליום</span><span class="gbtn">עוד בגוגל</span
+            ><span class="del">🗑</span></span
+          >
+        </div>
+        <p class="mm" data-measure="a"></p>
+      </div>
+
+      <div class="col">
+        <p class="cap">expanded · the scroller gives way, notes are not lost</p>
+        <div class="placecard rows-a">
+          <span class="badge photo"><span class="synth"></span><span class="ord">1</span></span>
+          <span class="main">
+            <span class="nm">מוזיאון נזו <span class="ic">✎</span></span>
+            <span class="meta"
+              ><span class="tag time">10:30</span><span class="tag">מינאטו</span
+              ><span class="tag open">פתוח עד 17:00</span></span
+            >
+          </span>
+          <span class="right"><span class="nav">ניווט</span></span>
+          <span class="sumblock">
+            <span class="summary" dir="auto"
+              >מוזיאון נזו (ביפנית: 根津美術館) הוא מוזיאון לאמנות הממוקם ברובע מינאטו של העיר
+              טוקיו, יפן. אוסף הקבע כולל למעלה מ־7,400 פריטי אמנות יפנית ומזרח־אסייתית, ובהם שבעה
+              נכסי תרבות לאומיים.</span
+            >
+            <span class="credit">Kakidai · CC BY-SA 4.0</span>
+            <span class="more">פחות ‹</span>
+          </span>
+          <span class="sec-h"><span>פתקים</span><span class="add">＋ פתק</span></span>
+          <span class="scroller">
+            <span class="notemock">להזמין כרטיסים מראש, התור ארוך בסופ״ש</span>
+            <span class="notemock">הגן מאחורי המוזיאון שווה חצי שעה</span>
+          </span>
+          <span class="refs">
+            <span class="ref"
+              ><span class="ref-open"
+                ><span class="ref-kind">אירוע</span><span class="ref-label">ביקור במוזיאון נזו</span
+                ><span>‹</span></span
+              ><span class="settle"><span>✕</span><span>✓</span></span></span
+            >
+          </span>
+          <span class="foot"
+            ><span class="primary">＋ שיבוץ ליום</span><span class="gbtn">עוד בגוגל</span
+            ><span class="del">🗑</span></span
+          >
+        </div>
+        <p class="mm" data-measure="b"></p>
+      </div>
+    </div>
+
+    <h2>2 · A place you are still deciding on · enrichment has the room</h2>
+    <p class="note">
+      No notes, no references, no <code>שיבוץ ליום</code> — because nothing points at it yet. So the
+      hero and the summary get the space they are actually for. <b>This is the inversion:</b> the
+      fields that matter most when you are choosing are the ones that matter least once you have
+      chosen.
+    </p>
+    <div class="grid">
+      <div class="col">
+        <p class="cap">a Google result on the canvas</p>
+        <div class="placecard decide" style="grid-template-rows: auto auto auto auto auto auto">
+          <span class="badge photo"><span class="synth tall"></span></span>
+          <span class="main">
+            <span class="nm" dir="auto">Tokyo Skytree</span>
+            <span class="meta"><span class="tag" dir="auto">Sumida, Tokyo</span></span>
+          </span>
+          <span class="right"><span class="nav">ניווט</span></span>
+          <span class="hero"><span class="synth tall"></span></span>
+          <span class="credit">Kakidai · CC BY-SA 3.0</span>
+          <span class="summary" dir="auto"
+            >עץ השמיים (ביפנית: 東京スカイツリー) הוא מגדל תקשורת, מסעדה ומגדל תצפית הממוקם בסומידה,
+            טוקיו. הוא הפך למבנה הגבוה ביותר ביפן ב־2010.</span
+          >
+          <span class="enrich"><b>שעות פתיחה</b><span class="val">08:00–22:00</span></span>
+          <span class="foot"
+            ><span class="primary">＋ אולי</span><span class="gbtn">עוד בגוגל</span></span
+          >
+        </div>
+        <p class="mm" data-measure="decide"></p>
+      </div>
+
+      <div class="col">
+        <p class="cap">a restaurant we know nothing about · the majority</p>
+        <div class="placecard decide" style="grid-template-rows: auto auto">
+          <span class="badge">🍜</span>
+          <span class="main">
+            <span class="nm" dir="auto">Fuunji</span>
+            <span class="meta"><span class="tag" dir="auto">Shinjuku</span></span>
+          </span>
+          <span class="right"><span class="nav">ניווט</span></span>
+          <span class="foot"
+            ><span class="primary">＋ אולי</span><span class="gbtn">עוד בגוגל</span></span
+          >
+        </div>
+        <p class="mm" data-measure="empty"></p>
+      </div>
+    </div>
+
+    <div class="legend">
+      <h3>What v2 changes about v1</h3>
+      <ul>
+        <li>
+          <b>v1 designed for the empty case and called it the card.</b> The real committed card
+          already carries an order counter, a lock, a rename, three meta tags, a notes section with
+          its own header and scroller, one or two reference rows with settle pairs, a primary
+          schedule action and a delete. Adding a 132px hero and a 3-line summary to
+          <i>that</i> would have pushed a capped card past the canvas.
+        </li>
+        <li>
+          <b>The card has exactly one scrolling track and it is the notes.</b> Four of five grid
+          rows are pinned by the owner's rule. So enrichment cannot simply be "another block" — it
+          either joins the pinned set (and must be one line) or it joins the scroller (and changes
+          what that section is called).
+        </li>
+      </ul>
+
+      <h3>The principle this file proposes</h3>
+      <ul>
+        <li>
+          <b>Enrichment is for deciding; once you have decided, it compresses.</b> A photo and a
+          summary of a place you have already committed to, whose booking you hold and whose notes
+          your group has written, is the least urgent content on that card. Hours are the exception,
+          because they are the only enriched field that changes what you <i>do</i>.
+        </li>
+        <li>
+          <b>So the committed card gets exactly two things</b> — the badge becomes the photo (zero
+          space) and one pinned hours line with an "as of". <code>עוד בגוגל</code> joins the foot
+          beside <code>שיבוץ ליום</code>, where it is also the whole answer for the majority of
+          places we know nothing about.
+        </li>
+        <li>
+          <b>And the deciding card gets the hero and the summary</b>, because it has no notes, no
+          references and no schedule action competing for the same pixels.
+        </li>
+      </ul>
+
+      <h3>The fork this file cannot settle on its own</h3>
+      <ul>
+        <li>
+          <b>A vs B: does the summary appear on a committed place at all?</b>
+          <b>A</b> says no — the badge photo and the hours line are the whole of it, and anyone
+          wanting more taps <code>עוד בגוגל</code>. <b>B</b> puts the summary and credit
+          <i>inside</i> the scrolling track above the notes, which costs no pinned height and keeps
+          the content, but renames the section from <code>פתקים</code> to something like
+          <code>מה ידוע</code> — and that is a change to a surface the owner specified personally.
+        </li>
+      </ul>
+    </div>
+
+    <script>
+      for (const el of document.querySelectorAll('[data-measure]')) {
+        const card = el.previousElementSibling;
+        const r = card.getBoundingClientRect();
+        el.textContent = `${Math.round(r.height)}px · ${Math.round((r.height / 844) * 100)}% of 390×844`;
+      }
+    </script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 # 2026-08-05 · session 214 — what an enriched place looks like (design session)
 
-**Outcome:** [ADR-0167](../decisions/0167-the-badge-is-the-thumbnails-frame.md) + [`mockups/place-enrichment-v1.html`](../../mockups/place-enrichment-v1.html), rendered and measured in Chromium at 390×844 in both themes. Closes [ADR-0166](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md) §10, which had been gating Phase 1. Three forks approved; **nothing built**.
+**Outcome:** [ADR-0167](../decisions/0167-the-badge-is-the-thumbnails-frame.md) + [`mockups/place-enrichment-v1.html`](../../mockups/place-enrichment-v1.html) and **[`v2`](../../mockups/place-enrichment-v2.html), after the owner rejected v1 as incomplete — see the last section**, rendered and measured in Chromium at 390×844 in both themes. Closes [ADR-0166](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md) §10, which had been gating Phase 1. Three forks approved; **nothing built**.
 
 ## What the session had to answer
 
@@ -54,3 +54,17 @@ The file's §3 is the majority case, not the happy one: a restaurant we know not
 **Whether a real photograph is legible at 40px.** The session still could not reach `upload.wikimedia.org`, so the images are CSS gradients at the real files' aspect ratios, composed sky-above-structure so a crop's damage shows. Crop geometry and density are honest; content is not. That is a device pass with real Commons files, and it is the last thing standing between this design and a build.
 
 Also open, and recorded rather than forgotten: **the app's other surfaces** (shelf ideas, event rows, the Index, the hero) get a second pass once the badge's behaviour is real, and **the empty card's 44px of chrome for one button** is measured but not tuned — which matters more than it sounds, because it is the majority case.
+
+## The owner rejected v1, and the second pass is the real answer
+
+_"Currently places look like this. Your mockup is missing existing information, so it's incomplete. The challenge is fitting everything in a pleasant way for saved places, not just search results."_ — with a screenshot of the shipped card.
+
+**The criticism was right and it was structural, not cosmetic.** v1 drew a stripped-down row. The real card carries an order counter, a lock, a rename, three meta tags, a notes section with its own header and list, one or two reference rows with their settle pairs, `שיבוץ ליום` and a delete — and it is a **grid with exactly one scrolling track**, four of five rows pinned by the owner's own rule, which `map.css` quotes: _"only the notes themselves should be scrollable, everything else is locked."_ v1's hero plus summary on that card measures **~538px, 64% of the screen**.
+
+I had read `renderRow` and the row CSS and still missed this, because I stopped at the list row and never looked at what `.map-placecard:has(.note-sec)` does to it. The lesson is narrow and worth keeping: **a component that renders in two densities has two anatomies, and the crowded one is the one to design against.**
+
+**The owner's brief for the second pass** was to include the summary and make it _very easy to reach_ (1–2 lines, expandable), with permission to rearrange: _"I'm not afraid of drastic changes, the all is not GA yet."_ Both of my proposed options were refused — one dropped the summary from a committed place, the other renamed `פתקים`.
+
+**What answered it was giving up a row I had assumed was necessary.** Hours do not need a line of their own: `פתוח עד 17:00` becomes another tag on the meta line that already wraps them, and the meta line **measures 17px with or without it — 0px**. That mattered more than it sounds, because the pinned hours line had been costing 19px when it fitted and **43px when the freshness tail wrapped**. Spending nothing there buys the summary a **pinned two-line block** under the identity at **64px**, expanding to **108px** by borrowing from the notes scroller — which still holds 114px.
+
+**And the principle that fell out is the one worth keeping from this whole session: enrichment is for deciding, and once you have decided it compresses.** A deciding card (a Google result, a shelf idea) has no notes, no references and no schedule action, so the hero and summary have their room. A committed card gets the badge photo, the hours tag and two lines of summary — and **no hero**, because 132px of picture on a place you have already chosen is the least valuable block on a capped card.
