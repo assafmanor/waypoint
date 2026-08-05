@@ -1,6 +1,6 @@
 # 0167 — The badge is the thumbnail's frame, and selection is where a place says more
 
-**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **Nothing built** — this is the surface ADR-0166's Phase 1 fills in.) **AMENDED the same day — §9 supersedes §3 for a committed place.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
+**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **Nothing built** — this is the surface ADR-0166's Phase 1 fills in.) **AMENDED TWICE the same day — §9 supersedes §3 for a committed place; §10 answers the full picture.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
 **Date:** 2026-08-05
 
 **Design reference:** [`mockups/place-enrichment-v1.html`](../../mockups/place-enrichment-v1.html) — rendered and measured in Chromium at 390×844 (DPR 2), in both themes. Every place name, summary, credit, opening-hours string and aspect ratio in it is real data from the [coverage spike](../planning/2026-08-04-session-213-place-enrichment-coverage-spike.md); **the photographs are synthetic** (see §8).
@@ -114,6 +114,20 @@ The redesign is in [`mockups/place-enrichment-v2.html`](../../mockups/place-enri
 **5. `פתקים` keeps its name and its scroller.** The rejected alternative put the summary _inside_ the scrolling track and renamed the section to `מה ידוע` — which costs no pinned height but makes the group's own writing share a region with fetched text, on a surface the owner specified personally. The pinned block keeps that boundary intact.
 
 **One more defect rendering caught**, and it is a specificity fight rather than a layout one: `.summary`'s `-webkit-line-clamp: 3` silently overrode the two-line clamp because it is declared later, so the "two-line" block rendered three lines and measured 20px more than designed. A clamp that varies by state has to be written on the compound selector, not as a sibling class.
+
+### 10. Amendment (2026-08-05, third) — the full picture is FULL SCREEN, and one bug of my own
+
+The owner tested v2 on a real phone and asked for two things: the misalignment fixed, and _"a way to view the full picture even for saved places … let's get creative here."_
+
+**1. The misalignment was a bug I introduced, and its lesson is narrow.** When the summary moved inside the pinned `.sumblock` (§9.3) I stripped its `grid-column: 1 / -1`. On the _deciding_ card the summary is still a **direct grid child**, so it landed in column 1 — an `auto` track — and squeezed the `1fr` name/meta column to **zero width**, which is why the identity row came apart character by character. Measured before and after: **name width 0px → 223px.** The rule worth keeping: **a full-row span belongs to the host that places the element, not to the text's own class** — the same class now serves two contexts, and only one of them is a grid child.
+
+**2. A bigger thumbnail inside the card does not work, and it is measured, not asserted.** The obvious reading of "view the full picture" is to reveal a hero on expansion. Built and measured: a 116px hero inside the expanded block leaves the notes scroller **31px**, which is unusable. The card is capped by the canvas, so anything the picture takes comes straight out of the group's own notes.
+
+**So the full picture is the app's existing zoomable image preview, at full screen** — which is more than a hero would ever have given, and adds no surface: ADR-0062 permits zoom in exactly one place, an image preview, and that surface already exists with a travel-from-the-tapped-element entrance and a back-stack contract.
+
+**3. Its entry point is the credit line, which licensing requires anyway.** The expanded block's credit becomes a row: `Kakidai · CC BY-SA 4.0` at the start, `⤢ תמונה מלאה` at the end. **0px** — the line already had to be there for the 84% of files that demand attribution (§4), so the way to the picture and the obligation to name its author are the same line. Progressive disclosure lands at three levels, none of which costs pinned height beyond §9's 64px: **badge photo → two-line summary → expanded summary → full-screen preview.**
+
+**One build question this raises rather than answers** (ADR-0096): `DocumentViewer` is **document-shaped** (`doc: DocumentSummary`), not image-shaped. Reaching it for an enrichment photo means generalizing it, which may be a small extraction or a substantial refactor — so the build should look and **ask** before either widening it or adding a second viewer beside it.
 
 ## What this does not settle
 

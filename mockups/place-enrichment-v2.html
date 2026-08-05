@@ -284,6 +284,23 @@
         flex-direction: column;
         gap: 3px;
       }
+      /* THE FULL PICTURE, FOR A PLACE YOU HAVE ALREADY SAVED — and it is FULL SCREEN, not a
+         bigger thumbnail. Measured: a 116px hero inside the expanded block leaves the notes
+         scroller 31px, which is unusable. So the picture goes to the app's existing zoomable
+         image preview (ADR-0062 permits zoom exactly there), and the CREDIT line — which
+         licensing requires anyway — is its entry point. Two obligations, one line, 0px. */
+      .creditrow {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+      .full {
+        flex: 0 0 auto;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: var(--teal);
+      }
       .summary.clamp2 {
         display: -webkit-box;
         -webkit-line-clamp: 2;
@@ -433,6 +450,14 @@
         unicode-bidi: isolate;
         margin-top: 5px;
       }
+      /* A DIRECT grid child needs the full-row span back. Removing it when the summary
+         moved inside `.sumblock` left §2's card putting it in column 1, which squeezed the
+         name/meta column to ZERO width — the mangled identity row in the owner's screenshot.
+         Two hosts, two contexts, one class: the span belongs to the host, not the text. */
+      .decide > .summary,
+      .decide > .credit {
+        grid-column: 1 / -1;
+      }
       .summary {
         font-size: 13px;
         color: var(--ink);
@@ -481,7 +506,7 @@
     </style>
   </head>
   <body>
-    <div class="head">
+    <div class="head" dir="ltr">
       <h1>מקום מעושר · v2</h1>
       <p class="sub">
         v1 drew a stripped-down row and was rightly rejected: the real selection card is a
@@ -496,8 +521,8 @@
       </p>
     </div>
 
-    <h2>0 · The card as it ships — the thing v1 forgot</h2>
-    <p class="note">
+    <h2 dir="ltr">0 · The card as it ships — the thing v1 forgot</h2>
+    <p class="note" dir="ltr">
       Five grid rows, four of them pinned. Notes are the only track that scrolls, and
       <code>שיבוץ ליום</code> must stay reachable at any scroll position.
     </p>
@@ -539,8 +564,8 @@
       </div>
     </div>
 
-    <h2>1 · A committed place · the summary earns a pinned block</h2>
-    <p class="note">
+    <h2 dir="ltr">1 · A committed place · the summary earns a pinned block</h2>
+    <p class="note" dir="ltr">
       Two rearrangements pay for it. <b>Hours join the meta line as another tag</b> — the row
       already wraps tags, so <code>פתוח עד 17:00</code> costs <b>0px</b> instead of the 19–43px a
       line of its own wanted. That buys the
@@ -550,7 +575,7 @@
     </p>
     <div class="grid">
       <div class="col">
-        <p class="cap">collapsed · two lines, always there</p>
+        <p class="cap" dir="ltr">collapsed · two lines, always there</p>
         <div class="placecard rows-a">
           <span class="badge photo"><span class="synth"></span><span class="ord">1</span></span>
           <span class="main">
@@ -590,7 +615,7 @@
       </div>
 
       <div class="col">
-        <p class="cap">expanded · the scroller gives way, notes are not lost</p>
+        <p class="cap" dir="ltr">expanded · the scroller gives way, notes are not lost</p>
         <div class="placecard rows-a">
           <span class="badge photo"><span class="synth"></span><span class="ord">1</span></span>
           <span class="main">
@@ -607,7 +632,10 @@
               טוקיו, יפן. אוסף הקבע כולל למעלה מ־7,400 פריטי אמנות יפנית ומזרח־אסייתית, ובהם שבעה
               נכסי תרבות לאומיים.</span
             >
-            <span class="credit">Kakidai · CC BY-SA 4.0</span>
+            <span class="creditrow"
+              ><span class="credit">Kakidai · CC BY-SA 4.0</span
+              ><span class="full">⤢ תמונה מלאה</span></span
+            >
             <span class="more">פחות ‹</span>
           </span>
           <span class="sec-h"><span>פתקים</span><span class="add">＋ פתק</span></span>
@@ -632,8 +660,8 @@
       </div>
     </div>
 
-    <h2>2 · A place you are still deciding on · enrichment has the room</h2>
-    <p class="note">
+    <h2 dir="ltr">2 · A place you are still deciding on · enrichment has the room</h2>
+    <p class="note" dir="ltr">
       No notes, no references, no <code>שיבוץ ליום</code> — because nothing points at it yet. So the
       hero and the summary get the space they are actually for. <b>This is the inversion:</b> the
       fields that matter most when you are choosing are the ones that matter least once you have
@@ -641,7 +669,7 @@
     </p>
     <div class="grid">
       <div class="col">
-        <p class="cap">a Google result on the canvas</p>
+        <p class="cap" dir="ltr">a Google result on the canvas</p>
         <div class="placecard decide" style="grid-template-rows: auto auto auto auto auto auto">
           <span class="badge photo"><span class="synth tall"></span></span>
           <span class="main">
@@ -664,7 +692,7 @@
       </div>
 
       <div class="col">
-        <p class="cap">a restaurant we know nothing about · the majority</p>
+        <p class="cap" dir="ltr">a restaurant we know nothing about · the majority</p>
         <div class="placecard decide" style="grid-template-rows: auto auto">
           <span class="badge">🍜</span>
           <span class="main">
@@ -680,7 +708,7 @@
       </div>
     </div>
 
-    <div class="legend">
+    <div class="legend" dir="ltr">
       <h3>What v2 changes about v1</h3>
       <ul>
         <li>
