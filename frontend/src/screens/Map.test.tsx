@@ -195,6 +195,10 @@ import { relativeDayLabel } from '../lib/time';
 import { DOT_SEPARATOR, FILTER_STAGGER_MS } from '../constants';
 import { t } from '../i18n/he';
 
+// jsdom implements no `scrollIntoView`, and the list-only path scrolls now: with no sheet it falls
+// back to the document, so a selected card that opens below the fold is brought up here too.
+Element.prototype.scrollIntoView = vi.fn();
+
 function wrap(node: ReactNode) {
   return (
     <MemoryRouter>

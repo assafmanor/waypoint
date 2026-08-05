@@ -914,6 +914,14 @@
   box-shadow: 0 1px 2px rgba(14, 23, 41, 0.04);
   cursor: pointer;
 }
+/* **THE GAP ABOVE A CARD SCROLLED TO THE TOP** (owner, 2026-08-05: _"it should auto scroll to the
+   top of the card"_). `scrollIntoView({ block: 'start' })` aligns the row's margin box with the
+   scroller's top edge, and flush against it the card reads as clipped rather than as placed. A
+   `scroll-margin-top` is the property for exactly this — it belongs to the row's own box, so the
+   screen passes no number and the sheet's edges stay in CSS where the rest of them are. */
+.place {
+  scroll-margin-top: 8px;
+}
 .place[role='button']:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 2px;

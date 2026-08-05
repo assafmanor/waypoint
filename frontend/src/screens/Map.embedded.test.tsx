@@ -701,13 +701,15 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     // §8: the block already overflows the `half` sheet on a 360 with two references, BEFORE
     // this phase adds a footer — so selecting a row now scrolls what grew into view.
     // `nearest`, because the row itself is already on screen: you just tapped it.
-    it('scrolls the newly-revealed block into view with `nearest`, not `center`', async () => {
+    it('scrolls the newly-revealed block into view, aligned to the card’s top', async () => {
       seed();
       render(wrap(<MapView />));
       scrollIntoView.mockClear();
 
       fireEvent.click(row('lunch')!);
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' }));
+      // **`start`** since 2026-08-05 (owner): `nearest` is a no-op once the card is taller than
+      // the scrollport, which is exactly the card this reveal produces.
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' }));
     });
 
     // §7 / ADR-0134 §3: under an errand the tab is answering ONE question, so the verb
@@ -1472,12 +1474,12 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(pins.every((p) => !p.selected)).toBe(true);
     });
 
-    it('a pin tap where the list IS showing still centres its row, in both day scopes', async () => {
+    it('a pin tap where the list IS showing brings its row to the top, in both day scopes', async () => {
       seed();
       render(wrap(<MapView />));
       fireEvent.click(pin('lunch')!);
       await nextFrame();
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
 
       scrollIntoView.mockClear();
       fireEvent.click(listButton(t.map.allDays));
@@ -1485,7 +1487,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(screenEl().dataset.view).toBe('half');
       expect(row('tomorrow')!.className).toContain('selected');
       await nextFrame();
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
     });
 
     it('a pin tap at half leaves the height alone — the list is already showing', () => {
@@ -4294,9 +4296,10 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(screen.getByRole('button', { name: t.map.know.more }));
       await nextFrame();
 
-      // `nearest`, not `center`: the row is on screen already, so the job is what grew below it —
-      // `center` would shove a row you are looking at.
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+      // **`start`** — the card's top, which is the only alignment that is correct at every card
+      // height: `nearest` is a no-op once the box spans the scrollport, and `center` puts the
+      // identity row above the fold (owner, 2026-08-05).
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
       const target = scrollIntoView.mock.instances.at(-1) as HTMLElement;
       expect(target.getAttribute('data-place')).toBe('museum');
     });
@@ -4319,8 +4322,8 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(toggle(t.map.view.list));
       await nextFrame();
 
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
-      // The row it centred is the selected one, not whichever was nearest the top.
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      // The row it brought up is the selected one, not whichever was nearest the top.
       const target = scrollIntoView.mock.instances.at(-1) as HTMLElement;
       expect(target.getAttribute('data-place')).toBe('museum');
     });
