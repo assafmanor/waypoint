@@ -92,12 +92,27 @@ So there is now **one mode, `start`, for all three callers** — which supersede
 - **The list-only path never scrolled at all.** `showRowInList` scoped its query to `sheetRef`, which is null when there is no sheet — the graceful-absence path (no Maps key, or offline) renders the list straight into the shell's scrolling body. It falls back to the document there, which is also what makes the behaviour reachable by the hermetic e2e at all.
 - **A pending frame could outlive its transition.** Only one scroll is ever in flight now (cancel-before-schedule) and it is cancelled on unmount. Found because leaked frames from earlier tests were landing in a later one and calling `scrollIntoView` six times where it asserted none — the test was right and the code was sloppy.
 
+## 8. The pins came back empty, and the reason was two rules disagreeing about one element
+
+Reported with a screenshot of a country-zoom Iceland: full-size pins, a thin category ring, no glyph and no photograph inside them. The owner's own second sentence is the whole diagnosis — _"even when zoomed out the pins are full size, and in these cases there's no thumbnail"_ — because it separates the **pin's size** from the **pane's zoom**, which §4 had folded together.
+
+- **`data-pins='dot'` is the pane's state; being a dot is the pin's.** The tier is scoped (ADR-0128 §1): day scope degrades only `.aside` pins, all-days spares the amber ones. Hiding the photograph off the pane's attribute therefore took it off pins that stayed whole teardrops.
+- **And hiding an element does not retract the rules that exist because it is there.** `:has(.pin-photo)` is true whether or not the photo is drawn, so the pin kept the photographed paint — `--card` fill, hue ring, glyph dropped — with nothing in it. That is the sentence worth carrying out of this session; it is not specific to photographs.
+- **The photograph now drops in the very rules the glyph drops in**, and a pin that stops drawing it takes its hue back (a dot with a card-coloured face is a hole in the canvas).
+
+**A defect nobody reported turned up in the same read, and it is the more serious of the two.** `:has()` carries its argument's specificity, so the photographed ring (four classes) outranked `.map-pin.nextstop .pin-b` (three): a photographed next stop was drawing a **category** ring where ADR-0109 §6 spends the canvas's one amber cue. The ring now yields to both time cues by name.
+
+**What let both of them through is the shape, not the two rules.** A pin's hue was written fifteen times — five fills, five rings, five ghost outlines — so there was nowhere to look at "what colour is this pin" and see one answer. It is `--pin-hue` now, which is what `.map-badge` has done with `--badge-ring` since §1.
+
+**And I had written that none of this was testable.** That claim was in ADR-0167 §16, and it was the reason a container query, a `:has()` and a specificity tie shipped with nothing checking them. What needs a Maps key is the **canvas**; the **rules** need a browser and two stylesheets. `e2e/map-pin-photo.spec.ts` loads `tokens.css` + `map-pane.css` over markup mirroring `MapPane`'s pin — **five of its nine assertions fail against the shipped CSS**, which is how the amber defect was found rather than guessed.
+
 ## Where the tests are
 
 - `enrichment.service.spec.ts` (+1) — a pass that fetches nothing still nudges the trips that hold the place, carrying the client read model. It is the one test here that needs a real `Place` row, because the store has no `tripId` (§1) and the fan-out is the only thing that can be observed.
 - `PlaceKnowledge.test.tsx` (+2) — the block opens the card and does not also fire the row's tap; the two densities with nowhere to go stay inert.
 - `Map.embedded.test.tsx` (+5) — the stop change centres the selected row and scrolls nothing without a selection; an expansion scrolls its own row with `nearest`; and the pin gets the row's photo, with a picked icon still winning (§2 on the canvas).
 - `MapPane.test.tsx` (+1) — the photograph's markup: clipped by an inner element (`.pin-b` must stay unclipped or the counter is cut), decorative, and the glyph left in the DOM for CSS to swap.
+- `e2e/map-pin-photo.spec.ts` (new, 9) — the pin's photograph in a real engine, with no app and no Maps key: the app's own stylesheets over `MapPane`'s markup. It pins the size gate both ways, the reported case (a zoom-out that does not make this pin a dot), the fill coming back with the photo's absence, the amber cue outranking the category ring, the errand's demotion, and the one hue reaching fill and ghost outline alike. **The control run is the point**: five fail against the shipped CSS.
 - `e2e/place-know.spec.ts` (+3) — the way back centred against the Google exit, **verified against the reverted CSS** (14px apart before, ≤1px after); and the selected card's top landing at the scroller's top, on selection and on expansion, with the card asserted to be **taller than the port** so the case is the reported one. The fixture gained four filler rows because `start` needs content below the row to scroll into.
 
 ## Still open
@@ -105,6 +120,6 @@ So there is now **one mode, `start`, for all three callers** — which supersede
 - **Report 4 shipped after the fixes merged**, so it is a second change rather than part of this one: `MapPin.photoUrl` (from the
   same `badgePhoto` the badge uses), the photo clipped inside `.pin-b` by an inner element, the hue moving from fill to ring, and the
   gate as a `@container (min-height: 436px)` query — 48px of pin. Dropped at the **dot** tier for the same reason the glyph is.
-  **The one thing no test can reach**: the gate is a container query and a rendered canvas needs a Maps key, so what is asserted is
-  the markup and the resolution, and 35px legibility is the device pass.
+  ~~**The one thing no test can reach**: the gate is a container query and a rendered canvas needs a Maps key.~~ **Refuted the same
+  day by §8** — the canvas needs a key, the rules do not. What is left for the device is 35px legibility, which was always its.
 - **The device pass** still owes the one question no mockup can answer: whether a real Commons photograph reads at 40px in the list — and now at 35px on a pin.

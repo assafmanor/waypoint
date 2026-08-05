@@ -86,6 +86,11 @@
   /* One stripe of the maybe's hatch, derived here so it re-derives with every override
      of `--pin-u` below (the aside ratio, the dot tier) rather than in three places. */
   --pin-hatch: calc(var(--pin-u) * 0.08);
+  /* THE PIN'S ONE HUE, named once and read by all three things that paint it: the fill, the
+     photographed pin's ring, and the ghost's outline. The same move `.map-badge` already makes
+     with `--badge-ring` (`map.css`) — so a sixth category is one line here rather than a rule in
+     three separate blocks, which is what it was until the ring arrived and made it three. */
+  --pin-hue: var(--cat-leisure);
   /* The pane's box changes on SNAP, never per drag frame (ADR-0121 §5), so this fires
      once per stop change — and it borrows the sheet's own duration and curve, so the
      pins finish growing exactly as the sheet finishes sliding instead of jumping the
@@ -111,7 +116,7 @@
   transform: rotate(45deg);
   display: grid;
   place-items: center;
-  background: var(--cat-leisure);
+  background: var(--pin-hue);
   border: calc(var(--pin-u) * 0.06) solid var(--card);
   box-shadow: 0 2px 5px rgba(22, 35, 61, 0.34);
 }
@@ -167,7 +172,18 @@
 
    This is the canvas's second content-by-size rule, not its first: every pin already degrades
    to a dot below `MAP_ZOOM.DOT_BELOW`. "The pin says less when it is smaller" is grammar this
-   surface had before the photograph arrived. */
+   surface had before the photograph arrived.
+
+   **THE GATE HAS TWO AXES, and the first build only wrote one** (owner, 2026-08-05: _"the
+   thumbnails aren't rendering into the pins … even when zoomed out the pins are full size, and
+   in these cases there's no thumbnail"_). The canvas's height is one; the pin's own TIER is the
+   other, because the dot tier is scoped — in day scope only the `.aside` pins become dots, and
+   in all-days the amber ones stay whole. The first build hid the photo off `[data-pins='dot']`
+   alone, which is the PANE's state, so a full-size numbered stop at country zoom lost its
+   picture and — because `:has(.pin-photo)` tests the element's PRESENCE, not whether it is
+   drawn — kept the photographed paint over it: a `--card` head, a hue ring, and no glyph.
+   An empty pin. So the photo now drops exactly where the glyph drops, in the very same rules,
+   and a pin that stops drawing it takes its hue back. */
 .map-pin .pin-photo {
   display: none;
 }
@@ -181,28 +197,14 @@
      the same 0.06 ratio at every size (ADR-0123). */
   .map-pin:has(> .pin-b > .pin-photo) .pin-b {
     background: var(--card);
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-leisure),
-      0 2px 5px rgba(22, 35, 61, 0.34);
   }
-  .map-pin.cat-food:has(> .pin-b > .pin-photo) .pin-b {
+  /* …and the ring is the CATEGORY's, so it gives way to a time cue rather than covering one.
+     `.map-pin.nextstop .pin-b` is a class less specific than this `:has()`, so without the
+     `:not()` a photographed next stop lost its amber outline — the single cue ADR-0109 §6
+     spends the canvas's budget on, silently outranked by a category ring. */
+  .map-pin:has(> .pin-b > .pin-photo):not(.nowstop, .nextstop) .pin-b {
     box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-food),
-      0 2px 5px rgba(22, 35, 61, 0.34);
-  }
-  .map-pin.cat-lodging:has(> .pin-b > .pin-photo) .pin-b {
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-lodging),
-      0 2px 5px rgba(22, 35, 61, 0.34);
-  }
-  .map-pin.cat-transit:has(> .pin-b > .pin-photo) .pin-b {
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-transit),
-      0 2px 5px rgba(22, 35, 61, 0.34);
-  }
-  .map-pin.cat-services:has(> .pin-b > .pin-photo) .pin-b {
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.055) var(--cat-services),
+      0 0 0 calc(var(--pin-u) * 0.055) var(--pin-hue),
       0 2px 5px rgba(22, 35, 61, 0.34);
   }
   /* The glyph goes where the photograph is: it is the same slot, and the picture IS the
@@ -212,27 +214,22 @@
     display: none;
   }
 }
-/* A DOT carries no photograph. Below `MAP_ZOOM.DOT_BELOW` the pin is a 14px point that claims
-   position and nothing else (ADR-0128), and a picture at that size is noise with a border —
-   the same judgement the dot tier already made about the glyph and the numeral. */
-.map-pane[data-pins='dot'] .map-pin .pin-photo {
-  display: none;
+/* The same five hues, same names as `.map-badge.cat-*` — and stated as the pin's ONE hue
+   rather than as a fill, because the fill is only one of the three things that read it. */
+.map-pin.cat-food {
+  --pin-hue: var(--cat-food);
 }
-/* The same five hues, same names as `.map-badge.cat-*`. */
-.map-pin.cat-food .pin-b {
-  background: var(--cat-food);
+.map-pin.cat-lodging {
+  --pin-hue: var(--cat-lodging);
 }
-.map-pin.cat-lodging .pin-b {
-  background: var(--cat-lodging);
+.map-pin.cat-transit {
+  --pin-hue: var(--cat-transit);
 }
-.map-pin.cat-transit .pin-b {
-  background: var(--cat-transit);
+.map-pin.cat-leisure {
+  --pin-hue: var(--cat-leisure);
 }
-.map-pin.cat-leisure .pin-b {
-  background: var(--cat-leisure);
-}
-.map-pin.cat-services .pin-b {
-  background: var(--cat-services);
+.map-pin.cat-services {
+  --pin-hue: var(--cat-services);
 }
 /* Commitment is the hard/soft GRAMMAR, never a colour (ADR-0011/0028) — and these
    are exactly what `PinElement` cannot draw. Each mirrors its `.place`
@@ -532,20 +529,8 @@
      than the filled pin's border, which only has to separate a colour from the map. */
   border-width: calc(var(--pin-u) * 0.08);
   border-style: solid;
-  border-color: color-mix(in srgb, var(--cat-leisure) 78%, var(--ink));
+  border-color: color-mix(in srgb, var(--pin-hue) 78%, var(--ink));
   box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 18%, transparent);
-}
-.map-pin.ghost.cat-food .pin-b {
-  border-color: color-mix(in srgb, var(--cat-food) 78%, var(--ink));
-}
-.map-pin.ghost.cat-lodging .pin-b {
-  border-color: color-mix(in srgb, var(--cat-lodging) 78%, var(--ink));
-}
-.map-pin.ghost.cat-transit .pin-b {
-  border-color: color-mix(in srgb, var(--cat-transit) 78%, var(--ink));
-}
-.map-pin.ghost.cat-services .pin-b {
-  border-color: color-mix(in srgb, var(--cat-services) 78%, var(--ink));
 }
 
 /* ── THE DOT TIER (ADR-0121 §6, decided there and built in ADR-0128 §1) ────────
@@ -623,12 +608,39 @@
   border-style: solid;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
 }
+/* **AND A PIN THAT STOPS DRAWING ITS PHOTOGRAPH TAKES ITS HUE BACK.** The photographed head
+   is `--card` because a picture covers it; a dot with no picture and a card-coloured face is
+   a hole in the canvas with a hairline around it. Scoped through `:has()` for the same reason
+   the fill rule is — a GHOST has no photo and must stay hollow, so keying on the photo's
+   presence excludes it without naming it. The ring needs no entry: the dot's own `box-shadow`
+   above already outranks it. */
+.map-screen[data-scope='day']
+  .map-pane[data-pins='dot']
+  .map-pin.aside:has(> .pin-b > .pin-photo)
+  .pin-b,
+.map-screen[data-scope='all']
+  .map-pane[data-pins='dot']
+  .map-pin:not(.nowstop, .nextstop):has(> .pin-b > .pin-photo)
+  .pin-b {
+  background: var(--pin-hue);
+}
 /* The glyph and the amber tag are text-scale claims a dot cannot carry, and so is the
    badge when it holds an OUTCOME — a 5px disc whose whole content is a mark is a smudge.
    The badge holding a NUMBER is still not listed, and the distinction is exact rather than
    fussy: nothing that carries a number is ever degraded (all-days numbers nothing at all),
    so there is nothing to hide, while an all-days behind pin CAN carry an outcome. A
-   ghost's mark needs no entry either — it lives in `.pin-g`, already listed. */
+   ghost's mark needs no entry either — it lives in `.pin-g`, already listed.
+
+   **THE PHOTOGRAPH IS LISTED HERE, WITH THE GLYPH, and that is the whole of its dot rule**
+   (ADR-0167 §16's amendment): the picture stands in the glyph's slot, so it degrades on
+   exactly the pins the glyph does. It used to hide off `[data-pins='dot']` alone — a fact
+   about the pane, not about the pin — which took the picture off full-size stops in day
+   scope and off the amber pins in all-days. */
+.map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-photo,
+.map-screen[data-scope='all']
+  .map-pane[data-pins='dot']
+  .map-pin:not(.nowstop, .nextstop)
+  .pin-photo,
 .map-screen[data-scope='day'] .map-pane[data-pins='dot'] .map-pin.aside .pin-n.outcome,
 .map-screen[data-scope='all']
   .map-pane[data-pins='dot']
@@ -698,10 +710,20 @@
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 22%, transparent);
   animation: none;
 }
+/* The photograph goes with the glyph here too, and for the demotion's own reason rather than
+   the dot tier's: a pin you are not choosing between is backdrop, and a picture is the least
+   backdrop-like thing the canvas can draw. */
+.map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-photo,
 .map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-g,
 .map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-n,
 .map-screen[data-choosing] .map-pane .map-pin:not(.match, .selected) .pin-tag {
   display: none;
+}
+.map-screen[data-choosing]
+  .map-pane
+  .map-pin:not(.match, .selected):has(> .pin-b > .pin-photo)
+  .pin-b {
+  background: var(--pin-hue);
 }
 
 /* THE ONE AMBER TIME-ANCHOR the map's budget allows (ADR-0109 §6): the next
