@@ -307,3 +307,11 @@ Worth keeping for the next surface: **the first wrap detector was wrong in the s
 ### What is deliberately left open
 
 `הבא בתור`'s countdown counts from the clock, so mid-flight it counts **through** the landing when the traveller's question is "how long after we land". That is a decision about what the board's countdown _means_ — possibly per variant — not a layout change to this hero, so it is a backlog line rather than an answer here.
+
+### P. Being the same object includes the board's VARIANT classes
+
+One more report from the device, after §K–§O shipped: mid-flight the lifted card's top-right glow was a **different shade** from the board it came out of — amber over teal, visible in the gap between them.
+
+`.wp-board.transit::before` shifts that glow amber → teal (location), and the lifted hero was carrying `wp-board hero-lifted` without `transit`. So §1's thesis held for the words and broke for the paint.
+
+The rule this makes explicit, next to §J's (the card paints nothing, the hero owns every edge): **the hero IS `.wp-board`, which only holds if it also takes the board's variant classes.** `transit` now rides the same gate as the live badge, so a mid-span state wears the costume on both elevations. Guarded in the e2e as a computed-style _equality_ between the two, rather than a colour literal — what must stay true is that the two elevations paint the same glow, not what that glow currently is.

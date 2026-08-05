@@ -370,7 +370,9 @@ export function HeroLift(props: HeroLiftProps) {
   return (
     <Modal variant="lift" ariaLabel={t.hero.title} onClose={props.onClose}>
       {(close, closing) => (
-        <Lifted origin={props.origin ?? null} closing={closing}>
+        // `transit` takes the same gate as the live badge: a mid-span state wears the
+        // board's transit costume on both elevations.
+        <Lifted origin={props.origin ?? null} closing={closing} transit={!!liveWord}>
           <div className="hero-head">
             <div className="wp-board-top">
               {/* The live badge says what you are inside, teal, exactly as the board
@@ -484,16 +486,25 @@ export function HeroLift(props: HeroLiftProps) {
 function Lifted({
   origin,
   closing,
+  transit,
   children,
 }: {
   origin: HTMLElement | null;
   closing: boolean;
+  /** Wear the board's in-transit costume — the teal glow. */
+  transit: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useLiftFlight({ subject: ref, origin, closing });
   return (
-    <div className="wp-board hero-lifted" ref={ref}>
+    // **`transit` is part of being the same object.** `.wp-board.transit::before` shifts the
+    // top-right glow amber → teal (location), and the lifted hero was not carrying the class
+    // — so mid-flight the promoted card glowed amber over a board glowing teal, which is
+    // visible in the gap between them. Reported from a device: nothing else in this file
+    // paints, precisely because the hero IS `.wp-board`, and that only holds if it also
+    // takes the board's variant classes.
+    <div className={'wp-board hero-lifted' + (transit ? ' transit' : '')} ref={ref}>
       {children}
     </div>
   );
