@@ -23,6 +23,7 @@ import type {
 } from '@waypoint/shared';
 import { resolveAvatarHue } from '@waypoint/shared';
 import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
+import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
@@ -67,6 +68,7 @@ export class TripsService {
     private readonly prisma: PrismaService,
     private readonly changes: ChangeService,
     private readonly enrichment: EnrichmentService,
+    private readonly scheduler: EnrichmentScheduler,
   ) {}
 
   async createTrip(userId: string, input: CreateTripInput): Promise<Trip> {
@@ -480,7 +482,12 @@ export class TripsService {
     // against nothing, so a row that landed a millisecond ago is as valid as one from
     // yesterday. Holding RepeatableRead open across a second query would buy nothing and
     // lengthen the app's most contended read.
-    const enrichments = await this.enrichment.readForPlaces(places);
+    const { enrichments, stale } = await this.enrichment.readForPlaces(places);
+    // **The read is also the trigger** (§14). The join just told us which of this trip's places
+    // nobody has looked up or whose values have lapsed, for no extra query — so this is where
+    // backfill, TTL refresh and recovery-after-a-redeploy all happen. Synchronous and `void`:
+    // the snapshot never waits on a third party, and a failing pass cannot fail this read.
+    this.scheduler.scheduleMany(stale);
 
     return {
       trip: toTripDto(trip),

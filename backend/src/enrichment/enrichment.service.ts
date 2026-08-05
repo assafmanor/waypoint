@@ -10,10 +10,12 @@
 // trip-scoped change log would mean fanning it out as N trip changes. Enrichment is a
 // server-owned read model; the trip snapshot joins it (Phase 3).
 //
-// **And it never touches the pick.** `resolvePlace` is untouched and stays exactly as fast
-// and exactly as failable as it is today (§6). A source being slow can never make picking a
-// place slow, and a source being down can never make picking a place fail — which is why
-// nothing calls this on the request path.
+// **And no request ever waits on it.** §6 said `resolvePlace` is untouched; §14 narrowly
+// revised that — a pick now *schedules* a pass — while keeping the guarantee that clause was
+// protecting: the pick stays exactly as fast and exactly as failable as it was, because
+// scheduling is synchronous, returns nothing, and cannot throw. A source being slow can never
+// make picking a place slow, and a source being down can never make picking a place fail. See
+// `enrichment.scheduler.ts` for who calls this and when.
 import { Injectable, Logger } from '@nestjs/common';
 import {
   ENRICHMENT_ABSENCE_REASON,
@@ -41,6 +43,33 @@ import {
   type ProviderValue,
 } from './enrichment.provider';
 import { EnrichmentRegistry } from './enrichment.registry';
+
+/** The fields of a trip's `Place` row this module reads — enough to build a `PlaceIdentity`
+ *  without handing the enrichment module the whole trip-scoped row (§5.3: no trip knowledge). */
+export interface SnapshotPlace {
+  id: string;
+  name: string;
+  googlePlaceId: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+/** What one snapshot's enrichment read answers: what to send, and what needs a pass. */
+export interface TripEnrichmentRead {
+  enrichments: TripEnrichments;
+  /** Real-world places whose enrichment is missing or past TTL — one entry per place, already
+   *  deduped across trip rows that share a Google id. */
+  stale: PlaceIdentity[];
+}
+
+/** A trip's place, as the matcher sees it. Drops `icon`/`category` on the way through, which is
+ *  the trip's opinion and none of a provider's business (§5.3). */
+const toIdentity = (place: SnapshotPlace): PlaceIdentity => ({
+  name: place.name,
+  googlePlaceId: place.googlePlaceId ?? undefined,
+  lat: place.lat ?? undefined,
+  lng: place.lng ?? undefined,
+});
 
 /** A store row, with its payload already validated. */
 export interface StoredEnrichment {
@@ -72,45 +101,64 @@ export class EnrichmentService {
   }
 
   /**
-   * **The join the snapshot needs** (§6): the global store, resolved to this trip's own
-   * place ids and shaped for a client.
+   * **The join the snapshot needs** (§6), and **the work list the scheduler needs** (§14) —
+   * from one query, because they are two questions about the same rows.
    *
-   * One query for the whole trip rather than one per place — a trip holds a few dozen
-   * places, and the alias column is indexed. Places with no `googlePlaceId` (a
-   * hand-dropped Place-lite, ADR-0147) are simply not asked about: matching one by name and
-   * coordinates is recorded in §10 as permitted by the alias design and built by nothing.
+   * Answering both here is what makes the read-time trigger free: deciding "these three are
+   * stale" needs exactly the rows the read model was already built from, so scheduling costs no
+   * extra query on the app's most contended read. The alternative — a second method with its own
+   * `SELECT` — would read the same rows twice to keep a boundary that buys nothing.
    *
-   * A place with no enrichment yields **no key at all**, which is the normal case and what
-   * keeps the payload proportional to what we actually know rather than to the trip's size.
+   * One query for the whole trip rather than one per place — a trip holds a few dozen places,
+   * and the alias column is indexed. Places with no `googlePlaceId` (a hand-dropped Place-lite,
+   * ADR-0147) are neither read nor scheduled: matching one by name and coordinates is recorded
+   * in §10 as permitted by the alias design and built by nothing.
+   *
+   * A place with no enrichment yields **no key at all** in `enrichments`, which is the normal
+   * case and what keeps the payload proportional to what we actually know rather than to the
+   * trip's size.
    */
   async readForPlaces(
-    places: readonly { id: string; googlePlaceId: string | null }[],
-  ): Promise<TripEnrichments> {
-    const byGoogleId = new Map<string, string[]>();
+    places: readonly SnapshotPlace[],
+    now: Date = new Date(),
+  ): Promise<TripEnrichmentRead> {
+    const byGoogleId = new Map<string, SnapshotPlace[]>();
     for (const place of places) {
       if (!place.googlePlaceId) continue;
-      const ids = byGoogleId.get(place.googlePlaceId);
-      if (ids) ids.push(place.id);
-      else byGoogleId.set(place.googlePlaceId, [place.id]);
+      const group = byGoogleId.get(place.googlePlaceId);
+      if (group) group.push(place);
+      else byGoogleId.set(place.googlePlaceId, [place]);
     }
-    if (byGoogleId.size === 0) return {};
+    if (byGoogleId.size === 0) return { enrichments: {}, stale: [] };
 
     const rows = await this.prisma.placeEnrichment.findMany({
       where: { googlePlaceId: { in: [...byGoogleId.keys()] } },
     });
+    const rowsByGoogleId = new Map(rows.map((row) => [row.googlePlaceId!, row]));
 
     const enrichments: TripEnrichments = {};
-    for (const row of rows) {
-      const fields = this.parseFields(row);
+    const stale: PlaceIdentity[] = [];
+
+    for (const [googlePlaceId, group] of byGoogleId) {
+      const row = rowsByGoogleId.get(googlePlaceId);
+      const fields = row ? this.parseFields(row) : {};
+
+      // **No row at all means nobody has ever looked** — the state that backfills every place
+      // picked before this pipe existed. Otherwise it is stale only if some field's own TTL (or
+      // its miss TTL) has lapsed, which the negative cache is what keeps rare.
+      if (!row || fieldsWantingAttempt(fields, now).length > 0) {
+        // One identity per real-world place, not per trip row: the store is global, so two
+        // places sharing a Google id want one pass between them.
+        stale.push(toIdentity(group[0]));
+      }
+
       const delivered = toDeliveredEnrichment(fields);
       // Nothing worth sending: the row exists because a pass ran, but every field came back
       // absent. The client's "we know nothing" state is a missing key, so keep it missing.
       if (Object.keys(delivered).length === 0) continue;
-      for (const placeId of byGoogleId.get(row.googlePlaceId!) ?? []) {
-        enrichments[placeId] = delivered;
-      }
+      for (const place of group) enrichments[place.id] = delivered;
     }
-    return enrichments;
+    return { enrichments, stale };
   }
 
   /**

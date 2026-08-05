@@ -1,12 +1,14 @@
 import 'reflect-metadata';
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   BadRequestException,
   ForbiddenException,
   GoneException,
   NotFoundException,
 } from '@nestjs/common';
+import { ENRICHMENT_DISABLED } from '../common/env';
 import { EnrichmentRegistry } from '../enrichment/enrichment.registry';
+import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
 import { PrismaService } from '../prisma/prisma.service';
@@ -54,8 +56,21 @@ describe('TripsService', () => {
     new EnrichmentImagePipeline({} as never),
     gateway,
   );
-  const service = new TripsService(prisma, changes, enrichment);
+  const service = new TripsService(
+    prisma,
+    changes,
+    enrichment,
+    new EnrichmentScheduler(enrichment),
+  );
   const createdTripIds: string[] = [];
+  // **The kill switch is ON for this whole file, and that is not incidental.** These specs are
+  // about the pick / the snapshot, not about enrichment — and a real pass is fire-and-forget, so
+  // it outlives the test that triggered it: it would do DB work after `afterAll` disconnects
+  // Prisma, write `PlaceEnrichment` rows nothing here cleans up, and reach the network on a box
+  // that can. `schedule()` is still CALLED either way — the switch is checked inside it — so the
+  // wiring these files assert is unaffected. The pass itself has its own spec.
+  beforeAll(() => vi.stubEnv(ENRICHMENT_DISABLED, '1'));
+  afterAll(() => vi.unstubAllEnvs());
 
   // One trip per case; Invite/TripBlock/Membership rows cascade-delete with it.
   async function freshTrip(input = NEW_TRIP_INPUT): Promise<string> {

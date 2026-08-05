@@ -1,6 +1,11 @@
 import 'reflect-metadata';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { EVENT_CATEGORY } from '@waypoint/shared';
+import { ENRICHMENT_DISABLED } from '../common/env';
+import { EnrichmentRegistry } from '../enrichment/enrichment.registry';
+import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
+import { EnrichmentService } from '../enrichment/enrichment.service';
+import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -30,8 +35,27 @@ describe('PlacesService', () => {
     placeDetails: vi.fn(async () => SHIBUYA_DETAILS),
   } as unknown as GooglePlacesClient;
   const detailsSpy = vi.mocked(google.placeDetails);
-  const service = new PlacesService(prisma, changes, google);
+  // A real scheduler over a registry with no providers: a pick can schedule a pass and no
+  // provider can be called, so nothing reaches the network and the pick's own behaviour — the
+  // thing this file is about — is unchanged.
+  const scheduler = new EnrichmentScheduler(
+    new EnrichmentService(
+      prisma,
+      new EnrichmentRegistry([]),
+      new EnrichmentImagePipeline({} as never),
+      gateway,
+    ),
+  );
+  const service = new PlacesService(prisma, changes, google, scheduler);
   const createdTripIds: string[] = [];
+  // **The kill switch is ON for this whole file, and that is not incidental.** These specs are
+  // about the pick / the snapshot, not about enrichment — and a real pass is fire-and-forget, so
+  // it outlives the test that triggered it: it would do DB work after `afterAll` disconnects
+  // Prisma, write `PlaceEnrichment` rows nothing here cleans up, and reach the network on a box
+  // that can. `schedule()` is still CALLED either way — the switch is checked inside it — so the
+  // wiring these files assert is unaffected. The pass itself has its own spec.
+  beforeAll(() => vi.stubEnv(ENRICHMENT_DISABLED, '1'));
+  afterAll(() => vi.unstubAllEnvs());
 
   async function newTrip(): Promise<string> {
     const trip = await prisma.trip.create({
@@ -522,5 +546,55 @@ describe('PlacesService', () => {
     expect(restored.userRatingsTotal).toBe(1820);
     // Re-derived rather than restored, which is why the input has no `timezone` field.
     expect(restored.timezone).toBe('Asia/Tokyo');
+  });
+
+  describe('the pick schedules enrichment (ADR-0166 §14)', () => {
+    it('schedules a pass for a freshly picked place', async () => {
+      const tripId = await newTrip();
+      const spy = vi.spyOn(scheduler, 'schedule');
+
+      const place = await service.resolvePlace(tripId, DEV_USER, {
+        googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
+      });
+
+      // The moment someone is looking at the place they just added is the moment enrichment is
+      // worth having.
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ googlePlaceId: place.googlePlaceId, name: place.name }),
+      );
+      spy.mockRestore();
+    });
+
+    it('schedules on a dedup hit too — the row is cached, the world’s facts may not be', async () => {
+      const tripId = await newTrip();
+      await service.resolvePlace(tripId, DEV_USER, {
+        googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
+      });
+      const spy = vi.spyOn(scheduler, 'schedule');
+
+      await service.resolvePlace(tripId, DEV_USER, {
+        googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
+      });
+      // Zero Google spend on this path, and still worth asking whether anyone has looked.
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+    });
+
+    it('keeps the pick exactly as failable as it was — §6’s actual guarantee', async () => {
+      const tripId = await newTrip();
+      const spy = vi.spyOn(scheduler, 'schedule').mockImplementation(() => {
+        throw new Error('scheduler exploded');
+      });
+
+      // The one thing §6 protects: a pick is a paid, user-blocking write with a form waiting on
+      // it, and nothing about enrichment may fail it. (The real scheduler cannot throw either —
+      // see its own spec — so this is defence in depth on the call site.)
+      await expect(
+        service.resolvePlace(tripId, DEV_USER, {
+          googlePlaceId: SHIBUYA_DETAILS.googlePlaceId,
+        }),
+      ).resolves.toMatchObject({ name: SHIBUYA_DETAILS.name });
+      spy.mockRestore();
+    });
   });
 });

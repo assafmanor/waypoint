@@ -14,6 +14,7 @@ import { Module } from '@nestjs/common';
 import { SyncModule } from '../sync/sync.module';
 import { EnrichmentImageController } from './enrichment.controller';
 import { EnrichmentRegistry } from './enrichment.registry';
+import { EnrichmentScheduler } from './enrichment.scheduler';
 import { EnrichmentService } from './enrichment.service';
 import { EnrichmentImagePipeline } from './image-pipeline';
 import { EnrichmentFetcher } from './outbound-fetch';
@@ -46,7 +47,10 @@ import { WikipediaProvider } from './providers/wikipedia.provider';
         new EnrichmentRegistry([wikidata, wikipedia, commons]),
     },
     EnrichmentService,
+    // The "when" half (§14). Exported alongside the service because both its callers need it:
+    // `PlacesService` for the pick, `TripsService` for the snapshot read.
+    EnrichmentScheduler,
   ],
-  exports: [EnrichmentService],
+  exports: [EnrichmentService, EnrichmentScheduler],
 })
 export class EnrichmentModule {}

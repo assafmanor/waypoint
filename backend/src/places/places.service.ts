@@ -15,6 +15,7 @@ import {
   type SearchPlacesTextInput,
   type UpdatePlaceInput,
 } from '@waypoint/shared';
+import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { toPlaceDto } from '../trips/trips.mapper';
@@ -26,6 +27,7 @@ export class PlacesService {
     private readonly prisma: PrismaService,
     private readonly changes: ChangeService,
     private readonly google: GooglePlacesClient,
+    private readonly scheduler: EnrichmentScheduler,
   ) {}
 
   async list(tripId: string): Promise<Place[]> {
@@ -303,7 +305,14 @@ export class PlacesService {
     // is already in the trip on another row, dedup wins and that row is returned —
     // the passed Place-lite is left as-is rather than creating a duplicate.
     const cached = await this.findByGoogleId(tripId, input.googlePlaceId);
-    if (cached) return toPlaceDto(cached);
+    if (cached) {
+      // A dedup hit still wants a pass: the row is in this trip, and whether the *world's*
+      // facts about it have ever been fetched is a separate question (the store is global and
+      // this trip may be the first to hold it). Harmless to repeat — the in-flight guard
+      // collapses a form's re-picks, and a fresh row's pass returns without asking anyone.
+      this.scheduleEnrichment(cached);
+      return toPlaceDto(cached);
+    }
 
     // Validate the enrich target (and load its `before` state) BEFORE the paid Place
     // Details call, so a bogus/foreign enrichPlaceId is rejected without spending a SKU.
@@ -327,7 +336,35 @@ export class PlacesService {
     // is right: a hit added no row, and it is also the path a form's re-pick takes — the one
     // moment the cache is earning its keep.
     await this.sweepAfterMint(tripId, actorUserId);
+    // **The pick's own trigger** (ADR-0166 §14), and the reason it is here rather than nowhere:
+    // this is the moment a person is looking at the place they just added, so it is the moment
+    // enrichment is worth having. It narrowly revises §6's "`resolvePlace` is untouched" while
+    // keeping the guarantee that sentence was protecting — the call is synchronous, returns
+    // instantly, and cannot throw, so the pick stays exactly as fast and exactly as failable as
+    // it was. A source being slow or down is invisible from here.
+    this.scheduleEnrichment(place);
     return place;
+  }
+
+  /**
+   * Hand a just-picked place to the enrichment scheduler. Never awaited, never throws.
+   *
+   * The `try` is not belt-and-braces: §6's guarantee is that the pick is **exactly as failable
+   * as it was**, and that has to hold structurally at the call site rather than depending on
+   * the scheduler staying well-behaved forever. Same reasoning, and the same shape, as
+   * `sweepAfterMint` above — a pick is a paid write with a form waiting on it.
+   */
+  private scheduleEnrichment(place: Place | PrismaPlace): void {
+    try {
+      this.scheduler.schedule({
+        name: place.name,
+        googlePlaceId: place.googlePlaceId ?? undefined,
+        lat: place.lat ?? undefined,
+        lng: place.lng ?? undefined,
+      });
+    } catch {
+      // ponytail: the snapshot read's own trigger picks this place up regardless.
+    }
   }
 
   /** Resolve the IANA zone once from coords (ADR-0107/0108). `geo-tz` returns [] for
