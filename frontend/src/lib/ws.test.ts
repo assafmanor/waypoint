@@ -105,6 +105,56 @@ describe('openTripStream', () => {
     close();
   });
 
+  it('delivers an enrichment nudge with its place and fields', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onEnrichment = vi.fn();
+    const close = openTripStream('trip-japan-26', '1', {
+      onChange: vi.fn(),
+      onResync: vi.fn(),
+      onEnrichment,
+    });
+    FakeWebSocket.instances[0].emit({
+      type: 'enrichment',
+      placeId: 'pl-sensoji',
+      fields: { summary: { en: { value: 'A temple.' } } },
+    });
+    expect(onEnrichment).toHaveBeenCalledWith('pl-sensoji', {
+      summary: { en: { value: 'A temple.' } },
+    });
+    close();
+  });
+
+  it('does not advance the cursor on an enrichment, so the next change is not a gap', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onChange = vi.fn();
+    const onResync = vi.fn();
+    const close = openTripStream('trip-japan-26', '1', {
+      onChange,
+      onResync,
+      onEnrichment: vi.fn(),
+    });
+    // Enrichment is outside the change log (ADR-0166 §6), so it must be invisible to the
+    // sequence. If it advanced `lastSeq`, seq 2 below would read as already-seen; if it were
+    // gap-checked, it would have triggered a needless full resync of its own.
+    FakeWebSocket.instances[0].emit({ type: 'enrichment', placeId: 'pl-1', fields: {} });
+    FakeWebSocket.instances[0].emit({ type: 'change', seq: '2', change });
+    expect(onChange).toHaveBeenCalledWith(change);
+    expect(onResync).not.toHaveBeenCalled();
+    close();
+  });
+
+  it('ignores an enrichment when no handler is registered', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onResync = vi.fn();
+    // The handler is optional, so a client that does not care must not crash on one.
+    const close = openTripStream('trip-japan-26', '1', { onChange: vi.fn(), onResync });
+    expect(() =>
+      FakeWebSocket.instances[0].emit({ type: 'enrichment', placeId: 'pl-1', fields: {} }),
+    ).not.toThrow();
+    expect(onResync).not.toHaveBeenCalled();
+    close();
+  });
+
   it('triggers resync when a hello carries a higher latestSeq (reconnect catch-up)', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     const onChange = vi.fn();

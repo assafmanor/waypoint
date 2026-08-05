@@ -415,6 +415,54 @@ export const enrichmentFieldsSchema = z.object({
 });
 export type EnrichmentFields = z.infer<typeof enrichmentFieldsSchema>;
 
+/** An image as a **client** sees it: a URL instead of a `blobKey`.
+ *
+ *  Same move `documentSummarySchema` makes by omitting `fileRef` — the storage key stays
+ *  server-side and the client gets something it can put in an `<img src>`. The server builds
+ *  it with `enrichmentImageContentPath`, so **no client knows the route shape**, and a blob
+ *  that has been replaced simply stops appearing (the `uploadedAvatarUrl` precedent,
+ *  ADR-0133 §12). */
+export const deliveredImageValueSchema = enrichmentProvenanceSchema.extend({
+  /** Root-relative, since the server has no reliable view of its own public origin. */
+  url: z.string().min(1),
+  mimeType: z.string().min(1),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  sizeBytes: z.number().int().positive(),
+  sourceFile: z.string().min(1).optional(),
+});
+export type DeliveredImageValue = z.infer<typeof deliveredImageValueSchema>;
+
+/** What a client receives for one place: **only what we actually know.**
+ *
+ *  No `absent` state and no `state` discriminant at all, which is the one real difference
+ *  from the stored payload beyond the image's URL. The three states the store distinguishes —
+ *  never asked, asked-and-nothing-there, present — collapse to two for a reader, because a
+ *  surface renders "we know nothing" identically either way: ADR-0167 §6's empty card is *a
+ *  card whose whole content is the way to the answer*, and it does not care which kind of
+ *  nothing it is showing.
+ *
+ *  Keeping `absent` server-side is not just simpler, it is more correct. The negative cache
+ *  is a **fetch-scheduling** concern (§6.4 — don't re-ask for a month), and shipping it to
+ *  clients would both grow the payload with every place ever attempted and invite a surface
+ *  to render a distinction it has no business drawing. */
+export const deliveredEnrichmentFieldsSchema = z.object({
+  summary: textVariantsSchema.optional(),
+  image: deliveredImageValueSchema.optional(),
+  hours: enrichedHoursValueSchema.optional(),
+});
+export type DeliveredEnrichmentFields = z.infer<typeof deliveredEnrichmentFieldsSchema>;
+
+/** **Enrichment as the trip snapshot carries it: keyed by `placeId`** (ADR-0166 §6's
+ *  server-owned read model).
+ *
+ *  The store itself is global and keyed by alias columns — no `tripId`, no `placeId` (§1) —
+ *  and resolving that to the trip's own place ids is exactly the join the server owes the
+ *  client. Keyed rather than a list because every consumer's question is "what do we know
+ *  about *this* place", which is a lookup, not a scan. */
+export const tripEnrichmentsSchema = z.record(z.string(), deliveredEnrichmentFieldsSchema);
+export type TripEnrichments = z.infer<typeof tripEnrichmentsSchema>;
+
 /** What the value of `field` looks like when present — `summary` is the variants map. */
 export type EnrichmentFieldValue<F extends EnrichmentField> = F extends 'summary'
   ? TextVariants

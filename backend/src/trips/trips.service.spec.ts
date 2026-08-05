@@ -6,6 +6,9 @@ import {
   GoneException,
   NotFoundException,
 } from '@nestjs/common';
+import { EnrichmentRegistry } from '../enrichment/enrichment.registry';
+import { EnrichmentService } from '../enrichment/enrichment.service';
+import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -40,8 +43,18 @@ describe('TripsService', () => {
   // Real ChangeService (trip/membership mutations are data-plane now, ADR-0039):
   // it persists a Change row + broadcasts. The gateway has no connected clients
   // in this integration test, so the broadcast is a no-op.
-  const changes = new ChangeService(prisma, new SyncGateway(prisma));
-  const service = new TripsService(prisma, changes);
+  const gateway = new SyncGateway(prisma);
+  const changes = new ChangeService(prisma, gateway);
+  // The snapshot joins enrichment (ADR-0166 §6), so the service needs one. A real
+  // EnrichmentService with an empty registry: it can read the store (which is what the
+  // snapshot exercises) and no provider can be called, so nothing reaches the network.
+  const enrichment = new EnrichmentService(
+    prisma,
+    new EnrichmentRegistry([]),
+    new EnrichmentImagePipeline({} as never),
+    gateway,
+  );
+  const service = new TripsService(prisma, changes, enrichment);
   const createdTripIds: string[] = [];
 
   // One trip per case; Invite/TripBlock/Membership rows cascade-delete with it.

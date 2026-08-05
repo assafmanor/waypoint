@@ -36,6 +36,7 @@ const snapshotBody = {
   maybeItems: [],
   places: [],
   notes: [],
+  enrichments: {},
   latestSeq: '0',
 };
 

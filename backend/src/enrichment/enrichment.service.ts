@@ -25,9 +25,12 @@ import {
   type EnrichmentFields,
   type EnrichmentSource,
   type TextVariants,
+  type TripEnrichments,
 } from '@waypoint/shared';
 import { deleteObject } from '../common/storage';
 import { PrismaService } from '../prisma/prisma.service';
+import { SyncGateway } from '../sync/sync.gateway';
+import { toDeliveredEnrichment } from './enrichment.mapper';
 import { effectiveLicense, fieldsWantingAttempt, valueRefusal } from './enrichment.policy';
 import { EnrichmentImagePipeline, type StoredImage } from './image-pipeline';
 import {
@@ -57,6 +60,7 @@ export class EnrichmentService {
     private readonly prisma: PrismaService,
     private readonly registry: EnrichmentRegistry,
     private readonly images: EnrichmentImagePipeline,
+    private readonly gateway: SyncGateway,
   ) {}
 
   /** What we hold for this place, or null if it has never been looked up. A read never
@@ -65,6 +69,77 @@ export class EnrichmentService {
   async read(identity: Pick<PlaceIdentity, 'googlePlaceId' | 'wikidataQid' | 'osmRef'>) {
     const row = await this.findRow(identity);
     return row ? this.toStored(row) : null;
+  }
+
+  /**
+   * **The join the snapshot needs** (§6): the global store, resolved to this trip's own
+   * place ids and shaped for a client.
+   *
+   * One query for the whole trip rather than one per place — a trip holds a few dozen
+   * places, and the alias column is indexed. Places with no `googlePlaceId` (a
+   * hand-dropped Place-lite, ADR-0147) are simply not asked about: matching one by name and
+   * coordinates is recorded in §10 as permitted by the alias design and built by nothing.
+   *
+   * A place with no enrichment yields **no key at all**, which is the normal case and what
+   * keeps the payload proportional to what we actually know rather than to the trip's size.
+   */
+  async readForPlaces(
+    places: readonly { id: string; googlePlaceId: string | null }[],
+  ): Promise<TripEnrichments> {
+    const byGoogleId = new Map<string, string[]>();
+    for (const place of places) {
+      if (!place.googlePlaceId) continue;
+      const ids = byGoogleId.get(place.googlePlaceId);
+      if (ids) ids.push(place.id);
+      else byGoogleId.set(place.googlePlaceId, [place.id]);
+    }
+    if (byGoogleId.size === 0) return {};
+
+    const rows = await this.prisma.placeEnrichment.findMany({
+      where: { googlePlaceId: { in: [...byGoogleId.keys()] } },
+    });
+
+    const enrichments: TripEnrichments = {};
+    for (const row of rows) {
+      const fields = this.parseFields(row);
+      const delivered = toDeliveredEnrichment(fields);
+      // Nothing worth sending: the row exists because a pass ran, but every field came back
+      // absent. The client's "we know nothing" state is a missing key, so keep it missing.
+      if (Object.keys(delivered).length === 0) continue;
+      for (const placeId of byGoogleId.get(row.googlePlaceId!) ?? []) {
+        enrichments[placeId] = delivered;
+      }
+    }
+    return enrichments;
+  }
+
+  /**
+   * Tell every live client holding this place that enrichment landed (§6).
+   *
+   * **This is the fan-out §6 refused to do in the change log, done where it is cheap.**
+   * Writing one global fact into a trip-scoped change log would mean N durable `Change`
+   * rows; a transient nudge to the N trips that happen to reference the place costs one
+   * query and no storage, and a client that was offline for it simply reads the value in its
+   * next snapshot. So the same fan-out that disqualified `ChangeService` is fine here.
+   *
+   * Best-effort by design: a broadcast failure must not fail the pass that produced the
+   * data, which is already safely stored.
+   */
+  private async notify(googlePlaceId: string | null, fields: EnrichmentFields): Promise<void> {
+    if (!googlePlaceId) return;
+    const delivered = toDeliveredEnrichment(fields);
+    if (Object.keys(delivered).length === 0) return;
+    try {
+      const places = await this.prisma.place.findMany({
+        where: { googlePlaceId },
+        select: { id: true, tripId: true },
+      });
+      for (const place of places) {
+        this.gateway.broadcastEnrichment(place.tripId, place.id, delivered);
+      }
+    } catch (err) {
+      this.logger.warn(`could not broadcast enrichment: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -111,6 +186,9 @@ export class EnrichmentService {
     // reached again. Deleting before the write would risk 404ing a live URL if the write
     // then failed.
     await this.dropReplacedImage(fields, resolved);
+    // Also after the write, and for the same reason: a nudge that arrived before the row was
+    // committed would send clients to a snapshot that does not have it yet.
+    await this.notify(stored.googlePlaceId, stored.fields);
     return stored;
   }
 
