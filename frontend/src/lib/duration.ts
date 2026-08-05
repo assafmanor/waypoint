@@ -36,6 +36,26 @@ export function hoursPhrase(minutes: number): string {
   return t.eventForm.durMinutes(m);
 }
 
+/** **The clock jump, as a sentence** (session 215) — `מזיזים את השעון שעה קדימה`.
+ *
+ *  The lifted hero's form of `ZoneShiftPill`'s `🕐 +1 ש׳`, which stays on the collapsed
+ *  board: same number, one elevation up, in words. Owner's ask, and the reason it is worth
+ *  copy is that the pill never says which way to turn the hands.
+ *
+ *  Two things it deliberately does not do. It invents **no number word** — the length is
+ *  `hoursPhrase`, so a fractional zone (India's `+2:30`) reads
+ *  `מזיזים את השעון 2:30 שע׳ קדימה` rather than growing a `וחצי` this app has nowhere
+ *  else. And it **derives the direction from the sign** rather than from anything the
+ *  caller decides: getting `קדימה`/`אחורה` backwards is worse than the pill it replaces.
+ *
+ *  `null` for no shift at all, which is every single-zone trip — the same gate the pill
+ *  already has, so nothing renders an empty sentence. */
+export function clockShiftSentence(minutes: number): string | null {
+  if (!minutes) return null;
+  const direction = minutes > 0 ? t.board.clockForward : t.board.clockBack;
+  return t.board.clockShift(hoursPhrase(Math.abs(minutes)), direction);
+}
+
 /** An elapsed length (in whole minutes) phrased in the largest ladder rung it
  *  fills, the count rounded to nearest: minutes < an hour, hours (H:MM) < a day,
  *  then days / weeks / months / years. `unit === 'hours'` pins it to the hours

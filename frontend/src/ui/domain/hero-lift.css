@@ -41,6 +41,14 @@
   flex: 0 0 auto;
   padding: 0 18px 16px;
 }
+/* **With no foot, the scroller owns the bottom edge.** The foot used to supply the card's
+   bottom padding for every state, because every state had one — until in transit the rail
+   moved inside its point and the foot went away, and the last row sat flush against the
+   card's bottom edge (seen in a browser, not in review: jsdom has no padding to miss).
+   Matched to the foot's own 16px, so the two states end the same distance from the edge. */
+.hero-scroll:last-child {
+  padding-bottom: 16px;
+}
 
 .hero-head-end {
   display: flex;
@@ -78,22 +86,31 @@
   color: var(--on-dark-faint);
   margin-bottom: 5px;
 }
-.hero-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
+/* The place name owns its LINE (session 215), which is what finally makes the ellipsis
+   below it reachable: while this sat inside a `flex-wrap: wrap` row, flex broke lines on
+   hypothetical sizes and pushed the chips off instead of ever asking the name to shrink.
+   A real airport name (`פרנקפורט (Frankfurter Flughafen – FRA)`) wants 247px against 308px
+   of row on a 360px phone — there was never a width where both fitted. */
 .hero-where-nm {
-  flex: 1 1 auto;
-  min-width: 0;
+  display: block;
   font-size: var(--text-secondary);
   color: var(--on-dark);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Every way out of a point, in ONE row: `במפה`, `ניווט`, `להזמנה`. Three chips measure
+   247px against that same 308px, so the small phone fits them with room to spare — and
+   the booking reach stops being a third stacked line of its own. `flex-wrap` is the
+   safety net for a translation nobody has measured yet, not the layout. */
+.hero-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 /* A hand-off chip. Same recipe as every other chip on this board — a low-alpha
@@ -135,6 +152,45 @@
   border-color: rgba(233, 166, 60, 0.32);
   color: #f0c785;
 }
+/* ── A span you are inside ─────────────────────────────────────────────────────
+   The journey's own progress, in the point it belongs to. As the card's `foot` it was
+   pinned below `הבא בתור` — 258px under the route it describes, measured — and read as
+   that event's progress bar (`mockups/hero-in-transit-v1.html` §2). Only the rail's own
+   top margin is restated; everything it draws is `board.css`'s. */
+.hero-transit .wp-board-transit-prog {
+  margin-top: 11px;
+}
+/* How long is left, on the meta row that already answers "when". Amber because it is a
+   time (root rule 4) — the same ink `.tlabel` uses on this board. */
+.wp-board-now-meta .hero-eta {
+  font-weight: 700;
+  color: #f0c785;
+}
+
+/* The clock jump, in words. The collapsed board keeps the `🕐 +1 ש׳` pill; here there is
+   room for the sentence the pill cannot say, so it gets one line of its own. Amber for
+   the same reason the pill is amber — a clock jump is a TIME fact (root rule 4) — and the
+   recipe is the board's own chip one (a low-alpha semantic fill under a brightened ink),
+   so it adds no value to ADR-0028's budget. */
+.hero-clockshift {
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: #f0c785;
+  background: rgba(233, 166, 60, 0.1);
+  border: 1px solid rgba(233, 166, 60, 0.24);
+  border-radius: 10px;
+  padding: 7px 10px;
+}
+.hero-clockshift .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
 .hero-note {
   display: flex;
   gap: 9px;

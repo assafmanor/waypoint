@@ -74,11 +74,19 @@ const bookingFixture: Booking = {
 };
 
 /** A flight IN THE AIR: `transport` is the bracketed category, so `deriveHeroBooking`
- *  answers `in-transit` while the clock sits between its ends (ADR-0059 §1). */
+ *  answers `in-transit` while the clock sits between its ends (ADR-0059 §1).
+ *
+ *  **The glyph is load-bearing, not decoration.** Wording resolves per mode off the
+ *  event's own icon (`ICON_TIME_PROFILE`), so without `✈️` this fixture is a generic
+ *  carrier — `הגעה` and `בדרך` rather than `נחיתה` and `בטיסה`. That is the correct
+ *  answer for a manual transport event, and it is what the train case below asserts;
+ *  a real flight has the glyph, because the booking's seed carries
+ *  `BOOKING_TYPE_ICON[type]`. */
 const flight = (over: Partial<TripEvent> = {}): TripEvent =>
   ev('fl', {
     title: 'FR 8123',
     category: 'transport',
+    icon: '✈️',
     kind: EVENT_KIND.HARD,
     bookingId: 'bk-fl',
     startsAt: `${DAY}T11:00:00Z`,
@@ -376,16 +384,169 @@ describe('Home — the lift wiring', () => {
     expect(document.querySelector('.wp-settle')).toBeTruthy();
   });
 
-  // ADR-0059 §2's rule, reaching the lifted state: the flight IS the current activity, so
-  // its own progress stands where the day rail would.
-  it('pins the transit progress as the foot instead of the day rail', () => {
+  // **THE REPORT (session 215): the rail read as the NEXT event's.** It was pinned as the
+  // card's foot, one full `הבא בתור` block below the flight it describes — 258px under the
+  // route, against 36px inside the point (`mockups/hero-in-transit-v1.html` §2). ADR-0059
+  // §2 still holds (the flight IS the current activity, so no day rail); what changed is
+  // WHERE its own rail goes, which that section never said.
+  it('puts the journey rail inside the flight’s own point, not in the foot', () => {
     tripEvents = [flight()];
     tripBookings = [flightBooking];
     show();
     fireEvent.click(board()!);
-    const foot = document.querySelector('.hero-foot')!;
-    expect(foot.querySelector('.wp-board-transit-prog')).toBeTruthy();
-    expect(foot.querySelector('.wp-board-progress')).toBeNull();
+    const lead = document.querySelector('.hero-point[data-lead]')!;
+    expect(lead.querySelector('.hero-transit .wp-board-transit-prog')).toBeTruthy();
+    // Nothing is pinned at all in transit: no rail below `הבא בתור`, and no day rail
+    // either — a second rail on one surface invites the comparison the first one lost.
+    expect(document.querySelector('.hero-foot')).toBeNull();
+    expect(document.querySelector('.wp-board-progress')).toBeNull();
+    // One rail on the LIFTED surface, not the foot's copy plus the point's. Scoped to the
+    // hero on purpose: the collapsed board stays mounted underneath (it keeps its box while
+    // lifted, ADR-0160 §1), so a document-wide count is 2 by design.
+    expect(document.querySelectorAll('.hero-lifted .wp-board-transit-prog')).toHaveLength(1);
+  });
+
+  // **REPORT 4, as a test:** the collapsed board reads better because it HAS a mid-span
+  // grammar. The lifted hero prints the same four things now — the teal live word, the
+  // slot label, the end chip, and the rail under the route — instead of dressing a flight
+  // as an ordinary hard event (`קשיח` + `עד`).
+  it('lifts the collapsed board’s own in-transit grammar, not the now-grammar', () => {
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    fireEvent.click(board()!);
+    const hero = document.querySelector('.hero-lifted')!;
+    // The live badge is the mode's word in teal, as the board below says it.
+    const live = hero.querySelector('.wp-board-live')!;
+    expect(live.className).toContain('loc');
+    expect(live.textContent).toContain(t.board.midSpan.flightLive);
+    expect(live.textContent).not.toContain(t.common.now);
+    // The slot label and the end chip, both teal; and no `קשיח` on a flight you are in.
+    expect(hero.querySelector('.wp-board-now-label.loc')?.textContent).toBe(
+      t.board.midSpan.transitLabel,
+    );
+    expect(hero.querySelector('.wp-board-now-meta .tlabel.loc')?.textContent).toBe(
+      t.glance.transition.flightArrival,
+    );
+    expect(hero.textContent).not.toContain(t.event.hard);
+  });
+
+  // The owner's widening: *"this of course applies to other kinds of transit (train, bus)
+  // but not rental cars that are different"*. Same state, same wiring, different mode — and
+  // the words are the generic carrier's, both on the board and one elevation up.
+  it('a train in motion is a journey in its own words, not a flight', () => {
+    tripEvents = [flight({ icon: '🚄', title: 'שינקנסן' })];
+    tripBookings = [flightBooking];
+    show();
+    // The collapsed board first: this is where a train read `בטיסה` before session 215.
+    expect(document.querySelector('.wp-board-live')?.textContent).toContain(
+      t.board.midSpan.transitLive,
+    );
+    expect(document.querySelector('.tp-plane')?.textContent).toBe('🚄');
+    fireEvent.click(board()!);
+    const hero = document.querySelector('.hero-lifted')!;
+    expect(hero.querySelector('.wp-board-live')?.textContent).toContain(
+      t.board.midSpan.transitLive,
+    );
+    expect(hero.querySelector('.wp-board-now-meta .tlabel')?.textContent).toBe(
+      t.glance.transition.arrival,
+    );
+    expect(hero.textContent).not.toContain(t.board.midSpan.flightLive);
+  });
+
+  // **THE EXCLUSION** (owner: *"but not rental cars that are different"*). A same-day hire
+  // reaches this exact state — only a MULTI-day span is ambient — so before session 215 it
+  // announced `בטיסה`, drew a plane crossing a progress bar, and called its return an
+  // arrival. Its middle is a resource you are HOLDING: no rail, no travelling mark, an
+  // amber deadline rather than a teal arrival, and a line saying since when it is ours.
+  it('a same-day car hire is held, not travelling', () => {
+    const hire = flight({ icon: '🚗', title: 'Hertz', bookingId: 'bk-car' });
+    tripEvents = [hire];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+    // The collapsed board: the car's own words, and nothing that says "in flight".
+    expect(document.querySelector('.wp-board-live')?.textContent).toContain(
+      t.board.midSpan.carHoldLive,
+    );
+    expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    expect(document.querySelector('.wp-board-transit-prog')).toBeNull();
+    expect(document.querySelector('.tp-plane')).toBeNull();
+    // Its end is `החזרת הרכב` — amber (a deadline), not the teal of an arrival.
+    const chip = document.querySelector('.wp-board-now-meta .tlabel')!;
+    expect(chip.textContent).toBe(t.glance.transition.carDropoff);
+    expect(chip.className).not.toContain('loc');
+    // The meta row carries the countdown a journey would have put on its rail…
+    expect(document.querySelector('.wp-board-now-meta')?.textContent).toContain(
+      t.board.inPhrase('1:30 שע׳'),
+    );
+    // …and the held line says since when the car is ours — 11:00Z, read in the zone the
+    // span starts in (Europe/Rome), which is the sticky-display rule (ADR-0107 §2-3).
+    expect(document.querySelector('.wp-board-held')?.textContent).toBe(t.board.heldSince('13:00'));
+
+    // And the same, one elevation up.
+    fireEvent.click(board()!);
+    const hero = document.querySelector('.hero-lifted')!;
+    expect(hero.querySelector('.wp-board-now-label.loc')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    expect(hero.querySelector('.wp-board-transit-prog')).toBeNull();
+    expect(hero.querySelector('.wp-board-held')?.textContent).toBe(t.board.heldSince('13:00'));
+  });
+
+  // The owner's content idea, wired: the crossing said out loud, plus the destination's
+  // clock now. `Europe/Rome` (the trip) → `Asia/Tokyo` (the destination place) is +7 in
+  // August, and the direction must follow the sign.
+  it('says the clock jump in words, and what time it is there', () => {
+    const tokyo: Place = { ...place, id: 'p-tyo', name: 'Haneda', timezone: 'Asia/Tokyo' };
+    tripEvents = [flight()];
+    tripBookings = [{ ...flightBooking, fromPlaceId: 'p1', toPlaceId: 'p-tyo' }];
+    tripPlaces = [place, tokyo];
+    show();
+    fireEvent.click(board()!);
+    const line = document.querySelector('.hero-clockshift')!;
+    expect(line.textContent).toBe(t.board.clockShift('7 שעות', t.board.clockForward));
+    // **And nothing beside it.** A "the time there" chip was drawn and then dropped: mid-
+    // journey the live zone IS the destination's (ADR-0107 §4), so the card's own clock is
+    // already the time there and the chip printed the same number twice.
+    // The sentence is the LIFT's form of the pill; the collapsed board keeps the pill.
+    expect(document.querySelector('.wp-board:not(.hero-lifted) .hero-clockshift')).toBeNull();
+    expect(document.querySelector('.wp-board .wp-tzshift')).toBeTruthy();
+  });
+
+  it('says nothing about the clock on a single-zone leg', () => {
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    fireEvent.click(board()!);
+    expect(document.querySelector('.hero-clockshift')).toBeNull();
+  });
+
+  // The other half of the same correction: mid-flight the pin is where you are GOING.
+  it('offers the destination in איפה, not the airport you left', () => {
+    const tokyo: Place = { ...place, id: 'p-tyo', name: 'Haneda' };
+    tripEvents = [flight()];
+    tripBookings = [{ ...flightBooking, fromPlaceId: 'p1', toPlaceId: 'p-tyo' }];
+    tripPlaces = [place, tokyo];
+    show();
+    fireEvent.click(board()!);
+    const where = document.querySelector('.hero-lifted .hero-where-nm')!;
+    expect(where.textContent).toContain('Haneda');
+    expect(where.textContent).not.toContain('Via dei Tribunali');
+  });
+
+  // Report 3: "the least we can do is give the expanded hero more transit info such as
+  // estimated time till arrival". Derived from the schedule — there is no live feed and
+  // the copy must not imply one.
+  it('says how long is left on the meta row, beside the arrival time', () => {
+    // NOW is 12:30 and the flight lands at 14:00 → an hour and a half.
+    tripEvents = [flight()];
+    tripBookings = [flightBooking];
+    show();
+    fireEvent.click(board()!);
+    const meta = document.querySelector('.hero-point[data-lead] .wp-board-now-meta')!;
+    expect(meta.querySelector('.hero-eta')?.textContent).toBe(t.board.inPhrase('1:30 שע׳'));
   });
 
   // The ordinary case, asserted beside it so the swap is a swap rather than a loss.

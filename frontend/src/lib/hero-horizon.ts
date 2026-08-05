@@ -73,6 +73,16 @@ export interface HeroHorizonInput {
   /** The day's events, ordered as the day view orders them — used only to find the
    *  point AFTER next, so it must be the same list `deriveNow` was given. */
   events: TripEvent[];
+  /** The event whose SPAN you are currently inside, when there is one — a flight in the
+   *  air, a train under way (`deriveHeroBooking`'s in-transit event, never re-derived
+   *  here; ADR-0018).
+   *
+   *  It changes exactly one thing, and it is a correction rather than a feature
+   *  (session 215): that point's place resolves to where it is **going**. The authority
+   *  rule gives a transport booking its ORIGIN, which is right everywhere else and wrong
+   *  in exactly this state — mid-flight the lifted hero was offering `במפה` and `ניווט`
+   *  to the airport you took off from. */
+  midSpanEventId?: string;
   /** From `deriveNow` — never re-derived here, so the board and the hero cannot
    *  disagree about what is happening (ADR-0018: derived, and derived once). */
   nowAll: TripEvent[];
@@ -109,7 +119,9 @@ function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
   const booking = event.bookingId
     ? input.bookings.find((b) => b.id === event.bookingId)
     : undefined;
-  const placeId = eventPlaceId(event, booking);
+  // Inside the span → the place that matters is the destination; everywhere else the
+  // authority rule's own answer stands.
+  const placeId = eventPlaceId(event, booking, event.id === input.midSpanEventId);
   return {
     event,
     placeId,

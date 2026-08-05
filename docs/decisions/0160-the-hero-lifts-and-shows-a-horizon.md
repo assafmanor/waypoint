@@ -262,3 +262,48 @@ Reported from a phone: a **square stroke boxing in the rounded hero**, 1px outsi
 The rule this makes explicit: **in this variant the card paints nothing at all** — the hero inside owns every visible edge (§1, one object gaining elevation, not a card containing one). So each paint property the base rule sets has to be handed back here, and a checklist beats an inventory of the ones somebody remembered. This one was missed because a border with no radius does not read as a border; it reads as somebody else's focus ring, which is what it was first diagnosed as.
 
 Guarded by a computed-style assertion rather than a geometry one, because no geometry moved: the e2e asserts the card's border width, background, shadow and padding are all inert while the hero keeps a non-zero corner radius.
+
+## Amendment (2026-08-05, session 215) — `in-transit` is a VARIANT, not a variant of nothing
+
+Four reports off a real device mid-flight (FRA → TLV, 20:36, landing 22:15), designed in [`mockups/hero-in-transit-v1.html`](../../mockups/hero-in-transit-v1.html) and built the same session. Two of the four are one defect, and it is this ADR's: **§I built the transit hero as a gate, a removal and a foot swap, and never gave the variant a grammar.** So a flight in the air arrived in the lifted hero as an ordinary hard now-event — `קשיח` + `עד 22:15`, `עכשיו` with the amber blip — while the collapsed board it was lifted out of said `בטיסה` in teal, `כרגע · בדרך`, and a teal `נחיתה` chip. The owner's fourth report is that observation from the other side: _"the hero for in flight not expanded looks different and better in my opinion."_ It is, and §1 is why — a promotion that drops the words the collapsed state already had is not the same object one elevation up.
+
+### K. §10's "the transit progress replaces the day rail" is true and was not enough
+
+That clause says what the rail is instead of. It never said **where it goes**, and phase 4 answered "the foot", which put the flight's own progress one full `הבא בתור` block below the flight — **258px** under the route it describes, against **36px** when it sits inside the point (measured in the mockup, §2). Read top-down on a phone, a progress bar directly beneath `הבא בתור · איוש 07:00 · 10:24 שעות` is a progress bar toward `איוש`, which is exactly the second report.
+
+**The rail now renders inside the point whose journey it draws, and in transit the foot is empty.** The reasoning §10 encodes is unchanged (the journey IS the day's current activity, so no day rail); what changes is that a fact belonging to one point stops being pinned to the card. The foot keeps its meaning — it carries what belongs to the whole card — which is why nothing replaced the rail there rather than the day rail coming back: two rails on one surface invites the comparison the first one lost.
+
+### L. The variant's grammar is the collapsed board's own, and the mode owns the words
+
+The lifted hero now prints the live badge in teal with the mode's word, the mode's slot label, the end chip and the arrival time — the same four things the collapsed board prints, in the same order, with the depth underneath. No new copy was written for the lift: the words are the ones the board already says.
+
+Which surfaced a defect neither state was reported for. **`t.board.inTransitLive` was the literal `בטיסה` and `TransitProgress` hard-coded `Icon name="flight"`, while this state fires for ANY bracketed transport whose clock is between its ends** — so a train in motion announced itself as a flight and crossed its rail behind an aircraft. The owner's widening (_"this of course applies to other kinds of transit (train, bus) but not rental cars that are different"_) is now `CategoryTimeProfile.midSpan`, beside the `transitions` pair that already names the two ends per mode:
+
+- **`journey`** — a leg you are carried along. It earns the rail, a travelling mark and a countdown to arrival. `transport` carries the generic word (`בדרך`); ✈️ refines only the live badge (`בטיסה`).
+- **`held`** — a resource you are holding. **No rail and no travelling mark**, its end chip stays amber because a return is a deadline rather than somewhere you arrive, and it says since when it has been yours. 🚗 is the third thing a hire disagrees with its category about (ADR-0162 gave it the first two), and a same-day stay — the other span that reaches this state — is held as well.
+
+The travelling mark is **the event's own glyph**, not a per-mode icon: the set has no `train` or `bus` to reach for, and the user may re-badge the event anyway. This is [ADR-0163](0163-a-hire-is-not-a-journey.md) §4's rule arriving one surface over — the verb and the unit belong to the span's own mode — and it lands on the collapsed board too, where a hire was worse.
+
+### M. What the lift adds that neither state had: how long is left, and the clock in words
+
+Report 3 asked for _"more transit info such as estimated time till arrival"_, and the honest inventory is short, because **there is no live feed and nothing here pretends there is** (rule 5: a hero that quietly needs the network is the one surface that lies on a plane). Everything below is derived from `startsAt`/`endsAt` and the two ends' zones. Gate, seat, baggage belt, delay and weather are **out, not deferred** — `bookingSchema` has no field for the first three and the last two need a network.
+
+- **`נותרו X` on the rail's middle slot.** That slot was printing `עד 22:15` while `.tp-end.end` printed `22:15` on the same 10.5px line — the middle is the only place on the rail that can say something its two ends cannot. Free, and it improves the **collapsed** board, where most of a flight is actually read.
+- **`· בעוד 1:39 שע׳` on the lifted meta row**, so the answer is also in 14px type where the eye lands. Phrased on ADR-0114's ladder pinned to hours (ADR-0084), so a 30h ferry reads `30 שעות`.
+- **The clock jump as a sentence** — `מזיזים את השעון שעה קדימה` — plus the destination's clock right now, in the lift only; the amber `🕐 +1 ש׳` pill stays on the collapsed board. Owner's idea, and the reason it earns copy is that the pill never says which way to turn the hands. The direction is derived from the **sign** of the same `deltaMinutes` the pill renders (getting it backwards is worse than the pill), and a fractional zone falls back to the ladder's `2:30 שע׳` rather than growing a `וחצי` this app says nowhere else.
+
+### N. `איפה` was pointing backwards, and no report mentioned it
+
+The authority rule gives a transport booking its **origin** (`bookingPlaceId`), which is right on a day list and right before you board. Mid-flight it is the airport you have already left — so the lifted hero was offering `במפה` and `ניווט` to where you took off from. `heroHorizon` now takes the id of the span you are inside and resolves **that one point** to `toPlaceId`. Nothing else changes: a single-place booking answers both questions with the same place.
+
+### O. The wrap that was not about the button, and a note about measuring
+
+Report 1 (_"the navigate button was pushed to a new line"_) is a flex fact, not a spacing one. `.hero-row` is `flex-wrap: wrap`, and flex line-breaking uses each item's **hypothetical** size — the decision is made before `flex-shrink` runs, so `.hero-where-nm`'s `min-width: 0` and its `text-overflow: ellipsis` were **unreachable code** and the chips were what moved. Measured: the name wants **247px** and the two chips **153px** against **308px** (360px phone) or **338px** (390px) of row, so it is 70–100px short at every phone width — and it wraps differently at each, which is why one report read as two bugs. The booking reach was a separate `hero-part` on top of that, i.e. a third line by construction.
+
+So the place name gets its own line (its ellipsis finally reachable) and **every way out of a point shares one action row**, where all three measure 247px against that same 308px. `flex-wrap` stays as the safety net for a translation nobody has measured, not as the layout.
+
+Worth keeping for the next surface: **the first wrap detector was wrong in the same way the code was.** It grouped a row's children by rounded `top`, which counts a 15px name beside a 34px chip as two lines — it reported 3 lines where there were 2 and 2 where there was 1. Items on one flex line share a line **box**, not a top edge. Reasoning about a flex row is unreliable, including when the reasoning is the measurement, which is why the mockup's panel computes it from the live DOM and its wrong version is kept in the script.
+
+### What is deliberately left open
+
+`הבא בתור`'s countdown counts from the clock, so mid-flight it counts **through** the landing when the traveller's question is "how long after we land". That is a decision about what the board's countdown _means_ — possibly per variant — not a layout change to this hero, so it is a backlog line rather than an answer here.

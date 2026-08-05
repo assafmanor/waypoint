@@ -51,6 +51,17 @@ export interface BoardRow {
 export interface BoardTransit {
   /** Transition label key (departure/arrival/…) resolved via transitionLabel. */
   labelKey: string;
+  /** The live badge and the slot label, **resolved per mode** by the screen from
+   *  `eventMidSpanWords` (`בטיסה`/`בדרך`, `כרגע · בדרך`). They were `t.board`
+   *  literals here, which is how a train in motion read as a flight: this state fires
+   *  for any bracketed transport between its ends, not only for aviation. */
+  liveWord: string;
+  label: string;
+  /** The travelling mark on the rail — **the event's own glyph**, not a mark this
+   *  component picks. It was a hard-coded `Icon name="flight"`, so a train crossed its
+   *  rail behind a plane; and there is no `train`/`bus` icon to reach for, which is the
+   *  second reason the answer is the glyph the user can already change. */
+  mark?: ReactNode;
   /** Emphasize the label (an arrival is imminent). */
   arriving?: boolean;
   /** Landing time (pre-formatted) — in the **destination's** zone (ADR-0107 §3). */
@@ -62,11 +73,30 @@ export interface BoardTransit {
   startTime?: string;
   fromPlace?: string;
   toPlace?: string;
-  /** Show the middle "עד HH:MM" countdown-to-landing. */
-  showCountdown?: boolean;
+  /** How long is left, pre-phrased on the shared ladder (`1:39 שע׳`) → the rail's
+   *  middle slot reads `נותרו 1:39 שע׳`.
+   *
+   *  That slot used to print `עד HH:MM` — the arrival time the **end** label prints two
+   *  inches away, on the same 10.5px line. The middle is the only place on the rail that
+   *  can say something its two ends cannot, so it says what is left. */
+  remaining?: string;
   /** Destination clock minus origin clock — the pill beside the landing time, so
    *  the two ends can't misread as a 3h45 flight when they're 6h45 apart. */
   shift?: ZoneShift;
+  /** **A journey, or a resource you are holding** (`midSpan.kind`, session 215).
+   *
+   *  `journey` is a leg you are being carried along and earns the rail. `held` is a car
+   *  hire mid-hire (or a same-day stay): it reaches this same state — only a MULTI-day
+   *  span is ambient — but nothing about it is a distance travelled, and its end is a
+   *  deadline rather than an arrival. So a held span draws no rail and no travelling
+   *  mark, and says since when it has been ours instead. Read the owner's rule
+   *  literally: *"this applies to other kinds of transit (train, bus) but not rental
+   *  cars that are different"*.
+   *
+   *  Absent → `journey`, so the flight path is unchanged by this field existing. */
+  kind?: 'journey' | 'held';
+  /** A held span's start (pre-formatted) → `אצלנו מ־11:40`. */
+  heldSince?: string;
 }
 
 export interface BoardNext {
@@ -170,13 +200,15 @@ export function DayRail({
  *  their own times. Absent unless both ends are known — a progress bar between one time and
  *  nothing is a bar that cannot say where it is. */
 export function TransitProgress({ transit }: { transit: BoardTransit }) {
+  // A held span is not a distance travelled, so there is nothing to draw a position on.
+  if (transit.kind === 'held') return null;
   if (!transit.startTime || !transit.endTime) return null;
   return (
     <div className="wp-board-transit-prog">
       <div className="tp-track">
         <div className="tp-fill" style={{ width: `${transit.progress * 100}%` }} />
         <div className="tp-plane" style={{ insetInlineStart: `${transit.progress * 100}%` }}>
-          <Icon name="flight" />
+          {transit.mark}
         </div>
       </div>
       <div className="tp-ends">
@@ -186,11 +218,11 @@ export function TransitProgress({ transit }: { transit: BoardTransit }) {
           </span>
           {transit.fromPlace && <span className="pl">{transit.fromPlace}</span>}
         </span>
-        {transit.showCountdown && (
+        {transit.remaining && (
           <span className="tp-left">
-            {t.board.until}{' '}
+            {t.board.remaining}{' '}
             <span className="mono" dir="auto">
-              {transit.endTime}
+              {transit.remaining}
             </span>
           </span>
         )}
@@ -257,7 +289,7 @@ export function Board(props: BoardProps) {
       <div className="wp-board-top">
         <div className={'wp-board-live' + (inTransit ? ' loc' : '')}>
           <span className="blip" />
-          {inTransit ? t.board.inTransitLive : t.common.now}
+          {inTransit && transit ? transit.liveWord : t.common.now}
         </div>
         <div className="wp-board-clock" dir="auto">
           {clock}
@@ -266,23 +298,45 @@ export function Board(props: BoardProps) {
 
       {inTransit && transit ? (
         <>
-          <div className="wp-board-now-label loc">{t.board.inTransitLabel}</div>
+          <div className="wp-board-now-label loc">{transit.label}</div>
           <div className="wp-board-now-title">
             {nowIcon && <span className="wp-board-ic">{nowIcon}</span>}
             {nowTitle}
           </div>
           <div className="wp-board-now-meta">
-            <span className={'tlabel loc' + (transit.arriving ? ' emph' : '')}>
+            {/* A journey's end is where you arrive (teal, "where you are"); a held span's
+                end is a deadline you have to meet, which is amber like every other
+                commitment (root rule 4). */}
+            <span
+              className={
+                (transit.kind === 'held' ? 'tlabel' : 'tlabel loc') +
+                (transit.arriving ? ' emph' : '')
+              }
+            >
               {transitionLabel(transit.labelKey)}
             </span>
             {transit.endTime && <span dir="auto">{transit.endTime}</span>}
+            {/* Only a HELD span says it here: a journey's rail carries `נותרו X` two lines
+                down, and printing both is the duplication this session removed from the
+                rail in the first place. */}
+            {transit.kind === 'held' && transit.remaining && (
+              <span dir="auto">{t.board.inPhrase(transit.remaining)}</span>
+            )}
             {transit.code && (
               <span className="code" dir="auto">
                 {transit.code}
               </span>
             )}
           </div>
-          <TransitProgress transit={transit} />
+          {transit.kind === 'held' ? (
+            transit.heldSince && (
+              <div className="wp-board-held">
+                <span dir="auto">{t.board.heldSince(transit.heldSince)}</span>
+              </div>
+            )
+          ) : (
+            <TransitProgress transit={transit} />
+          )}
         </>
       ) : variant === 'group-split' ? (
         <div className="wp-board-now-split">

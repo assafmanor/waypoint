@@ -97,6 +97,45 @@ describe('heroHorizon', () => {
     expect(h.now[0].place).toBe('the booking’s place');
   });
 
+  // Session 215: the one state where the authority rule's answer is the wrong end. A
+  // transport booking's place is its ORIGIN, which is right on a day list and right before
+  // you board — and mid-flight it is the airport you have already left, so the lifted hero
+  // was offering `במפה` and `ניווט` backwards.
+  it('resolves the point you are INSIDE to where it is going, not where it left', () => {
+    const flight = ev('fl', { bookingId: 'b1', category: 'transport' });
+    const flightBooking = booking('b1', {
+      type: BOOKING_TYPE.FLIGHT,
+      placeId: undefined,
+      fromPlaceId: 'p-fra',
+      toPlaceId: 'p-tlv',
+    });
+    const args = {
+      nowAll: [flight],
+      events: [flight],
+      bookings: [flightBooking],
+      places: [place('p-fra', 'פרנקפורט'), place('p-tlv', 'בן גוריון')],
+    };
+    const inside = heroHorizon(input({ ...args, midSpanEventId: 'fl' }));
+    expect(inside.now[0]).toMatchObject({ placeId: 'p-tlv', place: 'בן גוריון' });
+    // Not inside it → the origin, unchanged. Same flight, same booking, one flag.
+    const before = heroHorizon(input(args));
+    expect(before.now[0]).toMatchObject({ placeId: 'p-fra', place: 'פרנקפורט' });
+  });
+
+  it('leaves a non-transport point alone even while you are inside it', () => {
+    // A single-place booking answers both questions with the same place, so the flag is a
+    // no-op rather than a second lookup that could disagree.
+    const stay = ev('st', { bookingId: 'b1' });
+    const args = {
+      nowAll: [stay],
+      events: [stay],
+      bookings: [booking('b1', { placeId: 'p1' })],
+      places: [place('p1', 'מלון סנטרו')],
+    };
+    expect(heroHorizon(input({ ...args, midSpanEventId: 'st' })).now[0].placeId).toBe('p1');
+    expect(heroHorizon(input(args)).now[0].placeId).toBe('p1');
+  });
+
   it('carries the ids the hand-offs need, not just the resolved name', () => {
     const e = ev('e', { bookingId: 'b1' });
     const h = heroHorizon(

@@ -26,6 +26,50 @@ import { SettleControl, type SettleOutcome } from './SettleControl';
 import { t } from '../../i18n/he';
 import './hero-lift.css';
 
+/** **A span you are inside**, in the collapsed board's own words (session 215).
+ *
+ *  The lifted hero had no in-transit shape at all: a flight in the air arrived here as
+ *  an ordinary hard now-event (`קשיח` + `עד 22:15`), while the collapsed board it was
+ *  lifted out of said `כרגע · בדרך` + a teal `נחיתה` chip — and the flight's own progress
+ *  rail was handed in as `foot`, which pinned it BELOW the `הבא בתור` block, one full
+ *  slot away from the thing it describes (258px, measured). Two of the four reports
+ *  behind this change are that one gap, from two directions: the rail read as the next
+ *  event's, and the collapsed board read as the better surface.
+ *
+ *  Nothing here is new grammar. It is the same words one elevation up, which is
+ *  ADR-0160's own thesis — plus the one fact neither state carried before: how long is
+ *  left. */
+export interface HeroLiftTransit {
+  /** The mode's slot label (`כרגע · בדרך`), in place of `קשיח`/`גמיש`. */
+  label: string;
+  /** The end transition chip, resolved per mode (`נחיתה` / `הגעה` / `החזרת הרכב`). */
+  endLabel: ReactNode;
+  /** The arrival instant, pre-formatted in the **destination's** zone (ADR-0107 §3). */
+  endTime?: string;
+  /** How long is left, already phrased (`בעוד 1:39 שע׳`) — the answer to "when do we
+   *  land", which no surface carried before this. */
+  inPhrase?: string;
+  code?: string;
+  /** The journey's own progress, as the collapsed board's own component — rendered
+   *  INSIDE this point rather than pinned to the card, because it is this point's fact
+   *  and not the card's. A held span (a car hire) passes none: its end is a deadline,
+   *  not a distance travelled. */
+  rail?: ReactNode;
+  /** A HELD span's own line instead of a rail (`אצלנו מ־11:40`) — a car you are holding
+   *  has no position between two places, and its end is a deadline. */
+  held?: string;
+  /** The clock jump in words (`מזיזים את השעון שעה קדימה`). The amber pill stays on the
+   *  collapsed board — it is the glance form of the same number, and this is the state you
+   *  asked for, so it can afford a sentence. Absent on a single-zone leg, which is the
+   *  pill's own gate.
+   *
+   *  **No "the time there" beside it**, and that is a finding rather than a cut: mid-journey
+   *  the live zone IS the destination's (ADR-0107 §4 — the clock rolls at the crossing), so
+   *  the card's own clock is already the time there and a second copy was the same number
+   *  twice on one line. */
+  clockShift?: string;
+}
+
 /** One point on the horizon, view-ready. Mirrors `lib/hero-horizon.ts`'s `HeroPoint`
  *  with everything resolved: the title is a node (the screen passes `<EventTitle/>`,
  *  so a flight still reads as its route), times are pre-formatted in their own zone
@@ -35,8 +79,11 @@ export interface HeroLiftPoint {
   key: string;
   title: ReactNode;
   icon?: ReactNode;
-  /** `קשיח` / `גמיש`, as the collapsed board says it. */
+  /** `קשיח` / `גמיש`, as the collapsed board says it. Absent on a point carrying
+   *  `transit`, whose label is the mode's instead. */
   kind?: 'hard' | 'soft';
+  /** Present → you are inside this span, and it takes the mid-span grammar. */
+  transit?: HeroLiftTransit;
   /** End time, pre-formatted in this point's own end zone → `עד HH:MM`. */
   until?: string;
   /** Signed minutes for the amber zone pill, when this point's times do not read
@@ -72,6 +119,10 @@ export interface HeroLiftThen {
 export interface HeroLiftProps {
   /** Current time, pre-formatted — the board clock, unchanged. */
   clock: string;
+  /** The live badge, when you are inside a span: the mode's word (`בטיסה` / `בדרך` /
+   *  `הרכב אצלנו`) with the teal "where you are" blip, exactly as the collapsed board
+   *  shows it. Absent → `עכשיו` and the amber blip, which is every other state. */
+  liveWord?: string;
   /** In-progress points, primary first. Several with no primary is the group split
    *  (ADR-0041 §6), where every equal carries the same depth because the variant
    *  exists on there being no primary — collapsing one would manufacture it. */
@@ -100,34 +151,66 @@ export interface HeroLiftProps {
   onClose: () => void;
 }
 
+/** `איפה` and every way out of this point: the place on its own line, the chips in ONE
+ *  row under it.
+ *
+ *  **It was a single wrapping row and could not hold one** (session 215). `.hero-row` is
+ *  `flex-wrap: wrap`, and flex breaks lines by each item's HYPOTHETICAL size — the
+ *  decision is made before `flex-shrink` runs, so `.hero-where-nm`'s `min-width: 0` and
+ *  its `text-overflow: ellipsis` were unreachable code and the CHIPS were what moved.
+ *  Measured on the reported flight: the name wants 247px and the two chips 153px against
+ *  308px (360px phone) or 338px (390px) of row, so it is 70-100px short at every phone
+ *  width — and it failed differently at each, which is why one report read as two bugs.
+ *
+ *  Giving the name its own line makes its ellipsis reachable and leaves the chips a row
+ *  of their own, where all THREE fit: 247px against 308px. That is also why the booking
+ *  reach moved in here — as its own `hero-part` it was a third stacked chip line under a
+ *  wrap that had already made two. `flex-wrap` stays on the chip row as the safety net
+ *  for a translation nobody has measured, but at 344px it is not reached. */
 function Where({ point }: { point: HeroLiftPoint }) {
-  if (!point.place) return null;
+  const acts = [point.onMap, point.navigateUrl, point.onBooking].some(Boolean);
+  if (!point.place && !acts) return null;
   return (
     <div className="hero-part">
-      <span className="hero-lbl">{t.hero.where}</span>
-      <div className="hero-row">
-        <span className="hero-where-nm" dir="auto">
-          {point.place}
-        </span>
-        {point.onMap && (
-          <button type="button" className="hero-act loc" onClick={point.onMap}>
-            <Icon name="pin" /> {t.hero.onMap}
-          </button>
-        )}
-        {/* An anchor, not a button: the hand-off out to Maps is a real link, so
-            long-press and share work and no popup blocker is involved — the same
-            choice Home's navigate tile and the day cards already make (ADR-0106 §F). */}
-        {point.navigateUrl && (
-          <a
-            className="hero-act loc"
-            href={point.navigateUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Icon name="navigate" /> {t.hero.navigate}
-          </a>
-        )}
-      </div>
+      {point.place && (
+        <>
+          <span className="hero-lbl">{t.hero.where}</span>
+          <span className="hero-where-nm" dir="auto">
+            {point.place}
+          </span>
+        </>
+      )}
+      {acts && (
+        <div className="hero-acts">
+          {point.onMap && (
+            <button type="button" className="hero-act loc" onClick={point.onMap}>
+              <Icon name="pin" /> {t.hero.onMap}
+            </button>
+          )}
+          {/* An anchor, not a button: the hand-off out to Maps is a real link, so
+              long-press and share work and no popup blocker is involved — the same
+              choice Home's navigate tile and the day cards already make (ADR-0106 §F). */}
+          {point.navigateUrl && (
+            <a
+              className="hero-act loc"
+              href={point.navigateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Icon name="navigate" /> {t.hero.navigate}
+            </a>
+          )}
+          {/* The way THROUGH to the booking — depth on any point that has one, not a
+              property of the `next` slot. Wiring it only on `next` left a now point's
+              booking unreachable while `canLift` counted it, which is the shape of bug
+              that makes a lift open onto less than it promised. */}
+          {point.onBooking && (
+            <button type="button" className="hero-act time" onClick={point.onBooking}>
+              <Icon name="ticket" /> {t.hero.toBooking}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -149,23 +232,6 @@ function Note({ point }: { point: HeroLiftPoint }) {
       {!!point.noteMore && (
         <span className="hero-note-more">{t.hero.moreNotes(point.noteMore)}</span>
       )}
-    </div>
-  );
-}
-
-/** The way THROUGH to the booking — depth on any point that has one, not a
- *  property of the `next` slot. Wiring it only on `next` left a now point's booking
- *  unreachable while `canLift` counted it, which is the shape of bug that makes a
- *  lift open onto less than it promised. */
-function Reach({ point }: { point: HeroLiftPoint }) {
-  if (!point.onBooking) return null;
-  return (
-    <div className="hero-part">
-      <div className="hero-row">
-        <button type="button" className="hero-act time" onClick={point.onBooking}>
-          <Icon name="ticket" /> {t.hero.toBooking}
-        </button>
-      </div>
     </div>
   );
 }
@@ -197,26 +263,74 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
     <div className="hero-point" data-lead={lead || undefined}>
       {lead ? (
         <div className="hero-part">
-          {point.kind && (
-            <div className="wp-board-now-label">
-              {point.kind === 'hard' ? (
-                <>
-                  <Icon name="lock" /> {t.event.hard}
-                </>
-              ) : (
-                t.event.soft
+          {/* A span you are inside keeps the collapsed board's grammar; anything else
+              keeps the ordinary now-grammar. The two are exclusive by construction: a
+              point with `transit` carries no `kind`, because `קשיח` on a flight you are
+              sitting in says nothing you can act on. */}
+          {point.transit ? (
+            <>
+              <div className="wp-board-now-label loc">{point.transit.label}</div>
+              <div className="wp-board-now-title">
+                {point.icon && <span className="wp-board-ic">{point.icon}</span>}
+                {point.title}
+              </div>
+              <div className="wp-board-now-meta">
+                <span className="tlabel loc">{point.transit.endLabel}</span>
+                {point.transit.endTime && <span dir="auto">{point.transit.endTime}</span>}
+                {point.transit.inPhrase && (
+                  <span className="hero-eta" dir="auto">
+                    {point.transit.inPhrase}
+                  </span>
+                )}
+                {point.transit.code && (
+                  <span className="code" dir="auto">
+                    {point.transit.code}
+                  </span>
+                )}
+              </div>
+              {/* The rail, INSIDE the point whose journey it draws. As the `foot` it sat
+                  under `הבא בתור` and read as that event's progress. */}
+              {point.transit.rail && <div className="hero-transit">{point.transit.rail}</div>}
+              {/* …and a held span's line where that rail would be. */}
+              {point.transit.held && (
+                <div className="wp-board-held" dir="auto">
+                  {point.transit.held}
+                </div>
               )}
-            </div>
-          )}
-          <div className="wp-board-now-title">
-            {point.icon && <span className="wp-board-ic">{point.icon}</span>}
-            {point.title}
-          </div>
-          {point.until && (
-            <div className="wp-board-now-meta">
-              {t.board.until} <span dir="auto">{point.until}</span>
-              {point.shift != null && <ZoneShiftPill minutes={point.shift} className="on-dark" />}
-            </div>
+              {/* The zone crossing, said out loud. Amber: a clock jump is time (rule 4). */}
+              {point.transit.clockShift && (
+                <div className="hero-clockshift">
+                  <Icon name="clock" />
+                  {point.transit.clockShift}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {point.kind && (
+                <div className="wp-board-now-label">
+                  {point.kind === 'hard' ? (
+                    <>
+                      <Icon name="lock" /> {t.event.hard}
+                    </>
+                  ) : (
+                    t.event.soft
+                  )}
+                </div>
+              )}
+              <div className="wp-board-now-title">
+                {point.icon && <span className="wp-board-ic">{point.icon}</span>}
+                {point.title}
+              </div>
+              {point.until && (
+                <div className="wp-board-now-meta">
+                  {t.board.until} <span dir="auto">{point.until}</span>
+                  {point.shift != null && (
+                    <ZoneShiftPill minutes={point.shift} className="on-dark" />
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       ) : (
@@ -233,14 +347,25 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
       )}
       <Where point={point} />
       <Note point={point} />
-      <Reach point={point} />
       <Settle point={point} />
     </div>
   );
 }
 
 export function HeroLift(props: HeroLiftProps) {
-  const { clock, now, split, next, nextLabel, nextTime, nextCode, countdown, then, foot } = props;
+  const {
+    clock,
+    liveWord,
+    now,
+    split,
+    next,
+    nextLabel,
+    nextTime,
+    nextCode,
+    countdown,
+    then,
+    foot,
+  } = props;
 
   return (
     <Modal variant="lift" ariaLabel={t.hero.title} onClose={props.onClose}>
@@ -248,9 +373,12 @@ export function HeroLift(props: HeroLiftProps) {
         <Lifted origin={props.origin ?? null} closing={closing}>
           <div className="hero-head">
             <div className="wp-board-top">
-              <div className="wp-board-live">
+              {/* The live badge says what you are inside, teal, exactly as the board
+                  below it does — it used to print `עכשיו` in amber while the board it was
+                  lifted out of said `בטיסה` in teal. */}
+              <div className={'wp-board-live' + (liveWord ? ' loc' : '')}>
                 <span className="blip" />
-                {t.common.now}
+                {liveWord ?? t.common.now}
               </div>
               <div className="hero-head-end">
                 <div className="wp-board-clock" dir="auto">
@@ -326,7 +454,6 @@ export function HeroLift(props: HeroLiftProps) {
                     collapsed board already shows above. */}
                 <Where point={next} />
                 <Note point={next} />
-                <Reach point={next} />
               </>
             )}
 

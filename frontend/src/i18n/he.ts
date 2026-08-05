@@ -1246,10 +1246,44 @@ export const t = {
     // in-progress events, and the group-split header when several run at once.
     alsoNow: (n: number) => `ועוד ${n} עכשיו`,
     concurrentNow: 'עכשיו · במקביל',
-    // "In transit" hero (ADR-0059 §2): a flight in the air fills the NOW slot,
-    // teal = "where you are"; amber stays only on the time-to-landing.
-    inTransitLive: 'בטיסה',
-    inTransitLabel: 'כרגע · בדרך',
+    // **The middle of a bracketed span, by mode** (ADR-0059 §2's mid-span, generalized in
+    // session 215). Keyed by `CategoryTimeProfile.midSpan`, resolved through
+    // `lib/transitions.ts`'s `midSpanWord` — the same shape `transition` below already
+    // uses for the two ENDS, for the same reason: the word is the mode's, not the
+    // surface's. Before this, `בטיסה` was a literal on the board, so a train in motion
+    // read as a flight and a car hire you were merely holding did too.
+    //
+    // Teal = "where you are" on the journey words; a held span's end is a deadline and
+    // stays amber (root rule 4).
+    midSpan: {
+      flightLive: 'בטיסה',
+      transitLive: 'בדרך',
+      transitLabel: 'כרגע · בדרך',
+      carHoldLive: 'הרכב אצלנו',
+      carHoldLabel: 'כרגע · הרכב אצלנו',
+      stayLive: 'שוהים',
+      stayLabel: 'כרגע · שוהים כאן',
+    },
+    /** A journey's remaining time, on the rail's middle slot — the one thing that line
+     *  can say which its two ends cannot. It used to print `עד HH:MM`, i.e. the arrival
+     *  time the end label was already showing. */
+    remaining: 'נותרו',
+    /** The arrival countdown beside the landing time (`נחיתה 22:15 · בעוד 1:39 שע׳`).
+     *  The length itself comes from the shared elapsed ladder (ADR-0114). */
+    inPhrase: (length: string) => `בעוד ${length}`,
+    /** A held span says since when it has been ours; its end is on the meta row above. */
+    heldSince: (time: string) => `אצלנו מ־${time}`,
+    /** **The clock jump, in words** — the lifted hero's form of the amber `🕐 +1 ש׳` pill
+     *  the collapsed board keeps (owner, session 215: _"say explicitly מזיזים את השעון
+     *  שעה אחורה or something like that"_). The pill is correct and unreadable to anyone
+     *  who has not learned it: it does not say which way to turn the hands.
+     *
+     *  The length comes from the shared ladder (`hoursPhrase`), so no number word is
+     *  invented here — and the direction is the sign of the same `deltaMinutes` the pill
+     *  renders, never a guess. */
+    clockShift: (length: string, direction: string) => `מזיזים את השעון ${length} ${direction}`,
+    clockForward: 'קדימה',
+    clockBack: 'אחורה',
   },
   // The LIFTED hero (ADR-0160 §3). Its own section rather than more `board` keys,
   // because these label the horizon's parts and the collapsed board has none of

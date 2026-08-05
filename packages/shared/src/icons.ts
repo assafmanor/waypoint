@@ -204,6 +204,29 @@ export interface CategoryTimeProfile {
     startKey: string;
     endKey: string;
   };
+  /** **What the MIDDLE of a bracketed span is, while the clock is inside it**
+   *  (session 215). `bracketed` says the ends matter and the middle is passive; this
+   *  says what that passive middle *means*, which is not the same for every mode and
+   *  was being answered by a hard-coded `בטיסה` and a hard-coded plane on the board:
+   *
+   *   - `journey` — a leg between two places. It earns the progress rail, a
+   *     travelling mark and a countdown to arrival (a flight, a train, a bus, a ferry).
+   *   - `held` — a resource you are holding. No rail and no travelling mark: its end is
+   *     a **deadline**, not an arrival (a car hire, a same-day stay).
+   *
+   *  Absent → the middle does not surface on the hero at all.
+   *
+   *  Two keys rather than one because the board already says two different words: the
+   *  live badge (`בטיסה`) and the slot label (`כרגע · בדרך`). Same rule as
+   *  `transitions` — a mode states whatever it disagrees with, and every time-aware
+   *  surface picks it up with no per-screen branching. */
+  midSpan?: {
+    kind: 'journey' | 'held';
+    /** The live badge while you are inside it (`בטיסה` / `בדרך` / `הרכב אצלנו`). */
+    liveKey: string;
+    /** The now-slot label (`כרגע · בדרך`). */
+    labelKey: string;
+  };
   /** How this category's *duration* reads when shown in a preview (ADR-0063
    *  extension): transport in **hours** (a flight is hours, even overnight),
    *  lodging in **nights**, everything else **auto** — hours when it stays on one
@@ -247,6 +270,10 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
     bracketed: true,
     ambientWhenMultiDay: true,
     transitions: { startKey: 'departure', endKey: 'arrival' },
+    // Every mode that CARRIES you is a journey, and the generic word for its middle is
+    // the generic one — `בטיסה` belongs to ✈️ below, not to the category, which is why a
+    // train read it for a release.
+    midSpan: { kind: 'journey', liveKey: 'transitLive', labelKey: 'transitLabel' },
     durationUnit: 'hours',
     typicalMinutes: TYPICAL_MINUTES_DEFAULT,
   },
@@ -254,6 +281,10 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
     bracketed: true,
     ambientWhenMultiDay: true,
     transitions: { startKey: 'checkIn', endKey: 'checkOut' },
+    // A multi-day stay is ambient and never reaches this (its middle is the stay strip,
+    // ADR-0059 §2). A SAME-DAY one does, and it is a held span rather than a journey:
+    // its end is a check-out you have to make, not somewhere you arrive.
+    midSpan: { kind: 'held', liveKey: 'stayLive', labelKey: 'stayLabel' },
     durationUnit: 'nights',
     typicalMinutes: TYPICAL_MINUTES_DEFAULT,
   },
@@ -287,11 +318,20 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
  *  re-badged ⭐ falls back to its category. That is the same looseness a flight's wording
  *  has always had, and it is why the type-keyed path exists for anything booked. */
 export const ICON_TIME_PROFILE: Record<string, Partial<CategoryTimeProfile>> = {
-  '✈️': { transitions: { startKey: 'flightDeparture', endKey: 'flightArrival' } },
+  '✈️': {
+    transitions: { startKey: 'flightDeparture', endKey: 'flightArrival' },
+    // The one mode whose middle has its own word. Everything else that carries you
+    // inherits `transport`'s generic `בדרך`.
+    midSpan: { kind: 'journey', liveKey: 'flightLive', labelKey: 'transitLabel' },
+  },
   // A hire is picked up and returned, not departed and arrived — and it is measured in
-  // the days you hold it (ADR-0162). Both halves of `transport` that a car disagrees with.
+  // the days you hold it (ADR-0162). Both halves of `transport` that a car disagrees with,
+  // plus a third (session 215): **you are not in transit while you hold a car.** The
+  // middle of a hire is a held resource, so it earns no rail, no travelling mark and no
+  // arrival — its end is a return deadline. Same rule as ADR-0163 §4 one surface over.
   '🚗': {
     transitions: { startKey: 'carPickup', endKey: 'carDropoff' },
+    midSpan: { kind: 'held', liveKey: 'carHoldLive', labelKey: 'carHoldLabel' },
     durationUnit: 'auto',
   },
 };
@@ -323,6 +363,23 @@ const timeProfileFor = (event: Pick<TripEvent, 'category' | 'icon'>): CategoryTi
 export const eventTransitionKeys = (
   event: Pick<TripEvent, 'category' | 'icon'>,
 ): { startKey: string; endKey: string } | undefined => timeProfileFor(event).transitions;
+
+/** **What this event's middle is while you are inside it** — a journey between two
+ *  places, or a resource you are holding (session 215). Resolves exactly like
+ *  `eventTransitionKeys`: the event's own glyph refines its category, so a flight's
+ *  middle differs from a train's by one word and a hire's differs in kind.
+ *
+ *  The hero used to answer this with a literal (`בטיסה`) and a hard-coded plane, which
+ *  is why a train read as a flight and a same-day car hire read as a journey. */
+export const eventMidSpan = (
+  event: Pick<TripEvent, 'category' | 'icon'>,
+): CategoryTimeProfile['midSpan'] => timeProfileFor(event).midSpan;
+
+/** Is this event's middle a journey (a leg you are being carried along), as opposed to
+ *  a resource you are holding? The one predicate every "should this show a progress
+ *  rail / an arrival countdown" question asks. */
+export const isJourney = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
+  timeProfileFor(event).midSpan?.kind === 'journey';
 
 /** The unit an event's duration reads in — its category's, unless its glyph names a
  *  different one (ADR-0063 extension, ADR-0162's refinement). A null/unset category

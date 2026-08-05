@@ -4,6 +4,26 @@
 **Date:** 2026-07-18
 **Refines:** [0063](0063-category-time-behaviour-profile.md) (this ADR applies its `bracketed` profile to the Home & Index — see the rebase note below), [0045](0045-trip-home-real-data-only.md) (the hero was declared "unchanged" there; it now gains booking-aware presentation), [0054](0054-ambient-span-events-off-the-day-schedule.md) (ambient hotels are backdrop on the day schedule — this decides how they surface on the hero and as an in-progress treatment), [0053](0053-index-booking-detail-view-and-merged-edit-reach.md) (the booking detail view whose appearance this improves), [0049](0049-index-tab-mode-and-lifecycle.md) (the Index booking row), [0011](0011-hard-soft-event-model.md) (a booking backs a hard event), [0004](0004-integrations-are-pipes.md) (bookings feed existing surfaces, never their own screen), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the Booking↔Event model + `Booking.details` the presentation reads)
 
+## Amendment (2026-08-05, session 215) — §2's mid-span treatment is per MODE, and a hire is not travelling
+
+§2 gave a bracketed span whose clock is inside it two treatments: `in transit` for a flight in the air, and the "inside a booking now" strip for a mid-stay hotel. Both are right, and the split between them was drawn on the wrong axis — **ambient vs not** rather than **journey vs held**.
+
+The consequence is that everything bracketed and not multi-day landed on the transit treatment, which was written for aviation and said so in literals: the live badge was the string `בטיסה` and the rail's travelling mark was a hard-coded `Icon name="flight"`. So a **train** in motion announced itself as a flight, and a **same-day car hire** — bracketed, single-day, therefore not ambient — did too, complete with a plane crossing a progress bar toward an "arrival" that is really a return deadline.
+
+The owner's rule, from a real trip: _"this of course applies to other kinds of transit (train, bus) but not rental cars that are different."_
+
+So the treatment is chosen by `CategoryTimeProfile.midSpan` (added in [ADR-0160](0160-the-hero-lifts-and-shows-a-horizon.md)'s session-215 amendment), which states per mode what the middle of a span **is**:
+
+- **`journey`** — a leg you are carried along: the progress rail, the travelling mark, a countdown to arrival. Its words are the mode's own — the generic `בדרך` for anything that carries you, `בטיסה` only for ✈️.
+- **`held`** — a resource you are holding: **no rail, no travelling mark**, an amber end (a deadline, not an arrival), and a line saying since when it has been yours. A car hire, and a same-day stay.
+
+Two rules fall out, both of which this ADR's §2/§3 should be read with:
+
+- **The travelling mark is the event's own glyph**, never an icon this surface picks. The icon set has no `train`/`bus` to reach for, and the glyph is the user's to change anyway.
+- **The rail's middle slot says what is LEFT** (`נותרו 1:39 שע׳`), not `עד HH:MM` — which was the arrival time the rail's own end label printed on the same 10.5px line. The middle is the only place there that can say something its two ends cannot.
+
+This is the same correction [ADR-0163](0163-a-hire-is-not-a-journey.md) §4 made to the mid-stay strip (`שוהים ב־` and `לילה` on a vehicle), arriving at the hero: **the verb, the unit and now the mark belong to the span's own mode.**
+
 ## Amendment (2026-08-04, ADR-0163) — §3's "no name" holds for a JOURNEY, not for a hire
 
 §3 established that a transport booking has no name and takes its title from `origin ← destination`. That is still right for `flight`, `train` and `transit`: nobody names a flight, so the route **is** its name, and everything §3 built on that stands.

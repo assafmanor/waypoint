@@ -40,7 +40,8 @@ import {
   nextDestination,
 } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
-import { transitionLabel } from '../lib/transitions';
+import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
+import { clockShiftSentence, formatDuration } from '../lib/duration';
 import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import {
   countdownParts,
@@ -130,6 +131,45 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const inTransit = hero.kind === 'in-transit' || hero.kind === 'transition-arrival';
   const arriving = hero.kind === 'transition-arrival';
 
+  // In-transit hero derivations (flight in the air): time-to-landing progress
+  // and the code chip.
+  const transitEvent = inTransit ? hero.event : undefined;
+  const transitZones = zonesOf(transitEvent);
+  const transitStart = transitEvent?.startsAt ? Date.parse(transitEvent.startsAt) : 0;
+  const transitEnd = transitEvent?.endsAt ? Date.parse(transitEvent.endsAt) : 0;
+  const transitProgress =
+    transitEvent && transitEnd > transitStart
+      ? Math.min(1, Math.max(0, (nowMs - transitStart) / (transitEnd - transitStart)))
+      : 0;
+  const transitBooking = transitEvent?.bookingId
+    ? bookings.find((b) => b.id === transitEvent.bookingId)
+    : undefined;
+  const transitCode = transitBooking?.confirmationCode
+    ? `${CODE_PREFIX}${transitBooking.confirmationCode}`
+    : undefined;
+  // Origin/destination anchor the in-transit progress ends (ADR-0059 §3): a
+  // flight reads as where it goes, not a name.
+  const transitRoute = transitEvent ? eventRoute(transitEvent, bookings, places) : null;
+  // What this span's middle is called, by mode (`בטיסה` for a flight, `בדרך` for
+  // anything else that carries you) and whether it is a journey at all — one
+  // resolution shared by the collapsed board and the lifted hero, off the same
+  // profile that already names the two ends.
+  const transitWords = transitEvent ? eventMidSpanWords(transitEvent) : undefined;
+  // How long is left, on the app's one elapsed ladder (ADR-0114) — the answer to
+  // "when do we land", which no surface carried until now. Absent once the end has
+  // passed, so a rail never says `נותרו 0`.
+  // `hours` and not `auto`: a journey's length is read in hours however long it runs
+  // (ADR-0084), so a 30h ferry says `30 שעות` rather than stepping up to a day.
+  const transitRemaining =
+    transitEvent?.endsAt && transitEnd > nowMs
+      ? formatDuration(minutesUntil(transitEvent.endsAt, now), 'hours')
+      : null;
+  // The crossing in words, for the LIFTED hero only — `null` on a single-zone leg, the
+  // same gate `ZoneShiftPill` already applies to itself.
+  const transitClockShift = transitZones?.deltaMinutes
+    ? clockShiftSentence(transitZones.deltaMinutes)
+    : null;
+
   const conflicts = nowEvent ? hardConflicts(nowEvent, dayEvents) : [];
   // Concurrency on the board (ADR-0041): one loud hero + a quiet "ועוד N" for the
   // rest, unless several soft events run at once with no hard anchor to lead —
@@ -168,6 +208,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // would name a different "next" than the board it grew out of.
   const horizon = heroHorizon({
     events: dayEvents,
+    // Mid-flight the point's place is where you are GOING; the authority rule's origin is
+    // the airport you have already left (session 215).
+    midSpanEventId: transitEvent?.id,
     nowAll,
     nextAll: shownNext ? [shownNext] : nextAll.slice(0, 0),
     bookings,
@@ -203,11 +246,38 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const liftPoint = (p: HeroPoint, key: string): HeroLiftPoint => {
     const zones = eventZones(p.event, zoneCtx);
     const dest = p.placeId ? places.find((pl) => pl.id === p.placeId) : undefined;
+    // The one point you are INSIDE, if any. It takes the collapsed board's own mid-span
+    // grammar rather than the ordinary now-grammar, and it is the only point that can:
+    // a concurrent event running alongside a flight is still an ordinary point.
+    const isMidSpan = !!transitEvent && p.event.id === transitEvent.id;
     return {
       key,
       title: <EventTitle event={p.event} bookings={bookings} places={places} />,
       icon: p.event.icon,
-      kind: p.event.kind === EVENT_KIND.HARD ? 'hard' : 'soft',
+      // `קשיח` on a flight you are sitting inside is true and useless — the label slot
+      // says what you are doing instead (`כרגע · בדרך`).
+      kind: isMidSpan ? undefined : p.event.kind === EVENT_KIND.HARD ? 'hard' : 'soft',
+      ...(isMidSpan && transit
+        ? {
+            transit: {
+              label: transit.label,
+              endLabel: transitionLabel(transit.labelKey),
+              endTime: transit.endTime,
+              inPhrase: transitRemaining ? t.board.inPhrase(transitRemaining) : undefined,
+              code: transitCode,
+              // The zone crossing in words, plus the destination's clock right now. The
+              // pill stays on the collapsed board: same number, and this is the state you
+              // asked for, so it can afford the sentence the pill cannot say.
+              ...(transitClockShift ? { clockShift: transitClockShift } : {}),
+              // The SAME component the collapsed board renders, one level in — not a copy
+              // of its markup, and not the card's foot, which is what made it read as the
+              // next event's progress. A held span renders nothing here (the component
+              // answers null), so the hero shows its held line instead.
+              rail: <TransitProgress transit={transit} />,
+              held: transit.heldSince ? t.board.heldSince(transit.heldSince) : undefined,
+            },
+          }
+        : {}),
       until: p.event.endsAt ? formatTime(p.event.endsAt, zones?.endZone ?? tz) : undefined,
       shift: zones?.deltaMinutes,
       place: p.place ? shortPlaceLabel(p.place) : undefined,
@@ -225,7 +295,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       // the transit point drops the verbs — not a density question but a nonsense one.
       // Derived from the point rather than threaded as a flag, so a concurrent event during
       // a flight keeps its own.
-      ...(transitEvent && p.event.id === transitEvent.id
+      ...(isMidSpan
         ? {}
         : {
             onDone: () => verbs.done(p.event),
@@ -254,26 +324,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       ? countdownParts(nextDayDelta)
       : formatCountdown(minsToNext);
 
-  // In-transit hero derivations (flight in the air): time-to-landing progress
-  // and the code chip.
-  const transitEvent = inTransit ? hero.event : undefined;
-  const transitStart = transitEvent?.startsAt ? Date.parse(transitEvent.startsAt) : 0;
-  const transitEnd = transitEvent?.endsAt ? Date.parse(transitEvent.endsAt) : 0;
-  const transitProgress =
-    transitEvent && transitEnd > transitStart
-      ? Math.min(1, Math.max(0, (nowMs - transitStart) / (transitEnd - transitStart)))
-      : 0;
-  const transitBooking = transitEvent?.bookingId
-    ? bookings.find((b) => b.id === transitEvent.bookingId)
-    : undefined;
-  const transitCode = transitBooking?.confirmationCode
-    ? `${CODE_PREFIX}${transitBooking.confirmationCode}`
-    : undefined;
-  // Origin/destination anchor the in-transit progress ends (ADR-0059 §3): a
-  // flight reads as where it goes, not a name.
-  const transitRoute = transitEvent ? eventRoute(transitEvent, bookings, places) : null;
   const nowZones = zonesOf(nowEvent);
-  const transitZones = zonesOf(transitEvent);
   // The NEXT slot's instant is a start for an ordinary event but an **end** for a
   // check-out (deriveNow can't surface an end), so its zone follows that edge.
   const nextZones = zonesOf(shownNext);
@@ -373,9 +424,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           : 'free';
   const boardNowEvent = inTransit && transitEvent ? transitEvent : nowEvent;
   const transit: BoardTransit | undefined =
-    inTransit && transitEvent
+    inTransit && transitEvent && transitWords
       ? {
           labelKey: hero.labelKey ?? 'arrival',
+          liveWord: transitWords.live,
+          label: transitWords.label,
+          // The event's own glyph rides the rail. Nothing else in the app knows what
+          // mode this is, and the user may re-badge it.
+          mark: transitEvent.icon,
           arriving,
           endTime: transitEvent.endsAt
             ? formatTime(transitEvent.endsAt, transitZones?.endZone ?? tz)
@@ -387,8 +443,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             : undefined,
           fromPlace: transitRoute?.from ? shortPlaceLabel(transitRoute.from) : undefined,
           toPlace: transitRoute?.to ? shortPlaceLabel(transitRoute.to) : undefined,
-          showCountdown: countdown !== null,
+          remaining: transitRemaining ?? undefined,
           shift: transitZones?.deltaMinutes,
+          // A hire mid-hire is not a leg between two places: no rail, no travelling mark,
+          // and its end is a deadline (ADR-0163 §4's rule — the verb and the unit belong to
+          // the span's own mode — reaching the hero).
+          kind: transitWords.kind,
+          heldSince:
+            transitWords.kind === 'held' && transitEvent.startsAt
+              ? formatTime(transitEvent.startsAt, transitZones?.startZone ?? tz)
+              : undefined,
         }
       : undefined;
   const boardRow = (e: TripEvent): BoardRow => {
@@ -501,6 +565,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         <HeroLift
           origin={boardEl.current}
           clock={formatTime(now, tz)}
+          liveWord={inTransit ? transitWords?.live : undefined}
           now={horizon.now.map((p, i) => liftPoint(p, `now-${i}`))}
           split={groupSplit}
           next={horizon.next ? liftPoint(horizon.next, 'next') : undefined}
@@ -514,12 +579,12 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               : undefined
           }
           foot={
-            // The SAME component the collapsed board pins, not a copy of its markup — and
-            // in transit the flight's own progress replaces the day rail, which is
-            // ADR-0059 §2's rule reaching the lifted state (ADR-0160 §10).
-            inTransit && transit ? (
-              <TransitProgress transit={transit} />
-            ) : (
+            // The SAME component the collapsed board pins, not a copy of its markup. In
+            // transit the foot is EMPTY: the journey's own rail now sits inside the point
+            // it describes, and the day rail stays out (ADR-0059 §2 — the flight IS the
+            // day's current activity). Pinning the rail here is what made it read as the
+            // progress of `הבא בתור`, the block directly above it (session 215).
+            inTransit && transit ? undefined : (
               <DayRail
                 progress={progress}
                 startHour={hourLabel(DAY_WINDOW.START_HOUR)}
