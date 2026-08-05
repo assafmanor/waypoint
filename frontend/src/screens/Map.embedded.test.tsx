@@ -4220,6 +4220,41 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     });
   });
 
+  // **LEAVING THE MAP EXTREME BRINGS THE SELECTION WITH YOU** (owner, 2026-08-05, with a
+  // screenshot of the selected card opening below the fold). A selection made at `map` cannot
+  // scroll anything — there is no list on screen, which is why `select` returns early there — so
+  // switching to the list showed it at whatever offset it was left at.
+  describe('the selection survives the stop change', () => {
+    it('centres the selected row when the list comes back on screen', async () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('museum')!);
+      await nextFrame();
+      // Nothing to scroll at the map extreme: the tapped place is a card on the canvas.
+      scrollIntoView.mockClear();
+
+      fireEvent.click(toggle(t.map.view.list));
+      await nextFrame();
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
+      // The row it centred is the selected one, not whichever was nearest the top.
+      const target = scrollIntoView.mock.instances.at(-1) as HTMLElement;
+      expect(target.getAttribute('data-place')).toBe('museum');
+    });
+
+    it('scrolls nothing when there is no selection to bring along', async () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      scrollIntoView.mockClear();
+
+      fireEvent.click(toggle(t.map.view.list));
+      await nextFrame();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
   // ── Phase 8: the canvas's own chrome (ADR-0126) ───────────────────────────
   // The pane's own markup is `MapPane`'s test; what belongs here is the half the
   // SCREEN owns — the order, the two headers, the shortfall the list has to state, and

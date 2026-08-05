@@ -204,7 +204,16 @@ export class EnrichmentService {
     if (wanted.length === 0) {
       // Everything we hold is fresh, and everything we don't is inside its miss TTL. This
       // early return **is** the negative cache: no provider is called at all.
-      return this.toStored(existing!);
+      const held = this.toStored(existing!);
+      // **But it still tells whoever holds this place** (§17's live-run fix). A pass runs on a
+      // PICK as well as on a stale read, and a picked place very often has nothing to fetch —
+      // its enrichment was stored before it was added (the deciding surface asked for it), or
+      // another trip already holds it. Returning silently there means the row exists, the
+      // client has just created the `Place` that joins to it, and nothing delivers the join
+      // until the next snapshot: the owner's report was a place saved off the shelf that
+      // "doesn't retain the enrichment. Not even after waiting."
+      await this.notify(held.googlePlaceId, held.fields);
+      return held;
     }
 
     // Identity accumulates as it is settled, so a later provider matches on more than the

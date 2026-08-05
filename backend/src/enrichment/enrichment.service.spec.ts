@@ -20,6 +20,7 @@ import { DOC_LOCAL_STORAGE_DIR } from '../common/env';
 import { getObject } from '../common/storage';
 import { PrismaService } from '../prisma/prisma.service';
 import { SyncGateway } from '../sync/sync.gateway';
+import { toDeliveredEnrichment } from './enrichment.mapper';
 import { EnrichmentImagePipeline } from './image-pipeline';
 import type { EnrichmentFetcher } from './outbound-fetch';
 import type {
@@ -158,6 +159,9 @@ function summaryProvider(
   };
 }
 
+/** The seeded dev user every backend spec writes as (`documents.service.spec.ts`'s idiom). */
+const DEV_USER = 'u-assaf';
+
 describe('EnrichmentService', () => {
   const prisma = new PrismaService();
   const createdIds: string[] = [];
@@ -170,8 +174,27 @@ describe('EnrichmentService', () => {
   });
 
   /** A real gateway with no connected clients, so the enrichment nudge is a no-op — the
-   *  broadcast itself is covered in `sync.gateway.spec.ts`. */
+   *  broadcast itself is covered in `sync.gateway.spec.ts`. Spied on where the nudge itself is
+   *  the behaviour under test (§17). */
   const gateway = new SyncGateway(prisma);
+
+  /** A trip, for the one test that needs a real `Place` row: the enrichment store has no
+   *  `tripId` (§1), so the only way to observe the fan-out is to give it something to find. */
+  const createdTripIds: string[] = [];
+  async function newTrip(): Promise<string> {
+    const trip = await prisma.trip.create({
+      data: {
+        name: 'EnrichmentService test trip',
+        destination: 'Testland',
+        startDate: new Date('2027-02-01'),
+        endDate: new Date('2027-02-07'),
+        createdBy: DEV_USER,
+        updatedBy: DEV_USER,
+      },
+    });
+    createdTripIds.push(trip.id);
+    return trip.id;
+  }
 
   const serviceWith = (...providers: EnrichmentProvider[]) =>
     new EnrichmentService(
@@ -207,6 +230,8 @@ describe('EnrichmentService', () => {
 
   afterEach(async () => {
     await prisma.placeEnrichment.deleteMany({ where: { id: { in: createdIds.splice(0) } } });
+    // Places go with their trip by FK, so one delete covers both.
+    await prisma.trip.deleteMany({ where: { id: { in: createdTripIds.splice(0) } } });
     vi.unstubAllEnvs();
     await rm(storageDir, { recursive: true, force: true });
   });
@@ -322,6 +347,35 @@ describe('EnrichmentService', () => {
     // has nothing to want and must not hit the network.
     await service.enrich(place, new Date(NOW.getTime() + 3600_000));
     expect(vi.mocked(provider.fetch).mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  // **A pass with nothing to fetch still DELIVERS what we hold** (§17's live-run fix). The pick
+  // trigger runs a pass for every picked place, and a picked place very often has a fresh row
+  // already — stored before it was added (the deciding surface asked for it), or by another trip
+  // entirely. The early return used to be silent, so the client that had just created the `Place`
+  // learned nothing until its next snapshot: the owner's report was a place saved off the shelf
+  // that "doesn't retain the enrichment. Not even after waiting."
+  it('nudges the trips that hold a place even when it fetched nothing (§17)', async () => {
+    const service = serviceWith(identityProvider(), summaryProvider());
+    const place = nextPlace();
+    const stored = await track(await service.enrich(place, NOW));
+
+    // The pick: a `Place` now joins to that row, which is what makes the fan-out find it.
+    const tripId = await newTrip();
+    await prisma.place.create({
+      data: { tripId, name: place.name, googlePlaceId: place.googlePlaceId, updatedBy: DEV_USER },
+    });
+    const nudge = vi.spyOn(gateway, 'broadcastEnrichment');
+
+    // Nothing is wanted, so no provider is called — and the trip is told anyway.
+    await service.enrich(place, new Date(NOW.getTime() + 3600_000));
+
+    expect(nudge).toHaveBeenCalledTimes(1);
+    const [toTrip, , fields] = nudge.mock.calls[0];
+    expect(toTrip).toBe(tripId);
+    // What it carries is the client read model, not the stored payload.
+    expect(fields).toEqual(toDeliveredEnrichment(stored.fields));
+    nudge.mockRestore();
   });
 
   it('honours a per-field refusal while keeping the match (§11.2)', async () => {

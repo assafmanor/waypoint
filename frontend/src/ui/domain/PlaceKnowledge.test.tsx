@@ -93,6 +93,40 @@ describe('PlaceKnowledge', () => {
     expect(screen.queryByRole('button', { name: t.map.know.more })).toBeNull();
   });
 
+  // **The whole block opens the card** (owner, 2026-08-05): the clamped text is what you are
+  // trying to read, so tapping it is the natural way in — `עוד ›` stays as the named control.
+  it('opens the card when the summary itself is tapped, not only the way in', () => {
+    const onExpand = vi.fn();
+    const onRow = vi.fn();
+    const { container } = render(
+      <div onClick={onRow}>
+        <PlaceKnowledge
+          density={KNOWLEDGE_DENSITY.COLLAPSED}
+          summary={summary}
+          onExpand={onExpand}
+        />
+      </div>,
+    );
+    fireEvent.click(container.querySelector('.map-sum-t')!);
+    expect(onExpand).toHaveBeenCalledTimes(1);
+    // Not the row's own tap: that would re-select the place, re-frame the camera and scroll the
+    // list under you.
+    expect(onRow).not.toHaveBeenCalled();
+  });
+
+  it('is inert where there is nothing to open into', () => {
+    const onExpand = vi.fn();
+    // The deciding card has nothing to swap off, and the expanded card is already there.
+    for (const density of [KNOWLEDGE_DENSITY.DECIDING, KNOWLEDGE_DENSITY.EXPANDED] as const) {
+      const { container, unmount } = render(
+        <PlaceKnowledge density={density} summary={summary} onExpand={onExpand} />,
+      );
+      fireEvent.click(container.querySelector('.map-sum')!);
+      unmount();
+    }
+    expect(onExpand).not.toHaveBeenCalled();
+  });
+
   // A FRAGMENT, not a wrapper: each block is a child of the row's own layout — a wrapping flex
   // line in the list, a grid row in the bounded card — so a wrapper would take their place in it.
   it('renders its blocks as siblings of the row, not inside a box of its own', () => {
