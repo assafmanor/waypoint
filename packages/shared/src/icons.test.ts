@@ -14,9 +14,11 @@ import {
   hasSpanSchedule,
   eventDurationUnit,
   eventEndBoundary,
+  eventMidSpan,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
+  isJourney,
   isMultiDay,
   searchVibeIcons,
   typicalMinutesFor,
@@ -57,6 +59,8 @@ describe('CATEGORY_TIME_PROFILE', () => {
       bracketed: true,
       ambientWhenMultiDay: true,
       transitions: { startKey: 'departure', endKey: 'arrival' },
+      // What the middle of the span is, beside what its ends are called (session 215).
+      midSpan: { kind: 'journey', liveKey: 'transitLive', labelKey: 'transitLabel' },
       durationUnit: 'hours',
       typicalMinutes: 60,
     });
@@ -64,6 +68,7 @@ describe('CATEGORY_TIME_PROFILE', () => {
       bracketed: true,
       ambientWhenMultiDay: true,
       transitions: { startKey: 'checkIn', endKey: 'checkOut' },
+      midSpan: { kind: 'held', liveKey: 'stayLive', labelKey: 'stayLabel' },
       durationUnit: 'nights',
       typicalMinutes: 60,
     });
@@ -195,6 +200,59 @@ describe('eventTransitionKeys', () => {
   it('is undefined for a non-bracketed or unset category', () => {
     expect(eventTransitionKeys(ev({ category: 'food' }))).toBeUndefined();
     expect(eventTransitionKeys(ev({ category: undefined }))).toBeUndefined();
+  });
+});
+
+// The MIDDLE of a bracketed span (session 215). `bracketed` says the ends matter; this
+// says what the passive middle between them means — which the hero was answering with a
+// hard-coded `בטיסה` and a hard-coded plane, for every mode.
+describe('eventMidSpan / isJourney', () => {
+  it('is a journey with the generic word for anything that carries you', () => {
+    for (const icon of ['🚄', '🚆', '🚌', '⛴️', '🚡', undefined]) {
+      expect(eventMidSpan(ev({ category: 'transport', icon }))).toEqual({
+        kind: 'journey',
+        liveKey: 'transitLive',
+        labelKey: 'transitLabel',
+      });
+      expect(isJourney(ev({ category: 'transport', icon }))).toBe(true);
+    }
+  });
+
+  it('gives a flight its own live word, and only the live word', () => {
+    // The mode disagrees about what it is CALLED, not about what it is: the slot label
+    // stays the category's, which is why only one key is refined.
+    expect(eventMidSpan(ev({ category: 'transport', icon: '✈️' }))).toEqual({
+      kind: 'journey',
+      liveKey: 'flightLive',
+      labelKey: 'transitLabel',
+    });
+  });
+
+  // The owner's rule, and the whole reason this field exists: *"this of course applies to
+  // other kinds of transit (train, bus) but not rental cars that are different"*. A hire
+  // reaches the same clock-is-inside-the-span state, and today read `בטיסה` with a plane
+  // crossing a progress bar toward an "arrival" that is really a return deadline.
+  it('a car hire is HELD, not a journey — so it earns no rail and no travelling mark', () => {
+    const hire = ev({ category: 'transport', icon: '🚗' });
+    expect(eventMidSpan(hire)).toEqual({
+      kind: 'held',
+      liveKey: 'carHoldLive',
+      labelKey: 'carHoldLabel',
+    });
+    expect(isJourney(hire)).toBe(false);
+    // Its category is untouched: a bus beside it is still a journey.
+    expect(isJourney(ev({ category: 'transport', icon: '🚌' }))).toBe(true);
+  });
+
+  it('a same-day stay is held too (a multi-day one is ambient and never reaches this)', () => {
+    expect(eventMidSpan(ev({ category: 'lodging', icon: '🏨' }))?.kind).toBe('held');
+    expect(isJourney(ev({ category: 'lodging', icon: '🏨' }))).toBe(false);
+  });
+
+  it('has no middle at all for an un-bracketed category', () => {
+    expect(eventMidSpan(ev({ category: 'food' }))).toBeUndefined();
+    expect(eventMidSpan(ev({ category: undefined }))).toBeUndefined();
+    expect(isJourney(ev({ category: 'sightseeing' }))).toBe(false);
   });
 });
 

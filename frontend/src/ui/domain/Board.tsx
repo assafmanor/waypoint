@@ -51,6 +51,17 @@ export interface BoardRow {
 export interface BoardTransit {
   /** Transition label key (departure/arrival/…) resolved via transitionLabel. */
   labelKey: string;
+  /** The live badge and the slot label, **resolved per mode** by the screen from
+   *  `eventMidSpanWords` (`בטיסה`/`בדרך`, `כרגע · בדרך`). They were `t.board`
+   *  literals here, which is how a train in motion read as a flight: this state fires
+   *  for any bracketed transport between its ends, not only for aviation. */
+  liveWord: string;
+  label: string;
+  /** The travelling mark on the rail — **the event's own glyph**, not a mark this
+   *  component picks. It was a hard-coded `Icon name="flight"`, so a train crossed its
+   *  rail behind a plane; and there is no `train`/`bus` icon to reach for, which is the
+   *  second reason the answer is the glyph the user can already change. */
+  mark?: ReactNode;
   /** Emphasize the label (an arrival is imminent). */
   arriving?: boolean;
   /** Landing time (pre-formatted) — in the **destination's** zone (ADR-0107 §3). */
@@ -62,8 +73,13 @@ export interface BoardTransit {
   startTime?: string;
   fromPlace?: string;
   toPlace?: string;
-  /** Show the middle "עד HH:MM" countdown-to-landing. */
-  showCountdown?: boolean;
+  /** How long is left, pre-phrased on the shared ladder (`1:39 שע׳`) → the rail's
+   *  middle slot reads `נותרו 1:39 שע׳`.
+   *
+   *  That slot used to print `עד HH:MM` — the arrival time the **end** label prints two
+   *  inches away, on the same 10.5px line. The middle is the only place on the rail that
+   *  can say something its two ends cannot, so it says what is left. */
+  remaining?: string;
   /** Destination clock minus origin clock — the pill beside the landing time, so
    *  the two ends can't misread as a 3h45 flight when they're 6h45 apart. */
   shift?: ZoneShift;
@@ -176,7 +192,7 @@ export function TransitProgress({ transit }: { transit: BoardTransit }) {
       <div className="tp-track">
         <div className="tp-fill" style={{ width: `${transit.progress * 100}%` }} />
         <div className="tp-plane" style={{ insetInlineStart: `${transit.progress * 100}%` }}>
-          <Icon name="flight" />
+          {transit.mark}
         </div>
       </div>
       <div className="tp-ends">
@@ -186,11 +202,11 @@ export function TransitProgress({ transit }: { transit: BoardTransit }) {
           </span>
           {transit.fromPlace && <span className="pl">{transit.fromPlace}</span>}
         </span>
-        {transit.showCountdown && (
+        {transit.remaining && (
           <span className="tp-left">
-            {t.board.until}{' '}
+            {t.board.remaining}{' '}
             <span className="mono" dir="auto">
-              {transit.endTime}
+              {transit.remaining}
             </span>
           </span>
         )}
@@ -257,7 +273,7 @@ export function Board(props: BoardProps) {
       <div className="wp-board-top">
         <div className={'wp-board-live' + (inTransit ? ' loc' : '')}>
           <span className="blip" />
-          {inTransit ? t.board.inTransitLive : t.common.now}
+          {inTransit && transit ? transit.liveWord : t.common.now}
         </div>
         <div className="wp-board-clock" dir="auto">
           {clock}
@@ -266,7 +282,7 @@ export function Board(props: BoardProps) {
 
       {inTransit && transit ? (
         <>
-          <div className="wp-board-now-label loc">{t.board.inTransitLabel}</div>
+          <div className="wp-board-now-label loc">{transit.label}</div>
           <div className="wp-board-now-title">
             {nowIcon && <span className="wp-board-ic">{nowIcon}</span>}
             {nowTitle}

@@ -73,10 +73,13 @@ describe('Board', () => {
         nowTitle={<span>טיסה</span>}
         transit={{
           labelKey: 'arrival',
+          liveWord: t.board.midSpan.flightLive,
+          label: t.board.midSpan.transitLabel,
+          mark: '✈️',
           endTime: '18:00',
           progress: 0.5,
           startTime: '14:00',
-          showCountdown: true,
+          remaining: '3:30 שע׳',
         }}
         next={{ title: <span>מלון</span> }}
       />,
@@ -84,11 +87,48 @@ describe('Board', () => {
     // Teal identity on the live pill.
     expect(container.querySelector('.wp-board.transit')).toBeTruthy();
     expect(container.querySelector('.wp-board-live.loc')).toBeTruthy();
-    expect(screen.getByText(t.board.inTransitLive)).toBeTruthy();
+    expect(screen.getByText(t.board.midSpan.flightLive)).toBeTruthy();
     // The flight IS the activity → no next-row / day rail.
     expect(container.querySelector('.wp-board-transit-prog')).toBeTruthy();
     expect(container.querySelector('.wp-board-next-row')).toBeNull();
     expect(container.querySelector('.wp-board-progress')).toBeNull();
+    // **The rail's middle slot says what is LEFT, not the arrival time its own end
+    // label already prints.** Both were `22:15` on one 10.5px line before session 215.
+    const middle = container.querySelector('.tp-left')!;
+    expect(middle.textContent).toContain(t.board.remaining);
+    expect(middle.textContent).toContain('3:30 שע׳');
+    expect(middle.textContent).not.toContain('18:00');
+    // The travelling mark is the event's own glyph — a train must not cross its rail
+    // behind a plane, and the app has no train icon to reach for.
+    expect(container.querySelector('.tp-plane')?.textContent).toBe('✈️');
+  });
+
+  // The words belong to the MODE, not to this surface (session 215). The board used to
+  // print the literal `בטיסה` for anything mid-span, so a train read as a flight.
+  it('in-transit: the live word and the label are whatever the mode handed it', () => {
+    const { container } = render(
+      <Board
+        variant="in-transit"
+        clock="13:50"
+        nowIcon="🚆"
+        nowTitle={<span>רכבת</span>}
+        transit={{
+          labelKey: 'arrival',
+          liveWord: t.board.midSpan.transitLive,
+          label: t.board.midSpan.transitLabel,
+          mark: '🚆',
+          endTime: '14:12',
+          progress: 0.42,
+          startTime: '13:32',
+          remaining: '28 דק׳',
+        }}
+      />,
+    );
+    expect(screen.getByText(t.board.midSpan.transitLive)).toBeTruthy();
+    expect(screen.queryByText(t.board.midSpan.flightLive)).toBeNull();
+    // `הגעה`, not `נחיתה` — the ends already resolved per mode before this change.
+    expect(screen.getByText(t.glance.transition.arrival)).toBeTruthy();
+    expect(container.querySelector('.tp-plane')?.textContent).toBe('🚆');
   });
 
   it('in-transit: the shift pill sits at the destination end, where both times are read', () => {
@@ -101,6 +141,8 @@ describe('Board', () => {
         nowTitle={<span>טיסה</span>}
         transit={{
           labelKey: 'arrival',
+          liveWord: t.board.midSpan.flightLive,
+          label: t.board.midSpan.transitLabel,
           endTime: '11:00',
           progress: 0.5,
           startTime: '07:15',
@@ -257,7 +299,12 @@ describe('Board', () => {
         variant="in-transit"
         clock="14:30"
         nowTitle={<span>טיסה</span>}
-        transit={{ labelKey: 'departure', progress: 0.5 }}
+        transit={{
+          labelKey: 'departure',
+          liveWord: t.board.midSpan.flightLive,
+          label: t.board.midSpan.transitLabel,
+          progress: 0.5,
+        }}
       />,
     );
     expect(transit.container.querySelector('div.wp-board.transit')).toBeTruthy();

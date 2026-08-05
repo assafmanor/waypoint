@@ -40,7 +40,8 @@ import {
   nextDestination,
 } from '../lib/places';
 import { shortPlaceLabel } from '../lib/place-label';
-import { transitionLabel } from '../lib/transitions';
+import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
+import { formatDuration } from '../lib/duration';
 import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import {
   countdownParts,
@@ -272,6 +273,20 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Origin/destination anchor the in-transit progress ends (ADR-0059 §3): a
   // flight reads as where it goes, not a name.
   const transitRoute = transitEvent ? eventRoute(transitEvent, bookings, places) : null;
+  // What this span's middle is called, by mode (`בטיסה` for a flight, `בדרך` for
+  // anything else that carries you) and whether it is a journey at all — one
+  // resolution shared by the collapsed board and the lifted hero, off the same
+  // profile that already names the two ends.
+  const transitWords = transitEvent ? eventMidSpanWords(transitEvent) : undefined;
+  // How long is left, on the app's one elapsed ladder (ADR-0114) — the answer to
+  // "when do we land", which no surface carried until now. Absent once the end has
+  // passed, so a rail never says `נותרו 0`.
+  // `hours` and not `auto`: a journey's length is read in hours however long it runs
+  // (ADR-0084), so a 30h ferry says `30 שעות` rather than stepping up to a day.
+  const transitRemaining =
+    transitEvent?.endsAt && transitEnd > nowMs
+      ? formatDuration(minutesUntil(transitEvent.endsAt, now), 'hours')
+      : null;
   const nowZones = zonesOf(nowEvent);
   const transitZones = zonesOf(transitEvent);
   // The NEXT slot's instant is a start for an ordinary event but an **end** for a
@@ -373,9 +388,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           : 'free';
   const boardNowEvent = inTransit && transitEvent ? transitEvent : nowEvent;
   const transit: BoardTransit | undefined =
-    inTransit && transitEvent
+    inTransit && transitEvent && transitWords
       ? {
           labelKey: hero.labelKey ?? 'arrival',
+          liveWord: transitWords.live,
+          label: transitWords.label,
+          // The event's own glyph rides the rail. Nothing else in the app knows what
+          // mode this is, and the user may re-badge it.
+          mark: transitEvent.icon,
           arriving,
           endTime: transitEvent.endsAt
             ? formatTime(transitEvent.endsAt, transitZones?.endZone ?? tz)
@@ -387,7 +407,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
             : undefined,
           fromPlace: transitRoute?.from ? shortPlaceLabel(transitRoute.from) : undefined,
           toPlace: transitRoute?.to ? shortPlaceLabel(transitRoute.to) : undefined,
-          showCountdown: countdown !== null,
+          remaining: transitRemaining ?? undefined,
           shift: transitZones?.deltaMinutes,
         }
       : undefined;
