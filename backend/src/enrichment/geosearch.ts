@@ -29,10 +29,16 @@ const WIKIS = ['en', 'he'] as const;
  *  near miss, it is a different place. */
 const GEOSEARCH_RADIUS_M = 500;
 
-/** Candidates per wiki. Same reasoning as the name search's limit: enough that the right answer
- *  is in the set when the nearest article is the district rather than the shop, few enough that
- *  the follow-up entity read stays **one** `wbgetentities` call. */
-const GEOSEARCH_LIMIT = 5;
+/** Candidates per wiki.
+ *
+ *  **Twenty, not five, and the reason is central London** (owner report 2026-08-05). GeoData
+ *  returns the N *nearest* articles, and around a pin like Piccadilly Circus there are dozens
+ *  within 500m — theatres, statues, streets, the Underground station whose own coordinate sits
+ *  exactly on the square's. At five, **the subject itself was outside the set** and the station
+ *  won by default. A limit tuned for a quiet suburb silently drops the answer in a dense city.
+ *
+ *  Still one follow-up call: `wbgetentities` takes up to 50 ids, and scoring is arithmetic. */
+const GEOSEARCH_LIMIT = 20;
 
 interface GeoSearchResponse {
   query?: {

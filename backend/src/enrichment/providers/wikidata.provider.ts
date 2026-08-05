@@ -26,6 +26,7 @@ import type {
   ProviderMatch,
 } from '../enrichment.provider';
 import {
+  coordinatesAreAmbiguous,
   geoProximityConfidence,
   granularityRefusals,
   isMatchConfident,
@@ -191,7 +192,16 @@ export class WikidataProvider implements EnrichmentProvider {
     // costs two requests in total however many articles the point had.
     const entities = await this.entities(nearby.map((item) => item.qid));
 
-    let best: { entity: WbEntity; confidence: number; nameSimilarity: number } | null = null;
+    let best: {
+      entity: WbEntity;
+      confidence: number;
+      nameSimilarity: number;
+      corroborated: boolean;
+    } | null = null;
+    // How far away each candidate we were willing to score is — the input to the ambiguity
+    // check below, and deliberately measured AFTER the broader-subject skip: a district we
+    // already refused is not one of the things competing to be this place.
+    const scoreable: number[] = [];
     for (const entity of entities) {
       const labels = labelsOf(entity);
       const point = coordinateOf(entity);
@@ -211,15 +221,21 @@ export class WikidataProvider implements EnrichmentProvider {
         ? bestNameMatch(identity, labels, point)
         : geoProximityConfidence(identity, { name: labels[0] ?? '', ...point });
       if (!scored) continue;
+      if (scored.distanceMeters != null) scoreable.push(scored.distanceMeters);
       if (!best || scored.confidence > best.confidence) {
         best = {
           entity,
           confidence: scored.confidence,
           nameSimilarity: scored.nameSimilarity,
+          corroborated,
         };
       }
     }
     if (!best || !isMatchConfident(best.confidence)) return null;
+    // **Ambiguity refuses.** Only for a winner nothing readable corroborated: distance cannot
+    // separate two subjects that share a coordinate, so "the nearest" is a coin toss dressed as
+    // a match. With a name that agrees, several candidates at the pin are not ambiguous at all.
+    if (!best.corroborated && coordinatesAreAmbiguous(scoreable)) return null;
 
     const found = nearby.find((item) => item.qid === best!.entity.id);
     return this.toMatch(best.entity, MATCH_METHOD.GEOSEARCH, best.confidence, {

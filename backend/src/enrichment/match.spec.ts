@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ENRICHMENT_FIELD, MATCH_CONFIDENCE_THRESHOLD, MATCH_REFUSAL } from '@waypoint/shared';
 import {
+  coordinatesAreAmbiguous,
   geoProximityConfidence,
   granularityRefusals,
   isMatchConfident,
@@ -147,6 +148,56 @@ describe('nameProximityConfidence', () => {
     expect(result.nameSimilarity).toBeGreaterThan(0.8);
     expect(result.nameSimilarity).toBeLessThan(1);
     expect(result.distanceMeters).toBeDefined();
+  });
+});
+
+describe('the name must carry the match, proximity may only corroborate (§15)', () => {
+  const CIRCUS = { name: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 };
+  const at = (name: string) => nameProximityConfidence(CIRCUS, { name, lat: 51.51, lng: -0.1348 });
+
+  // THE BUG, in its arithmetic: 0.707 on the name, and proximity — free, because the station's
+  // article coordinate IS the square's — carried it to 0.810.
+  it('refuses a name that is ours plus a qualifying noun, at zero distance', () => {
+    const scored = at('Piccadilly Circus tube station');
+    expect(scored.nameSimilarity).toBeCloseTo(0.707, 2);
+    expect(scored.confidence).toBe(0);
+    // The distance is still recorded: the refusal is about the name, and the evidence should
+    // say how near the thing we refused was.
+    expect(scored.distanceMeters).toBeLessThan(5);
+  });
+
+  it('keeps the measured case the floor was calibrated against', () => {
+    // `Meiji Jingū / Meiji Shrine` → `Meiji Shrine` is 0.816, and ADR-0166 §11 wants it.
+    const meiji = nameProximityConfidence(
+      { name: 'Meiji Jingū / Meiji Shrine', lat: 35.6764, lng: 139.6993 },
+      { name: 'Meiji Shrine', lat: 35.6764, lng: 139.6993 },
+    );
+    expect(meiji.nameSimilarity).toBeGreaterThan(0.8);
+    expect(isMatchConfident(meiji.confidence)).toBe(true);
+    // And an exact name is untouched.
+    expect(at('Piccadilly Circus').confidence).toBe(0.9);
+  });
+
+  it('applies to a name-only match too, so a coordless place gets no easier ride', () => {
+    const scored = nameProximityConfidence(
+      { name: 'Piccadilly Circus' },
+      { name: 'Piccadilly Circus tube station' },
+    );
+    expect(scored.confidence).toBe(0);
+  });
+});
+
+describe('coordinatesAreAmbiguous — two things at one pin (§15)', () => {
+  it('is true when more than one candidate is inside the trust radius', () => {
+    expect(coordinatesAreAmbiguous([0, 3])).toBe(true);
+    expect(coordinatesAreAmbiguous([12, 80, 140])).toBe(true);
+  });
+
+  it('is false for one candidate, however many others are further out', () => {
+    // The case the coordinate route exists for: one thing at the pin, the rest are elsewhere.
+    expect(coordinatesAreAmbiguous([4])).toBe(false);
+    expect(coordinatesAreAmbiguous([4, 220, 480])).toBe(false);
+    expect(coordinatesAreAmbiguous([])).toBe(false);
   });
 });
 

@@ -18,6 +18,7 @@ import {
   haversineMeters,
   MATCH_CONFIDENCE_THRESHOLD,
   MATCH_METHOD_CONFIDENCE,
+  MATCH_MIN_NAME_SIMILARITY,
   MATCH_REFUSAL,
   normalizeSearchTerm,
   type EnrichmentField,
@@ -143,12 +144,23 @@ export function nameProximityConfidence(
 
   if (!from || !to) {
     return {
-      confidence: clampToFuzzyCeiling(similarity * NO_PROXIMITY_FACTOR),
+      confidence:
+        similarity < MATCH_MIN_NAME_SIMILARITY
+          ? 0
+          : clampToFuzzyCeiling(similarity * NO_PROXIMITY_FACTOR),
       nameSimilarity: similarity,
     };
   }
 
   const distanceMeters = haversineMeters(from, to);
+  // **The name has to carry it.** Proximity is 35% of the blend and for anything AT the place
+  // that 35% is free — a station inside a square shares the pin — so a candidate whose name is
+  // ours plus a qualifying noun could clear the threshold on evidence that never distinguished
+  // the two. Checked here rather than folded into the weights so the refusal is legible, and
+  // AFTER the distance so the evidence still records how far away it was.
+  if (similarity < MATCH_MIN_NAME_SIMILARITY) {
+    return { confidence: 0, nameSimilarity: similarity, distanceMeters };
+  }
   // **Coordinates that contradict veto the name; coordinates we don't have merely fail to
   // corroborate it.** Absence of evidence is not evidence, so a coordless Place-lite can
   // still match on a strong name above — but a place with the exact same name 9,000 km away
@@ -254,6 +266,21 @@ export function geoProximityConfidence(
     nameSimilarity: 0,
     distanceMeters,
   };
+}
+
+/**
+ * **More than one thing at the pin, and nothing readable to tell them apart** (owner report,
+ * 2026-08-05). When the name cannot arbitrate — disjoint scripts — distance is the only
+ * evidence, and distance cannot separate two subjects that share a coordinate: the Underground
+ * station's article sits exactly on the square's. Picking the nearest is then a coin toss
+ * dressed as a match, and §5.5's rule applies without qualification: no enrichment beats wrong
+ * enrichment.
+ *
+ * Only bites the uncorroborated path. With a readable name, several candidates at the pin are
+ * not ambiguous at all — the one whose name agrees wins, which is exactly what should happen.
+ */
+export function coordinatesAreAmbiguous(distancesMeters: readonly number[]): boolean {
+  return distancesMeters.filter((d) => d <= GEO_TRUST_METERS).length > 1;
 }
 
 /** Distance as the whole evidence: full inside `GEO_TRUST_METERS`, decaying to nothing at

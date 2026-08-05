@@ -23,7 +23,9 @@ describe('nearbyWikidataItems (ADR-0166 §15)', () => {
     expect(url).toContain('generator=geosearch');
     expect(url).toContain('ggscoord=35.6656%7C139.7167');
     expect(url).toContain('ggsradius=500');
-    expect(url).toContain('ggslimit=5');
+    // Twenty: at five the subject itself fell outside the set in central London and the
+    // Underground station under the square won by default.
+    expect(url).toContain('ggslimit=20');
     // The QID and the article's own coordinate in the SAME call — as a list generator this
     // would be two calls on a route that is already a fallback.
     expect(url).toContain('ppprop=wikibase_item');

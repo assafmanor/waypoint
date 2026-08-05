@@ -211,6 +211,23 @@ export const MATCH_METHOD_CONFIDENCE = {
  *  still clears, and a name that matches poorly does not — see `nameProximityConfidence`. */
 export const MATCH_CONFIDENCE_THRESHOLD = 0.6;
 
+/** **The name must CARRY a fuzzy match; proximity may corroborate it and never carry it**
+ *  (ADR-0166 §15, owner report 2026-08-05: Piccadilly Circus matched the Underground
+ *  station under it).
+ *
+ *  The blend gives proximity 35% of the score, and for a facility **at** the place that
+ *  35% is free and discriminates nothing: a station inside a square, a shop inside a mall,
+ *  a statue in a plaza all share the pin. So `Piccadilly Circus` against `Piccadilly Circus
+ *  tube station` scored 0.707 on the name and 0.810 blended — over the threshold on
+ *  evidence that was never about which of the two you meant.
+ *
+ *  A candidate whose name is ours **plus a qualifying noun** is a different subject, and
+ *  this floor is where that is refused. Calibrated against the measured cases rather than
+ *  chosen: `Meiji Jingū / Meiji Shrine` → `Meiji Shrine` is 0.816 and must survive; the
+ *  tube station is 0.707 and must not; `Tsukiji` → `Tsukiji Outer Market` is 0.577, which
+ *  §11's own note calls a weak match. */
+export const MATCH_MIN_NAME_SIMILARITY = 0.8;
+
 /** **The match is refusable for two different reasons, and they have different scopes**
  *  (ADR-0166 §5.5 + §11.2):
  *
