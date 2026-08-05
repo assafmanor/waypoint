@@ -1,10 +1,26 @@
-// Document viewer (ADR-0015/0034/0052). The /content route is auth-guarded, so the
-// blob is fetched via apiFetch and shown as an object URL (revoked on close).
-// Mobile-first (ADR-0017): only an image the browser can actually decode is shown
-// inline; a PDF, an undecodable image (e.g. iPhone HEIC), or anything else hands
-// off to "open in a new tab" / "download" — never a blank embed.
-// ADR-0062: zoom is disabled app-wide, and this image is the sole exception —
-// pinch + pan + double-tap reset are hand-rolled here (no zoom dependency).
+// **The app's one full-screen media viewer** (ADR-0015/0034/0052; generalized by ADR-0167 §10.2).
+//
+// It began as the document viewer and is now source-agnostic, because ADR-0167 §10.2 chose it
+// over building a hero into the place card: "the full picture is the app's existing zoomable
+// image preview … and adds no surface". What it brings, and what a second viewer would have had
+// to re-earn: the portal, the ONE close that back / Escape / the gesture / the backdrop all run
+// through (ADR-0103 §2), the focus trap, the grow-out-of-the-tapped-row arrival, and ADR-0062's
+// **sole** zoom exception — pinch + pan + double-tap reset, hand-rolled, no dependency.
+//
+// Two sources, and they differ only in how the bytes are reached:
+//
+//   - a **document**, whose `/content` route is auth-guarded, so the blob comes through
+//     `apiFetch` and is shown as an object URL (revoked on close);
+//   - an **enrichment photo**, whose URL is public and immutable (ADR-0166 §7), so there is
+//     nothing to fetch, nothing to revoke and no version to key on.
+//
+// Mobile-first (ADR-0017): only an image the browser can actually decode is shown inline; a PDF,
+// an undecodable image (an iPhone HEIC), or anything else hands off to "open in a new tab" /
+// "download" — never a blank embed.
+//
+// The `doc-viewer-*` class names are deliberately unchanged: they are the VIEWER's CSS
+// (screens.css), the surface both sources borrow, and renaming them would be a large diff
+// through a shipped stylesheet for no reader's benefit.
 import {
   useCallback,
   useEffect,
@@ -12,6 +28,7 @@ import {
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { isInlineOpenableDocumentMimeType, type DocumentSummary } from '@waypoint/shared';
@@ -235,14 +252,32 @@ function useImageZoom() {
   };
 }
 
-export function DocumentViewer({
-  tripId,
-  doc,
+/** **Where the bytes come from**, which is the only thing the two callers disagree about.
+ *
+ *  `blob` is auth-guarded content addressed by id and versioned by `updatedAt` (ADR-0055's
+ *  client blob cache); `url` is already-public, already-immutable bytes, so it needs no fetch,
+ *  no object URL and no cache key — the URL itself is the version (ADR-0166 §7). */
+export type ViewerSource =
+  { kind: 'blob'; tripId: string; docId: string; updatedAt: string } | { kind: 'url'; url: string };
+
+export function MediaViewer({
+  title,
+  mimeType,
+  source,
+  caption,
   onClose,
   originY,
 }: {
-  tripId: string;
-  doc: DocumentSummary;
+  /** Names the dialog, labels the image, and is the download filename. */
+  title: string;
+  /** What to expect before any bytes exist — it decides inline-image vs hand-off, and lets
+   *  the frame be reserved while the spinner is still running. */
+  mimeType: string;
+  source: ViewerSource;
+  /** Optional line under the title. **A licensing slot, not a decoration**: a CC BY-SA
+   *  photograph shown full screen is its most prominent display, and the credit is otherwise
+   *  one step behind on the card you came from (ADR-0167 §4). A document passes nothing. */
+  caption?: ReactNode;
   onClose: () => void;
   /** The tapped row's centre, as an offset from the viewport's (`overlayOriginOffset`),
    *  so the card grows out of what you pressed. Absent for a note deep link (`?doc=`),
@@ -266,12 +301,27 @@ export function DocumentViewer({
   const [imageBroken, setImageBroken] = useState(false);
   const { imgRef, reset, handlers } = useImageZoom();
 
+  // Pulled out of `source` as primitives so the effect's deps are values rather than an object
+  // rebuilt on every render — the same reason `Map.tsx` memoizes what it hands `MapPane`.
+  const blobTripId = source.kind === 'blob' ? source.tripId : null;
+  const blobDocId = source.kind === 'blob' ? source.docId : null;
+  const blobVersion = source.kind === 'blob' ? source.updatedAt : null;
+  const directUrl = source.kind === 'url' ? source.url : null;
+
   useEffect(() => {
+    // **A public immutable URL is already the answer.** No fetch, no object URL, and nothing to
+    // revoke — so this path cannot leak and cannot serve a stale version (ADR-0166 §7: a
+    // replaced image is a NEW url, and the old one simply 404s into the hand-off below).
+    if (directUrl) {
+      setUrl(directUrl);
+      return;
+    }
+    if (!blobTripId || !blobDocId || !blobVersion) return;
     let objectUrl: string | null = null;
     let cancelled = false;
-    // `doc.updatedAt` versions the client blob cache (ADR-0055): a replaced file bumps it,
+    // `updatedAt` versions the client blob cache (ADR-0055): a replaced file bumps it,
     // so a stale cached blob is never served for the same docId.
-    fetchDocumentContent(tripId, doc.id, doc.updatedAt).then(
+    fetchDocumentContent(blobTripId, blobDocId, blobVersion).then(
       async (blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -280,7 +330,7 @@ export function DocumentViewer({
         // fixes that. It also replaces the round-trip through a rendered-then-broken
         // `<img>`: a HEIC that cannot decode goes straight to the hand-off (ADR-0052
         // §1) instead of painting an empty box first.
-        if (doc.mimeType.startsWith('image/')) {
+        if (mimeType.startsWith('image/')) {
           const probe = new Image();
           probe.src = objectUrl;
           try {
@@ -299,16 +349,16 @@ export function DocumentViewer({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [tripId, doc.id, doc.updatedAt, doc.mimeType]);
+  }, [blobTripId, blobDocId, blobVersion, directUrl, mimeType]);
 
   // A newly loaded image starts at fit-to-frame, never carrying the prior zoom.
   useEffect(() => reset(), [url, reset]);
 
-  const showInlineImage = doc.mimeType.startsWith('image/') && !imageBroken;
+  const showInlineImage = mimeType.startsWith('image/') && !imageBroken;
   // Open-in-new-tab runs the blob: URL in the app origin, so only offer it for
   // types the browser renders without executing script — PDF (B-03). Everything
   // else is download-only.
-  const canOpenInTab = isInlineOpenableDocumentMimeType(doc.mimeType);
+  const canOpenInTab = isInlineOpenableDocumentMimeType(mimeType);
 
   return createPortal(
     <div className={closing ? 'doc-viewer is-closing' : 'doc-viewer'} onClick={beginClose}>
@@ -318,12 +368,12 @@ export function DocumentViewer({
         className="doc-viewer-card"
         role="dialog"
         aria-modal="true"
-        aria-label={doc.title}
+        aria-label={title}
         onClick={(e) => e.stopPropagation()}
         style={originStyle(originY)}
       >
         <div className="doc-viewer-head">
-          <span className="doc-viewer-title">{doc.title}</span>
+          <span className="doc-viewer-title">{title}</span>
           <button
             className="doc-viewer-close"
             onClick={beginClose}
@@ -332,6 +382,7 @@ export function DocumentViewer({
             <Icon name="close" />
           </button>
         </div>
+        {caption && <div className="doc-viewer-caption">{caption}</div>}
         {/* `data-expect` is the mime type, read before any bytes exist — which is what
             lets the frame be reserved while the spinner is still running (screens.css).
             `is-opening` runs the mount layer once the page itself has landed. */}
@@ -351,7 +402,7 @@ export function DocumentViewer({
               ref={imgRef}
               className="doc-viewer-img is-fresh"
               src={url}
-              alt={doc.title}
+              alt={title}
               onError={() => setImageBroken(true)}
               {...handlers}
             />
@@ -367,7 +418,7 @@ export function DocumentViewer({
                     {t.docs.viewer.open}
                   </a>
                 )}
-                <a className="dv-download" href={url} download={doc.title}>
+                <a className="dv-download" href={url} download={title}>
                   {t.docs.viewer.download}
                 </a>
               </div>
@@ -377,5 +428,35 @@ export function DocumentViewer({
       </div>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * **The document entry point** — the shape every existing caller already passes.
+ *
+ * A named adapter rather than a second component: the same idiom `mapsPredictionUrl` uses over
+ * the private search builder. It keeps `DocumentsSection` and the `?doc=` deep link byte-identical
+ * while the viewer beneath it stopped being document-shaped, which is what ADR-0096 asks of a
+ * generalization — extend the one mechanism, do not grow a parallel copy beside it.
+ */
+export function DocumentViewer({
+  tripId,
+  doc,
+  onClose,
+  originY,
+}: {
+  tripId: string;
+  doc: DocumentSummary;
+  onClose: () => void;
+  originY?: number | null;
+}) {
+  return (
+    <MediaViewer
+      title={doc.title}
+      mimeType={doc.mimeType}
+      source={{ kind: 'blob', tripId, docId: doc.id, updatedAt: doc.updatedAt }}
+      onClose={onClose}
+      originY={originY}
+    />
   );
 }

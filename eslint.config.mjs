@@ -288,12 +288,14 @@ export default tseslint.config(
     // without either overriding the other for these files.
     //
     // Allowlist: `Modal` (the one primitive that owns the portal) and
-    // `DocumentViewer` (a full-screen viewer that legitimately needs its own
-    // portal but is already back-aware — it calls `useOverlay` directly). A new
-    // portal file failing this must EITHER build on `Modal` (preferred) or, if it
-    // truly needs a raw portal, call `useOverlay()` and add itself here.
+    // `MediaViewer` (a full-screen viewer that legitimately needs its own portal
+    // but is already back-aware — it calls `useOverlay` directly; it was
+    // `DocumentViewer.tsx` until ADR-0167 §10.2 made it source-agnostic, and the
+    // rename tripping this rule is the guard working). A new portal file failing
+    // this must EITHER build on `Modal` (preferred) or, if it truly needs a raw
+    // portal, call `useOverlay()` and add itself here.
     files: ['frontend/src/**/*.{ts,tsx}'],
-    ignores: ['frontend/src/ui/primitives/Modal.tsx', 'frontend/src/ui/DocumentViewer.tsx'],
+    ignores: ['frontend/src/ui/primitives/Modal.tsx', 'frontend/src/ui/MediaViewer.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',
