@@ -132,7 +132,9 @@ describe('exit animations', () => {
 
   // The guard above is only worth having if it can still fail, and an indirection is where
   // it would quietly stop being able to: a `var()` it cannot resolve looks exactly like a
-  // clean sheet. So this asserts the resolution itself on the one rule that uses it.
+  // clean sheet. So this asserts the resolution itself on the one rule that uses it. That the
+  // beat really RUNS on both surfaces is `e2e/hero-lift.spec.ts`'s job — a real engine is the
+  // only thing that can say so.
   it('resolves a keyframe reached through a custom property', () => {
     const beats = FILES.find((f) => f.name === path.join('styles', 'beats.css'));
     expect(beats, 'the shared beat stylesheet moved — update this check with it').toBeTruthy();

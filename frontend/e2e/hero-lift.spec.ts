@@ -350,10 +350,47 @@ test.describe('the lifted hero (ADR-0160)', () => {
         className: el.className,
       };
     });
-    expect(beat.names).toContain('prep-rebuff');
+    // `wp-rebuff`, not the retired `prep-rebuff`: the beat is one shared rule now that the
+    // Trip board plays it too (ADR-0160 §Q, `styles/beats.css`).
+    expect(beat.names).toContain('wp-rebuff');
     expect(beat.duration).toBe(240);
     // `linear`, because in a beat the keyframe offsets ARE the timing (ADR-0140 §7).
     expect(beat.easing).toBe('linear');
+    // …and nothing lifted.
+    await expect(page.locator(HERO)).toHaveCount(0);
+  });
+
+  // **The same answer on the Trip board** (ADR-0160 §Q, reversing §A's silence): with nothing
+  // to lift, a press is felt and opens nothing. It sits beside Plan's test on purpose — one
+  // beat, two surfaces, and the pair is what proves the shared rule reaches both. The board
+  // is the harder of the two: `.app[data-mode='trip'] .wp-board` already owns `animation` for
+  // the Plan→Trip power-on and outranks a single class, so the beat rides a `--board-beat`
+  // slot and only a real engine can say it fired.
+  test('Trip mode: a board with nothing to lift rebuffs instead of opening', async ({ page }) => {
+    // The same fixture as `boot`, minus the place — which is the entire difference between a
+    // horizon worth lifting and one that adds nothing (`canLift`).
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [{ ...lunch, placeId: undefined }],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+    });
+    await page.goto('/');
+    const board = page.locator('.wp-board');
+    await expect(board).toBeVisible();
+    // Not a control, for the reason Plan's hero is not one: it opens nothing.
+    expect(await board.evaluate((el) => el.tagName)).toBe('DIV');
+
+    const beat = await page.evaluate(async () => {
+      const el = document.querySelector('.wp-board') as HTMLElement;
+      el.click();
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const running = el.getAnimations();
+      return { names: running.map((a) => a.animationName), className: el.className };
+    });
+    // The power-on holds slot 0, so the assertion is that the beat is IN the list.
+    expect(beat.names).toContain('wp-rebuff');
+    expect(beat.className).toContain('is-rebuffing');
     // …and nothing lifted.
     await expect(page.locator(HERO)).toHaveCount(0);
   });
