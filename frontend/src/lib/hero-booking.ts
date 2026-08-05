@@ -4,7 +4,13 @@
 // flight at departure / arrival (arrival emphasized), and a flight in the air
 // fills the NOW slot ("in transit"). Pure and clock-driven — nothing stored
 // (ADR-0018). The Home component renders from the discriminated result.
-import { eventTransitionKeys, isAmbient, isBracketed, type TripEvent } from '@waypoint/shared';
+import {
+  eventTransitionKeys,
+  isAmbient,
+  isBracketed,
+  isJourney,
+  type TripEvent,
+} from '@waypoint/shared';
 
 const MS_PER_MIN = 60_000;
 
@@ -57,9 +63,22 @@ function classify(e: TripEvent, nowMs: number, today: string): HeroBooking | nul
   const s = startMs(e);
   const end = endMs(e);
 
-  // Ambient span (a multi-day hotel): only the two ends surface on the hero; the
-  // settled middle recedes to the ambient strip / backdrop (ADR-0054/0059 §2).
-  if (isAmbient(e)) {
+  // Ambient span (a multi-day hotel, a multi-day car hire): only the two ends surface on
+  // the hero; the settled middle recedes to the ambient strip / backdrop (ADR-0054/0059 §2).
+  //
+  // **`isJourney` is the exemption, and it is the fix for a red-eye** (owner: _"when the
+  // flight crossed the day boundary, the hero doesn't recognize it as currently happening
+  // and just has the landing as the next event"_). `ambientWhenMultiDay` describes how a
+  // span RENDERS across the days it covers; it says nothing about what its middle IS. An
+  // overnight flight is both — a backdrop on the day it lands, and a journey you are
+  // sitting inside — and this branch only knows check-in/check-out windows, so a flight in
+  // the air could at best surface near its end as a check-out-shaped transition. Which is
+  // the landing, offered as something upcoming.
+  //
+  // So a journey never takes this branch, however many calendar days it crosses: it falls
+  // through to the bracketed-point path below, whose windows are instants and have never
+  // cared what day it is. A held span (a hire, a stay) still recedes exactly as before.
+  if (isAmbient(e) && !isJourney(e)) {
     if (e.date === today && nowMs <= s + CHECKIN_GRACE_MIN * MS_PER_MIN) {
       return { kind: 'transition-checkin', event: e, labelKey: trans.startKey };
     }

@@ -108,6 +108,9 @@ const flightBooking: Booking = {
 
 /** Swapped per test before rendering. */
 let tripEvents: TripEvent[] = [];
+/** The day the strip is parked on. Only a red-eye needs it to differ from `DAY`: past
+ *  midnight the calendar day has rolled while the flight is still in the air. */
+let tripActiveDate = DAY;
 let tripNotes: Note[] = [];
 let tripBookings: Booking[] = [];
 let tripPlaces: Place[] = [];
@@ -131,7 +134,7 @@ vi.mock('../state/trip-state', () => ({
       crossings: [],
       primaryZone: 'Europe/Rome',
     },
-    activeDate: DAY,
+    activeDate: tripActiveDate,
     changeFeed: [],
     dismissChange: () => {},
     clearChangeFeed: () => {},
@@ -156,6 +159,7 @@ describe('Home — the lift wiring', () => {
     tripNotes = [];
     tripBookings = [];
     tripPlaces = [];
+    tripActiveDate = DAY;
     done.mockClear();
   });
   afterEach(() => {
@@ -501,6 +505,57 @@ describe('Home — the lift wiring', () => {
       t.glance.transition.arrival,
     );
     expect(hero.textContent).not.toContain(t.board.midSpan.flightLive);
+  });
+
+  // **THE DAY-BOUNDARY REPORT** (owner): *"when the flight (or anything really) crossed the
+  // day boundary, the hero doesn't recognize it as currently happening and just has the
+  // landing as the next event."* Its own case at this level because the cause was a filter in
+  // THIS file: an overnight flight carries an `endDate`, which makes it `isMultiDay` and so
+  // ambient — and `scheduleEvents` dropped every started ambient event from `deriveNow`, so
+  // the board could not see the flight at all.
+  it('keeps a red-eye as the live board past midnight', () => {
+    // 22:00 → 01:15, read at 00:40 on the LANDING day: the clock has rolled, the flight has
+    // not landed.
+    const NEXT = '2026-08-04';
+    tripEvents = [
+      flight({
+        startsAt: `${DAY}T22:00:00Z`,
+        endsAt: `${NEXT}T01:15:00Z`,
+        endDate: NEXT,
+      }),
+    ];
+    tripBookings = [flightBooking];
+    tripActiveDate = NEXT;
+    setSimulatedNow(Date.parse(`${NEXT}T00:40:00Z`));
+    show();
+
+    // The board is in its transit costume, with the flight in the NOW slot…
+    expect(board()!.className).toContain('transit');
+    expect(document.querySelector('.wp-board-live')?.textContent).toContain(
+      t.board.midSpan.flightLive,
+    );
+    expect(document.querySelector('.wp-board-now-title')?.textContent).toContain('FR 8123');
+    // …and the `הבא בתור` slot is gone entirely, which is the stronger form of "the landing
+    // is not the next event": in transit the journey IS the current activity, so the board
+    // shows no next-row at all (ADR-0059 §2). It was the only slot the flight could reach
+    // before this fix.
+    expect(document.querySelector('.wp-board-next-row')).toBeNull();
+    // And it is not ALSO claimed by the mid-stay strip, which is for a span whose middle is
+    // passive — being in two places at once is the failure the guard prevents.
+    expect(document.querySelector('.stay-strip')).toBeNull();
+  });
+
+  // The same event, before midnight, so the fix cannot be "special-case the landing day".
+  it('keeps a red-eye as the live board before midnight too', () => {
+    const NEXT = '2026-08-04';
+    tripEvents = [
+      flight({ startsAt: `${DAY}T22:00:00Z`, endsAt: `${NEXT}T01:15:00Z`, endDate: NEXT }),
+    ];
+    tripBookings = [flightBooking];
+    setSimulatedNow(Date.parse(`${DAY}T23:30:00Z`));
+    show();
+    expect(board()!.className).toContain('transit');
+    expect(document.querySelector('.wp-board-now-title')?.textContent).toContain('FR 8123');
   });
 
   // **THE EXCLUSION** (owner: *"but not rental cars that are different"*). A same-day hire

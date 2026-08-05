@@ -130,6 +130,96 @@ describe('deriveHeroBooking — flight departure / in-transit / arrival', () => 
   });
 });
 
+// **A red-eye, and the report it came from:** _"when the flight (or anything really) crossed
+// the day boundary, the hero doesn't recognize it as currently happening and just has the
+// landing as the next event."_
+//
+// The chain that produced it: the booking form sets `endDate` whenever the end lands on a
+// later calendar day (`buildSpanSeed`), which makes the flight `isMultiDay`, which — because
+// `transport` is `ambientWhenMultiDay` for the sake of the multi-day car hire — makes it
+// **ambient**. `classify` then took the ambient branch, which knows only check-in/check-out
+// windows, so a flight in the air could at best surface as a check-out-shaped transition
+// near its end: the landing, as something upcoming.
+//
+// The distinction the fix rests on is the one `midSpan` already draws: **ambient is about
+// how a span RENDERS across days; a journey is what its middle IS.** An overnight flight is
+// both — a backdrop on the day it lands, and a journey you are sitting inside.
+describe('deriveHeroBooking — a journey that crosses the day boundary', () => {
+  /** 22:00 → 01:15 the next day, `endDate` set exactly as the form would set it. */
+  const redEye = (over: Partial<TripEvent> = {}) =>
+    flight({
+      id: 'red-eye',
+      startsAt: at('22:00'),
+      endsAt: at('01:15', '2026-07-08'),
+      endDate: '2026-07-08',
+      ...over,
+    });
+
+  it('is in-transit before midnight, on its own day', () => {
+    expect(deriveHeroBooking([redEye()], ms('23:00'), DATE).kind).toBe('in-transit');
+  });
+
+  // The heart of the report: past midnight the calendar day has rolled, and the flight is
+  // still in the air. Nothing about the clock being on the "next" day makes it upcoming.
+  it('is still in-transit after midnight, when today is the LANDING day', () => {
+    const r = deriveHeroBooking([redEye()], ms('00:10', '2026-07-08'), '2026-07-08');
+    expect(r.kind).toBe('in-transit');
+    expect(r.event?.id).toBe('red-eye');
+  });
+
+  it('emphasizes the arrival inside the landing window, not as a check-out', () => {
+    const r = deriveHeroBooking([redEye()], ms('01:00', '2026-07-08'), '2026-07-08');
+    expect(r.kind).toBe('transition-arrival');
+    expect(r.labelKey).toBe('flightArrival');
+  });
+
+  it('is none once it has landed', () => {
+    expect(deriveHeroBooking([redEye()], ms('01:20', '2026-07-08'), '2026-07-08').kind).toBe(
+      'none',
+    );
+  });
+
+  it('offers its departure on the lead-up, as any journey does', () => {
+    expect(deriveHeroBooking([redEye()], ms('20:00'), DATE).kind).toBe('transition-departure');
+  });
+
+  // Any mode, per the owner's "or anything really" — a night train crosses midnight too, and
+  // it has no flight glyph to fall back on.
+  it('holds for an overnight train as well', () => {
+    const nightTrain = train({
+      id: 'night-train',
+      startsAt: at('23:30'),
+      endsAt: at('06:00', '2026-07-08'),
+      endDate: '2026-07-08',
+    });
+    const r = deriveHeroBooking([nightTrain], ms('02:00', '2026-07-08'), '2026-07-08');
+    expect(r.kind).toBe('in-transit');
+    expect(r.labelKey).toBe('arrival');
+  });
+
+  // The other half of the distinction, asserted so the fix cannot be "ignore ambient": a
+  // multi-day CAR HIRE is ambient AND held, so its middle stays off the hero exactly as
+  // before — it belongs to the mid-stay strip (ADR-0059 §2 / ADR-0163 §4).
+  it('leaves a multi-day car hire where it was: not a journey, not on the hero', () => {
+    const hire = ev({
+      id: 'hire',
+      category: 'transport',
+      icon: '🚗',
+      startsAt: at('09:00'),
+      endsAt: at('18:00', '2026-07-10'),
+      endDate: '2026-07-10',
+    });
+    // Mid-hire, two days in, and nothing about it is in transit.
+    expect(deriveHeroBooking([hire], ms('12:00', '2026-07-09'), '2026-07-09').kind).toBe('none');
+  });
+
+  // And a multi-day STAY is the case the ambient branch was written for.
+  it('leaves a multi-day stay on its check-out window', () => {
+    const r = deriveHeroBooking([hotel()], ms('09:00', '2026-07-10'), '2026-07-10');
+    expect(r.kind).toBe('transition-checkout');
+  });
+});
+
 describe('deriveHeroBooking — a train reads generic departure / arrival', () => {
   const tr = train(); // 09:00 → 11:00
   it('labels departure by mode, not with flight wording', () => {
