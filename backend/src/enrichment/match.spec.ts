@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ENRICHMENT_FIELD, MATCH_CONFIDENCE_THRESHOLD, MATCH_REFUSAL } from '@waypoint/shared';
 import {
+  geoProximityConfidence,
   granularityRefusals,
   isMatchConfident,
+  nameOnlyConfidence,
   nameProximityConfidence,
+  namesComparable,
   nameSimilarity,
   proximityScore,
 } from './match';
@@ -144,6 +147,116 @@ describe('nameProximityConfidence', () => {
     expect(result.nameSimilarity).toBeGreaterThan(0.8);
     expect(result.nameSimilarity).toBeLessThan(1);
     expect(result.distanceMeters).toBeDefined();
+  });
+});
+
+describe('a candidate with no coordinates is probably not a place (§15)', () => {
+  const PICCADILLY = { name: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 };
+
+  // THE BUG, in one assertion: an exact name and no coordinate used to score 0.8 and win.
+  it('refuses it outright when WE have coordinates', () => {
+    const scored = nameProximityConfidence(PICCADILLY, { name: 'Piccadilly Circus' });
+    expect(scored.nameSimilarity).toBe(1);
+    expect(scored.confidence).toBe(0);
+    expect(isMatchConfident(scored.confidence)).toBe(false);
+  });
+
+  // The other side of the asymmetry, unchanged: when OUR place is the one with no coordinates
+  // (a coordless Place-lite, §10) the name still carries the match at a discount. Absence of
+  // evidence is not evidence — on the side where the absence is ours.
+  it('still lets a coordless place of ours match on a strong name alone', () => {
+    const scored = nameProximityConfidence(
+      { name: 'Piccadilly Circus' },
+      { name: 'Piccadilly Circus' },
+    );
+    expect(scored.confidence).toBeCloseTo(0.8, 5);
+    expect(isMatchConfident(scored.confidence)).toBe(true);
+  });
+
+  // And the pre-filter keeps its own, veto-free question: a search hit has no coordinates
+  // either, so scoring hits through the full function would refuse every candidate before the
+  // entity that carries the coordinate is ever read.
+  it('nameOnlyConfidence answers the pre-filter’s question instead', () => {
+    expect(nameOnlyConfidence(PICCADILLY, 'Piccadilly Circus')).toBeCloseTo(0.8, 5);
+    expect(nameOnlyConfidence(PICCADILLY, 'Trafalgar Square')).toBe(0);
+  });
+});
+
+describe('namesComparable — a cross-script comparison is uninformative, not negative (§15)', () => {
+  it('is false for the same place written in two alphabets', () => {
+    // THE BUG, in one assertion: `nameSimilarity` scores this 0, and 0 was read as "wrong
+    // place" when it means "we cannot read this".
+    expect(namesComparable('מגדל אייפל', 'Eiffel Tower')).toBe(false);
+    expect(nameSimilarity('מגדל אייפל', 'Eiffel Tower')).toBe(0);
+  });
+
+  it('is true whenever the two share a script, so a real disagreement is still visible', () => {
+    expect(namesComparable('מגדל אייפל', 'מגדל אייפל')).toBe(true);
+    expect(namesComparable('Stokksnes', 'Stokksnes')).toBe(true);
+    // Different places, same alphabet — the comparison is meaningful and it says no.
+    expect(namesComparable('Nezu Museum', 'Golden Gai')).toBe(true);
+  });
+
+  it('treats the CJK scripts as one, so kana against kanji is comparable', () => {
+    expect(namesComparable('浅草寺', 'せんそうじ')).toBe(true);
+    expect(namesComparable('浅草寺', 'Sensō-ji')).toBe(false);
+  });
+
+  it('does not count digits or punctuation as a shared script', () => {
+    // `7-Eleven` and `7-אלוון` share their numerals and nothing that says they are one place.
+    expect(namesComparable('7-Eleven', '7-אלוון')).toBe(false);
+    expect(namesComparable('123', '456')).toBe(false);
+  });
+});
+
+describe('geoProximityConfidence — the coordinates find it, the name checks it (§15)', () => {
+  const NEZU = { name: 'מוזיאון נזו', lat: 35.6656, lng: 139.7167 };
+
+  it('scores on distance alone when the name cannot be read', () => {
+    const scored = geoProximityConfidence(NEZU, {
+      name: 'Nezu Museum',
+      lat: 35.6656,
+      lng: 139.7167,
+    });
+    // Capped at the geosearch ceiling, so a name-corroborated match always outranks it.
+    expect(scored.confidence).toBe(0.8);
+    expect(isMatchConfident(scored.confidence)).toBe(true);
+    // Zero because it was never compared — the stored evidence must say which happened.
+    expect(scored.nameSimilarity).toBe(0);
+  });
+
+  it('decays with distance and stops being a match well before the name route would', () => {
+    const at = (lat: number) =>
+      geoProximityConfidence(NEZU, { name: 'Nezu Museum', lat, lng: 139.7167 });
+    // 0.0009° of latitude is ~100m, 0.003° ~333m, 0.0055° ~610m.
+    expect(at(35.6665).confidence).toBe(0.8);
+    expect(at(35.6686).confidence).toBeGreaterThan(0);
+    expect(at(35.6686).confidence).toBeLessThan(0.8);
+    expect(at(35.6711).confidence).toBe(0);
+  });
+
+  it('defers to the name’s own arithmetic when the scripts DO overlap', () => {
+    const agreeing = geoProximityConfidence(
+      { name: 'Nezu Museum', lat: 35.6656, lng: 139.7167 },
+      { name: 'Nezu Museum', lat: 35.6656, lng: 139.7167 },
+    );
+    // The name route's ceiling, not the geosearch one — a corroborated name is worth more.
+    expect(agreeing.confidence).toBe(0.9);
+    expect(agreeing.nameSimilarity).toBe(1);
+
+    // …and a readable name that disagrees still refuses, however close it is.
+    const disagreeing = geoProximityConfidence(
+      { name: 'Nezu Museum', lat: 35.6656, lng: 139.7167 },
+      { name: 'Golden Gai', lat: 35.66562, lng: 139.71672 },
+    );
+    expect(isMatchConfident(disagreeing.confidence)).toBe(false);
+  });
+
+  it('is no match at all without coordinates on both sides — the route IS the coordinates', () => {
+    expect(
+      geoProximityConfidence({ name: 'מוזיאון נזו' }, { name: 'Nezu Museum' }).confidence,
+    ).toBe(0);
+    expect(geoProximityConfidence(NEZU, { name: 'Nezu Museum' }).confidence).toBe(0);
   });
 });
 

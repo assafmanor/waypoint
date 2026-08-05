@@ -164,21 +164,31 @@ export function enrichmentValueTtlMs(field: EnrichmentField, source: EnrichmentS
   return Math.min(ENRICHMENT_FIELD_TTL_MS[field], SOURCE_POLICY[source].defaultTtlMs);
 }
 
-/** **Which of the three matching routes produced a match — they are not equally
- *  trustworthy** (ADR-0166 §12.3). The order is exact-first:
+/** **Which matching route produced a match — they are not equally trustworthy**
+ *  (ADR-0166 §12.3, §15). The order is exact-first:
  *
  *  - `wikidata_tag` — an OSM object's own `wikidata=Q…` tag. An identity join, not a
  *    guess; 10 of 31 OSM objects in the spike were found this way.
  *  - `settled_id` — an alias this store already holds for the place (§4's alias columns).
- *  - `name_proximity` — name similarity + distance. **Last resort**, and the only route
- *    whose confidence is computed rather than given. */
-export const matchMethodSchema = z.enum(['wikidata_tag', 'settled_id', 'name_proximity']);
+ *  - `name_proximity` — name similarity, corroborated by distance.
+ *  - `geosearch` — **the coordinates did the finding and the name only checked** (§15). The
+ *    inverse of the route above, and the answer to its recall hole: a name search only
+ *    reaches an item labelled in a language we happened to ask for, while "what is within
+ *    150m of this pin" is language-independent. Last resort, and scored lowest, because a
+ *    name that could not be compared is evidence we do not have rather than evidence for. */
+export const matchMethodSchema = z.enum([
+  'wikidata_tag',
+  'settled_id',
+  'name_proximity',
+  'geosearch',
+]);
 export type MatchMethod = z.infer<typeof matchMethodSchema>;
 
 export const MATCH_METHOD = {
   WIKIDATA_TAG: 'wikidata_tag',
   SETTLED_ID: 'settled_id',
   NAME_PROXIMITY: 'name_proximity',
+  GEOSEARCH: 'geosearch',
 } as const satisfies Record<string, MatchMethod>;
 
 /** The confidence an exact route carries, and the **ceiling** on the fuzzy one — so an
@@ -187,6 +197,11 @@ export const MATCH_METHOD_CONFIDENCE = {
   wikidata_tag: 1,
   settled_id: 1,
   name_proximity: 0.9,
+  // **Below the name route on purpose, and still above the threshold.** A place found by its
+  // coordinates and corroborated by nothing readable is a weaker claim than one whose name
+  // agreed — so wherever both routes could answer, the named one wins, and this ceiling is
+  // what guarantees it rather than a tie-break at the call site (§15).
+  geosearch: 0.8,
 } as const satisfies Record<MatchMethod, number>;
 
 /** Below this, `match()` returns null rather than a guess (ADR-0166 §5.5): **no

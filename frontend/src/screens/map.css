@@ -1014,6 +1014,24 @@
 .map-badge[data-photo] {
   background: none;
 }
+/* **THE ORDER STAMP NEEDS ITS OWN EDGE ONCE A PHOTOGRAPH IS BEHIND IT** (owner, on the first
+   live deploy: _"the 2 label is going over the thumbnail image"_). The disc is `--cta`, which is
+   `#e7eaf2` in dark mode, and the 1.5px `--card` ring that separated it from a flat category
+   tint is not enough against a pale picture — snow and grey rock in the reported case.
+
+   It cannot just move clear of the badge: the stamp is 15px, so clearing a 40px badge entirely
+   would need `-15px` and the badge sits against the card's own 12px padding. So it gains a full
+   2px ring and a little more offset, and reads as a stamp ON the frame's corner rather than a
+   mark IN the picture. Scoped to `[data-photo]`: a row with a glyph is the geometry that was
+   signed off, and nothing about it changed.
+
+   This is the class of defect the device pass exists for and a measurement cannot reach — the
+   e2e proved the stamp's box was unclipped and identical, which was true and not the question. */
+.map-badge[data-photo][data-order]::before {
+  top: -6px;
+  inset-inline-start: -6px;
+  box-shadow: 0 0 0 2px var(--card);
+}
 .place.soft .map-badge {
   opacity: 0.72;
   box-shadow: inset 0 0 0 1.5px var(--soft-line);

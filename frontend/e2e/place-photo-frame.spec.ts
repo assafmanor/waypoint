@@ -281,6 +281,9 @@ async function measure(page: Page) {
         glyph: badge.textContent ?? '',
         counter: {
           content: counter.content,
+          // What separates the stamp from what is behind it — a flat tint needs less of this
+          // than a photograph does.
+          ring: counter.boxShadow,
           w: Math.round(parseFloat(counter.minWidth)),
           h: Math.round(parseFloat(counter.height)),
           top: Math.round(parseFloat(counter.top)),
@@ -354,17 +357,26 @@ test.describe('a place row whose badge frames a photo @390', () => {
     const framed = photoRow(rows);
     expect(framed.badgeOverflow).toBe('visible');
     expect(framed.clipOverflow).toBe('hidden');
-    // Its box, not its content — the two rows are different stops, so they carry different
-    // numbers. What must be identical is the geometry: the photo changes nothing about it.
-    const { content: _, ...box } = framed.counter;
-    const { content: __, ...bareBox } = bareRow(rows).counter;
-    expect(box).toEqual(bareBox);
     // Overhanging, which is the whole reason the clip would have cut it: both offsets negative,
     // so the stamp sits outside the badge's box on two sides.
     expect(framed.counter.top).toBeLessThan(0);
     expect(framed.counter.start).toBeLessThan(0);
     expect(framed.counter.h).toBeGreaterThan(0);
     expect(framed.counter.content).not.toBe('none');
+    // **It sits FURTHER out over a photograph, and wears a thicker ring** (owner, on the first
+    // live deploy: "the 2 label is going over the thumbnail image"). This assertion used to say
+    // the stamp's box was IDENTICAL with and without a photo — which was true, and was not the
+    // question: a near-white disc with a 1.5px ring reads as a mark in the picture rather than
+    // a stamp on the frame. So the two rows now differ deliberately, and by how much.
+    const bare = bareRow(rows).counter;
+    expect(framed.counter.top).toBeLessThan(bare.top);
+    expect(framed.counter.start).toBeLessThan(bare.start);
+    // The size is untouched — what changed is the offset and the ring, not the stamp.
+    expect(framed.counter.w).toBe(bare.w);
+    expect(framed.counter.h).toBe(bare.h);
+    // The ring is the actual fix: it is what separates the disc from whatever is behind it.
+    expect(framed.counter.ring).toContain('2px');
+    expect(bare.ring).toContain('1.5px');
   });
 
   // §8.1: the hue left the fill, so it has to arrive somewhere the photo cannot cover. The ring
