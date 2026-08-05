@@ -205,3 +205,29 @@ test('the hero fits the phone without becoming a scroller', async ({ page }) => 
   expect(fits.overflowing).toBe(false);
   await expect(hero).toBeVisible();
 });
+
+// Reported from a device: the promoted card glowed AMBER over a board glowing teal, because
+// the lifted hero was not carrying `.wp-board.transit`. Guarded as a computed-style equality
+// rather than a colour literal — the point is that the two elevations paint the same glow,
+// not what that glow happens to be, so a re-tuned gradient does not fail this.
+test('the lifted card wears the same glow as the board it came from', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await bootIntoTrip(page, {
+    now: NOW,
+    dates: shortLiveTripDates(),
+    events: EVENTS,
+    bookings: BOOKINGS,
+    places: PLACES,
+  });
+  await page.goto('/');
+  await page.locator('.wp-board').first().waitFor();
+  const glow = (sel: string) =>
+    page.evaluate(
+      (s) => getComputedStyle(document.querySelector(s)!, '::before').backgroundImage,
+      sel,
+    );
+  const collapsed = await glow('.wp-board.transit');
+  await page.locator('.wp-board').first().click();
+  await page.locator('.hero-lifted').waitFor();
+  expect(await glow('.hero-lifted')).toBe(collapsed);
+});

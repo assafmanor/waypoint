@@ -182,6 +182,20 @@ describe('HeroLift', () => {
     expect(lead.querySelector('.wp-board-now-meta')?.textContent).not.toContain(t.board.until);
   });
 
+  // Reported from a device: the promoted card glowed amber over a board glowing teal. The
+  // hero IS `.wp-board`, so it has to take the board's variant classes too — `transit` is
+  // what shifts `::before` from amber to teal, and nothing else in the hero paints.
+  it('wears the board’s transit costume while you are inside a span', () => {
+    const inside = show({
+      liveWord: t.board.midSpan.flightLive,
+      now: [point({ kind: undefined, transit: { label: 'x', endLabel: 'y' } })],
+    });
+    expect(inside.querySelector('.hero-lifted')?.className).toContain('transit');
+    cleanup();
+    const ordinary = show({ now: [point()] });
+    expect(ordinary.querySelector('.hero-lifted')?.className).not.toContain('transit');
+  });
+
   it('keeps the ordinary grammar on a point you are not inside', () => {
     const container = show({ now: [point({ kind: 'hard', until: '15:30' })] });
     expect(container.querySelector('.wp-board-live')?.className).not.toContain('loc');
