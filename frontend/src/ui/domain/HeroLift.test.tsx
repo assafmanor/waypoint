@@ -143,6 +143,53 @@ describe('HeroLift', () => {
     expect(container.querySelectorAll('.hero-where-nm')).toHaveLength(2);
   });
 
+  // A span you are inside takes the collapsed board's grammar, and the rail is part of the
+  // POINT rather than the card. Before session 215 this shape did not exist here at all: a
+  // flight arrived as an ordinary hard event and its rail was handed in as `foot`.
+  it('a point you are inside wears the mid-span grammar, rail included', () => {
+    const container = show({
+      liveWord: t.board.midSpan.flightLive,
+      now: [
+        point({
+          kind: undefined,
+          transit: {
+            label: t.board.midSpan.transitLabel,
+            endLabel: t.glance.transition.flightArrival,
+            endTime: '22:15',
+            inPhrase: t.board.inPhrase('1:39 שע׳'),
+            code: '#LH692',
+            rail: <div className="wp-board-transit-prog" />,
+          },
+        }),
+      ],
+    });
+    const live = container.querySelector('.wp-board-live')!;
+    expect(live.className).toContain('loc');
+    expect(live.textContent).toContain(t.board.midSpan.flightLive);
+    const lead = container.querySelector('.hero-point[data-lead]')!;
+    expect(lead.querySelector('.wp-board-now-label.loc')?.textContent).toBe(
+      t.board.midSpan.transitLabel,
+    );
+    expect(lead.querySelector('.wp-board-now-meta .tlabel.loc')?.textContent).toBe(
+      t.glance.transition.flightArrival,
+    );
+    expect(lead.querySelector('.hero-eta')?.textContent).toBe(t.board.inPhrase('1:39 שע׳'));
+    // The rail is INSIDE the point, and the card pins nothing.
+    expect(lead.querySelector('.hero-transit .wp-board-transit-prog')).toBeTruthy();
+    expect(container.querySelector('.hero-foot')).toBeNull();
+    // `קשיח` and `עד` belong to the ordinary grammar and must not double up on it.
+    expect(lead.textContent).not.toContain(t.event.hard);
+    expect(lead.querySelector('.wp-board-now-meta')?.textContent).not.toContain(t.board.until);
+  });
+
+  it('keeps the ordinary grammar on a point you are not inside', () => {
+    const container = show({ now: [point({ kind: 'hard', until: '15:30' })] });
+    expect(container.querySelector('.wp-board-live')?.className).not.toContain('loc');
+    expect(container.querySelector('.wp-board-now-label')?.textContent).toContain(t.event.hard);
+    expect(container.querySelector('.wp-board-now-meta')?.textContent).toContain(t.board.until);
+    expect(container.querySelector('.hero-transit')).toBeNull();
+  });
+
   // Session 215's report: `ניווט` was pushed to its own line and `להזמנה` to a third.
   // The DOM invariant that fixes it is what is asserted — one action row per point, the
   // name outside it — because the wrap itself is a layout fact jsdom cannot see (every

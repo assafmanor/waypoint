@@ -31,12 +31,46 @@ import './hero-lift.css';
  *  so a flight still reads as its route), times are pre-formatted in their own zone
  *  (ADR-0107), and the hand-offs are callbacks rather than hrefs the domain layer
  *  would have to know how to build. */
+/** **A span you are inside**, in the collapsed board's own words (session 215).
+ *
+ *  The lifted hero had no in-transit shape at all: a flight in the air arrived here as
+ *  an ordinary hard now-event (`קשיח` + `עד 22:15`), while the collapsed board it was
+ *  lifted out of said `כרגע · בדרך` + a teal `נחיתה` chip — and the flight's own progress
+ *  rail was handed in as `foot`, which pinned it BELOW the `הבא בתור` block, one full
+ *  slot away from the thing it describes (258px, measured). Two of the four reports
+ *  behind this change are that one gap, from two directions: the rail read as the next
+ *  event's, and the collapsed board read as the better surface.
+ *
+ *  Nothing here is new grammar. It is the same words one elevation up, which is
+ *  ADR-0160's own thesis — plus the one fact neither state carried before: how long is
+ *  left. */
+export interface HeroLiftTransit {
+  /** The mode's slot label (`כרגע · בדרך`), in place of `קשיח`/`גמיש`. */
+  label: string;
+  /** The end transition chip, resolved per mode (`נחיתה` / `הגעה` / `החזרת הרכב`). */
+  endLabel: ReactNode;
+  /** The arrival instant, pre-formatted in the **destination's** zone (ADR-0107 §3). */
+  endTime?: string;
+  /** How long is left, already phrased (`בעוד 1:39 שע׳`) — the answer to "when do we
+   *  land", which no surface carried before this. */
+  inPhrase?: string;
+  code?: string;
+  /** The journey's own progress, as the collapsed board's own component — rendered
+   *  INSIDE this point rather than pinned to the card, because it is this point's fact
+   *  and not the card's. A held span (a car hire) passes none: its end is a deadline,
+   *  not a distance travelled. */
+  rail?: ReactNode;
+}
+
 export interface HeroLiftPoint {
   key: string;
   title: ReactNode;
   icon?: ReactNode;
-  /** `קשיח` / `גמיש`, as the collapsed board says it. */
+  /** `קשיח` / `גמיש`, as the collapsed board says it. Absent on a point carrying
+   *  `transit`, whose label is the mode's instead. */
   kind?: 'hard' | 'soft';
+  /** Present → you are inside this span, and it takes the mid-span grammar. */
+  transit?: HeroLiftTransit;
   /** End time, pre-formatted in this point's own end zone → `עד HH:MM`. */
   until?: string;
   /** Signed minutes for the amber zone pill, when this point's times do not read
@@ -72,6 +106,10 @@ export interface HeroLiftThen {
 export interface HeroLiftProps {
   /** Current time, pre-formatted — the board clock, unchanged. */
   clock: string;
+  /** The live badge, when you are inside a span: the mode's word (`בטיסה` / `בדרך` /
+   *  `הרכב אצלנו`) with the teal "where you are" blip, exactly as the collapsed board
+   *  shows it. Absent → `עכשיו` and the amber blip, which is every other state. */
+  liveWord?: string;
   /** In-progress points, primary first. Several with no primary is the group split
    *  (ADR-0041 §6), where every equal carries the same depth because the variant
    *  exists on there being no primary — collapsing one would manufacture it. */
@@ -212,26 +250,61 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
     <div className="hero-point" data-lead={lead || undefined}>
       {lead ? (
         <div className="hero-part">
-          {point.kind && (
-            <div className="wp-board-now-label">
-              {point.kind === 'hard' ? (
-                <>
-                  <Icon name="lock" /> {t.event.hard}
-                </>
-              ) : (
-                t.event.soft
+          {/* A span you are inside keeps the collapsed board's grammar; anything else
+              keeps the ordinary now-grammar. The two are exclusive by construction: a
+              point with `transit` carries no `kind`, because `קשיח` on a flight you are
+              sitting in says nothing you can act on. */}
+          {point.transit ? (
+            <>
+              <div className="wp-board-now-label loc">{point.transit.label}</div>
+              <div className="wp-board-now-title">
+                {point.icon && <span className="wp-board-ic">{point.icon}</span>}
+                {point.title}
+              </div>
+              <div className="wp-board-now-meta">
+                <span className="tlabel loc">{point.transit.endLabel}</span>
+                {point.transit.endTime && <span dir="auto">{point.transit.endTime}</span>}
+                {point.transit.inPhrase && (
+                  <span className="hero-eta" dir="auto">
+                    {point.transit.inPhrase}
+                  </span>
+                )}
+                {point.transit.code && (
+                  <span className="code" dir="auto">
+                    {point.transit.code}
+                  </span>
+                )}
+              </div>
+              {/* The rail, INSIDE the point whose journey it draws. As the `foot` it sat
+                  under `הבא בתור` and read as that event's progress. */}
+              {point.transit.rail && <div className="hero-transit">{point.transit.rail}</div>}
+            </>
+          ) : (
+            <>
+              {point.kind && (
+                <div className="wp-board-now-label">
+                  {point.kind === 'hard' ? (
+                    <>
+                      <Icon name="lock" /> {t.event.hard}
+                    </>
+                  ) : (
+                    t.event.soft
+                  )}
+                </div>
               )}
-            </div>
-          )}
-          <div className="wp-board-now-title">
-            {point.icon && <span className="wp-board-ic">{point.icon}</span>}
-            {point.title}
-          </div>
-          {point.until && (
-            <div className="wp-board-now-meta">
-              {t.board.until} <span dir="auto">{point.until}</span>
-              {point.shift != null && <ZoneShiftPill minutes={point.shift} className="on-dark" />}
-            </div>
+              <div className="wp-board-now-title">
+                {point.icon && <span className="wp-board-ic">{point.icon}</span>}
+                {point.title}
+              </div>
+              {point.until && (
+                <div className="wp-board-now-meta">
+                  {t.board.until} <span dir="auto">{point.until}</span>
+                  {point.shift != null && (
+                    <ZoneShiftPill minutes={point.shift} className="on-dark" />
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       ) : (
@@ -254,7 +327,19 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
 }
 
 export function HeroLift(props: HeroLiftProps) {
-  const { clock, now, split, next, nextLabel, nextTime, nextCode, countdown, then, foot } = props;
+  const {
+    clock,
+    liveWord,
+    now,
+    split,
+    next,
+    nextLabel,
+    nextTime,
+    nextCode,
+    countdown,
+    then,
+    foot,
+  } = props;
 
   return (
     <Modal variant="lift" ariaLabel={t.hero.title} onClose={props.onClose}>
@@ -262,9 +347,12 @@ export function HeroLift(props: HeroLiftProps) {
         <Lifted origin={props.origin ?? null} closing={closing}>
           <div className="hero-head">
             <div className="wp-board-top">
-              <div className="wp-board-live">
+              {/* The live badge says what you are inside, teal, exactly as the board
+                  below it does — it used to print `עכשיו` in amber while the board it was
+                  lifted out of said `בטיסה` in teal. */}
+              <div className={'wp-board-live' + (liveWord ? ' loc' : '')}>
                 <span className="blip" />
-                {t.common.now}
+                {liveWord ?? t.common.now}
               </div>
               <div className="hero-head-end">
                 <div className="wp-board-clock" dir="auto">

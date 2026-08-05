@@ -144,6 +144,21 @@
   border-color: rgba(233, 166, 60, 0.32);
   color: #f0c785;
 }
+/* ── A span you are inside ─────────────────────────────────────────────────────
+   The journey's own progress, in the point it belongs to. As the card's `foot` it was
+   pinned below `הבא בתור` — 258px under the route it describes, measured — and read as
+   that event's progress bar (`mockups/hero-in-transit-v1.html` §2). Only the rail's own
+   top margin is restated; everything it draws is `board.css`'s. */
+.hero-transit .wp-board-transit-prog {
+  margin-top: 11px;
+}
+/* How long is left, on the meta row that already answers "when". Amber because it is a
+   time (root rule 4) — the same ink `.tlabel` uses on this board. */
+.wp-board-now-meta .hero-eta {
+  font-weight: 700;
+  color: #f0c785;
+}
+
 .hero-note {
   display: flex;
   gap: 9px;
