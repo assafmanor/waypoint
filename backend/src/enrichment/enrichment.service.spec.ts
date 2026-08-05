@@ -628,6 +628,15 @@ describe('EnrichmentService', () => {
   });
 
   describe('readForPlaces — the snapshot join (Phase 3)', () => {
+    /** A trip's place row as the snapshot read sees it. */
+    const snapshotPlace = (id: string, googlePlaceId: string | null) => ({
+      id,
+      name: 'Sensō-ji',
+      googlePlaceId,
+      lat: 35.7148,
+      lng: 139.7967,
+    });
+
     it('keys the global store by the trip’s own place ids', async () => {
       const service = serviceWith(identityProvider(), summaryProvider());
       const place = nextPlace();
@@ -635,8 +644,8 @@ describe('EnrichmentService', () => {
 
       // The store has no placeId and no tripId (§1); resolving that is the join the server
       // owes the client.
-      const enrichments = await service.readForPlaces([
-        { id: 'place-local-1', googlePlaceId: place.googlePlaceId! },
+      const { enrichments } = await service.readForPlaces([
+        snapshotPlace('place-local-1', place.googlePlaceId!),
       ]);
       expect(Object.keys(enrichments)).toEqual(['place-local-1']);
       expect(enrichments['place-local-1']?.summary?.en?.value).toContain('Buddhist temple');
@@ -649,9 +658,9 @@ describe('EnrichmentService', () => {
 
       // Two trips referencing the same real-world place read one row (§1) — here expressed as
       // two place ids in one call.
-      const enrichments = await service.readForPlaces([
-        { id: 'trip-a-place', googlePlaceId: place.googlePlaceId! },
-        { id: 'trip-b-place', googlePlaceId: place.googlePlaceId! },
+      const { enrichments } = await service.readForPlaces([
+        snapshotPlace('trip-a-place', place.googlePlaceId!),
+        snapshotPlace('trip-b-place', place.googlePlaceId!),
       ]);
       expect(enrichments['trip-a-place']).toEqual(enrichments['trip-b-place']);
     });
@@ -661,8 +670,8 @@ describe('EnrichmentService', () => {
       const place = nextPlace();
       await track(await service.enrich(place, NOW));
 
-      const enrichments = await service.readForPlaces([
-        { id: 'p1', googlePlaceId: place.googlePlaceId! },
+      const { enrichments } = await service.readForPlaces([
+        snapshotPlace('p1', place.googlePlaceId!),
       ]);
       expect(enrichments.p1?.image?.url).toContain('/enrichment/images/enr_');
       expect(enrichments.p1?.image).not.toHaveProperty('blobKey');
@@ -670,8 +679,8 @@ describe('EnrichmentService', () => {
 
     it('omits a place we know nothing about rather than sending an empty entry', async () => {
       const service = serviceWith(identityProvider(), summaryProvider());
-      const enrichments = await service.readForPlaces([
-        { id: 'never-looked-up', googlePlaceId: 'ChIJ-nothing-here' },
+      const { enrichments } = await service.readForPlaces([
+        snapshotPlace('never-looked-up', 'ChIJ-nothing-here'),
       ]);
       // A missing key IS the "we know nothing" state, and it is the common one.
       expect(enrichments).toEqual({});
@@ -681,12 +690,74 @@ describe('EnrichmentService', () => {
       const service = serviceWith(identityProvider(), summaryProvider());
       // Matching one by name + coords is permitted by the alias design and built by nothing
       // (§10), so there is nothing to look up.
-      expect(await service.readForPlaces([{ id: 'lite', googlePlaceId: null }])).toEqual({});
+      expect(await service.readForPlaces([snapshotPlace('lite', null)])).toEqual({
+        enrichments: {},
+        stale: [],
+      });
     });
 
     it('costs no query at all for a trip with no Google-picked places', async () => {
       const service = serviceWith(identityProvider(), summaryProvider());
-      expect(await service.readForPlaces([])).toEqual({});
+      expect(await service.readForPlaces([])).toEqual({ enrichments: {}, stale: [] });
+    });
+
+    it('reports a never-looked-up place as stale — this is what backfills (§14)', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const { stale } = await service.readForPlaces([snapshotPlace('p1', 'ChIJ-never-enriched')]);
+      // Every place picked before this pipe existed is in exactly this state.
+      expect(stale).toEqual([
+        expect.objectContaining({ googlePlaceId: 'ChIJ-never-enriched', name: 'Sensō-ji' }),
+      ]);
+    });
+
+    it('reports nothing stale while what we hold is fresh', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const place = nextPlace();
+      await track(await service.enrich(place, NOW));
+
+      const { stale } = await service.readForPlaces(
+        [snapshotPlace('p1', place.googlePlaceId!)],
+        NOW,
+      );
+      // The negative cache is what keeps a read from scheduling work: hours and image recorded
+      // misses, and their TTLs have not lapsed.
+      expect(stale).toEqual([]);
+    });
+
+    it('reports a place stale again once a TTL lapses', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const place = nextPlace();
+      await track(await service.enrich(place, NOW));
+
+      const muchLater = new Date(NOW.getTime() + 400 * 24 * 3600_000);
+      const { stale } = await service.readForPlaces(
+        [snapshotPlace('p1', place.googlePlaceId!)],
+        muchLater,
+      );
+      expect(stale).toHaveLength(1);
+    });
+
+    it('wants one pass for two trip rows that share a Google id', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const { stale } = await service.readForPlaces([
+        snapshotPlace('trip-a-place', 'ChIJ-shared'),
+        snapshotPlace('trip-b-place', 'ChIJ-shared'),
+      ]);
+      // The store is global, so the two rows want one pass between them.
+      expect(stale).toHaveLength(1);
+    });
+
+    it('never schedules a Place-lite it cannot match', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const { stale } = await service.readForPlaces([snapshotPlace('lite', null)]);
+      expect(stale).toEqual([]);
+    });
+
+    it('hands the scheduler an identity with no trip opinion in it (§5.3)', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const { stale } = await service.readForPlaces([snapshotPlace('p1', 'ChIJ-fresh')]);
+      // `icon`/`category` are the trip's view and none of a provider's business.
+      expect(Object.keys(stale[0]).sort()).toEqual(['googlePlaceId', 'lat', 'lng', 'name']);
     });
 
     it('omits a row whose every field came back absent', async () => {
@@ -696,8 +767,8 @@ describe('EnrichmentService', () => {
       // The row exists — a pass ran and recorded misses — but there is nothing to render.
       expect(stored.fields.summary?.state).toBe('absent');
 
-      const enrichments = await service.readForPlaces([
-        { id: 'p1', googlePlaceId: place.googlePlaceId! },
+      const { enrichments } = await service.readForPlaces([
+        snapshotPlace('p1', place.googlePlaceId!),
       ]);
       expect(enrichments).toEqual({});
     });

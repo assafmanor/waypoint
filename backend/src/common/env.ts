@@ -60,6 +60,14 @@ export const DEFAULT_DOC_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 export const ENRICHMENT_FETCH_TIMEOUT_MS = 'ENRICHMENT_FETCH_TIMEOUT_MS';
 export const ENRICHMENT_JSON_MAX_BYTES = 'ENRICHMENT_JSON_MAX_BYTES';
 
+/** **Kill switch for outbound enrichment** (any truthy value stops every pass).
+ *
+ *  Same shape as `DOC_CACHE_DISABLED`: env-gated, read per call so it can be flipped without
+ *  a code change and stubbed in a test. Enrichment is the one thing in this app that talks to
+ *  third parties on its own initiative, so it gets the one switch that stops it doing that —
+ *  without taking down the reads, which serve already-stored data and are unaffected. */
+export const ENRICHMENT_DISABLED = 'ENRICHMENT_DISABLED';
+
 /** Per-request timeout for an enrichment fetch. Generous enough for a cold Wikidata
  *  entity read, short enough that a slow source degrades one field rather than holding up
  *  a pass (§5.4) — nothing user-facing is waiting on it either way (§6). */

@@ -61,6 +61,14 @@
 - The hero opens the **full-screen zoomable preview** (ADR-0062 permits zoom exactly there).
 - **Ask before touching `DocumentViewer`** (ADR-0096): it is document-shaped (`doc: DocumentSummary`). Generalizing it may be a small extraction or a real refactor — look, then ask, rather than widening it silently or adding a second viewer beside it.
 
+## Amendment (2026-08-05) — the phase this plan forgot: **the trigger**
+
+Phases 1–3 shipped and the pipe never ran, because **no phase here owned the thing that starts a pass.** Phase 1's line says _"Enrichment is scheduled after the fact"_ — present tense, so it reads as a property already true rather than as work. It was neither built nor deferred; it simply was not in the plan.
+
+Now decided and built (owner's call, [ADR-0166 §14](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md)): **two triggers riding existing requests** — a pick (`resolvePlace`) for immediacy, and a **snapshot read** for backfill, TTL refresh and recovery-after-a-redeploy, which is free because the Phase-3 join already reads the rows that answer "what is stale". No scheduler (ADR-0157 §6 already refused one for the orphan sweep, and this is the weaker case), surplus work dropped rather than queued, and enabled behind `ENRICHMENT_DISABLED`.
+
+**The lesson worth carrying to the next plan:** a phase list that describes a mechanism in the present tense will not produce it. Phases 4–6 below are safe on this count — they are all visible surface, so an unbuilt one is obvious on screen.
+
 ## Blocked / deferred, in order
 
 - **Hours (ADR-0166 Phase 2)** — still not costed for the stratum that justifies it. Restaurants were effectively unmeasured because the spike had no coordinate column and fell back to Wikidata `P625`, so unmatched places were never queried (§12.4). The measurement to take: **Overpass by coordinate for ordinary businesses, with no Wikidata step.** Then a hosting decision, since public Overpass instances disclaim production volume.
