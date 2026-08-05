@@ -72,6 +72,79 @@
   stroke-linecap: round;
 }
 
+/* ── The badge as the thumbnail's frame (ADR-0167 §1) ─────────────────────────────────
+   A fetched photograph fills the interior; the category hue moves from fill to a ring. Both
+   rules below are `mockups/place-enrichment-v2.html`'s, which is the corrected file — v1 drew
+   `overflow: hidden` on the badge itself and that is precisely the defect §11.2 caught.
+
+   **1. The photo clips HERE, on this inner element — never on the badge** (§11.2). The badge
+   hosts children that DELIBERATELY overhang it: the order counter at its corner and the
+   hit-area `::after`. `overflow: hidden` on a positioned host silently truncates anything
+   designed to overhang it, and here the overhang is a numbered pin — so the failure looked
+   like a rendering artefact ("a white quarter circle on the top right") rather than a layout
+   decision, which is why it survived a render pass and needed a human eye on a real device.
+
+   In flow at 100%×100% rather than absolutely positioned, as v2 draws it: the badge is a
+   `place-items: center` grid, so a block child simply fills the cell and nothing has to be
+   taken out of flow to make it. `border-radius: inherit` so the corner follows whatever host
+   it lands on — 12px on the Map row today, and a different host needs no change here. */
+.wp-placebadge-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.wp-placebadge-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* The measured aspect range is 0.54–1.78 with six portraits in 32 (ADR-0166 §11.4), so the
+     one thing the badge must not do is letterbox: `cover` fills the square and crops. The
+     avatar precedent's square centre-crop does not transfer as a JUDGEMENT (a building
+     centre-cropped square is frequently sky) — but at 40px there is no room for a smarter crop
+     either, which is exactly what the device pass has to look at. */
+  object-fit: cover;
+}
+
+/* **2. The ring is an overlay ABOVE the image, and OUTSIDE the clip** (§8.1). The first draft
+   put the hue on the badge as an `inset` box-shadow — which paints above the background and
+   BELOW the element's children, so the photo covered it completely and the badge silently lost
+   its category: the exact thing §1 claims survives.
+
+   v2 draws this as `.badge.photo::after`. Here it is a real element instead, because on this
+   badge **both pseudo-elements are already spoken for** — `::before` is the order counter
+   (`map.css`) and `::after` is `.wp-placebadge`'s hit-area expander. Same stacking either way:
+   a positioned overlay above the in-flow clip, and sitting outside it so the clip's own
+   `overflow` cannot shave the ring's corners.
+
+   The white hairline is v2's measured value, not a decoration: the hue ring alone has no
+   separation from a bright photograph, and a fractionally larger inset lays a light line just
+   inside it so the ring holds against a sky — in both themes, which is why it is white on the
+   photo rather than dark. */
+.wp-placebadge-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 2px var(--badge-ring, transparent),
+    inset 0 0 0 3px rgb(255 255 255 / 0.45);
+  pointer-events: none;
+}
+
+/* The category fill is cleared once a photo covers it (v2's `.badge.photo { background: none }`).
+   It would be invisible under an opaque photo anyway — what this is really for is a thumbnail
+   with alpha, which would otherwise composite over a saturated category tint.
+
+   **A host whose fill is a two-class rule of its own must clear it beside that rule** — this one
+   ties with `.map-badge.cat-food` on specificity, and import order then decides, which the host's
+   sheet wins. Measured, not reasoned: the tint stayed under the photo until `map.css` said so
+   too. See `.map-badge[data-photo]` there. */
+.wp-placebadge[data-photo],
+[data-photo].map-badge {
+  background: none;
+}
+
 /* NOT on the departure board, deliberately (owner, 2026-07-28). It was wired there
    first, on the rule that every event has a way to its pin, and read too loud: the
    hero is the app's one dark, glowing surface, so a teal ring plus a marker on its

@@ -45,6 +45,8 @@
 - **Acceptance:** collapsed rows stay at 69–71px, and the order counter still overhangs.
 - **This phase is where the device pass belongs** (see below).
 
+**Built 2026-08-05** ([session note](2026-08-05-place-enrichment-phase-4-built.md)), with one correction to the acceptance above: **69–71px is the mockup's box, not the app's.** A real `.place` measures **64px** and two adjacent rows are **73px** apart — the box plus its 9px `margin-bottom`, which is the 73px ADR-0167 cites for the shipped row. `e2e/place-photo-frame.spec.ts` asserts the pitch and the two rows' equality instead of the mockup's band. Also corrected: the ring is a real element rather than an `::after`, because both of this badge's pseudo-elements are already the order counter and the hit-area expander; and the category fill needed clearing **in `map.css` too** — the component's own rule ties with `.map-badge.cat-food` on specificity and loses on import order. The device pass is still owed, and the session note lists exactly what it has to answer.
+
 ## Phase 5 — the collapsed card (frontend)
 
 - **Hours ride the existing meta line as a tag** — `פתוח עד 17:00`. Measured 0px; the meta line is 17px either way (§9.2). Do **not** give hours their own row: it cost 19px when it fitted and 43px when the freshness tail wrapped.

@@ -108,6 +108,10 @@ export async function bootIntoTrip(
     notes?: unknown[];
     /** Trip documents, so the Index's documents rows exist to be measured. */
     documents?: unknown[];
+    /** What the world knows about these places, keyed by place id (ADR-0166 §6) — the
+     *  server-owned read model the snapshot carries. A place with no key is the normal
+     *  "we know nothing" state, so `{}` (the default) is every existing spec. */
+    enrichments?: Record<string, unknown>;
     /**
      * **Pin the app's clock**, in ms — the e2e half of the rule the unit suite already
      * follows (`frontend/CLAUDE.md`: "a test whose fixtures carry fixed dates must set its
@@ -134,6 +138,7 @@ export async function bootIntoTrip(
     places: opts.places ?? SNAPSHOT.places,
     notes: opts.notes ?? SNAPSHOT.notes,
     documents: opts.documents ?? SNAPSHOT.documents,
+    enrichments: opts.enrichments ?? SNAPSHOT.enrichments,
   };
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),

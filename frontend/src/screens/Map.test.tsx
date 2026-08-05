@@ -97,6 +97,9 @@ vi.mock('../state/trip-state', () => ({
       primaryZone: 'Asia/Tokyo',
     },
     usingCachedSnapshot: false,
+    // What the world knows about these places (ADR-0166 §6) — always present, empty when we
+    // know nothing, so a row's badge never has to ask whether the read model arrived.
+    enrichments: {},
     indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn() },
     // A place is the fifth note host (ADR-0153 §8's amendment): the row carries the mark, the
     // selected row carries the section, and the make/rename form carries the composer.
