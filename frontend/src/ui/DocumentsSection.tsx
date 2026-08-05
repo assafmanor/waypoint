@@ -18,7 +18,7 @@ import { groupDocuments } from '../lib/documents';
 import { overlayOriginOffset } from '../lib/motion';
 import { formatBytes } from '../lib/bytes';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
-import { DocumentViewer } from './DocumentViewer';
+import { DocumentViewer } from './MediaViewer';
 import { DocumentManageSheet } from './DocumentManageSheet';
 import { Spinner } from './Spinner';
 import { DOCUMENT_TYPE_ICON } from '../constants';

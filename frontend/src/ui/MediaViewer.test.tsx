@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The viewer's OPEN/CLOSE contract (ADR-0140's 2026-08-02 amendment). The zoom maths
-// has its own file (`DocumentViewer.zoom.test.ts`); this one is about the overlay.
+// has its own file (`MediaViewer.zoom.test.ts`); this one is about the overlay.
 //
 // Note what jsdom can and cannot see here. It has no CSS engine, so `motionDurationMs`
 // answers 0 and every close below resolves synchronously — which is exactly the
@@ -10,13 +10,14 @@
 // silently disables an exit.
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DocumentViewer } from './DocumentViewer';
+import { DocumentViewer, MediaViewer } from './MediaViewer';
 import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
 
 vi.mock('../lib/api', () => ({
   fetchDocumentContent: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })),
 }));
+const { fetchDocumentContent } = await import('../lib/api');
 
 const doc = (over: Partial<Parameters<typeof DocumentViewer>[0]['doc']> = {}) => ({
   id: 'd1',
@@ -152,5 +153,66 @@ describe('DocumentViewer — the arrival grows from the row that was tapped', ()
     const card = document.querySelector<HTMLElement>('.doc-viewer-card')!;
     expect(card.style.getPropertyValue('--dv-origin-dy')).toBe('');
     expect(card.style.getPropertyValue('--dv-origin-travel')).toBe('');
+  });
+});
+
+// **THE SECOND SOURCE** (ADR-0167 §10.2). The viewer stopped being document-shaped so the place
+// card's full picture could reuse it rather than grow a hero — so what needs asserting is that
+// the url path reaches the bytes WITHOUT the document machinery, and that the document path is
+// untouched (every test above it, unchanged, is that half).
+describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
+  // The viewer is a PORTAL into `document.body`, so everything here queries the document —
+  // the same way every test above it does.
+  const openPhoto = (over: { caption?: string; onClose?: () => void } = {}) => {
+    const onClose = over.onClose ?? vi.fn();
+    render(
+      wrapNav(
+        <MediaViewer
+          title="Sensō-ji"
+          mimeType="image/jpeg"
+          source={{ kind: 'url', url: '/enrichment/images/enr_1' }}
+          caption={over.caption}
+          onClose={onClose}
+        />,
+      ),
+    );
+    return { onClose };
+  };
+
+  it('shows the image with no fetch, no object URL and nothing to revoke', () => {
+    // A delta rather than `not.toHaveBeenCalled()`: the module mock is file-scoped, so the
+    // document tests above have already used it.
+    const before = vi.mocked(fetchDocumentContent).mock.calls.length;
+    openPhoto();
+    const img = document.querySelector('.doc-viewer-img') as HTMLImageElement;
+    // The url IS the answer: an immutable public path needs no request and cannot leak. No
+    // `waitFor` either, which is the point — there is no round trip to wait for.
+    expect(img.getAttribute('src')).toBe('/enrichment/images/enr_1');
+    expect(vi.mocked(fetchDocumentContent).mock.calls.length).toBe(before);
+  });
+
+  it('names the dialog and labels the image with the title', () => {
+    openPhoto();
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('Sensō-ji');
+    expect(screen.getByAltText('Sensō-ji')).toBeTruthy();
+  });
+
+  // The licensing slot. A document passes none, which is why the element is absent there.
+  it('renders a caption when given one, and nothing when not', () => {
+    openPhoto({ caption: 'Kakidai · CC BY-SA 4.0' });
+    expect(document.querySelector('.doc-viewer-caption')?.textContent).toBe(
+      'Kakidai · CC BY-SA 4.0',
+    );
+    document.body.innerHTML = '';
+    openPhoto();
+    expect(document.querySelector('.doc-viewer-caption')).toBeNull();
+  });
+
+  // Every way out still runs the one close (ADR-0103 §2) — inherited, not re-implemented, which
+  // is the whole argument for reusing this surface.
+  it('still closes from the ✕, like the document path', () => {
+    const { onClose } = openPhoto();
+    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

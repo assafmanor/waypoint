@@ -266,6 +266,7 @@ async function measure(page: Page) {
         badgeBackground: badgeStyle.backgroundImage === 'none' ? badgeStyle.backgroundColor : 'set',
         // …and the ring is where it went. Its own box, so a partial ring is visible as one.
         ring: ring ? round(ring.getBoundingClientRect()) : null,
+        ringZ: ring ? getComputedStyle(ring).zIndex : null,
         ringShadow: ring ? getComputedStyle(ring).boxShadow : null,
         ringParentIsBadge: ring ? ring.parentElement === badge : null,
         // The category hue this row's badge declares, and the soft line, both resolved so the
@@ -284,6 +285,10 @@ async function measure(page: Page) {
           // What separates the stamp from what is behind it — a flat tint needs less of this
           // than a photograph does.
           ring: counter.boxShadow,
+          // **Paint order, which no rect can show.** The stamp is a pseudo-element, so it paints
+          // before the badge's children — and the ring IS a child, which is how it came to be
+          // drawn over the disc.
+          z: counter.zIndex,
           w: Math.round(parseFloat(counter.minWidth)),
           h: Math.round(parseFloat(counter.height)),
           top: Math.round(parseFloat(counter.top)),
@@ -377,6 +382,12 @@ test.describe('a place row whose badge frames a photo @390', () => {
     // The ring is the actual fix: it is what separates the disc from whatever is behind it.
     expect(framed.counter.ring).toContain('2px');
     expect(bare.ring).toContain('1.5px');
+    // **And the stamp paints ABOVE the frame's ring** (owner, on the deploy: "the stroke
+    // appearing above the 1 badge"). A pseudo-element paints before its originator's children,
+    // so without this the ring's hairline cuts an arc through the disc — visible on a device,
+    // invisible to every rect in this file.
+    expect(Number(framed.counter.z)).toBeGreaterThan(0);
+    expect(framed.ringZ === 'auto' || Number(framed.ringZ) < Number(framed.counter.z)).toBe(true);
   });
 
   // §8.1: the hue left the fill, so it has to arrive somewhere the photo cannot cover. The ring

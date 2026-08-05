@@ -26,6 +26,13 @@ import type { Note, Place, TripEvent } from '@waypoint/shared';
 
 const ACTIVE_DATE = '2026-07-22';
 let tripPlaces: Place[] = [];
+let tripEnrichments: Record<string, unknown> = {};
+
+// jsdom has no layout engine and so no `scrollIntoView`, and selecting a row schedules one in a
+// `requestAnimationFrame` (`Map.tsx`'s "bring the selected row into view"). Nothing here selected
+// a row until the research-card tests below, so the absence surfaced as an UNHANDLED ERROR
+// alongside a fully green run — the same stub `Map.embedded.test.tsx` has had since it shipped.
+Element.prototype.scrollIntoView = vi.fn();
 const tripNotes: Note[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 let tripEvents: TripEvent[] = [];
@@ -54,7 +61,7 @@ vi.mock('../state/trip-state', () => ({
     usingCachedSnapshot: false,
     // What the world knows about these places (ADR-0166 §6) — always present, empty when we
     // know nothing, so a row's badge never has to ask whether the read model arrived.
-    enrichments: {},
+    enrichments: tripEnrichments,
     indexVerbs: { createPlace: vi.fn(), resolvePlace: vi.fn(), updateBooking: vi.fn() },
     // A place is the fifth note host (ADR-0153 §8's amendment): the row carries the mark, the
     // selected row carries the section, and the make/rename form carries the composer.
@@ -213,6 +220,68 @@ function wrap(node: ReactNode) {
 
 const openSearch = () => fireEvent.click(screen.getByRole('button', { name: t.map.search.button }));
 const fieldOpen = () => screen.queryByPlaceholderText(t.map.search.placeholder) != null;
+
+describe('the research card under a system back (ADR-0167 §11.1)', () => {
+  const image = {
+    url: '/enrichment/images/enr_1',
+    mimeType: 'image/jpeg',
+    width: 840,
+    height: 600,
+    sizeBytes: 120_000,
+    source: 'commons',
+    license: 'CC BY-SA 4.0',
+    attribution: 'Kakidai',
+    fetchedAt: '2026-07-19T09:00:00Z',
+    confidence: 1,
+    method: 'settled_id',
+    ref: 'x.jpg',
+  };
+  const expand = () => {
+    fireEvent.click(document.querySelector('.map-list .place') as HTMLElement);
+    fireEvent.click(screen.getByRole('button', { name: t.map.know.more }));
+  };
+
+  afterEach(() => {
+    tripEnrichments = {};
+  });
+
+  // **A state a mounted screen enters and leaves owes the back stack a layer**
+  // (`frontend/CLAUDE.md`'s named case). The screen never unmounts, so it cannot express "there
+  // is something to peel" by existing — and there is: a visible `‹ חזרה לפרטי המקום`. Without the
+  // layer, one back would deselect the place or leave the tab while that control sat on screen,
+  // which is exactly how the Map's disclosure row broke once.
+  it('one press collapses the expansion and stays on the tab', async () => {
+    tripEnrichments = { museum: { image } };
+    render(wrap(<MapView />));
+    expand();
+    expect(document.querySelector('.map-hero')).toBeTruthy();
+
+    await pressBack('/?tab=map');
+    expect(document.querySelector('.map-hero')).toBeNull();
+    // The place is still selected: collapsing returns you to its itinerary detail, which is what
+    // the control this mirrors says it does.
+    expect(document.querySelector('.place.selected')).toBeTruthy();
+  });
+
+  // …and it costs exactly ONE press, landing above the selection's own layer rather than
+  // replacing it: expansion, then selection, then the tab. Asserted because the ordering is the
+  // point of gating the layer on the state — a layer registered unconditionally would peel in
+  // whatever order the components mounted.
+  it('peels in order: the expansion, then the selection, then the tab', async () => {
+    tripEnrichments = { museum: { image } };
+    render(wrap(<MapView />));
+    expand();
+
+    await pressBack('/?tab=map');
+    expect(document.querySelector('.map-hero')).toBeNull();
+    expect(document.querySelector('.place.selected')).toBeTruthy();
+
+    await pressBack('/?tab=map');
+    expect(document.querySelector('.place.selected')).toBeNull();
+
+    await pressBack('/');
+  });
+});
 
 describe('the Map tab under a system back', () => {
   it('one press closes the search field and stays on the tab', async () => {

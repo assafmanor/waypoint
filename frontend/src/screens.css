@@ -3671,6 +3671,19 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* **The caption is a licensing slot** (ADR-0167 §4, generalized in §10.2): a CC BY-SA photograph
+   shown full screen is its most prominent display, and without this the credit is one step behind
+   on the card you came from. Quiet, under the head's own row, and absent entirely for a document
+   — which passes no caption, so this rule never applies there.
+
+   Its Latin run is isolated by the CALLER, not here: `dir="auto"` on a Latin credit would turn
+   the whole line LTR and orphan it to the opposite edge from everything around it — ADR-0118's
+   mirror-image bug, which its lint guard cannot see (ADR-0167 §8.2). */
+.doc-viewer-caption {
+  padding: 0 4px 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
 .doc-viewer-close {
   flex: 0 0 auto;
   font: inherit;

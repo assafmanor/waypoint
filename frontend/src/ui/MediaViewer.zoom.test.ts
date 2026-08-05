@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampZoom, pinchTransform, zoomAtPoint, type PinchStart } from './DocumentViewer';
+import { clampZoom, pinchTransform, zoomAtPoint, type PinchStart } from './MediaViewer';
 
 const start: PinchStart = {
   dist: 100,

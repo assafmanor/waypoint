@@ -3944,6 +3944,136 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     });
   });
 
+  // **EXPANDING IS A MODE CHANGE, NOT GROWTH** (ADR-0167 §11.1). The card becomes the one an
+  // un-added research place gets, and the notes, the references and the schedule footer come OFF
+  // — which is what dissolved §10.2's measured problem instead of working around it: a hero
+  // revealed INSIDE the collapsed card left the notes scroller 31px.
+  describe('the research card (ADR-0167 §11.1)', () => {
+    const image = {
+      url: '/enrichment/images/enr_1',
+      mimeType: 'image/jpeg',
+      width: 840,
+      height: 600,
+      sizeBytes: 120_000,
+      source: 'commons' as const,
+      license: 'CC BY-SA 4.0',
+      attribution: 'Kakidai',
+      fetchedAt: '2026-07-19T09:00:00Z',
+      confidence: 1,
+      method: 'settled_id' as const,
+      ref: 'Nezu.jpg',
+    };
+    const summary = {
+      he: {
+        value: 'מוזיאון לאמנות יפנית ומזרח־אסייתית ברובע מינאטו.',
+        lang: 'he',
+        source: 'wikipedia' as const,
+        license: 'CC BY-SA 4.0',
+        fetchedAt: '2026-07-19T09:00:00Z',
+        confidence: 1,
+        method: 'settled_id' as const,
+        ref: 'Q1054134',
+      },
+    };
+    const expand = () => fireEvent.click(screen.getByRole('button', { name: t.map.know.more }));
+    const knowRow = () => row('museum')!;
+
+    const seedKnown = (fields: Record<string, unknown> = { image, summary }) => {
+      seed();
+      tripEnrichments = { museum: fields } as typeof tripEnrichments;
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+    };
+
+    it('offers the way in only when there is a room to open', () => {
+      seedKnown();
+      expect(screen.queryByRole('button', { name: t.map.know.more })).toBeTruthy();
+
+      cleanup();
+      // A place we know nothing about must not offer it (ADR-0109 §7) — `עוד בגוגל` is its way
+      // to more, and it is already in the footer.
+      seed();
+      tripEnrichments = {};
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+      expect(screen.queryByRole('button', { name: t.map.know.more })).toBeNull();
+    });
+
+    // A photo with no summary still has a room: the hero IS what expanding shows, and without
+    // this the picture would be unreachable on that place.
+    it('offers it for an image with no summary at all', () => {
+      seedKnown({ image });
+      expect(screen.queryByRole('button', { name: t.map.know.more })).toBeTruthy();
+    });
+
+    it('swaps the card into the research card, and takes the itinerary blocks off', () => {
+      seedKnown();
+      // Collapsed: the group's own material is what is on screen.
+      expect(knowRow().querySelector('.note-sec')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeTruthy();
+      expect(knowRow().querySelector('.map-hero')).toBeNull();
+
+      expand();
+
+      // Expanded: the picture, its credit, the whole summary, and a way back.
+      expect(knowRow().querySelector('.map-hero img')?.getAttribute('src')).toBe(image.url);
+      expect(knowRow().querySelector('.map-credit')?.textContent).toContain('Kakidai');
+      expect(knowRow().querySelector('.map-sum')?.className).toContain('is-open');
+      expect(screen.getByRole('button', { name: t.map.know.back })).toBeTruthy();
+      // **Not on screen at the same time** — that is the whole difference from growth.
+      expect(knowRow().querySelector('.note-sec')).toBeNull();
+      expect(knowRow().querySelector('.map-refs')).toBeNull();
+      expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeNull();
+      // The one Google exit stays, beside the way back (§11.1's `.backrow`).
+      expect(screen.queryByRole('link', { name: t.map.know.moreOnGoogle })).toBeTruthy();
+    });
+
+    it('comes back to the itinerary detail, with the place still selected', () => {
+      seedKnown();
+      expand();
+      fireEvent.click(screen.getByRole('button', { name: t.map.know.back }));
+
+      expect(knowRow().querySelector('.map-hero')).toBeNull();
+      expect(knowRow().querySelector('.note-sec')).toBeTruthy();
+      expect(knowRow().className).toContain('selected');
+    });
+
+    // The credit is the licensing obligation §4 placed under the picture, and its Latin run is
+    // isolated INSIDE an RTL element — the half of ADR-0118 its lint guard cannot see (§8.2).
+    it('credits the photographer and the license, with the Latin run isolated', () => {
+      seedKnown();
+      expand();
+      const credit = knowRow().querySelector('.map-credit') as HTMLElement;
+      // The stored license string verbatim: nine distinct ones appeared across 32 files.
+      expect(credit.textContent).toContain('CC BY-SA 4.0');
+      // U+2066 … U+2069 around each Latin run, and no `dir` on the element itself.
+      expect(credit.textContent).toContain('\u2066');
+      expect(credit.getAttribute('dir')).toBeNull();
+    });
+
+    // §11.1 keeps the full-screen preview as the level BELOW the expanded card, reached from the
+    // hero — the app's own zoomable viewer (ADR-0062's one exception), not a bigger thumbnail.
+    it('opens the full picture from the hero, with the credit as its caption', () => {
+      seedKnown();
+      expand();
+      fireEvent.click(knowRow().querySelector('.map-hero') as HTMLElement);
+
+      const viewer = document.querySelector('.doc-viewer') as HTMLElement;
+      expect(viewer).toBeTruthy();
+      expect(viewer.querySelector('.doc-viewer-caption')?.textContent).toContain('Kakidai');
+      expect(viewer.querySelector('.doc-viewer-img')?.getAttribute('src')).toBe(image.url);
+    });
+
+    // Selecting another place must not leave the expansion behind on the one you left — which is
+    // why the state is an id rather than a boolean.
+    it('collapses when the selection moves to another place', () => {
+      seedKnown();
+      expand();
+      fireEvent.click(row('lunch')!);
+      expect(document.querySelector('.map-hero')).toBeNull();
+    });
+  });
+
   // ── Phase 8: the canvas's own chrome (ADR-0126) ───────────────────────────
   // The pane's own markup is `MapPane`'s test; what belongs here is the half the
   // SCREEN owns — the order, the two headers, the shortfall the list has to state, and
