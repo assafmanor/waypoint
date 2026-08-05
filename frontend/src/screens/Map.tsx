@@ -1304,17 +1304,11 @@ export function MapView() {
       // shipped. Without this the footer can open entirely below the fold on the screen
       // ADR-0017 names as the small target, and the action would be the half you cannot see.
       //
-      // `nearest`, not `center`: the row is on screen (you just tapped it), so the only job
-      // is to bring what GREW below it into view, and `center` would shove a row you are
-      // looking at. The pin-tap path above uses `center` for the opposite reason — there the
-      // row may be anywhere.
-      //
-      // Deferred a frame so the block has rendered and the scroller measures its real height.
-      requestAnimationFrame(() => {
-        sheetRef.current
-          ?.querySelector(`[data-place="${placeId}"]`)
-          ?.scrollIntoView({ block: 'nearest' });
-      });
+      // **The card's TOP, not the minimum movement** (owner, 2026-08-05). §8's `nearest` was
+      // reasoned about a row that fits, and this card does not: `nearest` is a no-op once the box
+      // spans the whole scrollport, which is why a tall selection appeared to scroll not at all.
+      // One helper, one mode — see `showRowInList`.
+      showRowInList.current(placeId, ownedResults.get(placeId));
       return;
     }
     // From a pin: NOTHING MOVES. The pane's box does not change, so the camera does not
@@ -1326,18 +1320,31 @@ export function MapView() {
     // selected row is centred, since `nearest` would leave a row that is already barely
     // visible exactly where it was.
     if (sheetView === MAP_SHEET_VIEW.map) return;
-    showRowInList.current(placeId, ownedResults.get(placeId), 'center');
+    showRowInList.current(placeId, ownedResults.get(placeId));
   };
 
   /**
-   * **Bring a row into the list's view**, in one of the two modes this screen means by it.
+   * **Put the selected row's TOP at the top of the list** (owner, 2026-08-05: _"it should auto
+   * scroll to the top of the card, it's much better when the card is too big to display fully"_).
    *
-   * Three callers now, which is why it is a function rather than the inline block it started as:
-   * a pin tap at a list stop (`center` — the row may be anywhere), **leaving the map extreme with
-   * something already selected** (`center`, same reason), and **a row that just GREW** — the
-   * expansion — which is `nearest`, because the row is already on screen and the job is only to
-   * bring what appeared below it into view. Shoving a row you are looking at is the failure mode
-   * `center` has there, and it is why ADR-0135 §8 chose `nearest` for the selection reveal.
+   * Three callers: a row or pin tap at a list stop, **leaving the map extreme with something
+   * already selected**, and **a row that just grew** (the expansion).
+   *
+   * **`start`, and this supersedes two earlier choices** — ADR-0135 §8's `nearest` for the
+   * selection reveal and the `center` this function shipped with. Both were reasoned about a row
+   * that FITS, and the selection card stopped fitting the moment it grew a summary, a hero and a
+   * note section:
+   *
+   *  - **`nearest` is a no-op on a card taller than the scrollport.** Per spec it scrolls the
+   *    minimum to bring the box into view, and a box that already spans the whole port needs
+   *    nothing — so a tall card produced no scroll at all, which is exactly what was reported.
+   *  - **`center` on a card taller than the port centres it**, which puts the identity row —
+   *    the name, the badge, the address — ABOVE the fold. You get the middle of a card whose top
+   *    you cannot see.
+   *  - **`start` is the only one that is correct at every card height**, and it is also the only
+   *    one that survives being called mid-transition: the sheet's height animates over
+   *    `--t-base`, and aligning the row's top to the scroller's top stays true as the box grows,
+   *    where a centred or minimal offset does not.
    *
    * The place's row, WHEREVER it is. Normally that is its trip row; when Google's half is what
    * matched it, the trip list has no row for it and its row is the result row. Two selectors
@@ -1347,18 +1354,32 @@ export function MapView() {
    * A ref, not a `useCallback`: this screen re-renders every second and every caller wants the
    * latest `sheetRef`, never a closure from an earlier tick (ADR-0121 §4's latest-ref idiom).
    */
-  const showRowInList = useRef<
-    (placeId?: string | null, resultId?: string | null, block?: ScrollLogicalPosition) => void
-  >(() => {});
-  showRowInList.current = (placeId, resultId, block = 'nearest') => {
+  const showRowInList = useRef<(placeId?: string | null, resultId?: string | null) => void>(
+    () => {},
+  );
+  /** The one frame this may have pending. **At most one scroll is ever in flight**, and both
+   *  reasons are behavioural rather than tidiness: two transitions in quick succession (tap a row,
+   *  then change the stop) would otherwise fire two scrolls, the first aimed at a target the
+   *  second has already replaced; and a frame that outlives the screen would scroll a row that is
+   *  no longer on it. */
+  const pendingScroll = useRef<number | undefined>(undefined);
+  useEffect(() => () => cancelAnimationFrame(pendingScroll.current ?? 0), []);
+  showRowInList.current = (placeId, resultId) => {
     // Deferred a frame so a row that has just grown is measured at its real height, and so a stop
     // change has committed the sheet's new box before we scroll inside it.
-    requestAnimationFrame(() => {
-      const scope = sheetRef.current;
+    cancelAnimationFrame(pendingScroll.current ?? 0);
+    pendingScroll.current = requestAnimationFrame(() => {
+      // The sheet where there IS one, the document otherwise — because the graceful-absence path
+      // (no Maps key, or offline) renders this list straight into the shell's scrolling body with
+      // no sheet at all (§8). Scoping to a null ref there meant a selected card could open below
+      // the fold and nothing moved, which is the same defect this function exists for.
+      const scope: ParentNode = sheetRef.current ?? document;
       const row =
         (placeId ? scope?.querySelector(`[data-place="${placeId}"]`) : null) ??
         (resultId ? scope?.querySelector(`[data-result="${resultId}"]`) : null);
-      row?.scrollIntoView({ block });
+      // The gap above the card is `scroll-margin-top` on `.place` (map.css), not a number here:
+      // it is a property of the row's own box, and CSS is where the sheet's edges already live.
+      row?.scrollIntoView({ block: 'start' });
     });
   };
 
@@ -1829,7 +1850,7 @@ export function MapView() {
   useEffect(() => {
     if (sheetView === MAP_SHEET_VIEW.map) return;
     if (!selectedId && !selectedResultId) return;
-    showRowInList.current(selectedId, selectedResultId, 'center');
+    showRowInList.current(selectedId, selectedResultId);
     // The STOP is the trigger and the only dep on purpose: a change of SELECTION is `select`'s
     // own job (it centres, or normalises the sheet first), and re-running here on it would
     // scroll the same row twice — the second time with `center`, undoing the `nearest` a row

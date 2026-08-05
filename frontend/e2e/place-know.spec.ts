@@ -32,9 +32,37 @@ const LONG_EN =
   'It houses the collection of pre-modern Japanese and East Asian art assembled by the ' +
   'businessman and politician Kaichiro Nezu, and its garden holds several teahouses.';
 
+/** **The measured MAXIMUM** (ADR-0166 §11: extracts run 86–1,321 characters). The scroll spec needs
+ *  a card that genuinely exceeds its scrollport — that is the state in which `nearest` is a no-op
+ *  and `center` hides the identity row — and at the small end of ADR-0017's band a long extract is
+ *  what produces one. */
+const MAX_EN =
+  'Nezu Museum is an art museum in the Minami-Aoyama neighbourhood of Minato, Tokyo, Japan. ' +
+  'It houses the collection of pre-modern Japanese and East Asian art assembled over four ' +
+  'decades by the businessman and politician Kaichiro Nezu, who served as president of the ' +
+  'Tobu Railway and sat in the House of Peers. The collection numbers some seven thousand ' +
+  'four hundred works, among them seven designated National Treasures and eighty-seven ' +
+  'Important Cultural Properties, and it is shown in rotation rather than all at once. The ' +
+  'garden that surrounds the galleries holds several teahouses, a stream and a collection of ' +
+  'stone sculpture, and it is open to visitors with a museum ticket; the irises painted by ' +
+  'Ogata Korin on a pair of celebrated folding screens are shown each spring, when the ' +
+  'garden’s own irises are in flower.';
+
 const places = [
   { id: 'pl-known', tripId: TRIP_ID, name: 'Nezu', lat: 35.6656, lng: 139.7167, ...stamps },
   { id: 'pl-blank', tripId: TRIP_ID, name: 'Nezu', lat: 35.6657, lng: 139.7168, ...stamps },
+  // **Filler, and it earns its place**: `scrollIntoView({ block: 'start' })` can only bring a
+  // row's top to the top if there is content BELOW it to scroll into. With two rows the scroller
+  // maxed out 102px short — a limit of the scroll extent, not of the alignment — so the spec that
+  // measures the alignment needs a list long enough to express it.
+  ...[2, 3, 4, 5].map((i) => ({
+    id: `pl-filler-${i}`,
+    tripId: TRIP_ID,
+    name: `Filler ${i}`,
+    lat: 35.666 + i / 1000,
+    lng: 139.717 + i / 1000,
+    ...stamps,
+  })),
 ];
 
 const events = places.map((p, i) => ({
@@ -47,7 +75,7 @@ const events = places.map((p, i) => ({
   kind: 'soft',
   status: 'planned',
   placeId: p.id,
-  startsAt: `${today()}T0${5 + i}:00:00.000Z`,
+  startsAt: `${today()}T${String(5 + i).padStart(2, '0')}:00:00.000Z`,
   sortOrder: i,
   source: 'manual',
   ...stamps,
@@ -81,8 +109,13 @@ const IMAGE = {
   ref: 'Nezu.jpg',
 };
 
-async function boot(page: Page, width: number, lang = 'en'): Promise<void> {
-  await page.setViewportSize({ width, height: 844 });
+async function boot(
+  page: Page,
+  width: number,
+  lang = 'en',
+  opts: { height?: number; extract?: string } = {},
+): Promise<void> {
+  await page.setViewportSize({ width, height: opts.height ?? 844 });
   // The hero's bytes. A 1x1 PNG is enough here — this spec measures boxes, and
   // `place-photo-frame.spec.ts` is where a real decode is asserted.
   await page.route(
@@ -102,7 +135,10 @@ async function boot(page: Page, width: number, lang = 'en'): Promise<void> {
     // Only the first place knows anything. The second is the majority case (ADR-0166 §11.3) and
     // the comparison: the same row, same title, without a block.
     enrichments: {
-      'pl-known': { summary: { [lang]: summary(lang, LONG_EN) }, image: IMAGE },
+      'pl-known': {
+        summary: { [lang]: summary(lang, opts.extract ?? LONG_EN) },
+        image: IMAGE,
+      },
     },
     now: todayAt('02:00'),
     dates: shortLiveTripDates(),
@@ -284,6 +320,90 @@ test('a place we know nothing about draws no block, and still offers עוד בג
   // A different question from `נווט`, which the row still carries — and it opens away from us.
   await expect(google).toHaveAttribute('target', '_blank');
   await expect(blank.locator('.map-navbtn')).toBeVisible();
+});
+
+// **THE SELECTED CARD SCROLLS TO ITS OWN TOP** (owner, 2026-08-05: _"it still doesn't auto scroll
+// on the list when selecting... it should auto scroll to the top of the card, it's much better when
+// the card is too big to display fully"_).
+//
+// Measured in a real browser because the defect was in the *semantics* of the scroll, not in the
+// wiring: the unit test asserted that `scrollIntoView` was CALLED and passed the whole time, while
+// `nearest` is a no-op on a box taller than the scrollport and `center` puts the card's identity row
+// above the fold. Only a rendered scroller can tell you where the card actually ended up.
+//
+// What this run reaches: the **graceful-absence path** (no Maps key here, so the list renders in the
+// shell's scrolling body). The split's own sheet scroller needs a canvas, so the sheet stops stay a
+// device question — but the alignment being asserted is the same call on the same row.
+test.describe('the selected card scrolls to its top @390', () => {
+  // **The SMALL end of ADR-0017's band, with the longest measured extract**, because the case the
+  // owner reported is a card that does not fit: at 844px with an ordinary extract the card is 422px
+  // against a 709px port, which is a state where `nearest` behaves perfectly well. CI found that
+  // for me — the first version of this guard asserted a ratio that was true locally and 3px false
+  // on the runner, which is the same environment-specific mistake ADR-0167 §13 already records.
+  test.beforeEach(({ page }) => boot(page, 390, 'en', { height: 640, extract: MAX_EN }));
+
+  test('brings the card’s top to the top of the list, not its middle', async ({ page }) => {
+    // A card tall enough that the old modes misbehaved: summary + the notes section + the footer.
+    const row = page.locator('.map-list .place').first();
+    const before = await row.evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    await row.click();
+    await expect(page.locator('.map-sum')).toBeVisible();
+    // The scroll is deferred one frame, and the reveal grows the row first.
+    await page.waitForTimeout(120);
+
+    const m = await page.evaluate(() => {
+      const el = document.querySelector('.map-list .place.selected') as HTMLElement;
+      const scroller = document.querySelector('.body') as HTMLElement;
+      const r = el.getBoundingClientRect();
+      const s = scroller.getBoundingClientRect();
+      return {
+        top: Math.round(r.top),
+        height: Math.round(r.height),
+        scrollerTop: Math.round(s.top),
+        scrollerHeight: Math.round(s.height),
+        scrolled: Math.round(scroller.scrollTop),
+      };
+    });
+
+    // **No height premise here, and CI is what corrected that**: a COLLAPSED card is clamped to
+    // two lines (§9.3), so it does not exceed the port however long the extract is — 327px against
+    // 505px on the runner. The too-fat-to-fit case is the EXPANSION, which is the next test.
+    // What discriminates here is the alignment itself: `nearest` would bring the card's bottom in
+    // and leave its top somewhere down the list, and `center` would put the top above the fold.
+    expect(m.scrolled).toBeGreaterThan(0);
+    expect(m.top).toBeLessThan(before);
+    // And its TOP is at the scroller's top: within the 8px `scroll-margin-top` plus rounding,
+    // never centred (which for a card taller than the port would put `top` ABOVE the scroller).
+    expect(m.top).toBeGreaterThanOrEqual(m.scrollerTop - 1);
+    expect(m.top).toBeLessThanOrEqual(m.scrollerTop + 24);
+  });
+
+  // The expansion is the bigger version of the same growth — and the one the owner's screenshot
+  // caught opening under the tab bar.
+  test('does the same when the card expands', async ({ page }) => {
+    const row = page.locator('.map-list .place').first();
+    await row.click();
+    await page.waitForTimeout(120);
+    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await expect(page.locator('.map-hero')).toBeVisible();
+    await page.waitForTimeout(120);
+
+    const m = await page.evaluate(() => {
+      const el = document.querySelector('.map-list .place.selected') as HTMLElement;
+      const scroller = document.querySelector('.body') as HTMLElement;
+      return {
+        top: Math.round(el.getBoundingClientRect().top),
+        height: Math.round(el.getBoundingClientRect().height),
+        scrollerTop: Math.round(scroller.getBoundingClientRect().top),
+        portHeight: Math.round(scroller.getBoundingClientRect().height),
+      };
+    });
+    // **The card really is taller than the port** — otherwise this proves nothing about the
+    // reported case: it is exactly the state where `nearest` scrolls nothing at all.
+    expect(m.height).toBeGreaterThan(m.portHeight);
+    expect(m.top).toBeGreaterThanOrEqual(m.scrollerTop - 1);
+    expect(m.top).toBeLessThanOrEqual(m.scrollerTop + 24);
+  });
 });
 
 // **EXPANDING IS A MODE CHANGE, NOT GROWTH** (ADR-0167 §11.1). Measured here because the claim is

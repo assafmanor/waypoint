@@ -68,13 +68,37 @@ The selection reveal already had this problem and [ADR-0135](../decisions/0135-a
 
 At the `map` stop this is a no-op by construction: the expansion happens on the canvas card, which is not in the sheet's scroller at all — and that card is bounded and scrolls itself (the `:has(.map-hero)` rules).
 
+## 7. …and the scroll still did not work, because I tested the call instead of the outcome
+
+The owner, after §6 shipped: _"it still doesn't auto scroll on the list when selecting or moving from map to half/full list. Important point: **it should auto scroll to the top of the card**, it's much better when the card is too big to display fully."_
+
+**The wiring was right and the alignment was wrong**, which is why every test passed while nothing worked:
+
+- **`nearest` is a no-op on a box taller than the scrollport.** Per spec it scrolls the minimum needed to bring the element into view, and an element that already spans the whole port needs nothing. The selection card stopped fitting the moment it grew a summary, a hero and a note section — so the reveal scrolled **not at all**, exactly as reported.
+- **`center` on a card taller than the port centres it**, which puts the identity row — the name, the badge, the address — above the fold. You get the middle of a card whose top you cannot see.
+- **`start` is the only alignment correct at every card height**, and the only one that survives being called mid-transition: the sheet's height animates over `--t-base`, and a row's top aligned to the scroller's top stays true as the box grows.
+
+So there is now **one mode, `start`, for all three callers** — which supersedes ADR-0135 §8's `nearest` and the `center` §6 shipped with. The 8px of air above the card is `scroll-margin-top` on `.place`, because that is a property of the row's box rather than a number for the screen to carry.
+
+**What I got wrong methodologically**, and it is the lesson worth keeping: the unit test asserted that `scrollIntoView` **was called, with a mode** — which it was, both times. It could not assert _where the card ended up_, because jsdom has no layout. The defect lived entirely in the gap between those two statements. It is now measured in a real browser (`e2e/place-know.spec.ts`), and the measurement immediately paid for itself twice:
+
+- **The first version of that spec failed for a reason that was not the bug**: with two rows in the fixture, `scrollTop` maxed out 102px short of the top. That is the scroll extent's limit, not the alignment's — so the fixture gained four filler rows, and the spec now expresses the case it claims to.
+- **The fixture's own time formatting broke** on the sixth place (`0${5 + i}` → `T010:00`), which crashed the app into an error boundary. Padded.
+- **And CI caught the guard being both too tight and untrue.** The spec asserted "the card is taller than 60% of the port" — 422px against 709px locally, and **3px short on the runner**, which is the same environment-specific assertion ADR-0167 §13 already records once (a Hebrew-metrics-dependent footer). Worse than flaky: at 844px with an ordinary extract the card **fits**, so the spec was not exercising the reported state at all. It now boots at the **small end of ADR-0017's band with the longest measured extract** (1,321 characters is §11's maximum) and asserts `height > portHeight` outright — the state in which `nearest` provably scrolls nothing.
+- **Then CI corrected the same premise a second time, in the other direction**: it does not hold for the **collapsed** card at all, because that summary is clamped to two lines however long the extract is (327px against a 505px port). Too-tall is a fact about the **expansion**, so the height assertion now lives only in the expansion test; what discriminates the selection test is the alignment itself — the card's top landing at the scroller's top, which neither `nearest` nor `center` produces.
+
+**Two more things the round turned up, both real rather than test hygiene:**
+
+- **The list-only path never scrolled at all.** `showRowInList` scoped its query to `sheetRef`, which is null when there is no sheet — the graceful-absence path (no Maps key, or offline) renders the list straight into the shell's scrolling body. It falls back to the document there, which is also what makes the behaviour reachable by the hermetic e2e at all.
+- **A pending frame could outlive its transition.** Only one scroll is ever in flight now (cancel-before-schedule) and it is cancelled on unmount. Found because leaked frames from earlier tests were landing in a later one and calling `scrollIntoView` six times where it asserted none — the test was right and the code was sloppy.
+
 ## Where the tests are
 
 - `enrichment.service.spec.ts` (+1) — a pass that fetches nothing still nudges the trips that hold the place, carrying the client read model. It is the one test here that needs a real `Place` row, because the store has no `tripId` (§1) and the fan-out is the only thing that can be observed.
 - `PlaceKnowledge.test.tsx` (+2) — the block opens the card and does not also fire the row's tap; the two densities with nowhere to go stay inert.
 - `Map.embedded.test.tsx` (+5) — the stop change centres the selected row and scrolls nothing without a selection; an expansion scrolls its own row with `nearest`; and the pin gets the row's photo, with a picked icon still winning (§2 on the canvas).
 - `MapPane.test.tsx` (+1) — the photograph's markup: clipped by an inner element (`.pin-b` must stay unclipped or the counter is cut), decorative, and the glyph left in the DOM for CSS to swap.
-- `e2e/place-know.spec.ts` (+1) — the way back centred against the Google exit, **verified against the reverted CSS**: 14px apart before, ≤1px after.
+- `e2e/place-know.spec.ts` (+3) — the way back centred against the Google exit, **verified against the reverted CSS** (14px apart before, ≤1px after); and the selected card's top landing at the scroller's top, on selection and on expansion, with the card asserted to be **taller than the port** so the case is the reported one. The fixture gained four filler rows because `start` needs content below the row to scroll into.
 
 ## Still open
 
