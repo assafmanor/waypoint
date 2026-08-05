@@ -205,7 +205,22 @@ The owner used the shipped surface and reported four things. Three were defects 
 - **B — A, gated on the size the canvas resolves**: photo at the map extreme, glyph at `half`.
 - **C — a second silhouette** (the badge's rounded square with a hue pointer): **31% more picture** at the same pin height, and the canvas stops being one shape.
 
-**The number that decides it is 34px.** Pin size is a share of the canvas (ADR-0123), so at the `half` stop — where the list is the surface and the canvas is a strip — a photo is 21px, which is a texture: you can tell a bright building from a dark interior and nothing else. The category glyph carries more meaning than that. At the map extreme the head is 35px, which is the size §1 already accepted a photograph at. So the recommendation is **B**, and the fork the owner owns is whether the gate is worth the inconsistency of a pin that changes content with the stop. Recorded unbuilt in the backlog either way.
+**The number that decides it is 34px.** Pin size is a share of the canvas (ADR-0123), so at the `half` stop — where the list is the surface and the canvas is a strip — a photo is 21px, which is a texture: you can tell a bright building from a dark interior and nothing else. The category glyph carries more meaning than that. At the map extreme the head is 35px, which is the size §1 already accepted a photograph at.
+
+**The owner took B** (_"definitely not C, leaning B"_) and it is **built**. Three things about the build are worth carrying, because each is a decision the next person would otherwise re-take:
+
+- **The gate is a `@container` query, not a prop.** The pane already declares `container-type: size` and the pin's size is already `clamp(34px, 11cqh, 56px)`, so "is this pin big enough to read a photograph" is a question CSS can answer on its own: `@container (min-height: 436px)` — 48px of pin. A stop change therefore draws or drops every photograph with **no re-render, no new `MapPane` prop and no marker re-diff**, which is the cost ADR-0121 §4 exists to avoid.
+- **The photograph is the same one the row's badge shows**, resolved by the same `badgePhoto`. That is not tidiness: §2's rule (a picked icon beats a fetched photo) would otherwise hold in the list and not on the canvas, and the same place would say two different things about itself.
+- **The clip goes on an inner element.** `.pin-b` carries no `overflow` on purpose — the order counter overhangs it — so clipping the head would cut that counter into a quarter-circle, which is §11.2's trap and cost a release once already.
+
+**And the inconsistency B was suspected of is grammar this canvas already had:** every pin degrades to a **dot** below `MAP_ZOOM.DOT_BELOW`, so "the pin says less when it is smaller" predates the photograph. The gate joins that ladder rather than starting one.
+
+**Two more reports came in on the same surface** and both are the same class of thing as §14's inert grid — a rule that is right in one host and wrong in the second:
+
+- **The way back was 14px above its own line.** `.map-know-more` carries `align-self: flex-start`, which is correct inside `.map-sum` (it hugs the first line of baseline-aligned prose) and wrong in `.map-backrow`, where its neighbour is a 30px pill. Answered at the new host, not by restyling the control.
+- **The expansion still opened below the fold at `half`.** §11.1's mode change adds ~300px to a row in a ~380px scroller, and the selection reveal's own answer to exactly that (ADR-0135 §8: `nearest`, deferred a frame) had never been extended to it. The scroll helper now takes its block mode as a parameter — `center` when the row may be anywhere, `nearest` when it is on screen and only what grew below it needs bringing in.
+
+**What no test can see, and the honest limit of this build:** the gate is a container query and the canvas needs a Maps key, so neither jsdom nor the hermetic e2e can render a photographed pin. What is asserted is the markup and the resolution (which photo, and a picked icon still winning); the mockup carries the measurement, and whether a real Commons photograph reads at 35px on a moving map is the device pass.
 
 ## What this does not settle
 

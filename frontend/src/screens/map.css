@@ -1470,6 +1470,16 @@
   padding-top: 9px;
   border-top: 1px solid var(--line);
 }
+/* **AND IT IS CENTRED HERE, not top-aligned** (owner, 2026-08-05: _"the text חזרה לפרטי המקום isn't
+   line aligned correctly"_ — it sat ~10px above the `עוד בגוגל` pill beside it).
+   `.map-know-more`'s own `align-self: flex-start` belongs to its FIRST host: inside `.map-sum` it
+   sits beside baseline-aligned prose and has to hug the first line, or it drifts down a two-line
+   block. In this row its neighbour is a 30px pill, so the same declaration is what pushed it off
+   the line. One class, two hosts — and `frontend/CLAUDE.md` names this exact shape: when a shared
+   control lands somewhere new, the thing to fix is the DEFAULT it brought with it. */
+.map-backrow .map-know-more {
+  align-self: center;
+}
 .map-refs {
   flex-basis: 100%;
   display: flex;

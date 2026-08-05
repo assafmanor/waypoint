@@ -120,6 +120,16 @@ export interface MapPin {
   hue: PinHue;
   /** The category glyph. A ghost drops it (no fill to sit on), so it may be ''. */
   glyph: string;
+  /** **The photograph that fills the pin's head** (ADR-0167 §16, treatment B), already
+   *  origin-prefixed by the screen — or absent, which is the majority of pins and draws the
+   *  glyph exactly as it always did.
+   *
+   *  Resolved by the same `badgePhoto` the list row uses, so §2's rule (a picked icon beats a
+   *  fetched photo) cannot hold on one surface and not the other. **Whether it is DRAWN is
+   *  CSS's call, not this flag's:** the photo appears only where the canvas resolves a pin big
+   *  enough to read one, which is a `@container` query on the pane (see `map-pane.css`) — so a
+   *  stop change costs no prop, no state and no marker re-diff (ADR-0121 §4). */
+  photoUrl?: string;
   tier: PinTier;
   /** What a human said happened here, on the two tiers that can have an outcome at all
    *  (`pinOutcome`). A ghost draws it in the empty centre only it has; a filled pin draws
@@ -589,6 +599,19 @@ const PinMarker = memo(function PinMarker({
             demotion — covers the mark with nothing re-stated. The two are exclusive by
             construction rather than by a rule: a ghost carries no glyph. */}
         <span className="pin-b">
+          {/* **The photograph, clipped by an INNER element** (ADR-0167 §16). Never by `.pin-b`
+              itself, which deliberately carries no `overflow`: the order counter overhangs it, and
+              clipping the head cuts that counter into a quarter-circle (§11.2's trap, which cost a
+              release once). Counter-rotated and over-sized, because `.pin-b` is rotated 45° so its
+              tip points at the coordinate — the same counter-rotation `.pin-g` does for the glyph,
+              at the scale a rotated square needs to cover its own box.
+              It is rendered whenever we HAVE one; the size gate that decides whether it is drawn
+              is a container query, so the canvas answers it without a re-render. */}
+          {pin.photoUrl && (
+            <span className="pin-photo" aria-hidden="true">
+              <img src={pin.photoUrl} alt="" loading="lazy" decoding="async" />
+            </span>
+          )}
           {hasGlyph && (
             <span className="pin-g" aria-hidden="true">
               {pin.glyph}
