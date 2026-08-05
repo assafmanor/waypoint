@@ -95,11 +95,26 @@ const EVENTS = [
   },
 ];
 
-async function liftedHero(page: Page) {
+/** The same flight, overnight and long: away at 22:00 Frankfurt, down at 13:00 Tel Aviv the
+ *  NEXT day, with 13h24 still to run at the pinned clock. It exists to load the meta row as
+ *  heavily as anything realistic can — `נחיתה 13:00 מחר · בעוד 13:24 שע׳ · #LH692` is every
+ *  token that row can hold at once, which is the case the arrival day had to be measured
+ *  against before it shipped. */
+const RED_EYE = [
+  {
+    ...EVENTS[0],
+    startsAt: '2026-08-05T19:00:00.000Z',
+    endsAt: '2026-08-06T10:00:00.000Z',
+    endDate: '2026-08-06',
+  },
+  EVENTS[1],
+];
+
+async function liftedHero(page: Page, events = EVENTS) {
   await bootIntoTrip(page, {
     now: NOW,
     dates: shortLiveTripDates(),
-    events: EVENTS,
+    events,
     bookings: BOOKINGS,
     places: PLACES,
   });
@@ -167,6 +182,33 @@ for (const width of [360, 390]) {
       return { scroll: nm.scrollWidth, client: nm.clientWidth };
     });
     expect(clipped.client).toBeLessThanOrEqual(clipped.scroll);
+  });
+}
+
+// **The arrival day, measured before it is trusted** (ADR-0160 §M). The meta row is
+// `flex-wrap: wrap`, and flex breaks lines on HYPOTHETICAL sizes — so wrapping is decided
+// before `flex-shrink` ever runs, which is the same mechanism that put `ניווט` on its own
+// line. A red-eye is also the row most likely to be carrying a code chip, so the token that
+// only a red-eye shows lands on the row that is already fullest. Both widths, both
+// elevations: the collapsed board is where it appears most.
+for (const width of [360, 390]) {
+  test(`the fullest arrival row holds ONE line at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 360 ? 640 : 844 });
+    const hero = await liftedHero(page, RED_EYE);
+    // Every token is actually present — a row that fits because it is missing half its
+    // content is not the measurement this promises.
+    const meta = hero.locator('.wp-board-now-meta').first();
+    await expect(meta).toContainText('13:00');
+    await expect(meta).toContainText('מחר');
+    await expect(meta).toContainText('LH692');
+    expect(await lineCount(page, '.hero-lifted .wp-board-now-meta')).toBe(1);
+
+    // And on the board it came from, which is the surface a passenger actually stares at.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.hero-lifted')).toHaveCount(0);
+    const board = page.locator('.wp-board .wp-board-now-meta').first();
+    await expect(board).toContainText('מחר');
+    expect(await lineCount(page, '.wp-board .wp-board-now-meta')).toBe(1);
   });
 }
 

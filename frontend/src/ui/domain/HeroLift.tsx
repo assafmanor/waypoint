@@ -46,6 +46,9 @@ export interface HeroLiftTransit {
   endLabel: ReactNode;
   /** The arrival instant, pre-formatted in the **destination's** zone (ADR-0107 §3). */
   endTime?: string;
+  /** `מחר` beside it, only when the landing is not today (ADR-0160 §M) — the one case
+   *  where the time alone misleads. Same token the collapsed board shows. */
+  endDay?: string;
   /** How long is left, already phrased (`בעוד 1:39 שע׳`) — the answer to "when do we
    *  land", which no surface carried before this. */
   inPhrase?: string;
@@ -277,6 +280,7 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
               <div className="wp-board-now-meta">
                 <span className="tlabel loc">{point.transit.endLabel}</span>
                 {point.transit.endTime && <span dir="auto">{point.transit.endTime}</span>}
+                {point.transit.endDay && <span>{point.transit.endDay}</span>}
                 {point.transit.inPhrase && (
                   <span className="hero-eta" dir="auto">
                     {point.transit.inPhrase}

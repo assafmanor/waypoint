@@ -131,6 +131,43 @@ describe('Board', () => {
     expect(container.querySelector('.tp-plane')?.textContent).toBe('🚆');
   });
 
+  // A red-eye lands at `06:00`, which reads as this morning, and the zone jump breaks the
+  // arithmetic you would use to check. The day is a disambiguator for exactly that, so it
+  // rides with the TIME it qualifies and appears only when there is something to
+  // disambiguate (ADR-0160 §M).
+  it('in-transit: the arrival day sits beside the arrival time, and only when handed one', () => {
+    const redEye = (endDay?: string) => (
+      <Board
+        variant="in-transit"
+        clock="04:20"
+        nowTitle={<span>טיסה</span>}
+        transit={{
+          labelKey: 'flightArrival',
+          liveWord: t.board.midSpan.flightLive,
+          label: t.board.midSpan.transitLabel,
+          mark: '✈️',
+          endTime: '06:00',
+          endDay,
+          progress: 0.8,
+          startTime: '22:00',
+          remaining: '1:40 שע׳',
+        }}
+      />
+    );
+    const meta = () => document.querySelector('.wp-board-now-meta')!;
+    const { rerender } = render(redEye('מחר'));
+    expect(meta().textContent).toContain('06:00');
+    expect(meta().textContent).toContain('מחר');
+    // Beside the arrival, not on the countdown: what is ambiguous is `06:00`, and the
+    // countdown lives two lines down on the rail regardless.
+    const spans = [...meta().querySelectorAll('span')].map((s) => s.textContent);
+    expect(spans.indexOf('מחר')).toBe(spans.indexOf('06:00') + 1);
+
+    rerender(redEye(undefined));
+    expect(meta().textContent).toContain('06:00');
+    expect(meta().textContent).not.toContain('מחר');
+  });
+
   it('in-transit: the shift pill sits at the destination end, where both times are read', () => {
     // A flight whose ends are in different zones: 07:15 origin → 11:00 destination
     // reads as 3h45 unless the −3 is right there beside them (ADR-0107).

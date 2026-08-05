@@ -180,6 +180,33 @@ describe('HeroLift', () => {
     // `קשיח` and `עד` belong to the ordinary grammar and must not double up on it.
     expect(lead.textContent).not.toContain(t.event.hard);
     expect(lead.querySelector('.wp-board-now-meta')?.textContent).not.toContain(t.board.until);
+    // Nothing said the landing is on another day, so nothing claims one — the same-day
+    // journey is nearly every journey, and this row stays as short as it was.
+    expect(lead.querySelector('.wp-board-now-meta')?.textContent).not.toContain('מחר');
+  });
+
+  // The same token the collapsed board carries, in the same place: beside the arrival time
+  // it disambiguates, not beside the countdown (ADR-0160 §M).
+  it('names the arrival day when the landing is not today', () => {
+    const container = show({
+      liveWord: t.board.midSpan.flightLive,
+      now: [
+        point({
+          kind: undefined,
+          transit: {
+            label: t.board.midSpan.transitLabel,
+            endLabel: t.glance.transition.flightArrival,
+            endTime: '06:00',
+            endDay: 'מחר',
+            inPhrase: t.board.inPhrase('1:40 שע׳'),
+          },
+        }),
+      ],
+    });
+    const meta = container.querySelector('.hero-point[data-lead] .wp-board-now-meta')!;
+    const spans = [...meta.querySelectorAll('span')].map((s) => s.textContent);
+    expect(spans.indexOf('מחר')).toBe(spans.indexOf('06:00') + 1);
+    expect(meta.querySelector('.hero-eta')?.textContent).toBe(t.board.inPhrase('1:40 שע׳'));
   });
 
   // Reported from a device: the promoted card glowed amber over a board glowing teal. The
