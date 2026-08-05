@@ -413,6 +413,21 @@
 }
 
 /* In-transit time-to-landing progress — amber (time). */
+/* A HELD span's line, where a journey draws its rail (session 215): a car you are holding
+   has no position between two places, so it says since when it has been yours. Teal, the
+   "where you are" family the mid-stay strip already uses (ADR-0059 §2) — the amber on this
+   variant belongs to the return DEADLINE, up on the meta row. */
+.wp-board-held {
+  margin-top: 13px;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+  color: #7fd8cc;
+  background: rgba(44, 156, 144, 0.1);
+  border: 1px solid rgba(44, 156, 144, 0.26);
+  border-radius: 10px;
+  padding: 7px 10px;
+}
+
 .wp-board-transit-prog {
   margin-top: 15px;
 }

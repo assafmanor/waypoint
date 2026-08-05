@@ -55,6 +55,9 @@ export interface HeroLiftTransit {
    *  and not the card's. A held span (a car hire) passes none: its end is a deadline,
    *  not a distance travelled. */
   rail?: ReactNode;
+  /** A HELD span's own line instead of a rail (`אצלנו מ־11:40`) — a car you are holding
+   *  has no position between two places, and its end is a deadline. */
+  held?: string;
   /** The clock jump in words (`מזיזים את השעון שעה קדימה`), and the destination's clock
    *  right now. The amber pill stays on the collapsed board — it is the glance form of the
    *  same number, and this is the state you asked for, so it can afford a sentence.
@@ -284,6 +287,12 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
               {/* The rail, INSIDE the point whose journey it draws. As the `foot` it sat
                   under `הבא בתור` and read as that event's progress. */}
               {point.transit.rail && <div className="hero-transit">{point.transit.rail}</div>}
+              {/* …and a held span's line where that rail would be. */}
+              {point.transit.held && (
+                <div className="wp-board-held" dir="auto">
+                  {point.transit.held}
+                </div>
+              )}
               {/* The zone crossing, said out loud. Amber: a clock jump is time (rule 4). */}
               {point.transit.clockShift && (
                 <div className="hero-clockshift">

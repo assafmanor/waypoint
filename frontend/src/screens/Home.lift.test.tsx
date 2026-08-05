@@ -454,6 +454,47 @@ describe('Home — the lift wiring', () => {
     expect(hero.textContent).not.toContain(t.board.midSpan.flightLive);
   });
 
+  // **THE EXCLUSION** (owner: *"but not rental cars that are different"*). A same-day hire
+  // reaches this exact state — only a MULTI-day span is ambient — so before session 215 it
+  // announced `בטיסה`, drew a plane crossing a progress bar, and called its return an
+  // arrival. Its middle is a resource you are HOLDING: no rail, no travelling mark, an
+  // amber deadline rather than a teal arrival, and a line saying since when it is ours.
+  it('a same-day car hire is held, not travelling', () => {
+    const hire = flight({ icon: '🚗', title: 'Hertz', bookingId: 'bk-car' });
+    tripEvents = [hire];
+    tripBookings = [{ ...flightBooking, id: 'bk-car', type: BOOKING_TYPE.CAR, title: 'Hertz' }];
+    show();
+    // The collapsed board: the car's own words, and nothing that says "in flight".
+    expect(document.querySelector('.wp-board-live')?.textContent).toContain(
+      t.board.midSpan.carHoldLive,
+    );
+    expect(document.querySelector('.wp-board-now-label')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    expect(document.querySelector('.wp-board-transit-prog')).toBeNull();
+    expect(document.querySelector('.tp-plane')).toBeNull();
+    // Its end is `החזרת הרכב` — amber (a deadline), not the teal of an arrival.
+    const chip = document.querySelector('.wp-board-now-meta .tlabel')!;
+    expect(chip.textContent).toBe(t.glance.transition.carDropoff);
+    expect(chip.className).not.toContain('loc');
+    // The meta row carries the countdown a journey would have put on its rail…
+    expect(document.querySelector('.wp-board-now-meta')?.textContent).toContain(
+      t.board.inPhrase('1:30 שע׳'),
+    );
+    // …and the held line says since when the car is ours — 11:00Z, read in the zone the
+    // span starts in (Europe/Rome), which is the sticky-display rule (ADR-0107 §2-3).
+    expect(document.querySelector('.wp-board-held')?.textContent).toBe(t.board.heldSince('13:00'));
+
+    // And the same, one elevation up.
+    fireEvent.click(board()!);
+    const hero = document.querySelector('.hero-lifted')!;
+    expect(hero.querySelector('.wp-board-now-label.loc')?.textContent).toBe(
+      t.board.midSpan.carHoldLabel,
+    );
+    expect(hero.querySelector('.wp-board-transit-prog')).toBeNull();
+    expect(hero.querySelector('.wp-board-held')?.textContent).toBe(t.board.heldSince('13:00'));
+  });
+
   // The owner's content idea, wired: the crossing said out loud, plus the destination's
   // clock now. `Europe/Rome` (the trip) → `Asia/Tokyo` (the destination place) is +7 in
   // August, and the direction must follow the sign.

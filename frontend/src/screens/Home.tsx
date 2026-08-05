@@ -282,8 +282,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
                 : {}),
               // The SAME component the collapsed board renders, one level in — not a copy
               // of its markup, and not the card's foot, which is what made it read as the
-              // next event's progress.
+              // next event's progress. A held span renders nothing here (the component
+              // answers null), so the hero shows its held line instead.
               rail: <TransitProgress transit={transit} />,
+              held: transit.heldSince ? t.board.heldSince(transit.heldSince) : undefined,
             },
           }
         : {}),
@@ -454,6 +456,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           toPlace: transitRoute?.to ? shortPlaceLabel(transitRoute.to) : undefined,
           remaining: transitRemaining ?? undefined,
           shift: transitZones?.deltaMinutes,
+          // A hire mid-hire is not a leg between two places: no rail, no travelling mark,
+          // and its end is a deadline (ADR-0163 §4's rule — the verb and the unit belong to
+          // the span's own mode — reaching the hero).
+          kind: transitWords.kind,
+          heldSince:
+            transitWords.kind === 'held' && transitEvent.startsAt
+              ? formatTime(transitEvent.startsAt, transitZones?.startZone ?? tz)
+              : undefined,
         }
       : undefined;
   const boardRow = (e: TripEvent): BoardRow => {

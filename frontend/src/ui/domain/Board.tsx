@@ -83,6 +83,20 @@ export interface BoardTransit {
   /** Destination clock minus origin clock — the pill beside the landing time, so
    *  the two ends can't misread as a 3h45 flight when they're 6h45 apart. */
   shift?: ZoneShift;
+  /** **A journey, or a resource you are holding** (`midSpan.kind`, session 215).
+   *
+   *  `journey` is a leg you are being carried along and earns the rail. `held` is a car
+   *  hire mid-hire (or a same-day stay): it reaches this same state — only a MULTI-day
+   *  span is ambient — but nothing about it is a distance travelled, and its end is a
+   *  deadline rather than an arrival. So a held span draws no rail and no travelling
+   *  mark, and says since when it has been ours instead. Read the owner's rule
+   *  literally: *"this applies to other kinds of transit (train, bus) but not rental
+   *  cars that are different"*.
+   *
+   *  Absent → `journey`, so the flight path is unchanged by this field existing. */
+  kind?: 'journey' | 'held';
+  /** A held span's start (pre-formatted) → `אצלנו מ־11:40`. */
+  heldSince?: string;
 }
 
 export interface BoardNext {
@@ -186,6 +200,8 @@ export function DayRail({
  *  their own times. Absent unless both ends are known — a progress bar between one time and
  *  nothing is a bar that cannot say where it is. */
 export function TransitProgress({ transit }: { transit: BoardTransit }) {
+  // A held span is not a distance travelled, so there is nothing to draw a position on.
+  if (transit.kind === 'held') return null;
   if (!transit.startTime || !transit.endTime) return null;
   return (
     <div className="wp-board-transit-prog">
@@ -288,17 +304,39 @@ export function Board(props: BoardProps) {
             {nowTitle}
           </div>
           <div className="wp-board-now-meta">
-            <span className={'tlabel loc' + (transit.arriving ? ' emph' : '')}>
+            {/* A journey's end is where you arrive (teal, "where you are"); a held span's
+                end is a deadline you have to meet, which is amber like every other
+                commitment (root rule 4). */}
+            <span
+              className={
+                (transit.kind === 'held' ? 'tlabel' : 'tlabel loc') +
+                (transit.arriving ? ' emph' : '')
+              }
+            >
               {transitionLabel(transit.labelKey)}
             </span>
             {transit.endTime && <span dir="auto">{transit.endTime}</span>}
+            {/* Only a HELD span says it here: a journey's rail carries `נותרו X` two lines
+                down, and printing both is the duplication this session removed from the
+                rail in the first place. */}
+            {transit.kind === 'held' && transit.remaining && (
+              <span dir="auto">{t.board.inPhrase(transit.remaining)}</span>
+            )}
             {transit.code && (
               <span className="code" dir="auto">
                 {transit.code}
               </span>
             )}
           </div>
-          <TransitProgress transit={transit} />
+          {transit.kind === 'held' ? (
+            transit.heldSince && (
+              <div className="wp-board-held">
+                <span dir="auto">{t.board.heldSince(transit.heldSince)}</span>
+              </div>
+            )
+          ) : (
+            <TransitProgress transit={transit} />
+          )}
         </>
       ) : variant === 'group-split' ? (
         <div className="wp-board-now-split">
