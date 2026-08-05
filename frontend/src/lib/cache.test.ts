@@ -16,6 +16,7 @@ import { EVENTS, MAYBE_ITEMS } from '../fixtures';
 import {
   applyChangeToCache,
   applyOutboxOpToCache,
+  cacheEnrichment,
   cacheSnapshot,
   cacheTripList,
   loadTripList,
@@ -50,6 +51,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     maybeItems: MAYBE_ITEMS,
     places: [],
     notes: [],
+    enrichments: {},
     latestSeq: '10',
     ...overrides,
   };
@@ -684,5 +686,67 @@ describe('a deleted place in the offline cache (ADR-0157)', () => {
     );
     await deletePlace();
     expect((await readCachedSnapshot(TRIP_ID))?.notes).toEqual([]);
+  });
+});
+
+describe('enrichment in the offline cache (ADR-0166 §6)', () => {
+  const FIELDS = {
+    summary: {
+      en: {
+        value: 'Sensō-ji is an ancient Buddhist temple in Asakusa, Tokyo, Japan.',
+        lang: 'en',
+        source: 'wikipedia' as const,
+        license: 'CC BY-SA 4.0',
+        attribution: 'https://en.wikipedia.org/wiki/Sens%C5%8D-ji',
+        fetchedAt: '2026-08-05T10:00:00.000Z',
+        confidence: 1,
+        method: 'settled_id' as const,
+        ref: 'Q615183',
+      },
+    },
+  };
+
+  it('rides the snapshot into the cache and back out, keyed by placeId', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ enrichments: { 'pl-1': FIELDS } }));
+    // Offline reads work unchanged (§6.3) — the whole point of it riding the snapshot.
+    expect((await readCachedSnapshot(TRIP_ID))?.enrichments['pl-1']).toEqual(FIELDS);
+  });
+
+  it('upserts one place without disturbing the others', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ enrichments: { 'pl-1': FIELDS } }));
+    await cacheEnrichment(TRIP_ID, 'pl-2', FIELDS);
+
+    const cached = (await readCachedSnapshot(TRIP_ID))?.enrichments;
+    expect(Object.keys(cached ?? {}).sort()).toEqual(['pl-1', 'pl-2']);
+  });
+
+  it('replaces a place’s enrichment wholesale — the server is the only writer', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ enrichments: { 'pl-1': FIELDS } }));
+    const refreshed = { hours: { ...FIELDS.summary.en, value: 'Mo-Su 06:00-17:00' } };
+    await cacheEnrichment(TRIP_ID, 'pl-1', refreshed);
+
+    // Last write wins with nothing to reconcile: no client ever authored either version.
+    expect((await readCachedSnapshot(TRIP_ID))?.enrichments['pl-1']).toEqual(refreshed);
+  });
+
+  it('is a no-op for a trip that was never cached', async () => {
+    await expect(cacheEnrichment('trip-never-seen', 'pl-1', FIELDS)).resolves.toBeUndefined();
+  });
+
+  it('reads as empty for a trip cached before enrichment shipped', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    // Simulate the pre-upgrade row: the key simply is not there.
+    const meta = await db.snapshotMeta.get(TRIP_ID);
+    const { enrichments: _dropped, ...withoutEnrichments } = meta!;
+    await db.snapshotMeta.put(withoutEnrichments as typeof meta & object);
+
+    // `undefined` must not reach a consumer's lookup on the first render after the upgrade.
+    expect((await readCachedSnapshot(TRIP_ID))?.enrichments).toEqual({});
+  });
+
+  it('goes with the rest of the trip on wipe', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ enrichments: { 'pl-1': FIELDS } }));
+    await wipeLocalData();
+    expect(await readCachedSnapshot(TRIP_ID)).toBeNull();
   });
 });

@@ -57,6 +57,7 @@ const SNAPSHOT: TripSnapshot = {
   maybeItems: [],
   places: [],
   notes: [],
+  enrichments: {},
   latestSeq: '0',
 };
 

@@ -6,6 +6,7 @@
 // This is also what backend response validation and OpenAPI generation read from.
 
 import { z } from 'zod';
+import { tripEnrichmentsSchema } from './enrichment';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 
 export const idSchema = z.string();
@@ -394,6 +395,11 @@ export const tripSnapshotSchema = z.object({
   maybeItems: z.array(maybeItemSchema),
   places: z.array(placeSchema),
   notes: z.array(noteSchema),
+  /** **The world's facts about the trip's places, keyed by `placeId`** (ADR-0166 §6). A
+   *  server-owned read model joined onto the snapshot, not an entity of the trip: the store
+   *  is global and no client writes it, so it carries no `Change` and never appears in the
+   *  change feed. Absent-or-empty is the normal state — most places have nothing. */
+  enrichments: tripEnrichmentsSchema,
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq
 });
 export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;

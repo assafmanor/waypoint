@@ -3,7 +3,7 @@
 // own reconnect (bounded exponential backoff) + heartbeat so a foreground socket
 // drop (proxy/idle timeout, server restart) is detected and recovered, not left
 // silently stale until the next online/visibility event (F-04).
-import { WS_MESSAGE_TYPE, type Change } from '@waypoint/shared';
+import { WS_MESSAGE_TYPE, type Change, type DeliveredEnrichmentFields } from '@waypoint/shared';
 import {
   WS_HEARTBEAT_INTERVAL_MS,
   WS_RECONNECT_BASE_MS,
@@ -22,6 +22,9 @@ export interface TripStreamHandlers {
    *  (flush the outbox + replay `changes?sinceSeq=`) since frames may have been
    *  missed while the socket was down. Not fired on the very first connect. */
   onReconnect?: () => void;
+  /** **Enrichment landed for a place this trip holds** (ADR-0166 §6). Not a `Change` and
+   *  carries no `seq`, so missing one costs nothing: the value is in the next snapshot. */
+  onEnrichment?: (placeId: string, fields: DeliveredEnrichmentFields) => void;
 }
 
 // No API_BASE_URL (prod, same-origin) → a relative URL, which the WebSocket
@@ -36,6 +39,12 @@ type ServerMessage =
   | { type: typeof WS_MESSAGE_TYPE.HELLO; latestSeq: string }
   | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; change: Change }
   | { type: typeof WS_MESSAGE_TYPE.PRESENCE }
+  // No `seq`: enrichment is outside the change log (ADR-0166 §6).
+  | {
+      type: typeof WS_MESSAGE_TYPE.ENRICHMENT;
+      placeId: string;
+      fields: DeliveredEnrichmentFields;
+    }
   | { type: typeof WS_MESSAGE_TYPE.PONG };
 
 /** Backoff delay for reconnect attempt `n` (0-based): exponential from base,
@@ -149,6 +158,12 @@ export function openTripStream(
         lastSeq = seq;
         if (isGap) handlers.onResync();
         else handlers.onChange(msg.change);
+      } else if (msg.type === WS_MESSAGE_TYPE.ENRICHMENT) {
+        // **Touches neither `lastSeq` nor the gap check** (ADR-0166 §6): enrichment is outside
+        // the change log, so it has no place in the cursor. Advancing on one would make the
+        // next real change look like a gap and trigger a needless full resync; testing it for
+        // a gap would be reading a sequence it was never part of.
+        handlers.onEnrichment?.(msg.placeId, msg.fields);
       }
     });
 

@@ -180,9 +180,16 @@ The shelf is read via the trip snapshot (`maybeItems`), not a standalone list. S
 | GET    | `/trips/:tripId/snapshot`             | Full current trip state **+ `latestSeq`**, read in one transaction — the initial-load / deep-desync baseline |
 | GET    | `/trips/:tripId/changes?sinceSeq=<n>` | Change history since a `seq` (reconnect catch-up). **Cursor on `seq`, not timestamps.**                      |
 
+**The snapshot also carries `enrichments`** (ADR-0166 §6) — what the world knows about the trip's places, **keyed by `placeId`**, as a server-owned read model. The store behind it is global with no `tripId` and no `placeId` (§1), so resolving it to the trip's own ids is the join the server owes the client. Three things about it are deliberate:
+
+- **It is read outside the snapshot's `RepeatableRead` transaction.** Enrichment carries no `seq` and is ordered against nothing, so it takes no part in the `latestSeq` coherence guarantee — holding the app's most contended read open for a second query would buy nothing.
+- **Only what we know is sent.** The store's `absent` state (the negative cache's "we looked and there is nothing", §6.4) stays server-side: a surface renders "we know nothing" identically whether we never asked or asked and came back empty (ADR-0167 §6), and a missing key is that state.
+- **An image arrives as a URL, never a `blobKey`** — the same move `documentSummarySchema` makes by omitting `fileRef`, so no client knows the content route's shape.
+
 ## Realtime
 
 - `WS /trips/:tripId/stream` — server pushes `change` events (each carrying its `seq`) to connected members; `hello` carries `latestSeq` for gap-detection. Authenticated via the session cookie. Message protocol in [sync-and-offline.md](sync-and-offline.md).
+- One message carries **no `seq`**: `enrichment` (ADR-0166 §6), which nudges a client that enrichment landed for a place it holds. It is outside the change log, so a client must not advance its cursor or gap-check on it — details in [sync-and-offline.md](sync-and-offline.md).
 
 ## Out of scope for v1
 

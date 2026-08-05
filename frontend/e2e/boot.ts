@@ -44,6 +44,11 @@ const SNAPSHOT = {
   maybeItems: [],
   places: [],
   notes: [],
+  // Required by `tripSnapshotSchema` (ADR-0166 §6), so its absence fails the zod parse in
+  // `fetchSnapshot` and the app never boots at all — which surfaces as every spec here
+  // timing out rather than as a readable error. `e2e/` is outside `tsconfig.json`'s
+  // `include`, so nothing but a run catches a missing field in this fixture.
+  enrichments: {},
   latestSeq: '0',
 };
 const ME = { user: USER, memberships: [MEMBERSHIP] };

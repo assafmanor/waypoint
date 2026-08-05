@@ -19,6 +19,7 @@ import {
 import { DOC_LOCAL_STORAGE_DIR } from '../common/env';
 import { getObject } from '../common/storage';
 import { PrismaService } from '../prisma/prisma.service';
+import { SyncGateway } from '../sync/sync.gateway';
 import { EnrichmentImagePipeline } from './image-pipeline';
 import type { EnrichmentFetcher } from './outbound-fetch';
 import type {
@@ -168,11 +169,16 @@ describe('EnrichmentService', () => {
     googlePlaceId: `ChIJ-test-${Date.now()}-${placeSeq++}`,
   });
 
+  /** A real gateway with no connected clients, so the enrichment nudge is a no-op — the
+   *  broadcast itself is covered in `sync.gateway.spec.ts`. */
+  const gateway = new SyncGateway(prisma);
+
   const serviceWith = (...providers: EnrichmentProvider[]) =>
     new EnrichmentService(
       prisma,
       new EnrichmentRegistry(providers),
       new EnrichmentImagePipeline(fetcherReturning(JPEG)),
+      gateway,
     );
 
   /** The orchestrator with an image pipeline whose fetches are controlled by the test. */
@@ -184,6 +190,7 @@ describe('EnrichmentService', () => {
       prisma,
       new EnrichmentRegistry(providers),
       new EnrichmentImagePipeline(fetcherReturning(result)),
+      gateway,
     );
 
   async function track<T extends { id: string }>(row: T): Promise<T> {
@@ -617,6 +624,82 @@ describe('EnrichmentService', () => {
 
       // A photo reached through a fuzzy Wikidata match must not record as certain.
       expect(imageOf(stored.fields).confidence).toBe(0.71);
+    });
+  });
+
+  describe('readForPlaces — the snapshot join (Phase 3)', () => {
+    it('keys the global store by the trip’s own place ids', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const place = nextPlace();
+      await track(await service.enrich(place, NOW));
+
+      // The store has no placeId and no tripId (§1); resolving that is the join the server
+      // owes the client.
+      const enrichments = await service.readForPlaces([
+        { id: 'place-local-1', googlePlaceId: place.googlePlaceId! },
+      ]);
+      expect(Object.keys(enrichments)).toEqual(['place-local-1']);
+      expect(enrichments['place-local-1']?.summary?.en?.value).toContain('Buddhist temple');
+    });
+
+    it('serves the same global row to two places that share a Google id', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const place = nextPlace();
+      await track(await service.enrich(place, NOW));
+
+      // Two trips referencing the same real-world place read one row (§1) — here expressed as
+      // two place ids in one call.
+      const enrichments = await service.readForPlaces([
+        { id: 'trip-a-place', googlePlaceId: place.googlePlaceId! },
+        { id: 'trip-b-place', googlePlaceId: place.googlePlaceId! },
+      ]);
+      expect(enrichments['trip-a-place']).toEqual(enrichments['trip-b-place']);
+    });
+
+    it('delivers the image as a URL, never a blobKey', async () => {
+      const service = serviceWith(identityProvider(), imageProvider());
+      const place = nextPlace();
+      await track(await service.enrich(place, NOW));
+
+      const enrichments = await service.readForPlaces([
+        { id: 'p1', googlePlaceId: place.googlePlaceId! },
+      ]);
+      expect(enrichments.p1?.image?.url).toContain('/enrichment/images/enr_');
+      expect(enrichments.p1?.image).not.toHaveProperty('blobKey');
+    });
+
+    it('omits a place we know nothing about rather than sending an empty entry', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      const enrichments = await service.readForPlaces([
+        { id: 'never-looked-up', googlePlaceId: 'ChIJ-nothing-here' },
+      ]);
+      // A missing key IS the "we know nothing" state, and it is the common one.
+      expect(enrichments).toEqual({});
+    });
+
+    it('never asks about a coordless Place-lite with no Google id', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      // Matching one by name + coords is permitted by the alias design and built by nothing
+      // (§10), so there is nothing to look up.
+      expect(await service.readForPlaces([{ id: 'lite', googlePlaceId: null }])).toEqual({});
+    });
+
+    it('costs no query at all for a trip with no Google-picked places', async () => {
+      const service = serviceWith(identityProvider(), summaryProvider());
+      expect(await service.readForPlaces([])).toEqual({});
+    });
+
+    it('omits a row whose every field came back absent', async () => {
+      const service = serviceWith(identityProvider(), emptySummaryProvider());
+      const place = nextPlace();
+      const stored = await track(await service.enrich(place, NOW));
+      // The row exists — a pass ran and recorded misses — but there is nothing to render.
+      expect(stored.fields.summary?.state).toBe('absent');
+
+      const enrichments = await service.readForPlaces([
+        { id: 'p1', googlePlaceId: place.googlePlaceId! },
+      ]);
+      expect(enrichments).toEqual({});
     });
   });
 });

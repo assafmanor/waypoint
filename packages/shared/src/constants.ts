@@ -220,6 +220,12 @@ export const WS_MESSAGE_TYPE = {
   PRESENCE: 'presence',
   PING: 'ping',
   PONG: 'pong',
+  /** **Enrichment landed for a place you hold** (ADR-0166 §6). Its own message type rather
+   *  than a `change`, because enrichment is deliberately outside the change log: the row is
+   *  global with no `tripId`, no client authored it, and none of LWW/undo/ordering applies.
+   *  So it carries **no `seq`** — a reader must not advance its cursor or suspect a gap on
+   *  one of these, which is precisely what a fake `Change` would have caused. */
+  ENRICHMENT: 'enrichment',
 } as const;
 
 export type WsMessageType = (typeof WS_MESSAGE_TYPE)[keyof typeof WS_MESSAGE_TYPE];

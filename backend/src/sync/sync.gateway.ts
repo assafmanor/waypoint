@@ -1,7 +1,7 @@
 import type { IncomingMessage, Server as HttpServer } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
-import { WS_MESSAGE_TYPE, type Change } from '@waypoint/shared';
+import { WS_MESSAGE_TYPE, type Change, type DeliveredEnrichmentFields } from '@waypoint/shared';
 import { WebSocket, WebSocketServer } from 'ws';
 import { parseCookieHeader } from '../auth/cookies.util';
 import { DEV_PRINCIPAL } from '../auth/jwt-auth.guard';
@@ -20,6 +20,12 @@ type ServerMessage =
   | { type: typeof WS_MESSAGE_TYPE.HELLO; serverTime: string; latestSeq: string }
   | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; change: Change }
   | { type: typeof WS_MESSAGE_TYPE.PRESENCE; members: { userId: string; connected: boolean }[] }
+  // No `seq` on purpose — enrichment is outside the change log (ADR-0166 §6).
+  | {
+      type: typeof WS_MESSAGE_TYPE.ENRICHMENT;
+      placeId: string;
+      fields: DeliveredEnrichmentFields;
+    }
   | { type: typeof WS_MESSAGE_TYPE.PONG };
 
 /** WS /trips/:tripId/stream — realtime fan-out (ADR-0019, sync-and-offline.md). */
@@ -159,6 +165,25 @@ export class SyncGateway implements OnApplicationShutdown {
     if (!channel) return;
     for (const client of channel.keys()) {
       this.send(client, { type: WS_MESSAGE_TYPE.CHANGE, seq: change.seq, change });
+    }
+  }
+
+  /**
+   * **Enrichment landed for a place this trip holds** (ADR-0166 §6).
+   *
+   * Not a `Change` and deliberately so: the row is global with no `tripId`, the server is its
+   * only writer, and none of LWW/undo/ordering applies — so this carries **no `seq`** and a
+   * receiving client must not advance its cursor or suspect a gap. It is a nudge with the
+   * value attached, which is why it needs none of `broadcast`'s after-commit contract beyond
+   * the caller having already stored the data.
+   *
+   * A client that was offline for it loses nothing: the value is in the next snapshot.
+   */
+  broadcastEnrichment(tripId: string, placeId: string, fields: DeliveredEnrichmentFields): void {
+    const channel = this.channels.get(tripId);
+    if (!channel) return;
+    for (const client of channel.keys()) {
+      this.send(client, { type: WS_MESSAGE_TYPE.ENRICHMENT, placeId, fields });
     }
   }
 

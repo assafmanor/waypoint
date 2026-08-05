@@ -11,6 +11,7 @@
 // provider whose dependencies are not yet registered would silently fall back to a fuzzier
 // match instead of failing, which is the kind of bug that looks like bad coverage.
 import { Module } from '@nestjs/common';
+import { SyncModule } from '../sync/sync.module';
 import { EnrichmentImageController } from './enrichment.controller';
 import { EnrichmentRegistry } from './enrichment.registry';
 import { EnrichmentService } from './enrichment.service';
@@ -21,6 +22,10 @@ import { WikidataProvider } from './providers/wikidata.provider';
 import { WikipediaProvider } from './providers/wikipedia.provider';
 
 @Module({
+  // SyncGateway only — to NUDGE a live client that enrichment landed (ADR-0166 §6). Pointedly
+  // **not** `ChangeService`: a global row with no `tripId` has nothing to write a `Change`
+  // against, which is the whole argument in §6.
+  imports: [SyncModule],
   controllers: [EnrichmentImageController],
   providers: [
     EnrichmentFetcher,

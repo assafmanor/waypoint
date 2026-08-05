@@ -33,6 +33,7 @@ import {
   type Note,
   type MembershipRole,
   type Trip,
+  type TripEnrichments,
   type TripEvent,
   type Place,
   type ResolvePlaceInput,
@@ -68,6 +69,7 @@ import {
 } from '../lib/api';
 import {
   applyChangeToCache,
+  cacheEnrichment,
   cacheSnapshot,
   clearTripCache,
   coerceClearedFields,
@@ -520,6 +522,10 @@ interface TripContextValue {
   /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
    *  notes alike — what a note is about is a field on the row, not a separate store. */
   notes: Note[];
+  /** **What the world knows about the trip's places, keyed by `placeId`** (ADR-0166 §6).
+   *  Server-owned: no surface writes it, and a missing key is the normal "we know nothing"
+   *  state rather than a loading one — most places have nothing and never will (§11.3). */
+  enrichments: TripEnrichments;
   activeDate: string;
   setActiveDate: (date: string) => void;
   events: TripEvent[];
@@ -689,6 +695,11 @@ function TripReady({
   // Notes ride the snapshot as a reactive list (ADR-0152), so a peer's note and our own
   // optimistic write both reflect live through the one applier below.
   const [notes, setNotes] = useState<Note[]>(snapshot.notes);
+
+  // Enrichment rides the snapshot as a reactive map keyed by placeId (ADR-0166 §6), updated
+  // by the server's own nudge rather than by any write of ours — there is no optimistic path
+  // and no outbox verb, because no client authors this.
+  const [enrichments, setEnrichments] = useState<TripEnrichments>(snapshot.enrichments);
 
   // Group change-feed buffer (ADR-0081, U-09). Narrated from the same WS change
   // stream in applyRemoteChange below — never a second socket, never re-applied.
@@ -866,6 +877,7 @@ function TripReady({
           setPlaces(s.places);
           setDocuments(s.documents);
           setNotes(s.notes);
+          setEnrichments(s.enrichments);
           onReconnected();
         },
         () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -896,6 +908,15 @@ function TripReady({
         // The socket reopened itself after a silent foreground drop (F-04); run
         // the same catch-up handleOnline does, but don't reopen — ws.ts owns it.
         onReconnect: () => void catchUp().catch(() => {}),
+        // Enrichment landed for a place we hold (ADR-0166 §6). Deliberately NOT routed through
+        // `applyEntityChange`: it is not a `Change`, so it narrates nothing into the change
+        // feed (nobody did it), advances no cursor, and needs no reconciliation — the server is
+        // its only writer. Mirror to Dexie, then to memory, which is the same two-step order
+        // every entity change follows.
+        onEnrichment: (placeId, fields) => {
+          void cacheEnrichment(tripId, placeId, fields);
+          setEnrichments((prev) => ({ ...prev, [placeId]: fields }));
+        },
       });
     }
     connect(snapshot.latestSeq);
@@ -1369,6 +1390,7 @@ function TripReady({
       zoneEvidence,
       documents,
       notes,
+      enrichments,
       activeDate,
       setActiveDate,
       events: state.events,
@@ -1395,6 +1417,7 @@ function TripReady({
       zoneEvidence,
       documents,
       notes,
+      enrichments,
       settings,
       indexVerbs,
       noteVerbs,

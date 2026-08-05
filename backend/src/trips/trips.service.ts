@@ -23,6 +23,7 @@ import type {
 } from '@waypoint/shared';
 import { resolveAvatarHue } from '@waypoint/shared';
 import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
+import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
 import { generateInviteCode } from './invite.util';
@@ -65,6 +66,7 @@ export class TripsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly changes: ChangeService,
+    private readonly enrichment: EnrichmentService,
   ) {}
 
   async createTrip(userId: string, input: CreateTripInput): Promise<Trip> {
@@ -472,6 +474,14 @@ export class TripsService {
         { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
       );
 
+    // **Read AFTER the transaction, and deliberately outside it** (ADR-0166 §6). Two
+    // reasons: it depends on the places the transaction returned, and it is not part of the
+    // `latestSeq` coherence guarantee at all — enrichment carries no `seq` and is ordered
+    // against nothing, so a row that landed a millisecond ago is as valid as one from
+    // yesterday. Holding RepeatableRead open across a second query would buy nothing and
+    // lengthen the app's most contended read.
+    const enrichments = await this.enrichment.readForPlaces(places);
+
     return {
       trip: toTripDto(trip),
       members: members.map(toMembershipDto),
@@ -482,6 +492,7 @@ export class TripsService {
       maybeItems: maybeItems.map(toMaybeItemDto),
       places: places.map(toPlaceDto),
       notes: notes.map(toNoteDto),
+      enrichments,
       latestSeq: latestChange ? latestChange.seq.toString() : '0',
     };
   }

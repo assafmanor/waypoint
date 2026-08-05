@@ -7,12 +7,14 @@ import {
   EVENT_STATUS,
   NOTE_SOURCE,
   type Change,
+  type DeliveredEnrichmentFields,
   type EntityType,
   type MaybeItem,
   type Membership,
   type Note,
   type Place,
   type Trip,
+  type TripEnrichments,
   type TripSnapshot,
   type User,
 } from '@waypoint/shared';
@@ -34,6 +36,12 @@ export interface SnapshotMeta {
   maybeItems: MaybeItem[];
   places: Place[];
   notes: Note[];
+  /** Enrichment for the trip's places, keyed by `placeId` (ADR-0166 §6). Rides `snapshotMeta`
+   *  for the same reason notes do: a trip's worth is a few dozen small entries, and a
+   *  dedicated Dexie table would cost a schema version bump plus edits to `wipeLocalData` and
+   *  three transaction lists. Offline reads then work unchanged, and the images they point at
+   *  are same-origin and immutable, so the service worker already caches those. */
+  enrichments: TripEnrichments;
   latestSeq: string;
 }
 
@@ -57,8 +65,36 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       maybeItems: snapshot.maybeItems,
       places: snapshot.places,
       notes: snapshot.notes,
+      enrichments: snapshot.enrichments,
       latestSeq: snapshot.latestSeq,
     });
+  });
+}
+
+/**
+ * Mirror one place's enrichment into the cache (ADR-0166 §6).
+ *
+ * **Not a `CACHE_CHANNELS` entry, and it cannot be one.** That registry is keyed by
+ * `ENTITY_TYPE` and driven by a `Change`; enrichment is deliberately outside the change log
+ * — no `tripId`, no entity type, no `seq`, no action — so joining it would have meant
+ * inventing a fake `Change` and a fake entity type, which is exactly the fiction §6 refuses.
+ * What the registry rule is actually protecting against is per-type branching in the apply
+ * path, and there is none here: enrichment has **one** declared home (`snapshotMeta`) and one
+ * writer, on each side of the mirror.
+ *
+ * Idempotent and last-write-wins by nature: the server is the only author, so there is
+ * nothing to reconcile.
+ */
+export async function cacheEnrichment(
+  tripId: string,
+  placeId: string,
+  fields: DeliveredEnrichmentFields,
+): Promise<void> {
+  const meta = await db.snapshotMeta.get(tripId);
+  if (!meta) return;
+  await db.snapshotMeta.put({
+    ...meta,
+    enrichments: { ...(meta.enrichments ?? {}), [placeId]: fields },
   });
 }
 
@@ -84,6 +120,8 @@ export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot |
     // A trip cached before notes shipped has no list; treat it as empty rather than
     // letting `undefined` reach a `.map()` on the first render after the upgrade.
     notes: meta.notes ?? [],
+    // Same fallback, same reason: a trip cached before enrichment shipped has no map.
+    enrichments: meta.enrichments ?? {},
     latestSeq: meta.latestSeq,
   };
 }
