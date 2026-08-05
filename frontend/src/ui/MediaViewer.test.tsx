@@ -13,7 +13,6 @@ import '../test/pointer-events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentViewer, MediaViewer } from './MediaViewer';
 import { wrapNav } from '../test/nav-harness';
-import { t } from '../i18n/he';
 
 vi.mock('../lib/api', () => ({
   fetchDocumentContent: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })),
@@ -46,34 +45,40 @@ afterEach(() => {
   document.documentElement.style.removeProperty('--stagger-step');
 });
 
-/** jsdom has no stylesheet, so `motionDurationMs` reads 0 and every close is
- *  synchronous — the correct default, and what the rest of this file exercises. Make
- *  the tokens readable to reach the ANIMATED branch, which is where the exit's
- *  idempotence guard lives. This is the recipe ADR-0140 §5 describes. */
 /** The ratio the frame is sized from (`screens.css` turns it into the box). jsdom has no
  *  layout, so this property is the whole of what the unit suite can see — the box it produces
  *  is measured in `e2e/media-viewer-fit.spec.ts`. */
 const aspectOf = () =>
   document.querySelector<HTMLElement>('.doc-viewer-body')!.style.getPropertyValue('--dv-aspect');
 
+/** jsdom has no stylesheet, so `motionDurationMs` reads 0 and every close is
+ *  synchronous — the correct default, and what the rest of this file exercises. Make
+ *  the tokens readable to reach the ANIMATED branch, which is where the exit's
+ *  idempotence guard lives. This is the recipe ADR-0140 §5 describes. */
 function withAnimation(ms = 30) {
   document.documentElement.style.setProperty('--t-base', `${ms}ms`);
   document.documentElement.style.setProperty('--stagger-step', '0ms');
 }
 
+const backdrop = () => document.querySelector('.doc-viewer')!;
+
 describe('DocumentViewer — every way out is the same way out', () => {
-  // ADR-0103 §2: a close control, a backdrop tap, Escape and the Android gesture must
-  // run ONE function, or an exit hung on some of them is a surface that snaps half the
-  // time. All three below go through `beginClose`.
-  it('closes from the ✕', () => {
-    const { onClose } = open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+  // ADR-0103 §2: a backdrop tap, Escape and the Android gesture must run ONE function, or an
+  // exit hung on some of them is a surface that snaps half the time. They all go through
+  // `beginClose`.
+  //
+  // **There is no ✕** (owner, 2026-08-05: _"this button is unnecessary"_), which is why the
+  // dismissal these tests drive is the backdrop: the whole screen around the card, and the one
+  // way out that costs the picture nothing.
+  it('has no close control at all', () => {
+    open();
+    expect(document.querySelector('.doc-viewer-close')).toBeNull();
+    expect(document.querySelector('.doc-viewer-head button')).toBeNull();
   });
 
   it('closes from a backdrop tap', () => {
     const { onClose } = open();
-    fireEvent.click(document.querySelector('.doc-viewer')!);
+    fireEvent.click(backdrop());
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -88,7 +93,7 @@ describe('DocumentViewer — every way out is the same way out', () => {
   // still holding focus for as long as that macrotask takes (ADR-0140 §5).
   it('closes synchronously when nothing is animating', () => {
     const { onClose } = open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
+    fireEvent.click(backdrop());
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -98,8 +103,8 @@ describe('DocumentViewer — every way out is the same way out', () => {
   it('ignores a second dismissal while the exit is playing', async () => {
     withAnimation();
     const { onClose } = open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
-    fireEvent.click(document.querySelector('.doc-viewer')!);
+    fireEvent.click(backdrop());
+    fireEvent.click(backdrop());
     // Still on screen: the exit owns the frames between the decision and the unmount.
     expect(onClose).not.toHaveBeenCalled();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
@@ -108,8 +113,8 @@ describe('DocumentViewer — every way out is the same way out', () => {
   it('marks the overlay as closing so the exit keyframes apply', () => {
     withAnimation();
     open();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
-    expect(document.querySelector('.doc-viewer')!.classList.contains('is-closing')).toBe(true);
+    fireEvent.click(backdrop());
+    expect(backdrop().classList.contains('is-closing')).toBe(true);
   });
 });
 
@@ -261,9 +266,9 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
 
   // Every way out still runs the one close (ADR-0103 §2) — inherited, not re-implemented, which
   // is the whole argument for reusing this surface.
-  it('still closes from the ✕, like the document path', () => {
+  it('still closes from the backdrop, like the document path', () => {
     const { onClose } = openPhoto();
-    fireEvent.click(screen.getByRole('button', { name: t.docs.viewer.close }));
+    fireEvent.click(document.querySelector('.doc-viewer')!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

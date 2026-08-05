@@ -175,6 +175,12 @@ async function measure(page: Page) {
       copyInsideCard: copy ? card.contains(copy) : null,
       copyEvents: copy ? getComputedStyle(copy).pointerEvents : null,
       scrim: !!scrim,
+      // The card's furniture while the picture is out of its box, and what it would take.
+      headOpacity: getComputedStyle(document.querySelector('.doc-viewer-head') as Element).opacity,
+      headEvents: getComputedStyle(document.querySelector('.doc-viewer-head') as Element)
+        .pointerEvents,
+      // There is no ✕ any more — the ways out are the backdrop, back and Escape.
+      closeButtons: document.querySelectorAll('.doc-viewer button').length,
       // ADR-0062: the app's own pinch is still suppressed. A page that zoomed would report a
       // scale above 1 here, and every box above would be a lie in the same breath.
       pageScale: window.visualViewport?.scale ?? 1,
@@ -228,8 +234,24 @@ test.describe('the media viewer’s pinch @390', () => {
     // The copy takes no input: the backdrop tap under it is still the ONE close (ADR-0103 §2).
     expect(held.copyEvents).toBe('none');
     expect(held.scrim).toBe(true);
+    // The card's furniture stands down and stops taking input while the picture is out. The
+    // opacity is polled because it FADES — reading it on the frame the pinch ended lands
+    // mid-transition, which is the trap this file's arrival wait exists for.
+    expect(held.headEvents).toBe('none');
+    await expect.poll(async () => (await measure(page)).headOpacity).toBe('0');
     // The page itself did not zoom — the viewer is the exception, not the hole (ADR-0062).
     expect(held.pageScale).toBe(1);
+  });
+
+  // The ✕ is gone entirely (owner: _"this button is unnecessary"_), so the card carries no
+  // control at all — and the ways out that remain still work. ADR-0103 §2 asks that they run
+  // ONE close, not that one of them be labelled.
+  test('has no close button, and the backdrop still closes it', async ({ page }) => {
+    await openFullPicture(page);
+    expect((await measure(page)).closeButtons).toBe(0);
+    // The backdrop is everything around the card: the top-left corner is nowhere near it.
+    await page.mouse.click(8, 8);
+    await expect(page.locator('.doc-viewer')).toHaveCount(0);
   });
 
   test('puts it back exactly where it was when a finger lifts', async ({ page }) => {
@@ -253,6 +275,8 @@ test.describe('the media viewer’s pinch @390', () => {
     expect(after.card).toEqual(before.card);
     expect(after.imgOpacity).toBe('1');
     expect(after.scrim).toBe(false);
+    // The furniture comes back with it — a fade again, so polled again.
+    await expect.poll(async () => (await measure(page)).headOpacity).toBe('1');
     // And the viewer is still open — a pinch is not a way out.
     await expect(page.locator('.doc-viewer-card')).toBeVisible();
   });

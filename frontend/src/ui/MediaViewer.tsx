@@ -399,7 +399,13 @@ export function MediaViewer({
   const canOpenInTab = isInlineOpenableDocumentMimeType(mimeType);
 
   return createPortal(
-    <div className={closing ? 'doc-viewer is-closing' : 'doc-viewer'} onClick={beginClose}>
+    <div
+      className={closing ? 'doc-viewer is-closing' : 'doc-viewer'}
+      /* The card's furniture stands down while the picture is out of its box — the ✕ over a
+         lifted photograph is chrome on top of the one thing you asked to see. */
+      data-lifted={lift ? '' : undefined}
+      onClick={beginClose}
+    >
       <div
         ref={cardRef}
         tabIndex={-1}
@@ -410,15 +416,12 @@ export function MediaViewer({
         onClick={(e) => e.stopPropagation()}
         style={originStyle(originY)}
       >
+        {/* **No ✕** (owner, 2026-08-05: _"this button is unnecessary"_). Every other way out
+            already runs the ONE close (ADR-0103 §2) and none of them is a control the picture
+            has to make room for: the backdrop — the whole screen around the card — plus system
+            back, the Android gesture and Escape. The head is the title now, nothing else. */}
         <div className="doc-viewer-head">
           <span className="doc-viewer-title">{title}</span>
-          <button
-            className="doc-viewer-close"
-            onClick={beginClose}
-            aria-label={t.docs.viewer.close}
-          >
-            <Icon name="close" />
-          </button>
         </div>
         {caption && <div className="doc-viewer-caption">{caption}</div>}
         {/* `data-expect` is the mime type, read before any bytes exist — which is what
