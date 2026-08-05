@@ -466,3 +466,42 @@ model Change {
 
   @@index([tripId, seq])
 }
+
+// Facts about a real-world place, GLOBAL rather than trip-scoped (ADR-0166 §1/§4).
+//
+// The rule that draws the line against `Place`: **if two different trips could
+// legitimately disagree about it, it is not enrichment.** An icon and a category are
+// this trip's opinion and stay on `Place` (ADR-0147/0165); a summary, an image and
+// opening hours are facts about the world and live here, read by every trip that
+// references the same place.
+//
+// **No `tripId` and no FK to `Place`** — deliberately, and it is why enrichment is
+// outside `ChangeService` (§6): there is no trip to write a `Change` against, one
+// writer (the server) so no LWW, and no action anyone performed so nothing to undo.
+// `Place` is untouched by this table's existence: no migration, no column moved.
+model PlaceEnrichment {
+  // Our own key, so Google is not the identity spine of a store whose whole purpose is
+  // to not depend on Google — and so a coordless Place-lite (ADR-0147) is not stranded
+  // forever. Adding an alias later is a column and an index, not a re-key.
+  id String @id @default(cuid())
+
+  // Alias columns, all nullable and all unique — the only things we query, which is why
+  // they are columns and the values are not (§4).
+  googlePlaceId String? @unique // the one Google field we may hold indefinitely (§1)
+  wikidataQid   String? @unique // added when Wikidata matches; an alias, not the key
+  osmRef        String? @unique // "node/123456"; likewise
+
+  // Record<EnrichmentField, present | absent>, zod-validated by `enrichmentFieldsSchema`
+  // in @waypoint/shared. One payload rather than a column per field because every value
+  // carries ~6 facts of its own provenance, and that is a migration per field AND per
+  // source for data nothing filters or joins on (§4).
+  fields Json
+
+  // The negative-cache clock (§6.4): when a pass last ran against this row at all,
+  // whatever it found. Per-field miss timers live inside `fields`; this is the queryable
+  // one, for finding rows worth revisiting.
+  attemptedAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
