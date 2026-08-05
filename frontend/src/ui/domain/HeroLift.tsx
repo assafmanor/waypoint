@@ -128,7 +128,10 @@ export interface HeroLiftProps {
   liveWord?: string;
   /** In-progress points, primary first. Several with no primary is the group split
    *  (ADR-0041 §6), where every equal carries the same depth because the variant
-   *  exists on there being no primary — collapsing one would manufacture it. */
+   *  exists on there being no primary — collapsing one would manufacture it.
+   *
+   *  **Empty is a real state, not an absence** — it is the collapsed board's `free`
+   *  variant, and the hero says so in that board's own words. */
   now: HeroLiftPoint[];
   /** True when `now` has no primary — swaps the label for `עכשיו · במקביל`. */
   split?: boolean;
@@ -405,6 +408,18 @@ export function HeroLift(props: HeroLiftProps) {
               §1's bounded card, reached for the same reason it was there: a card
               that is as tall as its content still has to stop at the screen. */}
           <div className="hero-scroll">
+            {/* **Nothing in progress still says so.** The lift opens in a GAP since
+                ADR-0160's amendment §A — and a gap is exactly the state with no now
+                point, so the hero's first block was `הבא בתור` and the `פנוי` /
+                `זמן חופשי` the board was showing a frame earlier vanished on the way
+                up. Reported from a device. Same words one elevation up, which is what
+                every other state on this card already does. */}
+            {now.length === 0 && (
+              <div className="hero-part">
+                <div className="wp-board-now-label">{t.board.freeLabel}</div>
+                <div className="wp-board-now-title">{t.board.freeTitle}</div>
+              </div>
+            )}
             {split && (
               <div className="hero-part">
                 <div className="wp-board-now-label">{t.board.concurrentNow}</div>

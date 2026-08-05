@@ -244,7 +244,11 @@ describe('Home — the lift wiring', () => {
     const b = board();
     expect(b?.tagName).toBe('BUTTON');
     fireEvent.click(b!);
-    expect(document.querySelector('.hero-lifted')).toBeTruthy();
+    const hero = document.querySelector('.hero-lifted');
+    expect(hero).toBeTruthy();
+    // The words survive the lift: the board said `זמן חופשי` and the hero says it too.
+    // They used to disappear, because a gap has no now point to render.
+    expect(hero?.querySelector('.wp-board-now-title')?.textContent).toBe(t.board.freeTitle);
     // And what it opened onto is the next thing's where — the thing you actually
     // want when you are free now.
     expect(screen.getByText(t.hero.where)).toBeTruthy();
