@@ -184,6 +184,115 @@ describe('WikidataProvider', () => {
     expect(await p.match({ name: 'ראמן קיוסק ללא ערך' })).toBeNull();
   });
 
+  // **AND THEN IT MATCHED THE UNDERGROUND STATION UNDER IT** (owner, 2026-08-05, after the
+  // coordinate route shipped: _"now it matches somewhere that's near geographically but not the
+  // place itself"_). Three flaws in one report, and the real one is arithmetic: proximity is 35%
+  // of the blend, and for a facility AT the place that 35% is free and separates nothing — the
+  // station's own article coordinate sits exactly on the square's. `Piccadilly Circus` against
+  // `Piccadilly Circus tube station` scored 0.707 on the name and **0.810 blended**, over the
+  // threshold on evidence that was never about which of the two you meant.
+  describe('a different subject at the same coordinates', () => {
+    const CIRCUS = { name: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 };
+    const station = entity({
+      qid: 'Q1000101',
+      labels: { en: 'Piccadilly Circus tube station', he: 'תחנת הרכבת התחתית פיקדילי סירקוס' },
+      instanceOf: ['Q928830'], // metro station — specific, so the granularity list cannot help
+      image: 'Piccadilly Circus stn roundel.jpg',
+      lat: 51.51,
+      lng: -0.1348,
+    });
+    const square = entity({
+      qid: 'Q189040',
+      labels: { en: 'Piccadilly Circus', he: 'כיכר פיקדילי' },
+      instanceOf: ['Q3153117'],
+      image: 'Piccadilly Circus at night.jpg',
+      lat: 51.51,
+      lng: -0.1348,
+    });
+    const bothEntities = { entities: { ...station.entities, ...square.entities } };
+
+    it('refuses the station: a name plus a qualifying noun is a different subject', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q1000101', title: 'Piccadilly Circus tube station', lat: 51.51, lng: -0.1348 },
+        ]),
+        wbgetentities: station,
+      });
+      // One candidate, name comparable and 0.707 — under the floor, so nothing at all.
+      expect(await p.match(CIRCUS)).toBeNull();
+    });
+
+    // **The point of the floor is not refusal, it is letting the right one win.** Both are at the
+    // pin; the square's name agrees exactly and the station's does not.
+    it('takes the square when both are at the pin', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q1000101', title: 'Piccadilly Circus tube station', lat: 51.51, lng: -0.1348 },
+          { qid: 'Q189040', title: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 },
+        ]),
+        wbgetentities: bothEntities,
+      });
+      const match = await p.match(CIRCUS);
+      expect(match?.ref).toBe('Q189040');
+      expect(match?.settled?.commonsFilename).toBe('Piccadilly Circus at night.jpg');
+    });
+
+    // **Ambiguity refuses when nothing readable can arbitrate.** Same two candidates at the same
+    // point, but the saved name is Hebrew and their labels here are English only — so distance is
+    // the only evidence and distance cannot separate two things that share a coordinate.
+    it('refuses two uncorroborated candidates at the same point rather than guessing', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q1000101', title: 'Piccadilly Circus tube station', lat: 51.51, lng: -0.1348 },
+          { qid: 'Q189040', title: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 },
+        ]),
+        wbgetentities: {
+          entities: {
+            ...entity({
+              qid: 'Q1000101',
+              labels: { en: 'Piccadilly Circus tube station' },
+              instanceOf: ['Q928830'],
+              lat: 51.51,
+              lng: -0.1348,
+            }).entities,
+            ...entity({
+              qid: 'Q189040',
+              labels: { en: 'Piccadilly Circus' },
+              instanceOf: ['Q3153117'],
+              lat: 51.51,
+              lng: -0.1348,
+            }).entities,
+          },
+        },
+      });
+      expect(await p.match({ name: 'כיכר פיקדילי', lat: 51.51, lng: -0.1348 })).toBeNull();
+    });
+
+    // …and a single uncorroborated candidate at the pin is still accepted: nothing is competing
+    // with it, which is the case the coordinate route exists for (§15's Nezu Museum).
+    it('still accepts one uncorroborated candidate, because nothing competes with it', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q189040', title: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 },
+        ]),
+        wbgetentities: entity({
+          qid: 'Q189040',
+          labels: { en: 'Piccadilly Circus' },
+          instanceOf: ['Q3153117'],
+          lat: 51.51,
+          lng: -0.1348,
+        }),
+      });
+      expect((await p.match({ name: 'כיכר פיקדילי', lat: 51.51, lng: -0.1348 }))?.ref).toBe(
+        'Q189040',
+      );
+    });
+  });
+
   // **PICCADILLY CIRCUS MATCHED A SONG** (owner, 2026-08-05). The precision half of the same
   // live run, and the mirror image of the recall bug above: a song named after a place has an
   // EXACT name match and no `P625` at all, so it took the "no coordinates to corroborate"

@@ -62,6 +62,29 @@ Two things make it safe to be this strict:
 - **The pre-filter keeps its own veto-free question** (`nameOnlyConfidence`). A search hit carries no coordinates either — that absence is an artefact of the endpoint, not a fact about the item — so vetoing there would have rejected every candidate before the entity carrying the coordinate was read. The veto belongs to the entity pass.
 - **The coordinate route is the safety net.** Refusing the song is only affordable because the geosearch then finds the real Piccadilly Circus. The two fixes compose, and there is a test that pins exactly that: the name search returns only the song, it is refused, and the match comes back `geosearch` on the actual place.
 
+## Round two: it matched the Underground station under the square
+
+The coordinate route shipped and the next report came the same evening: _"now it matches somewhere that's near geographically but not the place itself."_ **Piccadilly Circus matched Piccadilly Circus Underground Station** — metres away, and not a _broader_ thing, so §15's Rule 2 could not see it.
+
+Three flaws, and the arithmetic named the first one:
+
+| name                                                   | sim       | blended at 0m |
+| ------------------------------------------------------ | --------- | ------------- |
+| `Piccadilly Circus` → `Piccadilly Circus`              | 1.000     | 0.900         |
+| `Meiji Jingū / Meiji Shrine` → `Meiji Shrine`          | 0.816     | 0.881         |
+| `Piccadilly Circus` → `Piccadilly Circus tube station` | **0.707** | **0.810**     |
+| `Tsukiji` → `Tsukiji Outer Market`                     | 0.577     | 0.725         |
+
+**1. Proximity was carrying matches it cannot arbitrate.** Distance is 35% of the blend, and for a facility **at** the place that 35% is free — the station's article coordinate _is_ the square's. So a name that is ours plus a qualifying noun cleared the threshold on evidence that never distinguished the two. Now `MATCH_MIN_NAME_SIMILARITY = 0.8`: **the name must carry a fuzzy match; proximity corroborates and vetoes, never carries.** The table is the calibration — Meiji survives at 0.816, the station goes at 0.707.
+
+And the floor's real value is not the refusal: with both candidates at the pin, it is what lets the **square win**, because the station can no longer outscore it on free distance. There is a test for exactly that.
+
+**2. `ggslimit=5` dropped the subject.** GeoData returns the N nearest, and within 500m of that pin central London has dozens of articles. The square was outside the five. Now 20 — still one `wbgetentities` call, which takes 50 ids. A limit tuned for a quiet suburb silently drops the answer in a dense city.
+
+**3. Ambiguity refuses.** When the name cannot arbitrate (disjoint scripts) distance is the only evidence, and distance cannot separate two things that share a coordinate. An uncorroborated winner with another scoreable candidate inside the trust radius is now refused. A single uncorroborated candidate is still accepted — that is the case the route exists for.
+
+**And one process note worth keeping.** The floor appeared to pass the suite with no regressions before `@waypoint/shared` was rebuilt — which meant `MATCH_MIN_NAME_SIMILARITY` was `undefined` at runtime and every comparison against it was false, so the floor was not in effect at all. The new test that expected a refusal is what caught it. A green suite against a stale build of the package that holds your constants is not a green suite.
+
 ## And one thing only a device could find
 
 The same deploy produced a second report, on Phase 4's badge: _"the '2' label is going over the thumbnail image."_ The order stamp is a `--cta` disc — `#e7eaf2` in dark mode — with a 1.5px `--card` ring, and 10 of its 15px sit on the badge. That ring was enough to separate it from a flat category tint and is not enough against a pale photograph; the reported place is grey rock and snow.
