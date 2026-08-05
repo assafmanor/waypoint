@@ -130,6 +130,17 @@
         place-items: center;
         font-size: 19px;
         background: rgba(120, 170, 220, 0.85);
+      }
+      /* THE PHOTO CLIPS ON AN INNER ELEMENT, NOT ON THE BADGE. `overflow: hidden` on the
+         badge itself is the obvious way to round a photo and it is wrong: the badge hosts
+         children that DELIBERATELY overhang it — the order counter at -6px, and the ring
+         overlay — so clipping the badge clipped the counter into a white quarter-circle in
+         the corner. The shipped `.map-badge` has no `overflow` for exactly this reason. */
+      .badge .clip {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
         overflow: hidden;
       }
       .badge.photo {
@@ -289,6 +300,16 @@
          scroller 31px, which is unusable. So the picture goes to the app's existing zoomable
          image preview (ADR-0062 permits zoom exactly there), and the CREDIT line — which
          licensing requires anyway — is its entry point. Two obligations, one line, 0px. */
+      .backrow {
+        grid-column: 1 / -1;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 10px;
+        padding-top: 9px;
+        border-top: 1px solid var(--line);
+      }
       .creditrow {
         display: flex;
         gap: 10px;
@@ -566,7 +587,9 @@
 
     <h2 dir="ltr">1 · A committed place · the summary earns a pinned block</h2>
     <p class="note" dir="ltr">
-      Two rearrangements pay for it. <b>Hours join the meta line as another tag</b> — the row
+      Two rearrangements pay for it, and expanding is a <b>mode change rather than growth</b> — it
+      becomes the same card an un-added research place gets, so there is
+      <b>one presentation, not two</b>. <b>Hours join the meta line as another tag</b> — the row
       already wraps tags, so <code>פתוח עד 17:00</code> costs <b>0px</b> instead of the 19–43px a
       line of its own wanted. That buys the
       <b>summary a two-line clamp directly under the identity</b>, always visible, tappable to
@@ -577,7 +600,9 @@
       <div class="col">
         <p class="cap" dir="ltr">collapsed · two lines, always there</p>
         <div class="placecard rows-a">
-          <span class="badge photo"><span class="synth"></span><span class="ord">1</span></span>
+          <span class="badge photo"
+            ><span class="clip"><span class="synth"></span></span><span class="ord">1</span></span
+          >
           <span class="main">
             <span class="nm">מוזיאון נזו <span class="ic">✎</span></span>
             <span class="meta"
@@ -615,9 +640,11 @@
       </div>
 
       <div class="col">
-        <p class="cap" dir="ltr">expanded · the scroller gives way, notes are not lost</p>
-        <div class="placecard rows-a">
-          <span class="badge photo"><span class="synth"></span><span class="ord">1</span></span>
+        <p class="cap" dir="ltr">expanded · it becomes the research card</p>
+        <div class="placecard decide" style="grid-template-rows: auto auto auto auto auto auto">
+          <span class="badge photo"
+            ><span class="clip"><span class="synth"></span></span><span class="ord">1</span></span
+          >
           <span class="main">
             <span class="nm">מוזיאון נזו <span class="ic">✎</span></span>
             <span class="meta"
@@ -626,35 +653,16 @@
             >
           </span>
           <span class="right"><span class="nav">ניווט</span></span>
-          <span class="sumblock">
-            <span class="summary" dir="auto"
-              >מוזיאון נזו (ביפנית: 根津美術館) הוא מוזיאון לאמנות הממוקם ברובע מינאטו של העיר
-              טוקיו, יפן. אוסף הקבע כולל למעלה מ־7,400 פריטי אמנות יפנית ומזרח־אסייתית, ובהם שבעה
-              נכסי תרבות לאומיים.</span
-            >
-            <span class="creditrow"
-              ><span class="credit">Kakidai · CC BY-SA 4.0</span
-              ><span class="full">⤢ תמונה מלאה</span></span
-            >
-            <span class="more">פחות ‹</span>
-          </span>
-          <span class="sec-h"><span>פתקים</span><span class="add">＋ פתק</span></span>
-          <span class="scroller">
-            <span class="notemock">להזמין כרטיסים מראש, התור ארוך בסופ״ש</span>
-            <span class="notemock">הגן מאחורי המוזיאון שווה חצי שעה</span>
-          </span>
-          <span class="refs">
-            <span class="ref"
-              ><span class="ref-open"
-                ><span class="ref-kind">אירוע</span><span class="ref-label">ביקור במוזיאון נזו</span
-                ><span>‹</span></span
-              ><span class="settle"><span>✕</span><span>✓</span></span></span
-            >
-          </span>
-          <span class="foot"
-            ><span class="primary">＋ שיבוץ ליום</span><span class="gbtn">עוד בגוגל</span
-            ><span class="del">🗑</span></span
+          <span class="hero"><span class="synth"></span></span>
+          <span class="credit">Kakidai · CC BY-SA 4.0</span>
+          <span class="summary" dir="auto"
+            >מוזיאון נזו (ביפנית: 根津美術館) הוא מוזיאון לאמנות הממוקם ברובע מינאטו של העיר טוקיו,
+            יפן. אוסף הקבע כולל למעלה מ־7,400 פריטי אמנות יפנית ומזרח־אסייתית, ובהם שבעה נכסי תרבות
+            לאומיים.</span
           >
+          <span class="backrow">
+            <span class="more">‹ חזרה לפרטי המקום</span><span class="gbtn">עוד בגוגל</span>
+          </span>
         </div>
         <p class="mm" data-measure="b"></p>
       </div>
@@ -671,7 +679,9 @@
       <div class="col">
         <p class="cap" dir="ltr">a Google result on the canvas</p>
         <div class="placecard decide" style="grid-template-rows: auto auto auto auto auto auto">
-          <span class="badge photo"><span class="synth tall"></span></span>
+          <span class="badge photo"
+            ><span class="clip"><span class="synth tall"></span></span
+          ></span>
           <span class="main">
             <span class="nm" dir="auto">Tokyo Skytree</span>
             <span class="meta"><span class="tag" dir="auto">Sumida, Tokyo</span></span>

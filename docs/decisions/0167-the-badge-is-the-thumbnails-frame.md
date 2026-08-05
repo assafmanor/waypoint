@@ -1,6 +1,6 @@
 # 0167 — The badge is the thumbnail's frame, and selection is where a place says more
 
-**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **Nothing built** — this is the surface ADR-0166's Phase 1 fills in.) **AMENDED TWICE the same day — §9 supersedes §3 for a committed place; §10 answers the full picture.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
+**Status:** Accepted (design; owner sign-off 2026-08-05 on three forks. **Nothing built** — this is the surface ADR-0166's Phase 1 fills in.) **AMENDED THREE TIMES the same day — read §11 first: it supersedes §10, and §9 supersedes §3 for a committed place.** The first mockup was drawn against a stripped-down row and the owner rejected it as incomplete; the real card is a grid with one scrolling track and four pinned rows. §9 has the redesign: hours ride the meta line at 0px, the summary gets a pinned two-line expandable block, and the hero leaves the committed card for the deciding one.
 **Date:** 2026-08-05
 
 **Design reference:** [`mockups/place-enrichment-v1.html`](../../mockups/place-enrichment-v1.html) — rendered and measured in Chromium at 390×844 (DPR 2), in both themes. Every place name, summary, credit, opening-hours string and aspect ratio in it is real data from the [coverage spike](../planning/2026-08-04-session-213-place-enrichment-coverage-spike.md); **the photographs are synthetic** (see §8).
@@ -128,6 +128,22 @@ The owner tested v2 on a real phone and asked for two things: the misalignment f
 **3. Its entry point is the credit line, which licensing requires anyway.** The expanded block's credit becomes a row: `Kakidai · CC BY-SA 4.0` at the start, `⤢ תמונה מלאה` at the end. **0px** — the line already had to be there for the 84% of files that demand attribution (§4), so the way to the picture and the obligation to name its author are the same line. Progressive disclosure lands at three levels, none of which costs pinned height beyond §9's 64px: **badge photo → two-line summary → expanded summary → full-screen preview.**
 
 **One build question this raises rather than answers** (ADR-0096): `DocumentViewer` is **document-shaped** (`doc: DocumentSummary`), not image-shaped. Reaching it for an enrichment photo means generalizing it, which may be a small extraction or a substantial refactor — so the build should look and **ask** before either widening it or adding a second viewer beside it.
+
+### 11. Amendment (2026-08-05, fourth) — expanding is a MODE CHANGE, and the badge must not clip
+
+Two owner notes on the v2 build, and the first replaces §10.
+
+**1. Expanding a saved place shows the research card. One presentation, not two.** §10 made expansion reveal a bigger picture; the owner's proposal is better and supersedes it: **expanding shows the same card an un-added research place gets** — hero, full summary, credit, hours — with a way back to the itinerary detail.
+
+Why it is better, stated plainly because it corrects my own design: §9 had left the app with **two card designs** for the same entity, a committed one and a deciding one, differing in which enriched fields they show. This collapses them. The deciding card _is_ the expanded state, so there is one presentation to build, test and keep consistent, and the compressed state is a **collapse of it** rather than a second design. It also answers "view the full picture" more completely than §10 did: you get the picture _and_ the full summary _and_ the credit in one move, in a shape already seen elsewhere in the app.
+
+And it dissolves §10's measured problem instead of working around it. §10 found that revealing a 116px hero _inside_ the card leaves the notes scroller **31px**, because the card is capped and the picture eats the group's own notes. That only bites if expansion is **growth**. Making it a **mode change** means the notes, references and schedule footer are not on screen at the same time as the hero — you are looking at the place as a subject rather than as an itinerary item, and you go back to see the itinerary. Measured: the expanded state is **342px** against the research card's **361px**, i.e. the same card.
+
+The full-screen zoomable preview (§10's ADR-0062 reuse) is **not retired** — it stays as the level below, reached from the hero on the expanded card. What is retired is §10's credit-line entry point, which existed only because the picture had nowhere else to go.
+
+**2. The badge must not clip its own children — and this would have shipped.** The owner spotted "a white quarter circle on the top right" of a thumbnail. It is a bug, and its cause is the design: I rounded the photo with `overflow: hidden` **on the badge**, and the badge hosts children that **deliberately overhang it** — the order counter at `-6px`, and the ring overlay. Clipping the badge clipped the counter to a quarter-circle in the corner. The shipped `.map-badge` carries **no `overflow`** at all, which is precisely why.
+
+So the photo clips on an **inner element** and the badge stays unclipped. The general rule, worth more than the fix: **`overflow: hidden` on a positioned host silently truncates anything designed to overhang it** — and on this badge the overhang is a numbered pin, so the failure looks like a rendering artifact rather than a layout decision, which is why it survived my own render pass and needed a human eye on a real device.
 
 ## What this does not settle
 
