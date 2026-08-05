@@ -13,21 +13,50 @@ const SENSOJI: PlaceIdentity = {
 
 const place = (googlePlaceId: string): PlaceIdentity => ({ ...SENSOJI, googlePlaceId });
 
+/** A stored payload with one field, in the shape `enrich` resolves to. */
+const stored = (blobKey: string) =>
+  ({
+    id: 'enr-1',
+    googlePlaceId: SENSOJI.googlePlaceId!,
+    wikidataQid: null,
+    osmRef: null,
+    fields: {
+      image: {
+        state: 'present',
+        value: {
+          blobKey,
+          mimeType: 'image/jpeg',
+          width: 800,
+          height: 600,
+          sizeBytes: 1000,
+          source: 'commons',
+          license: 'CC BY-SA 4.0',
+          attribution: 'A photographer',
+          fetchedAt: '2026-08-05T10:00:00.000Z',
+          confidence: 1,
+          method: 'settled_id',
+        },
+      },
+    },
+    attemptedAt: new Date('2026-08-05T10:00:00.000Z'),
+  }) as never;
+
 /** A stub pass whose completion the test controls, so in-flight state can be observed. */
 function controllablePass() {
-  const settle: (() => void)[] = [];
+  const settle: ((value: unknown) => void)[] = [];
   const calls: PlaceIdentity[] = [];
   const enrich = vi.fn(async (identity: PlaceIdentity) => {
     calls.push(identity);
-    await new Promise<void>((resolve) => settle.push(resolve));
-    return {} as never;
+    return (await new Promise<unknown>((resolve) => settle.push(resolve))) as never;
   });
+  const read = vi.fn(async () => null);
   return {
-    service: { enrich } as unknown as EnrichmentService,
+    service: { enrich, read } as unknown as EnrichmentService,
     calls,
+    read,
     /** Let every started pass finish, and give the microtask queue a turn. */
-    finishAll: async () => {
-      settle.splice(0).forEach((resolve) => resolve());
+    finishAll: async (value: unknown = stored('enr_a')) => {
+      settle.splice(0).forEach((resolve) => resolve(value));
       await Promise.resolve();
       await Promise.resolve();
     },
@@ -148,6 +177,120 @@ describe('EnrichmentScheduler', () => {
     // in over the next few reads instead.
     scheduler.scheduleMany(Array.from({ length: 40 }, (_, i) => place(`ChIJ-${i}`)));
     expect(calls.length).toBeLessThanOrEqual(3);
+  });
+
+  // ── A PASS SOMEBODY IS WAITING FOR (§17) ─────────────────────────────────────────────
+  // The deciding surface's trigger: a place the trip does not hold has no snapshot row and no
+  // `placeId` to be nudged about, so its answer travels back down the request that asked.
+  describe('enrichNow', () => {
+    it('answers with what the pass stored, as the client read model', async () => {
+      const { service, calls, finishAll } = controllablePass();
+      const scheduler = new EnrichmentScheduler(service);
+
+      const answer = scheduler.enrichNow(SENSOJI);
+      expect(calls).toEqual([SENSOJI]);
+      await finishAll();
+
+      // Delivered, not stored: the blob key never leaves the server (the mapper's job).
+      expect(await answer).toEqual({
+        image: expect.objectContaining({
+          url: '/enrichment/images/enr_a',
+          license: 'CC BY-SA 4.0',
+        }),
+      });
+    });
+
+    it('joins a pass already running instead of starting a second', async () => {
+      const { service, calls, finishAll } = controllablePass();
+      const scheduler = new EnrichmentScheduler(service);
+
+      // Two people tapping the same result, or a tap on a place a snapshot read is already
+      // backfilling. One pass, two answers — which is why the in-flight map holds the promise.
+      const first = scheduler.enrichNow(SENSOJI);
+      const second = scheduler.enrichNow(SENSOJI);
+      expect(calls).toHaveLength(1);
+
+      await finishAll();
+      expect(await first).toEqual(await second);
+    });
+
+    it('gives a waiter a slot the background cap would have refused', async () => {
+      const { service, calls, finishAll } = controllablePass();
+      const scheduler = new EnrichmentScheduler(service);
+
+      // Three backfills hold every background slot — a cold-start snapshot read.
+      for (const id of ['a', 'b', 'c']) scheduler.schedule(place(`ChIJ-${id}`));
+      expect(calls).toHaveLength(3);
+      // A further background pass is still dropped…
+      scheduler.schedule(place('ChIJ-d'));
+      expect(calls).toHaveLength(3);
+      // …but a person waiting on a blank card is not, which is the whole distinction.
+      const answer = scheduler.enrichNow(SENSOJI);
+      expect(calls).toHaveLength(4);
+
+      await finishAll();
+      await answer;
+    });
+
+    it('answers with what the store holds when the pass outruns the wait', async () => {
+      vi.useFakeTimers();
+      try {
+        const { service, read } = controllablePass();
+        // A pass from a month ago left an image; this one is refreshing it and hangs.
+        read.mockResolvedValue(stored('enr_from_before') as never);
+        const scheduler = new EnrichmentScheduler(service);
+
+        const answer = scheduler.enrichNow(SENSOJI);
+        await vi.advanceTimersByTimeAsync(5000);
+
+        // Never a hang, and never an empty answer when we hold something: the pass keeps
+        // running into the store, so the next tap is instant.
+        expect(await answer).toEqual({
+          image: expect.objectContaining({ url: '/enrichment/images/enr_from_before' }),
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('answers with what the store holds when the kill switch refuses the pass', async () => {
+      vi.stubEnv(ENRICHMENT_DISABLED, '1');
+      const { service, calls, read } = controllablePass();
+      read.mockResolvedValue(stored('enr_held') as never);
+
+      // Switched off means no outbound fetch, not a blank read: what we already hold is ours.
+      expect(await new EnrichmentScheduler(service).enrichNow(SENSOJI)).toEqual({
+        image: expect.objectContaining({ url: '/enrichment/images/enr_held' }),
+      });
+      expect(calls).toEqual([]);
+    });
+
+    it('answers with nothing at all when nobody has ever looked and the pass fails', async () => {
+      const service = {
+        enrich: vi.fn(async () => {
+          throw new Error('the store is on fire');
+        }),
+        read: vi.fn(async () => null),
+      } as unknown as EnrichmentService;
+
+      // The majority case's shape (ADR-0166 §11.3) and a failure's are deliberately the same:
+      // an empty payload, which the surface renders as nothing rather than as an error.
+      expect(await new EnrichmentScheduler(service).enrichNow(SENSOJI)).toEqual({});
+    });
+
+    it('never lets a failed pass throw into the request waiting on it', async () => {
+      const service = {
+        enrich: vi.fn(async () => {
+          throw new Error('wikidata is down');
+        }),
+        read: vi.fn(async () => null),
+      } as unknown as EnrichmentService;
+      const scheduler = new EnrichmentScheduler(service);
+
+      await expect(scheduler.enrichNow(SENSOJI)).resolves.toEqual({});
+      // And the slot is released, exactly as for a scheduled pass.
+      expect(scheduler.activePasses).toBe(0);
+    });
   });
 
   it('schedules nothing for a trip with no stale places', () => {

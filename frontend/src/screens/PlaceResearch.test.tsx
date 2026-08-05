@@ -8,10 +8,11 @@
 // `lib/usePlaceSearch.test.ts`.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { Place, PlaceResult } from '@waypoint/shared';
+import type { DeliveredImageValue, Place, PlaceResult } from '@waypoint/shared';
 
 import { PlaceResearch } from './PlaceResearch';
 import type { UsePlaceSearch } from '../lib/usePlaceSearch';
+import type { PlaceSummary } from '../lib/place-summary';
 import { t } from '../i18n/he';
 
 const result = (id: string, primary: string, secondary?: string): PlaceResult => ({
@@ -36,6 +37,7 @@ function view(opts: {
   selectedId?: string | null;
   chooseMode?: boolean;
   addingId?: string | null;
+  selectedKnowledge?: { image?: DeliveredImageValue; summary?: PlaceSummary };
 }) {
   const search = {
     query: '',
@@ -56,6 +58,7 @@ function view(opts: {
       offline={opts.offline ?? false}
       selectedId={opts.selectedId ?? null}
       chooseMode={opts.chooseMode ?? false}
+      selectedKnowledge={opts.selectedKnowledge}
       addingId={opts.addingId ?? null}
       addFailed={false}
       onShow={onShow}
@@ -161,6 +164,31 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
     // …and the rest of the results are untouched, which is what makes this a filter rather
     // than an empty state.
     expect(document.querySelector('[data-result="g-2"]')).toBeTruthy();
+  });
+
+  // ── THE DECIDING CARD (ADR-0166 §17, ADR-0167 §9.1) ──────────────────────────
+  // The picture and the summary belong to the row being ASKED ABOUT, exactly as a trip row's
+  // summary is selection-gated — and for the same reason: the list can hold ten answers and nine
+  // of them are not the question.
+  it('shows what we know on the selected row, and on no other', () => {
+    const image = { url: '/enrichment/images/enr_1' } as DeliveredImageValue;
+    view({
+      predictions: [result('g-1', 'A'), result('g-2', 'Tokyo Skytree')],
+      selectedId: 'g-2',
+      selectedKnowledge: { image, summary: { text: 'A tower in Sumida.', lang: 'en' } },
+    });
+    const selected = document.querySelector('[data-result="g-2"]')!;
+    expect(selected.querySelector('.map-hero img')!.getAttribute('src')).toBe(image.url);
+    expect(selected.querySelector('.map-sum')!.className).toContain('is-decide');
+    expect(document.querySelector('[data-result="g-1"]')!.querySelector('.map-sum')).toBeNull();
+  });
+
+  it('is the row it always was for a result the sources cannot describe', () => {
+    view({ predictions: [result('g-1', 'Fuunji', 'Shinjuku')], selectedId: 'g-1' });
+    // The majority case (ADR-0166 §11.3), and a complete state rather than an empty one.
+    expect(document.querySelector('.map-hero')).toBeNull();
+    expect(document.querySelector('.map-sum')).toBeNull();
+    expect(screen.getByText('Fuunji')).toBeTruthy();
   });
 
   it('offline the Google half is absent, not disabled', () => {

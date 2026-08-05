@@ -81,9 +81,9 @@ import {
 } from '../lib/place-refs';
 import { badgePhoto } from '../lib/place-photo';
 import { placeCredit, placeSummary, type PlaceSummary } from '../lib/place-summary';
-import { useFailableImage } from '../lib/useFailableImage';
 import { MediaViewer } from '../ui/MediaViewer';
 import { apiAssetUrl } from '../lib/api-asset';
+import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import {
   buildPinOrderIndex,
@@ -160,6 +160,7 @@ import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { HostNotes } from '../ui/HostNotes';
 import { NoteMark } from '../ui/domain/NoteMark';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
+import { KNOWLEDGE_DENSITY, PlaceKnowledge } from '../ui/domain/PlaceKnowledge';
 import { RowManageSheet } from '../ui/domain/ListRow';
 import { SettleControl } from '../ui/domain/SettleControl';
 import { ConfirmDialog } from '../ui/primitives/ConfirmDialog';
@@ -218,6 +219,7 @@ const authoredIcon = (value?: MapPlaceFormValue): string | undefined =>
 
 export function MapView() {
   const {
+    trip,
     events,
     bookings,
     maybeItems,
@@ -1761,8 +1763,44 @@ export function MapView() {
 
   // The full picture, one level below the expanded card (ADR-0167 §11.1). The viewer registers
   // its own layer, so back peels the picture, then the expansion, then the selection.
-  const [fullPictureId, setFullPictureId] = useState<string | null>(null);
-  const fullPicture = fullPictureId ? enrichments[fullPictureId]?.image : undefined;
+  //
+  // **The picture itself, not a place id.** It used to be a `placeId` resolved against
+  // `enrichments`, which cannot name the second surface that now has a hero: a Google result nobody
+  // has added has no `placeId` and no snapshot row (ADR-0166 §17). Both hosts hand over what the
+  // viewer actually needs — a title and an image — so neither has to be looked up.
+  const [fullPicture, setFullPicture] = useState<{
+    title: string;
+    image: DeliveredImageValue;
+  } | null>(null);
+
+  // ── WHAT WE KNOW ABOUT A PLACE WE HAVE NOT ADDED (ADR-0166 §17) ─────────────────────
+  // **The tapped result, and only it.** A search returns several candidates and most of them
+  // nobody keeps, so enriching the list would spend Wikimedia's patience on places no one looked
+  // at; a tap already means "this one" (owner's call, 2026-08-05). A result the trip ALREADY owns
+  // asks nothing: its enrichment is in the snapshot, keyed by its own `placeId`, and the card that
+  // shows is our place's rather than this row.
+  const selectedCandidate =
+    selectedResultId != null
+      ? research.predictions.find(
+          (r) => r.googlePlaceId === selectedResultId && !research.alreadyInTrip(r),
+        )
+      : undefined;
+  const candidateFields = useCandidateEnrichment({
+    tripId: trip.id,
+    candidate: selectedCandidate,
+    offline,
+  });
+  // Resolved ONCE for both hosts — the sheet's row and the canvas card are the same row in two
+  // places (ADR-0122 §7), so they must not resolve the same answer twice.
+  const candidateKnowledge = {
+    image: candidateFields?.image,
+    summary: placeSummary(candidateFields),
+  };
+  const showCandidatePicture = () => {
+    if (candidateKnowledge.image && selectedCandidate) {
+      setFullPicture({ title: selectedCandidate.primaryText, image: candidateKnowledge.image });
+    }
+  };
 
   // The three props `MapPane` takes, `useCallback(…, [])` over the latest-ref above. The pane
   // is memoized and this screen re-renders every second, so a fresh identity here re-diffs
@@ -2172,7 +2210,10 @@ export function MapView() {
           // (ADR-0109 §7). `עוד בגוגל` in the footer is that place's way to more.
           onExpand={() => setExpandedId(usage.placeId)}
           onCollapse={() => setExpandedId(null)}
-          onFullPicture={() => setFullPictureId(usage.placeId)}
+          onFullPicture={() => {
+            const image = enrichments[usage.placeId]?.image;
+            if (image) setFullPicture({ title: place.name, image });
+          }}
           image={selected ? enrichments[usage.placeId]?.image : undefined}
           // Free, and present even when we know nothing (ADR-0167 §6) — but not under an errand,
           // where the tab answers one question and the verbs CHANGE rather than accumulate
@@ -2656,6 +2697,9 @@ export function MapView() {
         selected
         chooseMode={pendingErrand != null}
         busy={addingResultId === cardResult.googlePlaceId}
+        image={candidateKnowledge.image}
+        summary={candidateKnowledge.summary}
+        onFullPicture={showCandidatePicture}
         onAdd={() => onResultAdd(cardResult)}
       />
     </div>
@@ -2745,7 +2789,9 @@ export function MapView() {
       offline={offline}
       selectedId={selectedResultId}
       chooseMode={pendingErrand != null}
+      selectedKnowledge={candidateKnowledge}
       onShow={selectResultRow}
+      onFullPicture={showCandidatePicture}
       addingId={addingResultId}
       addFailed={addResultFailed}
       onAdd={onResultAdd}
@@ -2935,13 +2981,13 @@ export function MapView() {
           exactly one place and this is it, and a 116px hero revealed inside the card was measured
           leaving the notes scroller 31px. It carries the credit as its caption, because full
           screen is the photograph's most prominent display. */}
-      {fullPicture && fullPictureId && (
+      {fullPicture && (
         <MediaViewer
-          title={placeById.get(fullPictureId)?.name ?? ''}
-          mimeType={fullPicture.mimeType}
-          source={{ kind: 'url', url: apiAssetUrl(fullPicture.url) }}
-          caption={placeCredit(fullPicture)}
-          onClose={() => setFullPictureId(null)}
+          title={fullPicture.title}
+          mimeType={fullPicture.image.mimeType}
+          source={{ kind: 'url', url: apiAssetUrl(fullPicture.image.url) }}
+          caption={placeCredit(fullPicture.image)}
+          onClose={() => setFullPicture(null)}
         />
       )}
     </>
@@ -3298,16 +3344,6 @@ function PlaceRow({
   const isHard = usage.pin.commitment === 'hard';
   const isPureIdea = usage.isMaybe && !usage.isScheduled;
   const dirUrl = mapsDirectionsUrl(place);
-  // The hero's bytes, only while expanded — and through the same failable-image hook the badge
-  // uses, so a blob a refresh replaced degrades to no picture rather than to a broken one.
-  const { src: heroUrl, onError: heroFailed } = useFailableImage(
-    expanded && image ? apiAssetUrl(image.url) : undefined,
-  );
-  // **Is there a room to open?** A place we know nothing about must not offer the way in
-  // (ADR-0109 §7) — its way to more is `עוד בגוגל`. An image with no summary still counts: the
-  // hero is exactly what expanding would show, and without this the picture would be
-  // unreachable on that place.
-  const canExpand = !!image || !!summary;
   // What the meta line says, in priority order (ADR-0109 §1): what happens here,
   // else the address, else the category. The address is the fallback rather than the
   // headline — on a scheduled row it says nothing about why the place is on the list.
@@ -3507,60 +3543,18 @@ function PlaceRow({
           §9's arithmetic is why it can be here at all: hours ride the meta line at 0px, so the
           64px this costs is paid for rather than added. Absent — not empty — when we know
           nothing, which is the common case (ADR-0109 §7). */}
-      {/* **THE HERO, and it is the way to the full picture** (ADR-0167 §11.1 + §10.2). Only on the
-          expanded card: 132px of photograph on a place you have already committed to is the least
-          valuable block on a capped card (§9.4), and the badge already carries the picture at zero
-          cost. A button rather than a tappable div, so it is reachable and named — the image
-          itself says nothing. */}
-      {expanded && heroUrl && (
-        <button
-          type="button"
-          className="map-hero"
-          aria-label={t.map.know.fullPicture}
-          onClick={(e) => {
-            e.stopPropagation();
-            onFullPicture?.();
-          }}
-        >
-          <img src={heroUrl} alt="" loading="lazy" decoding="async" onError={heroFailed} />
-        </button>
-      )}
-      {/* **The credit, which licensing requires and §4 placed here** — under the picture, never
-          over it: an overlay fights whatever is behind it and has to be re-solved for dark mode.
-          It stays RTL and isolates its own Latin run (`placeCredit`), which is the half of
-          ADR-0118 that its lint guard cannot see (§8.2). */}
-      {expanded && heroUrl && image && <span className="map-credit">{placeCredit(image)}</span>}
-      {canExpand && (
-        <span className={expanded ? 'map-sum is-open' : 'map-sum'}>
-          {/* Inline before the prose and a SIBLING of it, not inside it: `dir="auto"` sniffs the
-              first strong character, so a Hebrew chip inside the prose element would make an
-              English extract read as RTL — and the clamp needs an element whose content is
-              text, since `-webkit-box` lays element children out as boxes. */}
-          {summary?.marker && <span className="map-tag map-sum-lang">{summary.marker}</span>}
-          {summary && (
-            <span className="map-sum-t" dir="auto" lang={summary.lang}>
-              {summary.text}
-            </span>
-          )}
-          {/* **The way in to the mode change**, and it is offered only when there is more to
-              show. The clamp above hides text by design, so without this the rest of a summary
-              would be unreachable — which is why it sits inside the block rather than in the
-              footer with the verbs. */}
-          {!expanded && onExpand && canExpand && (
-            <button
-              type="button"
-              className="map-know-more"
-              onClick={(e) => {
-                e.stopPropagation();
-                onExpand();
-              }}
-            >
-              {t.map.know.more}
-              <Icon name="caret" dir="left" />
-            </button>
-          )}
-        </span>
-      )}
+      {/* **THE HERO, THE CREDIT AND THE SUMMARY, in the one component both rows render** (§11.1's
+          "one presentation, not two", ADR-0166 §17). The density is this row's state; everything
+          about how they look, clamp and read belongs to the block. `ResultRow` renders the same
+          call at `deciding`, which is what stopped a second copy of these three blocks from
+          appearing beside this one when the deciding surface shipped. */}
+      <PlaceKnowledge
+        density={expanded ? KNOWLEDGE_DENSITY.EXPANDED : KNOWLEDGE_DENSITY.COLLAPSED}
+        image={image}
+        summary={summary}
+        onExpand={onExpand}
+        onFullPicture={onFullPicture}
+      />
       {/* **WHAT WE KNOW ABOUT THIS PLACE, between the facts and the verbs.** The order is
           `BookingDetail`'s (facts → notes) and the idea sheet's (notes → verbs); notes last,
           under the schedule footer, would put content below a primary action, which is the

@@ -232,6 +232,15 @@ vi.mock('../lib/usePlaceSearch', () => ({
   },
 }));
 
+/** **The deciding surface's one read** (ADR-0166 §17). The route's own behaviour is the backend's
+ *  spec; what belongs here is which tap asks, with what, and which row shows the answer. The rest
+ *  of `lib/api` stays real — this screen reaches it only through the verbs, which are stubbed. */
+const lookupEnrichment = vi.fn().mockResolvedValue({});
+vi.mock('../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  lookupEnrichment: (...args: unknown[]) => lookupEnrichment(...args),
+}));
+
 vi.mock('../lib/map-config', () => ({
   mapsConfig: () => ({ apiKey: 'k', mapId: 'waypoint-day' }),
   mapPaneAvailable: ({ offline }: { offline: boolean }) => !offline,
@@ -530,6 +539,9 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     scrollIntoView.mockClear();
     for (const fn of Object.values(indexVerbs)) fn.mockClear();
     searchStub.pick.mockReset();
+    searchStub.referenced = {};
+    lookupEnrichment.mockReset();
+    lookupEnrichment.mockResolvedValue({});
     verbs.done.mockClear();
     verbs.skip.mockClear();
     verbs.restore.mockClear();
@@ -4071,6 +4083,140 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expand();
       fireEvent.click(row('lunch')!);
       expect(document.querySelector('.map-hero')).toBeNull();
+    });
+
+    // ── THE DECIDING CARD: enriched before it is saved (ADR-0166 §17) ──────────────────
+    // The same three blocks, on a place nobody has added — which is the surface §9.1 designed
+    // them for, and until now the only one that could not have them. What this suite owns is the
+    // wiring: which tap asks, what it asks with, and which row is allowed to show the answer.
+    describe('a place we have not added yet', () => {
+      const openSearch = () => fireEvent.click(listButton(t.map.search.button));
+      const typeQuery = (value: string) =>
+        fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+          target: { value },
+        });
+      const SKYTREE = {
+        googlePlaceId: 'g-sky',
+        primaryText: 'Tokyo Skytree',
+        secondaryText: 'Sumida',
+        lat: 35.7101,
+        lng: 139.8107,
+      };
+      const resultRow = (id = 'g-sky') =>
+        document.querySelector(`[data-result="${id}"]`) as HTMLElement;
+
+      const search = async (predictions: typeof searchStub.predictions = [SKYTREE]) => {
+        seed();
+        searchStub.predictions = predictions;
+        render(wrap(<MapView />));
+        openSearch();
+        typeQuery('skytree');
+        await Promise.resolve();
+      };
+
+      it('asks what the world knows when you tap a result, with the identity it needs', async () => {
+        await search();
+        expect(lookupEnrichment).not.toHaveBeenCalled();
+
+        fireEvent.click(resultRow().querySelector('.map-res-open') as HTMLElement);
+
+        // The name and the point travel with the question: the store holds nothing for a place
+        // nobody has added, so they are what a match can be made from (ADR-0166 §17).
+        await waitFor(() =>
+          expect(lookupEnrichment).toHaveBeenCalledWith(
+            't1',
+            { googlePlaceId: 'g-sky', name: 'Tokyo Skytree', lat: 35.7101, lng: 139.8107 },
+            expect.anything(),
+          ),
+        );
+      });
+
+      it('shows the picture, the credit and the summary on the selected row', async () => {
+        lookupEnrichment.mockResolvedValue({ image, summary });
+        await search();
+        fireEvent.click(resultRow().querySelector('.map-res-open') as HTMLElement);
+
+        await waitFor(() => expect(resultRow().querySelector('.map-hero')).toBeTruthy());
+        expect(resultRow().querySelector('.map-hero img')?.getAttribute('src')).toBe(image.url);
+        expect(resultRow().querySelector('.map-credit')?.textContent).toContain('Kakidai');
+        // The DECIDING density — three lines, and no way in to a mode change, because there is
+        // nothing here to swap off.
+        expect(resultRow().querySelector('.map-sum')?.className).toContain('is-decide');
+        expect(screen.queryByRole('button', { name: t.map.know.more })).toBeNull();
+      });
+
+      it('leaves the rows nobody tapped exactly as they were', async () => {
+        lookupEnrichment.mockResolvedValue({ image, summary });
+        await search([SKYTREE, { googlePlaceId: 'g-other', primaryText: 'Somewhere else' }]);
+        fireEvent.click(resultRow().querySelector('.map-res-open') as HTMLElement);
+
+        await waitFor(() => expect(resultRow().querySelector('.map-hero')).toBeTruthy());
+        // One fetch, one row: the collapsed results are the rows they always were, and nothing
+        // was fetched for them (the owner's "on tap only").
+        expect(resultRow('g-other').querySelector('.map-hero')).toBeNull();
+        expect(lookupEnrichment).toHaveBeenCalledTimes(1);
+      });
+
+      it('asks nothing about a result the trip already owns', async () => {
+        // Its enrichment is in the snapshot under its own `placeId`, and the card that shows is
+        // our place's row — richer, and ours (session 167).
+        searchStub.referenced = { 'g-sky': { id: 'museum' } };
+        await search();
+        fireEvent.click(row('museum')!);
+        await Promise.resolve();
+        expect(lookupEnrichment).not.toHaveBeenCalled();
+      });
+
+      it('asks once per place, however many times you tap it', async () => {
+        lookupEnrichment.mockResolvedValue({ summary });
+        await search([SKYTREE, { googlePlaceId: 'g-other', primaryText: 'Somewhere else' }]);
+        const tap = (id: string) =>
+          fireEvent.click(resultRow(id).querySelector('.map-res-open') as HTMLElement);
+
+        tap('g-sky');
+        await waitFor(() => expect(lookupEnrichment).toHaveBeenCalledTimes(1));
+        tap('g-other');
+        await waitFor(() => expect(lookupEnrichment).toHaveBeenCalledTimes(2));
+        // Back to the first: answered already, so nothing is asked again — including when the
+        // answer was "we know nothing", which is the majority case and must not be re-asked.
+        tap('g-sky');
+        await Promise.resolve();
+        expect(lookupEnrichment).toHaveBeenCalledTimes(2);
+      });
+
+      it('shows nothing at all for a place the sources cannot describe', async () => {
+        lookupEnrichment.mockResolvedValue({});
+        await search();
+        fireEvent.click(resultRow().querySelector('.map-res-open') as HTMLElement);
+
+        await waitFor(() => expect(lookupEnrichment).toHaveBeenCalled());
+        // A complete state, not an error state (ADR-0109 §7): the row it always was.
+        expect(resultRow().querySelector('.map-sum')).toBeNull();
+        expect(resultRow().querySelector('.map-hero')).toBeNull();
+        expect(document.querySelector('.wp-banner')).toBeNull();
+      });
+
+      it('asks nothing while offline', async () => {
+        isOffline = true;
+        await search();
+        // There is no research half offline at all — but the guard is in the hook too, because
+        // the lookup needs Wikimedia and is never outboxed.
+        expect(lookupEnrichment).not.toHaveBeenCalled();
+      });
+
+      it('opens the full picture from its hero, credited', async () => {
+        lookupEnrichment.mockResolvedValue({ image, summary });
+        await search();
+        fireEvent.click(resultRow().querySelector('.map-res-open') as HTMLElement);
+        await waitFor(() => expect(resultRow().querySelector('.map-hero')).toBeTruthy());
+
+        fireEvent.click(resultRow().querySelector('.map-hero') as HTMLElement);
+        const viewer = document.querySelector('.doc-viewer') as HTMLElement;
+        // The same viewer the committed place's hero opens, titled by the result's own name —
+        // which is why the state carries the picture rather than a `placeId` it does not have.
+        expect(viewer.querySelector('.doc-viewer-title')?.textContent).toContain('Tokyo Skytree');
+        expect(viewer.querySelector('.doc-viewer-caption')?.textContent).toContain('Kakidai');
+      });
     });
   });
 

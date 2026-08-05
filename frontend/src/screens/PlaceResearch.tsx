@@ -20,10 +20,12 @@
 // distinction the user does not have. The cost controls that remain are the min-chars
 // floor (3, ADR-0131 §8b) and the pause-gated debounce — and they carry MORE weight
 // since the switch to Text Search, which has no session to bill against (ADR-0132 §7).
-import type { PlaceResult } from '@waypoint/shared';
+import type { DeliveredImageValue, PlaceResult } from '@waypoint/shared';
 import type { UsePlaceSearch } from '../lib/usePlaceSearch';
 import { mapsPredictionUrl } from '../lib/places';
+import type { PlaceSummary } from '../lib/place-summary';
 import { Skeleton, StatusBanner } from '../ui/feedback';
+import { KNOWLEDGE_DENSITY, PlaceKnowledge } from '../ui/domain/PlaceKnowledge';
 import { DEFAULT_PLACE_ICON } from '../constants';
 import { Icon } from '../ui/Icon';
 import { t } from '../i18n/he';
@@ -39,10 +41,15 @@ export function PlaceResearch({
   /** An errand is live, so the verb is CHOOSE rather than shelve (ADR-0134 §3): one place,
    *  assigned to the form that asked, and no `MaybeItem`. */
   chooseMode,
+  /** **What we know about the SELECTED result** (ADR-0166 §17) — resolved once by the screen,
+   *  which needs the same two values for the canvas card, so one lookup serves both hosts. Only
+   *  the selected row can show it, so only the selected row is handed it. */
+  selectedKnowledge,
   /** The row was tapped: show me where this is (ADR-0134 §6). The row's body used to be
    *  a link to Google Maps; the tap now means "frame it here" and Google is its own
    *  control, because a link wrapping the whole row cannot coexist with that. */
   onShow,
+  onFullPicture,
   /** Which result is mid-add, and whether the last add failed. Both live with the add
    *  itself, in the screen. */
   addingId,
@@ -53,9 +60,11 @@ export function PlaceResearch({
   offline: boolean;
   selectedId: string | null;
   chooseMode: boolean;
+  selectedKnowledge?: { image?: DeliveredImageValue; summary?: PlaceSummary };
   addingId: string | null;
   addFailed: boolean;
   onShow: (result: PlaceResult) => void;
+  onFullPicture?: () => void;
   onAdd: (result: PlaceResult) => void;
 }) {
   if (offline) {
@@ -99,7 +108,10 @@ export function PlaceResearch({
               selected={selectedId === result.googlePlaceId}
               chooseMode={chooseMode}
               busy={addingId === result.googlePlaceId}
+              image={selectedId === result.googlePlaceId ? selectedKnowledge?.image : undefined}
+              summary={selectedId === result.googlePlaceId ? selectedKnowledge?.summary : undefined}
               onShow={() => onShow(result)}
+              onFullPicture={onFullPicture}
               onAdd={() => onAdd(result)}
             />
           ))}
@@ -138,7 +150,10 @@ export function ResultRow({
   selected,
   chooseMode,
   busy,
+  image,
+  summary,
   onShow,
+  onFullPicture,
   onAdd,
 }: {
   result: PlaceResult;
@@ -146,10 +161,20 @@ export function ResultRow({
   /** The verb is `בחירה`, not `＋ אולי` (ADR-0134 §3). */
   chooseMode: boolean;
   busy: boolean;
+  /** **What the world knows about a place nobody has added** (ADR-0166 §17), fetched by the tap
+   *  that selected this row. Present only on the selected row — like the trip row's own summary,
+   *  and for the same reason: it is the answer to "which of these is the place", so it belongs to
+   *  the one being asked about. Absent for the majority of results, which renders as the row that
+   *  was always here (ADR-0109 §7). */
+  image?: DeliveredImageValue;
+  summary?: PlaceSummary;
   /** Frame this result on the canvas. **Absent on the canvas card**, where the body is
    *  inert: there is nowhere for the tap to go, so it renders as content rather than as a
    *  `button` that does nothing. */
   onShow?: () => void;
+  /** Open the picture full screen (ADR-0167 §11.1) — the same level below the card the committed
+   *  place's hero reaches, since it is the same hero. */
+  onFullPicture?: () => void;
   onAdd: () => void;
 }) {
   const body = (
@@ -222,6 +247,21 @@ export function ResultRow({
           )}
         </button>
       </span>
+      {/* **THE DECIDING CARD** (ADR-0167 §9.1, ADR-0166 §17): the picture, its credit and the
+          summary, in the one component the committed place's card renders too — `deciding` is the
+          density where they get the room they are actually for, because nothing points at this
+          place yet, so there are no notes, no references and no `שיבוץ ליום` competing for the
+          same pixels. §9.1's inversion, and the whole reason enrichment belongs here most.
+
+          Selection-gated by the caller, and it comes AFTER the row's controls in the DOM for the
+          same reason `.map-refs` does: these are full-width lines on a wrapping row, so they
+          follow the identity line rather than interrupting it. */}
+      <PlaceKnowledge
+        density={KNOWLEDGE_DENSITY.DECIDING}
+        image={image}
+        summary={summary}
+        onFullPicture={onFullPicture}
+      />
     </div>
   );
 }

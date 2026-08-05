@@ -14,6 +14,7 @@ import {
   isHardEventConfirmError,
   isMoveCrossesDayError,
   isMoveIntoPastError,
+  lookupEnrichment,
   moveEvent,
   refreshAccessToken,
   resolveDestination,
@@ -381,6 +382,52 @@ describe('booking + place write calls', () => {
       expect.stringContaining(`/trips/${TRIP.id}/places/${place.id}`),
       expect.objectContaining({ method: 'PATCH' }),
     );
+  });
+});
+
+// **The one enrichment read a client ASKS for** (ADR-0166 §17). Everything else the pipe delivers
+// rides the snapshot or a WS nudge, both keyed by `placeId` — a place nobody has added has none.
+describe('enrichment lookup for a place we have not added', () => {
+  const candidate = { googlePlaceId: 'ChIJ-sky', name: 'Tokyo Skytree', lat: 35.71, lng: 139.81 };
+
+  it('posts the identity to the trip-scoped route and parses the read model', async () => {
+    const image = {
+      url: '/enrichment/images/enr_1',
+      mimeType: 'image/jpeg',
+      width: 800,
+      height: 600,
+      sizeBytes: 1000,
+      source: 'commons',
+      license: 'CC BY-SA 4.0',
+      attribution: 'Kakidai',
+      fetchedAt: '2026-08-05T09:00:00Z',
+      confidence: 1,
+      method: 'settled_id',
+      ref: 'Skytree.jpg',
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ image }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const fields = await lookupEnrichment(TRIP.id, candidate);
+    expect(fields.image?.url).toBe(image.url);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/trips/${TRIP.id}/enrichment/lookup`),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(candidate) }),
+    );
+  });
+
+  // An empty payload is the MAJORITY answer (ADR-0166 §11.3), not an error — 0 of 7 Tokyo
+  // restaurants had an image. The caller renders it as the row it always was.
+  it('parses an empty answer as an answer', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
+    await expect(lookupEnrichment(TRIP.id, candidate)).resolves.toEqual({});
+  });
+
+  it('throws on a refusal, so the caller can decide to say nothing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
+    await expect(lookupEnrichment(TRIP.id, candidate)).rejects.toBeInstanceOf(ApiError);
   });
 });
 

@@ -73,6 +73,8 @@
 
 **The whole build plan is now built, except hours.** What remains is not a phase: the device pass, and the recorded-not-built pre-save enrichment that would make the research card serve a place you have not added yet (which is what ADR-0167 §9.1 designed it for).
 
+**And that last one shipped the same day** ([ADR-0166 §17](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md), [ADR-0167 §15](../decisions/0167-the-badge-is-the-thumbnails-frame.md), [session note](2026-08-05-place-enrichment-before-you-save.md)) — the owner asked for it directly, and it needed no mockup because the deciding column of `place-enrichment-v2.html` already drew it. A third trigger with a person waiting on it (`enrichNow`, bounded at 5s), one membership-scoped and rate-limited lookup route, and the three blocks extracted into `PlaceKnowledge` so `ResultRow` and `PlaceRow` render one presentation at three densities. **So Phase 6's "one presentation, not two" bullet is now load-bearing across two components, not two states** — which is the form rule 8 takes when a design outlives the surface it was written for. It also found and fixed a latent Phase 6 defect: the expanded card's grid rules were inert, because `display: grid` was only ever selected by the collapsed card's `:has(.note-sec)`.
+
 ## Amendment (2026-08-05) — the phase this plan forgot: **the trigger**
 
 Phases 1–3 shipped and the pipe never ran, because **no phase here owned the thing that starts a pass.** Phase 1's line says _"Enrichment is scheduled after the fact"_ — present tense, so it reads as a property already true rather than as work. It was neither built nor deferred; it simply was not in the plan.
