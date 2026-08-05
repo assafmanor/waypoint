@@ -3852,6 +3852,98 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     });
   });
 
+  // **WHAT THE WORLD KNOWS, IN THE SELECTION REVEAL** (ADR-0167 §9.3/§5/§6). The block's
+  // GEOMETRY — two lines, the card still inside its cap, the notes scroller's remaining room —
+  // is measured in `e2e/place-know.spec.ts`; jsdom reports every rect as zero. What belongs
+  // here is which rows get the block, which language a reader gets, and the footer's contents.
+  describe('the summary block and the way through to Google (ADR-0167 §9.3/§6)', () => {
+    const summaryValue = (lang: string, value: string) => ({
+      value,
+      lang,
+      source: 'wikipedia' as const,
+      license: 'CC BY-SA 4.0',
+      attribution: 'Wikipedia',
+      fetchedAt: '2026-07-19T09:00:00Z',
+      confidence: 1,
+      method: 'settled_id' as const,
+      ref: 'Q615183',
+    });
+    const block = (name: string) => row(name)?.querySelector('.map-sum') as HTMLElement | null;
+    const google = () =>
+      screen.queryByRole('link', { name: t.map.know.moreOnGoogle }) as HTMLAnchorElement | null;
+
+    it('pins two lines under the identity on the SELECTED row, and nowhere else', () => {
+      seed();
+      tripEnrichments = { museum: { summary: { he: summaryValue('he', 'מוזיאון בטוקיו.') } } };
+      render(wrap(<MapView />));
+      // Unselected: the list can hold the whole trip, so an unselected row pays nothing.
+      expect(block('museum')).toBeNull();
+
+      fireEvent.click(row('museum')!);
+      const prose = block('museum')!.querySelector('.map-sum-t') as HTMLElement;
+      expect(prose.textContent).toBe('מוזיאון בטוקיו.');
+      // The prose sniffs its own direction and says what language it is (ADR-0167 §5/§8).
+      expect(prose.getAttribute('dir')).toBe('auto');
+      expect(prose.getAttribute('lang')).toBe('he');
+      // Hebrew needs no marker.
+      expect(block('museum')!.querySelector('.map-sum-lang')).toBeNull();
+      // Not inside the notes scroller: the group's own writing keeps its region (§9.5).
+      expect(block('museum')!.closest('.note-sec-list')).toBeNull();
+    });
+
+    // The majority case for a place that gets a summary at all (ADR-0166 §11.5), so the
+    // marker is what keeps an English extract in a Hebrew app honest rather than jarring.
+    it('marks an English summary in one word, in the row’s own tag grammar', () => {
+      seed();
+      tripEnrichments = { museum: { summary: { en: summaryValue('en', 'A museum in Tokyo.') } } };
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+
+      const marker = block('museum')!.querySelector('.map-sum-lang') as HTMLElement;
+      expect(marker.textContent).toBe(t.map.know.langMarker.en);
+      expect(marker.className).toContain('map-tag');
+      // A SIBLING of the prose, not inside it: `dir="auto"` would sniff the Hebrew marker and
+      // lay the English extract out RTL.
+      expect(marker.parentElement).toBe(block('museum'));
+    });
+
+    it('draws nothing at all when we know nothing, which is the common case', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+      expect(block('museum')).toBeNull();
+      // …but the way to the answer is still there, and then it is the whole content (§6).
+      expect(google()).toBeTruthy();
+    });
+
+    it('offers עוד בגוגל on Google’s own panel for the place, in a new tab', () => {
+      seed();
+      tripPlaces = [{ ...place('museum'), googlePlaceId: 'g-museum' }, ...tripPlaces.slice(1)];
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+
+      const link = google()!;
+      expect(link.getAttribute('href')).toContain('query_place_id=g-museum');
+      expect(link.getAttribute('target')).toBe('_blank');
+      expect(link.getAttribute('rel')).toContain('noopener');
+      // The row's own single Google exit is untouched — this is a different question, which is
+      // what the label carries (§6).
+      expect(within(row('museum')!).getByText(t.actions.navigate)).toBeTruthy();
+    });
+
+    // Same rule as the schedule verb and `נווט`: under an errand the tab answers one question,
+    // so the verbs change rather than accumulate (ADR-0134 §3).
+    it('withdraws עוד בגוגל while a place errand is live', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+      expect(google()).toBeTruthy();
+
+      startErrand();
+      expect(google()).toBeNull();
+    });
+  });
+
   // ── Phase 8: the canvas's own chrome (ADR-0126) ───────────────────────────
   // The pane's own markup is `MapPane`'s test; what belongs here is the half the
   // SCREEN owns — the order, the two headers, the shortfall the list has to state, and

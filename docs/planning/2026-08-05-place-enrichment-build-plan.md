@@ -56,6 +56,12 @@
 - **The credit line stays RTL-aligned and isolates its Latin run** — `dir="auto"` on a Latin string flips the whole element and orphans it to the opposite edge, which ADR-0118's lint guard cannot see (§8.2). This will recur on every enriched Latin string.
 - A clamp that varies by state belongs on the **compound selector** — a sibling class loses the specificity fight and silently renders three lines (§9's closing note).
 
+**Built 2026-08-05** ([session note](2026-08-05-place-enrichment-phase-5-built.md)), minus two bullets and with one correction:
+
+- **Hours are blocked upstream, not skipped.** There is no OSM provider (ADR-0166 Phase 2), the store holds the **raw** `opening_hours` expression by design, and deriving `פתוח עד 17:00` from 13 syntax shapes is that phase's work. The field already reaches the client, so the tag is a small addition once a value exists.
+- **`עוד ›` and the credit line are Phase 6's.** §9.3's expansion is what §11.1 turned into a mode change, so the control cannot ship before the mode it opens. **This leaves an attribution gap** — §4 lets the badge carry no credit because the card one tap away has it, and that card is Phase 6's ([ADR-0167 §13](../decisions/0167-the-badge-is-the-thumbnails-frame.md)). It is the reason Phase 6 is next.
+- **Corrected: the footer's third control does not fit on one line.** 349px of controls against 332px at 390px and 302px at 360px, so it wraps — v2 drew all three side by side because its delete is a bare glyph where the shipped one is labelled. Shipped as the wrap, since the control that drops is the destructive one; the owner's alternatives are in the note.
+
 ## Phase 6 — the expanded card is the research card (frontend)
 
 - **Expansion is a mode change, not growth** (§11.1). Expanded shows what an un-added research place shows — hero, full summary, credit, hours — plus a way back. Notes, references and the schedule footer are **not** on screen at the same time, which is what stops the hero starving the notes scroller (measured 31px when it did).

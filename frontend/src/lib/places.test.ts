@@ -33,6 +33,7 @@ import {
   liveZoneContext,
   mapsDirectionsUrl,
   mapsDayRouteUrl,
+  mapsKnowledgeUrl,
   nextDestination,
   referencedPlaceIds,
   segmentZoneAt,
@@ -228,6 +229,28 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
   it('returns null for a coordless place or undefined (no location, no button)', () => {
     expect(mapsDirectionsUrl(coordless)).toBeNull();
     expect(mapsDirectionsUrl(undefined)).toBeNull();
+  });
+
+  // `עוד בגוגל` (ADR-0167 §6): a different question from `נווט` and from the retired
+  // `mapsPlaceUrl`, on the same free universal-URL builder. Never null — §6 wants it present
+  // even for a place we know nothing about, which is the majority case.
+  it('mapsKnowledgeUrl opens Google’s own panel when we have its place id', () => {
+    expect(mapsKnowledgeUrl(withCoords)).toBe(
+      'https://www.google.com/maps/search/?api=1&query=%D7%9E%D7%A7%D7%95%D7%9D&query_place_id=g-x',
+    );
+  });
+
+  it('mapsKnowledgeUrl disambiguates a hand-dropped pin by address, else by point', () => {
+    const dropped = place('pl-d', 'הפינה', { lat: 35.1, lng: 139.2 });
+    expect(mapsKnowledgeUrl(dropped)).toContain(
+      'query=%D7%94%D7%A4%D7%99%D7%A0%D7%94%2035.1%2C139.2',
+    );
+    const addressed = place('pl-a', 'הפינה', { lat: 35.1, lng: 139.2, address: 'Shibuya 1-2' });
+    expect(mapsKnowledgeUrl(addressed)).toContain('Shibuya%201-2');
+    // A coordless Place-lite still gets a way through: a name search beats nothing.
+    expect(mapsKnowledgeUrl(coordless)).toBe(
+      'https://www.google.com/maps/search/?api=1&query=%D7%A9%D7%9D%20%D7%91%D7%9C%D7%91%D7%93',
+    );
   });
 
   it('eventDirectionsUrl follows the authority rule (transport → origin)', () => {
