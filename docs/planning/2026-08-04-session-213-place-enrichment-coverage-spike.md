@@ -58,3 +58,21 @@ The rest: image and summary are independently optional (four places have an imag
 **Phase 2 cannot be scheduled.** Hours have no fill rate, so no cost and no design. That is the single biggest thing the spike was supposed to settle and didn't.
 
 **The design session still lacks its main input** — no image was ever fetched, so there is nothing real to lay out. The narrow re-run owns three gaps and nothing else: download the actual thumbnails, resolve licenses for all matched images, and query Overpass properly. It takes URLs from the `iiurlwidth` response rather than hand-built ones, and it must not re-litigate the sample.
+
+## The re-run, same day — [ADR-0166 §12](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md)
+
+It ran with real API access. **Two gaps closed, one half-closed, and it deleted a step we thought we needed.** The dataset above was refreshed in place; per-file licenses are in [`…-licenses.json`](2026-08-04-enrichment-coverage-spike-licenses.json).
+
+**The re-run's headline number is the thing to distrust this time.** It reports hours at **15/43 = 34.9%**, which counts 11 rows that were **never queried** as failures. Of rows where an OSM object was found it is **15/31 = 48.4%** — and **8 of the 11 unqueried rows are stratum C**, so the restaurant fill rate rests on three places, all famous. The stratum that justifies the whole hours feature is still dark.
+
+**And the reason it is dark is the spike's method, not the world.** With no coordinate column, the re-run fell back to the matched Wikidata item's `P625`, so rows with no Wikidata match had nothing to query with. **In production every place has coordinates** — they arrive with the Google pick and are cached on the `Place` row (ADR-0108 §3). The spike therefore **coupled hours coverage to Wikidata matching when the two are independent**, and that points somewhere useful: the restaurant hole is a Wikipedia/Wikidata hole, and OSM is the source that covers businesses. Hours may well be the enrichment that works best precisely where image and summary fail. Not shown — but it is the one measurement still worth taking, and it needs no Wikidata step at all.
+
+**What did settle:**
+
+- **The resize step is gone.** `iiurlwidth` ignores exact widths (200/400/800 → 250/500/840–960; MediaWiki rounds to buckets) but returned a working server-generated thumbnail for **all 32 images**, at **36–250 KB**, median 71 KB. So we fetch the bucket Commons already made and store those bytes — no 26 MB original, and **no image-resizing dependency in the backend**. We still store our own copy; hotlinking Commons is the same offline defect §2 rejected for Google, whoever the host is.
+- **Attribution is the default state.** All 32 licenses resolved, zero exclusions, but **27 of 32 (84%) require visible credit**. That answers a design question rather than adding one: the attribution slot is laid out first and the credit-free case is the exception. Nine distinct license strings appeared, including `CC BY-SA 3.0 de` and `CC BY-SA 2.5` — which is why the license is stored as a per-file string, not an enum.
+- **`QID → OSM` is often an _exact_ join.** Ten of 31 objects were found by the OSM object's own `wikidata=Q…` tag rather than by proximity. That materially de-risks the matching problem and gives the pipeline an order: exact tag, then settled id, then fuzzy — with the confidence recording which one fired.
+- **One licensing exception**: the Western Wall's `P18` is **GFDL 1.2 only**, whose attribution terms are far heavier than CC's. Recommended and adopted unless overruled: **treat GFDL-only as no image.** One file in 32.
+- **Two things only real bytes could show**: Katz's `P18` is a **PNG that landed under a `.jpg` name** — exactly why `image-sniff.ts` decides the type and the filename never does — and **teamLab Planets has no `P18` at all** despite having both articles, so the true image count is **32 of 43**. A Wikidata item can carry sitelinks and no image, the mirror of the image-without-article case.
+
+**The design session is now unblocked for images** — 32 real thumbnails at real aspect ratios (**0.54 – 1.78**, six portraits), with their real licenses and credits. The URLs are in the dataset; they need fetching from a machine with network access, since this environment cannot reach `upload.wikimedia.org`.
