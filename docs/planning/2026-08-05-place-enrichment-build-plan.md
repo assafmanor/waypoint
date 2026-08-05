@@ -60,7 +60,7 @@
 
 - **Hours are blocked upstream, not skipped.** There is no OSM provider (ADR-0166 Phase 2), the store holds the **raw** `opening_hours` expression by design, and deriving `פתוח עד 17:00` from 13 syntax shapes is that phase's work. The field already reaches the client, so the tag is a small addition once a value exists.
 - **`עוד ›` and the credit line are Phase 6's.** §9.3's expansion is what §11.1 turned into a mode change, so the control cannot ship before the mode it opens. **This leaves an attribution gap** — §4 lets the badge carry no credit because the card one tap away has it, and that card is Phase 6's ([ADR-0167 §13](../decisions/0167-the-badge-is-the-thumbnails-frame.md)). It is the reason Phase 6 is next.
-- **Corrected: the footer's third control does not fit on one line.** 349px of controls against 332px at 390px and 302px at 360px, so it wraps — v2 drew all three side by side because its delete is a bare glyph where the shipped one is labelled. Shipped as the wrap, since the control that drops is the destructive one; the owner's alternatives are in the note.
+- **Corrected: the footer is full once §6's control joins it.** 349px of controls against 332px at 390px and 302px at 360px — v2 drew all three side by side because its delete is a bare glyph where the shipped one is labelled. It wraps at 360 and is marginal at 390 (it wrapped locally, fit in CI), so the e2e asserts the floors and which control drops rather than the wrap itself; the owner's alternatives are in the note.
 
 ## Phase 6 — the expanded card is the research card (frontend)
 

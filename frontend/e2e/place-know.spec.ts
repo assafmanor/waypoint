@@ -181,41 +181,43 @@ for (const width of WIDTHS) {
       expect(m.block.h).toBeLessThanOrEqual(m.prose.h + 1);
     });
 
-    // **THE THIRD CONTROL DOES NOT FIT ON ONE LINE, AND THE MOCKUP HID THAT.** Measured:
-    // `שיבוץ ליום` 118px + `עוד בגוגל` 83px + `מחיקת המקום` 116px + two 16px gaps = 349px
-    // against 332px of footer at 390px and 302px at 360px. So the footer wraps — which it has
-    // always been allowed to do (`flex-wrap: wrap` predates this) and which costs a second
-    // 44px row plus the gap.
+    // **THE FOOTER IS FULL, AND WHETHER IT WRAPS IS A FONT-METRIC COIN TOSS.** Measured on this
+    // box: `שיבוץ ליום` 118px + `עוד בגוגל` 83px + `מחיקת המקום` 116px + two 16px gaps = 349px
+    // against 332px of footer at 390px and 302px at 360px. At 360 it wraps everywhere; **at 390
+    // it fit on CI's narrower Hebrew metrics and wrapped locally**, which is the first version
+    // of this test failing in CI and being right to.
+    //
+    // So the wrap itself is not assertable — the same three labels measure differently on a
+    // machine with different fonts, and pinning either outcome pins the machine. What IS
+    // invariant, and is what actually matters:
+    //
+    //   - every control clears ADR-0017's 44px floor, on however many lines it takes;
+    //   - nothing escapes the footer's own box (a wrap that overflowed would still look like
+    //     "two lines" to a naive count while the third control sat outside the card);
+    //   - **when it does wrap, the control that drops is the DESTRUCTIVE one.** The primary and
+    //     the way through stay together, so the delete gains distance from the primary instead
+    //     of sitting 16px from it — the exact hazard `.map-refs-foot`'s gap comment names.
     //
     // v2 drew all three on one line because its delete is a bare `🗑` glyph; the shipped one is
-    // a labelled 44px control that ADR-0157 §2 chose deliberately. This is the catalog's own
-    // warning — the mockup's CSS is hand-written and not the app's — landing on a second phase.
-    //
-    // Asserted as it measures, not as it was drawn: nothing overlaps, nothing is clipped, every
-    // control clears ADR-0017's floor, and the cost is stated. What to do about it is the
-    // owner's call (see the session note): accept the wrap, unlabel the delete as the mockup
-    // did, or move the way through out of the footer.
-    test('gives all three footer controls their floor, wrapping to a second line', async ({
+    // a labelled 44px control ADR-0157 §2 chose deliberately. What to do about a full footer is
+    // the owner's call (see the session note): accept it, unlabel the delete as the mockup did,
+    // or move the way through out of the footer.
+    test('gives all three footer controls their floor, and drops only the destructive one', async ({
       page,
     }) => {
       await selectKnown(page);
       const m = await measure(page);
       expect(m.footItems).toHaveLength(3);
       for (const item of m.footItems) expect(item.h).toBeGreaterThanOrEqual(44);
-      // Two lines, and the footer's own box is the two rows plus the gap — so the wrap is
-      // accounted for rather than overflowing the row it is in.
-      const tops = [...new Set(m.footItems.map((i) => i.top))];
-      expect(tops).toHaveLength(2);
-      // **And the wrap falls in the right place, which is why it is tolerable rather than a
-      // defect:** the primary and the way through share line 1, and the DESTRUCTIVE control is
-      // the one that drops — so it gains distance from the primary instead of sitting 16px from
-      // it, which is the exact hazard `.map-refs-foot`'s gap comment was written about.
+      // The primary and the way through share a line whether or not anything wraps; the delete
+      // is at or below them, never above and never between.
       expect(m.footItems[0].top).toBe(m.footItems[1].top);
-      expect(m.footItems[2].top).toBeGreaterThan(m.footItems[1].top);
-      expect(m.foot.h).toBeGreaterThanOrEqual(44 * 2);
-      expect(m.foot.h).toBeLessThanOrEqual(44 * 2 + 20);
-      // Each control is inside the footer's box: a wrap that overflowed would still measure
-      // two "lines" while the third control sat outside the card.
+      expect(m.footItems[2].top).toBeGreaterThanOrEqual(m.footItems[1].top);
+      // The footer's own box accounts for however many lines that turned out to be, so the
+      // reveal's height is honest either way.
+      const lines = new Set(m.footItems.map((i) => i.top)).size;
+      expect(m.foot.h).toBeGreaterThanOrEqual(44 * lines);
+      expect(m.foot.h).toBeLessThanOrEqual(44 * lines + 16 * (lines - 1) + 12);
       for (const item of m.footItems) {
         expect(item.top).toBeGreaterThanOrEqual(m.foot.top - 1);
         expect(item.top + item.h).toBeLessThanOrEqual(m.foot.top + m.foot.h + 1);
