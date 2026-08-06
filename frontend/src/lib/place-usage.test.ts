@@ -71,6 +71,153 @@ const maybe = (partial: Partial<MaybeItem> & Pick<MaybeItem, 'id'>): MaybeItem =
 const dayShape = (usage: PlaceUsage) =>
   usage.days.map(({ date, prominence }) => ({ date, prominence }));
 
+// ── AN OVERNIGHT FLIGHT'S TWO ENDS ARE TWO PLACES (2026-08-06) ────────────────────────
+// Reported from the device: at 15:11 the map listed `נמל התעופה בן גוריון · נחיתה 02:00`
+// under `מה שלפנינו`, and `נמל התעופה של פרנקפורט · נחיתה 02:00` under `מה שמאחורינו` —
+// one flight, drawn as two landings, one of them at the airport it took off from.
+describe('a route endpoint owns its own end of the span, not all of it', () => {
+  const flight = booking({
+    id: 'fl',
+    type: BOOKING_TYPE.FLIGHT,
+    fromPlaceId: 'fra',
+    toPlaceId: 'tlv',
+  });
+  // Departs Frankfurt 21:00 local on the 5th, lands Tel Aviv 02:00 local on the 6th.
+  const overnight = event({
+    id: 'e-fl',
+    bookingId: 'fl',
+    kind: EVENT_KIND.HARD,
+    date: '2026-08-05',
+    endDate: '2026-08-06',
+    startsAt: '2026-08-05T19:00:00Z',
+    endsAt: '2026-08-05T23:00:00Z',
+  });
+  const index = () => buildPlaceUsageIndex([overnight], [flight], [], [place('fra'), place('tlv')]);
+
+  it('puts the ORIGIN on the departure day only, at the departure', () => {
+    const days = index().get('fra')!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-08-05']);
+    expect(days[0].edge).toBe('start');
+    expect(days[0].at).toBe(Date.parse('2026-08-05T19:00:00Z'));
+  });
+
+  it('puts the DESTINATION on the arrival day only, at the arrival', () => {
+    const days = index().get('tlv')!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-08-06']);
+    expect(days[0].edge).toBe('end');
+    expect(days[0].at).toBe(Date.parse('2026-08-05T23:00:00Z'));
+  });
+
+  // THE INVARIANT THE BUG BROKE, stated as one line: no place is at both ends of a journey
+  // it is only one end of.
+  it("never gives one endpoint the other end's day", () => {
+    const idx = index();
+    expect(idx.get('fra')!.days.some((d) => d.date === '2026-08-06')).toBe(false);
+    expect(idx.get('tlv')!.days.some((d) => d.date === '2026-08-05')).toBe(false);
+  });
+
+  // A STAY IS NOT A ROUTE, and this is the case the fix must not touch: one place across
+  // every night, edges at check-in and check-out.
+  it('leaves a multi-day STAY on every night it touches', () => {
+    const stay = booking({ id: 'h', type: BOOKING_TYPE.HOTEL, placeId: 'hotel' });
+    const nights = event({
+      id: 'e-h',
+      bookingId: 'h',
+      date: '2026-08-04',
+      endDate: '2026-08-07',
+      startsAt: '2026-08-04T12:00:00Z',
+      endsAt: '2026-08-07T09:00:00Z',
+    });
+    const days = buildPlaceUsageIndex([nights], [stay], [], [place('hotel')]).get('hotel')!.days;
+    expect(days.map((d) => d.date)).toEqual([
+      '2026-08-04',
+      '2026-08-05',
+      '2026-08-06',
+      '2026-08-07',
+    ]);
+    expect([days[0].edge, days[3].edge]).toEqual(['start', 'end']);
+  });
+
+  // …and a route whose two ends are the SAME place is two calls, each keeping its own end —
+  // which is a car hire collected on one day and returned on another, not a special case.
+  it('keeps BOTH days for a hire collected and returned at one place', () => {
+    const hire = booking({
+      id: 'car',
+      type: BOOKING_TYPE.CAR,
+      fromPlaceId: 'tlv',
+      toPlaceId: 'tlv',
+    });
+    const span = event({
+      id: 'e-car',
+      bookingId: 'car',
+      date: '2026-08-01',
+      endDate: '2026-08-06',
+      startsAt: '2026-08-01T12:00:00Z',
+      endsAt: '2026-08-06T15:00:00Z',
+    });
+    const days = buildPlaceUsageIndex([span], [hire], [], [place('tlv')]).get('tlv')!.days;
+    expect(days.map((d) => d.date)).toEqual(['2026-08-01', '2026-08-06']);
+    expect(days.map((d) => d.edge)).toEqual(['start', 'end']);
+  });
+});
+
+// ── WHAT A HUMAN HAS CLOSED CANNOT HOLD A PLACE AHEAD (ADR-0117 §2, 2026-08-06) ───────
+// `isDayUsagePast` honoured "a human outranks the clock" only when EVERY reference on the
+// day was settled, so one tick on one reference kept the whole place ahead of you.
+describe('a settled reference holds nothing open', () => {
+  const NOW = Date.parse('2026-08-06T12:11:00Z');
+  const dayOf = (status: TripEvent['status']) => {
+    const hire = booking({
+      id: 'car',
+      type: BOOKING_TYPE.CAR,
+      fromPlaceId: 'tlv',
+      toPlaceId: 'tlv',
+    });
+    const flight = booking({
+      id: 'fl',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'fra',
+      toPlaceId: 'tlv',
+    });
+    const events = [
+      event({
+        id: 'e-fl',
+        bookingId: 'fl',
+        kind: EVENT_KIND.HARD,
+        date: '2026-08-05',
+        endDate: '2026-08-06',
+        startsAt: '2026-08-05T19:00:00Z',
+        endsAt: '2026-08-05T23:00:00Z',
+      }),
+      event({
+        id: 'e-car',
+        bookingId: 'car',
+        date: '2026-08-06',
+        startsAt: '2026-08-06T15:00:00Z',
+        endsAt: '2026-08-06T15:00:00Z',
+        status,
+      }),
+    ];
+    const idx = buildPlaceUsageIndex(events, [flight, hire], [], [place('fra'), place('tlv')]);
+    return idx.get('tlv')!.days.find((d) => d.date === '2026-08-06')!;
+  };
+
+  // The reported state: a 02:00 landing and an 18:00 car return already marked `היינו`.
+  it('is behind you once the only thing still ahead has been ticked off', () => {
+    expect(isDayUsagePast(dayOf(EVENT_STATUS.DONE), NOW, '2026-08-06')).toBe(true);
+  });
+
+  it('and a skip closes it exactly as a visit does', () => {
+    expect(isDayUsagePast(dayOf(EVENT_STATUS.SKIPPED), NOW, '2026-08-06')).toBe(true);
+  });
+
+  // The control, and it is what stops the fix from being "everything is behind you": an
+  // UNSETTLED thing later today still holds the place ahead.
+  it('but an unanswered one still does hold it ahead', () => {
+    expect(isDayUsagePast(dayOf(EVENT_STATUS.PLANNED), NOW, '2026-08-06')).toBe(false);
+  });
+});
+
 describe('buildPlaceUsageIndex', () => {
   it('a single-day event → one edge day, its category, scheduled, soft pin', () => {
     const idx = buildPlaceUsageIndex(

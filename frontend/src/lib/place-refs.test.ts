@@ -189,6 +189,70 @@ describe('placeRefs — the way in to the entity (ADR-0121 §8)', () => {
     expect(placeRefs('hotel', src, { onDate: DAY })[0].edge).toBeUndefined();
   });
 
+  // **AN OVERNIGHT ROUTE'S TWO ENDS ARE TWO PLACES** (2026-08-06, found sweeping after the
+  // usage index had the identical bug). Day-scoped, the edge was resolved from the DATE, so on
+  // the arrival day the ORIGIN airport produced a `נחיתה` entry at the landing's clock — a way
+  // in to a place you had already left, under the word for the place you arrived at. The rule
+  // is `routeEndpointDay`, shared with `spanDays` so the two cannot drift apart again.
+  describe('an overnight flight', () => {
+    const overnight = source({
+      bookings: [
+        booking({ id: 'fl', type: BOOKING_TYPE.FLIGHT, fromPlaceId: 'fra', toPlaceId: 'tlv' }),
+      ],
+      events: [
+        event({
+          id: 'e-fl',
+          bookingId: 'fl',
+          date: '2026-08-05',
+          endDate: '2026-08-06',
+          startsAt: '2026-08-05T19:00:00Z',
+          endsAt: '2026-08-05T23:00:00Z',
+        }),
+      ],
+    });
+
+    it('gives each endpoint its own end, all-days', () => {
+      expect(placeRefs('fra', overnight).map((r) => [r.edge, r.date])).toEqual([
+        ['start', '2026-08-05'],
+      ]);
+      expect(placeRefs('tlv', overnight).map((r) => [r.edge, r.date])).toEqual([
+        ['end', '2026-08-06'],
+      ]);
+    });
+
+    // THE DEFECT: day-scoped, both endpoints answered on both days.
+    it("puts NEITHER endpoint on the other one's day", () => {
+      expect(placeRefs('tlv', overnight, { onDate: '2026-08-05' })).toEqual([]);
+      expect(placeRefs('fra', overnight, { onDate: '2026-08-06' })).toEqual([]);
+    });
+
+    it('and each still answers on its own', () => {
+      expect(placeRefs('fra', overnight, { onDate: '2026-08-05' })[0].edge).toBe('start');
+      expect(placeRefs('tlv', overnight, { onDate: '2026-08-06' })[0].edge).toBe('end');
+    });
+  });
+
+  // A STAY IS NOT A ROUTE — one place across every night, which the endpoint rule must not
+  // touch. This is the case that would break if the fix were applied to spans in general.
+  it('a multi-day stay still answers on every night it touches', () => {
+    const src = source({
+      bookings: [booking({ id: 'h', type: BOOKING_TYPE.HOTEL, placeId: 'hotel' })],
+      events: [
+        event({
+          id: 'e-h',
+          bookingId: 'h',
+          date: '2026-08-04',
+          endDate: '2026-08-07',
+          startsAt: '2026-08-04T12:00:00Z',
+          endsAt: '2026-08-07T09:00:00Z',
+        }),
+      ],
+    });
+    expect(placeRefs('hotel', src, { onDate: '2026-08-04' })[0].edge).toBe('start');
+    expect(placeRefs('hotel', src, { onDate: '2026-08-05' })[0].edge).toBeUndefined();
+    expect(placeRefs('hotel', src, { onDate: '2026-08-07' })[0].edge).toBe('end');
+  });
+
   // **ONE PLACE AS BOTH ENDPOINTS OF ONE BOOKING** (2026-08-06; owner's screenshot of Ben Gurion,
   // where the same car hire drew two identical rows). A car hire carries a route, so it contributes
   // two endpoints — and when both name the same place, what the reader gets depends entirely on

@@ -99,6 +99,40 @@ export interface PlaceUsage {
 
 const isTransport = (booking: Booking): boolean => carriesRoute(booking.type);
 
+/**
+ * **WHICH DAY A ROUTE ENDPOINT OWNS, and at which end** — the one rule two derivations
+ * both need, so they cannot disagree about it (CLAUDE.md rule 8).
+ *
+ * A span has two ends. When those ends are two DIFFERENT places — a flight's origin and
+ * destination — each place owns only its own end: you are at Frankfurt on the day you take
+ * off and at Ben Gurion on the day you land, and neither is at the other's day. When the
+ * span's ends are one place — a hotel, or a hire collected and returned at the same counter
+ * — that place owns them both.
+ *
+ * `endpoint` undefined means "this place owns the whole span" and this returns `null`, which
+ * is the caller's signal to keep its own multi-day handling.
+ *
+ * **Both derivations got this wrong in the same way and were found on the same day**
+ * (2026-08-06): each resolved the edge from the DATE rather than from the endpoint that
+ * asked, so an overnight FRA → TLV flight put Frankfurt on the arrival day under the
+ * arrival's word — `נחיתה 02:00` at the airport you took off from. `place-usage` had it in
+ * `spanDays`; `place-refs` had it in `edgeOnDate` on the day-scoped path. Naming the rule
+ * once is what stops the third copy.
+ */
+export function routeEndpointDay(
+  event: Pick<TripEvent, 'date' | 'endDate' | 'startsAt' | 'endsAt'>,
+  endpoint: 'start' | 'end' | undefined,
+): { date: string; edge: 'start' | 'end'; iso?: string } | null {
+  if (!endpoint) return null;
+  return endpoint === 'start'
+    ? { date: event.date, edge: 'start', iso: event.startsAt ?? undefined }
+    : {
+        date: event.endDate ?? event.date,
+        edge: 'end',
+        iso: event.endsAt ?? event.startsAt ?? undefined,
+      };
+}
+
 /** Calendar dates spanned by an event, inclusive. Parsed/stepped in UTC so the
  *  whole-day step is DST-safe (calendar dates carry no zone).
  *
@@ -106,8 +140,21 @@ const isTransport = (booking: Booking): boolean => carriesRoute(booking.type);
  *  last day at its end (a hotel's check-in and check-out — the same two moments the
  *  day view draws as transitions), while a strictly-middle night has no moment at
  *  all. `endsAt` overrides for a transport DESTINATION, whose moment is the arrival,
- *  not the departure — so a flight's two endpoints list in travel order. */
-function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[] {
+ *  not the departure — so a flight's two endpoints list in travel order.
+ *
+ *  **`endpoint` says WHICH END OF A ROUTE this place is, and `undefined` means it owns the
+ *  whole span** (2026-08-06). A stay is one place across every night it touches, so it keeps
+ *  all of them; a route is two DIFFERENT places, and each owns only its own end. Passing the
+ *  edge and then ignoring it for a multi-day event gave both endpoints the whole span, so an
+ *  overnight FRA → TLV flight put **Frankfurt on the arrival day, at the arrival's clock and
+ *  under the arrival's word** — `נחיתה 02:00` on the airport you took off from — and Tel Aviv
+ *  on the departure day as a departure. Same mistake as `placeRefs` had (an edge resolved from
+ *  the date rather than from the endpoint that asked), in the second of the two derivations.
+ *
+ *  A route whose two ends are the SAME place is not a special case and must not become one:
+ *  it is two calls, each keeping its own end, which is exactly a car hire collected on one day
+ *  and returned on another. */
+function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
   const outcome =
     event.status === EVENT_STATUS.DONE
       ? ('done' as const)
@@ -121,8 +168,17 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
   // The span's own end is what makes it current, on every day it touches: an event
   // running 13:00-18:00 is not behind you at 14:00, and a stay is not behind you
   // until its check-out — the same boundary `eventPhase` uses.
-  const until = endAt ?? startAt;
+  //
+  // **A SETTLED reference holds nothing open** (2026-08-06). `isDayUsagePast` honours ADR-0117
+  // §2's "a human outranks the clock" only when EVERY reference on the day is settled, so a day
+  // holding one passed-and-unsettled thing plus one the traveller had already ticked off read as
+  // still ahead — on the strength of the tick. Reported as an airport whose 02:00 landing sat
+  // under `מה שלפנינו` at 15:11, kept there by an 18:00 car return already marked `היינו`.
+  // Per-reference is where the rule belongs: what a human has closed cannot be what makes a
+  // place still ahead of you.
+  const until = settled ? undefined : (endAt ?? startAt);
   const eventId = event.id;
+  const edge = endpoint ?? 'start';
   if (!isMultiDay(event)) {
     const at = edge === 'end' ? (endAt ?? startAt) : startAt;
     return [
@@ -134,6 +190,24 @@ function spanDays(event: TripEvent, edge: 'start' | 'end' = 'start'): DayUsage[]
         sortOrder,
         eventId,
         edge,
+        outcome,
+        settled,
+      },
+    ];
+  }
+  // **A ROUTE ENDPOINT OWNS ONE END OF THE SPAN, NOT ALL OF IT** — `routeEndpointDay`'s rule,
+  // shared with `placeRefs` so the row's way-in block and the row's own day cannot disagree.
+  const own = routeEndpointDay(event, endpoint);
+  if (own) {
+    return [
+      {
+        date: own.date,
+        prominence: 'edge',
+        at: own.edge === 'start' ? startAt : (endAt ?? startAt),
+        until,
+        sortOrder,
+        eventId,
+        edge: own.edge,
         outcome,
         settled,
       },
@@ -291,13 +365,15 @@ export function buildPlaceUsageIndex(
     // Transport contributes both endpoints, each at its OWN moment — the origin
     // when you depart, the destination when you land — so the two ends of a flight
     // never tie and list in travel order. Everything else: its resolved place.
-    const endpoints: { placeId?: string | null; edge: 'start' | 'end' }[] =
+    const endpoints: { placeId?: string | null; edge?: 'start' | 'end' }[] =
       booking && isTransport(booking)
         ? [
             { placeId: booking.fromPlaceId, edge: 'start' },
             { placeId: booking.toPlaceId, edge: 'end' },
           ]
-        : [{ placeId: eventPlaceId(event, booking), edge: 'start' }];
+        : // No route, so no endpoint: this place owns the whole span, which is what keeps a
+          // hotel on every night it touches (see `spanDays`).
+          [{ placeId: eventPlaceId(event, booking), edge: undefined }];
     for (const { placeId, edge } of endpoints) {
       addRef(placeId, {
         category,
