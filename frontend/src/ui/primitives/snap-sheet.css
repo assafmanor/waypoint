@@ -94,44 +94,29 @@
 }
 
 /* The one scroll region: the sheet's body, never the page (the tab is full-bleed,
-   ADR-0121 §5).
-
-   **A COLUMN, so the slack below the content can claim what is left** (ADR-0122 §4's
-   2026-08-06 amendment). `flex: 1` already makes this box the port's leftover height, and
-   laying its children out as a column is what lets one of them take the remainder. */
+   ADR-0121 §5). A plain block scroller — it briefly became a flex column to host a spacer,
+   and ADR-0122 §4's amendment replaced that with the rule below, which needs no layout of its
+   own and so no `flex-shrink` guard against a scroller compressing its own content. */
 .wp-snapsheet-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  display: flex;
-  flex-direction: column;
 }
-/* **AND THE CONTENT MUST NOT SHRINK, which is the trap in making a scroller a flex column.**
-   A flex item defaults to `flex-shrink: 1`, so content taller than the port would be
-   COMPRESSED to fit it instead of overflowing — the scroll would simply stop existing, on
-   the one region this component has. Inside a vertical scroller nothing should ever shrink,
-   so this says it for whatever the caller passes rather than trusting each caller to.
+/* **THE BODY IS A DRAG TARGET WHILE IT CANNOT SCROLL** (ADR-0122 §4's 2026-08-06 amendment;
+   the reasoning is on the element in `SnapSheet.tsx`). `data-drag` is written by an observer,
+   and `touch-action` is the reason it has to be an attribute rather than a decision taken when
+   the press lands: it is what lets a drag be seen at all, and the browser evaluates it when the
+   gesture STARTS, not when it is claimed.
 
-   Written as `:not(.wp-snapsheet-slack)` and not `> *` to avoid an equal-specificity tie with
-   the slack's own `flex` shorthand below — the two agree today, and a tie that only resolves
-   by source order is what ADR-0167 §9 records losing a measured layout to once. */
-.wp-snapsheet-body > :not(.wp-snapsheet-slack) {
-  flex-shrink: 0;
-}
-/* **THE EMPTY AREA, AS A DRAG TARGET** (ADR-0122 §4's 2026-08-06 amendment; the reasoning is
-   on the element in `SnapSheet.tsx`). `flex: 1` with a zero basis is the whole gate: it takes
-   the space the content did not, so it is the gap below a short list and **nothing at all**
-   below a long one — which is exactly when a drag here would be fighting the scroll.
-
-   `touch-action: none` is safe for that same reason: this element only ever has height when
-   there is nothing to pan. `cursor: grab` says so on a pointer device, matching the top row. */
-.wp-snapsheet-slack {
-  flex: 1 0 0;
-  min-height: 0;
+   **Safe for one reason, and it is the whole design:** this attribute is present only while the
+   content fits, and content that fits cannot be panned. So `touch-action: none` takes nothing
+   away — there was never a scroll here to lose. The moment the list outgrows the sheet the
+   attribute goes and the pan is the browser's again. */
+.wp-snapsheet-body[data-drag] {
   touch-action: none;
   cursor: grab;
 }
-.wp-snapsheet.dragging .wp-snapsheet-slack {
+.wp-snapsheet.dragging .wp-snapsheet-body[data-drag] {
   cursor: grabbing;
 }

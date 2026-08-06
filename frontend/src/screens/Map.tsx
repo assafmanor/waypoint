@@ -109,6 +109,7 @@ import {
 } from '../lib/map-camera';
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
 import { prefersReducedMotion } from '../lib/motion';
+import { observeResize } from '../lib/observe-resize';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs, type AddMaybeOptions } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
@@ -1762,14 +1763,9 @@ export function MapView() {
     measureCardReserve.current();
     // The card's height changes with its content — a hint line appears, an error shows, the
     // bounded form is capped by a stop change — so it is re-measured rather than read once.
-    // Guarded rather than shimmed: jsdom has no `ResizeObserver`, and the one-shot read above
-    // is the part correctness depends on (the same trade `CreateTrip` makes).
-    if (typeof ResizeObserver === 'undefined') return;
-    const el = cardRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => measureCardReserve.current());
-    ro.observe(el);
-    return () => ro.disconnect();
+    // The one-shot read above is the part correctness depends on; the observer keeps it true.
+    // `observeResize` owns the jsdom guard the three copies of this each carried (rule 8).
+    return observeResize(cardRef.current, () => measureCardReserve.current());
   });
 
   /** The stop the sheet was at when the form opened, so closing it gives that back. This is

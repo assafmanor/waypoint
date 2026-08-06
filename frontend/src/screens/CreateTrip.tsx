@@ -62,6 +62,7 @@ import { todayInTz } from '../lib/time';
 import { getNow } from '../lib/useClock';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
+import { observeResize } from '../lib/observe-resize';
 
 const DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -471,14 +472,7 @@ function Birth({
   // The resize path stays for what a render cannot see: the viewport itself changing
   // (rotation, the keyboard). Guarded rather than shimmed in tests — jsdom has no
   // `ResizeObserver`, and the measurement above is the part correctness depends on.
-  useLayoutEffect(() => {
-    if (typeof ResizeObserver === 'undefined') return;
-    const root = rootRef.current;
-    if (!root) return;
-    const ro = new ResizeObserver(apply);
-    ro.observe(root);
-    return () => ro.disconnect();
-  }, [apply]);
+  useLayoutEffect(() => observeResize(rootRef.current, apply), [apply]);
 
   // The sequence. Reduced motion lands the END STATE immediately — a user who asked
   // for less motion did not ask for a different outcome (ADR-0140 §5).

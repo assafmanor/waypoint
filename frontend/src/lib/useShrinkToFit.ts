@@ -22,6 +22,7 @@
 // renderer actually laid the text out at, which is the only number the two can
 // agree on.
 import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { observeResize } from './observe-resize';
 
 /** Sub-pixel slack before text counts as overflowing. Sub-pixel measurement cuts
  *  both ways: text that fits exactly can report a hair wider than its box, and
@@ -81,11 +82,7 @@ export function useShrinkToFit<T extends HTMLElement, C extends HTMLElement = HT
     };
     fit();
 
-    const container = containerRef.current;
-    if (!container) return;
-    const observer = new ResizeObserver(fit);
-    observer.observe(container);
-    return () => observer.disconnect();
+    return observeResize(containerRef.current, fit);
   }, [text, maxPx, minPx]);
 
   return { targetRef, containerRef };

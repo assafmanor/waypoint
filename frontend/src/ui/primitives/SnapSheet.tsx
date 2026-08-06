@@ -20,6 +20,8 @@ import {
   type ReactNode,
 } from 'react';
 import { clampToStops, nearestStop, stopHeightCss, type SnapStop } from '../../lib/snap-sheet';
+import { observeResize } from '../../lib/observe-resize';
+import { scrollerWithin, scrollsOn } from '../../lib/scrollable';
 import { useSnapDrag } from '../../lib/useSnapDrag';
 import './snap-sheet.css';
 
@@ -72,6 +74,53 @@ export function SnapSheet<T extends string>({
       );
     },
   });
+
+  /** **Whether the BODY is currently a drag target** — true exactly while it cannot scroll.
+   *
+   *  State rather than a live read because its consumer is `touch-action`, which the browser
+   *  evaluates when a gesture STARTS: an attribute set on `pointerdown` is already too late.
+   *  Maintained by a `ResizeObserver`, so it costs nothing per render — which matters on the
+   *  Map, whose sheet re-renders every second on the clock and whose one hard rule is that no
+   *  height may depend on a layout read (ADR-0121 §5). An observer fires when a box actually
+   *  changes, and the clock does not change one. */
+  const [bodyDrags, setBodyDrags] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const read = () => setBodyDrags(!scrollsOn(body, 'block'));
+    // The one-shot read is what correctness depends on; the observer keeps it true after.
+    read();
+    // **The body AND its content**, because they answer different halves of one question: the
+    // body's box changes when the sheet snaps to another stop, and the content's when rows
+    // arrive, a row is selected (which grows it severalfold) or a filter empties the list.
+    // Observing only the body would keep `touch-action: none` on a list that had just grown
+    // past the port, which is the one state this must never be wrong about.
+    return observeResize([body, ...body.children], read);
+    // Re-subscribed when the children change identity, so a caller swapping its content
+    // (`searching` flips the Map's sheet between two different trees) is observed too.
+  }, [children]);
+
+  /** The body's own press, gated on the two things that make it not ours (ADR-0122 §4).
+   *
+   *  The reasons are read LIVE rather than off `bodyDrags`: this is the decision, and the DOM
+   *  cannot be a frame behind the way state can. */
+  const onBodyPointerDown = (e: React.PointerEvent) => {
+    const body = bodyRef.current;
+    const target = e.target as HTMLElement;
+    if (!body) return;
+    // 1. It scrolls → the press is the list's. Nothing here competes with a scroll.
+    if (scrollsOn(body, 'block')) return;
+    // 2. Something INSIDE it scrolls on this axis → the press is that scroller's. `boundary` is
+    //    the body itself, which is why the walk has to stop below it: the body is an
+    //    `overflow-y: auto` box, so a walk that included it would always find one.
+    if (scrollerWithin(target, body, 'block')) return;
+    // 3. The press is on text the user may be selecting or a field they may be caretting into.
+    //    A sheet that moves when you try to place a cursor is worse than no gesture at all —
+    //    and the Map's sheet holds a note composer on every selected row.
+    if (target.closest('input, textarea, select, [contenteditable]')) return;
+    drag.onPointerDown(e);
+  };
 
   // A resize mid-drag would leave the live height clamped against a container
   // that no longer exists (a rotation, an on-screen keyboard). Drop back to the
@@ -144,35 +193,36 @@ export function SnapSheet<T extends string>({
         </button>
         {header && <div className="wp-snapsheet-headrow">{header}</div>}
       </div>
-      <div className="wp-snapsheet-body">
+      {/* **THE BODY IS A DRAG TARGET EXACTLY WHILE IT CANNOT SCROLL** (ADR-0122 §4's 2026-08-06
+          amendment; owner: _"when the list doesn't scroll (or there's text that's not list items,
+          for example the empty state has a glyph+text that doesn't allow us to scroll), we should
+          be able to use the same gesture"_).
+
+          **One fact decides it, and it is the fact that removes the hard problem.** Dragging from
+          a scroller is genuinely hard: `touch-action: none` is what lets a drag be seen at all,
+          and it is exactly what makes a list unscrollable — and the browser will not hand a
+          native pan back once it has started one, so the choice cannot be deferred to the first
+          move either. **None of that arises when the content fits**, because then no pan can
+          start: there is nothing to scroll, so there is nothing to arbitrate against, and the
+          whole body is as safe a target as the handle row above it.
+
+          It replaced a `flex: 1` spacer that claimed only the space AFTER the content. That was
+          the same idea reaching a subset of the same cases, and it under-delivered on the one the
+          owner named first: an empty state is a tall glyph-and-text block, so it leaves little or
+          no gap below itself while scrolling nothing. One rule covers both, and the flex column
+          and its `flex-shrink` trap went with the spacer.
+
+          `data-drag` and the live read are two readers of one fact, deliberately: the attribute
+          carries `touch-action`, which the browser needs BEFORE the gesture starts, so it comes
+          from an observer; the gate is the decision and must be current, so it reads the DOM at
+          `pointerdown` and cannot be stale. */}
+      <div
+        ref={bodyRef}
+        className="wp-snapsheet-body"
+        {...(bodyDrags ? { 'data-drag': '' } : null)}
+        onPointerDown={onBodyPointerDown}
+      >
         {children}
-        {/* **THE SHEET'S LEFTOVER SPACE IS PART OF THE DRAG REGION** (ADR-0122 §4's 2026-08-06
-            amendment; owner: _"sometimes there's a lot of free space that I feel like it would be
-            easier and more intuitive to scroll from, for example when the list is empty or
-            there's a large area that's empty"_).
-
-            **It is one flex spacer, and that is the whole mechanism** — no measurement, no
-            `ResizeObserver`, no "can this scroll" boolean in state. `flex: 1` gives it exactly
-            the space the content did not take, so it IS the empty area by construction:
-
-              • content shorter than the sheet → it is the gap below the list, and draggable;
-              • content taller → it collapses to **zero**, which is precisely when there is no
-                empty area to grab and when a drag would be fighting the list's own scroll;
-              • at the Map's `map` stop the body is ~0px, so it is zero there too — which is the
-                exception the owner named ("the map is the only exception where there's no area to
-                do that on"), falling out rather than being special-cased.
-
-            That is why this is not the overscroll-chaining gesture a full list would need: the
-            two states cannot both be true, so nothing here has to arbitrate between scrolling
-            and dragging. `touch-action: none` is safe on it for the same reason — it only ever
-            has height when there is nothing to pan.
-
-            The same `drag` props as the top region, deliberately: `useSnapDrag` reads
-            `e.currentTarget`, so the capture and the click-swallow attach to whichever element
-            started the gesture, and there is one gesture with two targets rather than two
-            gestures. `aria-hidden`, since the splitter above is the accessible control and its
-            keyboard already reaches every stop. */}
-        <div className="wp-snapsheet-slack" aria-hidden="true" {...drag} />
       </div>
     </div>
   );
