@@ -69,6 +69,50 @@ export interface DayUsage {
    *  whatever the clock says (ADR-0117 §2). Distinct from `outcome`: a day with one
    *  done and one still-planned event has an outcome but is not settled. */
   settled?: boolean;
+  /** **EVERY reference on this day, earliest first** — the list the merge used to throw
+   *  away (2026-08-06).
+   *
+   *  `at`/`eventId`/`edge` above point at the EARLIEST and `until` at the LATEST, which is
+   *  right for each question they answer and wrong together: a place whose landing was at
+   *  02:00 and whose car is due back at 18:00 is genuinely still ahead of you at 15:11, and
+   *  the row said so while its clock named the landing. The place could not say why it was
+   *  ahead, because the pointer was spent on something behind you.
+   *
+   *  Keeping the moments is what lets the READ side — which has the clock, where this
+   *  derivation deliberately does not — name the one that is actually relevant
+   *  ({@link relevantMoment}). The single pointers stay exactly as they were, so ordering
+   *  and block placement are untouched. */
+  moments?: DayMoment[];
+}
+
+/** One reference's moment on a day: what it is, when, and whether a human has closed it. */
+export interface DayMoment {
+  at?: number;
+  eventId?: string;
+  edge?: 'start' | 'end';
+  settled?: boolean;
+}
+
+/**
+ * **The reference a row should NAME on this day** (owner, 2026-08-06: _"i want the timings to
+ * display only the ones relevant for the day"_).
+ *
+ * The next thing that has not happened yet; once they all have, the last one that did. So the
+ * airport reads `החזרת הרכב · 18:00` while that is still ahead, and goes on reading it once it
+ * is behind — never `נחיתה · 02:00` under `מה שלפנינו`, which is the contradiction it fixes.
+ *
+ * **A settled reference is never "next"**, the same rule `until` follows one field up: what a
+ * human has closed cannot be the thing you are heading for.
+ *
+ * Falls back to the day's first moment with no clock to reason with — this is the one place in
+ * the file that reads one, and it stays optional so the pure derivations above cannot.
+ */
+export function relevantMoment(day: DayUsage, nowMs?: number): DayMoment | undefined {
+  const moments = day.moments ?? [];
+  if (moments.length <= 1 || nowMs == null) return moments[0];
+  const clocked = moments.filter((m) => m.at != null);
+  if (clocked.length === 0) return moments[0];
+  return clocked.find((m) => !m.settled && m.at! > nowMs) ?? clocked[clocked.length - 1];
 }
 
 export interface PlaceUsage {
@@ -192,6 +236,7 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
         edge,
         outcome,
         settled,
+        moments: [{ at, eventId, edge, settled }],
       },
     ];
   }
@@ -210,6 +255,14 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
         edge: own.edge,
         outcome,
         settled,
+        moments: [
+          {
+            at: own.edge === 'start' ? startAt : (endAt ?? startAt),
+            eventId,
+            edge: own.edge,
+            settled,
+          },
+        ],
       },
     ];
   }
@@ -237,6 +290,14 @@ function spanDays(event: TripEvent, endpoint?: 'start' | 'end'): DayUsage[] {
       edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
       outcome,
       settled,
+      moments: [
+        {
+          at: isFirst ? startAt : isLast ? endAt : undefined,
+          eventId,
+          edge: isFirst ? ('start' as const) : isLast ? ('end' as const) : undefined,
+          settled,
+        },
+      ],
     };
   });
 }
@@ -324,8 +385,16 @@ export function buildPlaceUsageIndex(
       // the pointer follows whichever reference won that moment, so what the row
       // says about the day matches the time it shows.
       const earliest = primaryRef(seen, d);
+      // **AND EVERY MOMENT IS KEPT**, earliest first (2026-08-06). The pointers below answer
+      // "when is this place due" and "when does it stop being current"; neither can answer
+      // "what should the row SAY", which is a third question and the one that had no data
+      // behind it. Clock-free here: the list is just ordered, and `relevantMoment` picks.
+      const moments = [...(seen.moments ?? []), ...(d.moments ?? [])].sort(
+        (m, n) => (m.at ?? Infinity) - (n.at ?? Infinity),
+      );
       a.days.set(d.date, {
         date: d.date,
+        moments,
         prominence: seen.prominence === 'edge' || d.prominence === 'edge' ? 'edge' : 'ambient',
         at: earliest.at,
         eventId: earliest.eventId,
@@ -614,9 +683,22 @@ export function placeDay(usage: PlaceUsage, ctx: PlaceDayContext = {}): DayUsage
  *  had finished, and was the same defect as ranking by `days[0]`), then saying nothing
  *  at all once the live day was resolved correctly. */
 export function placeMetaDay(usage: PlaceUsage, ctx: PlaceDayContext): DayUsage | undefined {
-  const day = placeDay(usage, ctx);
-  if (!day || ctx.onDate || day.prominence !== 'ambient') return day;
-  return usage.days.find((d) => d.date >= day.date && d.prominence === 'edge') ?? day;
+  const found = placeDay(usage, ctx);
+  const day =
+    found && !ctx.onDate && found.prominence === 'ambient'
+      ? (usage.days.find((d) => d.date >= found.date && d.prominence === 'edge') ?? found)
+      : found;
+  if (!day) return day;
+  // **AND WITHIN THAT DAY, THE REFERENCE THAT IS ACTUALLY RELEVANT** (owner, 2026-08-06). The
+  // day's own `at`/`edge` point at its EARLIEST reference while `until` decides the block from
+  // its LATEST, so an airport whose landing was at 02:00 and whose car is due back at 18:00 read
+  // `נחיתה · 02:00` under `מה שלפנינו` — true about the place, and naming the wrong half of it.
+  // The pointers themselves are untouched: ordering and block placement still read the earliest,
+  // and only what the row SAYS moves.
+  const moment = relevantMoment(day, ctx.nowMs);
+  return moment && moment !== day.moments?.[0]
+    ? { ...day, at: moment.at, eventId: moment.eventId, edge: moment.edge }
+    : day;
 }
 
 /** The list's three blocks, in reading order (ADR-0109 session-110 + its session-127

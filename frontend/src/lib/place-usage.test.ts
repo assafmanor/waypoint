@@ -22,6 +22,7 @@ import {
   PLACE_CATEGORY_ALL,
   placeBlock,
   placeDay,
+  placeMetaDay,
   type PlaceFilter,
   type PlaceUsage,
 } from './place-usage';
@@ -215,6 +216,89 @@ describe('a settled reference holds nothing open', () => {
   // UNSETTLED thing later today still holds the place ahead.
   it('but an unanswered one still does hold it ahead', () => {
     expect(isDayUsagePast(dayOf(EVENT_STATUS.PLANNED), NOW, '2026-08-06')).toBe(false);
+  });
+});
+
+// ── WHICH REFERENCE THE ROW NAMES (owner, 2026-08-06) ─────────────────────────────────
+// The day's `at`/`edge` point at its EARLIEST reference and `until` decides the block from its
+// LATEST. Each is right for its own question and they misread together: an airport whose landing
+// was at 02:00 and whose car is due back at 18:00 is genuinely still ahead of you at 15:11, and
+// the row said so while its clock named the landing. _"I want the timings to display only the
+// ones relevant for the day"_.
+describe('the row names the reference that is relevant', () => {
+  const TODAY = '2026-08-06';
+  const NOW = Date.parse('2026-08-06T12:11:00Z'); // 15:11 local
+  /** A landing at 02:00 and one more thing at 18:00, whose status the case picks. */
+  const airport = (laterStatus: TripEvent['status']) =>
+    buildPlaceUsageIndex(
+      [
+        event({
+          id: 'e-fl',
+          bookingId: 'fl',
+          kind: EVENT_KIND.HARD,
+          date: '2026-08-05',
+          endDate: TODAY,
+          startsAt: '2026-08-05T19:00:00Z',
+          endsAt: '2026-08-05T23:00:00Z',
+        }),
+        event({
+          id: 'e-later',
+          placeId: 'tlv',
+          date: TODAY,
+          startsAt: '2026-08-06T15:00:00Z',
+          endsAt: '2026-08-06T15:00:00Z',
+          status: laterStatus,
+        }),
+      ],
+      [booking({ id: 'fl', type: BOOKING_TYPE.FLIGHT, fromPlaceId: 'fra', toPlaceId: 'tlv' })],
+      [],
+      [place('tlv'), place('fra')],
+    ).get('tlv')!;
+
+  // THE REPORTED CONTRADICTION, both halves in one assertion: still ahead, and now able to say
+  // WHY it is ahead instead of naming the landing it is ahead of.
+  it('names what is still to come, not the passed thing it is ahead of', () => {
+    const usage = airport(EVENT_STATUS.PLANNED);
+    const ctx = { nowMs: NOW, today: TODAY };
+    expect(placeBlock(usage, ctx)).toBe('ahead');
+    expect(placeMetaDay(usage, ctx)!.eventId).toBe('e-later');
+  });
+
+  // Once everything has passed, the last thing that happened is what the place is about — not
+  // the first. A behind-you airport reads the car return, not the small-hours landing.
+  it('names the LAST thing once they have all passed', () => {
+    const usage = airport(EVENT_STATUS.PLANNED);
+    const ctx = { nowMs: Date.parse('2026-08-06T20:00:00Z'), today: TODAY };
+    expect(placeBlock(usage, ctx)).toBe('behind');
+    expect(placeMetaDay(usage, ctx)!.eventId).toBe('e-later');
+  });
+
+  // A settled reference is never "next" — the same rule `until` follows, so the block and the
+  // name cannot disagree about whether a tick counts.
+  it('a settled reference is not what you are heading for', () => {
+    const usage = airport(EVENT_STATUS.DONE);
+    const ctx = { nowMs: NOW, today: TODAY };
+    expect(placeBlock(usage, ctx)).toBe('behind');
+  });
+
+  // The single-reference case must not move, which is the overwhelming majority of rows.
+  it('leaves a place with one reference exactly as it was', () => {
+    const usage = buildPlaceUsageIndex(
+      [event({ id: 'solo', placeId: 'cafe', date: TODAY, startsAt: '2026-08-06T15:00:00Z' })],
+      [],
+      [],
+      [place('cafe')],
+    ).get('cafe')!;
+    const day = placeMetaDay(usage, { nowMs: NOW, today: TODAY })!;
+    expect(day.eventId).toBe('solo');
+    expect(day.at).toBe(Date.parse('2026-08-06T15:00:00Z'));
+  });
+
+  // With NO clock the derivation must still answer — `placeMetaDay` is called without one on
+  // the surfaces that have no now to read (and this file's purity rule depends on it).
+  it("falls back to the day's first moment with no clock to reason with", () => {
+    const usage = airport(EVENT_STATUS.PLANNED);
+    expect(placeMetaDay(usage, { today: TODAY })!.eventId).toBe('e-fl');
   });
 });
 
