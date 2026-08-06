@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  Logger,
   NotFoundException,
   Param,
   Patch,
@@ -79,6 +80,8 @@ function baseCookieOptions() {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly auth: AuthService) {}
 
   @Get('google')
@@ -110,7 +113,27 @@ export class AuthController {
       return;
     }
 
-    const result = await this.auth.handleGoogleCallback(code, transaction.codeVerifier);
+    // **A callback can arrive twice for one code, and the second one is not an error.**
+    // An installed PWA captures in-scope navigations on Android, so Google's redirect to
+    // /auth/google/callback is handled by the browser AND handed to the app window. The
+    // WebAPK shares the browser's cookie jar, so both pass the state check above and both
+    // redeem the same code — which is single-use, so the loser of that race gets Google's
+    // `invalid_grant`. It used to escape as a 500, and since the app window is what the
+    // person is looking at, a login that had *succeeded* rendered as a crash.
+    //
+    // The winner has already set the refresh cookie on this host, in that same shared jar,
+    // so the loser has nothing left to do: send it home, exactly like every other unusable
+    // callback above, and it lands signed in. The reason is logged in full — a code Google
+    // refuses for some other reason must still be diagnosable, and looks identical here.
+    let result: Awaited<ReturnType<AuthService['handleGoogleCallback']>>;
+    try {
+      result = await this.auth.handleGoogleCallback(code, transaction.codeVerifier);
+    } catch (err) {
+      this.logger.warn(`Google callback could not be completed: ${(err as Error).message}`);
+      res.clearCookie(OAUTH_COOKIE, { path: '/auth' });
+      res.redirect(frontendUrl());
+      return;
+    }
     if (!result) {
       // Google didn't hand back a refresh token and we don't have one stored yet
       // (auth-and-google.md) — retry immediately, forcing the consent screen.

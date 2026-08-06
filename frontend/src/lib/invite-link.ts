@@ -12,12 +12,26 @@
 // downgraded to http — the browser upgrades it before the first request — and the chat apps
 // an invite is actually pasted into linkify a bare host + path.
 //
-// **What does NOT come off is the `www.`,** and this is the difference between this and
-// `prettyUrl` (`lib/external-url.ts`), which strips it happily. `prettyUrl` labels a link
-// that has a working `href` behind it, so it is allowed to abbreviate. An invite has nothing
-// behind it — it IS the href, pasted into another app — so it may only drop what cannot
-// change where it goes. A `www.` removed while `www` is the canonical host is a dead link in
-// somebody's group chat. It disappears when the app moves to the apex, not before.
+// **And the `www.` comes off too** (owner, 2026-08-06). This reverses the rule this file
+// shipped with, so the reason it was safe to reverse matters more than the strip itself.
+//
+// The original rule was: an invite has no `href` behind it — it IS the href, pasted into
+// another app — so it may only drop what cannot change where it goes, and a `www.` removed
+// while `www` is the canonical host would be a dead link in somebody's group chat. That was
+// true when written. It stopped being true once **both** of these held: the apex resolves to
+// the service (Cloudflare flattens the apex `CNAME` onto Railway), and ADR-0169 §2 redirects
+// **any** host this service answers on to the canonical one with the path intact. So
+// `travelive.app/join/<code>` now arrives wherever the app actually lives — apex-canonical or
+// www-canonical — and the short form cannot strand anyone.
+//
+// The residual risk is a browser holding a **cached 301** from the era when the apex was a
+// GoDaddy parked page: that device opens the lander no matter what we write. It is per-device
+// and shrinking, and it does not apply to the people invites are sent to, who have typically
+// never visited the domain at all.
+//
+// Note this is still not `prettyUrl` (`lib/external-url.ts`), which also strips tracking
+// params and trailing slashes. That one abbreviates a LABEL sitting on a working href and may
+// take liberties; this one is the link, and takes exactly two.
 
 /**
  * The invite as one string, shown and copied — deliberately the same string, because a
@@ -27,5 +41,5 @@
  */
 export function inviteLink(path: string): string {
   const url = new URL(path, window.location.origin);
-  return url.host + url.pathname + url.search;
+  return url.host.replace(/^www\./i, '') + url.pathname + url.search;
 }

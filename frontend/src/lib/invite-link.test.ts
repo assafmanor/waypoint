@@ -15,9 +15,18 @@ describe('inviteLink', () => {
     expect(inviteLink('/join/7Kq2mB')).toBe('travelive.app/join/7Kq2mB');
   });
 
-  it('keeps a www. it was served from — dropping it could point at nothing', () => {
+  // Safe only because the apex reaches the service and ADR-0169 §2 forwards any host to
+  // the canonical one, path intact — so the short form works under either canonical host.
+  it('drops a www. it was served from, in the copied string and not only the label', () => {
     at('https://www.travelive.app');
-    expect(inviteLink('/join/7Kq2mB')).toBe('www.travelive.app/join/7Kq2mB');
+    expect(inviteLink('/join/7Kq2mB')).toBe('travelive.app/join/7Kq2mB');
+  });
+
+  it('strips only a LEADING www., never one inside the host', () => {
+    at('https://wwwtravelive.app');
+    expect(inviteLink('/join/7Kq2mB')).toBe('wwwtravelive.app/join/7Kq2mB');
+    at('https://app.wwwtest.com');
+    expect(inviteLink('/join/7Kq2mB')).toBe('app.wwwtest.com/join/7Kq2mB');
   });
 
   it('keeps the port on a dev origin — the link still has to be reachable', () => {
