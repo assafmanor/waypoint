@@ -132,6 +132,7 @@ import {
   DEFAULT_PLACE_ICON,
   DOT_SEPARATOR,
   MAP_ATTRIBUTION_H,
+  MS_PER_MINUTE,
   MAP_CONTROLS_H,
   MAP_FLOAT_GAP,
   MAP_PIN,
@@ -1045,9 +1046,19 @@ export function MapView() {
   // clock can renumber a pin, and this memo is stable across a tick. All-days
   // there is no day to be an index in, so nothing is numbered at all: the row
   // says which day it is in words instead (`relativeDayLabel`, `dayMeta`).
+  // `nowMs` is here now and the memo is NOT keyed on it, deliberately (ADR-0121 §6's
+  // 2026-08-06 amendment). The stop sequence is clock-free; the clock only picks which of its
+  // own stops a twice-visited place shows, which can change at most when a moment passes — so
+  // keying the memo on a per-second tick would rebuild it 3,600 times an hour to produce the
+  // same map. Read through a latest-ref, the way every other per-second read on this screen is.
+  const nowRef = useRef(nowMs);
+  nowRef.current = nowMs;
+  // Keyed on the MINUTE, which is the granularity the question actually has: a stop's moment
+  // passes at a minute boundary, and the app shows no finer time than that anywhere.
+  const orderMinute = Math.floor(nowMs / MS_PER_MINUTE);
   const orderIndex = useMemo(
-    () => buildPinOrderIndex(dayScoped, { nameOf, onDate: scopedDate }),
-    [dayScoped, scopedDate, placeById],
+    () => buildPinOrderIndex(dayScoped, { nameOf, onDate: scopedDate, nowMs: nowRef.current }),
+    [dayScoped, scopedDate, placeById, orderMinute],
   );
 
   // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still

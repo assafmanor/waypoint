@@ -626,6 +626,56 @@ describe('the pin number is the day sequence, and nothing renumbers it (§6)', (
     expect(index.get('bar')).toBe(3);
   });
 
+  // ── A PLACE YOU GO TO TWICE IS TWO STOPS (2026-08-06) ──────────────────────────────
+  // This numbered PLACES by their earliest moment, which agreed with the row only while the
+  // row named the earliest moment too. Once the row started naming the RELEVANT reference the
+  // two came apart, and the screen contradicted itself: `1 · 18:00` sitting above `2 · 09:00`.
+  // Owner: _"the numbering is weird"_.
+  describe('a place visited twice shows the number of the stop it is naming', () => {
+    /** The reported day: land 02:00, a stop at 09:00, back at the airport at 18:00. */
+    const twice = () =>
+      usages({
+        places: [place('airport'), place('talbaz')],
+        events: [
+          event({ id: 'land', placeId: 'airport', startsAt: at2('02:00') }),
+          event({ id: 'mid', placeId: 'talbaz', startsAt: at2('09:00') }),
+          event({ id: 'car', placeId: 'airport', startsAt: at2('18:00') }),
+        ],
+      });
+    const numbersAt = (nowMs?: number) =>
+      buildPinOrderIndex([...twice().values()], { nameOf, onDate: DAY, nowMs });
+
+    // THE REPORTED CASE. The airport takes its 18:00 stop's number, so the badges finally read
+    // in the same order as the times beside them. `1` is the landing's, and its absence is a
+    // gap of exactly the kind this function's filter gaps already are.
+    it('takes the number of the stop still ahead, not the one it already did', () => {
+      const n = numbersAt(at(DAY, '15:11'));
+      expect(n.get('talbaz')).toBe(2);
+      expect(n.get('airport')).toBe(3);
+    });
+
+    // Once everything has passed it names the last stop it made, which is what the row says.
+    it('keeps the last stop once the day is done', () => {
+      const n = numbersAt(at(DAY, '23:00'));
+      expect(n.get('airport')).toBe(3);
+      expect(n.get('talbaz')).toBe(2);
+    });
+
+    // **THE SEQUENCE IS CLOCK-FREE**, which is what keeps §6's promise for every place that is
+    // visited once: `talbaz` holds `2` at every hour of the day, so no tick can move a pin
+    // whose own stops have not changed.
+    it('never moves a once-visited place, at any hour', () => {
+      const hours = ['00:00', '08:00', '15:11', '18:30', '23:59'];
+      expect(hours.map((h) => numbersAt(at(DAY, h)).get('talbaz'))).toEqual(hours.map(() => 2));
+    });
+
+    // With no clock it is the first stop — the pure answer, and what the surfaces that hold no
+    // `now` still get.
+    it('falls back to the first stop with no clock', () => {
+      expect(numbersAt().get('airport')).toBe(1);
+    });
+  });
+
   // A visited stop keeps its `1` though the ahead/behind partition sinks it: the
   // partition changes prominence, never the position. That is why no clock reaches
   // the number — the tiers below move with time, the numbers do not.
