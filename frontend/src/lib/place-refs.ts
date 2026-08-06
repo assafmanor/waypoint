@@ -27,6 +27,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { bookingPlaceId, eventPlaceId } from './places';
+import { routeEndpointDay } from './place-usage';
 
 /** What kind of thing references the place — which decides where the entry goes:
  *  a booking → `BookingDetail`, an event → its day, an idea → the shelf. */
@@ -119,15 +120,25 @@ export function placeRefs(
             { id: booking.toPlaceId, edge: 'end' },
           ]
         : [{ id: eventPlaceId(event, booking), edge: 'start' }];
+    // **A ROUTE'S TWO ENDS ARE TWO PLACES, and each owns only its own end** —
+    // `routeEndpointDay`'s rule, shared with `spanDays` so the way-in block and the row's own
+    // day cannot disagree (2026-08-06). Day-scoped this was resolving the edge from the DATE,
+    // so on the arrival day the ORIGIN airport produced a `נחיתה` entry at the landing's clock:
+    // an entry for a place you had already left, under the word for the place you arrived at.
+    const route = booking && carriesRoute(booking.type);
     for (const endpoint of endpoints) {
       if (endpoint.id !== placeId) continue;
-      if (onDate && !touchesDate(event, onDate)) continue;
-      // The SCOPE's date decides the edge, and un-scoped nothing does — see `edgeOnDate`.
-      const edge = edgeOnDate(event, endpoint.edge, onDate);
+      const own = route ? routeEndpointDay(event, endpoint.edge) : null;
+      // A route endpoint is in scope only on ITS OWN day; everything else keeps the span test,
+      // which is what holds a stay on every night it touches.
+      if (own ? onDate != null && own.date !== onDate : onDate && !touchesDate(event, onDate))
+        continue;
+      const edge = own ? own.edge : edgeOnDate(event, endpoint.edge, onDate);
       const iso = edge === 'end' ? (event.endsAt ?? event.startsAt) : event.startsAt;
       // Un-scoped, a span's two ends are on two different days, and the entry's own day is
       // the one its edge happens on — not the span's opening date for both.
-      const date = onDate ?? (edge === 'end' ? (event.endDate ?? event.date) : event.date);
+      const date =
+        own?.date ?? onDate ?? (edge === 'end' ? (event.endDate ?? event.date) : event.date);
       // **ONE ROW PER MOMENT.** A place that is BOTH endpoints of one booking contributes
       // two endpoints, and day-scoped they resolve to the same edge — the airport on the
       // day the car is collected is the collection, whichever field named it. Keyed on the
