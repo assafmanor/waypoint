@@ -5,6 +5,9 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Relative source import: the app-graph alias below doesn't apply to this
 // config file, and shared's dist may not be built yet when dev starts.
 import { SERVER_ROUTE_PATTERN } from '../packages/shared/src/server-routes';
+// The product name, defined once for the wordmarks, the <title> and the manifest
+// (ADR-0170). Deliberately import-free, so reading it here costs no app graph.
+import { APP_NAME, APP_TITLE } from './src/app-name';
 
 /** A production build with no Maps config produces a Map tab with **no map** —
  *  ADR-0121 §2's graceful absence, which is correct behaviour and deliberately
@@ -26,7 +29,17 @@ function warnIfMapsUnconfigured() {
   );
 }
 
-// Waypoint PWA — installable, RTL, offline-capable (ADR-0007).
+/** `index.html` is served to the browser, so it can't import `APP_NAME` — it carries a
+ *  `%APP_TITLE%` token instead, substituted here in both dev and build. Without this the
+ *  name would live in two files and drift the first time one of them changed. */
+function appTitle() {
+  return {
+    name: 'app-title',
+    transformIndexHtml: (html: string) => html.replaceAll('%APP_TITLE%', APP_TITLE),
+  };
+}
+
+// The PWA — installable, RTL, offline-capable (ADR-0007).
 export default defineConfig(({ command }) => {
   if (command === 'build') warnIfMapsUnconfigured();
   return {
@@ -43,6 +56,7 @@ export default defineConfig(({ command }) => {
     },
     plugins: [
       react(),
+      appTitle(),
       VitePWA({
         registerType: 'autoUpdate',
         // Static assets outside the Vite graph that the SW should precache.
@@ -57,8 +71,8 @@ export default defineConfig(({ command }) => {
           navigateFallbackDenylist: [SERVER_ROUTE_PATTERN],
         },
         manifest: {
-          name: 'Waypoint · מרכז שליטה לטיול',
-          short_name: 'Waypoint',
+          name: APP_TITLE,
+          short_name: APP_NAME,
           dir: 'rtl',
           lang: 'he',
           theme_color: '#1B2A4A',

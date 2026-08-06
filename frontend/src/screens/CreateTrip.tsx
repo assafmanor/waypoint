@@ -40,6 +40,7 @@ import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useAppBack } from '../state/nav-state';
 import { createInvite, createTrip } from '../lib/api';
+import { inviteLink } from '../lib/invite-link';
 import { suggestTripName } from '../lib/trip-name';
 import { useDerivedField } from '../lib/useDerivedField';
 import { prefersReducedMotion, readDurationMs } from '../lib/motion';
@@ -545,8 +546,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
     let cancelled = false;
     createInvite(trip.id).then(
       (res) => {
-        if (!cancelled)
-          setInvite({ status: 'ready', url: `${window.location.origin}${res.inviteUrl}` });
+        if (!cancelled) setInvite({ status: 'ready', url: inviteLink(res.inviteUrl) });
       },
       () => {
         if (!cancelled) setInvite({ status: 'failed' });

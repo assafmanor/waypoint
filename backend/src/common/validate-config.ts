@@ -29,12 +29,11 @@ function isBase64_32Bytes(value: string): boolean {
   }
 }
 
-function isValidUrl(value: string): boolean {
+function parseUrl(value: string): URL | null {
   try {
-    new URL(value);
-    return true;
+    return new URL(value);
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -79,13 +78,31 @@ export function validateConfig(env: NodeJS.ProcessEnv = process.env): void {
   if (isProd && !env[GOOGLE_MAPS_SERVER_KEY])
     problems.push(`${GOOGLE_MAPS_SERVER_KEY} is required`);
 
+  // Both are required in production, and both must name the SAME host (ADR-0169).
+  // `FRONTEND_URL` was previously optional here while deployment.md called it required —
+  // an environment missing it doesn't fail, it completes a Google login and then redirects
+  // the browser to `localhost` (the session-66 symptom). And a callback host that differs
+  // from the app's own host cannot log anyone in at all: the OAuth state cookie is set by
+  // the host the round-trip started on and is not sent to the other one.
+  const hosts = new Map<string, string>();
   for (const name of [GOOGLE_OAUTH_REDIRECT_URI, FRONTEND_URL] as const) {
     const value = env[name];
     if (!value) {
-      if (isProd && name === GOOGLE_OAUTH_REDIRECT_URI) problems.push(`${name} is required`);
+      if (isProd) problems.push(`${name} is required`);
       continue;
     }
-    if (!isValidUrl(value)) problems.push(`${name} must be a valid URL`);
+    const url = parseUrl(value);
+    if (!url) problems.push(`${name} must be a valid URL`);
+    else hosts.set(name, url.host.toLowerCase());
+  }
+  const callbackHost = hosts.get(GOOGLE_OAUTH_REDIRECT_URI);
+  const appHost = hosts.get(FRONTEND_URL);
+  if (isProd && callbackHost && appHost && callbackHost !== appHost) {
+    problems.push(
+      `${GOOGLE_OAUTH_REDIRECT_URI} and ${FRONTEND_URL} must name the same host ` +
+        `(a www./apex split here silently signs everyone out — pick one host for both, ` +
+        `and for the Google Cloud console's redirect URI)`,
+    );
   }
 
   if (problems.length > 0) throw new ConfigValidationError(problems);

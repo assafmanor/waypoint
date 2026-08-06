@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { SyncGateway } from './sync/sync.gateway';
 import { DEFAULT_FRONTEND_URL, FRONTEND_URL } from './common/env';
 import { AllExceptionsFilter, SPA_INDEX, STATIC_ROOT } from './common/all-exceptions.filter';
+import { canonicalHostMiddleware } from './common/canonical-host';
 import { ConfigValidationError, validateConfig } from './common/validate-config';
 
 async function bootstrap() {
@@ -37,7 +38,13 @@ async function bootstrap() {
   // Trust exactly one proxy hop (Railway's) in production so rate limiting (B-10)
   // keys on the real client IP via X-Forwarded-For — but never trust XFF in dev,
   // where it'd let a client spoof its IP.
-  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+  if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+    // One host serves the app; `www.` (or the leftover *.up.railway.app) is sent there
+    // with its path intact, before routing, static assets or auth (ADR-0169). Dev is
+    // excluded because there FRONTEND_URL names the *other* origin.
+    app.use(canonicalHostMiddleware(process.env[FRONTEND_URL]));
+  }
 
   // Raw `ws` upgrade handling for WS /trips/:tripId/stream (sync-and-offline.md).
   app.get(SyncGateway).attach(app.getHttpServer() as HttpServer);

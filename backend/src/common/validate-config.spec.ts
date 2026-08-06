@@ -11,6 +11,7 @@ const prodEnv = (over: Record<string, string | undefined> = {}): NodeJS.ProcessE
   GOOGLE_CLIENT_ID: 'id',
   GOOGLE_CLIENT_SECRET: 'secret',
   GOOGLE_OAUTH_REDIRECT_URI: 'https://app.example.com/auth/google/callback',
+  FRONTEND_URL: 'https://app.example.com',
   GOOGLE_MAPS_SERVER_KEY: 'maps-server-key',
   ...over,
 });
@@ -52,6 +53,30 @@ describe('validateConfig (B-04)', () => {
     expect(() => validateConfig(prodEnv({ GOOGLE_OAUTH_REDIRECT_URI: 'not a url' }))).toThrow(
       /valid URL/,
     );
+  });
+
+  it('rejects a missing FRONTEND_URL in production (login would land on localhost)', () => {
+    expect(() => validateConfig(prodEnv({ FRONTEND_URL: undefined }))).toThrow(
+      /FRONTEND_URL is required/,
+    );
+  });
+
+  it('rejects a www./apex split between the callback host and the app host (ADR-0169)', () => {
+    expect(() =>
+      validateConfig(
+        prodEnv({ GOOGLE_OAUTH_REDIRECT_URI: 'https://www.app.example.com/auth/google/callback' }),
+      ),
+    ).toThrow(/must name the same host/);
+  });
+
+  it('allows the two to differ in path and scheme case, only the host is compared', () => {
+    expect(() =>
+      validateConfig(prodEnv({ FRONTEND_URL: 'https://APP.example.com/' })),
+    ).not.toThrow();
+  });
+
+  it('does not require FRONTEND_URL outside production', () => {
+    expect(() => validateConfig({ NODE_ENV: 'development' })).not.toThrow();
   });
 
   it('rejects a bad key format even in dev (when present)', () => {

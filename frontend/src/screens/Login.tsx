@@ -3,6 +3,7 @@
 // static demo teaser card (not real data — no trip exists pre-login), and
 // a three-item feature strip. Shares the CTA button styling with /join
 // (.join-cta-btn/.gd/.join-note) rather than duplicating it.
+import { APP_NAME } from '../constants';
 import { useAuth } from '../state/auth-state';
 import { useIsOffline } from '../lib/outbox';
 import { t } from '../i18n/he';
@@ -15,8 +16,8 @@ export function Login() {
   return (
     <div className="app land">
       <div className="land-top">
-        <div className="land-logo">Waypoint</div>
-        {/* The Waypoint mark: a map marker (teal = place) with a glowing amber
+        <div className="land-logo">{APP_NAME}</div>
+        {/* The Travelive mark: a map marker (teal = place) with a glowing amber
             core (amber = the live "now"), on a board disc so it reads on the dark
             chrome. Mirrors public/icon-mark-bright.svg. Inlined (not <img>) so the
             vector stays crisp at this size — Chrome rasterizes small
