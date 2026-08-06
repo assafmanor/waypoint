@@ -33,27 +33,29 @@ The pieces in the repo:
 
 ## Environment variables (set in the Railway service, never in the repo)
 
-| Var                                         | Value / how to generate                                                                                        |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                              | Reference variable `${{Postgres.DATABASE_URL}}` (private network)                                              |
-| `JWT_SECRET`                                | `openssl rand -base64 32` — store in the password manager                                                      |
-| `TOKEN_ENCRYPTION_KEY`                      | `openssl rand -base64 32` — **must decode to exactly 32 bytes** (AES-256-GCM, crypto.util)                     |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From the Google Cloud OAuth client (prerequisites-checklist.md)                                                |
-| `GOOGLE_OAUTH_REDIRECT_URI`                 | `https://<domain>/auth/google/callback` — only controls where **Google** calls back to                         |
-| `FRONTEND_URL`                              | `https://<domain>` (the environment's own origin). **Required in every deployed environment** — see note below |
-| `DOC_ENCRYPTION_KEY`                        | Documents at rest (ADR-0015). `openssl rand -base64 32` — must decode to exactly 32 bytes                      |
-| `S3_ENDPOINT`                               | Railway Storage Bucket endpoint URL (S3-compatible, ADR-0031)                                                  |
-| `S3_BUCKET`                                 | Railway Storage Bucket name                                                                                    |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Railway Storage Bucket credentials                                                                             |
-| `DOC_CACHE_DIR` _(optional)_                | Local-FS blob-cache tier path (ADR-0055). Unset → memory-only; a lost dir on redeploy just re-warms from S3    |
-| `DOC_CACHE_MAX_BYTES` _(optional)_          | In-memory LRU bound in bytes (ADR-0055). Unset → 64 MB default                                                 |
-| `DOC_CACHE_DISABLED` _(optional)_           | Any truthy value turns the blob cache off entirely (kill switch, ADR-0055)                                     |
+| Var                                         | Value / how to generate                                                                                                                               |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                              | Reference variable `${{Postgres.DATABASE_URL}}` (private network)                                                                                     |
+| `JWT_SECRET`                                | `openssl rand -base64 32` — store in the password manager                                                                                             |
+| `TOKEN_ENCRYPTION_KEY`                      | `openssl rand -base64 32` — **must decode to exactly 32 bytes** (AES-256-GCM, crypto.util)                                                            |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | From the Google Cloud OAuth client (prerequisites-checklist.md)                                                                                       |
+| `GOOGLE_OAUTH_REDIRECT_URI`                 | `https://<domain>/auth/google/callback` — where **Google** calls back to. Same `<domain>` as `FRONTEND_URL`, enforced at boot                         |
+| `FRONTEND_URL`                              | `https://<domain>` (the environment's own origin, and its **canonical host** — ADR-0169). **Required in every deployed environment** — see note below |
+| `DOC_ENCRYPTION_KEY`                        | Documents at rest (ADR-0015). `openssl rand -base64 32` — must decode to exactly 32 bytes                                                             |
+| `S3_ENDPOINT`                               | Railway Storage Bucket endpoint URL (S3-compatible, ADR-0031)                                                                                         |
+| `S3_BUCKET`                                 | Railway Storage Bucket name                                                                                                                           |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Railway Storage Bucket credentials                                                                                                                    |
+| `DOC_CACHE_DIR` _(optional)_                | Local-FS blob-cache tier path (ADR-0055). Unset → memory-only; a lost dir on redeploy just re-warms from S3                                           |
+| `DOC_CACHE_MAX_BYTES` _(optional)_          | In-memory LRU bound in bytes (ADR-0055). Unset → 64 MB default                                                                                        |
+| `DOC_CACHE_DISABLED` _(optional)_           | Any truthy value turns the blob cache off entirely (kill switch, ADR-0055)                                                                            |
 
 **Never set in production:** `DEV_AUTH` (auth bypass). `VITE_API_BASE_URL` stays unset — the client defaults to same-origin. Later additions when their features land: `REDIS_URL` (v1.1) and, with the Phase-6 embedded map, three **build-time** frontend args — `VITE_GOOGLE_MAPS_BROWSER_KEY` (the public browser key, restricted to the Maps JavaScript API and referrer-locked to this origin — ADR-0108 §1), `VITE_GOOGLE_MAPS_MAP_ID` (the cloud-styled Map ID; **mandatory**, since advanced markers do not load without one — ADR-0121 §1 + §2), and `VITE_GOOGLE_MAPS_MAP_ID_DARK` (the night style, inert until dark mode ships — ADR-0121 §9). All three are build args, not runtime env: Vite **inlines** them into the client bundle, so a variable that only exists at runtime reaches the container and never the JavaScript. Absent, the Map tab degrades to its list-only form rather than failing (ADR-0121 §2). _(This line previously named the key `VITE_GOOGLE_MAPS_API_KEY`, which contradicted ADR-0108 and `.env.example`; ADR-0121 §2 settled the single name used above.)_
 
 **Setting them on the Railway service is not enough — the `Dockerfile` must declare a matching `ARG`.** This cost a deploy: session 132 set all three on production, session 133 shipped the map, and the tab still rendered list-only because a Docker build sees **only** what the Dockerfile declares. Railway passes every service variable as a `--build-arg`, but a build arg that is never declared is silently dropped, so the build stage carries one `ARG` per var (defaulted to empty, so a build with no Maps setup still succeeds) ahead of the `pnpm build` line; Vite then picks them up off `process.env` at its default `VITE_` prefix. **Adding a fourth `VITE_` var later means editing the `Dockerfile` too** — the service variable alone will look set and do nothing. `vite.config.ts` prints a build-log warning naming any missing Maps var for exactly this reason, since the failure is otherwise indistinguishable from the intended graceful absence. Locally the same vars are read from **`frontend/.env.local`** (Vite sets no `envDir`, so it reads from `frontend/`, not the repo root), and `.dockerignore` excludes `.env*` so they never enter the image.
 
-**`FRONTEND_URL` is not dev-only, despite the name.** It doubles as the dev `:5173`→`:3000` CORS origin locally, but `AuthController`'s Google callback (`res.redirect(frontendUrl())`, `auth.controller.ts`) also uses it as the **post-login redirect target** in every environment, with a hardcoded fallback of `http://localhost:5173` when unset. A deployed environment without `FRONTEND_URL` set doesn't fail loud — Google auth completes, then silently redirects the browser to `localhost`. Set it to the environment's own origin (production's own domain, staging's own domain) everywhere, single-origin topology notwithstanding.
+**`FRONTEND_URL` is not dev-only, despite the name — and it is now the environment's canonical host (ADR-0169).** It doubles as the dev `:5173`→`:3000` CORS origin locally, but `AuthController`'s Google callback (`res.redirect(frontendUrl())`, `auth.controller.ts`) also uses it as the **post-login redirect target** in every environment, and `common/canonical-host.ts` redirects any other `Host` this service answers on to it. Set it to the environment's own origin (production's own domain, staging's own domain) everywhere, single-origin topology notwithstanding.
+
+Two things that were silent failures and now aren't. `validateConfig` **refuses to boot in production** when (a) `FRONTEND_URL` is unset — previously that completed a Google login and then redirected the browser to `localhost`, with nothing in the logs — or (b) `FRONTEND_URL` and `GOOGLE_OAUTH_REDIRECT_URI` name **different hosts**, e.g. one on `www.` and one on the apex. The second pair cannot log anyone in at all: the OAuth state cookie is host-only (ADR-0020), so it is set by the host that started the round-trip and never sent to the host Google calls back to — the callback fails its own check and bounces the user home, signed out. Both variables move together, always. The report that produced this guard was a **single mistyped character** — `FRONTEND_URL` set to `https://wwww.travelive.app`, four `w`s, while the callback URI was spelled right: login succeeded, the session cookie was set, and the browser was then redirected to a hostname that does not exist. Nothing in the logs, healthcheck green.
 
 **Never copy these verbatim into staging (ADR-0104):** `JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `DOC_ENCRYPTION_KEY` need their own freshly-generated values; `DATABASE_URL` must be a reference variable resolving to staging's own Postgres, never production's connection string; `S3_*` should point at a separate staging bucket; `GOOGLE_OAUTH_REDIRECT_URI` and `FRONTEND_URL` both need staging's own domain, not production's. See the staging section below — and note that Railway's **reference-variable syntax matters**: a variable like `${{<uuid>.VAR}}` (ID-pinned) keeps pointing at that exact resource regardless of environment, while `${{ServiceName.VAR}}` (name-based) resolves against whichever resource has that name _in the current environment_ — only the latter survives being duplicated into a new environment correctly.
 
@@ -65,14 +67,37 @@ The pieces in the repo:
 2. **Project**: "Deploy from GitHub repo" → this repo, branch `main`, region EU-West. `railway.json` supplies builder/healthcheck; **verify the pre-deploy command** appears in service → Settings → Deploy (set it manually if config-as-code didn't apply): `npx prisma migrate deploy`.
 3. **Postgres**: `+ New → Database → PostgreSQL` in the same project.
 4. **Env vars**: set the table above on the service (`DATABASE_URL` via the reference picker).
-5. **Domain**: service → Settings → Networking → Generate Domain; then fill `GOOGLE_OAUTH_REDIRECT_URI` **and** `FRONTEND_URL` with it (both, not just the redirect URI — see the `FRONTEND_URL` note above).
+5. **Domain**: service → Settings → Networking → Generate Domain; then fill `GOOGLE_OAUTH_REDIRECT_URI` **and** `FRONTEND_URL` with it (both, not just the redirect URI — see the `FRONTEND_URL` note above). For a bought domain, see the custom-domain section below.
 6. **Google Cloud Console** (APIs & Services → Credentials → the OAuth client): add `https://<domain>` to Authorized JavaScript origins and `https://<domain>/auth/google/callback` to Authorized redirect URIs. If the consent screen is in _Testing_ mode, add each member's Gmail as a test user.
 7. **Deploy & verify** (below).
+
+## Custom domain (ADR-0169)
+
+Production runs on **`travelive.app`**, bought at GoDaddy. The one rule: **the app answers on exactly one host**, and every other name it can be reached by redirects there. The session is a host-only cookie (ADR-0020), so two live hosts are two logins that cannot see each other — and since `GOOGLE_OAUTH_REDIRECT_URI` pins the callback to a single fixed host, a login begun on the other one lands on a callback that can't verify its own state cookie and signs the user out in silence.
+
+**The canonical host must be the same string in four places**, or login breaks:
+
+| Where                                     | What                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| Railway → service → Settings → Networking | the custom domain (add the other name too — the app redirects it)  |
+| `FRONTEND_URL`                            | `https://<canonical>`                                              |
+| `GOOGLE_OAUTH_REDIRECT_URI`               | `https://<canonical>/auth/google/callback`                         |
+| Google Cloud console → the OAuth client   | `https://<canonical>` in JS origins, the callback in redirect URIs |
+
+The service **refuses to boot** if the middle two disagree on host, so a half-finished move fails at deploy rather than at someone's next login. Extra entries in the Google console (a `www.` origin, the old `*.up.railway.app` callback) are harmless — Google only ever uses the one the backend asks for.
+
+**DNS — and why the apex is the awkward one.** Railway serves a custom domain over a `CNAME`, and DNS forbids a `CNAME` at the apex; providers work around it with CNAME flattening / `ALIAS` / `ANAME`, and **GoDaddy has none**. So:
+
+- **Apex canonical (`travelive.app`) — needs a nameserver move.** Point the domain's nameservers at a provider that flattens (Cloudflare is free), then `CNAME travelive.app → <railway target>` and `CNAME www → <railway target>`, and add **both** names as custom domains on the Railway service. The app redirects `www` to the apex.
+- **`www` canonical — works on GoDaddy DNS as-is.** `CNAME www → <railway target>`, apex on GoDaddy **Forwarding** to `https://www.travelive.app`. The catch that makes this the lesser option: GoDaddy forwarding does not reliably carry the **path**, so a pasted `travelive.app/join/<code>` arrives at the `www` home page with the invite code gone.
+
+**If the apex serves a GoDaddy `/lander` page** (and inconsistently — one device fine, another not), that is the apex still resolving to GoDaddy's parking/forwarding servers rather than to Railway; leftover parked `A` records or an active Forwarding entry are the usual cause. It is a DNS-record problem, not a caching one — clearing the phone's cache can't help, and a device that "works" is usually just holding an older answer. Delete GoDaddy's parked `A`/`AAAA` records for `@` and turn Forwarding **off** before adding the real record.
 
 ## Verify after any deploy
 
 - `GET /health` → 200, `GET /api/docs` renders (Swagger).
 - App loads at `/`, Google login round-trips, a deep link (`/join/xyz`) serves the PWA, an unknown API path (`/trips/nope`) returns JSON — not HTML.
+- Every other name the service answers on redirects to the canonical host with its path intact: `curl -sI https://<other-host>/join/xyz` → `302` + `location: https://<canonical>/join/xyz` (ADR-0169).
 - Realtime: a change made on one device appears live on another (WS carries the cookie same-origin).
 - Documents: upload a file and re-open it. The `S3_*` vars are **required in production** — with them unset the backend refuses the dev-only local-disk fallback and fails loud (`S3_BUCKET not configured`) rather than silently writing to the ephemeral container filesystem and losing every blob on the next redeploy (storage.ts).
 - Note: the API connects to Postgres at boot (`PrismaService.onModuleInit`) — the healthcheck failing right after a deploy usually means `DATABASE_URL` is wrong/missing, not app breakage.
@@ -135,8 +160,7 @@ Serves the full single-origin app (PWA + API + WS) on `:3000` — the same image
 
 ## Still open (deliberately)
 
-1. Custom domain (default `*.up.railway.app` subdomain is fine for a private tool).
-2. Railway's ephemeral PR-preview environments — a possible future addition for per-PR preview links; the persistent `staging` environment (ADR-0104) covers the "stable pre-production URL" need instead.
+1. Railway's ephemeral PR-preview environments — a possible future addition for per-PR preview links; the persistent `staging` environment (ADR-0104) covers the "stable pre-production URL" need instead.
 
 ## Non-goals for v1
 

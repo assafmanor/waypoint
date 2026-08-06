@@ -40,6 +40,7 @@ import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useAppBack } from '../state/nav-state';
 import { createInvite, createTrip } from '../lib/api';
+import { inviteLink, type InviteLink } from '../lib/invite-link';
 import { suggestTripName } from '../lib/trip-name';
 import { useDerivedField } from '../lib/useDerivedField';
 import { prefersReducedMotion, readDurationMs } from '../lib/motion';
@@ -532,7 +533,8 @@ function Birth({
   );
 }
 
-type InviteState = { status: 'pending' } | { status: 'ready'; url: string } | { status: 'failed' };
+type InviteState =
+  { status: 'pending' } | ({ status: 'ready' } & InviteLink) | { status: 'failed' };
 
 /** Screen 2 (mockup #s-born): the beat right after creation where the invite
  *  link goes in front of the creator. */
@@ -545,8 +547,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
     let cancelled = false;
     createInvite(trip.id).then(
       (res) => {
-        if (!cancelled)
-          setInvite({ status: 'ready', url: `${window.location.origin}${res.inviteUrl}` });
+        if (!cancelled) setInvite({ status: 'ready', ...inviteLink(res.inviteUrl) });
       },
       () => {
         if (!cancelled) setInvite({ status: 'failed' });
@@ -591,7 +592,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
           data-copied={copied ? '' : undefined}
         >
           <span className="code" dir="auto">
-            {invite.url}
+            {invite.label}
           </span>
           <span className="lbl2">{t.shell.created.inviteLabel}</span>
           <span className="cp">

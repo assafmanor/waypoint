@@ -4,6 +4,8 @@
 **Date:** 2026-07-18
 **Relates:** [0020](0020-auth-session-architecture.md) (the secrets/keys being validated; the `DEV_AUTH` bypass), [0031](0031-hosting-on-railway.md) (Railway single-origin deploy this protects), [0015](0015-document-encryption-server-side.md)/[0034](0034-document-encryption-trust-model.md) (the doc/token keys).
 
+**Amended 2026-08-06 by [0169](0169-the-app-answers-on-one-host.md) §3** — two additions to §1's checklist, both because the failure they catch is silent rather than loud: `FRONTEND_URL` is now **required in production** (it was format-checked-if-present, while deployment.md called it required — unset, login completes and then redirects the browser to `localhost`), and `FRONTEND_URL` and `GOOGLE_OAUTH_REDIRECT_URI` must name the **same host**, since a `www.`/apex split between them cannot log anyone in at all.
+
 ## Context
 
 Critical secrets (`JWT_SECRET`, `TOKEN_ENCRYPTION_KEY`, `DOC_ENCRYPTION_KEY`, `GOOGLE_*`) were validated only lazily, on first use by a request (`requireEnv` throws when first touched). So a misconfigured production deploy booted "healthy" — the health check passed — and only failed at the first login or upload (backend architecture review, 2026-07-18, **B-04**). The storage layer already had a fail-loud guard (`storageBucket()` throws in production when no bucket is set); auth/secrets did not.
