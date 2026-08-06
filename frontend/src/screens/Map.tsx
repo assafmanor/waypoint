@@ -2993,7 +2993,6 @@ export function MapView() {
       chooseMode={pendingErrand != null}
       selectedKnowledge={candidateKnowledge}
       onShow={selectResultRow}
-      onHide={openedFromRow ? clearSelection : undefined}
       onFullPicture={showCandidatePicture}
       addingId={addingResultId}
       addFailed={addResultFailed}

@@ -49,12 +49,6 @@ export function PlaceResearch({
    *  a link to Google Maps; the tap now means "frame it here" and Google is its own
    *  control, because a link wrapping the whole row cannot coexist with that. */
   onShow,
-  /** **And the same tap read again closes it** (ADR-0168 §4). A selected result row opens the
-   *  deciding card inside itself, so it owes the way out that the trip's row now owes.
-   *  **Absent when the RING is what selected this result**, which is what keeps ADR-0134 §6's
-   *  gesture intact: the row's first tap then still frames the place you cannot see, and only
-   *  the tap after that closes it. */
-  onHide,
   onFullPicture,
   /** Which result is mid-add, and whether the last add failed. Both live with the add
    *  itself, in the screen. */
@@ -70,7 +64,6 @@ export function PlaceResearch({
   addingId: string | null;
   addFailed: boolean;
   onShow: (result: PlaceResult) => void;
-  onHide?: () => void;
   onFullPicture?: () => void;
   onAdd: (result: PlaceResult) => void;
 }) {
@@ -117,7 +110,7 @@ export function PlaceResearch({
               busy={addingId === result.googlePlaceId}
               image={selectedId === result.googlePlaceId ? selectedKnowledge?.image : undefined}
               summary={selectedId === result.googlePlaceId ? selectedKnowledge?.summary : undefined}
-              onShow={(selectedId === result.googlePlaceId && onHide) || (() => onShow(result))}
+              onShow={() => onShow(result)}
               onFullPicture={onFullPicture}
               onAdd={() => onAdd(result)}
             />

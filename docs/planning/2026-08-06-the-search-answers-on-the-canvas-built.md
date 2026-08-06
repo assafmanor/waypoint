@@ -65,6 +65,19 @@ The rule became "a row closes only once its own tap opened it", one piece of sta
 (`openedFromRow`), and the sequence now reads as a sentence: ring → pan, row → frame, row →
 close.
 
+**And the e2e suite refused the same change one surface further out.** "A second tap closes it"
+was extended to `ResultRow` for consistency, and `place-decide.spec.ts`'s _"asks once, for the
+place you tapped"_ taps a result row twice and asserts the deciding card is **still there** — the
+point of that test being that the enrichment is not re-fetched. The spec is right: a result row is
+one half of a row↔ring pair whose second-tap verb is already the shelf on the canvas half, and
+closing the row drops the ring that answers "which of these is it". So the close is the **trip
+row's** only, which is what was asked for; ADR-0168 §4 states the exclusion rather than leaving it
+as a gap someone re-closes later.
+
+Worth naming the pattern across both catches: **the extension that felt like consistency was the
+part that broke behaviour, twice.** Both times a test written for a different reason was the thing
+that noticed.
+
 ## And one accessibility wart the same change produced
 
 Making the expanded card's whole body a `role="button"` with `aria-label={t.map.know.back}` gave

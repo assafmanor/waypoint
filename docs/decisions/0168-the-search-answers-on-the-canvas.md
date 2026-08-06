@@ -99,6 +99,13 @@ Two reports, one rule. A tap on a row's body now has three readings, and **the o
 
 Rows deselect; canvas marks commit (§5). That is not an inconsistency, it is ADR-0134 §3's own argument: a row carries its verbs in reach, and a mark on the canvas carries none.
 
+**And this is the TRIP row only — a `ResultRow` deliberately does not close on a second tap.** It was built that way first, and an e2e spec refused it: `place-decide.spec.ts`'s _"asks once, for the place you tapped"_ taps the same result row twice and asserts the deciding card is **still there**, because the point of that test is that the enrichment is not re-fetched. Two reasons the spec is right and the extension was wrong, and neither is about the test:
+
+- **A result row is one half of a row↔ring pair, and that pair's second tap is already spoken for** — on the canvas half it is the shelf (§5). Giving the list half a _different_ second-tap verb for the same object is the inconsistency, not the fix.
+- **Closing it drops the ring**, which is the mark answering "which of these is it" on the canvas the search exists to draw. A trip row's card is the whole of that place's surface; a result's card is the smaller half of a pair.
+
+Its ways out are unchanged and there are three: a tap on blank canvas, back, and selecting anything else.
+
 ### 5. The second tap on a ring is the shelf, because the reason it was errand-scoped was false
 
 ADR-0134's session-171 addendum built exactly this gesture — _"tapping what is already selected"_, no timing window, no gesture machinery, the first tap still only selecting — and scoped it to an errand on the grounds that _"outside an errand there is nothing to commit to."_ **There is: the shelf**, which is where a result's add has always landed (ADR-0131 §11, and ADR-0147 §4's form submits into it as `הוספה למדף`).

@@ -26,7 +26,6 @@ const place = (id: string): Place =>
 
 const onAdd = vi.fn();
 const onShow = vi.fn();
-const onHide = vi.fn();
 
 function view(opts: {
   predictions?: PlaceResult[];
@@ -63,7 +62,6 @@ function view(opts: {
       addingId={opts.addingId ?? null}
       addFailed={false}
       onShow={onShow}
-      onHide={onHide}
       onAdd={onAdd}
     />,
   );
@@ -74,7 +72,6 @@ describe('PlaceResearch (Phase 5, ADR-0115; presentational since ADR-0132)', () 
     cleanup();
     onAdd.mockClear();
     onShow.mockClear();
-    onHide.mockClear();
   });
 
   // ── THE ROW'S THREE JOBS (ADR-0134 §5/§6) ────────────────────────────────────

@@ -334,6 +334,28 @@ test('a place we know nothing about draws no block, and still offers עוד בג
 // What this run reaches: the **graceful-absence path** (no Maps key here, so the list renders in the
 // shell's scrolling body). The split's own sheet scroller needs a canvas, so the sheet stops stay a
 // device question — but the alignment being asserted is the same call on the same row.
+/** **Where the selected card ended up, polled rather than slept on** (ADR-0168 §3). The scroll is
+ *  eased now, so a fixed wait measures a box in flight — which is exactly what the 120ms these two
+ *  tests used to carry was doing, calibrated as it was for an instant jump. Both assertions are
+ *  about where the card **lands**, so they retry through `toPass()` and depend on no duration at
+ *  all: a wrong landing keeps failing until the timeout, where a longer sleep would only have
+ *  moved the flake (and this spec already carries one environment-specific number CI corrected). */
+async function measureLanding(page: Page) {
+  return page.evaluate(() => {
+    const el = document.querySelector('.map-list .place.selected') as HTMLElement;
+    const scroller = document.querySelector('.body') as HTMLElement;
+    const r = el.getBoundingClientRect();
+    const s = scroller.getBoundingClientRect();
+    return {
+      top: Math.round(r.top),
+      height: Math.round(r.height),
+      scrollerTop: Math.round(s.top),
+      scrollerHeight: Math.round(s.height),
+      scrolled: Math.round(scroller.scrollTop),
+    };
+  });
+}
+
 test.describe('the selected card scrolls to its top @390', () => {
   // **The SMALL end of ADR-0017's band, with the longest measured extract**, because the case the
   // owner reported is a card that does not fit: at 844px with an ordinary extract the card is 422px
@@ -348,34 +370,21 @@ test.describe('the selected card scrolls to its top @390', () => {
     const before = await row.evaluate((el) => Math.round(el.getBoundingClientRect().top));
     await row.click();
     await expect(page.locator('.map-sum')).toBeVisible();
-    // The scroll is deferred one frame, and the reveal grows the row first.
-    await page.waitForTimeout(120);
-
-    const m = await page.evaluate(() => {
-      const el = document.querySelector('.map-list .place.selected') as HTMLElement;
-      const scroller = document.querySelector('.body') as HTMLElement;
-      const r = el.getBoundingClientRect();
-      const s = scroller.getBoundingClientRect();
-      return {
-        top: Math.round(r.top),
-        height: Math.round(r.height),
-        scrollerTop: Math.round(s.top),
-        scrollerHeight: Math.round(s.height),
-        scrolled: Math.round(scroller.scrollTop),
-      };
-    });
 
     // **No height premise here, and CI is what corrected that**: a COLLAPSED card is clamped to
     // two lines (§9.3), so it does not exceed the port however long the extract is — 327px against
     // 505px on the runner. The too-fat-to-fit case is the EXPANSION, which is the next test.
     // What discriminates here is the alignment itself: `nearest` would bring the card's bottom in
     // and leave its top somewhere down the list, and `center` would put the top above the fold.
-    expect(m.scrolled).toBeGreaterThan(0);
-    expect(m.top).toBeLessThan(before);
-    // And its TOP is at the scroller's top: within the 8px `scroll-margin-top` plus rounding,
-    // never centred (which for a card taller than the port would put `top` ABOVE the scroller).
-    expect(m.top).toBeGreaterThanOrEqual(m.scrollerTop - 1);
-    expect(m.top).toBeLessThanOrEqual(m.scrollerTop + 24);
+    await expect(async () => {
+      const m = await measureLanding(page);
+      expect(m.scrolled).toBeGreaterThan(0);
+      expect(m.top).toBeLessThan(before);
+      // And its TOP is at the scroller's top: within the 8px `scroll-margin-top` plus rounding,
+      // never centred (which for a card taller than the port would put `top` ABOVE the scroller).
+      expect(m.top).toBeGreaterThanOrEqual(m.scrollerTop - 1);
+      expect(m.top).toBeLessThanOrEqual(m.scrollerTop + 24);
+    }).toPass();
   });
 
   // The expansion is the bigger version of the same growth — and the one the owner's screenshot
@@ -383,26 +392,18 @@ test.describe('the selected card scrolls to its top @390', () => {
   test('does the same when the card expands', async ({ page }) => {
     const row = page.locator('.map-list .place').first();
     await row.click();
-    await page.waitForTimeout(120);
+    await expect(page.locator('.map-sum')).toBeVisible();
     await page.getByRole('button', { name: 'עוד', exact: true }).click();
     await expect(page.locator('.map-hero')).toBeVisible();
-    await page.waitForTimeout(120);
 
-    const m = await page.evaluate(() => {
-      const el = document.querySelector('.map-list .place.selected') as HTMLElement;
-      const scroller = document.querySelector('.body') as HTMLElement;
-      return {
-        top: Math.round(el.getBoundingClientRect().top),
-        height: Math.round(el.getBoundingClientRect().height),
-        scrollerTop: Math.round(scroller.getBoundingClientRect().top),
-        portHeight: Math.round(scroller.getBoundingClientRect().height),
-      };
-    });
-    // **The card really is taller than the port** — otherwise this proves nothing about the
-    // reported case: it is exactly the state where `nearest` scrolls nothing at all.
-    expect(m.height).toBeGreaterThan(m.portHeight);
-    expect(m.top).toBeGreaterThanOrEqual(m.scrollerTop - 1);
-    expect(m.top).toBeLessThanOrEqual(m.scrollerTop + 24);
+    await expect(async () => {
+      const m = await measureLanding(page);
+      // **The card really is taller than the port** — otherwise this proves nothing about the
+      // reported case: it is exactly the state where `nearest` scrolls nothing at all.
+      expect(m.height).toBeGreaterThan(m.scrollerHeight);
+      expect(m.top).toBeGreaterThanOrEqual(m.scrollerTop - 1);
+      expect(m.top).toBeLessThanOrEqual(m.scrollerTop + 24);
+    }).toPass();
   });
 });
 
