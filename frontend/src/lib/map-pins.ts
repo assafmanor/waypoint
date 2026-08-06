@@ -11,10 +11,10 @@
 import { iconForCategory, type EventCategory, type TripEvent } from '@waypoint/shared';
 import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
-  comparePlacesBySchedule,
   isDayUsagePast,
   isOnShelf,
   placeDay,
+  relevantMoment,
   placeMetaDay,
   type DayUsage,
   type PlaceOrderContext,
@@ -242,46 +242,86 @@ export function pinTransition(
 }
 
 /**
- * `placeId → the pin's number`: the index in `comparePlacesBySchedule`'s
- * sequence for **a day**, 1-based (ADR-0121 §6). Four properties the callers
- * depend on, all of them consequences of how this is computed:
+ * `placeId → the pin's number`: **the index of the STOP its row is naming**, in the day's
+ * chronological sequence of stops, 1-based (ADR-0121 §6).
  *
- * - **Only a day scope numbers anything.** §6 defined the number as the index in
- *   THE DAY's sequence, so all-days has nothing for it to be an index of: the
- *   comparator would sequence the whole trip and a pin would read `27`, which
- *   answers a question nobody asked. Both halves lose it together because they
- *   read this one map, and it is not a loss — an all-days row states its day in
- *   words (`relativeDayLabel`) exactly where the number was ambiguous.
- * - **A filter never renumbers.** `usages` is the whole SCOPED set, before any
- *   chip is applied — the same shape `listRows` takes, where visibility is a
- *   predicate over a fixed array (ADR-0120 session-130). Gaps (`1, 3, 4`) are
- *   correct and informative: they say something is filtered out.
- * - **Near-me never renumbers.** The order comes from
- *   `comparePlacesBySchedule` specifically, never from the screen's `listOrder`,
+ * **Stops, not places, and that is the 2026-08-06 correction.** This numbered PLACES, sorted
+ * by each one's earliest moment — which agreed with what the row said only because the row
+ * named the earliest moment too. Once the row started naming the reference that is actually
+ * relevant, the two came apart, and the screen contradicted itself: an airport whose landing
+ * was at 02:00 and whose car is due back at 18:00 read `1 · 18:00` **above** a place reading
+ * `2 · 09:00`. Both numbers were right about "which place did you reach first" and the pair
+ * was unreadable. Owner: _"the numbering is weird"_.
+ *
+ * A day is a sequence of **stops**, and a place you go to twice is two of them. So the
+ * sequence is numbered, and a place shows the number of the stop it is currently about.
+ * The airport above becomes `3` — `1` belongs to the landing it already did, and the gap is
+ * informative in exactly the way the filter's gaps already are.
+ *
+ * Five properties the callers depend on:
+ *
+ * - **Only a day scope numbers anything.** §6 defined the number as the index in THE DAY's
+ *   sequence, so all-days has nothing for it to be an index of: the comparator would sequence
+ *   the whole trip and a pin would read `27`. An all-days row states its day in words
+ *   (`relativeDayLabel`) exactly where the number was ambiguous.
+ * - **A filter never renumbers.** `usages` is the whole SCOPED set, before any chip is
+ *   applied. Gaps (`1, 3, 4`) are correct and informative: they say something is not shown.
+ * - **Near-me never renumbers.** The order is the day's clock, never the screen's `listOrder`,
  *   which becomes a distance sort when near-me is on.
- * - **The clock never renumbers.** `nowMs` is deliberately NOT passed, so the
- *   ahead/behind partition cannot reach the number: a visited stop keeps its `1`
- *   though the partition sinks it. It also makes this memo-stable on a screen
- *   that re-renders every second.
- *
- * Callers pass the day-scoped set, so a ghost is never numbered.
+ * - **THE SEQUENCE ITSELF IS CLOCK-FREE**, which is what preserves §6's "a tick can never
+ *   renumber a pin" for every place that is visited once — i.e. nearly all of them. The stop
+ *   list is built and numbered without `nowMs`; the clock decides only WHICH of its own stops
+ *   a twice-visited place displays, so no other pin's number can move under it.
+ * - **A pin with no position in the schedule gets no number** (`hasScheduleSlot`), unchanged.
  */
 export function buildPinOrderIndex(
   usages: readonly PlaceUsage[],
-  ctx: { nameOf: PlaceOrderContext['nameOf']; onDate?: string },
+  ctx: { nameOf: PlaceOrderContext['nameOf']; onDate?: string; nowMs?: number },
 ): Map<string, number> {
-  const { nameOf, onDate } = ctx;
+  const { nameOf, onDate, nowMs } = ctx;
   // No day, no sequence to be an index in — and renumbering per day is worse than
   // nothing: two pins both reading `1` on one canvas, with nothing on either saying
   // which day it belongs to.
   if (!onDate) return new Map();
-  // Still no `nowMs`, and the omission stays deliberate now that the guard above
-  // makes it unreachable: it is the signature that states a number cannot depend on
-  // the clock. `placeDay` resolves the ALL-DAYS case against a clock when given one,
-  // so a `PlaceOrderContext` here would be a tick away from renumbering a pin.
-  const numbered = usages.filter((u) => hasScheduleSlot(placeDay(u, { onDate })));
-  numbered.sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate }));
-  return new Map(numbered.map((usage, i) => [usage.placeId, i + 1]));
+  const onDay = usages
+    .map((usage) => ({ usage, day: placeDay(usage, { onDate }) }))
+    .filter((entry): entry is { usage: PlaceUsage; day: DayUsage } => hasScheduleSlot(entry.day));
+  // Every stop of the day, each carrying the place it belongs to. A day usage always has at
+  // least its own pointer to fall back on, so a place is never dropped for want of a moment.
+  const stops = onDay.flatMap(({ usage, day }) =>
+    (day.moments?.length
+      ? day.moments
+      : [{ at: day.at, eventId: day.eventId, edge: day.edge }]
+    ).map((moment) => ({ usage, day, moment })),
+  );
+  // The day's own order, and no clock in it: timed stops by their moment, untimed ones after
+  // (they cannot claim a position they do not have), then the manual `sortOrder` and the name
+  // — the same tail `comparePlacesBySchedule` breaks its ties with.
+  stops.sort((a, b) => {
+    if (a.moment.at != null && b.moment.at != null && a.moment.at !== b.moment.at)
+      return a.moment.at - b.moment.at;
+    if ((a.moment.at == null) !== (b.moment.at == null)) return a.moment.at == null ? 1 : -1;
+    const sa = a.day.sortOrder ?? 0;
+    const sb = b.day.sortOrder ?? 0;
+    if (sa !== sb) return sa - sb;
+    return nameOf(a.usage).localeCompare(nameOf(b.usage));
+  });
+  // …and each place takes the number of the stop it is CURRENTLY about, which is the same
+  // moment `placeMetaDay` puts on its row. This is the only line the clock reaches.
+  const index = new Map<string, number>();
+  for (const { usage, day } of onDay) {
+    const naming = relevantMoment(day, nowMs);
+    const at = stops.findIndex(
+      (stop) =>
+        stop.usage.placeId === usage.placeId &&
+        (naming == null ||
+          (stop.moment.at === naming.at &&
+            stop.moment.eventId === naming.eventId &&
+            stop.moment.edge === naming.edge)),
+    );
+    if (at >= 0) index.set(usage.placeId, at + 1);
+  }
+  return index;
 }
 
 /**

@@ -11,6 +11,9 @@ import type { SnapStop } from './lib/snap-sheet';
 import type { IconName } from './ui/Icon';
 
 export const MS_PER_DAY = 86_400_000;
+/** One minute, for the derivations that are minute-grained on a screen whose clock ticks
+ *  every second — a memo keyed on this rebuilds 60 times an hour instead of 3,600. */
+export const MS_PER_MINUTE = 60_000;
 
 /** Where the API lives. Empty in production, where the app is served same-origin, so
  *  every consumer must treat it as a prefix rather than a base to `new URL()` against.
