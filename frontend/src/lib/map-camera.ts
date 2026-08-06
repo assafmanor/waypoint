@@ -20,6 +20,7 @@ import {
   MAP_FLOAT_GAP,
   MAP_PIN,
   MAP_REFIT_FILL_SHARE,
+  MAP_SEARCH_CAMERA,
 } from '../constants';
 import { TUNE, tune } from './dev-tuning';
 import { pinClearanceFor, pinHeightFor } from './map-pins';
@@ -316,6 +317,85 @@ export function focusBoundsFor(at: LatLng, others: readonly LatLng[]): MapBounds
  *  Floored, so a near-polar trip cannot divide the span to infinity. */
 function lngScale(lat: number): number {
   return Math.max(Math.cos((lat * Math.PI) / 180), 0.1);
+}
+
+/** What the camera should do about a **settled set of search results** (ADR-0168 §1).
+ *  `pan` keeps the zoom you are on and only centres; `fit` has already decided the extent,
+ *  so the caller hands it straight to the padded fit path. */
+export type SearchCameraTarget =
+  { kind: 'none' } | { kind: 'pan'; at: LatLng } | { kind: 'fit'; bounds: MapBounds };
+
+/**
+ * **The camera answers a settled result set** (ADR-0168 §1), which is the report this
+ * function exists for: at the map extreme a result off-canvas produced no sign at all that
+ * anything had been found — the sheet holds no rows there, so the only evidence was a ring
+ * you could not see.
+ *
+ * `results` is in **Google's own relevance order**, and that matters: the last branch reads
+ * `results[0]` as "the answer", which is only true because Text Search ranked it.
+ *
+ * Four rules, in order, and each one is a guard against a different bad move:
+ *
+ * | State                                    | Decision | Why not something else                     |
+ * | ---------------------------------------- | -------- | ------------------------------------------ |
+ * | No results                               | `none`   | Nothing to show; the sheet's own state says so |
+ * | Every result already on canvas           | `none`   | **This is the anti-jitter rule.** Consecutive settled queries in one neighbourhood move nothing at all |
+ * | The extent fits at the zoom you are on   | `pan`    | Re-fitting would ZOOM for a set you could already have seen — ADR-0129 §1's "no unasked-for zoom", one population over |
+ * | Wider than that, but still one area      | `fit`    | The owner's "zoom out and pan"             |
+ * | Wider than `SPREAD_CAP_DEG`              | `fit` on the top result's own cluster | Fitting `דואומו` across four Italian cities is a country view of four specks — worse than the frame you had |
+ *
+ * Note what the containment rule deliberately does NOT use: `boundsFillView`. That test
+ * exists so a **filter** can tighten a frame that has gone slack (ADR-0121 §7's dwarfed
+ * row), and a filter is a deliberate act on a set you are curating. A query is neither — so
+ * "they are all on screen" is the whole of what a search is owed, and zooming in on them
+ * because they are small in the frame is exactly the movement the report asks us not to
+ * make.
+ */
+export function searchCameraTarget(
+  results: readonly LatLng[],
+  view: MapBounds | null,
+): SearchCameraTarget {
+  const extent = boundsOfPoints(results);
+  if (!extent) return { kind: 'none' };
+  // No view yet means no framing worth preserving, the same reading the opening fit makes.
+  if (!view) return framedSet(extent, results);
+  if (boundsContain(view, extent)) return { kind: 'none' };
+  const share = MAP_SEARCH_CAMERA.FITS_AT_ZOOM_SHARE;
+  const fitsAtZoom =
+    extent.north - extent.south <= (view.north - view.south) * share &&
+    extent.east - extent.west <= (view.east - view.west) * share;
+  if (fitsAtZoom) {
+    // The midpoint needs no antimeridian guard, and the reason is structural rather than
+    // lucky: `boundsOfPoints` compares longitudes plainly, so a set straddling ±180° has an
+    // extent spanning ~358°, which cannot be ≤ 0.8 of any view — so it never reaches this
+    // branch. It falls to `framedSet` instead, where the 358° spread trips the cap and the
+    // top result is framed among its own cluster, which is a better answer than either a
+    // world-wide fit or a sweep the long way round. ADR-0121 §14's stance, inherited.
+    return {
+      kind: 'pan',
+      at: {
+        lat: midpoint(extent.north, extent.south),
+        lng: midpoint(extent.east, extent.west),
+      },
+    };
+  }
+  return framedSet(extent, results);
+}
+
+/** The extent, or — when the results are too scattered to be "an area" at all — the
+ *  top-ranked one framed among **its own** neighbours, which is `focusBoundsFor`'s existing
+ *  cluster guard (ADR-0129 §2) doing exactly the job it was built for. */
+function framedSet(extent: MapBounds, results: readonly LatLng[]): SearchCameraTarget {
+  const spread = Math.max(
+    extent.north - extent.south,
+    (extent.east - extent.west) * lngScale(midpoint(extent.north, extent.south)),
+  );
+  if (spread <= MAP_SEARCH_CAMERA.SPREAD_CAP_DEG) return { kind: 'fit', bounds: extent };
+  return { kind: 'fit', bounds: focusBoundsFor(results[0], results) };
+}
+
+function midpoint(a: number, b: number): number {
+  return (a + b) / 2;
 }
 
 export function cameraTargetFor(points: readonly LatLng[], view: MapBounds | null): CameraTarget {

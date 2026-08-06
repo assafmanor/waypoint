@@ -454,16 +454,43 @@
        drawn as if it were. It keeps the maybe's own paint (dashed, hatched, filled, its
        glyph) and takes only the ratio: available today, but you did not put it in this
        day. So the paint says WHAT it is and the size says how much it is claiming. */
-/* ── AN UNSAVED GOOGLE RESULT (ADR-0132 §6) ──────────────────────────────────────
-   A RING, not a teardrop, and that is the whole design: the prominence ladder above
+/* ── AN UNSAVED GOOGLE RESULT (ADR-0132 §6, REDRAWN IN ADR-0168 §2) ──────────────
+   A RING, not a teardrop, and THAT part is unchanged: the prominence ladder above
    expresses DEGREE and has no free axis left (hue = category, fill = commitment, grey
    = behind you, hollow = another day, ratio = subordinate, two amber box-shadows,
    selection's outline, a zoom-keyed dot). "Not ours yet" is a difference of KIND, so it
-   takes the one axis nothing else uses — silhouette.
+   takes the one axis nothing else uses — silhouette. No tip either, because a tip is a
+   claim about WHICH BUILDING and a result is a candidate.
 
-   No tip, because a tip is a claim about WHICH BUILDING and a result is a candidate; no
-   hue, because the mask does not buy place types (ADR-0115 §2) so there is nothing
-   honest to colour it by; a `＋`, because the only verb available on it is add.
+   WHAT CHANGED, AND WHY IT WAS NOT A MATTER OF TASTE. The first ring was a `--card` disc
+   with an `--ink` keyline and an `--ink` `＋` inside. `design/map-styles/waypoint-map-day.json`
+   paints Google's OWN points of interest `pinFillColor #c9ccd4` · `pinGlyphColor #4b5568` ·
+   `pinOutlineColor #ffffff` — the same three colours, redistributed. So our result mark read
+   as one more piece of BASEMAP FURNITURE, and no re-tuning of greys could have fixed that,
+   because the basemap owns the greys. It also explains the half of the report that looked
+   like a contradiction (_"in dark theme it's better"_): at night that POI pin is `#414b61`
+   on a `#191e2c` ground, so the ring did not improve — its competition got quieter.
+
+   THREE THINGS THE REDRAW DOES, each answering one of those:
+
+     • **The canvas's own marker grammar, inverted from the first pass.** A FILL, a `--card`
+       keyline at `.pin-b`'s own 0.06 ratio, and `.pin-b`'s own shadow — so it reads as an
+       object ON the map the way every pin does, rather than as a chip of app surface
+       dropped onto one.
+     • **Teal, which is neither a new hue nor a borrowed one.** ADR-0028 reserves teal for
+       location and nothing else, and the design language states the category palette is
+       "always pastel/muted, never amber or teal". Those two rules together are what make it
+       available here: a Google result is the one object on this canvas that is ONLY a
+       location — no day, no time, no commitment, and no category, because the mask does not
+       buy place types (ADR-0115 §2) — and teal is the one hue a category pin is forbidden
+       from ever reaching, so a sixth category cannot collide with it later. Nothing in
+       either basemap is teal (day greens #cfe0c9…#e4e9e1 over #b0c6d7 water, night
+       #1e271b…#1f301c over #08121d).
+     • **The `＋` goes, and the hole stays.** The glyph was not legible at 28px on a phone —
+       the reading ADR-0132's device pass owed — and it named the wrong gesture: tapping a
+       ring SELECTS it, and the add is a labelled control on the row that tap raises. The
+       core (`::after`) is what keeps the silhouette a ring rather than a disc, which is the
+       axis §6 spent.
 
    Sized off the same `--pin-base` as every pin, so it tracks the canvas the way
    ADR-0123 made everything else track it — and NOT through `--pin-u`, because it is not
@@ -472,46 +499,53 @@
    transform of ours), which is the truthful geometry for a place that is not in the
    trip yet. */
 .map-result {
-  width: calc(var(--pin-base, 34px) * 0.82);
-  height: calc(var(--pin-base, 34px) * 0.82);
+  width: calc(var(--pin-base, 34px) * 0.78);
+  height: calc(var(--pin-base, 34px) * 0.78);
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--card);
-  border: calc(var(--pin-base, 34px) * 0.06) solid var(--ink);
-  box-shadow: 0 2px 6px rgba(22, 35, 61, 0.24);
-  color: var(--ink);
-  font-size: calc(var(--pin-base, 34px) * 0.44);
-  font-weight: 700;
-  line-height: 1;
+  background: var(--teal);
+  border: calc(var(--pin-base, 34px) * 0.06) solid var(--card);
+  box-shadow: 0 2px 5px rgba(22, 35, 61, 0.34);
   cursor: pointer;
+}
+/* THE HOLE. `--on-fill` and not `--card`, because this ink sits on a fill that re-maps
+   across the midpoint — the same token a teal button's label takes (ADR-0158 §2). Getting
+   that wrong is invisible in light mode, where the two resolve to nearly the same white,
+   and wrong in dark. */
+.map-result::after {
+  content: '';
+  width: calc(var(--pin-base, 34px) * 0.2);
+  height: calc(var(--pin-base, 34px) * 0.2);
+  border-radius: 50%;
+  background: var(--on-fill);
 }
 /* Selection reuses the ladder's own outline grammar rather than inventing a second
    one — the ring is off the PROMINENCE ladder, not out of the design system.
 
    IT ALSO FILLS (owner, session 166 — _"the selected Google search result is not prominent
-   enough"_). A 2px outline on a hollow ring, over map tiles, at the ring's 82% of an
-   already-small pin, is the least visible selection on the canvas — and it marks the one
-   thing on screen the user is deciding about. So the ring INVERTS: an outline says "this
-   one" among things of one kind, a fill says "this is the one I am looking at", which is
-   what the badge on its row does in the same breath (`map.css`).
-
-   `--ink` rather than an accent, for the reason the resting ring has no hue: the mask does
-   not buy place types (ADR-0115 §2), so there is nothing honest to colour it by, and amber
-   / teal / plan are spent elsewhere (ADR-0028). It also goes to full `--pin-base`, i.e. the
-   ring drops the 0.82 subordination while it is the subject. */
+   enough"_), and ADR-0168 §2 had to restate what "fills" means now that the RESTING ring is
+   filled too: **the hole closes.** The mark goes solid, takes full `--pin-base` (dropping
+   the 0.78 subordination while it is the subject), and gains the `--card` halo — three
+   changes on three different axes, which is what makes it unmistakable without a fourth
+   colour. It deliberately KEEPS the hue: a selection that jumped to `--cta` was drawn in the
+   mockup and rejected there, because the selected mark then looked like a different kind of
+   object than its own resting state, and the heaviest thing on the canvas besides. */
 .map-result.selected {
   width: var(--pin-base, 34px);
   height: var(--pin-base, 34px);
-  /* `--card` here is the HALO that lifts the pin off the canvas, so it follows
-     the theme; the fill and its ink are the CTA pair and say so. Same token,
-     two jobs — the distinction ADR-0158 §1 exists to keep visible. */
+  /* `--card` here is the HALO that lifts the mark off the canvas, so it follows the
+     theme — the same job it does as the keyline above, one ring out. */
   outline: 2px solid var(--card);
   outline-offset: 2px;
-  background: var(--cta);
   border-color: var(--card);
-  color: var(--cta-text);
-  box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 45%, transparent);
+  box-shadow:
+    0 3px 10px color-mix(in srgb, var(--ink) 45%, transparent),
+    0 0 0 calc(var(--pin-base, 34px) * 0.11) color-mix(in srgb, var(--teal) 28%, transparent);
+}
+.map-result.selected::after {
+  width: 0;
+  height: 0;
 }
 
 .map-pin.aside {

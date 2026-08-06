@@ -2268,7 +2268,8 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       fireEvent.click(screen.getByRole('button', { name: t.common.cancel }));
       expect(verbs.removePlace).not.toHaveBeenCalled();
 
-      fireEvent.click(row('food')!);
+      // Cancelling leaves the row SELECTED, so the trash is still there — and tapping the
+      // row again would now close it rather than re-open it (ADR-0168 §4).
       fireEvent.click(trash()!);
       fireEvent.click(screen.getByRole('button', { name: t.map.del.confirm }));
       expect(verbs.removePlace).toHaveBeenCalledWith(expect.objectContaining({ id: 'food' }));

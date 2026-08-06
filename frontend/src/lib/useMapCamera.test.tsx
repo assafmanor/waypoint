@@ -782,3 +782,66 @@ describe('the one-finger zoom’s two camera verbs (ADR-0145 §5/§2)', () => {
     }).not.toThrow();
   });
 });
+
+// ADR-0168 §1. The decision itself is pure and tested in `map-camera.test.ts`; what is left
+// here is the imperative half — that a `pan` really keeps the zoom, that a `fit` really goes
+// through the padded probe path, and the one guard that cannot be expressed in the pure
+// function: nothing happens before the map has a view.
+//
+// **The view is set AFTER mount, deliberately**, and the first draft of this suite got it
+// wrong: mounting with bounds runs the OPENING framing, which fits `points` and leaves the
+// fake looking at Japan — so a result set in Italy read as off-canvas and every assertion
+// here was about the wrong view.
+describe('a settled result set moves the camera (ADR-0168 §1)', () => {
+  const MILAN = { lat: 45.464, lng: 9.19 };
+  const FLORENCE = { lat: 43.773, lng: 11.256 };
+  /** A map that has been framed once (so the opening fit is spent) and is now looking at
+   *  `view` at `zoom` — the state every search happens in. */
+  const looking = (view: MapBounds, zoom: number) => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const rendered = mount(map, DAY);
+    map.bounds = view;
+    map.zoom = zoom;
+    return { map, camera: rendered.result.current };
+  };
+
+  it('pans to an off-canvas result and does NOT touch the zoom', () => {
+    const { map, camera } = looking({ north: 45.8, south: 45.1, east: 9.6, west: 8.8 }, 13);
+    camera.showResults([FLORENCE]);
+    expect(map.center.lat).toBeCloseTo(FLORENCE.lat, 5);
+    expect(map.center.lng).toBeCloseTo(FLORENCE.lng, 5);
+    expect(map.zoom).toBe(13);
+  });
+
+  it('leaves the camera exactly where it is when the results are already on canvas', () => {
+    const { map, camera } = looking({ north: 46, south: 43, east: 12, west: 8 }, 8);
+    const before = { ...map.center };
+    const moves = map.moves.length;
+    camera.showResults([MILAN, FLORENCE]);
+    expect(map.center).toEqual(before);
+    expect(map.moves).toHaveLength(moves);
+  });
+
+  it('widens through the padded fit path, inheriting the controls-row inset and the cap', () => {
+    const { map, camera } = looking({ north: 45.5, south: 45.42, east: 9.24, west: 9.14 }, 17);
+    const fits = map.fits.length;
+    map.fitResultZoom = 19;
+    camera.showResults([MILAN, { lat: 45.9, lng: 9.6 }]);
+    expect(map.fits).toHaveLength(fits + 1);
+    expect(map.fits[fits].padding).toEqual(mapFitPadding(map.box.height));
+    // The shared cap, exactly as every other fit gets it.
+    expect(map.zoom).toBe(MAP_ZOOM.MAX_FIT);
+  });
+
+  // A map with no bounds has not rendered, so "is this already on screen" has no honest
+  // answer — and the opening framing owns that moment (the `idle` retry above).
+  it('does nothing at all before the map has a view', () => {
+    const map = new FakeMap();
+    const view = mount(map, DAY);
+    const moves = map.moves.length;
+    view.result.current.showResults([FLORENCE]);
+    expect(map.fits).toHaveLength(0);
+    expect(map.moves).toHaveLength(moves);
+  });
+});

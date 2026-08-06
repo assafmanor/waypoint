@@ -40,6 +40,7 @@ import {
   mapFitPadding,
   cameraFrame,
   focusBoundsFor,
+  searchCameraTarget,
   zoomStepIn,
   type CameraAt,
   type CameraTarget,
@@ -80,6 +81,10 @@ export interface MapCamera {
   /** Frame a place together with what is around it — the arrival, and the place card's
    *  way in to its own pin (ADR-0129 §1/§2). Returns whether it moved. */
   frameOn: (point: LatLng) => boolean;
+  /** **A settled set of search results arrived** (ADR-0168 §1) — pan to them, widen to
+   *  them, or leave the camera alone, per `searchCameraTarget`. In Google's relevance
+   *  order, which the too-scattered branch reads. */
+  showResults: (points: readonly LatLng[]) => void;
   /** **The one-finger drag zoom's write** (ADR-0145 §5). Instant and centre-anchored: the
    *  finger IS the animation, so there is nothing to ease — and it cancels any ease in
    *  flight rather than letting ADR-0129 §4's check merely notice it, because within one
@@ -395,6 +400,38 @@ export function useMapCamera(
   const frameOnRef = useRef(frameOn);
   frameOnRef.current = frameOn;
 
+  /**
+   * **A SETTLED RESULT SET MOVES THE CAMERA** (ADR-0168 §1), which is a narrow reversal of
+   * ADR-0131 §5 rather than a general one: typing still moves nothing, because this is
+   * called when a **response lands**, not when a key goes down.
+   *
+   * It reads the live view and goes through `searchCameraTarget`, so the decision — and
+   * every guard on it — is in the pure half where it can be tested (§13). A `fit` is handed
+   * to `apply` as an explicit `want`, which is right for two reasons: the containment
+   * question has already been answered (differently from `cameraTargetFor`'s), and a
+   * `want` inherits the controls-row inset, the card reserve, the `MAX_FIT` cap and the ease.
+   *
+   * **Nothing happens before the map has a view.** There is no honest answer to "is this
+   * already on screen" without one, and the opening framing owns that moment — the same
+   * reason the effect above waits for `idle`. `framed` is marked when we move, exactly as
+   * `reframe` does, so the opening fit cannot land a frame later and yank the camera off
+   * the answer the search just gave.
+   */
+  const showResults = useCallback(
+    (candidates: readonly LatLng[]) => {
+      if (!map) return;
+      const view = readMapBounds(map);
+      if (!view) return;
+      const target = searchCameraTarget(candidates, view);
+      if (target.kind === 'none') return;
+      // A pan keeps the zoom you are on — the same move a pin tap makes (ADR-0129 §1).
+      const moved =
+        target.kind === 'pan' ? moveTo(target.at, null) : apply(candidates, view, target.bounds);
+      if (moved) framed.current = true;
+    },
+    [map, moveTo, apply],
+  );
+
   const locate = useCallback(
     (point: LatLng) =>
       // The zoom the ease is HEADING for, when one is in flight — see `going`. A second
@@ -449,7 +486,7 @@ export function useMapCamera(
     [map, easeTo],
   );
 
-  return { reframe, focus, frameOn, locate, zoomTo, stepZoomIn };
+  return { reframe, focus, frameOn, showResults, locate, zoomTo, stepZoomIn };
 }
 
 /** The map's camera as our own shape, or `null` before it has one. */

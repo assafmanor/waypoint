@@ -9,6 +9,7 @@ import {
   fitPaddingFor,
   mapFitPadding,
   pointInBounds,
+  searchCameraTarget,
   zoomStepIn,
 } from './map-camera';
 import { pinHeightFor } from './map-pins';
@@ -18,6 +19,7 @@ import {
   MAP_FIT_INSET,
   MAP_FOCUS,
   MAP_PIN,
+  MAP_SEARCH_CAMERA,
   MAP_ZOOM,
 } from '../constants';
 
@@ -494,5 +496,102 @@ describe('one frame of a camera move (ADR-0129 §3)', () => {
     const to = { center: { lat: 0, lng: -170 }, zoom: 6 };
     const mid = cameraFrame(from, to, 0.5);
     expect(Math.abs(mid.center.lng)).toBeGreaterThan(175);
+  });
+});
+
+// ADR-0168 §1. ADR-0131 §5 kept the query out of the camera because "a chip is one discrete
+// act where a query is a stream", and the report is what that cost: at the map extreme a
+// result outside the view produced no sign that anything had been found at all. The stream is
+// keystrokes; a SETTLED response is discrete, so this is a narrow reversal of the rule and not
+// a general one.
+describe('the camera answers a settled result set (ADR-0168 §1)', () => {
+  const MILAN = { lat: 45.464, lng: 9.19 };
+  const FLORENCE = { lat: 43.773, lng: 11.256 };
+  const around = (at: { lat: number; lng: number }, span: number) => ({
+    north: at.lat + span,
+    south: at.lat - span,
+    east: at.lng + span,
+    west: at.lng - span,
+  });
+
+  it('does nothing at all when there are no results', () => {
+    expect(searchCameraTarget([], around(MILAN, 1))).toEqual({ kind: 'none' });
+  });
+
+  // THE ANTI-JITTER RULE, and the reason typing is not a headache: consecutive settled
+  // queries in one neighbourhood are all already on screen, so none of them moves anything.
+  it('does nothing when every result is already on the canvas', () => {
+    expect(searchCameraTarget([MILAN], around(MILAN, 0.5))).toEqual({ kind: 'none' });
+    expect(searchCameraTarget([MILAN, FLORENCE], around(MILAN, 5))).toEqual({ kind: 'none' });
+  });
+
+  // Deliberately NOT `boundsFillView`. A dwarfed set re-fits for a FILTER (ADR-0121 §7) —
+  // a deliberate act on a set you are curating — where a query being small in the frame is
+  // no reason to zoom in on it.
+  it('does not zoom in on a set that is merely small in the view', () => {
+    const view = around(MILAN, 5);
+    expect(searchCameraTarget([MILAN, { lat: 45.47, lng: 9.2 }], view)).toEqual({ kind: 'none' });
+  });
+
+  // The owner's "pan to the results if they're in a relatively small zone".
+  it('pans, keeping the zoom, when an off-screen set fits at the zoom you are on', () => {
+    // The camera is on Milan; the answer is Florence, two hours away and off the canvas.
+    const target = searchCameraTarget([FLORENCE], around(MILAN, 0.3));
+    expect(target.kind).toBe('pan');
+    if (target.kind !== 'pan') return;
+    expect(target.at.lat).toBeCloseTo(FLORENCE.lat, 5);
+    expect(target.at.lng).toBeCloseTo(FLORENCE.lng, 5);
+  });
+
+  it('centres a panned set between its members, not on the first one', () => {
+    const target = searchCameraTarget([MILAN, { lat: 45.664, lng: 9.39 }], around(FLORENCE, 0.4));
+    expect(target.kind).toBe('pan');
+    if (target.kind !== 'pan') return;
+    expect(target.at.lat).toBeCloseTo(45.564, 3);
+  });
+
+  // The owner's "when the results are too spread out maybe we should zoom out and pan".
+  it('widens to the whole set when it is bigger than the view but still one area', () => {
+    const target = searchCameraTarget([MILAN, { lat: 45.9, lng: 9.6 }], around(MILAN, 0.1));
+    expect(target).toEqual({
+      kind: 'fit',
+      bounds: boundsOfPoints([MILAN, { lat: 45.9, lng: 9.6 }]),
+    });
+  });
+
+  // …and the limit of that, which is what stops `דואומו` from answering with a country.
+  // Milan · Florence · Siena · Pisa span most of Italy: fitting them all is four specks.
+  it('frames the top-ranked result among its own cluster when the set is too scattered', () => {
+    const scattered = [MILAN, FLORENCE, { lat: 43.318, lng: 11.331 }, { lat: 43.723, lng: 10.396 }];
+    const target = searchCameraTarget(scattered, around(MILAN, 0.05));
+    expect(target).toEqual({ kind: 'fit', bounds: focusBoundsFor(MILAN, scattered) });
+    if (target.kind !== 'fit') return;
+    // A frame around ONE place, not around Italy — which is the whole point of the branch.
+    expect(target.bounds.north - target.bounds.south).toBeLessThan(
+      MAP_SEARCH_CAMERA.SPREAD_CAP_DEG,
+    );
+  });
+
+  it('frames the set outright when there is no view yet — nothing to preserve', () => {
+    expect(searchCameraTarget([MILAN, FLORENCE], null)).toEqual({
+      kind: 'fit',
+      bounds: boundsOfPoints([MILAN, FLORENCE]),
+    });
+  });
+
+  // A set straddling the antimeridian never reaches the PAN branch, and that is structural
+  // rather than lucky: `boundsOfPoints` compares longitudes plainly (ADR-0121 §14), so its
+  // extent spans ~358° and cannot be 0.8 of any view. The scatter cap then catches it, which
+  // is a better answer than either a world-wide fit or a sweep the long way round — so this
+  // asserts the fall-through rather than a guard that would be unreachable code.
+  it('never pans the long way round: a set straddling ±180° falls to the scatter branch', () => {
+    const straddling = [
+      { lat: 0, lng: 179 },
+      { lat: 0, lng: -179 },
+    ];
+    const target = searchCameraTarget(straddling, around({ lat: 0, lng: 100 }, 1));
+    expect(target).toEqual({ kind: 'fit', bounds: focusBoundsFor(straddling[0], straddling) });
+    if (target.kind !== 'fit') return;
+    expect(target.bounds.east - target.bounds.west).toBeLessThan(1);
   });
 });
