@@ -272,45 +272,38 @@ export function panShiftForReserve(bottomReservePx: number, topInsetPx: number):
 }
 
 /**
- * **How far to move the camera so a place already on the canvas is not UNDER the card** — signed
- * px (positive: the centre goes south, so the place rides up), `0` when it is already clear.
+ * **Where the selected place should be sitting, and how far it is from there** — signed px of
+ * canvas (positive: the centre goes south, so the place rides up), `0` when it is close enough
+ * already.
  *
- * The twin of `panShiftForReserve` above, and the difference is the whole point. That one serves a
- * **pan**, which re-centres, so it can put the place in the middle of the visible band and be
- * done. This one serves the case where **nothing re-centres**: the card appears, or grows, over a
- * selection that was made earlier — switching the sheet from `רשימה` to the map extreme with a
- * place already chosen, an enrichment landing under the identity row, a note list arriving. The
- * selection did not change, so `MapPane`'s focus effect does not fire, and ADR-0122 §7's "a pin
- * tap moves nothing" leaves the place under the card that is describing it (owner, 2026-08-06:
- * _"the card for נמל התעופה בן גוריון completely covers the pin"_).
+ * **This started life as a one-way nudge and that was half a rule** (2026-08-06, owner, on the
+ * shipped nudge: _"now the issue is the other way around: when switching from full map (with a
+ * card open) to half map half list, the pin is not centered anymore"_). Lifting a covered place
+ * to the card's edge is right while the card is there; when the card LEAVES and the pane shrinks,
+ * that same offset is a place sitting low in a canvas with nothing in it. A rule that only ever
+ * pushes one way cannot put anything back.
  *
- * **So it is a NUDGE, not a centring**, and that is what keeps it compatible with §7 rather than a
- * reversal of it: a place already inside the band moves nothing at all, and one outside moves by
- * the smallest amount that brings it back. §7's rule is that a tap must not take away the surface
- * it was made on — covering the tapped pin is that failure, not the cure for it.
+ * So the target is the **centre of the band you can see**, and it is `panShiftForReserve`'s own
+ * arithmetic rather than a second opinion about where that is: `H/2 − shift`. One consequence
+ * worth stating, because it is what makes the whole thing coherent — **the pan and this now agree
+ * by construction.** A pan puts a new selection at the band's centre; this keeps it there as the
+ * band changes underneath it. With no card the shift is 0 and the target is the canvas's own
+ * centre, which is exactly where a pan with no card lands.
  *
- * The band runs from `topInsetPx` (the floating controls row plus a pin's own upward reach, which
- * is `mapFitPadding`'s own `top` passed in so the two cannot disagree) to `canvasH −
- * bottomReservePx`. `marginPx` keeps the place off the exact edge of the card it just cleared.
- *
- * **`0` when the band is not big enough to hold anything**, which is a real state and not a
- * degenerate one: a tall form on a short canvas can leave nothing to aim at, and shuffling the
- * place between two occupants it cannot clear is worse than leaving it where the user last saw it.
+ * `tolerancePx` is what keeps it from being a second camera driver: a band that moved by a few
+ * pixels owes nothing, so the common re-render is a projection read and no write at all.
  */
-export function nudgeToClear(
+export function recentreInBand(
   pointY: number,
   canvasH: number,
   bottomReservePx: number,
   topInsetPx: number,
-  marginPx: number,
+  tolerancePx: number,
 ): number {
-  if (bottomReservePx <= 0) return 0;
-  const top = topInsetPx + marginPx;
-  const bottom = canvasH - bottomReservePx - marginPx;
-  if (bottom <= top) return 0;
-  if (pointY > bottom) return Math.round(pointY - bottom);
-  if (pointY < top) return Math.round(pointY - top);
-  return 0;
+  if (canvasH <= 0) return 0;
+  const target = canvasH / 2 - panShiftForReserve(bottomReservePx, topInsetPx);
+  const dy = Math.round(pointY - target);
+  return Math.abs(dy) <= tolerancePx ? 0 : dy;
 }
 
 /**

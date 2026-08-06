@@ -684,7 +684,7 @@ describe('focus and re-centre', () => {
     // The pan above answers a NEW selection. This answers the CARD changing — a sheet-stop
     // switch with a place already chosen, an enrichment growing an open card — where nothing
     // re-centres and the place stays under the card describing it.
-    describe('reveal — the nudge for a card that arrives over a chosen place', () => {
+    describe('keepCentred — the band changes under a selection that did not', () => {
       /** Put `at` under the card by centring the map far enough north of it. */
       const revealFrom = (centre: LatLng, reserve: number) => {
         const map = new FakeMap();
@@ -700,7 +700,7 @@ describe('focus and re-centre', () => {
         map.center = centre;
         const before = { ...map.center };
         const movesBefore = map.moves.length;
-        view.result.current.reveal(TOKYO);
+        view.result.current.keepCentred(TOKYO);
         return { map, before, moved: map.moves.length - movesBefore };
       };
 
@@ -712,9 +712,40 @@ describe('focus and re-centre', () => {
         expect(moved).toBe(0);
       });
 
-      it('moves nothing when there is no card at all', () => {
-        const { map, before } = revealFrom({ lat: TOKYO.lat + 0.02, lng: TOKYO.lng }, 0);
+      it('moves nothing when the place is already centred and no card is up', () => {
+        const { map, before } = revealFrom(TOKYO, 0);
         expect(map.center).toEqual(before);
+      });
+
+      // **THE STALE-TARGET CASE** (owner: _"when changing from half to full map it does work but
+      // the map is sitting lower than it would if it was panning from a full map"_). The pane
+      // resizes before the card renders, so the first run aims at the bare canvas centre; the
+      // card then lands and the effect re-runs. Standing down for the ease in flight — which the
+      // first build did — left the wrong aim in place. Measuring against the DESTINATION lets the
+      // correction land.
+      it('re-targets a move already in flight when the reserve arrives late', () => {
+        const map = new FakeMap();
+        map.bounds = WORLD;
+        map.zoom = 14;
+        map.box = { width: 390, height: 545 };
+        let reserve = 0;
+        const view = mount(map, DAY);
+        view.rerender({
+          map,
+          pts: DAY,
+          signal: 'day',
+          arrival: null,
+          bottomReserve: () => reserve,
+        });
+        map.center = TOKYO;
+        // Run 1: the card is not in the DOM yet, so it aims at the bare canvas centre.
+        view.result.current.keepCentred(TOKYO);
+        const aimedLow = { ...map.center };
+        // Run 2: the card has landed. This must still be able to correct.
+        reserve = 200;
+        view.result.current.keepCentred(TOKYO);
+        expect(map.center.lat).not.toBeCloseTo(aimedLow.lat, 9);
+        expect(map.center.lat).toBeLessThan(aimedLow.lat);
       });
 
       // Centred well north of Tokyo, Tokyo sits low on the canvas — under a tall card.
@@ -725,6 +756,33 @@ describe('focus and re-centre', () => {
         expect(map.center.lat).toBeLessThan(before.lat);
         // A NUDGE, not a centring — it must not land on the place the way `focus` does.
         expect(map.center.lat).not.toBeCloseTo(TOKYO.lat, 9);
+      });
+
+      // **THE MIRROR, and the case the shipped one-way nudge could not answer** (owner:
+      // _"switching from full map (with a card open) to half map half list, the pin is not
+      // centered anymore"_). Lifted clear of a card, then the card leaves: the place is now low
+      // in a canvas with nothing in it, and only a rule that can push DOWN puts it back.
+      it('brings the place back down when the card leaves', () => {
+        const map = new FakeMap();
+        map.bounds = WORLD;
+        map.zoom = 14;
+        map.box = { width: 390, height: 545 };
+        const view = mount(map, DAY);
+        view.rerender({ map, pts: DAY, signal: 'day', arrival: null, bottomReserve: 200 });
+        // Lifted clear of the card, which is where the previous case leaves it.
+        map.center = TOKYO;
+        view.result.current.keepCentred(TOKYO);
+        const lifted = { ...map.center };
+        expect(lifted.lat).not.toBeCloseTo(TOKYO.lat, 9);
+
+        // The card goes and the pane shrinks — the sheet rising to `half`.
+        view.rerender({ map, pts: DAY, signal: 'day', arrival: null, bottomReserve: 0 });
+        map.box = { width: 390, height: 320 };
+        view.result.current.keepCentred(TOKYO);
+        // Back on the place: with no card the band's centre IS the canvas's.
+        expect(map.center.lat).toBeCloseTo(TOKYO.lat, 6);
+        // …and it got there by moving the OTHER way, which is the whole point.
+        expect(map.center.lat).toBeGreaterThan(lifted.lat);
       });
 
       it('is purely vertical — a card spans the width, so nothing is cleared sideways', () => {

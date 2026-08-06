@@ -8,7 +8,7 @@ import {
   countPointsInBounds,
   fitPaddingFor,
   mapFitPadding,
-  nudgeToClear,
+  recentreInBand,
   panShiftForReserve,
   pointInBounds,
   searchCameraTarget,
@@ -648,54 +648,66 @@ describe('the pan clears the card (ADR-0128 §2)', () => {
   });
 });
 
-// ADR-0122 §7's 2026-08-06 amendment. The pan above answers a NEW selection; this answers the CARD
-// changing over a selection already made — a sheet-stop change that raises it, an enrichment that
-// grows it — where nothing re-centres and the place stays under the card describing it.
-describe('the nudge brings a covered place back out (ADR-0122 §7)', () => {
+// ADR-0122 §7's 2026-08-06 amendment. The pan above answers a NEW selection; this answers the
+// BAND changing under a selection already made — a card raised by a sheet-stop change, an
+// enrichment growing an open card, and the mirror the first build missed: the card LEAVING while
+// the pane shrinks around it.
+describe('the selected place stays in the middle of what you can see (ADR-0122 §7)', () => {
   const CANVAS = 545;
   const TOP = mapFitPadding(CANVAS).top;
   const RESERVE = MAP_CARD_RESERVE_H;
-  const GAP = MAP_FLOAT_GAP;
-  const at = (y: number) => nudgeToClear(y, CANVAS, RESERVE, TOP, GAP);
+  const TOL = MAP_FLOAT_GAP;
+  /** Where a place SHOULD sit for a given band — the pan's own target, which is the point. */
+  const targetY = (canvasH: number, reserve: number) =>
+    canvasH / 2 - panShiftForReserve(reserve, mapFitPadding(canvasH).top);
 
-  // THE WHOLE COMPATIBILITY ARGUMENT WITH §7: a place already visible moves NOTHING, which is what
-  // lets this run on every card change instead of only on a selection.
-  it('is zero for a place already inside the band', () => {
-    expect(at((TOP + CANVAS - RESERVE) / 2)).toBe(0);
-    expect(at(TOP + GAP)).toBe(0);
-    expect(at(CANVAS - RESERVE - GAP)).toBe(0);
+  it('owes nothing when the place is already at the band centre', () => {
+    expect(recentreInBand(targetY(CANVAS, RESERVE), CANVAS, RESERVE, TOP, TOL)).toBe(0);
   });
 
-  it('is zero with no card at all, whatever the point is doing', () => {
-    expect(nudgeToClear(CANVAS - 4, CANVAS, 0, TOP, GAP)).toBe(0);
+  // The tolerance is what stops this being a second camera driver: an ordinary re-render must
+  // not become a move.
+  it('owes nothing for a band that moved a pixel or two', () => {
+    expect(recentreInBand(targetY(CANVAS, RESERVE) + TOL, CANVAS, RESERVE, TOP, TOL)).toBe(0);
   });
 
-  // Under the card: the smallest move that clears it, and no more — the place lands ON the band's
-  // bottom edge rather than being re-centred, which is what makes this a nudge.
-  it('lifts a covered place to the card edge and stops there', () => {
-    const covered = CANVAS - RESERVE + 60;
-    const dy = at(covered);
+  // **THE FIRST REPORT.** A card raised over a place that was centred leaves it under the card.
+  it('lifts a place the card came up over', () => {
+    const wasCentred = CANVAS / 2;
+    const dy = recentreInBand(wasCentred, CANVAS, RESERVE, TOP, TOL);
     expect(dy).toBeGreaterThan(0);
-    expect(covered - dy).toBe(CANVAS - RESERVE - GAP);
+    expect(wasCentred - dy).toBeCloseTo(targetY(CANVAS, RESERVE), 0);
   });
 
-  // The other edge, and it is not symmetric decoration: `mapFitPadding`'s top already carries the
-  // controls row AND a pin's own upward reach, so a place above it has its teardrop cut off.
-  it('drops a place hiding under the controls row, by the same minimum', () => {
-    const dy = at(TOP - 30);
+  // **THE SECOND REPORT, and the case a one-way nudge could not answer** (owner: _"switching
+  // from full map (with a card open) to half map half list, the pin is not centered anymore"_).
+  // The place was lifted clear of a card at the `map` stop; the sheet rises, the card goes and
+  // the pane shrinks — Google keeps the centre, so the place keeps its pixel offset and now sits
+  // low in a canvas with nothing in it. A rule that only ever pushes UP cannot put it back.
+  it('brings a place back DOWN when the card leaves and the pane shrinks', () => {
+    // Where it sat at the map stop: lifted clear of the card.
+    const liftedY = targetY(CANVAS, RESERVE);
+    // The offset from the centre survives the resize; the canvas does not.
+    const half = 320;
+    const offsetFromCentre = liftedY - CANVAS / 2;
+    const nowAt = half / 2 + offsetFromCentre;
+    const dy = recentreInBand(nowAt, half, 0, mapFitPadding(half).top, TOL);
+    // NEGATIVE — the correction is downward, which the shipped nudge could never return.
     expect(dy).toBeLessThan(0);
-    expect(TOP - 30 - dy).toBe(TOP + GAP);
+    expect(nowAt - dy).toBeCloseTo(half / 2, 0);
   });
 
-  // A tall form on a short canvas can leave no band at all. Shuffling the place between two
-  // occupants it cannot clear is worse than leaving it where the user last saw it.
-  it('does nothing when the band cannot hold anything', () => {
-    expect(nudgeToClear(300, 372, 372 - mapFitPadding(372).top, mapFitPadding(372).top, GAP)).toBe(
-      0,
-    );
+  // With no card the target IS the canvas centre, which is exactly where a pan with no card
+  // lands — the two agreeing by construction is what makes one rule out of two.
+  it('agrees with the pan: no card means the canvas centre', () => {
+    expect(recentreInBand(CANVAS / 2, CANVAS, 0, TOP, TOL)).toBe(0);
+  });
+
+  it('does nothing for an unsized canvas rather than aiming at nothing', () => {
+    expect(recentreInBand(100, 0, RESERVE, TOP, TOL)).toBe(0);
   });
 
   it('rounds to whole pixels, like its twin', () => {
-    expect(Number.isInteger(at(CANVAS - RESERVE + 17.4))).toBe(true);
+    expect(Number.isInteger(recentreInBand(CANVAS - 17.4, CANVAS, RESERVE, TOP, TOL))).toBe(true);
   });
 });

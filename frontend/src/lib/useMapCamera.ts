@@ -40,7 +40,7 @@ import {
   mapFitPadding,
   cameraFrame,
   focusBoundsFor,
-  nudgeToClear,
+  recentreInBand,
   panShiftForReserve,
   searchCameraTarget,
   zoomStepIn,
@@ -84,10 +84,11 @@ export interface MapCamera {
   /** Frame a place together with what is around it — the arrival, and the place card's
    *  way in to its own pin (ADR-0129 §1/§2). Returns whether it moved. */
   frameOn: (point: LatLng) => boolean;
-  /** **Bring `point` out from under the card, by the smallest move that does it** (ADR-0122
-   *  §7's 2026-08-06 amendment). Not a pan: a place already visible moves nothing, which is
-   *  what lets this run whenever the CARD changes rather than only when the selection does. */
-  reveal: (point: LatLng) => void;
+  /** **Keep `point` in the middle of what you can actually SEE, as that changes underneath it**
+   *  (ADR-0122 §7's 2026-08-06 amendment). The same target `focus` pans a new selection to —
+   *  so the two agree by construction — re-applied when the CARD or the CANVAS changes rather
+   *  than when the selection does. Within tolerance it moves nothing. */
+  keepCentred: (point: LatLng) => void;
   /** **A settled set of search results arrived** (ADR-0168 §1) — pan to them, widen to
    *  them, or leave the camera alone, per `searchCameraTarget`. In Google's relevance
    *  order, which the too-scattered branch reads. */
@@ -304,40 +305,60 @@ export function useMapCamera(
   );
 
   /**
-   * **THE CARD CAME UP OVER A PLACE THAT WAS ALREADY CHOSEN** (ADR-0122 §7's 2026-08-06
-   * amendment). `focus` above answers a NEW selection and re-centres; this answers the card
-   * itself changing — raised by a sheet-stop change with a place already selected, or grown by
-   * an enrichment or a note list landing in it — where no selection changed and so nothing
-   * fires. That is the state the owner reported: the card describing נמל התעופה בן גוריון,
-   * sitting on top of its own pin.
+   * **THE BAND CHANGED UNDER A PLACE THAT WAS ALREADY CHOSEN** (ADR-0122 §7's 2026-08-06
+   * amendment, both halves of it). `focus` above answers a NEW selection and pans to the centre
+   * of the visible band; this re-applies that same target when the band itself moves and no
+   * selection did — which is the whole set of cases nothing else covers:
+   *
+   *  - a card RAISED over a place chosen earlier (a sheet-stop change, an arriving enrichment),
+   *    which put the card on top of its own pin;
+   *  - and the mirror, which the first build of this missed by only ever pushing one way: the
+   *    card LEAVING and the pane shrinking, where the offset that had lifted the place clear is
+   *    now just a place sitting low in an empty canvas (owner: _"switching from full map … to
+   *    half map half list, the pin is not centered anymore"_).
    *
    * Three things keep it from becoming a second camera driver fighting the first:
    *
-   *  - **It moves the minimum, or nothing.** `nudgeToClear` answers 0 for a place inside the
-   *    band, so the common case is a projection round trip and no write at all.
+   *  - **A band that moved by a few pixels owes nothing.** `recentreInBand`'s tolerance makes
+   *    the common re-render a projection read and no write.
    *  - **It stands down while a move is in flight.** An ease in progress is already going
-   *    somewhere chosen with the reserve in hand (`moveTo` runs `clearOfCard`), so nudging
-   *    against an interpolated camera would fight a decision that has already been made.
-   *  - **It reads the reserve through the same ref** everything else here does, so it sees the
-   *    card that is up NOW rather than the one that was up when its effect was scheduled.
+   *    somewhere chosen with the reserve in hand (`moveTo` runs `clearOfCard`), so correcting
+   *    against an interpolated camera would fight a decision already made.
+   *  - **It reads the reserve through the same getter** `moveTo` does, so the two halves cannot
+   *    disagree about how big the card is.
    */
-  const reveal = useCallback(
+  const keepCentred = useCallback(
     (point: LatLng) => {
-      if (!map || going.current) return;
-      const zoom = map.getZoom();
-      const centre = map.getCenter();
-      if (zoom == null || !centre) return;
-      // A LITERAL, like every other projection call in this file: `getCenter()` hands back a
-      // `google.maps.LatLng`, whose `lat`/`lng` are METHODS, and reading them as numbers
-      // yields `NaN` all the way to a nudge of 0 — a silent no-op, not a throw.
-      const at = { lat: centre.lat(), lng: centre.lng() };
+      if (!map) return;
+      // **AGAINST WHERE THE CAMERA IS GOING, not where it happens to be mid-ease.** The first
+      // build stood down while a move was in flight, on the reasonable-sounding argument that
+      // the move had already chosen its destination with the reserve in hand. That guard turned
+      // out to block this function's own correction, which is the one thing it must never do
+      // (owner, on the shipped version: _"when changing from half to full map it does work but
+      // the map is sitting lower than it would if it was panning from a full map"_). The
+      // sequence: the pane resizes, this runs BEFORE the card has rendered, so `reserveNow()` is
+      // 0 and it aims at the bare canvas centre — lower than the band centre. Then the card
+      // lands, the effect re-runs with the right reserve, and the guard sent it home.
+      //
+      // Reading the DESTINATION instead is strictly better on both counts: it cannot fight an
+      // eased move (it measures against that move's own target, so a correct one computes a
+      // delta of 0 and writes nothing), and it CAN correct a stale one. `easeTo` cancels the
+      // frame in flight, so re-targeting is one ease replacing another rather than two drivers.
+      const going_ = going.current;
+      const zoom = going_?.zoom ?? map.getZoom();
+      // A LITERAL either way, like every other projection call in this file: `getCenter()` hands
+      // back a `google.maps.LatLng`, whose `lat`/`lng` are METHODS, and reading those as numbers
+      // yields `NaN` all the way to a shift of 0 — a silent no-op rather than a throw.
+      const live = map.getCenter();
+      const at = going_?.center ?? (live ? { lat: live.lat(), lng: live.lng() } : null);
+      if (zoom == null || !at) return;
       const projection = map.getProjection();
       const centreWorld = projection?.fromLatLngToPoint(at);
       const pointWorld = projection?.fromLatLngToPoint(point);
       if (!centreWorld || !pointWorld) return;
       const canvas = map.getDiv().getBoundingClientRect().height;
       const { y } = offsetPxOfWorldPoint(centreWorld, pointWorld, zoom);
-      const dy = nudgeToClear(
+      const dy = recentreInBand(
         canvas / 2 + y,
         canvas,
         reserveNow(),
@@ -594,7 +615,7 @@ export function useMapCamera(
     [map, easeTo],
   );
 
-  return { reframe, focus, frameOn, reveal, showResults, locate, zoomTo, stepZoomIn };
+  return { reframe, focus, frameOn, keepCentred, showResults, locate, zoomTo, stepZoomIn };
 }
 
 /** The map's camera as our own shape, or `null` before it has one. */

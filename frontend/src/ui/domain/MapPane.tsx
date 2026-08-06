@@ -11,7 +11,7 @@
 // PRIMITIVES, keyed by `placeId`, so the screen's per-second clock tick reconciles
 // to a no-op diff. That is the marker-level restatement of §4, and the reason
 // `memo` below is load-bearing rather than an optimisation.
-import { memo, useCallback, useEffect, useMemo, useRef, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { APIProvider, AdvancedMarker, Map, Polyline, useMap } from '@vis.gl/react-google-maps';
 import {
   isAsidePin,
@@ -25,6 +25,7 @@ import {
 } from '../../lib/map-pins';
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
+import { observeResize } from '../../lib/observe-resize';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
 import { MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
@@ -807,7 +808,7 @@ function MapCameraControls({
     reframe,
     showResults,
     locate: locateCamera,
-    reveal,
+    keepCentred,
     zoomTo,
     stepZoomIn,
   } = useMapCamera(map, {
@@ -845,21 +846,33 @@ function MapCameraControls({
     if (selectedId && focusRef.current) focus(focusRef.current);
   }, [selectedId, focus]);
 
-  // **AND WHEN THE CARD ITSELF CHANGES, not the selection** (ADR-0122 §7's 2026-08-06
-  // amendment; owner: _"the card for נמל התעופה בן גוריון completely covers the pin"_). The
-  // effect above is keyed on the selection **on purpose** — a re-render must never re-move the
-  // camera — and that is exactly the hole: the card can come up, or grow, over a place chosen
-  // some time ago. Switching the sheet to the map extreme with a place already selected raises
-  // a card and changes no selection; an enrichment or a note list landing in an open card makes
-  // it taller under a pin that was clear a moment before.
+  // **AND WHEN THE BAND CHANGES UNDER A SELECTION THAT DID NOT** (ADR-0122 §7's 2026-08-06
+  // amendment; owner: _"the card … completely covers the pin"_, then _"switching from full map
+  // … to half map half list, the pin is not centered anymore"_). The effect above is keyed on
+  // the selection **on purpose** — a re-render must never re-move the camera — which leaves the
+  // whole class of changes that are not selections: a card raised over a place chosen earlier,
+  // an enrichment growing an open one, and the card LEAVING while the pane shrinks around it.
   //
-  // So this is keyed on the RESERVE, which is the one number that says how much of the canvas
-  // the card is taking. `reveal` moves the minimum or nothing, so the added key cannot make a
-  // re-render move the camera: with the place already in the band it is a projection read and
-  // no write.
+  // So it is keyed on the two numbers that define the visible band: what the card takes, and how
+  // tall the canvas is. The height is **observed rather than derived from the sheet's stop** —
+  // the pane's own box is the fact the camera measures against, and reading it directly means a
+  // stop this component knows nothing about cannot desynchronise the two.
+  //
+  // `keepCentred` is within tolerance for a band that barely moved, so the added keys cannot turn
+  // an ordinary re-render into a camera move — and it measures against the move it may already
+  // have started, so the two keys landing in SEPARATE commits (the pane resizes, then the card
+  // renders and is measured) correct each other instead of the first one winning.
+  const [canvasH, setCanvasH] = useState(0);
+  useEffect(
+    () =>
+      observeResize(paneRef.current, () =>
+        setCanvasH(Math.round(paneRef.current?.getBoundingClientRect().height ?? 0)),
+      ),
+    [paneRef],
+  );
   useEffect(() => {
-    if (selectedId && focusRef.current) reveal(focusRef.current);
-  }, [selectedId, cardReserve, reveal]);
+    if (selectedId && focusRef.current) keepCentred(focusRef.current);
+  }, [selectedId, cardReserve, canvasH, keepCentred]);
 
   // **AND A SETTLED RESULT SET GETS THE SAME TREATMENT** (ADR-0168 §1): at the map extreme
   // a result outside the view left the tab looking like nothing had been found, because the
