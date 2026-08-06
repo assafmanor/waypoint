@@ -50,18 +50,35 @@ a small lie the reader cannot see. Both invite surfaces (`CreateTrip`'s birth sc
 `TripSettings`) go through it, replacing the `${window.location.origin}${path}` each had
 grown separately.
 
-**Only the scheme comes off, and the `www.` deliberately does not.** Dropping `https://`
+**Only the scheme comes off** (the `www.` too, as of the amendment below). Dropping `https://`
 is free here: `.app` is an HSTS-preloaded TLD, so a scheme-less link to this app cannot be
 downgraded to http — the browser upgrades it before the first request — and the chat apps
 an invite is actually pasted into linkify a bare host + path.
 
-That is also why this is **not** `prettyUrl` (`lib/external-url.ts`), which strips `www.`
-happily and which the first cut of this reused. `prettyUrl` labels a link that has a
-working `href` behind it, so it is allowed to abbreviate; an invite has nothing behind it —
-it **is** the href, pasted into another app — so it may only drop what cannot change where
-it goes. A `www.` edited out while `www` is the canonical host is a dead link in somebody's
-group chat. It disappears when the app **moves** to the apex (§1), not before: the string
-is short because the host is, which is the only version of short that stays true.
+That is also why this is **not** `prettyUrl` (`lib/external-url.ts`), which also strips
+tracking params and trailing slashes and which the first cut of this reused. `prettyUrl`
+labels a link that has a working `href` behind it, so it is allowed to take liberties; an
+invite has nothing behind it — it **is** the href, pasted into another app — so it takes
+exactly the two below.
+
+**Amended 2026-08-06, same day: the `www.` comes off too** (owner, on seeing
+`www.travelive.app/join/ay9Lf9WM` in the invite box). This section originally kept it, on
+the grounds that a `www.` edited out while `www` is the canonical host would be a dead link
+in somebody's group chat. That was true when written and stopped being true once **both**
+of these held: the apex resolves to the service (Cloudflare flattens the apex `CNAME` onto
+Railway — §5), and **§2 redirects any host this service answers on to the canonical one with
+the path intact**. Together those mean `travelive.app/join/<code>` arrives wherever the app
+actually lives, under either canonical host — so the short form cannot strand anyone, and the
+argument for keeping the `www.` had already been dissolved by §2 before anyone noticed.
+
+The residual risk is named rather than waved off: a browser holding a **cached 301** from
+when the apex was a GoDaddy parked page opens the lander regardless of what we write. It is
+per-device, shrinking, and does not apply to the people invites are sent to, who have
+typically never visited the domain at all.
+
+The better fix is still §1 — set `FRONTEND_URL` to the apex and the link is short by
+construction, with no string surgery at all. This strip is what makes the link read right
+while the canonical host is still `www.`, and it becomes a no-op the day that changes.
 
 ### 5. Which name can be canonical is DNS's call, and it is not free
 
