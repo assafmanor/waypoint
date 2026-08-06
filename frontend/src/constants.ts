@@ -15,6 +15,15 @@ export const MS_PER_DAY = 86_400_000;
  *  every second — a memo keyed on this rebuilds 60 times an hour instead of 3,600. */
 export const MS_PER_MINUTE = 60_000;
 
+/** How many frames `showRowInList` will wait for a row that is not in the DOM yet
+ *  (2026-08-06). One frame is enough when the row is already rendered, and it is not when the
+ *  same gesture WIDENED the list to find it: an arrival from another day calls `setAllDays`
+ *  and the scroll, and whether React has committed the wider list by the next frame is a race
+ *  — which is exactly the "sometimes it doesn't land there" that was reported. Bounded rather
+ *  than open-ended, because a row that never appears (filtered out, deleted) must cost a
+ *  handful of no-op frames and then stop. */
+export const ROW_SCROLL_WAIT_FRAMES = 10;
+
 /** Where the API lives. Empty in production, where the app is served same-origin, so
  *  every consumer must treat it as a prefix rather than a base to `new URL()` against.
  *
