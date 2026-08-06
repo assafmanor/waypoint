@@ -1490,12 +1490,30 @@
 }
 .map-refs {
   flex-basis: 100%;
+  /* **AND IT MUST BE ALLOWED TO SHRINK** (owner, 2026-08-05: _"long titles push outside the
+     border … it pushes even for lines that aren't too long"_). `flex-basis: 100%` sets the
+     block's PREFERRED width; `min-width: auto` sets a floor under it, and that floor is the
+     block's min-content — which here is not small. `.map-ref-label` is `nowrap`, so its
+     min-content is the WHOLE title; it sits inside `.map-ref-open`, which is `flex: 1` with a
+     `0` basis, and flexbox's intrinsic sizing (§9.9.1) scales a flexible item's min-content
+     contribution by the flex fraction. So one long label made the block ~490px inside a 340px
+     card, every `.map-ref` is `width: 100%` OF THAT, and the settle pair on rows whose own
+     label was short went off the screen edge with it. Measured at 390px: the block sat at
+     x −126 → 365 and `היינו`/`דילגנו` at −118 → −50.
+     This is the declaration that lets the ellipsis do its job instead of the ancestor. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
+}
+.map-reflist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 /* THE ROW IS A CONTAINER (ADR-0139 §3), where it used to BE the button. The settle pair has
    to be a real control beside the open one and buttons do not nest, so the open affordance
@@ -1508,8 +1526,10 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 7px 8px;
-  min-height: 40px;
+  padding: 6px 8px;
+  /* Two lines now, so the row clears ADR-0017's 44px floor by being what it is rather than
+     by a `min-height` propping up a 40px box. */
+  min-height: 44px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
@@ -1529,6 +1549,30 @@
   font: inherit;
   text-align: start;
   cursor: pointer;
+}
+/* **WHAT IT IS, THEN WHAT KIND AND WHEN** — the row's own two-line grammar (`.map-t` over
+   `.map-m`) at reference scale, and the reason it is worth ~6px of height: the kind word used
+   to sit BESIDE the label and take width from it on the one line that truncates. ADR-0139's
+   Consequences measured that label wanting 199px against 146 available; moving the kind down
+   is where the difference comes from. It also gives a trip-wide block the one fact it never
+   had — which day each reference is on — without a fourth thing on the first line. */
+.map-ref-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.map-ref-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 /* ── SETTLING AN EVENT FROM HERE (ADR-0139) ───────────────────────────────────────
@@ -1553,7 +1597,23 @@
 /* The cluster itself is the shared control's `compact` density (`ui/domain/settle-control.css`),
    which is where its 32×32 geometry, its hold-the-hues-until-touched rule and its settled tag
    now live. What stays here is the ROW's half of the design: the amber wash above, which is what
-   does the asking so the buttons don't have to. */
+   does the asking so the buttons don't have to — and the SLOT the cluster sits in, below.
+
+   **THE SLOT IS SIZED FOR THE WIDEST STATE, NOT THE CURRENT ONE** (owner, 2026-08-05: _"make
+   sure that you save enough space for the דלג as well as the היינו"_). The compact cluster is
+   three different widths — measured at 390px: the unsettled ✓/✕ pair **68px**, `היינו` + undo
+   **76px**, `דילגנו` + undo **84px**, because the settled state swaps a 32px button for a WORD
+   and `דילגנו` is the longer of the two. Unreserved, the label column reflows every time a row
+   is settled and reflows further for a skip than for a done, so the one row you just tapped is
+   also the one that truncates hardest. 86px reserves the widest, with a couple of pixels for a
+   device whose Hebrew metrics are not the harness's, and `flex-end` spends the slack on the
+   LABEL side — so the marks line up with the row's own edge in all three states, which is what
+   makes the column read as a column. Geometry is the host's half of the split ADR-0139 drew:
+   the words, marks and hues stay in `settle-control.css`. */
+.map-ref .wp-settle {
+  min-width: 86px;
+  justify-content: flex-end;
+}
 .map-ref .map-ref-kind {
   color: var(--muted);
   font-weight: 500;
@@ -1575,6 +1635,33 @@
   margin-inline-start: auto;
   flex: 0 0 auto;
   color: var(--faint);
+}
+
+/* ── THE FOLD (ADR-0121 §8's 2026-08-05 amendment) ────────────────────────────────
+   Quiet on purpose: it is a way to see MORE of a block you are already looking at, not a
+   fourth reference and not an action. So no row ground, no `.map-ref` box — the same
+   text-with-a-caret shape `.map-know-more` uses for the same job one block up, in `--cta`
+   because that is the neutral affordance hue (ADR-0028 keeps amber and teal for time and
+   location). Full-width and 34px so it is still a real target on the row's own terms. */
+.map-ref-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--cta);
+  cursor: pointer;
+}
+.map-ref-more .icon {
+  width: 13px;
+  height: 13px;
 }
 
 /* ── Plan-mode place research (Phase 5, ADR-0115) ────────────────────────────
