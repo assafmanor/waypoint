@@ -3603,6 +3603,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  /* ADR-0062's one zoom exception, and it is the WHOLE overlay now (owner, 2026-08-06: the
+     pinch _"should be available from the entire screen"_, so a small picture needs no aim).
+     `MediaViewer.tsx` owns the gesture, so the browser must not claim it as a native pan or a
+     synthesised double-tap zoom — this used to sit on `.doc-viewer-img`, which is no longer
+     where fingers have to land. Nothing here scrolls, so nothing is given up by it. */
+  touch-action: none;
 }
 /* The scrim is a pseudo-element for the same reason it is one in `modal.css`: this
    element is the card's ancestor, so fading it fades the card with it. */
@@ -3801,10 +3807,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   max-inline-size: 100%;
   max-block-size: 100%;
   object-fit: contain;
-  /* ADR-0062: the one zoom exception. `MediaViewer.tsx` owns the pinch, so the browser
-     must not consume the gesture itself. This element no longer TRANSFORMS — it is the
-     gesture's target and the lifted copy below is what moves. */
-  touch-action: none;
 }
 /* ── The pinch lifts the picture out of the card (ADR-0062's 2026-08-05 amendment) ──
    Owner: _"the image zooms out of the box and auto resets to the original size when
@@ -3817,10 +3819,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
    the card is rounded. `transform-origin: 0 0` because the focal maths in `pinchTransform`
    measures from that corner.
 
-   `pointer-events: none` is load-bearing twice over — the gesture's target stays the
-   in-flow `<img>` underneath (which holds the pointer capture and must still be hit-testable
-   for the second finger), and a copy that swallowed the backdrop tap would break the ONE
-   close (ADR-0103 §2). */
+   `pointer-events: none` because the gesture is the OVERLAY's — the copy must not stand
+   between the fingers and the element holding their capture, and a copy that swallowed the
+   backdrop tap would break the ONE close (ADR-0103 §2). The in-flow `<img>` under it goes
+   transparent for one reason only: it is the box the copy was measured from, so it keeps its
+   place in the layout and must simply not be seen underneath itself. */
 .doc-viewer-img[data-lifted] {
   opacity: 0;
 }

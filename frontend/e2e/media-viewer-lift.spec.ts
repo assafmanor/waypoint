@@ -227,8 +227,7 @@ test.describe('the media viewer’s pinch @390', () => {
     // longer inside the thing that was clipping it.
     expect(held.copy!.top).toBeLessThan(held.card.top);
     expect(held.copy!.bottom).toBeGreaterThan(held.card.bottom);
-    // The original is transparent, not gone — it still holds the capture and still has to be
-    // hit-testable for the second finger.
+    // The original is transparent, not gone — it is the box the copy was measured from.
     expect(held.imgOpacity).toBe('0');
     expect(held.img.w).toBe(at.img.w);
     // The copy takes no input: the backdrop tap under it is still the ONE close (ADR-0103 §2).
@@ -241,6 +240,41 @@ test.describe('the media viewer’s pinch @390', () => {
     await expect.poll(async () => (await measure(page)).headOpacity).toBe('0');
     // The page itself did not zoom — the viewer is the exception, not the hole (ADR-0062).
     expect(held.pageScale).toBe(1);
+  });
+
+  // **THE GESTURE IS THE WHOLE SCREEN'S** (owner, 2026-08-06: it _"should be available from the
+  // entire screen when the image is already displaying, so that if the image dimensions are
+  // small, you wouldn't have to place your fingers exactly inside the image borders"_). This is
+  // the test that could not be written before the handlers left the `<img>`: the fingers here
+  // never touch the picture, and they are not even on the card.
+  test('pinches from fingers that never touch the picture', async ({ page }) => {
+    await openFullPicture(page);
+    const cdp = await page.context().newCDPSession(page);
+    const at = await measure(page);
+    // Well below the card, on bare scrim — under the old model this was a backdrop tap.
+    const centre = { x: 195, y: at.card.bottom + 90 };
+    expect(centre.y).toBeGreaterThan(at.img.bottom + 40);
+
+    await pinchOut(cdp, centre, 60, 240);
+    const held = await measure(page);
+
+    expect(held.copy).not.toBeNull();
+    expect(held.copy!.w).toBeGreaterThan(at.img.w);
+    // **And it grows where it stands.** The anchor is clamped into the picture's own box, so a
+    // pinch below it lifts from its bottom edge instead of flying at the fingers: the copy has
+    // to still be on screen and still overlap where the picture was.
+    expect(held.copy!.top).toBeLessThan(at.img.bottom);
+    expect(held.copy!.bottom).toBeGreaterThan(at.img.top);
+    expect(held.copy!.top).toBeLessThan(844);
+    expect(held.copy!.bottom).toBeGreaterThan(0);
+    // The bottom edge under the fingers is the point held still, within a pixel of rounding.
+    expect(Math.abs(held.copy!.bottom - at.img.bottom)).toBeLessThanOrEqual(1);
+
+    // Releasing it does not close the viewer, though the gesture began on the backdrop whose
+    // tap IS the one close: the click a released finger can synthesise is swallowed.
+    await dispatchTouch(cdp, 'touchEnd');
+    await expect.poll(async () => (await measure(page)).copy).toBeNull();
+    await expect(page.locator('.doc-viewer-card')).toBeVisible();
   });
 
   // The ✕ is gone entirely (owner: _"this button is unnecessary"_), so the card carries no
