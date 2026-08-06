@@ -40,6 +40,7 @@ import {
   mapFitPadding,
   cameraFrame,
   focusBoundsFor,
+  panShiftForReserve,
   searchCameraTarget,
   zoomStepIn,
   type CameraAt,
@@ -152,6 +153,27 @@ export function useMapCamera(
   // re-run when a card opens, so a pin tap still moves nothing (ADR-0122 §7's rule).
   const bottomReserveRef = useRef(bottomReserve);
   bottomReserveRef.current = bottomReserve;
+  /** **Where the centre goes so the card does not cover `point`**, or `null` when there is
+   *  nothing to clear or the map cannot answer yet (no projection before it has rendered).
+   *
+   *  Read through the ref above, and for the reason that ref exists (ADR-0128 §2): the reserve
+   *  changes on a **tap**, and as a dependency it would re-run the framing effect — i.e. tapping a
+   *  pin would move the camera, which is the rule ADR-0122 §7 exists to hold. A ref read at the
+   *  moment a pan runs keeps that intact. */
+  const clearOfCard = useCallback(
+    (map: google.maps.Map, point: LatLng, zoom: number): LatLng | null => {
+      // The canvas's own height, read where the move happens — the same read `apply` makes, and
+      // for the same reason: it is what both insets are measured against, and this screen
+      // re-renders every second so it must not be state (ADR-0121 §5).
+      const canvas = map.getDiv().getBoundingClientRect().height;
+      const shift = panShiftForReserve(bottomReserveRef.current, mapFitPadding(canvas).top);
+      if (shift === 0) return null;
+      return throughProjection(map, point, (world) =>
+        worldPointAtOffset(world, { x: 0, y: shift }, zoom),
+      );
+    },
+    [],
+  );
   const focusContextRef = useRef(focusContext);
   focusContextRef.current = focusContext;
   /** The arrival this camera still owes, and the identity it was claimed from. */
@@ -231,15 +253,32 @@ export function useMapCamera(
   useEffect(() => () => cancelAnimationFrame(raf.current), []);
 
   /** Where a "look at this place" move should end up. `zoom` `null` keeps the current
-   *  one, which is what makes a pin tap a pure pan (ADR-0129 §1). */
+   *  one, which is what makes a pin tap a pure pan (ADR-0129 §1).
+   *
+   *  **AND IT PANS CLEAR OF THE CARD** (ADR-0128 §2's 2026-08-06 amendment; owner: _"selecting a
+   *  place on the map (or search) opens the place card with the info (or the various add forms)
+   *  and sometimes the card covers the place and the pin. I'd like for the existing pan to be
+   *  smarter and pan to where the card/form doesn't cover the place and pin"_).
+   *
+   *  §2 gave the reserve to the FIT's padding and left the pan centring blindly, which is why the
+   *  form is where this bites hardest: measured in ADR-0148, it needs 243px of a 372px canvas at
+   *  the `map` stop, so a centred point sits 57px INSIDE it. The card is more forgiving and the
+   *  enriched result card is not.
+   *
+   *  The shift is `panShiftForReserve`'s, applied through Google's own projection at the TARGET
+   *  zoom — a pixel is a different distance at every zoom, so using the current one would put the
+   *  place in the wrong place whenever the two differ (an arrival that also zooms). With no card
+   *  the shift is 0 and the round trip is skipped entirely, so a pin tap with nothing raised
+   *  behaves exactly as it always did. */
   const moveTo = useCallback(
     // Reports whether it moved, for the same reason `apply` does: a map with no zoom yet
     // has not rendered, and a panning arrival must be retried on `idle` rather than
     // recorded as a move that never happened.
     (point: LatLng, zoom: number | null): boolean => {
       const current = going.current?.zoom ?? map?.getZoom();
-      if (current == null) return false;
-      easeTo({ center: point, zoom: zoom ?? current });
+      if (current == null || !map) return false;
+      const to = zoom ?? current;
+      easeTo({ center: clearOfCard(map, point, to) ?? point, zoom: to });
       return true;
     },
     [map, easeTo],

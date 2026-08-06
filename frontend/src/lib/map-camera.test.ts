@@ -8,6 +8,7 @@ import {
   countPointsInBounds,
   fitPaddingFor,
   mapFitPadding,
+  panShiftForReserve,
   pointInBounds,
   searchCameraTarget,
   zoomStepIn,
@@ -593,5 +594,54 @@ describe('the camera answers a settled result set (ADR-0168 §1)', () => {
     expect(target).toEqual({ kind: 'fit', bounds: focusBoundsFor(straddling[0], straddling) });
     if (target.kind !== 'fit') return;
     expect(target.bounds.east - target.bounds.west).toBeLessThan(1);
+  });
+});
+
+// ADR-0128 §2's 2026-08-06 amendment. §2 gave the card's band to the FIT's padding and left the pan
+// centring blindly, so a card or a form raised BY the tap could sit over the place the tap was
+// about — worst for the form, which ADR-0148 measured at 243px of a 372px canvas.
+describe('the pan clears the card (ADR-0128 §2)', () => {
+  // The two insets the band is bounded by, at the tallest canvas the tab has (the `map` stop,
+  // which ADR-0128 §2 notes is the only stop a card exists at).
+  const CANVAS = 545;
+  const TOP = mapFitPadding(CANVAS).top;
+
+  it('is zero with no card, so a pin tap behaves exactly as it always did', () => {
+    expect(panShiftForReserve(0, TOP)).toBe(0);
+  });
+
+  // The place lands in the middle of the band between the controls row and the card, which is
+  // the whole claim: `H/2 − shift` is that band's centre.
+  it('centres the place in the band you can actually see', () => {
+    const reserve = MAP_CARD_RESERVE_H;
+    const shift = panShiftForReserve(reserve, TOP);
+    const landsAt = CANVAS / 2 - shift;
+    expect(landsAt).toBeCloseTo((TOP + CANVAS - reserve) / 2, 0);
+    // Clear of both occupants, which is the point.
+    expect(landsAt).toBeGreaterThan(TOP);
+    expect(landsAt).toBeLessThan(CANVAS - reserve);
+  });
+
+  // **THE CASE THE FIRST DRAFT GOT WRONG.** Bottom-only, the form's 129px band centres at y≈64 —
+  // inside the ~88px the controls row and a pin's upward reach take. Correcting for one occupant
+  // by moving the place under the other is not a fix.
+  it('keeps the place clear of the CONTROLS ROW when the form leaves a narrow band', () => {
+    // ADR-0148 §C's measurement: the form at the `map` stop, where the sheet has stood down.
+    const formCanvas = 372;
+    const formTop = mapFitPadding(formCanvas).top;
+    const landsAt = formCanvas / 2 - panShiftForReserve(243, formTop);
+    expect(landsAt).toBeGreaterThanOrEqual(formTop);
+    // …and a bottom-only shift would NOT have, which is what makes this a regression guard.
+    expect(formCanvas / 2 - Math.round(243 / 2)).toBeLessThan(formTop);
+  });
+
+  // A small card on a tall canvas leaves the place clear of everything already, and the raw
+  // arithmetic would answer "move it toward the card". Nothing owed, nothing moved.
+  it('never pushes the place downward', () => {
+    expect(panShiftForReserve(TOP - 20, TOP)).toBe(0);
+  });
+
+  it('rounds to whole pixels — the caller feeds it to a projection, not to CSS', () => {
+    expect(Number.isInteger(panShiftForReserve(181, TOP))).toBe(true);
   });
 });
