@@ -59,6 +59,61 @@ Two things had to be answered, and only one of them was the one ADR-0122 §7 was
 
 **One simplification worth recording:** the card only exists at the `map` stop (ADR-0122 §7 — it renders exactly where the sheet cannot show the row), so the reserve is only ever asked for on the tallest canvas the tab has. That is the stop where it is most affordable, which is why clamping leaves something useful rather than nothing.
 
+### 3. Amendment (2026-08-06) — the PAN reads the reserve too, and it was the pan that needed it most
+
+> _"Selecting a place on the map (or search) opens the place card with the info (or the various add
+> forms) and sometimes the card covers the place and the pin. I'd like for the existing pan to be
+> smarter and pan to where the card/form doesn't cover the place and pin."_ — owner, 2026-08-06
+
+**§2 gave the reserve to the FIT's padding and stopped there**, so the pan — which is what a pin
+tap, a row tap, an arrival and a locate all do (ADR-0129 §1) — kept centring the place in the whole
+canvas as though nothing were over it. And the omission is worst exactly where §2's own clamp was
+most careful: the fit at least degrades, where the pan did not know there was anything to degrade
+against.
+
+**Measured, the form is the case that fails outright.** ADR-0148 §C put it at **243px of a 372px
+canvas** at the `map` stop, so a centred point sits 57px **inside** it — the place you long-pressed,
+under the form you opened by long-pressing it. The place card is more forgiving at ~180px, and the
+enriched result card (hero, credit, summary) is not.
+
+**The rule: the pan centres the place in the part of the canvas you can SEE.** The band runs from
+the controls row's inset down to `H − reserve`, and its centre is `(reserve − top) / 2` above the
+canvas's own — so the camera's centre goes that far **south** of the place. `panShiftForReserve` is
+that one line, pure and tested; the shift is applied through Google's own projection
+(`worldPointAtOffset`, ADR-0129 §3's rule that every nonlinear step stays inside Google's maths)
+**at the target zoom**, because a pixel is a different distance at every zoom and `locate` moves the
+two together.
+
+**The first build of this used only the BOTTOM inset, and that breaks in exactly the case the whole
+thing is for.** The argument for ignoring the top was that a pan CENTRES, so the place cannot end up
+near the top edge — true only while the band is big. It is not: the form leaves a 129px band whose
+centre is y≈64, inside the ~88px the controls row and a pin's own upward reach take. **Correcting for
+one occupant by moving the place under the other is not a fix**, and it would have been invisible in
+the common case and wrong in the reported one. `topInsetPx` is `mapFitPadding`'s own `top`, passed in
+rather than re-derived, so the pan and the fit cannot disagree about where the row ends.
+
+Two things it deliberately does not do:
+
+- **It never pushes the place DOWN.** A small card on a tall canvas leaves a band whose centre sits
+  below the canvas's, and the raw arithmetic answers "move the place toward the card" — for a place
+  already clear of everything. Clamped at 0: nothing owed, nothing moved, which is the re-fit
+  guard's own rule one level down.
+- **It does nothing at all with no card up.** The shift is 0, the projection round trip is skipped,
+  and a pin tap with nothing raised behaves exactly as it always did.
+
+**And one ordering fact had to change, or the whole thing would have been silently dead on the
+gesture it exists for.** The reserve is measured in `Map.tsx` and the pan runs in `MapPane`'s own
+effect — and passive effects run in tree order, **child first**. So the pan fired while the
+measurement still described whatever card was up _before_ this tap: usually none, i.e. a reserve of 0. The measurement is a `useLayoutEffect` now, because layout effects all run before any passive
+effect, so the reserve is committed by the time the child pans. That is what `useLayoutEffect` is
+for — a measurement another effect reads — and it costs nothing new: one `getBoundingClientRect` on
+one element, in an effect that already ran on every render.
+
+**§2's "read it through a ref, never as a dependency" is unchanged and now load-bearing twice.** The
+pan reads the reserve at the moment it runs, so `apply` and the framing effect keep their `[map]`
+identity and **a pin tap still moves nothing it was not asked to move** — ADR-0122 §7's rule, which
+threading the reserve in the obvious way would have broken here exactly as it would have there.
+
 ## Alternatives considered
 
 - **Build the dot tier as a pin prop or React state.** Rejected: it would re-render every marker on a threshold crossing for a purely visual degradation, on a surface where ADR-0121 §4 makes marker churn the thing to avoid. CSS off one attribute costs zero renders.

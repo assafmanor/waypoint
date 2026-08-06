@@ -242,6 +242,36 @@ export function fitPaddingFor(
 }
 
 /**
+ * **How far south of a place the camera must sit for the place to land in the middle of what you
+ * can actually see** (ADR-0128 §2's 2026-08-06 amendment), in px of canvas. `0` means "leave the
+ * pan alone".
+ *
+ * A pan centres the place in the canvas. With a card or a form occupying the bottom
+ * `bottomReservePx` and the floating controls row occupying `topInsetPx`, the band you can see runs
+ * from `top` to `H − reserve`, and its centre is `(reserve − top) / 2` above the canvas's own. So
+ * the camera's centre goes that far **south** of the place.
+ *
+ * **BOTH insets, and the first draft of this used only the bottom one — which breaks in exactly the
+ * case the whole thing is for.** The argument for ignoring the top was "a pan centres, so the place
+ * cannot be near the top edge", and that holds only while the band is big. It is not: ADR-0148
+ * measured the form at 243px of a 372px canvas, leaving a 129px band whose centre is y≈64 — inside
+ * the ~88px the controls row and a pin's own upward reach take. Correcting for one occupant by
+ * moving the place under the other is not a fix.
+ *
+ * **Clamped at 0, so it never pushes the place DOWN.** A small card on a tall canvas has a band
+ * whose centre sits below the canvas's, and the arithmetic would answer "move the place toward the
+ * card" — for a place that was already clear of everything. Nothing owed, nothing moved: the same
+ * rule the re-fit guard runs one level up.
+ *
+ * `topInsetPx` is `mapFitPadding`'s own `top`, passed in rather than re-derived, so the pan and the
+ * fit cannot disagree about where the controls row ends.
+ */
+export function panShiftForReserve(bottomReservePx: number, topInsetPx: number): number {
+  if (bottomReservePx <= 0) return 0;
+  return Math.max(0, Math.round((bottomReservePx - topInsetPx) / 2));
+}
+
+/**
  * **Locate's ladder, statelessly** (#20, ADR-0127 §2). The first tap gets you to a
  * readable zoom; a repeat tap steps one level in **from wherever the map actually
  * is** — never from a remembered tap count, so a pinch between taps cannot

@@ -24,6 +24,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -1759,7 +1760,19 @@ export function MapView() {
     const box = cardRef.current?.getBoundingClientRect().height ?? 0;
     setCardReserve(box > 0 ? Math.ceil(box) + MAP_ATTRIBUTION_H + MAP_FLOAT_GAP : 0);
   };
-  useEffect(() => {
+  // **A LAYOUT EFFECT, AND THE CAMERA IS WHY** (ADR-0128 §2's 2026-08-06 amendment). This used to
+  // be a passive `useEffect`, and passive effects run in tree order — CHILD first — so `MapPane`'s
+  // own focus effect panned for a selection while this measurement still described the card that
+  // was up BEFORE it. Usually 0. So the pan that most needed to clear a card was the one pan that
+  // could not see one, and the offset would have been silently dead on the very gesture it exists
+  // for.
+  //
+  // Layout effects all run before any passive effect, so measuring here means the reserve is
+  // committed by the time the child pans. That is what `useLayoutEffect` is for — a measurement
+  // another effect reads — and it costs nothing new: the read is one `getBoundingClientRect` on one
+  // element, and this effect already ran on every render (it has no dependency array, deliberately:
+  // the card's height is content, not a value we could list).
+  useLayoutEffect(() => {
     measureCardReserve.current();
     // The card's height changes with its content — a hint line appears, an error shows, the
     // bounded form is capped by a stop change — so it is re-measured rather than read once.

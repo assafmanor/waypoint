@@ -568,6 +568,83 @@ describe('focus and re-centre', () => {
     expect(padding.bottom).toBeGreaterThan(mapFitPadding(map.box.height).bottom);
   });
 
+  // ── ADR-0128 §2's 2026-08-06 AMENDMENT: THE PAN CLEARS THE CARD ─────────────────
+  // Owner: _"selecting a place on the map (or search) opens the place card with the info (or the
+  // various add forms) and sometimes the card covers the place and the pin. I'd like for the
+  // existing pan to be smarter and pan to where the card/form doesn't cover the place and pin"_.
+  //
+  // §2 gave the reserve to the FIT's padding and left the pan centring blindly. The arithmetic is
+  // `panShiftForReserve`'s and tested there; what belongs here is that the shift really reaches the
+  // camera, through Google's own projection, in the right DIRECTION and at the right zoom.
+  describe('a pan lifts the place clear of the card', () => {
+    /** A pan with no card lands ON the point — the behaviour every pin tap has always had, and
+     *  the baseline the offset must not disturb. */
+    const panWithReserve = (reserve?: number) => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      map.zoom = 14;
+      const view = mount(map, DAY);
+      if (reserve != null) {
+        view.rerender({ map, pts: DAY, signal: 'day', arrival: null, bottomReserve: reserve });
+      }
+      view.result.current.focus(TOKYO);
+      return map;
+    };
+
+    it('lands exactly on the place when nothing is raised', () => {
+      expect(panWithReserve().center).toEqual(TOKYO);
+    });
+
+    // SOUTH of the place, which is what lifts the place UP the canvas and out from under the card.
+    // Getting the sign wrong would push it further under, which is why this asserts a direction
+    // rather than a magnitude.
+    it('centres south of the place when a card is up, lifting it up the canvas', () => {
+      const map = panWithReserve(180);
+      expect(map.center.lat).toBeLessThan(TOKYO.lat);
+      // Purely vertical: a card spans the full width, so there is nothing to clear sideways.
+      expect(map.center.lng).toBeCloseTo(TOKYO.lng, 9);
+    });
+
+    // A pixel is a different distance at every zoom, so the shift has to be applied at the zoom
+    // the move is GOING to — not the one it started from. `locate` is the case where they differ.
+    it('measures the shift at the zoom it is moving to, not the one it left', () => {
+      const near = new FakeMap();
+      near.bounds = WORLD;
+      near.zoom = 6;
+      const view = mount(near, DAY);
+      view.rerender({ map: near, pts: DAY, signal: 'day', arrival: null, bottomReserve: 180 });
+      // `locate` steps to MAP_ZOOM.PLACE from 6, so the target zoom is far from the current one.
+      view.result.current.locate(TOKYO);
+      const steppedIn = TOKYO.lat - near.center.lat;
+
+      const far = new FakeMap();
+      far.bounds = WORLD;
+      far.zoom = MAP_ZOOM.PLACE;
+      const view2 = mount(far, DAY);
+      view2.rerender({ map: far, pts: DAY, signal: 'day', arrival: null, bottomReserve: 180 });
+      far.zoom = MAP_ZOOM.PLACE;
+      view2.result.current.focus(TOKYO);
+      const alreadyThere = TOKYO.lat - far.center.lat;
+
+      // Both moves end at MAP_ZOOM.PLACE, so both owe the same ground — which is only true
+      // because the shift reads the destination zoom. Reading the current one would have made
+      // the first shift 2^8 times larger.
+      expect(steppedIn).toBeCloseTo(alreadyThere, 6);
+    });
+
+    // A map with no projection yet cannot answer where a pixel is, and a pan must still happen —
+    // degrading to the un-shifted centre rather than refusing to move.
+    it('still pans when the map has no projection to offset through', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      map.hasProjection = false;
+      const view = mount(map, DAY);
+      view.rerender({ map, pts: DAY, signal: 'day', arrival: null, bottomReserve: 180 });
+      view.result.current.focus(TOKYO);
+      expect(map.center).toEqual(TOKYO);
+    });
+  });
+
   it('re-centre re-frames regardless of the current view — the escape hatch', () => {
     const map = new FakeMap();
     map.bounds = WORLD;
