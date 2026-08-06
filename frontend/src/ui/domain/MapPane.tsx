@@ -474,13 +474,18 @@ export const MapPane = memo(MapPaneInner);
  *  enough for a solid teardrop, not enough for the dashed-idea / desaturated-past
  *  grammar `.place` already speaks, which is why the content is ours. Static per
  *  place: no React state lives inside a marker. */
-/** The ring (ADR-0132 §6). No tip — a tip is a claim about WHICH BUILDING and a result
- *  is a candidate; no hue — we do not buy place types (ADR-0115 §2), so there is nothing
- *  honest to colour it by; a `＋` — the only verb available on it. It sits ON the
- *  coordinate instead of pointing at it, which is the truthful geometry for something
- *  that is not in the trip yet.
+/** The ring (ADR-0132 §6, **redrawn in ADR-0168 §2**). No tip — a tip is a claim about
+ *  WHICH BUILDING and a result is a candidate. It sits ON the coordinate instead of
+ *  pointing at it, which is the truthful geometry for something that is not in the trip
+ *  yet, and it is under every trip pin in z-order: what you already have outranks what you
+ *  might add.
  *
- *  Under every trip pin in z-order: what you already have outranks what you might add. */
+ *  **The `＋` is gone and the element is empty on purpose** (ADR-0168 §2). Two reasons, and
+ *  the second is the load-bearing one: at 28px on a phone the glyph was not legible — the
+ *  reading ADR-0132's own device pass owed and could not take — and it described the wrong
+ *  gesture, because tapping a ring SELECTS it (the add is a labelled control on the row it
+ *  raises). The ring's hole is drawn by CSS, so there is nothing for the markup to carry.
+ *  `aria-label` is where the name lives, as it always was. */
 const ResultMarker = memo(function ResultMarker({
   result,
   onSelect,
@@ -499,9 +504,7 @@ const ResultMarker = memo(function ResultMarker({
         className={'map-result' + (result.selected ? ' selected' : '')}
         role="button"
         aria-label={result.label}
-      >
-        <Icon name="plus" />
-      </div>
+      />
     </AdvancedMarker>
   );
 });
@@ -794,6 +797,7 @@ function MapCameraControls({
   const {
     focus,
     reframe,
+    showResults,
     locate: locateCamera,
     zoomTo,
     stepZoomIn,
@@ -831,6 +835,22 @@ function MapCameraControls({
   useEffect(() => {
     if (selectedId && focusRef.current) focus(focusRef.current);
   }, [selectedId, focus]);
+
+  // **AND A SETTLED RESULT SET GETS THE SAME TREATMENT** (ADR-0168 §1): at the map extreme
+  // a result outside the view left the tab looking like nothing had been found, because the
+  // sheet holds no rows there and the ring was the only evidence.
+  //
+  // Keyed on WHICH results these are and nothing else. That excludes `selected`, which the
+  // `results` memo key deliberately includes — so tapping a ring cannot re-move the camera,
+  // and the points are read through a latest-ref so a new array identity from the clock tick
+  // is not a new set. Exactly the arrangement the selection effect above uses, one
+  // population over.
+  const resultSignal = results.map((result) => result.googlePlaceId).join('|');
+  const resultPointsRef = useRef(resultPoints);
+  resultPointsRef.current = resultPoints;
+  useEffect(() => {
+    if (resultPointsRef.current.length > 0) showResults(resultPointsRef.current);
+  }, [resultSignal, showResults]);
 
   // LOCATE-ONLY (ADR-0126 §6). Both branches do the same job — take me to me — where
   // the one this replaces did two unrelated ones depending on a permission you could

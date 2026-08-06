@@ -660,6 +660,30 @@ export const MAP_FOCUS = {
   DEFAULT_SPAN_DEG: 0.01,
 } as const;
 
+/** **What the camera does about a settled set of search results** (ADR-0168 §1).
+ *
+ *  ADR-0131 §5 kept the query out of `cameraSignal` because a query is a STREAM where a
+ *  chip is one discrete act, and that argument is unchanged — it just described the wrong
+ *  event. A *keystroke* is the stream; a *settled Text Search response* is discrete, and
+ *  it is already gated by the min-chars floor and the pause debounce, so there are far
+ *  fewer of them than there are keystrokes.
+ *
+ *  - `SPREAD_CAP_DEG` — wider than this and the results are not "an area" any more, so
+ *    fitting them all would trade a frame you cannot read for a frame you cannot read
+ *    either. Past it the camera frames the TOP-ranked result among its own cluster
+ *    instead, through `focusBoundsFor` (ADR-0129 §2). ~2° of latitude is roughly 220km:
+ *    a city and its outskirts fit inside it, `דואומו` across four Italian cities does
+ *    not. In degrees of latitude, the unit the bounds are built in, like `MAP_FOCUS`.
+ *  - `FITS_AT_ZOOM_SHARE` — how much of the current view the extent may claim and still
+ *    count as "it fits at the zoom you are on", i.e. pan rather than re-fit. Below 1 so
+ *    the results land with air around them rather than exactly on the edges, where a pin
+ *    under the controls row is indistinguishable from a pin off-screen.
+ *
+ *  Both are derived and both join the device-pass cluster: how much unasked-for movement
+ *  reads as helpful rather than as a headache is a judgement only a phone settles, and
+ *  the owner's own framing of this report was "careful not to pan too much". */
+export const MAP_SEARCH_CAMERA = { SPREAD_CAP_DEG: 2, FITS_AT_ZOOM_SHARE: 0.8 } as const;
+
 /** **The camera's own animation** (ADR-0129 §3). Google animates `fitBounds` "depending
  *  on an internal heuristic" and `panTo` only when the move is shorter than the
  *  viewport, so smooth movement is not something the API can be asked for — it is

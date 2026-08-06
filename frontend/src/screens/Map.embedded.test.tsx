@@ -30,6 +30,12 @@ import {
 // "bring the selected row into view" is a real call worth asserting the shape of.
 const scrollIntoView = vi.fn();
 Element.prototype.scrollIntoView = scrollIntoView;
+/** **How the screen brings a row into view** (ADR-0135 §8's alignment + ADR-0168 §3's
+ *  animation): the card's TOP, and eased. The easing is the half the owner reported missing —
+ *  the offset was already right, so an instant arrival just left the list somewhere else the
+ *  next frame with nothing saying a row had been fetched for you. Named once here so the
+ *  assertions below stay about WHICH row, and see `reduced motion` for the other branch. */
+const BROUGHT_INTO_VIEW = { block: 'start', behavior: 'smooth' };
 /** The screen defers the scroll one frame, so the sheet's new height is committed
  *  before the row is centred against it. */
 const nextFrame = () =>
@@ -709,7 +715,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(row('lunch')!);
       // **`start`** since 2026-08-05 (owner): `nearest` is a no-op once the card is taller than
       // the scrollport, which is exactly the card this reveal produces.
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' }));
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith(BROUGHT_INTO_VIEW));
     });
 
     // §7 / ADR-0134 §3: under an errand the tab is answering ONE question, so the verb
@@ -1479,7 +1485,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       fireEvent.click(pin('lunch')!);
       await nextFrame();
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      expect(scrollIntoView).toHaveBeenCalledWith(BROUGHT_INTO_VIEW);
 
       scrollIntoView.mockClear();
       fireEvent.click(listButton(t.map.allDays));
@@ -1487,7 +1493,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(screenEl().dataset.view).toBe('half');
       expect(row('tomorrow')!.className).toContain('selected');
       await nextFrame();
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      expect(scrollIntoView).toHaveBeenCalledWith(BROUGHT_INTO_VIEW);
     });
 
     it('a pin tap at half leaves the height alone — the list is already showing', () => {
@@ -2302,6 +2308,57 @@ describe('the embedded map’s shell (ADR-0121)', () => {
           icon: undefined,
           category: undefined,
         });
+      });
+
+      // ── ADR-0168 §5: THE SECOND TAP ON A RING IS THE SHELF ──────────────────────
+      // Owner, 2026-08-06: _"double clicking on a result ＋ should treat it like you've
+      // selected `הוסף למדף`, same way that it does when adding a place to an event/booking."_
+      // Session 171 built exactly this gesture and gated it on an errand, on the grounds that
+      // _"outside an errand there is nothing to commit to"_ — and that premise was wrong: there
+      // is the shelf, which is where a result's add has always landed. So the gesture is one
+      // rule and the CONTEXT picks the destination.
+      it('a second tap on the selected ring shelves it, skipping the naming form', async () => {
+        seed();
+        const result = { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 };
+        searchStub.predictions = [result];
+        searchStub.pick.mockResolvedValue({ id: 'p-new', name: 'Blue Bottle' });
+        render(wrap(<MapView />));
+        openSearch();
+        type('coffee');
+
+        // The FIRST tap still only selects — ADR-0134 §3's look-before-you-commit split, which
+        // this composes with rather than reversing.
+        fireEvent.click(ring('g-1'));
+        expect(ring('g-1').dataset.selected).toBe('true');
+        expect(searchStub.pick).not.toHaveBeenCalled();
+
+        fireEvent.click(ring('g-1'));
+        await vi.waitFor(() => expect(addMaybe).toHaveBeenCalled());
+        expect(searchStub.pick).toHaveBeenCalledWith(result);
+        // Google's own name, because there was no form to type another one into — which is the
+        // whole point of the shortcut, and the same landing `הוספה למדף` reaches.
+        expect(addMaybe).toHaveBeenCalledWith('Blue Bottle', {
+          placeId: 'p-new',
+          icon: undefined,
+          category: undefined,
+        });
+      });
+
+      // Under an errand the destination changes and the gesture does not: this is the half
+      // session 171 shipped, and it must keep working now that the gate is gone.
+      it('…and under an errand the same tap CHOOSES instead of shelving', async () => {
+        seed();
+        searchStub.predictions = [
+          { googlePlaceId: 'g-1', primaryText: 'Blue Bottle', lat: 35.69, lng: 139.7 },
+        ];
+        searchStub.pick.mockResolvedValue({ id: 'p-new', name: 'Blue Bottle' });
+        render(wrap(<MapView />));
+        startErrand();
+        type('coffee');
+        fireEvent.click(ring('g-1'));
+        fireEvent.click(ring('g-1'));
+        await vi.waitFor(() => expect(errandAnswer()).toBe('p-new'));
+        expect(addMaybe).not.toHaveBeenCalled();
       });
     });
 
@@ -4051,6 +4108,37 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(knowRow().className).toContain('selected');
     });
 
+    // ADR-0168 §4. Owner: _"to go back you must click on the little `חזרה לפרטי המקום` button.
+    // This is very inconvenient and easy to miss. I think that instead clicking anywhere on the
+    // card should go back to the place."_
+    it('comes back from a tap anywhere on the card, not only on the little button', () => {
+      seedKnown();
+      expand();
+      // The summary itself, which is the largest thing on the expanded card and the reason
+      // anyone opened it.
+      fireEvent.click(knowRow().querySelector('.map-sum') as HTMLElement);
+
+      expect(knowRow().querySelector('.map-hero')).toBeNull();
+      expect(knowRow().className).toContain('selected');
+    });
+
+    // The named control does not move, so it must not be duplicated either: announcing the body
+    // as a second button with the same label reads the way back out twice.
+    it('leaves the way back as the ONE control with that name', () => {
+      seedKnown();
+      expand();
+      expect(screen.getAllByRole('button', { name: t.map.know.back })).toHaveLength(1);
+    });
+
+    // The hero is the level BELOW the card (ADR-0167 §11.1), so its tap must not be swallowed
+    // by the body's new one.
+    it('still opens the full picture from the hero rather than closing the card', () => {
+      seedKnown();
+      expand();
+      fireEvent.click(knowRow().querySelector('.map-hero') as HTMLElement);
+      expect(knowRow().querySelector('.map-hero')).toBeTruthy();
+    });
+
     // The credit is the licensing obligation §4 placed under the picture, and its Latin run is
     // isolated INSIDE an RTL element — the half of ADR-0118 its lint guard cannot see (§8.2).
     it('credits the photographer and the license, with the Latin run isolated', () => {
@@ -4298,7 +4386,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       // **`start`** — the card's top, which is the only alignment that is correct at every card
       // height: `nearest` is a no-op once the box spans the scrollport, and `center` puts the
       // identity row above the fold (owner, 2026-08-05).
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      expect(scrollIntoView).toHaveBeenCalledWith(BROUGHT_INTO_VIEW);
       const target = scrollIntoView.mock.instances.at(-1) as HTMLElement;
       expect(target.getAttribute('data-place')).toBe('museum');
     });
@@ -4308,6 +4396,65 @@ describe('the embedded map’s shell (ADR-0121)', () => {
   // screenshot of the selected card opening below the fold). A selection made at `map` cannot
   // scroll anything — there is no list on screen, which is why `select` returns early there — so
   // switching to the list showed it at whatever offset it was left at.
+  // ── ADR-0168 §4: A SECOND TAP CLOSES WHAT THE FIRST OPENED ─────────────────────
+  // Owner: _"when you select a place card from the list it expands to show more info, I need it
+  // to shrink back when clicking again."_ Selecting opens a card inside the row — the summary,
+  // the notes, the references, the footer — and the only ways out were selecting something else
+  // or the back gesture.
+  describe('a selected row closes on the next tap', () => {
+    it('closes the row it opened, and the pin lets go with it', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+      expect(row('museum')!.className).toContain('selected');
+
+      fireEvent.click(row('museum')!);
+      expect(row('museum')!.className).not.toContain('selected');
+      const pins = paneProps.current.pins as { placeId: string; selected?: boolean }[];
+      expect(pins.every((pin) => !pin.selected)).toBe(true);
+    });
+
+    // **The one case it must NOT fire**, and the reason `openedFromRow` exists at all: a pin
+    // tap only PANS (ADR-0129 §1), so the row's own tap is the gesture that frames — ADR-0134
+    // §6, the one way to see a place you selected on the canvas and then went to the list for.
+    // Reading that as "a second press" would have deleted it.
+    it('frames instead, when the CANVAS is what opened the row — and closes on the tap after', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(pin('museum')!);
+      expect(row('museum')!.className).toContain('selected');
+      expect(framed()).toBe('');
+
+      fireEvent.click(row('museum')!);
+      expect(framed()).toBe('35.6,139.6');
+      expect(row('museum')!.className).toContain('selected');
+
+      fireEvent.click(row('museum')!);
+      expect(row('museum')!.className).not.toContain('selected');
+    });
+
+    // The expansion is a state OF the selected row, so closing the row takes it — otherwise
+    // re-selecting the same place re-opened its research card.
+    it('re-opens collapsed, not expanded, after being closed', () => {
+      seed();
+      tripEnrichments = {
+        museum: { summary: { text: 'A museum.', lang: 'he' } },
+      } as unknown as typeof tripEnrichments;
+      render(wrap(<MapView />));
+      fireEvent.click(row('museum')!);
+      fireEvent.click(screen.getByRole('button', { name: t.map.know.more }));
+      expect(screen.queryByRole('button', { name: t.map.know.back })).toBeTruthy();
+
+      // Three taps, and the order is the rule: the innermost state closes first. Leave the
+      // expansion, close the row, open it again.
+      fireEvent.click(row('museum')!);
+      fireEvent.click(row('museum')!);
+      fireEvent.click(row('museum')!);
+      expect(row('museum')!.className).toContain('selected');
+      expect(screen.queryByRole('button', { name: t.map.know.back })).toBeNull();
+    });
+  });
+
   describe('the selection survives the stop change', () => {
     it('centres the selected row when the list comes back on screen', async () => {
       seed();
@@ -4321,7 +4468,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(toggle(t.map.view.list));
       await nextFrame();
 
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      expect(scrollIntoView).toHaveBeenCalledWith(BROUGHT_INTO_VIEW);
       // The row it brought up is the selected one, not whichever was nearest the top.
       const target = scrollIntoView.mock.instances.at(-1) as HTMLElement;
       expect(target.getAttribute('data-place')).toBe('museum');

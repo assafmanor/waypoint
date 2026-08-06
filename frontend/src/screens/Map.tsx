@@ -108,6 +108,7 @@ import {
   type MapBounds,
 } from '../lib/map-camera';
 import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
+import { prefersReducedMotion } from '../lib/motion';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs, type AddMaybeOptions } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
@@ -579,6 +580,17 @@ export function MapView() {
   // place you are no longer looking at — the state that would otherwise need clearing in the
   // five places `setSelectedId` is called.
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** **Did the selection come from this ROW's own tap?** (ADR-0168 §4.)
+   *
+   *  "Clicking again" means clicking the same thing again, and without this it did not: a
+   *  selection can also arrive from a pin, a ring, an arrival or an errand, and treating a
+   *  row tap as a second press of something the CANVAS opened would break the one gesture
+   *  ADR-0134 §6 exists for — a result's row tap FRAMES it, which is the only way to see a
+   *  place you tapped as a ring and then went to the list for.
+   *
+   *  So a row closes on the next tap only once its own tap is what opened it, which also
+   *  makes the ring → row → row sequence read correctly: pan, frame, close. */
+  const [openedFromRow, setOpenedFromRow] = useState(false);
   // A tapped ghost: its row is not in the sheet (the sheet is scoped), so the tap is
   // the only way to learn what it is — it surfaces that one row, named with its day.
   const [ghostId, setGhostId] = useState<string | null>(null);
@@ -1287,6 +1299,12 @@ export function MapView() {
     // `cancelDraft` because `select` is declared above the draft state it would reach into.
     closeDraftOnSelect.current();
     setSelectedId(placeId);
+    // A new subject starts collapsed — see `clearSelection`'s note: the expansion is a state of
+    // the one selected row, not of the screen.
+    setExpandedId(null);
+    // Which gesture opened it, so the row knows whether the NEXT tap on it is a second press
+    // of itself or the first press of a row the canvas opened (ADR-0168 §4).
+    setOpenedFromRow(!!opts.fromRow);
     // ONE selection on the canvas. A ring and a pin can both be selected only if nothing
     // clears the other, and at the map extreme that would raise two cards on top of each
     // other — the exact defect `MapPane`'s "do NOT skip on `event.detail.placeId`" comment
@@ -1393,7 +1411,14 @@ export function MapView() {
         (resultId ? scope?.querySelector(`[data-result="${resultId}"]`) : null);
       // The gap above the card is `scroll-margin-top` on `.place` (map.css), not a number here:
       // it is a property of the row's own box, and CSS is where the sheet's edges already live.
-      row?.scrollIntoView({ block: 'start' });
+      //
+      // **AND IT ANIMATES** (owner, 2026-08-06: _"it's a little confusing when it doesn't do the
+      // animation"_ — ADR-0168 §3). The offset was right and the arrival was instant, so the list
+      // was simply somewhere else the next frame and nothing said a row had been brought to you.
+      // Reduced motion drops the easing and keeps the move, which is this app's one rule about
+      // animation everywhere else (ADR-0098 §4) — and `motion.ts` is where that question is
+      // answered, never a media query written out again here.
+      row?.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     });
   };
 
@@ -1414,6 +1439,12 @@ export function MapView() {
     setSelectedId(null);
     setGhostId(null);
     setSelectedResultId(null);
+    // **The expansion belongs to the selected row, so it goes with it** (ADR-0168 §4). It was
+    // already inert once the row was unselected (`expanded` is `selected && …`), which is why
+    // nothing showed — but the id survived, so re-selecting the same place re-opened its
+    // research card, and closing a row on purpose now makes that reachable in two taps.
+    setExpandedId(null);
+    setOpenedFromRow(false);
   }, []);
   // **A SELECTION IS A BACK LAYER, because the canvas already dismisses it** (owner, session
   // 176: _"when there's an implicit way to go back (closing a modal by tapping outside it for
@@ -1444,9 +1475,23 @@ export function MapView() {
   onResultTap.current = (googlePlaceId: string) => {
     // **TAPPING WHAT IS ALREADY SELECTED COMMITS IT** (owner, session 171). Not a double
     // tap and not a gesture: the first tap already means "this one", so the second one on
-    // the SAME ring can only mean "yes, that one" — which is `בחירה` without travelling to
-    // the row. Errand-scoped, because outside an errand there is nothing to commit to.
-    if (pendingErrand && selectedResultId === googlePlaceId) {
+    // the SAME ring can only mean "yes, that one" — no timing window, no gesture machinery,
+    // and it composes with ADR-0134 §3 rather than reversing it, because the first tap still
+    // only selects.
+    //
+    // **AND IT IS NO LONGER ERRAND-SCOPED** (owner, 2026-08-06: _"double clicking on a
+    // result ＋ should treat it like you've selected `הוסף למדף`, same way that it does when
+    // adding a place to an event/booking"_ — ADR-0168 §5). Session 171 gated it on _"outside
+    // an errand there is nothing to commit to"_, and that premise was simply wrong: there is
+    // the SHELF, which is where a result's add has always landed. So the gesture is one rule
+    // and the CONTEXT picks the destination — `בחירה` under an errand, the shelf without one
+    // — which is `landPlace`'s existing branch reached by a second route rather than a
+    // second rule beside it.
+    //
+    // It skips the naming form, deliberately, and that is the whole point of a shortcut: the
+    // form is what `＋ אולי` on the row opens (ADR-0147 §4), and `הוספה למדף` is that form's
+    // own submit. This is the same landing without the stop in between.
+    if (selectedResultId === googlePlaceId) {
       const result = research.predictions.find((r) => r.googlePlaceId === googlePlaceId);
       if (result) void addResult(result);
       return;
@@ -1454,14 +1499,18 @@ export function MapView() {
     setSelectedId(null);
     setGhostId(null);
     setSelectedResultId(googlePlaceId);
+    // The canvas opened this, so the row's own next tap is that row's FIRST press: it frames,
+    // and only the one after it closes (ADR-0168 §4).
+    setOpenedFromRow(false);
     // A ring is ON the canvas, so tapping it PANS (ADR-0129 §1, unchanged) — the framing
     // below belongs to the result's ROW, which is the tap you make without being able to
     // see the place. `selectResultRow` is that one.
-    requestAnimationFrame(() => {
-      sheetRef.current
-        ?.querySelector(`[data-result="${googlePlaceId}"]`)
-        ?.scrollIntoView({ block: 'center' });
-    });
+    //
+    // Through the one scroll helper, which is where the deferred frame, the single-flight
+    // guard and the animated `start` alignment already live: this was a second, quieter copy
+    // of that job aligning to `center`, so a ring tap and a pin tap put the same card in two
+    // different places (ADR-0168 §3).
+    showRowInList.current(null, googlePlaceId);
   };
   const selectResult = useCallback(
     (googlePlaceId: string) => onResultTap.current(googlePlaceId),
@@ -1486,6 +1535,7 @@ export function MapView() {
     // too and its pin lights up with the row (see `select`'s note on the same pairing).
     setSelectedId(research.alreadyInTrip(result)?.id ?? null);
     setSelectedResultId(result.googlePlaceId);
+    setOpenedFromRow(true);
     if (result.lat == null || result.lng == null) return;
     setSheetView((view) => (view === MAP_SHEET_VIEW.half ? view : MAP_SHEET_VIEW.half));
     setArrival({ at: { lat: result.lat, lng: result.lng }, frame: true });
@@ -2292,6 +2342,9 @@ export function MapView() {
   const renderRow =
     (opts: {
       onSelect?: (placeId: string) => void;
+      /** The other reading of the same tap (ADR-0168 §4). Passed by whoever passes
+       *  `onSelect`, and absent on the canvas card for the same reason `onSelect` is. */
+      onDeselect?: () => void;
       forceDay?: boolean;
       onFrame?: () => void;
       onChoose?: (placeId: string) => void;
@@ -2338,6 +2391,7 @@ export function MapView() {
             ) : undefined
           }
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
+          onDeselect={opts.onDeselect}
           // Gated on `selected` for the same reason the notes and the refs are: the list can hold
           // the whole trip, and a summary block per unselected row is 64px nobody is reading.
           summary={selected ? placeSummary(enrichments[usage.placeId]) : undefined}
@@ -2439,7 +2493,11 @@ export function MapView() {
             const header = headerFor.get(usage.placeId);
             return header && <div className="map-grouphead">{header}</div>;
           }}
-          renderRow={renderRow({ onSelect, onChoose: opts.onChoose })}
+          renderRow={renderRow({
+            onSelect,
+            onDeselect: openedFromRow ? clearSelection : undefined,
+            onChoose: opts.onChoose,
+          })}
         />
       </>
     );
@@ -2701,7 +2759,11 @@ export function MapView() {
     ghostUsage && !inDayScope(ghostUsage) ? (
       <div className="map-ghostrow">
         <div className="map-grouphead">{t.map.notThisDay}</div>
-        {renderRow({ onSelect: (id) => select(id, { fromRow: true }), forceDay: true })(ghostUsage)}
+        {renderRow({
+          onSelect: (id) => select(id, { fromRow: true }),
+          onDeselect: openedFromRow ? clearSelection : undefined,
+          forceDay: true,
+        })(ghostUsage)}
       </div>
     ) : null;
 
@@ -2931,6 +2993,7 @@ export function MapView() {
       chooseMode={pendingErrand != null}
       selectedKnowledge={candidateKnowledge}
       onShow={selectResultRow}
+      onHide={openedFromRow ? clearSelection : undefined}
       onFullPicture={showCandidatePicture}
       addingId={addingResultId}
       addFailed={addResultFailed}
@@ -3362,6 +3425,7 @@ function PlaceRow({
   refs,
   onSchedule,
   onSelect,
+  onDeselect,
   onEnrich,
   onFrame,
   onChoose,
@@ -3459,6 +3523,12 @@ function PlaceRow({
    *  the sheet from it would take away the map the card is sitting on. Without it the
    *  row renders as plain content rather than a `button` that does nothing. */
   onSelect?: () => void;
+  /** **Close this row again** (ADR-0168 §4; owner, 2026-08-06: _"I need it to shrink back
+   *  when clicking again"_). Selecting a row opens a card inside it — the summary, the notes,
+   *  the references, the footer — and until now the only way to shut that was to select
+   *  something else or to press back. Passed wherever `onSelect` is, since it is the same
+   *  tap read a second time. */
+  onDeselect?: () => void;
   /** Only the place card passes this: it makes the badge the way in to its own pin
    *  (ADR-0129 §1). Absent everywhere else, so the list's badges stay inert. */
   onFrame?: () => void;
@@ -3529,23 +3599,55 @@ function PlaceRow({
     .filter(Boolean)
     .join(' ');
 
+  // **WHAT A TAP ON THE BODY MEANS, IN ONE PLACE** (ADR-0168 §4). Three readings of one
+  // gesture, and the order is the whole rule: the innermost state closes first.
+  //
+  //  - **Expanded → the way back.** `‹ חזרה לפרטי המקום` stays as the block's NAMED control,
+  //    exactly as `עוד ›` stayed when the whole summary became tappable (`PlaceKnowledge`) —
+  //    what grows is the target, not the affordance. Owner, 2026-08-06: _"to go back you must
+  //    click on the little `חזרה לפרטי המקום` button. This is very inconvenient and easy to
+  //    miss. I think that instead clicking anywhere on the card should go back to the place."_
+  //  - **Selected → close the row.** _"I need it to shrink back when clicking again."_
+  //  - **Otherwise → select it**, which is what it always did.
+  //
+  // `onDeselect` is ABSENT when the canvas opened this row (`openedFromRow`), and then the
+  // tap falls through to `onSelect` — which is the framing ADR-0134 §6 built. Written as a
+  // fall-through rather than a condition on `selected`, because a `selected` row with no
+  // `onDeselect` must stay tappable, not go inert.
+  //
+  // Note what this gives the CANVAS CARD for free, and it is the reason the handler is
+  // derived rather than gated on `onSelect`: that card passes no `onSelect` (its body is inert,
+  // ADR-0122 §7) and no `onDeselect`, but it does pass `onCollapse` — so an expanded card
+  // there becomes tappable to return, and a collapsed one stays inert, with no branch about
+  // which host we are in.
+  const onBodyTap = expanded ? onCollapse : (selected && onDeselect) || onSelect;
+  // **EXPANDED, THE BODY IS A TARGET AND NOT A CONTROL** — no `role`, no `tabIndex`, no name.
+  // `‹ חזרה לפרטי המקום` is inside it and is the named, focusable way back, so announcing the
+  // body as a second button with the same label reads it out twice; the keyboard path is that
+  // button. Exactly what `PlaceKnowledge` does when the whole summary block becomes tappable
+  // around `עוד ›` — "the tap target grows; the accessible control does not move."
+  const bodyIsControl = !!onBodyTap && !expanded;
   return (
     <div
       className={rowClass}
       data-place={usage.placeId}
-      {...(onSelect
+      {...(onBodyTap
+        ? {
+            onClick: (e: React.MouseEvent) => {
+              if (!fromNotes(e.target)) onBodyTap();
+            },
+          }
+        : null)}
+      {...(bodyIsControl
         ? {
             role: 'button',
             tabIndex: 0,
             'aria-pressed': selected,
-            onClick: (e: React.MouseEvent) => {
-              if (!fromNotes(e.target)) onSelect();
-            },
             onKeyDown: (e: React.KeyboardEvent) => {
               if (e.key !== 'Enter' && e.key !== ' ') return;
               if (fromNotes(e.target)) return;
               e.preventDefault();
-              onSelect();
+              onBodyTap();
             },
           }
         : null)}
