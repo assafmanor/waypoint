@@ -189,6 +189,69 @@ describe('placeRefs — the way in to the entity (ADR-0121 §8)', () => {
     expect(placeRefs('hotel', src, { onDate: DAY })[0].edge).toBeUndefined();
   });
 
+  // **ONE PLACE AS BOTH ENDPOINTS OF ONE BOOKING** (2026-08-06; owner's screenshot of Ben Gurion,
+  // where the same car hire drew two identical rows). A car hire carries a route, so it contributes
+  // two endpoints — and when both name the same place, what the reader gets depends entirely on
+  // whether the edge is resolved from the ENDPOINT or from the DATE.
+  describe('a booking collected and returned at the same place', () => {
+    const hire = source({
+      bookings: [
+        booking({ id: 'bk', type: BOOKING_TYPE.CAR, fromPlaceId: 'tlv', toPlaceId: 'tlv' }),
+      ],
+      events: [
+        event({
+          id: 'ev',
+          bookingId: 'bk',
+          date: '2026-07-19',
+          endDate: '2026-07-22',
+          startsAt: '2026-07-19T15:00:00Z',
+          endsAt: '2026-07-22T18:00:00Z',
+        }),
+      ],
+    });
+
+    // UN-SCOPED there is no day to resolve against, so the endpoints keep their own edges — two
+    // real moments at one place. `edgeOnDate`'s `date == null` branch was written for exactly this
+    // and was dead code, because the caller defaulted the date to the event's own.
+    it('is two entries all-days: the collection and the return, each at its own moment', () => {
+      const refs = placeRefs('tlv', hire);
+      expect(refs.map((ref) => ref.edge)).toEqual(['start', 'end']);
+      expect(refs.map((ref) => ref.date)).toEqual(['2026-07-19', '2026-07-22']);
+      // Two DIFFERENT moments — the defect drew both at the start's clock.
+      expect(new Set(refs.map((ref) => ref.at)).size).toBe(2);
+      // And two React keys, which the endpoint-keyed version only appeared to give.
+      expect(new Set(refs.map((ref) => ref.key)).size).toBe(2);
+    });
+
+    // DAY-SCOPED both endpoints resolve to the same edge, and rightly: the airport on the day the
+    // car is collected IS the collection, whichever field named it. One moment, one row.
+    it('is ONE entry on a day, not the same moment twice', () => {
+      expect(placeRefs('tlv', hire, { onDate: '2026-07-19' })).toHaveLength(1);
+      expect(placeRefs('tlv', hire, { onDate: '2026-07-22' })).toHaveLength(1);
+      expect(placeRefs('tlv', hire, { onDate: '2026-07-19' })[0].edge).toBe('start');
+      expect(placeRefs('tlv', hire, { onDate: '2026-07-22' })[0].edge).toBe('end');
+    });
+  });
+
+  // The legitimate two-entries case, kept: a SAME-DAY round trip is two moments at one station,
+  // and nothing about the dedup above may collapse it.
+  it('a same-day round trip through one station stays two entries', () => {
+    const src = source({
+      bookings: [
+        booking({ id: 'bk', type: BOOKING_TYPE.TRAIN, fromPlaceId: 'stn', toPlaceId: 'stn' }),
+      ],
+      events: [
+        event({
+          id: 'ev',
+          bookingId: 'bk',
+          startsAt: `${DAY}T06:00:00Z`,
+          endsAt: `${DAY}T18:00:00Z`,
+        }),
+      ],
+    });
+    expect(placeRefs('stn', src, { onDate: DAY }).map((ref) => ref.edge)).toEqual(['start', 'end']);
+  });
+
   it('an unconsumed idea is an idea entry; a consumed one has left the shelf', () => {
     const src = source({
       maybeItems: [

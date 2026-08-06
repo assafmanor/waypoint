@@ -40,6 +40,7 @@ import {
   mapFitPadding,
   cameraFrame,
   focusBoundsFor,
+  nudgeToClear,
   panShiftForReserve,
   searchCameraTarget,
   zoomStepIn,
@@ -51,12 +52,13 @@ import {
 } from './map-camera';
 import {
   doubleTapZoom,
+  offsetPxOfWorldPoint,
   worldPointAtOffset,
   zoomAboutPoint,
   type WorldPoint,
 } from './canvas-gestures';
 import { prefersReducedMotion } from './motion';
-import { MAP_CAMERA_EASE, MAP_ZOOM } from '../constants';
+import { MAP_CAMERA_EASE, MAP_FLOAT_GAP, MAP_ZOOM } from '../constants';
 // The zoom ladder is the device pass's, so these three reads go through the dev accessor
 // (ADR-0146 §3). In a production build `tune` IS the identity — no override layer exists.
 import { TUNE, tune } from './dev-tuning';
@@ -82,6 +84,10 @@ export interface MapCamera {
   /** Frame a place together with what is around it — the arrival, and the place card's
    *  way in to its own pin (ADR-0129 §1/§2). Returns whether it moved. */
   frameOn: (point: LatLng) => boolean;
+  /** **Bring `point` out from under the card, by the smallest move that does it** (ADR-0122
+   *  §7's 2026-08-06 amendment). Not a pan: a place already visible moves nothing, which is
+   *  what lets this run whenever the CARD changes rather than only when the selection does. */
+  reveal: (point: LatLng) => void;
   /** **A settled set of search results arrived** (ADR-0168 §1) — pan to them, widen to
    *  them, or leave the camera alone, per `searchCameraTarget`. In Google's relevance
    *  order, which the too-scattered branch reads. */
@@ -136,7 +142,7 @@ export function useMapCamera(
      *  under it (ADR-0122 §7, built in ADR-0128 §2). Read through a ref below, never as a
      *  dependency: it changes on a **tap**, and re-running the framing effect for it
      *  would move the camera when a pin is tapped. */
-    bottomReserve?: number;
+    bottomReserve?: number | (() => number);
   },
 ): MapCamera {
   const { points, setSignal, arrival, focusContext, bottomReserve = 0 } = opts;
@@ -153,6 +159,19 @@ export function useMapCamera(
   // re-run when a card opens, so a pin tap still moves nothing (ADR-0122 §7's rule).
   const bottomReserveRef = useRef(bottomReserve);
   bottomReserveRef.current = bottomReserve;
+  /** **The reserve as it is RIGHT NOW**, which for the getter form means measuring the card in
+   *  the DOM at the moment the camera moves.
+   *
+   *  A plain number here was not enough and the failure was silent: the screen measures the card
+   *  in a layout effect and sets state, and React flushes this component's pending passive
+   *  effects **before** re-rendering with it — so the pan keyed on a new selection read the
+   *  reserve from the previous render, i.e. 0 on the tap that first raises a card. Reproduced in
+   *  isolation before it was fixed (owner: _"Not panning in full map when clicking on a pin"_).
+   *  A reading taken here cannot have that bug under any ordering. */
+  const reserveNow = (): number => {
+    const reserve = bottomReserveRef.current;
+    return (typeof reserve === 'function' ? reserve() : reserve) ?? 0;
+  };
   /** **Where the centre goes so the card does not cover `point`**, or `null` when there is
    *  nothing to clear or the map cannot answer yet (no projection before it has rendered).
    *
@@ -166,7 +185,7 @@ export function useMapCamera(
       // for the same reason: it is what both insets are measured against, and this screen
       // re-renders every second so it must not be state (ADR-0121 §5).
       const canvas = map.getDiv().getBoundingClientRect().height;
-      const shift = panShiftForReserve(bottomReserveRef.current, mapFitPadding(canvas).top);
+      const shift = panShiftForReserve(reserveNow(), mapFitPadding(canvas).top);
       if (shift === 0) return null;
       return throughProjection(map, point, (world) =>
         worldPointAtOffset(world, { x: 0, y: shift }, zoom),
@@ -284,6 +303,56 @@ export function useMapCamera(
     [map, easeTo],
   );
 
+  /**
+   * **THE CARD CAME UP OVER A PLACE THAT WAS ALREADY CHOSEN** (ADR-0122 §7's 2026-08-06
+   * amendment). `focus` above answers a NEW selection and re-centres; this answers the card
+   * itself changing — raised by a sheet-stop change with a place already selected, or grown by
+   * an enrichment or a note list landing in it — where no selection changed and so nothing
+   * fires. That is the state the owner reported: the card describing נמל התעופה בן גוריון,
+   * sitting on top of its own pin.
+   *
+   * Three things keep it from becoming a second camera driver fighting the first:
+   *
+   *  - **It moves the minimum, or nothing.** `nudgeToClear` answers 0 for a place inside the
+   *    band, so the common case is a projection round trip and no write at all.
+   *  - **It stands down while a move is in flight.** An ease in progress is already going
+   *    somewhere chosen with the reserve in hand (`moveTo` runs `clearOfCard`), so nudging
+   *    against an interpolated camera would fight a decision that has already been made.
+   *  - **It reads the reserve through the same ref** everything else here does, so it sees the
+   *    card that is up NOW rather than the one that was up when its effect was scheduled.
+   */
+  const reveal = useCallback(
+    (point: LatLng) => {
+      if (!map || going.current) return;
+      const zoom = map.getZoom();
+      const centre = map.getCenter();
+      if (zoom == null || !centre) return;
+      // A LITERAL, like every other projection call in this file: `getCenter()` hands back a
+      // `google.maps.LatLng`, whose `lat`/`lng` are METHODS, and reading them as numbers
+      // yields `NaN` all the way to a nudge of 0 — a silent no-op, not a throw.
+      const at = { lat: centre.lat(), lng: centre.lng() };
+      const projection = map.getProjection();
+      const centreWorld = projection?.fromLatLngToPoint(at);
+      const pointWorld = projection?.fromLatLngToPoint(point);
+      if (!centreWorld || !pointWorld) return;
+      const canvas = map.getDiv().getBoundingClientRect().height;
+      const { y } = offsetPxOfWorldPoint(centreWorld, pointWorld, zoom);
+      const dy = nudgeToClear(
+        canvas / 2 + y,
+        canvas,
+        reserveNow(),
+        mapFitPadding(canvas).top,
+        MAP_FLOAT_GAP,
+      );
+      if (dy === 0) return;
+      const to = throughProjection(map, at, (world) =>
+        worldPointAtOffset(world, { x: 0, y: dy }, zoom),
+      );
+      if (to) easeTo({ center: to, zoom });
+    },
+    [map, easeTo],
+  );
+
   /** Move the camera to suit `candidates`, and report whether it actually did.
    *  `false` also covers "the map is not ready to be fitted", which is what lets the
    *  caller retry rather than record a framing that never happened. */
@@ -314,7 +383,7 @@ export function useMapCamera(
       // The div's height is both what the padding is affordable AGAINST and what sizes
       // the pins it has to clear (ADR-0123) — one measurement, read where the fit
       // happens rather than kept in state on a screen that re-renders every second.
-      const padding = fitPaddingFor(box, mapFitPadding(box.height, bottomReserveRef.current));
+      const padding = fitPaddingFor(box, mapFitPadding(box.height, reserveNow()));
       // An unsized div has no honest fit — wait for one rather than zoom to nothing.
       if (padding === null) return false;
       // `fitBounds` is used to LEARN the destination, not to travel to it (ADR-0129 §3).
@@ -525,7 +594,7 @@ export function useMapCamera(
     [map, easeTo],
   );
 
-  return { reframe, focus, frameOn, showResults, locate, zoomTo, stepZoomIn };
+  return { reframe, focus, frameOn, reveal, showResults, locate, zoomTo, stepZoomIn };
 }
 
 /** The map's camera as our own shape, or `null` before it has one. */

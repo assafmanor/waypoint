@@ -133,7 +133,7 @@ interface CameraProps {
   pts: readonly LatLng[];
   signal: string;
   arrival: MapArrival | null;
-  bottomReserve?: number;
+  bottomReserve?: number | (() => number);
   focusContext?: readonly LatLng[];
 }
 
@@ -632,6 +632,42 @@ describe('focus and re-centre', () => {
       expect(steppedIn).toBeCloseTo(alreadyThere, 6);
     });
 
+    // **THE ORDERING BUG THAT MADE ALL OF THE ABOVE INERT IN THE APP** (2026-08-06; owner: _"Not
+    // panning in full map when clicking on a pin"_, on a build that already had the fix this
+    // block tests). Every case above hands the reserve in as a settled number, which is exactly
+    // what the running app could not do: the screen measures the card in a `useLayoutEffect` and
+    // sets state, and React flushes THIS component's pending passive effects **before**
+    // re-rendering with it — so the pan keyed on a new selection read the previous render's
+    // value, i.e. 0 on the tap that first raises a card. Reproduced in isolation: the child sees
+    // `0`, every time.
+    //
+    // The cure is that the reserve may be a GETTER, read when the camera moves rather than when
+    // the effect was scheduled. This asserts the property that makes ordering irrelevant.
+    it('reads the reserve WHEN IT MOVES, so a card raised by this very tap is seen', () => {
+      const map = new FakeMap();
+      map.bounds = WORLD;
+      map.zoom = 14;
+      // The card is not up at mount and IS up by the time the move runs — the exact interleaving
+      // a pin tap produces, and one a number prop cannot express.
+      let raised = false;
+      const view = mount(map, DAY);
+      view.rerender({
+        map,
+        pts: DAY,
+        signal: 'day',
+        arrival: null,
+        bottomReserve: () => (raised ? 180 : 0),
+      });
+      raised = true;
+      view.result.current.focus(TOKYO);
+      // It cleared the card, which a stale read of 0 could not have done.
+      expect(map.center.lat).toBeLessThan(TOKYO.lat);
+    });
+
+    it('still takes a plain number, so a caller with a settled value need not wrap it', () => {
+      expect(panWithReserve(180).center.lat).toBeLessThan(TOKYO.lat);
+    });
+
     // A map with no projection yet cannot answer where a pixel is, and a pan must still happen —
     // degrading to the un-shifted centre rather than refusing to move.
     it('still pans when the map has no projection to offset through', () => {
@@ -642,6 +678,59 @@ describe('focus and re-centre', () => {
       view.rerender({ map, pts: DAY, signal: 'day', arrival: null, bottomReserve: 180 });
       view.result.current.focus(TOKYO);
       expect(map.center).toEqual(TOKYO);
+    });
+
+    // ── `reveal`: the card came up over a selection already made (ADR-0122 §7) ──────────
+    // The pan above answers a NEW selection. This answers the CARD changing — a sheet-stop
+    // switch with a place already chosen, an enrichment growing an open card — where nothing
+    // re-centres and the place stays under the card describing it.
+    describe('reveal — the nudge for a card that arrives over a chosen place', () => {
+      /** Put `at` under the card by centring the map far enough north of it. */
+      const revealFrom = (centre: LatLng, reserve: number) => {
+        const map = new FakeMap();
+        map.bounds = WORLD;
+        map.zoom = 14;
+        // The `map` stop's real canvas. The harness default (320px) is shorter than the card
+        // this is about, so the band would be empty and every case would answer "nothing owed"
+        // for the wrong reason — a test that passes because the feature is switched off.
+        map.box = { width: 390, height: 545 };
+        const view = mount(map, DAY);
+        view.rerender({ map, pts: DAY, signal: 'day', arrival: null, bottomReserve: reserve });
+        // AFTER the opening framing, which is a move this is not about.
+        map.center = centre;
+        const before = { ...map.center };
+        const movesBefore = map.moves.length;
+        view.result.current.reveal(TOKYO);
+        return { map, before, moved: map.moves.length - movesBefore };
+      };
+
+      // THE COMPATIBILITY CLAIM WITH §7, and the reason this may be keyed on the card rather
+      // than on the selection: a place already visible moves the camera not at all.
+      it('moves nothing when the place is already in the band', () => {
+        const { map, before, moved } = revealFrom(TOKYO, 120);
+        expect(map.center).toEqual(before);
+        expect(moved).toBe(0);
+      });
+
+      it('moves nothing when there is no card at all', () => {
+        const { map, before } = revealFrom({ lat: TOKYO.lat + 0.02, lng: TOKYO.lng }, 0);
+        expect(map.center).toEqual(before);
+      });
+
+      // Centred well north of Tokyo, Tokyo sits low on the canvas — under a tall card.
+      it('lifts a covered place out from under the card', () => {
+        const { map, before } = revealFrom({ lat: TOKYO.lat + 0.02, lng: TOKYO.lng }, 200);
+        expect(map.center.lat).not.toBeCloseTo(before.lat, 9);
+        // South of where it was: the content rides UP, which is what uncovers the pin.
+        expect(map.center.lat).toBeLessThan(before.lat);
+        // A NUDGE, not a centring — it must not land on the place the way `focus` does.
+        expect(map.center.lat).not.toBeCloseTo(TOKYO.lat, 9);
+      });
+
+      it('is purely vertical — a card spans the width, so nothing is cleared sideways', () => {
+        const { map, before } = revealFrom({ lat: TOKYO.lat + 0.02, lng: TOKYO.lng }, 200);
+        expect(map.center.lng).toBeCloseTo(before.lng, 9);
+      });
     });
   });
 

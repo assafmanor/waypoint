@@ -1754,12 +1754,40 @@ export function MapView() {
   // resized the viewport for the keyboard, which is every case the layout already handled.
   const keyboardInset = useKeyboardInset();
   const cardRef = useRef<HTMLDivElement>(null);
+  /** **The card's band, read from the DOM at the moment it is asked for** — the camera's
+   *  source of truth, and it goes nowhere near React state.
+   *
+   *  **A LAYOUT EFFECT WAS NOT ENOUGH, and the experiment says so** (2026-08-06; owner:
+   *  _"Not panning in full map when clicking on a pin"_, on a build that had the layout-effect
+   *  fix). ADR-0128 §2's amendment reasoned that layout effects all precede passive ones, so a
+   *  measurement committed here would be visible to `MapPane`'s pan. It is not: setting state
+   *  from a layout effect schedules a **synchronous re-render**, and React flushes the pending
+   *  passive effects of the commit that is already done **before** starting it. So the child's
+   *  pan still runs against the value from the previous render — 0 on the tap that first raises
+   *  a card. Reproduced in isolation (a parent measuring in `useLayoutEffect`, a memoized child
+   *  storing the prop in a ref during render and reading it in an effect keyed on the
+   *  selection): the child sees `0`, every time.
+   *
+   *  A **reading taken when the camera moves** cannot have this bug under any ordering, which
+   *  is the same lesson `frontend/CLAUDE.md` already records three times over as "a landing
+   *  position written as a constant instead of measured". It costs one
+   *  `getBoundingClientRect` per camera move — moves are rare, and this is emphatically not on
+   *  the per-second render. */
+  const readCardReserve = useCallback(
+    () => {
+      const box = cardRef.current?.getBoundingClientRect().height ?? 0;
+      return box > 0 ? Math.ceil(box) + MAP_ATTRIBUTION_H + MAP_FLOAT_GAP : 0;
+    },
+    // Stable for the life of the screen, which `MapPane`'s memo depends on (§4/§6).
+    [],
+  );
+  /** The same number as STATE, and it has a different job: it is the **signal** that the card
+   *  came up or changed size, which is what the reveal effect is keyed on. Lagging a commit
+   *  behind the reading above is harmless for a trigger and fatal for a measurement — so the
+   *  two are deliberately separate rather than one value doing both. */
   const [cardReserve, setCardReserve] = useState(0);
   const measureCardReserve = useRef<() => void>(() => {});
-  measureCardReserve.current = () => {
-    const box = cardRef.current?.getBoundingClientRect().height ?? 0;
-    setCardReserve(box > 0 ? Math.ceil(box) + MAP_ATTRIBUTION_H + MAP_FLOAT_GAP : 0);
-  };
+  measureCardReserve.current = () => setCardReserve(readCardReserve());
   // **A LAYOUT EFFECT, AND THE CAMERA IS WHY** (ADR-0128 §2's 2026-08-06 amendment). This used to
   // be a passive `useEffect`, and passive effects run in tree order — CHILD first — so `MapPane`'s
   // own focus effect panned for a selection while this measurement still described the card that
@@ -3319,6 +3347,13 @@ export function MapView() {
           // The MEASURED reserve, not "a card is open": the constant it replaced was sized
           // for a selected row and the form is nearly twice that, which put a freshly
           // dropped pin behind the form naming it (ADR-0148 §3).
+          //
+          // TWO PROPS FOR ONE FACT, deliberately, because they answer different questions and
+          // one value cannot do both (see `readCardReserve`): the getter is what the camera
+          // READS when it moves — immune to effect ordering, which is what made the state
+          // version silently 0 on the tap that raises the card — and the number is the SIGNAL
+          // that the card changed, which is what the reveal effect keys on.
+          cardReserveAt={readCardReserve}
           cardReserve={cardReserve}
           // Both make-a-place gestures (ADR-0147). Stable identities via latest-refs, like
           // every other handler this memoized pane takes — an inline arrow here would

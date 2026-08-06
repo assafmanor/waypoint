@@ -8,6 +8,7 @@ import {
   countPointsInBounds,
   fitPaddingFor,
   mapFitPadding,
+  nudgeToClear,
   panShiftForReserve,
   pointInBounds,
   searchCameraTarget,
@@ -18,6 +19,7 @@ import {
   MAP_CARD_RESERVE_H,
   MAP_CONTROLS_H,
   MAP_FIT_INSET,
+  MAP_FLOAT_GAP,
   MAP_FOCUS,
   MAP_PIN,
   MAP_SEARCH_CAMERA,
@@ -643,5 +645,57 @@ describe('the pan clears the card (ADR-0128 §2)', () => {
 
   it('rounds to whole pixels — the caller feeds it to a projection, not to CSS', () => {
     expect(Number.isInteger(panShiftForReserve(181, TOP))).toBe(true);
+  });
+});
+
+// ADR-0122 §7's 2026-08-06 amendment. The pan above answers a NEW selection; this answers the CARD
+// changing over a selection already made — a sheet-stop change that raises it, an enrichment that
+// grows it — where nothing re-centres and the place stays under the card describing it.
+describe('the nudge brings a covered place back out (ADR-0122 §7)', () => {
+  const CANVAS = 545;
+  const TOP = mapFitPadding(CANVAS).top;
+  const RESERVE = MAP_CARD_RESERVE_H;
+  const GAP = MAP_FLOAT_GAP;
+  const at = (y: number) => nudgeToClear(y, CANVAS, RESERVE, TOP, GAP);
+
+  // THE WHOLE COMPATIBILITY ARGUMENT WITH §7: a place already visible moves NOTHING, which is what
+  // lets this run on every card change instead of only on a selection.
+  it('is zero for a place already inside the band', () => {
+    expect(at((TOP + CANVAS - RESERVE) / 2)).toBe(0);
+    expect(at(TOP + GAP)).toBe(0);
+    expect(at(CANVAS - RESERVE - GAP)).toBe(0);
+  });
+
+  it('is zero with no card at all, whatever the point is doing', () => {
+    expect(nudgeToClear(CANVAS - 4, CANVAS, 0, TOP, GAP)).toBe(0);
+  });
+
+  // Under the card: the smallest move that clears it, and no more — the place lands ON the band's
+  // bottom edge rather than being re-centred, which is what makes this a nudge.
+  it('lifts a covered place to the card edge and stops there', () => {
+    const covered = CANVAS - RESERVE + 60;
+    const dy = at(covered);
+    expect(dy).toBeGreaterThan(0);
+    expect(covered - dy).toBe(CANVAS - RESERVE - GAP);
+  });
+
+  // The other edge, and it is not symmetric decoration: `mapFitPadding`'s top already carries the
+  // controls row AND a pin's own upward reach, so a place above it has its teardrop cut off.
+  it('drops a place hiding under the controls row, by the same minimum', () => {
+    const dy = at(TOP - 30);
+    expect(dy).toBeLessThan(0);
+    expect(TOP - 30 - dy).toBe(TOP + GAP);
+  });
+
+  // A tall form on a short canvas can leave no band at all. Shuffling the place between two
+  // occupants it cannot clear is worse than leaving it where the user last saw it.
+  it('does nothing when the band cannot hold anything', () => {
+    expect(nudgeToClear(300, 372, 372 - mapFitPadding(372).top, mapFitPadding(372).top, GAP)).toBe(
+      0,
+    );
+  });
+
+  it('rounds to whole pixels, like its twin', () => {
+    expect(Number.isInteger(at(CANVAS - RESERVE + 17.4))).toBe(true);
   });
 });

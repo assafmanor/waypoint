@@ -272,6 +272,48 @@ export function panShiftForReserve(bottomReservePx: number, topInsetPx: number):
 }
 
 /**
+ * **How far to move the camera so a place already on the canvas is not UNDER the card** — signed
+ * px (positive: the centre goes south, so the place rides up), `0` when it is already clear.
+ *
+ * The twin of `panShiftForReserve` above, and the difference is the whole point. That one serves a
+ * **pan**, which re-centres, so it can put the place in the middle of the visible band and be
+ * done. This one serves the case where **nothing re-centres**: the card appears, or grows, over a
+ * selection that was made earlier — switching the sheet from `רשימה` to the map extreme with a
+ * place already chosen, an enrichment landing under the identity row, a note list arriving. The
+ * selection did not change, so `MapPane`'s focus effect does not fire, and ADR-0122 §7's "a pin
+ * tap moves nothing" leaves the place under the card that is describing it (owner, 2026-08-06:
+ * _"the card for נמל התעופה בן גוריון completely covers the pin"_).
+ *
+ * **So it is a NUDGE, not a centring**, and that is what keeps it compatible with §7 rather than a
+ * reversal of it: a place already inside the band moves nothing at all, and one outside moves by
+ * the smallest amount that brings it back. §7's rule is that a tap must not take away the surface
+ * it was made on — covering the tapped pin is that failure, not the cure for it.
+ *
+ * The band runs from `topInsetPx` (the floating controls row plus a pin's own upward reach, which
+ * is `mapFitPadding`'s own `top` passed in so the two cannot disagree) to `canvasH −
+ * bottomReservePx`. `marginPx` keeps the place off the exact edge of the card it just cleared.
+ *
+ * **`0` when the band is not big enough to hold anything**, which is a real state and not a
+ * degenerate one: a tall form on a short canvas can leave nothing to aim at, and shuffling the
+ * place between two occupants it cannot clear is worse than leaving it where the user last saw it.
+ */
+export function nudgeToClear(
+  pointY: number,
+  canvasH: number,
+  bottomReservePx: number,
+  topInsetPx: number,
+  marginPx: number,
+): number {
+  if (bottomReservePx <= 0) return 0;
+  const top = topInsetPx + marginPx;
+  const bottom = canvasH - bottomReservePx - marginPx;
+  if (bottom <= top) return 0;
+  if (pointY > bottom) return Math.round(pointY - bottom);
+  if (pointY < top) return Math.round(pointY - top);
+  return 0;
+}
+
+/**
  * **Locate's ladder, statelessly** (#20, ADR-0127 §2). The first tap gets you to a
  * readable zoom; a repeat tap steps one level in **from wherever the map actually
  * is** — never from a remembered tap count, so a pinch between taps cannot

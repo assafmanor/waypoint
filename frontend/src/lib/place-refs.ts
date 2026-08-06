@@ -68,7 +68,15 @@ const touchesDate = (event: TripEvent, date: string): boolean =>
 /** The edge a reference sits at ON a date. A span's own ends are its two moments
  *  whatever endpoint asked (the first day departs/checks in, the last
  *  arrives/checks out, the middle nights have neither) — the same reading
- *  `spanDays` applies, so the entry's wording matches the row's. */
+ *  `spanDays` applies, so the entry's wording matches the row's.
+ *
+ *  **`date` is the SCOPE's date, not the event's, and passing the latter made the
+ *  `date == null` branch dead code** (fixed 2026-08-06). Un-scoped there is no day to
+ *  resolve against, so a span's endpoints keep their own edges — which is the whole
+ *  reason that branch was written. Called with `event.date` instead, a multi-day booking
+ *  whose two endpoints are the SAME place (a car hire collected and returned at the
+ *  airport) resolved BOTH to `start`: two references, same edge, same `at`, and therefore
+ *  two rows saying the identical thing while the collection was nowhere on screen. */
 function edgeOnDate(
   event: TripEvent,
   endpointEdge: 'start' | 'end',
@@ -114,14 +122,24 @@ export function placeRefs(
     for (const endpoint of endpoints) {
       if (endpoint.id !== placeId) continue;
       if (onDate && !touchesDate(event, onDate)) continue;
-      const date = onDate ?? event.date;
-      const edge = edgeOnDate(event, endpoint.edge, date);
+      // The SCOPE's date decides the edge, and un-scoped nothing does — see `edgeOnDate`.
+      const edge = edgeOnDate(event, endpoint.edge, onDate);
       const iso = edge === 'end' ? (event.endsAt ?? event.startsAt) : event.startsAt;
+      // Un-scoped, a span's two ends are on two different days, and the entry's own day is
+      // the one its edge happens on — not the span's opening date for both.
+      const date = onDate ?? (edge === 'end' ? (event.endDate ?? event.date) : event.date);
+      // **ONE ROW PER MOMENT.** A place that is BOTH endpoints of one booking contributes
+      // two endpoints, and day-scoped they resolve to the same edge — the airport on the
+      // day the car is collected is the collection, whichever field named it. Keyed on the
+      // RESOLVED edge rather than the endpoint's, so the collision is one entry here
+      // instead of two identical rows on screen (and one React key instead of two).
+      const key = `${event.id}:${edge ?? endpoint.edge}`;
+      if (refs.some((ref) => ref.key === key)) continue;
       refs.push({
         // A booking is what a traveller wants when there is one — the code and
         // the documents are there, not on the event that schedules it.
         kind: booking ? PLACE_REF_KIND.booking : PLACE_REF_KIND.event,
-        key: `${event.id}:${endpoint.edge}`,
+        key,
         eventId: event.id,
         bookingId: booking?.id,
         date,

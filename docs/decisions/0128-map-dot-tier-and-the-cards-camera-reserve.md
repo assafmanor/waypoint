@@ -92,6 +92,10 @@ one occupant by moving the place under the other is not a fix**, and it would ha
 the common case and wrong in the reported one. `topInsetPx` is `mapFitPadding`'s own `top`, passed in
 rather than re-derived, so the pan and the fit cannot disagree about where the row ends.
 
+> **Correction (2026-08-06, later the same day): this shipped INERT, and the reasoning that made it look shipped is the part worth keeping.** The build moved the screen's card measurement into a `useLayoutEffect` on the argument that layout effects all precede passive ones, so the reserve would be committed before `MapPane`'s pan read it. **It is not.** Setting state from a layout effect schedules a _synchronous_ re-render, and React flushes the **pending passive effects of the commit that is already done** before starting it — so the pan keyed on a new selection ran against the previous render's value, i.e. **0 on the tap that first raises a card**. Every line of the rule above was correct and nothing was ever asked to apply it. Reported as _"Not panning in full map when clicking on a pin"_ and then reproduced in isolation.
+>
+> **The reserve is a GETTER now**, called when the camera moves rather than committed ahead of it, so the card it clears is the card on screen — correct under any ordering, and one `getBoundingClientRect` on a move that is already rare. The suite could not have caught the original because every camera test hands the reserve in as a settled number; the regression test now asserts the property that matters, that a reserve which is 0 at mount and non-zero when the move runs still clears the card. See [ADR-0122 §7's own 2026-08-06 amendment](0122-map-split-controls-over-the-canvas.md) for the other half — the case where no pan fires at all because the selection never changed.
+
 Two things it deliberately does not do:
 
 - **It never pushes the place DOWN.** A small card on a tall canvas leaves a band whose centre sits

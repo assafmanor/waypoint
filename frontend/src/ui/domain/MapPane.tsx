@@ -270,6 +270,9 @@ export interface MapPaneProps {
    *  boolean plus a constant, which was sized for a selected row and therefore wrong by
    *  ~140px for the make/rename form (ADR-0148 §3). 0 when no card is up. */
   cardReserve?: number;
+  /** The same band, READ when the camera moves — see `Map.tsx`'s `readCardReserve`. The
+   *  number above is a signal and lags a commit; this is the measurement. */
+  cardReserveAt?: () => number;
   /** Locate was tapped with no fix to centre on. The camera half stays here (it needs
    *  the map instance); the permission ladder is the screen's, because that is where
    *  `useGeolocation` and the pre-prompt live (ADR-0126 §6). */
@@ -328,6 +331,7 @@ function MapPaneInner({
   onLocate,
   arrival,
   cardReserve,
+  cardReserveAt,
   onHold,
   draftMarker,
 }: MapPaneProps) {
@@ -459,6 +463,7 @@ function MapPaneInner({
           onLocate={onLocate}
           arrival={arrival}
           cardReserve={cardReserve}
+          cardReserveAt={cardReserveAt}
           onHold={handleHold}
           gestureTapRef={gestureTapRef}
         />
@@ -753,6 +758,7 @@ function MapCameraControls({
   onLocate,
   arrival,
   cardReserve,
+  cardReserveAt,
   onHold,
   gestureTapRef,
 }: {
@@ -768,6 +774,7 @@ function MapCameraControls({
   /** See `MapPaneProps` — the pane hands it straight to the camera. */
   arrival?: MapArrival | null;
   cardReserve?: number;
+  cardReserveAt?: () => number;
   /** The long press lives here rather than beside `PinDensity` for the same reason the
    *  drag zoom does: it must drive THIS camera's pane, and the recogniser that owns it is
    *  the same one (ADR-0147 §1). Element-shaped rather than place-shaped: resolving what
@@ -800,6 +807,7 @@ function MapCameraControls({
     reframe,
     showResults,
     locate: locateCamera,
+    reveal,
     zoomTo,
     stepZoomIn,
   } = useMapCamera(map, {
@@ -810,7 +818,7 @@ function MapCameraControls({
     // The card's band, so a fit does not put a pin under it (ADR-0128 §2). The hook
     // reads it through a ref, so this changing on a tap re-pads the NEXT fit without
     // re-running the framing effect — i.e. without moving the camera on a pin tap.
-    bottomReserve: cardReserve ?? 0,
+    bottomReserve: cardReserveAt ?? cardReserve ?? 0,
   });
 
   // **The one-finger zoom** (ADR-0145). It lives here rather than beside `PinDensity`
@@ -836,6 +844,22 @@ function MapCameraControls({
   useEffect(() => {
     if (selectedId && focusRef.current) focus(focusRef.current);
   }, [selectedId, focus]);
+
+  // **AND WHEN THE CARD ITSELF CHANGES, not the selection** (ADR-0122 §7's 2026-08-06
+  // amendment; owner: _"the card for נמל התעופה בן גוריון completely covers the pin"_). The
+  // effect above is keyed on the selection **on purpose** — a re-render must never re-move the
+  // camera — and that is exactly the hole: the card can come up, or grow, over a place chosen
+  // some time ago. Switching the sheet to the map extreme with a place already selected raises
+  // a card and changes no selection; an enrichment or a note list landing in an open card makes
+  // it taller under a pin that was clear a moment before.
+  //
+  // So this is keyed on the RESERVE, which is the one number that says how much of the canvas
+  // the card is taking. `reveal` moves the minimum or nothing, so the added key cannot make a
+  // re-render move the camera: with the place already in the band it is a projection read and
+  // no write.
+  useEffect(() => {
+    if (selectedId && focusRef.current) reveal(focusRef.current);
+  }, [selectedId, cardReserve, reveal]);
 
   // **AND A SETTLED RESULT SET GETS THE SAME TREATMENT** (ADR-0168 §1): at the map extreme
   // a result outside the view left the tab looking like nothing had been found, because the

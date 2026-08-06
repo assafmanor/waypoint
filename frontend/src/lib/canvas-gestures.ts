@@ -376,3 +376,22 @@ export function worldPointAtOffset(
   const scale = 2 ** -zoom;
   return { x: centre.x + offsetPx.x * scale, y: centre.y + offsetPx.y * scale };
 }
+
+/**
+ * **The inverse: where a coordinate already IS on the canvas**, in px from its centre and in
+ * the same convention (+x inline-end, +y down).
+ *
+ * `worldPointAtOffset` answers "what is at this pixel"; this answers "which pixel is this at",
+ * which is what a camera has to know before it can decide whether something is under the card
+ * (ADR-0122 §7's 2026-08-06 amendment). Written as the literal inverse of the line above —
+ * `screenPx = worldUnits × 2^z` — so the two cannot drift, and for the same reason as its twin
+ * there is no Mercator here: both projections stay Google's own (ADR-0129 §3).
+ */
+export function offsetPxOfWorldPoint(
+  centre: WorldPoint,
+  point: WorldPoint,
+  zoom: number,
+): WorldPoint {
+  const scale = 2 ** zoom;
+  return { x: (point.x - centre.x) * scale, y: (point.y - centre.y) * scale };
+}
