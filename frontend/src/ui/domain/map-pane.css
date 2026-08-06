@@ -157,62 +157,62 @@
   object-fit: cover;
 }
 
-/* **THE GATE, and it is a container query rather than a prop** (ADR-0167 §16's owner call:
-   treatment B). Pin size is a share of the canvas — `clamp(34px, 11cqh, 56px)`, ADR-0123 — so
-   whether a photograph can be READ is a fact about the canvas's height, which the pane already
-   publishes as a container. Consequences worth having: a stop change draws or drops every
-   photo with no re-render, no new `MapPane` prop, and no marker re-diff (ADR-0121 §4), and the
-   rule sits next to the pin's own sizing where the next person will look for it.
+/* **THE GATE IS THE PIN'S TIER, AND ONLY THE PIN'S TIER** (ADR-0167 §16's third amendment;
+   owner, 2026-08-06: _"on half mode the pins don't render the thumbnail image. This was chosen
+   and implemented this way intentionally, but after playing with that I realized that the
+   experience is worse and confusing, so I think that we need to be more consistent and render
+   thumbnails when displaying a pin. When the pin becomes a small circle, then we can stop
+   rendering the thumbnail image, same way it is with place icons."_)
 
-   **436px is 48px of pin** (48 / 0.11), and 48px is where the head clears ~30px of picture. At
-   `half` on a phone the canvas is ~300px → a 34px pin → 21px of photo, which the mockup
-   measured as a texture rather than a subject: there the category glyph says more, so it keeps
-   the strip. Below this the photo is not rendered at all rather than faded, for the reason
-   ADR-0109 §7 gives everywhere else — we do not show a worse version of what we have.
+   **The canvas-height axis is GONE.** It was `@container (min-height: 436px)` — 48px of pin,
+   the size at which the head clears ~30px of picture — and the measurement behind it was
+   right: at `half` a phone canvas is ~300px, so a 34px pin carries ~21px of photo, which the
+   mockup read as a texture rather than a subject. **The reversal is not of the measurement but
+   of what follows from it.** A pin that shows a photograph at one sheet stop and a glyph at the
+   next is the same object changing what kind of thing it is on a drag, and that inconsistency
+   costs more than a small picture gains — which is a judgement about the surface as a whole,
+   and only using it could produce it.
 
-   This is the canvas's second content-by-size rule, not its first: every pin already degrades
-   to a dot below `MAP_ZOOM.DOT_BELOW`. "The pin says less when it is smaller" is grammar this
-   surface had before the photograph arrived.
+   So the rule is now the ONE axis that was always the honest one, and it is the axis the owner
+   named: the photo drops exactly where the **glyph** drops, on the dot tier, in the very same
+   rules further down this file (search `THE PHOTOGRAPH IS LISTED HERE`). "The pin says less
+   when it is smaller" is grammar this surface had before the photograph arrived; what it did
+   not need was a second, differently-shaped threshold beside it.
 
-   **THE GATE HAS TWO AXES, and the first build only wrote one** (owner, 2026-08-05: _"the
-   thumbnails aren't rendering into the pins … even when zoomed out the pins are full size, and
-   in these cases there's no thumbnail"_). The canvas's height is one; the pin's own TIER is the
-   other, because the dot tier is scoped — in day scope only the `.aside` pins become dots, and
-   in all-days the amber ones stay whole. The first build hid the photo off `[data-pins='dot']`
-   alone, which is the PANE's state, so a full-size numbered stop at country zoom lost its
-   picture and — because `:has(.pin-photo)` tests the element's PRESENCE, not whether it is
-   drawn — kept the photographed paint over it: a `--card` head, a hue ring, and no glyph.
-   An empty pin. So the photo now drops exactly where the glyph drops, in the very same rules,
-   and a pin that stops drawing it takes its hue back. */
+   **What that history is worth keeping:** the two-axis gate existed because the first build
+   wrote only the pane's `[data-pins='dot']` attribute (owner, 2026-08-05: _"the thumbnails
+   aren't rendering into the pins … even when zoomed out the pins are full size, and in these
+   cases there's no thumbnail"_) — a fact about the PANE, where the dot tier is **scoped**: in
+   day scope only `.aside` pins become dots, and in all-days the amber ones stay whole. So a
+   full-size numbered stop at country zoom lost its picture and, because `:has(.pin-photo)`
+   tests the element's PRESENCE rather than whether it is drawn, kept the photographed paint
+   over it: a `--card` head, a hue ring, and no glyph. An empty pin. That trap is still live —
+   any future rule that hides the photo must also hand the head its hue back, which is what the
+   dot tier's own `background: var(--pin-hue)` rule does. */
 .map-pin .pin-photo {
-  display: none;
+  display: block;
 }
-@container (min-height: 436px) {
-  .map-pin .pin-photo {
-    display: block;
-  }
-  /* The hue moves from FILL to RING, exactly as the list badge's did (§1) — so a photographed
-     pin still says which kind of place it is, and no hue leaves ADR-0028's budget. The white
-     `--card` border stays where it is: it is what keeps a pin legible against a map, and it is
-     the same 0.06 ratio at every size (ADR-0123). */
-  .map-pin:has(> .pin-b > .pin-photo) .pin-b {
-    background: var(--card);
-  }
-  /* …and the ring is the CATEGORY's, so it gives way to a time cue rather than covering one.
-     `.map-pin.nextstop .pin-b` is a class less specific than this `:has()`, so without the
-     `:not()` a photographed next stop lost its amber outline — the single cue ADR-0109 §6
-     spends the canvas's budget on, silently outranked by a category ring. */
-  .map-pin:has(> .pin-b > .pin-photo):not(.nowstop, .nextstop) .pin-b {
-    box-shadow:
-      0 0 0 calc(var(--pin-u) * 0.055) var(--pin-hue),
-      0 2px 5px rgba(22, 35, 61, 0.34);
-  }
-  /* The glyph goes where the photograph is: it is the same slot, and the picture IS the
-     answer the glyph was standing in for. An outcome mark is NOT dropped — `.pin-g.outcome`
-     is a claim about what happened here, which no photograph makes. */
-  .map-pin:has(> .pin-b > .pin-photo) .pin-b > .pin-g:not(.outcome) {
-    display: none;
-  }
+/* The hue moves from FILL to RING, exactly as the list badge's did (§1) — so a photographed
+   pin still says which kind of place it is, and no hue leaves ADR-0028's budget. The white
+   `--card` border stays where it is: it is what keeps a pin legible against a map, and it is
+   the same 0.06 ratio at every size (ADR-0123). */
+.map-pin:has(> .pin-b > .pin-photo) .pin-b {
+  background: var(--card);
+}
+/* …and the ring is the CATEGORY's, so it gives way to a time cue rather than covering one.
+   `.map-pin.nextstop .pin-b` is a class less specific than this `:has()`, so without the
+   `:not()` a photographed next stop lost its amber outline — the single cue ADR-0109 §6
+   spends the canvas's budget on, silently outranked by a category ring. */
+.map-pin:has(> .pin-b > .pin-photo):not(.nowstop, .nextstop) .pin-b {
+  box-shadow:
+    0 0 0 calc(var(--pin-u) * 0.055) var(--pin-hue),
+    0 2px 5px rgba(22, 35, 61, 0.34);
+}
+/* The glyph goes where the photograph is: it is the same slot, and the picture IS the
+   answer the glyph was standing in for. An outcome mark is NOT dropped — `.pin-g.outcome`
+   is a claim about what happened here, which no photograph makes. */
+.map-pin:has(> .pin-b > .pin-photo) .pin-b > .pin-g:not(.outcome) {
+  display: none;
 }
 /* The same five hues, same names as `.map-badge.cat-*` — and stated as the pin's ONE hue
    rather than as a fill, because the fill is only one of the three things that read it. */

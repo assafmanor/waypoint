@@ -144,7 +144,36 @@ export function SnapSheet<T extends string>({
         </button>
         {header && <div className="wp-snapsheet-headrow">{header}</div>}
       </div>
-      <div className="wp-snapsheet-body">{children}</div>
+      <div className="wp-snapsheet-body">
+        {children}
+        {/* **THE SHEET'S LEFTOVER SPACE IS PART OF THE DRAG REGION** (ADR-0122 §4's 2026-08-06
+            amendment; owner: _"sometimes there's a lot of free space that I feel like it would be
+            easier and more intuitive to scroll from, for example when the list is empty or
+            there's a large area that's empty"_).
+
+            **It is one flex spacer, and that is the whole mechanism** — no measurement, no
+            `ResizeObserver`, no "can this scroll" boolean in state. `flex: 1` gives it exactly
+            the space the content did not take, so it IS the empty area by construction:
+
+              • content shorter than the sheet → it is the gap below the list, and draggable;
+              • content taller → it collapses to **zero**, which is precisely when there is no
+                empty area to grab and when a drag would be fighting the list's own scroll;
+              • at the Map's `map` stop the body is ~0px, so it is zero there too — which is the
+                exception the owner named ("the map is the only exception where there's no area to
+                do that on"), falling out rather than being special-cased.
+
+            That is why this is not the overscroll-chaining gesture a full list would need: the
+            two states cannot both be true, so nothing here has to arbitrate between scrolling
+            and dragging. `touch-action: none` is safe on it for the same reason — it only ever
+            has height when there is nothing to pan.
+
+            The same `drag` props as the top region, deliberately: `useSnapDrag` reads
+            `e.currentTarget`, so the capture and the click-swallow attach to whichever element
+            started the gesture, and there is one gesture with two targets rather than two
+            gestures. `aria-hidden`, since the splitter above is the accessible control and its
+            keyboard already reaches every stop. */}
+        <div className="wp-snapsheet-slack" aria-hidden="true" {...drag} />
+      </div>
     </div>
   );
 }

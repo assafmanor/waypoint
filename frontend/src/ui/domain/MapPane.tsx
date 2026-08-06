@@ -126,9 +126,10 @@ export interface MapPin {
    *
    *  Resolved by the same `badgePhoto` the list row uses, so §2's rule (a picked icon beats a
    *  fetched photo) cannot hold on one surface and not the other. **Whether it is DRAWN is
-   *  CSS's call, not this flag's:** the photo appears only where the canvas resolves a pin big
-   *  enough to read one, which is a `@container` query on the pane (see `map-pane.css`) — so a
-   *  stop change costs no prop, no state and no marker re-diff (ADR-0121 §4). */
+   *  CSS's call, not this flag's:** the photo is drawn wherever the pin still draws its glyph
+   *  and dropped where the glyph is, on the dot tier — one axis, in `map-pane.css`, so a stop
+   *  change or a zoom costs no prop, no state and no marker re-diff (ADR-0121 §4). The canvas's
+   *  height was a second axis until ADR-0167 §16's third amendment retired it. */
   photoUrl?: string;
   tier: PinTier;
   /** What a human said happened here, on the two tiers that can have an outcome at all
@@ -608,8 +609,8 @@ const PinMarker = memo(function PinMarker({
               release once). Counter-rotated and over-sized, because `.pin-b` is rotated 45° so its
               tip points at the coordinate — the same counter-rotation `.pin-g` does for the glyph,
               at the scale a rotated square needs to cover its own box.
-              It is rendered whenever we HAVE one; the size gate that decides whether it is drawn
-              is a container query, so the canvas answers it without a re-render. */}
+              It is rendered whenever we HAVE one; whether it is DRAWN is the dot tier's call, in
+              the same rules that drop the glyph — so a zoom answers it without a re-render. */}
           {pin.photoUrl && (
             <span className="pin-photo" aria-hidden="true">
               <img src={pin.photoUrl} alt="" loading="lazy" decoding="async" />

@@ -176,6 +176,70 @@ describe('SnapSheet (ADR-0121 §5, the region drag ADR-0122 §4)', () => {
 
   // A press with no movement is a tap, not a drag — releasing must not snap the
   // sheet to whichever stop happens to be nearest.
+  // ── THE EMPTY AREA IS A SECOND DRAG TARGET (ADR-0122 §4's 2026-08-06 amendment) ──
+  // Owner: _"sometimes there's a lot of free space that I feel like it would be easier and more
+  // intuitive to scroll from, for example when the list is empty or there's a large area that's
+  // empty"_. The 51px handle row was the only way in, and a sheet whose body is mostly blank is
+  // exactly where a bigger target costs nothing.
+  //
+  // What jsdom CAN answer here is the wiring — that the slack exists, that it drives the same one
+  // gesture, and that it is not an accessible control. **Whether it has any HEIGHT is flexbox, so
+  // it is not answerable here at all**: `flex: 1 0 0` versus a long list's zero is a layout fact,
+  // and jsdom lays nothing out. That half is the CSS's own claim (`snap-sheet.css`) and a human
+  // pass, and saying so is the point (ADR-0121 §13).
+  describe('the empty area below the list drags too', () => {
+    const slackEl = () => document.querySelector('.wp-snapsheet-slack') as HTMLElement;
+
+    it('exists inside the scroller, and is not a control a screen reader has to walk', () => {
+      render(<Host />);
+      expect(slackEl()).toBeTruthy();
+      // Inside the BODY, which is what makes `flex: 1` mean "the space the list did not take".
+      expect(slackEl().parentElement?.className).toContain('wp-snapsheet-body');
+      // The splitter above is the accessible control, and its keyboard already reaches every
+      // stop — a second announced handle would be one more thing to walk past for no verb.
+      expect(slackEl().getAttribute('aria-hidden')).toBe('true');
+      expect(document.querySelectorAll('[role="separator"]')).toHaveLength(1);
+    });
+
+    it('drags DOWN to the next stop down, which is the gesture the report asked for', () => {
+      render(<Host />);
+      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(slackEl(), { clientY: 300 + SNAP_DRAG_SLOP_PX + 1 });
+      expect(sheet().className).toContain('dragging');
+      fireEvent.pointerMove(slackEl(), { clientY: 560 });
+      fireEvent.pointerUp(slackEl(), { clientY: 560 });
+      expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.map);
+    });
+
+    it('drags UP to the full list from the same place', () => {
+      render(<Host />);
+      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(slackEl(), { clientY: 60 });
+      fireEvent.pointerUp(slackEl(), { clientY: 60 });
+      expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.full);
+    });
+
+    // ONE gesture with two targets, not two gestures: the slop threshold, the late capture and
+    // the clamp are `useSnapDrag`'s and are not re-implemented per target.
+    it('takes the same slop threshold, so a tap on it is not a drag', () => {
+      render(<Host />);
+      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(slackEl(), { clientY: 300 + SNAP_DRAG_SLOP_PX - 1 });
+      expect(sheet().className).not.toContain('dragging');
+      fireEvent.pointerUp(slackEl(), { clientY: 300 + SNAP_DRAG_SLOP_PX - 1 });
+      // Unmoved: a press that never passed the slop must not snap the sheet to whatever stop
+      // happens to be nearest where it is sitting.
+      expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
+    });
+
+    it('captures the pointer on ITSELF, so a drag that leaves it is not lost to the canvas', () => {
+      render(<Host />);
+      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(slackEl(), { clientY: 100 });
+      expect(HTMLElement.prototype.setPointerCapture).toHaveBeenCalled();
+    });
+  });
+
   it('a press with no movement changes nothing', () => {
     render(<Host />);
     fireEvent.pointerDown(region(), { clientY: 300, button: 0 });
