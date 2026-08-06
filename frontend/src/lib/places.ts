@@ -744,9 +744,16 @@ export function eventMapPlace(
   event: TripEvent,
   bookings: Booking[],
   places: Place[],
+  /** **Which end of a route this surface is about** (2026-08-06). A transport event has two
+   *  places and `eventPlaceId` answers with the ORIGIN, so a day card labelled `נחיתה` sent you
+   *  to the airport you took off from — owner: _"the map centers around the departure and not
+   *  the landing, which is wrong in this case. It should be aware of the relevant node."_
+   *  Omitted, the origin is still the answer: that is right for a surface about the booking as
+   *  a whole, and only a per-EDGE row knows better. */
+  edge?: 'start' | 'end',
 ): Place | undefined {
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
-  const place = places.find((p) => p.id === eventPlaceId(event, booking));
+  const place = places.find((p) => p.id === eventPlaceId(event, booking, edge === 'end'));
   return hasCoords(place) ? place : undefined;
 }
 
@@ -778,8 +785,11 @@ export function eventShowOnMap(
   bookings: Booking[],
   places: Place[],
   show: ShowPlaceOnMap,
+  /** See {@link eventMapPlace} — a per-edge row passes its own end so a `נחיתה` row goes to
+   *  where you landed. Every other caller is about the booking, and omits it. */
+  edge?: 'start' | 'end',
 ): (() => void) | undefined {
-  const place = eventMapPlace(event, bookings, places);
+  const place = eventMapPlace(event, bookings, places, edge);
   return place && show ? () => show(place.id) : undefined;
 }
 

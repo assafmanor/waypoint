@@ -522,11 +522,15 @@ export function DayView() {
                   onNavigate={dayCtx.readOnly ? undefined : navigateHandler(entry.event, dayCtx)}
                   // Not gated on `readOnly`: a past day is a browsable archive
                   // (ADR-0029), and looking at where you were changes nothing.
+                  // THIS EDGE's end, so a `נחיתה` row goes to where you landed rather than to
+                  // the airport you took off from (2026-08-06). The row already knows which end
+                  // it is; it simply was not saying so.
                   onShowOnMap={eventShowOnMap(
                     entry.event,
                     dayCtx.bookings,
                     dayCtx.places,
                     dayCtx.showPlaceOnMap,
+                    entry.edge,
                   )}
                 />
               )}

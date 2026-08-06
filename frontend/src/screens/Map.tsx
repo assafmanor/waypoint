@@ -143,6 +143,7 @@ import {
   MAP_SHEET_VIEW,
   PLACE_CORPUS,
   PLACE_REFS_CAP,
+  ROW_SCROLL_WAIT_FRAMES,
   type MapRowDisclosure,
   type MapSheetView,
 } from '../constants';
@@ -1419,8 +1420,17 @@ export function MapView() {
   showRowInList.current = (placeId, resultId) => {
     // Deferred a frame so a row that has just grown is measured at its real height, and so a stop
     // change has committed the sheet's new box before we scroll inside it.
+    //
+    // **AND IT WAITS FOR A ROW THAT IS NOT THERE YET** (owner, 2026-08-06: _"when clicking on the
+    // icon to go to the map, it sometimes doesn't go to the map list row. I can see that it's
+    // expanded, but it just doesn't land there."_). One frame is enough when the row is already
+    // rendered — which is why it worked most of the time — and it is not when the same gesture
+    // widened the list to find it: an arrival from another day calls `setAllDays` and this in one
+    // pass, and whether React has committed the wider list by the next frame is a race. So it
+    // retries for a bounded handful of frames rather than scrolling to nothing once.
     cancelAnimationFrame(pendingScroll.current ?? 0);
-    pendingScroll.current = requestAnimationFrame(() => {
+    let framesLeft = ROW_SCROLL_WAIT_FRAMES;
+    const findAndScroll = () => {
       // The sheet where there IS one, the document otherwise — because the graceful-absence path
       // (no Maps key, or offline) renders this list straight into the shell's scrolling body with
       // no sheet at all (§8). Scoping to a null ref there meant a selected card could open below
@@ -1438,8 +1448,15 @@ export function MapView() {
       // Reduced motion drops the easing and keeps the move, which is this app's one rule about
       // animation everywhere else (ADR-0098 §4) — and `motion.ts` is where that question is
       // answered, never a media query written out again here.
-      row?.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-    });
+      if (!row) {
+        // Not rendered yet — try again next frame, up to the budget. `pendingScroll` still holds
+        // at most one frame, so the "one scroll in flight" rule above is unchanged.
+        if (framesLeft-- > 0) pendingScroll.current = requestAnimationFrame(findAndScroll);
+        return;
+      }
+      row.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    };
+    pendingScroll.current = requestAnimationFrame(findAndScroll);
   };
 
   // Tapping the canvas background clears the selection — the map idiom, and the place

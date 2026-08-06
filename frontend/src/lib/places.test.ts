@@ -290,6 +290,28 @@ describe('Google Maps deep-links (Phase 2: no coordinates → no link)', () => {
       bookingMapPlace(booking({ id: 'b', type: BOOKING_TYPE.HOTEL }), [withCoords]),
     ).toBeUndefined();
   });
+
+  // **A ROUTE HAS TWO PLACES AND THE ROW KNOWS WHICH ONE IT IS** (owner, 2026-08-06: _"the map
+  // centers around the departure and not the landing, which is wrong in this case. It should be
+  // aware of the relevant node."_). `eventPlaceId` answers with the ORIGIN, which is right for a
+  // surface about the booking as a whole and wrong for a per-edge row: a card labelled `נחיתה`
+  // sent you to the airport you took off from.
+  it('a route resolves to the END this edge is about, and to the origin without one', () => {
+    const from = place('pl-from', 'פרנקפורט', { lat: 50.03, lng: 8.56 });
+    const to = place('pl-to', 'בן גוריון', { lat: 32.0, lng: 34.88 });
+    const flight = booking({
+      id: 'fl',
+      type: BOOKING_TYPE.FLIGHT,
+      fromPlaceId: 'pl-from',
+      toPlaceId: 'pl-to',
+    });
+    const leg = event({ bookingId: 'fl' });
+    const places = [from, to];
+    expect(eventMapPlace(leg, [flight], places, 'end')?.id).toBe('pl-to');
+    expect(eventMapPlace(leg, [flight], places, 'start')?.id).toBe('pl-from');
+    // No edge is the booking-level question, whose answer is unchanged.
+    expect(eventMapPlace(leg, [flight], places)?.id).toBe('pl-from');
+  });
 });
 
 describe('nextDestination (navigate-to-next, ADR-0106 §6)', () => {
