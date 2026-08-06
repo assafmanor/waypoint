@@ -1294,7 +1294,7 @@ export function MapView() {
   // be untappable, stranding the row whose place data is weakest.
   // ONE RULE covers both directions: **a tap never takes away the surface it was made
   // on** (ADR-0122 §7, which revises the pin-tap raise session 136 shipped).
-  const select = (placeId: string, opts: { fromRow?: boolean } = {}) => {
+  const select = (placeId: string, opts: { fromRow?: boolean; land?: boolean } = {}) => {
     // **SELECTING SOMETHING ELSE CLOSES THE FORM.** A row tap is a different intent — it names
     // a place — so it is not swallowed and it is not trapped: the form closes and the tap does
     // what it came to do. One gesture, one intent. `closeDraftOnSelect` rather than a call to
@@ -1317,7 +1317,14 @@ export function MapView() {
     // ids naming it is one selection shown on both halves — the pin↔row rule, not two
     // selections (ADR-0121 §8).
     setSelectedResultId(ownedResults.get(placeId) ?? null);
-    if (opts.fromRow) {
+    // **`fromRow` IS PROVENANCE; `land` IS TREATMENT, and they were one flag doing both.**
+    // Everything below — normalise the sheet, frame, scroll the row into view — is "put this
+    // place in front of you", which an ARRIVAL from an event/booking/idea wants exactly as much
+    // as a row tap does. What it must NOT inherit is the provenance: `openedFromRow` decides
+    // whether the next tap on the row CLOSES it, and a place the app put in front of you has not
+    // been tapped yet, so the user's first tap must not be read as their second (the reasoning
+    // `openedFromRow`'s own comment already spells out, which names arrivals in its list).
+    if (opts.fromRow || opts.land) {
       // A row tap normalises the sheet to `half`: from `full` because the map it
       // focuses is invisible there (ADR-0121 §8), and from the map extreme because a
       // row you tapped in a list belongs in its list. A coordless row has no map to
@@ -2177,15 +2184,34 @@ export function MapView() {
     const point = selectedId ? placePoint(placeById.get(selectedId) ?? {}) : null;
     if (point) setArrival({ at: point, frame: true });
   }, [selectedId, placeById]);
+  // **AND IT LANDS THE SAME WAY A ROW TAP DOES** (owner, 2026-08-06). It used to set the
+  // selection and the arrival by hand, which framed the camera and then left the list wherever
+  // it was — so a place you reached from an event, a booking or the shelf was selected somewhere
+  // below the fold, with nothing saying a row had been brought to you. The scroll was never a
+  // decision anyone made against; it simply was not on this path, because this path had grown its
+  // own half-copy of `select` (rule 8, in the small).
+  //
+  // **It opens at `half` rather than at the map extreme, and that is a measured call, not the
+  // status quo winning.** The tab unmounts on leave, so `half` is where an arrival already
+  // landed; what makes it right is that the CARD costs more canvas than the sheet does. Clear
+  // map is `0.44S − 54` at `half` against `S − 136 − card` at the map extreme, so the extreme
+  // only wins while the card is under `0.56S − 82` — about 265px on a 620px split, where the
+  // reported card measured **336**. A place worth arriving at is exactly the one carrying the
+  // references, the summary and the notes that make its card heavy, so the extreme loses on the
+  // very places this path serves. Two supporting reasons: the row is the real object and the
+  // card is its stand-in where a list cannot be shown (ADR-0122 §7), and "I picked a place, show
+  // me" should not have two behaviours depending on which screen picked it.
+  const landOnPlace = useRef<(placeId: string) => void>(() => {});
+  landOnPlace.current = (placeId) => select(placeId, { land: true });
   useEffect(() => {
     if (!focusPlaceId) return;
     const usage = usageIndex.get(focusPlaceId);
+    // Widen FIRST: day-scoped, the row this is about to scroll to would not be in the list at
+    // all, and the deferred frame `showRowInList` waits is what lets the widened list commit.
     if (usage && !usage.days.some((d) => d.date === activeDate)) setAllDays(true);
-    setSelectedId(focusPlaceId);
-    const at = placePoint(placeById.get(focusPlaceId) ?? {});
-    setArrival(at ? { at, frame: true } : null);
+    landOnPlace.current(focusPlaceId);
     clearFocus();
-  }, [focusPlaceId, usageIndex, placeById, activeDate, setAllDays, clearFocus]);
+  }, [focusPlaceId, usageIndex, activeDate, setAllDays, clearFocus]);
 
   // The shelf's tail arriving (ADR-0116 session-202 §5). It turns on the `אולי`
   // facet and nothing else: the day scope rode in on `?day=`, and the tail was
