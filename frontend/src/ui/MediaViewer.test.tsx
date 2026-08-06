@@ -278,13 +278,18 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   // copy is transformed to, and when it stops existing. What is NOT is how it LOOKS out there —
   // that the copy escapes the frame's clip and the card's rounding is geometry, and it is
   // measured in `e2e/media-viewer-lift.spec.ts`.
-  const pinch = (img: Element, ...pts: { x: number; y: number }[]) =>
+  //
+  // **The fingers land on the OVERLAY** (owner, 2026-08-06: the pinch _"should be available from
+  // the entire screen"_), which is also why these fire at `.doc-viewer` rather than at the
+  // picture: in jsdom there is no hit-testing at all, so what a call here really asserts is
+  // which element carries the handler.
+  const pinch = (...pts: { x: number; y: number }[]) =>
     pts.forEach((p, i) =>
-      fireEvent.pointerDown(img, { pointerId: i + 1, clientX: p.x, clientY: p.y }),
+      fireEvent.pointerDown(backdrop(), { pointerId: i + 1, clientX: p.x, clientY: p.y }),
     );
-  const moveTo = (img: Element, ...pts: { x: number; y: number }[]) =>
+  const moveTo = (...pts: { x: number; y: number }[]) =>
     pts.forEach((p, i) =>
-      fireEvent.pointerMove(img, { pointerId: i + 1, clientX: p.x, clientY: p.y }),
+      fireEvent.pointerMove(backdrop(), { pointerId: i + 1, clientX: p.x, clientY: p.y }),
     );
   const lifted = () => document.querySelector<HTMLElement>('.doc-viewer-lift');
 
@@ -292,14 +297,14 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   // nothing for a second tap to toggle.
   it('does nothing under a single finger', () => {
     openPhoto();
-    pinch(screen.getByAltText('Sensō-ji'), { x: 100, y: 100 });
+    pinch({ x: 100, y: 100 });
     expect(lifted()).toBeNull();
   });
 
   it('lifts a copy out of the card on the second finger', () => {
     openPhoto();
     const img = screen.getByAltText('Sensō-ji');
-    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
+    pinch({ x: 100, y: 100 }, { x: 200, y: 100 });
     const copy = lifted()!;
     // Out of the card — a sibling of it, in the overlay itself, which is what nothing clips.
     expect(copy.parentElement!.className).toBe('doc-viewer');
@@ -307,18 +312,34 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
     // A picture of a picture: no alt, hidden from the tree, and the original still labelled.
     expect(copy.getAttribute('aria-hidden')).toBe('true');
     expect(copy.getAttribute('alt')).toBe('');
-    // The original goes transparent rather than away — it is still holding the pointer capture
-    // and still has to be hit-testable for the second finger.
+    // The original goes transparent rather than away — it is the box the copy was measured
+    // from, so it keeps its place in the layout and simply must not be seen under itself.
     expect(img.hasAttribute('data-lifted')).toBe(true);
     expect(document.querySelector('.doc-viewer-lift-scrim')).toBeTruthy();
   });
 
   it('scales the copy by the finger-distance ratio', () => {
     openPhoto();
-    const img = screen.getByAltText('Sensō-ji');
-    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
-    moveTo(img, { x: 50, y: 100 }, { x: 250, y: 100 }); // 100px apart → 200px apart
+    pinch({ x: 100, y: 100 }, { x: 200, y: 100 });
+    moveTo({ x: 50, y: 100 }, { x: 250, y: 100 }); // 100px apart → 200px apart
     expect(lifted()!.style.transform).toContain('scale(2)');
+  });
+
+  // **Nothing to lift, nothing to start.** The handler sits on the whole overlay now, so a PDF's
+  // hand-off panel and a still-loading document both reach it — and neither has a picture.
+  it('starts no gesture when no picture is displayed', () => {
+    render(
+      wrapNav(
+        <MediaViewer
+          title="Sensō-ji"
+          mimeType="application/pdf"
+          source={{ kind: 'url', url: '/enrichment/images/enr_1' }}
+          onClose={vi.fn()}
+        />,
+      ),
+    );
+    pinch({ x: 100, y: 100 }, { x: 200, y: 100 });
+    expect(lifted()).toBeNull();
   });
 
   // **The first finger up ends it, not the last** — a gesture that has stopped being a pinch has
@@ -327,11 +348,25 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   it('sends the copy home when a finger lifts', () => {
     openPhoto();
     const img = screen.getByAltText('Sensō-ji');
-    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
-    moveTo(img, { x: 50, y: 100 }, { x: 250, y: 100 });
-    fireEvent.pointerUp(img, { pointerId: 2 });
+    pinch({ x: 100, y: 100 }, { x: 200, y: 100 });
+    moveTo({ x: 50, y: 100 }, { x: 250, y: 100 });
+    fireEvent.pointerUp(backdrop(), { pointerId: 2 });
     expect(lifted()).toBeNull();
     expect(img.hasAttribute('data-lifted')).toBe(false);
+  });
+
+  // **A pinch is not a way out.** The gesture now starts on the scrim, whose click is the ONE
+  // close — so the click a released finger can synthesise there has to be eaten, or zooming a
+  // picture dismisses the viewer showing it.
+  it('does not close on the click a released pinch can synthesise', () => {
+    const { onClose } = openPhoto();
+    pinch({ x: 100, y: 100 }, { x: 200, y: 100 });
+    fireEvent.pointerUp(backdrop(), { pointerId: 2 });
+    fireEvent.click(backdrop());
+    expect(onClose).not.toHaveBeenCalled();
+    // …and only that one. The next tap is the user's, and it closes.
+    fireEvent.click(backdrop());
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   // With the tokens readable the copy stays for the length of the journey — untransformed, so
@@ -339,10 +374,9 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   it('keeps the copy for the journey home when there is one to play', async () => {
     withAnimation();
     openPhoto();
-    const img = screen.getByAltText('Sensō-ji');
-    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
-    moveTo(img, { x: 50, y: 100 }, { x: 250, y: 100 });
-    fireEvent.pointerUp(img, { pointerId: 2 });
+    pinch({ x: 100, y: 100 }, { x: 200, y: 100 });
+    moveTo({ x: 50, y: 100 }, { x: 250, y: 100 });
+    fireEvent.pointerUp(backdrop(), { pointerId: 2 });
     const copy = lifted()!;
     expect(copy.hasAttribute('data-settling')).toBe(true);
     expect(copy.style.transform).toBe('translate(0px, 0px) scale(1)');
@@ -353,9 +387,8 @@ describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   // other: the one thing that must never happen is a picture stranded out of its card.
   it('sends the copy home on a cancelled pointer too', () => {
     openPhoto();
-    const img = screen.getByAltText('Sensō-ji');
-    pinch(img, { x: 100, y: 100 }, { x: 200, y: 100 });
-    fireEvent.pointerCancel(img, { pointerId: 1 });
+    pinch({ x: 100, y: 100 }, { x: 200, y: 100 });
+    fireEvent.pointerCancel(backdrop(), { pointerId: 1 });
     expect(lifted()).toBeNull();
   });
 });

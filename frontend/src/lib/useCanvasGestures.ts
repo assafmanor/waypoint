@@ -37,7 +37,8 @@ import {
 } from './canvas-gestures';
 import { latLngAtOffset, type MapCamera } from './useMapCamera';
 import type { LatLng } from './map-camera';
-import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS } from '../constants';
+import { armClickSwallow } from './click-swallow';
+import { DRAG_HOLD_MS } from '../constants';
 
 /** The two camera verbs this gesture needs, named as a slice of `MapCamera` so the hook
  *  can be tested against a two-method object instead of a whole camera. */
@@ -286,49 +287,4 @@ const SUPPRESSED = [
 function block(e: Event): void {
   e.stopPropagation();
   if (e.cancelable) e.preventDefault();
-}
-
-const swallow = (e: Event) => e.stopPropagation();
-
-/**
- * Eat the ONE `click` a completed gesture fires, then disarm — by the click itself, or by a
- * timeout if that click never comes.
- *
- * **The timeout is the half that was missing, and it is a real bug rather than belt-and-braces.**
- * `SETTLE` gets away without it because a real drag reliably ends in a click; a long-press
- * DROP does not, because this pipeline `preventDefault`s the touch stream that would have
- * synthesised one. A stranded `once` listener then swallows the user's **next genuine tap** —
- * which presents as "the thing I tapped didn't respond", e.g. a tap outside the `IconPicker`
- * failing to close it, since that panel's own dismissal is a bubble-phase `click` on
- * `document` and this guard stops propagation ahead of it.
- *
- * `useHoldToDrag` already carries exactly this fallback (`DRAG_CLICK_SWALLOW_MS`) with the
- * same note — "a drop that generates no click at all would otherwise leave the listener armed
- * for the user's next real tap". Copying the arm without the disarm is how the shelf's lesson
- * got lost on the way to the canvas.
- *
- * **It is armed by the RELEASE, never by the gesture completing**, and for the long press
- * those are not the same moment: a hold fires at `DRAG_HOLD_MS` with the finger still down,
- * and this window is `DRAG_CLICK_SWALLOW_MS` long — so arming at the drop covered a click
- * that had not happened yet and was gone by the time it did.
- *
- * **And it is only one of the two channels.** Google's map `click` is a callback it dispatches
- * itself, not an event we can stop propagating, so the pane also refuses a canvas tap while
- * this is armed (`gestureTapRef`). Same arm, same disarm, same timeout — the note at the top
- * of this file, one step further: `stopPropagation` says nothing to another stream, and
- * nothing at all to a subscription.
- */
-function armClickSwallow(onDisarm: () => void): () => void {
-  const disarm = () => {
-    clearTimeout(timer);
-    document.removeEventListener('click', once, true);
-    onDisarm();
-  };
-  const once = (e: Event) => {
-    swallow(e);
-    disarm();
-  };
-  const timer = setTimeout(disarm, DRAG_CLICK_SWALLOW_MS);
-  document.addEventListener('click', once, true);
-  return disarm;
 }

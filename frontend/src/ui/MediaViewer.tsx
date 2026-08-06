@@ -38,6 +38,7 @@ import { useOverlay } from '../state/nav-state';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useExitTransition } from '../lib/useExitTransition';
 import { motionDurationMs } from '../lib/motion';
+import { armClickSwallow } from '../lib/click-swallow';
 import { Spinner } from './Spinner';
 import { t } from '../i18n/he';
 import { Icon } from './Icon';
@@ -111,22 +112,41 @@ const midpoint = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y +
 export interface PinchStart {
   dist: number;
   mid: Point;
+  /** **The point of the PICTURE the zoom holds still**, which is the two-finger midpoint only
+   *  while the fingers are on the picture. Once the gesture belongs to the whole screen they
+   *  often are not (2026-08-06), and an anchor outside the box is a point the image does not
+   *  contain: keeping it under the fingers sends the picture flying away from them — a pinch
+   *  300px below a short photograph would push it off the top of the screen at 2×. Clamped to
+   *  the picture's own box, the same pinch grows it from its bottom edge, which is what a
+   *  finger just below it means. Equal to `mid` whenever the fingers ARE on the picture, so
+   *  that case is untouched. */
+  anchor: Point;
   transform: ZoomTransform;
   // The image box's untransformed top-left in client px (transform-origin is 0 0).
   origin: Point;
 }
 
-// Scale by the finger-distance ratio while keeping the content point under the
-// two-finger midpoint fixed — the midpoint moving also pans, so pinch and pan
-// are the same computation.
+/** The nearest point inside the box — the anchor when the fingers are outside it. */
+export function clampToRect(p: Point, rect: LiftRect): Point {
+  return {
+    x: Math.min(Math.max(p.x, rect.left), rect.left + rect.width),
+    y: Math.min(Math.max(p.y, rect.top), rect.top + rect.height),
+  };
+}
+
+// Scale by the finger-distance ratio while keeping the anchored content point under the
+// fingers — the midpoint moving also pans, so pinch and pan are the same computation. The
+// fingers carry the anchor with them (`curMid - mid`) rather than being it, which is what
+// keeps a clamped anchor from jolting the picture on the first frame: at the start the
+// midpoint has not moved, so the transform is exactly identity either way.
 export function pinchTransform(start: PinchStart, curMid: Point, curDist: number): ZoomTransform {
   const scale = clampZoom(start.transform.scale * (curDist / start.dist));
-  const focalX = (start.mid.x - start.origin.x - start.transform.tx) / start.transform.scale;
-  const focalY = (start.mid.y - start.origin.y - start.transform.ty) / start.transform.scale;
+  const focalX = (start.anchor.x - start.origin.x - start.transform.tx) / start.transform.scale;
+  const focalY = (start.anchor.y - start.origin.y - start.transform.ty) / start.transform.scale;
   return {
     scale,
-    tx: curMid.x - start.origin.x - scale * focalX,
-    ty: curMid.y - start.origin.y - scale * focalY,
+    tx: curMid.x - start.mid.x + start.anchor.x - start.origin.x - scale * focalX,
+    ty: curMid.y - start.mid.y + start.anchor.y - start.origin.y - scale * focalY,
   };
 }
 
@@ -155,12 +175,21 @@ const rectOf = (el: Element): LiftRect => {
  *  are down, so there is no zoomed state to pan around in, nothing for a double tap to toggle,
  *  and no clipping to fight: the picture leaves the frame entirely.
  *
- *  **Two elements, and which is which matters.** The in-flow `<img>` stays exactly where it is
- *  and stays the gesture's target — it holds the pointer capture, so every move lands on it
- *  wherever the fingers travel, and it must remain hit-testable for the SECOND finger, which is
- *  why it goes transparent rather than hidden. The lifted copy is a sibling of the card inside
- *  the same portal (so no ancestor clips it, and ADR-0062's global suppressor still sees a
- *  target inside `.doc-viewer`), is `pointer-events: none`, and is the only thing that scales.
+ *  **The gesture belongs to the whole viewer, not to the picture** (owner, 2026-08-06: _"the
+ *  pinch to zoom in/out gesture should be available from the entire screen when the image is
+ *  already displaying, so that if the image dimensions are small, you wouldn't have to place
+ *  your fingers exactly inside the image borders"_ — Instagram again). The handlers hang off
+ *  `.doc-viewer`, which is the full screen, so fingers landing on the scrim, the head or the
+ *  card's edge all pinch the picture; a wide photograph in a 240px frame no longer asks you to
+ *  aim. What still decides whether there IS a gesture is the picture: no displayed image (a
+ *  PDF's hand-off, a failure, bytes still arriving) means no `imgRef`, and nothing starts.
+ *
+ *  **Three elements, and which is which matters.** The overlay is the TARGET (it takes the
+ *  pointer capture, so every move lands on it wherever the fingers travel). The in-flow `<img>`
+ *  is the MEASURE — it never moves, and only goes transparent so it is not seen under its own
+ *  copy. The lifted copy is a sibling of the card inside the same portal (so no ancestor clips
+ *  it, and ADR-0062's global suppressor still sees a target inside `.doc-viewer`), is
+ *  `pointer-events: none`, and is the only thing that scales.
  *
  *  React never re-renders during the gesture: the lift is one state change at the pinch, one at
  *  the release, and every frame between them is written straight to `element.style`. */
@@ -210,22 +239,31 @@ function useImageZoom() {
   }, [apply]);
   useEffect(() => () => window.clearTimeout(settleTimer.current), []);
 
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLImageElement>) => {
+  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    // **No picture, no gesture.** A PDF's hand-off panel, a failed fetch and bytes still
+    // arriving all reach this handler now that it sits on the whole overlay — and none of them
+    // has anything to lift.
     const img = imgRef.current;
     if (!img) return;
-    img.setPointerCapture(e.pointerId);
+    // Captured on the OVERLAY, which is what makes the rest of the gesture indifferent to where
+    // the fingers wander: over the card, off the picture, past the screen edge.
+    e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = [...pointers.current.values()];
     // One finger is not a gesture here: with nothing to pan and nothing to toggle, a single
-    // pointer only ever waits for its partner.
+    // pointer only ever waits for its partner. (And a lone tap on the scrim is still the ONE
+    // close — that is a `click`, and it is not this handler's business.)
     if (pts.length !== 2) return;
 
     const rect = rectOf(img);
+    const mid = midpoint(pts[0], pts[1]);
     // The copy is born at the picture's box with an identity transform, so the pinch's focal
     // maths reads its origin off that box — the same `transform-origin: 0 0` the CSS declares.
+    // The anchor is clamped INTO that box, because the fingers no longer have to be in it.
     pinch.current = {
       dist: distance(pts[0], pts[1]),
-      mid: midpoint(pts[0], pts[1]),
+      mid,
+      anchor: clampToRect(mid, rect),
       transform: { ...IDENTITY },
       origin: { x: rect.left, y: rect.top },
     };
@@ -235,7 +273,7 @@ function useImageZoom() {
   }, []);
 
   const onPointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLImageElement>) => {
+    (e: ReactPointerEvent<HTMLDivElement>) => {
       if (!pointers.current.has(e.pointerId)) return;
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const pts = [...pointers.current.values()];
@@ -253,10 +291,19 @@ function useImageZoom() {
   // **The first finger up ends it**, not the last. Holding one finger down after a pinch used to
   // mean "keep this zoom and pan it"; there is no such state now, so a gesture that has stopped
   // being a pinch has stopped being a zoom.
+  //
+  // The release also arms the click swallow, because the overlay's own `click` is the ONE close
+  // (ADR-0103 §2) and a pinch that started on the scrim can end in a synthesised tap on it —
+  // which would dismiss the viewer the gesture was zooming. Armed HERE, at the release, since
+  // that is the event before the one being guarded (ADR-0148's amendment), and disarmed by that
+  // click or by its own timeout.
   const onPointerEnd = useCallback(
-    (e: ReactPointerEvent<HTMLImageElement>) => {
+    (e: ReactPointerEvent<HTMLDivElement>) => {
       pointers.current.delete(e.pointerId);
-      if (pointers.current.size < 2 && pinch.current) settle();
+      if (pointers.current.size < 2 && pinch.current) {
+        armClickSwallow();
+        settle();
+      }
     },
     [settle],
   );
@@ -405,6 +452,7 @@ export function MediaViewer({
          lifted photograph is chrome on top of the one thing you asked to see. */
       data-lifted={lift ? '' : undefined}
       onClick={beginClose}
+      {...handlers}
     >
       <div
         ref={cardRef}
@@ -443,14 +491,14 @@ export function MediaViewer({
             <img
               ref={imgRef}
               className="doc-viewer-img is-fresh"
-              /* Transparent, never hidden, while its copy is up: this element is still the
-                 gesture's target and still has to be hit-testable for the second finger. */
+              /* Transparent while its copy is up — it is the box the copy is measured from and
+                 born at, so it must keep its place in the layout; it just must not be seen
+                 underneath itself. The gesture is the overlay's, not this element's. */
               data-lifted={lift ? '' : undefined}
               src={url}
               alt={title}
               onLoad={(e) => setLoadedSize(naturalSize(e.currentTarget))}
               onError={() => setImageBroken(true)}
-              {...handlers}
             />
           ) : (
             <div className="doc-viewer-handoff is-fresh">
