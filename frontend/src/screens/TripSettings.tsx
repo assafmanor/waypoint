@@ -27,7 +27,7 @@ import { useToast } from '../ui/Toast';
 import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { formatTripDates } from '../lib/time';
 import { allowMemberBack, createInvite, fetchRemovedMembers, rotateInvite } from '../lib/api';
-import { inviteLink, type InviteLink } from '../lib/invite-link';
+import { inviteLink } from '../lib/invite-link';
 import {
   DEFAULT_TRIP_ICON,
   DEVICE_LOCALE,
@@ -71,7 +71,7 @@ export function TripSettings() {
   const [editing, setEditing] = useState(false);
   const [sheetFor, setSheetFor] = useState<Membership | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
-  const [invite, setInvite] = useState<InviteLink | 'loading' | null>(null);
+  const [invite, setInvite] = useState<{ url: string } | 'loading' | null>(null);
   const [removed, setRemoved] = useState<RemovedMember[] | null>(null);
 
   // Leave for /trips once the trip is gone — whether we deleted it or a remote
@@ -158,7 +158,7 @@ export function TripSettings() {
   const generateInvite = () => {
     setInvite('loading');
     createInvite(trip.id).then(
-      (res) => setInvite(inviteLink(res.inviteUrl)),
+      (res) => setInvite({ url: inviteLink(res.inviteUrl) }),
       () => {
         setInvite(null);
         toast(CONTROL_ICON.warn, t.toast.writeFailed);
@@ -177,7 +177,7 @@ export function TripSettings() {
         setInvite('loading');
         rotateInvite(trip.id).then(
           (res) => {
-            setInvite(inviteLink(res.inviteUrl));
+            setInvite({ url: inviteLink(res.inviteUrl) });
             toast(CONTROL_ICON.done, t.settings.inviteReset_done);
           },
           () => {
@@ -336,7 +336,7 @@ export function TripSettings() {
         {invite && invite !== 'loading' ? (
           <div className="invite-box" onClick={copyInvite}>
             <span className="code" dir="auto">
-              {invite.label}
+              {invite.url}
             </span>
             <span className="cp">
               <Icon name="clipboard" />

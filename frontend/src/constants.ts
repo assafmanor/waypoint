@@ -10,6 +10,11 @@ import type { NoteHostKind } from './lib/notes';
 import type { SnapStop } from './lib/snap-sheet';
 import type { IconName } from './ui/Icon';
 
+/** The product's name, for the two screens that show it. Defined in `app-name.ts`, which
+ *  `vite.config.ts` also reads for the <title> and the PWA manifest — see ADR-0170 for why
+ *  the rename stops at what a person reads. */
+export { APP_NAME } from './app-name';
+
 export const MS_PER_DAY = 86_400_000;
 /** One minute, for the derivations that are minute-grained on a screen whose clock ticks
  *  every second — a memo keyed on this rebuilds 60 times an hour instead of 3,600. */

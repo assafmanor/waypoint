@@ -41,15 +41,35 @@ Three deliberate limits:
 
 `validateConfig` (ADR-0071) now requires `FRONTEND_URL` in production — deployment.md always called it required, the validator never did — and refuses to start when `GOOGLE_OAUTH_REDIRECT_URI` and `FRONTEND_URL` name **different hosts**. That combination cannot log anyone in, for the cookie reason above, so booting and serving it is strictly worse than dying with the two variable names printed. This is the check that catches symptom 1: `wwww.travelive.app` is not `www.travelive.app`, so the deploy fails at boot with both names in the log instead of shipping a login that ends nowhere.
 
-### 4. The invite link is built from the canonical origin and read as a bare one
+### 4. The invite link is one string, and it is the short one
 
-`lib/invite-link.ts` turns the API's `/join/<code>` into two strings: the **url** (absolute, scheme and `www.` and all — that is what gets pasted) and the **label** (`travelive.app/join/7Kq2mB`). The label is not new work: `lib/external-url.ts`'s `prettyUrl` already strips the scheme and the `www.` from a note's url for exactly this reason, and it now serves the invite box too — one answer to "how does a url read", not two. Both invite surfaces (`CreateTrip`'s birth screen, `TripSettings`) went through it, replacing the `${window.location.origin}${path}` each had grown separately.
+`lib/invite-link.ts` turns the API's `/join/<code>` into the shortest string that still
+works: `travelive.app/join/7Kq2mB`. It is what the box shows **and** what the clipboard
+gets — deliberately the same string, because a label that differs from what was copied is
+a small lie the reader cannot see. Both invite surfaces (`CreateTrip`'s birth screen,
+`TripSettings`) go through it, replacing the `${window.location.origin}${path}` each had
+grown separately.
+
+**Only the scheme comes off, and the `www.` deliberately does not.** Dropping `https://`
+is free here: `.app` is an HSTS-preloaded TLD, so a scheme-less link to this app cannot be
+downgraded to http — the browser upgrades it before the first request — and the chat apps
+an invite is actually pasted into linkify a bare host + path.
+
+That is also why this is **not** `prettyUrl` (`lib/external-url.ts`), which strips `www.`
+happily and which the first cut of this reused. `prettyUrl` labels a link that has a
+working `href` behind it, so it is allowed to abbreviate; an invite has nothing behind it —
+it **is** the href, pasted into another app — so it may only drop what cannot change where
+it goes. A `www.` edited out while `www` is the canonical host is a dead link in somebody's
+group chat. It disappears when the app **moves** to the apex (§1), not before: the string
+is short because the host is, which is the only version of short that stays true.
 
 ### 5. Which name can be canonical is DNS's call, and it is not free
 
-Wanting the apex is not the same as being able to have it. Railway serves a custom domain over a `CNAME`, and a `CNAME` at the apex is not a thing the DNS spec allows — providers fake it with CNAME flattening / `ALIAS` / `ANAME`, and **GoDaddy does not**. So an apex-canonical setup means moving the domain's nameservers to a provider that flattens (Cloudflare, free); a www-canonical setup works on GoDaddy DNS as-is, with the apex on GoDaddy forwarding.
+Wanting the apex is not the same as being able to have it. Railway serves a custom domain over a `CNAME`, and a `CNAME` at the apex is not a thing the DNS spec allows — providers fake it with CNAME flattening / `ALIAS` / `ANAME`, and **GoDaddy does not**. **The domain is registered at GoDaddy and its DNS is served by Cloudflare** (owner, 2026-08-06), which flattens — so the apex is available and apex-canonical is the choice this ADR assumes. Had DNS stayed on GoDaddy the only options would have been a nameserver move or a www-canonical setup with the apex on GoDaddy forwarding.
 
-The trap in the second option, and the reason it isn't simply the cheap default: GoDaddy forwarding does not reliably carry the **path**, so `travelive.app/join/<code>` forwards to the `www` home page and the invite code is gone. An apex that only ever gets typed bare is fine on forwarding; an apex people paste links to is not. Both hosts pointing at the service, with §2 doing the redirect, is what actually keeps a deep link alive.
+The trap in the forwarding option, and the reason it isn't simply the cheap default: GoDaddy forwarding does not reliably carry the **path**, so `travelive.app/join/<code>` forwards to the `www` home page and the invite code is gone. An apex that only ever gets typed bare is fine on forwarding; an apex people paste links to is not. Both hosts pointing at the service, with §2 doing the redirect, is what actually keeps a deep link alive.
+
+**And forwarding leaves a mark that outlives it.** GoDaddy's parked apex answers with a **301**, which browsers cache per profile and effectively forever — so after the DNS was corrected the apex still opened the parked `/lander` in a normal window while working in incognito, which reads as a DNS or caching bug and is neither. Nothing server-side can clear it; it is why §2's redirect is a 302.
 
 Either way the choice must be made in **four places at once** — the Railway custom domain, `FRONTEND_URL`, `GOOGLE_OAUTH_REDIRECT_URI`, and the Google Cloud console's authorized origins + redirect URIs. §3 turns three of those four disagreeing into a boot failure instead of a mystery. The runbook is in [deployment.md](../architecture/deployment.md).
 

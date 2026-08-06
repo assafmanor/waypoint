@@ -47,7 +47,14 @@ import {
 import { saveIntent } from '../lib/intent';
 import { dayCount } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
-import { DEFAULT_TRIP_ICON, DOT_SEPARATOR, GLYPH, JOIN_PASS, MS_PER_DAY } from '../constants';
+import {
+  APP_NAME,
+  DEFAULT_TRIP_ICON,
+  DOT_SEPARATOR,
+  GLYPH,
+  JOIN_PASS,
+  MS_PER_DAY,
+} from '../constants';
 import { t } from '../i18n/he';
 
 type LoadState =
@@ -178,8 +185,8 @@ export function JoinTrip() {
       data-refused={refused ? '' : undefined}
     >
       <div className="join-top">
-        <div className="join-logo">Waypoint</div>
-        {/* The Waypoint mark (see Login.tsx's .land-icon for the rationale) —
+        <div className="join-logo">{APP_NAME}</div>
+        {/* The Travelive mark (see Login.tsx's .land-icon for the rationale) —
             marker + amber "now" core on a board disc, mirroring
             public/icon-mark-bright.svg. Inlined so it stays crisp at this size. */}
         <svg className="join-icon" viewBox="0 0 512 512" aria-hidden="true">
