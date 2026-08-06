@@ -27,24 +27,12 @@
 // start-aligned boundary and undoes all of this — see `choice-grid.css`.
 import { useEffect, useRef, type RefObject } from 'react';
 import { prefersReducedMotion } from './motion';
+// The ancestor walk lived here privately until the sheet's drag needed the same primitive
+// (ADR-0122 §4's 2026-08-06 amendment); it is `lib/scrollable.ts` now, asked a second way.
+import { scrollerFor, type ScrollAxis } from './scrollable';
 
 /** `inline` — a horizontal strip (chip rows, the day strip). `block` — a vertical list. */
-export type CenterAxis = 'inline' | 'block';
-
-/** The nearest ancestor that actually scrolls on `axis`. Walked rather than taken from
- *  `parentElement`, because a group in between can be `overflow: visible` and wider than
- *  the scroller holding it: the Map's `.map-facetstrip` owns the scroll and the
- *  `.choice-grid.pills` inside it deliberately does not (two nested scrollers fight). */
-function scrollerFor(el: HTMLElement, axis: CenterAxis): HTMLElement | null {
-  for (let p = el.parentElement; p; p = p.parentElement) {
-    const overflows =
-      axis === 'inline' ? p.scrollWidth > p.clientWidth : p.scrollHeight > p.clientHeight;
-    const style = getComputedStyle(p);
-    const overflow = axis === 'inline' ? style.overflowX : style.overflowY;
-    if (overflows && (overflow === 'auto' || overflow === 'scroll')) return p;
-  }
-  return null;
-}
+export type CenterAxis = ScrollAxis;
 
 /** Attach the returned ref to whichever item is currently selected — conditionally, so it
  *  moves with the selection — and pass the selected value as `selected` so a change

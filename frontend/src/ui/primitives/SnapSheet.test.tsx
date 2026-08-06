@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useState, type ReactNode } from 'react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '../../test/pointer-events';
 import { SnapSheet } from './SnapSheet';
 import {
@@ -46,7 +46,13 @@ function stubLayout(sheetHeight: () => number) {
 
 const headerTap = vi.fn();
 
-function Host({ initial = MAP_SHEET_VIEW.half }: { initial?: MapSheetView }) {
+function Host({
+  initial = MAP_SHEET_VIEW.half,
+  children = <p>rows</p>,
+}: {
+  initial?: MapSheetView;
+  children?: ReactNode;
+}) {
   const [view, setView] = useState<MapSheetView>(initial);
   return (
     <div className="host">
@@ -70,7 +76,7 @@ function Host({ initial = MAP_SHEET_VIEW.half }: { initial?: MapSheetView }) {
           </button>
         }
       >
-        <p>rows</p>
+        {children}
       </SnapSheet>
     </div>
   );
@@ -176,66 +182,104 @@ describe('SnapSheet (ADR-0121 §5, the region drag ADR-0122 §4)', () => {
 
   // A press with no movement is a tap, not a drag — releasing must not snap the
   // sheet to whichever stop happens to be nearest.
-  // ── THE EMPTY AREA IS A SECOND DRAG TARGET (ADR-0122 §4's 2026-08-06 amendment) ──
-  // Owner: _"sometimes there's a lot of free space that I feel like it would be easier and more
-  // intuitive to scroll from, for example when the list is empty or there's a large area that's
-  // empty"_. The 51px handle row was the only way in, and a sheet whose body is mostly blank is
-  // exactly where a bigger target costs nothing.
+  // ── THE BODY DRAGS WHILE IT CANNOT SCROLL (ADR-0122 §4's 2026-08-06 amendment) ──
+  // Owner: _"when the list doesn't scroll (or there's text that's not list items, for example the
+  // empty state has a glyph+text that doesn't allow us to scroll), we should be able to use the
+  // same gesture"_. This supersedes a `flex: 1` spacer that claimed only the space AFTER the
+  // content — the same idea reaching a subset of the same cases, and it under-delivered on exactly
+  // the one named first, since an empty state is a tall block that leaves no gap below itself.
   //
-  // What jsdom CAN answer here is the wiring — that the slack exists, that it drives the same one
-  // gesture, and that it is not an accessible control. **Whether it has any HEIGHT is flexbox, so
-  // it is not answerable here at all**: `flex: 1 0 0` versus a long list's zero is a layout fact,
-  // and jsdom lays nothing out. That half is the CSS's own claim (`snap-sheet.css`) and a human
-  // pass, and saying so is the point (ADR-0121 §13).
-  describe('the empty area below the list drags too', () => {
-    const slackEl = () => document.querySelector('.wp-snapsheet-slack') as HTMLElement;
+  // **The one fact is "can it scroll", and it is why this is easy rather than hard.** Dragging from
+  // a scroller needs `touch-action: none`, which is what makes a list unscrollable, and a native
+  // pan cannot be taken over once it has started — so the choice cannot be deferred to the first
+  // move either. None of that arises when the content fits: no pan can start, so nothing competes.
+  //
+  // jsdom reports 0 for every scroll metric, so "cannot scroll" is its default — which is what
+  // makes the GATE testable here, the stubs being the scenario. `touch-action` itself and real
+  // overflow stay `e2e/snap-sheet-drag.spec.ts`'s.
+  describe('the body drags while it cannot scroll', () => {
+    const body = () => document.querySelector('.wp-snapsheet-body') as HTMLElement;
+    /** How a test says the list outgrew the sheet. */
+    const makeScrollable = () => {
+      Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+        configurable: true,
+        get(this: HTMLElement) {
+          return this.classList.contains('wp-snapsheet-body') ? CONTAINER * 2 : 0;
+        },
+      });
+      vi.spyOn(window, 'getComputedStyle').mockImplementation(
+        () => ({ overflowY: 'auto', overflowX: 'visible' }) as CSSStyleDeclaration,
+      );
+    };
 
-    it('exists inside the scroller, and is not a control a screen reader has to walk', () => {
+    it('marks itself a drag target, which is what carries `touch-action`', async () => {
       render(<Host />);
-      expect(slackEl()).toBeTruthy();
-      // Inside the BODY, which is what makes `flex: 1` mean "the space the list did not take".
-      expect(slackEl().parentElement?.className).toContain('wp-snapsheet-body');
-      // The splitter above is the accessible control, and its keyboard already reaches every
-      // stop — a second announced handle would be one more thing to walk past for no verb.
-      expect(slackEl().getAttribute('aria-hidden')).toBe('true');
-      expect(document.querySelectorAll('[role="separator"]')).toHaveLength(1);
+      // The attribute has to exist BEFORE a gesture starts — the browser reads `touch-action`
+      // when it decides whether to pan, not when we decide to claim.
+      await waitFor(() => expect(body().hasAttribute('data-drag')).toBe(true));
     });
 
     it('drags DOWN to the next stop down, which is the gesture the report asked for', () => {
       render(<Host />);
-      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
-      fireEvent.pointerMove(slackEl(), { clientY: 300 + SNAP_DRAG_SLOP_PX + 1 });
+      fireEvent.pointerDown(body(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(body(), { clientY: 300 + SNAP_DRAG_SLOP_PX + 1 });
       expect(sheet().className).toContain('dragging');
-      fireEvent.pointerMove(slackEl(), { clientY: 560 });
-      fireEvent.pointerUp(slackEl(), { clientY: 560 });
+      fireEvent.pointerMove(body(), { clientY: 560 });
+      fireEvent.pointerUp(body(), { clientY: 560 });
       expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.map);
     });
 
     it('drags UP to the full list from the same place', () => {
       render(<Host />);
-      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
-      fireEvent.pointerMove(slackEl(), { clientY: 60 });
-      fireEvent.pointerUp(slackEl(), { clientY: 60 });
+      fireEvent.pointerDown(body(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(body(), { clientY: 60 });
+      fireEvent.pointerUp(body(), { clientY: 60 });
       expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.full);
     });
 
-    // ONE gesture with two targets, not two gestures: the slop threshold, the late capture and
-    // the clamp are `useSnapDrag`'s and are not re-implemented per target.
-    it('takes the same slop threshold, so a tap on it is not a drag', () => {
+    // **The gate.** A list taller than the sheet owns its own vertical gesture, and this is the
+    // one state the rule must never be wrong about.
+    it('refuses the press once the list outgrows the sheet', async () => {
+      makeScrollable();
       render(<Host />);
-      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
-      fireEvent.pointerMove(slackEl(), { clientY: 300 + SNAP_DRAG_SLOP_PX - 1 });
-      expect(sheet().className).not.toContain('dragging');
-      fireEvent.pointerUp(slackEl(), { clientY: 300 + SNAP_DRAG_SLOP_PX - 1 });
-      // Unmoved: a press that never passed the slop must not snap the sheet to whatever stop
-      // happens to be nearest where it is sitting.
+      await waitFor(() => expect(body().hasAttribute('data-drag')).toBe(false));
+      fireEvent.pointerDown(body(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(body(), { clientY: 60 });
+      fireEvent.pointerUp(body(), { clientY: 60 });
+      // Unmoved: the scroll kept the gesture.
       expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
     });
 
-    it('captures the pointer on ITSELF, so a drag that leaves it is not lost to the canvas', () => {
+    // A press on a field is a caret or a text selection, and a sheet that moves under that is
+    // worse than no gesture — the Map's sheet holds a note composer on every selected row.
+    it('leaves a press on an editable field alone', () => {
+      render(
+        <Host>
+          <textarea data-testid="composer" />
+        </Host>,
+      );
+      const field = screen.getByTestId('composer');
+      fireEvent.pointerDown(field, { clientY: 300, button: 0 });
+      fireEvent.pointerMove(field, { clientY: 60 });
+      fireEvent.pointerUp(field, { clientY: 60 });
+      expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
+    });
+
+    // ONE gesture with two targets, not two gestures: the slop, the late capture and the clamp
+    // are `useSnapDrag`'s and are not re-implemented per target.
+    it('takes the same slop threshold, so a tap on the list is not a drag', () => {
       render(<Host />);
-      fireEvent.pointerDown(slackEl(), { clientY: 300, button: 0 });
-      fireEvent.pointerMove(slackEl(), { clientY: 100 });
+      fireEvent.pointerDown(body(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(body(), { clientY: 300 + SNAP_DRAG_SLOP_PX - 1 });
+      expect(sheet().className).not.toContain('dragging');
+      fireEvent.pointerUp(body(), { clientY: 300 + SNAP_DRAG_SLOP_PX - 1 });
+      expect(sheet().dataset.view).toBe(MAP_SHEET_VIEW.half);
+    });
+
+    it('captures the pointer, so a drag that leaves the body is not lost to the canvas', () => {
+      render(<Host />);
+      fireEvent.pointerDown(body(), { clientY: 300, button: 0 });
+      fireEvent.pointerMove(body(), { clientY: 100 });
       expect(HTMLElement.prototype.setPointerCapture).toHaveBeenCalled();
     });
   });
