@@ -424,6 +424,11 @@ export const t = {
       booking: 'הזמנה',
       event: 'אירוע',
       idea: 'רעיון',
+      // The block shows the references that matter now and folds the rest away
+      // (ADR-0121 §8's 2026-08-05 amendment). `עוד` is the app's existing word for
+      // "there is more of this here" — the same one the place card's summary uses.
+      more: (n: number) => `עוד ${n}`,
+      less: 'פחות',
     },
     // The day's stops as one free Google directions link (ADR-0121 §10) — it
     // ships with the connector, so Plan mode's day scope, and costs nothing.

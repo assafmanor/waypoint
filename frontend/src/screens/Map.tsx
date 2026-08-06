@@ -138,6 +138,7 @@ import {
   MAP_SHEET_STRIP_H,
   MAP_SHEET_VIEW,
   PLACE_CORPUS,
+  PLACE_REFS_CAP,
   type MapRowDisclosure,
   type MapSheetView,
 } from '../constants';
@@ -176,6 +177,19 @@ interface RefEntry {
   key: string;
   kind: string;
   label: string;
+  /** Which day this reference lands on — named only when the block is not already
+   *  scoped to one, the same rule the row's own meta line runs one line above it. */
+  day?: string;
+  /** The moment it happens here, in the reference's OWN zone (ADR-0107) — a departure
+   *  in its origin, an arrival in its destination. */
+  time?: string;
+  /** The same moment as an instant, which is what the cap's relevance rank reads
+   *  (`PLACE_REFS_CAP`). Absent on a reference with no clock at all. */
+  at?: number;
+  /** Where this reference sorts when there are more than the block shows: 0 is the one
+   *  most worth keeping. Display order stays chronological — this only decides what
+   *  survives the fold. */
+  rank: number;
   onOpen: () => void;
   /** SETTLING, on the reference that names its own target (ADR-0139). Present only on an
    *  EVENT reference: an idea and a booking carry no `EVENT_STATUS`, so there is nothing to
@@ -2168,78 +2182,108 @@ export function MapView() {
   // one row is selected at a time. Each entry is labelled in the reference's own
   // words — a control that names its destination is worth more than a generic
   // "details", and that is what earns it a row.
-  const refEntriesFor = (usage: PlaceUsage, opts: { forceDay?: boolean } = {}): RefEntry[] =>
-    placeRefs(
-      usage.placeId,
-      { events, bookings, maybeItems },
-      { onDate: metaCtx(opts).onDate },
-    ).flatMap((ref): RefEntry[] => {
-      const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
-      const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
-      const goToDay = (date: string) => {
-        const target = daySelectTarget(date, today, 'days');
-        navigate(target.to, { replace: target.replace });
-      };
-      if (ref.kind === PLACE_REF_KIND.idea) {
-        // The shelf, which both day surfaces render (Trip's day view and Plan's
-        // builder), so this needs no mode switch.
-        return [
-          {
+  //
+  // **ONE ENTRY PER REFERENCE**, which is §8's own wording rather than a new rule
+  // (amended 2026-08-05, on the owner's report of a place viewer with too many
+  // lines). A booking-linked reference was drawing TWO rows carrying the SAME label,
+  // told apart only by the leading word — so half of a hub place's block was a copy
+  // of the other half, and Ben Gurion with three legs read as six rows of three
+  // facts. The row now goes to whatever HOLDS the reference's detail: the booking
+  // when there is one (the code, the documents, the notes), the day otherwise. The
+  // event's half is not lost with its row — its clock is on the entry's own meta line
+  // and its outcome is the settle pair beside it (ADR-0139 §1), which is everything
+  // that second row could do except leave the tab.
+  const refEntriesFor = (usage: PlaceUsage, opts: { forceDay?: boolean } = {}): RefEntry[] => {
+    const { onDate } = metaCtx(opts);
+    const goToDay = (date: string) => {
+      const target = daySelectTarget(date, today, 'days');
+      navigate(target.to, { replace: target.replace });
+    };
+    // Which day only matters when the block spans several — day-scoped, the strip
+    // already names it and `היום ·` on every entry is noise. A reference with no day
+    // at all says so in either scope: inside a scoped block, silence would read as
+    // "on this day".
+    const dayLabel = (date: string | undefined): string | undefined =>
+      date == null ? t.map.noDay : onDate != null ? undefined : relativeDayLabel(date, today);
+
+    const entries = placeRefs(usage.placeId, { events, bookings, maybeItems }, { onDate }).map(
+      (ref): Omit<RefEntry, 'rank'> => {
+        const event = ref.eventId ? eventById.get(ref.eventId) : undefined;
+        const booking = ref.bookingId ? bookings.find((b) => b.id === ref.bookingId) : undefined;
+        if (ref.kind === PLACE_REF_KIND.idea) {
+          // The shelf, which both day surfaces render (Trip's day view and Plan's
+          // builder), so this needs no mode switch. Labelled with the idea's OWN name:
+          // two ideas on one place are two intentions (`soleIdeaFor` turns on exactly
+          // that) and the entry used to read `על המדף · <day>` for both of them.
+          const idea = maybeItems.find((m) => m.id === ref.maybeId);
+          return {
             key: ref.key,
             kind: t.map.refs.idea,
-            label: [t.map.shelfTag, ref.date ? relativeDayLabel(ref.date, today) : t.map.noDay]
-              .filter(Boolean)
-              .join(` ${DOT_SEPARATOR} `),
+            label: idea?.title || t.map.shelfTag,
+            day: dayLabel(ref.date),
             onOpen: () => goToDay(ref.date ?? today),
-          },
-        ];
-      }
-      const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
-      const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
-      const label = [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `);
-      // A booking-linked reference is TWO destinations, not one: the booking holds
-      // the code, the notes and the documents; the event holds when it happens and
-      // what surrounds it. Returning early on the booking made the event branch
-      // unreachable for exactly the references most worth reaching — §8 promised
-      // one entry per in-scope reference, and a linked pair is two ways in, not a
-      // choice the screen gets to make. The booking leads: it is what a traveller
-      // standing at the place wants first.
-      const entries: RefEntry[] = [];
-      if (booking) {
-        entries.push({
-          key: `${ref.key}:${PLACE_REF_KIND.booking}`,
-          kind: t.map.refs.booking,
-          label,
-          onOpen: () => setDetailBooking(booking),
-        });
-      }
-      if (event) {
+          };
+        }
+        const title = event ? shortTitleText(event.title) : (booking?.title ?? '');
+        const edgeWord = event && ref.edge ? eventEdgeTransition(event, ref.edge) : undefined;
+        // The time renders in the reference's own zone, each end of a bracketed booking
+        // in its own — the same resolution the row's meta line makes one line up.
+        const zones = event && eventZones(event, zoneCtx);
+        const zone = zones && (ref.edge === 'end' ? zones.endZone : zones.startZone);
+        const settled =
+          event?.status === EVENT_STATUS.DONE
+            ? ('done' as const)
+            : event?.status === EVENT_STATUS.SKIPPED
+              ? ('skipped' as const)
+              : undefined;
         // The emphasis is the CLOCK's question, asked only of a day that has passed with
         // nothing said about it — the same `isDayUsagePast` the tier, the block header and
         // `מה נשאר` all read, so the four cannot disagree about whether a day is closed.
-        const day = usage.days.find((d) => d.date === (ref.date ?? event.date));
-        const settled =
-          event.status === EVENT_STATUS.DONE
-            ? ('done' as const)
-            : event.status === EVENT_STATUS.SKIPPED
-              ? ('skipped' as const)
-              : undefined;
-        entries.push({
-          key: `${ref.key}:${PLACE_REF_KIND.event}`,
-          kind: t.map.refs.event,
-          label,
-          onOpen: () => goToDay(ref.date ?? event.date),
-          settle: {
+        const usageDay = usage.days.find((d) => d.date === (ref.date ?? event?.date));
+        return {
+          key: ref.key,
+          // The booking leads when there is one: it is what a traveller standing at the
+          // place wants first, and it is `PlaceRef.kind`'s own answer rather than a
+          // second opinion about which entity names this reference.
+          kind: booking ? t.map.refs.booking : t.map.refs.event,
+          label: [title, edgeWord].filter(Boolean).join(` ${DOT_SEPARATOR} `),
+          day: dayLabel(ref.date),
+          time: ref.at != null && zone ? formatTime(new Date(ref.at), zone) : undefined,
+          at: ref.at,
+          onOpen: booking
+            ? () => setDetailBooking(booking)
+            : () => goToDay(ref.date ?? event?.date ?? today),
+          settle: event && {
             outcome: settled,
-            asking: !settled && !!day && isDayUsagePast(day, nowMs, today),
+            asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),
             onDone: () => verbs.done(event),
             onSkip: () => verbs.skip(event),
             onUndo: () => verbs.restore(event),
           },
-        });
-      }
-      return entries;
-    });
+        };
+      },
+    );
+
+    // **WHICH ONES SURVIVE THE FOLD** (`PLACE_REFS_CAP`), and it is a different order from
+    // the one they are drawn in. Chronological is right for READING a place's history, and
+    // wrong for choosing what to keep: on an airport the trip's first flight is the least
+    // useful row on the last day. So an open question leads — a passed day nobody answered
+    // is the one entry that cannot be acted on once it is folded away — then whatever is
+    // nearest to now, in either direction.
+    const rank = new Map<string, number>();
+    entries
+      .map((entry, i) => ({ entry, i }))
+      .sort((a, b) => {
+        const asking = Number(!!b.entry.settle?.asking) - Number(!!a.entry.settle?.asking);
+        if (asking !== 0) return asking;
+        const distance = (entry: Omit<RefEntry, 'rank'>) =>
+          entry.at == null ? Infinity : Math.abs(entry.at - nowMs);
+        const [da, db] = [distance(a.entry), distance(b.entry)];
+        return da === db ? a.i - b.i : da - db;
+      })
+      .forEach(({ entry }, r) => rank.set(entry.key, r));
+    return entries.map((entry) => ({ ...entry, rank: rank.get(entry.key) ?? 0 }));
+  };
 
   // Built once per note-list change rather than filtered per row: this list can be the whole
   // trip's places, and the mark is on every row that has one (ADR-0152 §6c).
@@ -3435,6 +3479,20 @@ function PlaceRow({
    *  verbs. */
   onDelete?: () => void;
 }) {
+  // **THE WAY-IN BLOCK IS FOLDED BY DEFAULT** (ADR-0121 §8's 2026-08-05 amendment). A hub
+  // place carries a reference per leg, and the block sits between the notes and the row's
+  // primary action — so it shows what matters now and names the rest. Row state, not screen
+  // state: it is a property of the one selected row, and selecting another starts folded.
+  const [allRefs, setAllRefs] = useState(false);
+  // Kept: the top-ranked few, PLUS every open question whatever its rank. A passed day
+  // nobody answered is the entry you cannot act on once it is folded away, and it is the
+  // only one the block emphasises in the first place (ADR-0139 §2).
+  const keptRef = (ref: RefEntry) => ref.rank < PLACE_REFS_CAP || !!ref.settle?.asking;
+  // Counted off the FOLDED reading rather than off what is on screen, so `עוד 2` does not
+  // become `עוד 0` the moment it is opened.
+  const foldedRefs = (refs ?? []).filter((ref) => !keptRef(ref)).length;
+  const { rows: refRows } = revealRows(refs ?? [], (ref) => allRefs || keptRef(ref));
+
   const hue = usage.pin.category ? CATEGORY_PIN_HUE[usage.pin.category] : 'leisure';
   // The same one chain the pin reads (`placeGlyph`), so the row's badge and its pin can never
   // disagree about which glyph this place shows — the property the list-first investment was
@@ -3663,40 +3721,87 @@ function PlaceRow({
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is
           also why the meta line's own 11.5px tags are not the link. */}
       {!expanded && refs && refs.length > 0 && (
-        <span className="map-refs">
-          {refs.map((ref) => (
-            /* THE ROW IS A CONTAINER, not the button it used to be (ADR-0139 §3). Buttons do
-               not nest, and the settle pair has to be a real control beside the open one — so
-               the open affordance becomes its own button keeping all the remaining width, and
-               the cluster is its SIBLING. Exactly `ListRow`'s shape, where
-               `.wp-listrow-right` is a sibling of the open button rather than a child. */
-            <span key={ref.key} className={'map-ref' + (ref.settle?.asking ? ' asking' : '')}>
-              <button
-                type="button"
-                className="map-ref-open"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  ref.onOpen();
-                }}
-              >
-                <span className="map-ref-kind">{ref.kind}</span>
-                <span className="map-ref-label">{ref.label}</span>
-                <Icon name="caret" dir="left" />
-              </button>
-              {/* The verb hangs on the reference row because that row already names its
-                  target (ADR-0139 §1) — the pair itself is the shared control. */}
-              {ref.settle && (
-                <SettleControl
-                  variant="compact"
-                  outcome={ref.settle.outcome}
-                  onDone={ref.settle.onDone}
-                  onSkip={ref.settle.onSkip}
-                  onUndo={ref.settle.onUndo}
-                />
-              )}
-            </span>
-          ))}
-        </span>
+        <div className="map-refs">
+          {/* Folding is a LIST CHANGE, so it is the app's one reveal (ADR-0120) rather than a
+              conditional slice: a folded entry collapses in place and the rest ride the
+              stagger back, the same motion the tab's own chips already run. */}
+          <RevealList
+            className="map-reflist"
+            rows={refRows}
+            getKey={(ref) => ref.key}
+            renderRow={(ref) => (
+              /* THE ROW IS A CONTAINER, not the button it used to be (ADR-0139 §3). Buttons do
+                 not nest, and the settle pair has to be a real control beside the open one — so
+                 the open affordance becomes its own button keeping all the remaining width, and
+                 the cluster is its SIBLING. Exactly `ListRow`'s shape, where
+                 `.wp-listrow-right` is a sibling of the open button rather than a child. */
+              <span className={'map-ref' + (ref.settle?.asking ? ' asking' : '')}>
+                <button
+                  type="button"
+                  className="map-ref-open"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    ref.onOpen();
+                  }}
+                >
+                  {/* TWO LINES, the row's own grammar one line up (`.map-t` / `.map-m`): what
+                      this reference IS, then what kind of thing it is and when. It costs ~6px
+                      of height and gives the label the width the leading chip used to take —
+                      ADR-0139's Consequences measured that label wanting 199px against 146,
+                      and this is where the difference comes from. */}
+                  <span className="map-ref-text">
+                    <span className="map-ref-label">{ref.label}</span>
+                    <span className="map-ref-meta">
+                      <span className="map-ref-kind">{ref.kind}</span>
+                      {ref.day && (
+                        <>
+                          {DOT_SEPARATOR}
+                          <span>{ref.day}</span>
+                        </>
+                      )}
+                      {ref.time && (
+                        <>
+                          {DOT_SEPARATOR}
+                          {/* An LTR island inside the Hebrew line, never the whole tag. */}
+                          <span dir="auto">{ref.time}</span>
+                        </>
+                      )}
+                    </span>
+                  </span>
+                  <Icon name="caret" dir="left" />
+                </button>
+                {/* The verb hangs on the reference row because that row already names its
+                    target (ADR-0139 §1) — the pair itself is the shared control. */}
+                {ref.settle && (
+                  <SettleControl
+                    variant="compact"
+                    outcome={ref.settle.outcome}
+                    onDone={ref.settle.onDone}
+                    onSkip={ref.settle.onSkip}
+                    onUndo={ref.settle.onUndo}
+                  />
+                )}
+              </span>
+            )}
+          />
+          {/* THE FOLD, and it only exists where there is something folded. `עוד N` names how
+              many rather than saying "more", because the number is what tells you whether it
+              is worth a tap on a place that carries two extra legs or nine. */}
+          {(foldedRefs > 0 || allRefs) && (
+            <button
+              type="button"
+              className="map-ref-more"
+              aria-expanded={allRefs}
+              onClick={(e) => {
+                e.stopPropagation();
+                setAllRefs((on) => !on);
+              }}
+            >
+              <Icon name="caret" dir={allRefs ? 'up' : 'down'} />
+              {allRefs ? t.map.refs.less : t.map.refs.more(foldedRefs)}
+            </button>
+          )}
+        </div>
       )}
       {/* **The ROW's footer, not the reference block's** — moved out of `.map-refs` when the
           note section arrived, and it corrects two things at once. It is the row's one primary

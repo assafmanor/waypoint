@@ -121,6 +121,14 @@ export const DAY_WINDOW = { START_HOUR: 7, END_HOUR: 23 } as const;
  *  ADR-0119, and the group header states how many there are in total. */
 export const SHELF_POOL_CAP = 5;
 
+/** How many references a selected place's way-in block shows before the rest fold
+ *  behind `עוד N` (ADR-0121 §8's 2026-08-05 amendment). Three is what a hub place
+ *  needs to stay a card rather than a list: an airport carries a leg per flight plus
+ *  a car-hire pick-up and return, and the block sat under the notes and above the
+ *  primary action. A reference the clock has passed with nothing said about it is
+ *  never folded — that one is a question, and a folded question is not asked. */
+export const PLACE_REFS_CAP = 3;
+
 /** The slot-fill sheet's two thresholds (ADR-0116 session-202 §4). The cap is what keeps
  *  the sheet a decision rather than a list — the mockup measured six rows visible
  *  without scrolling at the primary width — and the search only appears once the

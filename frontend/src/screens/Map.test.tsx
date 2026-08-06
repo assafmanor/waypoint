@@ -192,7 +192,7 @@ import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { withoutBidiControls } from '../lib/bidi';
 import { relativeDayLabel } from '../lib/time';
-import { DOT_SEPARATOR, FILTER_STAGGER_MS } from '../constants';
+import { DOT_SEPARATOR, FILTER_STAGGER_MS, PLACE_REFS_CAP } from '../constants';
 import { t } from '../i18n/he';
 
 // jsdom implements no `scrollIntoView`, and the list-only path scrolls now: with no sheet it falls
@@ -1879,10 +1879,11 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     });
   });
 
-  // §8 promised one entry per in-scope reference. A booking-linked event is two
-  // destinations, and returning early on the booking made the event unreachable for
-  // exactly the references most worth reaching.
-  describe('the way in: a linked booking is two ways in, not one (§8)', () => {
+  // §8 promises ONE entry per in-scope reference, and a booking-linked event is one
+  // reference (amended 2026-08-05): drawing it twice put the same label on two rows told
+  // apart only by the leading word. The entry goes to what HOLDS the detail — the booking
+  // — and the event's half stays on the row as its clock and its settle pair.
+  describe('the way in: one entry per reference (§8)', () => {
     const seedLinked = () => {
       setSimulatedNow(Date.parse(`${ACTIVE_DATE}T12:00:00Z`));
       tripPlaces = [place('granbell', true)];
@@ -1912,19 +1913,25 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     const refKinds = () =>
       [...(row('granbell')?.querySelectorAll('.map-ref-kind') ?? [])].map((k) => k.textContent);
 
-    it('day scope: the booking leads, the event follows', () => {
+    it('day scope: a linked pair is ONE entry, named for the booking that holds the detail', () => {
       seedLinked();
       render(wrap(<MapView />));
       fireEvent.click(row('granbell')!);
-      expect(refKinds()).toEqual([t.map.refs.booking, t.map.refs.event]);
+      expect(refKinds()).toEqual([t.map.refs.booking]);
+      // The event's half did not go with its row: the settle pair still hangs here.
+      expect(row('granbell')!.querySelector('.map-ref .wp-settle')).toBeTruthy();
     });
 
-    it('all-days: the same pair — the scope changes which refs are in, not how they resolve', () => {
+    it('all-days: the same one entry — the scope changes which refs are in, not how they resolve', () => {
       seedLinked();
       render(wrap(<MapView />));
       tapAllDays();
       fireEvent.click(row('granbell')!);
-      expect(refKinds()).toEqual([t.map.refs.booking, t.map.refs.event]);
+      expect(refKinds()).toEqual([t.map.refs.booking]);
+      // …and all-days it names its day, which a scoped block leaves to the strip.
+      expect(row('granbell')!.querySelector('.map-ref-meta')!.textContent).toContain(
+        relativeDayLabel(ACTIVE_DATE, ACTIVE_DATE),
+      );
     });
 
     it('an unlinked booking still resolves to exactly one entry', () => {
@@ -1934,6 +1941,83 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       tapAllDays(); // an unlinked booking carries no day
       fireEvent.click(row('granbell')!);
       expect(refKinds()).toEqual([t.map.refs.booking]);
+    });
+  });
+
+  // A hub place carries a reference per leg, and all-days puts every one of them in one
+  // block — which is how six rows landed between the notes and the row's primary action.
+  describe('the way in: the fold (§8, PLACE_REFS_CAP)', () => {
+    const NOON = Date.parse(`${ACTIVE_DATE}T12:00:00Z`);
+    /** `n` references on one place, an hour apart and all still AHEAD of `NOON` — so
+     *  nothing is an open question and the cap is the only thing deciding. */
+    const seedHub = (n: number, opts: { date?: string; fromHour?: number } = {}) => {
+      tripPlaces = [place('hub', true)];
+      tripEvents = Array.from({ length: n }, (_, i) => {
+        const date = opts.date ?? ACTIVE_DATE;
+        return event({
+          id: `leg${i}`,
+          placeId: 'hub',
+          title: `leg ${i}`,
+          date,
+          startsAt: `${date}T${String((opts.fromHour ?? 14) + i).padStart(2, '0')}:00:00Z`,
+        });
+      });
+    };
+    const visibleRefs = () =>
+      [...row('hub')!.querySelectorAll('.map-reflist > .wp-reveal')].filter(
+        (r) => !r.classList.contains('hidden'),
+      ).length;
+
+    it('shows the cap and names how many it folded — and no control at all under it', () => {
+      setSimulatedNow(NOON);
+      seedHub(PLACE_REFS_CAP + 2);
+      render(wrap(<MapView />));
+      fireEvent.click(row('hub')!);
+      expect(visibleRefs()).toBe(PLACE_REFS_CAP);
+      const more = screen.getByRole('button', { name: t.map.refs.more(2) });
+
+      // Opening it reveals the rest IN PLACE — a folded row is hidden, never dropped
+      // (ADR-0120), which is what the count above is counting.
+      fireEvent.click(more);
+      expect(visibleRefs()).toBe(PLACE_REFS_CAP + 2);
+      expect(screen.getByRole('button', { name: t.map.refs.less })).toBeTruthy();
+    });
+
+    it('a block at the cap gets no fold control', () => {
+      setSimulatedNow(NOON);
+      seedHub(PLACE_REFS_CAP);
+      render(wrap(<MapView />));
+      fireEvent.click(row('hub')!);
+      expect(row('hub')!.querySelector('.map-ref-more')).toBeNull();
+    });
+
+    it('an open question is never folded, whatever its rank', () => {
+      setSimulatedNow(NOON);
+      // Four legs on a day that has PASSED with nothing said about them, so all four rank
+      // ahead of anything else — which puts the fourth one beyond the cap. Plus two still
+      // ahead of now, which is what makes the cap bite at all.
+      seedHub(PLACE_REFS_CAP + 1, { date: '2026-07-19', fromHour: 6 });
+      tripEvents = [
+        ...tripEvents,
+        ...Array.from({ length: 2 }, (_, i) =>
+          event({
+            id: `ahead${i}`,
+            placeId: 'hub',
+            title: `ahead ${i}`,
+            startsAt: `${ACTIVE_DATE}T${14 + i}:00:00Z`,
+          }),
+        ),
+      ];
+      render(wrap(<MapView />));
+      tapAllDays(); // the open questions are on another day
+      fireEvent.click(row('hub')!);
+      const asking = [...row('hub')!.querySelectorAll('.map-ref.asking')];
+      expect(asking).toHaveLength(PLACE_REFS_CAP + 1);
+      // Every one of them survives the fold — kept ON TOP of the cap, not instead of it.
+      asking.forEach((ref) =>
+        expect(ref.closest('.wp-reveal')!.classList.contains('hidden')).toBe(false),
+      );
+      expect(visibleRefs()).toBe(PLACE_REFS_CAP + 1);
     });
   });
 

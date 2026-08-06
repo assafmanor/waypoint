@@ -1589,12 +1589,12 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         render(wrap(<MapView />));
         fireEvent.click(row('dest')!);
         const refs = [...row('dest')!.querySelectorAll('.map-ref')];
-        // A linked pair is two ways in (the booking leads), and only the EVENT half can be
-        // settled — a Booking carries no `EVENT_STATUS`, so the absence needs no rule.
+        // ONE entry, named for the booking that holds the detail — and the settle pair is on
+        // it, because the reference the row names rides on an event that has an
+        // `EVENT_STATUS`. A booking carries none, which is why an UNLINKED one gets no pair.
         const kinds = refs.map((r) => r.querySelector('.map-ref-kind')?.textContent);
-        expect(kinds).toEqual([t.map.refs.booking, t.map.refs.event]);
-        expect(refs[0].querySelector('.wp-settle')).toBeNull();
-        expect(refs[1].querySelector('.wp-settle')).toBeTruthy();
+        expect(kinds).toEqual([t.map.refs.booking]);
+        expect(refs[0].querySelector('.wp-settle')).toBeTruthy();
       });
 
       it('marks done through the shipped verb, with the event it names', () => {
@@ -1738,14 +1738,13 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       fireEvent.click(row('dest')!);
       const refs = row('dest')!.querySelector('.map-refs')!;
-      // Two ways in, not a choice the screen makes for you: the booking holds the
-      // code and the documents, the event holds when it happens and what surrounds
-      // it. The booking leads — it is what a traveller standing there wants first.
+      // ONE entry, named for the booking: it holds the code and the documents, which is
+      // what a traveller standing there wants first. The event's clock and its outcome are
+      // on the same row rather than on a second one carrying the identical label.
       expect([...refs.querySelectorAll('.map-ref-kind')].map((k) => k.textContent)).toEqual([
         t.map.refs.booking,
-        t.map.refs.event,
       ]);
-      // The destination end says LANDING, not take-off — on both.
+      // The destination end says LANDING, not take-off.
       expect(refs.textContent).toContain(t.glance.transition.flightArrival);
     });
 
