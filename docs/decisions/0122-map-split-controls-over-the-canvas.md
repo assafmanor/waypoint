@@ -183,6 +183,55 @@ Four consequences for the sections above, all of them extensions rather than rev
 - **§2's measurement is now the reason the obvious alternative is dead.** A _permanent_ field in this row was the phasing note's leading candidate. Measured against this tree, the row at rest leaves 163.5px in Trip mode at 390 but **12.8px in Plan mode + day scope, and −17.2px at 360** once the free `מסלול היום בגוגל` link rides along. So the field takes the row instead of joining it.
 - **§7's rule gains its fourth case and its first two-directional one.** Opening search normalises the sheet to `half` from `full` (the canvas is the half the report is about) **and** from `map` (the list holds a coordless match the canvas cannot pin, and the day a ghost's teardrop cannot say). It fires on the open tap, never per keystroke.
 
+## Amendment (2026-08-06) — §4's region gains the sheet's empty space
+
+> _"There's currently a small stripe in the middle where you can scroll up/down to change between
+> states. Sometimes there's a lot of free space that I feel like it would be easier and more
+> intuitive to scroll from, for example when the list is empty or there's a large area that's empty
+> … on full list scroll down to change to half (or full map if continuing the scroll), on half
+> scroll up for the full list, scroll down for the full map. The map is the only exception where
+> there's no area to do that on."_ — owner, 2026-08-06
+
+**§4 widened the target from a 76×16px handle to a 390×51 region and stopped there.** 51px is a
+real touch target and it is still the only one, so on a sheet whose body is mostly blank the
+gesture is a thin stripe with a large useless area under it. The report is that the empty area
+should be the target too, and it is right for the reason §4 already gave: this is a gesture looking
+for the biggest honest surface.
+
+**The mechanism is one flex spacer after the caller's content, and the gate is flexbox itself.**
+`.wp-snapsheet-slack` takes `flex: 1 0 0`, so it holds exactly the space the content did not:
+
+- content shorter than the sheet → it **is** the gap below the list, and it drags;
+- content taller → it collapses to **zero**, which is precisely when there is no empty area to grab
+  and when a drag there would be fighting the list's own scroll;
+- at the `map` stop the body is ~0px, so it is zero there too — which is the exception the owner
+  named, falling out of the mechanism rather than being special-cased.
+
+**That is why this is not overscroll-chaining, and the distinction is worth stating** because
+overscroll is the gesture a full list would need and this deliberately is not it. The two states
+cannot both be true, so **nothing here arbitrates between scrolling and dragging** — which is what
+lets `useSnapDrag` stay the hook whose opening comment says it has nothing to arbitrate (no hold
+gate, unlike the shelf's drag). `touch-action: none` is safe on the slack for the same reason: it
+only ever has height when there is nothing to pan.
+
+Three smaller things:
+
+- **One gesture, two targets.** The same `drag` props are spread on both; `useSnapDrag` reads
+  `e.currentTarget`, so the pointer capture and the click-swallow attach to whichever element
+  started it. The slop threshold, the late capture and the clamp are not re-implemented per target.
+- **The slack is `aria-hidden` and carries no role.** The splitter above is the accessible control
+  and its keyboard already reaches every stop (§4); a second announced handle would be one more
+  thing to walk past for no verb it does not already have.
+- **Making the scroller a flex column is a trap, and it is one line of CSS away at all times.** A
+  flex item defaults to `flex-shrink: 1`, so content taller than the port is **compressed to fit**
+  instead of overflowing — the scroll simply stops existing on the one region this component has.
+  `.wp-snapsheet-body > :not(.wp-snapsheet-slack) { flex-shrink: 0 }` is what prevents it, written
+  as a `:not()` rather than `> *` to avoid an equal-specificity tie with the slack's own `flex`
+  shorthand. [`e2e/snap-sheet-slack.spec.ts`](../../frontend/e2e/snap-sheet-slack.spec.ts) asserts
+  it, because jsdom lays nothing out and `SnapSheet.test.tsx` therefore cannot: it can reach the
+  wiring — the element exists, drives the same gesture, announces nothing — and not one pixel of
+  the layout the whole design rests on.
+
 ## The device pass, and what it owns
 
 **The stops cannot be honestly tuned without a phone, and this ADR does not pretend otherwise.** What is decided here is the _shape_: what the controls cost, where they live, how the stops are derived, and how the gesture behaves. The numbers printed above are the derivations' output on a measured 390×844 baseline — a starting point, not a calibration. Specifically the device pass owns:

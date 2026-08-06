@@ -1,5 +1,6 @@
-// **THE PIN'S PHOTOGRAPH, MEASURED IN A REAL ENGINE** (ADR-0167 §16 and its 2026-08-05
-// amendment).
+// **THE PIN'S PHOTOGRAPH, MEASURED IN A REAL ENGINE** (ADR-0167 §16 and its 2026-08-05 and
+// 2026-08-06 amendments — the latter retiring the canvas-height gate, so what decides whether a
+// photograph is drawn is now the pin's own tier and nothing else).
 //
 // Every other spec in here drives the app. This one cannot: the canvas needs a Maps key and the
 // hermetic boot has none (ADR-0121 §13), so no pin has ever been rendered by a test. That gap is
@@ -7,7 +8,8 @@
 // because the photo was hidden off the pane's `data-pins='dot'` while the photographed paint,
 // which keys on `:has(.pin-photo)`, stayed. Both halves are pure CSS, and all three mechanisms
 // that produced it — a container query, `:has()`, and one selector out-specifying another — are
-// things jsdom models as nothing at all.
+// things jsdom models as nothing at all. The container query is gone now and the other two are
+// not, which is why this file is still the only thing that can see either.
 //
 // So the harness is the app's OWN stylesheets over markup mirroring `MapPane`'s pin, in Chromium.
 // What it cannot see is what a photograph LOOKS like at 35px; that stays the device pass.
@@ -22,7 +24,10 @@ const PANE = fileURLToPath(new URL('../src/ui/domain/map-pane.css', import.meta.
 // network dependency and answer nothing.
 const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
-// 436px of pane is 48px of pin — the size gate (`@container (min-height: 436px)`).
+// Two canvas heights, kept after the size gate was retired (ADR-0167 §16's third amendment)
+// rather than collapsed into one: 436px of pane used to be the threshold — 48px of pin — so
+// `SHORT` is the height that used to withhold a photograph and is now the sharpest place to
+// assert that nothing does but the pin's own tier.
 const TALL = 700;
 const SHORT = 400;
 
@@ -110,12 +115,33 @@ test.describe('the photograph on a pin', () => {
     expect(m.ring).toContain(m.food);
   });
 
-  test('is not drawn where the canvas is too short to read it', async ({ page }) => {
+  // **THE CANVAS'S HEIGHT NO LONGER GATES IT** (ADR-0167 §16's third amendment; owner,
+  // 2026-08-06: _"on half mode the pins don't render the thumbnail … we need to be more
+  // consistent and render thumbnails when displaying a pin"_). The measurement behind the old
+  // `@container (min-height: 436px)` was right — at `half` a 34px pin carries ~21px of picture —
+  // and what was wrong was the conclusion: a pin that shows a photograph at one sheet stop and a
+  // glyph at the next changes what kind of object it is on a drag. This asserts the inversion
+  // directly, at the height the gate used to refuse, so nobody re-adds the threshold by accident.
+  test('is drawn on a short canvas too, where the size gate used to refuse it', async ({
+    page,
+  }) => {
     await board(page, { height: SHORT });
     const m = await read(page);
+    expect(m.photoDrawn).toBe(true);
+    // And the photographed paint goes with it, which is the half that used to come apart when
+    // the two were decided by different rules: the head is `--card` and the glyph is gone.
+    expect(m.glyphDrawn).toBe(false);
+    expect(m.head).toBe(m.card);
+    expect(m.ring).toContain(m.food);
+  });
+
+  // The surviving axis, at the same short canvas — so the two are tested where they used to
+  // disagree. The pin's TIER is the only thing that withholds a photograph now.
+  test('…and still goes to the dot tier there, hue and all', async ({ page }) => {
+    await board(page, { height: SHORT, dots: true, scope: 'day', pin: 'aside' });
+    const m = await read(page);
     expect(m.photoDrawn).toBe(false);
-    // …and the pin it leaves behind is an ORDINARY pin, not a photographed one with no photo.
-    expect(m.glyphDrawn).toBe(true);
+    expect(m.glyphDrawn).toBe(false);
     expect(m.head).toBe(m.food);
   });
 
