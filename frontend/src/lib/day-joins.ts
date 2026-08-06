@@ -19,6 +19,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { gapBetween, type Gap } from './gaps';
+import { routeEndpointDay } from './place-usage';
 import type { DayEntry } from './day-entries';
 import { groupEndEvent, groupStartEvent } from './day-entries';
 
@@ -160,13 +161,25 @@ export function connectionStops(
   events: readonly TripEvent[],
   when: BookingWhen,
 ): ConnectionStop[] {
-  const dateOf = (booking: Booking) => events.find((e) => e.bookingId === booking.id)?.date;
+  // **THE DAY THE LEG ENDS, not the day it began** (2026-08-06). `dateOf` read the event's own
+  // `date`, which for an overnight inbound leg is the day you took OFF — so a layover you sit
+  // through at 02:00 was filed under the previous day, when you were at the origin airport. The
+  // two dates this function means to list are named in its own doc ("arrives on one and leaves
+  // on the next"): the **arrival** of the leg that brings you in, and the **departure** of the
+  // one that takes you out. `routeEndpointDay` is the same rule `spanDays` and `placeRefs` read,
+  // so a third derivation of "which day does this end happen on" cannot drift from the other two.
+  const dateOf = (booking: Booking, edge: 'start' | 'end') => {
+    const event = events.find((e) => e.bookingId === booking.id);
+    return event ? routeEndpointDay(event, edge)?.date : undefined;
+  };
   const stops: ConnectionStop[] = [];
   for (const from of bookings) {
     for (const to of bookings) {
       const minutes = connectionMinutes(from, to, when);
       if (minutes == null || !from.toPlaceId) continue;
-      const dates = [...new Set([dateOf(from), dateOf(to)].filter(Boolean) as string[])];
+      const dates = [
+        ...new Set([dateOf(from, 'end'), dateOf(to, 'start')].filter(Boolean) as string[]),
+      ];
       for (const date of dates) {
         stops.push({
           placeId: from.toPlaceId,

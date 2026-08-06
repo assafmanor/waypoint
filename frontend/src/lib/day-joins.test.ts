@@ -214,6 +214,32 @@ describe('connectionStops', () => {
     expect(stops.every((s) => s.placeId === 'dxb')).toBe(true);
   });
 
+  // **AND NOT ON A DAY YOU WERE SOMEWHERE ELSE** (2026-08-06). `dateOf` read the event's own
+  // `date` — the day a leg BEGINS — so an inbound leg that takes off one evening and lands the
+  // next morning filed its layover under the day you took off, when you were still at the origin
+  // airport. The two dates this function means are named in its own doc, "arrives on one and
+  // leaves on the next": the arrival of the leg that brings you in, the departure of the one
+  // that takes you out. Here both are the same day, so there is one stop, not two.
+  it('does not claim the day the inbound leg took off from somewhere else', () => {
+    const arrive = ev({
+      id: 'e-a',
+      bookingId: 'b-leg1',
+      date: '2026-07-11',
+      endDate: '2026-07-12',
+      startsAt: '2026-07-11T22:00:00+09:00',
+      endsAt: '2026-07-12T02:00:00+09:00',
+    });
+    const depart = ev({
+      id: 'e-b',
+      bookingId: 'b-leg2',
+      date: '2026-07-12',
+      startsAt: '2026-07-12T05:00:00+09:00',
+    });
+    const events = [arrive, depart];
+    const stops = connectionStops([bLeg1, bLeg2], events, bookingWhen(events));
+    expect(stops.map((s) => s.date)).toEqual(['2026-07-12']);
+  });
+
   it('is empty when nothing chains', () => {
     const lunch = ev({ id: 'lunch', startsAt: '2026-07-12T12:30:00+09:00' });
     expect(connectionStops([bLeg1], [lunch], bookingWhen([lunch]))).toEqual([]);
