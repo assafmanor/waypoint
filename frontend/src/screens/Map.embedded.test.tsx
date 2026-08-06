@@ -429,8 +429,10 @@ function wrap(node: ReactNode) {
  *  same lifted flag `App.tsx` reads, and drives a back through the same `useAppBack` a
  *  header button or the system-back interceptor does. */
 let lastBack = '';
+/** Which place the next arrival names — set by `arrive()` just before it fires. */
+let arriveAt = '';
 function ChromeProbe() {
-  const { chromeReclaimed, errand, errandResult } = useMapScope();
+  const { chromeReclaimed, errand, errandResult, requestFocus } = useMapScope();
   const back = useAppBack();
   return (
     <>
@@ -444,6 +446,10 @@ function ChromeProbe() {
       {/* The other end of the errand (ADR-0134 §1): a form sends one and lands on this
           tab. It is the same provider a real host writes through, so the tab is exercised
           in the state it actually arrives in rather than through a prop nothing sets. */}
+      {/* The arrival (ADR-0121 §8): `מפה` on an event, a booking or a shelf idea hands the
+          tab a place through this very provider, so driving it here exercises the path a real
+          host takes rather than a prop nothing sets. */}
+      <button data-testid="arrive-probe" onClick={() => requestFocus(arriveAt)} />
       <button
         data-testid="errand-probe"
         data-answer={errandResult.pending ? (errandResult.pending.placeId ?? 'cancelled') : ''}
@@ -460,6 +466,10 @@ function ChromeProbe() {
   );
 }
 const probe = () => screen.getByTestId('chrome-probe');
+const arrive = (placeId: string) => {
+  arriveAt = placeId;
+  fireEvent.click(screen.getByTestId('arrive-probe'));
+};
 const startErrand = () => fireEvent.click(screen.getByTestId('errand-probe'));
 const errandAnswer = () => screen.getByTestId('errand-probe').dataset.answer;
 /** What came back through the OTHER channel: a place id, `cancelled`, or '' if nothing was
@@ -571,6 +581,60 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       event({ id: 'e4', placeId: 'tomorrow', category: 'food', date: NEXT_DAY }),
     ];
   };
+
+  // ── ARRIVING FROM AN EVENT / BOOKING / IDEA (ADR-0121 §8) ─────────────────────
+  // `מפה` elsewhere hands this tab a place. It framed the camera and set the selection, and
+  // left the LIST wherever it was — so the row it had just selected could be below the fold
+  // with nothing saying it had been brought to you. The path had grown its own half-copy of
+  // `select`; it goes through the real one now.
+  describe('an arrival lands the place the way a row tap does', () => {
+    beforeEach(seed);
+
+    it('selects the place, frames it, and scrolls its row into view', async () => {
+      render(wrap(<MapView />));
+      scrollIntoView.mockClear();
+      arrive('museum');
+      await nextFrame();
+      expect(row('museum')!.classList.contains('selected')).toBe(true);
+      // `framed()` reports the point, which is how this harness names a camera target.
+      expect(framed()).toBe('35.6,139.6');
+      expect(arrivalKind()).toBe('frame');
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+
+    // The measured call (see `landOnPlace`): the card costs more canvas than the sheet does,
+    // so the list host wins for exactly the places worth arriving at.
+    it('opens at `half`, with the list on screen rather than a card over the map', async () => {
+      render(wrap(<MapView />));
+      arrive('museum');
+      await nextFrame();
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.half);
+      expect(placeCard()).toBeNull();
+    });
+
+    // Day-scoped, the row is not in the list at all until the scope widens — and the scroll
+    // has to find it afterwards, which is what the deferred frame buys.
+    it('widens to all-days for a place on another day, and still brings its row', async () => {
+      render(wrap(<MapView />));
+      scrollIntoView.mockClear();
+      arrive('tomorrow');
+      await nextFrame();
+      expect(row('tomorrow')).toBeTruthy();
+      expect(row('tomorrow')!.classList.contains('selected')).toBe(true);
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+
+    // **PROVENANCE IS NOT TREATMENT.** `land` buys the sheet, the framing and the scroll; it
+    // must NOT buy `openedFromRow`, or the user's FIRST tap on the row reads as their second
+    // and closes the thing that was just brought to them.
+    it('does not read the first tap on that row as a second press', async () => {
+      render(wrap(<MapView />));
+      arrive('museum');
+      await nextFrame();
+      fireEvent.click(row('museum')!);
+      expect(row('museum')!.classList.contains('selected')).toBe(true);
+    });
+  });
 
   // ── THE LONG PRESS HAS TWO OBJECTS (ADR-0157 §2) ──────────────────────────────
   // The canvas half of removing a place. The gesture that makes a place is unchanged on
