@@ -124,7 +124,12 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const readiness = computeReadiness({
     startDate: trip.startDate,
     endDate: trip.endDate,
-    destination: trip.destination,
+    destination: {
+      name: trip.destination,
+      googlePlaceId: trip.destinationGooglePlaceId,
+      timezone: trip.timezone,
+      countryCode: trip.destinationCountryCode,
+    },
     events,
     bookings,
     places,

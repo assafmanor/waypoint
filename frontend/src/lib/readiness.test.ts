@@ -10,7 +10,7 @@ import type { Booking, DocumentSummary, Place, TripEvent } from '@waypoint/share
 import { computeReadiness } from './readiness';
 
 const NOW = '2026-07-01T00:00:00Z';
-const DEST = 'Japan';
+const DEST = { name: 'Japan' };
 
 const event = (id: string, date: string): TripEvent => ({
   id,
@@ -46,13 +46,14 @@ const booking = (id: string, type: Booking['type'], extra: Partial<Booking> = {}
   ...extra,
 });
 
-const place = (id: string, name: string): Place => ({
+const place = (id: string, name: string, extra: Partial<Place> = {}): Place => ({
   id,
   tripId: 't1',
   name,
   createdAt: NOW,
   updatedAt: NOW,
   updatedBy: 'u1',
+  ...extra,
 });
 
 const passport = (id: string, ownerUserId?: string): DocumentSummary => ({
@@ -165,6 +166,106 @@ describe('computeReadiness', () => {
         bookings: [booking('f', BOOKING_TYPE.FLIGHT)], // no from/to place
       });
       expect(check(r, 'flights').done).toBe(false);
+    });
+
+    it('reaches on the name alone when the endpoint has no location (pre-picker)', () => {
+      // PLACES are name-only Place-lites: "Tokyo, Japan" reaches "Japan" and nothing
+      // else can place it. The route the location routes must not displace.
+      const r = computeReadiness({ ...base(), bookings: [outbound, inbound] });
+      const f = check(r, 'flights');
+      expect(f.hasOutbound).toBe(true);
+      expect(f.hasReturn).toBe(true);
+    });
+  });
+
+  // Field report #5: a real round trip read as missing because the airport is not
+  // named after the country it is in. Where the leg lands is the truth; the name
+  // is only what we had before the picker.
+  describe('flights reaching a destination the airport is not named after', () => {
+    const ICELAND = { name: 'Iceland', timezone: 'Atlantic/Reykjavik', countryCode: 'IS' };
+    const KEF = place('kef', 'Keflavík International Airport', {
+      timezone: 'Atlantic/Reykjavik',
+    });
+    const TLV = place('tlv', 'Ben Gurion Airport', { timezone: 'Asia/Jerusalem' });
+    const VIE = place('vie', 'Vienna International Airport', { timezone: 'Europe/Vienna' });
+    const roundTrip = [
+      booking('out', BOOKING_TYPE.FLIGHT, { fromPlaceId: 'tlv', toPlaceId: 'kef' }),
+      booking('back', BOOKING_TYPE.FLIGHT, { fromPlaceId: 'kef', toPlaceId: 'tlv' }),
+    ];
+
+    it('passes on the zone the endpoint sits in, sharing no text with the destination', () => {
+      // Neither name contains the other, which is the whole of what the check used to read.
+      const r = computeReadiness({
+        ...base(),
+        destination: ICELAND,
+        places: [KEF, TLV],
+        bookings: roundTrip,
+      });
+      const f = check(r, 'flights');
+      expect(f.hasOutbound).toBe(true);
+      expect(f.hasReturn).toBe(true);
+      expect(f.done).toBe(true);
+    });
+
+    it('passes for a destination named in another script than its airport', () => {
+      const r = computeReadiness({
+        ...base(),
+        destination: { ...ICELAND, name: 'איסלנד' },
+        places: [place('kef', 'Reykjavík', { timezone: 'Atlantic/Reykjavik' }), TLV],
+        bookings: roundTrip,
+      });
+      expect(check(r, 'flights').done).toBe(true);
+    });
+
+    it('does not count a leg into another country as reaching the destination', () => {
+      const r = computeReadiness({
+        ...base(),
+        destination: ICELAND,
+        places: [TLV, VIE],
+        bookings: [
+          booking('out', BOOKING_TYPE.FLIGHT, { fromPlaceId: 'tlv', toPlaceId: 'vie' }),
+          booking('back', BOOKING_TYPE.FLIGHT, { fromPlaceId: 'vie', toPlaceId: 'tlv' }),
+        ],
+      });
+      const f = check(r, 'flights');
+      expect(f.hasOutbound).toBe(false);
+      expect(f.hasReturn).toBe(false);
+    });
+
+    it('reaches a multi-zone destination country from any of that country zones', () => {
+      const r = computeReadiness({
+        ...base(),
+        destination: { name: 'United States', timezone: 'America/New_York', countryCode: 'US' },
+        places: [
+          place('kef', 'Los Angeles International Airport', { timezone: 'America/Los_Angeles' }),
+          TLV,
+        ],
+        bookings: roundTrip,
+      });
+      expect(check(r, 'flights').done).toBe(true);
+    });
+
+    it('reaches when the endpoint IS the destination place', () => {
+      const r = computeReadiness({
+        ...base(),
+        destination: { name: 'Iceland', googlePlaceId: 'ChIJ_dest' },
+        places: [place('kef', 'Keflavík', { googlePlaceId: 'ChIJ_dest' }), TLV],
+        bookings: roundTrip,
+      });
+      expect(check(r, 'flights').done).toBe(true);
+    });
+
+    it('stays open for an endpoint no route can place (degradation)', () => {
+      const r = computeReadiness({
+        ...base(),
+        destination: ICELAND,
+        places: [place('kef', 'Keflavík'), place('tlv', 'Ben Gurion')], // name-only, pre-picker
+        bookings: roundTrip,
+      });
+      const f = check(r, 'flights');
+      expect(f.done).toBe(false);
+      expect(f.hasOutbound).toBe(false);
+      expect(f.hasReturn).toBe(false);
     });
   });
 
