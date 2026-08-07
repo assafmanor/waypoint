@@ -12,6 +12,12 @@ The composer now binds **no key at all**. Enter is the textarea's own newline, t
 
 What this does not change is the rule the section actually turns on — whatever is still in the box when the host is saved becomes a note, so one note is still type-and-save with no press at all. `＋` still exists only to start a second one.
 
+**Follow-up the same day, and the reason this section is longer than the diff:** the key change alone shipped a feature that looked unchanged. The owner's report — _"newline is parsed out of the final note, it doesn't show up at all after saving"_ — was not a write bug. Nothing strips it: `commit()` and `pending()` trim the ends only, `createNoteSchema` normalises nothing, and the body reaches the DOM verbatim. **The default `white-space` collapses it to a space**, so a two-line note read as one on every surface that prints a body. `.note-item-b` (the host sections, where the report came from) and `.note-body-line` (the notes screen's row) now declare `white-space: pre-wrap`; the two-line clamp counts rendered lines and is unaffected. The composer's chip stays `nowrap` — a committed note is collapsed there by design.
+
+That gap is worth naming rather than just closing: **jsdom has no CSS engine**, so the unit test asserting the newline reaches the DOM passes either way and could never have caught this. It is pinned as a CSS contract test (`ui/notes.contract.test.ts`), in the shape and for the reason `styles/exit-animations.contract.test.ts` established.
+
+The same report carried a second one: the composer's `＋` was `align-items: flex-end`, which read as off-centre even on an empty box (the input's own height is taller than the 38px button) and got louder once Enter started growing it. The row is `center` now.
+
 Amended in [ADR-0152 §6b](../decisions/0152-a-note-is-one-entity-with-an-optional-host.md) in place. `mockups/notes-on-a-host-v1.html` still demonstrates the old binding — it is a build spec from session 205, not a live surface, so it is left as it was with the supersession recorded on its [`mockups.md`](../design/mockups.md) entry rather than edited.
 
 ## #14 — editing a booking never showed its existing notes
@@ -34,6 +40,7 @@ Two halves of one invariant, and both are fixed, because either alone leaves the
 
 ## Coverage
 
+- `HostNotes.test.tsx` — a multi-line body reaches the DOM with its newlines intact, and `ui/notes.contract.test.ts` asserts the declaration that makes them visible (plus the chip's deliberate one line).
 - `NoteComposer.test.tsx` — the reversed binding (Enter commits nothing, with or without Shift, and what was typed survives untouched and still pends for the host's save), plus a multi-line note with a blank line in it staying **one** note through a `＋` commit.
 - `BookingSheet.test.tsx` — the section renders on edit above the box with no `＋ פתק`; it shows this booking's notes and not another booking's, an event's or a general one; a note typed while editing is still written to `bookingId` and the listed one is **not** re-written; and a create shows no section at all. The trip-state mock's `notes` became mutable to allow it, and the clock is pinned per `frontend/CLAUDE.md`.
 - `notes.test.ts` — `noteWhen` never renders NaN for an empty, unparseable or absent timestamp, reads "now" for one stamped a moment ago or ahead of this clock, and still phrases a real elapsed length off the ladder.
