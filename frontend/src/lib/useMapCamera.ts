@@ -488,8 +488,13 @@ export function useMapCamera(
     // `idle` is the first moment it is genuinely rendered AND sized, so retry there.
     // The listener stays until a framing actually succeeds: a single attempt is what
     // let an unsized first measurement strand the camera at its opening zoom.
+    // …and it stands down if something else framed the map while it was waiting. A settled
+    // search set is the one that can (`showResults`), and its own move fires the very `idle`
+    // this is listening for — so without the check the opening fit would answer the search's
+    // pan by fitting the day's pins on top of it, which is the yank `framed` is supposed to
+    // prevent (ADR-0168 §1).
     const listener = map.addListener('idle', () => {
-      if (run()) listener.remove();
+      if (framed.current || run()) listener.remove();
     });
     return () => listener.remove();
     // `setSignal` is the control dependency; re-running on `points` identity would
@@ -545,12 +550,25 @@ export function useMapCamera(
    * reason the effect above waits for `idle`. `framed` is marked when we move, exactly as
    * `reframe` does, so the opening fit cannot land a frame later and yank the camera off
    * the answer the search just gave.
+   *
+   * **AND A VIEW NOBODY FRAMED IS NOT AN ANSWER TO THAT QUESTION EITHER** (ADR-0168 §1's
+   * 2026-08-07 amendment; owner: _"map search doesn't pan to results while picking a place
+   * for a booking/event"_). A map is CONSTRUCTED with a camera — `defaultCentre` when there
+   * is a pin to prefer, and the whole world at `MAP_ZOOM.WORLD` when there is not — and the
+   * anti-jitter rule reads that placeholder as a frame: a world view contains every result,
+   * so "they are all on screen" is true and the camera never moves. It is the same trap the
+   * opening fit's own containment guard was written around (session 134), one population
+   * over, and it is why the errand is where it shows: you go to the Map to pick a place for
+   * your FIRST booking, so the trip has no pins, so nothing ever framed the map. Passing
+   * `null` hands the pure function the reading it already has for it.
    */
   const showResults = useCallback(
     (candidates: readonly LatLng[]) => {
       if (!map) return;
-      const view = readMapBounds(map);
-      if (!view) return;
+      // A map with no bounds has not rendered; a map with bounds it was born with has not
+      // been framed. The first is nothing to answer with, the second is nothing to preserve.
+      if (!readMapBounds(map)) return;
+      const view = framed.current ? readMapBounds(map) : null;
       const target = searchCameraTarget(candidates, view);
       if (target.kind === 'none') return;
       // A pan keeps the zoom you are on — the same move a pin tap makes (ADR-0129 §1).

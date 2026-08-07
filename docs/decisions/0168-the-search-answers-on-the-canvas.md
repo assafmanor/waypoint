@@ -1,6 +1,6 @@
 # 0168 — The search answers on the canvas, the result mark stops borrowing the basemap's palette, and a second tap closes what the first opened
 
-**Status:** Accepted — designed and **built 2026-08-06**, from a device pass on the Map tab's search and place card. Five reports from one surface, so they are one ADR. The rendered canvas has not been seen on a phone (ADR-0121 §13); what §2 claims about the two themes was seen in Chromium, against the app's own stylesheets, and is stated as that.
+**Status:** Accepted — designed and **built 2026-08-06**, from a device pass on the Map tab's search and place card. Five reports from one surface, so they are one ADR. The rendered canvas has not been seen on a phone (ADR-0121 §13); what §2 claims about the two themes was seen in Chromium, against the app's own stylesheets, and is stated as that. **§1 amended 2026-08-07** (session 217) from field report #1 — a placeholder camera is not a view; see the amendment inside §1.
 **Date:** 2026-08-06
 
 **Amends** [0131](0131-map-search-is-a-control-not-a-screen.md) **§5** — "the camera does not answer the query" is narrowed, not reversed: a **keystroke** still moves nothing, a **settled response** does (§1).
@@ -50,6 +50,13 @@ So the camera answers the **arrival of a result set**, through one pure function
 Three smaller things the build settled:
 
 - **Nothing happens before the map has a view.** There is no honest answer to "is this already on screen" without one, and the opening framing owns that moment (the `idle` retry). `framed` is marked when a search moves the camera, exactly as `reframe` does, so an opening fit landing a frame later cannot yank the camera off the answer the search just gave.
+
+**Amended 2026-08-07 (field report #1): a view nobody framed is not a view either.** The owner reported the camera not answering the search _"while picking a place for a booking/event"_, and the errand turned out to be reading the same hook through the same pane — the gap was in what counts as "the view". A map is **constructed** with a camera: `defaultCentre` where there is a pin to prefer, and the whole world at `MAP_ZOOM.WORLD` where there is not. That placeholder is a `getBounds()` like any other, so the anti-jitter rule in the table above read it as a frame — and a world view contains every result, so _"they are all on screen"_ was true and the camera moved nothing, ever. It is session 134's trap one population over: there, a wide-open opening view made the fit's containment guard permanently true; here it makes the search's.
+
+So `showResults` passes the view as `null` until something has actually framed the map, which is the reading `searchCameraTarget` already had for it (`framedSet` — the same one the opening fit makes) and the reading the `framed` ref already tracked. **Why the errand is where it showed** is the part worth keeping: you go to the Map to pick a place for your **first** booking, so the trip has no pins, so `points` is empty — and with no points the framing effect has nothing to fit and does not even register its `idle` retry, leaving the map on the world view for the rest of the visit. Two things follow, and neither narrows the rules above:
+
+- **A rendered-but-unframed map still fits, an unrendered one still does nothing.** Bounds are what separate the two; only the second is the case the `idle` retry owns.
+- **The deferred opening fit now stands down once anything has framed the map.** This bullet claimed `framed` already prevented the yank and it did not — nothing re-read the ref — and it is reachable: the search's own move fires the very `idle` a deferred opening framing is waiting on, so the day's pins would be fitted straight over the answer.
 - **The effect is keyed on WHICH results these are** — the ids, joined — and not on the `results` array, whose memo key deliberately includes `selected`. Without that split, tapping a ring would re-move the camera.
 - **The user still wins.** The ease already stands down when the camera is not where it last wrote (ADR-0129 §4), so a pan or a pinch mid-move is not fought.
 

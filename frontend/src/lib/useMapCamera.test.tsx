@@ -1068,4 +1068,59 @@ describe('a settled result set moves the camera (ADR-0168 §1)', () => {
     expect(map.fits).toHaveLength(0);
     expect(map.moves).toHaveLength(moves);
   });
+
+  // FIELD REPORT #1 (2026-08-07), and the amendment to the rule above. A map that has
+  // RENDERED but has never been FRAMED is looking at the camera it was constructed with —
+  // the whole world, when the trip has no pin to prefer — and a world view contains every
+  // result, so the anti-jitter rule fired and the search moved nothing at all. It is the
+  // errand's case exactly: you pick a place on the Map for your FIRST booking, so there are
+  // no pins, so nothing ever framed it.
+  it('fits the results on a map nothing has framed, rather than reading its opening camera as a view', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD; // rendered…
+    const view = mount(map, []); // …and with no pins, so the opening framing never ran.
+    expect(map.fits).toHaveLength(0);
+
+    view.result.current.showResults([FLORENCE]);
+    expect(map.fits).toHaveLength(1);
+    expect(map.center.lat).toBeCloseTo(FLORENCE.lat, 5);
+    expect(map.center.lng).toBeCloseTo(FLORENCE.lng, 5);
+  });
+
+  // …and that framing is spent, so the SECOND settled set is answered against the frame the
+  // first one left — the anti-jitter rule intact, not traded away for the fix above.
+  it('answers the next set against the frame the first one landed', () => {
+    const map = new FakeMap();
+    map.bounds = WORLD;
+    const view = mount(map, []);
+    view.result.current.showResults([FLORENCE]);
+    const fits = map.fits.length;
+    const moves = map.moves.length;
+    // Now looking at Florence and a good way around it; a result inside that is on screen.
+    map.bounds = { north: 44.2, south: 43.4, east: 11.7, west: 10.8 };
+    view.result.current.showResults([{ lat: 43.78, lng: 11.25 }]);
+    expect(map.fits).toHaveLength(fits);
+    expect(map.moves).toHaveLength(moves);
+  });
+
+  // The opening fit must not answer the search's own move. `showResults` marks `framed`, and
+  // the pan it just made fires the very `idle` the deferred opening framing is waiting on —
+  // so without the stand-down the day's pins would be fitted straight over the answer.
+  it('does not let a deferred opening fit land on top of the answer', () => {
+    const map = new FakeMap();
+    map.box = { width: 0, height: 0 }; // measured before layout settled: the fit defers
+    map.bounds = WORLD;
+    const view = mount(map, DAY);
+    expect(map.fits).toHaveLength(0);
+    expect(map.idleListeners).toBe(1);
+
+    map.box = { width: 390, height: 320 }; // layout settled, but no idle yet
+    view.result.current.showResults([FLORENCE]);
+    expect(map.fits).toHaveLength(1);
+
+    map.settle(map.bounds!); // the move's own idle
+    expect(map.fits).toHaveLength(1);
+    expect(map.center.lat).toBeCloseTo(FLORENCE.lat, 5);
+    expect(map.idleListeners).toBe(0);
+  });
 });
