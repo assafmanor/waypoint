@@ -245,3 +245,58 @@ describe('connectionStops', () => {
     expect(connectionStops([bLeg1], [lunch], bookingWhen([lunch]))).toEqual([]);
   });
 });
+
+describe('a flexible edge is transparent to the measurement (ADR-0171 §5)', () => {
+  const at = (time: string) => `2026-07-12T${time}:00+09:00`;
+  const morning = ev({ id: 'e-am', startsAt: at('09:00'), endsAt: at('10:00') });
+  const evening = ev({ id: 'e-pm', startsAt: at('16:00'), endsAt: at('17:00') });
+  // A stay whose CHECK-OUT lands between them. Its 11:00 is a ceiling, not an hour it
+  // occupies, so the four free hours either side of it are one hole and not two.
+  const stay = ev({
+    id: 'e-stay',
+    category: 'lodging',
+    date: '2026-07-10',
+    endDate: '2026-07-12',
+    startsAt: '2026-07-10T15:00:00+09:00',
+    endsAt: at('11:00'),
+  });
+  const ctx = { bookings: [], when: bookingWhen([]), tz: TZ };
+
+  it('measures ACROSS a check-out instead of being stopped by it', () => {
+    const entries = mergeDayEntries(buildTimeTree([morning, evening]), [
+      { event: stay, edge: 'end' as const, atMs: Date.parse(at('11:00')), labelKey: 'checkOut' },
+    ]);
+    const blocks = dayBlocks(entries, ctx);
+    const joins = blocks.flatMap((b) => b.entries.map((e) => e.join)).filter(Boolean);
+    // Six free hours, stated once — the same answer the day would give with no stay at all.
+    expect(joins).toHaveLength(1);
+    expect(joins[0]!.kind).toBe('gap');
+    expect(joins[0]!.minutes).toBe(gapBetween(morning, evening, TZ)!.minutes);
+  });
+
+  it('still lets an EXACT transition end the run — a moment is a moment', () => {
+    // The same shape with a multi-day flight's arrival in the middle. That edge IS an
+    // instant you are committed to, so it keeps the shipped behaviour.
+    const redeye = ev({
+      id: 'e-redeye',
+      category: 'transport',
+      icon: '✈️',
+      date: '2026-07-11',
+      endDate: '2026-07-12',
+      startsAt: '2026-07-11T23:00:00+09:00',
+      endsAt: at('11:00'),
+    });
+    const entries = mergeDayEntries(buildTimeTree([morning, evening]), [
+      {
+        event: redeye,
+        edge: 'end' as const,
+        atMs: Date.parse(at('11:00')),
+        labelKey: 'flightArrival',
+      },
+    ]);
+    const joins = dayBlocks(entries, ctx)
+      .flatMap((b) => b.entries.map((e) => e.join))
+      .filter(Boolean);
+    expect(joins).toHaveLength(0);
+  });
+});

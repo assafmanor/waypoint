@@ -381,6 +381,47 @@ export const eventMidSpan = (
 export const isJourney = (event: Pick<TripEvent, 'category' | 'icon'>): boolean =>
   timeProfileFor(event).midSpan?.kind === 'journey';
 
+/** **What the number on a row MEANS** (ADR-0171 §1) — a third axis, beside ADR-0011's
+ *  commitment axis (can this move) and ADR-0063's presentation axis (bracketed/ambient).
+ *
+ *  - `exact` — the instant IS the commitment. A flight departs, a table is booked.
+ *  - `not-before` — the earliest it can be. A room from 15:00, a hire counter at 10:00.
+ *  - `not-after` — a deadline. Out by 11:00, the car back by 18:00. */
+export type TimeMeaning = 'exact' | 'not-before' | 'not-after';
+
+/** **What one END of this event's time means**, resolved from the profile that already
+ *  answers it under another name: `midSpan.kind` (ADR-0171 §2).
+ *
+ *  A `journey` leaves at a moment and arrives at a moment. A `held` resource is
+ *  **available from** a time and **due back by** one — which is what holding something
+ *  means, so this is the same fact rather than a coincidence worth exploiting. Writing
+ *  it a second time as an `edges` field beside `midSpan` would be two sources for one
+ *  fact, exactly what ADR-0162 §2 refused when it made `durationUnit` optional.
+ *
+ *  Resolves like every other reader here — the event's own glyph refines its category —
+ *  so a car hire gets floor/deadline ends through `ICON_TIME_PROFILE`'s `🚗` row with
+ *  nobody having thought about cars. Anything with no `midSpan` is an ordinary point,
+ *  which is `exact` at both ends and is most of the app.
+ *
+ *  **The seam if a mode ever disagrees** (a hotel that really does hold check-in to the
+ *  minute): it states an explicit `edges` in its `ICON_TIME_PROFILE` row and this reads
+ *  that first. Not added before something needs it. */
+export const edgeMeaning = (
+  event: Pick<TripEvent, 'category' | 'icon'>,
+  edge: 'start' | 'end',
+): TimeMeaning => {
+  if (timeProfileFor(event).midSpan?.kind !== 'held') return 'exact';
+  return edge === 'start' ? 'not-before' : 'not-after';
+};
+
+/** Does this end name a moment the app actually KNOWS? The one predicate the day's
+ *  ordering and the map's numbering both ask (ADR-0171 §10a/§10b) — and they must ask
+ *  the same one, or a row can hold a position its pin refuses to number. */
+export const isExactEdge = (
+  event: Pick<TripEvent, 'category' | 'icon'>,
+  edge: 'start' | 'end',
+): boolean => edgeMeaning(event, edge) === 'exact';
+
 /** The unit an event's duration reads in — its category's, unless its glyph names a
  *  different one (ADR-0063 extension, ADR-0162's refinement). A null/unset category
  *  uses the ordinary 'auto'.

@@ -10,6 +10,7 @@
 // (ADR-0164) — a stay's middle nights still count nothing.
 import {
   CATEGORY_DEFAULT_ICON,
+  edgeMeaning,
   EVENT_STATUS,
   eventDurationUnit,
   eventTransitionKeys,
@@ -444,7 +445,22 @@ export function buildDayGlance(
   // same-day flight is already a block in `tree` AND has anchors, so counting its
   // transitions too would say 2 for one journey. Only spans that were EXCLUDED above can
   // add themselves back here, and each edge is one thing to do.
-  const remainingEdges = transitions.filter((t) => isAmbient(t.event) && t.atMs > nowMs).length;
+  //
+  // **A FLOOR PASSING IS NOT THE THING HAPPENING** (ADR-0171 §6). `t.atMs > nowMs` is
+  // the right test for a deadline — at 11:01 a check-out is not pending, it is missed —
+  // and the wrong one for a floor: 15:01 does not mean anybody has checked in. So a
+  // `not-before` edge stays counted for the whole day and leaves the count the way it
+  // was always going to leave it, by being settled. `bookingTransitionsOnDate` already
+  // drops settled events, so that is not a second rule here.
+  const remainingEdges = transitions.filter((t) => {
+    if (!isAmbient(t.event)) return false;
+    if (edgeMeaning(t.event, t.edge) !== 'not-before') return t.atMs > nowMs;
+    // A floor is still ahead of you until somebody says otherwise. `transitions` is
+    // already scoped to `activeDate`, so "or the day ends" needs no condition — but
+    // "settled" does: `bookingTransitionsOnDate` drops only SKIPPED, and a check-in you
+    // have actually done is the whole reason this branch is settleable at all.
+    return t.event.status !== EVENT_STATUS.DONE;
+  }).length;
   const remaining = remainingBlocks + remainingEdges;
 
   // Time-anchors (ADR-0077) derive from the one shared function (ADR-0064) —

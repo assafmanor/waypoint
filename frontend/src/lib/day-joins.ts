@@ -12,6 +12,7 @@
 // Pure: no clock, no React. The day view hands it entries and gets back what to draw.
 import {
   connectionMinutes,
+  edgeMeaning,
   isTightConnection,
   type Booking,
   type BookingType,
@@ -105,9 +106,17 @@ export interface DayBlock {
  *
  * **Adjacency is the same rule Plan uses for its gap chips**: joins are measured between
  * consecutive EVENT entries, and a leaf group at that — a cluster is two things at once,
- * so "the gap after it" is not a single fact, and a transition point (a hotel check-out
- * interleaved by instant, ADR-0064 §B) neither opens nor closes one. Anything that is
- * not a leaf event entry simply ends the current run and starts a new block.
+ * so "the gap after it" is not a single fact, and a transition point (ADR-0064 §B)
+ * neither opens nor closes one.
+ *
+ * **What differs since ADR-0171 §5 is what a transition does to the row AFTER it.** It
+ * still starts a new block, but a **flexible** edge no longer ends the measurement: free
+ * time is time between commitments, and a check-out "by 11:00" consumes no particular
+ * hour. Before this, any transition nulled `prevEnd`, so a check-in sitting between two
+ * flight legs suppressed the join between them entirely — no gap AND no connection band
+ * could be derived for that window at all, which is how a misplaced row was also hiding
+ * a layover. (Its own half of that fix is that a floor now leaves the list before this
+ * runs; this half is for the ceiling, which stays.)
  */
 export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBlock[] {
   const blocks: DayBlock[] = [];
@@ -125,7 +134,13 @@ export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBl
     } else {
       blocks.push({ entries: [{ entry, index, join }], journey: false });
     }
-    prevEnd = entry.kind === 'event' ? groupEndEvent(entry.group) : null;
+    // **A flexible edge is TRANSPARENT to the measurement** (ADR-0171 §5). Free time is
+    // time between commitments, and a check-out "by 11:00" does not consume a particular
+    // hour — so it neither bounds a gap nor hides one. Everything else still ends the
+    // run: an exact transition IS a moment, and a cluster is two things at once, so "the
+    // gap after it" is not a single fact.
+    if (entry.kind === 'event') prevEnd = groupEndEvent(entry.group);
+    else if (edgeMeaning(entry.event, entry.edge) === 'exact') prevEnd = null;
   });
 
   return blocks;

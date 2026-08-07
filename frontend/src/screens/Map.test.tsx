@@ -1755,10 +1755,17 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       expect(row('museum')!.className).not.toContain('ambient');
     });
 
-    // The edge day is what an ambient night now looks like, minus the one thing that
-    // still separates them — so the check-in day must still be numbered, or the
-    // distinction the amendment rests on is gone.
-    it('a check-in day is an ordinary NUMBERED row, which is what ambient is not', () => {
+    // **Rewritten, not relaxed, by ADR-0171 §10b.** This asserted that a check-in day is
+    // NUMBERED, on the reasoning that the number was the one thing separating an edge day
+    // from an ambient middle night. The number is now exactly what a floor may not claim —
+    // a stop number is the index of a moment the app KNOWS, and "from 15:00" is any hour
+    // after it — so the assertion inverts.
+    //
+    // The distinction it was protecting survives, and on firmer ground than a digit: the
+    // edge day still passes `hasScheduleSlot` (it has an event and a real edge), so its
+    // tier is `upcoming` rather than `ambient`, and its row still carries the check-in
+    // word that a middle night has none of.
+    it('a check-in day is an ordinary row, and takes NO number — a floor names no moment', () => {
       setSimulatedNow(NOON);
       tripPlaces = [place('hotel', true)];
       // Check in ON the active date, so 07-20 is this stay's start edge, not a middle.
@@ -1777,7 +1784,9 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       const hotel = row('hotel')!;
       expect(hotel.className).not.toContain('ambient');
       expect(hotel.className).not.toContain('skipped');
-      expect(orderOf('hotel')).toBe('1');
+      expect(orderOf('hotel')).toBeNull();
+      // …and the word is what says which edge it is, which is what the number never did.
+      expect(hotel.textContent).toContain(t.glance.transition.checkIn);
     });
   });
 

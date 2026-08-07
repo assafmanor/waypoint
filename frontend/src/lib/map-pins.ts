@@ -8,7 +8,7 @@
 // `PlaceUsage` the list rows read, the same `comparePlacesBySchedule` order the
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
-import { iconForCategory, type EventCategory, type TripEvent } from '@waypoint/shared';
+import { iconForCategory, isExactEdge, type EventCategory, type TripEvent } from '@waypoint/shared';
 import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
   isDayUsagePast,
@@ -276,9 +276,20 @@ export function pinTransition(
  */
 export function buildPinOrderIndex(
   usages: readonly PlaceUsage[],
-  ctx: { nameOf: PlaceOrderContext['nameOf']; onDate?: string; nowMs?: number },
+  ctx: {
+    nameOf: PlaceOrderContext['nameOf'];
+    onDate?: string;
+    nowMs?: number;
+    /** The moment's event, so this can ask what its time MEANS (ADR-0171 §10b). Absent
+     *  on surfaces that cannot resolve events, which then number every moment as before. */
+    eventById?: (id: string) => TripEvent | undefined;
+    /** **Is this place a connection stop on this day** — `connectionStops`, the same
+     *  derivation the day's band and the pin's word already read (ADR-0159 §6). Absent
+     *  where journeys are not resolved. */
+    isConnectionStop?: (placeId: string, date: string) => boolean;
+  },
 ): Map<string, number> {
-  const { nameOf, onDate, nowMs } = ctx;
+  const { nameOf, onDate, nowMs, eventById, isConnectionStop } = ctx;
   // No day, no sequence to be an index in — and renumbering per day is worse than
   // nothing: two pins both reading `1` on one canvas, with nothing on either saying
   // which day it belongs to.
@@ -306,12 +317,41 @@ export function buildPinOrderIndex(
     if (sa !== sb) return sa - sb;
     return nameOf(a.usage).localeCompare(nameOf(b.usage));
   });
+  // **ONE CONNECTION IS ONE STOP** (ADR-0171 §7). A layover contributes two moments —
+  // the arrival of the leg that brings you in and the departure of the one that takes
+  // you out — and they are not two visits, they are waiting. So two ADJACENT moments of
+  // one place collapse when that place is a connection stop on this day, which is the
+  // gate: adjacency alone is not evidence (an airport you land at in the morning and
+  // return a car to at 18:00 is a genuine revisit), and a genuine LATER revisit is never
+  // adjacent, because the stops you went to in between sit between them.
+  //
+  // This partly reverses ADR-0121 §6's 2026-08-06 amendment, and only there: "a place you
+  // go to twice is two stops" still holds for a revisit, which is the case it was
+  // reasoning about.
+  const merged = stops.filter((stop, i) => {
+    const prev = stops[i - 1];
+    if (!prev || prev.usage.placeId !== stop.usage.placeId) return true;
+    return !isConnectionStop?.(stop.usage.placeId, onDate);
+  });
+  // **A NUMBER IS ONLY EVER THE INDEX OF A MOMENT THE APP KNOWS** (ADR-0171 §10b). A
+  // number asserts "this is the Nth place you were at", and a floor, a ceiling and a row
+  // with no clock cannot back that up: "from 15:00" is any hour after, and numbering a
+  // check-out from its ceiling is what put the owner back in Iceland after landing in
+  // Tel Aviv. The unknown ones keep their place in the list and lose the mark — so the
+  // known stops still count 1, 2, 3 with no hole, unlike a filter's informative gaps,
+  // because nothing is hidden here to hint at.
+  const knows = (moment: { at?: number; eventId?: string; edge?: 'start' | 'end' }) => {
+    if (moment.at == null) return false;
+    const event = moment.eventId ? eventById?.(moment.eventId) : undefined;
+    return event ? isExactEdge(event, moment.edge ?? 'start') : true;
+  };
+  const numbered = merged.filter((stop) => knows(stop.moment));
   // …and each place takes the number of the stop it is CURRENTLY about, which is the same
   // moment `placeMetaDay` puts on its row. This is the only line the clock reaches.
   const index = new Map<string, number>();
   for (const { usage, day } of onDay) {
     const naming = relevantMoment(day, nowMs);
-    const at = stops.findIndex(
+    const at = numbered.findIndex(
       (stop) =>
         stop.usage.placeId === usage.placeId &&
         (naming == null ||

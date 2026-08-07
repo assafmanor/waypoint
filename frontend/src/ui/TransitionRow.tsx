@@ -8,7 +8,7 @@
 // but only when a caller supplies `onNavigate` (Trip mode, live day, and the
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
-import { CATEGORY_DEFAULT_ICON, type Booking } from '@waypoint/shared';
+import { CATEGORY_DEFAULT_ICON, edgeMeaning, type Booking } from '@waypoint/shared';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 import { formatTime } from '../lib/time';
 import { ZoneShiftPill } from './ZoneShiftPill';
@@ -87,7 +87,16 @@ export function TransitionRow({
           </span>
         </span>
         <span className="tr-time" dir="auto">
-          {formatTime(new Date(atMs), zone ?? tz)}
+          {/* **A ceiling says so** (ADR-0171 §3). A check-out reads `עד 11:00`, because
+              11:00 is a deadline rather than the moment it happens — and the row may
+              have been pinned earlier than 11:00 by a flight leaving before it (§10b),
+              which makes an unmarked clock actively wrong. `exact` stays unmarked: it
+              is the default, and marking it would put a word on nearly every row in
+              the app to say "normal". A floor never reaches this row at all — it holds
+              no position, so it renders in the strip above the list. */}
+          {edgeMeaning(event, edge) === 'not-after'
+            ? t.day.untilTime(formatTime(new Date(atMs), zone ?? tz))
+            : formatTime(new Date(atMs), zone ?? tz)}
           {deltaMinutes != null && <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />}
         </span>
       </button>

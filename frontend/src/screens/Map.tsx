@@ -1058,7 +1058,16 @@ export function MapView() {
   // passes at a minute boundary, and the app shows no finer time than that anywhere.
   const orderMinute = Math.floor(nowMs / MS_PER_MINUTE);
   const orderIndex = useMemo(
-    () => buildPinOrderIndex(dayScoped, { nameOf, onDate: scopedDate, nowMs: nowRef.current }),
+    () =>
+      buildPinOrderIndex(dayScoped, {
+        nameOf,
+        onDate: scopedDate,
+        nowMs: nowRef.current,
+        eventById: eventLookup,
+        // The same lookup the pin's WORD reads (ADR-0159 §6), so a place cannot be a
+        // layover in one sentence and two stops in the other.
+        isConnectionStop: (placeId, date) => connectionWordAt(placeId, date) != null,
+      }),
     [dayScoped, scopedDate, placeById, orderMinute],
   );
 

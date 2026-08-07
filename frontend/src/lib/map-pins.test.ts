@@ -607,6 +607,180 @@ describe('pinOutcome — what happened there, on the two tiers that can say (ADR
   });
 });
 
+// ── A NUMBER IS ONLY EVER THE INDEX OF A MOMENT THE APP KNOWS (ADR-0171 §10b) ────────
+describe('what a pin number is allowed to claim', () => {
+  const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  /** The owner's Iceland case: check out of Reykjavik by 11:00, fly, land in Tel Aviv.
+   *  Numbering the check-out from its CEILING reads Keflavik → Ben Gurion → the hotel,
+   *  i.e. back in Iceland after landing. */
+  const iceland = () =>
+    usages({
+      places: [place('hotel'), place('kef'), place('tlv')],
+      events: [
+        event({
+          id: 'stay',
+          placeId: 'hotel',
+          category: 'lodging',
+          date: '2026-07-05',
+          endDate: DAY,
+          startsAt: `2026-07-05T15:00:00Z`,
+          endsAt: at2('11:00'),
+        }),
+        event({
+          id: 'dep',
+          placeId: 'kef',
+          category: 'transport',
+          icon: '✈️',
+          startsAt: at2('07:40'),
+        }),
+        event({
+          id: 'arr',
+          placeId: 'tlv',
+          category: 'transport',
+          icon: '✈️',
+          startsAt: at2('15:20'),
+        }),
+      ],
+    });
+  const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+
+  it('numbers a ceiling today, which is the defect', () => {
+    // The check-out sorts at its 11:00 ceiling, so the day's stops read Keflavik →
+    // the Reykjavik hotel → Ben Gurion: you are at the hotel AFTER taking off from
+    // the airport. Same nonsense as the owner's "back in Iceland after landing in Tel
+    // Aviv", one row milder, and from the same cause.
+    const index = buildPinOrderIndex([...iceland().values()], { nameOf, onDate: DAY });
+    expect(index.get('kef')).toBe(1);
+    expect(index.get('hotel')).toBe(2);
+    expect(index.get('tlv')).toBe(3);
+  });
+
+  it('gives a ceiling no number once it can ask what the time means', () => {
+    const all = [...iceland().values()];
+    const events = all.flatMap((u) => u.days.map((d) => d.eventId)).filter(Boolean);
+    expect(events.length).toBeGreaterThan(0);
+    const index = buildPinOrderIndex(all, {
+      nameOf,
+      onDate: DAY,
+      eventById: eventsById([
+        event({
+          id: 'stay',
+          category: 'lodging',
+          date: '2026-07-05',
+          endDate: DAY,
+          startsAt: `2026-07-05T15:00:00Z`,
+          endsAt: at2('11:00'),
+        }),
+        event({ id: 'dep', category: 'transport', icon: '✈️', startsAt: at2('07:40') }),
+        event({ id: 'arr', category: 'transport', icon: '✈️', startsAt: at2('15:20') }),
+      ]),
+    });
+    expect(index.has('hotel')).toBe(false);
+    // …and the known stops still count 1, 2 with no hole: nothing is hidden to hint at.
+    expect(index.get('kef')).toBe(1);
+    expect(index.get('tlv')).toBe(2);
+  });
+
+  it('gives an UNTIMED place no number either — the same claim, unreported', () => {
+    // `place-usage.ts` gives a clockless event `prominence: 'edge'` with `at: undefined`,
+    // so `hasScheduleSlot` passes and this numbered it after the timed stops.
+    const all = [
+      ...usages({
+        places: [place('museum'), place('errand')],
+        events: [
+          event({ id: 'm', placeId: 'museum', startsAt: at2('10:00') }),
+          event({ id: 'x', placeId: 'errand' }),
+        ],
+      }).values(),
+    ];
+    const index = buildPinOrderIndex(all, {
+      nameOf,
+      onDate: DAY,
+      eventById: eventsById([event({ id: 'm', startsAt: at2('10:00') }), event({ id: 'x' })]),
+    });
+    expect(index.get('museum')).toBe(1);
+    expect(index.has('errand')).toBe(false);
+  });
+});
+
+// ── ONE CONNECTION IS ONE STOP (ADR-0171 §7) ──────────────────────────────────────────
+describe('a layover collapses; a genuine revisit does not', () => {
+  const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  /** Ben Gurion → Vienna → Keflavik. Vienna contributes an arrival AND a departure. */
+  const layover = () =>
+    usages({
+      places: [place('tlv'), place('vie'), place('kef')],
+      events: [
+        event({
+          id: 'l1',
+          placeId: 'tlv',
+          category: 'transport',
+          icon: '✈️',
+          startsAt: at2('06:00'),
+        }),
+        event({
+          id: 'l1b',
+          placeId: 'vie',
+          category: 'transport',
+          icon: '✈️',
+          startsAt: at2('09:30'),
+        }),
+        event({
+          id: 'l2',
+          placeId: 'vie',
+          category: 'transport',
+          icon: '✈️',
+          startsAt: at2('11:30'),
+        }),
+        event({
+          id: 'l3',
+          placeId: 'kef',
+          category: 'transport',
+          icon: '✈️',
+          startsAt: at2('14:00'),
+        }),
+      ],
+    });
+
+  it('leaves the reported gap when nothing says the two moments are one wait', () => {
+    const index = buildPinOrderIndex([...layover().values()], { nameOf, onDate: DAY });
+    expect(index.get('tlv')).toBe(1);
+    expect(index.get('vie')).toBe(2);
+    expect(index.get('kef')).toBe(4); // the missing 3 is Vienna, counted twice
+  });
+
+  it('collapses the pair when the journey derivation says it is a connection', () => {
+    const index = buildPinOrderIndex([...layover().values()], {
+      nameOf,
+      onDate: DAY,
+      isConnectionStop: (placeId) => placeId === 'vie',
+    });
+    expect(index.get('tlv')).toBe(1);
+    expect(index.get('vie')).toBe(2);
+    expect(index.get('kef')).toBe(3);
+  });
+
+  it('does NOT collapse a place reached twice with something in between', () => {
+    // The morning landing and the evening car return at one airport: adjacency in the
+    // stop list is not evidence of one visit, and here there is none anyway.
+    const revisit = usages({
+      places: [place('airport'), place('town')],
+      events: [
+        event({ id: 'land', placeId: 'airport', startsAt: at2('02:00') }),
+        event({ id: 'mid', placeId: 'town', startsAt: at2('09:00') }),
+        event({ id: 'car', placeId: 'airport', startsAt: at2('18:00') }),
+      ],
+    });
+    const index = buildPinOrderIndex([...revisit.values()], {
+      nameOf,
+      onDate: DAY,
+      isConnectionStop: () => true, // even if it claimed so, they are not adjacent
+      nowMs: Date.parse(at2('23:00')),
+    });
+    expect(index.get('airport')).toBe(3);
+  });
+});
+
 describe('the pin number is the day sequence, and nothing renumbers it (§6)', () => {
   const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
   const seed = () =>

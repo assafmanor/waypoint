@@ -12,12 +12,14 @@ import {
   CATEGORY_TIME_PROFILE,
   defaultKindForBookingType,
   hasSpanSchedule,
+  edgeMeaning,
   eventDurationUnit,
   eventEndBoundary,
   eventMidSpan,
   eventTransitionKeys,
   isAmbient,
   isBracketed,
+  isExactEdge,
   isJourney,
   isMultiDay,
   searchVibeIcons,
@@ -124,6 +126,56 @@ describe('eventDurationUnit', () => {
       expect(eventDurationUnit(ev({ category }))).toBe('auto');
     }
     expect(eventDurationUnit(ev({ category: undefined }))).toBe('auto');
+  });
+});
+
+describe('edgeMeaning', () => {
+  it('is exact at both ends of a journey — a flight departs and lands at instants', () => {
+    const flight = ev({ category: 'transport', icon: '✈️' });
+    expect(edgeMeaning(flight, 'start')).toBe('exact');
+    expect(edgeMeaning(flight, 'end')).toBe('exact');
+    // The generic surface modes too, which carry no glyph refinement.
+    expect(edgeMeaning(ev({ category: 'transport' }), 'start')).toBe('exact');
+  });
+
+  it('is a floor and a deadline at the ends of a HELD span — the reported case', () => {
+    const stay = ev({ category: 'lodging' });
+    expect(edgeMeaning(stay, 'start')).toBe('not-before');
+    expect(edgeMeaning(stay, 'end')).toBe('not-after');
+  });
+
+  it('gives a car hire floor/deadline ends through its GLYPH, not its category', () => {
+    // A hire is `transport` (ADR-0162) and would read exact from its category alone;
+    // `🚗` refines `midSpan` to `held`, and this reads the refinement. That nobody had
+    // to add a car branch is the check that the model is about time, not about hotels.
+    const hire = ev({ category: 'transport', icon: '🚗' });
+    expect(edgeMeaning(hire, 'start')).toBe('not-before');
+    expect(edgeMeaning(hire, 'end')).toBe('not-after');
+  });
+
+  it('is exact for an ordinary point event and for a null category', () => {
+    for (const category of ORDINARY_CATEGORIES) {
+      expect(edgeMeaning(ev({ category }), 'start')).toBe('exact');
+      expect(edgeMeaning(ev({ category }), 'end')).toBe('exact');
+    }
+    expect(edgeMeaning(ev({ category: undefined }), 'start')).toBe('exact');
+  });
+
+  it('falls back to the category when the glyph is one nobody refined', () => {
+    // ADR-0162's own looseness: the icon is the user's to change, so a stay re-badged
+    // ⭐ must still read as a stay rather than losing its floor.
+    expect(edgeMeaning(ev({ category: 'lodging', icon: '⭐' }), 'start')).toBe('not-before');
+  });
+});
+
+describe('isExactEdge', () => {
+  it('is the same answer as edgeMeaning, so the day and the map cannot disagree', () => {
+    const stay = ev({ category: 'lodging' });
+    const flight = ev({ category: 'transport', icon: '✈️' });
+    expect(isExactEdge(stay, 'start')).toBe(false);
+    expect(isExactEdge(stay, 'end')).toBe(false);
+    expect(isExactEdge(flight, 'start')).toBe(true);
+    expect(isExactEdge(flight, 'end')).toBe(true);
   });
 });
 

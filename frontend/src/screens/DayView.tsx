@@ -77,9 +77,15 @@ import {
 } from '../lib/shelf';
 import { blockFor, ideaBlock, nextSlot, type Gap, type GapDefaults } from '../lib/gaps';
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
-import { dayTransitions, mergeDayEntries, type TransitionEntry } from '../lib/day-entries';
+import {
+  dayTransitions,
+  mergeDayEntries,
+  placeDayEntries,
+  type TransitionEntry,
+} from '../lib/day-entries';
 import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
 import { nowLinePlacement } from '../lib/now-line';
+import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
 import { hoursPhrase } from '../lib/duration';
 import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
@@ -400,7 +406,24 @@ export function DayView() {
   // `dayEvents` — so their edge days would show nothing in the list. Interleave
   // their transition points (check-in/out, departure/arrival) among the event
   // groups by instant (ADR-0064 §B). Same-day brackets stay a single span row.
-  const merged = mergeDayEntries(buildTimeTree(dayEvents), dayTransitions(events, activeDate));
+  const groups = buildTimeTree(dayEvents);
+  // **Not everything that happens today holds a position in it** (ADR-0171 §10a). A
+  // check-in "from 15:00" is a floor, open on the side you act, so no reading of the
+  // clock says where it goes; an untimed event is the same fact with a wider window.
+  // Both leave the ordered list — and then split by ADR-0011's own axis, because a
+  // commitment buried under an optional errand is the demotion that rule exists to
+  // prevent: `hard` reads in the strip above, `soft` in the tail below.
+  //
+  // Ordering matters here: this runs BEFORE `dayBlocks`, so a check-in that used to
+  // sit between two flight legs stops suppressing the join between them (`dayBlocks`
+  // ends a run on anything that is not a leaf event entry, so no gap AND no connection
+  // band could be derived for that window at all).
+  const placement = placeDayEntries(
+    mergeDayEntries(groups, dayTransitions(events, activeDate)),
+    dayEvents.filter((e) => !e.startsAt),
+    groups,
+  );
+  const merged = placement.positioned;
 
   // **What sits between two rows** (ADR-0159): free time stated, or a connection that
   // is not free time at all and takes both legs into one block. The join derivation is
@@ -427,8 +450,6 @@ export function DayView() {
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   }, [activeDate, isToday]);
-
-  const untimed = dayEvents.filter((e) => !e.startsAt);
 
   return (
     <>
@@ -472,7 +493,7 @@ export function DayView() {
         </span>
       </div>
 
-      {middleStays.length > 0 && (
+      {(middleStays.length > 0 || placement.commitments.length > 0) && (
         <div className="day-ambient">
           {middleStays.map((e) => (
             <div className="ambient" key={e.id}>
@@ -482,6 +503,23 @@ export function DayView() {
               <span className="an">{e.title}</span>
               <span className="as">{ambientSpanLabel(e, activeDate)}</span>
             </div>
+          ))}
+          {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
+              claim on your day, carried all day, rather than something buried at its
+              foot. It lands in the strip a multi-night stay's MIDDLE days already use,
+              so one hotel reads the same way on every day of itself, edges included,
+              and no second band is invented. */}
+          {placement.commitments.map((row) => (
+            <UnplacedCommitment
+              key={`${row.event.id}-${row.edge ?? 'untimed'}`}
+              row={row}
+              tz={trip.timezone}
+              bookings={bookings}
+              onDone={() => verbs.done(row.event)}
+              onSkip={() => verbs.skip(row.event)}
+              onUndo={() => verbs.restore(row.event)}
+              onOpen={setDetailTarget}
+            />
           ))}
         </div>
       )}
@@ -549,8 +587,25 @@ export function DayView() {
         {showNowLine && nowLineIndex === merged.length && (
           <NowLine ref={nowLineRef} now={now} tz={nowZone} />
         )}
-        {untimed.map((e) => (
-          <ItemNode key={e.id} item={{ event: e, children: [] }} depth={0} ctx={dayCtx} />
+        {/* **The tail, and the line that finally names it** (ADR-0171 §10a). These rows
+            have always rendered here; what they never had was anything saying they hold
+            no position, so one of them read as "the last thing today". The line is the
+            gap strip's own dashed hairline at the same 9px rhythm — the other thing a
+            line between rows can say — so the day gains no new grammar for it. */}
+        {placement.ideas.length > 0 && (
+          <div className="day-unplaced">
+            <span className="line" />
+            <span className="lbl">{t.day.unplaced}</span>
+            <span className="line" />
+          </div>
+        )}
+        {placement.ideas.map((row) => (
+          <ItemNode
+            key={row.event.id}
+            item={{ event: row.event, children: [] }}
+            depth={0}
+            ctx={dayCtx}
+          />
         ))}
       </div>
 
