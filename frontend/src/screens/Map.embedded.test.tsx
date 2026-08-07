@@ -2074,6 +2074,63 @@ describe('the embedded map’s shell (ADR-0121)', () => {
         fireEvent.click(within(placeCard()!).getByRole('button', { name: t.map.errand.choose }));
         expect(errandAnswer()).toBe('museum');
       });
+
+      // ─── THE ERRAND'S OWN CASE: A TRIP WITH NO PLACES YET (field reports #1 / #21) ──
+      // Not `seed()`. Picking the place for your FIRST booking is the errand's most ordinary
+      // shape, and it is the one state the tab had never been asserted in: no places of its
+      // own, so nothing for the list to hold and nothing for the camera to frame. Both
+      // reports came out of that one screen.
+      describe('with no places of its own', () => {
+        const typeQuery = (value: string) =>
+          fireEvent.change(screen.getByPlaceholderText(t.map.search.placeholder), {
+            target: { value },
+          });
+        /** Arrive on the errand — which opens the field itself (ADR-0134's session-168 rule) —
+         *  and let Google answer. */
+        const searchOnErrand = (value = 'נתבג') => {
+          searchStub.predictions = [
+            {
+              googlePlaceId: 'g-tlv',
+              primaryText: 'נמל תעופה בן גוריון',
+              secondaryText: 'תל אביב',
+              lat: 32.0055,
+              lng: 34.8854,
+            },
+          ];
+          render(wrap(<MapView />));
+          startErrand();
+          typeQuery(value);
+        };
+
+        // FIELD REPORT #21. `אין עדיין מקומות` sat above a live Google result for Ben Gurion:
+        // the list stated an emptiness the search underneath it was disproving.
+        it('does not state the trip is empty while a search is answering', () => {
+          searchOnErrand();
+          expect(screen.queryByText(t.map.empty.title)).toBeNull();
+          expect(document.querySelector('[data-result="g-tlv"]')).toBeTruthy();
+        });
+
+        // …and it still says it at rest, which is the whole reason the branch survives: the
+        // query outranks the empty trip, it does not replace it.
+        it('still states it with no query live', () => {
+          render(wrap(<MapView />));
+          startErrand();
+          expect(screen.getByText(t.map.empty.title)).toBeTruthy();
+        });
+
+        // FIELD REPORT #1, at the seam this suite can reach: the errand's search is wired to
+        // the very same camera input the Map tab's own search is (the rings), on a pane whose
+        // point set is EMPTY — which is the state `useMapCamera` was reading the map's opening
+        // camera as a view in, so the result stayed a speck on a world view. The move itself
+        // is `lib/useMapCamera.test.tsx`'s ("fits the results on a map nothing has framed").
+        it("hands the settled result to the camera as the pane's only point of interest", () => {
+          searchOnErrand();
+          expect(paneProps.current.results).toEqual([
+            expect.objectContaining({ googlePlaceId: 'g-tlv', lat: 32.0055, lng: 34.8854 }),
+          ]);
+          expect(paneProps.current.pins).toEqual([]);
+        });
+      });
     });
 
     // ─── THE MAP EXTREME IS AVAILABLE WHILE SEARCHING (owner, session 166) ─────────

@@ -3018,52 +3018,59 @@ export function MapView() {
   const researchEmpty =
     offline || !research.active || (!research.loading && research.predictions.length === 0);
 
-  const listBody =
-    allUsages.length === 0 ? (
-      <EmptyState
-        size="pane"
-        icon={<Icon name="map" />}
-        title={t.map.empty.title}
-        body={t.map.empty.body}
-      />
-    ) : searching ? (
-      // ONE LIST, ONE EMPTINESS (owner, session 164). The two halves used to be two
-      // sections with two headers and two empty states, and the result was the screenshot
-      // that got this changed: `לא נמצאו מקומות` in bold, with three Google results
-      // underneath it. A list cannot say "nothing" and then show something.
-      //
-      // So the trip's half no longer answers for itself. Emptiness is now a fact about the
-      // MERGED list, and it is only stated once Google has settled — while a paid search is
-      // in flight the honest answer is "still looking", which the skeletons already say.
-      listCount === 0 && researchEmpty ? (
-        <p className="map-res-hint">{t.map.search.noResultsTitle}</p>
-      ) : (
-        renderList(listRows, (id) => select(id, { fromRow: true }), {
-          onChoose: errandTakesOurPlaces ? finishErrand : undefined,
-        })
-      )
-    ) : listCount === 0 ? (
-      facetsActive ? (
-        <EmptyState
-          icon={<Icon name="search" />}
-          title={t.map.filter.noResultsTitle}
-          body={t.map.filter.noResultsBody(facetWords)}
-          action={{ label: t.map.filter.clear, onClick: clearFacets }}
-        />
-      ) : (
-        <EmptyState
-          size="pane"
-          icon={<Icon name="calendar" />}
-          title={t.map.emptyDay.title}
-          body={t.map.emptyDay.body}
-          action={{ label: t.map.emptyDay.action, onClick: () => setAllDays(true) }}
-        />
-      )
+  // **AND "NAMED BEFORE THE OTHERS" IS THE BRANCH ORDER, INCLUDING THE EMPTY TRIP** (owner,
+  // 2026-08-07: the picker said `אין עדיין מקומות` while a live Google result for Ben
+  // Gurion rendered underneath it). `allUsages.length === 0` was tested FIRST, so a trip with
+  // no places of its own — which is every trip while you pick the place for your first booking
+  // — stated an emptiness the search was in the middle of disproving. It is the same rule the
+  // merged emptiness below already holds for the other half, and the query has to outrank all
+  // three causes, not two of them. At rest the empty trip still gets to say so.
+  //
+  // ONE LIST, ONE EMPTINESS (owner, session 164). The two halves used to be two sections
+  // with two headers and two empty states, and the result was the screenshot that got this
+  // changed: `לא נמצאו מקומות` in bold, with three Google results underneath it. A list
+  // cannot say "nothing" and then show something.
+  //
+  // So the trip's half no longer answers for itself. Emptiness is now a fact about the
+  // MERGED list, and it is only stated once Google has settled — while a paid search is in
+  // flight the honest answer is "still looking", which the skeletons already say.
+  const listBody = searching ? (
+    listCount === 0 && researchEmpty ? (
+      <p className="map-res-hint">{t.map.search.noResultsTitle}</p>
     ) : (
       renderList(listRows, (id) => select(id, { fromRow: true }), {
         onChoose: errandTakesOurPlaces ? finishErrand : undefined,
       })
-    );
+    )
+  ) : allUsages.length === 0 ? (
+    <EmptyState
+      size="pane"
+      icon={<Icon name="map" />}
+      title={t.map.empty.title}
+      body={t.map.empty.body}
+    />
+  ) : listCount === 0 ? (
+    facetsActive ? (
+      <EmptyState
+        icon={<Icon name="search" />}
+        title={t.map.filter.noResultsTitle}
+        body={t.map.filter.noResultsBody(facetWords)}
+        action={{ label: t.map.filter.clear, onClick: clearFacets }}
+      />
+    ) : (
+      <EmptyState
+        size="pane"
+        icon={<Icon name="calendar" />}
+        title={t.map.emptyDay.title}
+        body={t.map.emptyDay.body}
+        action={{ label: t.map.emptyDay.action, onClick: () => setAllDays(true) }}
+      />
+    )
+  ) : (
+    renderList(listRows, (id) => select(id, { fromRow: true }), {
+      onChoose: errandTakesOurPlaces ? finishErrand : undefined,
+    })
+  );
 
   // GOOGLE'S HALF, IN THE SHEET (ADR-0131 §8) — re-parented out of the retired overlay,
   // not rewritten: `PlaceResearch` already took only these three props and rendered
