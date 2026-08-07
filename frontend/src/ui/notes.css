@@ -14,6 +14,11 @@
   overflow: hidden;
   font-weight: 400;
   line-height: 1.35;
+  /* **The newlines the composer now writes are CONTENT** (ADR-0152 §6b's 2026-08-07
+     amendment). Default `white-space` collapses them to spaces, so a note typed over two
+     lines read as one and the reversal looked like it had not shipped. The clamp is
+     unaffected: it counts rendered lines either way. */
+  white-space: pre-wrap;
 }
 
 /* A URL-ONLY note. The url is the line, and it is an LTR island inside an RTL row — the
@@ -178,9 +183,12 @@
   width: 14px;
   height: 14px;
 }
+/* `＋` sits CENTRED against the box, not on its baseline. It was `flex-end`, which read as
+   off-centre even on an empty composer (the input's own height is taller than the 38px
+   button) and only got louder once Enter started growing the box (owner, 2026-08-07). */
 .note-compose-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--space-2);
 }
 .note-compose-in {
@@ -265,6 +273,10 @@
   padding: 0;
   cursor: pointer;
   color: var(--ink);
+  /* Same rule as `.note-body-line`, and this is the surface the report came from: a line
+     here does not clamp, so a two-line note must read as two lines. A `<button>` also
+     inherits the UA's `white-space: normal` regardless of the page, so it needs saying. */
+  white-space: pre-wrap;
 }
 .note-item-m {
   display: block;
