@@ -1285,6 +1285,29 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     expect(within(typeRow() as HTMLElement).getByText(t.index.bookingType.restaurant)).toBeTruthy();
   });
 
+  // A create form OPENS on the type step, and an errand re-mounts the sheet — so without
+  // the return landing on `מה ואיפה`, picking a place would drop you one step behind the
+  // field you left, re-asking a question you already answered (ADR-0134 §2's channel).
+  it('comes back from a place errand at the identity step, not the type step', () => {
+    render(
+      wrapNav(
+        <BookingSheet
+          booking={null}
+          draft={bookingSheetDraft({
+            booking: null,
+            seed: { type: BOOKING_TYPE.HOTEL },
+            trip,
+            events: [],
+            places,
+          })}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    expect(stepLabel()).toBe(t.index.form.stepWhat);
+    expect(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeTruthy();
+  });
+
   it('adds no step to an EDIT, and offers no way to change the type there', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     // Straight to the identity step: a saved booking's type is not a question.

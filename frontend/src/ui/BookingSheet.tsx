@@ -147,6 +147,8 @@ export function BookingSheet({
 
   const whenRef = useRef<HTMLDivElement>(null);
   const shortcutDone = useRef(false);
+  /** One-shot, like `shortcutDone`: stepping away after the errand return is not undone. */
+  const errandDone = useRef(false);
   const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
   // ONE derivation, shared with the errand that has to hand this state over before the sheet
   // exists (`lib/booking-draft.ts`). The `initial` blob is both the seed for every field
@@ -849,6 +851,17 @@ export function BookingSheet({
     first?.focus();
     // Deps are the two facts this reacts to; `steps` itself is rebuilt every render.
   }, [focus, steps]);
+
+  // **A form coming back from a place errand does not re-ask its type** (field report #2's
+  // consequence, ADR-0134 §2's channel). A create form now OPENS on the type step, and the
+  // errand returns by re-mounting the sheet — so without this you would come back from
+  // picking a place one step behind the field you left, and have to answer a question you
+  // already answered. The draft is what says "this is a return, not an opening".
+  useEffect(() => {
+    if (!draft || !isCreate || focus || errandDone.current) return;
+    errandDone.current = true;
+    steps.goTo('what');
+  }, [draft, isCreate, focus, steps]);
 
   return (
     <>
