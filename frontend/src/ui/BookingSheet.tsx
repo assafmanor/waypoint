@@ -30,6 +30,7 @@ import {
   type BookingSheetDraft,
   type LegTimes,
 } from '../lib/booking-draft';
+import { offerDayTimes, offerLegTimes, offeredEnd } from '../lib/booking-prefill';
 import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
 
@@ -103,6 +104,10 @@ type LegSide = 'out' | 'back';
 type BookingField =
   | 'title'
   | 'route'
+  // **The direction is its own box** (field report #8) — one name per BOX is this union's
+  // rule, and an unanswered direction is a different refusal from a missing route even
+  // though the two controls share a field shell.
+  | 'direction'
   | 'date'
   // **One name per LEG END** (ADR-0154 §4's two names, now indexed — ADR-0159). A span
   // refuses per leg for the same reason it carries a zone per leg, and a journey with
@@ -142,6 +147,8 @@ export function BookingSheet({
 
   const whenRef = useRef<HTMLDivElement>(null);
   const shortcutDone = useRef(false);
+  /** One-shot, like `shortcutDone`: stepping away after the errand return is not undone. */
+  const errandDone = useRef(false);
   const linkedEvent = booking ? events.find((e) => e.bookingId === booking.id) : undefined;
   // ONE derivation, shared with the errand that has to hand this state over before the sheet
   // exists (`lib/booking-draft.ts`). The `initial` blob is both the seed for every field
@@ -199,11 +206,16 @@ export function BookingSheet({
   // Span scheduling (transport departure/arrival, hotel check-in/check-out), one entry
   // per leg: two explicit datetimes that may fall on different days.
   const [legs, setLegs] = useState(draft ? draft.legs : initial.legs);
-  // The round trip (ADR-0154 §4): one save, two journeys. Create-only, default OFF —
-  // the control row costs 44px on every transport booking and the second leg a further
-  // 492px, which only an explicit tap should buy (measured, `booking-round-trip-v1.html`).
+  // The round trip (ADR-0154 §4): one save, two journeys. Create-only, and it opens
+  // **unanswered** (field report #8): §4's 492px measurement justifies not pre-expanding
+  // the return, and `false` went further than that and pre-selected `כיוון אחד`. The
+  // second leg still costs what it costed; nobody is now told they chose not to buy it.
   const [roundTrip, setRoundTrip] = useState(draft ? draft.roundTrip : initial.roundTrip);
   const [returnLegs, setReturnLegs] = useState(draft ? draft.returnLegs : initial.returnLegs);
+  // **The end stops following the start once it is answered** (field report #11) — the
+  // same latch `useDerivedField` puts on the icon and the kind, kept as plain state
+  // because what it gates lives in `legs`/`end` rather than in a value of its own.
+  const [endTouched, setEndTouched] = useState(draft ? draft.endTouched : initial.endTouched);
   const kind = useDerivedField<'hard' | 'soft'>(
     draft ? draft.kind : initial.kind,
     draft ? draft.kindTouched : false,
@@ -255,6 +267,7 @@ export function BookingSheet({
         legs,
         roundTrip,
         returnLegs,
+        endTouched,
         kind: kind.value,
         kindTouched: kind.touched,
       } satisfies BookingSheetDraft,
@@ -285,7 +298,7 @@ export function BookingSheet({
   // opens ADR-0047 §2's merged surface unchanged, and turning a saved single leg into a
   // pair is a different action (§4, out of scope).
   const offersRoundTrip = isCreate && authorsRoundTrip(type);
-  const twoLegs = offersRoundTrip && roundTrip;
+  const twoLegs = offersRoundTrip && roundTrip === true;
   // **Stops, on the same terms as the round trip** (ADR-0159): only where the type's
   // profile says a journey of this kind can be broken by one, and only on a create.
   const offersStops = isCreate && connectionWindow(type) != null;
@@ -394,6 +407,14 @@ export function BookingSheet({
     setType(next);
     icon.redrive(BOOKING_TYPE_ICON[next]);
     kind.redrive(defaultKindForBookingType(next));
+    // **An offered end belongs to the type that offered it** (field report #11). A
+    // check-out clock must not survive a switch to a flight, where the whole point is
+    // that no clock may be guessed. An end a human typed is theirs and stays.
+    if (endTouched) return;
+    setLegs((list) =>
+      list.map((leg, i) => (i === 0 ? { ...leg, end: offeredEnd(next, leg.start) ?? '' } : leg)),
+    );
+    setEnd('');
   };
   const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
@@ -407,12 +428,25 @@ export function BookingSheet({
   // keys on `titlesFromRoute`, which is now its own axis, and a hire's name is its rental
   // company. With no company entered it falls back to the TYPE LABEL rather than to a
   // place: `השכרת רכב` says what the row is, where a bare counter name does not.
-  const hireTitle = () => provider.trim() || t.index.bookingType[type];
+  const typeLabel = t.index.bookingType[type];
+  const hireTitle = () => provider.trim() || typeLabel;
+  /** **The name a booking falls back to when nobody types one** (field report #9,
+   *  generalising ADR-0163 §3 past the car hire it was written for). The hire's rule was
+   *  already "the thing it is called, else what it is"; for every remaining type the thing
+   *  it is called is the PLACE it happens at — a hotel is `Granbell Shinjuku`, a
+   *  restaurant is `Ichiran` — with the type label as the same last resort.
+   *
+   *  **`provider` is deliberately not in this chain.** It is the channel you booked
+   *  through (field report #12), so it would title a hotel `Booking.com`: the name of a
+   *  website, not of a place you are sleeping at. The hire is the exception that keeps its
+   *  own rule, because there the provider IS the thing — you rent from Hertz. */
+  const placeTitle = () => placeName(places, placeId)?.trim();
+  const derivedTitle = () => placeTitle() || typeLabel;
   const finalTitle = titlesFromRoute(type)
     ? routeTitle(placeName(places, fromPlaceId) ?? '', placeName(places, toPlaceId) ?? '')
     : isHire
       ? hireTitle()
-      : title.trim();
+      : title.trim() || derivedTitle();
 
   /** **Every refusal this form can make, in one place** — and it stays one place now that
    *  the form is stepped (ADR-0155 §3). A step gate and the save both read THIS and filter
@@ -427,9 +461,16 @@ export function BookingSheet({
       if (stops.some((id) => !id)) {
         problems.push({ field: 'route', message: t.index.form.stopRequired });
       }
-    } else if (!finalTitle) {
-      problems.push({ field: 'title', message: t.index.form.titleRequired });
     }
+    // **A direction is refused, never assumed** (field report #8). This is the price of
+    // opening unanswered and it is the point of it: the app would rather ask twice than
+    // write a one-way nobody chose. Only where the control is actually offered.
+    if (offersRoundTrip && roundTrip === undefined) {
+      problems.push({ field: 'direction', message: t.index.form.directionRequired });
+    }
+    // Nothing refuses a missing NAME any more (field report #9): `finalTitle` falls back
+    // to the linked place and then to the type label, so for a non-route type it cannot
+    // come out empty. The check that used to be here would now be unreachable.
     const outOfRange = (v: string) => dateOutOfTripRange(v, trip.startDate, trip.endDate);
     if (!isSpan && outOfRange(date)) {
       problems.push({ field: 'date', message: t.index.form.dateOutOfRange });
@@ -499,8 +540,23 @@ export function BookingSheet({
     ...outLegs.map((_, i) => `out-${i}` as StepId),
     ...backLegs.map((_, i) => `back-${i}` as StepId),
   ];
-  type StepId = 'what' | 'more' | `${LegSide}-${number}`;
-  const STEP_IDS: StepId[] = ['what', ...legSteps, 'more'];
+  type StepId = 'type' | 'what' | 'more' | `${LegSide}-${number}`;
+  /** **The type is the first question, and only when it is a question** (field report #2).
+   *  It shapes every step after it — span vs point, how many legs, whether a return can be
+   *  bought — so asking it on its own, first, is the honest ordering, and it is what lets
+   *  the eight-card grid stop competing with the name and the place for the same screen.
+   *
+   *  **An edit gains no step from this.** The type of a saved booking is not editable
+   *  (the grid has always been create-only), so on edit there is no question to ask and
+   *  the answer rides the collapsed row instead — which is the "combine where it makes
+   *  sense" half of the owner's call: the step that would have been added is folded away
+   *  rather than shown with nothing to do. */
+  const STEP_IDS: StepId[] = [
+    ...(isCreate ? (['type'] as StepId[]) : []),
+    'what',
+    ...legSteps,
+    'more',
+  ];
   /** Where `שבץ במסלול` lands (ADR-0138 §7): the schedule is a step per leg now, so the
    *  shortcut means the first of them. */
   const FIRST_LEG_STEP: StepId = 'out-0';
@@ -509,7 +565,7 @@ export function BookingSheet({
    *  names are indexed, so no literal list can be exhaustive over them — and a total
    *  function is the stronger property anyway. Every field has a step, by construction. */
   const stepOf = (field: BookingField): StepId => {
-    if (field === 'title' || field === 'route') return 'what';
+    if (field === 'title' || field === 'route' || field === 'direction') return 'what';
     if (field === 'date') return 'out-0';
     const [side, , index] = field.split('-');
     return `${side as LegSide}-${index}` as StepId;
@@ -734,6 +790,7 @@ export function BookingSheet({
    *  four schedules on four steps "מתי" alone leaves you counting. */
   const multiLeg = legCount > 1;
   const stepLabels = STEP_IDS.map((id) => {
+    if (id === 'type') return t.index.form.stepType;
     if (id === 'what') return t.index.form.stepWhat;
     if (id === 'more') return t.index.form.stepDetails;
     const [side, index] = id.split('-');
@@ -750,7 +807,7 @@ export function BookingSheet({
    *  cannot label itself one leg and edit another. */
   const legStep = (() => {
     const id = steps.step;
-    if (id === 'what' || id === 'more') return null;
+    if (id === 'type' || id === 'what' || id === 'more') return null;
     const [rawSide, rawIndex] = id.split('-');
     const side = rawSide as LegSide;
     const index = Number(rawIndex);
@@ -795,6 +852,17 @@ export function BookingSheet({
     // Deps are the two facts this reacts to; `steps` itself is rebuilt every render.
   }, [focus, steps]);
 
+  // **A form coming back from a place errand does not re-ask its type** (field report #2's
+  // consequence, ADR-0134 §2's channel). A create form now OPENS on the type step, and the
+  // errand returns by re-mounting the sheet — so without this you would come back from
+  // picking a place one step behind the field you left, and have to answer a question you
+  // already answered. The draft is what says "this is a return, not an opening".
+  useEffect(() => {
+    if (!draft || !isCreate || focus || errandDone.current) return;
+    errandDone.current = true;
+    steps.goTo('what');
+  }, [draft, isCreate, focus, steps]);
+
   return (
     <>
       <Sheet
@@ -813,18 +881,30 @@ export function BookingSheet({
           }}
         >
           <FormStepPanel steps={steps} labels={stepLabels}>
+            {/* **The picked type, on every step but its own** (field report #2). Collapsed
+                to the one card that was chosen, with the way back to the grid beside it —
+                so the eight-option grid is paid for once, at the moment it is being
+                answered, and the answer stays legible everywhere after that. On an edit it
+                carries no control, because a saved booking's type is not editable. */}
+            {steps.step !== 'type' && (
+              <BookingTypeRow
+                type={type}
+                onChange={isCreate ? () => steps.goTo('type') : undefined}
+              />
+            )}
+
+            {steps.step === 'type' && (
+              <ChoiceGrid
+                options={BOOKING_TYPE_OPTIONS}
+                value={type}
+                onChange={changeType}
+                columns={3}
+                ariaLabel={t.index.form.kindLabel}
+              />
+            )}
+
             {steps.step === 'what' && (
               <>
-                {isCreate && (
-                  <ChoiceGrid
-                    options={BOOKING_TYPE_OPTIONS}
-                    value={type}
-                    onChange={changeType}
-                    columns={3}
-                    ariaLabel={t.index.form.kindLabel}
-                  />
-                )}
-
                 {/* The identity row carries no label of its own (the caption below states
               the type), so the shell around it is here to hold the mark: a booking
               with no name is refused AT the name. */}
@@ -870,7 +950,13 @@ export function BookingSheet({
                         className="bs-title"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        placeholder={t.index.sheet.titlePlaceholder}
+                        // **The placeholder is the name this will actually save** when the
+                        // linked place can supply one (field report #9) — otherwise the
+                        // field looks required exactly where it stopped being required.
+                        // The accessible name stays the generic prompt: the placeholder is
+                        // now a value, and naming the box after it would be naming it
+                        // after its own content.
+                        placeholder={placeTitle() || t.index.sheet.titlePlaceholder}
                         aria-label={t.index.sheet.titlePlaceholder}
                         autoFocus={isCreate}
                       />
@@ -894,6 +980,36 @@ export function BookingSheet({
                   )}
                 </div>
 
+                {/* **The direction control** (ADR-0154 §4), directly ABOVE the route field
+                    rather than inside it. §4 put it "in the route field" to keep it next to
+                    the `⇄` in the preview, and that proximity is what matters — but once it
+                    can REFUSE (field report #8) it needs a `Field` of its own to be marked
+                    in, and a nested one renders its error ahead of the error belonging to
+                    the field wrapping it, so a missing route was reported at the direction's
+                    box. One box, one name (ADR-0150). */}
+                {isTransport && offersRoundTrip && (
+                  <Field {...errors.field('direction')}>
+                    <div className="bs-direction">
+                      <ChoiceGrid
+                        layout="pills"
+                        options={[
+                          // No glyph: a direction is a word, not a symbol, and `Choice`'s
+                          // empty string is the documented way to omit the slot.
+                          { value: 'one', icon: '', label: t.index.form.oneWay },
+                          { value: 'two', icon: '', label: t.index.form.roundTrip },
+                        ]}
+                        // **Nothing is selected until it is chosen** (field report #8).
+                        // `ChoiceGrid` has taken an optional value since ADR-0109 §11, so an
+                        // unanswered single-select is the primitive's own documented state
+                        // rather than anything new here.
+                        value={roundTrip === undefined ? undefined : roundTrip ? 'two' : 'one'}
+                        onChange={(v) => setRoundTrip(v === 'two')}
+                        ariaLabel={t.index.form.directionLabel}
+                      />
+                    </div>
+                  </Field>
+                )}
+
                 {/* The route field: two real place pickers (origin → destination), so
               transport endpoints carry coords + timezones like any other place. */}
                 {isTransport && (
@@ -906,22 +1022,6 @@ export function BookingSheet({
                   between these two places, and putting it here makes the `⇄` in the
                   preview directly above the immediate feedback for the tap. Offered only
                   where there is a route to mirror, and only on a create. */}
-                    {offersRoundTrip && (
-                      <div className="bs-direction">
-                        <ChoiceGrid
-                          layout="pills"
-                          options={[
-                            // No glyph: a direction is a word, not a symbol, and `Choice`'s
-                            // empty string is the documented way to omit the slot.
-                            { value: 'one', icon: '', label: t.index.form.oneWay },
-                            { value: 'two', icon: '', label: t.index.form.roundTrip },
-                          ]}
-                          value={roundTrip ? 'two' : 'one'}
-                          onChange={(v) => setRoundTrip(v === 'two')}
-                          ariaLabel={t.index.form.directionLabel}
-                        />
-                      </div>
-                    )}
                     {/* One component, two hosts (ADR-0154 §3) — `EventForm` renders the same
                   field, which is how a booked transport event stopped sending a single
                   `placeId` to a server that refuses one. The swap arrives here with it. */}
@@ -999,9 +1099,24 @@ export function BookingSheet({
                       variant="span"
                       start={legStep.times.start}
                       end={legStep.times.end}
-                      onChange={({ start: s, end: e }) =>
-                        setLeg(legStep.side, legStep.index, { start: s, end: e })
-                      }
+                      // **The offers ride the edit** (field reports #4/#11): the type's
+                      // start clock lands when the day is first set, and the end follows
+                      // the start until this call sees the END change — which is the one
+                      // moment a human has said what it is.
+                      onChange={({ start: s, end: e }) => {
+                        const answered = e !== legStep.times.end;
+                        if (answered) setEndTouched(true);
+                        setLeg(
+                          legStep.side,
+                          legStep.index,
+                          offerLegTimes(
+                            type,
+                            legStep.times,
+                            { start: s, end: e },
+                            endTouched || answered,
+                          ),
+                        );
+                      }}
                       minDate={trip.startDate}
                       maxDate={trip.endDate}
                       labels={spanLabels(type)}
@@ -1061,9 +1176,17 @@ export function BookingSheet({
                       start={start}
                       end={end}
                       onChange={({ date: d, start: s, end: e }) => {
-                        setDate(d);
-                        setStart(s);
-                        setEnd(e);
+                        const answered = e !== end;
+                        if (answered) setEndTouched(true);
+                        const next = offerDayTimes(
+                          type,
+                          { date, start, end },
+                          { date: d, start: s, end: e },
+                          endTouched || answered,
+                        );
+                        setDate(next.date);
+                        setStart(next.start);
+                        setEnd(next.end);
                       }}
                       minDate={trip.startDate}
                       maxDate={trip.endDate}
@@ -1221,6 +1344,29 @@ export function BookingSheet({
         />
       )}
     </>
+  );
+}
+
+/** **The picked booking type, collapsed** (field report #2). The full grid is the answer
+ *  to one question asked once, on its own step; from then on the sheet states the answer
+ *  and offers the way back to it.
+ *
+ *  `onChange` is omitted on an edit, and the row is then a statement rather than a
+ *  control — a saved booking's type has never been editable, so an affordance here would
+ *  promise something the form does not do. */
+function BookingTypeRow({ type, onChange }: { type: BookingType; onChange?: () => void }) {
+  return (
+    <div className="bs-type-row">
+      <span className="bs-type-ic" aria-hidden="true">
+        {BOOKING_TYPE_ICON[type]}
+      </span>
+      <span className="bs-type-lbl">{t.index.bookingType[type]}</span>
+      {onChange && (
+        <button type="button" className="bs-type-change" onClick={onChange}>
+          <Icon name="reset" /> {t.index.form.changeType}
+        </button>
+      )}
+    </div>
   );
 }
 

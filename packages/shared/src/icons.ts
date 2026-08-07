@@ -537,6 +537,10 @@ export interface BookingTypeProfile {
    *  this table only carries the exceptions. Read through `bookingTypeDurationUnit`,
    *  never off the profile directly. */
   durationUnit?: DurationUnit;
+  /** **What a fresh schedule of this type OFFERS before you type it** (field report #11).
+   *  Required rather than optional, so a new booking type has to say which of the three
+   *  answers it is instead of silently inheriting one. See `BookingTimeOffer`. */
+  times: BookingTimeOffer;
   /** **Where this type's title comes from** (ADR-0163). `'route'` derives it from the
    *  two endpoints (ADR-0059 §3: nobody names a flight, so `origin ← dest` IS its name);
    *  `'name'` means the booking carries one of its own.
@@ -547,6 +551,36 @@ export interface BookingTypeProfile {
    *  `titlesFromRoute`, never by asking whether the type has a route. */
   titleFrom: 'route' | 'name';
 }
+
+/** **The clock the day is assumed to begin on** (owner, field report #11: _"most events
+ *  are at least on the day start, so like 7:00 should be the default starting time"_).
+ *  Named once and referenced by every `duration` row below, so re-tuning it is one edit. */
+export const DAY_START_TIME = '07:00';
+
+/** **What a fresh schedule of this type offers**, before anything is typed (field report
+ *  #11). Every offer is an opening position the traveller edits, never a stored fact and
+ *  never a refusal — and the three kinds exist because the three situations are genuinely
+ *  different, not because the values differ.
+ *
+ *  The `none` row is the one worth defending. ADR-0171 §1 split a timestamp's meaning into
+ *  `exact` / `not-before` / `not-after`, and a journey's ends are `exact`: the carrier
+ *  chose them, and a guessed departure would put a **false instant on a hard commitment** —
+ *  the one thing an offer must never do. Note that this is also why `typicalMinutes` cannot
+ *  be the universal answer: `transport` carries the ordinary 60 and says in its own comment
+ *  that it means nothing by it, because a journey's length comes from its two ends. */
+export type BookingTimeOffer =
+  /** A convention the world already fixed, so the app can state it: a room from 15:00, a
+   *  counter that opens at 10:00. The end is a **second clock** rather than a length —
+   *  a check-in moved to 18:00 does not move check-out to 13:00 — landing on whatever day
+   *  `bookingSpanDayOffset` puts it. */
+  | { kind: 'convention'; start: string; end: string }
+  /** No convention, so: the day's own start, and an end a typical length after whatever
+   *  the start ends up being. The length is the category's `typicalMinutes` (ADR-0161 §5),
+   *  which already answers "how long is one of these" — a meal 90 minutes, a museum 120 —
+   *  rather than a second per-type list saying the same thing again. */
+  | { kind: 'duration'; start: string }
+  /** Nothing may be guessed. */
+  | { kind: 'none' };
 
 /** What makes two bookings one journey, and what makes the join a tight one. */
 export interface ConnectionWindow {
@@ -569,6 +603,8 @@ const transportProfile = (sequence: ConnectionWindow): BookingTypeProfile => ({
   schedule: 'span',
   defaultKind: 'hard',
   legs: { mirrored: true, sequence },
+  // A departure is the commitment itself, so it is never guessed (field report #11).
+  times: { kind: 'none' },
   // Nobody names a flight or a train (ADR-0059 §3) — the route IS the name.
   titleFrom: 'route',
 });
@@ -603,6 +639,10 @@ export const BOOKING_TYPE_PROFILE = {
     defaultKind: 'hard',
     legs: ONE_JOURNEY,
     durationUnit: 'auto',
+    // A counter opens in the morning and wants the car back at the hour you took it —
+    // two clocks, not a length (ADR-0171's floor/deadline pair, reached here through
+    // `🚗`'s `held` middle).
+    times: { kind: 'convention', start: '10:00', end: '10:00' },
     titleFrom: 'name',
   },
   // A stay is two endpoints at ONE place — which is why `places` and `schedule` are
@@ -612,6 +652,9 @@ export const BOOKING_TYPE_PROFILE = {
     schedule: 'span',
     defaultKind: 'hard',
     legs: ONE_JOURNEY,
+    // The industry's own floor and deadline, not an estimate of yours — and the one type
+    // whose end lands on a different DAY, which `bookingSpanDayOffset` reads off `nights`.
+    times: { kind: 'convention', start: '15:00', end: '10:00' },
     titleFrom: 'name',
   },
   activity: {
@@ -619,6 +662,7 @@ export const BOOKING_TYPE_PROFILE = {
     schedule: 'span',
     defaultKind: 'hard',
     legs: ONE_JOURNEY,
+    times: { kind: 'duration', start: DAY_START_TIME },
     titleFrom: 'name',
   },
   restaurant: {
@@ -626,6 +670,7 @@ export const BOOKING_TYPE_PROFILE = {
     schedule: 'point',
     defaultKind: 'soft',
     legs: ONE_JOURNEY,
+    times: { kind: 'duration', start: DAY_START_TIME },
     titleFrom: 'name',
   },
   other: {
@@ -633,6 +678,7 @@ export const BOOKING_TYPE_PROFILE = {
     schedule: 'point',
     defaultKind: 'soft',
     legs: ONE_JOURNEY,
+    times: { kind: 'duration', start: DAY_START_TIME },
     titleFrom: 'name',
   },
 } as const satisfies Record<BookingType, BookingTypeProfile>;
@@ -672,6 +718,29 @@ export const bookingTypeDurationUnit = (type: BookingType): DurationUnit => {
   const profile: BookingTypeProfile = BOOKING_TYPE_PROFILE[type];
   return profile.durationUnit ?? CATEGORY_TIME_PROFILE[BOOKING_TYPE_TO_CATEGORY[type]].durationUnit;
 };
+
+/** **What a fresh schedule of this type offers** (field report #11) — the profile's own
+ *  row, widened to the interface so the union reads as the union rather than as whichever
+ *  literal shape `as const satisfies` narrowed that row to. */
+export const bookingTimeOffer = (type: BookingType): BookingTimeOffer => {
+  const profile: BookingTypeProfile = BOOKING_TYPE_PROFILE[type];
+  return profile.times;
+};
+
+/** **How long one of THESE usually runs**, in minutes — the category's `typicalMinutes`
+ *  (ADR-0161 §5) reached through the booking type, which is the length a `duration` offer
+ *  puts between the two ends it fills in. */
+export const bookingTypicalMinutes = (type: BookingType): number =>
+  typicalMinutesFor(BOOKING_TYPE_TO_CATEGORY[type]);
+
+/** **How many days after its start a span of this type ENDS on**, as an opening offer
+ *  (field report #4). Read off the unit the type already reads its length in rather than
+ *  from a second per-type list: a stay counted in **nights** cannot be zero of them, so a
+ *  check-out opens on the day after the check-in, and everything measured in hours or days
+ *  opens on the same day. One axis, already answered, doing a second job — which is why
+ *  there is no `endDayOffset` field inside `times` above. */
+export const bookingSpanDayOffset = (type: BookingType): number =>
+  bookingTypeDurationUnit(type) === 'nights' ? 1 : 0;
 
 /** Can one save of this type author a mirrored return leg (ADR-0154 §4)? */
 export const authorsRoundTrip = (type: BookingType): boolean =>

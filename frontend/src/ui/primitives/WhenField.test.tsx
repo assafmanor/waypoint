@@ -128,6 +128,78 @@ describe('WhenField — span variant', () => {
     expect(document.querySelector('.tp-panel')).toBeNull();
   });
 
+  // **The end builds on the start** (field report #4). The rule reads the END's own day,
+  // which is what keeps it from touching the two cases that already worked.
+  describe('the end offers only times after the start, while they share a day', () => {
+    /** The end leg's time list, opened. There are two `הוסף שעה` triggers; the end is the
+     *  second — or its value is, once it has one. */
+    const openEndTimes = (trigger: string) => {
+      fireEvent.click(screen.getAllByText(trigger).at(-1) as HTMLElement);
+      return document.querySelector('.tp-list') as HTMLElement;
+    };
+
+    it('starts the list after the start time on a same-day end', () => {
+      render(
+        wrapNav(
+          <WhenField
+            {...spanProps}
+            start="2026-07-26T15:30"
+            end="2026-07-26"
+            onChange={() => {}}
+          />,
+        ),
+      );
+      const list = openEndTimes('הוסף שעה');
+      expect(within(list).queryByText('15:15')).toBeNull();
+      expect(within(list).queryByText('15:30')).toBeNull();
+      expect(within(list).getByText('15:45')).toBeTruthy();
+      expect(within(list).getByText('23:45')).toBeTruthy();
+      // And the exact input agrees, at the first minute the list's first slot allows.
+      expect(document.querySelector('.tp-time-input')?.getAttribute('min')).toBe('15:31');
+    });
+
+    it('offers the whole day on a LATER end day — an overnight flight is untouched', () => {
+      render(
+        wrapNav(
+          <WhenField
+            {...spanProps}
+            start="2026-07-26T23:00"
+            end="2026-07-27"
+            onChange={() => {}}
+          />,
+        ),
+      );
+      const list = openEndTimes('הוסף שעה');
+      expect(within(list).getByText('00:00')).toBeTruthy();
+      expect(within(list).getByText('06:15')).toBeTruthy();
+      expect(document.querySelector('.tp-time-input')?.getAttribute('min')).toBeNull();
+    });
+
+    it('offers the whole day while the end has no day of its own yet', () => {
+      render(
+        wrapNav(<WhenField {...spanProps} start="2026-07-26T15:30" end="" onChange={() => {}} />),
+      );
+      const list = openEndTimes('הוסף שעה');
+      expect(within(list).getByText('00:00')).toBeTruthy();
+    });
+
+    it('leaves the START leg offering the whole day', () => {
+      render(
+        wrapNav(
+          <WhenField
+            {...spanProps}
+            start="2026-07-26T15:30"
+            end="2026-07-26T18:00"
+            onChange={() => {}}
+          />,
+        ),
+      );
+      fireEvent.click(screen.getAllByText('15:30')[0]);
+      const list = document.querySelector('.tp-list') as HTMLElement;
+      expect(within(list).getByText('00:00')).toBeTruthy();
+    });
+  });
+
   it('a time picked before a date borrows the defaultDate', () => {
     const onChange = vi.fn();
     render(

@@ -684,7 +684,11 @@ export const t = {
         flight: 'חברת התעופה',
         train: 'חברת הרכבות',
         transit: 'המפעילה',
-        hotel: 'הרשת או המפעיל',
+        // **The channel, not the hotel** (field report #12). `הרשת או המפעיל` asked for
+        // the hotel's own identity, which is what the linked PLACE already carries — and
+        // is now what the title derives from (field report #9). What has nowhere else to
+        // go is where you booked it.
+        hotel: 'הוזמן דרך',
         restaurant: 'ספק',
         activity: 'המפעיל',
         other: 'ספק',
@@ -696,7 +700,7 @@ export const t = {
         flight: 'El Al · ANA',
         train: 'JR East',
         transit: 'Willer · Keisei',
-        hotel: 'Granbell · Airbnb',
+        hotel: 'Booking.com · Airbnb · אתר המלון',
         restaurant: '',
         activity: 'Klook · GetYourGuide',
         other: '',
@@ -753,6 +757,9 @@ export const t = {
       oneWay: 'כיוון אחד',
       roundTrip: 'הלוך ושוב',
       directionLabel: 'כיוון הנסיעה',
+      // **Nothing is pre-selected** (field report #8), so the form has to be able to say
+      // the question is still open. Phrased as the ask, not as an accusation.
+      directionRequired: 'בחרו כיוון נסיעה',
       // The two leg headings. They appear in PAIRS or not at all — an unlabelled block
       // above a labelled one reads as a defect, and one-way keeps today's form.
       legOut: LEG.out,
@@ -767,9 +774,14 @@ export const t = {
       // contains — the read-out is one short line and a field list would not fit it. Two
       // of them change for a round trip: with two journeys `מתי` alone leaves you checking
       // which one you are answering.
+      // The type is its own first step on a create (field report #2) — one word, because
+      // the read-out is one short line and the grid under it says the rest.
+      stepType: 'סוג',
       stepWhat: 'מה ואיפה',
       stepWhen: 'מתי',
       stepDetails: 'פרטים',
+      // Back to the type grid from the collapsed row that replaced it.
+      changeType: 'שינוי',
       stepWhenOut: `מתי ${LEG.out}`,
       stepBackAndShared: `${LEG.back} ופרטים`,
       // Shared across every leg of the save, said where the question actually occurs.
