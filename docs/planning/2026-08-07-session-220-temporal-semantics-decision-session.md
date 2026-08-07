@@ -4,13 +4,13 @@
 **Branch:** `claude/temporal-semantics-connection-stops-cpxc56`
 **Workstream F** of the [session 216 triage](2026-08-07-session-216-field-reports-triage.md) — field reports **#10, #16, #17, #18**. A + B + C shipped the same day as ordinary bug fixes (PRs #516–#518); this one was routed as _"product + architecture session, ADR expected"_ and that is what it was.
 
-**Paper for four rounds, then built.** The decision shipped as [ADR-0171](../decisions/0171-a-time-can-be-a-floor-or-a-ceiling.md) (PR #519) with an amendment block inside [ADR-0121](../decisions/0121-embedded-map-phase-6-design.md) §6 and [`mockups/a-time-without-a-position-v1.html`](../../mockups/a-time-without-a-position-v1.html); the code followed in a second PR off the merged main (§8). No schema change anywhere — everything is derived.
+**Paper for four rounds, then built, then corrected once more off the build (§8).** The decision shipped as [ADR-0171](../decisions/0171-a-time-can-be-a-floor-or-a-ceiling.md) (PR #519) with an amendment block inside [ADR-0121](../decisions/0121-embedded-map-phase-6-design.md) §6 and [`mockups/a-time-without-a-position-v1.html`](../../mockups/a-time-without-a-position-v1.html); the code followed in a second PR off the merged main (§8). No schema change anywhere — everything is derived.
 
-**Read §5–§7 first if you are here for the current state.** The session ran in four rounds, and the second **reopened §3/§4 of the ADR it had just written** — the owner produced a day the ordering rule does not survive. Rounds three and four then generalized the answer past hotels entirely and split two claims the session had been treating as one. §4 is dead; §10a/§10b replaced it; everything else shipped. **What is left is one product question** — whether the two-numbers path is worth a stored field — **and one device pass.**
+**Read §5–§7 first if you are here for the current state.** The session ran in five rounds, and the second **reopened §3/§4 of the ADR it had just written** — the owner produced a day the ordering rule does not survive. Rounds three and four then generalized the answer past hotels entirely and split two claims the session had been treating as one. §4 is dead; §10a/§10b replaced it; everything else shipped. **What is left is one product question** — whether the two-numbers path is worth a stored field — **and one device pass.**
 
 ## What was decided, and by whom
 
-Every decision below is the owner's, taken in session across four rounds — eleven asked questions and two unprompted refinements, and **the two unprompted ones moved the model further than any of the questions did** (§6, §7). What the session contributed was the framing, the code trace, and three findings the reports had not named.
+Every decision below is the owner's, taken in session across five rounds — fourteen asked questions and three unprompted corrections, and **the unprompted ones moved the model further than any of the questions did** (§6, §7, §7a, and the Plan-mode gap in §8). What the session contributed was the framing, the code trace, and three findings the reports had not named.
 
 | Question                                                | Answer                                                          | Round 2                                                       |
 | ------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -26,6 +26,9 @@ Every decision below is the owner's, taken in session across four rounds — ele
 | _(round 4)_ may a deadline take a map number?           | **No — a number is only ever a known moment**                   | new, §7                                                       |
 | _(round 4)_ one class = one category on screen?         | **No — one derivation, two placements, split on hard/soft**     | new, §7a                                                      |
 | _(round 4)_ where does the top live?                    | **The existing `.day-ambient` strip**, tickable `היינו`         | new, §7a                                                      |
+| _(round 5)_ what does Plan mode do with it?             | **The same split, and no control on it**                        | new, §8                                                       |
+| _(round 5)_ settle pair on Plan's strip?                | **No** — Plan settles through a sheet, never inline             | new, §8                                                       |
+| _(round 5)_ where does the tail line sit in Plan?       | **Below** the after-the-last-event drop slot                    | new, §8                                                       |
 
 ## 1. The reframing that unblocked the ordering question
 
@@ -122,6 +125,8 @@ Everything decided above except the two-numbers path, which is still open. The b
 - **Two claims written in the ADR were wrong and are corrected in place:** `SettleControl` already had four densities, so the strip reuses `compact` rather than minting a fifth; and `bookingTransitionsOnDate` drops only `SKIPPED`, not every settled event, so the count checks `DONE` explicitly.
 
 One shipped spec was rewritten rather than relaxed, in ADR-0164's own idiom: `Map.test.tsx` asserted the number a check-in day no longer earns.
+
+**And a fifth round, off the build:** the owner noticed Plan mode still ordered a check-in by its floor and printed a bare clock — the split had run in `DayView` only. That is the one difference ADR-0159 §1 does not allow (modes differ in posture, never about a fact), so Plan now makes the same split from the same derivation, and differs only in offering nothing to act on — because the offer it wants is the two-numbers path, which is still unbuilt. Recorded in ADR-0171 §10e. Worth noting how it escaped: every test for the split is a `lib/` test, and `lib/` has no idea which screen calls it.
 
 ## 9. Deliberately not done here
 

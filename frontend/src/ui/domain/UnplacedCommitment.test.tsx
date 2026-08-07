@@ -93,6 +93,17 @@ describe('UnplacedCommitment', () => {
     expect(onUndo).toHaveBeenCalledTimes(1);
   });
 
+  it("drops the whole control when no handlers are given — Plan mode's posture", () => {
+    // ADR-0171 §10e. Plan settles through a sheet off the row menu and never inline, and
+    // `נותרו היום` is a Trip-mode number — so in Plan this row is the same STATEMENT with
+    // nothing to act on. The two modes must agree that 15:00 is a floor and are allowed to
+    // differ in what you can do about it (ADR-0159 §1).
+    const { container } = renderRow({ onDone: undefined, onSkip: undefined, onUndo: undefined });
+    expect(container.querySelector('.wp-settle')).toBeNull();
+    // …and it still says the same thing, which is the half that must not differ.
+    expect(container.querySelector('.as')!.textContent).toContain(t.day.fromTime('15:00'));
+  });
+
   it('opens the booking behind it, and refuses when there is none', () => {
     const onOpen = vi.fn();
     const { container } = renderRow({ onOpen });

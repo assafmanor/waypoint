@@ -118,19 +118,21 @@ import {
 } from '../constants';
 import {
   dayTransitions,
+  placeDayEntries,
+  type DayEntry,
   groupEndEvent,
   groupMembers,
   groupStartEvent,
   mergeDayEntries,
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
-import type { BookingTransition } from '../lib/glance';
 import { ambientSpanLabel } from '../lib/glance';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
 import { TransitionRow } from '../ui/TransitionRow';
+import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { routeDisplay } from '../ui/route-display';
 import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
@@ -307,6 +309,17 @@ export function PlanDay() {
   // their transition points (check-in/out, departure/arrival) among the builder
   // groups by instant (ADR-0064 §B); same-day brackets stay a single span row.
   const transitions = dayTransitions(events, activeDate);
+  // **The same split Trip mode makes, from the same derivation** (ADR-0171 §10e). The two
+  // modes are allowed to differ in POSTURE and never about a FACT (ADR-0159 §1) — and
+  // "15:00 on a check-in is a floor" is a fact about the booking, not about the screen
+  // reading it. So Plan places nothing differently; what it does not do is offer to act
+  // on it, because there is nowhere yet to store a placement.
+  const planGroups = buildTimeTree(dayEvents);
+  const placement = placeDayEntries(
+    mergeDayEntries(planGroups, transitions),
+    dayEvents.filter((e) => !e.startsAt),
+    planGroups,
+  );
 
   // Reorder acts on soft events only (hard events are pinned anchors, ADR-0011).
   const softEvents = dayEvents.filter((e) => e.kind === EVENT_KIND.SOFT);
@@ -926,7 +939,7 @@ export function PlanDay() {
           </span>
         </div>
 
-        {middleStays.length > 0 && (
+        {(middleStays.length > 0 || placement.commitments.length > 0) && (
           <div className="day-ambient">
             {middleStays.map((e) => (
               <div className="ambient" key={e.id}>
@@ -936,6 +949,19 @@ export function PlanDay() {
                 <span className="an">{e.title}</span>
                 <span className="as">{ambientSpanLabel(e, activeDate)}</span>
               </div>
+            ))}
+            {/* **The same row, without the control** (ADR-0171 §10e). Plan settles through
+                a sheet off the row menu and never inline, and `נותרו היום` — the number
+                that made settling load-bearing on Trip's copy — is a Trip-mode number.
+                Posture differs; the fact does not. */}
+            {placement.commitments.map((row) => (
+              <UnplacedCommitment
+                key={`${row.event.id}-${row.edge ?? 'untimed'}`}
+                row={row}
+                tz={trip.timezone}
+                bookings={bookings}
+                onOpen={setDetailTarget}
+              />
             ))}
           </div>
         )}
@@ -998,23 +1024,14 @@ export function PlanDay() {
                 only between top-level groups — never inside an overlap.
                 Transition points interleave by instant at the top level (§B). */}
             <BuilderGroups
-              groups={buildTimeTree(dayEvents)}
+              groups={planGroups}
               depth={0}
               ctx={builderCtx}
-              transitions={transitions}
+              entries={placement.positioned}
             />
-            {dayEvents
-              .filter((e) => !e.startsAt)
-              .map((e) => (
-                <BuilderNode
-                  key={e.id}
-                  item={{ event: e, children: [] }}
-                  depth={0}
-                  ctx={builderCtx}
-                />
-              ))}
-            {/* …and its tail, below the untimed rows: they hold no clock position, so
-                nothing sits "after the last event" but this. */}
+            {/* The day's tail: free time after the last event. It stays ABOVE the line
+                below, because a drop slot IS a position — everything that has one sits
+                above everything that does not. */}
             {edgeFree.after && !heldAtEdge(edgeFree.after, timed[timed.length - 1]) && (
               <FreeSlot
                 free={edgeFree.after}
@@ -1024,6 +1041,23 @@ export function PlanDay() {
                 onFill={setGapChoice}
               />
             )}
+            {/* …then what holds no position at all (ADR-0171 §10a): the same line Trip
+                mode draws, over the same rows, from the same split. */}
+            {placement.ideas.length > 0 && (
+              <div className="day-unplaced">
+                <span className="line" />
+                <span className="lbl">{t.day.unplaced}</span>
+                <span className="line" />
+              </div>
+            )}
+            {placement.ideas.map((row) => (
+              <BuilderNode
+                key={row.event.id}
+                item={{ event: row.event, children: [] }}
+                depth={0}
+                ctx={builderCtx}
+              />
+            ))}
           </div>
         )}
 
@@ -1525,18 +1559,22 @@ function BuilderGroups({
   groups,
   depth,
   ctx,
-  transitions,
+  entries: placed,
 }: {
   groups: TimeGroup[];
   depth: number;
   ctx: BuilderCtx;
-  transitions?: BookingTransition[];
+  /** The day's rows that hold a position, already split (ADR-0171 §10a) — depth 0 only.
+   *  Passed in rather than merged here because the split has to happen once, above, where
+   *  the strip and the tail are rendered from the same answer. A nested depth has no
+   *  transitions of its own and merges as before. */
+  entries?: DayEntry[];
 }) {
   // The static now-reference sits at depth 0 only, above the first entry that
   // isn't fully behind "now" (a transition point ends at its own instant); it
   // falls after them all if every entry is passed.
   const nowRefMs = depth === 0 ? ctx.nowRefMs : null;
-  const entries = mergeDayEntries(groups, depth === 0 ? (transitions ?? []) : []);
+  const entries = depth === 0 && placed ? placed : mergeDayEntries(groups, []);
   // The same placement the Trip-mode now-line uses (`lib/now-line.ts`) — this screen's
   // marker is static rather than live, which is a difference in the INSTANT it is given
   // and nothing else.

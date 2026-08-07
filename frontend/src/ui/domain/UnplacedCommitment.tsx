@@ -44,9 +44,13 @@ export function UnplacedCommitment({
   row: UnplacedRow;
   tz: string;
   bookings: readonly Booking[];
-  onDone: () => void;
-  onSkip: () => void;
-  onUndo: () => void;
+  /** The settle pair, and it is **Trip mode's only** (ADR-0171 §10e). Plan settles
+   *  through a sheet off the row menu and never inline on a row, and `נותרו היום` — the
+   *  number that made settling load-bearing here — is a Trip-mode number. Omitted → the
+   *  row is the same statement with no control on it, which is Plan's posture. */
+  onDone?: () => void;
+  onSkip?: () => void;
+  onUndo?: () => void;
   /** Opens the booking behind it, exactly as the transition row does. A row with no
    *  booking (a manual `hard` event with no clock) has nothing to open. */
   onOpen?: (booking: Booking) => void;
@@ -75,13 +79,15 @@ export function UnplacedCommitment({
         {event.title}
       </button>
       <span className="as">{label ? `${label} · ${whenLabel(row, tz)}` : whenLabel(row, tz)}</span>
-      <SettleControl
-        variant="compact"
-        outcome={outcome}
-        onDone={onDone}
-        onSkip={onSkip}
-        onUndo={onUndo}
-      />
+      {onDone && onSkip && (
+        <SettleControl
+          variant="compact"
+          outcome={outcome}
+          onDone={onDone}
+          onSkip={onSkip}
+          onUndo={onUndo}
+        />
+      )}
     </div>
   );
 }

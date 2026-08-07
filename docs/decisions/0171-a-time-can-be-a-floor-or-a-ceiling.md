@@ -1,6 +1,6 @@
 # 0171 — A time can be a **floor** or a **ceiling**, and one connection is one stop
 
-**Status:** Accepted, **and built 2026-08-07** — everything except the one item §10c leaves open. §4 is **dead**, replaced by §10a/§10a-i/§10b: the owner produced a day it does not survive, and the premise under it went with it. What shipped is §1, §2, §3, §5, §6, §7, §10a, §10a-i and §10b. **Not built:** the two-numbers path (§10's treatment ה), which is still the owner's call and the only stored field this ADR would need.
+**Status:** Accepted, **and built 2026-08-07** — everything except the one item §10c leaves open. §4 is **dead**, replaced by §10a/§10a-i/§10b: the owner produced a day it does not survive, and the premise under it went with it. What shipped is §1, §2, §3, §5, §6, §7, §10a, §10a-i and §10b — **in both modes, from one derivation** (§10e). **Not built:** the two-numbers path (§10's treatment ה), which is still the owner's call and the only stored field this ADR would need.
 **Date:** 2026-08-07
 **Design reference:** [`mockups/a-time-without-a-position-v1.html`](../../mockups/a-time-without-a-position-v1.html) — five treatments against the same three days (§10), the class drawn with both its members (§10a), the deadline intersect and the Iceland numbering case (§10b). Measurements below are read from that file's live DOM.
 
@@ -260,6 +260,20 @@ Check out of Reykjavik by 11:00, fly, land in Tel Aviv. Number the check-out fro
 > **A stop number is only ever the index of a moment the app actually knows.** `exact` moments are numbered. A floor, a ceiling and a row with no clock are not — the slot stays so the list keeps its alignment, the mark leaves.
 
 **This also catches a shipped defect nobody reported** (owner signed off on fixing it here rather than filing it separately): an untimed event's place is numbered today. `place-usage.ts` gives it `prominence: 'edge'` with `at: undefined`, so `hasScheduleSlot` passes, and `buildPinOrderIndex` sorts it after the timed stops and numbers it regardless. One rule covers it and the layover both.
+
+### 10e. Plan mode: the same fact, without the offer
+
+**Found by the owner off the shipped build**: _"in plan mode it's still ordered by time and not displaying the החל מ"_. Correct — §10a's split ran in `DayView` only, so Plan kept interleaving a check-in at its floor. The two modes were saying different things about one booking.
+
+**That is the one difference that is not allowed.** ADR-0159 §1 settled the shape of mode difference and this is the case it was written for: the modes differ in **posture**, never about a **fact**. "15:00 on a check-in is a floor" is a fact about the booking, not about the screen reading it — so both modes make the same split, from the same `placeDayEntries`, and Plan's day is now identical to Trip's in what it _claims_.
+
+**What differs is what you can do about it, and in Plan the answer is currently nothing** (owner's call). Plan's posture is to _offer_ — its gap is a `שבץ` control where Trip's is a statement — and the offer this row wants is "place it", which is §10's treatment ה and needs the stored field that is still undecided (§10c). So Plan gets the placement and no control, which is honest rather than provisional: there is nowhere to put an answer if it asked for one.
+
+Three consequences, all signed off in the same round:
+
+- **The strip row carries no settle pair in Plan.** Plan settles through a sheet off the row menu and never inline (`SettleControl variant="sheet"`), and `נותרו היום` — the number that made settling load-bearing on Trip's copy (§6) — is a Trip-mode number. One component, its control optional.
+- **The tail's line sits BELOW the "after the last event" drop slot.** A drop slot is a position; everything that has one stays above everything that does not.
+- **Plan's gap logic needed nothing.** It already measures between consecutive event groups only, so a flexible edge has never bounded a position there — §5 was already true in that mode by construction.
 
 ### 10d. Built — what shipped, and the three things the code taught
 
