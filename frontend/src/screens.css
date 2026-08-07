@@ -3368,6 +3368,40 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   cursor: pointer;
   padding: 0;
 }
+/* The picked type, collapsed, on every step but its own (field report #2). Chrome
+   only — a booking type is not time, place or plan mode, so it spends no hue (rule
+   4), and the card it replaced never had one either. */
+.booking-sheet .bs-type-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--soft-line);
+  border-radius: 10px;
+  background: var(--card);
+}
+.booking-sheet .bs-type-ic {
+  font-size: 18px;
+  line-height: 1;
+}
+.booking-sheet .bs-type-lbl {
+  font-weight: 700;
+  color: var(--ink);
+}
+/* Pushed to the far edge so the row reads "this is what it is … change it", and
+   sized like `.bs-revert`, which is the same offer one field down. */
+.booking-sheet .bs-type-change {
+  margin-inline-start: auto;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
 /* Which-zone caption under a booking's schedule (ADR-0107): a quiet all-Hebrew
    line — "זמן מקומי בכל עיר · ביעד שעה אחורה" — so it reads cleanly RTL with no
    Latin city names to jumble the bidi. */

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { wrapNav } from '../test/nav-harness';
 import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
   type Booking,
+  type BookingType,
   type Note,
   type Place,
 } from '@waypoint/shared';
@@ -104,12 +105,30 @@ import { t } from '../i18n/he';
 // **The sheet is stepped now** (ADR-0155 §5): `שמירה` lives on the LAST step, and the
 // primary is `הבא` until then. These are the whole diff to this file — every assertion
 // below is the one it always made, taken on the step that owns the field.
-const next = () => fireEvent.click(screen.getByText(t.common.steps.next));
+const press = (label: string) => fireEvent.click(screen.getByText(label));
+/** Is the type chooser the step on screen? Read off the step read-out's own label, which
+ *  is the only thing that names a step from outside the component. */
+const onTypeStep = () => screen.queryByText(t.index.form.stepType) != null;
+/** One step forward, **walking through the create-only type step transparently** (field
+ *  report #2). That step is a chooser with nothing to refuse and a type always selected,
+ *  so a test that means "advance from `מה ואיפה`" should not have to know it exists — and
+ *  an EDIT never has it at all, so the two paths would otherwise need different counts.
+ *  The step's own behaviour is driven directly by its tests below. */
+const next = () => {
+  if (onTypeStep()) press(t.common.steps.next);
+  press(t.common.steps.next);
+};
 /** Walk to the last step. Each `הבא` runs that step's gate, so a form this refuses does
  *  not arrive — which is the point, and what the refusal tests below assert. */
 const toLastStep = () => {
   next();
   next();
+};
+/** Render a CREATE form, then step past the type chooser (field report #2). Every
+ *  assertion in this file is about a field the chooser does not own, so the tests take the
+ *  step that owns theirs — the chooser's own behaviour has its own describe below. */
+const pastTypeStep = () => {
+  if (onTypeStep()) press(t.common.steps.next);
 };
 const save = () => fireEvent.click(screen.getByText(t.common.save));
 const saveFrom = (step: 'what' | 'when' | 'more') => {
@@ -152,6 +171,7 @@ describe('BookingSheet — transport route as picked places (ADR-0113 follow-up)
         <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.FLIGHT }} onClose={() => {}} />,
       ),
     );
+    pastTypeStep();
     expect(screen.getByText(t.index.form.routePreviewGhost)).toBeTruthy();
   });
 
@@ -277,21 +297,23 @@ describe('BookingSheet — refusing a save', () => {
 
   const fieldOf = (el: Element | null) => el?.closest('.field');
 
-  it('marks the identity row when a booking has no name, and saves nothing', () => {
+  // **A missing name is no longer a refusal** (field report #9). It was one until the
+  // owner's report: every non-route type required a typed title, although the linked place
+  // already said what the booking was. The refusal is gone rather than relaxed — with a
+  // fallback in place `finalTitle` cannot come out empty, so a check for it would be
+  // unreachable code, which is the shape ADR-0150 logged as a defect elsewhere.
+  it('does not refuse a booking with no name — it derives one and advances', () => {
     render(
       wrapNav(
         <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
       ),
     );
-    next();
+    pastTypeStep();
     const title = screen.getByPlaceholderText(t.index.sheet.titlePlaceholder);
-    expect(fieldOf(title)?.hasAttribute('data-invalid')).toBe(true);
-    expect(fieldOf(title)?.querySelector('.field-error')?.textContent).toBe(
-      t.index.form.titleRequired,
-    );
-    // Refused, so it did not advance — and nothing was written.
-    expect(screen.getByText(t.common.steps.next)).toBeTruthy();
-    expect(indexVerbs.createBooking).not.toHaveBeenCalled();
+    expect(fieldOf(title)?.hasAttribute('data-invalid')).toBe(false);
+    press(t.common.steps.next);
+    // It advanced: the identity step had nothing to refuse.
+    expect(screen.queryByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeNull();
   });
 
   it('marks the route field when a transport has no endpoints', () => {
@@ -300,7 +322,11 @@ describe('BookingSheet — refusing a save', () => {
         <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.FLIGHT }} onClose={() => {}} />,
       ),
     );
-    next();
+    pastTypeStep();
+    // The direction is its own unanswered question now (field report #8); answer it so
+    // the only thing left to refuse is the one this test is about.
+    fireEvent.click(screen.getByText(t.index.form.oneWay));
+    press(t.common.steps.next);
     const route = screen.getByRole('button', { name: t.index.form.originLabel });
     expect(fieldOf(route)?.hasAttribute('data-invalid')).toBe(true);
     expect(fieldOf(route)?.querySelector('.field-error')?.textContent).toBe(
@@ -333,12 +359,14 @@ describe('BookingSheet — notes written on the way', () => {
     noteVerbs.createNote.mockClear();
   });
 
-  const openHotel = () =>
+  const openHotel = () => {
     render(
       wrapNav(
         <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
       ),
     );
+    pastTypeStep();
+  };
   const nameIt = () =>
     fireEvent.change(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder), {
       target: { value: 'מלון שינג׳וקו גרנבל' },
@@ -546,10 +574,16 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     }),
     fromPlaceId: 'pl-tlv',
     toPlaceId: 'pl-nrt',
+    // A fresh draft leaves the direction UNANSWERED (field report #8) and an unanswered
+    // one refuses, so every test that is about something else says one-way explicitly.
+    // The direction's own tests below override it back.
+    roundTrip: false,
     ...over,
   });
-  const open = (over?: Partial<BookingSheetDraft>) =>
+  const open = (over?: Partial<BookingSheetDraft>) => {
     render(wrapNav(<BookingSheet booking={null} draft={routed(over)} onClose={() => {}} />));
+    pastTypeStep();
+  };
   const goRoundTrip = () => fireEvent.click(screen.getByText(t.index.form.roundTrip));
   /** The span legs ON THE CURRENT STEP. There are two of them either way now: the outbound
    *  span is step `when`, the return span is step `more` (ADR-0155 §5). */
@@ -573,13 +607,30 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     setTime(b, t2);
   };
 
-  it('offers the direction control on a transport create, and defaults to one way', () => {
-    open();
-    expect(screen.getByText(t.index.form.oneWay)).toBeTruthy();
-    expect(screen.getByText(t.index.form.roundTrip)).toBeTruthy();
-    // Default OFF: one schedule step, no leg heading, and the last step is details only
-    // — a one-way single-leg form is byte-for-byte the one that shipped.
-    next();
+  it('offers the direction control on a transport create, with NEITHER preselected', () => {
+    open({ roundTrip: undefined });
+    const pills = [t.index.form.oneWay, t.index.form.roundTrip].map((label) =>
+      screen.getByText(label).closest('button'),
+    );
+    expect(pills.every(Boolean)).toBe(true);
+    // **Nothing is chosen for you** (field report #8). The control used to open with
+    // `כיוון אחד` selected, which is the app assuming a one-way — the exact thing it
+    // exists to stop doing.
+    expect(pills.map((b) => b?.getAttribute('aria-checked'))).toEqual(['false', 'false']);
+  });
+
+  it('refuses to advance until a direction is chosen, then behaves as it always did', () => {
+    open({ roundTrip: undefined });
+    press(t.common.steps.next);
+    expect(document.querySelector('.field-error')?.textContent).toBe(
+      t.index.form.directionRequired,
+    );
+    // Still on the identity step: a refused step does not move (ADR-0155).
+    expect(screen.getByRole('radiogroup', { name: t.index.form.directionLabel })).toBeTruthy();
+
+    fireEvent.click(screen.getByText(t.index.form.oneWay));
+    press(t.common.steps.next);
+    // One-way is what it always was: one schedule step, no leg heading, details last.
     expect(legs().length).toBe(2);
     expect(document.querySelectorAll('.bs-leg-head').length).toBe(0);
     next();
@@ -784,12 +835,14 @@ describe('BookingSheet — three steps', () => {
     indexVerbs.updateBooking.mockClear();
   });
 
-  const openHotel = () =>
+  const openHotel = () => {
     render(
       wrapNav(
         <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
       ),
     );
+    pastTypeStep();
+  };
   const nameIt = () =>
     fireEvent.change(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder), {
       target: { value: 'מלון שינג׳וקו גרנבל' },
@@ -898,10 +951,14 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     fromPlaceId: 'pl-nrt',
     toPlaceId: 'pl-tlv',
     stopPlaceIds: ['pl-dxb'],
+    // Answered, for the same reason `routed` above answers it: a stop is not a direction.
+    roundTrip: false,
     ...over,
   });
-  const open = (over?: Partial<BookingSheetDraft>) =>
+  const open = (over?: Partial<BookingSheetDraft>) => {
     render(wrapNav(<BookingSheet booking={null} draft={withStop(over)} onClose={() => {}} />));
+    pastTypeStep();
+  };
   const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
   const setDate = (leg: HTMLElement, value: string) =>
     fireEvent.change(leg.querySelector('.wf-date-val') as HTMLInputElement, { target: { value } });
@@ -1073,10 +1130,12 @@ describe('BookingSheet — a car hire', () => {
     updatedAt: '',
     updatedBy: 'u',
   };
-  const openFresh = () =>
+  const openFresh = () => {
     render(
       wrapNav(<BookingSheet booking={null} seed={{ type: BOOKING_TYPE.CAR }} onClose={() => {}} />),
     );
+    pastTypeStep();
+  };
 
   it('asks איסוף/החזרה, not מוצא/יעד, and offers no direction swap', () => {
     render(wrapNav(<BookingSheet booking={hire} onClose={() => {}} />));
@@ -1184,5 +1243,132 @@ describe('BookingSheet — a car hire', () => {
     const [, patch] = indexVerbs.updateBooking.mock.calls[0] as [unknown, { title: string }];
     expect(patch.title).toContain('תל אביב');
     expect(patch.title).toContain('טוקיו');
+  });
+});
+
+// **The type is asked first, then collapses** (field report #2), **a name is derived
+// rather than demanded** (#9), and **the schedule opens on an offer** (#11). Three
+// reports, one authoring pass — kept together because they are what a create form now
+// feels like end to end, and separating them would test three halves of one flow.
+describe('BookingSheet — the type step, the derived name and the offered schedule', () => {
+  afterEach(() => {
+    cleanup();
+    indexVerbs.createBooking.mockReset();
+  });
+
+  const stepLabel = () => document.querySelector('.form-steps-label')?.textContent;
+  const openCreate = (type: BookingType) =>
+    render(wrapNav(<BookingSheet booking={null} seed={{ type }} onClose={() => {}} />));
+  const typeRow = () => document.querySelector('.bs-type-row');
+
+  it('opens ON the type grid, with nothing else competing for the step', () => {
+    openCreate(BOOKING_TYPE.HOTEL);
+    expect(stepLabel()).toBe(t.index.form.stepType);
+    expect(screen.getByRole('radiogroup', { name: t.index.form.kindLabel })).toBeTruthy();
+    // The identity row is not on this step — the grid is the whole question.
+    expect(screen.queryByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeNull();
+    // And no collapsed row either: the answer is the grid itself here.
+    expect(typeRow()).toBeNull();
+  });
+
+  it('collapses to the picked type on every later step, and goes back on שינוי', () => {
+    openCreate(BOOKING_TYPE.HOTEL);
+    press(t.common.steps.next);
+    expect(within(typeRow() as HTMLElement).getByText(t.index.bookingType.hotel)).toBeTruthy();
+    // The grid is gone; only the one card that was chosen remains.
+    expect(screen.queryByRole('radiogroup', { name: t.index.form.kindLabel })).toBeNull();
+
+    fireEvent.click(screen.getByText(t.index.form.changeType));
+    expect(stepLabel()).toBe(t.index.form.stepType);
+    fireEvent.click(screen.getByText(t.index.bookingType.restaurant));
+    press(t.common.steps.next);
+    expect(within(typeRow() as HTMLElement).getByText(t.index.bookingType.restaurant)).toBeTruthy();
+  });
+
+  it('adds no step to an EDIT, and offers no way to change the type there', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    // Straight to the identity step: a saved booking's type is not a question.
+    expect(stepLabel()).toBe(t.index.form.stepWhat);
+    expect(within(typeRow() as HTMLElement).getByText(t.index.bookingType.flight)).toBeTruthy();
+    expect(screen.queryByText(t.index.form.changeType)).toBeNull();
+  });
+
+  // **A booking is named by its place when nobody names it** (field report #9). The name
+  // is DERIVED, not merely optional — it is what gets stored, so every surface that
+  // receives only a title reads the place rather than a blank.
+  it('saves a nameless hotel under its linked place, having refused nothing', () => {
+    openCreate(BOOKING_TYPE.HOTEL);
+    pastTypeStep();
+    // The placeholder already says what it will be called, once a place is picked.
+    expect(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeTruthy();
+    toLastStep();
+    save();
+    expect(indexVerbs.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ title: t.index.bookingType.hotel }),
+    );
+  });
+
+  it('lets a typed name win over the derived one', () => {
+    openCreate(BOOKING_TYPE.HOTEL);
+    pastTypeStep();
+    fireEvent.change(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder), {
+      target: { value: 'הבקתה' },
+    });
+    toLastStep();
+    save();
+    expect(indexVerbs.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'הבקתה' }),
+    );
+  });
+
+  // **The schedule opens on an offer** (field report #11), and the offer is the type's.
+  it('fills a hotel span from its check-in/check-out convention when the day is set', () => {
+    openCreate(BOOKING_TYPE.HOTEL);
+    pastTypeStep();
+    press(t.common.steps.next);
+    const [checkIn, checkOut] = [...document.querySelectorAll<HTMLElement>('.wf-leg')];
+    fireEvent.change(checkIn.querySelector('.wf-date-val') as HTMLInputElement, {
+      target: { value: '2026-07-26' },
+    });
+    expect((checkIn.querySelector('.wf-date-val') as HTMLInputElement).value).toBe('2026-07-26');
+    expect(within(checkIn).getByText('15:00')).toBeTruthy();
+    // The stay cannot be zero nights, so the check-out opens on the following day.
+    expect((checkOut.querySelector('.wf-date-val') as HTMLInputElement).value).toBe('2026-07-27');
+    expect(within(checkOut).getByText('10:00')).toBeTruthy();
+  });
+
+  it('offers a flight the arrival DAY and never a clock', () => {
+    // Routed through the errand-return `draft`, because a flight with no endpoints is
+    // refused at the identity step and never reaches its schedule.
+    render(
+      wrapNav(
+        <BookingSheet
+          booking={null}
+          draft={{
+            ...bookingSheetDraft({
+              booking: null,
+              seed: { type: BOOKING_TYPE.FLIGHT },
+              trip,
+              events: [],
+              places,
+            }),
+            fromPlaceId: 'pl-tlv',
+            toPlaceId: 'pl-nrt',
+            roundTrip: false,
+          }}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    pastTypeStep();
+    press(t.common.steps.next);
+    const [depart, arrive] = [...document.querySelectorAll<HTMLElement>('.wf-leg')];
+    fireEvent.change(depart.querySelector('.wf-date-val') as HTMLInputElement, {
+      target: { value: '2026-07-26' },
+    });
+    expect((arrive.querySelector('.wf-date-val') as HTMLInputElement).value).toBe('2026-07-26');
+    // No time was invented at either end — a departure is the commitment itself.
+    expect(within(depart).getByText(t.whenField.addTime)).toBeTruthy();
+    expect(within(arrive).getByText(t.whenField.addTime)).toBeTruthy();
   });
 });

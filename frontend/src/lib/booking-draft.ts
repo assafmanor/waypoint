@@ -74,9 +74,22 @@ export interface BookingSheetDraft {
    *  in reverse. Form state, not `Booking` state — the save turns them into more
    *  bookings — but they travel on the draft for the same reason everything else does:
    *  a place errand that dropped them would come back having quietly changed what the
-   *  save writes (ADR-0134 §2). */
-  roundTrip: boolean;
+   *  save writes (ADR-0134 §2).
+   *
+   *  **`undefined` is "not answered yet"** (field report #8), and it is the value a fresh
+   *  form opens with. It used to be `false`, which rendered `כיוון אחד` pre-selected with
+   *  nobody having tapped it — the app assuming a one-way, which is exactly what the
+   *  direction control exists to stop it doing. */
+  roundTrip: boolean | undefined;
   returnLegs: LegTimes[];
+  /** **Has a human said when this ends?** (field report #11.) While false, the end
+   *  follows the start — the type's conventional check-out clock, or a typical length
+   *  after whatever the start becomes. The same latch `iconTouched`/`kindTouched` put on
+   *  their derivations: an offer stops offering the moment it is answered.
+   *
+   *  One flag rather than one per leg, because every type that offers a time has exactly
+   *  one leg — a journey, which is the only shape with more, offers none. */
+  endTouched: boolean;
   kind: 'hard' | 'soft';
   kindTouched: boolean;
 }
@@ -204,10 +217,16 @@ export function bookingSheetDraft(input: {
         end: linkedEvent?.endsAt ? isoToDateTimeLocal(linkedEvent.endsAt, endZone) : '',
       },
     ],
-    // Always off on open: editing an existing booking never offers it (the control is
-    // create-only), and a fresh form defaults to one-way (§4).
-    roundTrip: false,
+    // **Unanswered on open** (field report #8, revising ADR-0154 §4's "default off"). §4
+    // measured the 492px a second leg costs and concluded the control should default to
+    // one-way; the owner's report is that a DEFAULT is the wrong instrument — the cost
+    // argument only ever justified not pre-expanding the return, and `false` also
+    // pre-selected `כיוון אחד`, answering for the traveller. `undefined` keeps the 492px
+    // unspent and leaves the question open. Editing never offers the control at all.
+    roundTrip: undefined,
     returnLegs: [],
+    // A saved end is an answer; a form with none is still offering (field report #11).
+    endTouched: !!linkedEvent?.endsAt,
     kind: linkedEvent?.kind ?? defaultKindForBookingType(type),
     kindTouched: false,
   };

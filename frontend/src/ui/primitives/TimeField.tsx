@@ -51,6 +51,7 @@ export function TimeField({
   open: openProp,
   onOpenChange,
   onClear,
+  minTime,
   triggerClassName,
 }: {
   value: string; // HH:MM or ''
@@ -62,11 +63,24 @@ export function TimeField({
   onOpenChange?: (open: boolean) => void;
   /** When provided and a value is set, the panel shows a "clear" footer. */
   onClear?: () => void;
+  /** **The earliest time this field may name**, `HH:MM`, EXCLUSIVE — only times strictly
+   *  after it are offered, and the exact `<input type="time">` gets the matching `min`
+   *  (field report #4). Its one caller is the span's END, and only while that end sits on
+   *  the same calendar day as its start: an arrival before its own departure is not a
+   *  refusal worth making if the slot was never offered. A later day passes nothing, which
+   *  is what keeps an overnight flight and a multi-day stay offering the full 24 hours. */
+  minTime?: string;
   triggerClassName?: string;
 }) {
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
   const setOpen = (o: boolean) => (onOpenChange ? onOpenChange(o) : setOpenState(o));
+
+  const floor = minTime ? toMin(minTime) : null;
+  const times = floor == null ? ALL_TIMES : ALL_TIMES.filter((m) => m > floor);
+  // The native input's `min` is inclusive, so the floor's own minute is the first legal
+  // one — clamped away entirely at 23:59, where there is no later minute to name.
+  const exactMin = floor != null && floor + 1 < MINUTES_PER_DAY ? toHHMM(floor + 1) : undefined;
 
   const min = value ? toMin(value) : null;
   const suggest = min != null && min % STEP !== 0 ? nearestRoundSlot(min) : null;
@@ -110,6 +124,7 @@ export function TimeField({
             <input
               type="time"
               step={60}
+              min={exactMin}
               lang="he"
               dir="ltr"
               className="tp-time-input"
@@ -118,7 +133,7 @@ export function TimeField({
             />
           </div>
           <div className="tp-list">
-            {ALL_TIMES.map((m) => (
+            {times.map((m) => (
               <button
                 key={m}
                 ref={m === min || m === suggest ? centredRow : undefined}

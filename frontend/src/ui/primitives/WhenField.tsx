@@ -162,6 +162,12 @@ function WhenSpan({
   // "+-1" badge here.
   const daysApart = startDay && endDay && endDay > startDay ? dayDiff(startDay, endDay) : 0;
   const crossesDays = daysApart > 0;
+  // **The end builds on the start** (field report #4). While the two sit on the SAME day,
+  // the only times that can be an end are the ones after the start, so those are the only
+  // ones offered. A later day offers the full 24 hours, which is what leaves an overnight
+  // flight and a multi-day stay exactly as they were — and is why this reads the end's own
+  // day rather than assuming the span is same-day until told otherwise.
+  const endFloor = endDay && endDay === startDay ? timeOf(start) || undefined : undefined;
 
   // Duration read-out, once both endpoints are complete. Computed via the trip
   // timezone so a DST edge never mis-states the span.
@@ -199,6 +205,7 @@ function WhenSpan({
           // The arrival day defaults to the departure day, so a same-day trip needs
           // only its time picked; a later day is still freely selectable.
           defaultDate={startDay || defaultDate}
+          minTime={endFloor}
           badge={crossesDays ? `+${daysApart}` : undefined}
         />
       </Field>
@@ -234,6 +241,7 @@ function SpanLeg({
   minDate,
   maxDate,
   defaultDate,
+  minTime,
   badge,
 }: {
   label: string;
@@ -242,6 +250,8 @@ function SpanLeg({
   minDate?: string;
   maxDate?: string;
   defaultDate?: string;
+  /** Passed straight through to the `TimeField` that owns the rule (field report #4). */
+  minTime?: string;
   badge?: string;
 }) {
   const [date, setDate] = useState(() => dayOf(value));
@@ -295,6 +305,7 @@ function SpanLeg({
           onClear={() => commit(date, '')}
           label={t.whenField.timeCap}
           placeholder={t.whenField.addTime}
+          minTime={minTime}
         />
       </div>
     </div>
