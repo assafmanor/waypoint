@@ -11,6 +11,7 @@
 import {
   BOOKING_TYPE,
   DOCUMENT_TYPE,
+  MULTI_ZONE_COUNTRIES,
   type Booking,
   type DocumentSummary,
   type Place,
@@ -66,22 +67,70 @@ function nightsInSpan(startDate: string, endExclusive: string): string[] {
   return out;
 }
 
-/** Does a leg endpoint (a name-only Place, ADR-0051) reach the trip destination?
- *  Names are all we have pre-picker, so match case-insensitively with substring
- *  tolerance ("Tokyo, Japan" reaches "Japan"). A missing place can't be confirmed,
- *  so it returns false — the check stays open (ADR-0061 degradation clause). */
-function reachesDestination(placeName: string | undefined, destination: string): boolean {
-  if (!placeName) return false;
+/** The trip destination as a **place**, not as a string — the structured fields
+ *  ADR-0113 resolves from the picked destination, which is what lets the
+ *  round-trip check below ask where a leg lands instead of what it is called. */
+export interface DestinationRef {
+  /** The display string (`Trip.destination`), and the name route's input. */
+  name: string;
+  googlePlaceId?: string;
+  /** `Trip.timezone` — the trip's primary zone IS the destination's own zone
+   *  (ADR-0113 §2, ADR-0107 §5), derived from the picked destination's point. */
+  timezone?: string;
+  /** ISO-3166 alpha-2, from the same pick. */
+  countryCode?: string;
+}
+
+/** Is the endpoint's zone the destination's zone? A `Place.timezone` is resolved
+ *  server-side from that place's own coordinates (ADR-0107/0108), so this is a
+ *  region test on real location data — and a zone is the coarsest region we
+ *  store, which is what a country-sized destination needs. A destination country
+ *  known to span several zones accepts any of them, so a leg into Los Angeles
+ *  reaches a New-York-zoned trip to the United States; both sides must sit in
+ *  that one country's list, so it never widens into a second country. */
+function zoneReachesDestination(zone: string | undefined, destination: DestinationRef): boolean {
+  const destZone = destination.timezone;
+  if (!zone || !destZone) return false;
+  if (zone === destZone) return true;
+  const countryZones = destination.countryCode
+    ? MULTI_ZONE_COUNTRIES[destination.countryCode]
+    : undefined;
+  return Boolean(countryZones?.includes(zone) && countryZones.includes(destZone));
+}
+
+/** Names, case-insensitively and with substring tolerance ("Tokyo, Japan" reaches
+ *  "Japan"). All we have for a name-only Place-lite (ADR-0051), and true of an
+ *  airport only by luck — "Keflavik" says nothing about "Iceland". */
+function nameReachesDestination(placeName: string, destinationName: string): boolean {
   const a = placeName.trim().toLowerCase();
-  const b = destination.trim().toLowerCase();
+  const b = destinationName.trim().toLowerCase();
   if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
+}
+
+/** Does a leg endpoint reach the trip destination? Three independent routes, each
+ *  positive evidence and any one of them enough: the endpoint **is** the
+ *  destination place, its **zone** is the destination's (the location truth —
+ *  Keflavík reaches Iceland because of where it is, which no reading of its name
+ *  can establish), or its **name** contains the destination's, which stays the
+ *  fallback for a Place-lite that has no location at all.
+ *
+ *  Nothing here can answer NO: a place no route can place is unconfirmed, and an
+ *  unconfirmed leg leaves the check open rather than falsely reading done
+ *  (ADR-0061's degradation clause). */
+function reachesDestination(place: Place | undefined, destination: DestinationRef): boolean {
+  if (!place) return false;
+  return (
+    (Boolean(place.googlePlaceId) && place.googlePlaceId === destination.googlePlaceId) ||
+    zoneReachesDestination(place.timezone, destination) ||
+    nameReachesDestination(place.name, destination.name)
+  );
 }
 
 export function computeReadiness(input: {
   startDate: string;
   endDate: string;
-  destination: string;
+  destination: DestinationRef;
   events: TripEvent[];
   bookings: Booking[];
   places: Place[];
@@ -95,11 +144,11 @@ export function computeReadiness(input: {
   const emptyDates = tripDates(startDate, endDate).filter((d) => !datesWithEvents.has(d));
 
   // Round-trip flights (ADR-0061): a leg INTO the destination (outbound) and a leg
-  // OUT of it (return), read off the flights' from/to Place names — not a bare count.
-  const nameOf = (placeId?: string) => places.find((p) => p.id === placeId)?.name;
+  // OUT of it (return), read off the flights' from/to Places — not a bare count.
+  const placeOf = (placeId?: string) => places.find((p) => p.id === placeId);
   const flights = bookings.filter((b) => b.type === BOOKING_TYPE.FLIGHT);
-  const hasOutbound = flights.some((f) => reachesDestination(nameOf(f.toPlaceId), destination));
-  const hasReturn = flights.some((f) => reachesDestination(nameOf(f.fromPlaceId), destination));
+  const hasOutbound = flights.some((f) => reachesDestination(placeOf(f.toPlaceId), destination));
+  const hasReturn = flights.some((f) => reachesDestination(placeOf(f.fromPlaceId), destination));
 
   // Lodging night-coverage (ADR-0061): complete only when every trip NIGHT is
   // covered by a hotel booking, not merely "a hotel exists". A booking carries no

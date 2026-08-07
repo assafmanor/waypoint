@@ -119,6 +119,63 @@ export const suggestFlagFromDestination = (text: string | undefined): string | u
   return undefined;
 };
 
+/**
+ * Countries whose territory spans several IANA zones, with the zones the app
+ * offers for them (ADR-0113 §2). A small **curated** map, not a shipped dataset:
+ * a country missing from it, or a real zone missing from a listed country's row,
+ * is a miss that degrades — never a wrong answer. Extend as needed.
+ *
+ * Two readers, which is why it lives here rather than beside either of them
+ * (root rule 8): the backend's destination resolve surfaces these as
+ * `candidateZones` so creation can show the "spans several zones" note, and
+ * `frontend/lib/readiness.ts` uses them to widen ADR-0061's round-trip check —
+ * a leg into Los Angeles reaches a New-York-zoned trip to the United States,
+ * and the country code is what says so.
+ */
+export const MULTI_ZONE_COUNTRIES: Record<string, string[]> = {
+  US: [
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Phoenix',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'Pacific/Honolulu',
+  ],
+  AU: [
+    'Australia/Sydney',
+    'Australia/Brisbane',
+    'Australia/Adelaide',
+    'Australia/Perth',
+    'Australia/Darwin',
+    'Australia/Hobart',
+  ],
+  RU: [
+    'Europe/Kaliningrad',
+    'Europe/Moscow',
+    'Asia/Yekaterinburg',
+    'Asia/Novosibirsk',
+    'Asia/Krasnoyarsk',
+    'Asia/Irkutsk',
+    'Asia/Vladivostok',
+    'Asia/Kamchatka',
+  ],
+  CA: [
+    'America/St_Johns',
+    'America/Halifax',
+    'America/Toronto',
+    'America/Winnipeg',
+    'America/Edmonton',
+    'America/Vancouver',
+  ],
+  BR: ['America/Noronha', 'America/Sao_Paulo', 'America/Manaus', 'America/Rio_Branco'],
+  MX: ['America/Mexico_City', 'America/Cancun', 'America/Chihuahua', 'America/Tijuana'],
+  ID: ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura'],
+  KZ: ['Asia/Almaty', 'Asia/Aqtobe', 'Asia/Aqtau'],
+  CL: ['America/Santiago', 'Pacific/Easter'],
+  CD: ['Africa/Kinshasa', 'Africa/Lubumbashi'],
+};
+
 /** Destinations whose name/aliases match a search query (trip picker search).
  *  A blank query intentionally returns everything (the picker's default
  *  browse list), checked here rather than relying on `matchesAnyTerm`'s
