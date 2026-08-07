@@ -1,7 +1,8 @@
 # 0171 — A time can be a **floor** or a **ceiling**, and one connection is one stop
 
-**Status:** Accepted (owner sign-off 2026-08-07, in session, on all four questions). **Not built** — this is the semantics; the rendering needs a mockup pass first (§9).
+**Status:** **Partly reopened and partly re-decided the same day — see §10.** §1, §2, §5, §6 and §7 are accepted and stand (owner sign-off 2026-08-07). **§4 is dead** — the owner produced a day it does not survive — and **§3's placement half is reopened** with the premise under it, that a `not-before` edge has a position at all. **§10a and §10b are new decisions** (owner sign-off, same session): one class of "holds no position", covering untimed events; a deadline keeps a list position and earns no map number; and a stop number is only ever the index of a moment the app knows. **Not built.**
 **Date:** 2026-08-07
+**Design reference:** [`mockups/a-time-without-a-position-v1.html`](../../mockups/a-time-without-a-position-v1.html) — five treatments against the same three days (§10), the class drawn with both its members (§10a), the deadline intersect and the Iceland numbering case (§10b). Measurements below are read from that file's live DOM.
 
 **Extends** [0063](0063-category-time-behaviour-profile.md) — the time-behaviour profile gains its fourth behaviour, and it is read off the `midSpan.kind` that profile already carries rather than off a new field.
 **Amends [0121](0121-embedded-map-phase-6-design.md) §6's 2026-08-06 amendment** (§7 below), which made "a place visited twice is two stops" the rule. That rule stands for a genuine revisit and is **reversed for exactly one case**.
@@ -67,11 +68,15 @@ So: **one resolver, `edgeMeaning(event, edge)`**, reading `timeProfileFor(event)
 
 ### 3. The row says which it is, in one token
 
+> **Reopened 2026-08-07 — see §10.** The wording itself is the least contested part of this ADR and survives every treatment §10 draws. What is reopened is where the row carrying it goes, and whether it is a row at all.
+
 `15:00` becomes `מ-15:00`. `11:00` becomes `עד 11:00`. `exact` is unmarked, because it is the default and marking it would put a word on nearly every row in the app to say "normal".
 
 That is the smallest change that stops the lie, and on its own it would already answer half of report #17. It is not enough on its own — see §4 — but it is what makes §4's move readable rather than mysterious: a row that has moved still carries the number it was authored with.
 
 ### 4. A row moves only when its stated time is **impossible**, never when it is merely uncertain
+
+> **REOPENED 2026-08-07, same day — this section does not survive the owner's counter-example. See §10.** Kept in full rather than deleted, because §10's whole argument is what this rule gets wrong and a reader cannot check that against a blank.
 
 This was the one question the owner did not sign off as first put (_"sometimes it's obvious on a rolling trip where you move from one place to another, or you check in after a flight, and sometimes it's not obvious at all"_), and the hesitation was right about the first proposal, which slid a flexible edge past any transport on the day. **The distinction the owner was reaching for is impossible vs. unknown**, and the app can tell them apart without guessing:
 
@@ -164,4 +169,104 @@ ADR-0164 counts an ambient span's own edge in `נותרו היום` while `t.atM
 
 ## §9 — What the build session needs before it renders anything
 
-A phone-sized day-timeline mockup, at 360px and 390px, in both themes, with **11 September as a mandatory case**: the four rows above, before and after, plus the unchanged ordinary day from §4's table (so the comparison shows what does _not_ move), a `not-after` check-out above a departing flight, and the `נותרו היום` count at two clocks either side of 15:00. It settles the three questions above and nothing in §1–§7 is waiting on it.
+A phone-sized day-timeline mockup, at 360px and 390px, in both themes, with **11 September as a mandatory case**. It was drawn (`mockups/a-time-without-a-position-v1.html`), and drawing it did not settle the render questions above — it reopened the section they belonged to. See §10.
+
+## §10 — Reopened the same day: §4 does not survive the owner's own day
+
+**The counter-example, in the owner's words:**
+
+> Check in from 15:00 · Flight lands at 21:00 · Car rental at 22:00 — _"what we're gonna do in practice is that we're gonna check in at the hotel only after the car rental, and end our day there. In other cases maybe we'll actually check in as soon as possible."_
+
+§4 places a `not-before` edge after the last **journey** of the day that ends after its floor. A car hire is `held`, not a journey (ADR-0163 §4, which §4 leans on deliberately) — so the rule lands the check-in **after the flight and before the car**, which is not this day.
+
+**And no repair helps, which is the finding.** Extending the anchor to `held` rows would fix this day and break "check in as soon as possible" on the next one. The two sentences above describe **the same data with two different answers**, so no derivation over that data can produce both. §4's own distinction — impossible vs. unknown — was right as far as it went and simply does not reach: 22:00 is not impossible at 15:00, it is _unknown_, and §4 has nothing to say about unknown except "leave it where it is", which is where the reported defect lives.
+
+**So the premise under §3/§4 is what is being reconsidered, not the rule.** Owner: _"maybe these kinds of events/bookings couldn't be numbered and couldn't reliably be ordered on the day schedule."_ That is the reopening: **does a `not-before` edge have a position in the day at all** — and if it does not, a number on the Map is the same claim in another host (ADR-0121 §6), which is why the numbering half rides along.
+
+**Five treatments are drawn**, each against the **same three days** — the counter-example, an ordinary day nobody complained about, and 11 September — because a treatment that reads well on one is not an answer:
+
+|       | treatment                                     | order claim?           | costs                             | survives 3/3            |
+| ----- | --------------------------------------------- | ---------------------- | --------------------------------- | ----------------------- |
+| **א** | today's instant interleave                    | yes, sometimes false   | —                                 | no (1/3)                |
+| **ב** | §4's impossible-only slide                    | yes                    | derived, no field                 | no (2/3)                |
+| **ג** | leaves the list for `.day-ambient`            | no                     | reuses the stay backdrop          | yes                     |
+| **ד** | an unplaced tail under one hairline           | no                     | one line                          | yes                     |
+| **ה** | two numbers: reservation floor + day position | only when a human said | **a nullable column + migration** | yes, and answers _when_ |
+
+_(§10a-i revises this table: **ג** and **ד** were never rivals. Each is half of the answer — the strip for commitments, the tail for ideas — and the mockup's `ג+ד` frames are what the session actually landed on.)_
+
+Three things the drawing established that the prose could not:
+
+- **א is not a rule, it is a coincidence.** It is correct on exactly one of the three days. That is the sharpest statement of the original defect in the file.
+- **ג and ד both already exist as shapes.** `.day-ambient` is the backdrop a multi-night stay's _middle_ days already render as; the untimed tail is where ADR-0161 §10 already puts "today, but no position". Neither is a new grammar — which is the whole reason they are the cheap answers.
+- **ה is the only treatment that can answer _when_, because it is the only one that stops asking one number to be two facts.** `15:00` is a fact about the **reservation**; the position is a **plan**. ADR-0047 §1 makes the Event the sole time authority, so today there is one number and placing the row at 22:40 destroys the floor. That is a stored field and a migration — the thing §2 rejected on the owner's own call in the previous round, reopened only because the instruction this round was explicitly not to force the answer into the existing solution.
+
+**Measured from the mockup's live DOM at 360px:** `ד`'s hairline is **13px**, the whole of what it adds to a day. `ה`'s second number doubles the time slot (**15px → 30px**) and the row does **not** grow — a transition row's height comes from its badge, not its text — but the slot widens **38px → 46px**, and that 8px comes off the title.
+
+### 10a. The owner generalized it, and the generalization decides the pick
+
+Owner, on the treatments: _"we should think if we should generalize this not-before / not-after behaviour and the 'without a position' for other events that don't have times."_ **Signed off: one class.**
+
+**They are the same thing, and the test is the width of the window.** An entry holds a position when its window is narrow enough to place it:
+
+| entry                  | window                                    | position?     |
+| ---------------------- | ----------------------------------------- | ------------- |
+| `exact`                | an instant                                | yes           |
+| `not-after` (deadline) | \[morning, 11:00] — closed where you act  | yes, see §10b |
+| `not-before` (floor)   | \[15:00, end of day] — open where you act | **no**        |
+| no clock at all        | the whole day                             | **no**        |
+
+**And the app already renders the second unpositioned kind, silently.** `DayView`'s `{untimed.map(…)}` puts untimed events at the tail of `.day-list` with no separator and nothing saying they hold no position — so an untimed event just looks like the last thing of the day. That is the reported defect exactly, already shipped and never reported, presumably because nobody expected the tail to mean anything.
+
+**Two things follow, and the second was got wrong once before the owner corrected it:**
+
+1. **The tail treatment stops being an addition.** It is the tail that already exists, finally named — root rule 8's "generalize the one-off", not a second tail beside it.
+2. **It isolates where the stored field is actually needed.** An untimed row's number slot is **free**, so setting its time _is_ the placement — ADR-0161 §7's `＋ שעה` already is that control, on that row, today. Only a `not-before` edge has already spent its one number on the floor. So the migration is required for **flexible edges only**, not for the class.
+
+### 10a-i. One class, but TWO placements — and the discriminator is hard/soft
+
+**The first draft of §10a concluded that one class means one tail, and that was wrong.** Its argument was that a backdrop can carry a stay and cannot carry `קניות לדירה`, therefore both belong in the tail. The observation is right and the conclusion inverted it. Owner:
+
+> _"I'm not sure that untimed events and commitments without a hard time should be classified as the same and shown as the same category. Untimed commitments maybe should be on top?"_
+
+**Correct, and the reason is the axis this ADR spends §1 promising not to collapse.** A shopping errand does not belong in the backdrop because it is **not a commitment** — not because the backdrop is the wrong host. "Holds no position" is one **derivation**; it is not one **category on screen**. Within it, `hard` and `soft` are still as different as ADR-0011 says they are, and a hard commitment buried at the foot of the day under an optional errand is the demotion that rule exists to prevent.
+
+> **One derivation, two placements.** `hard` + no position → the **top**: a claim on your day, which you carry all day. `soft` + no position → the **tail**: spare capacity.
+
+Three consequences, all owner-signed-off in the same round:
+
+- **The top is the `.day-ambient` strip that already exists**, not a new band. A multi-night stay's middle days already render there, off the counted schedule, saying "true of this day" rather than "happening now" — so a stay reads the same way on **every** day of itself, edges included, and no grammar is added.
+- **A strip row must be tickable `היינו`.** ADR-0164 counts a check-in in `נותרו היום` until it is settled (§6 above), so a host that cannot be settled leaves that number stuck all evening. `SettleControl` takes a **fourth density**; nothing is drawn beside it (`frontend/CLAUDE.md`'s rule, which already collected three hand-rolled settle affordances once).
+- **An untimed `hard` event goes to the top too** — a booking with no clock at all, not only an edge with a floor. The discriminator is **commitment**, not "does it carry a number", so two hard things that both lack a position cannot render in different places.
+
+**And this retires the argument the previous draft used to pick between the two treatments.** They were never rivals; each was half. The `היינו` question that was going to decide it is now a requirement on the top host instead.
+
+### 10b. A deadline keeps a position, and still earns no number
+
+The owner's case: _"there could be a flight before the max checkout time."_ Correct, and it is why a deadline's position is not simply its ceiling.
+
+**Why a deadline is decidable where a floor is not.** A floor is **open on the side you act** — "from 15:00" means any time after, so the app would have to guess which, and cannot. A ceiling is **closed on the side you act** — "by 11:00" means before, full stop — so it can be **intersected** with the day's other hard bounds. There is no reading of the data in which you check out after you have flown.
+
+> **A `not-after` edge sits at the earlier of its ceiling and the first journey that departs before that ceiling.** Two hard bounds, the earlier wins, nothing guessed. On a day with nothing to intersect against, it sits at its ceiling and does not move — the same test that broke §4, applied from the other side and passing.
+
+**But the owner then split the two claims, and this is the sharper half:**
+
+> _"it shouldn't be numbered and ordered as if it was a normal event, because then on the map weird things could happen (you're back in Iceland after landing in Tel Aviv for example)"_
+
+Check out of Reykjavik by 11:00, fly, land in Tel Aviv. Number the check-out from its ceiling and the day's stops read Keflavik → Ben Gurion → the Reykjavik hotel. **A position in the list and a number on the map are two different claims**, and the intersect only earns the first: it works when there is a departure to intersect against, and on a day without one ("out by 11:00" against "museum at 10:00") the order is genuinely unknown while a number would assert one anyway.
+
+**So the Map rule is stronger than "no position, no number":**
+
+> **A stop number is only ever the index of a moment the app actually knows.** `exact` moments are numbered. A floor, a ceiling and a row with no clock are not — the slot stays so the list keeps its alignment, the mark leaves.
+
+**This also catches a shipped defect nobody reported** (owner signed off on fixing it here rather than filing it separately): an untimed event's place is numbered today. `place-usage.ts` gives it `prominence: 'edge'` with `at: undefined`, so `hasScheduleSlot` passes, and `buildPinOrderIndex` sorts it after the timed stops and numbers it regardless. One rule covers it and the layover both.
+
+### 10c. What is still open
+
+**Nothing above changes §1, §2, §5, §6 or §7**: the three values, where they are derived from, that a flexible edge bounds no gap, that a floor passing is not the thing happening, and that one connection is one stop.
+
+**One thing remains the owner's to say:**
+
+1. **Is the two-numbers path worth its column?** It is the only route to "when" for a flexible edge, and after §10a it is the _only_ place in this ADR that needs a stored field — an untimed row reaches the same outcome through a control that already ships. Everything else in §10a/§10b is signed off.
+
+**And one question the mockup cannot settle**, for the device pass: whether `ללא מיקום ביום` reads as a boundary or as an accusation. An untimed event is a legitimate way to say "sometime today", and a line that reads as _"you failed to schedule this"_ would be a new defect in place of the old one.
