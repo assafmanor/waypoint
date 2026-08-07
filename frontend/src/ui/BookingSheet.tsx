@@ -44,7 +44,7 @@ import { RouteField } from './domain';
 import { Field } from './primitives/Field';
 import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
-import { useHostNoteCount } from './HostNotes';
+import { HostNotes, useHostNoteCount } from './HostNotes';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { FormError } from './primitives/FormError';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
@@ -1146,9 +1146,24 @@ export function BookingSheet({
 
                 {/* **The note is written on the way** (ADR-0152 §6b). This is the one form that
               already had a notes field, and it keeps it — as the composer, so a booking's
-              notes are rows like everyone else's rather than a string in a JSON blob. */}
+              notes are rows like everyone else's rather than a string in a JSON blob.
+
+              **On EDIT the existing notes read above that box** — §6b's own last paragraph,
+              missed here exactly as it was missed on `EventForm`, so the only reading of a
+              booking's notes was a count on a delete confirm. The host is the BOOKING and
+              never the linked event: that event is materialized server-side from a seed
+              (ADR-0093) and has no client id to hang a note on, which is why this form's
+              composer, `EventForm`'s `יש הזמנה` half and a booked idea's `carryNotes` all
+              write `bookingId`. `canAdd` is off for the same reason it is off there: the
+              box below already is the way to add, and it rides this form's save. */}
+                {booking && (
+                  <HostNotes
+                    host={{ kind: 'booking', id: booking.id, name: booking.title }}
+                    canAdd={false}
+                  />
+                )}
                 <Field
-                  label={t.notes.composer.label}
+                  label={booking ? t.notes.composer.labelMore : t.notes.composer.label}
                   htmlFor="bs-notes"
                   hint={t.notes.composer.hint}
                 >

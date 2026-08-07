@@ -251,7 +251,10 @@ export function noteTitleText(note: Note): string {
  *  trip, so a note from last week must not read as `לפני 216 ש׳`.
  *
  *  Under a minute is "now" — the same floor the change feed uses, and the case that
- *  matters most, since it is what you see the instant you write one. */
+ *  matters most, since it is what you see the instant you write one. **A timestamp that
+ *  will not parse reads "now" as well**, through `formatDuration`'s own non-finite guard:
+ *  the only row that can be in that state is one this device has just written and not yet
+ *  had stamped, so "now" is the truth rather than a fallback. */
 export function noteWhen(createdAt: string, nowMs: number): string {
   const minutes = Math.floor((nowMs - Date.parse(createdAt)) / 60_000);
   const elapsed = formatDuration(minutes);

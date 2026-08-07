@@ -26,6 +26,7 @@ import {
 } from './cache';
 import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 import { OUTBOX_VERB } from './outbox';
+import { setSimulatedNow } from './useClock';
 
 const TRIP_ID = EVENTS[0].tripId;
 
@@ -554,6 +555,26 @@ describe('notes in the offline cache (ADR-0152)', () => {
       // fail `noteSchema` on the next cold load.
       source: 'member',
     });
+  });
+
+  // The other half of the same rule, and the owner's `לפני NaN שנים` report: the SERVER
+  // stamps the timestamps, so a queued note cached without them came back from a cold load
+  // with `createdAt: undefined` — unparseable, unsortable, and rendered through the elapsed
+  // ladder.
+  it('stamps an offline-written note, so a cold reopen can date and sort it', async () => {
+    setSimulatedNow(Date.parse('2026-07-20T09:00:00.000Z'));
+    await cacheSnapshot(TRIP_ID, snapshot({ notes: [note('n1')] }));
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.CREATE_NOTE,
+      input: { id: 'n-offline', body: 'נכתב במטוס' },
+    });
+
+    const cached = await readCachedSnapshot(TRIP_ID);
+    const written = cached!.notes.find((n) => n.id === 'n-offline')!;
+    expect(written.createdAt).toBe('2026-07-20T09:00:00.000Z');
+    expect(written.updatedAt).toBe('2026-07-20T09:00:00.000Z');
+    expect(Number.isFinite(Date.parse(written.createdAt))).toBe(true);
+    setSimulatedNow(null);
   });
 
   it('mirrors an offline edit and an offline delete', async () => {

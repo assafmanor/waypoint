@@ -60,9 +60,15 @@ export function clockShiftSentence(minutes: number): string | null {
  *  fills, the count rounded to nearest: minutes < an hour, hours (H:MM) < a day,
  *  then days / weeks / months / years. `unit === 'hours'` pins it to the hours
  *  rung regardless of length (transport, ADR-0084). Returns null when there's
- *  nothing to measure (zero/negative elapsed). */
+ *  nothing to measure (zero/negative elapsed).
+ *
+ *  **`NaN` is nothing to measure too, and the guard belongs here** rather than at each
+ *  caller: `NaN <= 0` is false, so an unparseable date walked the whole ladder and fell out
+ *  of its last rung as `לפני NaN שנים` on a note whose timestamp had not landed yet. Every
+ *  rung's comparison is false for `NaN`, so any caller that can hold a date it did not
+ *  write is one `Date.parse` away from the same sentence. */
 export function formatDuration(minutes: number, unit: DurationUnit = 'auto'): string | null {
-  if (minutes <= 0) return null;
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
   if (unit === 'hours' || minutes < MINUTES_PER_DAY) return hoursPhrase(minutes);
 
   const days = minutes / MINUTES_PER_DAY;

@@ -24,6 +24,7 @@ import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
 import { fetchTrips } from './api';
 import { clearAllCachedDocuments } from './doc-cache';
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
+import { getNow } from './useClock';
 import { dropNotesForHostChange } from './notes';
 import { clearPlaceRefsForChange, deletedPlaceId } from './place-refs';
 
@@ -502,17 +503,27 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
         entityId: op.placeId,
         action: CHANGE_ACTION.DELETE,
       });
-    case OUTBOX_VERB.CREATE_NOTE:
+    case OUTBOX_VERB.CREATE_NOTE: {
       if (!op.input.id) return [];
       // `source` is the server's default and the seed does not carry it, so the optimistic
       // row states it — otherwise a note read back from the cache before its flush would
       // fail `noteSchema` on the next cold load.
+      //
+      // **And so are the timestamps, for the same reason and one worse one.** The server
+      // stamps them, so a queued note cached without them came back from a cold load with
+      // `createdAt: undefined` — which `Date.parse` reads as `NaN` and the elapsed ladder
+      // used to render as `לפני NaN שנים`. The ladder guards itself now; this is the other
+      // half, because a row with no creation time is also unsortable (`sortNotes`). Same
+      // clock as the in-memory optimistic row (`trip-state`'s `createNote`), so the two
+      // views of one queued note agree on when it was written.
+      const stamp = new Date(getNow()).toISOString();
       return one({
         entityType: ENTITY_TYPE.NOTE,
         entityId: op.input.id,
         action: CHANGE_ACTION.CREATE,
-        after: { ...op.input, source: NOTE_SOURCE.MEMBER },
+        after: { ...op.input, source: NOTE_SOURCE.MEMBER, createdAt: stamp, updatedAt: stamp },
       });
+    }
     case OUTBOX_VERB.UPDATE_NOTE:
       return one({
         entityType: ENTITY_TYPE.NOTE,
