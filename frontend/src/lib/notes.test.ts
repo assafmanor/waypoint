@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CHANGE_ACTION, ENTITY_TYPE, type Note } from '@waypoint/shared';
-import { dropNotesForHostChange, isHostedBy } from './notes';
+import { dropNotesForHostChange, isHostedBy, noteWhen } from './notes';
+import { t } from '../i18n/he';
 
 const note = (id: string, host: Partial<Note> = {}): Note => ({
   id,
@@ -95,5 +96,27 @@ describe('isHostedBy', () => {
 
   it('is false for an entity type that cannot host', () => {
     expect(isHostedBy(note('n', { eventId: 'e1' }), ENTITY_TYPE.TRIP, 'e1')).toBe(false);
+  });
+});
+
+// The owner's report: a note briefly read `לפני NaN שנים`. `NaN <= 0` is false, so an
+// unparseable date walked every rung of the elapsed ladder and fell out of the last one.
+// A row can be in that state for one reason only — this device queued it and the server
+// has not stamped it yet — so "now" is the truth for it, not a placeholder.
+describe('noteWhen (never a non-finite duration)', () => {
+  const NOW = Date.parse('2026-08-07T12:00:00Z');
+
+  it('phrases an elapsed length off the shared ladder', () => {
+    expect(noteWhen('2026-08-04T12:00:00Z', NOW)).toBe(t.changeFeed.relTime.agoPrefix('3 ימים'));
+  });
+
+  it('reads "now" for a timestamp that will not parse', () => {
+    for (const createdAt of ['', 'not a date', undefined as unknown as string])
+      expect(noteWhen(createdAt, NOW)).toBe(t.changeFeed.relTime.now);
+  });
+
+  it('reads "now" for a note stamped a moment ago, or ahead of this clock', () => {
+    expect(noteWhen('2026-08-07T11:59:59Z', NOW)).toBe(t.changeFeed.relTime.now);
+    expect(noteWhen('2026-08-07T12:05:00Z', NOW)).toBe(t.changeFeed.relTime.now);
   });
 });

@@ -2,7 +2,13 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { wrapNav } from '../test/nav-harness';
-import { BOOKING_SOURCE, BOOKING_TYPE, type Booking, type Place } from '@waypoint/shared';
+import {
+  BOOKING_SOURCE,
+  BOOKING_TYPE,
+  type Booking,
+  type Note,
+  type Place,
+} from '@waypoint/shared';
 
 Element.prototype.scrollIntoView = vi.fn();
 
@@ -61,6 +67,10 @@ const noteVerbs = {
 };
 // The whole trip's bookings — what the derived round-trip pair reads (ADR-0154 §5).
 let tripBookings: Booking[] = [];
+// The whole trip's notes — what `HostNotes` reads to list a booking's existing ones on
+// edit (ADR-0152 §6b). Mutable for the same reason `tripBookings` is: the mock object is
+// rebuilt per `useTrip()` call, so a test can seed this and re-render.
+let tripNotes: Note[] = [];
 
 const trip = {
   id: 't1',
@@ -78,7 +88,7 @@ vi.mock('../state/trip-state', () => ({
     maybeItems: [],
     places,
     indexVerbs,
-    notes: [],
+    notes: tripNotes,
     users: [],
     noteVerbs,
   }),
@@ -88,6 +98,7 @@ import { BookingSheet } from './BookingSheet';
 import { bookingSheetDraft, type BookingSheetDraft } from '../lib/booking-draft';
 import { routeTitle } from '../lib/route-title';
 import { zonedIso } from '../lib/time';
+import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
 
 // **The sheet is stepped now** (ADR-0155 §5): `שמירה` lives on the LAST step, and the
@@ -404,6 +415,112 @@ describe('BookingSheet — notes written on the way', () => {
     expect(screen.queryByText(t.common.save)).toBeNull();
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
     expect(noteVerbs.createNote).not.toHaveBeenCalled();
+  });
+
+  // ADR-0152 §6b's last paragraph, missed here exactly as it was missed on `EventForm`:
+  // on EDIT the existing notes read ABOVE the same one box. Until this, a booking's notes
+  // were reachable from the sheet only as a number on its delete confirm.
+  describe('and read back on edit', () => {
+    const hotel: Booking = {
+      id: 'bk-h',
+      tripId: 't1',
+      type: BOOKING_TYPE.HOTEL,
+      title: 'מלון שינג׳וקו גרנבל',
+      source: BOOKING_SOURCE.MANUAL,
+      createdAt: '',
+      updatedAt: '',
+      updatedBy: 'u',
+    };
+    const hostedNote = (id: string, body: string, host: Partial<Note>): Note =>
+      ({
+        id,
+        tripId: 't1',
+        body,
+        source: 'member',
+        createdBy: 'u',
+        createdAt: '2026-07-19T00:00:00.000Z',
+        updatedAt: '2026-07-19T00:00:00.000Z',
+        updatedBy: 'u',
+        ...host,
+      }) as Note;
+
+    afterEach(() => {
+      tripNotes = [];
+      indexVerbs.updateBooking.mockReset();
+      setSimulatedNow(null);
+    });
+
+    const editHotel = () => {
+      setSimulatedNow(Date.parse('2026-07-20T09:00:00+09:00'));
+      render(wrapNav(<BookingSheet booking={hotel} onClose={() => {}} />));
+      toLastStep();
+    };
+
+    it('lists the booking’s existing notes above the box, with one way to add', () => {
+      tripNotes = [hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' })];
+      editHotel();
+
+      const section = document.querySelector('.note-sec') as HTMLElement;
+      expect(section).not.toBeNull();
+      expect(section.textContent).toContain('קוד הכספת 4417');
+      // ONE way to add, and it is the box below — the section's own `＋ פתק` would open a
+      // second sheet over a form already asking for a save.
+      expect(section.querySelector('.add')).toBeNull();
+      expect(
+        section.compareDocumentPosition(composer()) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('shows only THIS booking’s notes, not another host’s', () => {
+      tripNotes = [
+        hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' }),
+        hostedNote('n2', 'של הזמנה אחרת', { bookingId: 'bk-other' }),
+        hostedNote('n3', 'של האירוע', { eventId: 'ev-1' }),
+        hostedNote('n4', 'פתק כללי', {}),
+      ];
+      editHotel();
+
+      const section = document.querySelector('.note-sec') as HTMLElement;
+      expect(section.textContent).toContain('קוד הכספת 4417');
+      for (const other of ['של הזמנה אחרת', 'של האירוע', 'פתק כללי'])
+        expect(section.textContent).not.toContain(other);
+    });
+
+    // The edge case ADR-0152 §6b resolves and `hero-horizon.ts` restates: the linked event
+    // is materialized SERVER-side from a seed (ADR-0093) and has no client id to hang a
+    // note on, so every path that writes from this form writes `bookingId`. The section
+    // therefore reads the booking — asking the event would find nothing on exactly the
+    // bookings most likely to carry a note.
+    it('reads the BOOKING as the host, and keeps writing new notes there', async () => {
+      tripNotes = [hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' })];
+      indexVerbs.updateBooking.mockResolvedValue({ id: 'bk-h' });
+      editHotel();
+
+      fireEvent.change(composer(), { target: { value: 'לבקש קומה גבוהה' } });
+      save();
+
+      await waitFor(() => expect(noteVerbs.createNote).toHaveBeenCalledTimes(1));
+      expect(noteVerbs.createNote).toHaveBeenCalledWith({
+        body: 'לבקש קומה גבוהה',
+        bookingId: 'bk-h',
+      });
+      // The one already on the row is an entity read through `HostNotes` — it is not
+      // loaded into the composer, so a save does not write it a second time.
+      expect(noteVerbs.createNote).not.toHaveBeenCalledWith(
+        expect.objectContaining({ body: 'קוד הכספת 4417' }),
+      );
+    });
+
+    // A create has no host yet, so there is nothing to list — and the heading would
+    // otherwise read `פתקים` twice, once empty.
+    it('shows no section at all on a create', () => {
+      tripNotes = [hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' })];
+      openHotel();
+      nameIt();
+      toLastStep();
+      expect(document.querySelector('.note-sec')).toBeNull();
+      expect(composer()).toBeTruthy();
+    });
   });
 });
 

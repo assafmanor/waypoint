@@ -62,13 +62,30 @@ describe('useNoteComposer / NoteComposer (ADR-0152 §6b)', () => {
     cleanup();
   });
 
-  it('Enter commits too, and Shift+Enter does not', () => {
+  // The owner's reversal (2026-08-07, ADR-0152 §6b amended): Enter used to commit and
+  // Shift+Enter used to be the only way to break a line. Neither key commits now — the
+  // textarea keeps its own newline, and `＋` is the only way to start a second note.
+  it('Enter does not commit — it is the newline, with or without Shift', () => {
     const c = show();
     c.type('שורה');
+    fireEvent.keyDown(c.input(), { key: 'Enter' });
+    expect(c.chips()).toEqual([]);
     fireEvent.keyDown(c.input(), { key: 'Enter', shiftKey: true });
     expect(c.chips()).toEqual([]);
-    fireEvent.keyDown(c.input(), { key: 'Enter' });
-    expect(c.chips()).toEqual(['שורה']);
+    // And what was typed is untouched: still one note, still pending for the host's save.
+    expect(c.input().value).toBe('שורה');
+    expect(c.pending()).toEqual(['שורה']);
+    cleanup();
+  });
+
+  // A newline stays INSIDE one note — the "split on blank lines" alternative ADR-0152 §6b
+  // rejected is not reopened by making Enter a newline.
+  it('keeps a multi-line note as ONE note, blank line and all', () => {
+    const c = show();
+    c.type('קומה 3\n\nהכניסה מאחור');
+    expect(c.pending()).toEqual(['קומה 3\n\nהכניסה מאחור']);
+    fireEvent.click(c.add());
+    expect(c.chips()).toEqual(['קומה 3\n\nהכניסה מאחור']);
     cleanup();
   });
 

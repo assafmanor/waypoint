@@ -23,6 +23,15 @@ describe('formatDuration — the elapsed ladder (ADR-0114)', () => {
     expect(formatDuration(-10)).toBeNull();
   });
 
+  // `NaN <= 0` is false, so an unparseable date used to walk every rung and fall out of
+  // the last one as `לפני NaN שנים`. Nothing to measure is nothing to measure.
+  it('returns null for a non-finite length, and never phrases NaN', () => {
+    expect(formatDuration(Number.NaN)).toBeNull();
+    expect(formatDuration(Date.parse('not a date'))).toBeNull();
+    expect(formatDuration(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(formatDuration(Number.NaN, 'hours')).toBeNull();
+  });
+
   it('minutes rung, then hours rung', () => {
     expect(formatDuration(59)).toBe('59 דק׳');
     expect(formatDuration(60)).toBe('שעה');

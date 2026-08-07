@@ -13,9 +13,14 @@
 // the expense of the common one (nought or one), and a box that appears unasked is something
 // the user must notice, understand and then ignore.
 //
-// **And the common case costs nothing.** `＋` (or Enter) commits and clears, but you never
-// have to press it: whatever is still in the input when the host is saved becomes a note
-// too. So one note is type-and-save. `＋` exists only to start a second one.
+// **And the common case costs nothing.** `＋` commits and clears, but you never have to
+// press it: whatever is still in the input when the host is saved becomes a note too. So one
+// note is type-and-save. `＋` exists only to start a second one.
+//
+// **Enter writes a NEWLINE; only `＋` commits** (owner's reversal 2026-08-07, ADR-0152 §6b
+// amended in place — it used to read "`＋` (or Enter) commits"). A note is prose, so the key
+// that ends a line inside one cannot also be the key that ends the note. This does not
+// reopen the rejection below: the newline stays INSIDE one note and nothing splits on it.
 //
 // Rejected: one box split on blank lines — a note is a row, a paragraph break is not a user
 // saying "these are two things", and it would leave editing one of them ambiguous forever.
@@ -140,15 +145,8 @@ export function NoteComposer({ state, id }: { state: NoteComposerState; id: stri
             setInput(e.target.value);
             grow(e.target);
           }}
-          onKeyDown={(e) => {
-            // Enter commits, because a note is a sentence and the return key is the obvious
-            // gesture; Shift+Enter still breaks a line inside one.
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              commit();
-              grow(inputRef.current);
-            }
-          }}
+          // No key commits: Enter is the textarea's own newline (see the header), and the
+          // box grows through `onChange` like any other keystroke.
         />
         {/* Disabled only because a press could not work — an empty note is not a note
             (ADR-0150 §8: never disabled as a stand-in for a refusal). */}
