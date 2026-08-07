@@ -63,6 +63,16 @@ describe('HostNotes', () => {
     expect(screen.getByText(t.notes.section.empty)).toBeTruthy();
   });
 
+  // Enter writes a newline now (ADR-0152 §6b's 2026-08-07 amendment), so a body can hold
+  // one — and it must survive to the DOM verbatim. The owner's report was that it "doesn't
+  // show up at all after saving": nothing strips it, the render collapsed it, which is the
+  // CSS contract asserted below.
+  it('renders a multi-line body with its newlines intact', () => {
+    tripNotes = [note({ id: 'n1', body: 'קומה 3\n\nהכניסה מאחור', bookingId: 'b1' })];
+    open('booking', 'b1');
+    expect(document.querySelector('.note-item-b')?.textContent).toBe('קומה 3\n\nהכניסה מאחור');
+  });
+
   it('shows only THIS host’s notes, newest first, with author and when', () => {
     tripNotes = [
       note({ id: 'n1', body: 'ותיק', bookingId: 'b1', createdAt: '2026-07-18T09:00:00Z' }),
