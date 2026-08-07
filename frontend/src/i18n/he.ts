@@ -1567,6 +1567,18 @@ export const t = {
     nowLineAria: (time: string) => `השעה עכשיו · ${time}`,
     // Settle strip on a passed-but-unmarked soft event ("still on?" → one tap).
     settleAsk: 'היינו שם?',
+    // **A time that is a floor or a ceiling** (ADR-0171 §3). `exact` is unmarked —
+    // it is the default, and marking it would put a word on nearly every row in the
+    // app to say "normal". A floor reads "from", a ceiling "until".
+    fromTime: (time: string) => `מ-${time}`,
+    untilTime: (time: string) => `עד ${time}`,
+    // A row that holds no position in the day at all, and so has no clock to print.
+    noTime: 'ללא שעה',
+    // **The boundary above the tail** (ADR-0171 §10a). Deliberately a boundary and not
+    // a heading: the rows under it are things happening today whose window is too wide
+    // to place, not a section of the day. Untimed events have rendered there all along
+    // with nothing saying so, which is why one of them reads as "the last thing today".
+    unplaced: 'ללא מיקום ביום',
     // Past-day archive (ADR-0029 signal / ADR-0040 language).
     archiveTag: 'לקריאה בלבד',
     pastBuildHint: 'הוספה או הזזה של אירוע ביום שעבר · במצב תכנון',

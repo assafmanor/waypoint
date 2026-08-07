@@ -185,6 +185,59 @@
   margin-bottom: 12px;
 }
 
+/* An unpositioned COMMITMENT sharing the strip (ADR-0171 §10a-i). Same box as the
+   ambient backdrop beside it — one hotel reads the same way on every day of itself,
+   edges included — with two differences it earns: its title is a button (there is a
+   booking behind it), and it carries the settle pair, because ADR-0164 counts it in
+   `נותרו היום` until somebody answers. */
+.day-ambient .ambient.unplaced .as {
+  margin-inline-start: auto;
+}
+.day-ambient .as-open {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: start;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-ambient .as-open:disabled {
+  cursor: default;
+}
+/* The settle cluster sits after the label rather than pushing it: `.as` already takes
+   the free space, so this only needs to stop shrinking. */
+.day-ambient .ambient.unplaced .wp-settle {
+  flex: 0 0 auto;
+}
+
+/* **The boundary above the tail** (ADR-0171 §10a) — rows that happen today and hold no
+   position in it. Deliberately the faintest thing on the screen and deliberately not a
+   heading: it marks a boundary, not a section. It is `.day-gap`'s own dashed hairline
+   at the same 9px rhythm, saying the other thing a line between rows can say, so the
+   day gains no new grammar. Zero-height beyond its rule — untimed rows have always
+   rendered here and the line is the whole of what is added. */
+.day-unplaced {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 9px 0;
+}
+.day-unplaced .line {
+  flex: 1;
+  border-block-start: 1px dashed var(--line);
+}
+.day-unplaced .lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+}
+
 /* ── per-day transition entry (ADR-0064 §B) ─────────────────────────────
    A multi-day booking's edge (check-in/out, departure/arrival) as a compact,
    read-only reference row interleaved in the day timeline by instant. Amber =

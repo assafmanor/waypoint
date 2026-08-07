@@ -219,6 +219,32 @@ describe('buildDayGlance', () => {
     expect(after.remaining).toBe(0); // behind you now
   });
 
+  it('keeps a CHECK-IN counted after its floor passes — a floor is not an event (ADR-0171 §6)', () => {
+    // The asymmetry, and the reason it is not one rule for both ends: 11:01 means a
+    // check-out was missed, so it stops being ahead of you. 15:01 means nothing at all —
+    // the room has been available for a minute and nobody has gone there. Before this the
+    // count cleared itself on the strength of the clock, so an un-checked-into hotel read
+    // `0 נותרו היום` all evening.
+    const hotel = ev({
+      id: 'hotel-in',
+      category: 'lodging',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('15:00'),
+      endsAt: at('11:00', '2026-07-09'),
+      endDate: '2026-07-09',
+    });
+    const glance = (nowTime: string) =>
+      buildDayGlance([hotel], DATE, ms(nowTime), ms('07:00'), ms('23:00'), TZ);
+    expect(glance('14:00').remaining).toBe(1);
+    expect(glance('19:00').remaining).toBe(1); // the floor passed; nothing happened
+    // Settling is what closes it — `bookingTransitionsOnDate` drops a settled event, so
+    // this is the existing rule rather than a second one.
+    const done = ev({ ...hotel, status: EVENT_STATUS.DONE });
+    expect(buildDayGlance([done], DATE, ms('19:00'), ms('07:00'), ms('23:00'), TZ).remaining).toBe(
+      0,
+    );
+  });
+
   // **The guard against double-counting**, and the reason the rule keys on `isAmbient`
   // rather than on "has transitions": a same-day journey is already a counted block.
   it('does not count a same-day flight twice, block and transition', () => {

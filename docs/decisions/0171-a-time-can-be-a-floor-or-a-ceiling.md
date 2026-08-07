@@ -1,6 +1,6 @@
 # 0171 — A time can be a **floor** or a **ceiling**, and one connection is one stop
 
-**Status:** **Partly reopened and partly re-decided the same day — see §10.** §1, §2, §5, §6 and §7 are accepted and stand (owner sign-off 2026-08-07). **§4 is dead** — the owner produced a day it does not survive — and **§3's placement half is reopened** with the premise under it, that a `not-before` edge has a position at all. **§10a and §10b are new decisions** (owner sign-off, same session): one class of "holds no position", covering untimed events; a deadline keeps a list position and earns no map number; and a stop number is only ever the index of a moment the app knows. **Not built.**
+**Status:** Accepted, **and built 2026-08-07** — everything except the one item §10c leaves open. §4 is **dead**, replaced by §10a/§10a-i/§10b: the owner produced a day it does not survive, and the premise under it went with it. What shipped is §1, §2, §3, §5, §6, §7, §10a, §10a-i and §10b. **Not built:** the two-numbers path (§10's treatment ה), which is still the owner's call and the only stored field this ADR would need.
 **Date:** 2026-08-07
 **Design reference:** [`mockups/a-time-without-a-position-v1.html`](../../mockups/a-time-without-a-position-v1.html) — five treatments against the same three days (§10), the class drawn with both its members (§10a), the deadline intersect and the Iceland numbering case (§10b). Measurements below are read from that file's live DOM.
 
@@ -68,7 +68,7 @@ So: **one resolver, `edgeMeaning(event, edge)`**, reading `timeProfileFor(event)
 
 ### 3. The row says which it is, in one token
 
-> **Reopened 2026-08-07 — see §10.** The wording itself is the least contested part of this ADR and survives every treatment §10 draws. What is reopened is where the row carrying it goes, and whether it is a row at all.
+> **Built as written; the placement question it depended on is answered in §10a.** The wording is the least contested part of this ADR and survived every treatment §10 drew. Where each word lands: a **floor** is on a row that has left the list (`UnplacedCommitment` in the strip), a **ceiling** on the transition row that stayed (`TransitionRow`), and `exact` is unmarked, which is most of the app.
 
 `15:00` becomes `מ-15:00`. `11:00` becomes `עד 11:00`. `exact` is unmarked, because it is the default and marking it would put a word on nearly every row in the app to say "normal".
 
@@ -76,7 +76,7 @@ That is the smallest change that stops the lie, and on its own it would already 
 
 ### 4. A row moves only when its stated time is **impossible**, never when it is merely uncertain
 
-> **REOPENED 2026-08-07, same day — this section does not survive the owner's counter-example. See §10.** Kept in full rather than deleted, because §10's whole argument is what this rule gets wrong and a reader cannot check that against a blank.
+> **DEAD — this section does not survive the owner's counter-example, and §10a/§10b replace it. Not built, and nothing in the code implements it.** Kept in full rather than deleted, because §10's whole argument is what this rule gets wrong and a reader cannot check that against a blank. **One half of it did survive, in §10b:** the intersect for a `not-after` edge, which the counter-example never touched.
 
 This was the one question the owner did not sign off as first put (_"sometimes it's obvious on a rolling trip where you move from one place to another, or you check in after a flight, and sometimes it's not obvious at all"_), and the hesitation was right about the first proposal, which slid a flexible edge past any transport on the day. **The distinction the owner was reaching for is impossible vs. unknown**, and the app can tell them apart without guessing:
 
@@ -236,7 +236,7 @@ Owner, on the treatments: _"we should think if we should generalize this not-bef
 Three consequences, all owner-signed-off in the same round:
 
 - **The top is the `.day-ambient` strip that already exists**, not a new band. A multi-night stay's middle days already render there, off the counted schedule, saying "true of this day" rather than "happening now" — so a stay reads the same way on **every** day of itself, edges included, and no grammar is added.
-- **A strip row must be tickable `היינו`.** ADR-0164 counts a check-in in `נותרו היום` until it is settled (§6 above), so a host that cannot be settled leaves that number stuck all evening. `SettleControl` takes a **fourth density**; nothing is drawn beside it (`frontend/CLAUDE.md`'s rule, which already collected three hand-rolled settle affordances once).
+- **A strip row must be tickable `היינו`.** ADR-0164 counts a check-in in `נותרו היום` until it is settled (§6 above), so a host that cannot be settled leaves that number stuck all evening. _Built 2026-08-07 with **no** new density, correcting this section as first written: it said "a fourth density", and `SettleControl` already had four (`prompt`/`sheet`/`compact`/`board`). `compact` — icon-only beside a label that needs the width — is exactly this shape, so the strip reuses it. A fifth density would have been the pile-up `frontend/CLAUDE.md` warns about, arrived at by not counting._
 - **An untimed `hard` event goes to the top too** — a booking with no clock at all, not only an edge with a floor. The discriminator is **commitment**, not "does it carry a number", so two hard things that both lack a position cannot render in different places.
 
 **And this retires the argument the previous draft used to pick between the two treatments.** They were never rivals; each was half. The `היינו` question that was going to decide it is now a requirement on the top host instead.
@@ -260,6 +260,18 @@ Check out of Reykjavik by 11:00, fly, land in Tel Aviv. Number the check-out fro
 > **A stop number is only ever the index of a moment the app actually knows.** `exact` moments are numbered. A floor, a ceiling and a row with no clock are not — the slot stays so the list keeps its alignment, the mark leaves.
 
 **This also catches a shipped defect nobody reported** (owner signed off on fixing it here rather than filing it separately): an untimed event's place is numbered today. `place-usage.ts` gives it `prominence: 'edge'` with `at: undefined`, so `hasScheduleSlot` passes, and `buildPinOrderIndex` sorts it after the timed stops and numbers it regardless. One rule covers it and the layover both.
+
+### 10d. Built — what shipped, and the three things the code taught
+
+_2026-08-07, in one pass over `@waypoint/shared`, `lib/` and two screens._
+
+- **`edgeMeaning(event, edge)`** lands beside `eventTransitionKeys` / `eventMidSpan` / `eventDurationUnit`, reading the same `timeProfileFor`. `isExactEdge` rides with it, because the day's ordering and the map's numbering must ask the _same_ predicate or a row can hold a position its pin refuses to number.
+- **`placeDayEntries`** does the split, and **the order of the two calls is the fix**: it runs before `dayBlocks`, so the check-in leaves the list and the two flight legs become adjacent for the first time. Its own test asserts that adjacency rather than the check-in's absence, because that is the part a future refactor could silently undo.
+- **A deadline pinned to a departure needed a tiebreak nobody predicted.** `mergeDayEntries` puts an event group _before_ a transition at a shared instant — right for every other transition and backwards for exactly this one, since "be out by then" means before. The intersected edge carries a rank so it sorts above the flight it was pinned to. Found by a test, not by reading.
+- **§5 turned out to have a second half.** Taking the floor out of the list fixes the check-in; a **ceiling** stays in it, and any transition used to null `prevEnd` and end the measurement. So a flexible edge is now _transparent_ — it neither bounds a gap nor hides one — and an exact transition still ends the run, unchanged.
+- **The count needed the settled check spelled out.** §6 assumed `bookingTransitionsOnDate` drops settled events; it drops only `SKIPPED`. A check-in you have actually done is precisely why that branch is settleable, so `DONE` is checked explicitly.
+- **One shipped spec was rewritten, not relaxed** (ADR-0164's own discipline): `Map.test.tsx`'s _"a check-in day is an ordinary NUMBERED row"_ asserted the number §10b removes. The distinction it protected — an edge day is not an ambient night — survives on firmer ground than a digit: the edge still passes `hasScheduleSlot`, so its tier is `upcoming`, and its row still carries the check-in word a middle night has none of.
+- **What is NOT verified:** the render on a real phone. Every decision here is covered by unit tests with no DOM layout, and the two new pieces of CSS (`.day-unplaced`, the strip's settle cluster) have been seen only in the mockup. That is ADR-0017's device pass, and §10c's open question is the one to answer on it.
 
 ### 10c. What is still open
 

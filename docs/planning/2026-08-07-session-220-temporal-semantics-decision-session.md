@@ -4,9 +4,9 @@
 **Branch:** `claude/temporal-semantics-connection-stops-cpxc56`
 **Workstream F** of the [session 216 triage](2026-08-07-session-216-field-reports-triage.md) — field reports **#10, #16, #17, #18**. A + B + C shipped the same day as ordinary bug fixes (PRs #516–#518); this one was routed as _"product + architecture session, ADR expected"_ and that is what it was.
 
-**Paper only.** No feature code, no test, no schema, no CSS. Output: [ADR-0171](../decisions/0171-a-time-can-be-a-floor-or-a-ceiling.md), an amendment block inside [ADR-0121](../decisions/0121-embedded-map-phase-6-design.md) §6, [`mockups/a-time-without-a-position-v1.html`](../../mockups/a-time-without-a-position-v1.html), this note, and a rewritten Workstream F backlog line.
+**Paper for four rounds, then built.** The decision shipped as [ADR-0171](../decisions/0171-a-time-can-be-a-floor-or-a-ceiling.md) (PR #519) with an amendment block inside [ADR-0121](../decisions/0121-embedded-map-phase-6-design.md) §6 and [`mockups/a-time-without-a-position-v1.html`](../../mockups/a-time-without-a-position-v1.html); the code followed in a second PR off the merged main (§8). No schema change anywhere — everything is derived.
 
-**Read §5–§7 first if you are here for the current state.** The session ran in four rounds, and the second **reopened §3/§4 of the ADR it had just written** — the owner produced a day the ordering rule does not survive. Rounds three and four then generalized the answer past hotels entirely and split two claims the session had been treating as one. §1, §2, §5, §6 and §7 of ADR-0171 stand; §4 is dead; §10a/§10b are new decisions; the pick between two treatments is the one thing left.
+**Read §5–§7 first if you are here for the current state.** The session ran in four rounds, and the second **reopened §3/§4 of the ADR it had just written** — the owner produced a day the ordering rule does not survive. Rounds three and four then generalized the answer past hotels entirely and split two claims the session had been treating as one. §4 is dead; §10a/§10b replaced it; everything else shipped. **What is left is one product question** — whether the two-numbers path is worth a stored field — **and one device pass.**
 
 ## What was decided, and by whom
 
@@ -113,9 +113,19 @@ Then the sharper half, which split two claims this session had been treating as 
 
 **Still open — one thing:** whether the two-numbers path is worth its column. It is the only route to "when" for a flexible edge and the only stored field left in the ADR. Plus one device question the mockup cannot settle — whether `ללא מיקום ביום` reads as a boundary or as an accusation, since "sometime today" is a legitimate thing to say.
 
+## 8. Built, same day, after the decision merged
+
+Everything decided above except the two-numbers path, which is still open. The build log with what the code taught is in ADR-0171 §10d rather than here — three things worth knowing before touching this again:
+
+- **The order of two calls is the fix**, not either call: the placement split runs before the join derivation, which is what lets the two flight legs be measured against each other at all.
+- **§5 had a second half nobody had noticed.** Taking the floor out of the list handles the check-in; a ceiling stays in it, and any transition used to end the measurement. A flexible edge is transparent now; an exact one still ends the run.
+- **Two claims written in the ADR were wrong and are corrected in place:** `SettleControl` already had four densities, so the strip reuses `compact` rather than minting a fifth; and `bookingTransitionsOnDate` drops only `SKIPPED`, not every settled event, so the count checks `DONE` explicitly.
+
+One shipped spec was rewritten rather than relaxed, in ADR-0164's own idiom: `Map.test.tsx` asserted the number a check-in day no longer earns.
+
 ## 9. Deliberately not done here
 
-- **No code.** Including the files this decision will land in (`day-entries.ts`'s instant sort, `gaps.ts` / `day-joins.ts`, `glance.ts`, `map-pins.ts`'s stop list) and the shared-package resolver.
+- **No two-numbers path.** The one treatment that needs a stored field is not built and not decided.
 - **No fix for #16 in isolation**, which is the whole reason the triage held it back.
 - **No per-event override** for the meaning. The seam is named in ADR-0171 §2 and left unbuilt.
-- **No pick between the five treatments.** The mockup exists so the owner makes it; writing an ADR §11 that chose one would be the third framing imposed in one session.
+- **No device pass.** Every decision is covered by unit tests with no DOM layout, and the two new pieces of CSS have been seen only in the mockup. Saying so is the point — the render is a human check (ADR-0017), and §10c names the question to answer on it.
