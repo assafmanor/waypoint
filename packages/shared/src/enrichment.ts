@@ -223,6 +223,7 @@ export const matchMethodSchema = z.enum([
   'settled_id',
   'name_proximity',
   'geosearch',
+  'wiki_search',
 ]);
 export type MatchMethod = z.infer<typeof matchMethodSchema>;
 
@@ -231,6 +232,11 @@ export const MATCH_METHOD = {
   SETTLED_ID: 'settled_id',
   NAME_PROXIMITY: 'name_proximity',
   GEOSEARCH: 'geosearch',
+  /** **Wikipedia's own full-text search** (§20) — the answer to the recall hole the other two
+   *  name-based routes share. Wikidata's search matches LABELS, so a Hebrew query cannot reach
+   *  an item labelled only in Latin; Wikipedia's searches article text and redirects, where a
+   *  transliteration (`סוונאפום` for Suvarnabhumi) actually appears. */
+  WIKI_SEARCH: 'wiki_search',
 } as const satisfies Record<string, MatchMethod>;
 
 /** The confidence an exact route carries, and the **ceiling** on the fuzzy one — so an
@@ -244,6 +250,11 @@ export const MATCH_METHOD_CONFIDENCE = {
   // agreed — so wherever both routes could answer, the named one wins, and this ceiling is
   // what guarantees it rather than a tie-break at the call site (§15).
   geosearch: 0.8,
+  // **The weakest route, and last.** A full-text hit means "this article mentions these words",
+  // which is real evidence and less than a label that agreed or a coordinate that matched. It
+  // still has to clear the threshold, and its candidates still face the same distance check —
+  // so this ceiling is what stops a text hit outranking either of the routes above it.
+  wiki_search: 0.7,
 } as const satisfies Record<MatchMethod, number>;
 
 /** Below this, `match()` returns null rather than a guess (ADR-0166 §5.5): **no

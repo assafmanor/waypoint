@@ -56,6 +56,19 @@ export const search = (
   }[],
 ) => ({ search: hits });
 
+/** A `generator=search` (full-text) response — the same page shape as the geosearch one, minus
+ *  the coordinates, since a text hit is found by its words and not by where it is (§20). */
+export const textSearch = (hits: { qid: string; title: string }[]) => ({
+  query: {
+    pages: Object.fromEntries(
+      hits.map((hit, i) => [
+        String(2000 + i),
+        { pageid: 2000 + i, title: hit.title, pageprops: { wikibase_item: hit.qid } },
+      ]),
+    ),
+  },
+});
+
 /** A `generator=geosearch` response: the pages near a point, each carrying its own coordinate
  *  and its `wikibase_item`. Keyed by pageid like the real API, and deliberately NOT in distance
  *  order — the provider sorts, and a fixture that arrived pre-sorted would hide it if it stopped.
@@ -457,5 +470,37 @@ export const LONDON_CITY = {
     lng: -0.1276,
     iata: 'LON',
     placeServed: [],
+  }),
+};
+
+/** **Suvarnabhumi (BKK)** — the airport that no route could reach (§20, owner report).
+ *
+ *  Real about it, and the whole point: the saved Hebrew name is a **transliteration**
+ *  (`סוונאפום`), so it shares no tokens and no script with the item's `Suvarnabhumi Airport`
+ *  label — a Hebrew label search cannot return it and a cross-script comparison cannot score
+ *  it. Its coordinate is ~2km from the terminal pin, past the old 500m geosearch radius.
+ *  The QID is a stand-in, as in the other airport fixtures. */
+export const SUVARNABHUMI = {
+  place: {
+    name: 'נמל התעופה בנגקוק סוונאפום',
+    lat: 13.6811,
+    lng: 100.7473,
+    googlePlaceId: 'ChIJ-bkk',
+  },
+  qid: 'Q-airport-bkk',
+  entity: entity({
+    qid: 'Q-airport-bkk',
+    // No Hebrew label at all — which is exactly why the name routes cannot find it.
+    labels: { en: 'Suvarnabhumi Airport' },
+    instanceOf: ['Q644371'],
+    // ~2km from the pin above: inside the airport, outside every radius the pipe had.
+    lat: 13.69,
+    lng: 100.7501,
+    iata: 'BKK',
+    placeServed: [{ qid: 'Q-city-bangkok' }],
+  }),
+  city: entity({
+    qid: 'Q-city-bangkok',
+    labels: { en: 'Bangkok', he: 'בנגקוק' },
   }),
 };

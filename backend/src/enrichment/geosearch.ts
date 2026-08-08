@@ -24,10 +24,19 @@ import { EnrichmentFetcher } from './outbound-fetch';
  *  Israeli subject `hewiki` genuinely has articles `enwiki` does not. */
 const WIKIS = ['en', 'he'] as const;
 
-/** How far out to look. Matched to where `geoProximityConfidence`'s distance credit reaches
- *  zero, so a candidate this returns can never be too far to score — anything further is not a
- *  near miss, it is a different place. */
-const GEOSEARCH_RADIUS_M = 500;
+/** How far out to look.
+ *
+ *  **Widened from 500m for one category** (§20, owner report: Bangkok never matched). GeoData
+ *  returns the N *nearest*, so a bigger radius never displaces a close candidate — in a dense
+ *  city the nearest 20 are all well inside 500m and nothing changes. What it adds is the case
+ *  that was structurally unreachable: an airport, whose own `P625` sits 1.1–1.4km from the
+ *  terminal pin Google gives us (measured, session 225) and can be further still at a
+ *  Suvarnabhumi.
+ *
+ *  **The scoring did NOT widen with it.** A candidate past 500m still earns nothing unless it
+ *  is airport-classed — see `geoProximityConfidence`. So this only makes the airport reachable;
+ *  it does not make anything else acceptable. */
+const GEOSEARCH_RADIUS_M = 3000;
 
 /** Candidates per wiki.
  *
@@ -80,6 +89,66 @@ export async function nearbyWikidataItems(
   }
   return [];
 }
+
+/**
+ * **The items whose article MENTIONS this name** (§20) — Wikipedia's own full-text search.
+ *
+ * The last of the three routes, and the answer to the recall hole the other two name routes
+ * share. `wbsearchentities` matches Wikidata **labels**, so a Hebrew query can only ever reach
+ * an item labelled in Hebrew — and a transliterated name (`סוונאפום` for Suvarnabhumi) is not
+ * even the same letters as the label, so no amount of scoring saves it. Wikipedia searches
+ * article **text and redirects**, where both the transliteration and the city it is in actually
+ * appear.
+ *
+ * Hebrew first here, which is the opposite of the geosearch order above and for a reason: there
+ * the language of the article was irrelevant because only its QID was wanted, while here the
+ * query is in the saved name's own language and matching it is the whole point.
+ *
+ * Same host, same response shape, same `wikibase_item` extraction as the coordinate route — so
+ * this is a fourth route and not a fourth mechanism.
+ */
+export async function wikipediaSearchItems(
+  fetcher: EnrichmentFetcher,
+  name: string,
+): Promise<NearbyItem[]> {
+  for (const lang of ['he', 'en'] as const) {
+    const found = await textSearch(fetcher, lang, name);
+    if (found.length > 0) return found;
+  }
+  return [];
+}
+
+async function textSearch(
+  fetcher: EnrichmentFetcher,
+  lang: string,
+  name: string,
+): Promise<NearbyItem[]> {
+  const url = new URL(`https://${lang}.wikipedia.org/w/api.php`);
+  url.searchParams.set('action', 'query');
+  url.searchParams.set('format', 'json');
+  // Same generator trick as the coordinate route: the QIDs arrive in the SAME call rather than
+  // as titles we would then have to look up. `gsr` is `generator=search`'s own prefix.
+  url.searchParams.set('generator', 'search');
+  url.searchParams.set('gsrsearch', name);
+  url.searchParams.set('gsrlimit', String(TEXT_SEARCH_LIMIT));
+  url.searchParams.set('prop', 'pageprops|coordinates');
+  url.searchParams.set('ppprop', 'wikibase_item');
+
+  const body = await fetcher.fetchJson<GeoSearchResponse>(url.toString());
+  return Object.values(body.query?.pages ?? {}).flatMap((page) => {
+    const qid = page.pageprops?.wikibase_item;
+    if (!qid) return [];
+    // **No distance here, and that is honest rather than missing**: this route found the item
+    // by its words, not by where it is. The caller re-derives the distance from the item's own
+    // `P625`, which is the coordinate the matcher reasons about everywhere else.
+    return [{ qid, title: page.title ?? qid, lang, distanceMeters: Number.NaN }];
+  });
+}
+
+/** Candidates per wiki for the text route. Small on purpose: a full-text search ranks by
+ *  relevance, so the answer is at the top if it is anywhere, and every extra id is weight in
+ *  the one `wbgetentities` call that follows. */
+const TEXT_SEARCH_LIMIT = 5;
 
 async function search(
   fetcher: EnrichmentFetcher,
