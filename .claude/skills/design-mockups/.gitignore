@@ -1,0 +1,4 @@
+# Renders are throwaway output of scripts/render.mjs — look at them, don't commit
+# them. The mockup itself is the record; a PNG of it goes stale on the next token
+# change and cannot be diffed.
+.renders/

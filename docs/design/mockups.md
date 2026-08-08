@@ -8,6 +8,8 @@ On conflict between an older mockup and `design-language.md` or an accepted ADR,
 
 ## Writing one
 
+**The procedure is a skill: `.claude/skills/design-mockups/`** ([ADR-0175](../decisions/0175-the-mockup-procedure-is-a-skill.md)) — a working template, the traps that only appear once a file is rendered, and a renderer that shoots every theme × width and reads the measurement table back. It carries the _how_; this section and the ADRs it cites stay the home of the _rules_, so a rule changes in one place only.
+
 **A mockup renders in BOTH themes and carries a toggle** (owner, 2026-08-02; [ADR-0158](../decisions/0158-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md) §16). Dark mode ships, so a surface drawn only in light is drawn half. The mechanism is three lines, because a mockup that inlines the app's stylesheets already contains the dark remap, inert: two buttons that set `data-theme` on `<html>` — the same attribute `lib/theme.ts` writes. The mockup's own `mk-*` chrome flips with them (its own variables plus a `:root[data-theme='dark']` block after the light one), or a dark frame is judged on a white page the app never has. Binds on **create or revise**; the older files below are dated records and are not retrofitted.
 
 Two conventions the newer files already follow: inline the app's real CSS with `mockups/tools/inline-app-css.mjs` (an `APP-CSS:` manifest plus a generated `<style data-app-css>` block) rather than hand-copying token values, and **read measurements off the live DOM** in the file rather than typing them into the prose.
