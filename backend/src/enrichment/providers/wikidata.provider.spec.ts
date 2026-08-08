@@ -14,7 +14,7 @@ import {
   SKYTREE,
   TSUKIJI,
 } from './fixtures';
-import { WikidataProvider } from './wikidata.provider';
+import { commonName, WikidataProvider } from './wikidata.provider';
 
 const provider = (responses: Record<string, unknown>) => {
   const fetcher = new FixtureFetcher(responses);
@@ -534,7 +534,8 @@ describe('WikidataProvider', () => {
       const values = await p.fetch(matchOf(BEN_GURION.qid, ['Q644371']), AIRPORT_FIELDS);
 
       expect(values[ENRICHMENT_FIELD.IATA]?.value).toBe('TLV');
-      // Hebrew where Wikidata has it: the label lands beside the code on a Hebrew RTL row.
+      // **The COMMON name, not the official one** (owner report, 2026-08-08): Wikidata's
+      // Hebrew label is `תל אביב-יפו` and nobody says that on a day row.
       expect(values[ENRICHMENT_FIELD.SERVED_CITY]).toEqual({ value: 'תל אביב', lang: 'he' });
     });
 
@@ -634,5 +635,38 @@ describe('WikidataProvider', () => {
     await p.match({ ...SENSOJI.place, wikidataQid: SENSOJI.qid });
     // An item like Tokyo has hundreds of sitelinks and we need two.
     expect(fetcher.requested[0]).toContain('sitefilter=hewiki%7Cenwiki');
+  });
+});
+
+/* ── THE CITY'S COMMON NAME (ADR-0166 §18's amendment) ─────────────────────────────────────
+   Wikidata's label is the OFFICIAL name (`תל אביב-יפו`, `Frankfurt am Main`); what a traveller
+   says is usually sitting beside it as an alias. The rule is the longest alias that is a proper
+   prefix of the label at a word boundary — narrow enough that only a trailing qualifier is
+   dropped. */
+describe('commonName', () => {
+  it('drops a trailing qualifier the label carries and the alias does not', () => {
+    expect(commonName('תל אביב-יפו', ['תל אביב', 'ת״א'])).toBe('תל אביב');
+    expect(commonName('Frankfurt am Main', ['Frankfurt', 'FFM'])).toBe('Frankfurt');
+  });
+
+  it('takes the LONGEST such alias, so a one-word prefix cannot win', () => {
+    // Shortest-first would answer `תל`, which is not a city.
+    expect(commonName('תל אביב-יפו', ['תל', 'תל אביב'])).toBe('תל אביב');
+  });
+
+  it('ignores an alias that is not a prefix — a different word is a different name', () => {
+    // An abbreviation, a former name and a translation are all legitimate aliases and none of
+    // them is "the same name, shorter".
+    expect(commonName('תל אביב-יפו', ['ת״א', 'Tel Aviv', 'יפו'])).toBe('תל אביב-יפו');
+    expect(commonName('København', ['Copenhagen'])).toBe('København');
+  });
+
+  it('refuses a prefix that lands mid-word', () => {
+    expect(commonName('Frankfurter', ['Frank'])).toBe('Frankfurter');
+  });
+
+  it('falls back to the label, which is every city with no alias at all', () => {
+    expect(commonName('וינה', [])).toBe('וינה');
+    expect(commonName('Keflavík', ['Keflavík'])).toBe('Keflavík');
   });
 });

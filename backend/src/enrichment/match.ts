@@ -66,6 +66,49 @@ const NO_PROXIMITY_FACTOR = 0.8;
  * distance calls those distant and a human does not.
  */
 export function nameSimilarity(a: string, b: string): number {
+  // **A PARENTHETICAL ALIAS IS NOT PART OF THE NAME** (owner report, 2026-08-08: Frankfurt
+  // Airport never matched). Google returns `נמל התעופה של פרנקפורט (Frankfurter Flughafen –
+  // FRA)`, which tokenizes to SEVEN tokens against Wikidata's four — measured overlap
+  // **0.756**, just under `MATCH_MIN_NAME_SIMILARITY`, so the entity was read and then
+  // refused. The three extra tokens are a second name for the same place, and a name written
+  // twice must not score lower than a name written once.
+  //
+  // Same shape as §15's cross-script bug — the search found the right item and the scoring
+  // threw it away — so the fix is the same one: score every form the name offers and keep the
+  // best, rather than trusting the single string we happen to hold.
+  //
+  // **It cannot manufacture a false match**, which is what makes it safe to do here rather
+  // than at one call site: dropping a parenthetical only ever makes OUR name shorter and more
+  // specific, and the distance veto in `nameProximityConfidence` still refuses a same-named
+  // place 9,000km away. Scored as a max rather than replacing the raw form, because the
+  // parenthetical sometimes IS the discriminating part (`Terminal 1 (Departures)`).
+  return Math.max(
+    tokenSimilarity(a, b),
+    ...withoutParenthetical(a, b).map(([left, right]) => tokenSimilarity(left, right)),
+  );
+}
+
+/** A trailing/embedded `(…)` or `[…]` segment — an alias Google appends, not a name. */
+const PARENTHETICAL = /[([][^)\]]*[)\]]/gu;
+
+const stripParenthetical = (name: string): string => name.replace(PARENTHETICAL, ' ').trim();
+
+/** The de-parenthesised pairs worth also scoring — none when neither side has one, so the
+ *  common case does no extra work. */
+function withoutParenthetical(a: string, b: string): [string, string][] {
+  const left = stripParenthetical(a);
+  const right = stripParenthetical(b);
+  if (left === a && right === b) return [];
+  // Both sides stripped, and each side stripped alone: the alias may be on either name, and
+  // `(Frankfurter Flughafen – FRA)` on ours must still meet a plain label on theirs.
+  return [
+    [left, right],
+    [left, b],
+    [a, right],
+  ].filter(([l, r]) => l.length > 0 && r.length > 0) as [string, string][];
+}
+
+function tokenSimilarity(a: string, b: string): number {
   const left = tokenize(a);
   const right = tokenize(b);
   if (left.size === 0 || right.size === 0) return 0;

@@ -69,6 +69,9 @@ const SITE_TO_LANG: Readonly<Record<string, string>> = { hewiki: 'he', enwiki: '
  *  follow-up entity read stays one call. */
 const SEARCH_LIMIT = 5;
 
+/** Which language the served city is read in, in order (§11.5's `he` → `en`). */
+const CITY_LANG_PREFERENCE = ['he', 'en'] as const;
+
 /** How long a memoized item read counts, and how many are held — see `airportEntity`. Both
  *  sized for "the two field resolutions inside one pass", not for traffic. */
 const ENTITY_MEMO_TTL_MS = 60_000;
@@ -91,6 +94,7 @@ interface WbSearchResponse {
 interface WbEntity {
   id?: string;
   labels?: Record<string, { language?: string; value?: string }>;
+  aliases?: Record<string, { language?: string; value?: string }[]>;
   sitelinks?: Record<string, { site?: string; title?: string }>;
   claims?: Record<
     string,
@@ -195,18 +199,19 @@ export class WikidataProvider implements EnrichmentProvider {
   /** The city `P931` names, as a value in the reader's language.
    *
    *  Hebrew first and English second — the same `he` → `en` preference the summary carries
-   *  (§11.5), and here it matters more than it does there: the label goes beside a three-letter
-   *  code on a day row, so `תל אביב · TLV` in a Hebrew RTL app and `Tel Aviv · TLV` only where
-   *  Wikidata has no Hebrew label. */
+   *  (§11.5), and here it matters more than it does there: the label lands on a day row in a
+   *  Hebrew RTL app, so `תל אביב` where Wikidata has a Hebrew label and `Tel Aviv` only where
+   *  it does not. */
   private async servedCity(airport: WbEntity): Promise<ProviderValue | undefined> {
     const qid = bestRankedItemClaim(airport, CLAIM_PLACE_SERVED);
     if (!qid) return undefined;
     const city = await this.airportEntity(qid);
-    const hebrew = city?.labels?.he?.value;
-    const english = city?.labels?.en?.value;
-    const value = hebrew ?? english;
-    if (!value) return undefined;
-    return { value, lang: hebrew ? 'he' : 'en' };
+    for (const lang of CITY_LANG_PREFERENCE) {
+      const label = city?.labels?.[lang]?.value;
+      if (!label) continue;
+      return { value: commonName(label, aliasesOf(city!, lang)), lang };
+    }
+    return undefined;
   }
 
   /**
@@ -430,12 +435,54 @@ export class WikidataProvider implements EnrichmentProvider {
     url.searchParams.set('action', 'wbgetentities');
     url.searchParams.set('format', 'json');
     url.searchParams.set('ids', qid);
-    url.searchParams.set('props', 'labels|claims|sitelinks');
+    // `aliases` is here for the served city's common name (§18's amendment) — Wikidata's LABEL
+    // is the official form (`תל אביב-יפו`, `Frankfurt am Main`) and the name people use is
+    // usually an alias. One extra field on a read this pass already makes.
+    url.searchParams.set('props', 'labels|aliases|claims|sitelinks');
     url.searchParams.set('sitefilter', SITE_FILTER);
     url.searchParams.set('languages', 'he|en');
     const body = await this.fetcher.fetchJson<WbEntitiesResponse>(url.toString());
     return body.entities?.[qid] ?? null;
   }
+}
+
+/** Every alias the item offers in one language. */
+function aliasesOf(entity: WbEntity, lang: string): string[] {
+  return (entity.aliases?.[lang] ?? [])
+    .map((alias) => alias?.value)
+    .filter((value): value is string => !!value);
+}
+
+/**
+ * **What people CALL the city, not what it is officially named** (owner report, 2026-08-08:
+ * the label read `תל אביב-יפו`).
+ *
+ * Wikidata's label is the official form — `תל אביב-יפו`, `Frankfurt am Main` — and the name a
+ * traveller uses is usually sitting right there as an alias. There is no "common name"
+ * property to read instead, so the rule is structural:
+ *
+ * > **the LONGEST alias that is a proper prefix of the label, ending at a word boundary.**
+ *
+ * That is narrow on purpose, and each half of it is load-bearing. **Prefix** keeps it to
+ * dropping a trailing qualifier (`-יפו`, ` am Main`) — an alias that is a different word
+ * entirely (an abbreviation, a former name, a translation) is not one. **Longest** is what
+ * stops a one-word alias winning: shortest would answer `תל` for `תל אביב-יפו` if anyone had
+ * ever added it. **Word boundary** stops a prefix landing mid-word.
+ *
+ * Fails to the label, which is the current behaviour, so a city with no alias is unchanged.
+ */
+export function commonName(label: string, aliases: readonly string[]): string {
+  let best: string | undefined;
+  for (const alias of aliases) {
+    const trimmed = alias.trim();
+    if (trimmed.length === 0 || trimmed.length >= label.length) continue;
+    if (!label.startsWith(trimmed)) continue;
+    // The character the label continues with has to be a separator, or the "prefix" is the
+    // first half of a longer word.
+    if (/[\p{L}\p{N}]/u.test(label[trimmed.length]!)) continue;
+    if (!best || trimmed.length > best.length) best = trimmed;
+  }
+  return best ?? label;
 }
 
 const labelOf = (entity: WbEntity): string | undefined =>
