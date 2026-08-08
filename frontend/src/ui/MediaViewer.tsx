@@ -34,6 +34,9 @@ import {
 import { createPortal } from 'react-dom';
 import { isInlineOpenableDocumentMimeType, type DocumentSummary } from '@waypoint/shared';
 import { fetchDocumentContent } from '../lib/api';
+import { PhaseTimeoutError, withDeadline } from '../lib/deadline';
+import { DOC_READ_PHASE, DOC_READ_TIMEOUT_MS } from '../constants';
+import { ErrorState } from './feedback';
 import { useOverlay } from '../state/nav-state';
 import { useDialogFocus } from '../lib/useDialogFocus';
 import { useExitTransition } from '../lib/useExitTransition';
@@ -373,6 +376,9 @@ export function MediaViewer({
   useDialogFocus(cardRef, { trap: true });
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  // Bumped by the retry, and in the read effect's deps — which is the whole of what a retry
+  // is here, since every phase of that read is now bounded and so always reaches an end.
+  const [attempt, setAttempt] = useState(0);
   // An image whose bytes the browser can't decode (HEIC, a corrupt scan) falls
   // back to the hand-off actions instead of a blank <img> (ADR-0052 §1).
   const [imageBroken, setImageBroken] = useState(false);
@@ -415,13 +421,21 @@ export function MediaViewer({
           const probe = new Image();
           probe.src = objectUrl;
           try {
-            await probe.decode();
+            await withDeadline(DOC_READ_PHASE.DECODE, DOC_READ_TIMEOUT_MS.DECODE, () =>
+              probe.decode(),
+            );
             // The decode is also where a DOCUMENT's dimensions first exist — a scan carries
             // none in the snapshot — so the frame is right before the `<img>` mounts rather
             // than settling after it paints.
             if (!cancelled) setLoadedSize(naturalSize(probe));
-          } catch {
-            if (!cancelled) setImageBroken(true);
+          } catch (err) {
+            // **A decode that fails and one that never answers mean opposite things.**
+            // Failure is bytes the browser cannot render (a HEIC, a corrupt scan), so the
+            // hand-off is the right destination. Silence only means the optimization was
+            // unavailable — a decode requested while the document is hidden is dropped and
+            // never settles, which is a phone locked mid-load, not a bad file — so the
+            // `<img>` gets the URL anyway and its own `onLoad`/`onError` has the last word.
+            if (!cancelled && !(err instanceof PhaseTimeoutError)) setImageBroken(true);
           }
         }
         if (!cancelled) setUrl(objectUrl);
@@ -434,7 +448,13 @@ export function MediaViewer({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [blobTripId, blobDocId, blobVersion, directUrl, mimeType]);
+  }, [blobTripId, blobDocId, blobVersion, directUrl, mimeType, attempt]);
+
+  const retry = useCallback(() => {
+    setFailed(false);
+    setImageBroken(false);
+    setAttempt((n) => n + 1);
+  }, []);
 
   // A newly loaded image starts at fit-to-frame, never carrying the prior zoom.
   useEffect(() => reset(), [url, reset]);
@@ -481,7 +501,10 @@ export function MediaViewer({
           style={showInlineImage ? aspectStyle(intrinsic ?? loadedSize) : undefined}
         >
           {failed ? (
-            <p className="doc-viewer-msg">{t.docs.viewer.error}</p>
+            /* The family's shell, never a `<p>` of our own (ADR-0078) — and the retry is
+               the point: the read is bounded now, so a failure is a thing the user can
+               answer, where the bare caption it replaces was a dead end. */
+            <ErrorState title={t.docs.viewer.error} onRetry={retry} />
           ) : !url ? (
             <div className="doc-viewer-loading">
               <Spinner className="ink" />
