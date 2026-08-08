@@ -11,6 +11,7 @@ import {
   type Booking,
   type CreateBookingInput,
   type CreateEventInput,
+  type DocumentAttachment,
   type EventCategory,
   type Note,
   type NoteHostKey,
@@ -55,6 +56,7 @@ import {
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
 import { soleIdeaFor, type PlaceLink } from '../lib/place-refs';
+import { attachmentsForHost } from '../lib/attachments';
 import { coerceClearedFields } from '../lib/cache';
 import { isoToTimeInput, zonedIso } from '../lib/time';
 import { planSwap } from '../lib/reorder';
@@ -90,8 +92,12 @@ type UndoDescriptor =
   | { kind: 'update'; id: string; previous: UpdateEventInput; isHard: boolean }
   /** `notes` is the host's notes as they were AT THE DELETE, and this descriptor is the only
    *  place they still exist: the FKs cascade in Postgres and ADR-0152 §2's applier rule drops
-   *  them from memory and from Dexie, so nothing can be read back at undo time. */
-  | { kind: 'delete'; event: TripEvent; notes: Note[] }
+   *  them from memory and from Dexie, so nothing can be read back at undo time.
+   *
+   *  `attachments` is the same fact for the document LINKS (ADR-0173 §7): captured here for
+   *  the same reason and put back the same way. The documents themselves were never at risk
+   *  — that is the whole point of the link row — so what the undo restores is the pointers. */
+  | { kind: 'delete'; event: TripEvent; notes: Note[]; attachments: DocumentAttachment[] }
   | { kind: 'reorder'; items: { id: string; previous: UpdateEventInput; isHard: boolean }[] }
   | { kind: 'addMaybe'; id: string }
   | { kind: 'removeMaybe'; item: MaybeItem; notes: Note[] }
@@ -168,6 +174,15 @@ export interface VerbDeps {
     rehost: (note: Note, host: NoteHostPatch) => Promise<void>;
     recreate: (note: Note) => Promise<void>;
   };
+  /** **The document links an undone delete owes back** (ADR-0173 §7). Same arrangement as
+   *  `notes` above and for the same reason: attachments live in trip-state, so re-creating
+   *  one goes through the verb that already owns that write. `list` is read at the delete
+   *  (afterwards there is nowhere left to read it from); `recreate` writes one back under
+   *  its original id, which keeps the re-attach idempotent on an outbox retry. */
+  attachments: {
+    list: DocumentAttachment[];
+    recreate: (attachment: DocumentAttachment) => Promise<void>;
+  };
 }
 
 /** Which FK a moved note lands on — one set, the rest explicitly `null` so the old host is
@@ -229,6 +244,22 @@ export const notesHostedBy = (notes: Note[], kind: NoteHostKey, id: string): Not
  */
 export async function restoreNotes(deps: VerbDeps, notes: Note[]): Promise<void> {
   for (const note of notes) await deps.notes.recreate(note);
+}
+
+/** **Put back the document links a host's delete destroyed** (ADR-0173 §7) — `restoreNotes`'
+ *  twin, for the reason its own header gives: a cascade writes no `Change` rows, so there is
+ *  no echo to ride, and an undo that re-created only the host would silently restore less
+ *  than it took. Re-created under their ORIGINAL ids, so an outbox retry is already-applied
+ *  rather than a second link, and called AFTER the host exists, since the outbox is FIFO and
+ *  a link whose host is not there yet is refused at the door.
+ *
+ *  Note what is NOT owed: the documents. Even a delete-both takes only the links — which is
+ *  why the delete confirms say nothing about documents (§3). */
+export async function restoreAttachments(
+  deps: VerbDeps,
+  attachments: DocumentAttachment[],
+): Promise<void> {
+  for (const attachment of attachments) await deps.attachments.recreate(attachment);
 }
 
 // A real HTTP error still rejects normally — only network failure/offline queues.
@@ -614,8 +645,10 @@ export async function applyDeleteEvent(deps: VerbDeps, event: TripEvent): Promis
   const isHard = event.kind === EVENT_KIND.HARD;
   // Read BEFORE the write: after it there is nowhere left to read them from (`restoreNotes`).
   const notes = notesHostedBy(deps.notes.list, 'eventId', event.id);
+  // The links, read for the same reason and at the same moment (ADR-0173 §7).
+  const attachments = attachmentsForHost(deps.attachments.list, ENTITY_TYPE.EVENT, event.id);
   deps.dispatch({ type: TRIP_ACTION.DELETE_EVENT, id: event.id });
-  deps.lastAction.current = { kind: 'delete', event, notes };
+  deps.lastAction.current = { kind: 'delete', event, notes, attachments };
   try {
     await restOrQueue(
       deps.tripId,
@@ -999,9 +1032,10 @@ async function reverseRest(deps: VerbDeps, desc: UndoDescriptor): Promise<void> 
       await restOrQueue(tripId, { verb: OUTBOX_VERB.CREATE, input }, () =>
         createEvent(tripId, input),
       );
-      // The event comes back with the same id, so its notes can point at it again — but only
-      // if they are written after it exists (`restoreNotes`).
+      // The event comes back with the same id, so its notes and its document links can point
+      // at it again — but only if they are written after it exists.
       await restoreNotes(deps, desc.notes);
+      await restoreAttachments(deps, desc.attachments);
       return;
     }
     case 'reorder':
@@ -1183,6 +1217,8 @@ export function useVerbs() {
     indexVerbs,
     notes,
     noteVerbs,
+    documentAttachments,
+    attachmentVerbs,
   } = useTrip();
   const { me } = useAuth();
   const toast = useToast();
@@ -1222,6 +1258,22 @@ export function useVerbs() {
             url: note.url,
             category: note.category,
             ...Object.fromEntries(NOTE_HOST_KEYS.map((key) => [key, note[key]])),
+          })
+          .then(() => {}),
+    },
+    // Read live rather than captured, for `notes`' reason: a document attached while a sheet
+    // is open still travels with the undo.
+    attachments: {
+      list: documentAttachments,
+      // Its own id and its own host — the FK it already carries, since the host an undo
+      // re-creates keeps the id it had.
+      recreate: (attachment) =>
+        attachmentVerbs
+          .attachDocument({
+            id: attachment.id,
+            documentId: attachment.documentId,
+            eventId: attachment.eventId,
+            bookingId: attachment.bookingId,
           })
           .then(() => {}),
     },

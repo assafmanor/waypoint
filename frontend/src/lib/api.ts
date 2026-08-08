@@ -7,6 +7,7 @@ import {
   inviteUrlSchema,
   invitePreviewSchema,
   destinationResultSchema,
+  documentAttachmentSchema,
   maybeItemSchema,
   noteSchema,
   meSchema,
@@ -23,6 +24,7 @@ import {
   type Booking,
   type Change,
   type CreateBookingInput,
+  type CreateDocumentAttachmentInput,
   type CreateDocumentInput,
   type CreateEventInput,
   type CreateMaybeItemInput,
@@ -33,6 +35,7 @@ import {
   type CreateTripInput,
   type DeliveredEnrichmentFields,
   type DestinationResult,
+  type DocumentAttachment,
   type DocumentType,
   type EnrichmentLookupInput,
   type EventStatus,
@@ -358,6 +361,9 @@ const restoreMaybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemUrl(tripId, maybeItemId)}/restore`;
 const notesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/notes`;
 const noteUrl = (tripId: string, noteId: string) => `${notesUrl(tripId)}/${noteId}`;
+const attachmentsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/document-attachments`;
+const attachmentUrl = (tripId: string, attachmentId: string) =>
+  `${attachmentsUrl(tripId)}/${attachmentId}`;
 const bookingsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/bookings`;
 const bookingUrl = (tripId: string, bookingId: string) => `${bookingsUrl(tripId)}/${bookingId}`;
 const placesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/places`;
@@ -559,6 +565,31 @@ export async function updateNote(
 
 export async function deleteNote(tripId: string, noteId: string): Promise<void> {
   const res = await apiFetch(noteUrl(tripId, noteId), { method: HTTP_METHOD.DELETE });
+  if (!res.ok) return throwApiError(res);
+}
+
+/** Attach a document the trip already holds to a booking or an event (ADR-0173 §1). */
+export async function createDocumentAttachment(
+  tripId: string,
+  input: CreateDocumentAttachmentInput,
+): Promise<DocumentAttachment> {
+  const res = await apiFetch(attachmentsUrl(tripId), {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return documentAttachmentSchema.parse(await readJson(res));
+}
+
+/** Detach — the LINK goes, the file never does (ADR-0173 §1). */
+export async function deleteDocumentAttachment(
+  tripId: string,
+  attachmentId: string,
+): Promise<void> {
+  const res = await apiFetch(attachmentUrl(tripId, attachmentId), {
+    method: HTTP_METHOD.DELETE,
+  });
   if (!res.ok) return throwApiError(res);
 }
 

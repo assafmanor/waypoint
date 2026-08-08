@@ -73,6 +73,10 @@ const noteVerbs = {
   updateNote: vi.fn(async (_id: string, _input: unknown) => {}),
   deleteNote: vi.fn(async (_id: string) => {}),
 };
+const attachmentVerbs = {
+  attachDocument: vi.fn(async (_input: { documentId: string; bookingId?: string }) => undefined),
+  detachDocument: vi.fn(async (_id: string) => {}),
+};
 // The whole trip's bookings — what the derived round-trip pair reads (ADR-0154 §5).
 let tripBookings: Booking[] = [];
 // The whole trip's notes — what `HostNotes` reads to list a booking's existing ones on
@@ -102,8 +106,19 @@ vi.mock('../state/trip-state', () => ({
     notes: tripNotes,
     users: [],
     noteVerbs,
+    // Documents attached on the way (ADR-0173 §5), same arrangement as the notes above.
+    documents: [],
+    documentAttachments: [],
+    attachmentVerbs,
   }),
 }));
+
+// The attach slot reads the outbox for queued uploads (ADR-0173 §5 / ADR-0056); there is no
+// IndexedDB here, and a queued upload is not what these tests are about.
+vi.mock('../lib/outbox', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/outbox')>();
+  return { ...actual, usePendingUploads: () => [] };
+});
 
 import { BookingSheet } from './BookingSheet';
 import { bookingSheetDraft, type BookingSheetDraft } from '../lib/booking-draft';

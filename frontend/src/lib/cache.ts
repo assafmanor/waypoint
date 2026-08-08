@@ -8,6 +8,7 @@ import {
   NOTE_SOURCE,
   type Change,
   type DeliveredEnrichmentFields,
+  type DocumentAttachment,
   type EntityType,
   type MaybeItem,
   type Membership,
@@ -27,6 +28,7 @@ import { clearAllCachedDocuments } from './doc-cache';
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
 import { getNow } from './useClock';
 import { dropNotesForHostChange } from './notes';
+import { dropAttachmentsForHostChange } from './attachments';
 import { clearPlaceRefsForChange, deletedPlaceId } from './place-refs';
 
 /** The slice of TripSnapshot with no dedicated Dexie table of its own. */
@@ -38,6 +40,10 @@ export interface SnapshotMeta {
   maybeItems: MaybeItem[];
   places: Place[];
   notes: Note[];
+  /** The document↔host links (ADR-0173). Rides `snapshotMeta` for the same reason notes do:
+   *  a trip's worth is a few dozen tiny rows, and a Dexie table of its own would cost a
+   *  schema version bump plus edits to `wipeLocalData` and three transaction lists. */
+  documentAttachments: DocumentAttachment[];
   /** Enrichment for the trip's places, keyed by `placeId` (ADR-0166 §6). Rides `snapshotMeta`
    *  for the same reason notes do: a trip's worth is a few dozen small entries, and a
    *  dedicated Dexie table would cost a schema version bump plus edits to `wipeLocalData` and
@@ -67,6 +73,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       maybeItems: snapshot.maybeItems,
       places: snapshot.places,
       notes: snapshot.notes,
+      documentAttachments: snapshot.documentAttachments,
       enrichments: snapshot.enrichments,
       latestSeq: snapshot.latestSeq,
     });
@@ -136,6 +143,8 @@ async function reconstructSnapshot(tripId: string): Promise<TripSnapshot | null>
     // A trip cached before notes shipped has no list; treat it as empty rather than
     // letting `undefined` reach a `.map()` on the first render after the upgrade.
     notes: meta.notes ?? [],
+    // Same fallback, same reason: a trip cached before attachments shipped has no list.
+    documentAttachments: meta.documentAttachments ?? [],
     // Same fallback, same reason: a trip cached before enrichment shipped has no map.
     enrichments: meta.enrichments ?? {},
     latestSeq: meta.latestSeq,
@@ -166,7 +175,7 @@ function applyToRow<T extends { id: string }>(
 type CacheRow = { id: string; tripId?: string };
 type CacheChannel =
   | { table: Table<CacheRow, string> }
-  | { metaList: 'maybeItems' | 'places' | 'members' | 'notes' }
+  | { metaList: 'maybeItems' | 'places' | 'members' | 'notes' | 'documentAttachments' }
   | { metaTrip: true };
 
 const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
@@ -180,6 +189,8 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
   // a trip's notes are a few hundred small rows, and a dedicated Dexie table would cost a
   // schema version bump plus edits to `wipeLocalData` and three transaction lists.
   [ENTITY_TYPE.NOTE]: { metaList: 'notes' },
+  // Attachments ride `snapshotMeta` for the same reason notes do (ADR-0173's reuse audit).
+  [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: { metaList: 'documentAttachments' },
   [ENTITY_TYPE.PLACE]: { metaList: 'places' },
   // Trip settings are data-plane (ADR-0039), so the roster + trip row stay
   // coherent too — else an offline reader shows a stale name/member on cold load.
@@ -190,7 +201,7 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
 /** Upsert/delete a change into one of `snapshotMeta`'s embedded lists. */
 async function applyChangeToMetaList(
   tripId: string,
-  listKey: 'maybeItems' | 'places' | 'members' | 'notes',
+  listKey: 'maybeItems' | 'places' | 'members' | 'notes' | 'documentAttachments',
   change: EntityChange,
 ): Promise<void> {
   const meta = await db.snapshotMeta.get(tripId);
@@ -216,6 +227,18 @@ async function dropCachedNotesForHost(tripId: string, change: EntityChange): Pro
   if (!meta?.notes?.length) return;
   const next = dropNotesForHostChange(meta.notes, change);
   if (next !== meta.notes) await db.snapshotMeta.put({ ...meta, notes: next });
+}
+
+/** The attachment cascade's cache half (`lib/attachments.ts`'s `dropAttachmentsForHostChange`,
+ *  ADR-0173 §7) — the same shape as the note cascade above, and the same "only write when
+ *  something actually went" discipline, since the shared derivation returns the identical
+ *  array otherwise. */
+async function dropCachedAttachmentsForHost(tripId: string, change: EntityChange): Promise<void> {
+  const meta = await db.snapshotMeta.get(tripId);
+  if (!meta?.documentAttachments?.length) return;
+  const next = dropAttachmentsForHostChange(meta.documentAttachments, change);
+  if (next !== meta.documentAttachments)
+    await db.snapshotMeta.put({ ...meta, documentAttachments: next });
 }
 
 /** The place cascade's cache half (`lib/place-refs.ts`'s `clearPlaceRefsForChange`,
@@ -248,6 +271,10 @@ export async function applyChangeToCache(tripId: string, change: EntityChange): 
   // in the cache with nothing to remove them: the database cascade writes no `Change` rows
   // of its own. A no-op for every change that is not a host delete.
   await dropCachedNotesForHost(tripId, change);
+  // The third member of the same family (ADR-0173 §7), here for exactly the reason above: a
+  // deleted booking's or document's links belong to neither of their channels, and the
+  // database cascade that removes them writes no `Change` of its own.
+  await dropCachedAttachmentsForHost(tripId, change);
   // Its twin for the place FKs (ADR-0157 §3), here for the same reason and in the same
   // position: a deleted place's change is routed to the place channel, and the events,
   // bookings and ideas it leaves pointing at nothing belong to none of them.
@@ -581,6 +608,25 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
             after: { role: op.role },
           });
     }
+    case OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT: {
+      if (!op.input.id) return [];
+      // `createdAt` is the server's, so the queued row states it — otherwise a link read
+      // back from the cache before its flush would fail `documentAttachmentSchema` on the
+      // next cold load, and `attachmentsForHost`'s order would have nothing to sort on.
+      // Same clock as the in-memory optimistic row, so the two agree.
+      return one({
+        entityType: ENTITY_TYPE.DOCUMENT_ATTACHMENT,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: { ...op.input, createdAt: new Date(getNow()).toISOString() },
+      });
+    }
+    case OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT:
+      return one({
+        entityType: ENTITY_TYPE.DOCUMENT_ATTACHMENT,
+        entityId: op.attachmentId,
+        action: CHANGE_ACTION.DELETE,
+      });
     case OUTBOX_VERB.UPLOAD_DOCUMENT:
       return [];
   }

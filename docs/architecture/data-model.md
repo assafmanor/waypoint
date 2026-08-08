@@ -11,7 +11,7 @@ User ──< Membership >── Trip ──< Event ──? Booking   (Event.book
                           │        │
                           │        └──< CalendarEventLink (per member, one-way sync)
                           ├──< Booking
-                          ├──< Document
+                          ├──< Document ──< DocumentAttachment >── Booking | Event  (ADR-0173)
                           ├──< MaybeItem
                           ├──< Place           (location registry; Event/Booking/MaybeItem placeId → Place)
                           └──< Change          (the sync/undo/feed substrate)
@@ -155,6 +155,19 @@ Facts about the real-world entity a `Place` refers to: a summary, an image, open
 - **A cascade writes no `Change` rows.** Deleting a host removes its notes in the database and tells no client, so the sync half is a rule in the ADR-0094 appliers keyed off `NOTE_HOST_FIELD` (`lib/notes.ts`'s `dropNotesForHostChange`, registered in both the memory channels and `CACHE_CHANNELS`). The cascade is the storage guarantee; the applier rule is the sync one.
 - **Migrated in:** `Booking.details.notes` became `Note` rows hosted by their booking (`20260801200000_booking_notes_to_rows_adr0152`), one-time and one-way — a read-both fallback is the drift problem this entity exists to end. `details.wifi` and `details.room` are untouched: WiFi is a field with one reader (`lib/home-quick.ts`), not a note.
 - Group-visible only in v1 — no `ownerUserId` (deferred, ADR-0152 §9: the visibility filter would reach every read path and the offline cache).
+
+### DocumentAttachment (ADR-0173)
+
+**The link between a `Document` and the `Booking` or `Event` it belongs to** — a row of its own, not a host FK on `Document`, and it is what reverses ADR-0047 §4's "Documents stay independent of Bookings/Events — no linkage field added".
+
+- `id`, `tripId`, `documentId`, `createdBy`, `createdAt`. No `updatedAt`/`updatedBy`: a link has no content, so it is created and it is removed, never edited.
+- Two nullable host FKs, **exactly one set**: `eventId?`, `bookingId?` — stricter than `Note`'s at-most-one, because a note with no host is a general note and a link with no host is a link to nowhere. Enforced by `createDocumentAttachmentSchema` at both edges (ADR-0023).
+- **There is no `placeId` host** (ADR-0173 §4, owner's rule). A place _displays_ its single context's attachments and may never _originate_ one, so its inheritance is entirely a read-time resolution — no row that could be mis-hosted, and nothing to reason about when a place is removed (ADR-0157).
+- **Three cascades, and the middle one is the point.** `documentId` → `Cascade` (the file is gone, so its pointers are meaningless); `eventId`/`bookingId` → `Cascade` **on the link row**, which takes the _link_ and cannot reach the document — a separate row, still owned by the trip. A cancelled hotel must not delete your voucher, and with a link row that correct behaviour is the DEFAULT rather than a `SetNull` special case someone later "fixes". A host FK on `Document` would have inverted exactly that.
+- **Many-to-many, which is a requirement rather than generality:** ADR-0154 fixes a round trip as **two** `Booking`s, and one confirmation PDF covers both. `@@unique([documentId, eventId])` + `@@unique([documentId, bookingId])` keep one document from attaching to one host twice — two constraints and not one over three columns, because Postgres treats NULLs as distinct, so each binds only the rows where its host is actually set.
+- **A cascade writes no `Change` rows**, exactly as for `Note` above: the sync half is `lib/attachments.ts`'s `dropAttachmentsForHostChange`, keyed off `ATTACHMENT_HOST_FIELD` and registered in both the memory channels and `CACHE_CHANNELS` (ADR-0094).
+- **An attachment never widens visibility** (ADR-0173 §6). A `Document` may be owned; this row is a pointer, not a permission, and a reader resolves it through the document list they already have — so an attachment whose document they cannot see renders as nothing.
+- Which hosts share one attachment list is **derived, never stored** — `lib/host-context.ts`, the same module Notes read (ADR-0172 §1–§3). Notes and attachments share the derivation and the grammar; they do not share the storage.
 
 ### Change (the sync/undo/feed substrate — ADR-0019)
 

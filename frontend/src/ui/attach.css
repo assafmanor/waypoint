@@ -1,0 +1,170 @@
+/* צירוף מסמכים (ADR-0173 §5), from `mockups/notes-and-documents-in-context-v1.html` §1.
+   Deliberately built on `.note-sec`'s grammar — same header shape, same chip idiom, same
+   one-control footer — so a form carrying both content types does not read as two designs.
+
+   Neutral by rule, exactly like the notes composer: an attachment is not time (amber), not
+   place (teal) and not plan mode (violet), so it spends the same `--ink` wash. */
+
+.doc-sec {
+  margin-top: var(--space-4);
+}
+
+/* THE EMPTY STATE, AND IT IS THE WHOLE POINT (§5's amendment). One 40px control, measured
+   against the 86px a header + empty line + two entrances cost. The header, the chip list and
+   the split appear only once something is attached; saves 46px on every form that attaches
+   nothing, which is most of them. */
+.doc-add-one {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cta);
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-8);
+  cursor: pointer;
+}
+.doc-add-one .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.doc-sec-h {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.doc-sec-h .t {
+  font-family: var(--font-head);
+  font-size: 12.5px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.doc-sec-h .t .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.doc-chips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ONE LINE per attachment, the same compact shape `.note-chip` uses — so three of them cost
+   linearly and small (~34px each) rather than a box apiece. */
+.doc-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 34px;
+  padding: 3px 4px 3px var(--space-2);
+  border-radius: var(--radius-8);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.doc-chip-t {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-chip-x {
+  flex: 0 0 auto;
+  display: inline-flex;
+  background: none;
+  border: 0;
+  padding: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.doc-chip-x .icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* TWO entrances, one row — present only once the slot holds something. */
+.doc-add {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.doc-add button {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--cta);
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-8);
+  cursor: pointer;
+}
+.doc-add button .icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── The picker sheet ───────────────────────────────────────────────────────── */
+.doc-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+.doc-pick-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: start;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-8);
+  cursor: pointer;
+}
+.doc-pick-row:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+.doc-pick-row .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--ok);
+  flex: 0 0 auto;
+}
+.doc-pick-g {
+  flex: 0 0 auto;
+  font-size: 16px;
+}
+.doc-pick-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-pick-empty {
+  margin: 0 0 var(--space-3);
+  font-size: 12.5px;
+  color: var(--muted);
+}

@@ -1,6 +1,7 @@
 import type {
   Booking,
   Document,
+  DocumentAttachment,
   Event,
   Membership,
   MaybeItem,
@@ -11,6 +12,7 @@ import type {
 } from '@prisma/client';
 import type {
   Booking as SharedBooking,
+  DocumentAttachment as SharedDocumentAttachment,
   DocumentSummary,
   InvitePreview,
   Membership as SharedMembership,
@@ -161,6 +163,18 @@ export const toNoteDto = (n: Note): SharedNote => ({
   createdAt: n.createdAt.toISOString(),
   updatedAt: n.updatedAt.toISOString(),
   updatedBy: n.updatedBy,
+});
+
+/** A link row → its wire DTO (ADR-0173 §1). No `updatedAt`/`updatedBy`: a link has no
+ *  content, so there is nothing to have edited. */
+export const toDocumentAttachmentDto = (a: DocumentAttachment): SharedDocumentAttachment => ({
+  id: a.id,
+  tripId: a.tripId,
+  documentId: a.documentId,
+  eventId: a.eventId ?? undefined,
+  bookingId: a.bookingId ?? undefined,
+  createdBy: a.createdBy,
+  createdAt: a.createdAt.toISOString(),
 });
 
 export const toInvitePreviewDto = (t: Trip, memberCount: number): InvitePreview => ({

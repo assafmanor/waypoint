@@ -38,7 +38,20 @@ function validateFile(f: File): string | null {
   return null;
 }
 
-export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClose: () => void }) {
+export function DocumentUploadSheet({
+  tripId,
+  onClose,
+  onUploaded,
+}: {
+  tripId: string;
+  onClose: () => void;
+  /** **The id this sheet just minted**, for a caller that has to do something with the
+   *  document it does not yet have (ADR-0173 §5's upload entrance). The upload is
+   *  outbox-first, so the new row is not in `documents` until the flush lands — but the id
+   *  is client-generated and therefore known now, which is the whole reason attach-on-upload
+   *  works offline. Absent everywhere else, so the Index's uploader is unchanged. */
+  onUploaded?: (documentId: string) => void;
+}) {
   const toast = useToast();
   const nameId = useId();
   const noteId = useId();
@@ -89,6 +102,7 @@ export function DocumentUploadSheet({ tripId, onClose }: { tripId: string; onClo
         await noteVerbs.createNote({ body, documentId: id }, { queue: true });
       }
     });
+    onUploaded?.(id);
     toast(CONTROL_ICON.done, t.docs.upload.saved);
     onClose();
   };

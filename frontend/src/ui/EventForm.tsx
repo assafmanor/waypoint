@@ -56,6 +56,7 @@ import { WhenField } from './primitives/WhenField';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
+import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes } from './HostNotes';
 import { RouteField } from './domain';
 
@@ -126,7 +127,8 @@ export function EventForm({
   draft?: EventFormDraft | null;
   onClose: () => void;
 }) {
-  const { trip, activeDate, events, places, bookings, zoneEvidence, noteVerbs } = useTrip();
+  const { trip, activeDate, events, places, bookings, zoneEvidence, noteVerbs, attachmentVerbs } =
+    useTrip();
   const { me } = useAuth();
   const verbs = useVerbs();
   const startErrand = useStartPlaceErrand();
@@ -223,6 +225,7 @@ export function EventForm({
   const errors = useFormErrors<'title' | 'date' | 'time'>();
   const noteId = useId();
   const composer = useNoteComposer();
+  const attach = useDocumentAttach();
 
   // ── `יש הזמנה` (ADR-0136) ──────────────────────────────────────────────────
   // On a NEW event the row defaults from the category (`CATEGORY_DEFAULT_BOOKED` — lodging
@@ -406,12 +409,17 @@ export function EventForm({
     hostOf: (created: NonNullable<T>) => { eventId?: string; bookingId?: string },
   ): Promise<void> => {
     const bodies = composer.pending();
-    if (bodies.length === 0) return;
+    const links = attach.pending();
+    if (bodies.length === 0 && links.length === 0) return;
     await withChangeGroup(async () => {
       const created = await host;
       if (created == null) return; // the write rolled back and has already said so
       const where = hostOf(created);
       for (const body of bodies) await noteVerbs.createNote({ body, ...where });
+      // **The document links, on the same host and in the same group** (ADR-0173 §5). They
+      // ride here rather than beside them because the ordering rule above is theirs too, and
+      // because a form's two content types must land on the same row of a context.
+      await writeStagedAttachments(attach, attachmentVerbs.attachDocument, where);
     });
   };
 
@@ -843,6 +851,16 @@ export function EventForm({
           >
             <NoteComposer state={composer} id={noteId} />
           </Field>
+
+          {/* **A document is attached on the way too** (ADR-0173 §5) — one 40px control until
+              something is attached, and the header + two entrances only after. The host is
+              this EVENT when it exists; on a create there is no id yet, so the picks are
+              staged and ride the save above. A BOOKED save's links go on the booking, which
+              `writeNotesBehind`'s `where` already answers for the notes. */}
+          <DocumentAttachField
+            state={attach}
+            host={event ? { kind: 'event', id: event.id } : undefined}
+          />
 
           {/* Only what has no field to point at still reads down here. */}
           <FormError>{errors.formError}</FormError>

@@ -1,6 +1,6 @@
 # 0173 — A document **attaches**, it **detaches**, and it never dies with its host
 
-**Status:** Accepted (owner sign-off 2026-08-08)
+**Status:** Accepted and **built** (owner sign-off 2026-08-08; shipped session 230, same day)
 **Date:** 2026-08-08
 **Session note:** [`planning/2026-08-08-session-225-notes-and-documents-share-a-context.md`](../planning/2026-08-08-session-225-notes-and-documents-share-a-context.md)
 
@@ -79,6 +79,11 @@ So the empty state is **one control** (`📎 צירוף מסמך`, 40px). The he
 
 This is the same measurement ADR-0152 §6b made for notes and the same conclusion — it rejected a held-open `textarea` per note at ~62px each, for a slot whose common case is nought or one. Two content types on one form, one rule: **the composer is small until there is something to compose with.**
 
+**Amended on contact with the code (session 230, the build) — two things this section got slightly wrong, both small and both worth stating rather than leaving for a reader to rediscover.**
+
+- **The uploader is reused with ONE added prop, not literally "unchanged".** `DocumentUploadSheet` now takes an optional `onUploaded?: (documentId: string) => void`. The reason is the ADR's own §5: the upload is outbox-first, so the new document is not in `documents` until the flush lands, and the sheet was the only thing that knew the id it minted. A callback is the smallest possible extension and the Index's uploader passes nothing, so its behaviour is untouched — but "unchanged" was the wrong word, and the alternative it was guarding against (a forked "attach and upload" variant) is still correctly rejected.
+- **Variant D's single control opens the PICKER, and the picker carries the upload entrance too.** Drawn as one control, the empty state has to reach both entrances or it is a dead end on a trip that has no documents yet — which is exactly the trip where someone attaches their first one. So the picker sheet's primary action is `העלאה`. The split into two side-by-side entrances still appears only once something is attached, which is what the 40px measurement was actually buying.
+
 ### 6. An attachment never widens visibility
 
 A `Document` may be owned (`ownerUserId`, "absent = group doc"). Attaching it must not turn a private document into a group one. The host surface resolves its attachments **through the document list the reader already has**, so an attachment whose document the reader cannot see resolves to nothing and renders nothing — an absence, not a stub or a placeholder, which is the same truthful degradation `noteHost` chose for an unresolvable host (ADR-0152's `lib/notes.ts`). The picker likewise offers only documents the reader can see. Nothing about ADR-0015/0034's trust model changes; this ADR adds a pointer, not a permission.
@@ -90,6 +95,8 @@ Third instance of a rule this repo has now written twice: a database cascade rem
 ADR-0157 §3 already generalized this: **when a schema says `Cascade` or `SetNull`, the client owes a local derivation off the parent's change.** This is that rule's third consumer, and it needed no new thinking — which is the evidence the rule was worth writing down.
 
 The undo half transfers too: an event delete captures its link rows at the delete (there is nowhere to read them from afterwards) and re-creates them under their original ids on the undo, exactly as ADR-0152 §2's amendment does for notes. A **booking** delete still has no undo, so nothing is owed there.
+
+**Amended in the build (session 230): the derivation owes the DOCUMENT half too, and this section only asked for the host half.** §1 declares three cascades and this section reasons about two of them. `document → Cascade` is exactly as silent as the host ones, so `dropAttachmentsForHostChange` handles a deleted document as well — matching on `documentId` rather than through `ATTACHMENT_HOST_FIELD`, which cannot name it because a document is not a host. §6's resolution would already render those links as nothing, so the visible bug was small; what it would have left is a **count that lies**, which is the same class of defect the notes cascade exists to prevent.
 
 ### 8. Nothing to migrate
 
@@ -107,7 +114,13 @@ No attachment from the Documents side ("attach this to…" on a document's manag
 - **The silent-cascade family** — `dropNotesForHostChange` / `clearPlaceRefsForChange` (§7), extended by a third member rather than a per-entity branch.
 - **The sync substrate** — one `ENTITY_TYPE` constant, one field in `tripSnapshotSchema`, one memory channel, one `CACHE_CHANNELS` entry, outbox verbs through the existing `outboxOpToCacheChanges` path. ADR-0058 is the template; nothing new is invented.
 - **The rows and sections** — `ListRow`/`RowManageSheet` and the existing document row presentation, not a bespoke attachment row.
-- **Net-new**: the `DocumentAttachment` model, its schema, its service/controller module, and the host-form attach slot.
+- **Net-new**: the `DocumentAttachment` model, its schema, its service/controller module, `lib/attachments.ts`, and the host-form attach slot.
+
+**Three more, found while building (session 230) — all of them one-offs generalized rather than copied, which is what rule 8 actually asks for:**
+
+- **The scope guard.** `assertNoteHostInTrip` checked "whichever of these five references are set, are they in this trip", which is precisely what an attachment needs for its host **and** its `documentId`. It is now `assertEntityRefsInTrip` (`common/trip-scope.util.ts`), one guard with two consumers rather than a near-copy in a second service — and it gained the direct spec `backend/CLAUDE.md` asks a shared guard util to carry.
+- **The pending-upload merge.** `DocumentsSection` composed "the documents this device can see, queued ones included" inline when it was the only reader. The picker is the second, and it is the case that needs it most — a document you just uploaded from a booking's own form is the one you want to attach — so it moved to `lib/documents.ts`'s `withPendingUploads`.
+- **The two unique constraints**, which are a schema detail worth writing down because they look redundant: `@@unique([documentId, eventId])` and `@@unique([documentId, bookingId])` rather than one over three columns. Postgres treats NULLs as distinct, so each binds only the rows where its host is actually set and between them every row is covered. What they buy is that a double-tap on the picker is a duplicate-key hit the service reads as **already attached** — the same answer a replayed outbox op gets from the client-generated id, by a different route.
 
 ## Consequences
 

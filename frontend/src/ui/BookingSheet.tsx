@@ -46,6 +46,7 @@ import { RouteField } from './domain';
 import { Field } from './primitives/Field';
 import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
+import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes, useHostNoteCount } from './HostNotes';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { FormError } from './primitives/FormError';
@@ -142,7 +143,7 @@ export function BookingSheet({
   focus?: 'when';
   onClose: () => void;
 }) {
-  const { trip, events, places, indexVerbs, noteVerbs } = useTrip();
+  const { trip, events, places, indexVerbs, noteVerbs, attachmentVerbs } = useTrip();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
@@ -191,6 +192,7 @@ export function BookingSheet({
   );
   const [room, setRoom] = useState(draft ? draft.room : initial.room);
   const composer = useNoteComposer();
+  const attach = useDocumentAttach();
   const [wifiNetwork, setWifiNetwork] = useState(draft ? draft.wifiNetwork : initial.wifiNetwork);
   const [wifiPassword, setWifiPassword] = useState(
     draft ? draft.wifiPassword : initial.wifiPassword,
@@ -773,6 +775,13 @@ export function BookingSheet({
           for (const body of composer.pending()) {
             await noteVerbs.createNote({ body, bookingId: hostId });
           }
+          // **The document links, on the same host and in the same group** (ADR-0173 §5).
+          // Everything the paragraph above says about ordering and about the outbound leg
+          // owning the row applies to them unchanged — which is why they read `hostId` too
+          // rather than resolving a host of their own.
+          await writeStagedAttachments(attach, attachmentVerbs.attachDocument, {
+            bookingId: hostId,
+          });
         }
       });
       onClose();
@@ -1300,6 +1309,16 @@ export function BookingSheet({
                 >
                   <NoteComposer state={composer} id="bs-notes" />
                 </Field>
+
+                {/* **A document is attached on the way too** (ADR-0173 §5). The host is this
+                    BOOKING — the anchor of its context, so a chip added here shows on the
+                    linked event as well — and on a create there is no id yet, so the picks
+                    are staged and ride the save. Empty it costs 40px, which is the whole
+                    reason the drawn version was redrawn (§5's amendment). */}
+                <DocumentAttachField
+                  state={attach}
+                  host={booking ? { kind: 'booking', id: booking.id } : undefined}
+                />
               </>
             )}
           </FormStepPanel>

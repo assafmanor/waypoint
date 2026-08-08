@@ -9,6 +9,7 @@ import type {
   CreateEventInput,
   CreateMaybeItemInput,
   UpdateMaybeItemInput,
+  CreateDocumentAttachmentInput,
   CreateNoteInput,
   UpdateNoteInput,
   CreatePlaceInput,
@@ -30,11 +31,13 @@ import {
   createEvent,
   createMaybeItem,
   updateMaybeItem,
+  createDocumentAttachment,
   createNote,
   createPlace,
   deleteBooking,
   deleteEvent,
   deleteMaybeItem,
+  deleteDocumentAttachment,
   deleteNote,
   deletePlace,
   deleteTrip,
@@ -82,6 +85,8 @@ export const OUTBOX_VERB = {
   CREATE_NOTE: 'createNote',
   UPDATE_NOTE: 'updateNote',
   DELETE_NOTE: 'deleteNote',
+  CREATE_DOCUMENT_ATTACHMENT: 'createDocumentAttachment',
+  DELETE_DOCUMENT_ATTACHMENT: 'deleteDocumentAttachment',
 } as const;
 
 export type OutboxVerb = (typeof OUTBOX_VERB)[keyof typeof OUTBOX_VERB];
@@ -129,7 +134,16 @@ export type OutboxOp =
   // by the time the server sees it (ADR-0152 §6b).
   | { verb: typeof OUTBOX_VERB.CREATE_NOTE; input: CreateNoteInput }
   | { verb: typeof OUTBOX_VERB.UPDATE_NOTE; noteId: string; input: UpdateNoteInput }
-  | { verb: typeof OUTBOX_VERB.DELETE_NOTE; noteId: string };
+  | { verb: typeof OUTBOX_VERB.DELETE_NOTE; noteId: string }
+  // Document attachments (ADR-0173) — the same offline story as a note, and the case that
+  // NEEDS it: an attachment written beside a fresh upload is queued behind a document that
+  // is itself only queued (ADR-0056), and FIFO is what makes its `documentId` resolvable by
+  // the time the server sees it. There is no update verb: a link has no content.
+  | {
+      verb: typeof OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT;
+      input: CreateDocumentAttachmentInput;
+    }
+  | { verb: typeof OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT; attachmentId: string };
 
 export interface OutboxEntry {
   seq?: number;
@@ -154,6 +168,7 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.CREATE_PLACE:
     case OUTBOX_VERB.UPLOAD_DOCUMENT:
     case OUTBOX_VERB.CREATE_NOTE:
+    case OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT:
       return op.input.id ?? '';
     case OUTBOX_VERB.UPDATE:
     case OUTBOX_VERB.SET_STATUS:
@@ -174,6 +189,8 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.UPDATE_NOTE:
     case OUTBOX_VERB.DELETE_NOTE:
       return op.noteId;
+    case OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT:
+      return op.attachmentId;
     case OUTBOX_VERB.SET_MEMBER_ROLE:
     case OUTBOX_VERB.REMOVE_MEMBER:
       return op.userId;
@@ -545,9 +562,16 @@ export function usePendingUploads(tripId: string): PendingUpload[] {
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
   useEffect(() => {
     let cancelled = false;
-    void readPendingUploads(tripId).then((u) => {
-      if (!cancelled) setUploads(u);
-    });
+    void readPendingUploads(tripId).then(
+      (u) => {
+        if (!cancelled) setUploads(u);
+      },
+      // An unreachable IndexedDB answers "nothing queued" rather than an unhandled
+      // rejection — the same "silence is an empty answer" contract every other local read
+      // took on in field report #22. It matters now that a FORM reads this (ADR-0173 §5),
+      // not only the documents screen.
+      () => {},
+    );
     return () => {
       cancelled = true;
     };
@@ -678,6 +702,14 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case OUTBOX_VERB.DELETE_NOTE:
       await deleteNote(tripId, op.noteId);
+      return;
+    case OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT:
+      // Idempotent twice over server-side (the client id, and the `(documentId, host)`
+      // unique), so a replayed attach is "already applied" rather than a second row.
+      await createDocumentAttachment(tripId, op.input);
+      return;
+    case OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT:
+      await deleteDocumentAttachment(tripId, op.attachmentId);
       return;
   }
 }
