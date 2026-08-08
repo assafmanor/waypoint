@@ -172,3 +172,26 @@ export const attachmentCountFor = (
   kind: AttachmentHostKind,
   id: string,
 ): number => counts.get(`${kind}:${id}`) ?? 0;
+
+/** **What a ROW's mark counts** — the whole context's attachments, not the host's own
+ *  (ADR-0174 §1). `noteCountForContext`'s twin, and it exists for the same reason that one
+ *  does: a booked event is server-materialized, so its links may sit on the booking, and a
+ *  mark counting `eventId` alone would say nothing on the commonest hosted row of all.
+ *
+ *  A link carries exactly one host FK, so summing over the members double-counts nothing.
+ *  The SECTION under the mark resolves through `attachmentsForContext` + `documentsForAttachments`
+ *  over the same context, which additionally collapses two links to one document — so the two
+ *  can differ by one on the one arrangement that produces it, and the section is the honest
+ *  number. Naming it here rather than at a call site is what keeps four row hosts agreeing. */
+export function attachmentCountForContext(
+  counts: Map<string, number>,
+  context: HostContext,
+): number {
+  return context.members.reduce(
+    (total, m) =>
+      m.kind in ATTACHMENT_HOST_FIELD
+        ? total + attachmentCountFor(counts, m.kind as AttachmentHostKind, m.id)
+        : total,
+    0,
+  );
+}

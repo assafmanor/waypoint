@@ -143,13 +143,15 @@ import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { FormStepPanel, useFormSteps } from '../ui/primitives/FormSteps';
 import { TitleLabel } from '../ui/TitleLabel';
-import { RowActionList, SettleControl, type RowAction } from '../ui/domain';
+import { DocumentMark, NoteMark, RowActionList, SettleControl, type RowAction } from '../ui/domain';
 import { DaySlotPicker, type DaySlotOption } from '../ui/domain/DaySlotPicker';
 import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-positions';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
-import { noteCountFor, noteCountsByHost } from '../lib/notes';
+import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
+import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 
 const daysBetween = (from: string, to: string) =>
@@ -237,6 +239,8 @@ export function PlanDay() {
     bookings,
     places,
     notes,
+    documentAttachments,
+    hostContexts,
     activeDate,
     setActiveDate,
     zoneEvidence,
@@ -279,6 +283,12 @@ export function PlanDay() {
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
   // Built once per note-list change rather than filtered per tile (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // Its twin for attachments (ADR-0174 §1) — `attachmentCountsByHost` shipped with
+  // ADR-0173 and had no call site at all until this row.
+  const docCounts = useMemo(
+    () => attachmentCountsByHost(documentAttachments),
+    [documentAttachments],
+  );
   // A gap the user tapped "＋ שבץ" on — opens a chooser to drop an existing shelf
   // idea into the gap's slot, or start a fresh event there (#21).
   // The POSITION a `＋ שבץ` chip was tapped on — the whole `Gap`, not just its slot, because
@@ -902,6 +912,9 @@ export function PlanDay() {
     places,
     placeLabels,
     showPlaceOnMap,
+    noteCounts,
+    docCounts,
+    hostContexts,
     verbs,
     dayEvents,
     softEvents,
@@ -1452,6 +1465,12 @@ interface BuilderCtx {
   /** `useShowPlaceOnMap()` — `null` outside the trip shell, which drops the row's
    *  `מפה` action rather than breaking it (ADR-0121 §8). */
   showPlaceOnMap: ShowPlaceOnMap;
+  /** **What each row's marks count** (ADR-0152 §6c / ADR-0174 §1). Both are whole-screen
+   *  lookups built once per list change, and both are read through the row's CONTEXT — a
+   *  booked event's notes and attachments may sit on its booking. */
+  noteCounts: Map<string, number>;
+  docCounts: Map<string, number>;
+  hostContexts: HostContextIndex;
   verbs: ReturnType<typeof useVerbs>;
   dayEvents: TripEvent[];
   softEvents: TripEvent[];
@@ -1732,6 +1751,14 @@ function BuilderNode({
         duration={eventDurationLabel(e, booking, zones)}
         readOnly={ctx.readOnly}
         booking={booking}
+        notes={noteCountForContext(
+          ctx.noteCounts,
+          resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+        )}
+        documents={attachmentCountForContext(
+          ctx.docCounts,
+          resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+        )}
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
         onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
@@ -1781,6 +1808,8 @@ export function BuilderRow({
   readOnly,
   booking,
   placeName,
+  notes,
+  documents,
   onEdit,
   onDelete,
   onShowOnMap,
@@ -1809,6 +1838,12 @@ export function BuilderRow({
   readOnly?: boolean;
   booking?: { confirmationCode?: string };
   placeName?: string;
+  /** **How many notes / documents this row carries** (ADR-0152 §6c, ADR-0174 §1) — both
+   *  counted over the row's whole CONTEXT, since a booked event's rows may sit on its
+   *  booking. Plan mode showed neither mark before this, which is why they arrive together
+   *  rather than one per session. */
+  notes?: number;
+  documents?: number;
   onEdit: () => void;
   onDelete: () => void;
   /** Show the event's place on our map (ADR-0121 §8). Absent when there is nothing
@@ -1852,7 +1887,8 @@ export function BuilderRow({
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
   const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
-  const meta = [placeName, code && `${t.event.bookingLabel} ${code}`].filter(Boolean).join(' · ');
+  const codeText = code ? `${t.event.bookingLabel} ${code}` : undefined;
+  const hasMeta = !!placeName || !!codeText || !!notes || !!documents;
 
   const isSkipped = settle?.status === EVENT_STATUS.SKIPPED;
   const cls = [
@@ -1919,7 +1955,28 @@ export function BuilderRow({
           <span className="nest-note">{t.day.contains(nestedCount)}</span>
         )}
       </span>
-      {meta && <span className="bld-m">{meta}</span>}
+      {/* ONE nowrap line of ELEMENTS, not a joined string (ADR-0152 §6c's rebuild, applied
+          here by ADR-0174 §1). It was the string, and that is why appending a mark cost
+          +10px on every row: the text could not shrink, so the line wrapped. */}
+      {hasMeta && (
+        <span className="bld-m">
+          {placeName && (
+            <span className="bld-m-txt" dir="auto">
+              {placeName}
+            </span>
+          )}
+          {placeName && codeText && <span className="bld-m-sep">{DOT_SEPARATOR}</span>}
+          {codeText && (
+            <span className="bld-m-code" dir="auto">
+              {codeText}
+            </span>
+          )}
+          {/* Plan mode had NEITHER mark until now, so a whole mode said nothing about what
+              its rows carry (ADR-0174 §1). Both land together, in the day card's order. */}
+          <NoteMark count={notes} />
+          <DocumentMark count={documents} />
+        </span>
+      )}
     </>
   );
 

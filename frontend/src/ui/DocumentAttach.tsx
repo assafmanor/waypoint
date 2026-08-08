@@ -28,6 +28,7 @@ import {
   type AttachmentHostKind,
 } from '../lib/attachments';
 import { useHostContext } from './HostNotes';
+import { DocumentChips, type DocumentChipRow } from './DocumentChips';
 import { DocumentPickerSheet } from './DocumentPickerSheet';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
 import { Icon } from './Icon';
@@ -142,6 +143,19 @@ export function DocumentAttachField({
   );
   const isEmpty = attached.length === 0 && stagedDocs.length === 0;
 
+  // Committed links detach through the verb; a staged pick is unstaged, since it was never
+  // written. One list, so the chip component needs to know about neither.
+  const chipRows: DocumentChipRow[] = [
+    ...attached.map(({ attachment, document }) => ({
+      document,
+      onRemove: () => void attachmentVerbs.detachDocument(attachment.id),
+    })),
+    ...stagedDocs.map((document) => ({
+      document,
+      onRemove: () => state.unstage(document.id),
+    })),
+  ];
+
   const onPick = (documentId: string) => {
     setPicking(false);
     // On an EDIT the link is written now, because the host already exists and there is
@@ -191,12 +205,20 @@ export function DocumentAttachField({
     </>
   );
 
-  // **Variant D**: nothing attached, so nothing but the one control.
+  // **Variant D**: nothing attached, so nothing but the one control. It is 44px and solid
+  // now rather than 40px and dashed (ADR-0174 §5) — same one control, reading as an
+  // invitation instead of as scaffolding.
   if (isEmpty) {
     return (
       <div className="doc-sec">
         <button type="button" className="doc-add-one" onClick={() => setPicking(true)}>
-          <Icon name="documents" /> {t.docs.attach.attach}
+          <span className="doc-add-ic" aria-hidden="true">
+            <Icon name="documents" />
+          </span>
+          <span className="doc-add-l">{t.docs.attach.attach}</span>
+          <span className="doc-add-p" aria-hidden="true">
+            <Icon name="plus" />
+          </span>
         </button>
         {sheets}
       </div>
@@ -210,22 +232,11 @@ export function DocumentAttachField({
           <Icon name="documents" /> {t.docs.attach.title}
         </span>
       </div>
-      <div className="doc-chips">
-        {attached.map(({ attachment, document }) => (
-          <DocumentChip
-            key={attachment.id}
-            document={document}
-            onRemove={() => void attachmentVerbs.detachDocument(attachment.id)}
-          />
-        ))}
-        {stagedDocs.map((document) => (
-          <DocumentChip
-            key={document.id}
-            document={document}
-            onRemove={() => state.unstage(document.id)}
-          />
-        ))}
-      </div>
+      {/* THE SAME CHIP THE READ SURFACES RENDER (ADR-0174 §2), extracted rather than kept as
+          a private copy: the form's chip now opens the document too, since the point of
+          attaching a boarding pass on the way is that you meant to look at it later. What
+          the form keeps and a read surface does not is the detach. */}
+      <DocumentChips rows={chipRows} />
       {/* The split into two entrances, which only exists once the slot holds something. */}
       <div className="doc-add">
         <button type="button" onClick={() => setPicking(true)}>
@@ -237,26 +248,5 @@ export function DocumentAttachField({
       </div>
       {sheets}
     </div>
-  );
-}
-
-/** One attached document. The same compact one-line shape a committed note's chip uses, so a
- *  form carrying both content types does not read as two designs — and so four of them cost
- *  ~223px rather than four boxes' worth (§5's measurements). */
-function DocumentChip({ document, onRemove }: { document: DocumentSummary; onRemove: () => void }) {
-  return (
-    <span className="doc-chip">
-      <span className="doc-chip-t" dir="auto">
-        {document.title}
-      </span>
-      <button
-        type="button"
-        className="doc-chip-x"
-        onClick={onRemove}
-        aria-label={t.docs.attach.detach}
-      >
-        <Icon name="close" />
-      </button>
-    </span>
   );
 }

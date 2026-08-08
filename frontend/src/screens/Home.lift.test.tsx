@@ -118,6 +118,8 @@ let tripPlaces: Place[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The attachment link list every documents surface reads (ADR-0173/0174).
+    documentAttachments: [],
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),

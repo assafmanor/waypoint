@@ -12,10 +12,19 @@
 // deliberate — the predicate below is the one piece of this feature that can
 // silently answer "nothing to lift" on a board with plenty, so it gets tested
 // on its own before anything renders it.
-import { ENTITY_TYPE, EVENT_STATUS, type Booking, type Note, type Place } from '@waypoint/shared';
+import {
+  ENTITY_TYPE,
+  EVENT_STATUS,
+  type Booking,
+  type DocumentAttachment,
+  type DocumentSummary,
+  type Note,
+  type Place,
+} from '@waypoint/shared';
 import type { TripEvent } from '@waypoint/shared';
 import { eventPlaceId, placeName } from './places';
 import { notesForContext } from './notes';
+import { attachmentsForContext, documentsForAttachments } from './attachments';
 import { resolveHostContext, type HostContextIndex } from './host-context';
 
 /** What a human said about this event, when they have said anything (ADR-0117 §1's
@@ -38,6 +47,17 @@ export interface HeroPoint {
   bookingId?: string;
   /** This stop's notes, newest first. Empty is the common case. */
   notes: Note[];
+  /** **The files attached to this stop** (ADR-0174 §6), resolved through the SAME context the
+   *  notes above are — which is the whole of why they are here and not derived at the render
+   *  site. The hero reads a booked event's notes from its BOOKING as well as the event,
+   *  because a booked event is materialized server-side and has no client id at save time
+   *  (ADR-0160 §I / ADR-0172 §7); attachments have exactly that shape, so resolving them
+   *  anywhere else is how the hero and the day row start disagreeing about what a point
+   *  carries.
+   *
+   *  Already filtered by ADR-0173 §6's visibility rule and collapsed per document, because
+   *  `documentsForAttachments` owns both — this adds a pointer and no permission. */
+  documents: DocumentSummary[];
   /** Absent → nobody has answered yet. */
   settled?: HeroSettled;
 }
@@ -91,6 +111,10 @@ export interface HeroHorizonInput {
   bookings: Booking[];
   places: Place[];
   notes: Note[];
+  /** The trip's attachment links and the document list THIS READER can see — both, because
+   *  the resolution is what enforces §6's visibility and nothing downstream re-checks it. */
+  attachments: DocumentAttachment[];
+  documents: DocumentSummary[];
   /** Trip-state's one context index (ADR-0172 §1). Passed rather than rebuilt here: the
    *  place half of it needs the WHOLE trip's references, and this input carries one day's. */
   hostContexts: HostContextIndex;
@@ -103,18 +127,24 @@ function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
   // Inside the span → the place that matters is the destination; everywhere else the
   // authority rule's own answer stands.
   const placeId = eventPlaceId(event, booking, event.id === input.midSpanEventId);
+  // **ONE context, both content types.** Resolved once and read twice, deliberately: the
+  // union that used to be this file's own judgement call is now the app's rule (ADR-0172 §7),
+  // and two calls is how the note list and the document list would start answering about
+  // different hosts on the one row where it matters — a booked event.
+  const context = resolveHostContext(input.hostContexts, {
+    kind: ENTITY_TYPE.EVENT,
+    id: event.id,
+  });
   return {
     event,
     placeId,
     place: placeName(input.places, placeId),
     bookingId: booking?.id,
-    // The union that used to be this file's own judgement call, now the app's rule
-    // (ADR-0172 §7): the hero was right that a booked event's notes live on its booking,
-    // and `EventCard`'s mark counts the same context rather than `eventId` alone.
-    notes: notesForContext(
-      input.notes,
-      resolveHostContext(input.hostContexts, { kind: ENTITY_TYPE.EVENT, id: event.id }),
-    ),
+    notes: notesForContext(input.notes, context),
+    documents: documentsForAttachments(
+      attachmentsForContext(input.attachments, context),
+      input.documents,
+    ).map((row) => row.document),
     settled: event.status === EVENT_STATUS.PLANNED ? undefined : (event.status as HeroSettled),
   };
 }
@@ -175,7 +205,11 @@ export function heroHorizon(input: HeroHorizonInput): HeroHorizon {
  * one tab away.
  */
 export function canLift(horizon: HeroHorizon): boolean {
-  const hasDepth = (p: HeroPoint) => !!p.place || p.notes.length > 0 || !!p.bookingId;
+  // An attached document is depth (ADR-0174 §6), and adding it here is not a formality: a
+  // point whose ONLY depth is a boarding pass would otherwise answer "nothing to lift" and
+  // take the rebuff — the board refusing to open onto the one thing it now has to show.
+  const hasDepth = (p: HeroPoint) =>
+    !!p.place || p.notes.length > 0 || p.documents.length > 0 || !!p.bookingId;
   return (
     horizon.now.length > 1 ||
     horizon.now.some(hasDepth) ||

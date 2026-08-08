@@ -86,6 +86,7 @@ import { MediaViewer } from '../ui/MediaViewer';
 import { apiAssetUrl } from '../lib/api-asset';
 import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';
 import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import {
   buildPinOrderIndex,
@@ -166,7 +167,9 @@ import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { HostNotes } from '../ui/HostNotes';
+import { HostDocuments } from '../ui/HostDocuments';
 import { NoteMark } from '../ui/domain/NoteMark';
+import { DocumentMark } from '../ui/domain/DocumentMark';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { KNOWLEDGE_DENSITY, PlaceKnowledge } from '../ui/domain/PlaceKnowledge';
 import { RowManageSheet } from '../ui/domain/ListRow';
@@ -254,6 +257,7 @@ export function MapView() {
     // session, its debounce and its dedup are all about a query, and a canvas gesture has none.
     indexVerbs,
     notes,
+    documentAttachments,
     hostContexts,
     noteVerbs,
     // What the world knows about these places (ADR-0166 §6) — server-owned, and a missing key
@@ -2455,6 +2459,11 @@ export function MapView() {
   // Built once per note-list change rather than filtered per row: this list can be the whole
   // trip's places, and the mark is on every row that has one (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // Its twin for attachments (ADR-0174 §1), built once per link-list change.
+  const docCounts = useMemo(
+    () => attachmentCountsByHost(documentAttachments),
+    [documentAttachments],
+  );
 
   const renderRow =
     (opts: {
@@ -2502,6 +2511,14 @@ export function MapView() {
             noteCounts,
             resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
           )}
+          // **A place SHOWS what its one context carries** (ADR-0173 §4's follow-up, decided
+          // and never built until ADR-0174 §3). Same context, same derivation as the notes
+          // beside it — a place displays and never originates, so there is no attach control
+          // anywhere on this row.
+          documents={attachmentCountForContext(
+            docCounts,
+            resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
+          )}
           // Connected here rather than inside the row, which stays presentational — and gated
           // on `selected` for the same reason the refs are: the list can hold dozens of rows,
           // and a note section per unselected row is a section nobody is looking at.
@@ -2509,6 +2526,11 @@ export function MapView() {
             selected ? (
               <HostNotes host={{ kind: 'place', id: place.id, name: place.name }} />
             ) : undefined
+          }
+          // Above the notes, the order every other read surface uses. Gated on `selected`
+          // for the same reason they are: the list can hold the whole trip.
+          documentsSlot={
+            selected ? <HostDocuments host={{ kind: 'place', id: place.id }} /> : undefined
           }
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           onDeselect={opts.onDeselect}
@@ -3561,6 +3583,8 @@ function PlaceRow({
   distanceStale,
   selected,
   notes,
+  documents,
+  documentsSlot,
   notesSlot,
   summary,
   expanded,
@@ -3650,6 +3674,13 @@ function PlaceRow({
    *  this row needed none of `EventCard`'s three changes (§6c): there the meta is a joined
    *  string on a line that must not grow. */
   notes?: number;
+  /** **How many DOCUMENTS this place shows** (ADR-0174 §1) — its one context's, since a place
+   *  can never host an attachment of its own (ADR-0173 §4). The mark reads exactly what the
+   *  section below it lists, because both resolve through the same context. */
+  documents?: number;
+  /** **Where a place's inherited documents are read** — the connected `<HostDocuments>`,
+   *  present only while selected, above the notes. */
+  documentsSlot?: ReactNode;
   /** **Where a place's notes are read and written** — the connected `<HostNotes>`, present
    *  only while selected, which is what gives a place a body at all: it has no detail surface
    *  of its own — the pin's long-press menu holds verbs, not content (ADR-0157 §2) — and this
@@ -3893,6 +3924,7 @@ function PlaceRow({
               crowded row can never lose a semantic tag to it. Not a `.map-tag` — a note is
               context, not one of this row's claims (ADR-0028 has no colour to lend it). */}
           <NoteMark count={notes} />
+          <DocumentMark count={documents} />
         </span>
       </span>
       <span className="map-right">
@@ -3966,6 +3998,7 @@ function PlaceRow({
           under the schedule footer, would put content below a primary action, which is the
           one arrangement no surface here uses. A full-width line in a row that has wrapped
           one of those since it shipped (`.map-refs`), so it needs one declaration. */}
+      {!expanded && documentsSlot}
       {!expanded && notesSlot}
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is
           also why the meta line's own 11.5px tags are not the link. */}

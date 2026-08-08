@@ -587,10 +587,11 @@
 .map-placecard:is(:has(.note-sec), :has(.map-hero)) > .place:not(.result) {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  /* identity · what the world knows · notes head · NOTES(1fr) · refs · foot. The summary's row
-     is `auto` and collapses to 0 when there is nothing to know, which is the common case, so
-     the card is byte-identical to before on those places (the row gap is 0). */
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  /* identity · what the world knows · DOCUMENTS · notes head · NOTES(1fr) · refs · foot. The
+     summary's row and the documents' row are both `auto` and collapse to 0 when there is
+     nothing to show, which is the common case for both — so the card is byte-identical to
+     before on those places (the row gap is 0). */
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0 11px;
   overflow: hidden;
@@ -652,7 +653,7 @@
   display: contents;
 }
 .map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-h {
-  grid-row: 3;
+  grid-row: 4;
   grid-column: 1 / -1;
   margin-top: 8px;
   padding-top: 8px;
@@ -664,7 +665,7 @@
    center` leaves an item at its CONTENT height inside a 0px track, so the list overflowed the
    card while the track itself measured 0 — invisible to the track sizing, and measured. */
 .map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list {
-  grid-row: 4;
+  grid-row: 5;
   grid-column: 1 / -1;
   align-self: stretch;
   min-height: 0;
@@ -676,11 +677,11 @@
   width: 0;
 }
 .map-placecard:has(.note-sec) > .place > .map-refs {
-  grid-row: 5;
+  grid-row: 6;
   grid-column: 1 / -1;
 }
 .map-placecard:has(.note-sec) > .place > .map-refs-foot {
-  grid-row: 6;
+  grid-row: 7;
   grid-column: 1 / -1;
 }
 
@@ -1344,6 +1345,25 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
+}
+/* **מסמכים ON A PLACE** (ADR-0173 §4's follow-up, built by ADR-0174 §3) — the same
+   full-width line, one block up, and it needs its own declaration for the same reason:
+   `.place` is a wrapping flex ROW, so a section dropped into it joins the row instead of
+   starting a line. A place DISPLAYS its one context's documents and can never originate one,
+   so this section has no add control anywhere. */
+.place > .docr-sec {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+/* On the CANVAS card `.place` becomes a grid so the note list can be the one scrolling
+   track. The documents section is a fixed-height block like the summary above it, so it
+   takes a pinned row rather than the flexible one — which is also why it does not need the
+   `display: contents` split `.note-sec` uses. */
+.map-placecard:has(.note-sec) > .place > .docr-sec {
+  grid-row: 3;
+  grid-column: 1 / -1;
 }
 /* ── WHAT THE WORLD KNOWS, PINNED UNDER THE IDENTITY (ADR-0167 §9.3) ───────────────────
    Another full-width line on a row that has wrapped since it shipped, like `.map-refs` and

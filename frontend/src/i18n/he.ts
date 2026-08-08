@@ -1070,6 +1070,15 @@ export const t = {
       attached: 'המסמך צורף',
       detached: 'הצירוף בוטל',
     },
+    // The row mark's accessible name (ADR-0174 §1) — an icon with an optional count, so a
+    // screen reader needs the noun said out loud. `t.notes.mark`'s shape exactly.
+    mark: (n: number) => (n === 1 ? 'מסמך מצורף אחד' : `${n} מסמכים מצורפים`),
+    // The read section's header, on every surface that shows what a host carries.
+    section: 'מסמכים',
+    // Where an INHERITED document came from — a place displays a context's documents and can
+    // never originate one (ADR-0173 §4), so it says whose they are.
+    from: (host: string) => `מתוך ${host}`,
+    open: 'פתיחת המסמך',
   },
   mode: {
     // The toggle is icons-only in the day row (ADR-0149 §3), so these two are the

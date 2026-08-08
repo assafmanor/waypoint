@@ -39,6 +39,9 @@ let tripEvents: TripEvent[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    documents: [],
+    // The attachment link list every documents surface reads (ADR-0173/0174).
+    documentAttachments: [],
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, []),
@@ -78,6 +81,9 @@ vi.mock('../state/verbs', () => ({ useVerbs: () => ({ addMaybe: vi.fn() }) }));
 vi.mock('../lib/outbox', () => ({
   useIsOffline: () => false,
   withChangeGroup: (run: () => Promise<unknown>) => run(),
+  // The selected place row now carries `HostDocuments`, which reads the queued
+  // uploads so a document attached from a host's form is visible before it flushes.
+  usePendingUploads: () => [],
 }));
 vi.mock('../lib/useGeolocation', () => ({
   useGeolocation: () => ({
