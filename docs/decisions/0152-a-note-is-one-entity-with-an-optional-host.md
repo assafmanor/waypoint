@@ -206,3 +206,36 @@ Before writing anything new:
 - **`הערות` over `פתקים`.** The incumbent word, already in the booking form and already in ADR-0098's placeholder tile, so it would have cost no rename. Overruled by the owner in favour of the warmer word — and it turned out to carry §3's tier boundary for free, since a machine card is not a פתק until someone keeps it.
 - **A fourth tab for notes/knowledge.** Rejected on non-negotiable rule 2 (integrations are pipes, not screens) and because ADR-0098 built the landing to absorb exactly this.
 - **Private notes in v1** (`ownerUserId?`, mirroring `Document`). Deferred (§9): the precedent is real and the field is cheap, but the visibility filter reaches every read path and the offline cache, and every note-writing surface gains a scope control. Group-only keeps v1 identical to how everything else in the trip behaves.
+
+## Amendment (2026-08-09, session 233) — §6c's composition rule is RETIRED
+
+Owner, from a device, with a screenshot: _"the text is overflowing … events and bookings
+should only show the glyphs in their row, no names or ids."_
+
+**§6c's rule is gone, and so is `eventMetaParts`.** The row's meta line carries the sync badge
+and the marks and nothing else — no place name, no confirmation code. The rule existed to
+decide **what gives way when the line is full**; with no text on the line there is nothing
+left to give way, so the predicate was deleted rather than narrowed.
+
+**What broke it was a real confirmation code.** Every measurement in §6c was taken against
+`הזמנה MN-4471`. The shipped app met `הזמנה #MEGAZIP-T141215488`. The code is `flex: 0 0 auto`
+by §6c's own reasoning — a shortened place name is a cosmetic loss, a shortened code is the
+fact you opened the row to read — so it could not shrink, the place name beside it was
+squeezed to **zero width**, and the line overflowed the row into the badge and the `⋯`. A
+stranded `·` sat where the name had been, which is §6c's own "a two-character stub is noise,
+not information" complaint, arriving through the one item §6c had protected.
+
+**What §6c got right and keeps:** the meta line is ONE `nowrap` line of ELEMENTS rather than a
+joined string. That rebuild survives — it is what lets the line hold anything at all without
+wrapping, it is why the marks cost 0px of height, and ADR-0174 §1 applied it to `.bld-m` for
+exactly that reason. Only the composition rule on top of it is retired.
+
+**Neither fact is lost.** The place is the badge, which is also the way to its pin; the code
+is one tap away in the read the row opens — [ADR-0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md)
+§4 gave an event one, and `BookingDetail` and the expanded card's hard-edit warning both state
+it. See ADR-0174 §8 for the full reasoning.
+
+**The lesson worth keeping past this ADR:** §6c measured a line against a _fixture_ code and
+built an un-shrinkable item on that measurement. The fixture was four characters where the
+world supplies twenty. When a rule's whole justification is a width, the width has to come
+from real stored content.

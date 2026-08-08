@@ -38,12 +38,6 @@ export interface EventCardProps {
   /** The plain stored title, for the Tier-2 menu header — rendered there through
    *  `TitleLabel`, so a stored route reads as a route rather than raw text. */
   titleText: string;
-  placeName?: string;
-  /** **Does the title already name this place?** A transport row's does — the screen
-   *  passes `routeDisplay`'s title and its meta together, and the meta is the same
-   *  destination in full. It decides what gives way when the line is full; see
-   *  `eventMetaParts`. */
-  routeRow?: boolean;
   /** Full confirmation code incl. prefix (shown in meta + hard-edit warning). */
   code?: string;
   kind: EventKind;
@@ -133,73 +127,32 @@ export interface EventCardProps {
   onRemove?: () => void;
 }
 
-/**
- * **What the day row's meta line says, as a rule rather than a CSS accident** (ADR-0152
- * §6c). Exported and pure precisely so it can be tested: the alternative — letting the
- * ellipsis decide — is behaviour that only appears at one screen width.
- *
- * The line is exactly full at 390px on a coded row, so a mark asks for width that does not
- * exist. **A row carrying both a confirmation code and a note mark drops its place name
- * entirely** rather than degrading it to a two-character stub: `ש..` is noise, not
- * information, and the district is one tap away in the expanded card. Deterministic and
- * testable; a stub is neither.
- *
- * Rejected, with their costs: keep the stub (permanent noise); move the mark to the title
- * line (the hard/soft tag already flows to a second line on a long title, so it
- * reintroduces the height problem); drop the code instead (it is the glanceable fact the
- * row exists for).
- *
- * **The same rule, for the case it did not cover** (found building ADR-0159, on a coded
- * flight with no note at all). A transport row's meta is the destination's FULL official
- * name — `נמל התעופה דובאי (DXB)` — beside `הזמנה #EK319`, and it ellipsised down to
- * `נ...`: one letter, which is precisely the stub above. Measured on the shipped row at
- * 360px, the line has **95px** and the code alone takes **84**, so no name of any length
- * fits there; a character budget would have been a number pretending to be a rule.
- *
- * What decides it instead is that the name is **already on the title line** for exactly
- * these rows (`routeDisplay` puts the shortened destination there and the full one here
- * as an enrichment). An enrichment is the right thing to drop when the line is full, and
- * a place name that is NOT in the title — a hotel's, a restaurant's — is untouched.
- */
-export function eventMetaParts({
-  placeName,
-  code,
-  notes,
-  documents,
-  placeInTitle,
-}: {
-  placeName?: string;
-  code?: string;
-  notes?: number;
-  /** **How many DOCUMENTS the row carries** (ADR-0174 §1), and the whole of the day card's
-   *  change. `hasMark` counted notes only, so a row with a code and an attachment but no
-   *  note kept its place name and then truncated it to 48px of the 107px it needs —
-   *  measured. Counting both leaves every other row byte-identical: a marked coded row has
-   *  already dropped the name, whichever mark it is. */
-  documents?: number;
-  /** **Is this name already on the title line?** True for a transport row, whose
-   *  title is `origin ← destination` (shortened) and whose meta carries the
-   *  destination's FULL official name as an enrichment (`routeDisplay`). */
-  placeInTitle?: boolean;
-}): { placeName?: string; separator: boolean; code?: string } {
-  const hasMark = (notes ?? 0) > 0 || (documents ?? 0) > 0;
-  const showPlace = placeName && !(code && (hasMark || placeInTitle));
-  return {
-    placeName: showPlace ? placeName : undefined,
-    // The separator is its own item so it leaves with the place name rather than
-    // stranding a leading `·` on a code-only row.
-    separator: !!showPlace && !!code,
-    code,
-  };
-}
+/* **THE ROW'S META LINE CARRIES NO TEXT AT ALL** (owner, 2026-08-09: _"events and bookings
+   should only show the glyphs in their row, no names or ids"_), which retires ADR-0152 §6c's
+   `eventMetaParts` outright rather than narrowing it.
+
+   §6c existed to decide **what gives way when the line is full** — it dropped the place name
+   on a row carrying both a confirmation code and a mark, because the line is exactly full at
+   390px and a two-character stub is noise rather than information. That is a problem about
+   TEXT on this line, and there is none left: the place name and the confirmation code both
+   come off and the line keeps the sync badge and the marks.
+
+   **What made the call rather than taste:** a real confirmation code is not `הזמנה MN-4471`,
+   it is `הזמנה #MEGAZIP-T141215488`. Reported from a device, where it overflowed the row and
+   stranded the separator beside a place name squeezed to zero width — §6c's own "a stub is
+   noise" failure, arriving through the one part of the line §6c had protected as
+   un-shrinkable.
+
+   **Neither fact is lost, which is what makes it affordable.** The place is the badge, which
+   is also the way to its pin; the code is one tap away in the card this row opens, where the
+   hard-edit warning already prints it, and on `BookingDetail`. The row says what this is,
+   when it is, and **that there is something here** — which is exactly what a glyph says. */
 
 export function EventCard(props: EventCardProps) {
   const {
     icon,
     title,
     titleText,
-    placeName,
-    routeRow,
     code,
     kind,
     phase,
@@ -246,15 +199,8 @@ export function EventCard(props: EventCardProps) {
     setMenuOpen(false);
     fn?.();
   };
-
-  const codeText = code ? `${t.event.bookingLabel} ${code}` : undefined;
-  const metaParts = eventMetaParts({
-    placeName,
-    code: codeText,
-    notes,
-    documents,
-    placeInTitle: routeRow,
-  });
+  // The line is glyphs only now; the code still feeds the hard-edit warning below.
+  const hasMeta = !!sync || !!notes || !!documents;
 
   const tag = isDone ? (
     <span className="wp-event-tag-done">
@@ -300,14 +246,16 @@ export function EventCard(props: EventCardProps) {
           only `nowrap` returns the row to its height. And flex cannot protect part of
           a text node, so the code has to be its own item or the ellipsis eats the
           confirmation code, which is the fact the row is opened for. */}
-      <span className="wp-event-m">
-        {sync}
-        {metaParts.placeName && <span className="wp-event-m-txt">{metaParts.placeName}</span>}
-        {metaParts.separator && <span className="wp-event-m-sep">·</span>}
-        {metaParts.code && <span className="wp-event-m-code">{metaParts.code}</span>}
-        <NoteMark count={notes} />
-        <DocumentMark count={documents} />
-      </span>
+      {/* GLYPHS ONLY (owner, 2026-08-09). The line renders at all only when it has
+          something to say, so an ordinary row loses it entirely rather than keeping an
+          empty 3px-margin box. */}
+      {hasMeta && (
+        <span className="wp-event-m">
+          {sync}
+          <NoteMark count={notes} />
+          <DocumentMark count={documents} />
+        </span>
+      )}
       {conflict && (
         <span className="wp-event-conflict-flag">
           <Icon name="warn" /> {t.event.conflictWarn.before}

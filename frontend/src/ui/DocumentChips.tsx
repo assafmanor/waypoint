@@ -24,12 +24,13 @@
 // §4's own logic (a place displays, never originates) applied to every read surface, and it
 // buys one less control on each of them plus no destructive tap on a surface someone opened
 // in order to look at something.
-import { useState, type ReactNode } from 'react';
+import { useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import type { DocumentSummary } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { DOCUMENT_TYPE_ICON } from '../constants';
 import { overlayOriginOffset } from '../lib/motion';
 import { DocumentViewer } from './MediaViewer';
+import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 import './attach.css';
@@ -60,41 +61,15 @@ export function DocumentChips({
 
   return (
     <div className={'doc-chips' + (className ? ` ${className}` : '')}>
-      {rows.map(({ document, onRemove, from }) => (
-        <div className="doc-chip-row" key={document.id}>
-          <span className="doc-chip">
-            <button
-              type="button"
-              className="doc-chip-open"
-              title={t.docs.open}
-              onClick={(e) => {
-                setViewFrom(overlayOriginOffset(e.currentTarget));
-                setViewing(document);
-              }}
-            >
-              {/* The per-type badge stays an EMOJI — it is one document's own face, which is
-                  the side of ADR-0138's line that content sits on. The section header's mark
-                  beside it is an `Icon`, because that one is chrome. */}
-              <span className="doc-chip-g" aria-hidden="true">
-                {DOCUMENT_TYPE_ICON[document.type]}
-              </span>
-              <span className="doc-chip-n" dir="auto">
-                {document.title}
-              </span>
-            </button>
-            {onRemove && (
-              <button
-                type="button"
-                className="doc-chip-x"
-                onClick={onRemove}
-                aria-label={t.docs.attach.detach}
-              >
-                <Icon name="close" />
-              </button>
-            )}
-          </span>
-          {from && <span className="docr-from">{from}</span>}
-        </div>
+      {rows.map((row) => (
+        <Chip
+          key={row.document.id}
+          row={row}
+          onOpen={(e) => {
+            setViewFrom(overlayOriginOffset(e.currentTarget));
+            setViewing(row.document);
+          }}
+        />
       ))}
       {viewing && (
         <DocumentViewer
@@ -104,6 +79,57 @@ export function DocumentChips({
           onClose={() => setViewing(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** One chip, its own component for one reason: **a queued upload has to read as
+ *  provisional** (ADR-0092), and that answer comes from a hook — `useUnsynced` — which
+ *  cannot be called inside a `.map()`.
+ *
+ *  It reuses the app's ONE per-entity sync grammar rather than inventing a chip-sized
+ *  version of it: the row dims to ~0.6 while the write is in transit and carries
+ *  `EntitySyncBadge`, which is silent once synced and shows `cloud-up`/`cloud-bang`
+ *  otherwise. That matters more here than on most rows — a document attached from a host's
+ *  own form is outbox-first (ADR-0056), so the commonest way to meet an attachment for the
+ *  first time is while its bytes are still queued, and a chip that looked settled would be
+ *  claiming the file is somewhere it is not. A FAILED one deliberately stays full-opacity,
+ *  so its `cloud-bang` keeps asking for action. */
+function Chip({
+  row: { document, onRemove, from },
+  onOpen,
+}: {
+  row: DocumentChipRow;
+  onOpen: (e: ReactMouseEvent<HTMLButtonElement>) => void;
+}) {
+  const unsynced = useUnsynced(document.id);
+  return (
+    <div className="doc-chip-row">
+      <span className={'doc-chip' + (unsynced ? ' unsynced' : '')}>
+        <button type="button" className="doc-chip-open" title={t.docs.open} onClick={onOpen}>
+          {/* The per-type badge stays an EMOJI — it is one document's own face, which is
+              the side of ADR-0138's line that content sits on. The section header's mark
+              beside it is an `Icon`, because that one is chrome. */}
+          <span className="doc-chip-g" aria-hidden="true">
+            {DOCUMENT_TYPE_ICON[document.type]}
+          </span>
+          <span className="doc-chip-n" dir="auto">
+            {document.title}
+          </span>
+          <EntitySyncBadge id={document.id} />
+        </button>
+        {onRemove && (
+          <button
+            type="button"
+            className="doc-chip-x"
+            onClick={onRemove}
+            aria-label={t.docs.attach.detach}
+          >
+            <Icon name="close" />
+          </button>
+        )}
+      </span>
+      {from && <span className="docr-from">{from}</span>}
     </div>
   );
 }

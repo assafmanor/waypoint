@@ -1296,6 +1296,17 @@ export function BookingSheet({
               composer, `EventForm`'s `יש הזמנה` half and a booked idea's `carryNotes` all
               write `bookingId`. `canAdd` is off for the same reason it is off there: the
               box below already is the way to add, and it rides this form's save. */}
+                {/* **A document is attached on the way** (ADR-0173 §5), ABOVE the notes
+                    (ADR-0174 §5, owner's ask — and the same order every read surface uses,
+                    so the app does not teach one sequence for authoring and another for
+                    reading). The host is this BOOKING — the anchor of its context, so a chip
+                    added here shows on the linked event as well — and on a create there is
+                    no id yet, so the picks are staged and ride the save. */}
+                <DocumentAttachField
+                  state={attach}
+                  host={booking ? { kind: 'booking', id: booking.id } : undefined}
+                />
+
                 {booking && (
                   <HostNotes
                     host={{ kind: 'booking', id: booking.id, name: booking.title }}
@@ -1309,16 +1320,6 @@ export function BookingSheet({
                 >
                   <NoteComposer state={composer} id="bs-notes" />
                 </Field>
-
-                {/* **A document is attached on the way too** (ADR-0173 §5). The host is this
-                    BOOKING — the anchor of its context, so a chip added here shows on the
-                    linked event as well — and on a create there is no id yet, so the picks
-                    are staged and ride the save. Empty it costs 40px, which is the whole
-                    reason the drawn version was redrawn (§5's amendment). */}
-                <DocumentAttachField
-                  state={attach}
-                  host={booking ? { kind: 'booking', id: booking.id } : undefined}
-                />
               </>
             )}
           </FormStepPanel>

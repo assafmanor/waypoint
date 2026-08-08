@@ -31,7 +31,6 @@ import {
   eventDirectionsUrl,
   eventDurationLabel,
   eventEdgeZone,
-  eventPlaceName,
   eventRoute,
   eventShowOnMap,
   eventDisplayZones,
@@ -1020,10 +1019,6 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       // `TitleLabel` rather than out raw. `titleText` stays the plain string.
       title={route.title ?? <TitleLabel title={e.title} />}
       titleText={e.title}
-      placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
-      // A route row's meta IS its title's destination, in full — so it is the part
-      // that gives way when a booking code shares the line (`eventMetaParts`).
-      routeRow={!!route.title}
       code={code}
       notes={noteCountForContext(
         ctx.noteCounts,

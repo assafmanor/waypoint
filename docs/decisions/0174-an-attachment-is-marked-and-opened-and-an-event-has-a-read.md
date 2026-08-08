@@ -1,6 +1,6 @@
 # 0174 — An attachment is **marked** and **opened**, and an event gets a **read**
 
-**Status:** **ACCEPTED for §1, §2, §3, §5 and §7 — built 2026-08-08 (session 232).** §4 is **still open and still unbuilt**: it is the one product call in this ADR and the owner has not made it. Read the amendments at the end before §1, §5 or the Consequences — the mockup was re-measured with the app's real typefaces and at 360×640, and two of its numbers changed an argument rather than a digit. **§7 is new**: the lifted Trip hero, which this ADR's first draft did not mention at all and which is the surface the feature exists for.
+**Status:** **ACCEPTED AND FULLY BUILT** — §1/§2/§3/§5/§7 in session 232, and **§4 in session 233** on the owner's word (_"make sure that you build everything that we've decided"_). Session 233 also added **§8**, which retires ADR-0152 §6c's composition rule outright: the owner's call is that a row shows glyphs and no text at all. Read the amendments at the end before §1, §5 or the Consequences — the mockup was re-measured with the app's real typefaces and at 360×640, and two of its numbers changed an argument rather than a digit. **§7 is new**: the lifted Trip hero, which this ADR's first draft did not mention at all and which is the surface the feature exists for.
 **Date:** 2026-08-08
 **Session note:** [`planning/2026-08-08-session-231-attachments-are-invisible-and-an-event-has-no-read.md`](../planning/2026-08-08-session-231-attachments-are-invisible-and-an-event-has-no-read.md)
 **Mockup:** [`mockups/attachments-and-event-preview-v1.html`](../../mockups/attachments-and-event-preview-v1.html)
@@ -72,9 +72,9 @@ Where it goes, which is wherever `HostNotes` already is **and** the host can car
 
 **Documents read ABOVE notes on every surface**, which is also §5's answer arriving early. The reason it is right in both places: a document is _a thing you need_ and a note is _something about it_; and there are almost always fewer documents than notes, so the shorter, fixed-length list goes first and the growing one goes last. The app must not teach two sequences for one pair.
 
-### 4. An event gets a read surface — **and this is the open question**
+### 4. An event gets a read surface — **BUILT (session 233)**
 
-**Recommended: `EventDetail`, the peer of `BookingDetail`**, reached by the Plan row's tap, with `עריכה` as its own control.
+**`EventDetail`, the peer of `BookingDetail`**, reached by the Plan row's tap, with `עריכה` as its own control. The owner's answer to the open question below was yes; what follows is the case as it was put, kept because the cost is real and someone will ask about it again.
 
 The mockup drew three containers over the same Plan day and measured them:
 
@@ -101,7 +101,9 @@ The case that it is affordable, stated so the owner can weigh it rather than tak
 
 **The alternative the owner may prefer** is to keep tap → edit and reach the read some other way. The mockup states why every "other way" examined is worse: the row already has four targets (`PlaceBadge` → map, `.bld-main` → edit, `.bld-time` → position, `⋯` → menu) and a fifth is precisely the crowding the owner warned against; the marks cannot be the target (ADR-0152 §8, and they sit inside `.bld-main`'s button, which cannot nest); and putting the read in the `⋯` sheet is the thing the owner already rejected once for notes (_"notes don't belong in a menu"_ — a row menu is a list of verbs, ADR-0138 §1).
 
-**Nothing here is built until that call is made**, because it decides whether `EventDetail` is a new component or an unnecessary one.
+**The call was made and it is built.** And building it answered the question the ADR could not: `EventDetail` is neither a new component nor an unnecessary one — it is **half of one**. Written out by hand first, its shell came out identical to `BookingDetail`'s line for line (`Sheet` → `.bk-detail` → `.bk-actions` → `.bk-head` → `.bs-hard-note` → `.bk-facts` → `HostDocuments` → `HostNotes`), which is precisely the parallel-copy shape ADR-0078/0079/0094/0095 are retractions of. So the shell was **extracted into `DetailSheet`** and both surfaces render it; what stays per-file is the facts, which are the part that genuinely differs. `BookingDetail`'s 30 tests pass unchanged through the extraction, which is the evidence it is faithful.
+
+**The archived trip is closed as promised.** `.bld-main` is a `<button>` at every scope now, and on `readOnly` the read opens with **no `עריכה` at all** — absent rather than disabled, per ADR-0150 §8.
 
 ### 5. The attach control gets 4px and moves above the notes
 
@@ -112,6 +114,25 @@ Owner, mid-session: the attach control should be _"a little more prominent, mayb
 - **Order: attach above notes.** The reorder is **free** (it moves rows, it adds none), and §3 already argued why the same order has to hold on the read surfaces.
 
 **One caveat recorded rather than left to be rediscovered:** on a _create_, the attach slot now sits above a notes composer whose `＋` is the form's most-used control, so that composer is 44px further down the scroll on a form ADR-0155 already measures at ~1565px against ~675px of visible phone.
+
+### 8. The row shows GLYPHS and no text, which retires ADR-0152 §6c
+
+Owner, from a device, with a screenshot (2026-08-09): _"the text is overflowing … events and bookings should only show the glyphs in their row, no names or ids."_
+
+**What was on screen.** A Plan row whose confirmation code was `הזמנה #MEGAZIP-T141215488` — not the `הזמנה MN-4471` every measurement in this ADR and in ADR-0152 was taken against. The code is `flex: 0 0 auto` by §6c's own rule (it must never lose its tail), so it could not shrink; the place name beside it was squeezed to **zero width**, leaving a stranded `·` next to nothing; and the line overflowed the row into the badge and the `⋯`.
+
+That is §6c's own "a two-character stub is noise, not information" failure, arriving through the one part of the line §6c had protected.
+
+**The rule that replaces it is smaller than the rule it replaces.** ADR-0152 §6c existed to decide **what gives way when the line is full**. There is no longer anything on the line to give way: the place name and the confirmation code both come off, and what stays is the sync badge and the two marks. `eventMetaParts` is deleted rather than narrowed — a predicate that returns constants is a place for a future reader to go looking for a rule that no longer exists — and the meta line does not render at all on a row with no glyph and no sync marker.
+
+**Neither fact is lost, and that is what makes it affordable rather than merely smaller.**
+
+- The **place** is the badge, which is also the way to its pin (ADR-0121 §8).
+- The **code** is one tap away in the read this row now opens (§4), where `BookingDetail` states it as a `Fact` and the expanded day card's hard-edit warning already prints it.
+
+**What the row says now** is what a row is for: what this is, when it is, and **that there is something here**. The last of those is exactly what a glyph says, which is why the marks are the part that stays.
+
+**Recorded because it will look like a regression in a diff:** a reader meeting "the day card stopped showing confirmation codes" will reasonably think something was lost. It was moved, on the owner's call, after the shipped version overflowed on a real code.
 
 ### 7. The lifted hero reaches the file, and that is where this feature was actually missing
 

@@ -158,6 +158,19 @@
   height: 14px;
 }
 
+/* **A QUEUED UPLOAD READS AS PROVISIONAL** (ADR-0092, drawn in ADR-0174 §2). A document
+   attached from a host's own form is outbox-first (ADR-0056), so the commonest way to meet
+   an attachment for the first time is while its bytes are still queued — and a chip that
+   looked settled would be claiming the file is somewhere it is not. Pending only: a FAILED
+   one stays full-opacity so its `cloud-bang` keeps asking for action. Same 0.6 the document
+   row, the booking row and the day card already use; no chip-local invention. */
+.doc-chip.unsynced {
+  opacity: 0.6;
+}
+.doc-chip .sync-badge {
+  flex: 0 0 auto;
+}
+
 /* THE WHOLE CHIP IS THE WAY IN (ADR-0174 §2), and the detach is its SIBLING — the shape
    `.note-chip` already uses, because buttons do not nest. Measured: the way in costs 0px
    (34px as-is, 34px openable-with-detach, 34px read-only). */

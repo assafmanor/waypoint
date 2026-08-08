@@ -197,25 +197,11 @@
      the one thing that can afford to lose its tail is the only thing that does. */
   flex-wrap: nowrap;
 }
-/* Only the PLACE NAME shrinks. Without this, `nowrap` returned the height and then
-   truncated `הזמנה MN-4471` to `הזמנה 471…`, because the code sits at the END of the line:
-   a shortened place name is a cosmetic loss, a shortened confirmation code is the fact you
-   opened the row to read. */
-.wp-event-m .wp-event-m-txt {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wp-event-m .wp-event-m-code,
-.wp-event-m .wp-event-m-sep,
+/* The line is glyphs only now (ADR-0174 §8) — no place name, no confirmation code — so the
+   only thing left to hold is the marks, and they never shrink. */
 .wp-event-m .note-mark,
 .wp-event-m .doc-mark {
   flex: 0 0 auto;
-}
-.wp-event-m .wp-event-m-sep {
-  opacity: 0.55;
 }
 .wp-event-time {
   font-family: var(--font-mono);

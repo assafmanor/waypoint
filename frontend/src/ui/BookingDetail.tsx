@@ -7,9 +7,7 @@ import { carriesRoute, type Booking } from '@waypoint/shared';
 import { bookingSheetDraft } from '../lib/booking-draft';
 import { useJourney, useRoundTripPartner, type Journey } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
-import { HostNotes } from './HostNotes';
-import { HostDocuments } from './HostDocuments';
-import { Sheet } from './Sheet';
+import { DetailSheet } from './DetailSheet';
 import { NavArrow } from './NavArrow';
 import { RouteLabel } from './RouteLabel';
 import {
@@ -30,7 +28,6 @@ import { badgeClassForBookingType } from '../lib/transitions';
 import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX, DOT_SEPARATOR } from '../constants';
 import { typeChipAddsMeaning } from '../lib/index-bookings';
 import { t } from '../i18n/he';
-import { Icon } from './Icon';
 
 interface Wifi {
   network?: string;
@@ -169,34 +166,24 @@ export function BookingDetail({
     });
 
   return (
-    <Sheet ariaLabel={heading} onClose={onClose}>
-      <div className="bk-detail">
-        <div className="bk-actions">
-          <button type="button" className="bk-edit" onClick={edit}>
-            <Icon name="edit" /> {t.index.detail.edit}
-          </button>
-        </div>
-
-        <div className="bk-head">
-          <div className={'bk-badge' + (badgeTint ? ` ${badgeTint}` : '')}>{icon}</div>
-          <div className="bk-headtext">
-            <div className="bk-title">
-              {isRoute ? <RouteLabel from={fromLabel} to={toLabel} /> : heading}
-            </div>
-            {/* Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped
-                rather than echoing a title that is already the type's own name. */}
-            {typeChipAddsMeaning(booking) && (
-              <div className="bk-type">{t.index.bookingType[booking.type]}</div>
-            )}
-          </div>
-        </div>
-
-        {linkedEvent?.kind === 'hard' && (
-          <div className="bs-hard-note">
-            <Icon name="lock" /> {t.index.detail.hardNote}
-          </div>
-        )}
-        <div className="bk-facts">
+    // **The shell is `DetailSheet`** (ADR-0174 §4). This file built it inline while it was
+    // the app's only read surface, which was right then; an event's read came out identical
+    // line for line, so the skeleton moved out and both render it. What stayed here is the
+    // facts, which are the part that actually differs.
+    <DetailSheet
+      ariaLabel={heading}
+      badge={icon}
+      badgeClassName={badgeTint || undefined}
+      title={isRoute ? <RouteLabel from={fromLabel} to={toLabel} /> : heading}
+      // Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped rather
+      // than echoing a title that is already the type's own name.
+      subtitle={typeChipAddsMeaning(booking) ? t.index.bookingType[booking.type] : undefined}
+      hard={linkedEvent?.kind === 'hard'}
+      host={{ kind: 'booking', id: booking.id, name: booking.title }}
+      onEdit={edit}
+      onClose={onClose}
+      facts={
+        <>
           {showLocation && (
             <LocationFact
               text={locationText}
@@ -291,21 +278,9 @@ export function BookingDetail({
               onOpen={onOpen && (() => onOpen(pair.partner))}
             />
           )}
-        </div>
-
-        {/* **Documents read above notes** (ADR-0174 §3), and that order is the same one the
-            host's own form teaches: a document is a thing you need and a note is something
-            about it, and the shorter, fixed-length list goes first. Absent — not empty —
-            when nothing is attached, which is most bookings. */}
-        <HostDocuments host={{ kind: 'booking', id: booking.id }} />
-
-        {/* A note is a mark on a row and a BODY here (ADR-0152 §6). This replaced the old
-            `details.notes` fact: notes are rows now, and a booking's are its own. The
-            section and its editor travel together (`HostNotes`), so this surface states the
-            host and nothing else. */}
-        <HostNotes host={{ kind: 'booking', id: booking.id, name: booking.title }} />
-      </div>
-    </Sheet>
+        </>
+      }
+    />
   );
 }
 
@@ -316,7 +291,7 @@ export function BookingDetail({
 // With no place at all the value says so in words rather than the row disappearing,
 // and `＋ מיקום` is the way out. Both no-place states therefore read the same way:
 // the fact is present, it states what it knows, and it offers the fix.
-function LocationFact({
+export function LocationFact({
   text,
   dirUrl,
   onShowOnMap,
@@ -385,6 +360,11 @@ function journeyNeighbour(journey: Journey, tz: string) {
   };
 }
 
+// `Fact` and `LocationFact` are EXPORTED for `EventDetail` (ADR-0174 §4), which is this
+// sheet's peer for the other entity: an event's read is the same grammar over different
+// facts, and a second copy of a key/value row is how two read surfaces start disagreeing
+// about what a fact looks like.
+//
 // A derived relation to ANOTHER booking, as a fact (ADR-0154 §5, ADR-0159). The only
 // facts that point away from this booking, which is why they read last and why they read
 // in plain ink: teal is location only (rule 4) and a sibling booking is not a location.
@@ -421,7 +401,7 @@ function RelatedFact({
  *  lint guard could not see, which is a base direction for the whole value: a Hebrew
  *  one would have read backwards. `auto` skips isolated content when it sniffs, so a
  *  duration built by `measure` still resolves RTL and keeps its number in front. */
-function Fact({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+export function Fact({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
     <div className="bk-fact">
       <span className="bk-fact-k">{k}</span>

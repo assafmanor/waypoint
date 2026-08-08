@@ -32,7 +32,13 @@ vi.mock('../state/trip-state', () => ({
     documentAttachments: tripAttachments,
   }),
 }));
-vi.mock('../lib/outbox', () => ({ usePendingUploads: () => [] }));
+// The chip carries the app's ONE per-entity sync grammar (ADR-0092), so the outbox mock
+// owes what `EntitySyncBadge`/`useUnsynced` read as well as the queued-upload list.
+vi.mock('../lib/outbox', () => ({
+  usePendingUploads: () => [],
+  useSyncStatus: () => ({ state: 'synced' }),
+  SYNC_STATE: { SYNCED: 'synced', PENDING: 'pending', FAILED: 'failed' },
+}));
 
 import { HostDocuments } from './HostDocuments';
 import { buildHostContextIndex } from '../lib/host-context';
