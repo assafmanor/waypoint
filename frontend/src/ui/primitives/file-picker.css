@@ -77,7 +77,34 @@
   border-radius: var(--radius-12);
   padding: 10px 11px;
 }
+
+/* the open-body: thumbnail + meta, pressed to view the file full-screen (ADR-0086's
+   2026-08-08 amendment). A row-sized surface, so it takes the surface press step
+   rather than the control one (tokens.css) — the ✕ beside it keeps the control step. */
+.file-preview-open {
+  --press-scale: var(--press-scale-lg);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  text-align: start;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.file-preview-open:focus-visible {
+  outline: 2px solid var(--cta);
+  outline-offset: 3px;
+  border-radius: var(--radius-8);
+}
+.file-preview-open:disabled {
+  cursor: default;
+}
 .file-preview-thumb {
+  position: relative;
   width: 48px;
   height: 48px;
   border-radius: var(--radius-8);
@@ -104,6 +131,22 @@
   font-family: var(--font-mono);
   letter-spacing: 0.5px;
   color: var(--miss);
+}
+/* "there is more of this than fits here" — the fit-to-content brackets (Icon `frame`),
+   in the thumbnail's trailing-bottom corner. Scrimmed rather than tinted, so it stays
+   legible over a photograph and over the PDF chip alike. */
+.file-preview-zoom {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-end: 0;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--card);
+  background: color-mix(in srgb, var(--ink) 62%, transparent);
+  border-start-start-radius: var(--radius-8);
 }
 .file-preview-main {
   flex: 1;

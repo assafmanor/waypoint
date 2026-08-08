@@ -85,6 +85,9 @@ export const t = {
     upload: 'העלאת קובץ',
     capture: 'צלמו עכשיו',
     remove: 'הסר',
+    /** Names the action AND the file, because the card's own filename is the button's
+     *  content and an `aria-label` would otherwise replace it. */
+    view: (name: string) => `תצוגה מלאה: ${name}`,
   },
   // Shared feedback-state family (ADR-0078): generic copy for the empty / loading
   // / error / status shells. Screens pass their own specific copy; these are the

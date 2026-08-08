@@ -6,6 +6,24 @@
 
 Mockup: [`mockups/document-upload-v1.html`](../../mockups/document-upload-v1.html).
 
+## Amendment (2026-08-08, session 223) — the preview card is a way IN to the file, not the whole look at it
+
+§3 shipped the picked-file preview as a **terminal** state: a 48px thumbnail, a name, a size, a ✕. Owner field report #19 ([session 216's triage](../planning/2026-08-07-session-216-field-reports-triage.md), Workstream G1) says that is not enough — the point of a preview before Save is to **check what you are about to save**, and a 48px tile cannot answer "is this the right page of the passport, and is it readable". Settled requirement, per the triage's §3 list.
+
+**The preview card's body now opens the file full-screen.** Thumbnail + name + size become one pressable open-body beside the ✕ — [`ListRow`](../../frontend/src/ui/domain/ListRow.tsx)'s grammar, and the same gesture a **saved** document's row already uses — and what it opens is `MediaViewer`, the app's one viewer, through a third `ViewerSource` variant: `{ kind: 'file', file }`.
+
+Three things that variant deliberately is not:
+
+- **Not a second viewer.** Rule 8 / ADR-0096: the pre-save look inherits the ONE close (ADR-0103 §2), the focus trap, the grow-out-of-what-you-pressed arrival, ADR-0062's pinch, and ADR-0052 §1's decode-failure hand-off, because it is the same component. The variant costs one branch in the read effect — a `File` **is** a `Blob`, so it joins the document's path at `URL.createObjectURL` and shares every step after it.
+- **Not a fetch, a cache key or a version.** The bytes are in memory. There is no id to address, no `updatedAt` to key the ADR-0055 blob cache on, and nothing to bound ([Workstream G2's](../planning/2026-08-07-session-222-document-read-reliability-built.md) phase deadlines exist because a read can hang; a `Promise.resolve` cannot). The `File` object itself is the version — picking again is a different object.
+- **Not a new object-URL owner.** The card keeps its own thumbnail URL and the viewer creates and revokes its own, so neither can free the other's while the other is still showing. §3's "clearing revokes the objectURL" now holds twice over, independently.
+
+**The known caveat, recorded rather than papered over: a PDF gets a hand-off, not an inline render.** `MediaViewer` shows inline only what the browser can decode as an image (ADR-0052 §1); a PDF — and an undecodable image, an iPhone HEIC — lands on `פתיחה` / `הורדה` instead. So for a PDF the "full preview" is one tap further out, in a browser tab. That is exactly what a **saved** PDF already offers, so the pre-save and post-save looks agree, and this ADR is not the place to change it: an inline PDF surface is its own decision, on its own evidence, for both.
+
+**Copy:** `filePicker.view(name)` → `תצוגה מלאה: ${name}`. It names the action _and_ the file because an `aria-label` replaces the button's content, and the filename is what that content says.
+
+**No mockup was drawn.** The open/close/zoom grammar being shown here is already shipped and already the one a document uses; the only new pixels are the fit-to-content brackets marking the thumbnail as a way in (there is no hover to discover it with — ADR-0017), which is a mark, not an interaction. The triage's own condition for a mockup — "only if reuse of the existing viewer does not make the interaction obvious" — is not met.
+
 ## Context
 
 The document upload sheet (`ui/DocumentUploadSheet.tsx`) reuses the booking sheet's form chrome for its type selector, title field, actions, progress bar and errors (all designed in ADR-0052). But the **file-pick control itself was never designed** — it is the browser's native `<input type="file">`, rendered as the OS "Choose File · No file chosen" button (`.doc-upload .bs-field input[type='file']`). Walking the live sheet on a phone (2026-07-19, Assaf), that control is the eyesore: it is left-aligned LTR inside an RTL sheet, its label is the browser's English, it gives no hint of what is accepted or how big a file may be, it shows no preview of what you picked, and it looks nothing like the rest of the app. ADR-0052 designed everything that happens _after_ a file is chosen (validate-on-pick, busy Save, determinate bar, cause-aware errors, four badges); it explicitly left the picker as "reuse the upload sheet's chrome," and the chrome it reused was the raw input.

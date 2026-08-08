@@ -8,12 +8,15 @@
 // **sole** zoom exception — a pinch that lifts the picture out of the card and lets go of it
 // when you do, hand-rolled, no dependency (ADR-0062's 2026-08-05 amendment).
 //
-// Two sources, and they differ only in how the bytes are reached:
+// Three sources, and they differ only in how the bytes are reached:
 //
 //   - a **document**, whose `/content` route is auth-guarded, so the blob comes through
 //     `apiFetch` and is shown as an object URL (revoked on close);
 //   - an **enrichment photo**, whose URL is public and immutable (ADR-0166 §7), so there is
-//     nothing to fetch, nothing to revoke and no version to key on.
+//     nothing to fetch, nothing to revoke and no version to key on;
+//   - a **picked file** the user has not saved yet (ADR-0086's amendment): a `File` is already
+//     a `Blob`, so it joins the document's path at the object URL and shares every step after
+//     it — there is simply no read in front of it.
 //
 // Mobile-first (ADR-0017): only an image the browser can actually decode is shown inline; a PDF,
 // an undecodable image (an iPhone HEIC), or anything else hands off to "open in a new tab" /
@@ -326,13 +329,18 @@ function useImageZoom() {
   };
 }
 
-/** **Where the bytes come from**, which is the only thing the two callers disagree about.
+/** **Where the bytes come from**, which is the only thing the callers disagree about.
  *
  *  `blob` is auth-guarded content addressed by id and versioned by `updatedAt` (ADR-0055's
  *  client blob cache); `url` is already-public, already-immutable bytes, so it needs no fetch,
- *  no object URL and no cache key — the URL itself is the version (ADR-0166 §7). */
+ *  no object URL and no cache key — the URL itself is the version (ADR-0166 §7); `file` is a
+ *  file the user has just picked and has **not saved**, so the bytes are already in memory and
+ *  there is nothing to address, nothing to version and nothing to bound (ADR-0086's amendment).
+ *  The `File` object itself is the version: picking again is a different object. */
 export type ViewerSource =
-  { kind: 'blob'; tripId: string; docId: string; updatedAt: string } | { kind: 'url'; url: string };
+  | { kind: 'blob'; tripId: string; docId: string; updatedAt: string }
+  | { kind: 'url'; url: string }
+  | { kind: 'file'; file: File };
 
 export function MediaViewer({
   title,
@@ -394,6 +402,7 @@ export function MediaViewer({
   const blobDocId = source.kind === 'blob' ? source.docId : null;
   const blobVersion = source.kind === 'blob' ? source.updatedAt : null;
   const directUrl = source.kind === 'url' ? source.url : null;
+  const localFile = source.kind === 'file' ? source.file : null;
 
   useEffect(() => {
     // **A public immutable URL is already the answer.** No fetch, no object URL, and nothing to
@@ -403,12 +412,22 @@ export function MediaViewer({
       setUrl(directUrl);
       return;
     }
-    if (!blobTripId || !blobDocId || !blobVersion) return;
+    // **The two byte sources differ only in how the blob is REACHED**, so that is the whole of
+    // the branch: a picked `File` is already a `Blob` and needs no request, no cache key and no
+    // deadline (nothing can hang when nothing is awaited), while a saved document is fetched.
+    // Everything after this line — the object URL, the decode, the revoke — is one path, which
+    // is why the pre-save preview cost a source variant rather than a second viewer.
+    // `updatedAt` versions the client blob cache (ADR-0055): a replaced file bumps it, so a
+    // stale cached blob is never served for the same docId.
+    const bytes = localFile
+      ? Promise.resolve<Blob>(localFile)
+      : blobTripId && blobDocId && blobVersion
+        ? fetchDocumentContent(blobTripId, blobDocId, blobVersion)
+        : null;
+    if (!bytes) return;
     let objectUrl: string | null = null;
     let cancelled = false;
-    // `updatedAt` versions the client blob cache (ADR-0055): a replaced file bumps it,
-    // so a stale cached blob is never served for the same docId.
-    fetchDocumentContent(blobTripId, blobDocId, blobVersion).then(
+    bytes.then(
       async (blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -448,7 +467,7 @@ export function MediaViewer({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [blobTripId, blobDocId, blobVersion, directUrl, mimeType, attempt]);
+  }, [blobTripId, blobDocId, blobVersion, directUrl, localFile, mimeType, attempt]);
 
   const retry = useCallback(() => {
     setFailed(false);

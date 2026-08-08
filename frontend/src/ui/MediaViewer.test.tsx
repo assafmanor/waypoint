@@ -252,6 +252,85 @@ describe('a read that never answers ends in a retryable error, not an endless sp
   });
 });
 
+// **THE THIRD SOURCE** (ADR-0086's 2026-08-08 amendment). A file the user has picked and not
+// saved: the bytes are already in memory, so what needs asserting is that they reach the same
+// surface WITHOUT the document machinery in front of them — no fetch, no cache key, no version
+// — and that the object URL this path does create is still revoked.
+describe('MediaViewer with a picked local file (ADR-0086)', () => {
+  const picked = (name = 'passport-assaf.jpg', type = 'image/jpeg') =>
+    new File(['x'], name, { type });
+
+  const openFile = (file = picked()) => {
+    const onClose = vi.fn();
+    const created: string[] = [];
+    const revoked: string[] = [];
+    let n = 0;
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(() => {
+      const u = `blob:local-${++n}`;
+      created.push(u);
+      return u;
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation((u) => void revoked.push(u));
+    const view = render(
+      wrapNav(
+        <MediaViewer
+          title={file.name}
+          mimeType={file.type}
+          source={{ kind: 'file', file }}
+          onClose={onClose}
+        />,
+      ),
+    );
+    return { onClose, created, revoked, ...view };
+  };
+
+  it('shows the picked bytes as an object URL, with no document read', async () => {
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+    const before = vi.mocked(fetchDocumentContent).mock.calls.length;
+    const { created } = openFile();
+    await waitFor(() => expect(document.querySelector('.doc-viewer-img')).not.toBeNull());
+    const img = document.querySelector('.doc-viewer-img') as HTMLImageElement;
+    expect(img.getAttribute('src')).toBe(created[0]);
+    // The file IS the answer — there is no id to address and no version to key on, so the
+    // whole document read is skipped rather than reproduced.
+    expect(vi.mocked(fetchDocumentContent).mock.calls.length).toBe(before);
+  });
+
+  it('revokes its object URL on unmount', async () => {
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+    const { created, revoked, unmount } = openFile();
+    await waitFor(() => expect(document.querySelector('.doc-viewer-img')).not.toBeNull());
+    unmount();
+    expect(revoked).toEqual(created);
+  });
+
+  // Everything the two saved sources get, this one gets — the argument for a variant rather
+  // than a second viewer.
+  it('still closes from the backdrop and names the dialog', async () => {
+    const { onClose } = openFile();
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy());
+    expect(screen.getByRole('dialog').getAttribute('aria-label')).toBe('passport-assaf.jpg');
+    fireEvent.click(document.querySelector('.doc-viewer')!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // A picked PDF reaches the hand-off, same as a saved one (ADR-0052 §1) — and the download
+  // it offers carries the file's own name, since a pre-save file has no title yet.
+  it('hands off a picked PDF instead of embedding it', async () => {
+    openFile(picked('insurance-harel.pdf', 'application/pdf'));
+    await waitFor(() => expect(document.querySelector('.doc-viewer-handoff')).not.toBeNull());
+    expect(document.querySelector('a.dv-download')!.getAttribute('download')).toBe(
+      'insurance-harel.pdf',
+    );
+  });
+});
+
 describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   // The viewer is a PORTAL into `document.body`, so everything here queries the document —
   // the same way every test above it does.
