@@ -27,6 +27,7 @@ export function NoteSection({
   now,
   onAdd,
   onEdit,
+  inheritedFrom,
 }: {
   /** This host's notes, already filtered and in the order they should read. */
   notes: Note[];
@@ -35,6 +36,12 @@ export function NoteSection({
   /** Absent when the surface has its own way in — the host FORM carries a composer that
    *  rides its save (ADR-0152 §6b), and two add paths on one screen is one too many. */
   onAdd?: () => void;
+  /** **Where a note this surface did not author came from** (ADR-0172 §9's amendment) —
+   *  answered per note, so only the INHERITED ones are marked and the surface's own stay
+   *  plain. Absent everywhere but a place, which is the one host that displays a context it
+   *  is not a member of. Costs 2px per note: it rides the meta line that already carries the
+   *  author and the elapsed time, and opens no new line. */
+  inheritedFrom?: (note: Note) => string | undefined;
   /** The one verb an open note offers here. Reached by tapping the note and then `עריכה`,
    *  so nobody lands in a form by reaching for a sentence. */
   onEdit: (note: Note) => void;
@@ -79,6 +86,7 @@ export function NoteSection({
                 ]
                   .filter(Boolean)
                   .join(' · ')}
+                {inheritedFrom?.(note) && <span className="note-from">{inheritedFrom(note)}</span>}
               </span>
               {openId === note.id && (
                 <NoteOpenFoot

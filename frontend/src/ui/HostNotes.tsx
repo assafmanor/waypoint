@@ -12,10 +12,11 @@
 // comes from `NOTE_HOST_FIELD` through `noteHostInput`, so a sixth hostable entity adds a
 // line in `@waypoint/shared` and nothing here.
 import { useMemo, useState } from 'react';
-import type { Note } from '@waypoint/shared';
+import { ENTITY_TYPE, type Note } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import {
+  isHostedBy,
   noteHostInput,
   notesForContext,
   notesForHost,
@@ -46,6 +47,20 @@ export function useHostContext(kind: NoteHostKind, id: string): HostContext {
   return useMemo(() => resolveHostContext(hostContexts, { kind, id }), [hostContexts, kind, id]);
 }
 
+/** The name of the host a surface's notes are ANCHORED to, when that is not the surface
+ *  itself. `undefined` on every host that authors its own — which is every host but a place
+ *  with exactly one relevant context (ADR-0172 §3). */
+function useAnchorName(context: HostContext, host: NoteHostRef): string | undefined {
+  const { bookings, events } = useTrip();
+  const { anchor } = context;
+  return useMemo(() => {
+    if (anchor.kind === host.kind && anchor.id === host.id) return undefined;
+    if (anchor.kind === ENTITY_TYPE.BOOKING) return bookings.find((b) => b.id === anchor.id)?.title;
+    if (anchor.kind === ENTITY_TYPE.EVENT) return events.find((e) => e.id === anchor.id)?.title;
+    return undefined;
+  }, [anchor, host.kind, host.id, bookings, events]);
+}
+
 export function HostNotes({
   host,
   canAdd = true,
@@ -64,6 +79,18 @@ export function HostNotes({
   // is what keeps the note with the original context if the place is ever reused (§4).
   const context = useHostContext(host.kind, host.id);
   const hostNotes = useMemo(() => notesForContext(notes, context), [notes, context]);
+  // **A place says where an inherited note came from** (ADR-0172 §9's amendment). Only a
+  // place can be showing rows it does not host — §3's inheritance is one-way — so the whole
+  // question is "is this note hosted by the surface I am on", and everywhere else the answer
+  // is always yes and nothing is marked.
+  const anchorName = useAnchorName(context, host);
+  const inheritedFrom = useMemo(
+    () =>
+      anchorName
+        ? (note: Note) => (isHostedBy(note, host.kind, host.id) ? undefined : anchorName)
+        : undefined,
+    [anchorName, host.kind, host.id],
+  );
 
   return (
     <>
@@ -71,6 +98,7 @@ export function HostNotes({
         notes={hostNotes}
         users={users}
         now={now}
+        inheritedFrom={inheritedFrom}
         onAdd={canAdd ? () => setEditing('create') : undefined}
         onEdit={setEditing}
       />

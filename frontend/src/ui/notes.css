@@ -285,6 +285,20 @@
   color: var(--muted);
 }
 
+/* **Where an inherited note came from** (ADR-0172 §9's amendment). Inline in the meta line
+   it shares with the author and the elapsed time, so it costs 2px per note and never opens a
+   second line - measured in `mockups/notes-and-documents-in-context-v1.html` §2. */
+.note-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--wash);
+  color: var(--muted);
+}
+
 /* ── AN OPEN NOTE (ADR-0153 §4's 2026-08-02 amendment, round two) ─────────────
    A note opens WHERE IT IS. It used to rise as a sheet, which is `BookingDetail`'s
    grammar — right for an object with facts and verbs, and wrong for a sentence: a
