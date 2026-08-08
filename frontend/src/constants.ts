@@ -100,6 +100,37 @@ export const WS_WATCHDOG_TIMEOUT_MS = 60_000;
 export const WS_RECONNECT_BASE_MS = 1_000;
 export const WS_RECONNECT_CAP_MS = 30_000;
 
+/** **Bounds on the document read path** (field-report #20). Every await in that path had
+ *  none, so a jammed storage handle or a connection that went quiet left the viewer's
+ *  spinner up until the app was restarted — a promise that never settles is not an error
+ *  anything can catch (`lib/deadline.ts`).
+ *
+ *  Sized as *"this is dead"*, never *"this is slow"*: a bound that fires on a working
+ *  download is a worse bug than the hang it replaces, so these are deliberately far above
+ *  any healthy read. The body bound is `WS_WATCHDOG_TIMEOUT_MS`'s minute for the same
+ *  reason it is — that is how long this app waits before calling silence a failure. */
+export const DOC_READ_TIMEOUT_MS = {
+  /** Local storage: past a few seconds the Cache API handle is jammed, not busy. */
+  CACHE: 3_000,
+  /** To response HEADERS, not to the last byte — the bytes are `BODY`'s to wait for. */
+  FETCH: 20_000,
+  /** The bytes themselves, on whatever connection a phone abroad actually has. */
+  BODY: 60_000,
+  /** Decoding is CPU-local and fast; the failure it guards is a decode requested while the
+   *  document is hidden (a locked phone mid-load), which never settles at all. */
+  DECODE: 10_000,
+} as const;
+
+/** Which await gave up, for `PhaseTimeoutError`. Named rather than inline strings because
+ *  the viewer branches on one of them: a decode that TIMED OUT is a missing optimization,
+ *  where a decode that FAILED is bytes the browser cannot render. */
+export const DOC_READ_PHASE = {
+  CACHE: 'doc-cache',
+  FETCH: 'doc-fetch',
+  BODY: 'doc-body',
+  DECODE: 'doc-decode',
+} as const;
+
 /** Retry cadence for a non-empty write outbox (U-04): while anything is queued,
  *  re-attempt the flush on this interval so the "N changes waiting" summary can't
  *  wedge on when no connectivity transition arrives to trigger a drain. */

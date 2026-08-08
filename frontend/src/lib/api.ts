@@ -60,8 +60,14 @@ import {
   type UpdateMeInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
-import { API_BASE_URL, AVATAR_UPLOAD_FILENAME } from '../constants';
+import {
+  API_BASE_URL,
+  AVATAR_UPLOAD_FILENAME,
+  DOC_READ_PHASE,
+  DOC_READ_TIMEOUT_MS,
+} from '../constants';
 import type { MapBounds } from './map-camera';
+import { withDeadline } from './deadline';
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
 
 // Defined in `constants.ts` (a primitive needs it without importing this module) and
@@ -768,7 +774,13 @@ export async function uploadDocument(
  *  network fetch, and an offline re-open of a previously viewed doc still succeeds
  *  (ADR-0042). The blob is immutable by fileRef but the URL is reused across a
  *  replace, so `version` (the doc's `updatedAt`) keys the cache — a replace mints a
- *  fresh key and the stale one is evicted on write. */
+ *  fresh key and the stale one is evicted on write.
+ *
+ *  **Every await here is bounded** (`lib/deadline.ts`, field-report #20). None of them was,
+ *  and the viewer's only route to an error state is a rejection — so any one of them going
+ *  quiet was a spinner that outlived the screen. The cache's own bound lives in
+ *  `doc-cache.ts`, which answers null; the two network phases reject, and the viewer turns
+ *  that into a retry. */
 export async function fetchDocumentContent(
   tripId: string,
   docId: string,
@@ -780,10 +792,20 @@ export async function fetchDocumentContent(
   const cached = await readCachedBlob(url);
   if (cached) return cached;
 
-  const res = await apiFetch(url);
-  if (!res.ok) return throwApiError(res);
-  const blob = await res.blob();
-  await writeCachedBlob(url, blob, baseUrl);
+  const res = await withDeadline(DOC_READ_PHASE.FETCH, DOC_READ_TIMEOUT_MS.FETCH, (signal) =>
+    apiFetch(url, { signal }),
+  );
+  // The error body is a read like any other, so it takes the same bound: a 500 whose body
+  // never arrives would hang in `throwApiError` exactly as a 200's would hang here.
+  const blob = await withDeadline(DOC_READ_PHASE.BODY, DOC_READ_TIMEOUT_MS.BODY, () =>
+    res.ok ? res.blob() : throwApiError(res),
+  );
+
+  // **Not awaited.** The bytes are already in hand, so the caller has its answer and the
+  // write is pure optimization — awaiting it meant a jammed or full cache held up a read
+  // that had already succeeded, and the eviction sweep it runs first walks every key.
+  // It cannot reject (`doc-cache.ts` is best-effort throughout).
+  void writeCachedBlob(url, blob, baseUrl);
   return blob;
 }
 

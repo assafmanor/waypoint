@@ -10,6 +10,7 @@ import {
   createTrip,
   deleteBooking,
   deleteEvent,
+  fetchDocumentContent,
   fetchSnapshot,
   isHardEventConfirmError,
   isMoveCrossesDayError,
@@ -26,6 +27,8 @@ import {
   updatePlace,
 } from './api';
 import { BOOKINGS, EVENTS, TRIP } from '../fixtures';
+import { DOC_READ_TIMEOUT_MS } from '../constants';
+import { PhaseTimeoutError } from './deadline';
 
 const snapshotBody = {
   trip: TRIP,
@@ -466,5 +469,129 @@ describe('destination lookup (ADR-0113, trip-agnostic)', () => {
       expect.stringContaining('/destinations/resolve'),
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+});
+
+// ── Field-report #20: the document read used to have no bounded failure ────────────────
+// Every await in `fetchDocumentContent` was unbounded, and the viewer's only route out of
+// its spinner is a rejection — so any phase going quiet was a spinner that outlived the
+// screen and was recoverable only by restarting the app. These pin the bounds: the read
+// always ENDS, and it ends late enough that a slow-but-working read is never cut off.
+describe('fetchDocumentContent — every phase is bounded (field-report #20)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const NEVER = new Promise<never>(() => {});
+  const state = (p: Promise<unknown>) => {
+    let done = false;
+    const guarded = p.then(
+      (v) => {
+        done = true;
+        return { ok: true as const, v };
+      },
+      (e: unknown) => {
+        done = true;
+        return { ok: false as const, e };
+      },
+    );
+    return { guarded, settled: () => done };
+  };
+
+  /** A Cache API whose calls behave as asked. Absent by default in jsdom, so only the
+   *  tests that want one install it. */
+  function stubCaches(over: Partial<Record<'match' | 'put' | 'keys', () => Promise<unknown>>>) {
+    const cache = {
+      match: over.match ?? (() => Promise.resolve(undefined)),
+      put: over.put ?? (() => Promise.resolve()),
+      keys: over.keys ?? (() => Promise.resolve([])),
+      delete: () => Promise.resolve(true),
+    };
+    vi.stubGlobal('caches', {
+      open: () => Promise.resolve(cache),
+      delete: () => Promise.resolve(true),
+    });
+  }
+
+  it('a network fetch that never answers ends in a rejection, not a pending promise', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => NEVER),
+    );
+    const { guarded, settled } = state(fetchDocumentContent('t1', 'd1', 'v1'));
+
+    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.FETCH - 1);
+    expect(settled()).toBe(false); // a slow read is still a read
+
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await guarded;
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.e).toBeInstanceOf(PhaseTimeoutError);
+  });
+
+  it('aborts the request it gave up on rather than leaving it open', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => NEVER);
+    vi.stubGlobal('fetch', fetchMock);
+    const { guarded } = state(fetchDocumentContent('t1', 'd1', 'v1'));
+    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.FETCH);
+    await guarded;
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.signal?.aborted).toBe(true);
+  });
+
+  it('a response whose BODY never arrives ends in a rejection too', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, blob: () => NEVER })),
+    );
+    const { guarded, settled } = state(fetchDocumentContent('t1', 'd1', 'v1'));
+    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.BODY - 1);
+    expect(settled()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await guarded).ok).toBe(false);
+  });
+
+  // The Cache API sits AHEAD of the network, so a jammed storage handle wedged the first
+  // open and the cached one alike. It is an optimization, so silence there is a miss.
+  it('a cache read that never answers falls through to the network', async () => {
+    vi.useFakeTimers();
+    stubCaches({ match: () => NEVER });
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(['net'])) }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { guarded } = state(fetchDocumentContent('t1', 'd1', 'v1'));
+    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.CACHE);
+    const result = await guarded;
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  // The bytes are already in hand here: the read has succeeded and only the write-through
+  // is stuck, so nothing about it may reach the user.
+  it('a cache WRITE that never answers does not hold up the blob already fetched', async () => {
+    stubCaches({ put: () => NEVER, keys: () => NEVER });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(['net'])) }),
+      ),
+    );
+    // No timer advancing at all: this must resolve on its own, with real clocks running.
+    await expect(fetchDocumentContent('t1', 'd1', 'v1')).resolves.toBeInstanceOf(Blob);
+  });
+
+  it('still serves a healthy cache hit without touching the network', async () => {
+    stubCaches({
+      match: () => Promise.resolve({ blob: () => Promise.resolve(new Blob(['hit'])) }),
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(fetchDocumentContent('t1', 'd1', 'v1')).resolves.toBeInstanceOf(Blob);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

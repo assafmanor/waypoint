@@ -13,6 +13,7 @@ import '../test/pointer-events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentViewer, MediaViewer } from './MediaViewer';
 import { wrapNav } from '../test/nav-harness';
+import { DOC_READ_TIMEOUT_MS } from '../constants';
 
 vi.mock('../lib/api', () => ({
   fetchDocumentContent: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })),
@@ -180,6 +181,77 @@ describe('DocumentViewer — the arrival grows from the row that was tapped', ()
 // card's full picture could reuse it rather than grow a hero — so what needs asserting is that
 // the url path reaches the bytes WITHOUT the document machinery, and that the document path is
 // untouched (every test above it, unchanged, is that half).
+// ── Field-report #20: the spinner must always reach an end ─────────────────────────────
+// The viewer's only route out of its loading state was a REJECTION, and no phase of the
+// read could produce one on its own — so a stuck read was a spinner that outlived the
+// screen, recoverable only by restarting the app. The bounds live in `lib/deadline.ts`;
+// what these pin is the viewer's half of the contract.
+//
+// Placed ABOVE the pinch tests deliberately: a pinch release arms the global click swallow
+// (`lib/click-swallow.ts`) for `DRAG_CLICK_SWALLOW_MS`, and it eats the retry press here.
+// Harmless in the app — a failed read has no picture to pinch — but not across test order.
+describe('a read that never answers ends in a retryable error, not an endless spinner', () => {
+  const NEVER = new Promise<never>(() => {});
+  const spinner = () => document.querySelector('.doc-viewer-loading');
+
+  it('turns a rejected read into the feedback family ErrorState with a retry', async () => {
+    vi.mocked(fetchDocumentContent).mockRejectedValue(new Error('gave up'));
+    open();
+    await waitFor(() => expect(document.querySelector('.fb-error')).not.toBeNull());
+    expect(spinner()).toBeNull();
+    // ADR-0078's shell, not a bespoke `<p>` — and announced, which the caption never was.
+    expect(screen.getByRole('alert').textContent).toBe('לא הצלחנו לפתוח את המסמך');
+    expect(screen.getByRole('button', { name: /נסו שוב/ })).toBeTruthy();
+  });
+
+  it('re-reads on retry and shows the document it failed to open', async () => {
+    // jsdom has no `HTMLImageElement.decode`, so without this the retried read reaches the
+    // hand-off (a missing method reads as bytes that cannot be decoded) and the image path
+    // this test is about is never exercised.
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+    vi.mocked(fetchDocumentContent).mockRejectedValue(new Error('gave up'));
+    open();
+    const retry = await screen.findByRole('button', { name: /נסו שוב/ });
+
+    vi.mocked(fetchDocumentContent).mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }));
+    fireEvent.click(retry);
+    await waitFor(() => expect(document.querySelector('.doc-viewer-img')).not.toBeNull());
+    expect(document.querySelector('.fb-error')).toBeNull();
+  });
+
+  // The decode is an optimization, so losing it is not losing the document: Chromium drops a
+  // decode requested while the page is hidden and never settles it, which is a phone locked
+  // mid-load — the picture must still arrive, not fall to the hand-off.
+  it('shows the image anyway when the decode never answers', async () => {
+    vi.useFakeTimers();
+    vi.mocked(fetchDocumentContent).mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }));
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => NEVER,
+    });
+    open();
+    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.DECODE);
+    await vi.waitFor(() => expect(document.querySelector('.doc-viewer-img')).not.toBeNull());
+    expect(document.querySelector('.doc-viewer-handoff')).toBeNull();
+    vi.useRealTimers();
+  });
+
+  // The other half of the same branch: bytes the browser genuinely cannot render still go to
+  // the hand-off, which is what tells a timeout apart from a failure.
+  it('still hands off an image that fails to decode', async () => {
+    vi.mocked(fetchDocumentContent).mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }));
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => Promise.reject(new Error('not an image')),
+    });
+    open();
+    await waitFor(() => expect(document.querySelector('.doc-viewer-handoff')).not.toBeNull());
+  });
+});
+
 describe('MediaViewer with a public url (ADR-0167 §10.2)', () => {
   // The viewer is a PORTAL into `document.body`, so everything here queries the document —
   // the same way every test above it does.
