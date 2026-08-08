@@ -1,5 +1,5 @@
 // **What each place is CALLED on a glanceable surface** (ADR-0166 §18, field report #23):
-// a nickname, else the derived `City · IATA`. Keyed by place id, and read by the small title
+// a nickname, else the city an airport serves. Keyed by place id, and read by the small title
 // components that draw a route — `EventTitle`, `BookingTitle`, `TransitionRow`.
 //
 // **A channel of its own rather than a field of `useTrip()`, and the reason is the readers.**

@@ -48,6 +48,9 @@ let tripPlaces: Place[] = [placed, lite];
 let tripEvents: TripEvent[] = [];
 // The whole trip's bookings, which is what the derived round-trip pair reads (§5).
 let tripBookings: Booking[] = [];
+// What the world knows about the trip's places (ADR-0166 §6) — empty for every test but the
+// airport-codes one, which is also the normal state for most places.
+let tripEnrichments: Record<string, unknown> = {};
 const updateBooking = vi.fn(() => Promise.resolve());
 
 const tripNotes: unknown[] = [];
@@ -61,6 +64,7 @@ vi.mock('../state/trip-state', () => ({
     places: tripPlaces,
     bookings: tripBookings,
     maybeItems: [],
+    enrichments: tripEnrichments,
     indexVerbs: { updateBooking },
     notes: tripNotes,
     users: [{ id: 'u1', displayName: 'דנה' }],
@@ -503,5 +507,65 @@ describe('BookingDetail — the journey fact', () => {
     tripBookings = [leg1];
     openWith(leg1);
     expect(screen.queryByText(t.index.detail.journey)).toBeNull();
+  });
+});
+
+/* ── THE AIRPORT CODES (ADR-0166 §18, revised 2026-08-08) ──────────────────────────────────
+   The route surfaces read as cities, because they are rows. The codes live HERE, in the
+   record, beside the confirmation code — the other thing you hold a ticket up against. */
+describe('BookingDetail — the airport codes fact', () => {
+  const tlv = pl('pl-tlv', 'נמל התעופה בן גוריון', { lat: 32, lng: 34.8 });
+  const fra = pl('pl-fra', 'נמל התעופה של פרנקפורט', { lat: 50, lng: 8.5 });
+  const flight = bk({
+    id: 'bk-fl',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'נמל התעופה בן גוריון ← נמל התעופה של פרנקפורט',
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-fra',
+  });
+  const code = (value: string) => ({
+    iata: {
+      value,
+      source: 'wikidata',
+      license: 'CC0',
+      fetchedAt: NOW,
+      confidence: 1,
+      method: 'name_proximity',
+      ref: 'Q-airport',
+    },
+  });
+
+  beforeEach(() => {
+    tripPlaces = [tlv, fra];
+    tripBookings = [flight];
+    tripEnrichments = {};
+  });
+  afterEach(cleanup);
+
+  it('states both codes as a route once the pipe has resolved them', () => {
+    tripEnrichments = { 'pl-tlv': code('TLV'), 'pl-fra': code('FRA') };
+    open(flight);
+    expect(screen.getByText(t.index.detail.airports)).toBeTruthy();
+    expect(screen.getByText('TLV')).toBeTruthy();
+    expect(screen.getByText('FRA')).toBeTruthy();
+  });
+
+  it('is absent entirely when neither end has a code — a train has none', () => {
+    open(flight);
+    expect(screen.queryByText(t.index.detail.airports)).toBeNull();
+  });
+
+  it('states the half it knows when only one end resolved', () => {
+    tripEnrichments = { 'pl-tlv': code('TLV') };
+    open(flight);
+    expect(screen.getByText(t.index.detail.airports)).toBeTruthy();
+    expect(screen.getByText('TLV')).toBeTruthy();
+  });
+
+  it('is absent on a booking with no route at all', () => {
+    tripEnrichments = { 'pl-1': code('TLV') };
+    tripPlaces = [placed];
+    open(bk({ id: 'bk-h', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
+    expect(screen.queryByText(t.index.detail.airports)).toBeNull();
   });
 });

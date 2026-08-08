@@ -127,11 +127,11 @@ describe('BookingTitle — the endpoints read as what the places are CALLED', ()
 
   it('draws the derived label where there is one, and shortens the name where there is not', () => {
     render(
-      <PlaceLabelsProvider labels={{ 'pl-tlv': 'תל אביב · TLV' }}>
+      <PlaceLabelsProvider labels={{ 'pl-tlv': 'תל אביב' }}>
         <BookingTitle booking={flight} places={places} />
       </PlaceLabelsProvider>,
     );
-    expect(screen.getByText('תל אביב · TLV')).toBeTruthy();
+    expect(screen.getByText('תל אביב')).toBeTruthy();
     expect(screen.getByText('נריטה')).toBeTruthy();
   });
 

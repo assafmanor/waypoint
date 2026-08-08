@@ -104,7 +104,7 @@ export interface Route {
   from?: string;
   to?: string;
   /** **The display label for each endpoint, when the deriver had one** (ADR-0166 §18) — a
-   *  nickname, or `City · IATA`. Beside the names rather than replacing them, because the two
+   *  nickname, or the city an airport serves. Beside the names rather than replacing them, because the two
    *  answer different questions and one surface needs both: `routeDisplay` puts the label
    *  inline and the destination's FULL name in the meta line under it.
    *

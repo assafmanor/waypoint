@@ -899,7 +899,7 @@ interface DayCtx {
   toggle: (id: string) => void;
   bookings: Booking[];
   places: Place[];
-  /** A nickname or a derived `City · IATA`, per place (ADR-0166 §18) — threaded with `places`
+  /** A nickname or the city an airport serves, per place (ADR-0166 §18) — threaded with `places`
    *  because every row that names a place asks both questions at once. */
   placeLabels: PlaceLabels;
   /** How many notes each host carries (ADR-0152 §6c), built once per note-list change

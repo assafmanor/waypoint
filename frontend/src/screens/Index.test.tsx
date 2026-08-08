@@ -47,6 +47,9 @@ vi.mock('../state/trip-state', () => ({
     events: [],
     documents: tripDocuments,
     maybeItems: [],
+    // The booking detail reads it for the airport codes (ADR-0166 §18). Empty is the
+    // normal state for most places, and the fact is simply absent.
+    enrichments: {},
     notes: [],
     users: [],
   }),

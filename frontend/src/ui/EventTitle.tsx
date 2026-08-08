@@ -29,7 +29,7 @@ export function EventTitle({
   bookings: Booking[];
   places: Place[];
 }) {
-  // A place's own label — a nickname, or `City · IATA` — outranks the stripping below it
+  // A place's own label — a nickname, or the city an airport serves — outranks the stripping
   // (ADR-0166 §18). Read from context rather than taken as a prop: every host of this
   // component would otherwise have to thread it, and outside a trip there simply are none.
   const placeLabels = usePlaceLabels();

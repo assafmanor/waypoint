@@ -399,7 +399,7 @@ describe('MapPlaceForm — the short label', () => {
     title: t.map.make.renameTitle,
     name: 'נמל התעופה בן גוריון',
     confirmLabel: t.map.make.save,
-    nickname: { value: '', fallback: 'תל אביב · TLV' },
+    nickname: { value: '', fallback: 'תל אביב' },
   } satisfies Partial<MapPlaceFormSpec>;
 
   const nicknameField = () => screen.getByLabelText(t.map.make.nicknameLabel) as HTMLInputElement;
@@ -411,7 +411,7 @@ describe('MapPlaceForm — the short label', () => {
 
   it('says what the row will show if it is left empty', () => {
     mount(RENAME);
-    expect(screen.getByText(t.map.make.nicknameHint('תל אביב · TLV'))).toBeTruthy();
+    expect(screen.getByText(t.map.make.nicknameHint('תל אביב'))).toBeTruthy();
   });
 
   it('reports the trimmed label, and the empty string that CLEARS one', () => {

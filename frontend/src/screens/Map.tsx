@@ -2967,7 +2967,7 @@ export function MapView() {
           // **The short label, offered only here** (ADR-0166 §18): the two ADD sources have no
           // place to nickname yet, and asking before the thing exists is a question about
           // nothing. The fallback shown in the hint is what the row would say with the field
-          // empty — the derived `City · IATA` where enrichment resolved one, else the stripped
+          // empty — the served city where enrichment resolved one, else the stripped
           // name — so "leave it blank" is a visible choice rather than a guess.
           nickname: {
             value: r.place.nickname ?? '',

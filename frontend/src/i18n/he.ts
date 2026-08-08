@@ -659,6 +659,11 @@ export const t = {
       noLocation: 'לא הוגדר מיקום',
       unscheduled: 'לא משובצת במסלול',
       code: 'קוד אישור',
+      // **Where the IATA codes live** (ADR-0166 §18, revised 2026-08-08). Not on the route
+      // surfaces, which are rows: two compound labels on one line spend the whole budget
+      // saying twice what the cities say once. Here, in the record, beside the confirmation
+      // code — which is the other thing you check against a ticket.
+      airports: 'קודי שדות תעופה',
       provider: 'ספק',
       room: 'חדר',
       wifi: 'WiFi',

@@ -72,7 +72,7 @@ export interface MapPlaceFormSpec {
    *  what OFFERS the field at all — only the rename source does, because a place that does not
    *  exist yet has nothing to nickname and the question would be noise on the two add paths.
    *
-   *  `fallback` is what the label resolves to with no nickname — the derived `City · IATA`, or
+   *  `fallback` is what the label resolves to with no nickname — the served city, or
    *  the shortened name — so the hint can say what leaving it empty means rather than making
    *  the user guess what they are overriding. */
   nickname?: { value: string; fallback: string };

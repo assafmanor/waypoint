@@ -740,7 +740,7 @@ function TripReady({
   );
 
   // **The display label for every place that has one** (ADR-0166 §18) — a nickname, or the
-  // `City · IATA` the enrichment pipe derived. Resolved once here, for the same reason
+  // city an airport serves, which the enrichment pipe derived. Resolved once here, for the same reason
   // `zoneCrossings` is: every glanceable route surface asks the same question about the same
   // rows, and a per-surface derivation is how two of them end up disagreeing about what a
   // flight is called. Places with neither answer carry NO key, so the surfaces fall through to

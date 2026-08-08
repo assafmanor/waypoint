@@ -7,7 +7,7 @@
 
 - **#6** — a flight leg's place search asks Google for **airports only**. The booking sheet's route fields put a `kind` on the errand (ADR-0134's channel), the Map tab passes it to its Text Search relay, and the proxy sends `includedType: 'airport'` + `strictTypeFiltering: true`.
 - **#7** — **real IATA codes**, from Wikidata `P238`, as a field in ADR-0166's existing pipe. Matched by the name route the pipe already runs, gated by a `P31`-is-airport check.
-- **#23** — the label is `City · IATA` (`תל אביב · TLV`), from `P931` plus `P238`, with **`Place.nickname`** as the manual override above it and today's name-stripping below it.
+- **#23** — a route reads as **cities** (`תל אביב ← פרנקפורט`, from `P931`), with **`Place.nickname`** as the manual override above it and today's name-stripping below it. The **IATA code** is a fact of its own on the **booking detail**, not part of the label.
 
 ## 2. The #6 endpoint call, which the handoff left open — and why it went the other way from the research
 
@@ -23,7 +23,21 @@ So the build stayed on **Text Search**. Worth stating plainly, because it is the
 
 That fallback is deliberately a stopgap, and it is written to be deleted: **the overlap should be measured against a real key**, and if `airport` does cover both, the retry goes. If it does _not_, the retry is load-bearing and the honest fix is Autocomplete plus a design answer for the rings — which is a different session, not a parameter change. Recorded in `backlog.md`.
 
-## 3. Judgement calls made during the build
+## 3. The label was `City · IATA` first, and the owner split it the same day
+
+The first build put the compound form on every surface, so a flight read `תל אביב · TLV ← פרנקפורט · FRA`. The owner's correction, on seeing it: the route should be `Tel Aviv → Frankfurt`, and the code belongs "on another surface that's not so much size sensitive."
+
+That is right, and the code half was the part that could not survive where it was:
+
+- **Every reader of this label is a row.** A day row, a board card, a transition row — and a route puts **two** labels on one line. The compound form spends the row's whole width saying twice what the cities say once.
+- **It would have broken the inline route on the common case.** `routeDisplay` falls back to destination-primary once the two labels exceed `ROUTE_INLINE_MAX_CHARS`; two compound labels clear that on most real pairs, so the layout ADR-0059 §3 wants would have become the exception rather than the rule. Nothing would have failed — it would just have quietly looked worse, everywhere, forever.
+- **The code is a fact you check, not a name you read.** It earns its place next to the confirmation code on the booking detail, which is the record surface, has room, and is where you hold a ticket up against the screen.
+
+So: `derivedPlaceLabel` returns the **city**, `placeIataCode` hands the code out separately, and the booking detail renders it through the same `RouteLabel` arrow every route in the app uses — `TLV ← FRA`. The general rule this leaves behind, which is the part worth keeping: **a derived label belongs where it is read, and a fact belongs where it is checked** — putting both in one string made it too long to be either.
+
+**Not done, and deliberately:** the Map's expanded place card is the other roomy surface and would be a reasonable second home for the code. It was left alone because nothing asked for it and the booking detail is where the question ("which airport am I flying from?") actually gets asked.
+
+## 4. Judgement calls made during the build
 
 - **`servedCity` is a variants map, not a string.** The pipe already stores localized variants for `summary` (ADR-0166 §11.6) and a city name is prose in the same way — `תל אביב` in a Hebrew RTL app, `Tel Aviv` where Wikidata has no Hebrew label. That turned `field === SUMMARY`, which four separate places tested inline, into a set named once (`TEXT_VARIANT_FIELDS`). Worth noticing as a pattern: **a literal comparison against a single enum member is a latent bug the day the enum grows**, and it read as a shortcut in all four.
 - **`settlesIdentity` is now declared on a provider, not inferred.** The registry selected identity providers as "supplies no field of its own", which was true of Wikidata right up until this change gave it two. Left alone, Wikidata would have quietly stopped running on summary/image passes and every downstream match would have got fuzzier — with nothing failing, because a fuzzier match still returns a plausible answer. The inference is kept as the default so no other provider had to change.
@@ -33,13 +47,13 @@ That fallback is deliberately a stopgap, and it is written to be deleted: **the 
 - **A derived label is never re-stripped.** `shortRoute` returns a resolved endpoint untouched. `שדה התעופה של אמא` is a legitimate nickname and the stripper would answer `של אמא` — a nickname is not ours to edit.
 - **An empty nickname is a value; an absent one is not.** The rename form reports `''` to clear a nickname and reports **no key at all** from the two add sources, so an add path can never write over a nickname the place already carries.
 
-## 4. What is owed
+## 5. What is owed
 
 - **Measure the `airport` / `international_airport` overlap with a real API key**, and delete the empty-answer retry if the generic type covers both (§2).
-- **A real-device pass on the label.** `תל אביב · TLV` on a 360px day row alongside a time and an icon is arithmetic nobody has seen on glass — and the middle dot's behaviour in an RTL run beside a Latin code is exactly the class ADR-0118 warns about. The unit suite cannot see either.
-- **Nothing renders `servedCity` or `iata` on their own.** They exist to compose the label. If a surface ever wants the code alone, that is a design question, not a data one.
+- **A real-device pass on the label.** `תל אביב ← פרנקפורט` on a 360px day row alongside a time and an icon is arithmetic nobody has seen on glass. The compound form is gone from the rows (§3), so the width risk is much smaller than it was — but `RouteLabel`'s `TLV ← FRA` on the detail is a Latin run inside an RTL flow, which is exactly ADR-0118's class and is drawn by `bdi` on each end rather than by a forced direction.
+- **`servedCity` composes the label; `iata` renders only on the booking detail.** If another roomy surface ever wants the code — the Map's expanded place card is the obvious candidate — it reads `placeIataCode` and needs nothing new.
 
-## 5. Where the strings and shapes now live
+## 6. Where the strings and shapes now live
 
 | Thing                                                                 | Where                                                                                                                  |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |

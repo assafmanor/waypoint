@@ -1446,7 +1446,7 @@ interface BuilderCtx {
   nowZone: string;
   bookings: Booking[];
   places: Place[];
-  /** A nickname or a derived `City · IATA`, per place (ADR-0166 §18) — threaded with `places`
+  /** A nickname or the city an airport serves, per place (ADR-0166 §18) — threaded with `places`
    *  because a builder row asks both questions about the same endpoint. */
   placeLabels: PlaceLabels;
   /** `useShowPlaceOnMap()` — `null` outside the trip shell, which drops the row's

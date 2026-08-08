@@ -32,18 +32,24 @@
 //   1. **`Place.nickname`** — what a human called it. Wins outright, because the cases
 //      automation cannot resolve (Ben Gurion serves Tel Aviv AND Jerusalem, at equal rank in
 //      Wikidata) are exactly the cases a person can answer in two taps.
-//   2. **`City · IATA`** — derived, when the enrichment pipe has resolved BOTH halves
-//      (`servedCity` and `iata`, ADR-0166 §18). `תל אביב · TLV`. Both or neither: a lone code
-//      names nothing to someone who does not fly often, and a lone city is the thing this
-//      file's stripping already approximates.
+//   2. **the city the airport serves** — `servedCity`, derived by the enrichment pipe
+//      (ADR-0166 §18). `תל אביב`, not `נמל התעופה בן גוריון`.
 //   3. **the stripped name**, below — for a place that is not an airport, or one whose
 //      enrichment has not landed (or never will).
+//
+// **The IATA code is NOT in this chain** (owner's call, 2026-08-08, revising §18's first
+// build). Every surface that reads this file is width-starved by construction — a day row, a
+// board card, a route with TWO of these on one line — and `תל אביב · TLV ← פרנקפורט · FRA`
+// spends the row's whole budget saying twice what `תל אביב ← פרנקפורט` says once. It also
+// pushed most real pairs past `ROUTE_INLINE_MAX_CHARS`, so the inline route ADR-0059 §3 wants
+// would have collapsed to the destination-primary fallback on the common case. The code lives
+// where there is room for it and a reason to check it — the booking detail's own fact row,
+// against a ticket — and `placeIataCode` is what that surface reads.
 //
 // The chain is one function, `derivedPlaceLabel`, and it answers `undefined` at rung 3 so the
 // stripping stays where it is rather than being copied into it.
 import { resolveTextVariant, SUMMARY_LANG_PREFERENCE } from '@waypoint/shared';
 import type { DeliveredEnrichmentFields, Place } from '@waypoint/shared';
-import { DOT_SEPARATOR } from '../constants';
 import { type Route } from './places';
 
 /** Shortest remainder we'll accept — below this the strip clearly ate the name. */
@@ -99,9 +105,9 @@ export function shortPlaceLabel(name: string): string {
 }
 
 /**
- * **The two rungs above the stripping** (ADR-0166 §18) — a nickname, else `City · IATA` —
- * or `undefined` when neither is available, which is the signal to fall through to
- * `shortPlaceLabel`.
+ * **The two rungs above the stripping** (ADR-0166 §18) — a nickname, else the city the
+ * airport serves — or `undefined` when neither is available, which is the signal to fall
+ * through to `shortPlaceLabel`.
  *
  * `undefined` rather than the stripped name on purpose: the callers below already hold the
  * fallback, and a function that answered it here would have to be given the full name at every
@@ -113,14 +119,18 @@ export function derivedPlaceLabel(
 ): string | undefined {
   const nickname = place?.nickname?.trim();
   if (nickname) return nickname;
-  const iata = enrichment?.iata?.value;
   // Hebrew where Wikidata had it, English otherwise — the same `he` → `en` preference the
   // summary resolves with (ADR-0166 §11.5), because it is the same question.
-  const city = enrichment?.servedCity
+  return enrichment?.servedCity
     ? resolveTextVariant(enrichment.servedCity, SUMMARY_LANG_PREFERENCE)?.value
     : undefined;
-  if (!iata || !city) return undefined;
-  return `${city} ${DOT_SEPARATOR} ${iata}`;
+}
+
+/** **The airport's IATA code, for a surface with room for it** (ADR-0166 §18, revised) —
+ *  the booking detail's own fact row, where you check it against a ticket. Deliberately not
+ *  part of `derivedPlaceLabel`: see this file's header for why no row-shaped surface gets it. */
+export function placeIataCode(enrichment?: DeliveredEnrichmentFields): string | undefined {
+  return enrichment?.iata?.value;
 }
 
 /** Every place's label, keyed by id — what a surface looks a route endpoint up in.
