@@ -12,12 +12,14 @@ import {
   isAmbient,
   isBracketed,
   isJourney,
+  type DocumentSummary,
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useVerbs } from '../state/verbs';
 import { useToast } from '../ui/Toast';
 import { EventTitle } from '../ui/EventTitle';
+import { DocumentViewer } from '../ui/MediaViewer';
 import {
   Board,
   ChangeFeed,
@@ -97,6 +99,8 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     places,
     events,
     notes,
+    documents,
+    documentAttachments,
     hostContexts,
     zoneEvidence,
     activeDate,
@@ -247,6 +251,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     bookings,
     places,
     notes,
+    // The hero's own reach to an attached file (ADR-0174 §6) — resolved inside the horizon,
+    // through the same context the notes go through, so the board and the day row cannot
+    // disagree about what a point carries.
+    attachments: documentAttachments,
+    documents,
     hostContexts,
   });
   const liftable = canLift(horizon);
@@ -256,6 +265,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
    *  the PRESSED box, since `--press-scale-lg` is still applied under the finger and
    *  `getBoundingClientRect` includes transforms. The flight measures it a frame later,
    *  after `:active` has been released. */
+  /** The attached file the hero was asked to open, if any (ADR-0174 §6). Held here rather
+   *  than inside `HeroLift`, which is presentational like `Board` beside it — the same reason
+   *  every other hand-off on that card arrives as a callback. */
+  const [viewingDoc, setViewingDoc] = useState<DocumentSummary | null>(null);
   const boardEl = useRef<HTMLElement | null>(null);
   const wasLifted = useRef(false);
   const showPlaceOnMap = useShowPlaceOnMap();
@@ -316,6 +329,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       place: placeLabelOf(placeLabels, p.placeId, p.place),
       note: p.notes[0]?.body,
       noteMore: Math.max(0, p.notes.length - 1),
+      // **The one surface a boarding pass is actually needed on, and the one that never
+      // showed it.** One chip per document, in this point's own action row — `אחר כך` gets
+      // none for free, because `HeroThen` carries no id (ADR-0160 §12's condition).
+      documents: p.documents.map((doc) => ({
+        key: doc.id,
+        title: doc.title,
+        onOpen: () => setViewingDoc(doc),
+      })),
       settled: p.settled,
       // The Map's focus channel is absent when its provider is not mounted, so the
       // way-in is absent too rather than a control that cannot work (ADR-0150 §8).
@@ -642,6 +663,14 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           }
           onClose={() => setLifted(false)}
         />
+      )}
+
+      {/* The app's ONE viewer, reached from the hero for the first time (ADR-0174 §2/§6).
+          It portals above the lifted card and registers its own back layer, so the gesture
+          peels the file first and leaves the hero up — which is what you want when you have
+          just checked a gate number. */}
+      {viewingDoc && (
+        <DocumentViewer tripId={trip.id} doc={viewingDoc} onClose={() => setViewingDoc(null)} />
       )}
 
       {/* Group change-feed (ADR-0081, U-09): a quiet strip below the board that

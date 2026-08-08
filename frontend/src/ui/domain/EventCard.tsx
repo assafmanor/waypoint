@@ -23,6 +23,7 @@ import { RowManageSheet, type RowAction } from './ListRow';
 import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
 import { NoteMark } from './NoteMark';
+import { DocumentMark } from './DocumentMark';
 import { t } from '../../i18n/he';
 import './event-card.css';
 
@@ -85,6 +86,17 @@ export interface EventCardProps {
    *  props — so the mark needs its own. A count only past 1: a `1` beside a glyph that
    *  already means "a note" is a digit that says nothing. */
   notes?: number;
+  /** **How many DOCUMENTS this event carries** (ADR-0174 §1) — its own and its booking's,
+   *  since a linked pair is one context. Same rule as `notes`: a count only past 1, and the
+   *  mark is a read-only indicator whose reach is this card's own expansion. */
+  documents?: number;
+  /** **Where an event's attached documents are READ** (ADR-0174 §3) — the connected
+   *  `<HostDocuments>`, rendered inside the card this row expands, ABOVE the notes.
+   *
+   *  A node rather than the component, for `notesSlot`'s reason: this file is `ui/domain/`.
+   *  Above the notes because a document is a thing you need and a note is something about
+   *  it, and because the app must not teach one order on the form and another on the read. */
+  documentsSlot?: ReactNode;
   /** **Where an event's notes are READ and WRITTEN** (ADR-0152 §6's 2026-08-02 amendment) —
    *  the connected `<HostNotes>`, rendered inside the card this row EXPANDS, under its verbs.
    *
@@ -153,17 +165,24 @@ export function eventMetaParts({
   placeName,
   code,
   notes,
+  documents,
   placeInTitle,
 }: {
   placeName?: string;
   code?: string;
   notes?: number;
+  /** **How many DOCUMENTS the row carries** (ADR-0174 §1), and the whole of the day card's
+   *  change. `hasMark` counted notes only, so a row with a code and an attachment but no
+   *  note kept its place name and then truncated it to 48px of the 107px it needs —
+   *  measured. Counting both leaves every other row byte-identical: a marked coded row has
+   *  already dropped the name, whichever mark it is. */
+  documents?: number;
   /** **Is this name already on the title line?** True for a transport row, whose
    *  title is `origin ← destination` (shortened) and whose meta carries the
    *  destination's FULL official name as an enrichment (`routeDisplay`). */
   placeInTitle?: boolean;
 }): { placeName?: string; separator: boolean; code?: string } {
-  const hasMark = notes !== undefined && notes > 0;
+  const hasMark = (notes ?? 0) > 0 || (documents ?? 0) > 0;
   const showPlace = placeName && !(code && (hasMark || placeInTitle));
   return {
     placeName: showPlace ? placeName : undefined,
@@ -197,6 +216,8 @@ export function EventCard(props: EventCardProps) {
     conflict,
     nestedCount,
     notes,
+    documents,
+    documentsSlot,
     notesSlot,
     onNavigate,
     onShowOnMap,
@@ -227,7 +248,13 @@ export function EventCard(props: EventCardProps) {
   };
 
   const codeText = code ? `${t.event.bookingLabel} ${code}` : undefined;
-  const metaParts = eventMetaParts({ placeName, code: codeText, notes, placeInTitle: routeRow });
+  const metaParts = eventMetaParts({
+    placeName,
+    code: codeText,
+    notes,
+    documents,
+    placeInTitle: routeRow,
+  });
 
   const tag = isDone ? (
     <span className="wp-event-tag-done">
@@ -279,6 +306,7 @@ export function EventCard(props: EventCardProps) {
         {metaParts.separator && <span className="wp-event-m-sep">·</span>}
         {metaParts.code && <span className="wp-event-m-code">{metaParts.code}</span>}
         <NoteMark count={notes} />
+        <DocumentMark count={documents} />
       </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
@@ -510,6 +538,11 @@ export function EventCard(props: EventCardProps) {
               that carries the mark opens. Mounted only while the card is open, because the
               strip is in the DOM at every height — a day of twelve events would otherwise
               hold twelve connected note sections nobody is looking at. */}
+          {/* Documents above notes, the same order the form and every other read surface
+              use (ADR-0174 §3). Mounted only while open, for `notesSlot`'s own reason: the
+              strip is in the DOM at every height, so a day of twelve events would otherwise
+              hold twelve connected sections nobody is looking at. */}
+          {isOpen && documentsSlot}
           {isOpen && notesSlot}
         </div>
       </div>

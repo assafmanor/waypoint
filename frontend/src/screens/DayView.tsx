@@ -104,11 +104,13 @@ import { routeDisplay } from '../ui/route-display';
 import { placeLabelOf, type PlaceLabels } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
 import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
 import { HostNotes } from '../ui/HostNotes';
+import { HostDocuments } from '../ui/HostDocuments';
 import { EntitySyncBadge, useUnsynced } from '../ui/EntitySyncBadge';
 import { Icon } from '../ui/Icon';
 
@@ -198,6 +200,7 @@ export function DayView() {
     bookings,
     places,
     notes,
+    documentAttachments,
     hostContexts,
     zoneEvidence,
     activeDate,
@@ -383,6 +386,10 @@ export function DayView() {
   // with the Plan-mode builder so the two day surfaces cannot diverge.
   const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  const docCounts = useMemo(
+    () => attachmentCountsByHost(documentAttachments),
+    [documentAttachments],
+  );
 
   const dayCtx: DayCtx = {
     tz: trip.timezone,
@@ -395,6 +402,7 @@ export function DayView() {
     places,
     placeLabels,
     noteCounts,
+    docCounts,
     hostContexts,
     dayEvents,
     verbs,
@@ -908,6 +916,9 @@ interface DayCtx {
   /** How many notes each host carries (ADR-0152 §6c), built once per note-list change
    *  rather than filtered per row — a day of twelve events asks this twelve times. */
   noteCounts: Map<string, number>;
+  /** Its twin for attachments (ADR-0174 §1) — the count `attachmentCountsByHost` was
+   *  written for and that nothing called until this row. */
+  docCounts: Map<string, number>;
   /** Which hosts share a note list (ADR-0172 §1) — so a booked event's mark counts the
    *  notes its booking holds, which is where the create path puts them. */
   hostContexts: HostContextIndex;
@@ -1018,8 +1029,15 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
         ctx.noteCounts,
         resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
       )}
+      // The same question about the other content type (ADR-0174 §1), over the same
+      // context — so the mark and the section under it cannot disagree.
+      documents={attachmentCountForContext(
+        ctx.docCounts,
+        resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+      )}
       // The mark says there are notes; this is where they are read and written. Connected
       // here rather than inside the card, which is presentational (`ui/domain/`).
+      documentsSlot={<HostDocuments host={{ kind: 'event', id: e.id }} />}
       notesSlot={<HostNotes host={{ kind: 'event', id: e.id, name: e.title }} />}
       kind={e.kind === EVENT_KIND.HARD ? 'hard' : 'soft'}
       phase={phase}

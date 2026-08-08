@@ -8,6 +8,7 @@ import { bookingSheetDraft } from '../lib/booking-draft';
 import { useJourney, useRoundTripPartner, type Journey } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
 import { HostNotes } from './HostNotes';
+import { HostDocuments } from './HostDocuments';
 import { Sheet } from './Sheet';
 import { NavArrow } from './NavArrow';
 import { RouteLabel } from './RouteLabel';
@@ -291,6 +292,12 @@ export function BookingDetail({
             />
           )}
         </div>
+
+        {/* **Documents read above notes** (ADR-0174 §3), and that order is the same one the
+            host's own form teaches: a document is a thing you need and a note is something
+            about it, and the shorter, fixed-length list goes first. Absent — not empty —
+            when nothing is attached, which is most bookings. */}
+        <HostDocuments host={{ kind: 'booking', id: booking.id }} />
 
         {/* A note is a mark on a row and a BODY here (ADR-0152 §6). This replaced the old
             `details.notes` fact: notes are rows now, and a booking's are its own. The

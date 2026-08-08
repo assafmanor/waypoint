@@ -152,6 +152,25 @@
   border-color: rgba(233, 166, 60, 0.32);
   color: #f0c785;
 }
+/* **The document reach** (ADR-0174 §6). It takes the chip's BASE fill unchanged — neutral,
+   because rule 4 gives a document no hue, and the base had been sitting here unused since
+   every other way out of a point is a place (teal) or a booking (amber). What the density
+   adds is the two properties a stored TITLE needs and a fixed label does not.
+
+   Measured at 390x844: a fourth chip wraps this row onto a second line, +42px, and the
+   densest state (`in-transit`, whose settle verbs are gone) still fits the card with no
+   scroller. Wrapping is what `flex-wrap` is on this row for (ADR-0160 §O) — the honest claim
+   is "one wrapped line", not "free" — and the cost is exactly 0px when nothing is attached,
+   because there is then no element. */
+.hero-act.doc {
+  max-width: 190px;
+}
+.hero-act.doc .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* ── A span you are inside ─────────────────────────────────────────────────────
    The journey's own progress, in the point it belongs to. As the card's `foot` it was
    pinned below `הבא בתור` — 258px under the route it describes, measured — and read as

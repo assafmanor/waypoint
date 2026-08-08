@@ -98,6 +98,11 @@ export interface HeroLiftPoint {
    *  others there are, because the hero shows ONE and must not imply it is all. */
   note?: string;
   noteMore?: number;
+  /** **The files attached to this point** (ADR-0174 §6), each with the tap that opens it in
+   *  the app's one viewer. The board is where a boarding pass is actually needed and the one
+   *  surface that never showed one — so the reach is a chip in this point's OWN action row,
+   *  which already reads "every way out of a point, in ONE row". */
+  documents?: { key: string; title: string; onOpen: () => void }[];
   settled?: SettleOutcome;
   /** The way to the pin, and the hand-off out to Maps (ADR-0121's amendment §4 —
    *  the affordance that was too loud on the COLLAPSED board and is affordable
@@ -174,7 +179,8 @@ export interface HeroLiftProps {
  *  wrap that had already made two. `flex-wrap` stays on the chip row as the safety net
  *  for a translation nobody has measured, but at 344px it is not reached. */
 function Where({ point }: { point: HeroLiftPoint }) {
-  const acts = [point.onMap, point.navigateUrl, point.onBooking].some(Boolean);
+  const docs = point.documents ?? [];
+  const acts = [point.onMap, point.navigateUrl, point.onBooking].some(Boolean) || docs.length > 0;
   if (!point.place && !acts) return null;
   return (
     <div className="hero-part">
@@ -215,6 +221,21 @@ function Where({ point }: { point: HeroLiftPoint }) {
               <Icon name="ticket" /> {t.hero.toBooking}
             </button>
           )}
+          {/* **A document is NEUTRAL, and the neutral chip was already here.** `.hero-act`'s
+              base rule is a white 7% fill under `--on-dark`, and every call site above
+              passes `.loc` (teal, a place) or `.time` (amber, a commitment) — so the base
+              had no consumer at all until a content type arrived that rule 4 has no hue to
+              lend. What `.doc` adds is a width cap and an ellipsis, because a document's
+              TITLE is the only stored content in this row: a density on the shared chip,
+              not a second chip (ADR-0139's rule, one surface over). */}
+          {docs.map((doc) => (
+            <button type="button" className="hero-act doc" key={doc.key} onClick={doc.onOpen}>
+              <Icon name="documents" />
+              <span className="nm" dir="auto">
+                {doc.title}
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </div>

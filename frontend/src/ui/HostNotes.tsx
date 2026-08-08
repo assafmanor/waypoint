@@ -47,10 +47,18 @@ export function useHostContext(kind: NoteHostKind, id: string): HostContext {
   return useMemo(() => resolveHostContext(hostContexts, { kind, id }), [hostContexts, kind, id]);
 }
 
-/** The name of the host a surface's notes are ANCHORED to, when that is not the surface
+/** The name of the host a surface's rows are ANCHORED to, when that is not the surface
  *  itself. `undefined` on every host that authors its own — which is every host but a place
- *  with exactly one relevant context (ADR-0172 §3). */
-function useAnchorName(context: HostContext, host: NoteHostRef): string | undefined {
+ *  with exactly one relevant context (ADR-0172 §3).
+ *
+ *  Exported for `HostDocuments`, which asks the identical question about the other content
+ *  type: a place displays a context's documents and can never originate one, so it says
+ *  whose they are. A second copy of this hook is how the two sections start naming the same
+ *  anchor differently. */
+export function useAnchorName(
+  context: HostContext,
+  host: Pick<NoteHostRef, 'kind' | 'id'>,
+): string | undefined {
   const { bookings, events } = useTrip();
   const { anchor } = context;
   return useMemo(() => {

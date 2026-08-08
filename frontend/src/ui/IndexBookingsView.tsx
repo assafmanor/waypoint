@@ -24,6 +24,7 @@ import {
 } from '../lib/index-bookings';
 import { countVisible } from '../lib/filter-reveal';
 import { noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
@@ -35,7 +36,7 @@ import { BookingManageSheet } from './BookingManageSheet';
 import { BookingTitle } from './BookingTitle';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
-import { ListRow, NoteMark, type BadgeTone } from './domain';
+import { DocumentMark, ListRow, NoteMark, type BadgeTone } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
 import { RevealList } from './primitives/RevealList';
@@ -52,7 +53,7 @@ export function IndexBookingsView({
    *  that booking's detail on top of this screen once mounted. */
   initialBookingId?: string;
 }) {
-  const { trip, bookings, places, events, notes, hostContexts } = useTrip();
+  const { trip, bookings, places, events, notes, documentAttachments, hostContexts } = useTrip();
   const { mode } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
@@ -60,6 +61,12 @@ export function IndexBookingsView({
   const now = useClock();
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // Its twin for attachments (ADR-0174 §1) — the count `lib/attachments.ts` shipped with
+  // ADR-0173 and that nothing rendered.
+  const docCounts = useMemo(
+    () => attachmentCountsByHost(documentAttachments),
+    [documentAttachments],
+  );
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
 
   const [category, setCategory] = useState<CategoryFilter>(CATEGORY_ALL);
@@ -181,6 +188,10 @@ export function IndexBookingsView({
       onManage={setManage}
       notes={noteCountForContext(
         noteCounts,
+        resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
+      )}
+      documents={attachmentCountForContext(
+        docCounts,
         resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
       )}
       showPlaceOnMap={showPlaceOnMap}
@@ -353,6 +364,7 @@ function BookingLi({
   onOpen,
   onManage,
   notes,
+  documents,
   showPlaceOnMap,
   onLeaveForMap,
 }: {
@@ -364,6 +376,10 @@ function BookingLi({
   onManage: (booking: Booking) => void;
   /** How many notes this booking carries (ADR-0152 §6): a mark on the row, never a body. */
   notes: number;
+  /** …and how many documents (ADR-0174 §1). Two marks, not one combined "has content" glyph:
+   *  a note is something someone wrote and a document is a file you may have to show at a
+   *  border, and one silhouette cannot say which a tap will get you. */
+  documents: number;
   showPlaceOnMap: ShowPlaceOnMap;
   /** Close this screen before the tab changes underneath it. */
   onLeaveForMap: () => void;
@@ -421,6 +437,7 @@ function BookingLi({
               never a body in it (ADR-0152 §6). Composed here rather than through a new
               `ListRow` prop: the row's meta is already a node, so it needs no variant. */}
           <NoteMark count={notes} />
+          <DocumentMark count={documents} />
         </>
       }
       right={

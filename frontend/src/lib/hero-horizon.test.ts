@@ -6,6 +6,8 @@ import {
   EVENT_SOURCE,
   EVENT_STATUS,
   type Booking,
+  type DocumentAttachment,
+  type DocumentSummary,
   type Note,
   type Place,
   type TripEvent,
@@ -51,6 +53,33 @@ const place = (id: string, name: string): Place => ({
   updatedBy: 'u1',
 });
 
+const attachment = (
+  id: string,
+  documentId: string,
+  host: { eventId?: string; bookingId?: string },
+): DocumentAttachment =>
+  ({
+    id,
+    tripId: 't1',
+    documentId,
+    createdBy: 'u1',
+    createdAt: '2026-08-01T10:00:00Z',
+    ...host,
+  }) as DocumentAttachment;
+
+const documentSummary = (id: string, title: string): DocumentSummary =>
+  ({
+    id,
+    tripId: 't1',
+    title,
+    type: 'other',
+    mimeType: 'application/pdf',
+    sizeBytes: 1000,
+    createdAt: '2026-08-01T10:00:00Z',
+    updatedAt: '2026-08-01T10:00:00Z',
+    updatedBy: 'u1',
+  }) as DocumentSummary;
+
 const booking = (id: string, b: Partial<Booking> = {}): Booking => ({
   id,
   tripId: 't1',
@@ -74,6 +103,8 @@ const input = (over: Partial<HeroHorizonInput> = {}): HeroHorizonInput => ({
   hostContexts: buildHostContextIndex(over.events ?? [], over.bookings ?? []),
   places: [],
   notes: [],
+  attachments: [],
+  documents: [],
   ...over,
 });
 
@@ -294,6 +325,34 @@ describe('canLift', () => {
 
   it('is true for a booking to reach', () => {
     expect(canLift(withNow({ bookingId: 'b1' }, { bookings: [booking('b1')] }))).toBe(true);
+  });
+
+  // **An attached document is depth** (ADR-0174 §6), and this is not a formality: without
+  // it a point whose only depth is a boarding pass answers "nothing to lift" and takes the
+  // rebuff — the board refusing to open onto the one thing it now has to show.
+  it('is true for an attached document alone', () => {
+    expect(
+      canLift(
+        withNow(
+          {},
+          {
+            attachments: [attachment('a1', 'd1', { eventId: 'now' })],
+            documents: [documentSummary('d1', 'כרטיס עלייה')],
+          },
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  // ADR-0173 §6's visibility rule reaches the lift trigger for free, because the resolution
+  // runs over the document list this reader has: a link to a document they cannot see is an
+  // absence, so it cannot make the board pressable onto nothing.
+  it('is false for a link whose document this reader cannot see', () => {
+    expect(
+      canLift(
+        withNow({}, { attachments: [attachment('a1', 'd1', { eventId: 'now' })], documents: [] }),
+      ),
+    ).toBe(false);
   });
 
   it('is true for a concurrent sibling, even with no depth anywhere', () => {

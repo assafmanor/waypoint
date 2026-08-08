@@ -452,6 +452,37 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       expect(parts.placeName).toBe('שיבויה');
     });
 
+    // **THE WHOLE OF THE DAY CARD'S ATTACHMENT CHANGE** (ADR-0174 §1). `hasMark` counted
+    // notes only, so this was the ONE row the doc mark altered: a code and a document and
+    // no note kept its place name and then truncated it to 48px of the 107px it wanted.
+    // Every other row is byte-identical, because a marked coded row has already dropped
+    // the name whichever mark it is.
+    it('DROPS the place name for a code and a DOCUMENT, with no note at all', () => {
+      const parts = eventMetaParts({
+        placeName: 'נמל התעופה נריטה',
+        code: 'הזמנה LY-0801',
+        documents: 2,
+      });
+      expect(parts.placeName).toBeUndefined();
+      expect(parts.separator).toBe(false);
+      expect(parts.code).toBe('הזמנה LY-0801');
+    });
+
+    it('keeps the place name for a document with no code — nothing competes for the line', () => {
+      const parts = eventMetaParts({ placeName: 'שיבויה', documents: 1 });
+      expect(parts.placeName).toBe('שיבויה');
+    });
+
+    it('treats a zero document count as no mark, exactly as it does a zero note count', () => {
+      const parts = eventMetaParts({
+        placeName: 'שיבויה',
+        code: 'הזמנה MN-4471',
+        notes: 0,
+        documents: 0,
+      });
+      expect(parts.placeName).toBe('שיבויה');
+    });
+
     // The case the rule above did not cover (ADR-0159's build): a coded flight with no
     // mark at all, whose meta is the destination's FULL name while the title already
     // carries it shortened. Measured on the shipped row at 360px: 95px of line, 84 of

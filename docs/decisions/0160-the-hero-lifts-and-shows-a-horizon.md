@@ -348,3 +348,61 @@ Owner, from a device: _"when lifting the hero when it says `זמן חופשי` u
 **The lifted hero now carries them**, in the collapsed board's own markup and words — which is this ADR's own thesis (§1: one object at two elevations), and what every other state on the card already does. Nothing else is added: the free state's depth is the horizon under it, which §A already argued is the whole point of lifting in a gap.
 
 Worth naming for the next reader, because the shape recurs: `Board` expresses `free` as **the branch it falls through to**, while the hero has no variants at all — its states are the shapes of its data. A variant that is an `else` on one surface is an empty array on the other, and an empty array renders silence rather than a state. §K is the same finding from the other direction (`in-transit` was a variant the hero did not have); this one is a variant it did not know it had.
+
+## Amendment (2026-08-08, session 232) — §T. The hero reaches an attached FILE
+
+Owner, on the attachment feature generally: _"there's no easy way to view attached documents or
+even any indication that we have attachments. Then what is it for?"_ — and the answer's first
+stop turns out to be this surface, which [ADR-0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md)'s
+first draft did not mention at all.
+
+**§3 listed three things that earn the interaction — `איפה`, `פתק`, `הסדרה` — and a fourth has
+arrived since.** ADR-0173 gave a booking or an event an attached document; nothing rendered one
+anywhere. So the flight is `now`, you are standing at the gate, and the boarding pass attached to
+it is invisible on the one surface built for standing at a gate. That passes §3's own test — the
+collapsed board cannot carry it, and it is not a reflow of facts already on screen.
+
+**It is a chip in the point's own `hero-acts` row, not a fourth block.** §O made that row "every
+way out of a point, in ONE row", and opening the file is a way out reached the same way. Measured:
+a section costs 324px against the chip's 300px and reaches the file in the same one tap. The chip
+therefore adds **no new region** to a card §8 keeps content-sized and bounded.
+
+**`.hero-act`'s neutral base rule was already here and used by nothing.** Every call site passed
+`.loc` (teal, location) or `.time` (amber, the booking); a document is neutral by rule 4, so the
+base was waiting for it. The `.doc` density adds only a width cap and an ellipsis, because a
+document title is the only stored content in that row — ADR-0139's rule, which §11 already applied
+to `SettleControl`, arriving on the chip.
+
+**`canLift` counts a document** (§9's predicate, extended). A point whose only depth is an attached
+file would otherwise answer "nothing to lift" and take §Q's rebuff, which is the board refusing to
+open onto the one thing it now has to show.
+
+**§12's condition holds with no code.** `אחר כך` carries no id, so nothing can hang off it — the
+type is still the enforcement, exactly as §12 designed it. `הבא בתור` gains the chip for free,
+because `HeroLift` already renders `<Where point={next} />`.
+
+**And §I's trap is ours.** The hero reads a booked event's notes from the BOOKING as well as the
+event; attachments have the same shape, so `toPoint` now resolves `resolveHostContext(…)` **once**
+and reads both content types from that one context. Two calls is how the note list and the
+document list start disagreeing about a booked event.
+
+### What this amendment also found about §8's fit table
+
+Measured at 360×640 with the app's real typefaces, the densest states are **over the lift card's
+room**: `in-transit` with one document is 668px against 622px. That is the same class §8 already
+tabulates (`heavy` 72px over, `group-split` 92px over), so it is not new — but the reason the
+mockup had said "fits" is worth recording, because it means §8's bound may not be doing what §8
+says it does:
+
+**`.wp-board.hero-lifted`'s `max-height: 100%` is a percentage against a `.modal-card` whose own
+height is `auto` with a `max-height`, and a percentage against an indefinite parent resolves to
+`none`.** So the hero grows past the card instead of bounding inside it, and `.hero-scroll` — the
+ONE scroller §8 promises — never overflows. Asking "is the scroller scrolling" therefore answers
+"fits" about a card that is 46px over.
+
+This is exactly the class of thing jsdom cannot see (every rect is zero), and `frontend/CLAUDE.md`
+already records three bugs from trusting a number that was never rendered. **It needs an e2e
+assertion against the settled card** — the hero's box against `.modal-card`'s, in the heavy and
+`in-transit` states at 360×640 — and a `min-height: 0` / definite-height fix if it reproduces. It
+is a backlog line rather than part of this change: the document chip's own cost is +42px, and 0px
+when nothing is attached, so it neither causes the overflow nor depends on it.

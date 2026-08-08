@@ -5,33 +5,102 @@
    Neutral by rule, exactly like the notes composer: an attachment is not time (amber), not
    place (teal) and not plan mode (violet), so it spends the same `--ink` wash. */
 
+/* THE MARK (ADR-0174 §1). `.note-mark`'s exact box, because the two marks share a meta line
+   on four row types and a second set of numbers there would read as two systems. Neutral by
+   the same rule the section below is: an attachment is not time, not place, not plan mode. */
+.doc-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  vertical-align: -2px;
+}
+.doc-mark .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
 .doc-sec {
   margin-top: var(--space-4);
 }
 
-/* THE EMPTY STATE, AND IT IS THE WHOLE POINT (§5's amendment). One 40px control, measured
-   against the 86px a header + empty line + two entrances cost. The header, the chip list and
-   the split appear only once something is attached; saves 46px on every form that attaches
-   nothing, which is most of them. */
+/* THE EMPTY STATE IS STILL ONE CONTROL (ADR-0173 §5's amendment), AND IT NOW READS AS AN
+   INVITATION (ADR-0174 §5). Owner: it should be "a little more prominent, maybe have a
+   little more height" — and, on the first pass at that, "still a faint outlined
+   afterthought".
+
+   The dashed border was the actual defect, and it is not taste: `--cta` text on `--card`
+   behind a DASHED `--line` border is this app's grammar for AN ABSENCE — the same treatment
+   `.bld-time.empty` uses to say "this event has no time". The control was drawn as
+   scaffolding, which is exactly how it read.
+
+   **The geometry is `.pp-trigger`'s** (`ui/primitives/place-picker.css`), not a new
+   treatment: 44px, a solid `--line` border, `--radius-12`, `--card`, start-aligned like
+   every other slot on the form, with the weight carried by an ICON IN A TINTED SQUARE. That
+   is the app's own shipped answer to "an empty slot inviting you to add a thing", it sits
+   two fields up on this very form, and the only change is `--cta` where the picker puts
+   teal — because rule 4 has no hue to lend a document.
+
+   **What it deliberately is NOT is a filled `--cta`.** The form already has exactly one of
+   those and it is `שמירה` (`.fa-primary`), sticky at the bottom of the same scroller; two
+   filled CTAs on one form is a hierarchy error and the one that loses is the save.
+
+   Measured: 40px → 44px, +4px on a form ADR-0155 puts at ~1565px, so 91% of the
+   amendment's own 46px saving survives. That amendment was about a header, an empty-state
+   line and two entrances — not about four pixels. */
 .doc-add-one {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
+  padding-block: 0;
+  padding-inline: var(--space-2) var(--space-3);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cta);
+  font-size: var(--text-body);
+  font-weight: 700;
+  text-align: start;
+  color: var(--ink);
   background: var(--card);
-  border: 1px dashed var(--line);
-  border-radius: var(--radius-8);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
   cursor: pointer;
 }
-.doc-add-one .icon {
-  width: 15px;
-  height: 15px;
+/* The weight, and the whole of the "more prominent" ask. `.pp-trigger-icon` is the same
+   device one field up; the hue is the only difference. */
+.doc-add-ic {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-8);
+  color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 9%, transparent);
+}
+.doc-add-ic .icon {
+  width: 17px;
+  height: 17px;
+}
+.doc-add-l {
+  flex: 1;
+  min-width: 0;
+}
+/* A trailing `＋`, so the affordance says what a press DOES rather than only what the slot
+   is about. Quiet: the icon block is already carrying the weight. */
+.doc-add-p {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--muted);
+}
+.doc-add-p .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .doc-sec-h {
@@ -61,6 +130,11 @@
 
 /* ONE LINE per attachment, the same compact shape `.note-chip` uses — so three of them cost
    linearly and small (~34px each) rather than a box apiece. */
+.doc-chip-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .doc-chip {
   display: flex;
   align-items: center;
@@ -69,15 +143,6 @@
   padding: 3px 4px 3px var(--space-2);
   border-radius: var(--radius-8);
   background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.doc-chip-t {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .doc-chip-x {
   flex: 0 0 auto;
@@ -91,6 +156,72 @@
 .doc-chip-x .icon {
   width: 14px;
   height: 14px;
+}
+
+/* THE WHOLE CHIP IS THE WAY IN (ADR-0174 §2), and the detach is its SIBLING — the shape
+   `.note-chip` already uses, because buttons do not nest. Measured: the way in costs 0px
+   (34px as-is, 34px openable-with-detach, 34px read-only). */
+.doc-chip-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: start;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 5px 6px;
+  border-radius: var(--radius-8);
+  cursor: pointer;
+}
+.doc-chip-g {
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+.doc-chip-n {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── The READ section (ADR-0174 §3) ──────────────────────────────────────────
+   `.note-sec`'s grammar, which `.doc-sec` above already borrows on the form — this is the
+   same section on a read surface, so it has no add control and every chip is openable.
+   Documents read ABOVE notes on every surface: a document is a thing you need and a note is
+   something about it, and there are almost always fewer documents, so the shorter,
+   fixed-length list goes first. */
+.docr-sec {
+  margin-top: var(--space-4);
+}
+.docr-sec-h {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.docr-sec-h .t {
+  font-family: var(--font-head);
+  font-size: 12.5px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.docr-sec-h .t .icon {
+  width: 13px;
+  height: 13px;
+}
+/* A place shows a document it cannot originate (ADR-0173 §4), so it says where the document
+   came from — the same quiet line ADR-0172 §9's amendment adopted for an inherited note. */
+.docr-from {
+  font-size: 11px;
+  color: var(--faint);
+  padding-inline-start: var(--space-2);
 }
 
 /* TWO entrances, one row — present only once the slot holds something. */

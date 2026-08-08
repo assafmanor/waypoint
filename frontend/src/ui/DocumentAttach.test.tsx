@@ -156,7 +156,7 @@ describe('creating a host', () => {
     fireEvent.click(screen.getByText('אישור הזמנה', { selector: '.doc-pick-t' }));
 
     expect(attachDocument).not.toHaveBeenCalled();
-    expect(screen.getByText('אישור הזמנה', { selector: '.doc-chip-t' })).toBeTruthy();
+    expect(screen.getByText('אישור הזמנה', { selector: '.doc-chip-n' })).toBeTruthy();
   });
 
   it('unstages one without touching the network', () => {

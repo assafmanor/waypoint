@@ -1,6 +1,6 @@
 # 0174 — An attachment is **marked** and **opened**, and an event gets a **read**
 
-**Status:** **PROPOSED** — designed and measured, **not accepted, nothing built.** §4 carries an open question the owner has to answer before any of it ships.
+**Status:** **ACCEPTED for §1, §2, §3, §5 and §7 — built 2026-08-08 (session 232).** §4 is **still open and still unbuilt**: it is the one product call in this ADR and the owner has not made it. Read the amendments at the end before §1, §5 or the Consequences — the mockup was re-measured with the app's real typefaces and at 360×640, and two of its numbers changed an argument rather than a digit. **§7 is new**: the lifted Trip hero, which this ADR's first draft did not mention at all and which is the surface the feature exists for.
 **Date:** 2026-08-08
 **Session note:** [`planning/2026-08-08-session-231-attachments-are-invisible-and-an-event-has-no-read.md`](../planning/2026-08-08-session-231-attachments-are-invisible-and-an-event-has-no-read.md)
 **Mockup:** [`mockups/attachments-and-event-preview-v1.html`](../../mockups/attachments-and-event-preview-v1.html)
@@ -113,6 +113,46 @@ Owner, mid-session: the attach control should be _"a little more prominent, mayb
 
 **One caveat recorded rather than left to be rediscovered:** on a _create_, the attach slot now sits above a notes composer whose `＋` is the form's most-used control, so that composer is 44px further down the scroll on a form ADR-0155 already measures at ~1565px against ~675px of visible phone.
 
+### 7. The lifted hero reaches the file, and that is where this feature was actually missing
+
+**The first draft of this ADR did not mention the lifted hero once**, and it is the single most
+important surface here. `HeroLift` (ADR-0160) is Trip mode's read for what is happening now and
+next. It already carries `איפה`, `פתק` with a count of what it is not showing, the booking reach
+and `הסדרה` — and it showed **no documents at all**. You are standing at the gate, the flight is
+`now`, and the boarding pass attached to it is invisible on the one screen built for standing at
+a gate. If attachments are worth a mark anywhere, they are worth a reach there first.
+
+**The reach is a chip in the point's own `hero-acts` row, not a section.** That row's own comment
+already reads _"every way out of a point, in ONE row"_ — `במפה`, `ניווט`, `להזמנה` — and opening
+the document is a way out of the point, reached the same way. Measured on one point: a
+`HostDocuments` section is 324px, the chip is 300px, the mark alone is 258px. The chip saves 24px
+against the section and reaches the file in the same **one tap**; the mark saves 42px more and
+reaches nothing, which is today's defect one surface over.
+
+**It is a DENSITY on the shared chip, and the density was already in the stylesheet.**
+`.hero-act`'s base rule is a white 7% fill under the `--on-dark` ramp, and **every call site today
+passes `.loc` (teal, a place) or `.time` (amber, a booking)** — so the neutral base had no consumer
+at all until a content type arrived that rule 4 has no hue to lend. What is genuinely new is one
+`.doc` modifier capping the width and letting the title ellipsise, because a document's title is
+the only stored content in that row. That is ADR-0139's rule arriving one surface over: a fourth
+host adds a density, not a second control.
+
+**The derivation is extended in `lib/hero-horizon.ts`, and it resolves through ONE context.** The
+trap ADR-0160 §I already recorded is ours too: the hero reads a booked event's notes from the
+**booking** as well as the event, because a booked event is materialized server-side and has no
+client id when the booking saves. Attachments have exactly that shape, so `toPoint` now resolves
+`resolveHostContext(…)` **once** and reads both content types from it — two calls is how the note
+list and the document list start answering about different hosts on the one row where it matters.
+
+**`canLift` learns to count a document**, and that is not a formality: a point whose only depth is
+an attached file would otherwise answer "nothing to lift" and take the rebuff — the board refusing
+to open onto the one thing it now has to show.
+
+**Two things come for free and one stays refused.** `הבא בתור` gets the chip because `HeroLift`
+already renders `<Where point={next} />`. `אחר כך` gets nothing, also for free, because `HeroThen`
+carries no id — ADR-0160 §12's condition holds without a line of code. And the collapsed board
+gains nothing: it is the glance surface whose budget ADR-0028 already spent.
+
 ### 6. What this does NOT do
 
 Unchanged from ADR-0173 §9, and named again so the boundary is explicit rather than assumed:
@@ -121,7 +161,8 @@ Unchanged from ADR-0173 §9, and named again so the boundary is explicit rather 
 - **No "where is this document attached?" on the documents screen.** This is the _reverse_ read, and it is a real gap — ADR-0173's own Consequences flag that a document row can no longer be read as "belongs to the trip and nothing else". It is deliberately a **separate** decision: it is a third feature, and the owner's standing constraint this session was that the UI must not grow.
 - **No auto-attachment**, no attachment to a `MaybeItem` or to another document, no change to encryption, download or the MIME allowlist.
 - **No change to how the Trip-mode day card opens.** It already expands and that expansion already holds the notes; it gains the documents section (§3) and nothing else.
-- **No change to Plan's hero.** ADR-0160 §H settled that separately and its reasoning (the prep hero summarises the checklist rendered beneath it) does not reach the row.
+- **No change to Plan's hero.** ADR-0160 §H settled that separately and its reasoning (the prep hero summarises the checklist rendered beneath it) does not reach the row. §7 above is the **Trip** hero, which does lift.
+- **No document on the COLLAPSED board.** It is the glance surface, and ADR-0028 already spent its budget; the reach lives in the state you asked for.
 
 ## Reuse audit (ADR-0096 / root `CLAUDE.md` rule 8)
 
@@ -151,3 +192,100 @@ Unchanged from ADR-0173 §9, and named again so the boundary is explicit rather 
 - **A fifth target on the Plan row for the preview.** Rejected on the owner's own constraint (§4): the row has four already.
 - **The read inside the `⋯` sheet.** Rejected: the owner rejected exactly this for notes — a row menu is a list of verbs, and content read from inside a menu is content nobody finds.
 - **Keeping the attach control at 40px and dashed.** It is what ADR-0173 §5's amendment measured its way to. Overridden by the owner's report, and §5 records the measurement (+4px) so the override is a trade rather than a reversal of the reasoning.
+
+## Amendment (2026-08-08, session 232) — the mockup was measuring the wrong typeface
+
+Run through the `design-mockups` skill (ADR-0175, which landed on `main` mid-session), and it
+found the design half of this ADR asserting numbers it had not earned. Both corrections are here
+rather than in a new ADR, because each narrows a specific numbered section.
+
+### A. Every number in the first draft was measured on a fallback font
+
+`mockups/attachments-and-event-preview-v1.html` **had no webfont link at all**, so every px it
+reported — and every px §1–§5 above quoted — was a measurement of the sandbox's system face, in
+the one part of a mockup that claims to be real. `references/pitfalls.md` names this exactly.
+Assistant / Secular One / JetBrains Mono are linked now, and the skill's `render.mjs` serves them
+through curl and says which faces loaded.
+
+The corrected figures: the day card's second mark still costs **0px**; the openable chip still
+costs **0px**; `HostDocuments` costs `BookingDetail` **+76px** (not +72); the expanded day card is
+**422px**; `EventDetail` is **436px**; §5's promotion is **+4px** on a control that measures 44px.
+
+### B. §1's "+10px per plan row" is really "+0px at 390, +14px at 360"
+
+The file measured one phone. The skill requires 360×640 as well as 390×844, and ADR-0017 calls
+360 **the design width, not the stress case**. With the real Assistant face the joined string in
+`.bld-m` happens to fit a 390px phone and **wraps on a 360px one**.
+
+That does not weaken §1's conclusion, it sharpens it: `.bld-m`'s rebuild is still the prerequisite
+of the mark in Plan mode, and it is now **a defect you would not have seen on the phone you tested
+on**. Rebuilt as ADR-0152 §6c already rebuilt `.wp-event-m`, the row is 58px → 58px at both widths.
+
+### C. §7's hero exceeds its card at 360×640, and the file had said otherwise
+
+At 360×640 the densest states are **over the lift card's room**: `in-transit` + one document is
+668px against 622px (46px over), and `עכשיו` + two documents is 659px (37px over). The mockup had
+reported "fits, no scroller" for a day, and the reason it was wrong is worth keeping:
+
+**`.wp-board.hero-lifted`'s `max-height: 100%` is a percentage against a `.modal-card` whose own
+height is `auto` with a `max-height`** — and a percentage against an indefinite parent resolves to
+`none`. So the hero grows **past** the card rather than bounding inside it, `.hero-scroll` never
+overflows, and asking "is the scroller scrolling" answers "fits" about a card that is 46px over.
+
+This is the same class of state ADR-0160 §8 already tabulates as "over" at that width (`heavy` 72px,
+`group-split` 92px), so it is not new and it is not a blocker — but **it means ADR-0148 §1's
+bounded-card promise may not be holding on the real surface**, which no unit test can see (jsdom
+answers zero for every rect). It is a backlog line and an e2e assertion, not a reason to withhold
+the chip: the chip's own cost is +42px and exactly **0px** when nothing is attached.
+
+### D. §5 gets a range, and the recommendation is a shipped geometry rather than a new treatment
+
+The owner's reply to §5's first pass was that 44px plus a tinted border **still reads as a faint
+outlined afterthought**. Six variants were drawn and all measure 40–48px, so height was never the
+axis; what was wrong is that `--cta` text on `--card` behind a **dashed** `--line` border is this
+app's grammar for **an absence** (`.bld-time.empty` says "this event has no time" the same way).
+
+**Built: `.pp-trigger`'s geometry** — the place picker's own empty slot, two fields up on the same
+form: 44px, a solid `--line` border, `--radius-12`, `--card`, start-aligned like every other slot,
+with the weight carried by an **icon in a tinted square** and a trailing `＋`. `--cta` where the
+picker puts teal, because rule 4 has no hue to lend a document.
+
+**A filled `--cta` was drawn and refused on a structural reason, not a taste one:** the form already
+has exactly one filled `--cta` and it is `שמירה` (`.fa-primary`), sticky at the bottom of the same
+scroller. Two filled CTAs on one form is a hierarchy error and the one that loses is the save.
+
+**And one variant reversed its own verdict.** A supporting line under the label was drawn expecting
+to be refused on height — it measures **44px, the same as the recommendation**, because two lines
+of 14.5px and 11px stack to ~36px and ride inside the touch floor. So it costs nothing at all, and
+the argument against it is that a permanent instructional sentence sits on every booking and every
+event forever. **That is a copy judgement and it is the owner's**, not a layout one.
+
+## Build log (2026-08-08, session 232)
+
+Built: §1, §2, §3, §5, §7. **Not built: §4**, which is the owner's call.
+
+- **`.bld-m` first** (§1's prerequisite), rebuilt as one `nowrap` line of elements with only the
+  place name shrinking. Height-neutral at both widths, no behaviour change. What it deliberately
+  does **not** take from ADR-0152 §6c is the place-name DROP: that rule exists because the day
+  card's line is exactly full at 390px, and measured here the builder row holds a 44-char address,
+  a code and both marks on one line with only the name losing its tail.
+- **`DocumentMark`** beside `NoteMark`, and `eventMetaParts`'s `hasMark` counting both. One
+  predicate learning to count a second thing; every row but code + document + no note is
+  byte-identical.
+- **`attachmentCountsByHost` / `attachmentCountFor` gained their first call sites**, through a new
+  `attachmentCountForContext` mirroring `noteCountForContext` — so a booked row's mark counts the
+  booking's links too. Wired at the day card, the Plan builder row (**which had neither mark
+  before**), the Index booking row and the map's place rows.
+- **`DocumentChips`**, extracted from `DocumentAttach.tsx` rather than copied: one chip shared by
+  the form and every read surface, owning the viewer state so five hosts do not each hold a
+  `useState` + `<DocumentViewer>` pair. The form keeps the detach; no read surface has one.
+- **`HostDocuments`** as `HostNotes`'s peer over the same derivation, on `BookingDetail`, the
+  expanded day card and the map's place row — the last being ADR-0173 §4's follow-up, decided and
+  never built. It renders **nothing** when empty, which is where it parts from `HostNotes`: that
+  section's empty line is what its `＋ פתק` is inviting, and a read surface has no add control.
+- **Two CSS declarations only the real markup could have shown**, both one line and both already
+  existing for `.note-sec`: `.wp-event-actions-in > .docr-sec` (the expanded card gives its
+  content blocks their own padding and rule) and `.place > .docr-sec` (`.place` is a wrapping flex
+  **row**, so a section joins the row unless it is `flex-basis: 100%`). The canvas place card's
+  grid gained a row for the same reason.
+- **The hero** (§7), extended in `lib/hero-horizon.ts` — pure and clock-free, as it was.

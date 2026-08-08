@@ -210,7 +210,8 @@
 }
 .wp-event-m .wp-event-m-code,
 .wp-event-m .wp-event-m-sep,
-.wp-event-m .note-mark {
+.wp-event-m .note-mark,
+.wp-event-m .doc-mark {
   flex: 0 0 auto;
 }
 .wp-event-m .wp-event-m-sep {
@@ -357,7 +358,11 @@
 }
 /* The host's own note section, inside the card the row opens (ADR-0152 §6's
    2026-08-02 amendment). Its own block under the verbs, with the card's padding
-   and a rule above it, so it reads as content rather than as more buttons. */
+   and a rule above it, so it reads as content rather than as more buttons.
+   The DOCUMENTS section (ADR-0174 §3) takes the identical treatment, and needs
+   its own selector for it: it renders above the notes and would otherwise sit
+   flush against the verb row. */
+.wp-event-actions-in > .docr-sec,
 .wp-event-actions-in > .note-sec {
   margin: 0;
   padding: var(--space-3) 14px;
