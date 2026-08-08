@@ -86,7 +86,6 @@ export class TripsService {
           endDate: new Date(input.endDate),
           timezone: input.timezone,
           currency: input.currency,
-          dailyBudgetMinor: input.dailyBudgetMinor,
           icon: input.icon,
           createdBy: userId,
           updatedBy: userId,
@@ -149,9 +148,6 @@ export class TripsService {
             ...(input.endDate !== undefined && { endDate: new Date(input.endDate) }),
             ...(input.timezone !== undefined && { timezone: input.timezone }),
             ...(input.currency !== undefined && { currency: input.currency }),
-            ...(input.dailyBudgetMinor !== undefined && {
-              dailyBudgetMinor: input.dailyBudgetMinor,
-            }),
             updatedBy: actorUserId,
           },
         }),

@@ -46,7 +46,6 @@ const TRIP = {
   endDate: date(addDays(DAY, 7)),
   timezone: 'Asia/Tokyo',
   currency: 'JPY',
-  dailyBudgetMinor: 14000,
   createdBy: ME,
   updatedBy: ME,
 };

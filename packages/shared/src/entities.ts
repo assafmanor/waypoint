@@ -152,7 +152,6 @@ export const tripSchema = z.object({
   endDate: z.string(), // ISO date
   timezone: z.string(),
   currency: z.string().optional(),
-  dailyBudgetMinor: z.number().optional(),
   icon: z.string().optional(), // chosen badge glyph; no category (ADR-0038 §5)
   createdBy: idSchema,
   createdAt: z.string(),

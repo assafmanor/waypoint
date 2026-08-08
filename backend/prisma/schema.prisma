@@ -166,7 +166,6 @@ model Trip {
   endDate                  DateTime @db.Date
   timezone                 String   @default("UTC")
   currency                 String?
-  dailyBudgetMinor         Int?
   icon                     String?
   createdBy                String
   createdAt                DateTime @default(now())

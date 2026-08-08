@@ -52,7 +52,7 @@ Our own refresh-token store (the access token is a stateless in-memory JWT, not 
 The aggregate root.
 
 - `id`, `name` (e.g. "יפן ׳26"), `destination`, `startDate @db.Date`, `endDate @db.Date`, `timezone`
-- `currency String?`, `dailyBudgetMinor Int?` (display-only budget, ADR-0014)
+- `currency String?` — stored and editable in settings, read by nothing yet; the seed of the planned currency work (ADR-0014's 2026-08-08 amendment). `dailyBudgetMinor` was dropped alongside that amendment.
 - `createdBy` (FK → User), `createdAt`, `updatedAt`, `updatedBy`
 - Trip **mode** (plan/trip) is **derived** from dates + now, never stored (ADR-0016).
 

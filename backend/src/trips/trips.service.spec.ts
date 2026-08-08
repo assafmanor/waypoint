@@ -330,9 +330,9 @@ describe('TripsService', () => {
 
     const updated = await service.updateTrip(tripId, DEV_USER, {
       name: 'Renamed',
-      dailyBudgetMinor: 15000,
+      currency: 'ILS',
     });
-    expect(updated).toMatchObject({ name: 'Renamed', dailyBudgetMinor: 15000 });
+    expect(updated).toMatchObject({ name: 'Renamed', currency: 'ILS' });
     // Untouched fields are preserved.
     expect(updated.destination).toBe(NEW_TRIP_INPUT.destination);
   });
