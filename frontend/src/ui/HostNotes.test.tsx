@@ -31,6 +31,9 @@ const updateNote = vi.fn(() => Promise.resolve());
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex([], []),
     notes: tripNotes,
     users: [
       { id: 'u1', displayName: 'דנה' },
@@ -42,6 +45,7 @@ vi.mock('../state/trip-state', () => ({
 
 import { HostNotes } from './HostNotes';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 const open = (kind: NoteHostKind, id: string) =>
   render(wrapNav(<HostNotes host={{ kind, id, name: 'המארח' }} />));

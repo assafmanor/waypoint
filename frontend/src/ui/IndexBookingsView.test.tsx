@@ -107,6 +107,9 @@ vi.mock('../state/map-scope-state', () => ({
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     trip: {
       id: 't1',
       name: "לפלנד ולשם וכאן '26",
@@ -147,6 +150,7 @@ import { NavProvider } from '../state/nav-state';
 import { ModeProvider } from '../state/mode-state';
 import { IndexBookingsView } from './IndexBookingsView';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 function wrap(node: ReactNode) {
   return (

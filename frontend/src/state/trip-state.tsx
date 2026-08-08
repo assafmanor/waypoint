@@ -1093,6 +1093,76 @@ function TripReady({
   // --- Index write verbs (ADR-0047/0048): optimistic + reconcile/rollback,
   // queued offline via the outbox — same shape as the settings verbs, over the
   // reactive bookings/places state. ---
+  /** Only the host keys the caller actually submitted, so an ordinary edit leaves the host
+   *  alone and a conversion moves it. `null` reads as "cleared" once it lands in the row,
+   *  matching `coerceClearedFields` one layer down. */
+  const noteHostPatch = (input: UpdateNoteInput): Partial<Note> =>
+    Object.fromEntries(
+      NOTE_HOST_KEYS.filter((key) => key in input).map((key) => [key, input[key] ?? undefined]),
+    );
+
+  /** **One note update, shared by the note verbs and by the booking delete.** Hoisted above
+   *  `indexVerbs` for a reason worth stating: ADR-0172 §5's unlink has to REHOST a booking's
+   *  notes onto the surviving event before the cascade takes them, and `deleteBooking` lives
+   *  in `indexVerbs`, which is built before `noteVerbs`. A second copy of this body beside it
+   *  is exactly the duplication root `CLAUDE.md` rule 8 exists to stop. */
+  const updateNoteImpl = async (noteId: string, input: UpdateNoteInput): Promise<void> => {
+    const previous = notes;
+    setNotes((prev) =>
+      prev.map((n) =>
+        n.id === noteId
+          ? {
+              ...n,
+              // A whole-content submit: an absent field CLEARS, so the optimistic row has to
+              // clear it too or the screen would show a stale title until the echo lands
+              // (`coerceClearedFields` is the same rule one layer down).
+              title: input.title ?? undefined,
+              body: input.body ?? undefined,
+              url: input.url ?? undefined,
+              category: input.category ?? undefined,
+              // The host is the one part that is NOT whole-content: absent means untouched,
+              // so a spread of only the submitted keys is the optimistic half of the same
+              // rule the server applies (see `updateNoteSchema`).
+              ...noteHostPatch(input),
+              updatedAt: new Date(getNow()).toISOString(),
+              updatedBy: authorId,
+            }
+          : n,
+      ),
+    );
+    try {
+      const canonical = await restOrQueue(
+        tripId,
+        { verb: OUTBOX_VERB.UPDATE_NOTE, noteId, input },
+        () => apiUpdateNote(tripId, noteId, input),
+      );
+      if (canonical) setNotes((prev) => prev.map((n) => (n.id === noteId ? canonical : n)));
+    } catch (err) {
+      setNotes(previous);
+      toast(CONTROL_ICON.warn, t.toast.writeFailed);
+      throw err;
+    }
+  };
+
+  /** **ADR-0172 §5's unlink, and the only reason `updateNoteImpl` is hoisted.** The booking
+   *  is the context's anchor, so unlink-and-keep-Event would let the booking's cascade
+   *  destroy notes the user is explicitly choosing to keep the other half of. Awaited, so
+   *  offline the FIFO outbox queues every move BEFORE the delete and each note's new host
+   *  exists by the time its old one goes. Whole-content on everything but the host, which is
+   *  why the note's own words travel with it. */
+  const carryBookingNotesToEvent = async (bookingId: string, eventId: string): Promise<void> => {
+    for (const note of notes.filter((n) => n.bookingId === bookingId)) {
+      await updateNoteImpl(note.id, {
+        title: note.title,
+        body: note.body,
+        url: note.url,
+        category: note.category,
+        eventId,
+        bookingId: null,
+      });
+    }
+  };
+
   const indexVerbs = useMemo<IndexVerbs>(() => {
     const stamp = () => new Date(getNow()).toISOString();
     return {
@@ -1186,6 +1256,14 @@ function TripReady({
         }
       },
       deleteBooking: async (bookingId, opts = {}) => {
+        // **Unlink keeps the event, so it keeps the context's notes** (ADR-0172 §5). Before
+        // the delete, never after: the booking's FK is `onDelete: Cascade`, so afterwards
+        // there is nothing left to move. A delete-both takes them, which is what the confirm
+        // now says (§6).
+        if (!opts.deleteEvents) {
+          const linked = state.events.find((e) => e.bookingId === bookingId);
+          if (linked) await carryBookingNotesToEvent(bookingId, linked.id);
+        }
         const previous = bookings;
         setBookings((prev) => prev.filter((b) => b.id !== bookingId));
         try {
@@ -1317,14 +1395,6 @@ function TripReady({
   // Notes (ADR-0152). Optimistic write, reconcile on the server's row, roll back on a real
   // failure — the same three moves as the index verbs above, over the `notes` list.
   const noteVerbs = useMemo<NoteVerbs>(() => {
-    /** Only the host keys the caller actually submitted, so an ordinary edit leaves the
-     *  host alone and a conversion moves it. `null` reads as "cleared" once it lands in the
-     *  row, matching `coerceClearedFields` one layer down. */
-    const hostPatch = (input: UpdateNoteInput): Partial<Note> =>
-      Object.fromEntries(
-        NOTE_HOST_KEYS.filter((key) => key in input).map((key) => [key, input[key] ?? undefined]),
-      );
-
     const stamp = () => new Date(getNow()).toISOString();
     return {
       createNote: async (input, opts) => {
@@ -1358,43 +1428,7 @@ function TripReady({
           throw err;
         }
       },
-      updateNote: async (noteId, input) => {
-        const previous = notes;
-        setNotes((prev) =>
-          prev.map((n) =>
-            n.id === noteId
-              ? {
-                  ...n,
-                  // A whole-content submit: an absent field CLEARS, so the optimistic row
-                  // has to clear it too or the screen would show a stale title until the
-                  // echo lands (`coerceClearedFields` is the same rule one layer down).
-                  title: input.title ?? undefined,
-                  body: input.body ?? undefined,
-                  url: input.url ?? undefined,
-                  category: input.category ?? undefined,
-                  // The host is the one part that is NOT whole-content: absent means
-                  // untouched, so a spread of only the submitted keys is the optimistic
-                  // half of the same rule the server applies (see `updateNoteSchema`).
-                  ...hostPatch(input),
-                  updatedAt: stamp(),
-                  updatedBy: authorId,
-                }
-              : n,
-          ),
-        );
-        try {
-          const canonical = await restOrQueue(
-            tripId,
-            { verb: OUTBOX_VERB.UPDATE_NOTE, noteId, input },
-            () => apiUpdateNote(tripId, noteId, input),
-          );
-          if (canonical) setNotes((prev) => prev.map((n) => (n.id === noteId ? canonical : n)));
-        } catch (err) {
-          setNotes(previous);
-          toast(CONTROL_ICON.warn, t.toast.writeFailed);
-          throw err;
-        }
-      },
+      updateNote: updateNoteImpl,
       deleteNote: async (noteId) => {
         const previous = notes;
         setNotes((prev) => prev.filter((n) => n.id !== noteId));

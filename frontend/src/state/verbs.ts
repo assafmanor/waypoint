@@ -201,34 +201,6 @@ export async function carryNotes(
   }
 }
 
-/**
- * **Delete a booking without letting the unlink branch take its notes** (ADR-0172 §5).
- *
- * ADR-0047 §3 offers delete-both or unlink-and-keep-Event. The booking is the context's
- * anchor (ADR-0172 §2), so on the unlink branch its `onDelete: Cascade` would destroy notes
- * the user is explicitly choosing to keep the other half of — silent loss on the one branch
- * whose whole promise is that the event survives.
- *
- * So this is a FOURTH conversion, and it reuses `carryNotes` rather than growing a path
- * beside it: awaited, so offline the FIFO outbox queues the move BEFORE the delete and the
- * new host exists by the time the old one goes.
- */
-export async function applyDeleteBooking(
-  deps: VerbDeps,
-  bookingId: string,
-  opts: { deleteEvents?: boolean; confirm?: boolean },
-  linkedEventId?: string,
-): Promise<void> {
-  if (!opts.deleteEvents && linkedEventId) {
-    await carryNotes(
-      deps,
-      { kind: 'bookingId', id: bookingId },
-      { kind: 'eventId', id: linkedEventId },
-    );
-  }
-  await deps.bookings.deleteBooking(bookingId, opts);
-}
-
 /** What this host is carrying, by FK. `lib/notes.ts`'s `notesForHost` answers the same
  *  question for a render, keyed by the host's KIND; the verbs already hold the FK, so this
  *  is the one-line version rather than a kind→key round trip at three call sites. */
@@ -1287,14 +1259,6 @@ export function useVerbs() {
   };
 
   return {
-    /** Delete a booking, carrying its notes to the event when the choice was `unlink`
-     *  (ADR-0172 §5). Here rather than at the two sheets that offer the choice, so the
-     *  carry cannot ship on one of them and not the other. */
-    deleteBooking: (
-      bookingId: string,
-      opts: { deleteEvents?: boolean; confirm?: boolean },
-      linkedEventId?: string,
-    ) => applyDeleteBooking(deps, bookingId, opts, linkedEventId),
     done: (e: TripEvent) => {
       void applySetStatus(deps, e, EVENT_STATUS.DONE);
       toast(CONTROL_ICON.done, t.toast.markedDone, undo);

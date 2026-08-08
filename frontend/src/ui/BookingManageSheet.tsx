@@ -11,7 +11,6 @@
 import { useState } from 'react';
 import { type Booking } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
-import { useVerbs } from '../state/verbs';
 import { RowManageSheet, type RowAction } from './domain';
 import { BookingTitle } from './BookingTitle';
 import { DeletePrompt } from './BookingSheet';
@@ -32,8 +31,7 @@ export function BookingManageSheet({
    *  `שבץ במסלול` a shortcut to the schedule rather than an alias for `ערוך`. */
   onEdit: (booking: Booking, focus?: 'when') => void;
 }) {
-  const { events, places } = useTrip();
-  const verbs = useVerbs();
+  const { events, places, indexVerbs } = useTrip();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
   const [deleting, setDeleting] = useState(false);
   const pair = useRoundTripPartner(booking);
@@ -50,9 +48,7 @@ export function BookingManageSheet({
         linkedNotes={linkedEventNotes}
         onCancel={() => setDeleting(false)}
         onChoose={(choice) => {
-          void verbs
-            .deleteBooking(booking.id, deleteFlags(choice), linkedEvent?.id)
-            .catch(() => {});
+          void indexVerbs.deleteBooking(booking.id, deleteFlags(choice)).catch(() => {});
           onClose();
         }}
       />

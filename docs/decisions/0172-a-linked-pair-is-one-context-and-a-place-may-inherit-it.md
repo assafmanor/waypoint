@@ -104,7 +104,11 @@ Existing notes hosted on an `eventId` whose event is linked to a booking resolve
 
 A note still cannot have two hosts. There is no host picker, and attachment is still established from the host's side (ADR-0152 §2's phase-5b amendment, ADR-0153 §5). A **Place** still cannot be a member of a context, only an inheritor (§3). Deleting the anchor still destroys the context's notes; only unlink is special (§5). Nothing here touches `MaybeItem` or `TripDocument` hosting, and no strategy is registered (ADR-0152 §8 remains reserved).
 
-Deliberately not built: a visual distinction between a place's own notes and its inherited ones. The section shows one list. If the ambiguity turns out to matter on a real device, it is a design change to one component, not a change to this model.
+**Amended same day (session 225, owner's call) — an inherited note SAYS where it came from, and this paragraph is what it reverses.** This section shipped reading "deliberately not built: a visual distinction between a place's own notes and its inherited ones… if the ambiguity turns out to matter on a real device, it is a design change to one component." The mockup the owner asked for before #26 was built ([`notes-and-documents-in-context-v1.html`](../../mockups/notes-and-documents-in-context-v1.html) §2) measured it instead of waiting for the device: the source chip rides the meta line the author and the elapsed time already share, so it costs **2px per note** (111px flush against 115px marked, two notes) and opens no new line.
+
+At that price the deferral was the wrong call, and **the reason is not decorative**. Deleting the anchoring booking destroys these notes, and a booking delete has no undo (§2's amendment). A reader looking at a place card cannot otherwise tell that the note in front of them is hostage to a booking somewhere else — the place is precisely the surface where a note's origin is least guessable, because it is the one host that never authored it. A 2px chip is what makes the Consequences entry below ("a place that gains a second reference silently stops showing inherited notes") legible rather than mysterious.
+
+Still deliberately not built: any distinction on the **Booking/Event** side. There is nothing to mark there — §3 is one-way, so everything those surfaces show is their own.
 
 ## Reuse audit (ADR-0096 / root `CLAUDE.md` rule 8)
 

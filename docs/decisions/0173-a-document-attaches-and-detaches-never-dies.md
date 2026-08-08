@@ -73,6 +73,12 @@ Owner's call, and it is ADR-0152 §6b's principle applied to a second content ty
 
 The `＋` / commit grammar is the notes composer's, deliberately: two content types on one form should not have two idioms for "add another".
 
+**Amended same day (session 225) — the slot pays NOTHING until it holds something, and the mockup is why.** The paragraph above describes both entrances as present, and drawn that way the empty slot measured **86px** ([`notes-and-documents-in-context-v1.html`](../../mockups/notes-and-documents-in-context-v1.html) §1) — a header, an empty-state line and two buttons, on the form ADR-0155 already measures at ~1565px against ~675px of visible phone. That is a fixed toll on every booking, paid for a capability most bookings will never use.
+
+So the empty state is **one control** (`📎 צירוף מסמך`, 40px). The header, the chip list and the split into pick-vs-upload appear only once something is attached. **Saves 46px on the common case**, and the attached case is unchanged: a chip is ~34px and the cost stays linear (143px at two, 223px at four).
+
+This is the same measurement ADR-0152 §6b made for notes and the same conclusion — it rejected a held-open `textarea` per note at ~62px each, for a slot whose common case is nought or one. Two content types on one form, one rule: **the composer is small until there is something to compose with.**
+
 ### 6. An attachment never widens visibility
 
 A `Document` may be owned (`ownerUserId`, "absent = group doc"). Attaching it must not turn a private document into a group one. The host surface resolves its attachments **through the document list the reader already has**, so an attachment whose document the reader cannot see resolves to nothing and renders nothing — an absence, not a stub or a placeholder, which is the same truthful degradation `noteHost` chose for an unresolvable host (ADR-0152's `lib/notes.ts`). The picker likewise offers only documents the reader can see. Nothing about ADR-0015/0034's trust model changes; this ADR adds a pointer, not a permission.

@@ -160,10 +160,12 @@ describe('heroHorizon', () => {
     expect(h.now[0].placeId).toBe('gone');
   });
 
-  // The judgement call documented in `notesForEvent`: a booked event's notes live
-  // on the BOOKING (ADR-0152 phase 5b), so reading only `eventId` finds nothing on
-  // exactly the events most likely to have one.
-  it('reads a booked event’s notes from BOTH the event and its booking, event first', () => {
+  // A booked event's notes live on the BOOKING (ADR-0152 phase 5b), so reading only
+  // `eventId` finds nothing on exactly the events most likely to have one. This used to be
+  // a judgement call local to `notesForEvent`; ADR-0172 made it the app's rule, and with it
+  // the ORDER changed: the two hosts are one list now, so it sorts by recency like every
+  // other notes list (ADR-0153 §2) rather than putting the event's own first.
+  it('reads a booked event’s notes from BOTH the event and its booking, newest first', () => {
     const e = ev('e', { bookingId: 'b1' });
     const h = heroHorizon(
       input({
@@ -173,7 +175,7 @@ describe('heroHorizon', () => {
         notes: [note('n-booking', { bookingId: 'b1' }), note('n-event', { eventId: 'e' })],
       }),
     );
-    expect(h.now[0].notes.map((n) => n.id)).toEqual(['n-event', 'n-booking']);
+    expect(h.now[0].notes.map((n) => n.id)).toEqual(['n-booking', 'n-event']);
   });
 
   it('an unlinked event reads only its own notes, and never another event’s', () => {

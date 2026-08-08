@@ -34,7 +34,6 @@ import {
 import { offerDayTimes, offerLegTimes, offeredEnd } from '../lib/booking-prefill';
 import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
-import { useVerbs } from '../state/verbs';
 
 // Re-exported so the sheet stays the obvious import for its own props (the derivation moved
 // out in session 173, the vocabulary did not).
@@ -144,7 +143,6 @@ export function BookingSheet({
   onClose: () => void;
 }) {
   const { trip, events, places, indexVerbs, noteVerbs } = useTrip();
-  const verbs = useVerbs();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
@@ -1335,9 +1333,7 @@ export function BookingSheet({
           linkedNotes={linkedEventNotes}
           onCancel={() => setDeleting(false)}
           onChoose={(choice) => {
-            void verbs
-              .deleteBooking(booking.id, deleteFlags(choice), linkedEvent?.id)
-              .catch(() => {});
+            void indexVerbs.deleteBooking(booking.id, deleteFlags(choice)).catch(() => {});
             setDeleting(false);
             onClose();
           }}

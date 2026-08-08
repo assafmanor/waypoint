@@ -108,6 +108,9 @@ const updatePlace = indexVerbs.updatePlace;
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     trip: {
       id: 't1',
       name: 'טיול',
@@ -403,6 +406,7 @@ import { withoutBidiControls } from '../lib/bidi';
 import { DEFAULT_PLACE_ICON } from '../constants';
 import { iconForCategory } from '@waypoint/shared';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 /** The make/rename form's name field — the one control every one of ADR-0147's four sources
  *  opens, and the card's own `<label>` is what names it. */

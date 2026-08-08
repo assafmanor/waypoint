@@ -39,6 +39,9 @@ let tripEvents: TripEvent[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex(tripEvents, []),
     trip: {
       id: 't1',
       name: 'טיול',
@@ -112,6 +115,7 @@ import { MapScopeProvider } from '../state/map-scope-state';
 import { setSimulatedNow } from '../lib/useClock';
 import { MapView } from './Map';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 const place = (id: string): Place =>
   ({

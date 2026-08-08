@@ -76,6 +76,9 @@ const setActiveDate = vi.fn();
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     setActiveDate,
     trip: {
       id: 't1',
@@ -194,6 +197,7 @@ import { withoutBidiControls } from '../lib/bidi';
 import { relativeDayLabel } from '../lib/time';
 import { DOT_SEPARATOR, FILTER_STAGGER_MS, PLACE_REFS_CAP } from '../constants';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 // jsdom implements no `scrollIntoView`, and the list-only path scrolls now: with no sheet it falls
 // back to the document, so a selected card that opens below the fold is brought up here too.

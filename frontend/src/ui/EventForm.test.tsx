@@ -11,6 +11,9 @@ Element.prototype.scrollIntoView = vi.fn();
 // the test exercises the overlay/focus behavior, not the trip data plane.
 // Mutable so the multi-zone tests can add places/crossings without a second mock.
 const tripState = {
+  // The one context index every note surface resolves through (ADR-0172 §1). Empty here:
+  // this form only ever hosts an UNLINKED event, whose context is itself.
+  hostContexts: buildHostContextIndex([], []),
   trip: {
     id: 't1',
     timezone: 'Asia/Tokyo',
@@ -69,6 +72,7 @@ const PLACE_B = { id: 'p-nrt', tripId: 't1', name: 'נריטה', timezone: 'Asia
 import { EventForm } from './EventForm';
 import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 // PIN THE CLOCK (frontend/CLAUDE.md). Every fixture here carries a fixed date — the trip's
 // range, `activeDate`, the events — so a test reading the real system clock means something
