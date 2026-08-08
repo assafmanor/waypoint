@@ -69,6 +69,9 @@ let tripEvents: TripEvent[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex(tripEvents, [booking]),
     trip: { id: 't1', timezone: 'Asia/Tokyo' },
     bookings: [booking],
     events: tripEvents,
@@ -87,6 +90,7 @@ vi.mock('../lib/api', () => ({
 import { BookingManageSheet } from './BookingManageSheet';
 import { DocumentManageSheet } from './DocumentManageSheet';
 import { ConfirmProvider, useConfirmHardEdit } from './ConfirmDialog';
+import { buildHostContextIndex } from '../lib/host-context';
 
 const consequence = () => document.querySelector('.confirm-consequence')?.textContent?.trim();
 
@@ -114,18 +118,21 @@ describe('a booking’s delete confirm', () => {
     expect(consequence()).toBeUndefined();
   });
 
-  // The linked event's notes belong on the `both` choice and NOT on the line above the
-  // choices: `unlink` keeps the event, so a warning up there would be false in one branch.
-  it('names the linked event’s notes on the delete-both choice only', () => {
+  // **The whole CONTEXT's notes go on the `both` choice, and NOTHING goes above the choices**
+  // (ADR-0172 §6). The line above used to name the booking's own on both branches; since §5
+  // made `unlink` CARRY those notes to the surviving event, that line is now false in the
+  // branch beside it, so it is gone rather than reworded. The count on `both` is the booking's
+  // plus the event's, because the booking is the anchor and only this branch takes either.
+  it('names the whole context on delete-both, and nothing above the choices', () => {
     tripEvents = [
       { id: 'ev-1', bookingId: 'bk-1', kind: EVENT_KIND.HARD, title: 'צ׳ק אין' } as TripEvent,
     ];
     tripNotes = [note('n1', { bookingId: 'bk-1' }), note('n2', { eventId: 'ev-1' })];
     openDelete();
 
-    expect(consequence()).toBe(t.notes.hostDelete(1));
+    expect(consequence()).toBeUndefined();
     const both = screen.getByText(t.index.del.both).parentElement;
-    expect(both?.querySelector('.bs-choice-s')?.textContent).toContain(t.notes.hostDelete(1));
+    expect(both?.querySelector('.bs-choice-s')?.textContent).toContain(t.notes.hostDelete(2));
     expect(screen.getByText(t.index.del.unlink).parentElement?.textContent).not.toContain('פתק');
   });
 });

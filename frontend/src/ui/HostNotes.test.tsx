@@ -7,7 +7,7 @@
 // happens to wire: the place case is phase 6's, and the point is that it needs no code.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { Note } from '@waypoint/shared';
+import type { Booking, Note, TripEvent } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { setSimulatedNow } from '../lib/useClock';
 import type { NoteHostKind } from '../lib/notes';
@@ -26,11 +26,20 @@ const note = (partial: Partial<Note> & Pick<Note, 'id'>): Note =>
   }) as Note;
 
 let tripNotes: Note[] = [];
+// `useAnchorName` needs the anchor's title, and the index needs the pairing — both come from
+// the same two lists the app reads, so a test case states the world once.
+let tripEvents: TripEvent[] = [];
+let tripBookings: Booking[] = [];
 const createNote = vi.fn(() => Promise.resolve(undefined));
 const updateNote = vi.fn(() => Promise.resolve());
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex(tripEvents, tripBookings),
+    events: tripEvents,
+    bookings: tripBookings,
     notes: tripNotes,
     users: [
       { id: 'u1', displayName: 'דנה' },
@@ -42,6 +51,7 @@ vi.mock('../state/trip-state', () => ({
 
 import { HostNotes } from './HostNotes';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 const open = (kind: NoteHostKind, id: string) =>
   render(wrapNav(<HostNotes host={{ kind, id, name: 'המארח' }} />));
@@ -50,6 +60,8 @@ describe('HostNotes', () => {
   beforeEach(() => {
     setSimulatedNow(Date.parse(NOW));
     tripNotes = [];
+    tripEvents = [];
+    tripBookings = [];
     createNote.mockClear();
     updateNote.mockClear();
   });
@@ -170,5 +182,43 @@ describe('HostNotes', () => {
       category: undefined,
     });
     expect(createNote).not.toHaveBeenCalled();
+  });
+});
+
+// ADR-0172 §9's amendment, measured into the design in `notes-and-documents-in-context-v1`
+// §2 at 2px per note: a place is the one surface that shows rows it does not host, so it is
+// the one surface that says where they came from.
+describe('an inherited note says where it came from', () => {
+  // Its own lifecycle: the hooks above are scoped to the `HostNotes` describe, so without
+  // these the previous case's DOM survives and the second assertion reads its node.
+  beforeEach(() => {
+    setSimulatedNow(Date.parse(NOW));
+    tripNotes = [];
+    tripEvents = [];
+    tripBookings = [];
+  });
+  afterEach(() => cleanup());
+
+  it('marks a place’s inherited notes with the anchor’s name, and leaves its own plain', () => {
+    tripEvents = [];
+    tripBookings = [{ id: 'bk-1', title: 'מלון סאקורה', placeId: 'p1' } as Booking];
+    tripNotes = [
+      note({ id: 'n-inherited', bookingId: 'bk-1', body: 'הכניסה מהחצר' }),
+      note({ id: 'n-own', placeId: 'p1', body: 'שייך למקום' }),
+    ];
+    render(wrapNav(<HostNotes host={{ kind: 'place', id: 'p1', name: 'מלון סאקורה' }} />));
+
+    const own = screen.getByText('שייך למקום').closest('.note-item');
+    const inherited = screen.getByText('הכניסה מהחצר').closest('.note-item');
+    expect(inherited?.querySelector('.note-from')?.textContent).toBe('מלון סאקורה');
+    expect(own?.querySelector('.note-from')).toBeNull();
+  });
+
+  it('marks nothing on a booking, whose context it authors all of', () => {
+    tripEvents = [{ id: 'ev-1', bookingId: 'bk-1' } as TripEvent];
+    tripBookings = [{ id: 'bk-1', title: 'מלון סאקורה' } as Booking];
+    tripNotes = [note({ id: 'n1', bookingId: 'bk-1', body: 'לבקש חדר גבוה' })];
+    render(wrapNav(<HostNotes host={{ kind: 'booking', id: 'bk-1', name: 'מלון סאקורה' }} />));
+    expect(document.querySelector('.note-from')).toBeNull();
   });
 });

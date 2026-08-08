@@ -97,6 +97,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     places,
     events,
     notes,
+    hostContexts,
     zoneEvidence,
     activeDate,
     changeFeed,
@@ -246,6 +247,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     bookings,
     places,
     notes,
+    hostContexts,
   });
   const liftable = canLift(horizon);
   const [lifted, setLifted] = useState(false);

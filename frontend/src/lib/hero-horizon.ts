@@ -15,7 +15,8 @@
 import { ENTITY_TYPE, EVENT_STATUS, type Booking, type Note, type Place } from '@waypoint/shared';
 import type { TripEvent } from '@waypoint/shared';
 import { eventPlaceId, placeName } from './places';
-import { notesForHost } from './notes';
+import { notesForContext } from './notes';
+import { resolveHostContext, type HostContextIndex } from './host-context';
 
 /** What a human said about this event, when they have said anything (ADR-0117 §1's
  *  third state is "nobody has answered", and it is the commonest). */
@@ -90,29 +91,9 @@ export interface HeroHorizonInput {
   bookings: Booking[];
   places: Place[];
   notes: Note[];
-}
-
-/** An event's notes, and the one judgement call in this file.
- *
- *  A note's host is an event OR a booking (ADR-0152), and on the booked path a note
- *  lands on the **booking** — the event is materialized server-side from a seed
- *  (ADR-0093) and has no client id to hang it on (ADR-0152's phase 5b). So a
- *  hotel's *"ask for a high room"* is hosted by the booking, and asking only for
- *  `eventId` finds nothing on exactly the events most likely to carry a note.
- *
- *  The hero therefore reads BOTH. **This diverges from `EventCard`'s mark**, which
- *  counts `eventId` alone (`DayView.tsx`) — a row would show no mark while the
- *  lifted hero shows the note. That is a real inconsistency and it is the hero's
- *  side that is right, because §3's promise is "the note about this stop", not
- *  "the note about this row". Flagged rather than silently fixed on both: changing
- *  the mark changes what every day row looks like, which is not this phase's call.
- */
-function notesForEvent(event: TripEvent, notes: Note[]): Note[] {
-  const own = notesForHost(notes, ENTITY_TYPE.EVENT, event.id);
-  if (!event.bookingId) return own;
-  // Both lists are already newest-first; concatenating keeps each host's order and
-  // puts the event's own first, which is the more specific of the two.
-  return [...own, ...notesForHost(notes, ENTITY_TYPE.BOOKING, event.bookingId)];
+  /** Trip-state's one context index (ADR-0172 §1). Passed rather than rebuilt here: the
+   *  place half of it needs the WHOLE trip's references, and this input carries one day's. */
+  hostContexts: HostContextIndex;
 }
 
 function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
@@ -127,7 +108,13 @@ function toPoint(event: TripEvent, input: HeroHorizonInput): HeroPoint {
     placeId,
     place: placeName(input.places, placeId),
     bookingId: booking?.id,
-    notes: notesForEvent(event, input.notes),
+    // The union that used to be this file's own judgement call, now the app's rule
+    // (ADR-0172 §7): the hero was right that a booked event's notes live on its booking,
+    // and `EventCard`'s mark counts the same context rather than `eventId` alone.
+    notes: notesForContext(
+      input.notes,
+      resolveHostContext(input.hostContexts, { kind: ENTITY_TYPE.EVENT, id: event.id }),
+    ),
     settled: event.status === EVENT_STATUS.PLANNED ? undefined : (event.status as HeroSettled),
   };
 }

@@ -12,10 +12,18 @@
 // comes from `NOTE_HOST_FIELD` through `noteHostInput`, so a sixth hostable entity adds a
 // line in `@waypoint/shared` and nothing here.
 import { useMemo, useState } from 'react';
-import type { Note } from '@waypoint/shared';
+import { ENTITY_TYPE, type Note } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { noteHostInput, notesForHost, type NoteHostKind, type NoteHostRef } from '../lib/notes';
+import {
+  isHostedBy,
+  noteHostInput,
+  notesForContext,
+  notesForHost,
+  type NoteHostKind,
+  type NoteHostRef,
+} from '../lib/notes';
+import { resolveHostContext, type HostContext } from '../lib/host-context';
 import { NoteSection } from './NoteSection';
 import { NoteSheet } from './NoteSheet';
 
@@ -31,6 +39,28 @@ export function useHostNoteCount(kind: NoteHostKind, id: string | undefined): nu
   return useMemo(() => (id ? notesForHost(notes, kind, id).length : 0), [notes, kind, id]);
 }
 
+/** **This host's context**, resolved from trip-state's one index (ADR-0172 §1). Every
+ *  surface that shows or writes a note goes through here, so what a row's mark counts and
+ *  what the section under it lists cannot disagree — which they did until this shipped. */
+export function useHostContext(kind: NoteHostKind, id: string): HostContext {
+  const { hostContexts } = useTrip();
+  return useMemo(() => resolveHostContext(hostContexts, { kind, id }), [hostContexts, kind, id]);
+}
+
+/** The name of the host a surface's notes are ANCHORED to, when that is not the surface
+ *  itself. `undefined` on every host that authors its own — which is every host but a place
+ *  with exactly one relevant context (ADR-0172 §3). */
+function useAnchorName(context: HostContext, host: NoteHostRef): string | undefined {
+  const { bookings, events } = useTrip();
+  const { anchor } = context;
+  return useMemo(() => {
+    if (anchor.kind === host.kind && anchor.id === host.id) return undefined;
+    if (anchor.kind === ENTITY_TYPE.BOOKING) return bookings.find((b) => b.id === anchor.id)?.title;
+    if (anchor.kind === ENTITY_TYPE.EVENT) return events.find((e) => e.id === anchor.id)?.title;
+    return undefined;
+  }, [anchor, host.kind, host.id, bookings, events]);
+}
+
 export function HostNotes({
   host,
   canAdd = true,
@@ -44,9 +74,22 @@ export function HostNotes({
   const { notes, users, noteVerbs } = useTrip();
   const now = useClock();
   const [editing, setEditing] = useState<Note | 'create' | null>(null);
-  const hostNotes = useMemo(
-    () => notesForHost(notes, host.kind, host.id),
-    [notes, host.kind, host.id],
+  // Read the whole context, write to its anchor (ADR-0172 §1/§2). On a place those differ:
+  // it shows its single context's notes and a new one lands on that context's booking, which
+  // is what keeps the note with the original context if the place is ever reused (§4).
+  const context = useHostContext(host.kind, host.id);
+  const hostNotes = useMemo(() => notesForContext(notes, context), [notes, context]);
+  // **A place says where an inherited note came from** (ADR-0172 §9's amendment). Only a
+  // place can be showing rows it does not host — §3's inheritance is one-way — so the whole
+  // question is "is this note hosted by the surface I am on", and everywhere else the answer
+  // is always yes and nothing is marked.
+  const anchorName = useAnchorName(context, host);
+  const inheritedFrom = useMemo(
+    () =>
+      anchorName
+        ? (note: Note) => (isHostedBy(note, host.kind, host.id) ? undefined : anchorName)
+        : undefined,
+    [anchorName, host.kind, host.id],
   );
 
   return (
@@ -55,6 +98,7 @@ export function HostNotes({
         notes={hostNotes}
         users={users}
         now={now}
+        inheritedFrom={inheritedFrom}
         onAdd={canAdd ? () => setEditing('create') : undefined}
         onEdit={setEditing}
       />
@@ -66,7 +110,11 @@ export function HostNotes({
             const note = editing === 'create' ? null : editing;
             setEditing(null);
             if (note) void noteVerbs.updateNote(note.id, draft);
-            else void noteVerbs.createNote({ ...draft, ...noteHostInput(host.kind, host.id) });
+            else
+              void noteVerbs.createNote({
+                ...draft,
+                ...noteHostInput(context.anchor.kind, context.anchor.id),
+              });
           }}
           onClose={() => setEditing(null)}
         />

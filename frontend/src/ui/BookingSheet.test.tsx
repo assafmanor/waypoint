@@ -90,6 +90,9 @@ const trip = {
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex([], tripBookings),
     trip,
     events: [],
     bookings: tripBookings,
@@ -108,6 +111,7 @@ import { routeTitle } from '../lib/route-title';
 import { zonedIso } from '../lib/time';
 import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
+import { buildHostContextIndex } from '../lib/host-context';
 
 // **The sheet is stepped now** (ADR-0155 §5): `שמירה` lives on the LAST step, and the
 // primary is `הבא` until then. These are the whole diff to this file — every assertion

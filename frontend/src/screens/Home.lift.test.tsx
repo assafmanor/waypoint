@@ -28,6 +28,7 @@ import { setSimulatedNow } from '../lib/useClock';
 import { BEAT } from '../lib/one-shot';
 import { t } from '../i18n/he';
 import { wrapNav } from '../test/nav-harness';
+import { buildHostContextIndex } from '../lib/host-context';
 
 const DAY = '2026-08-03';
 /** Pinned: these fixtures carry fixed dates, so reading the real clock would make
@@ -117,6 +118,9 @@ let tripPlaces: Place[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    // The one context index every note surface resolves through (ADR-0172 §1);
+    // built from this file's own fixtures so pairing is real rather than stubbed.
+    hostContexts: buildHostContextIndex(tripEvents, tripBookings),
     trip: { id: 't1', timezone: 'Europe/Rome', startDate: DAY, endDate: DAY, updatedBy: 'u1' },
     bookings: tripBookings,
     places: tripPlaces,
