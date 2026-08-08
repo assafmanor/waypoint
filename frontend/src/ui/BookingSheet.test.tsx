@@ -13,6 +13,13 @@ import {
 
 Element.prototype.scrollIntoView = vi.fn();
 
+// The one thing this sheet says to the Map (ADR-0134 §1): "find me a place for this field".
+// Mocked so the errand can be read — outside a `MapScopeProvider` the real hook answers `null`
+// and the tap is a no-op, which is correct for every other test in this file and untestable
+// for the one below. `BookingSheet` imports nothing else from this module.
+const startErrand = vi.fn();
+vi.mock('../state/map-scope-state', () => ({ useStartPlaceErrand: () => startErrand }));
+
 const places: Place[] = [
   {
     id: 'pl-tlv',
@@ -1393,5 +1400,72 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     // No time was invented at either end — a departure is the commitment itself.
     expect(within(depart).getByText(t.whenField.addTime)).toBeTruthy();
     expect(within(arrive).getByText(t.whenField.addTime)).toBeTruthy();
+  });
+});
+
+/* ── WHAT WOULD ANSWER THIS ERRAND (field report #6) ───────────────────────────────────────
+   A flight leg wants an AIRPORT, so the tab's search is restricted to one. The sheet is the
+   only thing that knows the question; the Map owns the search (ADR-0134 §1). */
+describe('BookingSheet — a flight leg asks the Map for an airport', () => {
+  afterEach(() => {
+    cleanup();
+    startErrand.mockReset();
+  });
+
+  /** The route field's own way in — `＋ מיקום` on the origin, whichever booking type. */
+  const tapOrigin = () => {
+    const triggers = document.querySelectorAll<HTMLElement>('.pp-addbtn, .pp-trigger');
+    fireEvent.click(triggers[0]);
+  };
+
+  const openCreate = (type: BookingType) => {
+    render(
+      wrapNav(
+        <BookingSheet
+          booking={null}
+          draft={bookingSheetDraft({ booking: null, seed: { type }, trip, events: [], places })}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    pastTypeStep();
+  };
+
+  it('names the airport kind on a flight’s origin', () => {
+    openCreate(BOOKING_TYPE.FLIGHT);
+    tapOrigin();
+    expect(startErrand).toHaveBeenCalledWith(expect.objectContaining({ kind: 'airport' }));
+  });
+
+  // A train's stop is a station and a car's is a rental desk — neither is an airport, and the
+  // restriction has no type for them yet. Naming one anyway would hide every right answer.
+  it('names NO kind on a train’s origin', () => {
+    openCreate(BOOKING_TYPE.TRAIN);
+    tapOrigin();
+    expect(startErrand).toHaveBeenCalledTimes(1);
+    expect(startErrand.mock.calls[0][0]).not.toHaveProperty('kind');
+  });
+
+  // A hotel's single place is the hotel. The restriction is about the ROUTE fields only, even
+  // on a flight — which no other type could have shown, since only a flight has both.
+  it('names no kind on a single-place field', () => {
+    render(
+      wrapNav(
+        <BookingSheet
+          booking={null}
+          draft={bookingSheetDraft({
+            booking: null,
+            seed: { type: BOOKING_TYPE.HOTEL },
+            trip,
+            events: [],
+            places,
+          })}
+          onClose={() => {}}
+        />,
+      ),
+    );
+    pastTypeStep();
+    tapOrigin();
+    expect(startErrand.mock.calls[0][0]).not.toHaveProperty('kind');
   });
 });

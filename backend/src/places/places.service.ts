@@ -169,6 +169,7 @@ export class PlacesService {
               lng: input.lng,
               timezone,
               icon: input.icon,
+              nickname: input.nickname,
               category: input.category,
               // Present only on an undo restoring a row we cached ourselves (ADR-0157 §4);
               // every ordinary create leaves them undefined and Google fills them on enrich.
@@ -229,6 +230,10 @@ export class PlacesService {
             ...(input.lat !== undefined && { lat: input.lat }),
             ...(input.lng !== undefined && { lng: input.lng }),
             ...(input.icon !== undefined && { icon: input.icon }),
+            // An empty string is how the form CLEARS a nickname, so it is written as null
+            // rather than skipped — `undefined` here would mean "not mentioned" and leave the
+            // old label in force, which is the one thing a cleared field must not do.
+            ...(input.nickname !== undefined && { nickname: input.nickname || null }),
             ...(input.category !== undefined && { category: input.category }),
             ...(input.rating !== undefined && { rating: input.rating }),
             ...(input.userRatingsTotal !== undefined && {
@@ -283,8 +288,23 @@ export class PlacesService {
    *  is no session to close and therefore no $0 tail: every call is billed, which is why
    *  the client's min-chars floor and pause debounce carry more weight here than on the
    *  Autocomplete half. `bias` is the caller's viewport (free relevance). */
-  searchPlacesText(input: SearchPlacesTextInput): Promise<PlaceResult[]> {
-    return this.google.textSearch(input.input, input.bias);
+  async searchPlacesText(input: SearchPlacesTextInput): Promise<PlaceResult[]> {
+    const results = await this.google.textSearch(input.input, input.bias, input.kind);
+    // **A restriction that finds nothing is dropped once, and that is not a hedge — it is the
+    // one thing that makes the strict filter safe to ship** (field report #6).
+    //
+    // `includedType` takes a single type and Google lists `airport` and `international_airport`
+    // separately; whether every international airport also carries the generic `airport` type
+    // is undocumented, and no session here had an API key to measure it. Under
+    // `strictTypeFiltering` the failure mode is silent and total — Ben Gurion simply is not in
+    // the list, on the surface a person is trying to pick their departure airport from. So an
+    // EMPTY restricted answer is re-asked unrestricted: one extra call, only when the first one
+    // already returned nothing, and never on the path that works. Delete this the day the
+    // overlap is verified against a real key.
+    if (input.kind && results.length === 0) {
+      return this.google.textSearch(input.input, input.bias);
+    }
+    return results;
   }
 
   /**

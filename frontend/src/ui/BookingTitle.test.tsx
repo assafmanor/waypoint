@@ -17,6 +17,7 @@ import {
   type Place,
 } from '@waypoint/shared';
 
+import { PlaceLabelsProvider } from '../state/place-labels';
 import { BookingTitle } from './BookingTitle';
 
 const places: Place[] = [
@@ -111,5 +112,31 @@ describe('BookingTitle', () => {
     );
     expect(drewRoute()).toBe(false);
     expect(screen.getByText('Granbell')).toBeTruthy();
+  });
+});
+
+/* ── THE AIRPORT LABEL (ADR-0166 §18, field report #23) ────────────────────────────────────
+   The label channel is a context, so an unprovided component keeps the stripping it always
+   had — which is what lets every test above render it bare. */
+describe('BookingTitle — the endpoints read as what the places are CALLED', () => {
+  const flight = booking(BOOKING_TYPE.FLIGHT, {
+    title: 'נתב״ג ← נריטה',
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-nrt',
+  });
+
+  it('draws the derived label where there is one, and shortens the name where there is not', () => {
+    render(
+      <PlaceLabelsProvider labels={{ 'pl-tlv': 'תל אביב · TLV' }}>
+        <BookingTitle booking={flight} places={places} />
+      </PlaceLabelsProvider>,
+    );
+    expect(screen.getByText('תל אביב · TLV')).toBeTruthy();
+    expect(screen.getByText('נריטה')).toBeTruthy();
+  });
+
+  it('falls back to today’s stripping with no labels in reach', () => {
+    render(<BookingTitle booking={flight} places={places} />);
+    expect(screen.getByText('נתב״ג')).toBeTruthy();
   });
 });

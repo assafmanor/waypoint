@@ -217,11 +217,9 @@ describe('fieldWantsAttempt', () => {
   });
 
   it('lists every field wanting an attempt on a cold row', () => {
-    expect(fieldsWantingAttempt({}, NOW)).toEqual([
-      ENRICHMENT_FIELD.IMAGE,
-      ENRICHMENT_FIELD.SUMMARY,
-      ENRICHMENT_FIELD.HOURS,
-    ]);
+    // Every member of the enum, in its declared order — so a field added to
+    // `ENRICHMENT_FIELD` is asked about without anyone remembering to list it here.
+    expect(fieldsWantingAttempt({}, NOW)).toEqual(Object.values(ENRICHMENT_FIELD));
   });
 
   it('lists nothing when everything held is fresh or inside its miss TTL', () => {
@@ -229,6 +227,8 @@ describe('fieldWantsAttempt', () => {
       ...presentSummary(ago(1000)),
       image: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
       hours: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
+      iata: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
+      servedCity: { state: 'absent', attemptedAt: ago(1000), sources: [], reason: 'not_found' },
     };
     expect(fieldsWantingAttempt(fields, NOW)).toEqual([]);
   });

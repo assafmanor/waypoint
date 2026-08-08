@@ -315,6 +315,12 @@ model Place {
   // and the reason a Place stays trip-scoped rather than a shared cross-trip record: a chosen
   // icon is data about this trip's view of the place, not about the entity Google describes.
   icon             String?
+  // The short label a human chose for this place (ADR-0166 §18, field report #23). Same
+  // argument as `icon` below it: user-authored, trip-scoped, and it must survive deleting the
+  // idea it was written through. Display-only — `name` still holds the official name — and it
+  // is the manual override for the cases `P931` cannot resolve (Ben Gurion serves Tel Aviv
+  // AND Jerusalem at equal rank).
+  nickname         String?
   // What a human said this place IS (ADR-0165). Same argument as `icon` above — it has to
   // survive deleting the idea it was written through — and it is why the map's category pills
   // are no longer a control with nowhere to write.

@@ -15,6 +15,7 @@ import type {
   MembershipRole,
   NoteHostKey,
   NoteSource,
+  PlaceSearchKind,
 } from './entities';
 
 export const AUTH_PROVIDER = { GOOGLE: 'google' } as const satisfies Record<string, AuthProvider>;
@@ -64,6 +65,12 @@ export const EVENT_CATEGORY = {
   SERVICES: 'services',
   OTHER: 'other',
 } as const satisfies Record<string, EventCategory>;
+
+/** The kinds a place search can be restricted to (field report #6). A form names the kind;
+ *  the proxy owns the mapping to Google's own type vocabulary. */
+export const PLACE_SEARCH_KIND = {
+  AIRPORT: 'airport',
+} as const satisfies Record<string, PlaceSearchKind>;
 
 export const MEMBERSHIP_ROLE = {
   ADMIN: 'admin',
@@ -246,6 +253,14 @@ export const CHANGES_PAGE_LIMIT = 500;
  *  and still promise nothing. Validated server-side (createTripSchema) and
  *  enforced client-side (the create form's input `maxLength`). */
 export const MAX_TRIP_NAME_LENGTH = 18;
+
+/** **A place nickname's length cap** (ADR-0166 §18). The nickname exists to be SHORTER than
+ *  the official name it overrides — it lands on a day row beside a time — so a bound is part
+ *  of what it means, not a storage concern. Roomier than the trip name because it is not a
+ *  pill and the surfaces that show it wrap; something longer than this is a rename, and the
+ *  name field is right there. Validated server-side (`createPlaceSchema`) and enforced
+ *  client-side by the input's `maxLength`. */
+export const MAX_PLACE_NICKNAME_LENGTH = 60;
 
 /** Display-name length cap. Roomier than the trip name because it is a person's
  *  name rather than a pill that must stay on one line, but bounded because it

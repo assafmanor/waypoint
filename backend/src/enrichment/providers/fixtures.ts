@@ -13,6 +13,10 @@
 //     the saved name is identical to the label, and the summary must be refused.
 //   - **Tsukiji Outer Market** — the other granularity shape: the item is the *former*
 //     wholesale market, so it carries a dissolution date.
+//
+// **That claim covers everything down to `TSUKIJI`.** The airport fixtures added for §18 are
+// marked where they start and say plainly which of their values are measured and which are
+// stand-ins — the spike had no airport stratum to draw from.
 import type { EnrichmentFetchOptions } from '../outbound-fetch';
 
 /** A fetcher that answers from a recorded map instead of the network, and records what was
@@ -86,6 +90,12 @@ interface EntityOptions {
   lng?: number;
   sitelinks?: Record<string, string>;
   ended?: string[];
+  /** `P238`, the IATA code (§18). */
+  iata?: string;
+  /** `P931` ("place served by transport hub"), with each value's rank — because the whole
+   *  difficulty of that property is that it is multi-valued and the ranks often do not
+   *  separate the values (§18). */
+  placeServed?: { qid: string; rank?: string }[];
 }
 
 /** A `wbgetentities` response in Wikidata's real claim shape — `mainsnak.datavalue.value`,
@@ -114,6 +124,20 @@ export function entity(options: EntityOptions) {
         },
       },
     ];
+  }
+  if (options.iata) {
+    claims.P238 = [
+      { mainsnak: { snaktype: 'value', datavalue: { type: 'string', value: options.iata } } },
+    ];
+  }
+  if (options.placeServed?.length) {
+    claims.P931 = options.placeServed.map((served) => ({
+      mainsnak: {
+        snaktype: 'value',
+        datavalue: { type: 'wikibase-entityid', value: { id: served.qid } },
+      },
+      rank: served.rank ?? 'normal',
+    }));
   }
   for (const property of options.ended ?? []) {
     claims[property] = [
@@ -349,5 +373,73 @@ export const TSUKIJI = {
     lang: 'en',
     title: 'Tsukiji fish market',
     extract: 'The Tsukiji fish market was the largest wholesale fish market in the world.',
+  }),
+};
+
+/* ── THE AIRPORT PAIR (ADR-0166 §18, field reports #7/#23) ──────────────────────────────────
+   Unlike everything above, these are **not** rows from the coverage spike — that spike had no
+   airport stratum. What is real here is the shape the §18 research measured, and it is the only
+   part any of these specs assert on:
+
+     • Ben Gurion's `P931` lists **two cities at equal (normal) rank** — Tel Aviv and Jerusalem
+       — which is the finding that made a manual override necessary at all;
+     • Keflavík carries a **preferred rank**, which is the case an automatic tie-break DOES
+       answer, and the reason "first" is not the whole rule;
+     • **London's city entity carries a real metropolitan `P238` and no airport class** — the
+       one false positive the research found, and the whole reason for the `P31` guard.
+
+   The class QIDs are from the research note itself (`Q1248784` airport, `Q644371` international
+   airport). The item QIDs of the airports and cities are **stand-ins**, deliberately: the note
+   recorded the claim shapes rather than the ids, and inventing a precise-looking QID would read
+   as verified data. `Q84` is London's, which is the one item id the note does state. */
+
+/** Ben Gurion: an international airport whose served city is genuinely ambiguous. */
+export const BEN_GURION = {
+  place: { name: 'נמל התעופה בן גוריון', lat: 32.0114, lng: 34.8867, googlePlaceId: 'ChIJ-tlv' },
+  qid: 'Q-airport-tlv',
+  cityQid: 'Q-city-telaviv',
+  entity: entity({
+    qid: 'Q-airport-tlv',
+    labels: { en: 'Ben Gurion Airport', he: 'נמל התעופה בן גוריון' },
+    instanceOf: ['Q644371'], // international airport
+    lat: 32.0114,
+    lng: 34.8867,
+    iata: 'TLV',
+    // Both at normal rank: no automatic tie-break exists, and `Place.nickname` is the answer
+    // for a trip that disagrees with the one we pick.
+    placeServed: [{ qid: 'Q-city-telaviv' }, { qid: 'Q-city-jerusalem' }],
+  }),
+  city: entity({ qid: 'Q-city-telaviv', labels: { en: 'Tel Aviv', he: 'תל אביב' } }),
+};
+
+/** Keflavík: the case Wikidata's own preferred rank does answer. */
+export const KEFLAVIK = {
+  place: { name: 'Keflavík Airport', lat: 63.985, lng: -22.6056, googlePlaceId: 'ChIJ-kef' },
+  qid: 'Q-airport-kef',
+  entity: entity({
+    qid: 'Q-airport-kef',
+    labels: { en: 'Keflavík International Airport' },
+    instanceOf: ['Q644371'],
+    lat: 63.985,
+    lng: -22.6056,
+    iata: 'KEF',
+    placeServed: [{ qid: 'Q-city-njardvik' }, { qid: 'Q-city-keflavik', rank: 'preferred' }],
+  }),
+  city: entity({ qid: 'Q-city-keflavik', labels: { en: 'Keflavík' } }),
+};
+
+/** **London the city** — `P238 = LON` is a real metropolitan IATA code, and the entity is a
+ *  city. The one hazard the research found, and what the `P31` guard is for. */
+export const LONDON_CITY = {
+  place: { name: 'לונדון', lat: 51.5072, lng: -0.1276, googlePlaceId: 'ChIJ-london' },
+  qid: 'Q84',
+  entity: entity({
+    qid: 'Q84',
+    labels: { en: 'London', he: 'לונדון' },
+    instanceOf: ['Q515'], // city — no airport class anywhere on it
+    lat: 51.5072,
+    lng: -0.1276,
+    iata: 'LON',
+    placeServed: [],
   }),
 };

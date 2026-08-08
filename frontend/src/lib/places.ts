@@ -14,6 +14,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { ltrIsolate } from './bidi';
+import type { PlaceLabels } from './place-label';
 import { deriveNow, eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from './time';
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
@@ -102,6 +103,15 @@ export function eventPlaceName(
 export interface Route {
   from?: string;
   to?: string;
+  /** **The display label for each endpoint, when the deriver had one** (ADR-0166 §18) — a
+   *  nickname, or `City · IATA`. Beside the names rather than replacing them, because the two
+   *  answer different questions and one surface needs both: `routeDisplay` puts the label
+   *  inline and the destination's FULL name in the meta line under it.
+   *
+   *  Absent is the normal case (most places are not airports and carry no nickname) and means
+   *  "shorten the name", which is what `shortRoute` then does. */
+  fromLabel?: string;
+  toLabel?: string;
 }
 
 /** The origin→destination route of a transport-linked event (ADR-0048/0059), or
@@ -111,7 +121,12 @@ export interface Route {
  *  shared derivation behind every route presentation (Index row, booking detail,
  *  and the board hero) so a flight reads the same wherever it appears — it shows
  *  where it goes, not a name (ADR-0059 §3). */
-export function eventRoute(event: TripEvent, bookings: Booking[], places: Place[]): Route | null {
+export function eventRoute(
+  event: TripEvent,
+  bookings: Booking[],
+  places: Place[],
+  labels?: PlaceLabels,
+): Route | null {
   if (!event.bookingId) return null;
   const booking = bookings.find((b) => b.id === event.bookingId);
   // **Only a type NAMED by its route draws one** (ADR-0163 §3, extended here after the
@@ -122,9 +137,26 @@ export function eventRoute(event: TripEvent, bookings: Booking[], places: Place[
   // these display derivations kept rebuilding one from the place FKs, which is the same
   // bug one layer down. A hire's pick-up and return live in its detail facts.
   if (!booking || !titlesFromRoute(booking.type)) return null;
+  return bookingRoute(booking, places, labels);
+}
+
+/** A transport booking's route — the same resolution `eventRoute` does, for the surfaces that
+ *  hold the booking rather than the event (`BookingTitle`). One function, so the two cannot
+ *  disagree about which endpoint got a derived label. */
+export function bookingRoute(
+  booking: Pick<Booking, 'fromPlaceId' | 'toPlaceId'>,
+  places: Place[],
+  labels?: PlaceLabels,
+): Route | null {
   const from = placeName(places, booking.fromPlaceId);
   const to = placeName(places, booking.toPlaceId);
-  return from || to ? { from, to } : null;
+  if (!from && !to) return null;
+  return {
+    from,
+    to,
+    fromLabel: booking.fromPlaceId ? labels?.[booking.fromPlaceId] : undefined,
+    toLabel: booking.toPlaceId ? labels?.[booking.toPlaceId] : undefined,
+  };
 }
 
 // ── Per-event display zones (ADR-0107 multi-zone time model) ────────────────

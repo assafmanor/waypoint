@@ -598,3 +598,55 @@ describe('PlacesService', () => {
     });
   });
 });
+
+/* ── AIRPORT-ONLY SEARCH (field report #6) ─────────────────────────────────────────────────
+   The Text Search relay is a pure passthrough with no DB in it, so this describe builds its own
+   service over a stub client and touches nothing else. */
+describe('PlacesService — restricting a search to one kind of place', () => {
+  const airport = {
+    googlePlaceId: 'ChIJ-tlv',
+    primaryText: 'נמל התעופה בן גוריון',
+    lat: 32.0114,
+    lng: 34.8867,
+  };
+
+  const withResults = (...answers: (typeof airport)[][]) => {
+    const textSearch = vi.fn();
+    for (const answer of answers) textSearch.mockResolvedValueOnce(answer);
+    const google = { textSearch } as unknown as GooglePlacesClient;
+    return {
+      service: new PlacesService(null as never, null as never, google, null as never),
+      textSearch,
+    };
+  };
+
+  it('passes the kind through, and asks once when the restricted search answers', async () => {
+    const { service, textSearch } = withResults([airport]);
+    const results = await service.searchPlacesText({ input: 'נתב"ג', kind: 'airport' });
+
+    expect(results).toEqual([airport]);
+    expect(textSearch).toHaveBeenCalledTimes(1);
+    expect(textSearch).toHaveBeenCalledWith('נתב"ג', undefined, 'airport');
+  });
+
+  it('drops the restriction ONCE when it found nothing, rather than showing an empty list', async () => {
+    // `includedType` takes a single type and Google lists `airport` and `international_airport`
+    // separately; whether every international airport also carries the generic type is
+    // undocumented and unmeasured here. Under `strictTypeFiltering` that failure is silent and
+    // total — so an empty restricted answer is re-asked unrestricted.
+    const { service, textSearch } = withResults([], [airport]);
+    const results = await service.searchPlacesText({ input: 'נתב"ג', kind: 'airport' });
+
+    expect(results).toEqual([airport]);
+    expect(textSearch).toHaveBeenCalledTimes(2);
+    // The retry names no kind at all — that is what "unrestricted" means here.
+    expect(textSearch).toHaveBeenLastCalledWith('נתב"ג', undefined);
+  });
+
+  it('does not re-ask an UNRESTRICTED search that found nothing', async () => {
+    // Nothing to drop, and a second identical call would be a billed call for the same answer.
+    const { service, textSearch } = withResults([]);
+    expect(await service.searchPlacesText({ input: 'zzzz' })).toEqual([]);
+    expect(textSearch).toHaveBeenCalledTimes(1);
+  });
+});

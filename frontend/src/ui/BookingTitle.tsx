@@ -11,16 +11,19 @@
 import { titlesFromRoute, type Booking, type Place } from '@waypoint/shared';
 import { RouteLabel } from './RouteLabel';
 import { TitleLabel } from './TitleLabel';
-import { placeName } from '../lib/places';
+import { bookingRoute } from '../lib/places';
 import { shortRoute } from '../lib/place-label';
+import { usePlaceLabels } from '../state/place-labels';
 
 export function BookingTitle({ booking, places }: { booking: Booking; places: Place[] }) {
-  const from = placeName(places, booking.fromPlaceId);
-  const to = placeName(places, booking.toPlaceId);
-  if (titlesFromRoute(booking.type) && (from || to)) {
+  // The same resolution `EventTitle` makes, through the one derivation both call — so a flight
+  // reads the same whether the surface holds the event or the booking (ADR-0166 §18).
+  const placeLabels = usePlaceLabels();
+  const route = bookingRoute(booking, places, placeLabels);
+  if (titlesFromRoute(booking.type) && route) {
     // Shortened like every other glanceable route label (ADR-0059 §3 amendment);
     // the booking detail keeps the full names.
-    return <RouteLabel {...shortRoute({ from, to })} />;
+    return <RouteLabel {...shortRoute(route)} />;
   }
   // No endpoints in reach: the stored title may still BE a route, so it reads as
   // one instead of as raw text (session-101 amendment).

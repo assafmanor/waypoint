@@ -19,7 +19,7 @@
 // draft's identity is how a form built out of `useState` is reset without a synchronising
 // effect, and it is the only reason there is no `useEffect` in this file.
 import { useId, useState } from 'react';
-import { iconForCategory, type EventCategory } from '@waypoint/shared';
+import { iconForCategory, MAX_PLACE_NICKNAME_LENGTH, type EventCategory } from '@waypoint/shared';
 import { useDerivedField } from '../../lib/useDerivedField';
 import { placeGlyph } from '../../lib/map-pins';
 import { EVENT_CATEGORY_OPTIONS } from '../../lib/category-options';
@@ -68,6 +68,14 @@ export interface MapPlaceFormSpec {
    *  own answer, so treating the seed as a choice is how a save nobody aimed at the pills would
    *  stamp a derived value onto the row (the `booked`-row defect, ADR-0136 §2). */
   category?: EventCategory;
+  /** **The short label a human may set** (ADR-0166 §18, field report #23), and its presence is
+   *  what OFFERS the field at all — only the rename source does, because a place that does not
+   *  exist yet has nothing to nickname and the question would be noise on the two add paths.
+   *
+   *  `fallback` is what the label resolves to with no nickname — the derived `City · IATA`, or
+   *  the shortened name — so the hint can say what leaving it empty means rather than making
+   *  the user guess what they are overriding. */
+  nickname?: { value: string; fallback: string };
   /** The FREE `place_id` deep link, present only where there is something to vet before
    *  spending (ADR-0115 §2). A dropped pin needs none — you chose the spot. */
   vetUrl?: string;
@@ -95,6 +103,10 @@ export interface MapPlaceFormValue {
    *  true, so a rename that only fixes a typo does not also stamp the referencing entities'
    *  derived category onto the place. */
   categoryTouched: boolean;
+  /** The short label, when this source offered the field. **Absent** — not empty — where it did
+   *  not, which is what stops an add path from writing `nickname: null` over nothing. An empty
+   *  string is a real value here: it is how a nickname is cleared. */
+  nickname?: string;
   /** **The notes typed on the way** (ADR-0152 §6b) — bodies, in order, none of them written
    *  yet. The host writes them behind the place, because only the host knows which of the four
    *  sources produced it and therefore when its id exists. Empty is the common case. */
@@ -133,6 +145,8 @@ export function MapPlaceForm({
   const errors = useFormErrors<'name'>();
   const nameMark = errors.field('name');
   const [name, setName] = useState(spec.name);
+  const [nickname, setNickname] = useState(spec.nickname?.value ?? '');
+  const nicknameId = useId();
   // **THE CATEGORY IS DERIVED UNTIL A HUMAN TAPS A PILL**, through the same mechanism the icon
   // uses one line down — because it is the same shape: the seed is what the place's references
   // say, and only a tap makes it the place's own answer (ADR-0165). Nothing ever `redrive`s it;
@@ -157,6 +171,7 @@ export function MapPlaceForm({
       iconTouched: icon.touched,
       category: category.value,
       categoryTouched: category.touched,
+      ...(spec.nickname && { nickname: nickname.trim() }),
       notes: composer.pending(),
       ...next,
     });
@@ -174,6 +189,7 @@ export function MapPlaceForm({
       iconTouched: icon.touched,
       category: category.value,
       categoryTouched: category.touched,
+      ...(spec.nickname && { nickname: nickname.trim() }),
       // Whatever is in the box counts, committed or not — which is what makes `＋` optional and
       // one note type-and-save.
       notes: composer.pending(),
@@ -275,6 +291,34 @@ export function MapPlaceForm({
             ariaLabel={t.map.make.categoryLabel}
           />
         </div>
+        {/* **The short label** (ADR-0166 §18), in the scroll region and not the pinned head —
+            the head is what you are naming and the actions are how you get out, and this card's
+            height is arithmetic (ADR-0148 §1). It is `Field` + an input like every other text
+            field in this app rather than a control of its own, and it carries NO `dir`, for the
+            reason the name field one region up spells out: `dir="auto"` on an input sniffs its
+            VALUE, so an empty field left-anchors its Hebrew placeholder (ADR-0118). */}
+        {spec.nickname && (
+          <Field
+            label={t.map.make.nicknameLabel}
+            htmlFor={nicknameId}
+            hint={t.map.make.nicknameHint(spec.nickname.fallback)}
+          >
+            <input
+              id={nicknameId}
+              value={nickname}
+              onChange={(e) => {
+                setNickname(e.target.value);
+                report({ nickname: e.target.value.trim() });
+              }}
+              placeholder={t.map.make.nicknamePlaceholder}
+              maxLength={MAX_PLACE_NICKNAME_LENGTH}
+              enterKeyHint="done"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirm();
+              }}
+            />
+          </Field>
+        )}
         {/* The scroll region's SECOND child, which is the region ADR-0148 §1 built for exactly
             this: the head (what am I naming), the actions (how do I get out) and now the note
             box are three different jobs, and only the first two must survive a keyboard.

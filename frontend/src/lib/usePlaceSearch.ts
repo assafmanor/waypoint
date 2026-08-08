@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import type { Place, PlacePrediction, PlaceResult } from '@waypoint/shared';
+import type { Place, PlacePrediction, PlaceResult, PlaceSearchKind } from '@waypoint/shared';
 import {
   PLACE_CORPUS,
   PLACE_SEARCH_DEBOUNCE_MS,
@@ -24,6 +24,11 @@ export interface PlaceSearchOptions {
   /** Text Search only: the canvas's current bounds, read at FETCH time rather than
    *  taken as a dependency — panning the map must not re-bill the query. */
   biasRef?: RefObject<MapBounds | null>;
+  /** **What this search is FOR, when the asker knows** (field report #6): a flight leg wants
+   *  an airport, so the proxy restricts the corpus to one. A dependency of the effect, unlike
+   *  `biasRef` — the kind changes what the answer IS, so a query typed under a new one has to
+   *  be re-asked, where a pan only changes ranking. */
+  kind?: PlaceSearchKind;
 }
 
 export interface UsePlaceSearch {
@@ -71,6 +76,7 @@ export function usePlaceSearch({
   enrichPlaceId,
   corpus = PLACE_CORPUS.autocomplete,
   biasRef,
+  kind,
 }: PlaceSearchOptions = {}): UsePlaceSearch {
   const { trip, places, events, bookings, maybeItems, indexVerbs } = useTrip();
   const { createPlace, resolvePlace } = indexVerbs;
@@ -121,6 +127,7 @@ export function usePlaceSearch({
         ? searchPlacesText(tripId, {
             input: trimmed,
             bias: biasRef?.current ?? undefined,
+            kind,
             signal: controller.signal,
           })
         : searchPlaces(tripId, {
@@ -146,7 +153,7 @@ export function usePlaceSearch({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [active, trimmed, tripId, ensureToken, textCorpus, biasRef]);
+  }, [active, trimmed, tripId, ensureToken, textCorpus, biasRef, kind]);
 
   // "In the trip" = referenced by a saved entity, NOT merely cached as a row: a
   // picked-but-unsaved place stays as a dedup cache row but reads as not-in-trip

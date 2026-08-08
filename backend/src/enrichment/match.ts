@@ -347,6 +347,33 @@ export const BROADER_INSTANCE_OF_QIDS: Readonly<Record<string, string>> = {
   Q3957: 'town',
 };
 
+/**
+ * **Wikidata types that make an entity an airport** (ADR-0166 §18, field report #7).
+ *
+ * The guard in front of `P238` (IATA) and `P931` (place served), and it exists for one
+ * measured hazard: **London's city entity `Q84` carries `P238 = LON`** — a real metropolitan
+ * IATA code — and a name search for a trip's `לונדון` finds it. Without a class check the pipe
+ * would label a city with an airport code and, worse, would do it confidently.
+ *
+ * Curated QIDs rather than a `P279*` subclass walk, matching `BROADER_INSTANCE_OF_QIDS` above:
+ * the traversal needs SPARQL (a second endpoint, a second failure mode) to answer a question
+ * whose real answer is four entries long. It fails **safe in both directions** — a class
+ * missing from this list means an airport gets no code (today's behaviour, which is a label
+ * that stays as it is), and a wrong QID in it means we read `P238` off something that does not
+ * have one, and get nothing.
+ */
+export const AIRPORT_INSTANCE_OF_QIDS: Readonly<Record<string, string>> = {
+  Q1248784: 'airport',
+  Q644371: 'international airport',
+  Q62447: 'aerodrome',
+  Q1774898: 'regional airport',
+};
+
+/** Is this candidate an airport — i.e. may its `P238`/`P931` be believed? */
+export function isAirportEntity(instanceOf: readonly string[]): boolean {
+  return instanceOf.some((qid) => qid in AIRPORT_INSTANCE_OF_QIDS);
+}
+
 /** Wikidata properties that say the entity **has ended**. A dissolved entity's article is
  *  history, not a description of the place standing there now — which is exactly the
  *  **Tsukiji Outer Market** case (§11.2): the match resolves to the former *wholesale*

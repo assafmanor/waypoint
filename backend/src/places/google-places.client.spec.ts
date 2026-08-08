@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PLACE_SEARCH_KIND } from '@waypoint/shared';
 import { GOOGLE_MAPS_SERVER_KEY } from '../common/env';
 import { GooglePlacesClient } from './google-places.client';
 
@@ -58,6 +59,34 @@ describe('GooglePlacesClient (ADR-0113: Hebrew-first place names)', () => {
     expect(
       JSON.parse((bare.mock.calls[0][1] as RequestInit).body as string).locationBias,
     ).toBeUndefined();
+  });
+
+  // ── AIRPORT-ONLY SEARCH (field report #6) ─────────────────────────────────────
+  it('textSearch restricts to airports when asked, strictly, and not otherwise', async () => {
+    const mock = stubFetch({ places: [] });
+    await client.textSearch('נתב"ג', undefined, PLACE_SEARCH_KIND.AIRPORT);
+    const body = JSON.parse((mock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.includedType).toBe('airport');
+    // Without strict filtering `includedType` is a ranking preference and the hotel beside
+    // the airport still comes back, which is the answer field report #6 is against.
+    expect(body.strictTypeFiltering).toBe(true);
+
+    const bare = stubFetch({ places: [] });
+    await client.textSearch('קפה');
+    const bareBody = JSON.parse((bare.mock.calls[0][1] as RequestInit).body as string);
+    expect(bareBody.includedType).toBeUndefined();
+    expect(bareBody.strictTypeFiltering).toBeUndefined();
+  });
+
+  it('the restriction moves neither the field mask nor the SKU tier it sets', async () => {
+    const mock = stubFetch({ places: [] });
+    await client.textSearch('נתב"ג', undefined, PLACE_SEARCH_KIND.AIRPORT);
+    const init = mock.mock.calls[0][1] as RequestInit;
+    // ADR-0108 §3: the mask is the single lever on what we are billed. `includedType` is a
+    // request parameter, so a restricted search costs exactly what an unrestricted one does.
+    expect((init.headers as Record<string, string>)['X-Goog-FieldMask']).toBe(
+      'places.id,places.displayName,places.formattedAddress,places.location',
+    );
   });
 
   it('textSearch flattens results with their coordinates and drops the id-less', async () => {

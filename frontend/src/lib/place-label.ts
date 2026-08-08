@@ -25,8 +25,25 @@
 //     listed — or a name in a script we have no patterns for (東京駅) — simply
 //     displays in full, exactly as it does today.
 //
-// It deliberately does NOT produce colloquial abbreviations (`נתב״ג`): those need
-// a per-place dictionary, which is what a user-set place nickname is for.
+// **AND THAT IS NOW THE BOTTOM RUNG OF A THREE-STEP CHAIN** (ADR-0166 §18, field report
+// #23). The stripped name is what we show when we know nothing better; above it sit two
+// answers this file did not have when it was written:
+//
+//   1. **`Place.nickname`** — what a human called it. Wins outright, because the cases
+//      automation cannot resolve (Ben Gurion serves Tel Aviv AND Jerusalem, at equal rank in
+//      Wikidata) are exactly the cases a person can answer in two taps.
+//   2. **`City · IATA`** — derived, when the enrichment pipe has resolved BOTH halves
+//      (`servedCity` and `iata`, ADR-0166 §18). `תל אביב · TLV`. Both or neither: a lone code
+//      names nothing to someone who does not fly often, and a lone city is the thing this
+//      file's stripping already approximates.
+//   3. **the stripped name**, below — for a place that is not an airport, or one whose
+//      enrichment has not landed (or never will).
+//
+// The chain is one function, `derivedPlaceLabel`, and it answers `undefined` at rung 3 so the
+// stripping stays where it is rather than being copied into it.
+import { resolveTextVariant, SUMMARY_LANG_PREFERENCE } from '@waypoint/shared';
+import type { DeliveredEnrichmentFields, Place } from '@waypoint/shared';
+import { DOT_SEPARATOR } from '../constants';
 import { type Route } from './places';
 
 /** Shortest remainder we'll accept — below this the strip clearly ate the name. */
@@ -81,12 +98,60 @@ export function shortPlaceLabel(name: string): string {
   return full;
 }
 
+/**
+ * **The two rungs above the stripping** (ADR-0166 §18) — a nickname, else `City · IATA` —
+ * or `undefined` when neither is available, which is the signal to fall through to
+ * `shortPlaceLabel`.
+ *
+ * `undefined` rather than the stripped name on purpose: the callers below already hold the
+ * fallback, and a function that answered it here would have to be given the full name at every
+ * call site that only has an id.
+ */
+export function derivedPlaceLabel(
+  place: Pick<Place, 'name' | 'nickname'> | undefined,
+  enrichment?: DeliveredEnrichmentFields,
+): string | undefined {
+  const nickname = place?.nickname?.trim();
+  if (nickname) return nickname;
+  const iata = enrichment?.iata?.value;
+  // Hebrew where Wikidata had it, English otherwise — the same `he` → `en` preference the
+  // summary resolves with (ADR-0166 §11.5), because it is the same question.
+  const city = enrichment?.servedCity
+    ? resolveTextVariant(enrichment.servedCity, SUMMARY_LANG_PREFERENCE)?.value
+    : undefined;
+  if (!iata || !city) return undefined;
+  return `${city} ${DOT_SEPARATOR} ${iata}`;
+}
+
+/** Every place's label, keyed by id — what a surface looks a route endpoint up in.
+ *  Only places whose label is DERIVED have a key: the stripping fallback is not stored,
+ *  so a missing key means "shorten the name", which is what every surface did before. */
+export type PlaceLabels = Readonly<Record<string, string>>;
+
+/** **The whole chain, for a surface holding one place** — the derived label if there is one,
+ *  else the stripped name. The single-place counterpart of `shortRoute`, so no call site has
+ *  to write the `?? shortPlaceLabel(…)` half itself and quietly get it wrong on one screen. */
+export function placeLabelOf(
+  labels: PlaceLabels,
+  placeId: string | undefined,
+  name: string | undefined,
+): string | undefined {
+  const derived = placeId ? labels[placeId] : undefined;
+  return derived ?? (name ? shortPlaceLabel(name) : undefined);
+}
+
 /** Both endpoints of a route, shortened — what every glanceable route surface
  *  shows (`EventTitle`, `BookingTitle`, `TitleLabel`, `routeDisplay`), so they
- *  can't diverge on which half gets shortened. Absent endpoints stay absent. */
+ *  can't diverge on which half gets shortened. Absent endpoints stay absent.
+ *
+ *  **A label the chain already derived is returned untouched.** Stripping `נמל התעופה` out of
+ *  `תל אביב · TLV` would find nothing, but stripping it out of a NICKNAME could — a person is
+ *  free to call a place `שדה התעופה של אמא`, and the point of a nickname is that it is not
+ *  ours to edit. `eventRoute` fills these in when it has the labels; a `Route` parsed back out
+ *  of a stored title (`TitleLabel`) has only names, and gets today's behaviour. */
 export function shortRoute(route: Route): Route {
   return {
-    from: route.from ? shortPlaceLabel(route.from) : undefined,
-    to: route.to ? shortPlaceLabel(route.to) : undefined,
+    from: route.fromLabel ?? (route.from ? shortPlaceLabel(route.from) : undefined),
+    to: route.toLabel ?? (route.to ? shortPlaceLabel(route.to) : undefined),
   };
 }

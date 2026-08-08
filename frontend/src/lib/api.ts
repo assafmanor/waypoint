@@ -48,6 +48,7 @@ import {
   type MembershipRole,
   type Place,
   type PlaceResult,
+  type PlaceSearchKind,
   type PlacePrediction,
   type ResolvePlaceInput,
   type RemovedMember,
@@ -648,15 +649,22 @@ export async function searchPlaces(
 /** The Text Search relay (ADR-0132 §7) — the half whose results can be drawn, because
  *  they arrive WITH coordinates. No session token: this SKU has none, so every call is
  *  billed on its own and the client-side floor + debounce are what stand in front of it.
- *  `bias` is the canvas's current bounds — free relevance, not a cost lever. */
+ *  `bias` is the canvas's current bounds — free relevance, not a cost lever. `kind` restricts
+ *  the corpus to airports for a flight leg (field report #6) and is free too: it is a request
+ *  parameter, not a field-mask entry, so it moves neither the mask nor the tier. */
 export async function searchPlacesText(
   tripId: string,
-  { input, bias, signal }: { input: string; bias?: MapBounds; signal?: AbortSignal },
+  {
+    input,
+    bias,
+    kind,
+    signal,
+  }: { input: string; bias?: MapBounds; kind?: PlaceSearchKind; signal?: AbortSignal },
 ): Promise<PlaceResult[]> {
   const res = await apiFetch(`${placesUrl(tripId)}/search-text`, {
     method: HTTP_METHOD.POST,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input, bias }),
+    body: JSON.stringify({ input, bias, kind }),
     signal,
   });
   if (!res.ok) return throwApiError(res);

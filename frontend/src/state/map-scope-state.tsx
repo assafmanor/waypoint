@@ -46,6 +46,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { PlaceSearchKind } from '@waypoint/shared';
 import { useHandoff, type Handoff } from '../lib/handoff';
 import { HOME_TAB, TAB_PARAM, tabTarget } from './nav-state';
 import type { TabId } from '../constants';
@@ -104,6 +105,14 @@ export interface PlaceErrand {
   /** The form's own state, opaque here on purpose (ADR-0134 §2). This channel must not
    *  know the shape of an event form, or every form change would touch it. */
   draft?: unknown;
+  /** **What kind of place would answer this errand** (field report #6), when the form knows.
+   *  A flight's leg wants an airport, so the tab's search asks Google for airports and stops
+   *  offering the terminal, the car park and the hotel next door.
+   *
+   *  On the ERRAND rather than in the draft, because it is the tab that has to act on it and
+   *  the draft is deliberately opaque here (ADR-0134 §2). Absent = the whole corpus, which is
+   *  every other errand. */
+  kind?: PlaceSearchKind;
 }
 
 /** Put the chosen place where the errand said it goes — the one write, in one place,

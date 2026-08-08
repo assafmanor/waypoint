@@ -1,9 +1,16 @@
-// Wikidata — **the identity spine**, and in Phase 1 that is its whole job (ADR-0166 §5).
+// Wikidata — **the identity spine** (ADR-0166 §5), and since §18 a source of two values of
+// its own.
 //
-// It supplies no Tier-A field value and is still the provider everything else depends on: it
-// settles the QID (an alias the store keeps, §4), the `P625` coordinates a coordless
-// Place-lite never had, the `P18` Commons filename Phase 2's image pipeline follows, and the
-// sitelinks that tell Wikipedia which article to read — or that there is no Hebrew one.
+// Its first job is still identity: it settles the QID (an alias the store keeps, §4), the
+// `P625` coordinates a coordless Place-lite never had, the `P18` Commons filename Phase 2's
+// image pipeline follows, and the sitelinks that tell Wikipedia which article to read — or
+// that there is no Hebrew one.
+//
+// **And it answers the airport pair** (§18, field reports #7/#23): `P238` is the IATA code and
+// `P931` is the city the airport serves, both free off an item this pass already read. Both go
+// through `isAirportEntity` first, which is not a formality — London's city entity carries a
+// real metropolitan `P238` and no airport class, and labelling a city with a flight code is
+// exactly the confidently-wrong failure §Context 3 is about.
 //
 // **The image is not its value to give.** §11.1 is the amendment that would otherwise have
 // caused a licensing breach: an image must be resolved through `P18` and then have its own
@@ -13,6 +20,7 @@
 // CC0, so nothing it contributes carries an attribution obligation.
 import { Injectable } from '@nestjs/common';
 import {
+  ENRICHMENT_FIELD,
   MATCH_METHOD,
   SOURCE_POLICY,
   ENRICHMENT_SOURCE,
@@ -24,11 +32,13 @@ import type {
   PlaceIdentity,
   ProviderFieldValues,
   ProviderMatch,
+  ProviderValue,
 } from '../enrichment.provider';
 import {
   coordinatesAreAmbiguous,
   geoProximityConfidence,
   granularityRefusals,
+  isAirportEntity,
   isMatchConfident,
   nameOnlyConfidence,
   nameProximityConfidence,
@@ -40,10 +50,13 @@ import { EnrichmentFetcher } from '../outbound-fetch';
 const API = 'https://www.wikidata.org/w/api.php';
 
 /** Claims we read. `P18` is the image pointer, `P625` the coordinate, `P31` what the thing
- *  *is* (the granularity check's input), and `P576`/`P3999` say it has ended. */
+ *  *is* (the granularity check's input and the airport guard's), `P576`/`P3999` say it has
+ *  ended, and `P238`/`P931` are the airport pair (§18). */
 const CLAIM_IMAGE = 'P18';
 const CLAIM_COORDINATE = 'P625';
 const CLAIM_INSTANCE_OF = 'P31';
+const CLAIM_IATA = 'P238';
+const CLAIM_PLACE_SERVED = 'P931';
 
 /** Wikipedia editions we ask for sitelinks from — the two languages the summary provider
  *  reads (`he` → `en`, §11.5). Filtered rather than fetched wholesale: an item like Tokyo has
@@ -55,6 +68,11 @@ const SITE_TO_LANG: Readonly<Record<string, string>> = { hewiki: 'he', enwiki: '
  *  the set when the first hit is a disambiguation page or a namesake, few enough that the
  *  follow-up entity read stays one call. */
 const SEARCH_LIMIT = 5;
+
+/** How long a memoized item read counts, and how many are held — see `airportEntity`. Both
+ *  sized for "the two field resolutions inside one pass", not for traffic. */
+const ENTITY_MEMO_TTL_MS = 60_000;
+const ENTITY_MEMO_MAX = 16;
 
 interface WbSearchResponse {
   search?: {
@@ -81,6 +99,9 @@ interface WbEntity {
         snaktype?: string;
         datavalue?: { value?: unknown; type?: string };
       };
+      /** `preferred` | `normal` | `deprecated` — the only tie-break Wikidata itself offers
+       *  on a multi-valued claim, and the one `P931` sometimes carries (§18). */
+      rank?: string;
     }[]
   >;
 }
@@ -92,8 +113,16 @@ interface WbEntitiesResponse {
 @Injectable()
 export class WikidataProvider implements EnrichmentProvider {
   readonly id: EnrichmentSource = ENRICHMENT_SOURCE.WIKIDATA;
-  /** Empty on purpose — see the file header. Wikidata contributes identity, not a value. */
-  readonly provides: readonly EnrichmentField[] = [];
+  /** The airport pair (§18). Everything else this provider does is identity, which is
+   *  `settlesIdentity` below and not a field. */
+  readonly provides: readonly EnrichmentField[] = [
+    ENRICHMENT_FIELD.IATA,
+    ENRICHMENT_FIELD.SERVED_CITY,
+  ];
+  /** **Declared, because it is no longer inferable.** The registry used to read "settles
+   *  identity" off an empty `provides`; supplying two fields would otherwise have taken
+   *  Wikidata out of every summary/image pass silently. */
+  readonly settlesIdentity = true;
   readonly policy = SOURCE_POLICY.wikidata;
 
   constructor(private readonly fetcher: EnrichmentFetcher) {}
@@ -121,11 +150,88 @@ export class WikidataProvider implements EnrichmentProvider {
     return (await this.matchByName(identity)) ?? this.matchByCoordinates(identity);
   }
 
-  /** Nothing to fetch: everything this provider learns is settled by `match`, and a field
-   *  value is not its to give. */
-  async fetch(): Promise<ProviderFieldValues> {
-    return {};
+  /**
+   * **The airport pair, off the item `match` already found** (§18).
+   *
+   * Guarded first and unconditionally: `P238` is believed only on an entity whose `P31` says
+   * airport. The measured hazard is London's `Q84`, which carries `P238 = LON` (a real
+   * metropolitan code) and is a city — so a trip's `לונדון` would otherwise be labelled with a
+   * flight code. The guard reads the `P31` this match already recorded as evidence, so it
+   * costs nothing.
+   *
+   * `P931` ("place served by transport hub") is the city, and it is **multi-valued with no
+   * reliable winner**: Ben Gurion lists Tel Aviv *and* Jerusalem at equal rank. Wikidata's own
+   * preferred rank is taken when it is there (Keflavík has one) and the first normal-rank
+   * claim otherwise — an automated default, deliberately, with `Place.nickname` as the way a
+   * person overrules it. This is the one place in this pipe where "first" is an answer rather
+   * than a refusal, and it is affordable only because a *wrong city* costs a label somebody
+   * can correct in two taps, not a wrong photograph on a place.
+   */
+  async fetch(
+    match: ProviderMatch,
+    fields: readonly EnrichmentField[],
+  ): Promise<ProviderFieldValues> {
+    const wanted = fields.filter(
+      (field) => field === ENRICHMENT_FIELD.IATA || field === ENRICHMENT_FIELD.SERVED_CITY,
+    );
+    if (wanted.length === 0) return {};
+    if (!isAirportEntity(match.evidence.instanceOf ?? [])) return {};
+
+    const entity = await this.airportEntity(match.ref);
+    if (!entity) return {};
+
+    const values: ProviderFieldValues = {};
+    if (wanted.includes(ENRICHMENT_FIELD.IATA)) {
+      const code = stringClaim(entity, CLAIM_IATA)?.trim().toUpperCase();
+      if (code) values[ENRICHMENT_FIELD.IATA] = { value: code };
+    }
+    if (wanted.includes(ENRICHMENT_FIELD.SERVED_CITY)) {
+      const city = await this.servedCity(entity);
+      if (city) values[ENRICHMENT_FIELD.SERVED_CITY] = city;
+    }
+    return values;
   }
+
+  /** The city `P931` names, as a value in the reader's language.
+   *
+   *  Hebrew first and English second — the same `he` → `en` preference the summary carries
+   *  (§11.5), and here it matters more than it does there: the label goes beside a three-letter
+   *  code on a day row, so `תל אביב · TLV` in a Hebrew RTL app and `Tel Aviv · TLV` only where
+   *  Wikidata has no Hebrew label. */
+  private async servedCity(airport: WbEntity): Promise<ProviderValue | undefined> {
+    const qid = bestRankedItemClaim(airport, CLAIM_PLACE_SERVED);
+    if (!qid) return undefined;
+    const city = await this.airportEntity(qid);
+    const hebrew = city?.labels?.he?.value;
+    const english = city?.labels?.en?.value;
+    const value = hebrew ?? english;
+    if (!value) return undefined;
+    return { value, lang: hebrew ? 'he' : 'en' };
+  }
+
+  /**
+   * An item read, memoized for the length of one pass.
+   *
+   * Not a cache tier and deliberately not shaped like one (`blob-cache.ts` is the template for
+   * those): the orchestrator resolves fields one at a time, so a single pass asks this provider
+   * for `iata` and then for `servedCity` **off the same QID** — without this, one airport is
+   * two identical reads of the same item plus two of its city's. Tiny, evict-oldest, and
+   * expiring in a minute, because the only hit it is built for happens seconds apart. A miss
+   * costs one more request and nothing else, which is why it needs no invalidation story.
+   */
+  private async airportEntity(qid: string): Promise<WbEntity | null> {
+    const held = this.entityMemo.get(qid);
+    if (held && Date.now() - held.at < ENTITY_MEMO_TTL_MS) return held.entity;
+    const entity = await this.entity(qid);
+    if (this.entityMemo.size >= ENTITY_MEMO_MAX) {
+      const oldest = this.entityMemo.keys().next().value;
+      if (oldest) this.entityMemo.delete(oldest);
+    }
+    this.entityMemo.set(qid, { entity, at: Date.now() });
+    return entity;
+  }
+
+  private readonly entityMemo = new Map<string, { entity: WbEntity | null; at: number }>();
 
   private async matchByName(identity: PlaceIdentity): Promise<ProviderMatch | null> {
     const candidates = await this.search(identity.name);
@@ -394,6 +500,23 @@ function bestNameMatch(
 function stringClaim(entity: WbEntity, property: string): string | undefined {
   const value = entity.claims?.[property]?.[0]?.mainsnak?.datavalue?.value;
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * The item a multi-valued item-claim points at, **preferred rank first** (§18).
+ *
+ * Wikidata's own rank is the only tie-break the data offers, and it is not always there:
+ * Keflavík marks Keflavík preferred over Njarðvík, while Ben Gurion leaves Tel Aviv and
+ * Jerusalem both at normal rank. So this is preferred-when-stated, first-otherwise — an
+ * automated default whose wrong answers are what `Place.nickname` exists to overrule.
+ * Deprecated claims are skipped outright: that rank means the community has said the value is
+ * wrong.
+ */
+function bestRankedItemClaim(entity: WbEntity, property: string): string | undefined {
+  const claims = (entity.claims?.[property] ?? []).filter((claim) => claim.rank !== 'deprecated');
+  const chosen = claims.find((claim) => claim.rank === 'preferred') ?? claims[0];
+  const id = (chosen?.mainsnak?.datavalue?.value as { id?: string } | undefined)?.id;
+  return typeof id === 'string' ? id : undefined;
 }
 
 /** `P625`'s globe-coordinate value. */

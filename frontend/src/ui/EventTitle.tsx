@@ -16,6 +16,7 @@
 import { type Booking, type Place, type TripEvent } from '@waypoint/shared';
 import { eventRoute } from '../lib/places';
 import { shortRoute } from '../lib/place-label';
+import { usePlaceLabels } from '../state/place-labels';
 import { RouteLabel } from './RouteLabel';
 import { TitleLabel } from './TitleLabel';
 
@@ -28,7 +29,11 @@ export function EventTitle({
   bookings: Booking[];
   places: Place[];
 }) {
-  const route = eventRoute(event, bookings, places);
+  // A place's own label — a nickname, or `City · IATA` — outranks the stripping below it
+  // (ADR-0166 §18). Read from context rather than taken as a prop: every host of this
+  // component would otherwise have to thread it, and outside a trip there simply are none.
+  const placeLabels = usePlaceLabels();
+  const route = eventRoute(event, bookings, places, placeLabels);
   if (!route) return <TitleLabel title={event.title} />;
   return <RouteLabel {...shortRoute(route)} />;
 }

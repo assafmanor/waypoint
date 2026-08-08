@@ -101,7 +101,8 @@ import { Sheet } from '../ui/Sheet';
 import { WhenField } from '../ui/primitives/WhenField';
 import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
-import { shortPlaceLabel } from '../lib/place-label';
+import { placeLabelOf, type PlaceLabels } from '../lib/place-label';
+import { usePlaceLabels } from '../state/place-labels';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
@@ -150,10 +151,8 @@ const blockKey = (block: DayBlock) => {
   return first.kind === 'event' ? groupKey(first.group) : `${first.event.id}-${first.edge}`;
 };
 
-const shortPlaceName = (places: Place[], id: string | undefined) => {
-  const name = placeName(places, id);
-  return name ? shortPlaceLabel(name) : undefined;
-};
+const shortPlaceName = (places: Place[], labels: PlaceLabels, id: string | undefined) =>
+  placeLabelOf(labels, id, placeName(places, id));
 
 /** The one row that draws whatever sits above an entry (ADR-0159). A gap states free
  *  time; a connection names the stop and how long you are in it, and only ever renders
@@ -162,10 +161,12 @@ const shortPlaceName = (places: Place[], id: string | undefined) => {
 function JoinRow({
   join,
   places,
+  placeLabels,
   onFillGap,
 }: {
   join: DayJoin;
   places: Place[];
+  placeLabels: PlaceLabels;
   /** What a tap on a gap opens (ADR-0161 §9), or absent where a write is gated. A connection
    *  never takes one: you are inside a commitment for the whole of it, so there is nothing
    *  free there to fill. */
@@ -182,7 +183,7 @@ function JoinRow({
       // The SHORT label, like every other route surface (ADR-0059 §3's amendment):
       // `נמל התעופה דובאי (DXB)` in a one-line band pushes the length out of the
       // row, and the two cards around it already name the place in full.
-      placeName={shortPlaceName(places, join.stopPlaceId)}
+      placeName={shortPlaceName(places, placeLabels, join.stopPlaceId)}
       tight={join.tight}
     />
   );
@@ -202,6 +203,7 @@ export function DayView() {
     setActiveDate,
   } = useTrip();
   const verbs = useVerbs();
+  const placeLabels = usePlaceLabels();
   const now = useClock();
   // `מפה` is an in-app destination now (ADR-0121 §8): it hands the Map tab a focus
   // and lands there, instead of deep-linking out to Google's place view.
@@ -389,6 +391,7 @@ export function DayView() {
     toggle: (id) => setOpenId((cur) => (cur === id ? null : id)),
     bookings,
     places,
+    placeLabels,
     noteCounts,
     dayEvents,
     verbs,
@@ -542,6 +545,7 @@ export function DayView() {
                 <JoinRow
                   join={join}
                   places={places}
+                  placeLabels={placeLabels}
                   onFillGap={readOnly ? undefined : setGapTarget}
                 />
               )}
@@ -895,6 +899,9 @@ interface DayCtx {
   toggle: (id: string) => void;
   bookings: Booking[];
   places: Place[];
+  /** A nickname or a derived `City · IATA`, per place (ADR-0166 §18) — threaded with `places`
+   *  because every row that names a place asks both questions at once. */
+  placeLabels: PlaceLabels;
   /** How many notes each host carries (ADR-0152 §6c), built once per note-list change
    *  rather than filtered per row — a day of twelve events asks this twelve times. */
   noteCounts: Map<string, number>;
@@ -987,7 +994,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
   // A transport row reads as its (shortened) route, dropping to a
   // destination-primary line if even that overflows — one decision driving both
   // the title and the meta so they can't disagree (ADR-0059 §3 amendment).
-  const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places));
+  const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places, ctx.placeLabels));
 
   const card = (
     <EventCard

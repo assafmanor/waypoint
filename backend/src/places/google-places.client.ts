@@ -4,7 +4,7 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import type { PlacePrediction, PlaceResult } from '@waypoint/shared';
+import type { PlacePrediction, PlaceResult, PlaceSearchKind } from '@waypoint/shared';
 import { GOOGLE_MAPS_SERVER_KEY, requireEnv } from '../common/env';
 
 const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
@@ -57,6 +57,24 @@ const TEXT_SEARCH_FIELD_MASK = [
   'places.formattedAddress',
   'places.location',
 ].join(',');
+
+/**
+ * **Which Google type each `PlaceSearchKind` restricts to** (field report #6).
+ *
+ * One entry, and one type per entry, because Text Search's `includedType` **takes exactly
+ * one** — Google now distinguishes `airport` from `international_airport` as separate Table-A
+ * types, and this endpoint cannot name both. Autocomplete's `includedPrimaryTypes` can (it
+ * takes five, and that is what `DESTINATION_PRIMARY_TYPES` uses) — but an Autocomplete
+ * prediction carries **no coordinates**, and the surface these results land on draws every
+ * candidate as a ring on the canvas (ADR-0168), so covering both types there would cost a
+ * Place Details call per rendered result. That is the "a Details call per rendered row"
+ * shape ADR-0115 §2 and ADR-0166 §13 have each rejected once. One call with one type wins.
+ *
+ * The gap that leaves is handled at the caller, not here — see `PlacesService.searchPlacesText`.
+ */
+const PLACE_SEARCH_KIND_TYPE: Readonly<Record<PlaceSearchKind, string>> = {
+  airport: 'airport',
+};
 
 /** Cap on results asked for per Text Search call. N results cost ONE call, so this is
  *  not a cost lever — it is a legibility one: these land on the canvas as rings among
@@ -171,10 +189,16 @@ export class GooglePlacesClient {
    *  `autocomplete` there is **no session token**: this SKU has no session, so each
    *  call is billed on its own, and what it buys is N results that already carry
    *  coordinates. `bias` is the caller's current viewport, which changes ranking and
-   *  not price. */
+   *  not price.
+   *
+   *  `kind` restricts the corpus to one type (field report #6). It is a request parameter,
+   *  **not a field-mask entry**, so it moves neither the mask nor the SKU tier ADR-0108 §3
+   *  says the mask is the single lever for — a restricted search costs exactly what an
+   *  unrestricted one costs. */
   async textSearch(
     input: string,
     bias?: { south: number; west: number; north: number; east: number },
+    kind?: PlaceSearchKind,
   ): Promise<PlaceResult[]> {
     const body = await this.post<TextSearchResponse>(TEXT_SEARCH_URL, {
       headers: {
@@ -187,6 +211,13 @@ export class GooglePlacesClient {
         languageCode: PLACES_LANGUAGE_CODE,
         regionCode: PLACES_REGION_CODE,
         maxResultCount: TEXT_SEARCH_MAX_RESULTS,
+        // `strictTypeFiltering` is what makes the restriction mean anything: without it
+        // `includedType` is a ranking preference, and a hotel next to the airport still
+        // comes back — which is the answer field report #6 is against.
+        ...(kind && {
+          includedType: PLACE_SEARCH_KIND_TYPE[kind],
+          strictTypeFiltering: true,
+        }),
         ...(bias && {
           locationBias: {
             rectangle: {
