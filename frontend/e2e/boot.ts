@@ -3,6 +3,7 @@
 // date range is deliberately huge so `resolveLanding` treats it as "now"
 // whatever the box clock reads (lib/active-trip.ts).
 import type { Page } from '@playwright/test';
+import { tripSnapshotSchema } from '@waypoint/shared';
 
 const USER = {
   id: 'u1',
@@ -44,13 +45,31 @@ const SNAPSHOT = {
   maybeItems: [],
   places: [],
   notes: [],
-  // Required by `tripSnapshotSchema` (ADR-0166 §6), so its absence fails the zod parse in
-  // `fetchSnapshot` and the app never boots at all — which surfaces as every spec here
-  // timing out rather than as a readable error. `e2e/` is outside `tsconfig.json`'s
-  // `include`, so nothing but a run catches a missing field in this fixture.
+  // The two fields below are required by `tripSnapshotSchema` (ADR-0166 §6, ADR-0173 §1),
+  // so the absence of either fails the zod parse in `fetchSnapshot` and the app never boots
+  // at all — which surfaces as every spec here timing out rather than as a readable error.
+  // `e2e/` is outside `tsconfig.json`'s `include`, so nothing but a run catches a missing
+  // field in this fixture. **This has now happened twice**: `enrichments` wrote the warning,
+  // `documentAttachments` walked into it anyway. Any new required snapshot field belongs
+  // here in the same commit that adds it.
   enrichments: {},
+  documentAttachments: [],
   latestSeq: '0',
 };
+
+// **Fail loudly HERE rather than as 25 timing-out specs.** The app parses the snapshot with
+// this same schema on boot, so a fixture missing a required field simply never boots — and
+// what a run then shows is every spec waiting for a screen that will not arrive, with
+// nothing naming the cause. Parsing the fixture at import turns that into one readable
+// error naming the missing field, the moment the file loads.
+const invalid = tripSnapshotSchema.safeParse(SNAPSHOT);
+if (!invalid.success) {
+  throw new Error(
+    `e2e snapshot fixture does not satisfy tripSnapshotSchema: ${invalid.error.issues
+      .map((issue) => issue.path.join('.'))
+      .join(', ')}`,
+  );
+}
 const ME = { user: USER, memberships: [MEMBERSHIP] };
 
 /** Two unlinked bookings of DIFFERENT types, so the Index bookings screen shows
