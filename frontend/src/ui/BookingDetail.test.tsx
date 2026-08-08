@@ -88,6 +88,7 @@ vi.mock('../state/map-scope-state', () => ({
   useStartPlaceErrand: () => startErrand,
 }));
 
+import { PlaceLabelsProvider } from '../state/place-labels';
 import { BookingDetail } from './BookingDetail';
 import { t } from '../i18n/he';
 
@@ -567,5 +568,55 @@ describe('BookingDetail — the airport codes fact', () => {
     tripPlaces = [placed];
     open(bk({ id: 'bk-h', type: BOOKING_TYPE.HOTEL, placeId: 'pl-1' }));
     expect(screen.queryByText(t.index.detail.airports)).toBeNull();
+  });
+});
+
+/* ── THE HEADING READS AS CITIES (ADR-0166 §18's amendment, owner 2026-08-08) ──────────────
+   Narrowly revises ADR-0059 §3's "the detail keeps full names": a resolved city is not the
+   stripping heuristic that rule was written against, and the full name is still one row down
+   in the location fact. */
+describe('BookingDetail — the heading', () => {
+  const tlv = pl('pl-tlv', 'נמל התעופה בן גוריון', { lat: 32, lng: 34.8, address: 'לוד' });
+  const fra = pl('pl-fra', 'נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)');
+  const flight = bk({
+    id: 'bk-fl2',
+    type: BOOKING_TYPE.FLIGHT,
+    title: 'stored title nobody reads',
+    fromPlaceId: 'pl-tlv',
+    toPlaceId: 'pl-fra',
+  });
+
+  beforeEach(() => {
+    tripPlaces = [tlv, fra];
+    tripBookings = [flight];
+    tripEnrichments = {};
+  });
+  afterEach(cleanup);
+
+  it('shows the resolved city for an endpoint that has one', () => {
+    render(
+      <PlaceLabelsProvider labels={{ 'pl-tlv': 'תל אביב' }}>
+        {wrapNav(<BookingDetail booking={flight} onClose={() => {}} onEdit={() => {}} />)}
+      </PlaceLabelsProvider>,
+    );
+    expect(screen.getByText('תל אביב')).toBeTruthy();
+  });
+
+  // **The full name, not the stripped one.** The shortening is a concession rows make for
+  // width, and this surface has none to make — so an unresolved endpoint keeps the record's
+  // own words rather than a guess at them.
+  it('keeps the FULL name for an endpoint with no label, not the stripped one', () => {
+    render(
+      <PlaceLabelsProvider labels={{ 'pl-tlv': 'תל אביב' }}>
+        {wrapNav(<BookingDetail booking={flight} onClose={() => {}} onEdit={() => {}} />)}
+      </PlaceLabelsProvider>,
+    );
+    expect(screen.getByText('נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)')).toBeTruthy();
+    expect(screen.queryByText('פרנקפורט (Frankfurter Flughafen – FRA)')).toBeNull();
+  });
+
+  it('reads as the stored names when nothing has resolved at all', () => {
+    render(wrapNav(<BookingDetail booking={flight} onClose={() => {}} onEdit={() => {}} />));
+    expect(screen.getByText('נמל התעופה בן גוריון')).toBeTruthy();
   });
 });

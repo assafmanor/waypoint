@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ENRICHMENT_FIELD, MATCH_CONFIDENCE_THRESHOLD, MATCH_REFUSAL } from '@waypoint/shared';
+import {
+  ENRICHMENT_FIELD,
+  MATCH_CONFIDENCE_THRESHOLD,
+  MATCH_MIN_NAME_SIMILARITY,
+  MATCH_REFUSAL,
+} from '@waypoint/shared';
 import {
   coordinatesAreAmbiguous,
   geoProximityConfidence,
@@ -350,5 +355,77 @@ describe('granularityRefusals', () => {
 
   it('refuses nothing for a candidate with no type claims at all', () => {
     expect(granularityRefusals({ instanceOf: [] })).toEqual({});
+  });
+});
+
+/* ── A PARENTHETICAL ALIAS IS NOT PART OF THE NAME (ADR-0166 §18's amendment) ───────────────
+   Owner report, 2026-08-08: Frankfurt Airport never matched. Google's stored name carries an
+   appended alias, and the extra tokens dragged a correct match under the 0.8 floor — measured
+   at 0.756 against Wikidata's own label, so the entity was READ and then refused. */
+describe('nameSimilarity — an appended alias must not lower the score', () => {
+  const FRANKFURT = 'נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)';
+
+  it('matches the label the search actually returns, where it used to score 0.756', () => {
+    const score = nameSimilarity(FRANKFURT, 'נמל התעופה של פרנקפורט');
+    expect(score).toBe(1);
+    expect(score).toBeGreaterThanOrEqual(MATCH_MIN_NAME_SIMILARITY);
+  });
+
+  it('clears the floor for the label variants Wikidata might carry instead', () => {
+    for (const label of ['נמל התעופה פרנקפורט', 'נמל התעופה הבינלאומי של פרנקפורט']) {
+      expect(nameSimilarity(FRANKFURT, label)).toBeGreaterThanOrEqual(MATCH_MIN_NAME_SIMILARITY);
+    }
+  });
+
+  it('reads an alias on the CANDIDATE side too', () => {
+    expect(nameSimilarity('פרנקפורט', 'פרנקפורט (Frankfurt am Main)')).toBe(1);
+  });
+
+  it('never scores a name LOWER than it did before', () => {
+    // The raw comparison is still one of the forms considered, so this can only add recall.
+    expect(nameSimilarity('Sensō-ji', 'Sensoji')).toBe(1);
+    expect(nameSimilarity('Ueno Park', 'Ueno Park')).toBe(1);
+  });
+
+  it('leaves the calibrated cases exactly where ADR-0166 §16 measured them', () => {
+    // None of these carry a parenthetical, so the fix must not move them at all.
+    expect(nameSimilarity('Meiji Jingū / Meiji Shrine', 'Meiji Shrine')).toBeCloseTo(0.816, 3);
+    expect(nameSimilarity('Piccadilly Circus', 'Piccadilly Circus tube station')).toBeCloseTo(
+      0.707,
+      3,
+    );
+    expect(nameSimilarity('Tsukiji', 'Tsukiji Outer Market')).toBeCloseTo(0.577, 3);
+  });
+
+  it('still refuses a genuinely different place that shares the alias shape', () => {
+    expect(nameSimilarity('נמל התעופה של פרנקפורט (FRA)', 'נמל התעופה של מינכן')).toBeLessThan(
+      MATCH_MIN_NAME_SIMILARITY,
+    );
+  });
+
+  // The whole point of scoring the raw form as well: sometimes the bracket IS the subject.
+  it('keeps the parenthetical when it is the discriminating part', () => {
+    expect(nameSimilarity('Terminal 1 (Departures)', 'Terminal 1 (Departures)')).toBe(1);
+  });
+});
+
+/** The distance veto is untouched by any of it — a same-named place far away is still refused,
+ *  which is what makes the recall increase safe (§18's amendment). */
+describe('nameProximityConfidence — the veto survives the alias fix', () => {
+  it('refuses a perfectly-named candidate 9,000km away', () => {
+    const scored = nameProximityConfidence(
+      { name: 'נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)', lat: 50.03, lng: 8.56 },
+      { name: 'נמל התעופה של פרנקפורט', lat: 35.55, lng: 139.78 },
+    );
+    expect(scored.nameSimilarity).toBe(1);
+    expect(scored.confidence).toBe(0);
+  });
+
+  it('accepts it at the right coordinates, which is the reported case', () => {
+    const scored = nameProximityConfidence(
+      { name: 'נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)', lat: 50.0379, lng: 8.5622 },
+      { name: 'נמל התעופה של פרנקפורט', lat: 50.0379, lng: 8.5622 },
+    );
+    expect(scored.confidence).toBeGreaterThanOrEqual(MATCH_CONFIDENCE_THRESHOLD);
   });
 });

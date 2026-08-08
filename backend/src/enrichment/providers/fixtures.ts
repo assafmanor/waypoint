@@ -84,6 +84,9 @@ export const geosearch = (
 interface EntityOptions {
   qid: string;
   labels?: Record<string, string>;
+  /** Per-language aliases — where a city's COMMON name usually lives, since the label is the
+   *  official form (§18's amendment). */
+  aliases?: Record<string, string[]>;
   instanceOf?: string[];
   image?: string;
   lat?: number;
@@ -158,6 +161,12 @@ export function entity(options: EntityOptions) {
           Object.entries(options.labels ?? {}).map(([language, value]) => [
             language,
             { language, value },
+          ]),
+        ),
+        aliases: Object.fromEntries(
+          Object.entries(options.aliases ?? {}).map(([language, values]) => [
+            language,
+            values.map((value) => ({ language, value })),
           ]),
         ),
         sitelinks: Object.fromEntries(
@@ -409,7 +418,14 @@ export const BEN_GURION = {
     // for a trip that disagrees with the one we pick.
     placeServed: [{ qid: 'Q-city-telaviv' }, { qid: 'Q-city-jerusalem' }],
   }),
-  city: entity({ qid: 'Q-city-telaviv', labels: { en: 'Tel Aviv', he: 'תל אביב' } }),
+  // **The label is the OFFICIAL name and the common one is an alias** — the shape the owner
+  // reported (`תל אביב-יפו` on a day row). Real: Wikidata's Hebrew label for the city is the
+  // hyphenated official form.
+  city: entity({
+    qid: 'Q-city-telaviv',
+    labels: { en: 'Tel Aviv-Yafo', he: 'תל אביב-יפו' },
+    aliases: { he: ['תל אביב', 'ת״א'], en: ['Tel Aviv'] },
+  }),
 };
 
 /** Keflavík: the case Wikidata's own preferred rank does answer. */

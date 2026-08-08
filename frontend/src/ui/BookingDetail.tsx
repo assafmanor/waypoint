@@ -19,6 +19,7 @@ import {
   placeName,
 } from '../lib/places';
 import { placeIataCode } from '../lib/place-label';
+import { usePlaceLabels } from '../state/place-labels';
 import { AddLocationButton } from './primitives/PlacePicker';
 import { useShowPlaceOnMap, useStartPlaceErrand } from '../state/map-scope-state';
 import { routeTitle } from '../lib/route-title';
@@ -63,6 +64,7 @@ export function BookingDetail({
   onOpen?: (booking: Booking) => void;
 }) {
   const { trip, events, places, enrichments } = useTrip();
+  const placeLabels = usePlaceLabels();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
   const pair = useRoundTripPartner(booking);
@@ -84,6 +86,15 @@ export function BookingDetail({
   // confirmation code, which is the other thing you hold a ticket up against.
   const fromCode = placeIataCode(enrichments[booking.fromPlaceId ?? '']);
   const toCode = placeIataCode(enrichments[booking.toPlaceId ?? '']);
+  // **The heading reads as CITIES here too** (owner's call, 2026-08-08), which narrowly revises
+  // ADR-0059 §3's "the detail keeps the full names". That rule was written when the only
+  // alternative was the name-stripping heuristic, and keeping the record's full name was
+  // plainly better than a guess at it. A resolved city is not a guess — `תל אביב` is what the
+  // place IS to a traveller — and the full name is still one row down in the location fact,
+  // which is where a record belongs. Falls back to the full name, NOT to the stripping: the
+  // shortening is a concession rows make for width, and this surface has none to make.
+  const fromLabel = (booking.fromPlaceId && placeLabels[booking.fromPlaceId]) || from;
+  const toLabel = (booking.toPlaceId && placeLabels[booking.toPlaceId]) || to;
   const startsAt = linkedEvent?.startsAt;
   const endsAt = linkedEvent?.endsAt;
   const labels = timingLabels(booking.type);
@@ -134,14 +145,14 @@ export function BookingDetail({
   // The banner names the target the way the rest of the app names it (ADR-0121 §8's
   // vocabulary): the booking's own title, or the route for a transport leg.
   const errandLabel = carriesRoute(booking.type)
-    ? routeTitle(from ?? '-', to ?? '-')
+    ? routeTitle(fromLabel ?? '-', toLabel ?? '-')
     : booking.title;
 
   const isRoute = carriesRoute(booking.type) && !!(from || to);
   // Accessible name only — the visible heading is the RouteLabel below, whose arrow
-  // is an SVG. A screen reader gets the textual separator, with the FULL names: the
-  // detail is the record (ADR-0059 §3 session-95 amendment).
-  const heading = isRoute ? routeTitle(from ?? '-', to ?? '-') : booking.title;
+  // is an SVG. A screen reader gets the textual separator and the same words the sighted
+  // reader gets: two names for one heading is how the two drift apart.
+  const heading = isRoute ? routeTitle(fromLabel ?? '-', toLabel ?? '-') : booking.title;
 
   const edit = () => {
     onEdit(booking);
@@ -168,7 +179,9 @@ export function BookingDetail({
         <div className="bk-head">
           <div className={'bk-badge' + (badgeTint ? ` ${badgeTint}` : '')}>{icon}</div>
           <div className="bk-headtext">
-            <div className="bk-title">{isRoute ? <RouteLabel from={from} to={to} /> : heading}</div>
+            <div className="bk-title">
+              {isRoute ? <RouteLabel from={fromLabel} to={toLabel} /> : heading}
+            </div>
             {/* Same rule as the Index row (ADR-0163's amendment): the sub-line is dropped
                 rather than echoing a title that is already the type's own name. */}
             {typeChipAddsMeaning(booking) && (
