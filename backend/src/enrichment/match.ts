@@ -279,6 +279,24 @@ export function namesComparable(a: string, b: string): boolean {
  *  its own. */
 const GEO_TRUST_METERS = 150;
 
+/** **What an airport is allowed to be wrong by** (§20, owner report: Bangkok never matched).
+ *
+ *  Every radius above is calibrated for a place you can stand in front of. An airport is not
+ *  that: its Wikidata coordinate is a centroid over several square kilometres, and the pin
+ *  Google gives us is a terminal door — measured at 1.1–1.4km apart on three airports (session
+ *  225) and larger still at a Suvarnabhumi. At 150m the coordinate route could never confirm
+ *  one, which is why airports fell through every route the pipe had.
+ *
+ *  **Earned by the candidate's own `P31`, not by our name.** The airport class is a fact we
+ *  read off the item, so this can only widen the radius for something that IS an airport —
+ *  a hotel 2km away is scored at the ordinary distances and still refused. That is what keeps
+ *  this a category allowance rather than a loosening. */
+const AIRPORT_TRUST_METERS = 3000;
+
+/** Where an airport's distance credit runs out. Past this the coordinate is not corroborating
+ *  anything — two airports 8km apart are two airports. */
+const AIRPORT_FAR_METERS = 8000;
+
 /**
  * Confidence for the coordinate-first route: the distance found it, and the name is a check
  * that can only refuse, never promote.
@@ -291,7 +309,7 @@ const GEO_TRUST_METERS = 150;
  */
 export function geoProximityConfidence(
   place: { name: string; lat?: number; lng?: number },
-  candidate: { name: string; lat?: number; lng?: number },
+  candidate: { name: string; lat?: number; lng?: number; isAirport?: boolean },
 ): ProximityConfidence {
   const from = asLatLng(place);
   const to = asLatLng(candidate);
@@ -299,11 +317,17 @@ export function geoProximityConfidence(
   if (!from || !to) return { confidence: 0, nameSimilarity: 0 };
 
   const distanceMeters = haversineMeters(from, to);
-  if (namesComparable(place.name, candidate.name)) {
+  // **The name still wins when it can be read** — but an airport's ordinary distance veto is
+  // the wrong ruler even then, since `nameProximityConfidence` refuses past `MATCH_FAR_METERS`
+  // on a centroid that is legitimately kilometres from the door.
+  if (namesComparable(place.name, candidate.name) && !candidate.isAirport) {
     return nameProximityConfidence(place, candidate);
   }
   return {
-    confidence: Math.min(geoOnlyScore(distanceMeters), MATCH_METHOD_CONFIDENCE.geosearch),
+    confidence: Math.min(
+      candidate.isAirport ? airportScore(distanceMeters) : geoOnlyScore(distanceMeters),
+      MATCH_METHOD_CONFIDENCE.geosearch,
+    ),
     // Zero because it was not compared, which is a different fact from "compared and did not
     // match" — the stored evidence has to be able to say which happened (§12.3).
     nameSimilarity: 0,
@@ -324,6 +348,15 @@ export function geoProximityConfidence(
  */
 export function coordinatesAreAmbiguous(distancesMeters: readonly number[]): boolean {
   return distancesMeters.filter((d) => d <= GEO_TRUST_METERS).length > 1;
+}
+
+/** An airport's own ruler: full credit out to `AIRPORT_TRUST_METERS`, decaying to nothing at
+ *  `AIRPORT_FAR_METERS`. Same shape as `geoOnlyScore`, three numbers apart. */
+function airportScore(distanceMeters: number): number {
+  if (distanceMeters <= AIRPORT_TRUST_METERS) return MATCH_METHOD_CONFIDENCE.geosearch;
+  if (distanceMeters >= AIRPORT_FAR_METERS) return 0;
+  const span = AIRPORT_FAR_METERS - AIRPORT_TRUST_METERS;
+  return MATCH_METHOD_CONFIDENCE.geosearch * (1 - (distanceMeters - AIRPORT_TRUST_METERS) / span);
 }
 
 /** Distance as the whole evidence: full inside `GEO_TRUST_METERS`, decaying to nothing at

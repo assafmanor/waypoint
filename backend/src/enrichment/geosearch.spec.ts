@@ -22,7 +22,7 @@ describe('nearbyWikidataItems (ADR-0166 §15)', () => {
     const url = f.requested[0];
     expect(url).toContain('generator=geosearch');
     expect(url).toContain('ggscoord=35.6656%7C139.7167');
-    expect(url).toContain('ggsradius=500');
+    expect(url).toContain('ggsradius=3000');
     // Twenty: at five the subject itself fell outside the set in central London and the
     // Underground station under the square won by default.
     expect(url).toContain('ggslimit=20');

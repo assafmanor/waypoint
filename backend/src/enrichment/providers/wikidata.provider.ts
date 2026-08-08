@@ -22,6 +22,7 @@ import { Injectable } from '@nestjs/common';
 import {
   ENRICHMENT_FIELD,
   MATCH_METHOD,
+  MATCH_METHOD_CONFIDENCE,
   SOURCE_POLICY,
   ENRICHMENT_SOURCE,
   type EnrichmentField,
@@ -44,7 +45,7 @@ import {
   nameProximityConfidence,
   namesComparable,
 } from '../match';
-import { nearbyWikidataItems } from '../geosearch';
+import { nearbyWikidataItems, wikipediaSearchItems } from '../geosearch';
 import { EnrichmentFetcher } from '../outbound-fetch';
 
 const API = 'https://www.wikidata.org/w/api.php';
@@ -136,11 +137,18 @@ export class WikidataProvider implements EnrichmentProvider {
    *
    *  1. **a settled QID** — an alias an earlier pass already established, so this is an
    *     identity join and scores as one;
-   *  2. **name + proximity** — the last resort, whose confidence is *computed* and which
-   *     refuses below the threshold rather than guessing (§5.5).
+   *  2. **name + proximity** — a computed confidence that refuses below the threshold rather
+   *     than guessing (§5.5);
+   *  3. **the coordinates** (§15) — for the item labelled in no language we asked for;
+   *  4. **Wikipedia's full-text search** (§20) — for the item the coordinates could not reach
+   *     either, which in practice means an airport: its centroid is kilometres from the
+   *     terminal pin, and a transliterated name shares no tokens with its label.
    *
-   * (`wikidata_tag`, the third route, is an OSM object's own `wikidata=Q…` tag — it fires in
-   * the other direction, from a QID to an OSM element, so it belongs to the OSM provider
+   * Each is tried only when the one before it found nothing, so the strongest evidence
+   * available always wins and the weaker routes cost nothing on the common case.
+   *
+   * (`wikidata_tag`, the remaining method, is an OSM object's own `wikidata=Q…` tag — it fires
+   * in the other direction, from a QID to an OSM element, so it belongs to the OSM provider
    * Phase 2 adds.)
    */
   async match(identity: PlaceIdentity): Promise<ProviderMatch | null> {
@@ -151,7 +159,11 @@ export class WikidataProvider implements EnrichmentProvider {
     // Name first, because a name that agrees is stronger evidence than being nearby — half of
     // Tokyo is within 5km of the other half. Coordinates second, and only when the name found
     // nothing: that is the recall hole §15 opened this route for, not a competing answer.
-    return (await this.matchByName(identity)) ?? this.matchByCoordinates(identity);
+    return (
+      (await this.matchByName(identity)) ??
+      (await this.matchByCoordinates(identity)) ??
+      this.matchByArticleText(identity)
+    );
   }
 
   /**
@@ -328,9 +340,17 @@ export class WikidataProvider implements EnrichmentProvider {
       ).length;
       if (!corroborated && broader > 0) continue;
 
-      const scored = corroborated
-        ? bestNameMatch(identity, labels, point)
-        : geoProximityConfidence(identity, { name: labels[0] ?? '', ...point });
+      const airport = isAirportEntity(instanceOfOf(entity));
+      const scored =
+        corroborated && !airport
+          ? bestNameMatch(identity, labels, point)
+          : geoProximityConfidence(identity, {
+              name: labels[0] ?? '',
+              ...point,
+              // **An airport is allowed to be kilometres from its own door** (§20). Earned by
+              // the candidate's `P31`, so nothing that is not an airport gets the allowance.
+              isAirport: airport,
+            });
       if (!scored) continue;
       if (scored.distanceMeters != null) scoreable.push(scored.distanceMeters);
       if (!best || scored.confidence > best.confidence) {
@@ -352,6 +372,71 @@ export class WikidataProvider implements EnrichmentProvider {
     return this.toMatch(best.entity, MATCH_METHOD.GEOSEARCH, best.confidence, {
       nameSimilarity: best.nameSimilarity,
       distanceMeters: found?.distanceMeters,
+    });
+  }
+
+  /**
+   * **The words, when neither the label nor the point could find it** (§20, owner report:
+   * Bangkok never matched).
+   *
+   * `wbsearchentities` matches Wikidata LABELS, so a Hebrew query reaches only a Hebrew-labelled
+   * item — and `נמל התעופה בנגקוק סוונאפום` against `Suvarnabhumi Airport` is a transliteration,
+   * not a translation: it shares no tokens, no script, and no amount of scoring recovers it. The
+   * coordinate route could not answer either, because an airport's centroid is kilometres from
+   * the terminal pin. Wikipedia's full-text search reaches it, because the Hebrew article says
+   * both `סוונאפום` and `בנגקוק` in its own words.
+   *
+   * **It is the weakest route and it is scored as one.** A text hit means "this article mentions
+   * these words" — real evidence, and less than a name that agreed or a point that matched — so
+   * it is capped at `MATCH_METHOD_CONFIDENCE.wiki_search` and still has to clear the threshold.
+   * The candidate then faces exactly the checks the other routes apply: the name where the
+   * scripts allow it, the distance otherwise, and the broader-subject skip when nothing readable
+   * corroborated it.
+   */
+  private async matchByArticleText(identity: PlaceIdentity): Promise<ProviderMatch | null> {
+    const hits = await wikipediaSearchItems(this.fetcher, identity.name);
+    if (hits.length === 0) return null;
+    const entities = await this.entities(hits.map((hit) => hit.qid));
+
+    let best: { entity: WbEntity; confidence: number; nameSimilarity: number } | null = null;
+    for (const entity of entities) {
+      const labels = labelsOf(entity);
+      const point = coordinateOf(entity);
+      const airport = isAirportEntity(instanceOfOf(entity));
+      const corroborated = labels.some((label) => namesComparable(identity.name, label));
+
+      // Same rule the coordinate route follows: with no readable name to check it against, a
+      // broader entity is the wrong subject rather than a broader view of the right one.
+      if (
+        !corroborated &&
+        Object.keys(
+          granularityRefusals({
+            instanceOf: instanceOfOf(entity),
+            endedProperties: endedPropertiesOf(entity),
+          }) ?? {},
+        ).length > 0
+      ) {
+        continue;
+      }
+
+      const scored =
+        corroborated && !airport
+          ? bestNameMatch(identity, labels, point)
+          : geoProximityConfidence(identity, {
+              name: labels[0] ?? '',
+              ...point,
+              isAirport: airport,
+            });
+      if (!scored) continue;
+      const capped = Math.min(scored.confidence, MATCH_METHOD_CONFIDENCE.wiki_search);
+      if (!best || capped > best.confidence) {
+        best = { entity, confidence: capped, nameSimilarity: scored.nameSimilarity };
+      }
+    }
+    if (!best || !isMatchConfident(best.confidence)) return null;
+
+    return this.toMatch(best.entity, MATCH_METHOD.WIKI_SEARCH, best.confidence, {
+      nameSimilarity: best.nameSimilarity,
     });
   }
 

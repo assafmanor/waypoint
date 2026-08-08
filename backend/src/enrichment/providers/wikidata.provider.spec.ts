@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ENRICHMENT_FIELD, MATCH_METHOD, MATCH_REFUSAL } from '@waypoint/shared';
+import {
+  ENRICHMENT_FIELD,
+  MATCH_METHOD,
+  MATCH_METHOD_CONFIDENCE,
+  MATCH_REFUSAL,
+} from '@waypoint/shared';
 import type { EnrichmentFetcher } from '../outbound-fetch';
 import {
   BEN_GURION,
@@ -10,6 +15,8 @@ import {
   LONDON_CITY,
   MEGURO_RIVER,
   search,
+  SUVARNABHUMI,
+  textSearch,
   SENSOJI,
   SKYTREE,
   TSUKIJI,
@@ -17,7 +24,11 @@ import {
 import { commonName, WikidataProvider } from './wikidata.provider';
 
 const provider = (responses: Record<string, unknown>) => {
-  const fetcher = new FixtureFetcher(responses);
+  // **The full-text route answers nothing unless a spec says otherwise** (§20). It runs only
+  // after the name and the coordinates found nothing, so for every spec that is about one of
+  // those two, "no fixture" means "and Wikipedia had nothing either" — which is the state those
+  // specs were written in, before the route existed.
+  const fetcher = new FixtureFetcher({ 'generator=search': geosearch([]), ...responses });
   return {
     provider: new WikidataProvider(fetcher as unknown as EnrichmentFetcher),
     fetcher,
@@ -668,5 +679,77 @@ describe('commonName', () => {
   it('falls back to the label, which is every city with no alias at all', () => {
     expect(commonName('וינה', [])).toBe('וינה');
     expect(commonName('Keflavík', ['Keflavík'])).toBe('Keflavík');
+  });
+});
+
+/* ── THE FULL-TEXT ROUTE (ADR-0166 §20) ────────────────────────────────────────────────────
+   Owner report, 2026-08-08: Bangkok never matched. Neither name route could reach it — the
+   saved name is a transliteration of a Latin-labelled item — and the coordinate route could not
+   either, because an airport's centroid is kilometres from its terminal. */
+describe('WikidataProvider — the article-text route', () => {
+  const found = {
+    wbsearchentities: search([]),
+    'generator=geosearch': geosearch([]),
+    'generator=search': textSearch([{ qid: SUVARNABHUMI.qid, title: 'Suvarnabhumi Airport' }]),
+    wbgetentities: SUVARNABHUMI.entity,
+  };
+
+  it('finds the airport the label search and the coordinates both missed', async () => {
+    const { provider: p } = provider(found);
+    const match = await p.match(SUVARNABHUMI.place);
+
+    expect(match?.ref).toBe(SUVARNABHUMI.qid);
+    expect(match?.method).toBe(MATCH_METHOD.WIKI_SEARCH);
+  });
+
+  it('scores it below every route above it — a text hit is the weakest evidence', async () => {
+    const { provider: p } = provider(found);
+    const match = await p.match(SUVARNABHUMI.place);
+    expect(match!.confidence).toBeLessThanOrEqual(MATCH_METHOD_CONFIDENCE.wiki_search);
+    expect(match!.confidence).toBeLessThan(MATCH_METHOD_CONFIDENCE.geosearch);
+  });
+
+  it('runs ONLY after the other two routes found nothing', async () => {
+    const { provider: p, fetcher } = provider({
+      wbsearchentities: search([{ id: SENSOJI.qid, label: 'Sensō-ji' }]),
+      wbgetentities: SENSOJI.entity,
+    });
+    await p.match(SENSOJI.place);
+    expect(fetcher.countMatching('generator=search')).toBe(0);
+  });
+
+  it('still refuses a text hit that is somewhere else entirely', async () => {
+    // A full-text search matches words, so an article merely MENTIONING the name is a hit —
+    // the distance check is what keeps that from becoming a match.
+    const { provider: p } = provider({
+      wbsearchentities: search([]),
+      'generator=geosearch': geosearch([]),
+      'generator=search': textSearch([{ qid: 'Q-far', title: 'Some other airport' }]),
+      wbgetentities: entity({
+        qid: 'Q-far',
+        labels: { en: 'Narita International Airport' },
+        instanceOf: ['Q644371'],
+        lat: 35.772,
+        lng: 140.393,
+      }),
+    });
+    expect(await p.match(SUVARNABHUMI.place)).toBeNull();
+  });
+
+  it('reads the IATA code off the item it finds — which is the point of the whole route', async () => {
+    // Keyed by `ids=` rather than `wbgetentities`, so the airport read and the city read get
+    // different answers — the fixture fetcher matches the FIRST key found in the URL.
+    const { provider: p } = provider({
+      wbsearchentities: search([]),
+      'generator=geosearch': geosearch([]),
+      'generator=search': textSearch([{ qid: SUVARNABHUMI.qid, title: 'Suvarnabhumi Airport' }]),
+      'ids=Q-airport-bkk': SUVARNABHUMI.entity,
+      'ids=Q-city-bangkok': SUVARNABHUMI.city,
+    });
+    const match = await p.match(SUVARNABHUMI.place);
+    const values = await p.fetch(match!, [ENRICHMENT_FIELD.IATA, ENRICHMENT_FIELD.SERVED_CITY]);
+
+    expect(values[ENRICHMENT_FIELD.IATA]?.value).toBe('BKK');
+    expect(values[ENRICHMENT_FIELD.SERVED_CITY]?.value).toBe('בנגקוק');
   });
 });
