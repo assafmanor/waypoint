@@ -13,7 +13,7 @@ import '../test/pointer-events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentViewer, MediaViewer } from './MediaViewer';
 import { wrapNav } from '../test/nav-harness';
-import { DOC_READ_TIMEOUT_MS } from '../constants';
+import { DOC_DECODE_TIMEOUT_MS } from '../constants';
 
 vi.mock('../lib/api', () => ({
   fetchDocumentContent: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })),
@@ -233,7 +233,7 @@ describe('a read that never answers ends in a retryable error, not an endless sp
       value: () => NEVER,
     });
     open();
-    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.DECODE);
+    await vi.advanceTimersByTimeAsync(DOC_DECODE_TIMEOUT_MS);
     await vi.waitFor(() => expect(document.querySelector('.doc-viewer-img')).not.toBeNull());
     expect(document.querySelector('.doc-viewer-handoff')).toBeNull();
     vi.useRealTimers();

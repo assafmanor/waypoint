@@ -38,7 +38,7 @@ import { createPortal } from 'react-dom';
 import { isInlineOpenableDocumentMimeType, type DocumentSummary } from '@waypoint/shared';
 import { fetchDocumentContent } from '../lib/api';
 import { PhaseTimeoutError, withDeadline } from '../lib/deadline';
-import { DOC_READ_PHASE, DOC_READ_TIMEOUT_MS } from '../constants';
+import { DOC_DECODE_PHASE, DOC_DECODE_TIMEOUT_MS } from '../constants';
 import { ErrorState } from './feedback';
 import { useOverlay } from '../state/nav-state';
 import { useDialogFocus } from '../lib/useDialogFocus';
@@ -440,9 +440,7 @@ export function MediaViewer({
           const probe = new Image();
           probe.src = objectUrl;
           try {
-            await withDeadline(DOC_READ_PHASE.DECODE, DOC_READ_TIMEOUT_MS.DECODE, () =>
-              probe.decode(),
-            );
+            await withDeadline(DOC_DECODE_PHASE, DOC_DECODE_TIMEOUT_MS, () => probe.decode());
             // The decode is also where a DOCUMENT's dimensions first exist — a scan carries
             // none in the snapshot — so the frame is right before the `<img>` mounts rather
             // than settling after it paints.
