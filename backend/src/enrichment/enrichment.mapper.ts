@@ -27,12 +27,16 @@ export function toDeliveredEnrichment(fields: EnrichmentFields): DeliveredEnrich
   const summary = presentValue(fields.summary);
   const hours = presentValue(fields.hours);
   const image = presentValue(fields.image);
+  const iata = presentValue(fields.iata);
+  const servedCity = presentValue(fields.servedCity);
 
   return {
-    // `summary` and `hours` are already client-shaped: their values carry no storage handles,
-    // only prose or an OSM expression, plus provenance.
+    // Everything but the image is already client-shaped: these values carry no storage
+    // handles, only prose, an OSM expression or a code, plus provenance.
     ...(summary && { summary }),
     ...(hours && { hours }),
+    ...(iata && { iata }),
+    ...(servedCity && { servedCity }),
     ...(image && {
       image: (({ blobKey, ...rest }) => ({ ...rest, url: enrichmentImageContentPath(blobKey) }))(
         image,

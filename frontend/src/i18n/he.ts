@@ -198,6 +198,14 @@ export const t = {
       namePlaceholder: 'שם המקום',
       categoryLabel: 'קטגוריה',
       iconLabel: 'בחירת סמל',
+      // **The short label** (ADR-0166 §18, field report #23) — what this place is called on a
+      // day row, where a full official airport name does not fit. Offered only where the place
+      // already exists, so the question is "what do you call it", not "what is it".
+      nicknameLabel: 'כינוי קצר',
+      nicknamePlaceholder: 'למשל: נתב״ג',
+      // What the row shows when the field is left empty — the derived label, or the shortened
+      // name. Says the field is optional without the word "optional".
+      nicknameHint: (fallback: string) => `בלי כינוי יוצג: ${fallback}`,
       add: 'הוספה למדף',
       save: 'שמירה',
       cancel: 'ביטול',
@@ -651,6 +659,11 @@ export const t = {
       noLocation: 'לא הוגדר מיקום',
       unscheduled: 'לא משובצת במסלול',
       code: 'קוד אישור',
+      // **Where the IATA codes live** (ADR-0166 §18, revised 2026-08-08). Not on the route
+      // surfaces, which are rows: two compound labels on one line spend the whole budget
+      // saying twice what the cities say once. Here, in the record, beside the confirmation
+      // code — which is the other thing you check against a ticket.
+      airports: 'קודי שדות תעופה',
       provider: 'ספק',
       room: 'חדר',
       wifi: 'WiFi',

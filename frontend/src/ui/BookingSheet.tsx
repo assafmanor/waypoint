@@ -16,6 +16,7 @@ import {
   connectionWindow,
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
+  PLACE_SEARCH_KIND,
   EVENT_KIND,
   carriesRoute,
   defaultKindForBookingType,
@@ -242,6 +243,13 @@ export function BookingSheet({
   const findPlace = (field: PlaceErrandField, side?: string, index?: number) => () =>
     startErrand?.({
       target: { kind: 'booking', id: booking?.id, field, index },
+      // **A flight's ROUTE fields want airports** (field report #6): searching `נתב"ג` on the
+      // tab otherwise answers with the terminal, the car park and the hotel beside it, and the
+      // one you need is not reliably among them. Only the route fields, and only for a flight
+      // — a hotel's `placeId` is a hotel, and a train's stop is a station this restriction has
+      // no type for yet.
+      ...(type === BOOKING_TYPE.FLIGHT &&
+        field !== 'placeId' && { kind: PLACE_SEARCH_KIND.AIRPORT }),
       label: [title.trim() || t.map.errand.untitledBooking, side]
         .filter(Boolean)
         .join(` ${DOT_SEPARATOR} `),

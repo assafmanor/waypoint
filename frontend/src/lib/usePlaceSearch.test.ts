@@ -2,12 +2,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import type { Place } from '@waypoint/shared';
-import { PLACE_SEARCH_DEBOUNCE_MS, PLACE_SEARCH_MIN_CHARS } from '../constants';
+import { PLACE_SEARCH_KIND } from '@waypoint/shared';
+import { PLACE_CORPUS, PLACE_SEARCH_DEBOUNCE_MS, PLACE_SEARCH_MIN_CHARS } from '../constants';
 
 // Real ApiError/isRateLimitedError; only the network call is stubbed.
 vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./api')>();
-  return { ...actual, searchPlaces: vi.fn() };
+  return { ...actual, searchPlaces: vi.fn(), searchPlacesText: vi.fn() };
 });
 
 let places: Place[] = [];
@@ -27,10 +28,11 @@ vi.mock('../state/trip-state', () => ({
   }),
 }));
 
-import { ApiError, searchPlaces } from './api';
+import { ApiError, searchPlaces, searchPlacesText } from './api';
 import { usePlaceSearch } from './usePlaceSearch';
 
 const searchMock = searchPlaces as unknown as Mock;
+const textSearchMock = searchPlacesText as unknown as Mock;
 const PREDICTION = { googlePlaceId: 'g-shibuya', primaryText: 'Shibuya', secondaryText: 'Tokyo' };
 
 // Derived from the floor, never hardcoded against it. ADR-0131 §8b raised
@@ -49,6 +51,7 @@ describe('usePlaceSearch', () => {
     bookings = [];
     maybeItems = [];
     searchMock.mockReset().mockResolvedValue([PREDICTION]);
+    textSearchMock.mockReset().mockResolvedValue([PREDICTION]);
     createPlace.mockReset().mockResolvedValue('pl-new');
     resolvePlace.mockReset();
   });
@@ -133,5 +136,66 @@ describe('usePlaceSearch', () => {
     expect(result.current.rateLimited).toBe(true);
     expect(result.current.failed).toBe(false);
     expect(result.current.predictions).toEqual([]);
+  });
+});
+
+/* ── AIRPORT-ONLY SEARCH (field report #6) ─────────────────────────────────────────────────
+   The Map tab searches the Text Search corpus, and an errand can say what would answer it. */
+describe('usePlaceSearch — restricting the corpus', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    places = [];
+    events = [];
+    bookings = [];
+    maybeItems = [];
+    textSearchMock.mockReset().mockResolvedValue([PREDICTION]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const search = async (options: Parameters<typeof usePlaceSearch>[0]) => {
+    const { result } = renderHook(() => usePlaceSearch(options));
+    act(() => result.current.setQuery(PAST_FLOOR));
+    await act(async () => {
+      vi.advanceTimersByTime(PLACE_SEARCH_DEBOUNCE_MS);
+    });
+    return result;
+  };
+
+  it('passes the kind through to the proxy when an errand named one', async () => {
+    await search({ corpus: PLACE_CORPUS.text, kind: PLACE_SEARCH_KIND.AIRPORT });
+    expect(textSearchMock).toHaveBeenCalledWith(
+      't1',
+      expect.objectContaining({ kind: PLACE_SEARCH_KIND.AIRPORT }),
+    );
+  });
+
+  it('names no kind when nothing asked for one — free browsing is the whole corpus', async () => {
+    await search({ corpus: PLACE_CORPUS.text });
+    expect(textSearchMock).toHaveBeenCalledWith('t1', expect.objectContaining({ kind: undefined }));
+  });
+
+  // The kind changes what the ANSWER is, unlike the viewport bias, which only changes ranking
+  // and is deliberately read at fetch time so a pan cannot re-bill a query.
+  it('re-asks when the kind changes under the same query', async () => {
+    const { rerender, result } = renderHook(
+      ({ kind }: { kind?: typeof PLACE_SEARCH_KIND.AIRPORT }) =>
+        usePlaceSearch({ corpus: PLACE_CORPUS.text, kind }),
+      { initialProps: {} as { kind?: typeof PLACE_SEARCH_KIND.AIRPORT } },
+    );
+    act(() => result.current.setQuery(PAST_FLOOR));
+    await act(async () => {
+      vi.advanceTimersByTime(PLACE_SEARCH_DEBOUNCE_MS);
+    });
+    expect(textSearchMock).toHaveBeenCalledTimes(1);
+
+    rerender({ kind: PLACE_SEARCH_KIND.AIRPORT });
+    await act(async () => {
+      vi.advanceTimersByTime(PLACE_SEARCH_DEBOUNCE_MS);
+    });
+    expect(textSearchMock).toHaveBeenCalledTimes(2);
+    expect(textSearchMock).toHaveBeenLastCalledWith(
+      't1',
+      expect.objectContaining({ kind: PLACE_SEARCH_KIND.AIRPORT }),
+    );
   });
 });

@@ -16,7 +16,8 @@ import { TitleLabel } from './TitleLabel';
 import { PlaceBadge } from './domain/PlaceBadge';
 import { transitionLabel } from '../lib/transitions';
 import { parseRouteTitle } from '../lib/route-title';
-import { shortPlaceLabel } from '../lib/place-label';
+import { placeLabelOf } from '../lib/place-label';
+import { usePlaceLabels } from '../state/place-labels';
 import { t } from '../i18n/he';
 import type { TransitionEntry } from '../lib/day-entries';
 
@@ -48,6 +49,7 @@ export function TransitionRow({
    *  question the way directions are. */
   onShowOnMap?: () => void;
 }) {
+  const placeLabels = usePlaceLabels();
   const { event, edge, atMs, labelKey } = entry;
   const booking = event.bookingId ? bookings.find((b) => b.id === event.bookingId) : undefined;
   // **THIS EDGE'S OWN END, not the whole route** (owner, 2026-08-06: _"the landing row is very
@@ -65,7 +67,12 @@ export function TransitionRow({
   // title is untouched: an ordinary event keeps its own name.
   const route = parseRouteTitle(event.title);
   const endpoint = route && (edge === 'end' ? route.to : route.from);
-  const title = endpoint ? shortPlaceLabel(endpoint) : event.title;
+  // **The place's own label wins over the title's copy of its name** (ADR-0166 §18): the
+  // booking is in hand and knows which row this is, so a landing row reads `תל אביב · TLV`
+  // where the stored title still holds whatever the place was called when it was written.
+  // Falls back to the parsed endpoint, which is what this row has always shown.
+  const endPlaceId = booking && (edge === 'end' ? booking.toPlaceId : booking.fromPlaceId);
+  const title = placeLabelOf(placeLabels, endPlaceId, endpoint || undefined) ?? event.title;
   const icon =
     chosenIcon(event.icon) ??
     (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : DEFAULT_EVENT_ICON);

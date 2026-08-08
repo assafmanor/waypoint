@@ -122,6 +122,7 @@ import { eventEdgeTransition } from '../lib/transitions';
 import { connectionStopKey, connectionStops } from '../lib/day-joins';
 import { bookingWhen } from '../lib/booking-journey';
 import { shortTitleText } from '../lib/route-title';
+import { derivedPlaceLabel, shortPlaceLabel } from '../lib/place-label';
 import { useClock } from '../lib/useClock';
 import { formatDistance, haversineMeters } from '../lib/distance';
 import { useGeolocation } from '../lib/useGeolocation';
@@ -350,7 +351,16 @@ export function MapView() {
   // from, which is the whole point: that place stays the one your booking already
   // references. It is the same option the retired sheet passed, on the same hook.
   const enrichPlaceId = rowErrand?.target.kind === 'place' ? rowErrand.target.id : undefined;
-  const research = usePlaceSearch({ corpus: PLACE_CORPUS.text, biasRef, enrichPlaceId });
+  // **THE ERRAND SAYS WHAT WOULD ANSWER IT** (field report #6). A flight leg asks for an
+  // airport, so this tab's search asks Google for airports — the form knows the question and
+  // the tab owns the search, which is exactly the split ADR-0134 §1 set up. Absent for every
+  // other errand and for free browsing, which is the whole corpus as before.
+  const research = usePlaceSearch({
+    corpus: PLACE_CORPUS.text,
+    biasRef,
+    enrichPlaceId,
+    kind: pendingErrand?.kind,
+  });
   const verbs = useVerbs();
   // Assign and return, in one act. The place is handed back through the OTHER channel and
   // the form's host re-opens itself from the draft (§2) — this screen deliberately knows
@@ -1675,6 +1685,11 @@ export function MapView() {
       ...(value.categoryTouched &&
         value.category != null &&
         value.category !== place.category && { category: value.category }),
+      // **Absent means the source never offered the field**, which is both add paths — where
+      // writing `''` would clear a nickname the place might already carry. An empty string IS
+      // a value here: it is how the rename form clears one.
+      ...(value.nickname !== undefined &&
+        value.nickname !== (place.nickname ?? '') && { nickname: value.nickname }),
     };
     if (Object.keys(patch).length === 0) return place;
     await indexVerbs.updatePlace(place.id, patch);
@@ -2949,6 +2964,20 @@ export function MapView() {
           // `Place` carries a category of its own, which is what stopped the pills being a
           // control with nowhere to write.
           category: usage?.pin.category ?? r.place.category,
+          // **The short label, offered only here** (ADR-0166 §18): the two ADD sources have no
+          // place to nickname yet, and asking before the thing exists is a question about
+          // nothing. The fallback shown in the hint is what the row would say with the field
+          // empty — the served city where enrichment resolved one, else the stripped
+          // name — so "leave it blank" is a visible choice rather than a guess.
+          nickname: {
+            value: r.place.nickname ?? '',
+            // Deliberately resolved WITHOUT the nickname: the hint answers "what would this
+            // say if I left it empty", and passing the place whole would answer with the
+            // nickname it is standing in for.
+            fallback:
+              derivedPlaceLabel({ name: r.place.name }, enrichments[r.place.id]) ??
+              shortPlaceLabel(r.place.name),
+          },
           confirmLabel: t.map.make.save,
         };
       }

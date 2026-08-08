@@ -226,6 +226,16 @@ export const bookingSchema = z.object({
 });
 export type Booking = z.infer<typeof bookingSchema>;
 
+/** **What a search is being asked to find, when the asker knows** (field report #6).
+ *
+ *  One member, and the enum shape is the point: a caller names a KIND, and which Google
+ *  type(s) that becomes is the places proxy's business, not a form's. A flight leg wants an
+ *  airport — searching `נתב"ג` unrestricted returns the terminal, the car park and a hotel
+ *  beside it, all legitimate answers to the words and none of them where the plane leaves
+ *  from. */
+export const placeSearchKindSchema = z.enum(['airport']);
+export type PlaceSearchKind = z.infer<typeof placeSearchKindSchema>;
+
 /** Trip-scoped location registry (ADR-0048). Every `placeId` FK points here. A
  *  name-only row is valid ("Place-lite"); the Google Places picker fills in
  *  googlePlaceId/lat/lng/timezone/rating later (ADR-0108). All the Google-derived
@@ -252,6 +262,17 @@ export const placeSchema = z.object({
    *  data about a place, not a property of the entity Google describes, so a cross-trip
    *  global place cache cannot hold it (ADR-0147's Consequences). */
   icon: z.string().optional(),
+  /** **What a human calls this place** (ADR-0166 §18, field report #23) — a short label that
+   *  outranks everything derived, for the cases automation cannot resolve: Ben Gurion's
+   *  Wikidata `P931` lists Tel Aviv AND Jerusalem at equal rank, and no tie-break makes that
+   *  a fact rather than a coin toss, so the answer to "which one" is a person.
+   *
+   *  Exactly `icon`'s pattern (ADR-0147 §5) and here for exactly its reason: it is
+   *  user-authored, and it must survive deleting the idea or booking it was written through —
+   *  which a nickname held on the referencing entity would not. It is display-only, so
+   *  `name` still holds what the place is officially called, and the record surfaces
+   *  (the booking detail, the editors) keep showing that. */
+  nickname: z.string().optional(),
   /** **What a human said this place IS** (ADR-0165). The place's own answer, and it OUTRANKS
    *  the one derived from the referencing entities (`place-usage.ts`'s most-committed
    *  reference) on every place-scoped surface: its pin's hue, its badge glyph, the type facet

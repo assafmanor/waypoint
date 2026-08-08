@@ -77,6 +77,8 @@ import {
   readCachedSnapshot,
 } from '../lib/cache';
 import { dropNotesForHostChange } from '../lib/notes';
+import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
+import { PlaceLabelsProvider } from './place-labels';
 import { clearPlaceRefs, deletedPlaceId, placeLinks, type PlaceLink } from '../lib/place-refs';
 import {
   flushOutbox,
@@ -736,6 +738,21 @@ function TripReady({
     () => tripZoneCrossings(state.events, bookings, places),
     [state.events, bookings, places],
   );
+
+  // **The display label for every place that has one** (ADR-0166 §18) — a nickname, or the
+  // city an airport serves, which the enrichment pipe derived. Resolved once here, for the same reason
+  // `zoneCrossings` is: every glanceable route surface asks the same question about the same
+  // rows, and a per-surface derivation is how two of them end up disagreeing about what a
+  // flight is called. Places with neither answer carry NO key, so the surfaces fall through to
+  // `shortPlaceLabel` exactly as they always have.
+  const placeLabels = useMemo<PlaceLabels>(() => {
+    const labels: Record<string, string> = {};
+    for (const place of places) {
+      const label = derivedPlaceLabel(place, enrichments[place.id]);
+      if (label) labels[place.id] = label;
+    }
+    return labels;
+  }, [places, enrichments]);
 
   const zoneEvidence = useMemo<ZoneEvidence>(
     () => ({
@@ -1430,7 +1447,13 @@ function TripReady({
       setActiveDate,
     ],
   );
-  return <TripContext.Provider value={value}>{children}</TripContext.Provider>;
+  return (
+    <TripContext.Provider value={value}>
+      {/* Published through its own channel, not as a field of this context — see
+          `state/place-labels.tsx` for why the readers decide that. */}
+      <PlaceLabelsProvider labels={placeLabels}>{children}</PlaceLabelsProvider>
+    </TripContext.Provider>
+  );
 }
 
 export function useTrip() {

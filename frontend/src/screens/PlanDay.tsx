@@ -58,6 +58,8 @@ import {
   type ShowPlaceOnMap,
   type ZoneContext,
 } from '../lib/places';
+import type { PlaceLabels } from '../lib/place-label';
+import { usePlaceLabels } from '../state/place-labels';
 import { tripPhase } from '../lib/mode';
 import {
   buildTimeTree,
@@ -240,6 +242,7 @@ export function PlanDay() {
     zoneEvidence,
   } = useTrip();
   const verbs = useVerbs();
+  const placeLabels = usePlaceLabels();
   const now = useClock();
   // The builder's way to the map (ADR-0121 §8), on every row whose event resolves a
   // coord-bearing place. It is the only surface here that needs it: the row's own tap
@@ -897,6 +900,7 @@ export function PlanDay() {
     nowZone,
     bookings,
     places,
+    placeLabels,
     showPlaceOnMap,
     verbs,
     dayEvents,
@@ -1442,6 +1446,9 @@ interface BuilderCtx {
   nowZone: string;
   bookings: Booking[];
   places: Place[];
+  /** A nickname or the city an airport serves, per place (ADR-0166 §18) — threaded with `places`
+   *  because a builder row asks both questions about the same endpoint. */
+  placeLabels: PlaceLabels;
   /** `useShowPlaceOnMap()` — `null` outside the trip shell, which drops the row's
    *  `מפה` action rather than breaking it (ADR-0121 §8). */
   showPlaceOnMap: ShowPlaceOnMap;
@@ -1713,7 +1720,7 @@ function BuilderNode({
   const booking = e.bookingId ? ctx.bookings.find((b) => b.id === e.bookingId) : undefined;
   const zones = eventZones(e, ctx.zoneCtx);
   // Same route treatment as the Trip-mode day row (ADR-0059 §3 amendment).
-  const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places));
+  const route = routeDisplay(eventRoute(e, ctx.bookings, ctx.places, ctx.placeLabels));
   return (
     <>
       <BuilderRow

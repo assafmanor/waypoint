@@ -40,7 +40,8 @@ import {
   mapsDirectionsUrl,
   nextDestination,
 } from '../lib/places';
-import { shortPlaceLabel } from '../lib/place-label';
+import { placeLabelOf, shortRoute } from '../lib/place-label';
+import { usePlaceLabels } from '../state/place-labels';
 import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
 import { clockShiftSentence, formatDuration } from '../lib/duration';
 import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
@@ -102,6 +103,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     dismissChange,
     clearChangeFeed,
   } = useTrip();
+  const placeLabels = usePlaceLabels();
   const verbs = useVerbs();
   const toast = useToast();
   const navigate = useNavigate();
@@ -159,7 +161,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     : undefined;
   // Origin/destination anchor the in-transit progress ends (ADR-0059 §3): a
   // flight reads as where it goes, not a name.
-  const transitRoute = transitEvent ? eventRoute(transitEvent, bookings, places) : null;
+  const transitRoute = transitEvent
+    ? shortRoute(eventRoute(transitEvent, bookings, places, placeLabels) ?? {})
+    : null;
   // What this span's middle is called, by mode (`בטיסה` for a flight, `בדרך` for
   // anything else that carries you) and whether it is a journey at all — one
   // resolution shared by the collapsed board and the lifted hero, off the same
@@ -307,7 +311,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         : {}),
       until: p.event.endsAt ? formatTime(p.event.endsAt, zones?.endZone ?? tz) : undefined,
       shift: zones?.deltaMinutes,
-      place: p.place ? shortPlaceLabel(p.place) : undefined,
+      place: placeLabelOf(placeLabels, p.placeId, p.place),
       note: p.notes[0]?.body,
       noteMore: Math.max(0, p.notes.length - 1),
       settled: p.settled,
@@ -477,8 +481,8 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           startTime: transitEvent.startsAt
             ? formatTime(transitEvent.startsAt, transitZones?.startZone ?? tz)
             : undefined,
-          fromPlace: transitRoute?.from ? shortPlaceLabel(transitRoute.from) : undefined,
-          toPlace: transitRoute?.to ? shortPlaceLabel(transitRoute.to) : undefined,
+          fromPlace: transitRoute?.from,
+          toPlace: transitRoute?.to,
           remaining: transitRemaining ?? undefined,
           endDay: transitArrivalDay,
           shift: transitZones?.deltaMinutes,
@@ -691,7 +695,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
               <Icon name="navigate" />
             </span>
             <span className="lb">{t.quick.navigateNext}</span>
-            <span className="sub name">{shortPlaceLabel(nextDest.place.name)}</span>
+            <span className="sub name">
+              {placeLabelOf(placeLabels, nextDest.place.id, nextDest.place.name)}
+            </span>
           </a>
         )}
         {/* Managed tile: always present. Deep-links to the Index documents

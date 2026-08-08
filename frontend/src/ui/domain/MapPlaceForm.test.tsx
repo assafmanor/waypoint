@@ -391,3 +391,49 @@ describe('MapPlaceForm — the card’s chrome', () => {
     );
   });
 });
+
+/* ── THE SHORT LABEL (ADR-0166 §18, field report #23) ──────────────────────────────────────
+   Offered by the rename source only, and its presence in the SPEC is what offers it. */
+describe('MapPlaceForm — the short label', () => {
+  const RENAME = {
+    title: t.map.make.renameTitle,
+    name: 'נמל התעופה בן גוריון',
+    confirmLabel: t.map.make.save,
+    nickname: { value: '', fallback: 'תל אביב' },
+  } satisfies Partial<MapPlaceFormSpec>;
+
+  const nicknameField = () => screen.getByLabelText(t.map.make.nicknameLabel) as HTMLInputElement;
+
+  it('is absent on the two ADD sources — there is no place to nickname yet', () => {
+    mount();
+    expect(screen.queryByLabelText(t.map.make.nicknameLabel)).toBeNull();
+  });
+
+  it('says what the row will show if it is left empty', () => {
+    mount(RENAME);
+    expect(screen.getByText(t.map.make.nicknameHint('תל אביב'))).toBeTruthy();
+  });
+
+  it('reports the trimmed label, and the empty string that CLEARS one', () => {
+    const { onConfirm } = mount({ ...RENAME, nickname: { value: 'נתב״ג', fallback: 'בן גוריון' } });
+    expect(nicknameField().value).toBe('נתב״ג');
+
+    fireEvent.change(nicknameField(), { target: { value: '  לוד  ' } });
+    fireEvent.click(confirmBtn(t.map.make.save));
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ nickname: 'לוד' }));
+
+    fireEvent.change(nicknameField(), { target: { value: '' } });
+    fireEvent.click(confirmBtn(t.map.make.save));
+    // An empty string is a VALUE here, and the host writes it: it is how a nickname is removed.
+    expect(onConfirm).toHaveBeenLastCalledWith(expect.objectContaining({ nickname: '' }));
+  });
+
+  // **Absent, not empty**, on a source that never asked — which is what stops an add path from
+  // writing `nickname: ''` over a nickname the place already carries.
+  it('reports NO nickname key at all when the source did not offer the field', () => {
+    const { onConfirm } = mount();
+    fireEvent.change(nameField(), { target: { value: 'הספסל' } });
+    fireEvent.click(confirmBtn());
+    expect(onConfirm.mock.calls[0][0]).not.toHaveProperty('nickname');
+  });
+});

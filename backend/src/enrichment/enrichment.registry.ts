@@ -48,10 +48,17 @@ export class EnrichmentRegistry {
       .filter((provider): provider is EnrichmentProvider => provider !== undefined);
   }
 
-  /** Providers that settle identity for the ones after them, even when they supply no field
-   *  value of their own — Wikidata in Phase 1 (§4: the QID is "added when Wikidata
-   *  matches"). Without these the exact routes in §12.3 have nothing to be exact about. */
+  /** Providers that settle identity for the ones after them — Wikidata (§4: the QID is
+   *  "added when Wikidata matches"). Without these the exact routes in §12.3 have nothing to
+   *  be exact about.
+   *
+   *  **Declared, not inferred.** This used to read "supplies no field of its own", which was
+   *  true of Wikidata only until it gained `iata`/`servedCity` (§18) — and a provider that
+   *  quietly stops running on the passes that need it is the kind of defect no test asks
+   *  about, because everything still returns a plausible answer, just from a fuzzier match. */
   identityProviders(): readonly EnrichmentProvider[] {
-    return this.all().filter((provider) => provider.provides.length === 0);
+    return this.all().filter(
+      (provider) => provider.settlesIdentity ?? provider.provides.length === 0,
+    );
   }
 }

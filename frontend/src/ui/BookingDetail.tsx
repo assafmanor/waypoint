@@ -18,6 +18,7 @@ import {
   mapsDirectionsUrl,
   placeName,
 } from '../lib/places';
+import { placeIataCode } from '../lib/place-label';
 import { AddLocationButton } from './primitives/PlacePicker';
 import { useShowPlaceOnMap, useStartPlaceErrand } from '../state/map-scope-state';
 import { routeTitle } from '../lib/route-title';
@@ -61,7 +62,7 @@ export function BookingDetail({
    *  broken" rule `onShowOnMap` follows below. */
   onOpen?: (booking: Booking) => void;
 }) {
-  const { trip, events, places } = useTrip();
+  const { trip, events, places, enrichments } = useTrip();
   const showPlaceOnMap = useShowPlaceOnMap();
   const linkedEvent = events.find((e) => e.bookingId === booking.id);
   const pair = useRoundTripPartner(booking);
@@ -76,6 +77,13 @@ export function BookingDetail({
   const room = booking.details?.room as string | undefined;
   const from = placeName(places, booking.fromPlaceId);
   const to = placeName(places, booking.toPlaceId);
+  // **The IATA codes, and this is the surface that has room for them** (ADR-0166 §18, revised
+  // 2026-08-08 on the owner's call). The route surfaces are rows and read as cities —
+  // `תל אביב ← פרנקפורט` — because two compound labels on one line spend its whole budget
+  // saying twice what the cities say once. Here the codes are their own fact, beside the
+  // confirmation code, which is the other thing you hold a ticket up against.
+  const fromCode = placeIataCode(enrichments[booking.fromPlaceId ?? '']);
+  const toCode = placeIataCode(enrichments[booking.toPlaceId ?? '']);
   const startsAt = linkedEvent?.startsAt;
   const endsAt = linkedEvent?.endsAt;
   const labels = timingLabels(booking.type);
@@ -210,6 +218,21 @@ export function BookingDetail({
           {duration && <Fact k={t.index.detail.duration} v={duration} />}
           {booking.confirmationCode && (
             <Fact k={t.index.detail.code} v={`${CODE_PREFIX}${booking.confirmationCode}`} mono />
+          )}
+          {/* Only for a route, and only once at least one end HAS a code — a train's endpoints
+              have none, so the fact is simply absent there rather than empty. With one end
+              known it still states that end and `RouteLabel` draws its usual `-` for the
+              other, which is how every half route in this app already reads. */}
+          {isRoute && (fromCode || toCode) && (
+            <div className="bk-fact">
+              <span className="bk-fact-k">{t.index.detail.airports}</span>
+              <span className="bk-fact-v mono">
+                {/* The same arrow every route in this app draws, so a pair of codes reads as a
+                    journey rather than as two values (design-language.md: every visible arrow
+                    is `NavArrow`). */}
+                <RouteLabel from={fromCode} to={toCode} />
+              </span>
+            </div>
           )}
           {booking.provider && <Fact k={t.index.detail.provider} v={booking.provider} />}
           {room && <Fact k={t.index.detail.room} v={room} />}

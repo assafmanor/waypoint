@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { ENRICHMENT_FIELD, MATCH_METHOD, MATCH_REFUSAL } from '@waypoint/shared';
 import type { EnrichmentFetcher } from '../outbound-fetch';
 import {
+  BEN_GURION,
   entity,
   FixtureFetcher,
   geosearch,
+  KEFLAVIK,
+  LONDON_CITY,
   MEGURO_RIVER,
   search,
   SENSOJI,
@@ -22,11 +25,14 @@ const provider = (responses: Record<string, unknown>) => {
 };
 
 describe('WikidataProvider', () => {
-  it('supplies no field value — it is the identity spine (§11.1)', async () => {
+  it('supplies the airport pair and nothing else — everything else is identity', async () => {
     const { provider: p } = provider({});
-    // The image is Commons' to give, because the per-file license is Commons' to read.
-    expect(p.provides).toEqual([]);
-    expect(await p.fetch()).toEqual({});
+    // The image is Commons' to give, because the per-file license is Commons' to read, and
+    // the summary is Wikipedia's. `P238`/`P931` are this item's own (§18).
+    expect(p.provides).toEqual([ENRICHMENT_FIELD.IATA, ENRICHMENT_FIELD.SERVED_CITY]);
+    // And it stays an identity provider now that `provides` is non-empty — which the registry
+    // used to infer from the empty list.
+    expect(p.settlesIdentity).toBe(true);
   });
 
   it('matches a settled QID as an identity join, with no name search at all', async () => {
@@ -504,6 +510,81 @@ describe('WikidataProvider', () => {
       });
       expect(await p.match(NEZU)).toBeNull();
       expect(fetcher.countMatching('wbgetentities')).toBe(0);
+    });
+  });
+
+  /* ── THE AIRPORT PAIR (§18, field reports #7/#23) ──────────────────────────────────────── */
+  describe('the airport pair', () => {
+    const AIRPORT_FIELDS = [ENRICHMENT_FIELD.IATA, ENRICHMENT_FIELD.SERVED_CITY] as const;
+
+    /** A match, as the orchestrator would hand it to `fetch` — the evidence carries the `P31`
+     *  the guard reads, which is why the guard costs no request. */
+    const matchOf = (qid: string, instanceOf: string[]) => ({
+      ref: qid,
+      method: MATCH_METHOD.SETTLED_ID,
+      confidence: 1,
+      evidence: { instanceOf },
+    });
+
+    it('reads the IATA code and the served city off an airport', async () => {
+      const { provider: p } = provider({
+        'ids=Q-airport-tlv': BEN_GURION.entity,
+        'ids=Q-city-telaviv': BEN_GURION.city,
+      });
+      const values = await p.fetch(matchOf(BEN_GURION.qid, ['Q644371']), AIRPORT_FIELDS);
+
+      expect(values[ENRICHMENT_FIELD.IATA]?.value).toBe('TLV');
+      // Hebrew where Wikidata has it: the label lands beside the code on a Hebrew RTL row.
+      expect(values[ENRICHMENT_FIELD.SERVED_CITY]).toEqual({ value: 'תל אביב', lang: 'he' });
+    });
+
+    it('REFUSES a city that carries a real metropolitan IATA code (London, P238=LON)', async () => {
+      const { provider: p, fetcher } = provider({ 'ids=Q84': LONDON_CITY.entity });
+      // `Q84` genuinely has `P238 = LON`. Without the `P31` guard the pipe would label the
+      // city of London with a flight code — the one false positive the research found.
+      const values = await p.fetch(matchOf(LONDON_CITY.qid, ['Q515']), AIRPORT_FIELDS);
+
+      expect(values).toEqual({});
+      // And it refused without spending a request: the guard reads evidence the match carried.
+      expect(fetcher.countMatching('wbgetentities')).toBe(0);
+    });
+
+    it("takes Wikidata's preferred rank when it separates the values (Keflavík)", async () => {
+      const { provider: p } = provider({
+        'ids=Q-airport-kef': KEFLAVIK.entity,
+        'ids=Q-city-keflavik': KEFLAVIK.city,
+      });
+      const values = await p.fetch(matchOf(KEFLAVIK.qid, ['Q644371']), AIRPORT_FIELDS);
+      // The preferred claim is second in the list, so "first" alone would answer Njarðvík.
+      expect(values[ENRICHMENT_FIELD.SERVED_CITY]?.value).toBe('Keflavík');
+    });
+
+    it('falls back to English where Wikidata has no Hebrew label for the city', async () => {
+      const { provider: p } = provider({
+        'ids=Q-airport-kef': KEFLAVIK.entity,
+        'ids=Q-city-keflavik': KEFLAVIK.city,
+      });
+      const values = await p.fetch(matchOf(KEFLAVIK.qid, ['Q644371']), AIRPORT_FIELDS);
+      expect(values[ENRICHMENT_FIELD.SERVED_CITY]?.lang).toBe('en');
+    });
+
+    it('reads the item once for both fields, however the orchestrator asks', async () => {
+      const { provider: p, fetcher } = provider({
+        'ids=Q-airport-tlv': BEN_GURION.entity,
+        'ids=Q-city-telaviv': BEN_GURION.city,
+      });
+      // The orchestrator resolves fields one at a time, so this is two calls into `fetch`.
+      await p.fetch(matchOf(BEN_GURION.qid, ['Q644371']), [ENRICHMENT_FIELD.IATA]);
+      await p.fetch(matchOf(BEN_GURION.qid, ['Q644371']), [ENRICHMENT_FIELD.SERVED_CITY]);
+      expect(fetcher.countMatching('ids=Q-airport-tlv')).toBe(1);
+    });
+
+    it('asks nothing at all for a field it does not supply', async () => {
+      const { provider: p, fetcher } = provider({ 'ids=Q-airport-tlv': BEN_GURION.entity });
+      expect(
+        await p.fetch(matchOf(BEN_GURION.qid, ['Q644371']), [ENRICHMENT_FIELD.SUMMARY]),
+      ).toEqual({});
+      expect(fetcher.requested).toEqual([]);
     });
   });
 

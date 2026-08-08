@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { shortPlaceLabel } from './place-label';
+import type { DeliveredEnrichmentFields } from '@waypoint/shared';
+import {
+  derivedPlaceLabel,
+  placeIataCode,
+  placeLabelOf,
+  shortPlaceLabel,
+  shortRoute,
+} from './place-label';
+
+/** The provenance every stored enrichment value carries (ADR-0166 §4) — irrelevant to the
+ *  label and required by the shape, so it is written once here. */
+const PROVENANCE = {
+  source: 'wikidata',
+  license: 'CC0',
+  fetchedAt: '2026-08-08T00:00:00.000Z',
+  confidence: 1,
+  method: 'name_proximity',
+  ref: 'Q-airport-tlv',
+} as const;
 
 describe('shortPlaceLabel', () => {
   // The point of the rule: it strips generic CATEGORY words, so it handles
@@ -89,5 +107,101 @@ describe('shortPlaceLabel — the genitive binding', () => {
   it('leaves the non-genitive binding exactly as it was', () => {
     expect(shortPlaceLabel('נמל התעופה בן גוריון')).toBe('בן גוריון');
     expect(shortPlaceLabel('תחנת הרכבת המרכזית חיפה')).toBe('חיפה');
+  });
+});
+
+/* ── THE PRECEDENCE CHAIN (ADR-0166 §18, field report #23) ─────────────────────────────────
+   nickname → the served city → the stripping above. The IATA code is NOT in it. */
+describe('derivedPlaceLabel', () => {
+  const tlv: DeliveredEnrichmentFields = {
+    iata: { ...PROVENANCE, value: 'TLV' },
+    servedCity: {
+      he: { ...PROVENANCE, value: 'תל אביב', lang: 'he' },
+      en: { ...PROVENANCE, value: 'Tel Aviv', lang: 'en' },
+    },
+  };
+
+  // **The code is deliberately NOT in this label** (owner's call, 2026-08-08). Every reader of
+  // this chain is a row, and a route puts two of these on one line — `תל אביב ← פרנקפורט` says
+  // what `תל אביב · TLV ← פרנקפורט · FRA` says, in half the width. The code has its own fact on
+  // the booking detail, which is the surface with room for it.
+  it('derives the CITY the airport serves, and never the code', () => {
+    expect(derivedPlaceLabel({ name: 'נמל התעופה בן גוריון' }, tlv)).toBe('תל אביב');
+  });
+
+  it('prefers the Hebrew city, and falls back to English where there is no Hebrew label', () => {
+    const kef: DeliveredEnrichmentFields = {
+      iata: { ...PROVENANCE, value: 'KEF' },
+      servedCity: { en: { ...PROVENANCE, value: 'Keflavík', lang: 'en' } },
+    };
+    expect(derivedPlaceLabel({ name: 'Keflavík International Airport' }, kef)).toBe('Keflavík');
+  });
+
+  // **The whole reason a manual override exists** (§18): Ben Gurion's `P931` lists Tel Aviv
+  // AND Jerusalem at equal rank, so the derived city is a defensible guess and not a fact.
+  // A person's answer is not a tie-break — it replaces the question.
+  it('lets a nickname win outright over the derived city', () => {
+    expect(derivedPlaceLabel({ name: 'נמל התעופה בן גוריון', nickname: 'נתב״ג' }, tlv)).toBe(
+      'נתב״ג',
+    );
+  });
+
+  it('ignores a nickname that is only whitespace — that is a cleared field, not a label', () => {
+    expect(derivedPlaceLabel({ name: 'נמל התעופה בן גוריון', nickname: '   ' }, tlv)).toBe(
+      'תל אביב',
+    );
+  });
+
+  it('derives nothing without a city, so the stripping stays in charge', () => {
+    // A code alone is not a label: it names nothing to someone who does not fly often, and the
+    // row it would land on already has a name to fall back to.
+    expect(
+      derivedPlaceLabel(
+        { name: 'נמל התעופה בן גוריון' },
+        { iata: { ...PROVENANCE, value: 'TLV' } },
+      ),
+    ).toBeUndefined();
+    expect(derivedPlaceLabel({ name: 'קפה בלו בוטל' }, {})).toBeUndefined();
+    expect(derivedPlaceLabel(undefined)).toBeUndefined();
+  });
+
+  it('hands the code out separately, for the surface that has room for it', () => {
+    expect(placeIataCode(tlv)).toBe('TLV');
+    expect(placeIataCode({})).toBeUndefined();
+    expect(placeIataCode()).toBeUndefined();
+  });
+});
+
+describe('placeLabelOf — the whole chain for one place', () => {
+  const labels = { 'p-tlv': 'תל אביב' };
+
+  it('takes the derived label when there is one', () => {
+    expect(placeLabelOf(labels, 'p-tlv', 'נמל התעופה בן גוריון')).toBe('תל אביב');
+  });
+
+  it('falls through to the stripped name when there is not', () => {
+    expect(placeLabelOf(labels, 'p-nrt', 'נמל התעופה הבינלאומי נריטה')).toBe('נריטה');
+    expect(placeLabelOf({}, undefined, 'Tokyo Station')).toBe('Tokyo');
+    expect(placeLabelOf({}, 'p-nrt', undefined)).toBeUndefined();
+  });
+});
+
+describe('shortRoute — a resolved label is not stripped again', () => {
+  it('returns a derived endpoint untouched and shortens the other', () => {
+    expect(
+      shortRoute({
+        from: 'נמל התעופה בן גוריון',
+        to: 'נמל התעופה הבינלאומי קפלאוויק',
+        fromLabel: 'תל אביב',
+      }),
+    ).toEqual({ from: 'תל אביב', to: 'קפלאוויק' });
+  });
+
+  it('leaves a NICKNAME alone even when it looks like category noise', () => {
+    // A nickname is not ours to edit: `שדה התעופה של אמא` is what a person calls the place,
+    // and stripping it would answer with `של אמא`.
+    expect(shortRoute({ from: 'X', fromLabel: 'שדה התעופה של אמא' }).from).toBe(
+      'שדה התעופה של אמא',
+    );
   });
 });

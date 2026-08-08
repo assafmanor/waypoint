@@ -37,15 +37,39 @@ export const ENRICHMENT_SOURCE = {
 
 /** Tier A (ADR-0166 §3) — the fields a traveller can act on. Tier B (website, phone,
  *  price level, source-suggested types) and Tier C (`rating`) are recorded in the ADR
- *  and deliberately unbuilt. */
-export const enrichmentFieldSchema = z.enum(['image', 'summary', 'hours']);
+ *  and deliberately unbuilt.
+ *
+ *  **`iata` and `servedCity` are the airport pair** (ADR-0166 §18, field reports #7/#23).
+ *  They are facts about the real-world entity — two trips cannot legitimately disagree
+ *  that TLV serves Tel Aviv — so they belong in this global store rather than on the
+ *  trip-scoped `Place` row, and they arrive from the same Wikidata item the identity pass
+ *  already settles. */
+export const enrichmentFieldSchema = z.enum(['image', 'summary', 'hours', 'iata', 'servedCity']);
 export type EnrichmentField = z.infer<typeof enrichmentFieldSchema>;
 
 export const ENRICHMENT_FIELD = {
   IMAGE: 'image',
   SUMMARY: 'summary',
   HOURS: 'hours',
+  IATA: 'iata',
+  SERVED_CITY: 'servedCity',
 } as const satisfies Record<string, EnrichmentField>;
+
+/** Fields whose value is a map of localized **variants** rather than one value (§11.6).
+ *
+ *  Named once, here, because four different places have to branch on it — the orchestrator's
+ *  `wrap`, the freshness read below, the policy's source lookup and the delivered mapper —
+ *  and each of them used to test `field === SUMMARY` inline. A second variant field is what
+ *  turns that literal into a bug rather than a shortcut: a city name is prose in exactly the
+ *  way a summary is (`תל אביב` / `Tel Aviv`), so it is stored the same way. */
+export const TEXT_VARIANT_FIELDS = [
+  ENRICHMENT_FIELD.SUMMARY,
+  ENRICHMENT_FIELD.SERVED_CITY,
+] as const satisfies readonly EnrichmentField[];
+
+export function isTextVariantField(field: EnrichmentField): boolean {
+  return (TEXT_VARIANT_FIELDS as readonly EnrichmentField[]).includes(field);
+}
 
 /** A BCP-47-ish language tag (`he`, `en`, `pt-BR`). Deliberately not an enum: the
  *  languages we hold are whatever the sources have articles in, which is not a set we
@@ -124,6 +148,11 @@ export const FIELD_SOURCE_PRECEDENCE = {
   image: [ENRICHMENT_SOURCE.COMMONS],
   summary: [ENRICHMENT_SOURCE.WIKIPEDIA],
   hours: [ENRICHMENT_SOURCE.OSM],
+  // Wikidata's `P238`/`P931`, and it is the whole chain on purpose: Google has no IATA
+  // field at all and no "city served" field either (§18), so there is no second source to
+  // fall through to — a place with no airport-classed Wikidata item simply has neither.
+  iata: [ENRICHMENT_SOURCE.WIKIDATA],
+  servedCity: [ENRICHMENT_SOURCE.WIKIDATA],
 } as const satisfies Record<EnrichmentField, readonly EnrichmentSource[]>;
 
 /** How long a stored value of this field is fresh (ADR-0166 §6.1: summary effectively
@@ -133,6 +162,12 @@ export const ENRICHMENT_FIELD_TTL_MS = {
   image: 180 * DAY_MS,
   summary: 365 * DAY_MS,
   hours: 1 * DAY_MS,
+  // An airport's IATA code and the city it serves are the most stable facts in this store —
+  // they change when an airport is renamed or closed, which is a decade-scale event. Capped
+  // at the source's own year rather than given a longer number of their own, since
+  // `enrichmentValueTtlMs` takes the tighter of the two anyway.
+  iata: 365 * DAY_MS,
+  servedCity: 365 * DAY_MS,
 } as const satisfies Record<EnrichmentField, number>;
 
 /** **Negative caching is mandatory, not an optimization** (ADR-0166 §6.4). "We looked;
@@ -154,6 +189,13 @@ export const ENRICHMENT_MISS_TTL_MS = {
   image: 30 * DAY_MS,
   summary: 30 * DAY_MS,
   hours: 3 * DAY_MS,
+  // **The miss is the answer here, for nearly every place in a trip.** A café has no IATA
+  // code and never will, so re-asking on the ordinary miss clock would spend a Wikidata pass
+  // per place per month to re-learn the same nothing. Longer than the prose fields'
+  // 30 days because the hopeful case behind that number — an article gets written — has no
+  // counterpart: a restaurant does not become an airport.
+  iata: 180 * DAY_MS,
+  servedCity: 180 * DAY_MS,
 } as const satisfies Record<EnrichmentField, number>;
 
 /** How long a value of `field` from `source` is trusted: the tighter of the field's own
@@ -408,6 +450,18 @@ export const enrichedHoursValueSchema = enrichmentProvenanceSchema.extend({
 });
 export type EnrichedHoursValue = z.infer<typeof enrichedHoursValueSchema>;
 
+/** **An airport's IATA code** (ADR-0166 §18, field report #7) — Wikidata `P238`, and the
+ *  thing Google has no field for at all, which is why `place-label.ts` spent a year
+ *  stripping category nouns off a name instead.
+ *
+ *  Shape-validated rather than trusted: three uppercase letters is what an IATA location
+ *  identifier IS, and the value lands in a label a person reads at an airport, so a
+ *  malformed claim is refused on the way into the store rather than rendered. */
+export const enrichedCodeValueSchema = enrichmentProvenanceSchema.extend({
+  value: z.string().regex(/^[A-Z]{3}$/, 'invalid IATA code'),
+});
+export type EnrichedCodeValue = z.infer<typeof enrichedCodeValueSchema>;
+
 /** "We looked and there is nothing" — a first-class state, not an error (§Context 2,
  *  §11.3), and the negative cache §6.4 makes mandatory. Carries which sources were asked
  *  so a later pass can tell "Wikipedia has no article" from "Wikipedia was down". */
@@ -444,6 +498,11 @@ export const enrichmentFieldsSchema = z.object({
   summary: fieldStateSchema(textVariantsSchema).optional(),
   image: fieldStateSchema(enrichedImageValueSchema).optional(),
   hours: fieldStateSchema(enrichedHoursValueSchema).optional(),
+  iata: fieldStateSchema(enrichedCodeValueSchema).optional(),
+  /** **Variants, like a summary** (§11.6): the city is a name a person reads, and this app
+   *  is Hebrew-first — `תל אביב · TLV` is the label, not `Tel Aviv · TLV`, wherever Wikidata
+   *  has the Hebrew label. Storing one value would throw the other language away. */
+  servedCity: fieldStateSchema(textVariantsSchema).optional(),
 });
 export type EnrichmentFields = z.infer<typeof enrichmentFieldsSchema>;
 
@@ -482,6 +541,8 @@ export const deliveredEnrichmentFieldsSchema = z.object({
   summary: textVariantsSchema.optional(),
   image: deliveredImageValueSchema.optional(),
   hours: enrichedHoursValueSchema.optional(),
+  iata: enrichedCodeValueSchema.optional(),
+  servedCity: textVariantsSchema.optional(),
 });
 export type DeliveredEnrichmentFields = z.infer<typeof deliveredEnrichmentFieldsSchema>;
 
@@ -518,12 +579,15 @@ export const enrichmentLookupSchema = z.object({
 });
 export type EnrichmentLookupInput = z.infer<typeof enrichmentLookupSchema>;
 
-/** What the value of `field` looks like when present — `summary` is the variants map. */
-export type EnrichmentFieldValue<F extends EnrichmentField> = F extends 'summary'
+/** What the value of `field` looks like when present — the two text fields are variants
+ *  maps (`TEXT_VARIANT_FIELDS`). */
+export type EnrichmentFieldValue<F extends EnrichmentField> = F extends 'summary' | 'servedCity'
   ? TextVariants
   : F extends 'image'
     ? EnrichedImageValue
-    : EnrichedHoursValue;
+    : F extends 'iata'
+      ? EnrichedCodeValue
+      : EnrichedHoursValue;
 
 /** The license + credit that actually **govern** a value, walking `derivedFrom` to its
  *  origin (ADR-0166 §11.6). A translation of CC BY-SA text is a derivative work whose
@@ -571,11 +635,11 @@ export function enrichmentValueFetchedAt(
 ): string | undefined {
   const state = fields[field];
   if (state?.state !== 'present') return undefined;
-  if (field === ENRICHMENT_FIELD.SUMMARY) {
+  if (isTextVariantField(field)) {
     // A variants map is as fresh as its **oldest** variant: refreshing the field
     // re-asks for all of them, so the earliest fetch is what governs.
     const variants = Object.values(state.value as TextVariants);
     return variants.map((v) => v.fetchedAt).sort()[0];
   }
-  return (state.value as EnrichedImageValue | EnrichedHoursValue).fetchedAt;
+  return (state.value as EnrichedImageValue | EnrichedHoursValue | EnrichedCodeValue).fetchedAt;
 }

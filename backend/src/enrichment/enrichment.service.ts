@@ -21,6 +21,7 @@ import {
   ENRICHMENT_ABSENCE_REASON,
   ENRICHMENT_FIELD,
   enrichmentFieldsSchema,
+  isTextVariantField,
   type EnrichedTextValue,
   type EnrichmentAbsenceReason,
   type EnrichmentField,
@@ -385,7 +386,7 @@ export class EnrichmentService {
       };
     }
 
-    if (field === ENRICHMENT_FIELD.SUMMARY) {
+    if (isTextVariantField(field)) {
       // A text field holds localized VARIANTS keyed by language (§11.6) — so a second
       // language, or a translation, is one more entry rather than a migration.
       const variant: EnrichedTextValue = { ...provenance, value: value.value, lang: value.lang! };

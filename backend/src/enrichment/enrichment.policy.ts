@@ -11,6 +11,8 @@ import {
   ENRICHMENT_FIELD,
   ENRICHMENT_MISS_TTL_MS,
   enrichmentValueFetchedAt,
+  isTextVariantField,
+  TEXT_VARIANT_FIELDS,
   enrichmentValueTtlMs,
   isUnusableLicense,
   SOURCE_POLICY,
@@ -21,8 +23,10 @@ import {
 } from '@waypoint/shared';
 import type { ProviderValue } from './enrichment.provider';
 
-/** Fields whose value carries prose, and therefore **must** carry a language (§11.6). */
-const PROSE_FIELDS: readonly EnrichmentField[] = [ENRICHMENT_FIELD.SUMMARY];
+/** Fields whose value carries prose, and therefore **must** carry a language (§11.6) — which
+ *  is the same set as the variants fields, since a value stored per language is by definition
+ *  one whose language we knew. */
+const PROSE_FIELDS: readonly EnrichmentField[] = TEXT_VARIANT_FIELDS;
 
 /**
  * Why this value may **not** be written to the store, or `null` when it may.
@@ -127,7 +131,7 @@ function storedValueSource(
 ): EnrichmentSource | undefined {
   const state = fields[field];
   if (state?.state !== 'present') return undefined;
-  if (field === ENRICHMENT_FIELD.SUMMARY) {
+  if (isTextVariantField(field)) {
     const variants = Object.values(
       state.value as Record<string, { fetchedAt: string; source: EnrichmentSource }>,
     );

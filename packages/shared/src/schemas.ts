@@ -10,11 +10,16 @@ import {
   eventSourceSchema,
   eventStatusSchema,
   membershipRoleSchema,
+  placeSearchKindSchema,
   NOTE_HOST_KEYS,
   type NoteHostKey,
 } from './entities';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
-import { MAX_DISPLAY_NAME_LENGTH, MAX_TRIP_NAME_LENGTH } from './constants';
+import {
+  MAX_DISPLAY_NAME_LENGTH,
+  MAX_PLACE_NICKNAME_LENGTH,
+  MAX_TRIP_NAME_LENGTH,
+} from './constants';
 
 /** Client-generated id (cuid/uuid). Server validates format only. ADR-0018. */
 // ponytail: charset+length guard, tighten to exact cuid2/uuid grammar if it ever matters.
@@ -147,6 +152,11 @@ export const createPlaceSchema = z.object({
    *  form reopened. `timezone` deliberately stays absent: the server resolves it from the
    *  coordinates, and a client-supplied zone would be a second source of truth. */
   icon: z.string().optional(),
+  /** The short label a human chose (ADR-0166 §18). Writable on the same two paths as `icon`,
+   *  and bounded because it exists to be SHORTER than the name it overrides — a label longer
+   *  than that is not a nickname, it is a rename. An empty string is the way to clear it, so
+   *  the floor is 0 rather than 1. */
+  nickname: z.string().max(MAX_PLACE_NICKNAME_LENGTH).optional(),
   /** What a human said this place is (ADR-0165). Writable on the same two paths and for the
    *  same reason as `icon` above: the canvas's form asks for both at once, and reopening it on
    *  a place already in the trip is a rename. */
@@ -220,6 +230,9 @@ export type PlaceResult = z.infer<typeof placeResultSchema>;
  *  price), so a query typed while the map is on Shinjuku means Shinjuku. */
 export const searchPlacesTextSchema = z.object({
   input: z.string().min(1).max(200),
+  /** Restrict the answer to one kind of place (field report #6). Absent = the whole corpus,
+   *  which is every search but a flight leg's. */
+  kind: placeSearchKindSchema.optional(),
   bias: z
     .object({
       south: z.number(),

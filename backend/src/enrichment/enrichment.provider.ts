@@ -157,10 +157,19 @@ export interface EnrichmentProvider {
   readonly id: EnrichmentSource;
   /** Which fields this provider can supply a **storable value** for.
    *
-   *  Legitimately empty: Wikidata provides no Tier-A value in Phase 1 and is still
-   *  essential — it is the identity spine that settles the QID, the coordinates and the
-   *  `P18` pointer for everyone downstream. */
+   *  Legitimately empty: a provider can be essential and supply nothing — the identity spine
+   *  settles the QID, the coordinates and the `P18` pointer for everyone downstream. */
   readonly provides: readonly EnrichmentField[];
+  /** **Does this provider settle identity for the ones after it?** (§12.3's match order needs
+   *  the QID before OSM can be asked.)
+   *
+   *  Declared rather than inferred from an empty `provides`, which is what the registry used
+   *  to read it off. That inference held only while the identity provider happened to supply
+   *  no value of its own, and it stopped being true the moment Wikidata gained `iata` /
+   *  `servedCity` (ADR-0166 §18) — at which point Wikidata would have silently stopped running
+   *  on a summary-only pass, and every downstream match would have quietly become fuzzier.
+   *  Absent = the old inference, so no existing provider had to change. */
+  readonly settlesIdentity?: boolean;
   readonly policy: SourcePolicy;
   match(identity: PlaceIdentity): Promise<ProviderMatch | null>;
   fetch(match: ProviderMatch, fields: readonly EnrichmentField[]): Promise<ProviderFieldValues>;
