@@ -34,6 +34,7 @@ import {
 import { offerDayTimes, offerLegTimes, offeredEnd } from '../lib/booking-prefill';
 import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
+import { useVerbs } from '../state/verbs';
 
 // Re-exported so the sheet stays the obvious import for its own props (the derivation moved
 // out in session 173, the vocabulary did not).
@@ -143,6 +144,7 @@ export function BookingSheet({
   onClose: () => void;
 }) {
   const { trip, events, places, indexVerbs, noteVerbs } = useTrip();
+  const verbs = useVerbs();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
@@ -1333,7 +1335,9 @@ export function BookingSheet({
           linkedNotes={linkedEventNotes}
           onCancel={() => setDeleting(false)}
           onChoose={(choice) => {
-            void indexVerbs.deleteBooking(booking.id, deleteFlags(choice)).catch(() => {});
+            void verbs
+              .deleteBooking(booking.id, deleteFlags(choice), linkedEvent?.id)
+              .catch(() => {});
             setDeleting(false);
             onClose();
           }}
@@ -1458,12 +1462,14 @@ export function DeletePrompt({
   /** The other leg of a derived round trip, if there is one (ADR-0154 §5). It buys a
    *  STATEMENT that the partner survives — never a fourth button. */
   partnerLeg?: PartnerLeg;
-  /** The booking's own notes, which every branch of this dialog destroys (ADR-0152 §2) —
-   *  and unlike an event's, they do not come back: a booking delete has no undo. */
+  /** The booking's own notes. On an UNLINKED booking they are the whole context and this
+   *  delete destroys them (ADR-0152 §2) — and unlike an event's, they do not come back: a
+   *  booking delete has no undo. */
   notes: number;
-  /** The linked event's, which only `both` takes. Named on that choice rather than up here,
-   *  because `unlink` keeps the event and therefore keeps them: one line above the choices
-   *  would be a warning that is false in the branch beside it. */
+  /** The linked event's own. Added to `notes` on the `both` choice, which is the only branch
+   *  that takes either: since ADR-0172 §5, `unlink` MOVES the booking's notes onto the
+   *  surviving event rather than letting the cascade have them, so the line that used to sit
+   *  above both choices is now simply false in one of them and is gone. */
   linkedNotes: number;
   onCancel: () => void;
   onChoose: (choice: 'both' | 'unlink') => void;
@@ -1506,7 +1512,6 @@ export function DeletePrompt({
       icon={<Icon name="link" />}
       title={t.index.del.linkedTitle}
       body={t.index.del.linkedBody}
-      consequence={noteNote || undefined}
       onCancel={onCancel}
     >
       {linkedIsHard && (
@@ -1520,7 +1525,12 @@ export function DeletePrompt({
           <div className="bs-choice-t">{t.index.del.both}</div>
           <div className="bs-choice-s">
             {t.index.del.bothSub}
-            {linkedNotes > 0 && ` ${DOT_SEPARATOR} ${t.notes.hostDelete(linkedNotes)}`}
+            {/* The whole CONTEXT's notes, not the event's alone (ADR-0172 §6): since the
+                booking is the anchor, a note written on the event card — or through a place
+                this booking uniquely references — is on the booking, and only this branch
+                takes it. */}
+            {notes + linkedNotes > 0 &&
+              ` ${DOT_SEPARATOR} ${t.notes.hostDelete(notes + linkedNotes)}`}
           </div>
         </button>
         <button type="button" className="bs-choice" onClick={() => onChoose('unlink')}>

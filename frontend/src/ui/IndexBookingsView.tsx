@@ -23,7 +23,8 @@ import {
   visibleRows,
 } from '../lib/index-bookings';
 import { countVisible } from '../lib/filter-reveal';
-import { noteCountFor, noteCountsByHost } from '../lib/notes';
+import { noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { resolveHostContext } from '../lib/host-context';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
@@ -51,7 +52,7 @@ export function IndexBookingsView({
    *  that booking's detail on top of this screen once mounted. */
   initialBookingId?: string;
 }) {
-  const { trip, bookings, places, events, notes } = useTrip();
+  const { trip, bookings, places, events, notes, hostContexts } = useTrip();
   const { mode } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
@@ -178,7 +179,10 @@ export function IndexBookingsView({
       now={now}
       onOpen={openDetail}
       onManage={setManage}
-      notes={noteCountFor(noteCounts, 'booking', row.booking.id)}
+      notes={noteCountForContext(
+        noteCounts,
+        resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
+      )}
       showPlaceOnMap={showPlaceOnMap}
       onLeaveForMap={onClose}
     />

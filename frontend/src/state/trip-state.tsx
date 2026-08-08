@@ -89,6 +89,7 @@ import {
   subscribeSyncFailures,
 } from '../lib/outbox';
 import { liveToday, tripZoneCrossings, type ZoneCrossing, type ZoneEvidence } from '../lib/places';
+import { buildHostContextIndex, type HostContextIndex } from '../lib/host-context';
 import { openTripStream } from '../lib/ws';
 import {
   CHANGE_FEED_LIMIT,
@@ -520,6 +521,11 @@ interface TripContextValue {
    *  that evidence a day's own zone, ADR-0107 session-100) — bundled once so the
    *  surfaces can't drift apart on what they resolve from. */
   zoneEvidence: ZoneEvidence;
+  /** **Which hosts share a notes/attachments list** (ADR-0172 §1): the Booking↔Event pair
+   *  map plus, per place, the one Booking/Event context it inherits — when it has exactly
+   *  one. Derived, never stored: "shared" is a way of reading rows, not a way of keeping
+   *  them, which is why #24 cost no migration. */
+  hostContexts: HostContextIndex;
   documents: DocumentSummary[];
   /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
    *  notes alike — what a note is about is a field on the row, not a separate store. */
@@ -737,6 +743,15 @@ function TripReady({
   const zoneCrossings = useMemo<ZoneCrossing[]>(
     () => tripZoneCrossings(state.events, bookings, places),
     [state.events, bookings, places],
+  );
+
+  // **Which hosts read one another's notes and attachments** (ADR-0172 / ADR-0173) — derived
+  // once here for exactly `zoneCrossings`' reason: a day of twelve rows asks the same
+  // question twelve times, and a per-surface derivation is how the mark on a row ends up
+  // disagreeing with the section inside it (which it did, `hero-horizon.ts` vs `EventCard`).
+  const hostContexts = useMemo<HostContextIndex>(
+    () => buildHostContextIndex(state.events, bookings),
+    [state.events, bookings],
   );
 
   // **The display label for every place that has one** (ADR-0166 §18) — a nickname, or the
@@ -1405,6 +1420,7 @@ function TripReady({
       places,
       zoneCrossings,
       zoneEvidence,
+      hostContexts,
       documents,
       notes,
       enrichments,
@@ -1432,6 +1448,7 @@ function TripReady({
       places,
       zoneCrossings,
       zoneEvidence,
+      hostContexts,
       documents,
       notes,
       enrichments,

@@ -85,7 +85,8 @@ import { placeCredit, placeSummary, type PlaceSummary } from '../lib/place-summa
 import { MediaViewer } from '../ui/MediaViewer';
 import { apiAssetUrl } from '../lib/api-asset';
 import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';
-import { noteCountFor, noteCountsByHost } from '../lib/notes';
+import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { resolveHostContext } from '../lib/host-context';
 import {
   buildPinOrderIndex,
   isAsidePin,
@@ -253,6 +254,7 @@ export function MapView() {
     // session, its debounce and its dedup are all about a query, and a canvas gesture has none.
     indexVerbs,
     notes,
+    hostContexts,
     noteVerbs,
     // What the world knows about these places (ADR-0166 §6) — server-owned, and a missing key
     // is the normal "we know nothing" state rather than a loading one.
@@ -2496,7 +2498,10 @@ export function MapView() {
           distance={distanceLabel(usage)}
           distanceStale={staleDistances}
           selected={selected}
-          notes={noteCountFor(noteCounts, 'place', usage.placeId)}
+          notes={noteCountForContext(
+            noteCounts,
+            resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
+          )}
           // Connected here rather than inside the row, which stays presentational — and gated
           // on `selected` for the same reason the refs are: the list can hold dozens of rows,
           // and a note section per unselected row is a section nobody is looking at.

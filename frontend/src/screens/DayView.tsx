@@ -103,7 +103,8 @@ import { EventCard, type EventPhaseName } from '../ui/domain/EventCard';
 import { routeDisplay } from '../ui/route-display';
 import { placeLabelOf, type PlaceLabels } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
-import { noteCountFor, noteCountsByHost } from '../lib/notes';
+import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
@@ -197,6 +198,7 @@ export function DayView() {
     bookings,
     places,
     notes,
+    hostContexts,
     zoneEvidence,
     activeDate,
     ripple,
@@ -393,6 +395,7 @@ export function DayView() {
     places,
     placeLabels,
     noteCounts,
+    hostContexts,
     dayEvents,
     verbs,
     onEdit: (e) => {
@@ -905,6 +908,9 @@ interface DayCtx {
   /** How many notes each host carries (ADR-0152 §6c), built once per note-list change
    *  rather than filtered per row — a day of twelve events asks this twelve times. */
   noteCounts: Map<string, number>;
+  /** Which hosts share a note list (ADR-0172 §1) — so a booked event's mark counts the
+   *  notes its booking holds, which is where the create path puts them. */
+  hostContexts: HostContextIndex;
   dayEvents: TripEvent[];
   verbs: ReturnType<typeof useVerbs>;
   onEdit: (event: TripEvent) => void;
@@ -1008,7 +1014,10 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       // that gives way when a booking code shares the line (`eventMetaParts`).
       routeRow={!!route.title}
       code={code}
-      notes={noteCountFor(ctx.noteCounts, 'event', e.id)}
+      notes={noteCountForContext(
+        ctx.noteCounts,
+        resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+      )}
       // The mark says there are notes; this is where they are read and written. Connected
       // here rather than inside the card, which is presentational (`ui/domain/`).
       notesSlot={<HostNotes host={{ kind: 'event', id: e.id, name: e.title }} />}

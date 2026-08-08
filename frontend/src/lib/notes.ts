@@ -14,6 +14,7 @@ import {
   type NoteHostKey,
 } from '@waypoint/shared';
 import { DEFAULT_EVENT_ICON } from '../constants';
+import { inContext, type HostContext } from './host-context';
 import { revealRows, type Revealed } from './filter-reveal';
 import { formatDuration } from './duration';
 import { prettyUrl } from './external-url';
@@ -266,6 +267,22 @@ export function noteWhen(createdAt: string, nowMs: number): string {
  *  is a `NOTE_HOST_FIELD` line and nothing else. */
 export function notesForHost(notes: Note[], kind: NoteHostKind, id: string): Note[] {
   return sortNotes(notes.filter((note) => isHostedBy(note, kind, id)));
+}
+
+/** **Everything this surface shows** — its host's rows and those of every other host in its
+ *  context (ADR-0172 §1). A linked booking and its event are one list; a place with exactly
+ *  one relevant context shows that context's rows under its own.
+ *
+ *  Double-counting is impossible by construction rather than by a guard: a note carries at
+ *  most one host FK (ADR-0152 §2), so it can match at most one member. */
+export function notesForContext(notes: Note[], context: HostContext): Note[] {
+  return sortNotes(notes.filter((note) => inContext(context, note, isHostedBy)));
+}
+
+/** The context's count, from the per-host tally a list screen already keeps. Summed rather
+ *  than re-filtered because the caller asks per row. */
+export function noteCountForContext(counts: Map<string, number>, context: HostContext): number {
+  return context.members.reduce((total, m) => total + noteCountFor(counts, m.kind, m.id), 0);
 }
 
 /** The host half of a `createNote` input — `{ bookingId: id }`, `{ documentId: id }`, … —

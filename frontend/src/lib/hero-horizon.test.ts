@@ -11,6 +11,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { canLift, heroHorizon, type HeroHorizonInput } from './hero-horizon';
+import { buildHostContextIndex } from './host-context';
 
 const ev = (id: string, e: Partial<TripEvent> = {}): TripEvent => ({
   id,
@@ -68,6 +69,9 @@ const input = (over: Partial<HeroHorizonInput> = {}): HeroHorizonInput => ({
   nowAll: [],
   nextAll: [],
   bookings: [],
+  // Built from whatever the case supplies, so a booked event's notes resolve through its
+  // booking exactly as they do in the app (ADR-0172 §1) rather than through a stub.
+  hostContexts: buildHostContextIndex(over.events ?? [], over.bookings ?? []),
   places: [],
   notes: [],
   ...over,
