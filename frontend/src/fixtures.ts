@@ -88,7 +88,6 @@ export const TRIP: Trip = {
   endDate: '2026-07-14',
   timezone: 'Asia/Tokyo',
   currency: 'JPY',
-  dailyBudgetMinor: 14000,
   createdBy: ME,
   createdAt: NOW_ISO,
   updatedAt: NOW_ISO,
@@ -338,7 +337,6 @@ export const maybeMeta = (id: string) => MAYBE_META[id] ?? '';
 export const GLANCE = {
   weather: { tempC: 18, note: 'גשם קל אחרי חצות' },
   fx: { label: '¥1=₪0.024', changePct: 0.3 },
-  budget: { spentMinor: 8200 },
 };
 
 export const activeUserId = ME;

@@ -334,7 +334,6 @@ export const createTripSchema = z
     endDate: dateOnlySchema,
     timezone: timezoneSchema.default('UTC'),
     currency: z.string().optional(),
-    dailyBudgetMinor: z.number().int().optional(),
     icon: z.string().optional(),
   })
   // A trip can't end before it begins (a same-day, one-night trip is fine).
@@ -369,7 +368,6 @@ export const updateTripSchema = z
     endDate: dateOnlySchema,
     timezone: timezoneSchema,
     currency: z.string(),
-    dailyBudgetMinor: z.number().int(),
   })
   .partial()
   .refine(

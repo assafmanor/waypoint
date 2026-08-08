@@ -89,11 +89,11 @@ The thin outer ring — chrome to get you into a trip and back out. Spec: [archi
 
 ## Practical layer
 
-| Feature                        | Priority    | Phase | Notes                                                                            |
-| ------------------------------ | ----------- | ----- | -------------------------------------------------------------------------------- |
-| Currency rate display          | Should      | v1    |                                                                                  |
-| Weather                        | Should      | v1    |                                                                                  |
-| Emergency numbers by country   | Should      | v1    |                                                                                  |
-| WiFi codes (copy to clipboard) | Could       | v1    | Already in mockup                                                                |
-| Per-day budget (display)       | Won't (now) | —     | Pulled from the Home (ADR-0045 / ADR-0014 amendment); no expense model behind it |
-| Shared expense tracking        | Could       | v1.1  | Bigger than display-only                                                         |
+| Feature                        | Priority    | Phase | Notes                                                                              |
+| ------------------------------ | ----------- | ----- | ---------------------------------------------------------------------------------- |
+| Currency rate display          | Should      | v1    | `Trip.currency` exists; derive-from-destination + rate card + converter backlogged |
+| Weather                        | Should      | v1    |                                                                                    |
+| Emergency numbers by country   | Should      | v1    |                                                                                    |
+| WiFi codes (copy to clipboard) | Could       | v1    | Already in mockup                                                                  |
+| Per-day budget (display)       | Won't (now) | —     | Removed entirely 2026-08-08, field and all (ADR-0014's second amendment)           |
+| Shared expense tracking        | Could       | v1.1  | Bigger than display-only                                                           |

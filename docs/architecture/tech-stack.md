@@ -49,7 +49,7 @@ See [integrations/overview.md](../integrations/overview.md).
 - ✅ Self-owned traditional backend, **Node/TypeScript / NestJS** (ADR-0008)
 - ✅ Google-only auth (ADR-0013)
 - ✅ Gmail import deferred to v1.1
-- ✅ Budget display-only (ADR-0014)
+- ~~✅ Budget display-only (ADR-0014)~~ — **removed from the product 2026-08-08** (ADR-0014's second amendment); `Trip.currency` stays
 - ✅ Document encryption server-side at rest (ADR-0015)
 - ✅ Own-device location in v1; member sharing deferred (ADR-0006)
 

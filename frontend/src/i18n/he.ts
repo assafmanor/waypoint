@@ -2031,7 +2031,7 @@ export const t = {
     dateFrom: 'מ־',
     dateTo: 'עד',
     timezoneLabel: 'אזור זמן',
-    budgetLabel: 'תקציב יומי לקבוצה',
+    currencyLabel: 'מטבע',
     derivedHint: 'אזור-זמן ומטבע נערכים ידנית כרגע · בעתיד ייגזרו אוטומטית מהיעד',
     peerManaged: 'רק מנהל יכול לערוך את פרטי הטיול',
     party: 'חבורה',

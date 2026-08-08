@@ -65,9 +65,9 @@ Because the app is a `display: standalone` PWA (ADR-0007) with **no system back 
 ### 3. Trip creation — `/new`
 
 - **Purpose:** stand up a new trip. One form, no wizard — **three inputs, everything else derived or deferred (ADR-0032)**.
-- **Contents:** destination → dates → name (**auto-suggested** from destination + year, editable inline). Timezone derives from the destination (schema default); currency derives later; daily budget is deferred to settings (display-only, ADR-0014). Validated with the shared zod schema (ZodValidationPipe on the server).
+- **Contents:** destination → dates → name (**auto-suggested** from destination + year, editable inline). Timezone derives from the destination (schema default); currency derives later. Validated with the shared zod schema (ZodValidationPipe on the server).
 - **Feel:** a live **draft-trip preview card** assembles as you type, in the soft grammar (dashed — provisional), turning solid on create. Shell chrome stays indigo/neutral.
-- **API:** `POST /trips` (exists, unchanged — `createTripSchema` already defaults timezone and makes currency/budget optional). Creator's membership is `admin` (ADR-0005).
+- **API:** `POST /trips` (exists, unchanged — `createTripSchema` already defaults timezone and makes currency optional). Creator's membership is `admin` (ADR-0005).
 - **Flow:** on success → land _in the new trip_ (in Plan mode, being future-dated) → prompt to invite (BoardingPass share, link-only per ADR-0030).
 - **States:** default · submitting · validation errors (inline, per field) · offline (creation is disabled offline — surfaced, not silently queued).
 - **Design reference:** `mockups/create-trip-v1.html` (form + post-create invite prompt).
@@ -108,7 +108,7 @@ Because the app is a `display: standalone` PWA (ADR-0007) with **no system back 
 - **Purpose:** manage the current trip. Reached from the header ⚙ — **not** a bottom-nav tab (ADR-0004).
 - **Governance (ADR-0039):** trip-settings editing is **admin-only, enforced server-side** (peers get a read-only screen); everyday soft-plan/event editing stays open to all. Chrome is **mode-neutral** ink-on-paper (reached from both modes; route sits outside the mode Shell).
 - **Contents:**
-  - **Trip details:** admins edit name / destination / dates / timezone / currency / budget as **one form → one `PATCH /trips/:id`** (LWW, ADR-0012). Timezone & currency are editable now; auto-derivation from the destination is a future update. Date fields reuse PR #92's native-date handling (`lang` = `DEVICE_LOCALE`, end `min` linked to start, shared `endDate >= startDate` refine) but **do not floor to today** (an existing trip may be under way or past).
+  - **Trip details:** admins edit name / destination / dates / timezone / currency as **one form → one `PATCH /trips/:id`** (LWW, ADR-0012). Timezone & currency are editable now; auto-derivation from the destination is a future update. Date fields reuse PR #92's native-date handling (`lang` = `DEVICE_LOCALE`, end `min` linked to start, shared `endDate >= startDate` refine) but **do not floor to today** (an existing trip may be under way or past).
   - **Members:** list with role badges (`admin` / `peer`); a per-member **kebab opens a bottom action sheet** (the `Sheet` pattern) — **promote to admin** and **remove member**, both admin-only (`PATCH /trips/:id/members/:userId` for role; `DELETE /trips/:id/members/:userId` for removal). **Leave trip** removes your own membership; when the **last admin leaves**, another member is auto-promoted.
   - **Invite:** generate + share an invite link (`POST /trips/:id/invite`, exists; the link is `/join/:token`). Share sheet / copy.
   - **Delete trip:** admin-only, double-confirm (`DELETE /trips/:id`); removes the trip for everyone.

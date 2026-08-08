@@ -56,7 +56,6 @@ export const toTripDto = (t: Trip, memberCount?: number): SharedTrip => ({
   endDate: toDateOnly(t.endDate),
   timezone: t.timezone,
   currency: t.currency ?? undefined,
-  dailyBudgetMinor: t.dailyBudgetMinor ?? undefined,
   icon: t.icon ?? undefined,
   createdBy: t.createdBy,
   createdAt: t.createdAt.toISOString(),

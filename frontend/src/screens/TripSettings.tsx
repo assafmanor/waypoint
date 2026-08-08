@@ -262,13 +262,9 @@ export function TripSettings() {
               mono
             />
             <ReadRow
-              icon={<Icon name="budget" />}
-              label={t.settings.budgetLabel}
-              value={
-                trip.dailyBudgetMinor != null
-                  ? `${trip.currency ?? ''} ${trip.dailyBudgetMinor}`.trim()
-                  : '-'
-              }
+              icon={<Icon name="currency" />}
+              label={t.settings.currencyLabel}
+              value={trip.currency ?? '-'}
               mono
             />
             {!isAdmin && (
@@ -490,7 +486,6 @@ function DetailsEditor({
     setCandidateZones(place.candidateZones);
   };
   const [currency, setCurrency] = useState(trip.currency ?? '');
-  const [budget, setBudget] = useState(trip.dailyBudgetMinor?.toString() ?? '');
   const [saving, setSaving] = useState(false);
   // Every refusal this form can make, marked at the field it is about (ADR-0150).
   const errors = useFormErrors<SettingsField>();
@@ -533,7 +528,6 @@ function DetailsEditor({
       endDate,
       timezone,
       currency: currency || undefined,
-      dailyBudgetMinor: budget ? Number(budget) : undefined,
     };
     setSaving(true);
     try {
@@ -635,28 +629,20 @@ function DetailsEditor({
         />
       )}
       <div className="set-fld">
-        <label>{t.settings.budgetLabel}</label>
-        <div className="budget-row">
-          <select
-            value={currency}
-            aria-label={t.settings.budgetLabel}
-            onChange={(e) => setCurrency(e.target.value)}
-          >
-            <option value="">-</option>
-            {withCurrent(CURRENCY_OPTIONS, currency || undefined).map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={0}
-            inputMode="numeric"
-            value={budget}
-            onChange={(e) => setBudget(e.target.value)}
-          />
-        </div>
+        <label htmlFor="s-currency">{t.settings.currencyLabel}</label>
+        <select
+          id="s-currency"
+          className="currency-select"
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+        >
+          <option value="">-</option>
+          {withCurrent(CURRENCY_OPTIONS, currency || undefined).map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="set-hint-block">{t.settings.derivedHint}</div>
       <div className="set-form-actions">

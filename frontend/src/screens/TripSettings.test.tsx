@@ -95,7 +95,7 @@ describe('TripSettings — the details form refuses at the field', () => {
 // `mono` branch forced `dir="ltr"` through a ternary the lint guard read past — the same
 // mistake as `BookingDetail`'s fact row, in the app's other copy of that shape — which set a
 // base direction for the whole value instead of isolating the run inside it. `auto` keeps the
-// zone and the budget LTR and stops a Hebrew name or a numeral-led destination reversing.
+// zone and the currency LTR and stops a Hebrew name or a numeral-led destination reversing.
 describe('TripSettings — a read row never inherits the screen direction', () => {
   it('lets every value say which way it reads, mono included', () => {
     render(wrapNav(<TripSettings />));

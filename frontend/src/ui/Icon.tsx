@@ -46,7 +46,7 @@ export type IconName =
   | 'plus'
   | 'more'
   | 'clipboard'
-  | 'budget'
+  | 'currency'
   | 'ticket'
   | 'wifi'
   | 'documents'
@@ -211,10 +211,10 @@ const PATHS: Record<IconName, string> = {
   // section (📕 🛡️ 🎫 📄) stay emoji: those are content, one per document.
   documents:
     'M5.4 2.8h13.2a1.6 1.6 0 0 1 1.6 1.6v15.2a1.6 1.6 0 0 1-1.6 1.6H5.4a1.6 1.6 0 0 1-1.6-1.6V4.4a1.6 1.6 0 0 1 1.6-1.6Z M10.6 9.4a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0 M6.8 15.4c0-1.5 1-2.4 1.9-2.4s1.9.9 1.9 2.4 M13.6 9.2h3.6 M13.6 12.6h3.6 M13.6 16h3.6',
-  // A wallet with its clasp — trip settings' daily-budget row. Replaces 💰, which
+  // A wallet with its clasp — trip settings' currency row. Replaces 💰, which
   // was the one emoji left among four SVG `ReadRow`s in the same list (ADR-0138's
-  // follow-up sweep). A budget is money you are carrying, not a pile of it.
-  budget:
+  // follow-up sweep). Money you are carrying, not a pile of it.
+  currency:
     'M3.4 8.4a2 2 0 0 1 2-2h13.2a2 2 0 0 1 2 2v9.2a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2Z M3.4 9.6h13.2a1.6 1.6 0 0 1 1.6 1.6v3.6a1.6 1.6 0 0 1-1.6 1.6H3.4 M14.6 13.4h.02',
   // Board + clip. Replaces 📋 (copy-to-clipboard).
   clipboard:
