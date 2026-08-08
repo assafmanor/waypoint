@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   Booking,
   Change,
+  DocumentAttachment,
   DocumentSummary,
   Note,
   Place,
@@ -52,6 +53,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     maybeItems: MAYBE_ITEMS,
     places: [],
     notes: [],
+    documentAttachments: [],
     enrichments: {},
     latestSeq: '10',
     ...overrides,
@@ -608,6 +610,100 @@ describe('notes in the offline cache (ADR-0152)', () => {
 
     const cached = await readCachedSnapshot(TRIP_ID);
     expect(cached?.notes.map((n) => n.id)).toEqual(['n2', 'n3']);
+  });
+});
+
+describe('document attachments in the offline cache (ADR-0173)', () => {
+  const link = (id: string, over: Partial<DocumentAttachment> = {}): DocumentAttachment => ({
+    id,
+    tripId: TRIP_ID,
+    documentId: `doc-${id}`,
+    createdBy: 'u-assaf',
+    createdAt: '2026-08-08T10:00:00.000Z',
+    ...over,
+  });
+
+  it('round-trips the links through the snapshot cache', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ documentAttachments: [link('a1'), link('a2')] }));
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.documentAttachments.map((a) => a.id)).toEqual(['a1', 'a2']);
+  });
+
+  it('reads a trip cached BEFORE attachments shipped as having none, not undefined', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    const meta = await db.snapshotMeta.get(TRIP_ID);
+    delete (meta as unknown as Record<string, unknown>).documentAttachments;
+    await db.snapshotMeta.put(meta!);
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.documentAttachments).toEqual([]);
+  });
+
+  it('mirrors an offline attach so a cold reopen still shows it', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot());
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT,
+      input: { id: 'a-offline', documentId: 'd1', bookingId: 'b1' },
+    });
+    const cached = await readCachedSnapshot(TRIP_ID);
+    // `createdAt` is the server's, so the queued row states it — without that the row fails
+    // `documentAttachmentSchema` on the next cold load and its order has nothing to sort on.
+    expect(cached?.documentAttachments.find((a) => a.id === 'a-offline')).toMatchObject({
+      documentId: 'd1',
+      bookingId: 'b1',
+    });
+    expect(cached?.documentAttachments[0]?.createdAt).toBeTruthy();
+  });
+
+  it('mirrors an offline detach', async () => {
+    await cacheSnapshot(TRIP_ID, snapshot({ documentAttachments: [link('a1')] }));
+    await applyOutboxOpToCache(TRIP_ID, {
+      verb: OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT,
+      attachmentId: 'a1',
+    });
+    expect((await readCachedSnapshot(TRIP_ID))?.documentAttachments).toEqual([]);
+  });
+
+  // Same trap as the notes cascade above, and the third instance of ADR-0157 §3's rule.
+  it('drops a deleted host’s links, though no attachment Change was sent', async () => {
+    await cacheSnapshot(
+      TRIP_ID,
+      snapshot({
+        documentAttachments: [
+          link('a1', { bookingId: 'b1' }),
+          link('a2', { eventId: 'e1' }),
+          link('a3', { bookingId: 'b2' }),
+        ],
+      }),
+    );
+
+    await applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.BOOKING,
+      entityId: 'b1',
+      action: CHANGE_ACTION.DELETE,
+    });
+
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.documentAttachments.map((a) => a.id)).toEqual(['a2', 'a3']);
+  });
+
+  // Deleting the FILE takes its pointers — the other end of the row, and the cascade
+  // `ATTACHMENT_HOST_FIELD` cannot name.
+  it('drops a deleted document’s links', async () => {
+    await cacheSnapshot(
+      TRIP_ID,
+      snapshot({
+        documentAttachments: [link('a1', { bookingId: 'b1' }), link('a2', { eventId: 'e1' })],
+      }),
+    );
+
+    await applyChangeToCache(TRIP_ID, {
+      entityType: ENTITY_TYPE.DOCUMENT,
+      entityId: 'doc-a1',
+      action: CHANGE_ACTION.DELETE,
+    });
+
+    const cached = await readCachedSnapshot(TRIP_ID);
+    expect(cached?.documentAttachments.map((a) => a.id)).toEqual(['a2']);
   });
 });
 

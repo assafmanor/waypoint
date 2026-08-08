@@ -499,6 +499,8 @@ export const t = {
       createNote: 'כתיבת פתק',
       updateNote: 'עריכת פתק',
       deleteNote: 'מחיקת פתק',
+      createDocumentAttachment: 'צירוף מסמך',
+      deleteDocumentAttachment: 'ביטול צירוף מסמך',
       // `satisfies Record<OutboxVerb, string>`, not `as Record<string, string>`: this map is
       // read as `t.sync.verb[f.verb]`, so a verb missing from it renders a queued failure with
       // NO name — and the loose cast made that silent. Typed, a new outbox verb is a compile
@@ -1050,6 +1052,23 @@ export const t = {
       cancel: 'ביטול',
       deleted: 'המסמך נמחק',
       failed: 'הפעולה נכשלה, נסו שוב',
+    },
+    // The attach slot on a host's own form (ADR-0173 §5). `attach` is the empty state's ONE
+    // control — the header, the chip list and the split into two entrances only appear once
+    // something is attached, which is what keeps the empty case at 40px instead of 86px.
+    attach: {
+      attach: 'צירוף מסמך',
+      title: 'מסמכים',
+      pick: 'מסמך קיים',
+      upload: 'העלאה',
+      detach: 'ביטול הצירוף',
+      // The picker sheet's own words.
+      pickTitle: 'בחירת מסמך',
+      pickEmpty: 'אין מסמכים לצרף. אפשר להעלות מסמך חדש.',
+      pickAll: 'כל המסמכים כבר מצורפים כאן.',
+      cancel: 'ביטול',
+      attached: 'המסמך צורף',
+      detached: 'הצירוף בוטל',
     },
   },
   mode: {

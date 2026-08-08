@@ -109,6 +109,11 @@ vi.mock('../state/trip-state', () => ({
     notes: tripNotes,
     users: [{ id: 'u1', displayName: 'דנה' }],
     noteVerbs: { createNote },
+    // The event form the Map hosts carries the attach slot too (ADR-0173 §5), which reads
+    // the trip's documents and links. A place never originates one (§4), so both are empty.
+    documents: [],
+    documentAttachments: [],
+    attachmentVerbs: { attachDocument: vi.fn(), detachDocument: vi.fn() },
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
@@ -136,6 +141,9 @@ vi.mock('../lib/outbox', () => ({
   useIsOffline: () => isOffline,
   // A place's notes are written inside one change group, behind their host (ADR-0152 §6b).
   withChangeGroup: (run: () => Promise<unknown>) => run(),
+  // The event form's attach slot (ADR-0173 §5) reads the queued uploads; there is no
+  // IndexedDB here, and a queued upload is not what this suite is about.
+  usePendingUploads: () => [],
 }));
 
 /** The shared search core, stubbed so this suite can say what the PAID half has done —

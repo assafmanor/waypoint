@@ -2,6 +2,7 @@
 // the shapes; these give call sites named values instead of magic strings.
 // `satisfies` pins each value to its union so the two can never drift.
 import type {
+  AttachmentHostKey,
   AuthProvider,
   BookingSource,
   BookingType,
@@ -162,6 +163,7 @@ export const ENTITY_TYPE = {
   TRIP: 'trip',
   MEMBERSHIP: 'membership',
   NOTE: 'note',
+  DOCUMENT_ATTACHMENT: 'documentAttachment',
 } as const satisfies Record<string, EntityType>;
 
 /** Where a note came from (ADR-0152 §1). One value in v1 — §9 registers no strategy. */
@@ -188,6 +190,21 @@ export const NOTE_HOST_FIELD = {
   [ENTITY_TYPE.MAYBE_ITEM]: 'maybeItemId',
   [ENTITY_TYPE.DOCUMENT]: 'documentId',
 } as const satisfies Partial<Record<EntityType, NoteHostKey>>;
+
+/** **Which FK holds an attachment's host, per host entity type** (ADR-0173 §1/§7) — the
+ *  same lookup as `NOTE_HOST_FIELD` above and for the same reason: the host FKs are
+ *  `onDelete: Cascade` **on the link row**, so Postgres removes a deleted host's links
+ *  without writing a `Change`, and the client owes a local derivation off the parent's
+ *  change (`dropAttachmentsForHostChange`) in both places a change is mirrored.
+ *
+ *  Two members, not five. A `Place` never hosts one (§4) and `documentId` is not a host at
+ *  all — deleting the DOCUMENT cascades the link too, but that is the link dying with the
+ *  thing it points at rather than with the thing it points from, and the client hears about
+ *  it through the document's own channel. */
+export const ATTACHMENT_HOST_FIELD = {
+  [ENTITY_TYPE.EVENT]: 'eventId',
+  [ENTITY_TYPE.BOOKING]: 'bookingId',
+} as const satisfies Partial<Record<EntityType, AttachmentHostKey>>;
 
 /** The `code` field of the error envelope (api-contract.md §14). One source the
  *  backend throws and the client branches on, so neither side spells the string:

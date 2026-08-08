@@ -85,6 +85,7 @@ export const entityTypeSchema = z.enum([
   'trip',
   'membership',
   'note',
+  'documentAttachment',
 ]);
 export type EntityType = z.infer<typeof entityTypeSchema>;
 
@@ -323,6 +324,42 @@ export type TripDocument = z.infer<typeof tripDocumentSchema>;
 export const documentSummarySchema = tripDocumentSchema.omit({ fileRef: true });
 export type DocumentSummary = z.infer<typeof documentSummarySchema>;
 
+/** The two typed host FKs of an attachment, as one list — the same discipline `Note` uses
+ *  (`NOTE_HOST_KEYS`), so "exactly one host" is a `.filter().length` rather than a boolean
+ *  and a third host would be one string. There are two members and not three on purpose: a
+ *  Place may **display** an inherited attachment and may never **originate** one
+ *  (ADR-0173 §4), so its inheritance is entirely a read-time resolution with no row that
+ *  could be mis-hosted. */
+export const ATTACHMENT_HOST_KEYS = ['eventId', 'bookingId'] as const;
+export type AttachmentHostKey = (typeof ATTACHMENT_HOST_KEYS)[number];
+
+/** **A document attaches, it detaches, and it never dies with its host** (ADR-0173 §1).
+ *
+ *  The link is its own row rather than a host FK on `TripDocument`, and that is what makes
+ *  "detach, never delete" the DEFAULT behaviour instead of a `SetNull` special case somebody
+ *  later "fixes": deleting a booking cascades this row away and cannot reach the document,
+ *  which is a separate row still owned by the trip. A note is born owned by its host; a
+ *  document is not — it already exists, with its own screen and its own upload flow, and it
+ *  gets attached after the fact.
+ *
+ *  Many-to-many falls out and is a real requirement rather than generality for its own sake:
+ *  ADR-0154 fixes a round trip as **two** `Booking`s, and one confirmation PDF covers both.
+ *
+ *  No `updatedAt`/`updatedBy`: a link has no content to edit. It is created and it is
+ *  removed. */
+export const documentAttachmentSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  documentId: idSchema,
+  // Exactly one is set, enforced by `createDocumentAttachmentSchema` at both edges
+  // (ADR-0023) — the closed union is not expressible as a Prisma check constraint.
+  eventId: idSchema.optional(),
+  bookingId: idSchema.optional(),
+  createdBy: idSchema,
+  createdAt: z.string(),
+});
+export type DocumentAttachment = z.infer<typeof documentAttachmentSchema>;
+
 export const maybeItemSchema = z.object({
   id: idSchema,
   tripId: idSchema,
@@ -416,6 +453,12 @@ export const tripSnapshotSchema = z.object({
   maybeItems: z.array(maybeItemSchema),
   places: z.array(placeSchema),
   notes: z.array(noteSchema),
+  /** The document↔host links (ADR-0173 §1). A first-class syncable entity of its own, the
+   *  cost ADR-0172's derivation deliberately avoided — but the storage genuinely differs
+   *  here, so the sync substrate does too. Which DOCUMENT a link resolves to is answered
+   *  against `documents` above, so an attachment whose document this reader cannot see
+   *  renders as nothing (§6). */
+  documentAttachments: z.array(documentAttachmentSchema),
   /** **The world's facts about the trip's places, keyed by `placeId`** (ADR-0166 §6). A
    *  server-owned read model joined onto the snapshot, not an entity of the trip: the store
    *  is global and no client writes it, so it carries no `Change` and never appears in the

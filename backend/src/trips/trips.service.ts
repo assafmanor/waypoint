@@ -35,6 +35,7 @@ import {
   toInvitePreviewDto,
   toMaybeItemDto,
   toMembershipDto,
+  toDocumentAttachmentDto,
   toNoteDto,
   toPlaceDto,
   toTripDto,
@@ -442,39 +443,55 @@ export class TripsService {
    * every lower `seq` has already committed, so no entity it counts is missing.
    */
   async getSnapshot(tripId: string): Promise<TripSnapshot> {
-    const [latestChange, trip, members, events, bookings, documents, maybeItems, places, notes] =
-      await this.prisma.$transaction(
-        [
-          this.prisma.change.findFirst({
-            where: { tripId },
-            orderBy: { seq: 'desc' },
-            select: { seq: true },
-          }),
-          this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
-          this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
-          this.prisma.event.findMany({
-            where: { tripId },
-            orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
-          }),
-          this.prisma.booking.findMany({ where: { tripId } }),
-          this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
-          // `id` breaks ties, so the floor every shelf ranking sits on is total
-          // rather than merely usually-sorted (ADR-0151 §3).
-          this.prisma.maybeItem.findMany({
-            where: { tripId },
-            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-          }),
-          this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
-          // Newest first, which is the notes screen's own order (ADR-0153 §2) — and `id`
-          // breaks ties so two notes written in the same millisecond (the composer's
-          // several-at-one-save case) have a stable order rather than a shuffling one.
-          this.prisma.note.findMany({
-            where: { tripId },
-            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
-          }),
-        ],
-        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
-      );
+    const [
+      latestChange,
+      trip,
+      members,
+      events,
+      bookings,
+      documents,
+      maybeItems,
+      places,
+      notes,
+      documentAttachments,
+    ] = await this.prisma.$transaction(
+      [
+        this.prisma.change.findFirst({
+          where: { tripId },
+          orderBy: { seq: 'desc' },
+          select: { seq: true },
+        }),
+        this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } }),
+        this.prisma.membership.findMany({ where: { tripId }, include: { user: true } }),
+        this.prisma.event.findMany({
+          where: { tripId },
+          orderBy: [{ date: 'asc' }, { sortOrder: 'asc' }],
+        }),
+        this.prisma.booking.findMany({ where: { tripId } }),
+        this.prisma.document.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+        // `id` breaks ties, so the floor every shelf ranking sits on is total
+        // rather than merely usually-sorted (ADR-0151 §3).
+        this.prisma.maybeItem.findMany({
+          where: { tripId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
+        this.prisma.place.findMany({ where: { tripId }, orderBy: { createdAt: 'asc' } }),
+        // Newest first, which is the notes screen's own order (ADR-0153 §2) — and `id`
+        // breaks ties so two notes written in the same millisecond (the composer's
+        // several-at-one-save case) have a stable order rather than a shuffling one.
+        this.prisma.note.findMany({
+          where: { tripId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        }),
+        // Oldest first, so a host's chips read in the order they were attached; `id`
+        // breaks ties, since one save can write several links in the same millisecond.
+        this.prisma.documentAttachment.findMany({
+          where: { tripId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
 
     // **Read AFTER the transaction, and deliberately outside it** (ADR-0166 §6). Two
     // reasons: it depends on the places the transaction returned, and it is not part of the
@@ -499,6 +516,7 @@ export class TripsService {
       maybeItems: maybeItems.map(toMaybeItemDto),
       places: places.map(toPlaceDto),
       notes: notes.map(toNoteDto),
+      documentAttachments: documentAttachments.map(toDocumentAttachmentDto),
       enrichments,
       latestSeq: latestChange ? latestChange.seq.toString() : '0',
     };

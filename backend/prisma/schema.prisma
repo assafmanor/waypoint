@@ -91,9 +91,9 @@ enum ChangeAction {
 }
 
 model User {
-  id          String @id @default(cuid())
-  email       String @unique
-  displayName String
+  id                String       @id @default(cuid())
+  email             String       @unique
+  displayName       String
   // Identity (ADR-0133). `avatarHue` stores a ramp KEY, not a hex, so the dark
   // token remap reaches it — and it is NULLABLE on purpose: null means "never
   // chosen", which the server resolves per-user via `deriveAvatarHue(id)`. It
@@ -108,15 +108,16 @@ model User {
 
   createdAt DateTime @default(now())
 
-  authIdentities     AuthIdentity[]
-  sessions           Session[]
-  memberships        Membership[]
-  tripsCreated       Trip[]
-  maybeItems         MaybeItem[]
-  changes            Change[]
-  calendarEventLinks CalendarEventLink[]
-  tripBlocks         TripBlock[]
-  notes              Note[]
+  authIdentities      AuthIdentity[]
+  sessions            Session[]
+  memberships         Membership[]
+  tripsCreated        Trip[]
+  maybeItems          MaybeItem[]
+  changes             Change[]
+  calendarEventLinks  CalendarEventLink[]
+  tripBlocks          TripBlock[]
+  notes               Note[]
+  documentAttachments DocumentAttachment[]
 }
 
 // Provider identity + that provider's OAuth material, one per (user, provider). ADR-0020.
@@ -183,6 +184,8 @@ model Trip {
   invite      Invite?
   blocks      TripBlock[]
   notes       Note[]
+
+  documentAttachments DocumentAttachment[]
 
   @@index([createdBy])
 }
@@ -258,11 +261,12 @@ model Event {
   updatedAt       DateTime       @updatedAt
   updatedBy       String
 
-  trip          Trip                @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  booking       Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  notes         Note[]
-  place         Place?              @relation("EventPlace", fields: [placeId], references: [id], onDelete: SetNull)
-  calendarLinks CalendarEventLink[]
+  trip                Trip                 @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  booking             Booking?             @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  notes               Note[]
+  place               Place?               @relation("EventPlace", fields: [placeId], references: [id], onDelete: SetNull)
+  calendarLinks       CalendarEventLink[]
+  documentAttachments DocumentAttachment[]
 
   @@index([tripId, date])
 }
@@ -294,6 +298,8 @@ model Booking {
   toPlace   Place? @relation("BookingToPlace", fields: [toPlaceId], references: [id], onDelete: SetNull)
   notes     Note[]
 
+  documentAttachments DocumentAttachment[]
+
   @@index([tripId])
 }
 
@@ -303,7 +309,7 @@ model Booking {
 // keys on @@unique([tripId, googlePlaceId]) so a place is enriched at most once per trip
 // (Postgres treats NULLs as distinct, so many name-only rows still coexist).
 model Place {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   tripId           String
   googlePlaceId    String?
   name             String
@@ -327,8 +333,8 @@ model Place {
   category         EventCategory?
   rating           Float? // Google aggregate rating 0–5 (ADR-0109 §9)
   userRatingsTotal Int? // count behind `rating`
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   updatedBy        String
 
   trip         Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
@@ -375,24 +381,68 @@ model Document {
   trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
   notes Note[]
 
+  attachments DocumentAttachment[]
+
   @@index([tripId])
 }
 
+// **The link between a document and the booking or event it belongs to** (ADR-0173 §1).
+// A row of its own rather than a host FK on Document, and the cascades are the whole
+// argument: deleting the DOCUMENT takes its links (the file is gone, so the pointers are
+// meaningless), and deleting the HOST takes the link and cannot reach the document —
+// it is a separate row, still owned by the trip. A cancelled hotel must not delete your
+// voucher, and with this shape that is the DEFAULT behaviour rather than a `SetNull`
+// special case someone later "fixes".
+//
+// Many-to-many, which is a requirement and not generality: ADR-0154 fixes a round trip as
+// two Bookings, and one confirmation PDF covers both.
+model DocumentAttachment {
+  id         String   @id @default(cuid())
+  tripId     String
+  documentId String
+  // Exactly one is set — enforced by the shared zod schema at both edges (ADR-0023), since
+  // the union is closed and Prisma's schema language cannot express a check constraint.
+  // There is deliberately no `placeId`: a place displays an inherited attachment and may
+  // never originate one (ADR-0173 §4), so its inheritance is read-time only.
+  eventId    String?
+  bookingId  String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  trip     Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  event    Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // One document attaches to one host once. TWO constraints rather than one over three
+  // columns, because Postgres treats NULLs as distinct: each binds only the rows where its
+  // host is actually set, and between them every row is covered. What they buy is that a
+  // double-tap or an outbox replay is a duplicate-key hit the service reads as
+  // already-applied, rather than a second row nobody can tell from the first.
+  @@unique([documentId, eventId])
+  @@unique([documentId, bookingId])
+  @@index([tripId])
+  @@index([documentId])
+  @@index([eventId])
+  @@index([bookingId])
+}
+
 model MaybeItem {
-  id        String         @id @default(cuid())
-  tripId    String
-  title     String
-  icon      String?
-  category  EventCategory?
-  placeId   String?
+  id         String         @id @default(cuid())
+  tripId     String
+  title      String
+  icon       String?
+  category   EventCategory?
+  placeId    String?
   // The day we're thinking of, pencilled in (ADR-0116 §1) — never a schedule: an
   // idea with a target day still carries no time and never reaches the timeline.
   targetDate String?
-  createdBy String
-  consumed  Boolean        @default(false)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  updatedBy String
+  createdBy  String
+  consumed   Boolean        @default(false)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  updatedBy  String
 
   trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
   user  User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
@@ -416,25 +466,25 @@ model MaybeItem {
 // `category` is nullable and STAYS null on a hosted note — it resolves from the host at
 // render (§5's amendment). There is no `icon` column: the same chain gives the glyph.
 model Note {
-  id       String         @id @default(cuid())
-  tripId   String
-  title    String?
-  body     String?
-  url      String?
-  category EventCategory?
+  id          String         @id @default(cuid())
+  tripId      String
+  title       String?
+  body        String?
+  url         String?
+  category    EventCategory?
   // At most one of these is set — enforced by the shared zod schema at both edges
   // (ADR-0023), since the union is closed and a check constraint here could not be
   // expressed through Prisma's schema language.
-  eventId      String?
-  bookingId    String?
-  placeId      String?
-  maybeItemId  String?
-  documentId   String?
-  source       String     @default("member")
-  createdBy    String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  updatedBy    String
+  eventId     String?
+  bookingId   String?
+  placeId     String?
+  maybeItemId String?
+  documentId  String?
+  source      String         @default("member")
+  createdBy   String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  updatedBy   String
 
   trip      Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
   user      User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)

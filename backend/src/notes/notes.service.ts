@@ -9,7 +9,7 @@ import {
 } from '@waypoint/shared';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertNoteHostInTrip } from '../common/trip-scope.util';
+import { assertEntityRefsInTrip } from '../common/trip-scope.util';
 import { ChangeService } from '../sync/change.service';
 import { toNoteDto } from '../trips/trips.mapper';
 
@@ -33,7 +33,7 @@ export class NotesService {
   async create(tripId: string, actorUserId: string, input: CreateNoteInput): Promise<Note> {
     // The host is a client-supplied id, so it is scoped before it is written — a foreign
     // one would be a note whose host its readers can never see (B-06's class of bug).
-    await assertNoteHostInTrip(this.prisma, tripId, input);
+    await assertEntityRefsInTrip(this.prisma, tripId, input);
     const id = input.id ?? randomUUID();
     try {
       const { entity } = await this.changes.mutate({
@@ -91,7 +91,7 @@ export class NotesService {
     // A conversion may be moving this note to a new host (ADR-0152 §5's 2026-08-01
     // amendment), and a foreign one would be a note its readers can never see — the same
     // check `create` runs, for the same reason.
-    await assertNoteHostInTrip(this.prisma, tripId, input);
+    await assertEntityRefsInTrip(this.prisma, tripId, input);
     const { entity } = await this.changes.mutate({
       tripId,
       actorUserId,

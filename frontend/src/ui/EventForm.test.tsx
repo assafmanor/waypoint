@@ -43,8 +43,20 @@ const tripState = {
   // the trip's notes and members straight from here.
   notes: [] as unknown[],
   users: [] as unknown[],
+  // Documents attached on the way (ADR-0173 §5): the slot reads the trip's documents and
+  // links, and the form queues its staged links BEHIND their host like the notes above.
+  documents: [] as unknown[],
+  documentAttachments: [] as unknown[],
+  attachmentVerbs: { attachDocument: vi.fn(() => Promise.resolve(undefined)) },
 };
 vi.mock('../state/trip-state', () => ({ useTrip: () => tripState }));
+// The attach slot reads the outbox for queued uploads (ADR-0173 §5 / ADR-0056); there is no
+// IndexedDB here, and a queued upload is not what these tests are about.
+vi.mock('../lib/outbox', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/outbox')>();
+  return { ...actual, usePendingUploads: () => [] };
+});
+
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
 // **These three RESOLVE, and the mock has to say so.** They return their host now (a
 // promise of it) precisely so a caller can queue notes behind it — a mock returning

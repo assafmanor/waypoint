@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createDocumentAttachmentSchema,
   createEventSchema,
   createNoteSchema,
   createTripSchema,
   moveEventSchema,
   updateNoteSchema,
 } from './schemas';
-import { NOTE_HOST_KEYS } from './entities';
+import { ATTACHMENT_HOST_KEYS, NOTE_HOST_KEYS } from './entities';
 
 // B-05: `date`/`startsAt`/`timezone` were bare `z.string()`, so "banana" passed
 // validation and blew up later as a Prisma 500 / Intl RangeError. These reject
@@ -126,5 +127,50 @@ describe('note input validation', () => {
 
   it('refuses an update that would empty the note', () => {
     expect(updateNoteSchema.safeParse({ body: null, url: null }).success).toBe(false);
+  });
+});
+
+// A link's one rule (ADR-0173 §1). Deliberately STRICTER than a note's "at most one": a
+// note with no host is a general note and a real thing, an attachment with none is a link
+// to nowhere.
+describe('document attachment input validation', () => {
+  const documentId = 'doc-1234abcd';
+
+  it('accepts a link to each of the two hosts', () => {
+    for (const key of ATTACHMENT_HOST_KEYS) {
+      expect(
+        createDocumentAttachmentSchema.safeParse({ documentId, [key]: 'host-1234abcd' }).success,
+      ).toBe(true);
+    }
+  });
+
+  it('refuses a link with no host at all', () => {
+    expect(createDocumentAttachmentSchema.safeParse({ documentId }).success).toBe(false);
+  });
+
+  it('refuses a link claiming both hosts', () => {
+    const both = { documentId, eventId: 'evt-1234abcd', bookingId: 'bkg-1234abcd' };
+    expect(createDocumentAttachmentSchema.safeParse(both).success).toBe(false);
+  });
+
+  it('has no `placeId` host — a place displays, never originates (§4)', () => {
+    const onPlace = { documentId, placeId: 'plc-1234abcd' };
+    expect(createDocumentAttachmentSchema.safeParse(onPlace).success).toBe(false);
+  });
+
+  it('requires the document it points at', () => {
+    expect(createDocumentAttachmentSchema.safeParse({ bookingId: 'bkg-1234abcd' }).success).toBe(
+      false,
+    );
+  });
+
+  it('carries a client-generated id when one is given, so a retry is idempotent', () => {
+    const result = createDocumentAttachmentSchema.safeParse({
+      id: 'att-1234abcd',
+      documentId,
+      bookingId: 'bkg-1234abcd',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.id).toBe('att-1234abcd');
   });
 });

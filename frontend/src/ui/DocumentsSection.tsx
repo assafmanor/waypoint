@@ -14,7 +14,7 @@ import { usePendingUploads, useIsOffline } from '../lib/outbox';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { ListRow, NoteMark } from './domain';
 import { noteCountFor, noteCountsByHost } from '../lib/notes';
-import { groupDocuments } from '../lib/documents';
+import { groupDocuments, withPendingUploads } from '../lib/documents';
 import { overlayOriginOffset } from '../lib/motion';
 import { formatBytes } from '../lib/bytes';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
@@ -52,23 +52,11 @@ export function DocumentsSection({ initialDocumentId }: { initialDocumentId?: st
   const pending = usePendingUploads(trip.id);
 
   // Merge the live list with queued uploads not yet reflected server-side; a Set of
-  // pending ids drives the per-row "uploading" affordance.
+  // pending ids drives the per-row "uploading" affordance. The merge itself is shared
+  // (`withPendingUploads`) — the attach slot is its second reader (ADR-0173 §5).
   const serverIds = new Set(documents.map((d) => d.id));
-  const pendingRows: DocumentSummary[] = pending
-    .filter((p) => !serverIds.has(p.id))
-    .map((p) => ({
-      id: p.id,
-      tripId: p.tripId,
-      type: p.type,
-      title: p.title,
-      mimeType: p.mimeType,
-      sizeBytes: p.sizeBytes,
-      createdAt: '',
-      updatedAt: '',
-      updatedBy: '',
-    }));
-  const pendingIds = new Set(pendingRows.map((r) => r.id));
-  const allDocs = [...documents, ...pendingRows];
+  const allDocs = withPendingUploads(documents, pending);
+  const pendingIds = new Set(allDocs.filter((d) => !serverIds.has(d.id)).map((d) => d.id));
 
   const groups = groupDocuments(allDocs);
   const isEmpty = allDocs.length === 0;

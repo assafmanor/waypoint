@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import {
+  ATTACHMENT_HOST_KEYS,
   bookingTypeSchema,
   documentTypeSchema,
   eventCategorySchema,
@@ -475,6 +476,31 @@ export const updateNoteSchema = z
     path: ['eventId'],
   });
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
+
+// --- Document attachments (ADR-0173) --------------------------------------------------
+// The link between an existing document and a booking or an event. There is no update
+// schema and there never will be: a link has no content, so it is created and removed.
+
+/** `POST /trips/:tripId/document-attachments` — attach a document the trip already holds.
+ *
+ *  **Exactly one host**, where a note's rule is "at most one": a note with none is a general
+ *  note and a real thing; an attachment with none is a link to nowhere. The id is optional
+ *  and client-generated in practice, which is what makes an attachment written beside a
+ *  queued upload idempotent on an outbox retry (ADR-0056 / ADR-0173 §5). */
+export const createDocumentAttachmentSchema = z
+  .object({
+    id: entityIdSchema.optional(),
+    documentId: entityIdSchema,
+    eventId: entityIdSchema.optional(),
+    bookingId: entityIdSchema.optional(),
+  })
+  .refine(
+    (data) => ATTACHMENT_HOST_KEYS.filter((key) => data[key] != null).length === 1,
+    // Marked on `bookingId` because it is the anchor a linked pair writes to (ADR-0172 §2),
+    // so a form that got this wrong is pointed at the field it should have sent.
+    { message: 'an attachment has exactly one host', path: ['bookingId'] },
+  );
+export type CreateDocumentAttachmentInput = z.infer<typeof createDocumentAttachmentSchema>;
 
 /** `POST /trips/:tripId/invite` response. */
 export const inviteUrlSchema = z.object({ inviteUrl: z.string() });

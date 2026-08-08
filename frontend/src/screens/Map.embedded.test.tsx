@@ -140,6 +140,11 @@ vi.mock('../state/trip-state', () => ({
     notes: tripNotes,
     users: [{ id: 'u1', displayName: 'דנה' }],
     noteVerbs: { createNote },
+    // The event form the Map hosts carries the attach slot too (ADR-0173 §5), which reads
+    // the trip's documents and links. A place never originates one (§4), so both are empty.
+    documents: [],
+    documentAttachments: [],
+    attachmentVerbs: { attachDocument: vi.fn(), detachDocument: vi.fn() },
   }),
 }));
 vi.mock('../state/mode-state', () => ({ useMode: () => ({ mode: currentMode }) }));
@@ -171,6 +176,9 @@ vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1'
 vi.mock('../lib/outbox', () => ({
   useIsOffline: () => isOffline,
   withChangeGroup: (run: () => Promise<unknown>) => run(),
+  // The event form's attach slot (ADR-0173 §5) reads the queued uploads; there is no
+  // IndexedDB here, and a queued upload is not what this suite is about.
+  usePendingUploads: () => [],
 }));
 
 // The device's location, driven per test. `permissionState` is what the Permissions

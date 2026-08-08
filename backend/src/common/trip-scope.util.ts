@@ -46,18 +46,22 @@ export async function assertBookingInTrip(
 }
 
 /**
- * Reject a note's host id that isn't in this trip (ADR-0152 §2). A note carries at most
- * one of five typed FKs, and every one of them is a client-supplied id — so this is the
- * same class of reference `assertPlacesInTrip`/`assertBookingInTrip` above already guard,
- * one entity wider. A foreign id gets a 400 rather than a cross-trip note whose host the
- * reader can never see.
+ * Reject any entity reference that isn't in this trip — a note's host (ADR-0152 §2), an
+ * attachment's host and the document it points at (ADR-0173 §1). Every one of them is a
+ * client-supplied id, so this is the same class of reference
+ * `assertPlacesInTrip`/`assertBookingInTrip` above already guard, several entities wider.
+ * A foreign id gets a 400 rather than a cross-trip row whose other end the reader can
+ * never see.
  *
- * Table-driven so a sixth note-bearing entity is one line here and nothing at the call
- * site — the shape ADR-0094 uses for the applier registries, applied to a scope check.
- * The at-most-one rule itself is the shared zod schema's (`createNoteSchema`), so this
- * only has to check whichever host is actually set.
+ * **Whichever keys are present are checked, and that is what makes it shared.** It says
+ * nothing about how many may be set at once: a note's "at most one host" and an
+ * attachment's "exactly one" are the shared zod schemas' rules (`createNoteSchema`,
+ * `createDocumentAttachmentSchema`), enforced at both edges.
+ *
+ * Table-driven so a sixth referenced entity is one line here and nothing at the call site —
+ * the shape ADR-0094 uses for the applier registries, applied to a scope check.
  */
-export async function assertNoteHostInTrip(
+export async function assertEntityRefsInTrip(
   prisma: PrismaService,
   tripId: string,
   host: {

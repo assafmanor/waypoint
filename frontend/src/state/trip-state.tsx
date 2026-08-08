@@ -25,11 +25,13 @@ import {
   type Change,
   type EntityType,
   type CreateBookingInput,
+  type CreateDocumentAttachmentInput,
   type CreateNoteInput,
   type CreatePlaceInput,
   type DocumentSummary,
   type MaybeItem,
   type Membership,
+  type DocumentAttachment,
   type Note,
   type MembershipRole,
   type Trip,
@@ -47,11 +49,13 @@ import {
 } from '@waypoint/shared';
 import {
   createBooking as apiCreateBooking,
+  createDocumentAttachment as apiCreateDocumentAttachment,
   createNote as apiCreateNote,
   createPlace as apiCreatePlace,
   deleteMaybeItem as apiDeleteMaybeItem,
   deletePlace as apiDeletePlace,
   deleteBooking as apiDeleteBooking,
+  deleteDocumentAttachment as apiDeleteDocumentAttachment,
   deleteNote as apiDeleteNote,
   deleteTrip as apiDeleteTrip,
   evictDocumentBlob,
@@ -77,6 +81,7 @@ import {
   readCachedSnapshot,
 } from '../lib/cache';
 import { dropNotesForHostChange } from '../lib/notes';
+import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
 import { PlaceLabelsProvider } from './place-labels';
 import { clearPlaceRefs, deletedPlaceId, placeLinks, type PlaceLink } from '../lib/place-refs';
@@ -476,6 +481,24 @@ export interface NoteVerbs {
   deleteNote: (noteId: string) => Promise<void>;
 }
 
+/** Attachment write verbs (ADR-0173). Optimistic + reconcile/rollback and queued offline,
+ *  the same three moves as the note verbs beside them. Two verbs only: a link has no
+ *  content, so there is nothing to update. */
+export interface AttachmentVerbs {
+  /** `queue` forces the write onto the outbox even when online, for a link whose DOCUMENT is
+   *  itself only queued — a fresh upload, which is outbox-first by ADR-0056. Without it the
+   *  attachment's POST overtakes the upload's background flush and the server refuses a
+   *  document it cannot see yet. The same escape hatch, for the same shape, as
+   *  `NoteVerbs.createNote`'s — not a second mechanism (ADR-0173 §5). */
+  attachDocument: (
+    input: CreateDocumentAttachmentInput,
+    opts?: { queue?: boolean },
+  ) => Promise<DocumentAttachment | undefined>;
+  /** Detach. Removes the LINK; the document is untouched and stays in the trip's list —
+   *  which is why no surface asks the user to confirm this (§3). */
+  detachDocument: (attachmentId: string) => Promise<void>;
+}
+
 export interface IndexVerbs {
   /** `silent` suppresses the saved/queued toast, for a caller that is doing more than one
    *  write and owes the user ONE message about the whole thing (ADR-0136 §3's conversion).
@@ -530,6 +553,11 @@ interface TripContextValue {
   /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
    *  notes alike — what a note is about is a field on the row, not a separate store. */
   notes: Note[];
+  /** **Which documents are attached to which host** (ADR-0173 §1). The links only — the
+   *  DOCUMENTS are `documents` above, and resolving one against the other is what keeps an
+   *  attachment from widening visibility (§6): a link whose document this reader cannot see
+   *  resolves to nothing. */
+  documentAttachments: DocumentAttachment[];
   /** **What the world knows about the trip's places, keyed by `placeId`** (ADR-0166 §6).
    *  Server-owned: no surface writes it, and a missing key is the normal "we know nothing"
    *  state rather than a loading one — most places have nothing and never will (§11.3). */
@@ -543,6 +571,7 @@ interface TripContextValue {
   settings: SettingsVerbs;
   indexVerbs: IndexVerbs;
   noteVerbs: NoteVerbs;
+  attachmentVerbs: AttachmentVerbs;
   // Group change-feed (ADR-0081, U-09): a bounded, newest-first list of recent
   // SHARED peer edits, narrated (not re-applied) off the same WS `change` stream.
   // Own edits are filtered out; resets on trip switch (TripReady remounts).
@@ -704,6 +733,13 @@ function TripReady({
   // optimistic write both reflect live through the one applier below.
   const [notes, setNotes] = useState<Note[]>(snapshot.notes);
 
+  // The document↔host links (ADR-0173), a reactive list beside the notes for the same
+  // reason: a peer's attach and our own optimistic one both reflect live through the one
+  // applier below.
+  const [documentAttachments, setDocumentAttachments] = useState<DocumentAttachment[]>(
+    snapshot.documentAttachments,
+  );
+
   // Enrichment rides the snapshot as a reactive map keyed by placeId (ADR-0166 §6), updated
   // by the server's own nudge rather than by any write of ours — there is no optimistic path
   // and no outbox verb, because no client authors this.
@@ -834,6 +870,8 @@ function TripReady({
         setBookings((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.PLACE]: (change) => setPlaces((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.NOTE]: (change) => setNotes((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: (change) =>
+        setDocumentAttachments((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT]: (change) => {
         // A replace/delete invalidates the client blob cache: the /content URL is
         // reused across a replace with no fresh updatedAt to re-key it (ADR-0055/0058).
@@ -859,6 +897,10 @@ function TripReady({
       // list — belongs to no single host's channel and would otherwise be five branches.
       // A no-op unless this is a host delete that actually hosted something.
       setNotes((prev) => dropNotesForHostChange(prev, change));
+      // The third member of that family (ADR-0173 §7), here for the same reason and in the
+      // same position: a deleted booking, event or DOCUMENT takes its links, and Postgres
+      // says nothing about it.
+      setDocumentAttachments((prev) => dropAttachmentsForHostChange(prev, change));
       // The place cascade's memory half (ADR-0157 §3), here for the same reason as the note
       // cascade above and in the same position: an event, a booking and an idea can each
       // hold a place FK, so what a deleted place leaves dangling belongs to no one channel.
@@ -909,6 +951,7 @@ function TripReady({
           setPlaces(s.places);
           setDocuments(s.documents);
           setNotes(s.notes);
+          setDocumentAttachments(s.documentAttachments);
           setEnrichments(s.enrichments);
           onReconnected();
         },
@@ -1163,6 +1206,71 @@ function TripReady({
     }
   };
 
+  /** **One attach, shared by the attachment verbs and by the booking delete** — hoisted for
+   *  exactly `updateNoteImpl`'s reason above: ADR-0173 §3's unlink has to carry a booking's
+   *  link rows onto the surviving event before the cascade takes them, and `deleteBooking`
+   *  lives in `indexVerbs`, which is built before `attachmentVerbs`. */
+  const attachDocumentImpl = async (
+    input: CreateDocumentAttachmentInput,
+    opts?: { queue?: boolean },
+  ): Promise<DocumentAttachment | undefined> => {
+    const id = input.id ?? crypto.randomUUID();
+    const withId = { ...input, id };
+    const optimistic = {
+      ...withId,
+      tripId,
+      createdBy: authorId,
+      // The server stamps this; the optimistic row states it so the chip row's order and a
+      // cold load's `documentAttachmentSchema` both have something to read (the same reason
+      // `outboxOpToCacheChanges` stamps its own, and the same clock, so the two agree).
+      createdAt: new Date(getNow()).toISOString(),
+    } as DocumentAttachment;
+    const previous = documentAttachments;
+    setDocumentAttachments((prev) => [...prev, optimistic]);
+    try {
+      const canonical = await restOrQueue(
+        tripId,
+        { verb: OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT, input: withId },
+        () => apiCreateDocumentAttachment(tripId, withId),
+        opts,
+      );
+      // The server may answer a DIFFERENT id than the one we sent: a re-attach of a pair
+      // that already exists resolves to the row already there (ADR-0173 §1's second
+      // idempotency). Replace by our optimistic id, so the screen shows one chip either way.
+      if (canonical)
+        setDocumentAttachments((prev) => prev.map((a) => (a.id === id ? canonical : a)));
+      return canonical ?? optimistic;
+    } catch (err) {
+      setDocumentAttachments(previous);
+      toast(CONTROL_ICON.warn, t.toast.writeFailed);
+      throw err;
+    }
+  };
+
+  /** **The attachment half of the same unlink** (ADR-0173 §3). The booking is the context's
+   *  anchor, so unlink-and-keep-Event would let the booking's cascade take link rows the
+   *  user is explicitly choosing to keep the other half of — and unlike a note, the link is
+   *  the only thing that says this document belongs here at all.
+   *
+   *  A link has no `PATCH` (§1: nothing to edit), so carrying it is an attach and a detach
+   *  rather than a rehost. Attach FIRST and await, so offline the FIFO outbox queues the new
+   *  link before the old one is destroyed — a detach that flushed first would leave a window
+   *  where the document is attached to nothing, and a failed attach would make it permanent.
+   *  A document already on the event is skipped rather than duplicated: the pair was one
+   *  context, so both rows were already showing it. */
+  const carryBookingAttachmentsToEvent = async (
+    bookingId: string,
+    eventId: string,
+  ): Promise<void> => {
+    const onEvent = new Set(
+      attachmentsForHost(documentAttachments, ENTITY_TYPE.EVENT, eventId).map((a) => a.documentId),
+    );
+    for (const link of attachmentsForHost(documentAttachments, ENTITY_TYPE.BOOKING, bookingId)) {
+      if (onEvent.has(link.documentId)) continue;
+      await attachDocumentImpl({ documentId: link.documentId, eventId });
+    }
+  };
+
   const indexVerbs = useMemo<IndexVerbs>(() => {
     const stamp = () => new Date(getNow()).toISOString();
     return {
@@ -1262,7 +1370,10 @@ function TripReady({
         // now says (§6).
         if (!opts.deleteEvents) {
           const linked = state.events.find((e) => e.bookingId === bookingId);
-          if (linked) await carryBookingNotesToEvent(bookingId, linked.id);
+          if (linked) {
+            await carryBookingNotesToEvent(bookingId, linked.id);
+            await carryBookingAttachmentsToEvent(bookingId, linked.id);
+          }
         }
         const previous = bookings;
         setBookings((prev) => prev.filter((b) => b.id !== bookingId));
@@ -1390,7 +1501,17 @@ function TripReady({
         return place;
       },
     };
-  }, [tripId, bookings, places, notes, state, toast, authorId, applyEntityChange]);
+  }, [
+    tripId,
+    bookings,
+    places,
+    notes,
+    documentAttachments,
+    state,
+    toast,
+    authorId,
+    applyEntityChange,
+  ]);
 
   // Notes (ADR-0152). Optimistic write, reconcile on the server's row, roll back on a real
   // failure — the same three moves as the index verbs above, over the `notes` list.
@@ -1445,6 +1566,30 @@ function TripReady({
     };
   }, [tripId, notes, toast, authorId]);
 
+  // Attachments (ADR-0173). The same three moves as the note verbs above, over the
+  // `documentAttachments` list — and only two verbs, because a link has no content to edit.
+  const attachmentVerbs = useMemo<AttachmentVerbs>(
+    () => ({
+      attachDocument: attachDocumentImpl,
+      detachDocument: async (attachmentId) => {
+        const previous = documentAttachments;
+        setDocumentAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
+        try {
+          await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT, attachmentId },
+            () => apiDeleteDocumentAttachment(tripId, attachmentId),
+          );
+        } catch (err) {
+          setDocumentAttachments(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+    }),
+    [tripId, documentAttachments, toast, authorId],
+  );
+
   const value = useMemo<TripContextValue>(
     () => ({
       trip,
@@ -1457,6 +1602,7 @@ function TripReady({
       hostContexts,
       documents,
       notes,
+      documentAttachments,
       enrichments,
       activeDate,
       setActiveDate,
@@ -1467,6 +1613,7 @@ function TripReady({
       settings,
       indexVerbs,
       noteVerbs,
+      attachmentVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,
@@ -1485,10 +1632,12 @@ function TripReady({
       hostContexts,
       documents,
       notes,
+      documentAttachments,
       enrichments,
       settings,
       indexVerbs,
       noteVerbs,
+      attachmentVerbs,
       changeFeed,
       dismissChange,
       clearChangeFeed,

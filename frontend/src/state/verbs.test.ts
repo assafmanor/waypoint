@@ -4,6 +4,7 @@ import {
   EVENT_STATUS,
   type CreateBookingInput,
   type MaybeItem,
+  type DocumentAttachment,
   type Note,
   type NoteHostKey,
   type Place,
@@ -41,11 +42,15 @@ function fakeDeps(
   /** The trip's notes, for the conversions that have to carry them (ADR-0152 §5's
    *  amendment). Empty by default, so every test that is not about notes reads as before. */
   notes: Note[] = [],
+  /** The trip's document links, for the undo that has to put them back (ADR-0173 §7).
+   *  Empty by default, so every test that is not about attachments reads as before. */
+  attachments: DocumentAttachment[] = [],
 ): VerbDeps & {
   actions: Action[];
   bookings: { createBooking: Mock; deleteBooking: Mock; updateBooking: Mock };
   places: { createPlace: Mock; deletePlace: Mock };
   notes: { list: Note[]; rehost: Mock; recreate: Mock };
+  attachments: { list: DocumentAttachment[]; recreate: Mock };
 } {
   const actions: Action[] = [];
   return {
@@ -80,9 +85,25 @@ function fakeDeps(
       rehost: Mock;
       recreate: Mock;
     },
+    // The attachment half, same shape and same reason (ADR-0173 §7).
+    attachments: {
+      list: attachments,
+      recreate: vi.fn(async () => {}),
+    } as unknown as { list: DocumentAttachment[]; recreate: Mock },
     actions,
   };
 }
+
+/** A document link on an event, minimal — only the fields the undo carries. */
+const linkOn = (id: string, eventId: string): DocumentAttachment => ({
+  id,
+  tripId: 'trip-japan-26',
+  documentId: `doc-${id}`,
+  eventId,
+  bookingId: undefined,
+  createdBy: 'u1',
+  createdAt: '2026-07-19T00:00:00.000Z',
+});
 
 /** A note on a host, minimal — only the fields a conversion reads. */
 const noteOn = (id: string, host: Partial<Record<NoteHostKey, string>>): Note =>
@@ -1037,6 +1058,34 @@ describe('undoing a host delete restores its cascaded notes', () => {
     expect(deps.notes.recreate).toHaveBeenCalledTimes(1);
   });
 
+  // **ADR-0173 §7's other half.** A cascade takes the document LINKS as silently as it takes
+  // the notes, so an undo that re-created only the event would restore less than it took —
+  // and the documents themselves were never at risk, which is exactly why what comes back is
+  // the pointers.
+  it('re-creates an event’s document links, under their own ids', async () => {
+    okFetch();
+    const links = [linkOn('at1', event.id), linkOn('at2', event.id)];
+    const deps = fakeDeps(undefined, [], [...links, linkOn('at3', 'ev-other')]);
+
+    await applyGuardedDelete(deps, event);
+    await applyUndo(deps);
+
+    expect(deps.attachments.recreate.mock.calls.map((call) => call[0])).toEqual(links);
+  });
+
+  // Same load-bearing case as the notes one above, for the same reason: by undo time
+  // `dropAttachmentsForHostChange` has already emptied the list.
+  it('reads the links at the DELETE, not at the undo', async () => {
+    okFetch();
+    const deps = fakeDeps(undefined, [], [linkOn('at1', event.id)]);
+
+    await applyGuardedDelete(deps, event);
+    deps.attachments.list = [];
+    await applyUndo(deps);
+
+    expect(deps.attachments.recreate).toHaveBeenCalledTimes(1);
+  });
+
   it('re-creates the event before its notes, so the host FK resolves', async () => {
     const order: string[] = [];
     vi.stubGlobal(
@@ -1054,6 +1103,25 @@ describe('undoing a host delete restores its cascaded notes', () => {
     await applyUndo(deps);
 
     expect(order).toEqual(['event', 'note']);
+  });
+
+  it('re-creates the event before its links too, for the same FK reason', async () => {
+    const order: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes('/events') && init?.method === 'POST') order.push('event');
+        return new Response(JSON.stringify(EVENTS[0]), { status: 200 });
+      }),
+    );
+    const deps = fakeDeps(undefined, [], [linkOn('at1', event.id)]);
+    deps.attachments.recreate.mockImplementation(async () => void order.push('link'));
+
+    await applyGuardedDelete(deps, event);
+    await applyUndo(deps);
+
+    expect(order).toEqual(['event', 'link']);
   });
 
   it('restores an idea’s notes when its removal is undone', async () => {
