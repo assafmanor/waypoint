@@ -532,13 +532,14 @@ describe('fetchDocumentContent — every phase is bounded (field-report #20)', (
 
   it('aborts the request it gave up on rather than leaving it open', async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.fn(() => NEVER);
+    // Typed params, so the asserted `init` is the real second argument rather than a cast
+    // off a zero-arg mock's empty tuple.
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => NEVER);
     vi.stubGlobal('fetch', fetchMock);
     const { guarded } = state(fetchDocumentContent('t1', 'd1', 'v1'));
     await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.FETCH);
     await guarded;
-    const init = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(init.signal?.aborted).toBe(true);
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
   });
 
   it('a response whose BODY never arrives ends in a rejection too', async () => {
