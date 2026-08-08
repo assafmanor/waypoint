@@ -24,7 +24,7 @@ import {
   readCachedTripList,
   wipeLocalData,
 } from './cache';
-import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
+import { ACTIVE_TRIP_STORAGE_KEY, LOCAL_READ_TIMEOUT_MS } from '../constants';
 import { OUTBOX_VERB } from './outbox';
 import { setSimulatedNow } from './useClock';
 
@@ -769,5 +769,32 @@ describe('enrichment in the offline cache (ADR-0166 §6)', () => {
     await cacheSnapshot(TRIP_ID, snapshot({ enrichments: { 'pl-1': FIELDS } }));
     await wipeLocalData();
     expect(await readCachedSnapshot(TRIP_ID)).toBeNull();
+  });
+});
+
+// The offline fallback's own read (field-report #22). It runs when the network already had
+// nothing to say, so an IndexedDB handle that goes quiet here is the boot's LAST chance to
+// end — and answering "nothing cached" gets the user a retryable error rather than a spinner.
+describe('readCachedSnapshot is bounded', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('answers null when the store never replies, instead of waiting on it', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(db.snapshotMeta, 'get').mockReturnValue(new Promise(() => {}) as never);
+
+    let answered = false;
+    const read = readCachedSnapshot(TRIP_ID).then((v) => {
+      answered = true;
+      return v;
+    });
+
+    await vi.advanceTimersByTimeAsync(LOCAL_READ_TIMEOUT_MS.SNAPSHOT - 1);
+    expect(answered).toBe(false); // a slow store is still a store
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(read).resolves.toBeNull();
   });
 });

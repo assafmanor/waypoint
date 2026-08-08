@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EVENT_STATUS } from '@waypoint/shared';
+import { DOCUMENT_TYPE, EVENT_STATUS } from '@waypoint/shared';
 import {
   ApiError,
   apiFetch,
+  fetchChanges,
+  fetchInvitePreview,
+  fetchMe,
+  fetchTrips,
+  searchPlacesText,
+  uploadDocument,
   createBooking,
   createEvent,
   createInvite,
@@ -27,7 +33,7 @@ import {
   updatePlace,
 } from './api';
 import { BOOKINGS, EVENTS, TRIP } from '../fixtures';
-import { DOC_READ_TIMEOUT_MS } from '../constants';
+import { API_TIMEOUT_MS, LOCAL_READ_TIMEOUT_MS } from '../constants';
 import { PhaseTimeoutError } from './deadline';
 
 const snapshotBody = {
@@ -521,7 +527,7 @@ describe('fetchDocumentContent — every phase is bounded (field-report #20)', (
     );
     const { guarded, settled } = state(fetchDocumentContent('t1', 'd1', 'v1'));
 
-    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.FETCH - 1);
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.FETCH - 1);
     expect(settled()).toBe(false); // a slow read is still a read
 
     await vi.advanceTimersByTimeAsync(1);
@@ -537,7 +543,7 @@ describe('fetchDocumentContent — every phase is bounded (field-report #20)', (
     const fetchMock = vi.fn((_url: string, _init?: RequestInit) => NEVER);
     vi.stubGlobal('fetch', fetchMock);
     const { guarded } = state(fetchDocumentContent('t1', 'd1', 'v1'));
-    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.FETCH);
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.FETCH);
     await guarded;
     expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
   });
@@ -549,7 +555,7 @@ describe('fetchDocumentContent — every phase is bounded (field-report #20)', (
       vi.fn(() => Promise.resolve({ ok: true, status: 200, blob: () => NEVER })),
     );
     const { guarded, settled } = state(fetchDocumentContent('t1', 'd1', 'v1'));
-    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.BODY - 1);
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.BODY - 1);
     expect(settled()).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect((await guarded).ok).toBe(false);
@@ -566,7 +572,7 @@ describe('fetchDocumentContent — every phase is bounded (field-report #20)', (
     vi.stubGlobal('fetch', fetchMock);
 
     const { guarded } = state(fetchDocumentContent('t1', 'd1', 'v1'));
-    await vi.advanceTimersByTimeAsync(DOC_READ_TIMEOUT_MS.CACHE);
+    await vi.advanceTimersByTimeAsync(LOCAL_READ_TIMEOUT_MS.HANDLE);
     const result = await guarded;
     expect(result.ok).toBe(true);
     expect(fetchMock).toHaveBeenCalled();
@@ -594,5 +600,148 @@ describe('fetchDocumentContent — every phase is bounded (field-report #20)', (
     vi.stubGlobal('fetch', fetchMock);
     await expect(fetchDocumentContent('t1', 'd1', 'v1')).resolves.toBeInstanceOf(Blob);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Field-report #22: every OTHER read had the same missing bound ──────────────────────
+// #20 stopped at the document path on purpose. #22 is the same silence on the boot reads,
+// reported from a phone with its radios ON and no upstream — which is why these stub a fetch
+// that never answers rather than one that rejects: airplane mode fails fast and was always
+// survivable, a dead signal does not fail at all. Every fallback in this app keys on a
+// rejection, so a read that cannot reject is a screen that cannot finish loading.
+describe('every API read is bounded (field-report #22)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const NEVER = new Promise<never>(() => {});
+  const settled = (p: Promise<unknown>) => {
+    let done = false;
+    const guarded = p.then(
+      (v) => {
+        done = true;
+        return { ok: true as const, v };
+      },
+      (e: unknown) => {
+        done = true;
+        return { ok: false as const, e };
+      },
+    );
+    return { guarded, done: () => done };
+  };
+
+  const hangingFetch = () => {
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => NEVER);
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  // The read the field report lands on: the boot snapshot. Its caller falls back to the Dexie
+  // cache on rejection, and before this it could not reject.
+  it('the snapshot read ends in a rejection instead of waiting forever', async () => {
+    vi.useFakeTimers();
+    hangingFetch();
+    const { guarded, done } = settled(fetchSnapshot('t1'));
+
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.FETCH - 1);
+    expect(done()).toBe(false); // a slow boot is still a boot
+
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await guarded;
+    expect(result.ok === false && result.e).toBeInstanceOf(PhaseTimeoutError);
+  });
+
+  // The siblings the backlog line named. Same shape, same bound, one mechanism.
+  it.each([
+    ['fetchMe', () => fetchMe()],
+    ['fetchTrips', () => fetchTrips()],
+    ['fetchChanges', () => fetchChanges('t1', '0')],
+    ['fetchInvitePreview', () => fetchInvitePreview('abc')],
+    ['searchPlacesText', () => searchPlacesText('t1', { input: 'sushi' })],
+    [
+      'lookupEnrichment',
+      () => lookupEnrichment('t1', { googlePlaceId: 'g1', name: 'x', lat: 1, lng: 2 }),
+    ],
+    ['searchDestinations', () => searchDestinations({ input: 'tokyo', sessionToken: 's' })],
+  ])('%s ends too', async (_name, call) => {
+    vi.useFakeTimers();
+    hangingFetch();
+    const { guarded, done } = settled(call());
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.FETCH - 1);
+    expect(done()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await guarded).ok).toBe(false);
+  });
+
+  it('aborts the request it gave up on rather than leaving it holding a connection', async () => {
+    vi.useFakeTimers();
+    const fetchMock = hangingFetch();
+    const { guarded } = settled(fetchSnapshot('t1'));
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.FETCH);
+    await guarded;
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+  });
+
+  // Headers can land while the bytes behind them never do.
+  it('a read whose BODY never arrives ends too', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, status: 200, json: () => NEVER })),
+    );
+    const { guarded, done } = settled(fetchSnapshot('t1'));
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.BODY - 1);
+    expect(done()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await guarded).ok).toBe(false);
+  });
+
+  // An ERROR body is a read like any other: a 500 that never finishes explaining itself used
+  // to hang in `throwApiError` exactly as a 200 would.
+  it('an error body that never arrives still produces an ApiError', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: false, status: 500, json: () => NEVER })),
+    );
+    const { guarded, done } = settled(fetchMe());
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.BODY - 1);
+    expect(done()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const result = await guarded;
+    expect(result.ok === false && result.e).toBeInstanceOf(ApiError);
+  });
+
+  // The bound must not cost a caller the cancellation it already had (ADR-0108's session
+  // tokens depend on a superseded keystroke actually stopping).
+  it("a search still aborts on its caller's own signal", async () => {
+    const fetchMock = hangingFetch();
+    const controller = new AbortController();
+    // The stub never settles on abort the way a real fetch does, so what is asserted is the
+    // signal the request is actually holding — which is the composed one, not the caller's.
+    settled(searchPlacesText('t1', { input: 'sus', signal: controller.signal }));
+    await Promise.resolve();
+    controller.abort();
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true);
+  });
+
+  // Deliberately exempt: an upload's response headers only arrive once the bytes have gone
+  // up, so on a slow link "still uploading" and "dead" are the same picture from here.
+  it('leaves a multipart upload unbounded, so a slow one is not cut off', async () => {
+    vi.useFakeTimers();
+    hangingFetch();
+    const { done } = settled(
+      uploadDocument('t1', { type: DOCUMENT_TYPE.OTHER, title: 'x' }, new File(['x'], 'x.pdf')),
+    );
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS.BODY * 10);
+    expect(done()).toBe(false);
+  });
+
+  it('still passes a healthy read straight through', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify(snapshotBody), { status: 200 }))),
+    );
+    await expect(fetchSnapshot(TRIP.id)).resolves.toMatchObject({ latestSeq: '0' });
   });
 });

@@ -14,7 +14,8 @@ import {
 } from '../lib/api';
 import { isNetworkError, isOffline } from '../lib/outbox';
 import { wipeLocalData } from '../lib/cache';
-import { ME_STORAGE_KEY } from '../constants';
+import { withDeadline } from '../lib/deadline';
+import { API_PHASE, API_TIMEOUT_MS, ME_STORAGE_KEY } from '../constants';
 
 export type AuthStatus = 'loading' | 'anon' | 'authed';
 
@@ -84,7 +85,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await refreshAccessToken().catch(() => false);
+      // **The boot waits for the refresh, but not forever** (field-report #22). This is the
+      // FIRST await of the whole app, and with the radios on but no upstream it never
+      // settled — so the boot screen stayed up before the trip snapshot was even asked for.
+      //
+      // What is bounded here is only this WAIT. `refreshAccessToken` itself, its in-flight
+      // coalescing and its cross-tab lock are untouched, deliberately: bounding the refresh
+      // would turn a slow-but-alive one into a forced sign-out, which is a product call and
+      // not this fix's to make. Giving up on the wait costs nothing — it is what a *failed*
+      // refresh already does here, and a late one still installs its token for the next call.
+      await withDeadline(API_PHASE.BOOT_REFRESH, API_TIMEOUT_MS.FETCH, () =>
+        refreshAccessToken(),
+      ).catch(() => false);
       try {
         const who = await fetchMe();
         if (cancelled) return;

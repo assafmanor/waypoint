@@ -100,36 +100,56 @@ export const WS_WATCHDOG_TIMEOUT_MS = 60_000;
 export const WS_RECONNECT_BASE_MS = 1_000;
 export const WS_RECONNECT_CAP_MS = 30_000;
 
-/** **Bounds on the document read path** (field-report #20). Every await in that path had
- *  none, so a jammed storage handle or a connection that went quiet left the viewer's
- *  spinner up until the app was restarted — a promise that never settles is not an error
- *  anything can catch (`lib/deadline.ts`).
+/** **Bounds on a network read** — every request `lib/api.ts` makes (field reports #20/#22).
+ *  An unbounded await is not an error anything can catch (`lib/deadline.ts`): `try`/`catch`
+ *  sees nothing, `.catch()` never runs, `res.ok` is never reached. #20 was that on the
+ *  document read; #22 is the same silence on the **boot** reads, where a phone with its
+ *  radios on and no upstream left the app loading forever — the fallback to cached data
+ *  only ever ran on a *rejection*.
  *
- *  Sized as *"this is dead"*, never *"this is slow"*: a bound that fires on a working
- *  download is a worse bug than the hang it replaces, so these are deliberately far above
- *  any healthy read. The body bound is `WS_WATCHDOG_TIMEOUT_MS`'s minute for the same
- *  reason it is — that is how long this app waits before calling silence a failure. */
-export const DOC_READ_TIMEOUT_MS = {
-  /** Local storage: past a few seconds the Cache API handle is jammed, not busy. */
-  CACHE: 3_000,
+ *  Sized as *"this is dead"*, never *"this is slow"*: a bound that fires on a working read is
+ *  a worse bug than the hang it replaces, so these are deliberately far above any healthy
+ *  one. The body bound is `WS_WATCHDOG_TIMEOUT_MS`'s minute for the same reason it is — that
+ *  is how long this app waits before calling silence a failure. */
+export const API_TIMEOUT_MS = {
   /** To response HEADERS, not to the last byte — the bytes are `BODY`'s to wait for. */
   FETCH: 20_000,
   /** The bytes themselves, on whatever connection a phone abroad actually has. */
   BODY: 60_000,
-  /** Decoding is CPU-local and fast; the failure it guards is a decode requested while the
-   *  document is hidden (a locked phone mid-load), which never settles at all. */
-  DECODE: 10_000,
+} as const;
+
+/** **Bounds on a LOCAL store read** — the caches that sit in FRONT of the network, and so
+ *  wedge a read before it ever reaches it. Both are the offline path itself: what the app
+ *  falls back TO when the network has nothing to say. */
+export const LOCAL_READ_TIMEOUT_MS = {
+  /** A Cache API handle: past a few seconds it is jammed, not busy (field-report #20). */
+  HANDLE: 3_000,
+  /** A whole trip out of IndexedDB — several tables, a few hundred small rows. An order of
+   *  magnitude above a healthy read, and still the difference between the offline data
+   *  arriving late and a boot that never ends. */
+  SNAPSHOT: 10_000,
 } as const;
 
 /** Which await gave up, for `PhaseTimeoutError`. Named rather than inline strings because
- *  the viewer branches on one of them: a decode that TIMED OUT is a missing optimization,
- *  where a decode that FAILED is bytes the browser cannot render. */
-export const DOC_READ_PHASE = {
-  CACHE: 'doc-cache',
-  FETCH: 'doc-fetch',
-  BODY: 'doc-body',
-  DECODE: 'doc-decode',
+ *  callers branch on them: the viewer tells a decode that TIMED OUT (a missing optimization)
+ *  from one that FAILED (bytes the browser cannot render), and `isNetworkError` reads a
+ *  network phase as "nobody answered" rather than "the server refused". */
+export const API_PHASE = {
+  FETCH: 'api-fetch',
+  BODY: 'api-body',
+  /** The boot's wait ON the shared refresh, never the refresh itself — see `auth-state.tsx`. */
+  BOOT_REFRESH: 'auth-boot-refresh',
 } as const;
+
+export const LOCAL_READ_PHASE = {
+  DOC_BLOB: 'doc-cache',
+  SNAPSHOT: 'snapshot-cache',
+} as const;
+
+/** Decoding is CPU-local and fast; the failure it guards is a decode requested while the
+ *  document is hidden (a locked phone mid-load), which never settles at all. */
+export const DOC_DECODE_TIMEOUT_MS = 10_000;
+export const DOC_DECODE_PHASE = 'doc-decode';
 
 /** Retry cadence for a non-empty write outbox (U-04): while anything is queued,
  *  re-attempt the flush on this interval so the "N changes waiting" summary can't

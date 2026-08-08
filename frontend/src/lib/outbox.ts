@@ -50,6 +50,7 @@ import {
   uploadDocument,
 } from './api';
 import { applyOutboxOpToCache } from './cache';
+import { PhaseTimeoutError } from './deadline';
 
 /** The queued-write discriminants (T-013): one named value per outbox op, so no
  *  enqueue or flush site spells a magic string. Mirrors the shared domain enums
@@ -209,7 +210,13 @@ export function outboxOpEntityIds(op: OutboxOp): string[] {
 /** A `fetch` network failure (offline, DNS, dropped connection) vs. a real HTTP
  *  error response — only the former should be queued instead of surfaced. */
 export function isNetworkError(err: unknown): boolean {
-  return err instanceof TypeError;
+  // Two halves of one condition. A `TypeError` is what `fetch` throws when the request never
+  // left (no route, DNS, CORS) — airplane mode's shape. A `PhaseTimeoutError` is what a
+  // request that left and was never answered looks like since field-report #22, which is what
+  // a radio with no upstream actually does. Both mean "the network did not work", never "the
+  // server refused" — and that distinction is what decides whether a write queues instead of
+  // failing, and whether a boot falls back to cached data instead of signing the user out.
+  return err instanceof TypeError || err instanceof PhaseTimeoutError;
 }
 
 export function isOffline(): boolean {

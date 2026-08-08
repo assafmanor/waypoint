@@ -20,8 +20,9 @@ import {
 } from '@waypoint/shared';
 import { type Table } from 'dexie';
 import { db } from '../db';
-import { ACTIVE_TRIP_STORAGE_KEY } from '../constants';
+import { ACTIVE_TRIP_STORAGE_KEY, LOCAL_READ_PHASE, LOCAL_READ_TIMEOUT_MS } from '../constants';
 import { fetchTrips } from './api';
+import { bestEffort } from './deadline';
 import { clearAllCachedDocuments } from './doc-cache';
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
 import { getNow } from './useClock';
@@ -100,8 +101,22 @@ export async function cacheEnrichment(
 }
 
 /** Reconstructs a full TripSnapshot from cache, or null if this trip was
- *  never cached (the true first-ever-load-while-offline case). */
-export async function readCachedSnapshot(tripId: string): Promise<TripSnapshot | null> {
+ *  never cached (the true first-ever-load-while-offline case).
+ *
+ *  **Bounded** (field-report #22), because this read IS the offline fallback: it runs when
+ *  the network already had nothing to say, so an IndexedDB handle that goes quiet here is
+ *  the boot's last chance to end. Silence answers null — the same as never cached — which
+ *  the boot already renders as a retryable error rather than a spinner. */
+export function readCachedSnapshot(tripId: string): Promise<TripSnapshot | null> {
+  return bestEffort(
+    LOCAL_READ_PHASE.SNAPSHOT,
+    LOCAL_READ_TIMEOUT_MS.SNAPSHOT,
+    () => reconstructSnapshot(tripId),
+    null,
+  );
+}
+
+async function reconstructSnapshot(tripId: string): Promise<TripSnapshot | null> {
   const meta = await db.snapshotMeta.get(tripId);
   if (!meta) return null;
   const [events, bookings, documents] = await Promise.all([

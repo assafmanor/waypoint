@@ -61,12 +61,7 @@ import {
   type UpdateMeInput,
   type UpdateTripInput,
 } from '@waypoint/shared';
-import {
-  API_BASE_URL,
-  AVATAR_UPLOAD_FILENAME,
-  DOC_READ_PHASE,
-  DOC_READ_TIMEOUT_MS,
-} from '../constants';
+import { API_BASE_URL, API_PHASE, API_TIMEOUT_MS, AVATAR_UPLOAD_FILENAME } from '../constants';
 import type { MapBounds } from './map-camera';
 import { withDeadline } from './deadline';
 import { evictCachedDocument, readCachedBlob, writeCachedBlob } from './doc-cache';
@@ -102,17 +97,50 @@ async function rawFetch(url: string, init: RequestInit = {}): Promise<Response> 
   return fetch(url, { ...init, headers, credentials: 'include' });
 }
 
+/** **A request that never answers, bounded** (`lib/deadline.ts`, field reports #20/#22).
+ *  A radio that is ON but has no upstream does not fail the way airplane mode does — the
+ *  request simply goes quiet, so neither `.then` nor `.catch` ever runs and every offline
+ *  fallback in the app, all of which key on a *rejection*, never gets its chance.
+ *
+ *  The caller's own signal rides along rather than being replaced, so a superseded keystroke
+ *  still aborts its search.
+ *
+ *  **Multipart uploads are deliberately unbounded.** Their response headers only arrive once
+ *  the bytes have gone UP, so on a slow link "still uploading" and "dead" look identical from
+ *  here — and the cost of guessing wrong is a lost upload, which is worse than the wait. */
+function boundedFetch(url: string, init: RequestInit): Promise<Response> {
+  if (init.body instanceof FormData) return rawFetch(url, init);
+  return withDeadline(
+    API_PHASE.FETCH,
+    API_TIMEOUT_MS.FETCH,
+    (signal) => rawFetch(url, { ...init, signal }),
+    init.signal,
+  );
+}
+
+/** **A response body is a read like any other, and takes the same bound.** Headers can land
+ *  while the bytes behind them never do — a 200 whose body never arrives hangs exactly as a
+ *  request nobody answered, and an error body hangs `throwApiError` the same way. */
+function readJson(res: Response): Promise<unknown> {
+  return withDeadline(API_PHASE.BODY, API_TIMEOUT_MS.BODY, () => res.json());
+}
+
 /** Attaches the in-memory bearer token + session cookie; on a 401 tries one
  *  silent refresh (the access JWT is short-lived by design) and retries once
- *  before telling `AuthProvider` the session is gone. */
+ *  before telling `AuthProvider` the session is gone.
+ *
+ *  The **refresh** is the one wait here that is not bounded, and that is deliberate: a
+ *  refresh that is slow-but-alive would become a forced sign-out, which is a product
+ *  trade-off rather than a free fix (backlogged separately). It is also not what #22 hits —
+ *  with no upstream the request above times out long before any 401 can arrive. */
 export async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const res = await rawFetch(url, init);
+  const res = await boundedFetch(url, init);
   if (res.status !== 401) return res;
   if (!(await refreshAccessToken())) {
     onSessionExpired?.();
     return res;
   }
-  return rawFetch(url, init);
+  return boundedFetch(url, init);
 }
 
 // Shared in-flight refresh: the token rotates on each use (ADR-0020), so two
@@ -158,7 +186,7 @@ export async function requestLogout(): Promise<void> {
 export async function fetchMe(): Promise<Me> {
   const res = await apiFetch(`${API_BASE_URL}/me`);
   if (!res.ok) return throwApiError(res);
-  return meSchema.parse(await res.json());
+  return meSchema.parse(await readJson(res));
 }
 
 /** Edit your own identity (ADR-0133 §11). Online-only and deliberately NOT
@@ -172,7 +200,7 @@ export async function updateMe(input: UpdateMeInput): Promise<Me> {
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return meSchema.parse(await res.json());
+  return meSchema.parse(await readJson(res));
 }
 
 /** Upload an avatar (ADR-0133 §12). Multipart, one `file` part — no `Content-Type`
@@ -187,7 +215,7 @@ export async function uploadAvatar(blob: Blob): Promise<Me> {
     body: form,
   });
   if (!res.ok) return throwApiError(res);
-  return meSchema.parse(await res.json());
+  return meSchema.parse(await readJson(res));
 }
 
 /** Delete the uploaded avatar; the server lands you on the Google photo if there
@@ -196,13 +224,13 @@ export async function uploadAvatar(blob: Blob): Promise<Me> {
 export async function deleteAvatar(): Promise<Me> {
   const res = await apiFetch(`${API_BASE_URL}/me/avatar`, { method: HTTP_METHOD.DELETE });
   if (!res.ok) return throwApiError(res);
-  return meSchema.parse(await res.json());
+  return meSchema.parse(await readJson(res));
 }
 
 export async function fetchTrips(): Promise<Trip[]> {
   const res = await apiFetch(`${API_BASE_URL}/trips`);
   if (!res.ok) return throwApiError(res);
-  return tripSchema.array().parse(await res.json());
+  return tripSchema.array().parse(await readJson(res));
 }
 
 export async function createTrip(input: CreateTripInput): Promise<Trip> {
@@ -212,7 +240,7 @@ export async function createTrip(input: CreateTripInput): Promise<Trip> {
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return tripSchema.parse(await res.json());
+  return tripSchema.parse(await readJson(res));
 }
 
 /** Admin-only trip-details edit (ADR-0039). Data-plane: the server broadcasts +
@@ -224,7 +252,7 @@ export async function updateTrip(tripId: string, input: UpdateTripInput): Promis
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return tripSchema.parse(await res.json());
+  return tripSchema.parse(await readJson(res));
 }
 
 /** Admin-only trip deletion (ADR-0039). 404 tolerated (already gone). */
@@ -245,7 +273,7 @@ export async function setMemberRole(
     body: JSON.stringify({ role }),
   });
   if (!res.ok) return throwApiError(res);
-  return membershipSchema.parse(await res.json());
+  return membershipSchema.parse(await readJson(res));
 }
 
 /** Remove a member (admin) or leave (self) — ADR-0005/0039. 404 tolerated. */
@@ -263,7 +291,7 @@ export async function createInvite(tripId: string): Promise<InviteUrl> {
     method: HTTP_METHOD.POST,
   });
   if (!res.ok) return throwApiError(res);
-  return inviteUrlSchema.parse(await res.json());
+  return inviteUrlSchema.parse(await readJson(res));
 }
 
 /** Revoke + replace the invite link (admin-only, ADR-0067): the old code dies. */
@@ -272,15 +300,19 @@ export async function rotateInvite(tripId: string): Promise<InviteUrl> {
     method: HTTP_METHOD.POST,
   });
   if (!res.ok) return throwApiError(res);
-  return inviteUrlSchema.parse(await res.json());
+  return inviteUrlSchema.parse(await readJson(res));
 }
 
 /** Public/unguarded preview for the join screen (ADR-0024/0067) — no auth needed.
  *  404 = unknown code, 410 = trip already ended. */
 export async function fetchInvitePreview(code: string): Promise<InvitePreview> {
-  const res = await fetch(`${API_BASE_URL}/invites/${code}`);
+  // Bounded like every other read (#22), but deliberately still a bare `fetch`: this route
+  // is unguarded, so it carries neither the bearer token nor the session cookie.
+  const res = await withDeadline(API_PHASE.FETCH, API_TIMEOUT_MS.FETCH, (signal) =>
+    fetch(`${API_BASE_URL}/invites/${code}`, { signal }),
+  );
   if (!res.ok) return throwApiError(res);
-  return invitePreviewSchema.parse(await res.json());
+  return invitePreviewSchema.parse(await readJson(res));
 }
 
 /** Idempotent — rejoining an already-joined trip keeps the existing role and
@@ -293,14 +325,14 @@ export async function joinTrip(code: string, input: JoinTripInput = {}): Promise
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return membershipSchema.parse(await res.json());
+  return membershipSchema.parse(await readJson(res));
 }
 
 /** Admin-only "Removed" list — members an admin kicked (ADR-0067). */
 export async function fetchRemovedMembers(tripId: string): Promise<RemovedMember[]> {
   const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/blocks`);
   if (!res.ok) return throwApiError(res);
-  return removedMemberSchema.array().parse(await res.json());
+  return removedMemberSchema.array().parse(await readJson(res));
 }
 
 /** Admin re-invite (ADR-0067): clear a member's block so the live link works for
@@ -366,8 +398,10 @@ export const isRemovedFromTripError = (err: unknown): boolean =>
 export const isInviteExpiredError = (err: unknown): boolean =>
   err instanceof ApiError && err.code === ERROR_CODE.INVITE_EXPIRED;
 
+// The error body takes the same bound as a success body: a 500 whose body never arrives
+// would hang here exactly as a 200's would hang at its own read.
 async function throwApiError(res: Response): Promise<never> {
-  const body = (await res.json().catch(() => undefined)) as
+  const body = (await readJson(res).catch(() => undefined)) as
     { error?: { code?: string; details?: unknown } } | undefined;
   throw new ApiError(res.status, body?.error?.code, body?.error?.details);
 }
@@ -375,7 +409,7 @@ async function throwApiError(res: Response): Promise<never> {
 export async function fetchSnapshot(tripId: string): Promise<TripSnapshot> {
   const res = await apiFetch(snapshotUrl(tripId));
   if (!res.ok) throw new Error(`snapshot fetch failed: ${res.status}`);
-  return tripSnapshotSchema.parse(await res.json());
+  return tripSnapshotSchema.parse(await readJson(res));
 }
 
 export async function createEvent(tripId: string, input: CreateEventInput): Promise<TripEvent> {
@@ -385,7 +419,7 @@ export async function createEvent(tripId: string, input: CreateEventInput): Prom
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return tripEventSchema.parse(await res.json());
+  return tripEventSchema.parse(await readJson(res));
 }
 
 export async function updateEvent(
@@ -401,7 +435,7 @@ export async function updateEvent(
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return tripEventSchema.parse(await res.json());
+  return tripEventSchema.parse(await readJson(res));
 }
 
 export async function setEventStatus(
@@ -415,7 +449,7 @@ export async function setEventStatus(
     body: JSON.stringify({ status }),
   });
   if (!res.ok) return throwApiError(res);
-  return tripEventSchema.parse(await res.json());
+  return tripEventSchema.parse(await readJson(res));
 }
 
 export interface RippleSuggestion {
@@ -445,7 +479,7 @@ export async function moveEvent(
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  const body = (await res.json()) as { event: unknown; rippleSuggestion?: RippleSuggestion };
+  const body = (await readJson(res)) as { event: unknown; rippleSuggestion?: RippleSuggestion };
   return { event: tripEventSchema.parse(body.event), rippleSuggestion: body.rippleSuggestion };
 }
 
@@ -460,7 +494,7 @@ export async function deleteEvent(tripId: string, eventId: string, confirm = fal
 export async function fetchChanges(tripId: string, sinceSeq: string): Promise<Change[]> {
   const res = await apiFetch(changesUrl(tripId, sinceSeq));
   if (!res.ok) throw new Error(`changes fetch failed: ${res.status}`);
-  return changeSchema.array().parse(await res.json());
+  return changeSchema.array().parse(await readJson(res));
 }
 
 /** Marks a maybe-shelf item consumed server-side (T-058) — schedule() used to
@@ -494,7 +528,7 @@ export async function createMaybeItem(
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return maybeItemSchema.parse(await res.json());
+  return maybeItemSchema.parse(await readJson(res));
 }
 
 /** Write a note — general, or hosted by one of the five entities (ADR-0152 §1/§2). */
@@ -505,7 +539,7 @@ export async function createNote(tripId: string, input: CreateNoteInput): Promis
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return noteSchema.parse(await res.json());
+  return noteSchema.parse(await readJson(res));
 }
 
 /** Edit a note's own words. A whole-content submit, and the host is not editable. */
@@ -520,7 +554,7 @@ export async function updateNote(
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return noteSchema.parse(await res.json());
+  return noteSchema.parse(await readJson(res));
 }
 
 export async function deleteNote(tripId: string, noteId: string): Promise<void> {
@@ -540,7 +574,7 @@ export async function updateMaybeItem(
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return maybeItemSchema.parse(await res.json());
+  return maybeItemSchema.parse(await readJson(res));
 }
 
 /** Remove an idea from the shelf. 404 is tolerated (already gone), matching deleteEvent. */
@@ -558,7 +592,7 @@ export async function createBooking(tripId: string, input: CreateBookingInput): 
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return bookingSchema.parse(await res.json());
+  return bookingSchema.parse(await readJson(res));
 }
 
 export async function updateBooking(
@@ -572,7 +606,7 @@ export async function updateBooking(
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return bookingSchema.parse(await res.json());
+  return bookingSchema.parse(await readJson(res));
 }
 
 /** Delete a booking (ADR-0047 §3). `deleteEvents=false` (default) unlinks — the
@@ -603,7 +637,7 @@ export async function createPlace(tripId: string, input: CreatePlaceInput): Prom
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return placeSchema.parse(await res.json());
+  return placeSchema.parse(await readJson(res));
 }
 
 export async function updatePlace(
@@ -617,7 +651,7 @@ export async function updatePlace(
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return placeSchema.parse(await res.json());
+  return placeSchema.parse(await readJson(res));
 }
 
 /** Remove a place from the trip (ADR-0157). A 404 is success: the row is already gone,
@@ -643,7 +677,7 @@ export async function searchPlaces(
     signal,
   });
   if (!res.ok) return throwApiError(res);
-  return placePredictionSchema.array().parse(await res.json());
+  return placePredictionSchema.array().parse(await readJson(res));
 }
 
 /** The Text Search relay (ADR-0132 §7) — the half whose results can be drawn, because
@@ -668,7 +702,7 @@ export async function searchPlacesText(
     signal,
   });
   if (!res.ok) return throwApiError(res);
-  return placeResultSchema.array().parse(await res.json());
+  return placeResultSchema.array().parse(await readJson(res));
 }
 
 /**
@@ -697,7 +731,7 @@ export async function lookupEnrichment(
     signal,
   });
   if (!res.ok) return throwApiError(res);
-  return deliveredEnrichmentFieldsSchema.parse(await res.json());
+  return deliveredEnrichmentFieldsSchema.parse(await readJson(res));
 }
 
 /** The terminating enrich-on-pick (create-or-link) call (ADR-0108 §3 / ADR-0110 §1).
@@ -711,7 +745,7 @@ export async function resolvePlace(tripId: string, input: ResolvePlaceInput): Pr
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return placeSchema.parse(await res.json());
+  return placeSchema.parse(await readJson(res));
 }
 
 // ── Trip-destination lookup (ADR-0113): trip-agnostic, used at creation before a
@@ -738,7 +772,7 @@ export async function searchDestinations({
     signal,
   });
   if (!res.ok) return throwApiError(res);
-  return placePredictionSchema.array().parse(await res.json());
+  return placePredictionSchema.array().parse(await readJson(res));
 }
 
 /** Geocode a picked destination into `{ googlePlaceId, name, countryCode?, lat?,
@@ -753,7 +787,7 @@ export async function resolveDestination(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) return throwApiError(res);
-  return destinationResultSchema.parse(await res.json());
+  return destinationResultSchema.parse(await readJson(res));
 }
 
 /** Upload a document (multipart). The browser sets the multipart `Content-Type`
@@ -771,7 +805,7 @@ export async function uploadDocument(
   form.set('file', file);
   const res = await apiFetch(documentsUrl(tripId), { method: HTTP_METHOD.POST, body: form });
   if (!res.ok) return throwApiError(res);
-  return tripDocumentSchema.parse(await res.json());
+  return tripDocumentSchema.parse(await readJson(res));
 }
 
 /** Fetch a document's decrypted content as a Blob. The `/content` route is
@@ -788,7 +822,8 @@ export async function uploadDocument(
  *  and the viewer's only route to an error state is a rejection — so any one of them going
  *  quiet was a spinner that outlived the screen. The cache's own bound lives in
  *  `doc-cache.ts`, which answers null; the two network phases reject, and the viewer turns
- *  that into a retry. */
+ *  that into a retry. Those two are `apiFetch`'s own bounds now (#22 made them every read's),
+ *  so this path holds no second copy of them. */
 export async function fetchDocumentContent(
   tripId: string,
   docId: string,
@@ -800,12 +835,8 @@ export async function fetchDocumentContent(
   const cached = await readCachedBlob(url);
   if (cached) return cached;
 
-  const res = await withDeadline(DOC_READ_PHASE.FETCH, DOC_READ_TIMEOUT_MS.FETCH, (signal) =>
-    apiFetch(url, { signal }),
-  );
-  // The error body is a read like any other, so it takes the same bound: a 500 whose body
-  // never arrives would hang in `throwApiError` exactly as a 200's would hang here.
-  const blob = await withDeadline(DOC_READ_PHASE.BODY, DOC_READ_TIMEOUT_MS.BODY, () =>
+  const res = await apiFetch(url);
+  const blob = await withDeadline(API_PHASE.BODY, API_TIMEOUT_MS.BODY, () =>
     res.ok ? res.blob() : throwApiError(res),
   );
 
@@ -832,7 +863,7 @@ export async function updateDocument(
     body: form,
   });
   if (!res.ok) return throwApiError(res);
-  return tripDocumentSchema.parse(await res.json());
+  return tripDocumentSchema.parse(await readJson(res));
 }
 
 /** Delete a document (row + encrypted blob, server-side). 204, no body. */

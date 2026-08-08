@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PhaseTimeoutError, withDeadline } from './deadline';
+import { bestEffort, PhaseTimeoutError, withDeadline } from './deadline';
 
 const NEVER = new Promise<never>(() => {});
 
@@ -56,5 +56,68 @@ describe('withDeadline', () => {
     vi.useFakeTimers();
     await withDeadline('p', 1000, async () => 'ok');
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// A bound must not cost a caller the cancellation it already had: the searches pass their own
+// signal so a superseded keystroke aborts, and `fetch` takes exactly one signal.
+describe('withDeadline with a caller signal (field-report #22)', () => {
+  it("relays the caller's abort to the signal work is holding", async () => {
+    const outer = new AbortController();
+    let seen: AbortSignal | undefined;
+    void withDeadline(
+      'p',
+      1000,
+      (signal) => {
+        seen = signal;
+        return NEVER;
+      },
+      outer.signal,
+    ).catch(() => {});
+    expect(seen?.aborted).toBe(false);
+    outer.abort();
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it('starts aborted when the caller was already aborted before the call', async () => {
+    const outer = new AbortController();
+    outer.abort();
+    let seen: AbortSignal | undefined;
+    void withDeadline(
+      'p',
+      1000,
+      (signal) => {
+        seen = signal;
+        return NEVER;
+      },
+      outer.signal,
+    ).catch(() => {});
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it('stops listening to a caller signal once the phase is over', async () => {
+    const outer = new AbortController();
+    const removeSpy = vi.spyOn(outer.signal, 'removeEventListener');
+    await withDeadline('p', 1000, async () => 'ok', outer.signal);
+    expect(removeSpy).toHaveBeenCalled();
+  });
+});
+
+describe('bestEffort', () => {
+  it('answers the fallback when the store never replies, rather than waiting on it', async () => {
+    vi.useFakeTimers();
+    const guarded = bestEffort('local', 1000, () => NEVER, null);
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(guarded).resolves.toBeNull();
+  });
+
+  it('answers the fallback when the store throws, too', async () => {
+    await expect(bestEffort('local', 1000, () => Promise.reject(new Error('x')), 7)).resolves.toBe(
+      7,
+    );
+  });
+
+  it('passes a healthy answer through', async () => {
+    await expect(bestEffort('local', 1000, async () => 'hit', null)).resolves.toBe('hit');
   });
 });
