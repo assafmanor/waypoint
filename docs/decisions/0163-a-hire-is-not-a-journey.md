@@ -9,6 +9,12 @@
 **Applies unchanged** [0048](0048-index-build-data-model-refinements.md) (route xor single place — nothing here moves a column), [0054](0054-ambient-span-events-off-the-day-schedule.md) (a multi-day hire is a backdrop), [0134](0134-the-map-is-where-a-forms-place-comes-from.md) §2 (the per-field place errand), [0102](0102-search-mode-scope-and-multi-field-matching.md).
 **Drawn first** in [`mockups/car-hire-form-and-ambient-v1.html`](../../mockups/car-hire-form-and-ambient-v1.html), whose §4 offered three options; the owner took the first.
 
+## Amendment (2026-08-09, [ADR-0179](0179-a-booking-row-says-what-then-when-and-the-code-is-a-read.md)) — `typeChipAddsMeaning` gains a second term
+
+§3's fix was to drop the type chip exactly when it repeats the **title**, keyed on the two rendered strings rather than on "is this a hire with no provider". 0179 keeps that shape and adds one term: the chip is also dropped when it repeats the **badge**, which is the common case — `טיסה` beside ✈️, on an amber transport tint, under a filter chip already reading `טיסה 4`.
+
+The chip survives precisely where the badge stops saying the type: `chosenIcon(event?.icon)` lets an event override the glyph, so a hotel wearing ⭐ keeps its chip. Same predicate, same reasoning — a redundancy is a property of what is actually rendered — one more thing rendered to compare against.
+
 ## Context
 
 Four owner reports against the 0162 build, in the owner's words:

@@ -4,6 +4,14 @@
 **Date:** 2026-07-18
 **Refines:** [0063](0063-category-time-behaviour-profile.md) (this ADR applies its `bracketed` profile to the Home & Index — see the rebase note below), [0045](0045-trip-home-real-data-only.md) (the hero was declared "unchanged" there; it now gains booking-aware presentation), [0054](0054-ambient-span-events-off-the-day-schedule.md) (ambient hotels are backdrop on the day schedule — this decides how they surface on the hero and as an in-progress treatment), [0053](0053-index-booking-detail-view-and-merged-edit-reach.md) (the booking detail view whose appearance this improves), [0049](0049-index-tab-mode-and-lifecycle.md) (the Index booking row), [0011](0011-hard-soft-event-model.md) (a booking backs a hard event), [0004](0004-integrations-are-pipes.md) (bookings feed existing surfaces, never their own screen), [0047](0047-booking-event-linkage-and-notes.md)/[0048](0048-index-build-data-model-refinements.md) (the Booking↔Event model + `Booking.details` the presentation reads)
 
+## Amendment (2026-08-09, [ADR-0179](0179-a-booking-row-says-what-then-when-and-the-code-is-a-read.md)) — §3's shared row grammar sheds two of its four marks
+
+§3 gave the Index booking row a shared appearance: a category-tinted badge, a lock on a hard booking, a small type chip beside the title, and the confirmation code in the row's trailing slot. The badge and the lock stand; **the type chip and the confirmation code go**, and the lock moves from the title line to the when line.
+
+The measurement is what settled it, and it is 0178's measurement one screen over: the trailing slot is `flex: 0 0 auto`, so the code — the one unbounded string any `ListRow` host puts there — is sized by its own content and the title gets the remainder. On the row the owner photographed that was **43px of 330 at 360px**, against 184px once the code leaves. The chip goes for a different reason: between the badge glyph, the badge tint, the transition verb and the active filter chip, it is the fourth thing saying the type.
+
+Nothing here contradicts §3's premise that the row shares one grammar with the rest of the booking surfaces — it is the same grammar with two fewer marks, and the marks it drops are the two the **detail** view already states more precisely. 0179 §2 has the audit; §5 records that the code was put to the owner as a three-armed fork with all arms drawn.
+
 ## Amendment (2026-08-05, session 215) — §2's mid-span treatment is per MODE, and a hire is not travelling
 
 §2 gave a bracketed span whose clock is inside it two treatments: `in transit` for a flight in the air, and the "inside a booking now" strip for a mid-stay hotel. Both are right, and the split between them was drawn on the wrong axis — **ambient vs not** rather than **journey vs held**.
