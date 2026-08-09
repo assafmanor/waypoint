@@ -2,9 +2,10 @@
 
 **2026-08-09 · design session, nothing built.**
 Deliverable: [`mockups/plan-row-title-overflow-v1.html`](../../mockups/plan-row-title-overflow-v1.html)
-(+ its catalog entry, + a backlog line). **No ADR yet** — the layout half is a fork
-put to the owner, and writing the ADR before that answer would be inventing the
-decision rather than recording it.
+(+ its catalog entry, + a backlog line) → **[ADR-0178](../decisions/0178-a-day-row-says-what-then-when.md), Accepted the same day.**
+The ADR was deliberately not written until the owner had answered §3's fork — writing it
+first would have been inventing the decision rather than recording it. The answer, in
+full: _"I accept."_ Including the visible deletion. The build follows.
 
 ## The report
 
@@ -159,7 +160,10 @@ put back.
 
 ## Owed next
 
-- The owner's answer on §3 (the visible deletion) and on §2's scan claim.
+- ~~The owner's answer on §3 (the visible deletion) and on §2's scan claim.~~ **Accepted
+  in full**, so ADR-0178 is written and the build is what remains: the grid on both
+  `.bld` and `.wp-event-face`, the lock's move into the when line, the wrap-then-fold
+  rules on `.route`, and ADR-0161 §7 amended in place.
 - Whether the when line wrapping to two lines on zone-crossing rows reads as two facts
   or as the footnote this proposal took off the time column — it is the one row shape
   the alignment work introduced.
