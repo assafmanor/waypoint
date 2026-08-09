@@ -1,0 +1,37 @@
+/* The when line's shared VOCABULARY — the parts that mean the same thing on all three
+   rows that draw one (Plan's builder row, the Trip day card, the Index booking row).
+   Collected here by ADR-0179 rather than copied a third time; see `HardLock.tsx` for why
+   the line's LAYOUT deliberately stays with each host.
+
+   The split is the one ADR-0139 arrived at the hard way: a shared mark owns its glyph,
+   its hue and its label, and the host owns its size and position. What drifts when you
+   copy a small widget "because the geometry is different" is never the geometry. */
+
+/* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0011 · ADR-0178 §4). Amber because it is a
+   statement about a time and amber is the clock's (ADR-0028) — never spent decoratively.
+   `flex: 0 0 auto` because every host puts it in a flex line and a half-drawn lock says
+   nothing. */
+.hard-lock {
+  display: inline-grid;
+  place-items: center;
+  color: var(--amber-deep);
+  opacity: 0.85;
+  flex: 0 0 auto;
+}
+.hard-lock .icon {
+  inline-size: 12px;
+  block-size: 12px;
+}
+
+/* The elapsed-duration annotation. Context for the clock it sits beside, never a peer of
+   it — muted and a step down, so the line reads as a fact with a footnote rather than as
+   two facts. Mono because it is digits beside digits.
+
+   **The size is the host's**, and that is the density each row is allowed to differ on
+   (ADR-0178 §2): the day card sets 10.5px, the builder row and the booking row 10px. Only
+   the vocabulary is shared. */
+.when-dur {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--muted);
+}

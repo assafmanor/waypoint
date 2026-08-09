@@ -13,6 +13,7 @@ import {
 import { formatTime, isEventPast, relativeDayLabel, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { revealRows, type Revealed } from './filter-reveal';
+import { BOOKING_TYPE_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 /** **Does the type chip beside a booking's title say anything the title does not?**
@@ -31,9 +32,25 @@ import { t } from '../i18n/he';
  *
  *  Keyed on the rendered strings rather than on "is this a hire with no provider",
  *  because the redundancy is a property of the two labels — any type whose title happens
- *  to be its own name gets the same treatment, with no new branch. */
-export const typeChipAddsMeaning = (booking: Pick<Booking, 'type' | 'title'>): boolean =>
-  booking.title.trim() !== t.index.bookingType[booking.type];
+ *  to be its own name gets the same treatment, with no new branch.
+ *
+ *  **A second term, for when it repeats the BADGE** (ADR-0179 §2b). The row draws a
+ *  category glyph beside the chip, so on almost every row `טיסה` sits next to ✈️ on an
+ *  amber transport tint — the type said three times before the filter chip above the list
+ *  says it a fourth. The chip survives exactly where the badge stops saying it:
+ *  `chosenIcon(event?.icon)` lets an event override the glyph, so a hotel wearing ⭐ keeps
+ *  its chip and nothing else does.
+ *
+ *  `badgeIcon` is optional because the term is only meaningful where a badge is actually
+ *  drawn beside the chip. `BookingDetail` passes nothing on purpose: its subtitle sits under
+ *  a heading with room to spare, and a read surface naming the type outright is not the
+ *  redundancy this predicate exists to catch. */
+export const typeChipAddsMeaning = (
+  booking: Pick<Booking, 'type' | 'title'>,
+  badgeIcon?: string,
+): boolean =>
+  booking.title.trim() !== t.index.bookingType[booking.type] &&
+  badgeIcon !== BOOKING_TYPE_ICON[booking.type];
 
 /** The bookings-screen category filter (ADR-0098 §2): every `BookingType` plus
  *  an "all" option. Kept beside the type it filters, not a bare string literal
@@ -148,24 +165,61 @@ export function splitBookings(
  *  action ("נחיתה", "צ׳ק-אאוט") only helps while it's still ahead of you — once
  *  it's in the past-bookings list the day + duration answer "when was it", and
  *  the verb is noise. Past-ness is the same edge `splitBookings` files on. */
-export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, now: Date): string {
+export interface ScheduleParts {
+  /** The transition verb (`המראה`, `צ׳ק-אאוט`), absent once the booking is behind you
+   *  (ADR-0089). Whether it is *drawn* is the surface's call, not this function's — see
+   *  `edge`. */
+  verb?: string;
+  /** The relative day. Always present, and on the Index row it never shrinks: it is the
+   *  fact that tells one row from another in a list spanning the whole trip. */
+  day: string;
+  /** The clock, where this edge has one. */
+  time?: string;
+  /** **Which end of the span this reads.** `end` only once a multi-day booking's opening
+   *  day has passed. The Index row draws the verb on `end` alone (ADR-0179 §2d): on a
+   *  start edge the type→verb map is 1:1 with the badge glyph, so `המראה` beside ✈️ says
+   *  the type twice, while on a closing edge the verb is the only thing that can say
+   *  *which* end `11:00` is. */
+  edge: 'start' | 'end';
+}
+
+/** The schedule as **parts**, which is what a surface needs to give them a hierarchy —
+ *  a mono full-ink clock, a muted day, a quiet duration (ADR-0179 §3). Flex cannot style,
+ *  protect or re-order half of a text node, so a joined string forces the whole line to one
+ *  weight and one colour and makes the `…` eat whichever fact happens to be last. ADR-0152
+ *  §6c hit the identical wall on the event card's meta line.
+ *
+ *  `scheduleLabel` below stays the joined form for surfaces that genuinely want one text
+ *  run. */
+export function scheduleParts(
+  event: TripEvent,
+  booking: Booking,
+  trip: Trip,
+  now: Date,
+): ScheduleParts {
   const today = todayInTz(trip.timezone, now);
   const labels = timingLabels(booking.type);
   const multiDay = !!event.endDate && event.endDate !== event.date;
   const past = isEventPast(event, now, trip.timezone);
-  const join = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' · ');
 
   if (multiDay && today > event.date) {
     const day = relativeDayLabel(event.endDate!, today);
-    const label = past ? undefined : plainTimingLabel(labels.end);
+    const verb = past ? undefined : plainTimingLabel(labels.end);
     // Before the check-out day the day is enough; on the day itself, name the time.
     return event.endDate === today && event.endsAt
-      ? join(label, day, formatTime(event.endsAt, trip.timezone))
-      : join(label, day);
+      ? { verb, day, time: formatTime(event.endsAt, trip.timezone), edge: 'end' }
+      : { verb, day, edge: 'end' };
   }
 
   const day = relativeDayLabel(event.date, today);
-  if (!event.startsAt) return day;
-  const label = past ? undefined : plainTimingLabel(labels.start);
-  return join(label, day, formatTime(event.startsAt, trip.timezone));
+  if (!event.startsAt) return { day, edge: 'start' };
+  const verb = past ? undefined : plainTimingLabel(labels.start);
+  return { verb, day, time: formatTime(event.startsAt, trip.timezone), edge: 'start' };
+}
+
+/** The parts as one run, `verb · day · time` — unchanged output, and still what the Index
+ *  landing tile's one-line "next booking" preview wants. */
+export function scheduleLabel(event: TripEvent, booking: Booking, trip: Trip, now: Date): string {
+  const { verb, day, time } = scheduleParts(event, booking, trip, now);
+  return [verb, day, time].filter(Boolean).join(' · ');
 }

@@ -15,7 +15,7 @@ import { useClock } from '../lib/useClock';
 import {
   CATEGORY_ALL,
   countByCategory,
-  scheduleLabel,
+  scheduleParts,
   splitBookings,
   type BookingRow,
   type CategoryFilter,
@@ -29,13 +29,14 @@ import { resolveHostContext } from '../lib/host-context';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
-import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX } from '../constants';
+import { BOOKING_TYPE_ICON, chosenIcon } from '../constants';
 import { BookingSheet, type BookingSheetDraft } from './BookingSheet';
 import { BookingDetail } from './BookingDetail';
 import { BookingManageSheet } from './BookingManageSheet';
 import { BookingTitle } from './BookingTitle';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
+import { HardLock } from './HardLock';
 import { DocumentMark, ListRow, NoteMark, type BadgeTone } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
@@ -395,6 +396,15 @@ function BookingLi({
   // A queued (pending) write fades the row to read as provisional (ADR-0092).
   const unsynced = useUnsynced(booking.id);
 
+  const schedule = event ? scheduleParts(event, booking, trip, now) : undefined;
+  // THE VERB IS DRAWN WHERE IT DISAMBIGUATES (ADR-0179 §2d): on a span's closing edge it
+  // is the only thing that can say which end this time is, and on a start edge the badge
+  // glyph already says it — the type→verb map is 1:1.
+  const showVerb = !!schedule?.verb && schedule.edge === 'end';
+  const duration = event
+    ? formatBookingDuration(event, trip.timezone, bookingDurationUnit(booking.type))
+    : null;
+
   return (
     <ListRow
       icon={icon}
@@ -403,49 +413,71 @@ function BookingLi({
       openLabel={booking.title}
       title={
         <>
-          <BookingTitle booking={booking} places={places} />
-          {isHard && (
-            <span className="bk-lock" aria-hidden="true">
-              <Icon name="lock" />
-            </span>
-          )}
-          {/* Dropped when it would only repeat the title (ADR-0163's amendment) — a hire
-              with no company is titled by its type label, so the chip said it twice. */}
-          {typeChipAddsMeaning(booking) && (
+          {/* THE TITLE GETS THE LINE (ADR-0179 §1). Clamped to two lines then `…`, the
+              ladder ADR-0178 §5 settled — admissible only because the row's own tap is a
+              read (ADR-0174 §4), so the full title is one tap away. Never mid-word. */}
+          <span className="bk-title-txt">
+            <BookingTitle booking={booking} places={places} />
+          </span>
+          {/* Now dropped when it repeats the BADGE as well as the title (ADR-0179 §2b), so
+              it survives only where `chosenIcon` has overridden the category glyph. */}
+          {typeChipAddsMeaning(booking, icon) && (
             <span className="tag-type">{t.index.bookingType[booking.type]}</span>
           )}
-        </>
-      }
-      meta={
-        <>
-          {event ? (
-            <span className="link-cue">
-              <Icon name="link" /> {scheduleLabel(event, booking, trip, now)}
-              {(() => {
-                const dur = formatBookingDuration(
-                  event,
-                  trip.timezone,
-                  bookingDurationUnit(booking.type),
-                );
-                return dur ? <span className="bk-dur"> · {dur}</span> : null;
-              })()}
-            </span>
-          ) : (
-            <span className="unlinked">{t.index.unlinked}</span>
-          )}
-          {/* The mark rides the meta line the row already has — a note is a mark on a row,
-              never a body in it (ADR-0152 §6). Composed here rather than through a new
-              `ListRow` prop: the row's meta is already a node, so it needs no variant. */}
+          {/* THE MARKS RIDE THE TITLE LINE (ADR-0179 §5) — a note is still a mark on a row
+              and never a body in it (ADR-0152 §6), it has just moved lines. They are
+              unshrinkable by nature, and on the when line they took ~21–42px from a
+              sentence already over budget at 360px, which measured as four rows losing
+              their DAY to the ellipsis. The title line has the slack. */}
           <NoteMark count={notes} />
           <DocumentMark count={documents} />
         </>
       }
-      right={
-        booking.confirmationCode && (
-          <span className="code" dir="auto">
-            {CODE_PREFIX}
-            {booking.confirmationCode}
+      meta={
+        schedule ? (
+          /* THE WHEN LINE (ADR-0179 §3) — a sentence whose subject is the clock, the same
+             object `.wp-event-time` is one surface over at the day card's density. Its
+             parts are ELEMENTS rather than a joined string because flex cannot style or
+             protect half of a text node (ADR-0152 §6c). */
+          <span className="bk-when">
+            {/* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0179 §3, following ADR-0178 §4):
+                ADR-0011's commitment is a commitment about a TIME. An unlinked booking has
+                no event and so is never hard, which is why this needs no untimed fallback
+                the way the day row did. */}
+            {isHard && <HardLock />}
+            {/* The `·` between these is drawn by CSS, not rendered here — the mechanism
+                both day rows already use (`.bld-timemeta::before`). A separator is
+                punctuation between facts, so putting it in the DOM would also put it in
+                the accessibility tree, where a row would read "check-out dot tomorrow dot
+                eleven o'clock". */}
+            {showVerb && <span className="bk-verb">{schedule.verb}</span>}
+            <span className="bk-day">{schedule.day}</span>
+            {schedule.time && (
+              /* THE ISOLATE IS THE INNER `<bdi>`, NOT THIS ELEMENT, and that is the rule
+                 rather than a preference: `dir="auto"` sniffs the content, `12:30` opens
+                 with digits, so the attribute here would resolve this box to LTR and its
+                 `::before` separator would render at the box's LEFT — on the far side of
+                 the fact it separates. Rendered, that put the dot after the clock and left
+                 a trailing `·` at the end of every row. `frontend/CLAUDE.md` already says
+                 it: the attribute goes on the element holding the value AND NOTHING ELSE,
+                 and this one also holds a generated dot. `<bdi>` isolates the numeric run
+                 without touching its parent's direction — the same thing `RouteLabel` does
+                 for a place name. */
+              <span className="bk-clock">
+                <bdi>{schedule.time}</bdi>
+              </span>
+            )}
+            {/* ONE ANNOTATION, NOT TWO (ADR-0179 §4). Beside the verb this is not merely
+                expensive, it is misleading: the duration is the WHOLE stay's length, so
+                `11:00 · 5 לילות` on a check-out row reads as five nights still to come. */}
+            {duration && !showVerb && (
+              <span className="when-dur bk-dur">
+                <bdi>{duration}</bdi>
+              </span>
+            )}
           </span>
+        ) : (
+          <span className="unlinked">{t.index.unlinked}</span>
         )
       }
       sync={<EntitySyncBadge id={booking.id} />}

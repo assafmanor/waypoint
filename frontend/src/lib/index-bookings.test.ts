@@ -14,6 +14,7 @@ import {
   matchesQuery,
   typeChipAddsMeaning,
   scheduleLabel,
+  scheduleParts,
   splitBookings,
   visibleRows,
 } from './index-bookings';
@@ -386,7 +387,76 @@ describe('visibleRows (ADR-0098 §4 stagger)', () => {
 // **The chip that repeated the title** (ADR-0163's amendment, owner report 2026-08-04).
 // §3's fallback titles a hire with no company by its TYPE LABEL, which is right on every
 // title-only surface and made the Index row say `השכרת רכב` twice, adjacent.
+describe('scheduleParts (ADR-0179 §2d) — which EDGE the row is reading', () => {
+  const hotel = booking('h', 'hotel', BOOKING_TYPE.HOTEL);
+
+  it('reads the START edge before and on the opening day', () => {
+    const ahead = span_(linkedEvent('h', '2026-07-10', '15:00'), '2026-07-14', '11:00');
+    expect(scheduleParts(ahead, hotel, TRIP, new Date(NOW)).edge).toBe('start');
+    const onTheDay = span_(linkedEvent('h', '2026-07-07', '15:00'), '2026-07-10', '11:00');
+    expect(scheduleParts(onTheDay, hotel, TRIP, new Date(NOW)).edge).toBe('start');
+  });
+
+  it('flips to the CLOSING edge once the opening day has passed — the one row the verb is kept for', () => {
+    const midStay = span_(linkedEvent('h', '2026-07-05', '15:00'), '2026-07-14', '11:00');
+    const parts = scheduleParts(midStay, hotel, TRIP, new Date(NOW));
+    expect(parts.edge).toBe('end');
+    // The verb is the only thing that can say WHICH end this is — `11:00` cannot.
+    expect(parts.verb).toBe('צ׳ק-אאוט');
+  });
+
+  it('a single-day booking is always a start edge, so it never draws the verb on the row', () => {
+    const flight = booking('f', 'flight', BOOKING_TYPE.FLIGHT);
+    const parts = scheduleParts(
+      linkedEvent('f', '2026-07-09', '08:30'),
+      flight,
+      TRIP,
+      new Date(NOW),
+    );
+    expect(parts.edge).toBe('start');
+    expect(parts.day).toBe('מחרתיים');
+    expect(parts.time).toBe('08:30');
+  });
+
+  it('still drops the verb entirely once the booking is behind you (ADR-0089 unchanged)', () => {
+    const checkedOut = span_(linkedEvent('h', '2026-07-04', '15:00'), '2026-07-07', '11:00');
+    const parts = scheduleParts(checkedOut, hotel, TRIP, new Date(NOW));
+    expect(parts.edge).toBe('end');
+    expect(parts.verb).toBeUndefined();
+  });
+
+  it('an untimed event still reports its day, so the row keeps a when line to hang the lock on', () => {
+    const flight = booking('f', 'flight', BOOKING_TYPE.FLIGHT);
+    const untimed = { ...linkedEvent('f', '2026-07-09', '08:30'), startsAt: undefined };
+    const parts = scheduleParts(untimed, flight, TRIP, new Date(NOW));
+    expect(parts.time).toBeUndefined();
+    expect(parts.day).toBe('מחרתיים');
+  });
+});
+
 describe('typeChipAddsMeaning', () => {
+  it('is false when the BADGE already says the type (ADR-0179 §2b)', () => {
+    // The row draws ✈️ beside the chip on an amber transport tint, under a filter chip
+    // reading `טיסה N` — the type four times over.
+    expect(typeChipAddsMeaning({ type: BOOKING_TYPE.FLIGHT, title: 'נתב״ג ← נריטה' }, '✈️')).toBe(
+      false,
+    );
+    expect(typeChipAddsMeaning({ type: BOOKING_TYPE.HOTEL, title: 'Granbell' }, '🏨')).toBe(false);
+  });
+
+  it('survives exactly where an icon override has taken the type off the badge', () => {
+    // `chosenIcon(event?.icon)` lets an event override the glyph, so a hotel wearing ⭐ no
+    // longer says what it is — and the chip is the only thing left that can.
+    expect(typeChipAddsMeaning({ type: BOOKING_TYPE.HOTEL, title: 'Granbell' }, '⭐')).toBe(true);
+  });
+
+  it('keeps both terms — either redundancy alone is enough to drop the chip', () => {
+    // A hire with no company is titled by its own type label, even wearing an override.
+    expect(
+      typeChipAddsMeaning({ type: BOOKING_TYPE.CAR, title: t.index.bookingType.car }, '⭐'),
+    ).toBe(false);
+  });
+
   it('drops the chip when the title is nothing but the type label', () => {
     expect(typeChipAddsMeaning({ type: BOOKING_TYPE.CAR, title: t.index.bookingType.car })).toBe(
       false,
