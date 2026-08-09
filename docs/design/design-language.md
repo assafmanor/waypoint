@@ -191,7 +191,9 @@ Plan mode reuses the same tokens/grammar as Trip mode, adding builder/entry comp
 
 Canonical names, for docs / code / tickets — one vocabulary end to end:
 
-`Board` (Now/Next hero) · `CountdownChip` · `VerbRow` (tap-to-expand actions) · `RippleBar` · `MaybeShelf` · `GapChip` · `ReadinessBar` · `BoardingPass` (link-invite card) · `PermRow` (permission toggle row) · `ModePill` · `DayStrip` · `GlanceCard` · `Toast`.
+`Board` (Now/Next hero) · `CountdownChip` · `VerbRow` (tap-to-expand actions) · `RippleBar` · `MaybeShelf` · `GapChip` · `ReadinessBar` · `BoardingPass` (link-invite card) · `PermRow` (permission toggle row) · `ModePill` · `DayStrip` · `GlanceCard` · `RateCard` · `Toast`.
+
+**Two of those names are a trap for each other.** `GlanceCard` was repurposed by [ADR-0045](../decisions/0045-trip-home-real-data-only.md) to mean the derived **day-at-a-glance time rail** and nothing else — so the FX card that ADR-0045 §4 promised would "return as its own glance card" cannot be called one. It is **`RateCard`** ([ADR-0180](../decisions/0180-currency-is-derived-and-a-rate-is-a-glance-card.md) §3): the first real tenant of the restored `מבט מהיר` section, neutral chrome, one `<button>` that opens the converter sheet. Weather is the second tenant of the same row, and it will want its own name too.
 
 ## Emoji are content, icons are UI
 

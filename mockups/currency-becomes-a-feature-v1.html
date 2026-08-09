@@ -10308,6 +10308,66 @@ button.wp-av:focus-visible {
         margin-inline-start: auto;
       }
 
+      /* ══ The refresh (§8). NOT a control beside the "as of" — the "as of"
+         BECOMES the control. There is no second element and no second word: the
+         date is the only thing a refresh changes, so pressing the date is the
+         whole gesture, and the glyph is what says it is pressable.
+
+         This is `ValueToken`'s shape at a read-only value (ADR-0177): text in a
+         line, a hairline when it is actionable, and the 44px floor met by an
+         `::after` overlay so the 17px line never grows to hold a target. ══ */
+      .cv-asof {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      button.cv-asof {
+        position: relative;
+        border: 0;
+        background: none;
+        padding: 0;
+        font: inherit;
+        font-size: inherit;
+        color: var(--ink);
+        cursor: pointer;
+        /* The hairline is a shadow, not a border, and that is not fussiness:
+           a `border-block-end` is IN layout, so the line measured 17px without
+           the control and 18px with it — the control's own appearance reflowed
+           the fact it sits on. `ValueToken`'s comment records the same class of
+           mistake one size up ("`min-height: 44px` took that row from 58px to
+           75px"). Painted, not laid out: 17px either way. */
+        box-shadow: 0 1px 0 var(--line);
+      }
+      button.cv-asof::after {
+        content: '';
+        position: absolute;
+        inset: -14px -8px;
+      }
+      .cv-asof .icon {
+        width: 13px;
+        height: 13px;
+        color: var(--muted);
+      }
+      /* In flight: the MARK spins, the DATE does not move and is not replaced.
+         ADR-0166 §6.4 — never a spinner where a fact used to be. */
+      button.cv-asof[data-busy] {
+        color: var(--muted);
+        box-shadow: none;
+      }
+      button.cv-asof[data-busy] .icon {
+        animation: cv-spin 900ms linear infinite;
+      }
+      @keyframes cv-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        button.cv-asof[data-busy] .icon {
+          animation: none;
+        }
+      }
+
       /* ══ The picker's REUSE costs exactly one variant, and rendering §4 is
          how it was found — none of this is visible in `ZonePicker`'s source.
 
@@ -10863,6 +10923,48 @@ button.wp-av:focus-visible {
         <div class="pair" id="s7"></div>
       </section>
 
+      <!-- ══════════════════════════ §8 ══════════════════════════ -->
+      <section class="case">
+        <h2>§8 · רענון · ה"נכון ל־" <em>הוא</em> הפקד</h2>
+        <p class="note">
+          <b>שאלת בעלים: "לא כדאי כפתור רענון קטן שמושך את השערים העכשוויים?"</b> התשובה היא כן
+          לפעולה ולא לפקד קבוע · והסיבה היא בדיוק מה שמייחד שער יציג מכל ערך אחר במסך:
+          <b>הוא מתפרסם פעם ביום עסקים</b>. לחיצה על רענון כשבידינו השער של היום מחזירה את אותו
+          מספר, תמיד. פקד שאמין בכך שהוא לא עושה כלום הוא בדיוק מה ש-ADR-0133 §7 קרא לו
+          <b>"a switch that does nothing is worse than a thin page"</b>, וגרוע מזה: הוא
+          <b>מרמז שהמספר חי</b>, כלומר סותר את ה"נכון ל־" שמונח לידו.
+          <br /><br />
+          <b>אבל יש שלושה מצבים שבהם לחיצה כן משנה משהו</b> · היינו אופליין וחלפו מאז ימי מסחר; ניסיון
+          קודם נכשל; המקור היה למטה. לכן הכלל הוא לא "להוסיף כפתור" אלא <b>להראות אותו בדיוק כשהוא
+          יכול לשנות את המספר</b> · והכלל הזה כבר כתוב באפליקציה: ההערה בראש
+          <code>ui/feedback/ErrorState.tsx</code> אומרת
+          <b>"the retry button only renders when the caller can actually recover"</b>. אנחנו מחילים
+          אותה על <b>ערך</b> במקום על מבוי סתום.
+          <br /><br />
+          זו גם הדקדוק הקיים של המסך ולא חריג בו: <code>SyncBadge</code> הוא
+          <b>"exception indicator: silent when synced"</b>, אריח נגזר בלי מקור נעלם (ADR-0050),
+          וחץ ההחלפה בכותרת נעדר כשיש טיול אחד. פקד שמופיע רק כשיש לו מה לומר הוא הנורמה כאן.
+          <br /><br />
+          <b>ועכשיו המיקום, אחרי סבב שני · אין פקד נפרד בכלל.</b> הציור הראשון שם כפתור
+          <code>רענון</code> <b>ליד</b> התאריך, וזה היה שגוי בשתי דרכים: מילה שנייה על שורה בת
+          17px, ופקד שמתחרה בעובדה שהוא אמור לשנות. הצורה הנכונה היא ש<b>התאריך עצמו הוא הכפתור</b>
+          · "נכון ל־6.8" הוא הדבר היחיד שרענון משנה, אז ללחוץ עליו <em>הוא</em> המחווה. הגליף
+          מסמן שאפשר ללחוץ, ואין לו טקסט משלו: הטקסט שלידו הוא העובדה, לא תווית.
+          <br /><br />
+          זו בדיוק הצורה של <code>ValueToken</code> (ADR-0177) · ערך בתוך משפט, קו-שיער כשהוא
+          פעיל, ורצפת 44px שנפגשת ב-<code>::after</code> כדי שהשורה בת 17px לא תגדל כדי להחזיק
+          מטרה. המדידה בטבלה בודקת בדיוק את שני הדברים האלה: שהשורה <b>לא</b> גדלה כשהפקד מופיע,
+          ושהמטרה בכל זאת עוברת את הרצפה.
+          <br /><br />
+          <b>ולמה בגיליון ולא על הכרטיס.</b> הכרטיס הוא <code>&lt;button&gt;</code> אחד · כולו פותח
+          את הממיר · וכפתור בתוך כפתור אינו HTML תקין, שלא לדבר על שתי מטרות מגע בשורה בת 44px.
+          הגיליון הוא המקום שבו עומדים <b>לפעול</b> על המספר, וזה בדיוק המקום שבו ADR-0166 §3 אומר
+          שהטריות באמת נושכת. שני המסלולים אליו זהים: מי שרואה תאריך ישן על הכרטיס מקיש עליו,
+          נוחת בגיליון, ומוצא את הפקד על אותה עובדה בדיוק.
+        </p>
+        <div class="pair" id="s8"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -11007,6 +11109,9 @@ button.wp-av:focus-visible {
         currency:
           'M3.4 8.4a2 2 0 0 1 2-2h13.2a2 2 0 0 1 2 2v9.2a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2Z M3.4 9.6h13.2a1.6 1.6 0 0 1 1.6 1.6v3.6a1.6 1.6 0 0 1-1.6 1.6H3.4 M14.6 13.4h.02',
         plus: 'M12 4.8v14.4 M4.8 12h14.4',
+        // The app's retry glyph — the one `ErrorState` already uses for exactly
+        // this verb, so §8's control does not introduce a second "try again" mark.
+        reset: 'M3 4v6h6M3.5 15a9 9 0 1 0 2.2-9.4L3 10',
         caret: 'M5 9l7 7 7-7z',
         close: 'M6 18 18 6M6 6l12 12',
         lock: 'M7.4 10.4V7.6a4.6 4.6 0 0 1 9.2 0v2.8 M5.8 10.4h12.4a1.4 1.4 0 0 1 1.4 1.4v8a1.4 1.4 0 0 1-1.4 1.4H5.8a1.4 1.4 0 0 1-1.4-1.4v-8a1.4 1.4 0 0 1 1.4-1.4Z',
@@ -11517,6 +11622,32 @@ button.wp-av:focus-visible {
         </div>`;
       };
 
+      /* ── §8 the rate line in its four refresh states ─────────────────────
+            One renderer, four inputs — so no state can be hand-drawn into
+            disagreeing with its siblings. `current` is the common case and it
+            is the one with NO control. */
+      const rateLine8 = (state, id) => {
+        const p = pair();
+        const asOf = state === 'current' || state === 'offline' ? '9.8' : '6.8';
+        const live = state === 'behind' || state === 'busy';
+        const inner = `${live ? ic('reset') : ''}<span>נכון ל־<span dir="auto">${asOf}</span></span>`;
+        return `<div class="mk-phone frag" id="${id}">
+          <div class="app" data-mode="trip">
+            <main class="body" style="padding-block:18px">
+              <div class="cv-rate" id="${id}-line">
+                <span class="mono" dir="auto">${rateLine(p)}</span>
+                ${
+                  live
+                    ? `<button type="button" class="cv-asof" id="${id}-btn" ${state === 'busy' ? 'data-busy' : ''} aria-label="רענון השער">${inner}</button>`
+                    : `<span class="cv-asof">${inner}</span>`
+                }
+                <span class="src">שער יציג · ECB</span>
+              </div>
+            </main>
+          </div>
+        </div>`;
+      };
+
       /* ══════════════════════════ paint ══════════════════════════ */
       const paint = () => {
         document.querySelector('#s1').innerHTML = [
@@ -11592,6 +11723,13 @@ button.wp-av:focus-visible {
         document.querySelector('#s7').innerHTML = [
           col('<span class="tag before">היום</span>', 'המסך כמו שהוא · ערכת נושא לבדה בסעיף תצוגה', accountRow(false, 'ac-b')),
           col('<span class="tag after">בהצעה</span>', 'כרטיס שני בתוך אותו סעיף · ורמז משלו, כי הוא לא של המכשיר', accountRow(true, 'ac-a')),
+        ].join('');
+
+        document.querySelector('#s8').innerHTML = [
+          col('<span class="tag before">בידינו שער היום</span>', 'המצב הנפוץ · <b>אין פקד</b>, כי אין מה להביא', rateLine8('current', 'r8-a')),
+          col('<span class="tag after">חלפו ימי מסחר</span>', 'היינו אופליין · עכשיו יש מה להביא', rateLine8('behind', 'r8-b')),
+          col('<span class="tag after">בזמן משיכה</span>', 'המספר הישן נשאר · הסימן מסתובב, לא הערך', rateLine8('busy', 'r8-c')),
+          col('<span class="tag alt">אופליין</span>', 'אותו כלל בדיוק · לחיצה לא תשנה כלום, אז אין פקד', rateLine8('offline', 'r8-d')),
         ].join('');
 
         // §6 — read from Intl in THIS runtime. Never a typed table.
@@ -11766,6 +11904,17 @@ button.wp-av:focus-visible {
           void chip.offsetHeight;
           return `${now.toFixed(1)}px · היה ${was.toFixed(1)}px`;
         };
+        /** The refresh's real target, which is its `::after` overlay and not its
+         *  own box — so it has to be read from the pseudo, not from the button.
+         *  A rect on the button alone would report 17px and call it a failure. */
+        const refreshTarget = () => {
+          const btn = el('#r8-b-btn');
+          if (!btn) return null;
+          const cs = getComputedStyle(btn, '::after');
+          const top = parseFloat(cs.top) || 0;
+          const bottom = parseFloat(cs.bottom) || 0;
+          return Math.round(btn.getBoundingClientRect().height - top - bottom);
+        };
         const secTitleH = h('#s1 .sec-title') ?? 0;
         const bodyH = visBody;
         const baseRow = h('#g-a') ?? 0;
@@ -11806,6 +11955,8 @@ button.wp-av:focus-visible {
           ['שבב המטבע · גובה', h('#cv .cv-cur') + 'px', 'רצפת מגע 44px'],
           ['כפתור ההיפוך · גובה נראה / אזור מגע', h('#cv .cv-swap') + 'px / 44px', 'הרחבה ב-<code>::after</code>, לא בגודל הנראה'],
           ['שורת השער + "נכון ל־" · גובה', h('#cv-rate') + 'px', 'שורה אחת, כי זו עובדה אחת'],
+          ['שורת השער · <b>עם</b> פקד הרענון (§8)', h('#r8-b-line') + 'px', 'מול ' + h('#r8-a-line') + 'px בלעדיו · הפקד לא מוסיף שורה'],
+          ['ה"נכון ל־" כפקד · גובה נראה / אזור מגע', h('#r8-b-btn') + 'px / ' + refreshTarget() + 'px', 'רצפת מגע 44px · הרחבה ב-<code>::after</code>'],
           ['הגיליון כולו · גובה', h('#cv .modal-card') + 'px', `מול ${bodyH}px גוף גלוי · גיליון לא ממלא מסך`],
 
           ['· §4/§5/§7 · הבוחר והשדות', '', ''],

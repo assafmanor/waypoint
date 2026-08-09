@@ -2,10 +2,7 @@
 
 **2026-08-09 · design session, nothing built.**
 Deliverable: [`mockups/currency-becomes-a-feature-v1.html`](../../mockups/currency-becomes-a-feature-v1.html)
-(+ its catalog entry, + the backlog line rewritten) → **ADR pending the owner's answers to the
-four forks at the foot of this note.** The ADR is deliberately not written yet: this repo's
-convention is to record a decision, not to invent one, and three of the four forks are the
-owner's call rather than a detail a build can settle.
+(+ its catalog entry, + the backlog line rewritten) → **[ADR-0180](../decisions/0180-currency-is-derived-and-a-rate-is-a-glance-card.md), Accepted the same day**, once the owner had answered every fork. It was deliberately not written before that: this repo's convention is to record a decision, not to invent one. The answer, in full: _"I accept your recommendations."_ The build follows.
 
 ## The brief
 
@@ -177,7 +174,7 @@ survives only as the **seed** for a user who has never set one — `new Intl.Loc
 through the same `COUNTRY_CURRENCY` table slice 1 adds — so the card still works on first open
 without a settings visit.
 
-**This does not overrule [ADR-0133](../decisions/0133-user-settings-identity-and-account.md) §7 —
+**This does not overrule [ADR-0133](../decisions/0133-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md) §7 —
 it meets the condition §7 itself set.** That section rejected exactly this list ("a theme toggle,
 a language picker, **units**, a user-level home timezone…") for one stated reason: _"A switch that
 does nothing is worse than a thin page."_ A currency preference **was** that switch, until this
@@ -294,26 +291,63 @@ terms here come from documentation and recall, not from a response. **The build'
 to fetch each candidate once and diff its currency list against the `COUNTRY_CURRENCY` table** —
 that diff, not a vendor's marketing number, is what "covers our destinations" means.
 
-## The forks still open
+## The forks, answered
 
-1. **§1 — the card (ד׳) or the tile (ג׳)?** Recommendation: ד׳, `מבט מהיר` restored with
-   `RateCard` as its first real tenant, the section absent when it has no cards, weather joining
-   later. Cheaper by measurement, and what ADR-0045 §4 said would happen. The thing worth saying
-   no to it for is the third section heading on a screen whose grammar is "one loud element, two
-   quiet sections".
-2. **§4 — extract a shared picker from `ZonePicker`, or write a sibling?** Recommendation: a
-   **small extraction** — the sheet + search + suggested-group + empty-state machinery is ~40
-   lines and entirely label-agnostic, and `ZonePicker` keeps its three exported helpers. Root
-   rule 8 requires asking before refactoring a shipped, tested primitive rather than quietly
-   duplicating it. **Now a three-call-site question, not two:** trip settings, user settings, and
-   both sides of the converter sheet.
+> "I accept your recommendations."
+
+1. **§1 — the card (ד׳).** `מבט מהיר` returns with `RateCard` as its first real tenant, the section
+   absent when it has no cards, weather joining later. The tile draft stays drawn as option ג׳.
+2. **§4 — the small extraction.** The sheet + search + suggested-group + empty-state machinery
+   becomes one shared primitive with `ZonePicker` and `CurrencyPicker` as thin wrappers. Root
+   rule 8's condition carries into the build: **if it turns out to be a substantial refactor
+   rather than a small extraction, the build stops and asks — it does not duplicate instead.**
+
+## §8 — the refresh, and why it is not a button
+
+> "Do we want to add a small refresh button that fetches the current rates?"
+
+**Yes to the action, no to a standing button** — and the second draft moved it again, on the
+owner's steer ("a glyph with no text, and let's rethink the placement").
+
+**Why not a standing control.** A reference rate is published **once per business day**. Pressing
+refresh while holding today's rate returns the same number, always. A control that reliably does
+nothing is ADR-0133 §7's own objection, and it is worse than inert here: it **implies the number
+is live**, contradicting the "as of" sitting beside it.
+
+**Why an action all the same.** Three states where a press changes something: we were offline and
+business days have closed since; the last attempt failed; the source was down. So the rule is not
+"add a button" but **show it exactly when it can change the number** — which is already written
+in this codebase. `ui/feedback/ErrorState.tsx`'s header: _"the retry button only renders when the
+caller can actually recover."_ This applies it to a **value** instead of a dead end, and it is the
+screen's normal grammar rather than an exception — `SyncBadge` is _"an exception indicator: silent
+when synced"_, a derived tile with no source vanishes, the header's swap mark is absent at one trip.
+
+**The placement, after the rethink: there is no separate control at all.** The first drawing put a
+`רענון` button _beside_ the date — wrong twice over, a second word on a 17px line and a control
+competing with the fact it exists to change. **The date is the button.** "נכון ל־6.8" is the only
+thing a refresh changes, so pressing it _is_ the gesture; the glyph says it is pressable and
+carries no word of its own, because the text beside it is the fact rather than a label. That is
+`ValueToken`'s shape at a read-only value (ADR-0177) — a value in a line, a hairline when
+actionable, the 44px floor met by an `::after` overlay.
+
+**And one measured correction inside that.** The hairline was a `border-block-end`, which is _in
+layout_ — so the line measured 17px without the control and **18px with it**: the control's
+appearance reflowed the fact it sits on. Painted as a `box-shadow` instead: 17px either way, with
+the target still 45px. `ValueToken`'s own comment records the same class of mistake one size up
+(_"`min-height: 44px` took that row from 58px to 75px"_).
+
+**Not on the card**, for a reason that is structural before it is aesthetic: the card is a single
+`<button>`, so a control inside it is invalid markup before it is a second 44px target on one row.
+Both routes reach the same place anyway — an old date on the card is what you tap, and the sheet is
+where that same fact becomes pressable.
 
 ## Owed next, once those are answered
 
-- The ADR, with ADR-0045 §4 amended **in place** (its promise is being kept, not superseded),
+- ~~The ADR~~ — **[ADR-0180](../decisions/0180-currency-is-derived-and-a-rate-is-a-glance-card.md), Accepted 2026-08-09.** It amends ADR-0045 §4 **in place** (its promise is being kept, not superseded),
   ADR-0014's second amendment cross-linked as the origin story, and **ADR-0133 §7 amended in
   place too** — `User.preferredCurrency` meets that section's own condition, exactly as the theme
   toggle did, and the amendment belongs beside the rejection rather than in a new ADR.
+- ~~`design-language.md`'s lexicon, `feature-catalog.md`'s two rows~~ — **done in the same change.**
 - **A live coverage check against every candidate rate source**, diffed against `COUNTRY_CURRENCY`
   — the one thing this session could not do, and the thing fork 4 actually turns on.
 - `design-language.md`'s component lexicon: `RateCard` added, and the `GlanceCard` entry noting
