@@ -9,8 +9,13 @@ one.
 
 - **`ui/primitives/`** — generic UI mechanics with no trip-domain shape:
   `Modal` (+ its `Sheet`/`ConfirmDialog`/`RowManageSheet` wrappers), `Field`,
-  `FormActions`, `FormSteps`, `FilePicker`, `WhenField`/`TimeField`, `ChoiceGrid`,
-  `SnapSheet`. **Every**
+  `FormActions`, `FormSteps`, `FilePicker`, `WhenField`/`TimeField`, `ValueToken`,
+  `ChoiceGrid`, `SnapSheet`. **A value shown as text that opens a picker is
+  `ValueToken`** (ADR-0177) — a date, a time, a duration inside a sentence. It owns
+  the hairline chip, the tone (amber is the clock's alone), and the touch target as
+  an `::after` overlay so meeting ADR-0017's 44px floor never grows the line. Do not
+  style a value box at a host: five hosts painting one `DateField` five different
+  ways is exactly what that ADR was written to end. **Every**
   overlay (sheet/dialog/picker/popover) renders through `Modal`, which
   registers into the back stack via `useOverlay` — never hand-roll a floating
   overlay (`createPortal` / `position:fixed`); it's lint-blocked

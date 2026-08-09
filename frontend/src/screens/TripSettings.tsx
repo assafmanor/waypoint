@@ -20,6 +20,7 @@ import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog'
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
 import { FormError } from '../ui/primitives/FormError';
 import { DateField } from '../ui/primitives/DateField';
+import { tokenClass } from '../ui/primitives/ValueToken';
 import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { Icon } from '../ui/Icon';
@@ -573,26 +574,30 @@ function DetailsEditor({
       </div>
       <div className="set-fld" ref={datesMark.ref}>
         <label>{t.settings.datesLabel}</label>
-        <div className="date-row">
-          <label className="subfld">
-            <span>{t.settings.dateFrom}</span>
-            <DateField
-              value={startDate}
-              data-invalid={!startDate && datesMark.error ? '' : undefined}
-              onChange={setStartDate}
-            />
-          </label>
-          <label className="subfld">
-            <span>{t.settings.dateTo}</span>
-            <DateField
-              min={startDate}
-              // Live while the range contradicts itself, and on the save's refusal —
-              // two reasons, one mark (ADR-0150 §7).
-              data-invalid={datesInvalid || (!endDate && datesMark.error) ? '' : undefined}
-              value={endDate}
-              onChange={setEndDate}
-            />
-          </label>
+        {/* THE RANGE IS A SENTENCE (ADR-0177 §1). `מ־` and `עד` used to sit BESIDE the
+            boxes, and that is what the owner saw overflow: `.set-fld .df` was
+            `width: 100%`, so caption + gap + box came out 21px wider than its grid
+            track and `.subfld` ran off the card, clipping `עד` to `ד`. As words inside
+            a wrapping line they cannot be clipped by an edge — the fix is structural,
+            not a width someone has to keep tuning. */}
+        <div className="wf-line">
+          <span className="wf-word">{t.whenField.rangeFrom}</span>
+          <DateField
+            className={tokenClass('date', { empty: !startDate })}
+            value={startDate}
+            data-invalid={!startDate && datesMark.error ? '' : undefined}
+            onChange={setStartDate}
+          />
+          <span className="wf-word">{t.whenField.rangeTo}</span>
+          <DateField
+            className={tokenClass('date', { empty: !endDate })}
+            min={startDate}
+            // Live while the range contradicts itself, and on the save's refusal —
+            // two reasons, one mark (ADR-0150 §7).
+            data-invalid={datesInvalid || (!endDate && datesMark.error) ? '' : undefined}
+            value={endDate}
+            onChange={setEndDate}
+          />
         </div>
         <FormError>{datesInvalid ? t.shell.newTrip.dateError : datesMark.error}</FormError>
       </div>

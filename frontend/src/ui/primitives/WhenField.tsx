@@ -24,6 +24,7 @@ import { formatDuration } from '../../lib/duration';
 import { nightPhrase } from '../../lib/hebrew';
 import { TimePicker } from '../TimePicker';
 import { DateField } from './DateField';
+import { tokenClass } from './ValueToken';
 import { TimeField } from './TimeField';
 import { ZoneChip, type ZoneChipProps } from './ZoneChip';
 import { Field } from './Field';
@@ -114,18 +115,24 @@ function WhenDay({
 }: DayProps) {
   return (
     <div className="wf">
-      <Field label={dateLabel ?? t.eventForm.dateLabel} htmlFor={dateId} {...marks?.date}>
-        <DateField
-          id={dateId}
-          className="wf-date"
-          min={minDate}
-          max={maxDate}
-          value={date}
-          onChange={(next) => onChange({ date: next, start, end })}
-        />
+      {/* ONE label for the whole when (ADR-0177 §1) — "מתי", not a caption per atom.
+          The day and the clock are two sentences under it, and each still refuses on
+          its own (ADR-0150 §7: a two-ended field can be wrong at one end). */}
+      <Field label={dateLabel ?? t.whenField.label} htmlFor={dateId} {...marks?.date}>
+        <div className="wf-line">
+          <DateField
+            id={dateId}
+            className={tokenClass('date', { empty: !date })}
+            // Inside a trip the year is the trip's, so the date reads by name — which
+            // also cannot be read in the wrong order at all (ADR-0177 §4 over ADR-0176).
+            format="named"
+            min={minDate}
+            max={maxDate}
+            value={date}
+            onChange={(next) => onChange({ date: next, start, end })}
+          />
+        </div>
       </Field>
-      {/* The time keeps its own caption inside `TimePicker`, so the shell around it
-          is unlabelled — it is here to hold the mark and the message. */}
       <Field {...marks?.time}>
         <TimePicker start={start} end={end} onChange={(next) => onChange({ date, ...next })} />
       </Field>
@@ -213,12 +220,12 @@ function WhenSpan({
           "crosses a day" note — a stay always does). Everything else keeps the
           elapsed-time read-out, once both times are in. */}
       {durationUnit === 'nights' && daysApart > 0 ? (
-        <div className="wf-dur">
+        <div className="wf-note">
           {t.whenField.durationPrefix} <b>{nightPhrase(daysApart)}</b>
         </div>
       ) : (
         duration != null && (
-          <div className="wf-dur">
+          <div className="wf-note">
             {t.whenField.durationPrefix} <b>{formatDuration(duration, durationUnit)}</b>
             {crossesDays && <span className="wf-dur-note"> · {t.whenField.crossesDay}</span>}
           </div>
@@ -275,27 +282,36 @@ function SpanLeg({
     onChange(combined);
   };
 
+  // ONE SUBJECT PER ROW (ADR-0177 §2) — `route-field.css`'s rule ("the two pickers,
+  // stacked — phone-first, never a cramped inline row"), one level down. The legs were
+  // already stacked; what was wrong is that each leg then split into two captioned
+  // cells again.
+  //
+  // The leg's name sits ABOVE its sentence rather than beside it, which the mockup drew
+  // as a label column. Beside would have meant one grid spanning both legs — the only
+  // way their sentences line up — and that grid can only reach across the per-leg
+  // `Field` shells via `display: contents`, which erases the very box ADR-0150's nudge
+  // animates and scrolls to. Above costs ~16px a leg and makes the alignment exact by
+  // construction instead of by a shared track, so the refusal machinery stays whole.
   return (
     <div className="wf-leg">
-      <div className="wf-leg-cap">
+      <span className="wf-leg-lbl">
         {label}
         {badge && (
-          <span className="wf-leg-badge" title={t.whenField.crossesDay}>
+          <span className="wf-badge" title={t.whenField.crossesDay}>
             {badge}
           </span>
         )}
-      </div>
-      <div className="wf-leg-row">
-        <label className="tp-field wf-date-cell">
-          <span className="tp-cap">{t.whenField.dateCap}</span>
-          <DateField
-            className="tp-val wf-date-val"
-            min={minDate}
-            max={maxDate}
-            value={date}
-            onChange={(next) => commit(next, time)}
-          />
-        </label>
+      </span>
+      <div className="wf-line">
+        <DateField
+          className={tokenClass('date', { empty: !date })}
+          format="named"
+          min={minDate}
+          max={maxDate}
+          value={date}
+          onChange={(next) => commit(next, time)}
+        />
         <TimeField
           value={time}
           onChange={(hhmm) => commit(date || defaultDate || '', hhmm)}

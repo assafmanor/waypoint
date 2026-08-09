@@ -1,0 +1,146 @@
+/* ValueToken (ADR-0177 §2) — "a value you can change", inline.
+
+   Generalised from `button.bld-time` (ADR-0161 §7), whose geometry this is: a
+   hairline chip at radius 9, no hue of its own, and the touch target as an inset
+   overlay rather than a height. Logical properties only (RTL).
+
+   Nothing here is per-host. A host picks a tone and the prose around it; it does not
+   get to change the box, which is what stopped the five chromes ADR-0177 §1 counted. */
+
+.vt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: start;
+  min-inline-size: 0;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+/* THE TARGET GROWS, THE LINE DOES NOT (ADR-0161 §7, measured there before it was a
+   rule: `min-height: 44px` took that row from 58px to 75px). The overlay reaches into
+   the line's own vertical padding, which nothing else occupies — so every form gets
+   ADR-0017's 44px floor without a single block growing. `.wf-line`'s `row-gap` is set
+   to clear two of these, so stacked tokens never trade taps. */
+.vt::after {
+  content: '';
+  position: absolute;
+  inset: -7px -2px;
+}
+
+.vt:active {
+  transform: scale(var(--press-scale));
+}
+.vt:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.vt:disabled::after {
+  content: none;
+}
+
+/* Open and focused wear the same mark, because they are the same state to the reader:
+   this is the value the panel on screen belongs to. Amber, since what opens is a
+   picker for a value in a form — matching `.tp-field.open`, which this replaces. */
+.vt.open,
+.vt:focus-within {
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.08);
+}
+.vt:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+/* ── tones: the ONLY thing a host varies ─────────────────────────────────────── */
+
+/* Amber = the clock (ADR-0028's budget, spent once so it means one thing). */
+.vt-time {
+  font-family: var(--font-mono);
+  color: var(--amber-deep);
+  letter-spacing: 0.01em;
+}
+
+/* A date is a calendar fact, not a commitment — ink. `DateField` wears this class on
+   its own wrapper (ADR-0176: the wrapper is the box), so these rules must also undo
+   the chrome the wrapper would otherwise inherit from a host's `.field`/`.set-fld`
+   rules. Those host rules are deleted by ADR-0177 §5; `width` is stated here anyway
+   because a stretched token is invisible in review and obvious only once rendered —
+   it is what made the booking span measure TALLER than the boxes it replaced. */
+.vt-date,
+.field .vt-date,
+.set-fld .vt-date {
+  inline-size: auto;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+}
+.field .vt-date:focus-within,
+.set-fld .vt-date:focus-within {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.08);
+}
+/* The face is the token's text; its `min-block-size` (there to hold a line for an
+   empty native control) would otherwise make a date token taller than its neighbours. */
+.vt-date .df-face {
+  min-block-size: 0;
+}
+/* One calendar affordance, not two: the platform's indicator appears only while the
+   input is opaque, so the cell would gain an element mid-tap (ADR-0177 §5). */
+.vt-date .df-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* THE CAPTION, HEARD BUT NOT SEEN. Removing the visible cap is the design; removing it
+   from the ACCESSIBLE NAME was a regression, and only the e2e pass could see it — the
+   first cut used `aria-label`, which REPLACES the content, so the button announced
+   "התחלה" and never the time it holds. As hidden text the name composes again:
+   "התחלה 08:00", exactly what the captioned box read before.
+
+   The clip-rect idiom rather than `display: none` / `visibility: hidden`, both of which
+   remove the text from the accessibility tree along with the pixels. First one in this
+   codebase — if a second surface needs it, this is the one to lift, not to copy. */
+.vt-cap {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A value that is a word rather than a figure — a duration ("שעה"), where the app
+   already phrases the number. Body font, because JetBrains Mono has no Hebrew and
+   would fall back to something with different metrics. */
+.vt-word {
+  font-family: var(--font-body);
+}
+
+/* An absence, and it invites rather than sits blank. Dashed is the app's existing
+   "nothing here yet" mark (`button.bld-time.empty`). */
+.vt-empty,
+.vt-empty .df-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+.vt-empty {
+  border-style: dashed;
+}

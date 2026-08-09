@@ -1,6 +1,6 @@
 # 0177 — A "when" reads as a **sentence**, not a grid of boxes
 
-**Status:** Accepted (2026-08-09) — owner accepted the mockup and both recommended defaults (§6); the build follows on the same branch
+**Status:** Accepted (2026-08-09) — **built** the same day; see the build log at the foot for the two places the build diverged from the drawing, and why
 **Date:** 2026-08-09
 **Session note:** [`planning/2026-08-09-session-235-a-when-reads-as-a-sentence.md`](../planning/2026-08-09-session-235-a-when-reads-as-a-sentence.md)
 **Mockup:** [`mockups/when-field-drawing-v1.html`](../../mockups/when-field-drawing-v1.html)
@@ -35,7 +35,9 @@ So a when is drawn as **a line of prose whose values are tappable**. The panels 
 
 [ADR-0161](0161-a-move-names-a-position-and-an-event-owns-its-length.md) §7 already built this and wrote the grammar down: _"a hairline chip, which is `.tp-field`'s grammar (the app's existing 'a time you can change') at its faintest: no hue is spent"_. It also already solved the hard part — `button.bld-time::after { inset: -8px 0 }`, because a real `min-height: 44px` took that row from 58px to 75px. **The target grows, the row does not.**
 
-That is a one-off with one call site today. Rule 8 says generalise it rather than draw a second one beside it, so the shared token carries two tones: the Plan row's faint one, and the form's, where the value is the subject. Measured in the mockup: the token's touch target is 45.8px on a line only 31.8px tall.
+That is a one-off with one call site today. What the primitive takes from it is the **grammar and the target trick**, both cited in `value-token.css` so the debt is visible from the code. Measured in the built app: the token's touch target is 45.8px on a line only 31.8px tall — the floor met without a single block growing.
+
+**What the build did NOT do, deliberately: convert `button.bld-time` itself.** Rule 8 also says that if generalising a one-off means a substantial refactor rather than a small extraction, ask rather than take it on silently. Lining the two up, they share the vocabulary and almost no values: the Plan row's chip is 12.5px against the form's inherited body size, `4px 7px` against `4px 8px`, carries a `margin-inline-end: -3px` for its row, spends **plan violet** on hover and focus where the form spends amber, holds composite two-line content (a time range, a duration, a `ZoneShiftPill`), and has an `empty` variant in `--plan-deep` with an icon. Sharing a component would mean the primitive growing an option for each of those, or Plan mode overriding nearly all of it — either way buying little and risking a mode-wide regression for no user-visible gain. Left as a follow-up on the backlog, with the grammar's origin recorded in both files so the next person sees one lineage rather than two inventions.
 
 `RouteField` supplies the layout rule one level up, already in writing (`route-field.css`): _"The two pickers, stacked — phone-first, never a cramped inline row."_ The span's legs are already stacked correctly; the error was splitting each leg into two boxes again below that. One subject per row, and the leg label is a real grid column so both sentences start on one line without anything aligning them.
 
@@ -81,3 +83,22 @@ Measured off the mockup's own DOM at 360px, light and dark:
 - The five chromes become one token, which is what stops the sixth from being written.
 
 Two follow-ups belong to the fix, not to the standard, and are on the backlog separately: App.css's dead mono rule, and `.wf-date-cell`'s `flex: 1.3` workaround.
+
+## Build log (2026-08-09)
+
+Built the same day it was accepted. Two divergences from the drawing, both found by rendering rather than by reading:
+
+- **The leg label sits ABOVE its sentence, not beside it.** The mockup drew a label column, which is the only way two legs' sentences share a starting edge — but one grid spanning both legs can only reach across the per-leg `Field` shells via `display: contents`, and that erases the very box ADR-0150's nudge animates and scrolls to. Above costs about 7px a leg and makes the alignment exact by construction instead of by a shared track, so the refusal machinery stays whole. The trade is recorded in `WhenField.tsx` at the point of the decision.
+- **The date token stretched to full width the first time it rendered.** `App.css`'s `.field input, .field .df { width: 100% }` is correct for the box a token stops being, so every span leg wrapped and the booking form measured _taller_ than the boxes it replaces. That rule is now deleted with the rest of §5's chrome, and `value-token.css` states `inline-size: auto` anyway — a stretched token is invisible in review and obvious only once drawn.
+
+Measured off the built components at 360px, against the mockup's predictions:
+
+|                                 | before | mockup        | built                |
+| ------------------------------- | ------ | ------------- | -------------------- |
+| event when-block                | 223px  | 144.5px       | **154.5px**          |
+| booking span when-block         | 289px  | 181.5px       | **188.5px**          |
+| settings row past the card edge | 21px   | 0px           | **0px** (31px slack) |
+| touch target / line height      | —      | 45.8 / 31.8px | **45.8 / 31.8px**    |
+| amber objects, event form       | 2      | 1             | **1**                |
+
+The two height figures land ~7–10px above the drawing, which is the label-above trade plus the `Field` label the mockup's after-frame did not carry. Reported as measured rather than re-quoting the mockup.

@@ -188,7 +188,7 @@ describe('CreateTrip — the birth sequence (ADR-0142)', () => {
     render(wrapNav(<CreateTrip />));
     // The mark rides the date BOX (`.df`, ADR-0176) — the wrapper is what wears the
     // chrome now, so that is where a refusal has to show.
-    const [start, end] = document.querySelectorAll('.date-row .df');
+    const [start, end] = document.querySelectorAll('.wf-line .df');
     fireEvent.change(start.querySelector('input')!, { target: { value: '2026-09-23' } });
     fireEvent.change(end.querySelector('input')!, { target: { value: '2026-09-12' } });
 

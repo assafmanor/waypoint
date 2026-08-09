@@ -1,7 +1,9 @@
 // TimeField — the shared single-time picker atom behind BOTH the event
 // TimePicker's start field and the booking span's endpoint times (one complex
-// primitive, two behaviours). A tap-to-open trigger (cap + amber value, .tp-field
-// chrome) opens a panel: a native exact <input type="time"> fallback (ADR-0036
+// primitive, two behaviours). A tap-to-open trigger — since ADR-0177 a `ValueToken`
+// in amber, with no VISIBLE caption because the prose around it says which time this
+// is; the caption stays as hidden text so the accessible name is still "התחלה 08:00".
+// It opens a panel: a native exact <input type="time"> fallback (ADR-0036
 // §2c) + a 15-minute scroll list that centres the current value — or the
 // nearest-round suggestion for an off-grid value — on open, and AUTO-CLOSES on
 // pick. It owns no duration / date / overnight semantics: the event composes it
@@ -16,6 +18,7 @@ import { useState } from 'react';
 import { useBackLayer } from '../../state/nav-state';
 import { useCenterSelected } from '../../lib/useCenterSelected';
 import { MINUTES_PER_DAY } from '../../constants';
+import { ValueToken } from './ValueToken';
 import { t } from '../../i18n/he';
 
 const STEP = 15;
@@ -103,18 +106,19 @@ export function TimeField({
 
   return (
     <>
-      <button
-        type="button"
-        className={
-          'tp-field' + (triggerClassName ? ` ${triggerClassName}` : '') + (open ? ' open' : '')
-        }
+      {/* The trigger is a `ValueToken` (ADR-0177 §2): the cap that used to sit inside
+          the box is gone. The caption survives as hidden text inside the button, so the
+          accessible name is still "התחלה 08:00" — see `ValueToken`'s `label`. */}
+      <ValueToken
+        kind="time"
+        open={open}
+        empty={!value}
+        className={triggerClassName}
+        label={label}
         onClick={() => setOpen(!open)}
       >
-        <span className="tp-cap">{label}</span>
-        <span className="tp-val" dir="auto">
-          {value || <span className="tp-placeholder">{placeholder}</span>}
-        </span>
-      </button>
+        <span dir="auto">{value || placeholder}</span>
+      </ValueToken>
 
       {open && <div className="tp-backdrop" onClick={() => setOpen(false)} />}
       {open && (

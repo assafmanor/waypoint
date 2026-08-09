@@ -1955,6 +1955,9 @@ export const t = {
     timeLabel: 'שעה',
     startCap: 'התחלה',
     durationCap: 'משך',
+    // The word between a start and its duration, now that the clock reads as a
+    // sentence rather than two captioned cells (ADR-0177 §1).
+    forPrefix: 'למשך',
     addTime: 'הוסף שעה',
     addEnd: 'הוסף סיום',
     noTime: 'ללא שעה',
@@ -2008,6 +2011,9 @@ export const t = {
   // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
   // time field, the derived duration read-out, and the crosses-a-day marker.
   whenField: {
+    // ONE label for the whole when (ADR-0177 §1), replacing a caption per atom — the
+    // values say what they are, so "תאריך" over a date was the screen saying it twice.
+    label: 'מתי',
     dateCap: 'תאריך',
     timeCap: 'שעה',
     addDate: 'הוסף תאריך',
@@ -2015,6 +2021,11 @@ export const t = {
     exactTime: 'שעה מדויקת',
     durationPrefix: 'משך:',
     crossesDay: 'חוצה יממה',
+    // A date range reads as one sentence (ADR-0177 §1), so what used to be two
+    // captions BESIDE the boxes — and overflowed the card by 21px doing it — are
+    // words inside it. A word in a wrapping line cannot be clipped by an edge.
+    rangeFrom: 'מ־',
+    rangeTo: 'עד',
   },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {

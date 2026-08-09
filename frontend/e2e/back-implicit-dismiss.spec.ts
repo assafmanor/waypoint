@@ -92,7 +92,7 @@ test.describe('the time panel', () => {
   // `TimeField`/`TimePicker` render a `.tp-backdrop` whose whole job is "tap here to close
   // me". That is a dismissal the surface itself offers, so back owes the same one.
   test('one system back closes it, leaving the form open', async ({ page }) => {
-    await form(page).locator('button.tp-field').first().click();
+    await form(page).locator('button.vt-time').first().click();
     await expect(page.locator('.tp-panel')).toBeVisible();
     await expect(page.locator('.tp-backdrop')).toBeAttached();
 
@@ -102,7 +102,7 @@ test.describe('the time panel', () => {
   });
 
   test('Escape closes it too, leaving the form open', async ({ page }) => {
-    await form(page).locator('button.tp-field').first().click();
+    await form(page).locator('button.vt-time').first().click();
     await expect(page.locator('.tp-panel')).toBeVisible();
 
     await page.keyboard.press('Escape');

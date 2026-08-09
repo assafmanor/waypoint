@@ -1,8 +1,12 @@
-/* WhenField (U-05 "when" standard). The day variant's date is the native
-   full-width field (.wf-date). The span reuses the event picker's chrome: each
-   endpoint is a native date cell + the shared TimeField, both wearing the same
-   .tp-field cap+value box (screens.css), so date and time align and the span
-   reads as one grammar with the event picker. Logical properties only (RTL). */
+/* WhenField (ADR-0083's standard, drawn per ADR-0177). A when reads as a LINE OF
+   PROSE whose values are tappable — not a grid of captioned boxes. The values are
+   `ValueToken`s (`value-token.css`); everything here is the prose around them.
+
+   What this file used to hold — `.wf-date`, `.wf-date-cell`, `.wf-date-val`, the
+   `.tp-field` cap/value box borrowed from `screens.css` — is gone rather than
+   restyled. A token is not a field box, so there is nothing left for those rules to
+   paint, and leaving them would have been the fifth chrome ADR-0177 §1 counted.
+   Logical properties only (RTL). */
 
 .wf {
   display: flex;
@@ -10,85 +14,84 @@
   gap: var(--space-3);
 }
 
-/* The date field — full width, neutral chrome (matches the .field control). The box is
-   the `DateField` wrapper, not the input inside it (ADR-0176). */
-.wf-date {
-  inline-size: 100%;
-  min-inline-size: 0;
-  font: inherit;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-12, 12px);
-  background: var(--card);
-  padding-block: var(--space-2);
-  padding-inline: var(--space-3);
-  color: var(--ink);
-  color-scheme: light;
-}
-/* `:focus-within`, not `:focus-visible`: what takes focus is the native input inside
-   the box, so the box itself is never the focused element. */
-.wf-date:focus-within {
-  outline: none;
-  border-color: var(--teal);
+/* ── the line ────────────────────────────────────────────────────────────────
+   Prose is the ground and the tokens sit in it. `align-items: center`, NOT
+   `baseline`: the tokens are boxes with their own padding, and baseline-aligning
+   boxes whose fonts differ is the exact trap the old two-cell row fell into
+   (mono 19px against body 15px, nothing holding them to one line). Centring boxes
+   is stable across any mix of fonts, which matters because a Hebrew duration
+   cannot be set in the mono face at all. */
+.wf-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  /* Clears two `.vt::after` insets (7px each), so stacked tokens never trade taps
+     when a line wraps. This is the number that lets the touch target live in the
+     gap instead of in the line's height. */
+  row-gap: 16px;
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
-/* ── span: two endpoints; neutral labels, amber reserved for the time value ── */
+/* A word of the sentence — "למשך". Muted, because the values are what is being said. */
+.wf-word {
+  color: var(--muted);
+}
+
+/* Something the app worked out rather than something you set — the end implied by a
+   start plus a duration. Deliberately NOT a token: there is nothing to tap, and
+   dressing a derived value as an editable one is how a form starts lying. */
+.wf-derived {
+  font-family: var(--font-mono);
+  font-size: var(--text-secondary);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ── span: one subject per row ───────────────────────────────────────────────── */
 .wf-span {
   gap: var(--space-4);
 }
-.wf-leg-cap {
+.wf-leg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* The leg's name, above its sentence. Above rather than beside so both legs' lines
+   start at the same edge without a grid track shared across their `Field` shells —
+   see the note in `WhenField.tsx`, where that trade is the reason. */
+.wf-leg-lbl {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--text-caption, 11px);
+  font-size: var(--text-caption);
   font-weight: 700;
   color: var(--muted);
-  margin-block-end: var(--space-2);
 }
-.wf-leg-badge {
+/* Crossing midnight. Unchanged from `.wf-leg-badge` — it was already the right mark;
+   it was just hung on a caption nobody could pick out. */
+.wf-badge {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 700;
   color: var(--amber-deep);
   background: rgba(233, 166, 60, 0.14);
   padding-inline: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-999);
 }
 
-/* Trigger row: the date cell + the TimeField trigger sit side by side; the
-   TimeField's panel (.tp-panel, flex-basis:100%) wraps to a full-width line
-   below them. */
-.wf-leg-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  align-items: stretch;
-}
-/* The date endpoint wears the shared .tp-field box (screens.css) with the date field
-   as its value line — the cell owns the border, the field is bare. Ink, not the
-   amber .tp-val inherits: amber is the time's (design-language colour budget). */
-.wf-date-cell {
-  flex: 1.3 1 0;
-}
-/* One class heavier than `.field .df`, deliberately: each leg sits inside a `Field`
-   shell (it carries the leg's refusal), and that shell paints control chrome on
-   whatever it holds — which here would draw a second bordered box INSIDE the one
-   `.tp-field` already draws. The old raw input neutralized the same rules by source
-   order; this says it in the specificity instead. */
-.field .df.wf-date-val,
-.df.wf-date-val {
-  inline-size: 100%;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  color: var(--ink);
-}
-
-.wf-dur {
-  font-size: var(--text-secondary, 13px);
+/* The derived read-out under a span — nights, or elapsed time. */
+.wf-note {
+  font-size: var(--text-secondary);
   color: var(--muted);
 }
-.wf-dur b {
+.wf-note b {
   color: var(--ink);
   font-weight: 700;
+}
+.wf-dur-note {
+  color: var(--muted);
 }

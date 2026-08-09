@@ -57,18 +57,18 @@ test.describe('a form refuses at the field', () => {
     await form(page).locator('input.title-input').fill('ארוחת ערב');
     // Well past the trip's end — the value the browser's own min/max would have
     // blocked with a bubble of its own before `submit` ever ran.
-    // `.wf-date` is the DateField BOX now (ADR-0176); the native input is inside it.
-    await form(page).locator('.wf-date input').fill('2035-01-01');
+    // `.vt-date` is the DateField BOX now — a ValueToken (ADR-0177); the input is inside it.
+    await form(page).locator('.vt-date input').fill('2035-01-01');
     await form(page).getByText(SAVE).click();
 
-    const dateField = form(page).locator('.field', { has: page.locator('.wf-date') });
+    const dateField = form(page).locator('.field', { has: page.locator('.vt-date') });
     await expect(dateField).toHaveAttribute('data-invalid', '');
     // And the BOX is what reddens (ADR-0176 §3). The date field is a wrapper around a
-    // native input now, so the shell's chrome (`.field .df`, and its teal
+    // native input now, so the shell's chrome (`.vt-date`, and its amber
     // `:focus-within` — the refusal focuses this field) sits at the same specificity the
     // mark used to beat outright. It shipped broken for exactly one run of this file:
     // ring drawn, border still neutral.
-    await expect(form(page).locator('.wf-date')).toHaveCSS('border-color', MISS);
+    await expect(form(page).locator('.vt-date')).toHaveCSS('border-color', MISS);
     await expect(dateField.locator('.field-error')).toHaveText('התאריך מחוץ לטווח הטיול');
     await expect(form(page)).toBeVisible();
   });
@@ -93,7 +93,7 @@ test('the create screen refuses without the floating card going stale', async ({
   await expect(page.getByText('חסר שם לטיול')).toBeVisible();
   // Both date boxes are refused here, and both must LOOK it — same trap as above, on the
   // screen where the two boxes are the only thing naming the missing dates.
-  for (const box of await page.locator('.date-row .df').all())
+  for (const box of await page.locator('.wf-line .df').all())
     await expect(box).toHaveCSS('border-color', MISS);
 
   const card = await page.locator('.birth-card').boundingBox();

@@ -13,10 +13,22 @@
 // again (segments, keyboard, calendar affordance) and the platform's format is the
 // picker's own business. The input is never replaced: `min`/`max`, the calendar,
 // and `input[type="date"]` as the thing tests and forms address all stay.
-import { formatDayMonthYear } from '../../lib/time';
+import { formatDayDate, formatDayMonthYear } from '../../lib/time';
 import { APP_LOCALE } from '../../constants';
 import { t } from '../../i18n/he';
 import './date-field.css';
+
+/** How the face reads. **Both satisfy ADR-0176** — the point there was that a reader
+ *  must never have to guess whether `08/09` is August or September:
+ *
+ *  - `numeric` — `11.09.2026`. Day-first with the year, for a form that runs where
+ *    nothing else supplies it (trip creation, trip settings).
+ *  - `named` — `יום ו׳, 11 בספט׳`. A named month cannot be read in the wrong order at
+ *    all, so this holds ADR-0176's goal harder, not looser; and inside a trip the year
+ *    is already implied by the trip. It is also what lets a date be a word in a
+ *    sentence rather than a figure in a box (ADR-0177 §4).
+ */
+export type DateFieldFormat = 'numeric' | 'named';
 
 export interface DateFieldProps {
   /** `YYYY-MM-DD`, or '' for none. */
@@ -32,6 +44,9 @@ export interface DateFieldProps {
   'data-invalid'?: string;
   /** What an empty field says; defaults to the shared "add a date". */
   placeholder?: string;
+  /** How the face reads (see {@link DateFieldFormat}). Defaults to `numeric`, so a
+   *  caller that says nothing keeps exactly ADR-0176's shipped face. */
+  format?: DateFieldFormat;
 }
 
 export function DateField({
@@ -43,6 +58,7 @@ export function DateField({
   max,
   'data-invalid': invalid,
   placeholder,
+  format = 'numeric',
 }: DateFieldProps) {
   return (
     <span className={className ? `df ${className}` : 'df'} data-invalid={invalid}>
@@ -51,7 +67,11 @@ export function DateField({
           the way the TimeField beside it aligns its own value. */}
       <span className="df-face" dir="auto" aria-hidden="true">
         {value ? (
-          formatDayMonthYear(value)
+          format === 'named' ? (
+            formatDayDate(value)
+          ) : (
+            formatDayMonthYear(value)
+          )
         ) : (
           <span className="df-empty">{placeholder ?? t.whenField.addDate}</span>
         )}

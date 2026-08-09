@@ -19,6 +19,7 @@ import { t } from '../i18n/he';
 import { hoursPhrase } from '../lib/duration';
 import { Icon } from './Icon';
 import { TimeField, toMin, toHHMM, useCentredTimeRow } from './primitives/TimeField';
+import { ValueToken } from './primitives/ValueToken';
 
 export { nearestRoundSlot } from './primitives/TimeField';
 
@@ -134,112 +135,115 @@ export function TimePicker({
   };
 
   return (
-    <div className="form-field">
-      {t.eventForm.timeLabel}
-      <div className="tp-wrap">
-        <div className="tp-fields">
-          <TimeField
-            value={start}
-            onChange={(hhmm) => applyStart(toMin(hhmm))}
-            label={t.eventForm.startCap}
-            placeholder={t.eventForm.addTime}
-            open={open === 'start'}
-            onOpenChange={(o) => {
-              setNote(null);
-              setOpen(o ? 'start' : null);
-            }}
-          />
+    // **THE CLOCK IS A SENTENCE** (ADR-0177 §1). The caption that used to sit above
+    // this ("שעה") and the two inside it ("התחלה" / "משך") are gone — the prose names
+    // each value, so the captions were saying twice what the line already says. The
+    // derived end stays derived: it is muted text, never a token, because there is
+    // nothing to tap there (the duration is what you change; ADR-0036's model).
+    <div className="tp-wrap">
+      <div className="wf-line">
+        <TimeField
+          value={start}
+          onChange={(hhmm) => applyStart(toMin(hhmm))}
+          label={t.eventForm.startCap}
+          placeholder={t.eventForm.addTime}
+          open={open === 'start'}
+          onOpenChange={(o) => {
+            setNote(null);
+            setOpen(o ? 'start' : null);
+          }}
+        />
 
-          <button
-            type="button"
-            className={'tp-field tp-dur' + (open === 'dur' ? ' open' : '')}
-            onClick={() => {
-              if (!start) return;
-              setNote(null);
-              setOpen(open === 'dur' ? null : 'dur');
-            }}
-            disabled={!start}
-          >
-            <span className="tp-cap">{t.eventForm.durationCap}</span>
-            <span className="tp-val">
-              {duration != null ? (
-                <>
-                  <span>{hoursPhrase(duration)}</span>
-                  <span className="tp-endhm" dir="auto">
-                    {t.eventForm.endsAtPrefix} {end}
-                    {endIsNextDay && (
-                      <sup className="tp-nextday" title={t.eventForm.nextDay}>
-                        +1
-                      </sup>
-                    )}
-                  </span>
-                </>
-              ) : (
-                <span className="tp-placeholder">{start ? t.eventForm.addEnd : '-'}</span>
-              )}
-            </span>
-          </button>
+        {/* The duration only exists once there is a start to measure from, so the
+            word and its token appear together rather than a disabled control
+            sitting there saying "-" (ADR-0150 §8: disabled is not a refusal). */}
+        {start && (
+          <>
+            <span className="wf-word">{t.eventForm.forPrefix}</span>
+            <ValueToken
+              kind="word"
+              open={open === 'dur'}
+              empty={duration == null}
+              label={t.eventForm.durationCap}
+              onClick={() => {
+                setNote(null);
+                setOpen(open === 'dur' ? null : 'dur');
+              }}
+            >
+              {duration != null ? hoursPhrase(duration) : t.eventForm.addEnd}
+            </ValueToken>
+          </>
+        )}
+        {duration != null && (
+          <span className="wf-derived" dir="auto">
+            · {t.eventForm.endsAtPrefix} {end}
+            {endIsNextDay && (
+              <sup className="tp-nextday" title={t.eventForm.nextDay}>
+                +1
+              </sup>
+            )}
+          </span>
+        )}
 
-          {open === 'dur' && startMin != null && (
-            <>
-              <div className={closing ? 'tp-backdrop is-closing' : 'tp-backdrop'} onClick={close} />
-              <div className={closing ? 'tp-panel is-closing' : 'tp-panel'}>
-                <div className="tp-exact">
-                  <span className="tp-exact-lbl">{t.eventForm.exactEnd}</span>
-                  {/* Uncontrolled (defaultValue), not value={end}: the OS time wheel
+        {open === 'dur' && startMin != null && (
+          <>
+            <div className={closing ? 'tp-backdrop is-closing' : 'tp-backdrop'} onClick={close} />
+            <div className={closing ? 'tp-panel is-closing' : 'tp-panel'}>
+              <div className="tp-exact">
+                <span className="tp-exact-lbl">{t.eventForm.exactEnd}</span>
+                {/* Uncontrolled (defaultValue), not value={end}: the OS time wheel
                       fires onChange on every tick, and rejecting an invalid one on a
                       controlled input snaps the wheel back — trapping you in the
                       daytime range you must scroll *through* to reach a post-midnight
                       end (ADR-0037). Uncontrolled lets the wheel move freely; only a
                       valid end commits. Remounts on each panel open, re-syncing. */}
-                  <input
-                    type="time"
-                    step={60}
-                    lang="he"
-                    dir="ltr"
-                    className="tp-time-input"
-                    defaultValue={end}
-                    onChange={(e) => e.target.value && applyExactEnd(e.target.value)}
-                  />
-                </div>
-                {note && <div className="tp-note">{note}</div>}
-                <div className="tp-list tp-list-dur">
-                  {durPresets.map((d) => (
-                    <button
-                      key={d}
-                      ref={d === duration || d === suggestDur ? centredDur : undefined}
-                      type="button"
-                      className={
-                        d === duration
-                          ? 'tp-list-on'
-                          : d === suggestDur
-                            ? 'tp-list-suggest'
-                            : undefined
-                      }
-                      onClick={() => commitDuration(d)}
-                    >
-                      <span>{hoursPhrase(d)}</span>
-                      <span className="tp-end" dir="auto">
-                        {t.eventForm.endsAtPrefix} {toEndWall(startMin + d)}
-                        {isNextDay(startMin + d) && (
-                          <sup className="tp-nextday" title={t.eventForm.nextDay}>
-                            +1
-                          </sup>
-                        )}
-                      </span>
-                      {/* The "nearest round" hint marker, in the trailing slot the
+                <input
+                  type="time"
+                  step={60}
+                  lang="he"
+                  dir="ltr"
+                  className="tp-time-input"
+                  defaultValue={end}
+                  onChange={(e) => e.target.value && applyExactEnd(e.target.value)}
+                />
+              </div>
+              {note && <div className="tp-note">{note}</div>}
+              <div className="tp-list tp-list-dur">
+                {durPresets.map((d) => (
+                  <button
+                    key={d}
+                    ref={d === duration || d === suggestDur ? centredDur : undefined}
+                    type="button"
+                    className={
+                      d === duration
+                        ? 'tp-list-on'
+                        : d === suggestDur
+                          ? 'tp-list-suggest'
+                          : undefined
+                    }
+                    onClick={() => commitDuration(d)}
+                  >
+                    <span>{hoursPhrase(d)}</span>
+                    <span className="tp-end" dir="auto">
+                      {t.eventForm.endsAtPrefix} {toEndWall(startMin + d)}
+                      {isNextDay(startMin + d) && (
+                        <sup className="tp-nextday" title={t.eventForm.nextDay}>
+                          +1
+                        </sup>
+                      )}
+                    </span>
+                    {/* The "nearest round" hint marker, in the trailing slot the
                           selected row's ✓ uses — an SVG, never a text glyph: the
                           body font has no ↩ and the fallback sits low. */}
-                      {d !== duration && d === suggestDur && (
-                        <Icon name="undo" className="tp-suggest-ic" />
-                      )}
-                    </button>
-                  ))}
-                </div>
+                    {d !== duration && d === suggestDur && (
+                      <Icon name="undo" className="tp-suggest-ic" />
+                    )}
+                  </button>
+                ))}
               </div>
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </div>
 
       {start && (

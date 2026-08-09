@@ -1117,20 +1117,14 @@
   color: var(--muted);
   margin-top: 6px;
 }
-.date-row {
-  display: grid;
-  /* minmax(0, 1fr), not 1fr: an unconstrained fr track won't shrink below the
-     native date control's intrinsic width, blowing out the row on narrow phones. */
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-}
-/* The creation form's two date boxes (`DateField`, ADR-0176) — mono and centred, so
-   the pair reads as one range. The box is the wrapper; its inner input inherits both. */
-.field .df {
-  font-family: var(--font-mono);
-  font-size: 13.5px;
-  text-align: center;
-}
+/* `.date-row` and the mono/centred `.field .df` rule that sat here are GONE (ADR-0177
+   §5): the trip's two dates are one sentence now, so there is no two-track grid and no
+   box for a font to belong to. Worth recording why the second one is no loss — IT NEVER
+   APPLIED. `field.css`'s `.field .df` is bundled into a lazy chunk, injected after this
+   sheet, and its `font: inherit` shorthand reset the family as well as the size, so the
+   dates rendered Assistant 14.5px and only the `text-align: center` survived. The cascade
+   between these two sheets is decided by CHUNK LOAD ORDER, not by the import graph — read
+   it off `dist/`, never off the imports. */
 .field-error {
   color: var(--miss);
   font-size: 12px;
