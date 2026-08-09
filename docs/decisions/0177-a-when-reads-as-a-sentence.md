@@ -1,6 +1,6 @@
 # 0177 — A "when" reads as a **sentence**, not a grid of boxes
 
-**Status:** Proposed (2026-08-09) — the mockup is drawn and measured; two calls are left to a device pass (§6)
+**Status:** Accepted (2026-08-09) — owner accepted the mockup and both recommended defaults (§6); the build follows on the same branch
 **Date:** 2026-08-09
 **Session note:** [`planning/2026-08-09-session-235-a-when-reads-as-a-sentence.md`](../planning/2026-08-09-session-235-a-when-reads-as-a-sentence.md)
 **Mockup:** [`mockups/when-field-drawing-v1.html`](../../mockups/when-field-drawing-v1.html)
@@ -53,9 +53,14 @@ The native `<input type="date">` remains the real control underneath, exactly as
 
 The cell chrome goes: `.wf-date`, `.wf-date-cell`, `.wf-date-val`, `.set-fld .subfld`, `.tp-field`'s cap/value box for every date and time, `.tp-dur`'s second type ramp, and `App.css`'s dead `.field .df` mono rule. **These are deleted, not overridden** — a token is not a field box, so there is nothing left for them to paint. The mockup carries neutralising overrides only because it renders before and after side by side with the shipped rules live on both; they are marked "do not port".
 
-### 6. Left to a device pass
+### 6. The two calls, settled
 
-Two calls are controls in the mockup rather than decisions taken here: **how loud the token's affordance is** (hairline chip / underline / tint — hairline is ADR-0161 §7's shipped answer and the default), and **named vs numeric dates** per host. Both are legible-on-a-phone questions that a desktop screenshot cannot settle.
+Both were left as controls in the mockup rather than decided from a desktop screenshot, and the owner accepted the recommended defaults on 2026-08-09:
+
+- **The token's affordance is the hairline chip** — ADR-0161 §7's shipped answer, unchanged. Underline and tint stay in the mockup as the rejected settings; a future session that wants to revisit has them drawn.
+- **A date reads by name** (`formatDayDate`), with the **numeric form (`formatDayMonthYear`) kept for trip settings and trip creation**, where the year is load-bearing and the trip cannot supply it. Inside a trip the year is implied, so the named form carries it.
+
+Both remain controls in `when-field-drawing-v1.html`, which is now the record of what was rejected rather than an open question. A real-device pass on the built screens is still worth doing — it just no longer blocks the build.
 
 ## Alternatives considered
 

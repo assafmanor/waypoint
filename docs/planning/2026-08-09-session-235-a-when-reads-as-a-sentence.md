@@ -1,7 +1,7 @@
 # Session 235 — a "when" reads as a sentence
 
 **Date:** 2026-08-09
-**Outcome:** [ADR-0177](../decisions/0177-a-when-reads-as-a-sentence.md) **Proposed**, with [`mockups/when-field-drawing-v1.html`](../../mockups/when-field-drawing-v1.html) drawn, rendered and measured. [ADR-0083](../decisions/0083-whenfield-datetime-standard.md) stands and is extended, not replaced. Two shipped defects found and logged to the backlog.
+**Outcome:** [ADR-0177](../decisions/0177-a-when-reads-as-a-sentence.md) **Accepted**, with [`mockups/when-field-drawing-v1.html`](../../mockups/when-field-drawing-v1.html) drawn, rendered and measured. [ADR-0083](../decisions/0083-whenfield-datetime-standard.md) stands and is extended, not replaced. Two shipped defects found and logged to the backlog.
 **Branch:** `claude/date-time-form-standard-jzqxjd`.
 
 ## What the owner reported
@@ -68,6 +68,6 @@ Two earlier metrics in the table measured the wrong thing before this one landed
 - The measurement table ran before webfonts settled and reported fallback metrics — a date's fit read 3.7px free against a settled 5.3px, which is the gap between two different recommendations. `measure()` now re-runs on `document.fonts.ready`.
 - A box-centre metric reported 0.5px on the shipped event row and so proved nothing; the misalignment lives in the ink, not the boxes.
 
-## Left open
+## Settled on acceptance
 
-Two calls are controls in the mockup rather than decisions taken here, both legible-on-a-phone questions a desktop screenshot cannot settle: **how loud the token's affordance is** (hairline / underline / tint — hairline is ADR-0161 §7's shipped answer and the default), and **named vs numeric dates** per host (settings wants the year; a form inside a trip does not).
+The owner accepted both recommended defaults rather than sending them to a device pass first: **the hairline chip** for the token's affordance (ADR-0161 §7's shipped answer), and **named dates** — with the numeric form kept for trip settings and trip creation, where the year is load-bearing and the trip cannot supply it. Underline and tint stay drawn in the mockup as the rejected settings. A real-device pass on the built screens is still worth doing; it no longer blocks the build.
