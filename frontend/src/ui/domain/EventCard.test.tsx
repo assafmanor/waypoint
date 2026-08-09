@@ -2,7 +2,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { wrapNav } from '../../test/nav-harness';
-import { EventCard, eventMetaParts, type EventCardProps } from './EventCard';
+import { EventCard, type EventCardProps } from './EventCard';
 import { SyncBadge } from '../feedback';
 import { ROUTE_TITLE_ARROW, routeTitle } from '../../lib/route-title';
 import { t } from '../../i18n/he';
@@ -422,107 +422,23 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
   const showCard = (props: Partial<EventCardProps>) =>
     render(wrapNav(<EventCard {...base} {...props} />));
 
-  describe('the composition rule', () => {
-    it('keeps the place name when there is a code but no mark', () => {
-      const parts = eventMetaParts({ placeName: 'שיבויה', code: 'הזמנה MN-4471' });
-      expect(parts.placeName).toBe('שיבויה');
-      expect(parts.separator).toBe(true);
-    });
-
-    it('keeps the place name when there is a mark but no code', () => {
-      const parts = eventMetaParts({ placeName: 'שיבויה', notes: 2 });
-      expect(parts.placeName).toBe('שיבויה');
-      // No code, so nothing to separate it from.
-      expect(parts.separator).toBe(false);
-    });
-
-    // The line is exactly full at 390px, so something has to go — and a two-character
-    // stub is noise, not information.
-    it('DROPS the place name when a row carries both a code and a mark', () => {
-      const parts = eventMetaParts({ placeName: 'שיבויה', code: 'הזמנה MN-4471', notes: 2 });
-      expect(parts.placeName).toBeUndefined();
-      // …and the separator leaves with it, rather than stranding a leading `·`.
-      expect(parts.separator).toBe(false);
-      // The code is what the row was opened for, so it always survives.
-      expect(parts.code).toBe('הזמנה MN-4471');
-    });
-
-    it('treats a zero count as no mark at all', () => {
-      const parts = eventMetaParts({ placeName: 'שיבויה', code: 'הזמנה MN-4471', notes: 0 });
-      expect(parts.placeName).toBe('שיבויה');
-    });
-
-    // **THE WHOLE OF THE DAY CARD'S ATTACHMENT CHANGE** (ADR-0174 §1). `hasMark` counted
-    // notes only, so this was the ONE row the doc mark altered: a code and a document and
-    // no note kept its place name and then truncated it to 48px of the 107px it wanted.
-    // Every other row is byte-identical, because a marked coded row has already dropped
-    // the name whichever mark it is.
-    it('DROPS the place name for a code and a DOCUMENT, with no note at all', () => {
-      const parts = eventMetaParts({
-        placeName: 'נמל התעופה נריטה',
-        code: 'הזמנה LY-0801',
-        documents: 2,
-      });
-      expect(parts.placeName).toBeUndefined();
-      expect(parts.separator).toBe(false);
-      expect(parts.code).toBe('הזמנה LY-0801');
-    });
-
-    it('keeps the place name for a document with no code — nothing competes for the line', () => {
-      const parts = eventMetaParts({ placeName: 'שיבויה', documents: 1 });
-      expect(parts.placeName).toBe('שיבויה');
-    });
-
-    it('treats a zero document count as no mark, exactly as it does a zero note count', () => {
-      const parts = eventMetaParts({
-        placeName: 'שיבויה',
-        code: 'הזמנה MN-4471',
-        notes: 0,
-        documents: 0,
-      });
-      expect(parts.placeName).toBe('שיבויה');
-    });
-
-    // The case the rule above did not cover (ADR-0159's build): a coded flight with no
-    // mark at all, whose meta is the destination's FULL name while the title already
-    // carries it shortened. Measured on the shipped row at 360px: 95px of line, 84 of
-    // which is the code — so the enrichment goes, not a stub of it.
-    it('DROPS a place name the title already carries, once a code shares the line', () => {
-      const parts = eventMetaParts({
-        placeName: 'נמל התעופה דובאי (DXB)',
-        code: 'הזמנה #EK319',
-        placeInTitle: true,
-      });
-      expect(parts.placeName).toBeUndefined();
-      expect(parts.separator).toBe(false);
-      expect(parts.code).toBe('הזמנה #EK319');
-    });
-
-    it('keeps it with no code — nothing is competing for the line', () => {
-      const parts = eventMetaParts({ placeName: 'נמל התעופה דובאי (DXB)', placeInTitle: true });
-      expect(parts.placeName).toBe('נמל התעופה דובאי (DXB)');
-    });
-
-    // A hotel's or a restaurant's place name is NOT on its title line, so a code beside
-    // it changes nothing: this rule is about an enrichment, not about long names.
-    it('leaves a coded row alone when the title does not name the place', () => {
-      const parts = eventMetaParts({ placeName: 'שינג׳וקו', code: 'הזמנה #4471' });
-      expect(parts.placeName).toBe('שינג׳וקו');
-    });
-  });
-
+  // ADR-0152 §6c's `eventMetaParts` is RETIRED (owner, 2026-08-09): the meta line carries
+  // no text at all, so there is no longer a rule about what gives way when it is full. What
+  // replaces those unit cases is the rendered assertion below — the row must not print a
+  // place name or a confirmation code, whatever it is handed.
   describe('the rendered row', () => {
-    it('renders no mark when the event has no notes', () => {
-      showCard({ placeName: 'שיבויה' });
+    it('renders no mark when the event has neither', () => {
+      showCard({});
       expect(meta()?.querySelector('.note-mark')).toBeNull();
+      expect(meta()?.querySelector('.doc-mark')).toBeNull();
     });
 
     // A `1` beside a glyph that already means "a note" is a digit that says nothing.
     it('shows the glyph alone for one note, and a count past one', () => {
-      showCard({ placeName: 'שיבויה', notes: 1 });
+      showCard({ notes: 1 });
       expect(meta()?.querySelector('.note-mark')?.textContent).toBe('');
       cleanup();
-      showCard({ placeName: 'שיבויה', notes: 3 });
+      showCard({ notes: 3 });
       expect(meta()?.querySelector('.note-mark')?.textContent).toBe('3');
     });
 
@@ -573,24 +489,38 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       expect(screen.queryByTestId('host-notes')).toBeNull();
     });
 
-    it('elementises the meta so the code can be protected from the ellipsis', () => {
-      showCard({ placeName: 'שיבויה', code: 'MN-4471' });
-      // The code is its OWN item — flex cannot protect part of a text node.
-      expect(meta()?.querySelector('.wp-event-m-code')).toBeTruthy();
-      expect(meta()?.querySelector('.wp-event-m-txt')?.textContent).toBe('שיבויה');
-      expect(meta()?.querySelector('.wp-event-m-sep')).toBeTruthy();
-    });
-
-    it('strands no separator on a code-only row', () => {
-      showCard({ code: 'MN-4471' });
-      expect(meta()?.querySelector('.wp-event-m-sep')).toBeNull();
-    });
-
-    it('drops the place name in the DOM on a coded, noted row', () => {
-      showCard({ placeName: 'שיבויה', code: 'MN-4471', notes: 2 });
+    // **THE LINE CARRIES NO TEXT** (owner, 2026-08-09), which is what retired ADR-0152
+    // §6c's whole composition rule: there is nothing left on it to give way. These three
+    // replace the elementise / strand-no-separator / drop-the-name cases that rule owned.
+    it('prints no place name and no confirmation code, whatever it is handed', () => {
+      showCard({ code: 'MEGAZIP-T141215488', notes: 2 });
       expect(meta()?.querySelector('.wp-event-m-txt')).toBeNull();
-      expect(meta()?.querySelector('.wp-event-m-code')?.textContent).toContain('MN-4471');
+      expect(meta()?.querySelector('.wp-event-m-code')).toBeNull();
+      expect(meta()?.querySelector('.wp-event-m-sep')).toBeNull();
+      expect(meta()?.textContent).not.toContain('MEGAZIP-T141215488');
+    });
+
+    it('keeps the glyphs, which are the whole of what the line now says', () => {
+      showCard({ code: 'MN-4471', notes: 2, documents: 1 });
       expect(meta()?.querySelector('.note-mark')).toBeTruthy();
+      expect(meta()?.querySelector('.doc-mark')).toBeTruthy();
+    });
+
+    // The line STAYS even when it carries nothing, and that is deliberate: `sync` is an
+    // opaque node the screen passes (`<EntitySyncBadge/>`, silent when synced), so this
+    // component cannot tell whether it will draw. Gating the line on "is there a glyph"
+    // took the PENDING badge off with it — caught in e2e, not here. Empty, it is a flex box
+    // with no children.
+    it('leaves the line empty rather than gating it on a glyph', () => {
+      showCard({ code: 'MN-4471' });
+      expect(meta()).toBeTruthy();
+      expect(meta()?.textContent).toBe('');
+    });
+
+    // The code is not lost — it is one tap away, and the expanded card still prints it.
+    it('still prints the code in the hard-edit warning inside the card', () => {
+      showCard({ code: 'MN-4471', kind: 'hard', isOpen: true });
+      expect(screen.getByText(/MN-4471/)).toBeTruthy();
     });
   });
 });

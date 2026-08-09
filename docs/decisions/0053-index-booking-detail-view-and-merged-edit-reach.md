@@ -50,3 +50,30 @@ So the two "⋯" menus are **not** identical: the Index booking menu is Edit · 
 - **Widen `EventForm` to handle multi-day spans so linked events can be edited in place.** Rejected: duplicates the span logic the merged `BookingSheet` already owns (`buildSpanSeed`) and reopens the drift ADR-0047 §2 closed (two forms editing the same linked pair). Route to the one merged surface instead.
 - **A separate lightweight "linked-event editor" distinct from the booking sheet.** Rejected: that _is_ independent edit surfaces with re-sync, rejected already in ADR-0047 §2.
 - **Inline-expand the booking row to verbs (exactly like the event card) instead of a detail sheet.** Considered; a sheet reads better for a booking's richer field set (code, route, wifi, notes) than an inline strip, and the "⋯" affordance is preserved either way. Left to the mockup/implementation to tune; the decision is "read-only detail + ⋯ menu," not the exact container.
+
+## Amendment (2026-08-09, session 233) — the read surface is a SHELL, and an event has one too
+
+[ADR-0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §4 gives an
+**event** the read this ADR gave a booking, on this ADR's own argument: a read-only sheet is
+the guard for a hard commitment, and an event carries the same commitment when it is hard
+(ADR-0011).
+
+**`BookingDetail` no longer owns the skeleton.** It was written inline here, which was right
+while there was one read surface in the app. `EventDetail` came out identical line for line —
+`Sheet` → `.bk-detail` → `.bk-actions` → `.bk-head` → `.bs-hard-note` → `.bk-facts` →
+`HostDocuments` → `HostNotes` — so the shell moved into **`ui/DetailSheet.tsx`** and both
+render it. `BookingDetail`'s 30 tests pass unchanged through the extraction, which is the
+evidence it is faithful rather than a rewrite.
+
+What `DetailSheet` deliberately does **not** own is the facts. A booking has a confirmation
+code, a provider, WiFi, a journey and a round-trip partner; an event has a place and a time.
+A shell modelling both would grow a per-entity branch, which is ADR-0094's own anti-pattern
+one layer up.
+
+The `bk-*` class names stay. They are the READ SURFACE's CSS, and renaming them would be a
+large diff through a shipped stylesheet for no reader's benefit — the same call `MediaViewer`
+made about keeping `doc-viewer-*` when it stopped being document-shaped.
+
+**One behaviour this ADR did not have to consider:** a read-only archived trip (ADR-0040).
+The sheet's `עריכה` is **absent** there rather than disabled — ADR-0150 §8's rule, that a
+control which cannot work should not be announced.

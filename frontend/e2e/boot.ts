@@ -102,12 +102,22 @@ export const TWO_TYPE_BOOKINGS = [
 /** A trip live "now" whatever the box clock reads, but only a week long — the
  *  default 15-year range makes the header's day strip render thousands of day
  *  buttons, and on that DOM Playwright's own locator queries start timing out.
- *  Any spec that measures layout or drives real input wants this. */
-export function shortLiveTripDates(): { startDate: string; endDate: string } {
+ *  Any spec that measures layout or drives real input wants this.
+ *
+ *  **Pass the clock the spec pins.** The window is ±3 days around a day, and "live" means
+ *  the app's `now` falls inside it — so a spec that pins `now` to an ABSOLUTE instant and
+ *  takes the default window here is live only while the box clock happens to be within
+ *  three days of that instant, and lands on the all-trips screen the morning it is not.
+ *  `hero-in-transit` shipped green that way and went red four days later with every one of
+ *  its assertions still correct. Derive both from the same number: `shortLiveTripDates(NOW)`. */
+export function shortLiveTripDates(now: number = Date.now()): {
+  startDate: string;
+  endDate: string;
+} {
   const day = 24 * 60 * 60 * 1000;
   const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
-  const today = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
-  return { startDate: iso(today - 3 * day), endDate: iso(today + 3 * day) };
+  const midnight = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return { startDate: iso(midnight - 3 * day), endDate: iso(midnight + 3 * day) };
 }
 
 /** Register the boot route mocks + seed the two per-device localStorage keys, so
@@ -127,6 +137,10 @@ export async function bootIntoTrip(
     notes?: unknown[];
     /** Trip documents, so the Index's documents rows exist to be measured. */
     documents?: unknown[];
+    /** **The attachment links** (ADR-0173 §1), so a host row can carry the DOCUMENT mark and
+     *  a read surface can list what it holds (ADR-0174). Present in the snapshot from the
+     *  start; it needed an option the moment a row's glyph depended on it. */
+    documentAttachments?: unknown[];
     /** What the world knows about these places, keyed by place id (ADR-0166 §6) — the
      *  server-owned read model the snapshot carries. A place with no key is the normal
      *  "we know nothing" state, so `{}` (the default) is every existing spec. */
@@ -157,6 +171,7 @@ export async function bootIntoTrip(
     places: opts.places ?? SNAPSHOT.places,
     notes: opts.notes ?? SNAPSHOT.notes,
     documents: opts.documents ?? SNAPSHOT.documents,
+    documentAttachments: opts.documentAttachments ?? SNAPSHOT.documentAttachments,
     enrichments: opts.enrichments ?? SNAPSHOT.enrichments,
   };
   await page.route(

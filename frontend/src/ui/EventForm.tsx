@@ -841,6 +841,24 @@ export function EventForm({
               could neither read an event's notes nor write one. The section's own `＋ פתק` is
               off here (`canAdd`), because the box below it already is the way to add and it
               rides this form's save rather than opening a second sheet. */}
+          {/* **A document is attached on the way** (ADR-0173 §5), and it reads ABOVE the
+              notes (ADR-0174 §5, owner's ask). One 44px control until something is
+              attached, and the header and two entrances only after. The host is this EVENT
+              when it exists; on a create there is no id yet, so the picks are staged and
+              ride the save. A BOOKED save's links go on the booking, which
+              `writeNotesBehind`'s `where` already answers for the notes.
+
+              The order is the same one every READ surface uses (ADR-0174 §3): a document is
+              a thing you need and a note is something about it, and the app must not teach
+              one sequence on the form and the opposite on the read. The cost is recorded
+              rather than discovered — on a CREATE the composer, whose `＋` is this form's
+              most-used control, is now one slot further down a form ADR-0155 measures at
+              ~1565px. */}
+          <DocumentAttachField
+            state={attach}
+            host={event ? { kind: 'event', id: event.id } : undefined}
+          />
+
           {event && (
             <HostNotes host={{ kind: 'event', id: event.id, name: event.title }} canAdd={false} />
           )}
@@ -851,16 +869,6 @@ export function EventForm({
           >
             <NoteComposer state={composer} id={noteId} />
           </Field>
-
-          {/* **A document is attached on the way too** (ADR-0173 §5) — one 40px control until
-              something is attached, and the header + two entrances only after. The host is
-              this EVENT when it exists; on a create there is no id yet, so the picks are
-              staged and ride the save above. A BOOKED save's links go on the booking, which
-              `writeNotesBehind`'s `where` already answers for the notes. */}
-          <DocumentAttachField
-            state={attach}
-            host={event ? { kind: 'event', id: event.id } : undefined}
-          />
 
           {/* Only what has no field to point at still reads down here. */}
           <FormError>{errors.formError}</FormError>

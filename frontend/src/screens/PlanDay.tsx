@@ -46,7 +46,6 @@ import { useClock } from '../lib/useClock';
 import {
   eventDurationLabel,
   eventEdgeZone,
-  eventPlaceName,
   eventRoute,
   eventShowOnMap,
   ideaShowOnMap,
@@ -109,7 +108,6 @@ import { useEdgeAutoScroll, type DragPoint } from '../lib/edge-autoscroll';
 import { useHoldToDrag, type HoldToDragProps } from '../lib/useHoldToDrag';
 import { useDragGhost } from '../lib/useDragGhost';
 import {
-  CODE_PREFIX,
   CONTROL_ICON,
   DAY_NOON,
   DEFAULT_MAYBE_ICON,
@@ -133,6 +131,7 @@ import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { BookingDetail } from '../ui/BookingDetail';
+import { EventDetail } from '../ui/EventDetail';
 import { TransitionRow } from '../ui/TransitionRow';
 import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { routeDisplay } from '../ui/route-display';
@@ -274,6 +273,8 @@ export function PlanDay() {
   // Tapping a transition row opens the read-only booking detail (ADR-0053/0064),
   // the same pattern as the Trip-mode day view; editing from there opens the sheet.
   const [detailTarget, setDetailTarget] = useState<Booking | null>(null);
+  // An UNBOOKED event's read (ADR-0174 §4). A booked one goes to `detailTarget` above.
+  const [eventDetail, setEventDetail] = useState<TripEvent | null>(null);
   const [gapFill, setGapFill] = useState<GapDefaults | null>(null);
   // A shelf idea being scheduled onto a day — opens EventForm in "schedule" mode
   // so the user picks the day/time/kind (not the old hardcoded 17:30 dump).
@@ -926,6 +927,14 @@ export function PlanDay() {
       if (booking) setBookingTarget(booking);
       else setFormTarget(e);
     },
+    // **A booked event's read already exists** and is `BookingDetail` (ADR-0172 §1) —
+    // reached from the Index and, until now, from nowhere in Plan mode. That is what makes
+    // §4 half-built rather than new: only the unbooked event needed a surface.
+    onOpen: (e) => {
+      const booking = e.bookingId ? bookings.find((b) => b.id === e.bookingId) : undefined;
+      if (booking) setDetailTarget(booking);
+      else setEventDetail(e);
+    },
     onOpenDetail: setDetailTarget,
     onGapFill: setGapChoice,
     onPickTime: setTimeTarget,
@@ -1300,6 +1309,24 @@ export function PlanDay() {
         />
       )}
 
+      {eventDetail && (
+        <EventDetail
+          event={eventDetail}
+          zoneCtx={zoneCtx}
+          onClose={() => setEventDetail(null)}
+          // A finished trip is browsable and not editable (ADR-0040), so the archive's read
+          // carries no way to write — which is also what makes opening it safe there.
+          onEdit={
+            readOnly
+              ? undefined
+              : () => {
+                  setEventDetail(null);
+                  setFormTarget(eventDetail);
+                }
+          }
+        />
+      )}
+
       {detailTarget && (
         <BookingDetail
           booking={detailTarget}
@@ -1478,6 +1505,8 @@ interface BuilderCtx {
   drag: { id: string; overId: string | null } | null;
   rowDragProps: (id: string) => HoldToDragProps;
   onEdit: (event: TripEvent) => void;
+  /** The row's own tap (ADR-0174 §4) — the READ, routed by whether the event is booked. */
+  onOpen: (event: TripEvent) => void;
   // Tapping a transition row opens the read-only booking detail (ADR-0064).
   onOpenDetail: (booking: Booking) => void;
   onGapFill: (free: Gap) => void;
@@ -1746,11 +1775,9 @@ function BuilderNode({
         event={e}
         tz={ctx.tz}
         title={route.title}
-        placeName={route.meta ?? eventPlaceName(e, ctx.bookings, ctx.places)}
         zones={zones}
         duration={eventDurationLabel(e, booking, zones)}
         readOnly={ctx.readOnly}
-        booking={booking}
         notes={noteCountForContext(
           ctx.noteCounts,
           resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
@@ -1759,6 +1786,7 @@ function BuilderNode({
           ctx.docCounts,
           resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
         )}
+        onOpen={() => ctx.onOpen(e)}
         onEdit={() => ctx.onEdit(e)}
         onDelete={() => ctx.verbs.remove(e)}
         onShowOnMap={eventShowOnMap(e, ctx.bookings, ctx.places, ctx.showPlaceOnMap)}
@@ -1806,10 +1834,9 @@ export function BuilderRow({
   zones,
   duration,
   readOnly,
-  booking,
-  placeName,
   notes,
   documents,
+  onOpen,
   onEdit,
   onDelete,
   onShowOnMap,
@@ -1836,14 +1863,18 @@ export function BuilderRow({
   // A finished trip is a read-only archive (ADR-0040): the row is browsable but
   // carries no edit/reorder/delete affordances.
   readOnly?: boolean;
-  booking?: { confirmationCode?: string };
-  placeName?: string;
   /** **How many notes / documents this row carries** (ADR-0152 §6c, ADR-0174 §1) — both
    *  counted over the row's whole CONTEXT, since a booked event's rows may sit on its
    *  booking. Plan mode showed neither mark before this, which is why they arrive together
    *  rather than one per session. */
   notes?: number;
   documents?: number;
+  /** **Open the row's READ** (ADR-0174 §4) — a booked event routes to `BookingDetail`,
+   *  which is already its read because a linked pair is one context (ADR-0172 §1); an
+   *  unbooked one gets `EventDetail`. Present on a read-only archive too. */
+  onOpen: () => void;
+  /** Open the editor. Reached from inside the read and from the `⋯` sheet — never from the
+   *  row body any more. */
   onEdit: () => void;
   onDelete: () => void;
   /** Show the event's place on our map (ADR-0121 §8). Absent when there is nothing
@@ -1886,9 +1917,12 @@ export function BuilderRow({
   };
 }) {
   const isHard = event.kind === EVENT_KIND.HARD;
-  const code = booking?.confirmationCode ? `${CODE_PREFIX}${booking.confirmationCode}` : undefined;
-  const codeText = code ? `${t.event.bookingLabel} ${code}` : undefined;
-  const hasMeta = !!placeName || !!codeText || !!notes || !!documents;
+  // **GLYPHS ONLY ON THE ROW** (owner, 2026-08-09). The line carried
+  // `placeName · הזמנה CODE` and a real code is `הזמנה #MEGAZIP-T141215488`, which
+  // overflowed the row on a device and stranded the separator beside a place name
+  // squeezed to zero width. Both texts come off; the place is the badge beside it and
+  // the code is one tap away in the read this row now opens.
+  const hasMeta = !!notes || !!documents;
 
   const isSkipped = settle?.status === EVENT_STATUS.SKIPPED;
   const cls = [
@@ -1955,24 +1989,10 @@ export function BuilderRow({
           <span className="nest-note">{t.day.contains(nestedCount)}</span>
         )}
       </span>
-      {/* ONE nowrap line of ELEMENTS, not a joined string (ADR-0152 §6c's rebuild, applied
-          here by ADR-0174 §1). It was the string, and that is why appending a mark cost
-          +10px on every row: the text could not shrink, so the line wrapped. */}
+      {/* The line renders at all only when it has a glyph to carry, so an ordinary row
+          loses it entirely rather than keeping an empty box. */}
       {hasMeta && (
         <span className="bld-m">
-          {placeName && (
-            <span className="bld-m-txt" dir="auto">
-              {placeName}
-            </span>
-          )}
-          {placeName && codeText && <span className="bld-m-sep">{DOT_SEPARATOR}</span>}
-          {codeText && (
-            <span className="bld-m-code" dir="auto">
-              {codeText}
-            </span>
-          )}
-          {/* Plan mode had NEITHER mark until now, so a whole mode said nothing about what
-              its rows carry (ADR-0174 §1). Both land together, in the day card's order. */}
           <NoteMark count={notes} />
           <DocumentMark count={documents} />
         </span>
@@ -1997,13 +2017,19 @@ export function BuilderRow({
       <PlaceBadge className="bld-bd" onShowOnMap={onShowOnMap}>
         {event.icon}
       </PlaceBadge>
-      {readOnly ? (
-        <div className="bld-main">{mainContent}</div>
-      ) : (
-        <button className="bld-main" onClick={onEdit}>
-          {mainContent}
-        </button>
-      )}
+      {/* **THE ROW'S TAP IS A READ NOW, NOT AN EDIT** (ADR-0174 §4). It opened `EventForm`
+          — so reading an event meant opening its editor and scrolling past a category grid,
+          a title field, an icon picker, a when field and a place picker. `עריכה` is one tap
+          inside the read, and it was already the first row of this row's `⋯` sheet, so the
+          same route costs the same number of taps as before.
+
+          AND IT IS A BUTTON ON A READ-ONLY ARCHIVE, which is the hole this closes: it was a
+          `<div>` there, so a finished trip's events could not be opened at all — in the mode
+          whose whole job is being browsable (ADR-0040). The read is exactly what an archive
+          wants, and it carries no `עריכה` there. */}
+      <button className="bld-main" onClick={onOpen}>
+        {mainContent}
+      </button>
       {event.startsAt &&
         (() => {
           const startZone = zones?.startZone ?? tz;

@@ -54,13 +54,19 @@ const TZ = 'Asia/Tokyo';
 
 function row(
   event: TripEvent,
-  opts: { onPickTime?: () => void; onPark?: () => void; readOnly?: boolean } = {},
+  opts: {
+    onPickTime?: () => void;
+    onPark?: () => void;
+    readOnly?: boolean;
+    onOpen?: () => void;
+  } = {},
 ) {
   return render(
     wrapNav(
       <BuilderRow
         event={event}
         tz={TZ}
+        onOpen={opts.onOpen ?? vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         onPark={opts.onPark}
@@ -162,5 +168,27 @@ describe('the ⋯ sheet, after הזז left it (amends ADR-0138 §8)', () => {
     row(HARD);
     openMenu();
     expect(screen.queryByRole('button', { name: t.actions.toShelf })).toBeNull();
+  });
+});
+
+// **THE ROW'S TAP IS A READ** (ADR-0174 §4), and the archived case is the one that was
+// broken rather than merely indirect: `.bld-main` was a `<div>` on `readOnly`, so a
+// finished trip's events could not be opened at all — in the mode whose whole job is being
+// browsable (ADR-0040).
+describe('BuilderRow — the row opens a read', () => {
+  it('opens the READ rather than the editor when the body is tapped', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { onOpen });
+    fireEvent.click(container.querySelector('.bld-main')!);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a real button on a READ-ONLY archive, where it used to be an inert div', () => {
+    const onOpen = vi.fn();
+    const { container } = row(A, { readOnly: true, onOpen });
+    const main = container.querySelector('.bld-main')!;
+    expect(main.tagName).toBe('BUTTON');
+    fireEvent.click(main);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
