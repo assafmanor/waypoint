@@ -68,6 +68,16 @@
 }
 .qa {
   display: block; /* navigate-to-next is an <a>; the rest are <button>s */
+  /* `repeat(N, 1fr)` is `minmax(auto, 1fr)`, and a grid item's `min-width` is
+     `auto` — its MIN-CONTENT width — so without this a tile whose content is
+     wider than its share takes the width and its siblings give it up. Measured
+     at five tiles: columns `56 · 68 · 81 · 56 · 110` and 407px of content in a
+     326px box, i.e. 81px pushed off the inline-start edge. Four tiles happen to
+     fit, so this was latent rather than live — but `Home.tsx` sets the column
+     count from the visible-tile count and its comment says the row "just
+     reflows", which is an equal-column promise the CSS did not keep.
+     Third instance of this trap here, after `.map-refs` and ADR-0121 §8. */
+  min-width: 0;
   text-decoration: none;
   background: var(--card);
   border: 1px solid var(--line);
@@ -2471,8 +2481,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 }
 /* Timezone trigger — a select-shaped button opening the shared ZonePicker
    (ADR-0113 §6). Matches the input/select chrome; the caret sits at the end. */
-.set-tz-trigger {
+/* The settings "value that opens a picker" control. Renamed from
+   `.set-tz-trigger` when the currency field became its second call site
+   (ADR-0180 §1): a shared control named after its first consumer is how the
+   third `.set-*-trigger` gets written instead of reused — the same rename this
+   change makes to `.zp-*` → `.cp-*` one directory over.
+
+   NOT folded into `ValueToken` (ADR-0177), which was the other candidate: that
+   primitive is a value INSIDE A LINE OF PROSE, and this is a block-level form
+   row with its own label above it and a caret at the end. Sharing the name
+   would have meant sharing the chip geometry, which is wrong for a field. */
+.set-pick-trigger {
   font: inherit;
+  /* ADR-0017's floor. It rendered at 40px, and giving the control a second call
+     site is the moment to fix that rather than file it. */
+  min-height: 44px;
   width: 100%;
   display: flex;
   align-items: center;
@@ -2488,17 +2511,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   text-align: start;
   cursor: pointer;
 }
-.set-tz-trigger .icon {
+.set-pick-trigger .icon {
   width: 18px;
   height: 18px;
   color: var(--muted);
   flex: none;
-}
-/* A currency code is three characters, so it keeps the narrow width it had when
-   it shared a row with the daily budget rather than stretching to the form's. */
-.set-fld .currency-select {
-  width: auto;
-  min-width: 92px;
 }
 .set-form-actions {
   display: flex;

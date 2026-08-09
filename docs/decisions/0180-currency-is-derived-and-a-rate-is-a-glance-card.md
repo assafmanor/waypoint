@@ -1,6 +1,6 @@
 # 0180 — Currency is **derived**, a rate is a **glance card**, and money is stored in **minor units**
 
-**Status:** Accepted (2026-08-09) — design only; **nothing built**. The build is a separate change.
+**Status:** Accepted (2026-08-09) — **slice 1 built** the same day (see the build log at the foot for the three places the build decided something the design left open); slices 2 and 3 (the `User` column, the feed, `RateCard`, the converter) are still unbuilt.
 **Date:** 2026-08-09
 **Session note:** [`planning/2026-08-09-session-238-where-money-lives-on-the-home.md`](../planning/2026-08-09-session-238-where-money-lives-on-the-home.md)
 **Mockup:** [`mockups/currency-becomes-a-feature-v1.html`](../../mockups/currency-becomes-a-feature-v1.html) (§1–§8)
@@ -140,3 +140,45 @@ No money hue is proposed. The rate is a numeric run and the app's mono treatment
 - **`Membership.preferredCurrency`** instead of `User`. Rejected: it is a property of the person, not of the trip, and per-trip storage would ask the same question once per trip.
 - **The ECB as the only source.** Rejected on coverage — §7. It remains a good _second_ provider for the majors.
 - **Deriving the currency from `Trip.timezone`.** Rejected — §1; the zone is lossy in both directions and the country code is already stored.
+
+## Build log — 2026-08-09, slice 1
+
+Built: `COUNTRY_CURRENCY` + `currencyForCountry` (§1), `lib/money.ts` (§5), the
+`CodePicker` extraction + `CurrencyPicker` (§6), the derivation at both call
+sites, the settings field, the copy, and both CSS defects from the Consequences.
+Not built: §2's column, §3's card, §4's freshness, §7's feed.
+
+**Three things the build decided that the design left open, and one it got wrong.**
+
+1. **`ValueToken` is not the right host for the settings trigger**, so §Consequences'
+   "renamed, or replaced by `ValueToken` if that turns out to be the right host"
+   resolves to the rename. `ValueToken`'s own header defines it as a value **inside
+   a line of prose** — a hairline chip wearing the type and column of the text it
+   replaces. The settings control is a block-level form row with a label above it
+   and a caret at its end. Sharing the name would have meant sharing chip geometry
+   that is wrong for a field. It is `.set-pick-trigger`, at 44px.
+
+2. **The create/edit asymmetry is a named rule, not an inline `if`.** The design
+   describes it in prose and the obvious build is two `if`s, one per screen — which
+   is exactly what the **zone** does today, as two comments with no test tying them
+   together. `lib/currency.ts` names both halves (`currencyForNewTrip`,
+   `currencyAfterDestinationEdit`) and its test asserts every case against **both**,
+   so they cannot converge unnoticed. Cheap, and it is the drift this ADR's §1 is
+   most exposed to.
+
+3. **`.zp-*` became `.cp-*`.** The design drew the picker in the shipped zone
+   classes, which was right for a drawing and wrong to ship: a shared sheet named
+   after its first consumer is the same smell as `.set-tz-trigger`, which this
+   change renames one directory over for the same reason. `ZonePicker`'s existing
+   test passes **untouched** across the extraction, which is the check that mattered
+   — the rename is cosmetic, the extraction is not.
+
+**And the one the design had backwards.** §5 justifies rounding in `toMinor` as
+"binary floats lose an agora", which measurement does not support: a bare
+`Math.round(major * scale)` is correct for **all 200,000** two-decimal values from
+0.00 to 1,999.99. The real defect is narrower and stranger — input carrying _more_
+precision than the currency has rounds **arbitrarily**, `1.005 → 100` but
+`1.015 → 102`, decided by binary representation rather than by the typed number.
+The guard rounds the decimal string first so over-precise input goes half-up
+consistently. The code says so; the ADR's sentence is left as written, with this
+correction beside it.
