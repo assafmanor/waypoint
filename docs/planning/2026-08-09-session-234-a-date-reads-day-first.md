@@ -40,6 +40,15 @@ The day-strip one is a real bug for any trip west of UTC (every pill named the d
 - Chrome moved from the input to the box: `field.css`, `App.css`, `screens.css`, `when-field.css`, `form-errors.css` (`.df` joins the marked controls; `:focus-within` where the box is styled).
 - Five specs updated to address the input inside the box — including the birth-board one, which had been **asserting** `09.12`.
 
+## Caught in the browser, not by the suite
+
+Two things only a real browser could report, both found by driving the three hosts in Playwright and reading computed style:
+
+1. **The span leg drew a second box.** The old raw input carried `border: 0; background: transparent; padding: 0` to neutralize the `Field` shell's control chrome, and that neutralizer had to move to the wrapper — one class heavier, because the shell's rules and the wrapper are now in the same specificity bracket. Without it the booking sheet drew a bordered box inside the bordered cell.
+2. **The refusal painted the wrong colour.** Same bracket collision: `.field .df:focus-within`'s teal out-specified the mark, and a refusal focuses the field it names — so the refused end of a trip's date range was drawn as the healthy focused one, and the day field kept its neutral border under the ring. `.df` now has its own rule in `form-errors.css` keyed on `:focus-within` (the box is not focusable — the input inside it is).
+
+`form-refusal.spec.ts` asserts the painted colour on both hosts now. Every unit test was green through both bugs, because jsdom reports no colour at all — the same lesson that file's header already carries.
+
 ## Not done, deliberately
 
 `en-CA` / `en-US` inside `lib/time.ts` stay: they are the ISO-day trick behind `todayInTz` and a parts/offset probe, not display. Renaming them to the app locale would change what they return.
