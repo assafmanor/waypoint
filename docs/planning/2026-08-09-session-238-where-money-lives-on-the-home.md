@@ -233,6 +233,18 @@ relationship, and a table of boxes cannot express one.
 _(Worth a look during the build: `zone-picker.css:43` sets `align-items: baseline` on `.zp-row`,
 which is fine today because that row is all text — but it is the rule this chip copied.)_
 
+**And a second correction, against the running app.** §7's first drawing showed the display card
+alone and _invented its contents_ — a `.lab`/`.val` pair — where the shipped theme control is a
+label-only `.id-row` followed by a real `ChoiceGrid`. That is `pitfalls.md`'s "real CSS over an
+invented tree" landing on this file, and the fix is not a patch: §7 now draws **the whole
+`UserSettings` screen**, header to sign-out, with `avatar.css` and `choice-grid.css` added to the
+manifest. Drawing the neighbours is load-bearing rather than decorative — the claim this section
+makes is _which hint belongs to which card_, and it cannot be judged with the neighbours cropped
+out. It is also what made the first layout's failure obvious on sight: theme and currency in one
+card with both hints stacked beneath, promising opposite things (device vs. account) with nothing
+to say which was which. One hint per card is the shipped pattern; each now gets its own card
+inside the same `תצוגה` section, with no extra section heading.
+
 **Currencies: all of them.** Already true of the picker, which reads
 `Intl.supportedValuesOf('currency')` rather than a curated list — nothing to decide, and nothing
 to ship or age. What this **does** decide is fork 4, below, because it makes the picker's reach
