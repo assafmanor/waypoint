@@ -14,8 +14,11 @@ import { t } from '../i18n/he';
 import { useAuth } from '../state/auth-state';
 import { SETTINGS_PICTURE_PATH, useAppBack } from '../state/nav-state';
 import { readThemePick, setThemePick, THEME_PICK, type ThemePick } from '../lib/theme';
+import { currencyForDeviceRegion } from '../lib/currency';
 import { Avatar } from '../ui/primitives/Avatar';
 import { ChoiceGrid } from '../ui/primitives/ChoiceGrid';
+import { CurrencyPicker, currencyLabel } from '../ui/primitives/CurrencyPicker';
+import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
 import { StatusBanner } from '../ui/feedback/StatusBanner';
 
@@ -37,8 +40,29 @@ export default function UserSettings() {
   // Seeded from storage rather than from a provider: the theme is device state,
   // not trip or account state, so nothing above this screen needs to hold it.
   const [themePick, setPick] = useState<ThemePick>(readThemePick);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
 
   if (!me) return null;
+
+  /** The home currency (ADR-0180 §2), and note where the default comes from:
+   *  `null` on the account means "never chosen", and the DEVICE's region answers
+   *  it — through the same `COUNTRY_CURRENCY` table the trip's own currency is
+   *  derived from. The server does not guess on the user's behalf, because the
+   *  only thing it knows about them is an email. */
+  const currency = me.user.preferredCurrency ?? currencyForDeviceRegion();
+
+  /** Same LWW shape as the name above, minus the blur dance — a picker commits
+   *  the moment it is tapped, so there is nothing to debounce. */
+  const commitCurrency = async (picked: string) => {
+    setCurrencyOpen(false);
+    if (picked === me.user.preferredCurrency) return;
+    setFailed(false);
+    try {
+      await patchMe({ preferredCurrency: picked });
+    } catch {
+      setFailed(true);
+    }
+  };
 
   const trimmed = draftName.trim();
   const dirty = trimmed.length > 0 && trimmed !== me.user.displayName;
@@ -123,6 +147,35 @@ export default function UserSettings() {
           />
         </div>
         <div className="set-hint-block">{t.shell.account.themeHint}</div>
+
+        {/* Its OWN card inside the same section, not a second row in the theme's
+            (ADR-0180 §2, mockup §7). One hint per card is the shipped pattern,
+            and these two facts have OPPOSITE persistence — the theme's hint
+            promises "saved on this device" and a currency is account state, so
+            sharing a card would leave two hints beneath it with nothing to say
+            which was which. */}
+        <div className="set-card">
+          <div className="id-row">
+            <span className="lab">{t.shell.account.currencyLabel}</span>
+            <button
+              type="button"
+              className="set-pick-trigger"
+              onClick={() => setCurrencyOpen(true)}
+            >
+              <span>{currency ? currencyLabel(currency) : t.shell.account.currencyUnset}</span>
+              <Icon name="caret" dir="down" />
+            </button>
+          </div>
+        </div>
+        <div className="set-hint-block">{t.shell.account.currencyHint}</div>
+        {currencyOpen && (
+          <CurrencyPicker
+            value={currency}
+            suggested={[currencyForDeviceRegion()].filter((c): c is string => !!c)}
+            onChange={commitCurrency}
+            onClose={() => setCurrencyOpen(false)}
+          />
+        )}
 
         <div className="set-sec-title">{t.shell.account.accountSection}</div>
         <div className="set-card">

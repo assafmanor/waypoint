@@ -1261,6 +1261,12 @@ export const t = {
       themeLight: 'בהיר',
       themeDark: 'כהה',
       themeHint: 'הבחירה נשמרת במכשיר הזה. במצב מערכת האפליקציה עוקבת אחרי הטלפון.',
+      // The home currency (ADR-0180 §2). Its hint has to say ACCOUNT where its
+      // neighbour above says device — a row that inherited the theme's promise
+      // would state the opposite of the truth.
+      currencyLabel: 'מטבע',
+      currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · הוא הצד השני של כל המרה בטיול.',
+      currencyUnset: '-',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
       emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',

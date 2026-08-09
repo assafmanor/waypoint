@@ -25,11 +25,15 @@ import { APP_LOCALE } from '../constants';
 /** How many decimal places this currency's minor unit implies — 0 for JPY, 2
  *  for ILS, 3 for KWD. Read from the runtime's own ISO-4217 data.
  *
- *  Throws for an unknown/absent currency exactly as `Intl` does, and that is
- *  deliberate: `formatMoney`'s test has guarded the `undefined` case since a
- *  currency-less trip blanked the whole screen (no ErrorBoundary), so callers
- *  check `trip.currency` before they get here. Swallowing it would move the
- *  failure somewhere quieter, not remove it. */
+ *  Throws for an ABSENT or badly-shaped currency exactly as `Intl` does, and
+ *  that is deliberate: `formatMoney`'s test has guarded the `undefined` case
+ *  since a currency-less trip blanked the whole screen (no ErrorBoundary), so
+ *  callers check `trip.currency` before they get here. Swallowing it would move
+ *  the failure somewhere quieter, not remove it.
+ *
+ *  It does NOT throw for a well-formed code ICU has never heard of — `ZZZ`
+ *  resolves to 2 places and formats as `ZZZ`. That is why `currencyCodeSchema`
+ *  validates shape only; there is no existence question ICU will answer. */
 export function currencyExponent(currency: string): number {
   const { maximumFractionDigits } = new Intl.NumberFormat(APP_LOCALE, {
     style: 'currency',

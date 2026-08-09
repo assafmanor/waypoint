@@ -105,6 +105,13 @@ model User {
   // is on `initials`, so "use my Google photo" has somewhere to come back from.
   googleAvatarUrl   String?
   uploadedAvatarKey String? // set by ADR-0133's Phase 4 only
+  // The member's HOME currency (ADR-0180 §2) — the other side of every trip
+  // conversion. Nullable because "never chosen" is a real state the client
+  // resolves for itself from the device region, through the same
+  // COUNTRY_CURRENCY table the trip's own currency is derived from. A column
+  // default would be the mistake `avatarColor` already made here: one value
+  // that is wrong for everyone outside the country that picked it.
+  preferredCurrency String?
 
   createdAt DateTime @default(now())
 

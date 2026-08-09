@@ -1,0 +1,12 @@
+-- The member's home currency (ADR-0180 §2) — the other side of every conversion
+-- the rate card and converter perform.
+--
+-- Nullable with NO default, and both halves are deliberate. "Never chosen" is a
+-- real state the client resolves for itself from the device region through the
+-- same COUNTRY_CURRENCY table the trip's own currency comes from, so the server
+-- has nothing useful to guess. And a column default here would repeat the
+-- mistake `avatarColor String @default("#E9A63C")` already made on this table:
+-- one value that is wrong for everyone outside whoever picked it.
+--
+-- Additive, so there is nothing to backfill and existing rows stay valid.
+ALTER TABLE "User" ADD COLUMN "preferredCurrency" TEXT;

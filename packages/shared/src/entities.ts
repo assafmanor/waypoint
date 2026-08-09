@@ -89,6 +89,35 @@ export const entityTypeSchema = z.enum([
 ]);
 export type EntityType = z.infer<typeof entityTypeSchema>;
 
+/** A well-formed ISO-4217 code. **Shape only, and that is the finding rather
+ *  than a shortcut** — this started as the currency twin of `timezoneSchema`,
+ *  asking ICU whether the code exists, and ICU turned out not to answer that
+ *  question. Measured:
+ *
+ *    `currency: 'ZZZ'` → no throw, formats as `‏12.30 ‏ZZZ`, exponent 2
+ *    `currency: 'IL'`  → RangeError (bad shape)
+ *    `currency: 'ils'` → accepted, and normalised to ₪
+ *
+ *  So the only thing ICU validates is that the code is three ASCII letters,
+ *  which the regex already does — and the "blank screen at a render site" that
+ *  justifies `timezoneSchema`'s strictness does not exist here, because a
+ *  nonexistent code renders as itself instead of throwing.
+ *
+ *  Existence could be checked against `Intl.supportedValuesOf('currency')`, and
+ *  is deliberately **not**: that list is the answering engine's, so a server on
+ *  an older ICU would reject a code its own client offered. `ZWG` — in this
+ *  repo's `COUNTRY_CURRENCY` — is exactly that kind of recent addition. A false
+ *  rejection costs a user their preference; a false acceptance costs a code
+ *  rendered verbatim, which the picker cannot produce in the first place.
+ *
+ *  Upper-case is required rather than normalised, so stored values are
+ *  canonical and `symbol === code` comparisons stay meaningful.
+ *
+ *  `Trip.currency` predates this and stays a bare string for now — every value
+ *  it holds came from a five-option select, so tightening it is a separate,
+ *  safe change rather than a rider on this one. */
+export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/, 'invalid ISO-4217 code');
+
 export const userSchema = z.object({
   id: idSchema,
   email: z.string(),
@@ -109,6 +138,10 @@ export const userSchema = z.object({
   // Relative to the API origin, since the server has no reliable notion of its own
   // public URL (`FRONTEND_URL` is the frontend's, not ours).
   uploadedAvatarUrl: z.string().nullable(),
+  // The member's home currency (ADR-0180 §2), or null when they have never
+  // chosen one — the client then seeds a default from the device region rather
+  // than the server guessing on their behalf.
+  preferredCurrency: currencyCodeSchema.nullable(),
   createdAt: z.string(),
 });
 export type User = z.infer<typeof userSchema>;

@@ -13,10 +13,13 @@ vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me, logout, patchMe })
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 vi.mock('../state/nav-state', () => ({
   useAppBack: () => goBack,
+  // `CurrencyPicker` renders through `Modal`, which registers a back layer.
+  useOverlay: () => {},
   SETTINGS_PICTURE_PATH: '/settings/picture',
 }));
 
 const { default: UserSettings } = await import('./UserSettings');
+const { t } = await import('../i18n/he');
 
 const makeMe = (over: Partial<Me['user']> = {}): Me => ({
   user: {
@@ -27,6 +30,7 @@ const makeMe = (over: Partial<Me['user']> = {}): Me => ({
     avatarChoice: 'initials',
     googleAvatarUrl: null,
     uploadedAvatarUrl: null,
+    preferredCurrency: null,
     createdAt: '2026-07-01T00:00:00.000Z',
     ...over,
   },
@@ -101,5 +105,66 @@ describe('UserSettings', () => {
     me = null;
     const { container } = render(<UserSettings />);
     expect(container.firstChild).toBeNull();
+  });
+});
+
+// The home currency (ADR-0180 §2). It amends ADR-0133 §7 by that section's own
+// condition — the rejection there was of a switch with no reader, and this slice
+// gives it two. The row's presence is the decision; its HINT is the trap, since
+// its neighbour in the same section promises DEVICE persistence and this is
+// account state.
+describe('UserSettings — the home currency', () => {
+  it('shows the stored preference with its full label', () => {
+    me = makeMe({ preferredCurrency: 'JPY' });
+    render(<UserSettings />);
+    const trigger = screen.getByText(t.shell.account.currencyLabel).parentElement;
+    expect(trigger?.textContent).toContain('JPY');
+    expect(trigger?.textContent).toContain('¥');
+  });
+
+  // The server never guesses on the user's behalf — it knows only their email.
+  it('falls back to the device region when the account has never chosen one', () => {
+    me = makeMe({ preferredCurrency: null });
+    render(<UserSettings />);
+    // The harness runs in a he-IL-ish locale, so this resolves; what is pinned
+    // is that SOMETHING sensible shows rather than the unset dash.
+    const row = screen.getByText(t.shell.account.currencyLabel).parentElement;
+    expect(row?.textContent).not.toBe(t.shell.account.currencyLabel);
+  });
+
+  it('carries its OWN hint, which says account where the theme says device', () => {
+    me = makeMe();
+    render(<UserSettings />);
+    const currencyHint = screen.getByText(t.shell.account.currencyHint);
+    const themeHint = screen.getByText(t.shell.account.themeHint);
+    expect(currencyHint).toBeTruthy();
+    expect(themeHint).toBeTruthy();
+    // Two hints, two cards — not two rows sharing one.
+    expect(currencyHint).not.toBe(themeHint);
+  });
+
+  it('patches the account when a currency is picked', async () => {
+    me = makeMe({ preferredCurrency: 'JPY' });
+    render(<UserSettings />);
+    fireEvent.click(
+      screen.getByText(t.shell.account.currencyLabel).parentElement!.querySelector('button')!,
+    );
+    fireEvent.change(screen.getByPlaceholderText(t.currencyPicker.searchPlaceholder), {
+      target: { value: 'ils' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /ILS/ }));
+    await waitFor(() => expect(patchMe).toHaveBeenCalledWith({ preferredCurrency: 'ILS' }));
+  });
+
+  it('writes nothing when the picked currency is the one already stored', async () => {
+    me = makeMe({ preferredCurrency: 'ILS' });
+    render(<UserSettings />);
+    fireEvent.click(
+      screen.getByText(t.shell.account.currencyLabel).parentElement!.querySelector('button')!,
+    );
+    // The current value appears twice by design — once in the suggested group and
+    // once in the full list — so take the first rather than asserting uniqueness.
+    fireEvent.click(screen.getAllByRole('button', { name: /ILS/ })[0]);
+    await waitFor(() => expect(patchMe).not.toHaveBeenCalled());
   });
 });

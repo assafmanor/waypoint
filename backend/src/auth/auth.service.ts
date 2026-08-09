@@ -184,6 +184,9 @@ export class AuthService {
         ...(patch.displayName !== undefined && { displayName: patch.displayName }),
         ...(patch.avatarChoice !== undefined && { avatarChoice: patch.avatarChoice }),
         ...(patch.avatarHue !== undefined && { avatarHue: patch.avatarHue }),
+        ...(patch.preferredCurrency !== undefined && {
+          preferredCurrency: patch.preferredCurrency,
+        }),
       },
     });
     return this.getMe(userId);
