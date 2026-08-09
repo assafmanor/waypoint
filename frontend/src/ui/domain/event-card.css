@@ -53,13 +53,39 @@
 }
 
 /* Face — the tappable header (a toggle button; the settle variant is a div). */
+/* THE CARD SAYS **WHAT**, THEN **WHEN** (ADR-0178 §1/§2) — the same grid as Plan's
+   builder row, on the owner's instruction that the two modes agree. They already
+   shared `.route`, `routeDisplay`, `PlaceBadge` and the zone pill; shape was the one
+   thing about to diverge (rule 8 / ADR-0096).
+
+   This card was not merely at risk. Measured on the reported flight its title box was
+   97.8px against a 129px route — it was already overflowing, and an earlier reading of
+   "69px of headroom" had measured a route long enough to trip ADR-0059 §3's
+   destination-primary fallback, i.e. the short title the fallback makes.
+
+   `check` is the settled ✓ (ADR-0043), present on some rows only; an `auto` track with
+   nothing in it is 0px, so an ordinary card lays out exactly like the builder row.
+
+   What stays different from Plan stays different deliberately: this time is a readout
+   and Plan's is a button wearing ADR-0161 §7's chip, and the badge is 40px against
+   36px. The layout is aligned; the density is not. */
 .wp-event-face {
   /* A card- or full-width-sized surface: the gentler press step (ADR-0140) — at
      the control value this reads as collapsing rather than as pressed. */
   --press-scale: var(--press-scale-lg);
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'badge title check chev'
+    'badge when  check chev';
   align-items: center;
-  gap: var(--space-3);
+  /* THE GUTTER IS A MARGIN, NOT `column-gap`, and that is not a style preference.
+     Two of these four tracks are optional — the ✓ renders only on a settled row and
+     the chevron not at all on the settle variant — and `column-gap` is charged
+     between EMPTY tracks too, so a plain card paid 12px and the settle card 24px of
+     dead space at its trailing edge. A margin on the item disappears with the item. */
+  column-gap: 0;
+  row-gap: 2px;
   padding: 14px 15px;
   cursor: pointer;
   width: 100%;
@@ -77,6 +103,7 @@
   outline-offset: -2px;
 }
 .wp-event-badge {
+  grid-area: badge;
   width: 40px;
   height: 40px;
   border-radius: var(--radius-12);
@@ -93,7 +120,9 @@
 /* Done ✓ as a tap-to-undo control (ADR-0043 revision) — --ok green; hover/focus
    morphs the ✓ to an undo arrow; a thin persistent ring hints it's tappable. */
 .wp-event-check {
-  flex: 0 0 auto;
+  grid-area: check;
+  align-self: center;
+  margin-inline-start: var(--space-3);
   width: 22px;
   height: 22px;
   border-radius: var(--radius-999);
@@ -154,7 +183,10 @@
 }
 
 .wp-event-main {
-  flex: 1;
+  grid-area: title;
+  margin-inline-start: var(--space-3);
+  /* Kept beside `minmax(0, 1fr)`: a grid item's default `min-width: auto` would
+     still let an un-shrinkable child (the route) push the track open. */
   min-width: 0;
 }
 .wp-event-t {
@@ -165,12 +197,23 @@
   gap: 7px;
   flex-wrap: wrap;
 }
-/* The title text is its own flex child so it can shrink inside the row (the
-   hard/soft tag stays a sibling and is never clipped). Deliberately NOT clamped:
-   a long transport route is handled by shortening + the destination-primary
-   fallback (ADR-0059 §3 amendment), and anything else may wrap freely. */
+/* THE FOLD, IN ORDER: the route breaks at its own boundary (`.route`'s own
+   `flex-wrap`), then two lines, then `…` (ADR-0178 §5).
+
+   The comment this replaces claimed "anything else may wrap freely". It could not:
+   `.route` is an `inline-flex` with two single-word children, so it had no break
+   point at any width and this card overflowed too. Deliberately NOT
+   `overflow-wrap: anywhere` — a place name split mid-word is not a place name;
+   `text-overflow` folds the one case the clamp cannot, a single word longer than
+   the line. */
 .wp-event-title-txt {
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .wp-event-m {
   font-size: var(--text-secondary);
@@ -203,17 +246,26 @@
 .wp-event-m .doc-mark {
   flex: 0 0 auto;
 }
+/* THE WHEN LINE (ADR-0178 §3) — a sentence under the title rather than a column
+   beside it, sized by the time instead of by the footnote annotating it.
+   `flex-wrap` keeps a long annotation off the trailing controls; the text itself
+   still never breaks. */
 .wp-event-time {
+  grid-area: when;
+  justify-self: start;
+  margin-inline-start: var(--space-3);
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--text-secondary);
   font-weight: 700;
   color: var(--ink);
-  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  text-align: end;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  row-gap: 2px;
+  text-align: start;
   white-space: nowrap;
 }
 .wp-event.soft .wp-event-time {
@@ -222,13 +274,21 @@
 .wp-event-xmid {
   font-size: 9px;
 }
-/* The meta line under the time range: elapsed duration + the zone-shift pill
-   (either or both), right-aligned so it sits under the time and never crowds
-   the title. */
+/* The time's annotations: elapsed duration + the zone-shift pill (either or both).
+   Peers on the when line now rather than a footnote stacked under the range —
+   which is what used to set the whole column's width (ADR-0178 §3). */
 .wp-event-timemeta {
   display: flex;
   align-items: center;
   gap: 5px;
+}
+/* The app's own separator between peer facts, riding the annotation group so a
+   wrap puts the dot at the head of the second line rather than the tail of the
+   first. */
+.wp-event-timemeta::before {
+  content: '·';
+  color: var(--muted);
+  opacity: 0.7;
 }
 /* Elapsed duration (ADR-0084/0107) — quiet, since it's context for the range
    above, shown on transport + zone-shifted rows where the raw times can misread
@@ -243,9 +303,11 @@
    (destination vs origin on a crossing, else vs the day's ambient zone), only
    when the shift is non-zero. Amber — a time concept (design-language.md). */
 .wp-event-chev {
+  grid-area: chev;
+  align-self: center;
+  margin-inline-start: var(--space-3);
   color: #b5bcc9;
   font-size: var(--text-secondary);
-  flex: 0 0 auto;
   display: grid;
   place-items: center;
   transition: transform var(--t-base);
@@ -254,8 +316,23 @@
   transform: rotate(180deg);
 }
 
-/* Hard/soft tags (triple-coding): amber for hard, muted for soft/passed, --ok
-   for done. */
+/* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0178 §4) — the hard mark left the
+   title line for the when line, where ADR-0011's commitment actually points. Same
+   element and same size as the builder row's, since the two modes now draw one
+   object. */
+.wp-event-timelock {
+  display: inline-grid;
+  place-items: center;
+  color: var(--amber-deep);
+  opacity: 0.85;
+}
+.wp-event-timelock .icon {
+  inline-size: 12px;
+  block-size: 12px;
+}
+
+/* Status tags. The hard/soft KIND chip is gone (ADR-0178 §4 — the lock says it, once);
+   what stays is the settle/phase RECORD, which is a different fact (ADR-0043/0044). */
 .wp-event-tag-hard {
   font-size: 10px;
   font-weight: 700;

@@ -1953,9 +1953,16 @@ export function BuilderRow({
     }
   };
 
-  // In the archive a soft row wears its settle status (done/skipped/unresolved),
-  // not the generic "גמיש" — the record is what matters there (ADR-0044).
-  const softTag = settle ? (
+  // **THE KIND CHIP IS GONE; THE SETTLE RECORD STAYS** (ADR-0178 §4). Hard/soft was
+  // drawn three times — a leading `.bld-anchor`, this chip's text, and the border
+  // (solid against soft's dashed) — and only the chip cost the TITLE anything, since
+  // it is a flex sibling inside `.bld-t`. The lock now rides the when line, where
+  // ADR-0011's commitment actually points; the border keeps carrying soft.
+  //
+  // What is left here is a different fact and is not the kind: on a finished trip a
+  // soft row wears its settle status (ADR-0044), which no border says. Absent on a
+  // live trip, which is why the slot is usually empty now.
+  const settleTag = settle ? (
     settle.status === EVENT_STATUS.DONE ? (
       <span className="tag-done">
         <Icon name="check" /> {t.event.didThis}
@@ -1965,21 +1972,29 @@ export function BuilderRow({
     ) : (
       <span className="tag-phase">{t.event.notMarked}</span>
     )
-  ) : (
-    <span className="tag-soft">{t.event.soft}</span>
-  );
+  ) : null;
+
+  // The when line is where the lock lives now — so a row that has no when slot at all
+  // would lose the mark entirely. That row exists: an unplaced commitment on a
+  // read-only archive renders no time element and no `＋ שעה` button. It keeps the
+  // chip, which is the only surface left to carry it.
+  const hasWhenSlot = !!event.startsAt || !!onPickTime;
+  const hardLock = isHard ? (
+    <span className="bld-timelock" aria-label={t.event.hard} title={t.event.hard}>
+      <Icon name="lock" />
+    </span>
+  ) : null;
 
   const mainContent = (
     <>
       <span className="bld-t">
         <span className="bld-ttl">{title ?? <TitleLabel title={event.title} />}</span>
-        {isHard ? (
+        {isHard && !hasWhenSlot && (
           <span className="tag-hard">
             <Icon name="lock" /> {t.event.hard}
           </span>
-        ) : (
-          softTag
         )}
+        {settleTag}
         {overlapNote && <span className="seam-tag">⧉ {overlapNote}</span>}
         {nestedCount !== undefined && (
           <span className="nest-note">{t.day.contains(nestedCount)}</span>
@@ -2002,11 +2017,6 @@ export function BuilderRow({
     // arm from anywhere without eating the row's tap, so the row gets that width back
     // and the gesture matches the shelf's exactly.
     <div className={cls} data-bld-id={event.id} {...dragProps}>
-      {isHard && (
-        <span className="bld-anchor" aria-label={t.planDay.pinned} title={t.planDay.pinned}>
-          <Icon name="lock" />
-        </span>
-      )}
       {/* The badge is the way to the map, and it survives `readOnly` — a finished
           trip is a browsable archive (ADR-0040) and looking at a place changes
           nothing. */}
@@ -2032,6 +2042,7 @@ export function BuilderRow({
           const endZone = zones?.endZone ?? tz;
           const inner = (
             <>
+              {hardLock}
               <span dir="auto">
                 {formatTime(event.startsAt, startZone)}
                 {event.endsAt && `–${formatTime(event.endsAt, endZone)}`}
@@ -2076,6 +2087,7 @@ export function BuilderRow({
           than promoting one. Same slot, same target, dashed because it marks an absence. */}
       {!event.startsAt && onPickTime && (
         <button type="button" className="bld-time empty" onClick={onPickTime}>
+          {hardLock}
           <Icon name="plus" /> {t.planDay.slotAddTime}
         </button>
       )}

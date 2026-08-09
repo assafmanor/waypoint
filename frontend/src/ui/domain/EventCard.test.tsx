@@ -39,10 +39,12 @@ describe('EventCard', () => {
       ),
     );
     const card = container.querySelector('.wp-event')!;
-    // Triple-coding: `now` amber ring class + the hard tag, NOT the soft tag.
     expect(card.classList.contains('now')).toBe(true);
     expect(card.classList.contains('soft')).toBe(false);
+    // `base` carries no `startsAt`, so this row has no when line to hang the lock on
+    // and keeps the chip — the fallback ADR-0178 §4 leaves for an unplaced commitment.
     expect(container.querySelector('.wp-event-tag-hard')?.textContent).toContain(t.event.hard);
+    expect(container.querySelector('.wp-event-timelock')).toBeNull();
     // Hard events have no ±nudge stepper.
     expect(container.querySelector('.wp-event-act.stepper')).toBeNull();
     // The edit-guard warning shows the code.
@@ -63,9 +65,41 @@ describe('EventCard', () => {
       ),
     );
     const card = container.querySelector('.wp-event')!;
+    // Soft is the dashed card and the ABSENCE of a lock (ADR-0178 §4) — the `גמיש`
+    // chip is gone from an upcoming row, because the border already says it and the
+    // chip was the only one of the three marks costing the title width.
     expect(card.classList.contains('soft')).toBe(true);
-    expect(container.querySelector('.wp-event-tag-soft')).toBeTruthy();
+    expect(container.querySelector('.wp-event-tag-soft')).toBeNull();
+    expect(container.querySelector('.wp-event-timelock')).toBeNull();
     expect(container.querySelector('.wp-event-act.stepper')).toBeTruthy();
+  });
+
+  it('a timed hard row wears ONE lock, on the when line, and no kind chip (ADR-0178 §4)', () => {
+    const { container } = render(
+      wrapNav(
+        <EventCard
+          {...base}
+          kind="hard"
+          startsAt="2026-09-11T01:00:00.000Z"
+          endsAt="2026-09-11T04:00:00.000Z"
+        />,
+      ),
+    );
+    // The mark moved to where ADR-0011's commitment points: beside the time.
+    expect(container.querySelector('.wp-event-time .wp-event-timelock')).toBeTruthy();
+    expect(container.querySelector('.wp-event-tag-hard')).toBeNull();
+    // Exactly one — the whole point is that hard stopped being drawn three times.
+    expect(container.querySelectorAll('.wp-event-timelock')).toHaveLength(1);
+  });
+
+  it('a soft row keeps its chip only while it is NOW, since that is not the kind', () => {
+    const now = render(wrapNav(<EventCard {...base} phase="now" />));
+    expect(now.container.querySelector('.wp-event-tag-soft')?.textContent).toContain(
+      t.event.softNow,
+    );
+    cleanup();
+    const later = render(wrapNav(<EventCard {...base} phase="upcoming" />));
+    expect(later.container.querySelector('.wp-event-tag-soft')).toBeNull();
   });
 
   it('renders the sync marker slot on the meta line, nothing when omitted (U-04/ADR-0091)', () => {

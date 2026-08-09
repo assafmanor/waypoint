@@ -1573,14 +1573,34 @@
   padding: 1px 7px;
 }
 
+/* THE ROW SAYS **WHAT**, THEN **WHEN** (ADR-0178 §1). A grid, not a flex line,
+   because the two lines share the badge and the ⋯ and that is what grid expresses.
+
+   It was a flex row where the title and the time competed for one line, and the
+   title lost: measured at 360px the badge (36) + lock (22) + ⋯ (32) + gaps (40) +
+   the time column (124) took 254 of a 302px content box, leaving the title 48px —
+   17% — against a route asking for 129px. `.route` being an un-wrappable
+   `inline-flex` is what made that visible (it painted onto the time box), but the
+   width was the defect. The title column is 214px here.
+
+   `minmax(0, 1fr)` is the `min-width: 0` the flex version carried on `.bld-main`,
+   said once and in the place that owns the width. */
 .bld {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;
   margin-bottom: 9px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'badge title menu'
+    'badge when  menu';
   align-items: center;
-  gap: 10px;
+  /* The gutter rides the items, not `column-gap`: the trailing cell holds the `⋯`,
+     or the archive's settle control, or — on a read-only non-archive row — nothing,
+     and a gap is charged between empty tracks too. A margin disappears with its item. */
+  column-gap: 0;
+  row-gap: 2px;
   padding: 10px 12px;
 }
 .bld.soft {
@@ -1590,6 +1610,7 @@
   border: 1px dashed var(--soft-line);
 }
 .bld-bd {
+  grid-area: badge;
   width: 36px;
   height: 36px;
   border-radius: 10px;
@@ -1603,7 +1624,10 @@
   background: color-mix(in srgb, var(--ink) 5%, transparent);
 }
 .bld-main {
-  flex: 1;
+  grid-area: title;
+  margin-inline-start: 10px;
+  /* Kept beside `minmax(0, 1fr)`: a grid item's default `min-width: auto` would
+     still let an un-shrinkable child (the route) push the track open. */
   min-width: 0;
   text-align: start;
   font: inherit;
@@ -1621,11 +1645,28 @@
   gap: 6px;
   flex-wrap: wrap;
 }
-/* min-width:0 lets the title shrink below its content width inside the flex row,
-   which is what gives the route's overflow measurement a real bound to compare
-   against (without it a long route just widens the row and never "overflows"). */
+/* THE FOLD, IN ORDER: the route breaks at its own boundary, then two lines, then
+   `…` (ADR-0178 §5). Deliberately NOT `overflow-wrap: anywhere` — that is the
+   textbook "make overflow impossible" rule and it renders `קפלאווי / ק`; a place
+   name split mid-word is not a place name.
+
+   `text-overflow` carries the one case the clamp cannot fold on its own: a single
+   word longer than the line has no break opportunity, makes one over-wide line,
+   and would otherwise be clipped with no hint at all.
+
+   Two lines and not one — one ellipsises `קפלאוויק ← פרנקפורט`, which is the
+   report. Two and not three — past two the row stops being scannable and the
+   builder is a list you reorder by eye. The `…` is admissible only because
+   ADR-0174 §4 made the row's own tap a READ, so the full title is one tap away;
+   with 214px of column it fires on none of the stress set. */
 .bld-ttl {
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* THE GLYPH LINE (ADR-0174 §8). It held `placeName · הזמנה CODE` as one joined string, then
    as a nowrap line of elements — and a real code (`הזמנה #MEGAZIP-T141215488`) overflowed the
@@ -1644,15 +1685,38 @@
   color: var(--muted);
   margin-top: 2px;
 }
+/* THE WHEN LINE (ADR-0178 §3). Still the control ADR-0161 §7 made it — same
+   element, same target, same meaning; it changes cell, not identity.
+
+   It was a right-aligned column whose width was its WIDEST line, and on a
+   zone-crossing flight that is the second one: `3:30 שע׳` beside the shift pill
+   measured 124px against the 78px `00:20–05:50` it annotates. A fact the row
+   exists for was sized by its own footnote, and the title paid the difference.
+   On its own line the annotations become peers in a sentence instead.
+
+   `justify-self: start` puts it under the title's start edge — the single-column
+   scan the trailing-time layout is defended for and does not deliver, since its
+   position moved with every row's height.
+
+   `flex-wrap` is load-bearing, not defensive: at 360px the sentence wants 247px
+   and the column is 214px, so without it the annotations paint over the ⋯. */
 .bld-time {
+  grid-area: when;
+  justify-self: start;
+  margin-inline-start: 10px;
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-weight: 700;
-  flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  row-gap: 2px;
+  /* The range stays on one line; the LINE may wrap, its text may not. Folded in
+     from a second `.bld-time` rule 500 lines down — one property, one home. */
+  white-space: nowrap;
 }
 .bld.soft .bld-time {
   color: var(--muted);
@@ -1663,6 +1727,29 @@
   display: flex;
   align-items: center;
   gap: 5px;
+}
+/* The app's own separator between peer facts. It rides the annotation group, so
+   on a row narrow enough for that group to wrap the dot leads the second line
+   rather than dangling off the end of the first. */
+.bld-timemeta::before {
+  content: '·';
+  color: var(--muted);
+  opacity: 0.7;
+}
+/* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0178 §4). Hard/soft was drawn three
+   times — a leading anchor, this chip's text, and the border (solid against
+   soft's dashed). Two are gone; the survivor sits here because ADR-0011's hard
+   event is a commitment about its TIME, and the time is now a sentence with a
+   subject. */
+.bld-timelock {
+  display: inline-grid;
+  place-items: center;
+  color: var(--amber-deep);
+  opacity: 0.85;
+}
+.bld-timelock .icon {
+  inline-size: 12px;
+  block-size: 12px;
 }
 .bld-dur {
   font-size: 10px;
@@ -1734,7 +1821,9 @@ button.bld-time.empty {
 }
 
 .bld-icon {
-  flex: 0 0 auto;
+  grid-area: menu;
+  align-self: center;
+  margin-inline-start: 10px;
   width: 32px;
   height: 32px;
   border-radius: 9px;
@@ -1765,7 +1854,12 @@ button.bld-time.empty {
    ✓ morphs to an undo arrow on hover/focus, and a thin persistent ring hints it
    is tappable on touch. Done ✓ / skipped ↩ restore in one tap; unresolved ○
    opens the settle chooser. */
+/* The archive's settle control takes the ⋯ cell, which a read-only row leaves
+   free (ADR-0044). */
 .bld-settle {
+  grid-area: menu;
+  align-self: center;
+  margin-inline-start: 10px;
   flex: 0 0 auto;
   width: 32px;
   height: 32px;
@@ -2066,14 +2160,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.bld-anchor {
-  flex: 0 0 auto;
-  width: 22px;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  opacity: 0.5;
-}
 .bld.dragging {
   opacity: 0.45;
 }
@@ -2136,11 +2222,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
    its action is restore (neutral, not the violet "schedule" action). */
 .wp-maybecard.skipped-card .wp-maybecard-add {
   color: var(--muted);
-}
-
-/* Time cells may now show a start–end range; keep them on one line. */
-.bld-time {
-  white-space: nowrap;
 }
 
 /* ============ Trip settings (/trip/:id/settings, ADR-0039) ============ */
@@ -2796,8 +2877,15 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 /* transport route: origin → destination identity of a flight/train row. flex +
    explicit RTL so the origin sits at the start (right) and the arrow points at
    the destination, independent of text bidi (ADR-0048). */
+/* `flex-wrap` is the one rule that stops this being an ATOM (ADR-0178 §5a).
+   `inline-flex` defaults to `nowrap` and both children are single words, so the
+   box had no break point and no shrink point at ANY width — a 16-character route
+   painted straight out of a 48px title box, and `route-display.tsx`'s own header
+   ("both layouts wrap rather than clip") described behaviour the CSS never had.
+   Costs nothing when the route fits, which is now the overwhelming majority. */
 .route {
   display: inline-flex;
+  flex-wrap: wrap;
   direction: rtl;
   align-items: baseline;
 }
