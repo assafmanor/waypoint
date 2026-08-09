@@ -206,7 +206,7 @@ test.describe('החלף on a soft event', () => {
     await expect(page.locator('.wp-event', { hasText: 'מוזיאון אדו' })).toHaveCount(0);
     await expect(page.locator('.shelf').getByText('מוזיאון אדו')).toBeVisible();
     // The form opens on the freed slot, not on the day's next opening.
-    await expect(page.locator('.tp-fields .tp-field').first()).toContainText('05:00');
+    await expect(page.locator('.wf-line .vt-time').first()).toContainText('05:00');
   });
 });
 

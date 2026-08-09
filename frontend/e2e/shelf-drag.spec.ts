@@ -297,7 +297,7 @@ test.describe('a plain tap on an idea (ADR-0116 §5a)', () => {
 
     // Picking one lands where the tap used to: the schedule form, on that position's slot.
     await positions.first().click();
-    await expect(page.locator('.wf-date').first()).toBeVisible();
+    await expect(page.locator('.vt-date').first()).toBeVisible();
   });
 
   test('does not schedule anything by itself — the shelf is unchanged behind it', async ({

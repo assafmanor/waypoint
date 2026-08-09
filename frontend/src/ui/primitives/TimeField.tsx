@@ -1,7 +1,8 @@
 // TimeField — the shared single-time picker atom behind BOTH the event
 // TimePicker's start field and the booking span's endpoint times (one complex
-// primitive, two behaviours). A tap-to-open trigger (cap + amber value, .tp-field
-// chrome) opens a panel: a native exact <input type="time"> fallback (ADR-0036
+// primitive, two behaviours). A tap-to-open trigger — since ADR-0177 a `ValueToken`
+// in amber, with no caption of its own because the prose around it says which time
+// this is (`label` became the accessible name) — opens a panel: a native exact <input type="time"> fallback (ADR-0036
 // §2c) + a 15-minute scroll list that centres the current value — or the
 // nearest-round suggestion for an off-grid value — on open, and AUTO-CLOSES on
 // pick. It owns no duration / date / overnight semantics: the event composes it
