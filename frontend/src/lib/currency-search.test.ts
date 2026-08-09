@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COUNTRY_CURRENCY, DESTINATIONS } from '@waypoint/shared';
-import { ALIASES, currencyMatchesQuery, engineIndependentTerms } from './currency-search';
+import { ALIASES, currencyMatchesQuery, termsWithoutAliases } from './currency-search';
 
 const hits = (q: string): string[] =>
   Intl.supportedValuesOf('currency').filter((c) => currencyMatchesQuery(c, q));
@@ -151,14 +151,14 @@ describe('lenient, but still a search', () => {
 // spellings nobody writes and three that CLDR already answered, and every test
 // still passed because a redundant alias changes no result.
 describe('the alias table keeps its own rules', () => {
-  it('duplicates nothing the engine cannot take away', () => {
-    // Narrowed deliberately (rule 2). Duplicating a CLDR name is legitimate —
-    // that is what keeps ISK findable by `כתר` on an engine missing its data —
-    // but duplicating the code or a country name buys nothing on any engine.
+  it('carries nothing the names and countries already cover', () => {
+    // A redundant entry is not harmless: it makes the table look checked. And
+    // because the name snapshot is engine-independent, "already covered" now
+    // means covered everywhere — so this rule can be the strong one again.
     for (const [currency, aliases] of Object.entries(ALIASES)) {
-      const owned = engineIndependentTerms(currency).join(' | ');
+      const covered = termsWithoutAliases(currency).join(' | ');
       for (const alias of aliases) {
-        expect(owned.includes(alias), `${currency}: "${alias}" is already ours`).toBe(false);
+        expect(covered.includes(alias), `${currency}: "${alias}" is already covered`).toBe(false);
       }
     }
   });

@@ -28,7 +28,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-async function openPicker(list: string[], opts: { noNameData?: boolean } = {}) {
+async function openPicker(list: string[], opts: { noNameData?: boolean | 'all' } = {}) {
   vi.resetModules();
   vi.spyOn(Intl, 'supportedValuesOf').mockReturnValue(list as never);
   if (opts.noNameData) {
@@ -77,15 +77,34 @@ describe('the reported bug: a currency the engine omits', () => {
   });
 
   it('keeps it in the כתר family even with NO ICU data for it at all', async () => {
-    // The harsher case, and the one the alias table exists for. Trimming
-    // `supportedValuesOf` alone still leaves CLDR able to say `כתר איסלנדי`; an
-    // engine that lacks the currency entirely renders its name as the bare code,
-    // and then only a term of OUR OWN keeps it in the family.
+    // The harsher case. Trimming `supportedValuesOf` alone still leaves CLDR able
+    // to say `כתר איסלנדי`; an engine that lacks the currency entirely renders its
+    // name as the bare code, and then the snapshot is the only thing left.
     const picker = await openPicker(TRIMMED, { noNameData: true });
     picker.type('כתר');
     expect(picker.codes()).toContain('ISK');
     picker.type('קרונה');
     expect(picker.codes()).toContain('ISK');
+  });
+
+  it('is fixed GENERALLY, not for ISK — every currency keeps its name', async () => {
+    // The point of the snapshot, and the reason the ISK-shaped patch came back
+    // out: the bug is not this currency, it is ANY currency an engine trims. With
+    // no CLDR names at all, a Hebrew name still finds each of these, and none of
+    // them has an alias entry doing the work.
+    const picker = await openPicker([], { noNameData: 'all' });
+    for (const [query, code] of [
+      ['בהט', 'THB'],
+      ['דונג', 'VND'],
+      ['רינגיט', 'MYR'],
+      ['לארי', 'GEL'],
+      ['קצאל', 'GTQ'],
+      ['Icelandic', 'ISK'],
+      ['forint', 'HUF'],
+    ] as const) {
+      picker.type(query);
+      expect(picker.codes(), `"${query}" should find ${code}`).toContain(code);
+    }
   });
 
   it('reaches it by country too, which is how a traveller would look', async () => {
