@@ -1389,6 +1389,28 @@ export const t = {
     docsInvite: 'הוסיפו מסמך',
     wifiCopied: 'קוד ה-WiFi הועתק ללוח',
   },
+  // Money (ADR-0180). `מבט מהיר` is the SECTION ADR-0045 removed for holding
+  // fixtures and promised back "as their own glance cards" — this is that return,
+  // so the title is the original words and not a new heading.
+  fx: {
+    sectionTitle: 'מבט מהיר',
+    // The date is interpolated as an already-isolated LTR island (ADR-0118), never
+    // built into the string — a numeric run inside an RTL sentence comes apart.
+    asOf: (date: string) => `נכון ל־${date}`,
+    // NOTE there is no `attribution` string here on purpose. The credit the
+    // provider's terms make mandatory is its OWN wording, carried on the data
+    // (ADR-0180 §7) and rendered verbatim — writing a Hebrew version of it here
+    // would both break those terms and mean a second provider needs a copy change.
+    converterTitle: 'המרת מטבע',
+    amountTrip: 'סכום במטבע היעד',
+    amountHome: 'סכום במטבע הבית',
+    swap: 'החלפת כיוון',
+    // Both absences read as a fact, not a failure (§4): there is no error state
+    // anywhere on this surface. The first is "we have never held a set"; the
+    // second is a pair this source does not price, which degrades identically.
+    noRateYet: 'אין עדיין שער שמור · יתעדכן בחיבור הבא',
+    pairUnpriceable: 'אין שער לצמד הזה במקור הנוכחי',
+  },
   // Group change-feed (ADR-0081, review U-09): a quiet strip narrating recent
   // SHARED peer edits. The subject is inlined in each lead; a moved-to clock time
   // is appended separately as a dir="auto" island (never inside these strings).

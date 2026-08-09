@@ -29,6 +29,7 @@ import {
   type CreateNoteInput,
   type CreatePlaceInput,
   type DocumentSummary,
+  type FxRates,
   type MaybeItem,
   type Membership,
   type DocumentAttachment,
@@ -62,6 +63,7 @@ import {
   fetchChanges,
   fetchSnapshot,
   isHardEventConfirmError,
+  refreshFxRates as refreshFxRatesRequest,
   removeMember as apiRemoveMember,
   resolvePlace as apiResolvePlace,
   setMemberRole as apiSetMemberRole,
@@ -562,6 +564,14 @@ interface TripContextValue {
    *  Server-owned: no surface writes it, and a missing key is the normal "we know nothing"
    *  state rather than a loading one — most places have nothing and never will (§11.3). */
   enrichments: TripEnrichments;
+  /** **The published rate set, or `null` when we have never held one** (ADR-0180 §4).
+   *  Global and server-owned like `enrichments`, and read the same way: age is not a
+   *  state — a set of any age renders, and only absence removes the surfaces. */
+  fxRates: FxRates | null;
+  /** The `as of` control's action (§4): awaits a fetch and adopts what it answers.
+   *  Rejects only on a refused request; a source that is down resolves with the
+   *  set unchanged, which is what leaves the date where it was. */
+  refreshFx: () => Promise<void>;
   activeDate: string;
   setActiveDate: (date: string) => void;
   events: TripEvent[];
@@ -744,6 +754,14 @@ function TripReady({
   // by the server's own nudge rather than by any write of ours — there is no optimistic path
   // and no outbox verb, because no client authors this.
   const [enrichments, setEnrichments] = useState<TripEnrichments>(snapshot.enrichments);
+
+  // Rates ride the snapshot the same way (ADR-0180 §4/§7) — server-owned, no outbox verb,
+  // no optimistic path. The one client-initiated write is `refreshFx`, which is a request
+  // for a NEW set rather than an edit to this one.
+  const [fxRates, setFxRates] = useState<FxRates | null>(snapshot.fxRates);
+  const refreshFx = useCallback(async () => {
+    setFxRates(await refreshFxRatesRequest(tripId));
+  }, [tripId]);
 
   // Group change-feed buffer (ADR-0081, U-09). Narrated from the same WS change
   // stream in applyRemoteChange below — never a second socket, never re-applied.
@@ -953,6 +971,7 @@ function TripReady({
           setNotes(s.notes);
           setDocumentAttachments(s.documentAttachments);
           setEnrichments(s.enrichments);
+          setFxRates(s.fxRates);
           onReconnected();
         },
         () => {}, // ponytail: transient refetch failure — next change/hello retries the resync.
@@ -1604,6 +1623,8 @@ function TripReady({
       notes,
       documentAttachments,
       enrichments,
+      fxRates,
+      refreshFx,
       activeDate,
       setActiveDate,
       events: state.events,
@@ -1634,6 +1655,8 @@ function TripReady({
       notes,
       documentAttachments,
       enrichments,
+      fxRates,
+      refreshFx,
       settings,
       indexVerbs,
       noteVerbs,

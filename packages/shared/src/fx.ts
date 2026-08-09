@@ -40,6 +40,16 @@ export const fxRatesSchema = z.object({
 });
 export type FxRates = z.infer<typeof fxRatesSchema>;
 
+/** What the on-demand refresh answers with (ADR-0180 §4's "as of" control).
+ *
+ *  Wrapped in an object rather than returned bare, because `null` is a real
+ *  answer here — a first fetch that failed — and a bare nullable body is not a
+ *  shape OpenAPI/`createZodDto` can name. The field is called `fxRates` so it
+ *  reads the same as the snapshot's own, which is where the value normally
+ *  arrives from. */
+export const fxRefreshResultSchema = z.object({ fxRates: fxRatesSchema.nullable() });
+export type FxRefreshResult = z.infer<typeof fxRefreshResultSchema>;
+
 /** The rate to convert **one unit of `from` into units of `to`**, or `undefined`
  *  when either side is not in the set.
  *

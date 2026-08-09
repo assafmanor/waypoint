@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  canPrice,
   EVENT_KIND,
   eventTransitionKeys,
   isAmbient,
@@ -16,6 +17,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
 import { useToast } from '../ui/Toast';
 import { EventTitle } from '../ui/EventTitle';
@@ -25,6 +27,7 @@ import {
   ChangeFeed,
   DayRail,
   GlanceCard,
+  RateCard,
   TransitProgress,
   type BoardNext,
   type BoardRow,
@@ -53,6 +56,7 @@ import {
   deriveNow,
   eventPhase,
   formatCountdown,
+  formatDayMonth,
   formatTime,
   hardConflicts,
   minutesUntil,
@@ -70,6 +74,8 @@ import { deriveHeroBooking } from '../lib/hero-booking';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { HeroLift, type HeroLiftPoint } from '../ui/domain/HeroLift';
+import { ConverterSheet } from '../ui/domain/ConverterSheet';
+import { currencyForDeviceRegion } from '../lib/currency';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
 import {
   CODE_PREFIX,
@@ -107,7 +113,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     changeFeed,
     dismissChange,
     clearChangeFeed,
+    fxRates,
+    refreshFx,
   } = useTrip();
+  const { me } = useAuth();
   const placeLabels = usePlaceLabels();
   const verbs = useVerbs();
   const toast = useToast();
@@ -124,6 +133,29 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // so "ambient" here is where you are standing now.
   const zoneCtx = liveZoneContext(nowMs, zoneEvidence);
   const zonesOf = (e: TripEvent | undefined) => (e ? eventZones(e, zoneCtx) : undefined);
+
+  // ── Money (ADR-0180 §3/§4) ───────────────────────────────────────────────
+  // The pair is **the trip's currency against the member's HOME currency** — what
+  // you pay in against what you think in. The device region seeds the second when
+  // the account has never chosen one, so the card works on first open with no
+  // settings visit (§2); the stored preference is what travels between devices.
+  const homeCurrency = me?.user.preferredCurrency ?? currencyForDeviceRegion();
+  // Existence, not age (§4). A set of any age renders; only "never fetched", a
+  // trip with no currency, or a pair this source cannot price removes the card —
+  // and offline-with-a-cache is indistinguishable from stale here by design.
+  const rateCardVisible =
+    !!trip.currency && !!homeCurrency && canPrice(fxRates, trip.currency, homeCurrency);
+  // §4's rule for whether the "as of" is a control at all: a press can only change
+  // the number once the source says a newer set should exist. This is a comparison
+  // rather than a client-side guess about business days precisely because the
+  // provider publishes `nextUpdateAt` — the reason it was the one chosen (§7).
+  const canRefreshFx = !!fxRates && nowMs >= Date.parse(fxRates.nextUpdateAt);
+  const [converting, setConverting] = useState(false);
+  // The converter's own pair, which starts at the card's and is then the SHEET's
+  // to change: swapping or picking there must not rewrite the trip's currency or
+  // the member's preference, both of which are settings with their own screens.
+  const [converterFrom, setConverterFrom] = useState<string | null>(null);
+  const [converterTo, setConverterTo] = useState<string | null>(null);
 
   // Ambient hotels are backdrop, never a now/next block — once you've checked in
   // they'd otherwise hijack the hero for the whole stay (ADR-0059 §1 / ADR-0054).
@@ -759,6 +791,62 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         dayEnd={dayEnd}
         onAdd={() => onNavigate?.('days')}
       />
+
+      {/* `מבט מהיר`, restored on the condition ADR-0045 set (ADR-0180 §3). It was
+          removed for being FIXTURES, and §4 of that ADR wrote this outcome down in
+          advance: "Weather / FX return as themselves, later … as their own glance
+          cards." Weather is the next tenant of the same section.
+
+          The SECTION goes when it has no cards — a heading over nothing is the dead
+          space ADR-0045 removed the row for — which is why the whole block is gated
+          on the card rendering rather than on the section existing. */}
+      {rateCardVisible && (
+        <>
+          <div className="sec-title">{t.fx.sectionTitle}</div>
+          <RateCard
+            fx={fxRates}
+            from={trip.currency}
+            to={homeCurrency}
+            asOf={formatDayMonth(fxRates!.publishedAt)}
+            onOpen={() => setConverting(true)}
+          />
+          {/* §9: the attribution the source's terms make MANDATORY and visible,
+              per card rather than per section — the section's next tenant will
+              have a different source, and one shared line would credit it wrong.
+              Outside the card because the card is a `<button>`. */}
+          <p className="fx-attr">
+            <a
+              className="fx-attr-link"
+              href={fxRates!.providerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              dir="auto"
+            >
+              {fxRates!.provider}
+            </a>
+          </p>
+        </>
+      )}
+
+      {converting && trip.currency && homeCurrency && (
+        <ConverterSheet
+          fx={fxRates}
+          from={converterFrom ?? trip.currency}
+          to={converterTo ?? homeCurrency}
+          asOf={fxRates ? formatDayMonth(fxRates.publishedAt) : ''}
+          canRefresh={canRefreshFx}
+          onRefresh={refreshFx}
+          onChangeFrom={setConverterFrom}
+          onChangeTo={setConverterTo}
+          onSwap={() => {
+            const a = converterFrom ?? trip.currency!;
+            const b = converterTo ?? homeCurrency;
+            setConverterFrom(b);
+            setConverterTo(a);
+          }}
+          onClose={() => setConverting(false)}
+        />
+      )}
     </>
   );
 }
