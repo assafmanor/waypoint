@@ -1,6 +1,12 @@
 // Trip-timezone formatting + client-side "now" derivation.
 // "Now" is never stored (ADR-0018) — it's computed from event startsAt/endsAt vs the clock.
-import { EVENT_KIND, EVENT_STATUS, eventEndBoundary, type TripEvent } from '@waypoint/shared';
+import {
+  EVENT_KIND,
+  EVENT_STATUS,
+  eventEndBoundary,
+  typicalMinutesFor,
+  type TripEvent,
+} from '@waypoint/shared';
 import {
   APP_LOCALE,
   COUNTDOWN_MONTHS_THRESHOLD,
@@ -11,6 +17,7 @@ import {
   MINUTES_PER_HOUR,
   MINUTES_PER_DAY,
   MS_PER_DAY,
+  MS_PER_MINUTE,
 } from '../constants';
 import { dayCount, dayPhrase, monthCount } from './hebrew';
 import { ltrIsolate, measure } from './bidi';
@@ -273,14 +280,26 @@ export interface NowNext {
   nextAll: TripEvent[];
 }
 
+/** An event's end for now-window purposes: its own `endsAt`, or — since `EventForm`'s end
+ *  time is optional — its category's typical duration past its start (`typicalMinutesFor`,
+ *  the same fallback `lib/gaps.ts` gives a start-only block), so a start-only event gets a
+ *  real window to read as "now" in rather than a permanently zero-length one. Ripple stays
+ *  keyed on the event's actual `endsAt` (`computeRippleSuggestion`, backend
+ *  `events.service.ts`) — a suggested shift is not a fact this derivation should invent. */
+function nowEndOf(event: Pick<TripEvent, 'startsAt' | 'endsAt' | 'category'>): number {
+  const start = Date.parse(event.startsAt!);
+  return event.endsAt
+    ? Date.parse(event.endsAt)
+    : start + typicalMinutesFor(event.category) * MS_PER_MINUTE;
+}
+
 /** Orders concurrent events so the "loudest" is first: a hard commitment beats a
  *  soft plan; then the one ending soonest (most urgent to leave); then the
  *  earliest start; then sortOrder. Drives which event owns the board hero. */
 function byPrimaryNow(a: TripEvent, b: TripEvent): number {
   const hard = (e: TripEvent) => (e.kind === EVENT_KIND.HARD ? 0 : 1);
   if (hard(a) !== hard(b)) return hard(a) - hard(b);
-  const endOf = (e: TripEvent) => Date.parse(e.endsAt ?? e.startsAt!);
-  if (endOf(a) !== endOf(b)) return endOf(a) - endOf(b);
+  if (nowEndOf(a) !== nowEndOf(b)) return nowEndOf(a) - nowEndOf(b);
   const startOf = (e: TripEvent) => Date.parse(e.startsAt!);
   if (startOf(a) !== startOf(b)) return startOf(a) - startOf(b);
   return a.sortOrder - b.sortOrder;
@@ -296,8 +315,7 @@ export function deriveNow(events: TripEvent[], at: Date): NowNext {
   const nowAll = timed
     .filter((e) => {
       const start = Date.parse(e.startsAt!);
-      const end = e.endsAt ? Date.parse(e.endsAt) : start;
-      return start <= t && t < end;
+      return start <= t && t < nowEndOf(e);
     })
     .sort(byPrimaryNow);
   const future = timed
@@ -325,9 +343,8 @@ export function eventPhase(event: TripEvent, at: Date): EventPhase {
   if (!event.startsAt) return 'upcoming';
   const t = at.getTime();
   const start = Date.parse(event.startsAt);
-  const end = event.endsAt ? Date.parse(event.endsAt) : start;
   if (t < start) return 'upcoming';
-  if (t < end) return 'now';
+  if (t < nowEndOf(event)) return 'now';
   return 'passed';
 }
 

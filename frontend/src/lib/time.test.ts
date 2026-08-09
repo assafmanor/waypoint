@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
+import { EVENT_CATEGORY, EVENT_KIND, EVENT_STATUS, type TripEvent } from '@waypoint/shared';
 import {
   addDays,
   buildTimeTree,
@@ -135,6 +135,31 @@ describe('deriveNow', () => {
     expect(now).toBeUndefined();
     expect(next?.id).toBe('ev-goldengai');
   });
+
+  it('gives a blank-end event a typical-duration window instead of a permanent zero-length one', () => {
+    // EventForm's end time is optional. Without a fallback the window read `start ≤ t < start`,
+    // which is never true, so a start-only event could never be "now" (backlog: blank-end events).
+    const soft = EVENTS.find((e) => e.id === 'ev-shinjuku')!;
+    const blankEnd = { ...soft, id: 'ev-blank', endsAt: undefined };
+    const start = new Date(blankEnd.startsAt!).getTime();
+    const inWindow = new Date(start + 30 * 60000); // within the no-category 60-min default
+    const pastWindow = new Date(start + 90 * 60000); // past it
+    expect(deriveNow([blankEnd], inWindow).now?.id).toBe('ev-blank');
+    expect(deriveNow([blankEnd], pastWindow).now).toBeUndefined();
+  });
+
+  it('orders concurrent now events without the blank-end one crashing the comparator', () => {
+    const soft = EVENTS.find((e) => e.id === 'ev-shinjuku')!; // 16:30–19:30, in progress at DEMO_NOW
+    const blankEnd = {
+      ...soft,
+      id: 'ev-blank',
+      startsAt: new Date(DEMO_NOW.getTime() - 30 * 60000).toISOString(), // started 30min ago
+      endsAt: undefined, // "now" until the 60-min default lapses
+      sortOrder: soft.sortOrder + 1,
+    };
+    const { nowAll } = deriveNow([soft, blankEnd], DEMO_NOW);
+    expect(nowAll.map((e) => e.id).sort()).toEqual(['ev-blank', 'ev-shinjuku']);
+  });
 });
 
 describe('eventPhase', () => {
@@ -163,6 +188,19 @@ describe('eventPhase', () => {
     const end = new Date(soft.endsAt!);
     expect(eventPhase(soft, start)).toBe('now');
     expect(eventPhase(soft, end)).toBe('passed');
+  });
+
+  it('gives a blank-end event a typical-duration window by category (backlog: blank-end events)', () => {
+    const startMs = new Date(soft.startsAt!).getTime();
+    const at = (mins: number) => new Date(startMs + mins * 60000);
+    const blankEnd = { ...soft, endsAt: undefined };
+    expect(eventPhase(blankEnd, at(30))).toBe('now'); // within the no-category 60-min default
+    expect(eventPhase(blankEnd, at(90))).toBe('passed');
+
+    // Food gets 90 minutes, not the flat default (`typicalMinutesFor`, ADR-0161 §5).
+    const food = { ...blankEnd, category: EVENT_CATEGORY.FOOD };
+    expect(eventPhase(food, at(75))).toBe('now');
+    expect(eventPhase(food, at(105))).toBe('passed');
   });
 });
 
