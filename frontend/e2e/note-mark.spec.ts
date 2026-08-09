@@ -108,9 +108,38 @@ const passportDoc = {
   updatedBy: 'u1',
 };
 
+/** A document and the link that puts it on the row's event (ADR-0174 §1). */
+const attachedDoc = {
+  id: 'd-boarding',
+  tripId: TRIP_ID,
+  title: 'כרטיס עלייה למטוס',
+  type: 'other',
+  mimeType: 'application/pdf',
+  sizeBytes: 1200,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  updatedBy: 'u1',
+};
+const attachmentLink = {
+  id: 'a-boarding',
+  tripId: TRIP_ID,
+  documentId: 'd-boarding',
+  eventId: 'e-coded',
+  createdBy: 'u1',
+  createdAt: '2026-01-01T00:00:00.000Z',
+};
+
 async function openDay(
   page: Page,
-  opts: { notes?: unknown[]; placeName?: string; kind?: string } = {},
+  opts: {
+    notes?: unknown[];
+    placeName?: string;
+    kind?: string;
+    /** The booking's code — the reported defect needs a REAL one, not the fixture's. */
+    confirmationCode?: string;
+    /** Attach a document to the row's event, so the second glyph is real. */
+    attachDocument?: boolean;
+  } = {},
 ): Promise<void> {
   // A test that re-boots the same page to compare two states must drop the previous run's
   // route handlers first — they accumulate, and which one answers is not worth relying on.
@@ -119,9 +148,13 @@ async function openDay(
     now: NOW(),
     dates: shortLiveTripDates(),
     events: [codedEvent(opts.kind ? { kind: opts.kind } : {})],
-    bookings: [booking],
+    bookings: [
+      opts.confirmationCode ? { ...booking, confirmationCode: opts.confirmationCode } : booking,
+    ],
     places: [place(opts.placeName ?? 'שיבויה')],
     notes: opts.notes ?? [],
+    documents: opts.attachDocument ? [attachedDoc] : [],
+    documentAttachments: opts.attachDocument ? [attachmentLink] : [],
   });
   await page.setViewportSize(PHONE);
   await page.goto('/');
@@ -145,15 +178,31 @@ const metaHeight = (page: Page) =>
     .evaluate((el) => Math.round(el.getBoundingClientRect().height));
 
 test.describe('the note mark on a day row (ADR-0152 §6c)', () => {
-  test('costs a crowded row zero height', async ({ page }) => {
+  // **RESTATED FOR THE GLYPH-ONLY LINE** (ADR-0174 §8). The original compared a crowded row
+  // with and without a mark and expected 0px, which held because the line was ALWAYS there
+  // carrying a place name and a code. It no longer is: with no text on it, an unmarked row
+  // has no meta line at all. So the claim the app actually makes now is the stronger one —
+  // an unmarked row is SHORTER than it used to be, and a marked row is no taller than the
+  // crowded row ever was.
+  // The line stays (the sync badge is an opaque node this component cannot see inside), but
+  // it carries NOTHING on an unmarked row — which is the claim that matters, and the one
+  // that would have caught the overflow.
+  test('carries no text at all on an unmarked row', async ({ page }) => {
     await openDay(page);
-    const without = await rowHeight(page);
+    const text = await page.locator('.wp-event-m').first().innerText();
+    expect(text.trim()).toBe('');
+  });
 
+  test('costs the row one line and no more, however many glyphs ride it', async ({ page }) => {
     await openDay(page, { notes: [note('n1'), note('n2')] });
     await expect(page.locator('.note-mark')).toBeVisible();
-    const withMark = await rowHeight(page);
+    const one = await rowHeight(page);
 
-    expect(withMark).toBe(without);
+    // A second glyph on the same line: the height must not move.
+    await openDay(page, { notes: [note('n1'), note('n2')], attachDocument: true });
+    await expect(page.locator('.doc-mark')).toBeVisible();
+    const two = await rowHeight(page);
+    expect(two).toBe(one);
   });
 
   test('keeps the meta on ONE line — it ellipsises rather than wrapping', async ({ page }) => {
@@ -173,24 +222,41 @@ test.describe('the note mark on a day row (ADR-0152 §6c)', () => {
     expect(lines).toBe(1);
   });
 
-  test('never lets the ellipsis eat the confirmation code', async ({ page }) => {
+  // **THE REGRESSION TEST FOR THE BUG THAT RETIRED §6c.** The shipped row met
+  // `הזמנה #MEGAZIP-T141215488` — the code is `flex: 0 0 auto` by §6c's own rule, so it
+  // could not shrink, the place name beside it was squeezed to zero width leaving a stranded
+  // `·`, and the line overflowed into the badge and the `⋯`. Reported from a device with a
+  // screenshot; invisible to jsdom, which reports every rect as zero.
+  //
+  // Both halves are asserted, because either alone would pass the broken build: the row
+  // prints NO code and NO place name, AND nothing inside it overflows its box.
+  test('prints no confirmation code and no place name, on a real long code', async ({ page }) => {
     await openDay(page, {
+      confirmationCode: 'MEGAZIP-T141215488',
       placeName: 'רובע שיבויה, סמוך לתחנת הרכבת המרכזית ומול הכניסה הראשית',
+      notes: [note('n1')],
     });
-    const code = page.locator('.wp-event-m-code').first();
-    await expect(code).toBeVisible();
-    // Fully rendered: nothing of it is clipped.
-    const intact = await code.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
-    expect(intact).toBe(true);
+    await expect(page.locator('.note-mark')).toBeVisible();
+    await expect(page.locator('.wp-event-m-code')).toHaveCount(0);
+    await expect(page.locator('.wp-event-m-txt')).toHaveCount(0);
+    await expect(page.locator('.wp-event-m-sep')).toHaveCount(0);
+    // Scoped to the row's FACE: the code is still printed inside the card the row opens,
+    // by the hard-edit warning, which is exactly where §8 says it moved to.
+    const face = await page.locator('.wp-event-face').first().innerText();
+    expect(face).not.toContain('MEGAZIP-T141215488');
   });
 
-  // The rule, seen at the width it was written for: something has to go, and it is the
-  // place name rather than a `ש..` stub.
-  test('a coded, noted row shows no place name at all — not a stub', async ({ page }) => {
-    await openDay(page, { notes: [note('n1')] });
-    await expect(page.locator('.wp-event-m-code')).toBeVisible();
-    await expect(page.locator('.note-mark')).toBeVisible();
-    await expect(page.locator('.wp-event-m-txt')).toHaveCount(0);
+  test('nothing on the row overflows its own box, on that same code', async ({ page }) => {
+    await openDay(page, {
+      confirmationCode: 'MEGAZIP-T141215488',
+      placeName: 'רובע שיבויה, סמוך לתחנת הרכבת המרכזית ומול הכניסה הראשית',
+      notes: [note('n1')],
+    });
+    const overflows = await page
+      .locator('.wp-event-main')
+      .first()
+      .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(overflows).toBe(false);
   });
 
   // G4: the case no mockup drew, and it needed a correction of its own. The sync badge is
@@ -202,9 +268,7 @@ test.describe('the note mark on a day row (ADR-0152 §6c)', () => {
   // not a wrap, and it has been that way since ADR-0091 put the badge there. What this
   // asserts is the only thing the mark is responsible for: given a badge already on the
   // line, adding the mark costs nothing.
-  test('adds nothing to a line that already carries a pending badge and a code', async ({
-    page,
-  }) => {
+  test('adds nothing to a line that already carries a pending badge', async ({ page }) => {
     const queuedMetaHeight = async (notes: unknown[]) => {
       // Soft, so the row offers a verb that writes without the hard-edit guard.
       await openDay(page, { notes, kind: 'soft' });
@@ -216,7 +280,6 @@ test.describe('the note mark on a day row (ADR-0152 §6c)', () => {
       await page.locator('.wp-event-face').first().click();
       await page.getByRole('button', { name: 'היינו' }).first().click();
       await expect(page.locator('.wp-event-m .sync-badge')).toBeVisible();
-      await expect(page.locator('.wp-event-m-code')).toBeVisible();
       const height = await metaHeight(page);
       await page.context().setOffline(false);
       return height;

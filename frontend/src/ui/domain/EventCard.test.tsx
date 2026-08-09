@@ -427,9 +427,10 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
   // replaces those unit cases is the rendered assertion below — the row must not print a
   // place name or a confirmation code, whatever it is handed.
   describe('the rendered row', () => {
-    it('renders no mark — and no meta line at all — when the event has neither', () => {
+    it('renders no mark when the event has neither', () => {
       showCard({});
-      expect(meta()).toBeNull();
+      expect(meta()?.querySelector('.note-mark')).toBeNull();
+      expect(meta()?.querySelector('.doc-mark')).toBeNull();
     });
 
     // A `1` beside a glyph that already means "a note" is a digit that says nothing.
@@ -505,11 +506,15 @@ describe('EventCard — the meta line and the note mark (ADR-0152 §6c)', () => 
       expect(meta()?.querySelector('.doc-mark')).toBeTruthy();
     });
 
-    // A long code overflowed the row on a device precisely because it could not shrink.
-    // With no text on the line at all, there is nothing left that can.
-    it('drops the line entirely when there is no glyph and no sync marker', () => {
+    // The line STAYS even when it carries nothing, and that is deliberate: `sync` is an
+    // opaque node the screen passes (`<EntitySyncBadge/>`, silent when synced), so this
+    // component cannot tell whether it will draw. Gating the line on "is there a glyph"
+    // took the PENDING badge off with it — caught in e2e, not here. Empty, it is a flex box
+    // with no children.
+    it('leaves the line empty rather than gating it on a glyph', () => {
       showCard({ code: 'MN-4471' });
-      expect(meta()).toBeNull();
+      expect(meta()).toBeTruthy();
+      expect(meta()?.textContent).toBe('');
     });
 
     // The code is not lost — it is one tap away, and the expanded card still prints it.

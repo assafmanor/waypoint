@@ -199,8 +199,6 @@ export function EventCard(props: EventCardProps) {
     setMenuOpen(false);
     fn?.();
   };
-  // The line is glyphs only now; the code still feeds the hard-edit warning below.
-  const hasMeta = !!sync || !!notes || !!documents;
 
   const tag = isDone ? (
     <span className="wp-event-tag-done">
@@ -246,16 +244,19 @@ export function EventCard(props: EventCardProps) {
           only `nowrap` returns the row to its height. And flex cannot protect part of
           a text node, so the code has to be its own item or the ellipsis eats the
           confirmation code, which is the fact the row is opened for. */}
-      {/* GLYPHS ONLY (owner, 2026-08-09). The line renders at all only when it has
-          something to say, so an ordinary row loses it entirely rather than keeping an
-          empty 3px-margin box. */}
-      {hasMeta && (
-        <span className="wp-event-m">
-          {sync}
-          <NoteMark count={notes} />
-          <DocumentMark count={documents} />
-        </span>
-      )}
+      {/* GLYPHS ONLY (ADR-0174 §8) — no place name, no confirmation code.
+          **It still renders unconditionally**, and that is not an oversight: `sync` is an
+          opaque node the screen passes (`<EntitySyncBadge/>`, which is silent when synced),
+          so this component cannot tell whether it will draw anything. Gating the line on
+          "is there a glyph" therefore took the PENDING badge off with it — caught in e2e,
+          where the line was still there on an unmarked row and the assertion that it had
+          gone was the thing that was wrong. Empty, it is a flex box with no children: 0px
+          plus its 3px top margin. */}
+      <span className="wp-event-m">
+        {sync}
+        <NoteMark count={notes} />
+        <DocumentMark count={documents} />
+      </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
           <Icon name="warn" /> {t.event.conflictWarn.before}

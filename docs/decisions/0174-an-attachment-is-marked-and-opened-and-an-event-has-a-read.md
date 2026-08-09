@@ -132,6 +132,15 @@ That is §6c's own "a two-character stub is noise, not information" failure, arr
 
 **What the row says now** is what a row is for: what this is, when it is, and **that there is something here**. The last of those is exactly what a glyph says, which is why the marks are the part that stays.
 
+**One correction the e2e caught, and the unit suite could not.** The first build gated the
+meta line on "does it carry a glyph", so an unmarked row lost the line entirely. That is
+wrong: `sync` is an **opaque node the screen passes** (`<EntitySyncBadge/>`, which is silent
+when synced), so `EventCard` cannot tell whether it will draw anything — and gating on it took
+the **pending sync badge** off the row along with the glyphs, breaking ADR-0091/0092 on every
+row with a write in flight. The line renders unconditionally; empty it is a flex box with no
+children, 0px plus its 3px top margin. jsdom could not see this (`!!sync` is true either way,
+and it reports every rect as zero); the browser could.
+
 **Recorded because it will look like a regression in a diff:** a reader meeting "the day card stopped showing confirmation codes" will reasonably think something was lost. It was moved, on the owner's call, after the shipped version overflowed on a real code.
 
 ### 7. The lifted hero reaches the file, and that is where this feature was actually missing

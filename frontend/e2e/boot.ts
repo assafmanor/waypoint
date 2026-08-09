@@ -127,6 +127,10 @@ export async function bootIntoTrip(
     notes?: unknown[];
     /** Trip documents, so the Index's documents rows exist to be measured. */
     documents?: unknown[];
+    /** **The attachment links** (ADR-0173 §1), so a host row can carry the DOCUMENT mark and
+     *  a read surface can list what it holds (ADR-0174). Present in the snapshot from the
+     *  start; it needed an option the moment a row's glyph depended on it. */
+    documentAttachments?: unknown[];
     /** What the world knows about these places, keyed by place id (ADR-0166 §6) — the
      *  server-owned read model the snapshot carries. A place with no key is the normal
      *  "we know nothing" state, so `{}` (the default) is every existing spec. */
@@ -157,6 +161,7 @@ export async function bootIntoTrip(
     places: opts.places ?? SNAPSHOT.places,
     notes: opts.notes ?? SNAPSHOT.notes,
     documents: opts.documents ?? SNAPSHOT.documents,
+    documentAttachments: opts.documentAttachments ?? SNAPSHOT.documentAttachments,
     enrichments: opts.enrichments ?? SNAPSHOT.enrichments,
   };
   await page.route(
