@@ -1,6 +1,6 @@
 # 0180 — Currency is **derived**, a rate is a **glance card**, and money is stored in **minor units**
 
-**Status:** Accepted (2026-08-09) — **slice 1 built** the same day (see the build log at the foot for the three places the build decided something the design left open); slices 2 and 3 (the `User` column, the feed, `RateCard`, the converter) are still unbuilt.
+**Status:** Accepted (2026-08-09) — **built in full the same day**, in three passes; the build logs at the foot record what each pass decided that the design left open, and the two places the design was wrong.
 **Date:** 2026-08-09
 **Session note:** [`planning/2026-08-09-session-238-where-money-lives-on-the-home.md`](../planning/2026-08-09-session-238-where-money-lives-on-the-home.md)
 **Mockup:** [`mockups/currency-becomes-a-feature-v1.html`](../../mockups/currency-becomes-a-feature-v1.html) (§1–§8)
@@ -259,3 +259,49 @@ precision than the currency has rounds **arbitrarily**, `1.005 → 100` but
 The guard rounds the decimal string first so over-precise input goes half-up
 consistently. The code says so; the ADR's sentence is left as written, with this
 correction beside it.
+
+## Build log — 2026-08-09, slices 2 + 3
+
+Built: `User.preferredCurrency` end to end (§2), the feed and its provider (§7),
+`RateCard` and the restored `מבט מהיר` section with its per-card attribution
+(§3/§9), and the converter with §8's refresh (§5). Nothing from the decision is
+left unbuilt.
+
+**Four things the build decided, and one measured fact that replaced an
+assertion.**
+
+1. **The feed has a route after all**, and `fx.module.ts` said it would not. The
+   push path is unchanged — every render's rates ride the snapshot — but §4's
+   refresh affordance has to _await_ a fetch and answer with what it got, and no
+   request already in flight can carry that. `POST /trips/:tripId/fx/refresh` is
+   trip-scoped though the store is global, purely so the existing
+   `MembershipGuard` applies; that is the same trade `EnrichmentLookupController`
+   states in the same words, and it is the second instance of it. **ADR-0004 is
+   untouched**: what that ADR forbids an integration is a _screen_.
+
+2. **The converter's pair belongs to the sheet, not to either setting.** Swapping
+   or picking inside it changes what is being converted and writes nothing — the
+   trip's currency and the member's preference each have a screen, and a
+   throwaway "what's this in dollars?" must not silently edit one.
+
+3. **`currencyCodeSchema` validates shape only, and ICU is the reason.** It began
+   as the timezone twin, and measurement killed that: `ZZZ` does not throw (it
+   formats as `ZZZ`, exponent 2), `ils` is accepted and normalised, and only a
+   malformed length (`IL`) raises. There is no existence question ICU will
+   answer, so a regex is the honest guard and `supportedValuesOf` existence
+   checking was rejected as engine-dependent — `ZWG` is a recent addition in our
+   own table.
+
+4. **`isDue` needed an attempt clock that is not a column.** `fetchedAt` is
+   written only on success, so while the source is down `nextUpdateAt` stays in
+   the past forever and every snapshot in the fleet would start another pass. An
+   in-memory `lastAttemptAt` bounds it; a redeploy losing it costs one extra
+   request, which is the same call ADR-0166 §14 makes.
+
+**And the assertion that was wrong.** The design's headline argument against the
+ECB was that it has not quoted ISK since 2008. That is false — ISK is in the
+ECB's live list — and it was load-bearing in five documents before the owner's
+own research caught it. The argument that survives is the counted one, and it is
+stronger: the ECB covers **30 of our 152 codes** and cannot price **17 of the
+app's own 57 destinations**. Coverage, not a single currency, is why the broad
+feed ships. Corrected in place everywhere it appeared.

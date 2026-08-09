@@ -144,7 +144,18 @@ vi.mock('../state/trip-state', () => ({
     changeFeed: [],
     dismissChange: () => {},
     clearChangeFeed: () => {},
+    // Money (ADR-0180). Null is the honest fixture for this file: the trip above
+    // carries no `currency`, so `מבט מהיר` is absent either way and the lift
+    // wiring — the one thing here — is measured against the same Home as before.
+    fxRates: null,
+    refreshFx: async () => {},
   }),
+}));
+
+// Home reads the member's HOME currency off the account (ADR-0180 §2), so it now
+// needs an auth context. Mocked rather than wrapped, like the two above it.
+vi.mock('../state/auth-state', () => ({
+  useAuth: () => ({ me: null }),
 }));
 
 const done = vi.fn();

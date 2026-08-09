@@ -120,6 +120,22 @@ describe('FxService.readAndRefresh — the read is the trigger', () => {
   });
 });
 
+describe('FxService.read — the same value, with no trigger', () => {
+  it('returns the stored set without scheduling anything', async () => {
+    // The refresh route's read: it has just AWAITED a pass, so triggering a
+    // second one on the way out would be work with nothing to find.
+    const { service, fetch } = harness({ stored: row({ nextUpdateAt: new Date('2000-01-01') }) });
+    const fx = await service.read();
+    expect(fx?.rates.ILS).toBe(3.7);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('applies the same validation as the snapshot read', async () => {
+    const { service } = harness({ stored: row({ rates: { ILS: -1 } }) });
+    await expect(service.read()).resolves.toBeNull();
+  });
+});
+
 describe('FxService — the kill switch', () => {
   it('stops the app talking to the third party, without touching reads', async () => {
     process.env[FX_DISABLED] = '1';

@@ -8,6 +8,8 @@ import {
   invitePreviewSchema,
   destinationResultSchema,
   documentAttachmentSchema,
+  fxRefreshResultSchema,
+  type FxRates,
   maybeItemSchema,
   noteSchema,
   meSchema,
@@ -909,4 +911,22 @@ export async function deleteDocument(tripId: string, docId: string): Promise<voi
  *  stale open would otherwise hit the old bytes. Evicting forces a fresh fetch. */
 export async function evictDocumentBlob(tripId: string, docId: string): Promise<void> {
   await evictCachedDocument(documentContentUrl(tripId, docId));
+}
+
+/** **Ask for a fresh rate set, and wait for the answer** (ADR-0180 §4).
+ *
+ *  The only FX call a client makes: every render's rates ride the snapshot. This
+ *  exists for the one case the push cannot serve — the stored set has lapsed and
+ *  the background pass has not landed one — so it awaits the fetch rather than
+ *  scheduling it, because someone is watching the mark spin.
+ *
+ *  Trip-scoped in the path though the store is global: that is what makes the
+ *  server's existing `MembershipGuard` apply (see `FxController`). `null` is a
+ *  real answer, not a failure — a first fetch that did not land. */
+export async function refreshFxRates(tripId: string): Promise<FxRates | null> {
+  const res = await apiFetch(`${API_BASE_URL}/trips/${tripId}/fx/refresh`, {
+    method: HTTP_METHOD.POST,
+  });
+  if (!res.ok) return throwApiError(res);
+  return fxRefreshResultSchema.parse(await readJson(res)).fxRates;
 }

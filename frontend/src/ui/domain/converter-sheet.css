@@ -1,0 +1,192 @@
+/* The converter sheet (ADR-0180 §3/§5/§8). Namespaced `.cv-*`, checked as unused
+   before it was taken, and deliberately NOT `.gl-*`/`.glance-*` — those belong
+   to `GlanceCard`, the day-at-a-glance time rail, which has nothing to do with
+   money and is not the component this reuses. */
+
+.cv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* One side of the conversion: a big mono amount beside the currency's own chip. */
+.cv-side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+}
+/* The active side is where typing lands. Neutral, never amber: amber is the
+   clock's (rule 4), and a focused money field is not a commitment. */
+.cv-side.on {
+  border-color: var(--ink);
+}
+
+.cv-amt {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--ink);
+  border: 0;
+  background: none;
+  padding: 0;
+  min-height: 44px;
+  text-align: start;
+}
+.cv-amt:focus-visible {
+  outline: none;
+}
+
+/* The currency is a value that opens a picker, so it wears the hairline chip
+   rather than inventing a box (ADR-0177's grammar). */
+.cv-cur {
+  flex: 0 0 auto;
+  display: flex;
+  /* `center`, and the first draft had `baseline` — the defect caught on a real
+     phone. Two things went wrong at once and only one is obvious: an inline SVG
+     has NO baseline, so the caret aligned by its bottom margin edge and sat
+     4.5px above the code beside it; and on a flex line TALLER than its content
+     (this chip is floored at 44px for ADR-0017), `baseline` parks the whole
+     group near the top rather than centring it — measured 8.5px off. A row of a
+     symbol, a code and a caret has nothing to align baselines FOR. */
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  padding-inline: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cv-cur .code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* The swap sits ON the seam between the two sides, so the gesture reads as
+   "turn this over" rather than as a third control. */
+.cv-swap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block: calc(var(--space-2) * -1);
+  position: relative;
+  z-index: 1;
+}
+.cv-swap {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+  /* 44px touch floor as an overlay, so meeting ADR-0017 never grows the seam
+     (the `ValueToken` ::after trick). */
+  position: relative;
+}
+.cv-swap::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+.cv-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* The rate and its "as of" are ONE line, because they are one fact. `--muted`
+   because a persistent hint is muted (ADR-0158 §7), never `--faint`. */
+.cv-rate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.cv-rate .mono {
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+/* ── The refresh (§8). NOT a control beside the "as of" — the "as of" BECOMES
+   the control. No second element and no second word: the date is the only thing
+   a refresh changes, so pressing the date is the whole gesture, and the glyph is
+   what says it is pressable.
+
+   `ValueToken`'s shape at a read-only value (ADR-0177): text in a line, a
+   hairline when it is actionable, and the 44px floor met by an `::after`. ── */
+.cv-asof {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+}
+button.cv-asof {
+  position: relative;
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  /* The hairline is a SHADOW, not a border, and that is not fussiness: a
+     `border-block-end` is in layout, so the line measured 17px without the
+     control and 18px with it — the control's own appearance reflowed the fact it
+     sits on. `ValueToken`'s comment records the same mistake one size up.
+     Painted, not laid out: 17px either way. */
+  box-shadow: 0 1px 0 var(--line);
+}
+button.cv-asof::after {
+  content: '';
+  position: absolute;
+  inset: -14px -8px;
+}
+.cv-asof .icon {
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+/* In flight: the MARK spins, the DATE does not move and is not replaced
+   (ADR-0166 §6.4 — never a spinner where a fact used to be). */
+button.cv-asof[data-busy] {
+  color: var(--muted);
+  box-shadow: none;
+}
+button.cv-asof[data-busy] .icon {
+  animation: cv-spin 900ms linear infinite;
+}
+/* NEGATIVE, measured rather than eyeballed. Sampling `reset`'s own arc with
+   `getPointAtLength`, the angle about its centre runs 151° → 85° → 21° → −139°:
+   monotonically DECREASING, which in SVG's y-down space is counter-clockwise,
+   terminating at the head bracket in the top-left. The glyph points anticlockwise,
+   and spinning it the other way animates an arrow against its own barb.
+
+   Deliberately NOT the shared `@keyframes spin` (`+360deg`), and that is not a
+   duplicate: `.spinner` is a rotationally symmetric border-arc ring with no head,
+   so either sign is correct there. **A ring may spin either way; an arrow may
+   not** — the rule any future glyph-based spinner inherits. */
+@keyframes cv-spin {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  button.cv-asof[data-busy] .icon {
+    animation: none;
+  }
+}

@@ -32,6 +32,17 @@ import { FX_PROVIDER, type FxProvider } from './fx.provider';
  *  request, and the cost of not retrying is a card that stays frozen. */
 const RETRY_AFTER_MS = 15 * 60 * 1000;
 
+/** The stored row as Prisma hands it back — JSON column, `Date` columns. Named
+ *  rather than inlined because two methods now take it. */
+type FxRateSetRow = {
+  base: string;
+  rates: unknown;
+  publishedAt: Date;
+  nextUpdateAt: Date;
+  provider: string;
+  providerUrl: string;
+};
+
 @Injectable()
 export class FxService {
   private readonly log = new Logger(FxService.name);
@@ -64,6 +75,18 @@ export class FxService {
       }
     }
 
+    return this.parse(row);
+  }
+
+  /** The stored set, with **no** trigger — the read half of `readAndRefresh`.
+   *  Its one caller is the on-demand refresh route, which has just awaited a
+   *  pass and wants what that pass wrote; asking `readAndRefresh` there would
+   *  schedule a second pass on the way out for no reason. */
+  async read(): Promise<FxRates | null> {
+    return this.parse(await this.prisma.fxRateSet.findFirst());
+  }
+
+  private parse(row: FxRateSetRow | null): FxRates | null {
     if (!row) return null;
     // Parsed on the way out rather than trusted: the row is JSON written by a
     // past version of this code, and the surfaces that read it have no other

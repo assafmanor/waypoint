@@ -22,6 +22,9 @@ export type { DayStripProps, DayStripDay, DayStripMode } from './DayStrip';
 
 export { GlanceCard } from './GlanceCard';
 export type { GlanceCardProps } from './GlanceCard';
+// The rate on the Home (ADR-0180 §3). NOT `GlanceCard*` — that name is the
+// day-at-a-glance time rail's, and this is the section it sits in, not the rail.
+export { RateCard, rateLine } from './RateCard';
 
 export { StatTile } from './StatTile';
 export type { StatTileProps } from './StatTile';
