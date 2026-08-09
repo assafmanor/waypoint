@@ -926,75 +926,7 @@
 .tp-wrap {
   position: relative;
 }
-.tp-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-}
-.tp-field {
-  flex: 1;
-  min-width: 0;
-  text-align: start;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 7px 11px 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  font: inherit;
-  transition: border-color 0.12s ease;
-}
-.tp-field:active {
-  border-color: var(--soft-line);
-}
-.tp-field.open {
-  border-color: var(--amber);
-  box-shadow: 0 0 0 2px rgba(233, 166, 60, 0.16);
-}
-.tp-field:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-.tp-cap {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.tp-val {
-  font-family: var(--font-mono);
-  font-size: 19px;
-  font-weight: 700;
-  color: var(--amber-deep);
-  letter-spacing: 0.01em;
-  min-height: 24px;
-}
-.tp-dur .tp-val {
-  font-family: var(--font-body);
-  font-size: 15px;
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  /* wrap between the duration and the end (never mid-word) in the narrow field */
-  flex-wrap: wrap;
-}
-.tp-dur .tp-val > span {
-  white-space: nowrap;
-}
-.tp-dur .tp-endhm {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--muted);
-}
-.tp-placeholder {
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--muted);
-}
-.tp-clear {
+.tp-dur .tp-clear {
   align-self: flex-start;
   margin-top: 2px;
   font: inherit;
@@ -2209,7 +2141,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 }
 
 /* ============ Trip settings (/trip/:id/settings, ADR-0039) ============ */
-/* Mode-neutral paper chrome; reuses .new-head / .back / .field / .date-row /
+/* Mode-neutral paper chrome; reuses .new-head / .back / .field / .wf-line /
    .invite-box / .confirm-* / .sheet-* from the shell. */
 .set-sub {
   font-size: 12.5px;
@@ -2483,17 +2415,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   height: 18px;
   color: var(--muted);
   flex: none;
-}
-.set-fld .subfld {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.set-fld .subfld > span {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  flex: 0 0 auto;
 }
 /* A currency code is three characters, so it keeps the narrow width it had when
    it shared a row with the daily budget rather than stretching to the form's. */

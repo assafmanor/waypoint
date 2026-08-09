@@ -1,7 +1,7 @@
 # Session 235 — a "when" reads as a sentence
 
 **Date:** 2026-08-09
-**Outcome:** [ADR-0177](../decisions/0177-a-when-reads-as-a-sentence.md) **Accepted**, with [`mockups/when-field-drawing-v1.html`](../../mockups/when-field-drawing-v1.html) drawn, rendered and measured. [ADR-0083](../decisions/0083-whenfield-datetime-standard.md) stands and is extended, not replaced. Two shipped defects found and logged to the backlog.
+**Outcome:** [ADR-0177](../decisions/0177-a-when-reads-as-a-sentence.md) **Accepted and built** (PR #540 shipped the design; the build followed on a fresh branch off it), with [`mockups/when-field-drawing-v1.html`](../../mockups/when-field-drawing-v1.html) drawn, rendered and measured. [ADR-0083](../decisions/0083-whenfield-datetime-standard.md) stands and is extended, not replaced. Two shipped defects found and logged to the backlog.
 **Branch:** `claude/date-time-form-standard-jzqxjd`.
 
 ## What the owner reported
@@ -71,3 +71,19 @@ Two earlier metrics in the table measured the wrong thing before this one landed
 ## Settled on acceptance
 
 The owner accepted both recommended defaults rather than sending them to a device pass first: **the hairline chip** for the token's affordance (ADR-0161 §7's shipped answer), and **named dates** — with the numeric form kept for trip settings and trip creation, where the year is load-bearing and the trip cannot supply it. Underline and tint stay drawn in the mockup as the rejected settings. A real-device pass on the built screens is still worth doing; it no longer blocks the build.
+
+## The build, same day
+
+Shipped after the design PR merged. `ValueToken` + `value-token.css` is the new primitive; `WhenField` (both variants), `TimePicker`, `TimeField`, `TripSettings` and `CreateTrip` adopt it, and §5's chrome is **deleted** rather than overridden — `.tp-field`/`.tp-cap`/`.tp-val`/`.tp-fields`/`.tp-placeholder`, `.wf-date`/`.wf-date-cell`/`.wf-date-val`, `.set-fld .subfld`, `.date-row`, and `App.css`'s dead `.field .df` mono rule. Confirmed gone from `dist/`, not just from the source.
+
+`DateField` grew a `format` prop: `numeric` stays the default (every existing caller untouched, ADR-0176's face), `named` is what a date wears inside a trip. Trip settings and trip creation keep numeric, because they run where nothing else on screen supplies the year.
+
+**Three things the build learned that the drawing did not:**
+
+- The leg label had to move **above** its sentence. Beside means one grid spanning both legs, which can only cross the per-leg `Field` shells via `display: contents` — and that erases the box ADR-0150's nudge animates and scrolls to. Costs ~7px a leg; keeps the refusal machinery whole.
+- The date token **stretched to full width** on first render, wrapping every span leg and making the booking form _taller_ than the boxes it replaces. `App.css`'s `.field .df { width: 100% }` — right for the box a token stops being. Deleted, and `inline-size: auto` stated in the primitive anyway.
+- `button.bld-time` was **not** converted, and that is a rule-8 "ask rather than take it on silently" call. The two share the vocabulary and almost no values (12.5px vs body size, plan violet vs amber, composite two-line content, an `empty` variant with an icon). Sharing a component would mean an option per difference or Plan mode overriding nearly all of it. On the backlog; both files name the lineage.
+
+Measured off the built components at 360px: event when-block **223px → 154.5px**, booking span **289px → 188.5px**, settings row overflow **21px → 0px** (31px slack), touch target **45.8px on a 31.8px line**, amber objects on the event form **2 → 1**. The two heights land ~7–10px above the mockup's prediction — the label-above trade plus a `Field` label the mockup's after-frame did not carry — and are reported as measured rather than re-quoted.
+
+3175 unit tests green (14 selector-only updates where tests named the deleted chrome, plus new `ValueToken` and `DateField` cases). `pnpm lint`, `typecheck`, `build` clean.

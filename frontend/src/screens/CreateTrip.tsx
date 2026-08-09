@@ -50,6 +50,7 @@ import { DestinationPicker, type PickedDestination } from '../ui/DestinationPick
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
 import { Field } from '../ui/primitives/Field';
 import { DateField } from '../ui/primitives/DateField';
+import { tokenClass } from '../ui/primitives/ValueToken';
 import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { Icon } from '../ui/Icon';
 import { MS_PER_DAY, CONTROL_ICON, DEFAULT_TRIP_ICON, EASE_ARRIVE, TRIP_BIRTH } from '../constants';
@@ -272,8 +273,14 @@ export function CreateTrip() {
               : datesMark.error
           }
         >
-          <div className="date-row">
+          {/* The trip's two dates as one sentence (ADR-0177 §1) — and the NUMERIC date
+              form here, not the named one: this form runs before a trip exists, so
+              nothing else on screen supplies the year. Inside a trip the year is
+              implied and the named form carries it (ADR-0177 §4). */}
+          <div className="wf-line">
+            <span className="wf-word">{t.whenField.rangeFrom}</span>
             <DateField
+              className={tokenClass('date', { empty: !startDate })}
               min={today}
               // Live while the day is already past, and on the save's refusal when it is
               // the one still empty — two reasons, one mark (ADR-0150 §7).
@@ -285,7 +292,9 @@ export function CreateTrip() {
                 suggest(destination, next);
               }}
             />
+            <span className="wf-word">{t.whenField.rangeTo}</span>
             <DateField
+              className={tokenClass('date', { empty: !endDate })}
               min={startDate || today}
               value={endDate}
               data-invalid={datesInvalid || (!endDate && datesMark.error) ? '' : undefined}

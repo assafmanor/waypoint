@@ -57,4 +57,23 @@ describe('DateField', () => {
     const { container } = render(<DateField value="2026-08-09" onChange={() => {}} />);
     expect(container.querySelector('.df-face')?.getAttribute('aria-hidden')).toBe('true');
   });
+  // Two faces, both satisfying ADR-0176 (a reader never has to guess the order).
+  // `numeric` stays the default so every existing caller is untouched; `named` is what
+  // lets a date be a word in a sentence rather than a figure in a box (ADR-0177 §4),
+  // and a named month cannot be read backwards at all.
+  it('reads day-first and numeric by default', () => {
+    const { container } = render(<DateField value="2026-09-11" onChange={() => {}} />);
+    expect(container.querySelector('.df-face')?.textContent).toBe('11.09.2026');
+  });
+
+  it('reads by name when asked, and drops the year the trip already implies', () => {
+    const { container } = render(
+      <DateField value="2026-09-11" onChange={() => {}} format="named" />,
+    );
+    const face = container.querySelector('.df-face')?.textContent ?? '';
+    expect(face).toContain('11');
+    expect(face).not.toContain('2026');
+    // The month is a WORD, which is the whole point — an order that cannot be misread.
+    expect(/[\u0590-\u05FF]/.test(face)).toBe(true);
+  });
 });

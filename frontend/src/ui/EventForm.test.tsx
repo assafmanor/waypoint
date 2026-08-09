@@ -981,7 +981,7 @@ describe('EventForm (folded into Modal, U-01)', () => {
       fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
         target: { value: 'ארוחת ערב' },
       });
-      const date = document.querySelector('.wf-date input')!;
+      const date = document.querySelector('.vt-date input')!;
       fireEvent.change(date, { target: { value: '2026-08-30' } });
       save();
       expect(fieldOf(date)?.hasAttribute('data-invalid')).toBe(true);

@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { useBackLayer } from '../../state/nav-state';
 import { useCenterSelected } from '../../lib/useCenterSelected';
 import { MINUTES_PER_DAY } from '../../constants';
+import { ValueToken } from './ValueToken';
 import { t } from '../../i18n/he';
 
 const STEP = 15;
@@ -103,18 +104,19 @@ export function TimeField({
 
   return (
     <>
-      <button
-        type="button"
-        className={
-          'tp-field' + (triggerClassName ? ` ${triggerClassName}` : '') + (open ? ' open' : '')
-        }
+      {/* The trigger is a `ValueToken` (ADR-0177 §2): the cap that used to sit inside
+          the box is gone, because the prose around the token already names it — so
+          `label` becomes the accessible name rather than a visible caption. */}
+      <ValueToken
+        kind="time"
+        open={open}
+        empty={!value}
+        className={triggerClassName}
+        aria-label={label}
         onClick={() => setOpen(!open)}
       >
-        <span className="tp-cap">{label}</span>
-        <span className="tp-val" dir="auto">
-          {value || <span className="tp-placeholder">{placeholder}</span>}
-        </span>
-      </button>
+        <span dir="auto">{value || placeholder}</span>
+      </ValueToken>
 
       {open && <div className="tp-backdrop" onClick={() => setOpen(false)} />}
       {open && (
