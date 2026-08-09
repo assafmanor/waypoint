@@ -260,11 +260,9 @@ It was named (ECB reference rates) and never decided, and **"all currencies" is 
 The ECB publishes a euro reference rate for roughly **30** currencies once per TARGET business
 day. The picker offers ~160. That gap is not theoretical for this app:
 
-- **Iceland is the second entry in `DESTINATIONS`** (`{ code: 'IS', he: 'איסלנד' }`), and the ECB
-  has not published an ISK reference rate since suspending it in 2008.
-- **Vietnam is the tenth**, and VND is not on the list either.
-- The mockup's own §3 pair control offers **`ISK↔USD`** — a pair the source this file printed
-  `שער יציג · ECB` against **cannot price**. The drawing caught its own source out.
+- It covers **30 of our 152 codes**, and cannot price **17 of the app's own 57 destinations**:
+  Vietnam, Georgia, Nepal, Sri Lanka, Cambodia, Taiwan, the UAE, Jordan, Egypt, Morocco, Kenya,
+  Tanzania, Argentina, Peru, Chile, Colombia, Costa Rica.
 
 So a decision is needed, and the shape of it is:
 
