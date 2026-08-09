@@ -164,7 +164,7 @@ export function TimePicker({
               kind="word"
               open={open === 'dur'}
               empty={duration == null}
-              aria-label={t.eventForm.durationCap}
+              label={t.eventForm.durationCap}
               onClick={() => {
                 setNote(null);
                 setOpen(open === 'dur' ? null : 'dur');

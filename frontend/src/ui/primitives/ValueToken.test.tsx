@@ -55,13 +55,29 @@ describe('ValueToken', () => {
     expect(screen.getByRole('button').className).toContain('open');
   });
 
-  it('names itself for a screen reader, since the caption is what this design removes', () => {
+  // THE REGRESSION THIS EXISTS FOR. Removing the visible caption is the design;
+  // removing it from the accessible NAME was a bug, and only an e2e pass could see it —
+  // the first cut used `aria-label`, which REPLACES the content, so the button announced
+  // "התחלה" and never the time it holds. The name must compose both, exactly as the
+  // captioned box read before ADR-0177.
+  it('announces the caption AND the value, not the caption alone', () => {
     render(
-      <ValueToken kind="time" aria-label="התחלה">
+      <ValueToken kind="time" label="התחלה">
         15:00
       </ValueToken>,
     );
-    expect(screen.getByRole('button', { name: 'התחלה' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'התחלה 15:00' })).toBeTruthy();
+  });
+
+  it('keeps the caption out of sight while keeping it in the name', () => {
+    const { container } = render(
+      <ValueToken kind="time" label="התחלה">
+        15:00
+      </ValueToken>,
+    );
+    // Hidden by clipping, never by `display: none` / `visibility: hidden`, which would
+    // take it out of the accessibility tree along with the pixels.
+    expect(container.querySelector('.vt-cap')?.textContent).toBe('התחלה');
   });
 
   it('carries the refusal mark on the value itself (ADR-0150)', () => {

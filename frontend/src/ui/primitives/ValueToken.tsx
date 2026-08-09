@@ -42,9 +42,13 @@ export interface ValueTokenProps {
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
-  /** The prose around a token names it on screen; a screen reader gets it here, because
-   *  the caption that used to sit inside the box is what this design removes. */
-  'aria-label'?: string;
+  /** The caption this value answers to ("התחלה", "משך", "תאריך"). Rendered INSIDE the
+   *  button as visually-hidden text, not as `aria-label` — and the difference is a real
+   *  regression this caught: `aria-label` REPLACES the content, so the accessible name
+   *  became the caption alone and a screen reader stopped hearing the time the button
+   *  currently holds. As hidden text the name is "התחלה 08:00" again, exactly what the
+   *  captioned box read before ADR-0177 removed its visible caption. */
+  label?: string;
   title?: string;
   /** ADR-0150's refusal mark, spread from `errors.field(name)` — the token IS the box
    *  now, so the mark lands on the value that is wrong rather than on a cell holding a
@@ -61,7 +65,7 @@ export function ValueToken({
   onClick,
   disabled,
   className,
-  'aria-label': ariaLabel,
+  label,
   title,
   ref,
   'data-invalid': invalid,
@@ -73,10 +77,10 @@ export function ValueToken({
       className={tokenClass(kind, { empty, open, className })}
       onClick={onClick}
       disabled={disabled}
-      aria-label={ariaLabel}
       title={title}
       data-invalid={invalid}
     >
+      {label && <span className="vt-cap">{label}</span>}
       {children}
     </button>
   );

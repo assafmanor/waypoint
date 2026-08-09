@@ -1,8 +1,9 @@
 // TimeField — the shared single-time picker atom behind BOTH the event
 // TimePicker's start field and the booking span's endpoint times (one complex
 // primitive, two behaviours). A tap-to-open trigger — since ADR-0177 a `ValueToken`
-// in amber, with no caption of its own because the prose around it says which time
-// this is (`label` became the accessible name) — opens a panel: a native exact <input type="time"> fallback (ADR-0036
+// in amber, with no VISIBLE caption because the prose around it says which time this
+// is; the caption stays as hidden text so the accessible name is still "התחלה 08:00".
+// It opens a panel: a native exact <input type="time"> fallback (ADR-0036
 // §2c) + a 15-minute scroll list that centres the current value — or the
 // nearest-round suggestion for an off-grid value — on open, and AUTO-CLOSES on
 // pick. It owns no duration / date / overnight semantics: the event composes it
@@ -106,14 +107,14 @@ export function TimeField({
   return (
     <>
       {/* The trigger is a `ValueToken` (ADR-0177 §2): the cap that used to sit inside
-          the box is gone, because the prose around the token already names it — so
-          `label` becomes the accessible name rather than a visible caption. */}
+          the box is gone. The caption survives as hidden text inside the button, so the
+          accessible name is still "התחלה 08:00" — see `ValueToken`'s `label`. */}
       <ValueToken
         kind="time"
         open={open}
         empty={!value}
         className={triggerClassName}
-        aria-label={label}
+        label={label}
         onClick={() => setOpen(!open)}
       >
         <span dir="auto">{value || placeholder}</span>
