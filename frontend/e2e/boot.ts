@@ -13,6 +13,7 @@ const USER = {
   avatarChoice: 'initials',
   googleAvatarUrl: null,
   uploadedAvatarUrl: null,
+  preferredCurrency: null,
   createdAt: '2024-01-01T00:00:00.000Z',
 };
 const MEMBERSHIP = {
@@ -49,9 +50,11 @@ const SNAPSHOT = {
   // so the absence of either fails the zod parse in `fetchSnapshot` and the app never boots
   // at all — which surfaces as every spec here timing out rather than as a readable error.
   // `e2e/` is outside `tsconfig.json`'s `include`, so nothing but a run catches a missing
-  // field in this fixture. **This has now happened twice**: `enrichments` wrote the warning,
-  // `documentAttachments` walked into it anyway. Any new required snapshot field belongs
-  // here in the same commit that adds it.
+  // field in this fixture. **This has now happened three times**: `enrichments` wrote the
+  // warning, `documentAttachments` walked into it anyway, and `preferredCurrency` showed the
+  // warning was read too narrowly — it counts for a new required field on any entity NESTED
+  // in the snapshot (`USER`, `TRIP`, `MEMBERSHIP` above), not only on the snapshot itself.
+  // Either way it belongs here in the same commit that adds it.
   enrichments: {},
   documentAttachments: [],
   latestSeq: '0',
