@@ -48,15 +48,19 @@ import { currencyName, currencySymbol } from './money';
  *     transliteration invented to be safe. When in doubt, leave it out and add
  *     it when someone reports it — a wrong entry is worse than a missing one,
  *     because it makes the table look like it was checked.
- *  2. **Nothing here may already be covered.** CLDR's Hebrew name, its English
- *     name and the country terms answer most of the language: `פרנק` is inside
- *     `פרנק שוויצרי`, `איסלנד` is inside `כתר איסלנדי`, `דולר` is inside every
- *     dollar. `currency-search.test.ts` asserts this for the whole table, so a
- *     redundant entry fails the build rather than sitting here looking useful.
+ *  2. **Nothing here may duplicate a term the ENGINE cannot take away.** That is
+ *     the code and the country names — the two things that are ours. It is
+ *     deliberately *not* "nothing CLDR already covers", which is what this rule
+ *     said first and which was wrong in a way the ISK bug made obvious: a
+ *     runtime can ship without a currency's data entirely, and then its CLDR
+ *     name is just the code again. So a word like `כתר` is worth carrying for
+ *     ISK even though full-ICU already answers it — that entry is what keeps the
+ *     Icelandic króna findable beside the other three on an engine that trimmed
+ *     it. `currency-search.test.ts` enforces the narrowed rule.
  *
- * The list is short **because** those two rules hold — the gap is narrow, and it
- * is nearly all one shape: a currency whose Hebrew name has one settled spelling
- * in CLDR and a different settled spelling in use.
+ * The list stays short because rule 1 does the work: it is nearly all one shape,
+ * a currency whose Hebrew name has one settled spelling in CLDR and a different
+ * settled spelling in use.
  */
 export const ALIASES: Record<string, readonly string[]> = {
   // The reported one: CLDR says `אירו`, and half the country writes `יורו`.
@@ -72,9 +76,14 @@ export const ALIASES: Record<string, readonly string[]> = {
   ILS: ['שח', 'nis'],
   // CLDR's `ין יפני` covers `ין`. The double-yod spelling is the common one.
   JPY: ['יין'],
-  // CLDR spells the Czech koruna `קורונה` and the Scandinavian ones `כתר`. The
-  // word people reach for in both cases is `קרונה`, which matches neither.
+  // **The four krónur, which have to behave as one family.** CLDR spells the
+  // Czech one `קורונה` and the Nordic ones `כתר`, and the word a person reaches
+  // for is `קרונה`, which matches neither. ISK carries `כתר` on top of that for
+  // the reason in rule 2: it is the one that went missing from a real engine, and
+  // without the alias it drops out of a `כתר` search on that device while its
+  // three siblings stay — which is exactly the symptom that was reported.
   CZK: ['קרונה'],
+  ISK: ['קרונה', 'קרונור', 'כתר'],
   SEK: ['קרונה', 'קרונור'],
   NOK: ['קרונה', 'קרונר'],
   DKK: ['קרונה', 'קרונר'],
@@ -111,6 +120,12 @@ const TERMS = new Map<string, string>();
 /** Everything `Intl` and the country table already answer for this currency —
  *  i.e. the terms an `ALIASES` entry would be REDUNDANT against. Exported so the
  *  test can enforce the table's second rule; nothing else calls it. */
+/** The terms no engine can take away: the code, and the countries that use it.
+ *  What an `ALIASES` entry may not duplicate — see rule 2. */
+export function engineIndependentTerms(currency: string): string[] {
+  return [currency, ...currencyCountryTerms(currency)].map(prepare);
+}
+
 export function termsWithoutAliases(currency: string): string[] {
   return [
     currency,

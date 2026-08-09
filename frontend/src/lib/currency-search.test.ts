@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COUNTRY_CURRENCY, DESTINATIONS } from '@waypoint/shared';
-import { ALIASES, currencyMatchesQuery, termsWithoutAliases } from './currency-search';
+import { ALIASES, currencyMatchesQuery, engineIndependentTerms } from './currency-search';
 
 const hits = (q: string): string[] =>
   Intl.supportedValuesOf('currency').filter((c) => currencyMatchesQuery(c, q));
@@ -151,13 +151,24 @@ describe('lenient, but still a search', () => {
 // spellings nobody writes and three that CLDR already answered, and every test
 // still passed because a redundant alias changes no result.
 describe('the alias table keeps its own rules', () => {
-  it('carries nothing CLDR, the English name or the symbols already cover', () => {
-    // A redundant entry is not harmless: it makes the table look checked.
+  it('duplicates nothing the engine cannot take away', () => {
+    // Narrowed deliberately (rule 2). Duplicating a CLDR name is legitimate —
+    // that is what keeps ISK findable by `כתר` on an engine missing its data —
+    // but duplicating the code or a country name buys nothing on any engine.
     for (const [currency, aliases] of Object.entries(ALIASES)) {
-      const covered = termsWithoutAliases(currency).join(' | ');
+      const owned = engineIndependentTerms(currency).join(' | ');
       for (const alias of aliases) {
-        expect(covered.includes(alias), `${currency}: "${alias}" is already covered`).toBe(false);
+        expect(owned.includes(alias), `${currency}: "${alias}" is already ours`).toBe(false);
       }
+    }
+  });
+
+  it('keeps the four krónur one family, on any engine', () => {
+    // The reported symptom, as a rule rather than a case: `כתר` and `קרונה` must
+    // each return all four, and ISK must not depend on CLDR to be one of them.
+    for (const krona of ['ISK', 'DKK', 'NOK', 'SEK']) {
+      expect(finds('קרונה', krona), `קרונה should find ${krona}`).toBe(true);
+      expect(finds('כתר', krona), `כתר should find ${krona}`).toBe(true);
     }
   });
 
