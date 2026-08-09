@@ -51,12 +51,22 @@
          sitting in `.bld-t` beside the title, where it costs the title width and
          forces the wrap that makes the row 68px tall. §3.
 
-     4 · IT IS ONE ATOM ON TWO SURFACES. `EventCard`'s `.wp-event-title-txt` has
-         the same `min-width: 0` and a comment reading "anything else may wrap
-         freely", around the same `.route`. The Trip-mode day card has not crowded
-         yet only because its time column is narrower — nothing there prevents it.
-         The rules live on `.route`, so one change covers both modes (rule 8 /
-         ADR-0096). §5.
+     4 · IT IS ONE ATOM ON TWO SURFACES, AND THE SECOND ONE IS ALREADY BROKEN.
+         `EventCard`'s `.wp-event-title-txt` has the same `min-width: 0` and a
+         comment reading "anything else may wrap freely", around the same `.route`.
+         A first pass called the day card "latent". It is not: measured with the
+         SAME flight from the screenshot, its title box is 97.8px against a 129px
+         route — **−37px of headroom, i.e. it overflows today**. The earlier reading
+         of "69px of headroom" was taken against a route long enough to hit
+         `routeDisplay`'s destination-primary fallback, so it measured the short
+         title the fallback produces rather than the reported one. §5 draws both
+         modes together.
+
+         This is also why the proposal now changes BOTH rows rather than the
+         builder alone, on the owner's instruction: *"Make sure that your design
+         for plan and trip mode's are aligned"*. They already share `.route`,
+         `routeDisplay`, `PlaceBadge`, the tag chips and the zone pill; shape was
+         the one thing about to diverge (rule 8 / ADR-0096).
 
      5 · THE OBVIOUS CHEAP FIX IS ACTIVELY HARMFUL HERE. `routeDisplay` drops to a
          destination-primary title past `ROUTE_INLINE_MAX_CHARS` (26) and hands the
@@ -8934,61 +8944,132 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          fixes a factor of two.
          ══════════════════════════════════════════════════════════════════════ */
 
-      /* ── THE ROW · one line becomes two ─────────────────────────────────────
+      /* ── THE ROW · one line becomes two, IN BOTH MODES ─────────────────────
          A grid rather than a flex row, because the two lines share the badge and
-         the ⋯ column and grid is the thing that expresses "these two cells sit
+         the trailing control, and grid is what expresses "these two cells sit
          beside one object". `minmax(0, 1fr)` on the title column is the same
          `min-width: 0` the flex version already carried, said once and in the
          place that owns the width.
 
+         **The same grammar is applied to `EventCard` in the same block**, on the
+         owner's instruction — _"Make sure that your design for plan and trip
+         mode's are aligned"_. An earlier revision scoped this to the builder row
+         and left the day card alone, which would have made the app's two day
+         surfaces disagree about the shape of one object; they already share
+         `.route`, `routeDisplay`, `PlaceBadge`, the tag chips and the zone pill,
+         and the shape is the one thing that would have diverged. The two keep
+         their own sizes (a 40px badge against 36px, `--text-body` against 14px) —
+         what is aligned is the layout, not the density.
+
          The title column stops competing with the time and gets the row: 214px at
-         360px against today's 48px. That is the whole design; the rest of this
-         block is consequences. */
-      .mk-2line .bld {
+         360px against today's 48px. That is the whole design; the rest is
+         consequences. */
+      .mk-2line .bld,
+      .mk-2line .wp-event-face {
         display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        grid-template-areas:
-          'badge title menu'
-          'badge when  menu';
         align-items: center;
         column-gap: 10px;
         row-gap: 2px;
       }
-      .mk-2line .bld-bd {
+      .mk-2line .bld {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+          'badge title menu'
+          'badge when  menu';
+      }
+      /* The day card carries one extra trailing child — the done ✓, present only on
+         a settled row — so it gets its own track. An `auto` track with nothing in it
+         is 0px wide, so an ordinary card lays out exactly like the builder row. */
+      .mk-2line .wp-event-face {
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        grid-template-areas:
+          'badge title check chev'
+          'badge when  check chev';
+      }
+      .mk-2line .bld-bd,
+      .mk-2line .wp-event-badge {
         grid-area: badge;
       }
-      .mk-2line .bld-main {
+      .mk-2line .bld-main,
+      .mk-2line .wp-event-main {
         grid-area: title;
+      }
+      .mk-2line .wp-event-check {
+        grid-area: check;
+      }
+      /* THE TRAILING CONTROL SPANS BOTH ROWS, and this is a CORRECTION recorded
+         rather than quietly fixed, because how it was found is the point.
+
+         The first drawing of this proposal gave the when line the title's column
+         alone: 214px for a sentence measuring 247px, so `⏱ +2 ש׳` ran into the ⋯
+         button's box at 360px. Fine at 390px, which is how it survived a render.
+         The owner caught it — _"the 3 dots button on the left, it overflows there
+         even in your suggestions"_ — and was right that it was in the PROPOSAL, not
+         in the before frames.
+
+         The measurement table is what let it through. Every reading watched
+         `.bld-main`, so a proposal that fixed the title's overflow and introduced
+         the when line's 30px away reported `0px`. Two rules came out of it and both
+         are in the file now: **a fix that moves an element measures the element it
+         moved**, and **an overlap check is two-dimensional** — the first re-measure
+         still said "23px" because it compared x-axis extents only, which cannot
+         tell "passes beneath" from "collides with".
+
+         The fix is that the when line may WRAP. It is a flex container; letting it
+         wrap means the annotations drop under the time rather than paint on a
+         control, at any duration and any zone shift. Nothing is hidden, nothing is
+         capped, and no width is guessed. */
+      .mk-2line .bld-icon,
+      .mk-2line .wp-event-chev {
+        align-self: center;
       }
       .mk-2line .bld-icon {
         grid-area: menu;
       }
+      .mk-2line .wp-event-chev {
+        grid-area: chev;
+      }
 
       /* ── THE WHEN LINE · the time keeps being a control, and gains room ──────
          Still `button.bld-time`, still the same target, still ADR-0161 §7's rule
-         that the row's own time is the thing you press to move the event. What
-         changes is that its two lines become one line with room to be read, so the
+         that a row's own time is what you press to move the event. What changes is
+         that its two stacked lines become one line with room to be read: the
          duration and the zone pill stop being a footnote squeezed under a number
-         and become peers on a sentence: `00:20–05:50 · 3:30 שע׳ · ⏱ +2 ש׳`.
+         and become peers in a sentence — `00:20–05:50 · 3:30 שע׳ · ⏱ +2 ש׳`.
 
-         `justify-self: start` keeps it aligned under the title's start edge, which
-         is what makes the day scannable down a single column — the thing the
-         trailing-time layout is usually defended for and does not actually do,
-         since its position moves with every row's height. */
-      .mk-2line .bld-time {
-        grid-area: when;
+         `justify-self: start` keeps it under the title's start edge, which is what
+         makes a day scannable down one column — the thing the trailing-time layout
+         is usually defended for and does not deliver, since its position moves with
+         every row's height. */
+      .mk-2line .bld-time,
+      .mk-2line .wp-event-time {
         justify-self: start;
+        grid-area: when;
         flex-direction: row;
         align-items: center;
         gap: 7px;
+        flex-wrap: wrap;
+        row-gap: 2px;
+        min-width: 0;
       }
-      .mk-2line .bld-timemeta {
+      .mk-2line .bld-timemeta,
+      .mk-2line .wp-event-timemeta {
         flex-direction: row;
         align-items: center;
         gap: 5px;
       }
-      .mk-2line .bld-time > span[dir='auto'] {
+      .mk-2line .bld-time > span[dir='auto'],
+      .mk-2line .wp-event-time > span[dir='auto'] {
         white-space: nowrap;
+      }
+      /* The separator between the when line's peers — the app's own middle dot. It
+         rides the annotation group, so on a row narrow enough for that group to
+         wrap the dot leads the second line rather than dangling off the first. */
+      .mk-2line .bld-timemeta::before,
+      .mk-2line .wp-event-timemeta::before {
+        content: '·';
+        color: var(--muted);
+        opacity: 0.7;
       }
 
       /* ── ONE LOCK, BESIDE THE THING IT LOCKS ────────────────────────────────
@@ -8997,35 +9078,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          (solid against soft's dashed — whose CSS comment already says "the dashed
          border carries the soft cue"). Two of the three go.
 
-         The one that stays moves INTO the when line, which is where it means
-         something: ADR-0011's hard event is a commitment about its TIME, and the
-         time is now a sentence with a subject. `🔒 00:20–05:50` says the thing the
-         row was saying in three places, once, next to the fact it is about.
+         The survivor moves INTO the when line, where it means something: ADR-0011's
+         hard event is a commitment about its TIME, and the time is now a sentence
+         with a subject. `🔒 00:20–05:50` says once, beside the fact it is about,
+         what the row was saying in three places.
 
-         This is the fork for the owner — it is the only part of the proposal that
-         removes something a reader can see. A soft row is then marked by its
-         dashed border and the absence of a lock rather than by the word `גמיש`.
-         Every frame in this file carries a hard row and a soft row side by side so
-         it can be judged rather than described. */
+         This is the fork for the owner — the only part of the proposal that removes
+         something a reader can see. A soft row is then marked by its dashed border
+         and the absence of a lock rather than by the word `גמיש`. Every frame here
+         carries a hard row and a soft row side by side so it can be judged. */
       .mk-2line .bld-anchor,
       .mk-2line .bld-t .tag-hard,
-      .mk-2line .bld-t .tag-soft {
-        display: none;
-      }
-      /* §3's control frame only: the proposal's layout with the two deleted marks
-         put back, so the deletion is judged against itself rather than against the
-         one-line row it also changed. */
-      .mk-2line .bld.mk-keeptags .bld-anchor,
-      .mk-2line .bld.mk-keeptags .tag-hard,
-      .mk-2line .bld.mk-keeptags .tag-soft {
-        display: revert;
-      }
-      .mk-2line .bld.mk-keeptags .bld-anchor {
-        grid-area: badge;
-        justify-self: start;
-        align-self: start;
-      }
-      .mk-2line .bld.mk-keeptags .bld-timelock {
+      .mk-2line .bld-t .tag-soft,
+      .mk-2line .wp-event-t .tag-hard,
+      .mk-2line .wp-event-tag-hard,
+      .mk-2line .wp-event-tag-soft {
         display: none;
       }
       .mk-2line .bld-timelock {
@@ -9038,12 +9105,30 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         inline-size: 12px;
         block-size: 12px;
       }
-      /* The separator between the when line's peers — the app's own middle dot, at
-         the weight `screens.css` already gives a quiet inline divider. */
-      .mk-2line .bld-timemeta::before {
-        content: '·';
-        color: var(--muted);
-        opacity: 0.7;
+
+      /* §3's control frame only: the proposal's layout with the two deleted marks
+         put back, so the deletion is judged against itself rather than against the
+         one-line row it also changed. */
+      .mk-2line .bld.mk-keeptags .bld-anchor,
+      .mk-2line .bld.mk-keeptags .tag-hard,
+      .mk-2line .bld.mk-keeptags .tag-soft {
+        display: revert;
+      }
+      /* The restored lock needs a track of its own — dropping it into `badge` put it
+         on top of the badge, which the collision sweep caught (22×10 at 390px). It is
+         only this control frame, and it is exactly the class of bug the sweep exists
+         for, so it is fixed the same way the real one was rather than nudged. */
+      .mk-2line .bld.mk-keeptags {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-areas:
+          'lock badge title menu'
+          'lock badge when  menu';
+      }
+      .mk-2line .bld.mk-keeptags .bld-anchor {
+        grid-area: lock;
+      }
+      .mk-2line .bld.mk-keeptags .bld-timelock {
+        display: none;
       }
 
       /* ── THE BACKSTOP · reflow, then two lines, then `…` ────────────────────
@@ -9058,16 +9143,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       .mk-safety .route {
         flex-wrap: wrap;
       }
-      /* b — and neither endpoint is an atom either. A place name is one word by
-         nature (`Snæfellsjökulsþjóðgarður`: 24 characters, zero break
-         opportunities). `anywhere` rather than `break-word`, because only
-         `anywhere` also shrinks the min-content contribution — which is what lets
-         the flex item accept a narrow box at all. */
+      /* b — the endpoints may be given a narrow box, but a WORD IS NEVER BROKEN.
+         An earlier revision carried `overflow-wrap: anywhere` here, which is the
+         textbook rule for "make overflow impossible" and is why this file's first
+         draft rendered `קפלאווי / ק`. The owner's rule replaces it: *two lines, or
+         a fold to three dots when necessary* — a word is a unit, and a place name
+         split across a line break is not a place name.
+
+         So `min-width: 0` alone. It lets the flex item accept the narrow box; what
+         happens to a word that still does not fit is c's business, and c's answer
+         is the `…`, not a break. */
       .mk-safety .route bdi,
       .mk-safety .bld-ttl,
       .mk-safety .wp-event-title-txt {
         min-width: 0;
-        overflow-wrap: anywhere;
       }
       /* c — two lines, then the ellipsis. The owner ruled the `…` out as an ANSWER
          and then allowed it "when truly necessary", which is exactly its standing
@@ -9086,6 +9175,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
+        /* Carries the case the clamp alone does not: a single word longer than the
+           line has no break opportunity, so it makes ONE over-wide line that the
+           clamp merely clips — no `…`, no hint. `text-overflow` puts the fold back
+           on that line. It is doing nothing on every other row, where the clamp's
+           own ellipsis is what shows. Verified by rendering, not by reading the
+           spec: §4's last row is exactly this case. */
+        text-overflow: ellipsis;
       }
 
       /* ── §6's drawings: the rejected alternatives, and the draft this file
@@ -9116,7 +9212,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       .mk-rej-silent .route bdi,
       .mk-rej-silent .bld-ttl {
         min-width: 0;
-        overflow-wrap: anywhere;
       }
       .mk-rej-silent .bld-ttl {
         display: -webkit-box;
@@ -9428,7 +9523,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <span class="sep"></span>
         <span class="lbl">ההצעה</span>
         <button type="button" data-opt="mk-2line" aria-pressed="true">שורה שנייה</button>
-        <button type="button" data-opt="mk-safety" aria-pressed="true">רשת ביטחון</button>
+        <button type="button" data-opt="mk-safety" aria-pressed="true">שתי שורות ואז «…»</button>
       </div>
 
       <!-- ══════════════════════════ §1 ══════════════════════════ -->
@@ -9506,15 +9601,22 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       <!-- ══════════════════════════ §5 ══════════════════════════ -->
       <section class="case">
-        <h2>§5 · אותו אטום, שני מסכים</h2>
+        <h2>§5 · שני המצבים, אותה שורה</h2>
         <p class="note">
           <code>EventCard</code> — כרטיס היום של מצב טיול — מחזיק את אותו
-          <code>.route</code> ואת אותו <code>min-width: 0</code> סביבו, עם הערה שאומרת
-          «כל השאר יכול לזרום חופשי». הוא לא זורם. שם זה עוד לא גלש רק מפני שעמודת
-          השעה צרה יותר, <b>לא כי משהו מונע את זה</b>. רשת הביטחון יושבת על
-          <code>.route</code>, כלומר תיקון אחד לשני המסכים ולא עותק שני שנולד כאן
-          (כלל 8 · ADR-0096). <b>הפריסה בשתי שורות מוצעת כאן רק לשורת הבנאי</b> — לכרטיס
-          היום יש כבר שורת מטא משלו והוא נפתח, וזו החלטה נפרדת שצריכה מוקאפ משלה.
+          <code>.route</code> ואת אותו <code>min-width: 0</code> סביבו, עם הערה
+          שאומרת «כל השאר יכול לזרום חופשי». הוא לא זורם. <b>וזה לא סיכון עתידי אלא
+          מה שקורה היום</b>: עם אותה טיסה מהצילום תיבת הכותרת שלו היא 97.8px מול
+          מסלול שמבקש 129 · <b>מינוס 37</b>. קריאה קודמת בקובץ הזה אמרה «69px של
+          אוויר», והיא נמדדה על מסלול ארוך מספיק כדי ליפול לכותרת יעד-בלבד — כלומר
+          מדדה את הכותרת הקצרה שהנפילה מייצרת, לא את זו שדיווחו עליה.
+        </p>
+        <p class="note">
+          לכן ההצעה משנה את <b>שתי</b> השורות ולא רק את הבנאי · שתי העמודות השמאליות
+          כאן הן אותו אובייקט בשני המצבים. מה שנשאר שונה נשאר שונה בכוונה: הזמן במצב
+          תכנון הוא <code>button.bld-time</code> ולכן לובש שבב דק (ADR-0161 §7), ובמצב
+          טיול הוא קריאה בלבד; התג הוא 40px מול 36px והטיפוגרפיה משלה. <b>מה שיושר זו
+          הפריסה, לא הצפיפות.</b>
         </p>
         <div class="pair" id="s5"></div>
       </section>
@@ -9606,6 +9708,23 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             מדידה-לפי-שורה כי היא נתנה <i>תוכן</i> שונה לאותה טיסה בשני המסכים.
           </li>
           <li>
+            <b>שני המצבים מיושרים, וזה תיקון לגרסה קודמת של הקובץ.</b> היא הציעה את
+            הפריסה לשורת הבנאי בלבד והשאירה את כרטיס היום כמו שהוא — כלומר הייתה
+            מייצרת שני מסכי-יום שלא מסכימים על צורת אותו אובייקט. הם כבר חולקים
+            <code>.route</code>, <code>routeDisplay</code>, <code>PlaceBadge</code>,
+            התגים וגלולת האזור; הצורה הייתה הדבר היחיד שעמד להתפצל (כלל 8 · ADR-0096).
+          </li>
+          <li>
+            <b>הבדיקה שהקובץ לא היה לו, ובגללה ההצעה הראשונה ציירה שעה על גבי ⋯.</b>
+            כל מדידה כאן הסתכלה על <code>.bld-main</code>, ולכן הצעה שתיקנה את גלישת
+            הכותרת ויצרה גלישה חדשה 30px משם דיווחה «0px». שני כללים יצאו מזה ושניהם
+            בקובץ עכשיו: <b>תיקון שמזיז אלמנט מודד את האלמנט שהוזז</b>, לא רק את זה
+            שדיווחו עליו · ו<b>בדיקת חפיפה היא דו-ממדית</b> — המדידה המתקנת הראשונה
+            עדיין אמרה «23px» כי השוותה ציר אחד, וציר אחד לא יודע להבדיל בין «עובר
+            מתחת» לבין «מתנגש». הסריקה עכשיו רצה על כל זוג תיבות בכל מסגרת בעמוד, בשני
+            הרוחבים ובשני המצבים, והיא מה שתפסה גם התנגשות במסגרת הביקורת של §3.
+          </li>
+          <li>
             <b>לא נגענו: <code>.bld-icon</code> (32px) ו-<code>.bld-bd</code> (36px).</b>
             עם המרווחים הם עדיין הצריכה הקבועה הגדולה בשורה, וכל אחד מהם הוא החלטה של
             ADR אחר (התפריט של ADR-0138, התג של ADR-0121 §8). הם לא נדרשים כדי שהמסלול
@@ -9637,7 +9756,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         more: 'M6 12h.02 M12 12h.02 M18 12h.02',
         clock: 'M12 6.4V12l3.6 2.2 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
         pin: 'M12 21.5s6.5-5.9 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21.5 12 21.5Z M14.2 10.8a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0',
+        caret: 'M5 9l7 7 7-7z',
       };
+      // `caret` is in `Icon.tsx`'s FILLED set, so it paints as a fill with no stroke —
+      // drawn through the same wrapper rather than as a second hand-made glyph.
+      const iconFilled = (name) =>
+        `<svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="${ICON[name]}"/></svg>`;
       const icon = (name) =>
         `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICON[name]}"/></svg>`;
       // NavArrow, drawn for the RTL locale (forward points left) — strokeWidth 2.2.
@@ -9687,9 +9811,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         </div>`;
       }
 
-      /** ONE Trip-mode day card face (`EventCard`, ui/domain/EventCard.tsx) — §5 only.
+      /** ONE Trip-mode day card face (`EventCard`, ui/domain/EventCard.tsx ~366-405).
        *  The collapsed face is what competes for width; the expandable body below it
-       *  is deliberately undrawn, since nothing in this file touches it. */
+       *  is deliberately undrawn, since nothing here touches it.
+       *
+       *  Same element types, same nesting, same class names as the shipped component —
+       *  including `.wp-event-face`'s own `<button>`, which is what the grid is applied
+       *  to and therefore not a detail this file may approximate. */
       function evt({ title, hard, time, dur, shift, glyph = '✈️' }) {
         const meta =
           dur || shift
@@ -9697,16 +9825,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
                 shift ? tzPill('wp-event-tzdelta', shift) : ''
               }</span>`
             : '';
+        const lock = hard
+          ? `<span class="bld-timelock" aria-label="מקובע" title="מקובע">${icon('lock')}</span>`
+          : '';
         return `<div class="wp-event ${hard ? 'hard' : 'soft'}">
-          <div class="wp-event-head">
+          <button type="button" class="wp-event-face" aria-expanded="false">
             ${badge('wp-event-badge', glyph)}
-            <div class="wp-event-main">
-              <div class="wp-event-t"><span class="wp-event-title-txt">${title}</span>${
+            <span class="wp-event-main">
+              <span class="wp-event-t"><span class="wp-event-title-txt">${title}</span>${
                 hard ? `<span class="tag-hard">${icon('lock')} קשיח</span>` : ''
-              }</div>
-            </div>
-            <div class="wp-event-time"><span dir="auto">${time}</span>${meta}</div>
-          </div>
+              }</span>
+            </span>
+            <span class="wp-event-time">${lock}<span dir="auto">${time}</span>${meta}</span>
+            <span class="wp-event-chev" aria-hidden="true">${iconFilled('caret')}</span>
+          </button>
         </div>`;
       }
 
@@ -9797,14 +9929,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           col(T.after, s4.map(bld).join(''), `mk-ruler s4-after ${O}`),
         ].join('');
 
-        const s5 = [LONGROUTE, UNBREAKABLE];
+        // §5 · the two modes under the SAME proposal, so "aligned" is something you
+        // can see rather than something the prose claims. Same three events, the
+        // builder row on one side and the day card on the other.
+        const s5 = [FLIGHT1, SOFT];
         document.querySelector('#s5').innerHTML = [
-          col(T.before, s5.map(evt).join(''), 'mk-ruler s5-before'),
-          col(
-            '<span class="tag after">עם רשת הביטחון</span>',
-            s5.map(evt).join(''),
-            'mk-ruler s5-after mk-safety',
-          ),
+          col('<span class="tag neutral">מצב טיול · היום</span>', s5.map(evt).join(''), 'mk-ruler s5-before'),
+          col('<span class="tag after">מצב טיול · בהצעה</span>', s5.map(evt).join(''), `s5-after ${O}`),
+          col('<span class="tag after">מצב תכנון · בהצעה</span>', s5.map(bld).join(''), `s5-plan ${O}`),
         ].join('');
 
         const s6 = [FLIGHT1, LONGTITLE];
@@ -9964,6 +10096,33 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             const r = el.querySelector('.route') || el.querySelector('.wp-event-title-txt');
             return r ? Math.min(m, el.clientWidth - r.scrollWidth) : m;
           }, Infinity);
+        /* THE CHECK THIS FILE DID NOT HAVE, and whose absence shipped a proposal
+           that painted a time over the ⋯. Two rules, both learned the hard way:
+           it is a real 2D box intersection (an x-axis comparison cannot tell
+           "passes beneath" from "collides with"), and it sweeps EVERY pair of a
+           row's boxes rather than the one element that was reported. Returns the
+           worst collision on a frame as `w×h`, or `אין` for none. */
+        const collide = (frame) => {
+          let worst = null,
+            area = 0;
+          all(`${frame} .bld, ${frame} .wp-event-face`).forEach((row) => {
+            const boxes = [...row.children]
+              .filter((el) => getComputedStyle(el).display !== 'none')
+              .map((el) => ({ el, r: el.getBoundingClientRect() }));
+            for (let i = 0; i < boxes.length; i++)
+              for (let j = i + 1; j < boxes.length; j++) {
+                const a = boxes[i].r,
+                  c = boxes[j].r;
+                const x = Math.min(a.right, c.right) - Math.max(a.left, c.left);
+                const y = Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top);
+                if (x > 0.5 && y > 0.5 && x * y > area) {
+                  area = x * y;
+                  worst = Math.round(x) + '×' + Math.round(y);
+                }
+              }
+          });
+          return worst || 'אין';
+        };
         const routeWants = () => {
           const r = all('.s1-before .route')[0];
           return r ? r.scrollWidth : null;
@@ -10023,6 +10182,30 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             `<td class="bad">${clipped('.s6-levers')}</td>`,
             `<td class="good">${clipped('.s6-fix')}</td>`,
             'הטיוטה לא גולשת · היא מקצצת. זה ההבדל',
+          ],
+          [
+            'התנגשות בין תיבות בשורה · הסריקה הדו-ממדית',
+            `<td class="${collide('.s1-before') === 'אין' ? 'good' : 'bad'}">${collide('.s1-before')}</td>`,
+            `<td class="${collide('.s1-after') === 'אין' ? 'good' : 'bad'}">${collide('.s1-after')}</td>`,
+            'הבדיקה שחסרה · «…» על ⋯ נספר כאן',
+          ],
+          [
+            'מצב טיול · רוחב הכותרת בכרטיס היום (§5)',
+            `<td class="bad">${px(w('.s5-before .wp-event-main'))}</td>`,
+            `<td class="good">${px(w('.s5-after .wp-event-main'))}</td>`,
+            'אותה פריסה · שני המצבים מיושרים',
+          ],
+          [
+            'מצב טיול · התנגשות בין תיבות (§5)',
+            `<td class="${collide('.s5-before') === 'אין' ? 'good' : 'bad'}">${collide('.s5-before')}</td>`,
+            `<td class="${collide('.s5-after') === 'אין' ? 'good' : 'bad'}">${collide('.s5-after')}</td>`,
+            'הסריקה רצה על שני המצבים',
+          ],
+          [
+            'גובה השורה · שורה גמישה קצרה',
+            `<td>${px(h('.s1-before .bld', 2))}</td>`,
+            `<td>${px(h('.s1-after .bld', 2))}</td>`,
+            'המקרה הנפוץ · רוב היום הוא שורות כאלה',
           ],
           [
             'כרטיס היום · כמה רוחב נשאר לו לפני שהוא גולש (§5)',

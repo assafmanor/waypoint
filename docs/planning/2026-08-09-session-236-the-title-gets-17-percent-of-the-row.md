@@ -79,6 +79,42 @@ short of calibration; it is short by a factor of two.
   admissible at all is recent — ADR-0174 §4 made the row's tap a _read_, so the full
   title is one tap away; it was not when this row was designed.
 
+## Both modes move together (mockup §5)
+
+Mid-session, on seeing the proposal drawn for the builder row alone:
+
+> Make sure that your design for plan and trip mode's are aligned
+
+Correct, and the file had it wrong: the two day surfaces already share `.route`,
+`routeDisplay`, `PlaceBadge`, the tag chips and the zone pill, so **shape was the one
+thing about to diverge** (rule 8 / ADR-0096). The grid now applies to `.wp-event-face`
+as well, and both titles land at **214px / 213px**. What stays different stays different
+deliberately: Plan's time is a `button` wearing ADR-0161 §7's hairline chip and Trip's is
+a readout, the badge is 36px against 40px. The layout is aligned; the density is not.
+
+## The correction the owner caught, and the instrument that came out of it
+
+> the 3 dots button on the left, it overflows there even in your suggestions
+
+Right, and it was in the **proposal**, not the before frames. The first drawing spanned
+the ⋯ down both rows and left the when line the title's column alone — 214px for a
+sentence measuring 247px — so `⏱ +2 ש׳` ran into the ⋯ at 360px. It rendered clean at
+390px, which is how it survived.
+
+**The measurement table is what let it through.** Every reading watched `.bld-main`, so a
+proposal that fixed the reported overflow and introduced a new one 30px away reported
+`0px`. Two rules, now built into the file as a sweep rather than written down as advice:
+
+- **A fix that moves an element measures the element it moved**, not only the one that
+  was reported.
+- **An overlap check is two-dimensional.** The first re-measure still said "23px" because
+  it compared x-axis extents, and one axis cannot tell _passes beneath_ from _collides
+  with_.
+
+The sweep runs over every pair of boxes in every frame, at both widths, in both modes.
+It immediately found a second collision — in §3's own control frame, where the restored
+lock landed on the badge.
+
 ## The fork left to the owner (mockup §3)
 
 Hard/soft is drawn **three times**: `.bld-anchor`'s lock, the `🔒 קשיח` chip, and the
@@ -105,11 +141,12 @@ put back.
    it describes cannot wrap. The file states the intent correctly and the CSS one
    directory over does not implement it, which is why no threshold, test or review ever
    caught this.
-3. **The same atom is in `EventCard`**, behind a comment reading "anything else may wrap
-   freely", with **69px of headroom** and nothing preventing the identical failure. The
-   backstop rules live on `.route`, so one change covers both modes (rule 8 / ADR-0096).
-   The two-line _layout_ is proposed for the builder row only — the day card already has
-   a meta line and expands, which is a separate decision needing its own file.
+3. **The same atom is in `EventCard`, and it is already failing there.** Behind a comment
+   reading "anything else may wrap freely" sits the same `.route`; measured with the same
+   flight, the day card's title box is **97.8px against a 129px route — −37px**. A first
+   pass in this session called it "latent" on a reading of 69px of headroom, which had
+   been taken against a route long enough to trip `routeDisplay`'s destination-primary
+   fallback — so it measured the short title the fallback produces, not the reported one.
 4. **The obvious cheap fix is actively harmful on the reported surface.** Lowering
    `ROUTE_INLINE_MAX_CHARS` falls back to a destination-primary title and hands the
    origin back as `meta`. The Trip card renders that meta; the builder row does not —
@@ -123,6 +160,9 @@ put back.
 ## Owed next
 
 - The owner's answer on §3 (the visible deletion) and on §2's scan claim.
+- Whether the when line wrapping to two lines on zone-crossing rows reads as two facts
+  or as the footnote this proposal took off the time column — it is the one row shape
+  the alignment work introduced.
 - Then the ADR, with ADR-0161 §7 amended **in place** rather than rewritten, and
   ADR-0011's marks noted where they now sit.
 - Three device-pass questions the file cannot settle (ADR-0017): whether a soft row
