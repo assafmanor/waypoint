@@ -10357,9 +10357,26 @@ button.wp-av:focus-visible {
       button.cv-asof[data-busy] .icon {
         animation: cv-spin 900ms linear infinite;
       }
+      /* NEGATIVE, and it is measured rather than eyeballed. Sampling `reset`'s
+         own arc with `getPointAtLength`, the angle about its centre runs
+         151° → 85° → 21° → −139° — monotonically DECREASING, which in SVG's
+         y-down space is counter-clockwise — and it terminates at the head
+         bracket in the top-left, so the arc arrives right-to-left across the
+         top. **The glyph points anticlockwise.** Spinning it the other way
+         animates an arrow against its own barb, which reads as wrong before
+         anyone can say why. That is what the owner caught, and it is the second
+         time in this file that a static box measurement said nothing about a
+         defect (the first was the chip's alignment): direction is not a size.
+
+         This is deliberately NOT the shared `@keyframes spin` (screens.css:3719,
+         `+360deg`) and that is not a duplicate: `.spinner` is a rotationally
+         symmetric border-arc ring with no head, so its direction is arbitrary
+         and either sign is correct there. **A ring may spin either way; an arrow
+         may not.** Any future glyph-based spinner inherits this rule, not the
+         ring's. */
       @keyframes cv-spin {
         to {
-          transform: rotate(360deg);
+          transform: rotate(-360deg);
         }
       }
       @media (prefers-reduced-motion: reduce) {

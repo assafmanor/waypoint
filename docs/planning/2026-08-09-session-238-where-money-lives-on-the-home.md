@@ -336,6 +336,23 @@ appearance reflowed the fact it sits on. Painted as a `box-shadow` instead: 17px
 the target still 45px. `ValueToken`'s own comment records the same class of mistake one size up
 (_"`min-height: 44px` took that row from 58px to 75px"_).
 
+**And the spin runs anticlockwise**, which the owner caught on the moving version. Not a taste
+call and now measured: sampling `reset`'s own arc with `getPointAtLength`, the angle about its
+centre runs 151° → 85° → 21° → −139° — monotonically decreasing, which is counter-clockwise in
+SVG's y-down space — terminating at the head bracket in the top-left, so the arc arrives
+right-to-left across the top. **The glyph points anticlockwise**, and spinning it the other way
+animates an arrow against its own barb.
+
+It is deliberately not the shared `@keyframes spin` (`screens.css:3719`, `+360deg`), and that is
+not a duplicate to collapse: `.spinner` is a rotationally symmetric border-arc **ring** with no
+head, so either sign is correct there. **A ring may spin either way; an arrow may not.**
+
+Worth noting what this has in common with the chip's alignment earlier in the session: both are
+defects the measurement table was structurally blind to, because **a direction is not a size** any
+more than a child's offset inside its parent is. Two of this file's three owner-caught defects were
+invisible to a table of widths and heights, which is an argument about what a design file should
+measure, not about this file.
+
 **Not on the card**, for a reason that is structural before it is aesthetic: the card is a single
 `<button>`, so a control inside it is invalid markup before it is a second 44px target on one row.
 Both routes reach the same place anyway — an old date on the card is what you tap, and the sheet is
