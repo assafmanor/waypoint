@@ -74,12 +74,16 @@
 /* A date is a calendar fact, not a commitment — ink. `DateField` wears this class on
    its own wrapper (ADR-0176: the wrapper is the box), so these rules must also undo
    the chrome the wrapper would otherwise inherit from a host's `.field`/`.set-fld`
-   rules. Those host rules are deleted by ADR-0177 §5; `width` is stated here anyway
-   because a stretched token is invisible in review and obvious only once rendered —
-   it is what made the booking span measure TALLER than the boxes it replaced. */
-.vt-date,
-.field .vt-date,
-.set-fld .vt-date {
+   rules — which ADR-0177 §5 deletes, and which the build initially left standing, so this
+   file carried `.field .vt-date` / `.set-fld .vt-date` overrides against rules that should
+   not have existed. Both are gone now, and so are the overrides.
+
+   `.df.vt-date`, not `.vt-date` alone: `date-field.css`'s own `.df` box rules tie on
+   specificity and neither sheet's load order is knowable from the source (both are lazy
+   chunks). `inline-size` is stated because a stretched token is invisible in review and
+   obvious only once drawn — it is what made the booking span measure TALLER than the
+   boxes it replaced. */
+.df.vt-date {
   inline-size: auto;
   font: inherit;
   font-weight: 700;
@@ -89,8 +93,7 @@
   border-radius: 9px;
   padding: 4px 8px;
 }
-.field .vt-date:focus-within,
-.set-fld .vt-date:focus-within {
+.df.vt-date:focus-within {
   outline: none;
   border-color: var(--amber);
   background: rgba(233, 166, 60, 0.08);
@@ -106,25 +109,31 @@
   opacity: 0;
 }
 
-/* THE CAPTION, HEARD BUT NOT SEEN. Removing the visible cap is the design; removing it
-   from the ACCESSIBLE NAME was a regression, and only the e2e pass could see it — the
-   first cut used `aria-label`, which REPLACES the content, so the button announced
-   "התחלה" and never the time it holds. As hidden text the name composes again:
-   "התחלה 08:00", exactly what the captioned box read before.
+/* **A DATE GROWS ITS INPUT, NOT AN OVERLAY** — and getting this wrong made every date
+   in the app unopenable. The `::after` target above is painted after its siblings and
+   takes pointer events, which is harmless over a `<button>` (the button under it is
+   what handles the press anyway) and fatal over a date, whose real control is the
+   native `<input>` INSIDE the token (ADR-0176). The overlay simply swallowed every tap.
 
-   The clip-rect idiom rather than `display: none` / `visibility: hidden`, both of which
-   remove the text from the accessibility tree along with the pixels. First one in this
-   codebase — if a second surface needs it, this is the one to lift, not to copy. */
-.vt-cap {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
+   So a date drops the pseudo-element and reaches the same 44px with the input itself:
+   same target, and it is the control rather than a decoration sitting on one. Nothing
+   here can be "cleaned up" into the shared `::after` without breaking the field again. */
+.vt-date::after {
+  content: none;
+}
+/* `.df.vt-date`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`,
+   which it must out-specify rather than merely follow: both sheets are lazy chunks and
+   neither's load order is knowable from the source (the same trap that hid App.css's
+   dead mono rule). Written at (0,3,0) the growth holds whichever lands last — and when
+   it did NOT, the click still worked and only the 44px floor quietly went missing, which
+   is exactly the kind of half-failure a measured assertion catches and an eye does not. */
+.df.vt-date .df-input {
+  /* -8px, ADR-0161 §7's own number, so the two reaches are one lineage rather than two
+     guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
+     which is exactly the sort of miss that survives review and fails a measurement. */
+  inset: -8px -2px;
+  inline-size: auto;
+  block-size: auto;
 }
 
 /* A value that is a word rather than a figure — a duration ("שעה"), where the app

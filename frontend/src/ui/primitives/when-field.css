@@ -13,6 +13,16 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+/* ONE OWNER FOR THE RHYTHM INSIDE A WHEN. `.wf` spaces its own lines with `gap`, and
+   each `Field` shell also carries App.css's `.field { margin-top: 18px }` — so the two
+   stacked and the day sat 30px from the clock, measured. That read as separation between
+   two labelled groups back when each half had a caption; with the captions gone it is
+   one subject falling apart. The FIRST child keeps its margin, because that is what
+   separates the whole when-block from the field above it — a different concern, and the
+   reason this is a sibling selector rather than a blanket reset. */
+.wf > .field + .field {
+  margin-top: 0;
+}
 
 /* ── the line ────────────────────────────────────────────────────────────────
    Prose is the ground and the tokens sit in it. `align-items: center`, NOT
@@ -26,10 +36,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  /* Clears two `.vt::after` insets (7px each), so stacked tokens never trade taps
-     when a line wraps. This is the number that lets the touch target live in the
-     gap instead of in the line's height. */
-  row-gap: 16px;
+  /* Clears two touch reaches (8px each), so stacked tokens never trade taps when a
+     line wraps. This is the number that lets the target live in the gap instead of in
+     the line's height — raise it with the reach, never independently. */
+  row-gap: 18px;
   font-size: var(--text-body);
   font-weight: 600;
   line-height: 1.5;
