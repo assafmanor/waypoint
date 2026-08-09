@@ -446,3 +446,40 @@ export const COUNTRY_CURRENCY: Record<string, string> = {
  *  already there, which is the whole degrade-don't-guess contract above. */
 export const currencyForCountry = (countryCode?: string | null): string | undefined =>
   countryCode ? COUNTRY_CURRENCY[countryCode.toUpperCase()] : undefined;
+
+/** **The countries that use a currency, as search terms** — the reverse of
+ *  `COUNTRY_CURRENCY`, joined to the Hebrew names and aliases `DESTINATIONS`
+ *  already carries.
+ *
+ *  It exists because a traveller looking for a currency thinks of the **place**,
+ *  not of the currency's name: the CLDR name for ISK is `כתר איסלנדי`, so
+ *  searching `איסלנד` happens to work and searching `iceland` or `רייקיאוויק`
+ *  did not, and there is no reason a person should have to know which. Every
+ *  term here is one the destination search already answers, so the two searches
+ *  now agree rather than each knowing a different half.
+ *
+ *  Built once, at module load: `COUNTRY_CURRENCY` is ~220 entries and this walks
+ *  it a single time. A currency used by several countries collects all of them
+ *  (EUR gets twenty), which is correct — any of them should find it. */
+const CURRENCY_SEARCH_TERMS: Record<string, string[]> = (() => {
+  const byCode = new Map(DESTINATIONS.map((d) => [d.code, d]));
+  const index: Record<string, string[]> = {};
+  for (const [country, currency] of Object.entries(COUNTRY_CURRENCY)) {
+    const destination = byCode.get(country);
+    if (!destination) continue;
+    (index[currency] ??= []).push(destination.he, ...destination.aliases);
+  }
+  return index;
+})();
+
+/** The country names and aliases this currency can be found by — empty for a
+ *  currency whose countries are all outside the curated `DESTINATIONS` list,
+ *  which is the same "a miss degrades, never a wrong answer" contract as the
+ *  table it is built from.
+ *
+ *  **Terms rather than a `matches` predicate**, so the caller can put them in the
+ *  same haystack as the currency's own names and run ONE matching rule over the
+ *  lot. A predicate here meant two rules — and the one on this side could not see
+ *  a query whose words are split across the two sides. */
+export const currencyCountryTerms = (currency: string): readonly string[] =>
+  CURRENCY_SEARCH_TERMS[currency] ?? [];

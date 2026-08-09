@@ -7,14 +7,44 @@
 //
 // Both call sites choose a currency the same way: the trip's (trip settings) and
 // the person's own (user settings). Neither owns the sheet — `CodePicker` does.
+import { COUNTRY_CURRENCY } from '@waypoint/shared';
+import { currencyMatchesQuery } from '../../lib/currency-search';
 import { currencyName, currencySymbol } from '../../lib/money';
 import { t } from '../../i18n/he';
 import { CodePicker } from './CodePicker';
 
-/** The runtime's complete ISO-4217 set, read once. Empty on a runtime without
- *  `supportedValuesOf` — search then only matches suggested, same as zones. */
-const ALL_CURRENCIES: string[] =
-  typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('currency') : [];
+/**
+ * **The runtime's set, UNIONED with our own** — and the union is not belt-and-
+ * braces, it is the fix for a currency that could not be reached at all.
+ *
+ * ADR-0180 §6 chose `Intl.supportedValuesOf('currency')` over a shipped list, and
+ * that choice stands: it is ~160 codes that need no maintenance. What the ADR
+ * assumed, and what the comment here used to assert outright, is that the answer
+ * is **complete**. It is not. On a real phone the list came back without `ISK`,
+ * which is how an Iceland trip could not pick the Icelandic króna by its code, by
+ * `איסלנד`, or by anything else — and the tell was that `כתר` returned the Danish,
+ * Norwegian and Swedish krónur and not the Icelandic one, i.e. the row was absent
+ * rather than unmatched. Node's full-ICU build does answer `ISK`, which is exactly
+ * why this survived every check that was not made on the device.
+ *
+ * So the runtime is still the source for BREADTH, and `COUNTRY_CURRENCY` is the
+ * floor for the currencies this app can actually need: every one of its 152 codes
+ * was validated against `Intl` when the table was written, and a destination the
+ * app offers must never be un-pickable because an engine trimmed its data. The
+ * old degenerate case (no `supportedValuesOf` at all) stops being special — it is
+ * just the union with an empty first half.
+ *
+ * A code the engine does not know still renders and still works: `currencyName`
+ * and `currencySymbol` fall back to the code, `currencyExponent` answers
+ * ISO-4217's default of 2, and the search reaches it by code, by country and by
+ * alias.
+ */
+const ALL_CURRENCIES: string[] = [
+  ...new Set([
+    ...(typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('currency') : []),
+    ...Object.values(COUNTRY_CURRENCY),
+  ]),
+].sort();
 
 /** The one-line label a trigger shows: "ין יפני · ¥ · JPY". The symbol is
  *  dropped when the runtime has none for this currency and hands back the code
@@ -58,11 +88,10 @@ export function CurrencyPicker({
           trailing: symbol === currency ? undefined : symbol,
         };
       }}
-      matches={(currency, q) =>
-        currency.toLowerCase().includes(q) ||
-        currencyName(currency).toLowerCase().includes(q) ||
-        currencySymbol(currency).toLowerCase().includes(q)
-      }
+      // Every name the currency has, not only CLDR's one — `lib/currency-search.ts`
+      // holds what that covers and why the first version's three terms were a much
+      // narrower door than they read like.
+      matches={currencyMatchesQuery}
       copy={{
         title: t.currencyPicker.title,
         searchPlaceholder: t.currencyPicker.searchPlaceholder,

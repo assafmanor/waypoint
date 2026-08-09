@@ -21,6 +21,27 @@
 // carries two fraction digits and the rate ₪0.0243 needs four. `formatRate` is
 // the other function, and it is deliberately not currency-styled.
 import { APP_LOCALE } from '../constants';
+import { CURRENCY_NAMES } from './currency-names';
+
+/** Which slot of a `CURRENCY_NAMES` row to fall back to. */
+const NAME = { HE: 0, EN: 1, NARROW: 2, WIDE: 3 } as const;
+
+/** Ask the runtime, and fall back to the snapshot when it has nothing to say.
+ *
+ *  `Intl` signals "I don't know this currency" by handing back the CODE — which
+ *  is a legitimate answer for a currency with no distinct symbol, and a data gap
+ *  when it comes back for the NAME. An engine that ships without a currency does
+ *  the latter for every field at once, which is how a currency can be present in
+ *  the list and still unreachable by any word (ADR-0180 §6's amendment). */
+function fromRuntimeOr(
+  currency: string,
+  slot: (typeof NAME)[keyof typeof NAME],
+  read: () => string,
+) {
+  const value = read();
+  if (value && value !== currency) return value;
+  return CURRENCY_NAMES[currency]?.[slot] ?? currency;
+}
 
 /** How many decimal places this currency's minor unit implies — 0 for JPY, 2
  *  for ILS, 3 for KWD. Read from the runtime's own ISO-4217 data.
@@ -108,11 +129,22 @@ export function rateBase(rate: number): number {
  *  without a distinct symbol, and isolation belongs to `ltrIsolate` at the
  *  render site (ADR-0118) rather than smuggled inside a value. */
 export function currencySymbol(currency: string): string {
+  return fromRuntimeOr(currency, NAME.NARROW, () => symbolPart(currency, 'narrowSymbol'));
+}
+
+/** The **wide** symbol, which is a different string often enough to matter:
+ *  `A$` vs `$`, `ISK` vs `kr`, `CN¥` vs `¥`. Not shown anywhere — it exists so a
+ *  person can find a currency by the thing printed on a price tag. */
+export function currencyWideSymbol(currency: string): string {
+  return fromRuntimeOr(currency, NAME.WIDE, () => symbolPart(currency, 'symbol'));
+}
+
+function symbolPart(currency: string, display: 'narrowSymbol' | 'symbol'): string {
   try {
     const part = new Intl.NumberFormat(APP_LOCALE, {
       style: 'currency',
       currency,
-      currencyDisplay: 'narrowSymbol',
+      currencyDisplay: display,
     })
       .formatToParts(1)
       .find((p) => p.type === 'currency');
@@ -124,19 +156,21 @@ export function currencySymbol(currency: string): string {
 
 /** The currency's display name in the app locale — "ין יפני", "שקלים חדשים".
  *  From the runtime, so there is no name table to translate or age. */
-export function currencyName(currency: string): string {
-  try {
-    const part = new Intl.NumberFormat(APP_LOCALE, {
-      style: 'currency',
-      currency,
-      currencyDisplay: 'name',
-    })
-      .formatToParts(1)
-      .find((p) => p.type === 'currency');
-    return part?.value ?? currency;
-  } catch {
-    return currency;
-  }
+export function currencyName(currency: string, locale: string = APP_LOCALE): string {
+  return fromRuntimeOr(currency, locale === APP_LOCALE ? NAME.HE : NAME.EN, () => {
+    try {
+      const part = new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency,
+        currencyDisplay: 'name',
+      })
+        .formatToParts(1)
+        .find((p) => p.type === 'currency');
+      return part?.value ?? currency;
+    } catch {
+      return currency;
+    }
+  });
 }
 
 /** LRM / RLM / ALM and the isolate pair — see `currencySymbol`. */

@@ -3,6 +3,7 @@ import {
   COUNTRY_CURRENCY,
   DESTINATIONS,
   currencyForCountry,
+  currencyCountryTerms,
   flagFromCode,
   searchDestinations,
   suggestFlagFromDestination,
@@ -102,5 +103,47 @@ describe('COUNTRY_CURRENCY / currencyForCountry', () => {
   it('keys on ISO-3166 alpha-2 throughout', () => {
     const malformed = Object.keys(COUNTRY_CURRENCY).filter((k) => !/^[A-Z]{2}$/.test(k));
     expect(malformed).toEqual([]);
+  });
+});
+
+describe('currencyCountryTerms — a currency is found by its PLACE', () => {
+  // The matching itself is the frontend's (it needs `Intl` for the currency's own
+  // names, which this package deliberately has no business calling). What lives
+  // here is the DATA: which country words belong to which currency.
+  const terms = (currency: string) => currencyCountryTerms(currency).join(' | ');
+
+  it('carries every name the destination search knows for Iceland', () => {
+    for (const term of ['איסלנד', 'iceland', 'רייקיאוויק', 'reykjavik']) {
+      expect(terms('ISK')).toContain(term);
+    }
+  });
+
+  it('collects ALL of a currency’s countries, not just the first', () => {
+    // The euro is the case that would break a first-wins index.
+    for (const term of ['france', 'ספרד', 'amsterdam']) {
+      expect(terms('EUR')).toContain(term);
+    }
+  });
+
+  it('keeps a country’s words out of a currency it does not belong to', () => {
+    expect(terms('ISK')).not.toContain('japan');
+    expect(terms('JPY')).not.toContain('iceland');
+  });
+
+  it('answers empty rather than throwing for a currency with no curated country', () => {
+    // `DESTINATIONS` is curated, so most of the 152 codes have no entry. The
+    // contract is the table's own: a miss degrades, and the caller still has the
+    // currency's code, names and symbols to match on.
+    expect(currencyCountryTerms('KPW')).toEqual([]);
+  });
+
+  it('covers every destination the app offers', () => {
+    // The guarantee that matters: if a country is pickable as a destination, its
+    // currency carries that country's own name.
+    for (const d of DESTINATIONS) {
+      const currency = currencyForCountry(d.code);
+      expect(currency, `${d.code} has no currency`).toBeDefined();
+      expect(currencyCountryTerms(currency!), `${d.code} → ${currency}`).toContain(d.he);
+    }
   });
 });

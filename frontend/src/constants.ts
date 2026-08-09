@@ -64,8 +64,7 @@ export const APP_LOCALE = 'he-IL';
 export const DEVICE_TIMEZONE =
   typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
 
-/** The device's ISO-3166 region ("IL"), or `undefined` when the platform's
- *  locale carries no region — `he` alone does, `he-IL` does not.
+/** The device's ISO-3166 region ("IL").
  *
  *  Deliberately NOT `APP_LOCALE`'s region, which is always IL by construction:
  *  this is the one place the app asks where the DEVICE is rather than what
@@ -73,10 +72,22 @@ export const DEVICE_TIMEZONE =
  *  is most likely to think in (ADR-0180 §1/§2), read through the same
  *  `COUNTRY_CURRENCY` table the trip's own currency comes from. A wrong answer
  *  costs a picker tap, which is why a guess is acceptable here and nowhere near
- *  a time. */
+ *  a time.
+ *
+ *  **`maximize()` is the whole of this, and its absence was a shipped bug.** A
+ *  phone set to Hebrew reports `navigator.language === 'he'` — a bare language
+ *  with **no region** — so reading `.region` alone answered `undefined` for the
+ *  app's entire current audience, and every one of them opened the app with no
+ *  home currency at all. (The comment that used to sit here had the rule exactly
+ *  backwards: `he` alone carries no region; `he-IL` does.) `maximize()` is
+ *  CLDR's likely-subtags, which is precisely the question being asked — "the
+ *  device says Hebrew, so where probably?" — and it answers `he → IL`,
+ *  `en → US`, `ja → JP`. It only ever fills a blank: a locale that already
+ *  names a region keeps it, so an `en-US` phone stays US. */
 export const DEVICE_REGION: string | undefined = (() => {
   try {
-    return new Intl.Locale(navigator.language).region ?? undefined;
+    const locale = new Intl.Locale(navigator.language);
+    return locale.region ?? locale.maximize().region ?? undefined;
   } catch {
     return undefined;
   }
