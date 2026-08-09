@@ -13,7 +13,7 @@
 
 - **Past dates (1):** `CreateTrip` derives device-local `today` (`todayInTz` + `getNow`) and sets `min={today}` on start, `min={startDate || today}` on end. A start/end before today flags `datesInvalid` and shows a new `datePast` message. A trip already under way (start ≤ today ≤ end) is still allowed.
 - **Out-of-range (2):** `EventForm`'s date input gets `min={trip.startDate}` / `max={trip.endDate}`, plus a submit-time guard (`date < startDate || date > endDate` → `dateOutOfRange`) since a typed value can bypass the native bounds. Overnight events on the last day still file under that day (ADR-0037), so the max is `endDate` inclusive.
-- **Format (3):** new `DEVICE_LOCALE` constant (`Intl.DateTimeFormat().resolvedOptions().locale`); pinned as `lang` on every `<input type="date">`, mirroring TimePicker's `lang` on native time inputs. The input now renders in the device's own convention.
+- **Format (3) — REVERSED 2026-08-09 by [ADR-0176](../decisions/0176-a-date-reads-day-first-wherever-you-open-it.md)** (the device is the wrong authority for a one-language app, and `lang` is honoured by Chromium only — WebKit follows the OS region, so the same bug was still reportable from an iPhone). What follows is what shipped here: new `DEVICE_LOCALE` constant (`Intl.DateTimeFormat().resolvedOptions().locale`); pinned as `lang` on every `<input type="date">`, mirroring TimePicker's `lang` on native time inputs. The input now renders in the device's own convention.
 - **Edge cases (4):** `createTripSchema` gains a `.refine(endDate ≥ startDate)` so client and server reject an inverted range identically (ADR-0023 pattern, matching `createEventSchema`); the end picker's `min` links to the chosen start.
 
 ## Files

@@ -14,10 +14,14 @@
    names, so it is focused the instant it is marked — and `field.css`'s focus rule
    (border-color: teal) would otherwise out-specify this one and paint the refused
    control as the healthy focused one. */
-[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field),
-[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field):focus-visible,
-:is(input, textarea, select, .pp-trigger, .tp-field)[data-invalid],
-:is(input, textarea, select, .pp-trigger, .tp-field)[data-invalid]:focus-visible {
+[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field, .df),
+[data-invalid] :is(input, textarea, select, .pp-trigger, .tp-field, .df):focus-visible,
+:is(input, textarea, select, .pp-trigger, .tp-field, .df)[data-invalid],
+:is(input, textarea, select, .pp-trigger, .tp-field, .df)[data-invalid]:focus-visible,
+/* `.df` (ADR-0176) holds a real input, so what is focused is a CHILD of the marked box —
+   `:focus-visible` never matches the box itself and the host's own focus rule would
+   otherwise repaint a refused field as the healthy focused one. */
+:is(.tp-field, .df)[data-invalid]:focus-within {
   border-color: var(--miss);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--miss) 20%, transparent);
 }

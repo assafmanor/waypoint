@@ -88,7 +88,7 @@ import {
   type TabId,
 } from './constants';
 import { type Mode } from './lib/mode';
-import { monthLabelFor, tripDates } from './lib/time';
+import { monthLabelFor, tripDates, weekdayLetter } from './lib/time';
 import { liveToday } from './lib/places';
 import { t } from './i18n/he';
 import './App.css';
@@ -261,10 +261,6 @@ export function Header({
   const total = dates.length;
   const dayNumber =
     Math.round((Date.parse(activeDate) - Date.parse(trip.startDate)) / MS_PER_DAY) + 1;
-  const weekdayLetter = new Intl.DateTimeFormat('he-IL', {
-    weekday: 'narrow',
-    timeZone: trip.timezone,
-  });
   let prevDate: string | undefined;
   const days = dates.map((date) => {
     const monthLabel = monthLabelFor(date, prevDate);
@@ -272,7 +268,7 @@ export function Header({
     return {
       date,
       dayOfMonth: date.slice(8),
-      letter: weekdayLetter.format(new Date(`${date}T00:00:00Z`)),
+      letter: weekdayLetter(date),
       monthLabel: monthLabel ?? undefined,
       hasEvents: datesWithEvents.has(date),
     };

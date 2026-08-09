@@ -22,7 +22,7 @@ import { usePlaceLabels } from '../state/place-labels';
 import { AddLocationButton } from './primitives/PlacePicker';
 import { useShowPlaceOnMap, useStartPlaceErrand } from '../state/map-scope-state';
 import { routeTitle } from '../lib/route-title';
-import { formatTime } from '../lib/time';
+import { formatDayDate, formatDayTime } from '../lib/time';
 import { bookingDurationUnit, formatBookingDuration, timingLabels } from '../lib/booking-timing';
 import { badgeClassForBookingType } from '../lib/transitions';
 import { BOOKING_TYPE_ICON, chosenIcon, CODE_PREFIX, DOT_SEPARATOR } from '../constants';
@@ -32,18 +32,6 @@ import { t } from '../i18n/he';
 interface Wifi {
   network?: string;
   password?: string;
-}
-
-// Displayed text is always the Hebrew UI locale, independent of the device
-// locale (which drives native date inputs, not app-rendered text).
-export function dayTime(iso: string, timeZone: string): string {
-  const day = new Intl.DateTimeFormat('he-IL', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    timeZone,
-  }).format(new Date(iso));
-  return `${day} · ${formatTime(iso, timeZone)}`;
 }
 
 export function BookingDetail({
@@ -207,13 +195,13 @@ export function BookingDetail({
             <Fact k={t.index.detail.timing} v={t.index.detail.unscheduled} />
           ) : endsAt ? (
             <>
-              <Fact k={labels.start} v={startsAt ? dayTime(startsAt, tz) : '-'} />
-              <Fact k={labels.end} v={dayTime(endsAt, tz)} />
+              <Fact k={labels.start} v={startsAt ? formatDayTime(startsAt, tz) : '-'} />
+              <Fact k={labels.end} v={formatDayTime(endsAt, tz)} />
             </>
           ) : (
             <Fact
               k={startsAt ? labels.start : t.index.detail.timing}
-              v={startsAt ? dayTime(startsAt, tz) : linkedEvent.date}
+              v={startsAt ? formatDayTime(startsAt, tz) : formatDayDate(linkedEvent.date)}
             />
           )}
           {duration && <Fact k={t.index.detail.duration} v={duration} />}
@@ -272,8 +260,10 @@ export function BookingDetail({
               text={t.index.detail.pairLeg(
                 pair.leg,
                 pair.partnerEvent?.startsAt
-                  ? dayTime(pair.partnerEvent.startsAt, tz)
-                  : (pair.partnerEvent?.date ?? t.index.detail.pairUnscheduled),
+                  ? formatDayTime(pair.partnerEvent.startsAt, tz)
+                  : pair.partnerEvent?.date
+                    ? formatDayDate(pair.partnerEvent.date)
+                    : t.index.detail.pairUnscheduled,
               )}
               onOpen={onOpen && (() => onOpen(pair.partner))}
             />
@@ -355,7 +345,11 @@ function journeyNeighbour(journey: Journey, tz: string) {
   return {
     booking: target.booking,
     text: (next ? t.index.detail.journeyNext : t.index.detail.journeyPrev)(
-      at ? dayTime(at, tz) : (target.event?.date ?? t.index.detail.pairUnscheduled),
+      at
+        ? formatDayTime(at, tz)
+        : target.event?.date
+          ? formatDayDate(target.event.date)
+          : t.index.detail.pairUnscheduled,
     ),
   };
 }

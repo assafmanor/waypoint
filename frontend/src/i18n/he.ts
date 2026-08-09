@@ -1161,6 +1161,10 @@ export const t = {
       tzLabel: 'אזור זמן',
       tzMultiNote: 'היעד משתרע על כמה אזורי זמן · זו נקודת התחלה, אפשר לשנות',
       datesLabel: 'מתי?',
+      // The two boxes sit under one label with no caption of their own, so an empty
+      // field says which end it is (the native placeholder used to, badly).
+      dateFrom: 'יציאה',
+      dateTo: 'חזרה',
       dateError: 'רגע - תאריך הסיום לפני ההתחלה',
       datePast: 'רגע - התאריך כבר עבר',
       nameLabel: 'איך נקרא לזה?',
@@ -2006,6 +2010,7 @@ export const t = {
   whenField: {
     dateCap: 'תאריך',
     timeCap: 'שעה',
+    addDate: 'הוסף תאריך',
     addTime: 'הוסף שעה',
     exactTime: 'שעה מדויקת',
     durationPrefix: 'משך:',

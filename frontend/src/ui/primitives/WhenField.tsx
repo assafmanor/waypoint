@@ -18,11 +18,12 @@
 // every time panel auto-closes the moment a value is picked.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type DurationUnit } from '@waypoint/shared';
-import { DEVICE_LOCALE, MS_PER_DAY } from '../../constants';
+import { MS_PER_DAY } from '../../constants';
 import { zonedIso } from '../../lib/time';
 import { formatDuration } from '../../lib/duration';
 import { nightPhrase } from '../../lib/hebrew';
 import { TimePicker } from '../TimePicker';
+import { DateField } from './DateField';
 import { TimeField } from './TimeField';
 import { ZoneChip, type ZoneChipProps } from './ZoneChip';
 import { Field } from './Field';
@@ -114,15 +115,13 @@ function WhenDay({
   return (
     <div className="wf">
       <Field label={dateLabel ?? t.eventForm.dateLabel} htmlFor={dateId} {...marks?.date}>
-        <input
-          type="date"
+        <DateField
           id={dateId}
           className="wf-date"
-          lang={DEVICE_LOCALE}
           min={minDate}
           max={maxDate}
           value={date}
-          onChange={(e) => onChange({ date: e.target.value, start, end })}
+          onChange={(next) => onChange({ date: next, start, end })}
         />
       </Field>
       {/* The time keeps its own caption inside `TimePicker`, so the shell around it
@@ -289,14 +288,12 @@ function SpanLeg({
       <div className="wf-leg-row">
         <label className="tp-field wf-date-cell">
           <span className="tp-cap">{t.whenField.dateCap}</span>
-          <input
-            type="date"
+          <DateField
             className="tp-val wf-date-val"
-            lang={DEVICE_LOCALE}
             min={minDate}
             max={maxDate}
             value={date}
-            onChange={(e) => commit(e.target.value, time)}
+            onChange={(next) => commit(next, time)}
           />
         </label>
         <TimeField

@@ -22,9 +22,9 @@ import { useTrip } from '../state/trip-state';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
 import { eventMapPlace, eventShowOnMap, eventZones, mapsDirectionsUrl } from '../lib/places';
 import type { ZoneContext } from '../lib/places';
-import { formatTime } from '../lib/time';
+import { formatDayDate, formatDayTime, formatTime } from '../lib/time';
 import { DetailSheet } from './DetailSheet';
-import { Fact, LocationFact, dayTime } from './BookingDetail';
+import { Fact, LocationFact } from './BookingDetail';
 import { EventTitle } from './EventTitle';
 import { t } from '../i18n/he';
 
@@ -89,10 +89,10 @@ export function EventDetail({
             k={t.index.detail.timing}
             v={
               event.startsAt
-                ? `${dayTime(event.startsAt, startZone)}${
+                ? `${formatDayTime(event.startsAt, startZone)}${
                     event.endsAt ? `–${formatTime(event.endsAt, endZone)}` : ''
                   }`
-                : event.date
+                : formatDayDate(event.date)
             }
           />
         </>

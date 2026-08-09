@@ -2447,7 +2447,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   margin-bottom: 5px;
 }
 .set-fld input,
-.set-fld select {
+.set-fld select,
+.set-fld .df {
   font: inherit;
   width: 100%;
   background: var(--card);

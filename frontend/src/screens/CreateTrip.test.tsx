@@ -186,9 +186,11 @@ describe('CreateTrip — the birth sequence (ADR-0142)', () => {
   // (ADR-0150 §7 — the reason the dates shell says `controlsMarked`).
   it('accuses the end of a backwards range, not the start', () => {
     render(wrapNav(<CreateTrip />));
-    const [start, end] = document.querySelectorAll('input[type="date"]');
-    fireEvent.change(start, { target: { value: '2026-09-23' } });
-    fireEvent.change(end, { target: { value: '2026-09-12' } });
+    // The mark rides the date BOX (`.df`, ADR-0176) — the wrapper is what wears the
+    // chrome now, so that is where a refusal has to show.
+    const [start, end] = document.querySelectorAll('.date-row .df');
+    fireEvent.change(start.querySelector('input')!, { target: { value: '2026-09-23' } });
+    fireEvent.change(end.querySelector('input')!, { target: { value: '2026-09-12' } });
 
     expect(end.hasAttribute('data-invalid')).toBe(true);
     expect(start.hasAttribute('data-invalid')).toBe(false);
@@ -271,7 +273,9 @@ describe('CreateTrip — the birth sequence (ADR-0142)', () => {
     await create();
     await act(async () => void vi.advanceTimersByTime(TRIP_BIRTH.TOTAL_MS));
     const flaps = [...document.querySelectorAll('.birth-flap')].map((f) => f.textContent);
-    expect(flaps).toEqual(['09.12', TRIP.name, t.shell.created.boardDays(12)]);
+    // Day-first, like every other date in the app: the flap used to slice the ISO
+    // string and print `09.12` for a September 12th departure (ADR-0176).
+    expect(flaps).toEqual(['12.09', TRIP.name, t.shell.created.boardDays(12)]);
   });
 
   it('confirms a copied invite in place, not only in the toast', async () => {

@@ -1028,7 +1028,8 @@
   color: var(--muted);
   margin-bottom: 6px;
 }
-.field input {
+.field input,
+.field .df {
   width: 100%;
   font: inherit;
   font-size: 15px;
@@ -1043,7 +1044,8 @@
   color: var(--faint);
   font-weight: 500;
 }
-.field input:focus-visible {
+.field input:focus-visible,
+.field .df:focus-within {
   outline: 2.5px solid var(--teal);
   outline-offset: 1px;
   border-color: transparent;
@@ -1122,10 +1124,11 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
 }
-.field input[type='date'] {
+/* The creation form's two date boxes (`DateField`, ADR-0176) — mono and centred, so
+   the pair reads as one range. The box is the wrapper; its inner input inherits both. */
+.field .df {
   font-family: var(--font-mono);
   font-size: 13.5px;
-  direction: ltr;
   text-align: center;
 }
 .field-error {

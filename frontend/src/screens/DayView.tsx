@@ -57,6 +57,7 @@ import {
   isoToTimeInput,
   hardConflicts,
   zonedIso,
+  weekdayName,
   resolveEndIso,
   type TimeGroup,
   type TimeItem,
@@ -88,7 +89,7 @@ import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { bookingWhen } from '../lib/booking-journey';
 import { hoursPhrase } from '../lib/duration';
 import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
-import { CODE_PREFIX, DAY_NOON, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
+import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel } from '../lib/glance';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
@@ -375,10 +376,7 @@ export function DayView() {
   };
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
-  const weekday = new Intl.DateTimeFormat('he-IL', {
-    weekday: 'long',
-    timeZone: trip.timezone,
-  }).format(new Date(zonedIso(activeDate, DAY_NOON, trip.timezone)));
+  const weekday = weekdayName(activeDate, trip.timezone);
   const heading = t.day.heading(dayNumber, weekday, trip.destination);
 
   // Per-event display zones (ADR-0107): one builder over the one evidence, shared

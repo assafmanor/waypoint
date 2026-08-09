@@ -65,6 +65,7 @@ import {
   clockRange,
   formatTime,
   zonedIso,
+  weekdayName,
   crossesMidnightZoned,
   type TimeGroup,
   type TimeItem,
@@ -109,7 +110,6 @@ import { useHoldToDrag, type HoldToDragProps } from '../lib/useHoldToDrag';
 import { useDragGhost } from '../lib/useDragGhost';
 import {
   CONTROL_ICON,
-  DAY_NOON,
   DEFAULT_MAYBE_ICON,
   DEFAULT_STAY_ICON,
   DOT_SEPARATOR,
@@ -865,11 +865,7 @@ export function PlanDay() {
   };
 
   const dayNumber = daysBetween(trip.startDate, activeDate) + 1;
-  const dayNoon = new Date(zonedIso(activeDate, DAY_NOON, trip.timezone));
-  const weekday = new Intl.DateTimeFormat('he-IL', {
-    weekday: 'long',
-    timeZone: trip.timezone,
-  }).format(dayNoon);
+  const weekday = weekdayName(activeDate, trip.timezone);
 
   // Multi-zone display (ADR-0107): literally the same context the Trip-mode day
   // view builds, from the same evidence — this screen used to derive its own

@@ -10,7 +10,12 @@ import {
   eventPhase,
   formatCountdown,
   formatTime,
+  formatDayDate,
   formatDayMonth,
+  formatDayMonthYear,
+  formatDayTime,
+  weekdayLetter,
+  weekdayName,
   formatTripDates,
   relativeDay,
   hardConflicts,
@@ -210,6 +215,50 @@ describe('monthLabelFor', () => {
         new Date('2026-08-01T00:00:00Z'),
       ),
     );
+  });
+});
+
+describe("the app renders dates in its own locale, not the device's", () => {
+  // ADR-0176: the UI is Hebrew-only, so a date reads day-first wherever the app is
+  // opened. These four are the ones a device could otherwise re-order or re-word.
+  it('writes a whole date day-first, dot-separated (what a date field shows)', () => {
+    expect(formatDayMonthYear('2026-08-09')).toBe('09.08.2026');
+  });
+
+  it('keeps the date field and the trip range in one numeric shape', () => {
+    expect(formatDayMonthYear('2026-08-09').startsWith(formatDayMonth('2026-08-09'))).toBe(true);
+  });
+
+  it('names an untimed day in Hebrew, with no Latin month or weekday', () => {
+    const out = formatDayDate('2026-07-18');
+    expect(out).toMatch(/[֐-׿]/);
+    expect(out).not.toMatch(/[A-Za-z]/);
+  });
+
+  it('names a timed moment in Hebrew, day then clock', () => {
+    const out = formatDayTime('2026-07-18T09:30:00Z', 'Asia/Jerusalem');
+    expect(out).toMatch(/[֐-׿]/);
+    expect(out).not.toMatch(/[A-Za-z]/);
+    expect(out.endsWith('12:30')).toBe(true);
+  });
+});
+
+describe('weekday labels', () => {
+  // The strip's letter is a CALENDAR fact, so it is read in UTC. Its old formatter was
+  // pinned to the trip zone yet handed a UTC midnight, which named the day before for
+  // any zone west of UTC — this is that regression, at the widest such zone.
+  it('gives a calendar date the same letter in every trip zone', () => {
+    expect(weekdayLetter('2026-08-09')).toBe(
+      new Intl.DateTimeFormat('he-IL', { weekday: 'narrow', timeZone: 'UTC' }).format(
+        new Date('2026-08-09T00:00:00Z'),
+      ),
+    );
+  });
+
+  it('names the day the day IS, in a zone half a world away', () => {
+    // 2026-08-09 is a Sunday. Read at midnight in Pacific/Midway (UTC−11) it would be
+    // Saturday; read at the day's noon, as the day surfaces read it, it is Sunday.
+    expect(weekdayName('2026-08-09', 'Pacific/Midway')).toBe(weekdayName('2026-08-09', 'UTC'));
   });
 });
 

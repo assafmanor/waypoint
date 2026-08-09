@@ -49,17 +49,11 @@ import { IconPicker } from '../ui/IconPicker';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
 import { Field } from '../ui/primitives/Field';
+import { DateField } from '../ui/primitives/DateField';
 import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { Icon } from '../ui/Icon';
-import {
-  MS_PER_DAY,
-  CONTROL_ICON,
-  DEFAULT_TRIP_ICON,
-  DEVICE_LOCALE,
-  EASE_ARRIVE,
-  TRIP_BIRTH,
-} from '../constants';
-import { todayInTz } from '../lib/time';
+import { MS_PER_DAY, CONTROL_ICON, DEFAULT_TRIP_ICON, EASE_ARRIVE, TRIP_BIRTH } from '../constants';
+import { formatDayMonth, todayInTz } from '../lib/time';
 import { getNow } from '../lib/useClock';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
@@ -279,26 +273,24 @@ export function CreateTrip() {
           }
         >
           <div className="date-row">
-            <input
-              type="date"
-              lang={DEVICE_LOCALE}
+            <DateField
               min={today}
               // Live while the day is already past, and on the save's refusal when it is
               // the one still empty — two reasons, one mark (ADR-0150 §7).
               data-invalid={startInPast || (!startDate && datesMark.error) ? '' : undefined}
               value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                suggest(destination, e.target.value);
+              placeholder={t.shell.newTrip.dateFrom}
+              onChange={(next) => {
+                setStartDate(next);
+                suggest(destination, next);
               }}
             />
-            <input
-              type="date"
-              lang={DEVICE_LOCALE}
+            <DateField
               min={startDate || today}
               value={endDate}
               data-invalid={datesInvalid || (!endDate && datesMark.error) ? '' : undefined}
-              onChange={(e) => setEndDate(e.target.value)}
+              placeholder={t.shell.newTrip.dateTo}
+              onChange={(next) => setEndDate(next)}
             />
           </div>
         </Field>
@@ -633,11 +625,7 @@ function BornBody({ trip, onDone }: { trip: Trip; onDone: () => void }) {
  *  departure IS the trip, so the flaps settle into the start date, the trip's name
  *  and how long it runs. Nothing decorative is being spelled out. */
 function BirthBoard({ trip, days }: { trip: Trip; days: number }) {
-  const flaps = [
-    trip.startDate.slice(5).replace('-', '.'),
-    trip.name,
-    t.shell.created.boardDays(days),
-  ];
+  const flaps = [formatDayMonth(trip.startDate), trip.name, t.shell.created.boardDays(days)];
   return (
     <section className="birth-board" aria-label={t.shell.created.boardLabel}>
       <div className="birth-board-top">

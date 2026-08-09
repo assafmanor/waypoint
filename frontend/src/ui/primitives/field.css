@@ -17,7 +17,8 @@
 
 .field input,
 .field textarea,
-.field select {
+.field select,
+.field .df {
   font: inherit;
   font-size: var(--text-body);
   font-weight: 500;
@@ -36,7 +37,10 @@
 
 .field input:focus-visible,
 .field textarea:focus-visible,
-.field select:focus-visible {
+.field select:focus-visible,
+/* The date box holds the input that takes focus, so the box is never `:focus-visible`
+   itself (ADR-0176). */
+.field .df:focus-within {
   outline: none;
   border-color: var(--teal);
 }
