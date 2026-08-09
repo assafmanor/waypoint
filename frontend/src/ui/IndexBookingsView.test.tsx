@@ -81,6 +81,9 @@ const pastFlightEvent: TripEvent = {
 
 let tripBookings = [flight, hotel];
 let tripEvents: TripEvent[] = [];
+// ADR-0174 §1's document mark, so ADR-0179 §5's claim that the marks moved to the
+// title line is asserted rather than described.
+let tripAttachments: { id: string; tripId: string; documentId: string; bookingId: string }[] = [];
 
 // A coord-bearing place for the hotel, so its row can reach the map; the flight has
 // none, so its row must not offer the affordance at all.
@@ -108,7 +111,7 @@ vi.mock('../state/map-scope-state', () => ({
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     // The attachment link list every documents surface reads (ADR-0173/0174).
-    documentAttachments: [],
+    documentAttachments: tripAttachments,
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
@@ -331,6 +334,139 @@ describe('IndexBookingsView (ADR-0098/ADR-0101)', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: t.index.bookingType.flight }));
     expect(screen.getByText(t.index.pastToggle.show(1))).toBeTruthy();
+  });
+});
+
+// THE ROW SAYS **WHAT**, THEN **WHEN** (ADR-0179). Every assertion below guards a fact
+// the row deliberately stopped drawing, and every one of them was unguarded before this
+// suite: the whole 3183-test suite stayed green while the confirmation code, the type chip
+// and the 🔗 glyph came off the row, which is exactly why they are pinned now.
+describe('IndexBookingsView — what the row draws (ADR-0179)', () => {
+  // Clock is mocked to 2026-07-20T00:00:00Z; the trip is Asia/Tokyo, so "today" is 07-20.
+  const timedFlight: TripEvent = {
+    id: 'ev-flight',
+    tripId: 't1',
+    date: '2026-07-22',
+    title: 'טוקיו',
+    kind: EVENT_KIND.HARD,
+    startsAt: '2026-07-22T03:30:00Z', // 12:30 Tokyo
+    endsAt: '2026-07-22T07:15:00Z',
+    status: EVENT_STATUS.PLANNED,
+    bookingId: 'b1',
+    sortOrder: 0,
+    source: EVENT_SOURCE.MANUAL,
+    createdAt: '2026-07-19T00:00:00Z',
+    updatedAt: '2026-07-19T00:00:00Z',
+    updatedBy: 'u1',
+  };
+  // A stay whose opening day has PASSED, so the row reads its closing edge.
+  const midStay: TripEvent = {
+    id: 'ev-hotel',
+    tripId: 't1',
+    date: '2026-07-18',
+    endDate: '2026-07-25',
+    title: 'Shinjuku Granbell',
+    kind: EVENT_KIND.HARD,
+    startsAt: '2026-07-18T06:00:00Z',
+    endsAt: '2026-07-25T02:00:00Z',
+    status: EVENT_STATUS.PLANNED,
+    bookingId: 'b2',
+    sortOrder: 0,
+    source: EVENT_SOURCE.MANUAL,
+    createdAt: '2026-07-19T00:00:00Z',
+    updatedAt: '2026-07-19T00:00:00Z',
+    updatedBy: 'u1',
+  };
+
+  afterEach(() => {
+    cleanup();
+    tripBookings = [flight, hotel];
+    tripEvents = [];
+    tripAttachments = [];
+  });
+
+  const rowOf = (container: HTMLElement, title: string) =>
+    [...container.querySelectorAll('.wp-listrow')].find((r) =>
+      r.querySelector('.wp-listrow-title')?.textContent?.includes(title),
+    ) as HTMLElement;
+
+  it('draws no confirmation code on the row — it is a read, not a row (§2c)', () => {
+    tripEvents = [timedFlight];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    // `flight.confirmationCode` is 'ABC123'; the trailing slot used to carry it, sized by
+    // its own content, which is what squeezed the title to 13% of the row.
+    expect(container.querySelector('.wp-listrow .code')).toBeNull();
+    expect(screen.queryByText(/ABC123/)).toBeNull();
+  });
+
+  it('drops the type chip and the 🔗 glyph the badge and the sentence already say (§2a/§2b)', () => {
+    tripEvents = [timedFlight];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'טוקיו');
+    expect(row.querySelector('.tag-type')).toBeNull();
+    expect(row.querySelector('.link-cue')).toBeNull();
+  });
+
+  it('puts exactly ONE lock, in the when line, on a hard booking (§3)', () => {
+    tripEvents = [timedFlight];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'טוקיו');
+    expect(row.querySelector('.bk-when .hard-lock')).toBeTruthy();
+    // Being drawn more than once is the defect the mark was collected to end.
+    expect(row.querySelectorAll('.hard-lock')).toHaveLength(1);
+    // And it is the SHARED mark, not a third copy of it.
+    expect(row.querySelector('.wp-listrow-title .hard-lock')).toBeNull();
+  });
+
+  it('draws no transition verb on a start edge, where the badge already says the type (§2d)', () => {
+    tripEvents = [timedFlight];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'טוקיו');
+    expect(row.querySelector('.bk-verb')).toBeNull();
+    // The facts it DOES keep: the day and the clock, the two that tell rows apart.
+    expect(row.querySelector('.bk-day')?.textContent).toBeTruthy();
+    expect(row.querySelector('.bk-clock')?.textContent).toBe('12:30');
+  });
+
+  it('draws the verb on a closing edge, where it is the only thing that can say which end (§2d)', () => {
+    tripEvents = [midStay];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'Shinjuku Granbell');
+    expect(row.querySelector('.bk-verb')?.textContent).toBe('צ׳ק-אאוט');
+  });
+
+  it('yields the duration to the verb — one annotation, and `5 לילות` beside a check-out misreads (§4)', () => {
+    tripEvents = [midStay];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'Shinjuku Granbell');
+    expect(row.querySelector('.bk-verb')).toBeTruthy();
+    expect(row.querySelector('.bk-dur')).toBeNull();
+  });
+
+  it('keeps the duration where there is no verb to yield to', () => {
+    tripEvents = [timedFlight];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'טוקיו');
+    expect(row.querySelector('.bk-verb')).toBeNull();
+    expect(row.querySelector('.bk-dur')?.textContent).toBeTruthy();
+  });
+
+  it('rides the marks on the TITLE line, not the when line (§5)', () => {
+    tripEvents = [timedFlight];
+    tripAttachments = [{ id: 'a1', tripId: 't1', documentId: 'd1', bookingId: 'b1' }];
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'טוקיו');
+    // They are unshrinkable by nature, and on the when line they took the room the day
+    // needed — measured as four rows losing their day to the ellipsis at 360px.
+    expect(row.querySelector('.wp-listrow-title .doc-mark')).toBeTruthy();
+    expect(row.querySelector('.bk-when .doc-mark')).toBeNull();
+  });
+
+  it('says "not scheduled" in words where there is no when line at all', () => {
+    const { container } = render(wrap(<IndexBookingsView onClose={() => {}} />));
+    const row = rowOf(container, 'טוקיו');
+    expect(row.querySelector('.bk-when')).toBeNull();
+    expect(row.querySelector('.unlinked')?.textContent).toBe(t.index.unlinked);
   });
 });
 

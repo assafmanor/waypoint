@@ -201,11 +201,11 @@ describe('BuilderRow — the row opens a read', () => {
 describe('BuilderRow — the hard mark is drawn once, on the when line', () => {
   it('puts the lock inside the time control and drops the chip and the leading anchor', () => {
     const { container } = row(HARD, { onPickTime: vi.fn() });
-    expect(container.querySelector('.bld-time .bld-timelock')).toBeTruthy();
+    expect(container.querySelector('.bld-time .hard-lock')).toBeTruthy();
     expect(container.querySelector('.bld-anchor')).toBeNull();
     expect(container.querySelector('.tag-hard')).toBeNull();
     // Exactly one — being drawn three times is the defect this undoes.
-    expect(container.querySelectorAll('.bld-timelock')).toHaveLength(1);
+    expect(container.querySelectorAll('.hard-lock')).toHaveLength(1);
   });
 
   it('marks an UNTIMED hard row with the chip, the one row with no when line to hang on', () => {
@@ -221,6 +221,6 @@ describe('BuilderRow — the hard mark is drawn once, on the when line', () => {
     const { container } = row(A, { onPickTime: vi.fn() });
     expect(container.querySelector('.bld')!.classList.contains('soft')).toBe(true);
     expect(container.querySelector('.tag-soft')).toBeNull();
-    expect(container.querySelector('.bld-timelock')).toBeNull();
+    expect(container.querySelector('.hard-lock')).toBeNull();
   });
 });

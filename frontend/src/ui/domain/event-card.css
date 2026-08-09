@@ -292,12 +292,10 @@
 }
 /* Elapsed duration (ADR-0084/0107) — quiet, since it's context for the range
    above, shown on transport + zone-shifted rows where the raw times can misread
-   the real span. */
+   the real span. Family, weight and hue are `.when-dur`'s (ADR-0179); this card keeps
+   only its own density. */
 .wp-event-dur {
-  font-family: var(--font-mono);
   font-size: 10.5px;
-  font-weight: 700;
-  color: var(--muted);
 }
 /* Zone-shift pill (ADR-0107 multi-zone): shows how far the clock jumps
    (destination vs origin on a crossing, else vs the day's ambient zone), only
@@ -317,19 +315,10 @@
 }
 
 /* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0178 §4) — the hard mark left the
-   title line for the when line, where ADR-0011's commitment actually points. Same
-   element and same size as the builder row's, since the two modes now draw one
-   object. */
-.wp-event-timelock {
-  display: inline-grid;
-  place-items: center;
-  color: var(--amber-deep);
-  opacity: 0.85;
-}
-.wp-event-timelock .icon {
-  inline-size: 12px;
-  block-size: 12px;
-}
+   title line for the when line, where ADR-0011's commitment actually points. The rule
+   that used to live here was byte-identical to the builder row's, so ADR-0179 collected
+   both into `.hard-lock` (`ui/when-line.css`) rather than let the Index row add a third.
+   Nothing about the mark changed; it just has one home now. */
 
 /* Status tags. The hard/soft KIND chip is gone (ADR-0178 §4 — the lock says it, once);
    what stays is the settle/phase RECORD, which is a different fact (ADR-0043/0044). */

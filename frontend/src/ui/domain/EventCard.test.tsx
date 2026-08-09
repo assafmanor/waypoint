@@ -44,7 +44,7 @@ describe('EventCard', () => {
     // `base` carries no `startsAt`, so this row has no when line to hang the lock on
     // and keeps the chip — the fallback ADR-0178 §4 leaves for an unplaced commitment.
     expect(container.querySelector('.wp-event-tag-hard')?.textContent).toContain(t.event.hard);
-    expect(container.querySelector('.wp-event-timelock')).toBeNull();
+    expect(container.querySelector('.hard-lock')).toBeNull();
     // Hard events have no ±nudge stepper.
     expect(container.querySelector('.wp-event-act.stepper')).toBeNull();
     // The edit-guard warning shows the code.
@@ -70,7 +70,7 @@ describe('EventCard', () => {
     // chip was the only one of the three marks costing the title width.
     expect(card.classList.contains('soft')).toBe(true);
     expect(container.querySelector('.wp-event-tag-soft')).toBeNull();
-    expect(container.querySelector('.wp-event-timelock')).toBeNull();
+    expect(container.querySelector('.hard-lock')).toBeNull();
     expect(container.querySelector('.wp-event-act.stepper')).toBeTruthy();
   });
 
@@ -86,10 +86,10 @@ describe('EventCard', () => {
       ),
     );
     // The mark moved to where ADR-0011's commitment points: beside the time.
-    expect(container.querySelector('.wp-event-time .wp-event-timelock')).toBeTruthy();
+    expect(container.querySelector('.wp-event-time .hard-lock')).toBeTruthy();
     expect(container.querySelector('.wp-event-tag-hard')).toBeNull();
     // Exactly one — the whole point is that hard stopped being drawn three times.
-    expect(container.querySelectorAll('.wp-event-timelock')).toHaveLength(1);
+    expect(container.querySelectorAll('.hard-lock')).toHaveLength(1);
   });
 
   it('a soft row keeps its chip only while it is NOW, since that is not the kind', () => {

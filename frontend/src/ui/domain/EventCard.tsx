@@ -18,6 +18,7 @@ import type { EventZones } from '../../lib/places';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { CONTROL_ICON, DELAY_STEP_MINUTES, DOT_SEPARATOR } from '../../constants';
 import { Icon } from '../Icon';
+import { HardLock } from '../HardLock';
 import { TitleLabel } from '../TitleLabel';
 import { RowManageSheet, type RowAction } from './ListRow';
 import { PlaceBadge } from './PlaceBadge';
@@ -286,11 +287,7 @@ export function EventCard(props: EventCardProps) {
   const endZone = zones?.endZone ?? tz;
   const timeBlock = startsAt && (
     <span className="wp-event-time">
-      {isHard && (
-        <span className="wp-event-timelock" aria-label={t.event.hard} title={t.event.hard}>
-          <Icon name="lock" />
-        </span>
-      )}
+      {isHard && <HardLock />}
       <span dir="auto">
         {formatTime(startsAt, startZone)}
         {endsAt && `–${formatTime(endsAt, endZone)}`}
@@ -302,7 +299,7 @@ export function EventCard(props: EventCardProps) {
       </span>
       {(duration || zones?.deltaMinutes != null) && (
         <span className="wp-event-timemeta">
-          {duration && <span className="wp-event-dur">{duration}</span>}
+          {duration && <span className="when-dur wp-event-dur">{duration}</span>}
           {zones?.deltaMinutes != null && <ZoneShiftPill minutes={zones.deltaMinutes} />}
         </span>
       )}

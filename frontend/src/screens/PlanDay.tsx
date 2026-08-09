@@ -137,6 +137,7 @@ import { UnplacedCommitment } from '../ui/domain/UnplacedCommitment';
 import { routeDisplay } from '../ui/route-display';
 import { IconPicker } from '../ui/IconPicker';
 import { Icon } from '../ui/Icon';
+import { HardLock } from '../ui/HardLock';
 import { NavArrow } from '../ui/NavArrow';
 import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
@@ -1979,11 +1980,7 @@ export function BuilderRow({
   // read-only archive renders no time element and no `＋ שעה` button. It keeps the
   // chip, which is the only surface left to carry it.
   const hasWhenSlot = !!event.startsAt || !!onPickTime;
-  const hardLock = isHard ? (
-    <span className="bld-timelock" aria-label={t.event.hard} title={t.event.hard}>
-      <Icon name="lock" />
-    </span>
-  ) : null;
+  const hardLock = isHard ? <HardLock /> : null;
 
   const mainContent = (
     <>
@@ -2055,7 +2052,7 @@ export function BuilderRow({
               </span>
               {(duration || zones?.deltaMinutes != null) && (
                 <span className="bld-timemeta">
-                  {duration && <span className="bld-dur">{duration}</span>}
+                  {duration && <span className="when-dur bld-dur">{duration}</span>}
                   {zones?.deltaMinutes != null && (
                     <ZoneShiftPill minutes={zones.deltaMinutes} className="bld-tzdelta" />
                   )}

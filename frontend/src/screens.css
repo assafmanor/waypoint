@@ -1738,23 +1738,14 @@
 }
 /* ONE LOCK, BESIDE THE THING IT LOCKS (ADR-0178 §4). Hard/soft was drawn three
    times — a leading anchor, this chip's text, and the border (solid against
-   soft's dashed). Two are gone; the survivor sits here because ADR-0011's hard
-   event is a commitment about its TIME, and the time is now a sentence with a
-   subject. */
-.bld-timelock {
-  display: inline-grid;
-  place-items: center;
-  color: var(--amber-deep);
-  opacity: 0.85;
-}
-.bld-timelock .icon {
-  inline-size: 12px;
-  block-size: 12px;
-}
+   soft's dashed). Two are gone; the survivor sits beside the time because ADR-0011's
+   hard event is a commitment about its TIME.
+
+   The rule itself has moved: it was byte-identical to the day card's, and ADR-0179
+   collected both into `.hard-lock` (`ui/when-line.css`) rather than let the Index
+   booking row copy it a third time. */
 .bld-dur {
   font-size: 10px;
-  font-weight: 700;
-  color: var(--muted);
 }
 /* Zone-shift pill on a Plan-builder row (ADR-0107): matches the day-view pill —
    amber, mono, how far the clock jumps. Only shown when the shift is non-zero. */
@@ -2851,9 +2842,15 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   overflow: hidden;
 }
 /* Booking + document rows migrated onto the shared ListRow (`wp-listrow*`, review
-   U-03); its frame/badge/title/meta/kebab live in ui/domain/list-row.css. Only the
-   trailing-slot CONTENT keeps Index-scoped rules: the confirmation-code chip
-   (mono, amber = commitment) rides the `right` slot. */
+   U-03); its frame/badge/title/meta/kebab live in ui/domain/list-row.css.
+
+   **THE CONFIRMATION CODE NO LONGER RIDES THE TRAILING SLOT** (ADR-0179 §2c). `.code`
+   stays defined because the detail view still draws it — it is the row that stopped.
+   The slot is `flex: 0 0 auto`, so an unbounded string in it was sized by its own
+   content and the title got the remainder: 43px of 330 at 360px on the reported row,
+   which is ADR-0178's defect one screen over. What is left in the slot is a constant —
+   the 19px sync column and the ⋯ — so a title's width no longer depends on another
+   row's data. */
 .index .code {
   font-family: var(--font-mono);
   font-size: 11.5px;
@@ -2868,11 +2865,89 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   border-radius: 6px;
   padding: 1.5px 6px;
 }
-.index .link-cue,
 .index .unlinked {
   font-size: 10.5px;
   font-weight: 700;
   color: var(--muted);
+}
+
+/* ── THE WHEN LINE (ADR-0179 §3) ────────────────────────────────────────────
+   The same object as `.wp-event-time` one surface over, at this row's density
+   rather than the day card's: a sentence whose subject is the clock, with the
+   lock beside the thing it locks and the annotation quiet after it. The 🔗 glyph
+   this replaces was decoration on the yes-branch — the sentence IS the proof the
+   booking is scheduled, and the other state says `לא משובץ` in words.
+
+   **ONE LINE, ALWAYS**, and `nowrap` is load-bearing rather than defensive. Drawn
+   first as `flex-wrap: wrap` on the reading that ADR-0178 §3 lets the day card's
+   when line wrap; rendered, it did not wrap, it STACKED — flex distributes negative
+   free space only WITHIN a line, so a container permitted to wrap never asks its
+   shrinkable child to shrink, and the rows carrying marks reached four lines at
+   360px. `.wp-event-m`'s comment already said this in as many words (ADR-0152 §6c).
+   The difference from ADR-0178 is real and not a contradiction: what wraps there is
+   a zone PILL, a fixed badge with nowhere to shrink to; what overflows here is text,
+   which has an ellipsis. */
+.index .bk-when {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+/* THE CLOCK IS THE SUBJECT — mono and full ink while everything around it is
+   muted, the hierarchy `.wp-event-time` already has. This is why `scheduleParts`
+   exists: flex cannot style, protect or re-order half of a text node. */
+.index .bk-clock {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+/* THE DAY IS PROTECTED; THE VERB IS WHAT GIVES WAY. These were one span until the
+   stress set was rendered: with a single shrinkable item the `…` takes the TAIL,
+   and the tail is the day — the check-out row came out `צ׳ק-אאוט …` and lost
+   `מחר`, the one fact that tells it from every other row, to keep a word the badge
+   half-says already. Two items state the priority instead of leaving it to source
+   order, and a truncated `צ׳ק-אא…` still reads as check-OUT. */
+.index .bk-verb {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.index .bk-day {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+/* Context for the clock above it, not a peer of it — the demotion `.wp-event-dur`
+   already makes, at this row's smaller ramp. */
+/* Family, weight and hue are `.when-dur`'s (`ui/when-line.css`); this row keeps only
+   its own density and the flex behaviour its line needs. */
+.index .bk-dur {
+  font-size: 10px;
+  opacity: 0.85;
+  flex: 0 0 auto;
+}
+/* THE SEPARATOR IS DRAWN, NOT RENDERED — the same `::before` mechanism both day rows
+   already use, so the `·` stays out of the accessibility tree. Every part after the
+   first gets one, except the part following the lock: the lock is a mark on the
+   sentence, not a fact in it, so `🔒 · מחר` would be punctuating nothing. */
+.index .bk-when > *:not(:first-child)::before {
+  content: '·';
+  margin-inline-end: 5px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+.index .bk-when > .hard-lock + *::before {
+  content: none;
 }
 /* transport route: origin → destination identity of a flight/train row. flex +
    explicit RTL so the origin sits at the start (right) and the arrow points at
@@ -4161,12 +4236,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 }
 .bk-badge.trans {
   background: rgba(233, 166, 60, 0.12);
-}
-/* Hard-booking lock, riding the shared row's title slot (ADR-0011 · ADR-0059 §3). */
-.index .bk-lock {
-  font-size: 11px;
-  color: var(--amber-deep);
-  flex: 0 0 auto;
 }
 
 /* The shelf's group headers (ADR-0116 §2) — the same quiet divider the Map list's
