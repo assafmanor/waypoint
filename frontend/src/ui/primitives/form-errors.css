@@ -25,8 +25,9 @@
 /* The date box (`.df`, ADR-0176) gets the same mark from its own rule, deliberately a
    class heavier. Two reasons, and the paragraph above is the first one arriving twice:
    the box is not itself focusable — the input INSIDE it is — so the mark has to survive
-   `:focus-within`, and `.field .df:focus-within` is precisely the teal-over-refusal trap
-   described above, one specificity step up from where it was met before. Measured in a
+   `:focus-within`, and the token's own `.df.vt-date:focus-within` (amber, `value-token.css`)
+   is precisely the focus-over-refusal trap described above, one specificity step up from
+   where it was met before. Measured in a
    real browser (jsdom reports no colour at all): without this the refused end of a trip's
    date range painted teal, and the day field kept its neutral border under the ring.
 

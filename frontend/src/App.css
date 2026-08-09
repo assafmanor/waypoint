@@ -1028,8 +1028,11 @@
   color: var(--muted);
   margin-bottom: 6px;
 }
-.field input,
-.field .df {
+/* `.df` is NOT in these lists any more (ADR-0177 §5). Every `DateField` in the app is a
+   `ValueToken` now — all six call sites pass `tokenClass('date')` — so a host painting a
+   box around one only ever painted something the token immediately undrew. Leaving them
+   is what forced `value-token.css` to carry defensive overrides. */
+.field input {
   width: 100%;
   font: inherit;
   font-size: 15px;
@@ -1044,8 +1047,7 @@
   color: var(--faint);
   font-weight: 500;
 }
-.field input:focus-visible,
-.field .df:focus-within {
+.field input:focus-visible {
   outline: 2.5px solid var(--teal);
   outline-offset: 1px;
   border-color: transparent;

@@ -75,9 +75,11 @@ describe('ValueToken', () => {
         15:00
       </ValueToken>,
     );
-    // Hidden by clipping, never by `display: none` / `visibility: hidden`, which would
-    // take it out of the accessibility tree along with the pixels.
-    expect(container.querySelector('.vt-cap')?.textContent).toBe('התחלה');
+    // App.css's SHARED `.visually-hidden`, not a class of this primitive's own: the
+    // codebase already had three clip idioms and a private fourth is what rule 8 exists
+    // to stop. Clipping, never `display: none` / `visibility: hidden`, which would take
+    // the text out of the accessibility tree along with the pixels.
+    expect(container.querySelector('.visually-hidden')?.textContent).toBe('התחלה');
   });
 
   it('carries the refusal mark on the value itself (ADR-0150)', () => {

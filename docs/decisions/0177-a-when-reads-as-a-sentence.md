@@ -116,3 +116,12 @@ Owner report against the shipped build, with a screenshot: _"ללא שעה is ve
 - **The day sat 30px from the clock.** `.wf` spaces its lines with `gap`, and each `Field` shell also carries App.css's `margin-top: 18px`; the two stacked. That read as separation between two labelled groups while each half had a caption, and as one subject falling apart once the captions were gone — the spacing was carrying meaning it no longer had. `.wf > .field + .field` drops the second owner, leaving 12px; the first child keeps its margin, which is what separates the whole block from the field above it.
 
 The through-line: all three are **cascade or hit-testing facts, invisible to the type system and to the unit suite**, on a change whose whole point was deleting shared chrome. A sweep that deletes CSS needs a browser in the loop, not just a green test run.
+
+### And the §5 deletion was not finished
+
+Reviewing the amendment above against rule 8 turned up two things the build had left half-done, both of which had been quietly paid for elsewhere:
+
+- **`.field .df` (App.css and `field.css`) and `.set-fld .df` (screens.css) were still standing.** §5 lists them as deleted; the build deleted their siblings and left these. Every `DateField` in the app is a token — all six call sites pass `tokenClass('date')` — so those rules only ever painted a box the token immediately undrew, and the cost was real: `value-token.css` was carrying `.field .vt-date` / `.set-fld .vt-date` overrides _against rules that should not have existed_. Removing the rules removed the overrides with them, and the rendered token is byte-identical (measured: 1px border, radius 9, padding 4/8, box 31.8px, target 45.8px).
+- **The hidden caption was a fourth clip idiom.** It shipped as a private `.vt-cap`, with a comment claiming it was the first in this codebase. It was not: `App.css` already has `.visually-hidden` (entry chunk, serving the header's sync live region, ADR-0149 §5), and there are two more clip idioms besides. The token now uses the shared utility, and its test asserts that rather than a class of its own.
+
+Worth stating as the general form, because both have the same shape: **a defensive override is evidence that something upstream was not actually deleted.** When a sweep leaves a rule standing, the next file quietly grows a counter-rule, and the pair then looks deliberate.

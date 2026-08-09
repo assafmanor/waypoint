@@ -2381,9 +2381,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   letter-spacing: 0.04em;
   margin-bottom: 5px;
 }
+/* `.df` is NOT in these lists any more (ADR-0177 §5). Every `DateField` in the app is a
+   `ValueToken` now — all six call sites pass `tokenClass('date')` — so a host painting a
+   box around one only ever painted something the token immediately undrew. Leaving them
+   is what forced `value-token.css` to carry defensive overrides. */
 .set-fld input,
-.set-fld select,
-.set-fld .df {
+.set-fld select {
   font: inherit;
   width: 100%;
   background: var(--card);

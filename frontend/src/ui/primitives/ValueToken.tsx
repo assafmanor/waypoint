@@ -47,7 +47,12 @@ export interface ValueTokenProps {
    *  regression this caught: `aria-label` REPLACES the content, so the accessible name
    *  became the caption alone and a screen reader stopped hearing the time the button
    *  currently holds. As hidden text the name is "התחלה 08:00" again, exactly what the
-   *  captioned box read before ADR-0177 removed its visible caption. */
+   *  captioned box read before ADR-0177 removed its visible caption.
+   *
+   *  Hidden through App.css's existing `.visually-hidden`, not a class of this
+   *  primitive's own — that utility is in the entry chunk and already serves the
+   *  header's sync live region (ADR-0149 §5). A private copy here was the first draft,
+   *  and would have been a FOURTH clip idiom in a codebase that already had three. */
   label?: string;
   title?: string;
   /** ADR-0150's refusal mark, spread from `errors.field(name)` — the token IS the box
@@ -80,7 +85,7 @@ export function ValueToken({
       title={title}
       data-invalid={invalid}
     >
-      {label && <span className="vt-cap">{label}</span>}
+      {label && <span className="visually-hidden">{label}</span>}
       {children}
     </button>
   );

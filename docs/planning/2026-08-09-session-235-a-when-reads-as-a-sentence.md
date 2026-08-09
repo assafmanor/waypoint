@@ -99,3 +99,12 @@ Owner reported against the shipped build: the clear link looked like a bug, **th
 **What they have in common is the useful part.** Every one is a cascade or hit-testing fact — invisible to TypeScript, invisible to 3178 unit tests, and invisible to an e2e suite that only ever `.fill()`s a date instead of clicking it. The change's whole point was deleting shared CSS, which is precisely the kind of work where a green test run means least. `e2e/when-field.spec.ts` now asserts the three things a browser alone knows: that a tap reaches the control, that the target clears 44px, and that the clear link's computed style is ours rather than the user agent's.
 
 Also worth recording: the ordering and auto-fill rules were checked rather than assumed after the refactor — the span's arrival defaulting to the departure day, `minDate={startDay}`, the `minTime` floor while both legs share a day, the settings and creation date floors, and the event's duration clamp are all unchanged, with 160 tests over them green and a new e2e assertion that the end date's `min` reaches the native control.
+
+## The rule-8 sweep, prompted by a challenge
+
+Asked whether the adjustments were app-wide, the audit found the honest answer was "nearly". Every editable date/time in the app does go through the primitives — no raw `<input type="date">` survives outside them, `DayView`/`EventForm`/`BookingSheet` all reach the new token through `WhenField`, and `DaySlotPicker` is a sheet of list rows rather than an inline value, so it correctly is not a token. But two gaps were real:
+
+- `.field .df` / `.set-fld .df` were still standing after §5 said they were deleted, and `value-token.css` had grown overrides against them. Both sides removed; the render is unchanged.
+- The hidden caption was a private fourth copy of an idiom `App.css` already owns as `.visually-hidden` — with a comment asserting it was the first. Now the shared one.
+
+The transferable lesson: **a defensive override is evidence that something upstream was not actually deleted.** `button.bld-time` remains the one deliberate, documented exception, on the backlog with its reasoning.
