@@ -7,6 +7,7 @@
 //
 // Both call sites choose a currency the same way: the trip's (trip settings) and
 // the person's own (user settings). Neither owns the sheet — `CodePicker` does.
+import { currencyMatchesQuery } from '../../lib/currency-search';
 import { currencyName, currencySymbol } from '../../lib/money';
 import { t } from '../../i18n/he';
 import { CodePicker } from './CodePicker';
@@ -58,11 +59,10 @@ export function CurrencyPicker({
           trailing: symbol === currency ? undefined : symbol,
         };
       }}
-      matches={(currency, q) =>
-        currency.toLowerCase().includes(q) ||
-        currencyName(currency).toLowerCase().includes(q) ||
-        currencySymbol(currency).toLowerCase().includes(q)
-      }
+      // Every name the currency has, not only CLDR's one — `lib/currency-search.ts`
+      // holds what that covers and why the first version's three terms were a much
+      // narrower door than they read like.
+      matches={currencyMatchesQuery}
       copy={{
         title: t.currencyPicker.title,
         searchPlaceholder: t.currencyPicker.searchPlaceholder,
