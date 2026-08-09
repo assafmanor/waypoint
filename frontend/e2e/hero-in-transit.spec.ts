@@ -113,7 +113,7 @@ const RED_EYE = [
 async function liftedHero(page: Page, events = EVENTS) {
   await bootIntoTrip(page, {
     now: NOW,
-    dates: shortLiveTripDates(),
+    dates: shortLiveTripDates(NOW),
     events,
     bookings: BOOKINGS,
     places: PLACES,
@@ -256,7 +256,7 @@ test('the lifted card wears the same glow as the board it came from', async ({ p
   await page.setViewportSize({ width: 390, height: 844 });
   await bootIntoTrip(page, {
     now: NOW,
-    dates: shortLiveTripDates(),
+    dates: shortLiveTripDates(NOW),
     events: EVENTS,
     bookings: BOOKINGS,
     places: PLACES,
