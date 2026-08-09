@@ -281,12 +281,21 @@
    correct as a static state, which is the requirement anyway (ADR-0140 §5). */
 .modal-overlay[data-variant='lift'] {
   align-items: center;
+  /* Viewport-relative, not a bare percentage, and shared as a custom property rather than
+     repeated: `.modal-card` has no `height` of its own here (only this `max-height`), and a
+     percentage `max-height`/`height` on a DESCENDANT of a box with no *specified* height
+     computes to `none` regardless of what that box's own max-height renders at (CSS2.1
+     §10.5) — which is exactly why the hero inside used to grow straight past this cap
+     instead of scrolling within it (ADR-0160 §T). Naming it once is what keeps the card and
+     the hero it wraps from independently computing "the room" and drifting. */
+  --lift-max-h: calc(100vh - 18px);
+  --lift-max-h: calc(100dvh - 18px);
 }
 .modal-overlay[data-variant='lift'] .modal-card {
   margin: 8px;
   width: calc(100% - 16px);
   max-width: none;
-  max-height: calc(100% - 18px);
+  max-height: var(--lift-max-h);
   background: none;
   /* `border: 0` and not just `border-radius: 0`, and the pair is the whole point: the base
      `.modal-card` carries `1px solid var(--line)`, so resetting only the radius left a
