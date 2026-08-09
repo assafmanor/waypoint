@@ -200,19 +200,34 @@ export function EventCard(props: EventCardProps) {
     fn?.();
   };
 
+  // **THE KIND CHIP IS GONE; THE STATUS CHIP STAYS** (ADR-0178 §4). The hard mark moved
+  // to the when line, where ADR-0011's commitment points, and soft is already the card's
+  // dashed border. What is left in this slot is the settle/phase RECORD (ADR-0043/0044),
+  // which no border says.
+  //
+  // The build kept ONE thing §4 did not mention, and it is the reason the plain-soft arm
+  // does not simply return null: `softNow` is not the kind, it is `עכשיו` — the fact this
+  // whole tab is read for. So an upcoming soft row loses its chip exactly as Plan's does,
+  // and a soft row happening NOW keeps one.
+  //
+  // The when line is where the lock lives now, so a card with no time at all would lose
+  // the mark entirely — an unplaced commitment is exactly that row. It keeps the chip.
+  const hasWhenSlot = !!startsAt;
   const tag = isDone ? (
     <span className="wp-event-tag-done">
       <Icon name="check" /> {t.event.didThis}
     </span>
   ) : isHard ? (
-    <span className="wp-event-tag-hard">
-      <Icon name="lock" /> {t.event.hard}
-    </span>
+    hasWhenSlot ? null : (
+      <span className="wp-event-tag-hard">
+        <Icon name="lock" /> {t.event.hard}
+      </span>
+    )
   ) : isPassed ? (
     <span className="wp-event-tag-phase">{t.event.notMarked}</span>
-  ) : (
-    <span className="wp-event-tag-soft">{isNow ? t.event.softNow : t.event.soft}</span>
-  );
+  ) : isNow ? (
+    <span className="wp-event-tag-soft">{t.event.softNow}</span>
+  ) : null;
 
   const cls = [
     'wp-event',
@@ -271,6 +286,11 @@ export function EventCard(props: EventCardProps) {
   const endZone = zones?.endZone ?? tz;
   const timeBlock = startsAt && (
     <span className="wp-event-time">
+      {isHard && (
+        <span className="wp-event-timelock" aria-label={t.event.hard} title={t.event.hard}>
+          <Icon name="lock" />
+        </span>
+      )}
       <span dir="auto">
         {formatTime(startsAt, startZone)}
         {endsAt && `–${formatTime(endsAt, endZone)}`}

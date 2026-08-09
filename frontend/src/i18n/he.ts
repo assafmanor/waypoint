@@ -1660,7 +1660,6 @@ export const t = {
     // are the `slot*` and `seam*` keys above — one vocabulary for a position, however you
     // reach it. `resolveAfter`/`resolveBefore`/`resolveOther` went the same way, being the
     // other half of the pair the picker replaced.
-    pinned: 'אירוע קשיח · מעוגן בזמן',
     rowActions: 'פעולות',
     // The sheet's own copy moved to `slotFill` below: it serves two headers on two screens
     // now (ADR-0161 §6), so it stopped being Plan mode's.

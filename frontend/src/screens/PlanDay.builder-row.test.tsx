@@ -192,3 +192,35 @@ describe('BuilderRow — the row opens a read', () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
+
+// **ONE LOCK, BESIDE THE THING IT LOCKS** (ADR-0178 §4). Hard/soft used to be drawn three
+// times on this row — a leading `.bld-anchor`, a `🔒 קשיח` chip inside `.bld-t`, and the
+// border — and the chip was the only one of the three that cost the TITLE width, since it
+// is a flex sibling of the title. The chip and the anchor are gone; the lock rides the when
+// line, which is what ADR-0011's commitment is actually about.
+describe('BuilderRow — the hard mark is drawn once, on the when line', () => {
+  it('puts the lock inside the time control and drops the chip and the leading anchor', () => {
+    const { container } = row(HARD, { onPickTime: vi.fn() });
+    expect(container.querySelector('.bld-time .bld-timelock')).toBeTruthy();
+    expect(container.querySelector('.bld-anchor')).toBeNull();
+    expect(container.querySelector('.tag-hard')).toBeNull();
+    // Exactly one — being drawn three times is the defect this undoes.
+    expect(container.querySelectorAll('.bld-timelock')).toHaveLength(1);
+  });
+
+  it('marks an UNTIMED hard row with the chip, the one row with no when line to hang on', () => {
+    // A read-only archive row with no time renders neither the range nor `＋ שעה`, so the
+    // lock would have nowhere to go and the commitment would silently lose its mark.
+    const untimed = ev('U', EVENT_KIND.HARD, null, 3);
+    const { container } = row(untimed, { readOnly: true });
+    expect(container.querySelector('.bld-time')).toBeNull();
+    expect(container.querySelector('.tag-hard')).toBeTruthy();
+  });
+
+  it('leaves a soft row carrying no kind word at all — the dashed border says it', () => {
+    const { container } = row(A, { onPickTime: vi.fn() });
+    expect(container.querySelector('.bld')!.classList.contains('soft')).toBe(true);
+    expect(container.querySelector('.tag-soft')).toBeNull();
+    expect(container.querySelector('.bld-timelock')).toBeNull();
+  });
+});

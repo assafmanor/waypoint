@@ -1,6 +1,6 @@
 # 0178 — A day row says **what**, then **when**
 
-**Status:** Accepted (2026-08-09) — design accepted by the owner; **not built yet**. Build follows this ADR.
+**Status:** Accepted (2026-08-09) — **built** the same day; see the build log at the foot for the four places the build diverged from the drawing, and why
 **Date:** 2026-08-09
 **Session note:** [`planning/2026-08-09-session-236-the-title-gets-17-percent-of-the-row.md`](../planning/2026-08-09-session-236-the-title-gets-17-percent-of-the-row.md)
 **Mockup:** [`mockups/plan-row-title-overflow-v1.html`](../../mockups/plan-row-title-overflow-v1.html)
@@ -113,3 +113,21 @@ Measured across the stress set — four titles up to a 24-character unbreakable 
 - **An overlap check is two-dimensional.** The first re-measure still said "23px" because it compared x-axis extents, and one axis cannot distinguish _passes beneath_ from _collides with_.
 
 The mockup now sweeps every pair of boxes in every frame at both widths in both modes; it immediately found a second collision, in the file's own §3 control frame. Any future row-layout mockup should carry the same sweep.
+
+## Build log — 2026-08-09, same day
+
+Four divergences from the drawing, each recorded because each is something a reader would otherwise have to rediscover.
+
+**1. One claim in the Context above was wrong, and is corrected here rather than left standing.** The mockup and an earlier draft of this ADR said `.bld-time` lacked the `white-space: nowrap` that `.wp-event-time` has. It had it all along — in a **second `.bld-time` rule 500 lines further down `screens.css`**, under a "Trip settings" heading it has nothing to do with. So the property was never missing; it was just impossible to see from the block that appears to define the element. The build folded it into the main rule, so there is one home for it. The lesson generalises past this file: a grep for the property would have found it, and reading the block did not.
+
+**2. The soft chip survives in Trip mode, but only while the row is NOW.** §4 says the hard/soft kind chip goes, and on the builder row it goes outright. `EventCard`'s soft branch renders `isNow ? t.event.softNow : t.event.soft`, so deleting it wholesale would have taken **`עכשיו`** with it — which is not the kind, and is the fact the whole tab is read for. So an upcoming soft row loses its chip exactly as Plan's does, and a soft row happening now keeps one. The settle/phase tags (`didThis` / `notMarked`, ADR-0043/0044) were never in scope: they are a **record**, not a kind, and no border says them.
+
+**3. An untimed hard row keeps the chip, because it has no when line to hang the lock on.** §4 moves the lock into the when line without noticing that the when line is conditional: on a read-only archive an event with no `startsAt` renders neither the range nor the `＋ שעה` button, and an **unplaced commitment** is exactly that row. Hard would have lost its only mark on the one row whose whole problem is that it is a commitment with nowhere to be. One condition (`hasWhenSlot`), on both surfaces, tested on both.
+
+**4. The gutter is a margin on the item, not `column-gap` on the grid — and the drawing had this wrong.** Both rows have optional trailing cells: the `⋯` is absent on a read-only row and replaced by the settle control on an archived one, and the day card's ✓ renders only when settled while its chevron is absent from the settle variant entirely. `column-gap` is charged **between empty tracks too**, so the mockup's version left 12px of dead space on an ordinary card and 24px on the settle variant. A margin disappears with its item. The mockup never showed it because it only ever drew rows where every cell was full — the same blind spot, one layer along, as watching only `.bld-main`.
+
+**5. `t.planDay.pinned` is deleted.** It was the leading anchor's label and had no other reader. The lock's label is `t.event.hard`, which is what the chip said and is the same word in both modes.
+
+**Verified against the real components, not a reproduction.** The mockup renders the app's real CSS over a hand-built tree, which is what let §4's gutter bug through. So the build dumped the **actual** markup of seven variants (`BuilderRow` hard-timed / soft / archive-settle / read-only-no-controls; `EventCard` hard-timed / done-with-✓ / settle) out of the component under test, rendered it under the same seven stylesheets in a browser, and ran the two-dimensional collision sweep over that: **no collisions, no dead trailing space** (0–1px), titles at **214–256px** in Plan and **185–244px** in Trip, rows 58–82px.
+
+**Tests.** `EventCard.test.tsx`'s soft case asserted the chip and now asserts its absence plus the dashed card — the one existing test the decision invalidated, and it is rewritten to the new contract rather than deleted. Five tests were added across the two surfaces: the lock is in the when line and there is **exactly one** of it (being drawn three times is the defect), the untimed fallback, the soft row carrying no kind word, and Trip's now-only chip. Full suite green (3183 tests), `typecheck` and `build` clean.
