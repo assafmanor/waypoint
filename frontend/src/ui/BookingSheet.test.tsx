@@ -363,7 +363,9 @@ describe('BookingSheet — refusing a save', () => {
   it('marks only the leg that falls outside the trip', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     next();
-    const [depDate, arrDate] = [...document.querySelectorAll<HTMLInputElement>('.wf-date-val')];
+    const [depDate, arrDate] = [
+      ...document.querySelectorAll<HTMLInputElement>('.wf-date-val input'),
+    ];
     fireEvent.change(depDate, { target: { value: '2026-07-20' } });
     fireEvent.change(arrDate, { target: { value: '2026-08-30' } });
     next();
@@ -615,7 +617,9 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
    *  span is step `when`, the return span is step `more` (ADR-0155 §5). */
   const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
   const setDate = (leg: HTMLElement, value: string) =>
-    fireEvent.change(leg.querySelector('.wf-date-val') as HTMLInputElement, { target: { value } });
+    fireEvent.change(leg.querySelector('.wf-date-val input') as HTMLInputElement, {
+      target: { value },
+    });
   // Through the panel's exact <input type="time">, which is the picker's own precise
   // path — the 15-minute list can't express every instant these assertions need.
   const setTime = (leg: HTMLElement, value: string) => {
@@ -930,14 +934,14 @@ describe('BookingSheet — three steps', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
     next();
     // Push the outbound's departure outside the trip, then page past it.
-    const [dep] = [...document.querySelectorAll<HTMLInputElement>('.wf-date-val')];
+    const [dep] = [...document.querySelectorAll<HTMLInputElement>('.wf-date-val input')];
     fireEvent.change(dep, { target: { value: '2026-07-20' } });
     next();
     expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
 
     // Now break it from the step that cannot show it, and save.
     fireEvent.click(screen.getByText(t.common.steps.back));
-    fireEvent.change(document.querySelector('.wf-date-val') as HTMLInputElement, {
+    fireEvent.change(document.querySelector('.wf-date-val input') as HTMLInputElement, {
       target: { value: '2026-08-30' },
     });
     next();
@@ -987,7 +991,9 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
   };
   const legs = () => [...document.querySelectorAll<HTMLElement>('.wf-leg')];
   const setDate = (leg: HTMLElement, value: string) =>
-    fireEvent.change(leg.querySelector('.wf-date-val') as HTMLInputElement, { target: { value } });
+    fireEvent.change(leg.querySelector('.wf-date-val input') as HTMLInputElement, {
+      target: { value },
+    });
   const setTime = (leg: HTMLElement, value: string) => {
     fireEvent.click(leg.querySelector('button.tp-field') as HTMLElement);
     fireEvent.change(leg.querySelector('.tp-time-input') as HTMLInputElement, {
@@ -1376,13 +1382,17 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     pastTypeStep();
     press(t.common.steps.next);
     const [checkIn, checkOut] = [...document.querySelectorAll<HTMLElement>('.wf-leg')];
-    fireEvent.change(checkIn.querySelector('.wf-date-val') as HTMLInputElement, {
+    fireEvent.change(checkIn.querySelector('.wf-date-val input') as HTMLInputElement, {
       target: { value: '2026-07-26' },
     });
-    expect((checkIn.querySelector('.wf-date-val') as HTMLInputElement).value).toBe('2026-07-26');
+    expect((checkIn.querySelector('.wf-date-val input') as HTMLInputElement).value).toBe(
+      '2026-07-26',
+    );
     expect(within(checkIn).getByText('15:00')).toBeTruthy();
     // The stay cannot be zero nights, so the check-out opens on the following day.
-    expect((checkOut.querySelector('.wf-date-val') as HTMLInputElement).value).toBe('2026-07-27');
+    expect((checkOut.querySelector('.wf-date-val input') as HTMLInputElement).value).toBe(
+      '2026-07-27',
+    );
     expect(within(checkOut).getByText('10:00')).toBeTruthy();
   });
 
@@ -1412,10 +1422,12 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     pastTypeStep();
     press(t.common.steps.next);
     const [depart, arrive] = [...document.querySelectorAll<HTMLElement>('.wf-leg')];
-    fireEvent.change(depart.querySelector('.wf-date-val') as HTMLInputElement, {
+    fireEvent.change(depart.querySelector('.wf-date-val input') as HTMLInputElement, {
       target: { value: '2026-07-26' },
     });
-    expect((arrive.querySelector('.wf-date-val') as HTMLInputElement).value).toBe('2026-07-26');
+    expect((arrive.querySelector('.wf-date-val input') as HTMLInputElement).value).toBe(
+      '2026-07-26',
+    );
     // No time was invented at either end — a departure is the commitment itself.
     expect(within(depart).getByText(t.whenField.addTime)).toBeTruthy();
     expect(within(arrive).getByText(t.whenField.addTime)).toBeTruthy();

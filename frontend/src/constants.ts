@@ -51,14 +51,13 @@ export const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? '';
  *  (the type comes from sniffing the bytes), so it only has to be present. */
 export const AVATAR_UPLOAD_FILENAME = 'avatar.jpg';
 
-/** The device's resolved locale (e.g. "he-IL", "en-US"). Native date inputs
- *  (`<input type="date">`) are formatted by the browser's UI language, not the
- *  document `lang="he"` — so an Israeli device on an English browser would show
- *  a date as mm/dd/yyyy. Pinning the input's `lang` to the device locale renders
- *  it in the device's own convention (mirrors TimePicker's `lang` on native
- *  time inputs). */
-export const DEVICE_LOCALE =
-  typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().locale : 'he';
+/** **The locale every date and number in this app is rendered in.** The UI is
+ *  Hebrew-only, so the reader's convention is the Hebrew one (`09.08.2026`,
+ *  day-first) whatever device the app is opened on — a phone whose region is the
+ *  US does not make this a US app. The one name behind every `Intl` formatter
+ *  (dates, times, money) and the `lang` on the native date/time inputs, so a
+ *  second surface can't quietly render in a different convention (ADR-0176). */
+export const APP_LOCALE = 'he-IL';
 
 /** The device's IANA timezone — used only where no trip (and so no
  *  trip-local timezone) is loaded yet, e.g. the boot screen's clock. */

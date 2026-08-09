@@ -1,0 +1,67 @@
+/* DateField (ADR-0176). The wrapper is the box — it wears whatever chrome the host
+   used to put on the input (.field .df, .set-fld .df, .wf-date, .wf-date-val), so the
+   hosts' rules and the refusal mark are unchanged. Logical properties only (RTL).
+
+   Every rule below is written `.df .df-input`, one class heavier than the host rules
+   that target a bare `input` inside their own box (`.field input`, `.set-fld input`):
+   the native control lives INSIDE the box now, so it must out-specify the chrome those
+   rules would otherwise paint on it a second time. */
+
+.df {
+  position: relative;
+  display: block;
+  min-inline-size: 0;
+}
+
+.df-face {
+  display: block;
+  /* An empty face still holds the line the native control would have — otherwise a
+     date-less field is shorter than its filled neighbour. */
+  min-block-size: 1.2em;
+}
+.df-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* The native control, over the whole box. `padding: inherit` takes the wrapper's, so
+   its segments sit exactly where the face's text is when it swaps in on focus. */
+.df .df-input {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  margin: 0;
+  border: 0;
+  padding: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: inherit;
+  direction: ltr;
+  color: var(--ink);
+  color-scheme: light;
+  /* Invisible, not absent: the field is still tappable, focusable and fillable — only
+     its platform-formatted text is hidden, because the face says the same thing in the
+     app's order. */
+  opacity: 0;
+}
+.df .df-input:focus-visible {
+  outline: none;
+}
+/* A refusal marks the BOX, which is the wrapper (form-errors.css lists `.df` beside
+   the controls). The input inside it is chrome-less by design and must not paint a
+   second ring when a `Field` shell marks everything it contains. */
+.df input.df-input {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Focused, the native control IS the control: its editable segments and its calendar
+   affordance are back, and the face steps aside rather than double-printing the value.
+   On a phone that is the moment the platform's picker owns the screen anyway. */
+.df:focus-within .df-input {
+  opacity: 1;
+}
+.df:focus-within .df-face {
+  visibility: hidden;
+}

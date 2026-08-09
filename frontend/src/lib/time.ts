@@ -2,7 +2,9 @@
 // "Now" is never stored (ADR-0018) — it's computed from event startsAt/endsAt vs the clock.
 import { EVENT_KIND, EVENT_STATUS, eventEndBoundary, type TripEvent } from '@waypoint/shared';
 import {
+  APP_LOCALE,
   COUNTDOWN_MONTHS_THRESHOLD,
+  DAY_NOON,
   DAY_WINDOW,
   DAYS_PER_MONTH,
   DOT_SEPARATOR,
@@ -59,13 +61,31 @@ export function clampDate(date: string, min: string, max: string): string {
   return date < min ? min : date > max ? max : date;
 }
 
-const monthAbbrev = new Intl.DateTimeFormat('he-IL', { month: 'short', timeZone: 'UTC' });
+const monthAbbrev = new Intl.DateTimeFormat(APP_LOCALE, { month: 'short', timeZone: 'UTC' });
 
 /** Month label for a day-strip pill: shown only on the first pill (no
  *  `prevDate`) and the first pill after a month rollover — null otherwise. */
 export function monthLabelFor(date: string, prevDate: string | undefined): string | null {
   if (prevDate && date.slice(0, 7) === prevDate.slice(0, 7)) return null;
   return monthAbbrev.format(new Date(`${date}T00:00:00Z`));
+}
+
+const weekdayNarrow = new Intl.DateTimeFormat(APP_LOCALE, { weekday: 'narrow', timeZone: 'UTC' });
+
+/** The day strip's one-letter weekday. Read in **UTC**, like every other calendar-date
+ *  helper here: the strip's own formatter was pinned to the trip zone yet handed a
+ *  `T00:00:00Z` instant, so for a trip zone west of UTC every pill named the day before. */
+export function weekdayLetter(date: string): string {
+  return weekdayNarrow.format(new Date(`${date}T00:00:00Z`));
+}
+
+/** A trip day's full weekday name, in the trip's own zone — read at that day's **noon**,
+ *  so no offset can push the name onto a neighbouring day. Both day surfaces (Trip and
+ *  Plan) read this one; they held a byte-identical formatter each. */
+export function weekdayName(date: string, timeZone: string): string {
+  return new Intl.DateTimeFormat(APP_LOCALE, { weekday: 'long', timeZone }).format(
+    new Date(zonedIso(date, DAY_NOON, timeZone)),
+  );
 }
 
 // ── Trip date-range display ──────────────────────────────────────────────────
@@ -78,20 +98,26 @@ export function monthLabelFor(date: string, prevDate: string | undefined): strin
 // record and hero surfaces.
 export type TripDateStyle = 'numeric' | 'prose';
 
-const tripDateNumeric = new Intl.DateTimeFormat('he-IL', {
+const tripDateNumeric = new Intl.DateTimeFormat(APP_LOCALE, {
   day: '2-digit',
   month: '2-digit',
   timeZone: 'UTC',
 });
-const tripDateDay = new Intl.DateTimeFormat('he-IL', { day: 'numeric', timeZone: 'UTC' });
-const tripDateDayMonth = new Intl.DateTimeFormat('he-IL', {
+const tripDateDay = new Intl.DateTimeFormat(APP_LOCALE, { day: 'numeric', timeZone: 'UTC' });
+const tripDateDayMonth = new Intl.DateTimeFormat(APP_LOCALE, {
   day: 'numeric',
   month: 'long',
   timeZone: 'UTC',
 });
-const tripDateDayMonthYear = new Intl.DateTimeFormat('he-IL', {
+const tripDateDayMonthYear = new Intl.DateTimeFormat(APP_LOCALE, {
   day: 'numeric',
   month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+const dateNumericYear = new Intl.DateTimeFormat(APP_LOCALE, {
+  day: '2-digit',
+  month: '2-digit',
   year: 'numeric',
   timeZone: 'UTC',
 });
@@ -149,6 +175,43 @@ export function formatDayMonth(iso: string): string {
   return tripDateNumeric.format(new Date(iso));
 }
 
+/** A whole calendar date, day-first with the year (`09.08.2026`) — the same numeric
+ *  shape as the range above, one rung longer. It is what a **date input** reads as,
+ *  and the reason it is ours to render: a native `<input type="date">` is formatted by
+ *  the platform, not by the page, so on an en-US phone the app's own field said
+ *  `08/09/2026` while every other date on the screen said `09.08` (ADR-0176). */
+export function formatDayMonthYear(date: string): string {
+  return dateNumericYear.format(new Date(`${date}T00:00:00Z`));
+}
+
+const dayDateShort = new Intl.DateTimeFormat(APP_LOCALE, {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC',
+});
+
+/** A calendar date as a named day (`יום ו׳, 11 בספט׳`) — what an **untimed** row shows
+ *  where a timed one shows {@link formatDayTime}. UTC-anchored, because a calendar date
+ *  carries no zone: reading it in a zone behind UTC would name the day before. Three
+ *  detail rows rendered the raw `2026-09-11` here. */
+export function formatDayDate(date: string): string {
+  return dayDateShort.format(new Date(`${date}T00:00:00Z`));
+}
+
+/** An instant as its named day plus its clock (`יום ו׳, 11 בספט׳ · 14:30`), in `timeZone`.
+ *  Lived in `ui/BookingDetail` — a formatter, in a component, that a second component
+ *  imported from the first. */
+export function formatDayTime(iso: string, timeZone: string): string {
+  const day = new Intl.DateTimeFormat(APP_LOCALE, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone,
+  }).format(new Date(iso));
+  return `${day} ${DOT_SEPARATOR} ${formatTime(iso, timeZone)}`;
+}
+
 /** Wall-clock parts for an instant, rendered in a specific IANA timezone. */
 export function tzParts(at: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -175,7 +238,7 @@ export function tzParts(at: Date, timeZone: string) {
 /** HH:MM in the trip timezone, for a Date or an ISO instant. */
 export function formatTime(at: Date | string, timeZone: string) {
   const d = typeof at === 'string' ? new Date(at) : at;
-  return new Intl.DateTimeFormat('he-IL', {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     timeZone,
     hour: '2-digit',
     minute: '2-digit',

@@ -37,7 +37,7 @@ New/changed endpoints (planned): `PATCH /trips/:id` (details, admin-only), `PATC
 - **`calendarSyncEnabled`** (a personal, per-member preference nobody else watches) may stay simple CRUD — it is not shared roster state; flagged for the implementer.
 - **Details are now editable post-create**, complementing ADR-0032: creation stays minimal, and settings is where the trip is refined. Trip-detail edits become undoable via the change feed (LWW, ADR-0012); **delete-trip is broadcast + logged but not toast-undoable** (a double-confirm guards it instead).
 - Enforcement is no longer "minimal/deferred" for the settings surface (cf. collaboration-model.md): admin gating is real and server-side here.
-- **The date fields reuse PR #92's native-date handling** — `lang` pinned to `DEVICE_LOCALE` (localized format, not `mm/dd/yyyy`), the end picker's `min` linked to the chosen start, and the shared `endDate >= startDate` refine (ADR-0023) with a submit-time guard. Unlike creation, editing here **does not floor to today** — an existing trip may already be under way or past.
+- **The date fields reuse PR #92's native-date handling** — ~~`lang` pinned to `DEVICE_LOCALE`~~ (**amended 2026-08-09, [ADR-0176](0176-a-date-reads-day-first-wherever-you-open-it.md):** the format is no longer the device's call at all — both fields are `DateField`, which draws the value in the app's own `he-IL` order over the native input), the end picker's `min` linked to the chosen start, and the shared `endDate >= startDate` refine (ADR-0023) with a submit-time guard. Unlike creation, editing here **does not floor to today** — an existing trip may already be under way or past.
 
 ## Alternatives considered
 

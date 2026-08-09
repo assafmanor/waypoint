@@ -19,6 +19,7 @@ import { useAppBack } from '../state/nav-state';
 import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
 import { FormError } from '../ui/primitives/FormError';
+import { DateField } from '../ui/primitives/DateField';
 import { useFormErrors, type FieldProblem } from '../ui/primitives/useFormErrors';
 import { DestinationPicker, type PickedDestination } from '../ui/DestinationPicker';
 import { Icon } from '../ui/Icon';
@@ -28,13 +29,7 @@ import { useIsOffline, useOutboxCount } from '../lib/outbox';
 import { formatTripDates } from '../lib/time';
 import { allowMemberBack, createInvite, fetchRemovedMembers, rotateInvite } from '../lib/api';
 import { inviteLink } from '../lib/invite-link';
-import {
-  DEFAULT_TRIP_ICON,
-  DEVICE_LOCALE,
-  DEVICE_TIMEZONE,
-  DOT_SEPARATOR,
-  CONTROL_ICON,
-} from '../constants';
+import { DEFAULT_TRIP_ICON, DEVICE_TIMEZONE, DOT_SEPARATOR, CONTROL_ICON } from '../constants';
 import { NavArrow } from '../ui/NavArrow';
 import { t } from '../i18n/he';
 import { Avatar } from '../ui/primitives/Avatar';
@@ -581,25 +576,21 @@ function DetailsEditor({
         <div className="date-row">
           <label className="subfld">
             <span>{t.settings.dateFrom}</span>
-            <input
-              type="date"
-              lang={DEVICE_LOCALE}
+            <DateField
               value={startDate}
               data-invalid={!startDate && datesMark.error ? '' : undefined}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={setStartDate}
             />
           </label>
           <label className="subfld">
             <span>{t.settings.dateTo}</span>
-            <input
-              type="date"
-              lang={DEVICE_LOCALE}
+            <DateField
               min={startDate}
               // Live while the range contradicts itself, and on the save's refusal —
               // two reasons, one mark (ADR-0150 §7).
               data-invalid={datesInvalid || (!endDate && datesMark.error) ? '' : undefined}
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={setEndDate}
             />
           </label>
         </div>
