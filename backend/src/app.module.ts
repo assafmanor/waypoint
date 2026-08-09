@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { BookingsModule } from './bookings/bookings.module';
 import { DocumentsModule } from './documents/documents.module';
 import { EnrichmentModule } from './enrichment/enrichment.module';
+import { FxModule } from './fx/fx.module';
 import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
@@ -42,6 +43,7 @@ import { TripsModule } from './trips/trips.module';
     // Out-of-band and route-less in Phase 1 (ADR-0166 §6): registered so it is proven to
     // construct, called by nothing yet.
     EnrichmentModule,
+    FxModule,
   ],
   controllers: [HealthController],
   providers: [

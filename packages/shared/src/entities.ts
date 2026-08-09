@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 import { tripEnrichmentsSchema } from './enrichment';
+import { currencyCodeSchema } from './currency';
+import { fxRatesSchema } from './fx';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 
 export const idSchema = z.string();
@@ -88,35 +90,6 @@ export const entityTypeSchema = z.enum([
   'documentAttachment',
 ]);
 export type EntityType = z.infer<typeof entityTypeSchema>;
-
-/** A well-formed ISO-4217 code. **Shape only, and that is the finding rather
- *  than a shortcut** — this started as the currency twin of `timezoneSchema`,
- *  asking ICU whether the code exists, and ICU turned out not to answer that
- *  question. Measured:
- *
- *    `currency: 'ZZZ'` → no throw, formats as `‏12.30 ‏ZZZ`, exponent 2
- *    `currency: 'IL'`  → RangeError (bad shape)
- *    `currency: 'ils'` → accepted, and normalised to ₪
- *
- *  So the only thing ICU validates is that the code is three ASCII letters,
- *  which the regex already does — and the "blank screen at a render site" that
- *  justifies `timezoneSchema`'s strictness does not exist here, because a
- *  nonexistent code renders as itself instead of throwing.
- *
- *  Existence could be checked against `Intl.supportedValuesOf('currency')`, and
- *  is deliberately **not**: that list is the answering engine's, so a server on
- *  an older ICU would reject a code its own client offered. `ZWG` — in this
- *  repo's `COUNTRY_CURRENCY` — is exactly that kind of recent addition. A false
- *  rejection costs a user their preference; a false acceptance costs a code
- *  rendered verbatim, which the picker cannot produce in the first place.
- *
- *  Upper-case is required rather than normalised, so stored values are
- *  canonical and `symbol === code` comparisons stay meaningful.
- *
- *  `Trip.currency` predates this and stays a bare string for now — every value
- *  it holds came from a five-option select, so tightening it is a separate,
- *  safe change rather than a rider on this one. */
-export const currencyCodeSchema = z.string().regex(/^[A-Z]{3}$/, 'invalid ISO-4217 code');
 
 export const userSchema = z.object({
   id: idSchema,
@@ -496,6 +469,17 @@ export const tripSnapshotSchema = z.object({
    *  is global and no client writes it, so it carries no `Change` and never appears in the
    *  change feed. Absent-or-empty is the normal state — most places have nothing. */
   enrichments: tripEnrichmentsSchema,
+  /** **The world's exchange rates** (ADR-0180 §7), on the same terms as
+   *  `enrichments` above: global, server-owned, no `Change`, never client-written.
+   *  `null` is the normal cold state — nothing has been fetched yet, or the
+   *  fetcher is switched off — and every surface that reads it treats absence as
+   *  a state to render rather than an error.
+   *
+   *  **Defaulted rather than required**, which is a compatibility decision and not
+   *  laziness: a client can meet a server that predates this field mid-deploy, and
+   *  a missing key must read as the cold state it already has a rendering for
+   *  rather than failing the whole snapshot parse and blanking the trip. */
+  fxRates: fxRatesSchema.nullable().default(null),
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq
 });
 export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;

@@ -87,6 +87,7 @@ const SNAPSHOT: TripSnapshot = {
   notes: [note('n1', { eventId: 'e1' }), note('n2', { eventId: 'e2' }), note('n3')],
   documentAttachments: [],
   enrichments: {},
+  fxRates: null,
   latestSeq: '10',
 };
 

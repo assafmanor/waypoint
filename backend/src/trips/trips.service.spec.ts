@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ENRICHMENT_DISABLED } from '../common/env';
 import { EnrichmentRegistry } from '../enrichment/enrichment.registry';
+import { FxService } from '../fx/fx.service';
 import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { EnrichmentImagePipeline } from '../enrichment/image-pipeline';
@@ -56,11 +57,22 @@ describe('TripsService', () => {
     new EnrichmentImagePipeline({} as never),
     gateway,
   );
+  // Likewise for the rate feed (ADR-0180 §7): a real service over a provider that
+  // refuses to fetch, so the snapshot's read path is exercised and nothing reaches
+  // the network. A provider that THROWS is the honest stub — `readAndRefresh` is
+  // specified never to let one escape, so this also pins that.
+  const fx = new FxService(prisma, {
+    id: 'test',
+    attribution: 'test',
+    attributionUrl: 'https://example.invalid',
+    fetch: () => Promise.reject(new Error('no network in tests')),
+  });
   const service = new TripsService(
     prisma,
     changes,
     enrichment,
     new EnrichmentScheduler(enrichment),
+    fx,
   );
   const createdTripIds: string[] = [];
   // **The kill switch is ON for this whole file, and that is not incidental.** These specs are

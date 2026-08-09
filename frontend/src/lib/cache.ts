@@ -15,6 +15,7 @@ import {
   type Note,
   type Place,
   type Trip,
+  type FxRates,
   type TripEnrichments,
   type TripSnapshot,
   type User,
@@ -50,6 +51,16 @@ export interface SnapshotMeta {
    *  three transaction lists. Offline reads then work unchanged, and the images they point at
    *  are same-origin and immutable, so the service worker already caches those. */
   enrichments: TripEnrichments;
+  /** The world's exchange rates (ADR-0180 §7), riding `snapshotMeta` for the same reason
+   *  enrichment does — one small object, and a Dexie table of its own would cost a schema
+   *  version bump for it.
+   *
+   *  **This is what makes the rate card work offline at all.** The feed is the one part of
+   *  this feature that cannot run without a network, and the app is offline-first for reads
+   *  (root rule 5): mirroring the set here means a plane, a tunnel or a foreign SIM shows
+   *  the last published rate with its own date on it, rather than nothing. `null` is the
+   *  cold state — never fetched — and every surface treats it as a state to render. */
+  fxRates: FxRates | null;
   latestSeq: string;
 }
 
@@ -75,6 +86,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       notes: snapshot.notes,
       documentAttachments: snapshot.documentAttachments,
       enrichments: snapshot.enrichments,
+      fxRates: snapshot.fxRates,
       latestSeq: snapshot.latestSeq,
     });
   });
@@ -147,6 +159,9 @@ async function reconstructSnapshot(tripId: string): Promise<TripSnapshot | null>
     documentAttachments: meta.documentAttachments ?? [],
     // Same fallback, same reason: a trip cached before enrichment shipped has no map.
     enrichments: meta.enrichments ?? {},
+    // Same fallback, same reason: a trip cached before rates shipped has no set, and
+    // `null` is already this field's designed cold state rather than a special case.
+    fxRates: meta.fxRates ?? null,
     latestSeq: meta.latestSeq,
   };
 }

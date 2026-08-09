@@ -198,13 +198,13 @@ wraps to three lines and forces the rate itself onto two (`¥100 =` / `₪2.43`)
 | the existing `.sec-title .hint` slot | **+0px**, zero new CSS | no                         |
 | a line under the card                | **+21px**              | yes                        |
 
-**Recommended: the line under the card**, despite costing more. Attribution
+**Decided (owner, 2026-08-09): the line under the card**, despite costing more. Attribution
 belongs beside the data it attributes, and a section heading attributes the
 _section_ — which ADR-0045 §4 has already promised to a second tenant, weather,
 from a different source. One slot cannot carry two sources honestly, and "move
 it when weather lands" is how the wrong thing stays. Both clear the 44px floor
-through an `::after` overlay. **The owner's call; the section slot is the
-reasonable answer if paying zero today is worth the later move.**
+through an `::after` overlay. The free section slot was the alternative and was
+not taken: paying 21px once is cheaper than moving the mark when weather lands.
 
 **What §7 got wrong, and it was the headline example.** It claimed the ECB "has
 not quoted ISK since 2008" and that Iceland — the second entry in `DESTINATIONS`

@@ -55,6 +55,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     notes: [],
     documentAttachments: [],
     enrichments: {},
+    fxRates: null,
     latestSeq: '10',
     ...overrides,
   };

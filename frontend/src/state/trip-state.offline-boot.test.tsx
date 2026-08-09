@@ -62,6 +62,7 @@ const CACHED: TripSnapshot = {
   notes: [],
   documentAttachments: [],
   enrichments: {},
+  fxRates: null,
   latestSeq: '0',
 };
 

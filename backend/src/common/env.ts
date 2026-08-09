@@ -68,6 +68,18 @@ export const ENRICHMENT_JSON_MAX_BYTES = 'ENRICHMENT_JSON_MAX_BYTES';
  *  without taking down the reads, which serve already-stored data and are unaffected. */
 export const ENRICHMENT_DISABLED = 'ENRICHMENT_DISABLED';
 
+/** The FX feed's kill switch (ADR-0180 §7), and the second variable of its kind for
+ *  the same reason the first exists: this is now the second thing in the app that
+ *  talks to a third party on its own initiative, and it gets the one switch that
+ *  stops it doing so. Reads are unaffected — they serve the stored row, so flipping
+ *  this freezes the rate rather than removing the card. */
+export const FX_DISABLED = 'FX_DISABLED';
+
+/** Per-request timeout for a rate fetch. Shorter than enrichment's, because this is
+ *  one small JSON document from one host rather than a cold entity read, and nothing
+ *  user-facing waits on it either way. */
+export const FX_FETCH_TIMEOUT_MS = 5000;
+
 /** Per-request timeout for an enrichment fetch. Generous enough for a cold Wikidata
  *  entity read, short enough that a slow source degrades one field rather than holding up
  *  a pass (§5.4) — nothing user-facing is waiting on it either way (§6). */

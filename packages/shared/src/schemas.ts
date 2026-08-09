@@ -6,7 +6,6 @@ import {
   ATTACHMENT_HOST_KEYS,
   NOTE_HOST_KEYS,
   bookingTypeSchema,
-  currencyCodeSchema,
   documentTypeSchema,
   eventCategorySchema,
   eventKindSchema,
@@ -16,6 +15,7 @@ import {
   placeSearchKindSchema,
   type NoteHostKey,
 } from './entities';
+import { currencyCodeSchema } from './currency';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 import {
   MAX_DISPLAY_NAME_LENGTH,

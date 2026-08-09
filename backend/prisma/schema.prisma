@@ -567,3 +567,49 @@ model PlaceEnrichment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+/// The world's exchange rates (ADR-0180 §7) — global, server-owned, and outside
+/// the change log for exactly the reasons ADR-0166 §6 gives for `PlaceEnrichment`:
+/// no `tripId`, one writer (us), never mutated by a client, so there is no LWW to
+/// arbitrate, no undo to offer and no per-trip ordering to keep. Writing one
+/// worldwide fact into a trip-scoped change log would mean fanning it out as N
+/// trip changes.
+///
+/// ONE ROW PER BASE, and in practice one row: a converter needs arbitrary pairs
+/// and no free source quotes ~25,000 of them, so every pair is crossed through
+/// the base (`crossRate` in @waypoint/shared). Storing the set rather than the
+/// pairs is also what keeps this a fixed-size table forever.
+///
+/// No history. The `▲/▼` delta was dropped in §8, and it was the only reader a
+/// previous set would have had — so the row is overwritten in place rather than
+/// appended to, and the table cannot grow.
+model FxRateSet {
+  /// ISO-4217 base every rate is quoted against; the natural key, so an upsert
+  /// needs no lookup and a second base (should one ever be added) is a row.
+  base String @id
+
+  /// Record<currencyCode, number> — units per one unit of `base`, base included
+  /// at 1. JSON rather than a join table for the same reason enrichment's
+  /// `fields` is: ~160 numbers nothing filters, sorts or joins on.
+  rates Json
+
+  /// **The source's own publication time**, which is what the UI renders as
+  /// "as of" (§4). Distinct from `fetchedAt` on purpose: a set fetched minutes
+  /// ago can be a day old and still be the current published set.
+  publishedAt DateTime
+
+  /// When the source says the next set will exist. This is what makes §4's
+  /// refresh affordance exact — "a press could change the number" is
+  /// `now > nextUpdateAt`, not a guess about which days are business days.
+  nextUpdateAt DateTime
+
+  /// Ours, for diagnostics and for bounding retries after a failed pass. Never
+  /// rendered — showing it would be precise and wrong.
+  fetchedAt DateTime
+
+  /// Who published it, and where to link. Carried rather than hardcoded at a
+  /// surface so a second provider is credited correctly without a UI change —
+  /// the chosen source's terms require visible, linked attribution.
+  provider    String
+  providerUrl String
+}

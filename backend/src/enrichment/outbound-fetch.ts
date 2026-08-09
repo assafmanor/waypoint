@@ -37,8 +37,27 @@ import {
  * blocked on measuring the restaurant fill rate (§12.4) — deliberately not added now,
  * because an allowlist entry for a host nothing calls is an allowlist entry nobody
  * checked.
+ *
+ * `open.er-api.com` is the exception to this file's title: it is the exchange-rate
+ * source (ADR-0180 §7), not an enrichment source. See the note beside it.
  */
-const ALLOWED_HOSTS = ['www.wikidata.org', 'commons.wikimedia.org', 'upload.wikimedia.org'];
+const ALLOWED_HOSTS = [
+  'www.wikidata.org',
+  'commons.wikimedia.org',
+  'upload.wikimedia.org',
+  // The FX rate source (ADR-0180 §7). It is not enrichment, and it is here
+  // anyway: this file is the process's ONE outbound seat, and the three
+  // properties it enforces — allowlisted, timeboxed, size-capped — are exactly
+  // what a daily third-party JSON fetch needs. A second fetcher for a second
+  // caller would be a second place to get SSRF wrong (rule 8; ADR-0166 §8
+  // already said ETA would share this client and none of enrichment's store).
+  //
+  // The class is still named for its first consumer, which is now behind its
+  // scope. Renaming it is a follow-up rather than a rider here, because the knobs
+  // are ENV VARS (`ENRICHMENT_FETCH_TIMEOUT_MS`) and renaming those is a breaking
+  // config change for anyone who has set them.
+  'open.er-api.com',
+];
 
 /** Suffix rules, for the one source that is genuinely per-language. Matched as a real
  *  label boundary (`.wikipedia.org`), never a substring — `evilwikipedia.org` and
