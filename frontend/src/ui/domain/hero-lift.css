@@ -20,8 +20,13 @@
   /* The card's box comes from the `lift` Modal variant (top-anchored, 8px inset,
      capped). Content-sized within that cap: a thin hero is short, which is §8's
      owner call — a screen-sized one would put ~400px of empty dark board under a
-     flight, and empty space on the app's one glowing surface reads as a failure. */
-  max-height: 100%;
+     flight, and empty space on the app's one glowing surface reads as a failure.
+     `--lift-max-h` (`modal.css`'s lift variant, inherited) rather than `100%`: this
+     box's parent (`.modal-card`) has no `height` of its own, only a `max-height`, so a
+     percentage here computed to `none` and the hero grew straight past the cap instead
+     of scrolling within it (ADR-0160 §T) — `.hero-scroll` below is the one region meant
+     to absorb the overflow. */
+  max-height: var(--lift-max-h);
   box-shadow: var(--elevation-floating);
 }
 .hero-head {
