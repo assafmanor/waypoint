@@ -87,3 +87,15 @@ Shipped after the design PR merged. `ValueToken` + `value-token.css` is the new 
 Measured off the built components at 360px: event when-block **223px → 154.5px**, booking span **289px → 188.5px**, settings row overflow **21px → 0px** (31px slack), touch target **45.8px on a 31.8px line**, amber objects on the event form **2 → 1**. The two heights land ~7–10px above the mockup's prediction — the label-above trade plus a `Field` label the mockup's after-frame did not carry — and are reported as measured rather than re-quoted.
 
 3175 unit tests green (14 selector-only updates where tests named the deleted chrome, plus new `ValueToken` and `DateField` cases). `pnpm lint`, `typecheck`, `build` clean.
+
+## Three defects after merge, and what they have in common
+
+Owner reported against the shipped build: the clear link looked like a bug, **the date fields could not be edited at all**, and the day sat too far from the clock. All three are mine; all three are in [ADR-0177's amendment](../decisions/0177-a-when-reads-as-a-sentence.md) in full.
+
+- The `::after` touch overlay swallowed every tap on a date — fine over a `<button>`, fatal over a native `<input>`. A date now grows the input itself instead.
+- A regex deleting the retired chrome matched `.tp-val {` inside `.tp-dur .tp-val {` and left `.tp-clear`'s rule as `.tp-dur .tp-clear`, so the button fell back to the UA stylesheet.
+- `.wf`'s `gap` and `.field`'s `margin-top` both spaced the same seam: 30px where the two halves of one subject should sit at 12px.
+
+**What they have in common is the useful part.** Every one is a cascade or hit-testing fact — invisible to TypeScript, invisible to 3178 unit tests, and invisible to an e2e suite that only ever `.fill()`s a date instead of clicking it. The change's whole point was deleting shared CSS, which is precisely the kind of work where a green test run means least. `e2e/when-field.spec.ts` now asserts the three things a browser alone knows: that a tap reaches the control, that the target clears 44px, and that the clear link's computed style is ours rather than the user agent's.
+
+Also worth recording: the ordering and auto-fill rules were checked rather than assumed after the refactor — the span's arrival defaulting to the departure day, `minDate={startDay}`, the `minTime` floor while both legs share a day, the settings and creation date floors, and the event's duration clamp are all unchanged, with 160 tests over them green and a new e2e assertion that the end date's `min` reaches the native control.

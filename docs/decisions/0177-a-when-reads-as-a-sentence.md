@@ -102,3 +102,17 @@ Measured off the built components at 360px, against the mockup's predictions:
 | amber objects, event form       | 2      | 1             | **1**                |
 
 The two height figures land ~7–10px above the drawing, which is the label-above trade plus the `Field` label the mockup's after-frame did not carry. Reported as measured rather than re-quoting the mockup.
+
+## Amendment — three defects found after merge (2026-08-09)
+
+Owner report against the shipped build, with a screenshot: _"ללא שעה is very ugly and bad color choice! Looks like a bug"_ and _"The date fields are not editable! We can't change them"_, then _"why is the line between the date and the time so high?"_. All three were mine, and each is worth keeping because none was reachable by reading the diff.
+
+- **The date was untappable, everywhere.** The token's touch target is an `::after` overlay — ADR-0161 §7's trick for meeting the 44px floor without growing the line. A pseudo-element is painted after its siblings and takes pointer events, which is harmless over a `<button>` (the button under it handles the press anyway) and **fatal over a date**, whose real control is the native `<input>` inside the token. The overlay swallowed every tap. So a date now drops the pseudo-element and reaches the same 44px by growing **the input itself**: same target, and it is the control rather than a decoration sitting on one. Written `.df.vt-date .df-input`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`, because both sheets are lazy chunks and neither's order is knowable from the source.
+
+  **Why no test caught it:** jsdom cannot hit-test, and every e2e spec that touches a date uses `.fill()`, which sets the value programmatically. The new `e2e/when-field.spec.ts` **clicks**.
+
+- **"ללא שעה" rendered as a browser-default button** — a light box in a dark form. A regex deleting §5's retired chrome matched `.tp-val {` **inside** `.tp-dur .tp-val {`, leaving `.tp-dur ` glued to the next selector; `.tp-clear`'s rule became `.tp-dur .tp-clear`, which matches nothing. The lesson is not "be careful with regex" but that **a class name in the markup is not evidence that a rule applies to it** — the spec now asserts the computed style, not the class.
+
+- **The day sat 30px from the clock.** `.wf` spaces its lines with `gap`, and each `Field` shell also carries App.css's `margin-top: 18px`; the two stacked. That read as separation between two labelled groups while each half had a caption, and as one subject falling apart once the captions were gone — the spacing was carrying meaning it no longer had. `.wf > .field + .field` drops the second owner, leaving 12px; the first child keeps its margin, which is what separates the whole block from the field above it.
+
+The through-line: all three are **cascade or hit-testing facts, invisible to the type system and to the unit suite**, on a change whose whole point was deleting shared chrome. A sweep that deletes CSS needs a browser in the loop, not just a green test run.

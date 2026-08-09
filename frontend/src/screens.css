@@ -926,9 +926,12 @@
 .tp-wrap {
   position: relative;
 }
-.tp-dur .tp-clear {
-  align-self: flex-start;
-  margin-top: 2px;
+/* "ללא שעה" — the way back out of having set a time at all. It sits on its own line
+   under the clock sentence, so it is a block rather than a flex child: `.tp-wrap` is
+   not a flex container, and `align-self` here did nothing but look like it did. */
+.tp-clear {
+  display: block;
+  margin-top: 6px;
   font: inherit;
   font-size: 12px;
   font-weight: 600;

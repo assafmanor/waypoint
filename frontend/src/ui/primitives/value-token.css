@@ -106,6 +106,33 @@
   opacity: 0;
 }
 
+/* **A DATE GROWS ITS INPUT, NOT AN OVERLAY** — and getting this wrong made every date
+   in the app unopenable. The `::after` target above is painted after its siblings and
+   takes pointer events, which is harmless over a `<button>` (the button under it is
+   what handles the press anyway) and fatal over a date, whose real control is the
+   native `<input>` INSIDE the token (ADR-0176). The overlay simply swallowed every tap.
+
+   So a date drops the pseudo-element and reaches the same 44px with the input itself:
+   same target, and it is the control rather than a decoration sitting on one. Nothing
+   here can be "cleaned up" into the shared `::after` without breaking the field again. */
+.vt-date::after {
+  content: none;
+}
+/* `.df.vt-date`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`,
+   which it must out-specify rather than merely follow: both sheets are lazy chunks and
+   neither's load order is knowable from the source (the same trap that hid App.css's
+   dead mono rule). Written at (0,3,0) the growth holds whichever lands last — and when
+   it did NOT, the click still worked and only the 44px floor quietly went missing, which
+   is exactly the kind of half-failure a measured assertion catches and an eye does not. */
+.df.vt-date .df-input {
+  /* -8px, ADR-0161 §7's own number, so the two reaches are one lineage rather than two
+     guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
+     which is exactly the sort of miss that survives review and fails a measurement. */
+  inset: -8px -2px;
+  inline-size: auto;
+  block-size: auto;
+}
+
 /* THE CAPTION, HEARD BUT NOT SEEN. Removing the visible cap is the design; removing it
    from the ACCESSIBLE NAME was a regression, and only the e2e pass could see it — the
    first cut used `aria-label`, which REPLACES the content, so the button announced
