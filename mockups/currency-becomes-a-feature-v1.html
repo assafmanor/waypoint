@@ -9988,7 +9988,15 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       .cv-cur {
         flex: 0 0 auto;
         display: flex;
-        align-items: baseline;
+        /* `center`, and the first draft had `baseline` — which is the defect the
+           owner caught on a real phone. Two things went wrong at once and only
+           one is obvious: an inline SVG has NO baseline, so the caret aligned by
+           its bottom margin edge and sat 4.5px above the code beside it; and on
+           a flex line TALLER than its content (this chip is floored at 44px for
+           ADR-0017), `baseline` parks the whole group near the top rather than
+           centring it — measured 8.5px above the chip's own centre. A row of a
+           symbol, a code and a caret has nothing to align baselines FOR. */
+        align-items: center;
         gap: var(--space-1);
         min-height: 44px;
         padding-inline: var(--space-2);
@@ -10576,6 +10584,32 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         </div>
       </section>
 
+      <!-- ══════════════════════════ §7 ══════════════════════════ -->
+      <section class="case">
+        <h2>§7 · מטבע הבית · שורה בהגדרות המשתמש, ועמודה ב-DB</h2>
+        <p class="note">
+          <b>החלטת בעלים (2026-08-09), והיא הופכת את ההמלצה של סעיף זה בטיוטה הראשונה:</b> מטבע
+          מועדף הוא <b>העדפה של המשתמש</b> · הוא יושב בהגדרות המשתמש ונשמר ב-DB, לא נגזר מהמכשיר
+          ולא נשמר מקומית. זה נכון יותר ממה שהוצע: אותו אדם על טלפון ועל טאבלט הוא אותו אדם.
+          <br /><br />
+          <b>ההוספה הזאת אינה עוקפת את ADR-0133 §7 · היא עומדת בתנאי שהוא עצמו ניסח.</b> אותו סעיף
+          דחה בדיוק את הרשימה הזאת ("theme toggle, a language picker, <b>units</b>, a user-level
+          home timezone…") מסיבה אחת מפורשת: <b>"A switch that does nothing is worse than a thin
+          page."</b> העדפת מטבע הייתה בדיוק זה · מתג ללא קורא · עד הפרוסה הזאת, שנותנת לו שני
+          קוראים (הכרטיס והגיליון). זהו בדיוק המסלול שבורר ערכת הנושא כבר עבר: הוא חזר לעמוד הזה
+          כש-ADR-0158 §8 הפך את ה-remap לאמיתי, וההערה בקוד אומרת <b>"The rejection is amended by
+          its own condition, not overturned"</b>. אותה אמירה, פעם שנייה.
+          <br /><br />
+          <b>שורת הרמז היא המלכודת היחידה כאן, והציור הראשון של הסעיף הזה נפל בה.</b> השכן בסעיף
+          "תצוגה" הוא ערכת הנושא, שהרמז שלה מבטיח <b>"הבחירה נשמרת במכשיר הזה"</b>. מטבע הוא ההפך
+          · חשבון, לא מכשיר. הטיוטה שמה את שתי השורות ב<b>כרטיס אחד</b> ואת שני הרמזים מתחתיו · מה
+          שנראה תמים בקוד, ובעמוד מרונדר הראה מיד שאי-אפשר לדעת איזה רמז שייך לאיזו שורה. הדפוס
+          בקוד הוא <b>רמז אחד לכרטיס</b>, ושתי עובדות עם התמדה שונה פשוט לא יכולות לחלוק כרטיס בלי
+          לשקר על אחת מהן. לכן: כרטיס משלו, רמז משלו, באותו סעיף · בלי כותרת-סעיף נוספת.
+        </p>
+        <div class="pair" id="s7"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -11149,6 +11183,42 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         </div>`;
       };
 
+      /* ── §7 the account-level currency, in `UserSettings`' own tree ───────
+            `.set-sec-title` → `.set-card` → `.id-row` (`.lab` + value), which is
+            the shape the display section already uses for the theme. The value
+            is the same trigger both settings screens now use, so this is a THIRD
+            call site for it and the second for the picker. */
+      const accountRow = (after, id) => {
+        const p = pair();
+        return `<div class="mk-phone frag" id="${id}">
+          <div class="app" data-mode="trip">
+            <main class="set-body">
+              <div class="set-sec-title">תצוגה</div>
+              <div class="set-card">
+                <div class="id-row">
+                  <span class="lab">ערכת נושא</span>
+                  <span class="val">מערכת</span>
+                </div>
+              </div>
+              <div class="set-hint-block">הבחירה נשמרת במכשיר הזה. במצב מערכת האפליקציה עוקבת אחרי הטלפון.</div>
+              ${
+                after
+                  ? `<div class="set-card" style="margin-top:14px">
+                       <div class="id-row">
+                         <span class="lab">מטבע</span>
+                         <button type="button" class="set-tz-trigger" id="${id}-trig" style="flex:1">
+                           <span>${nameOf(p.home)} · ${symbolOf(p.home)} · ${iso(p.home)}</span>${ic('caret')}
+                         </button>
+                       </div>
+                     </div>
+                     <div class="set-hint-block" id="${id}-hint">המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · הוא הצד השני של כל המרה בטיול.</div>`
+                  : ''
+              }
+            </main>
+          </div>
+        </div>`;
+      };
+
       /* ══════════════════════════ paint ══════════════════════════ */
       const paint = () => {
         document.querySelector('#s1').innerHTML = [
@@ -11219,6 +11289,11 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         document.querySelector('#s5').innerHTML = [
           col('<span class="tag before">היום</span>', 'חמש אפשרויות קשיחות', settingsField(false, 'st-b')),
           col('<span class="tag after">בהצעה</span>', 'אותו טריגר של אזור-הזמן', settingsField(true, 'st-a')),
+        ].join('');
+
+        document.querySelector('#s7').innerHTML = [
+          col('<span class="tag before">היום</span>', 'סעיף "תצוגה" · ערכת נושא בלבד', accountRow(false, 'ac-b')),
+          col('<span class="tag after">בהצעה</span>', 'שורה שנייה · ורמז משלה, כי היא לא של המכשיר', accountRow(true, 'ac-a')),
         ].join('');
 
         // §6 — read from Intl in THIS runtime. Never a typed table.
@@ -11363,6 +11438,36 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           void n.offsetWidth;
           return out;
         };
+        /** The reported defect, as a number rather than an eye. Every child's
+         *  centre against its own container's centre — which is what an
+         *  alignment bug IS, and what no width-and-height table can see. The
+         *  first version of this file measured only boxes, so a chip that was
+         *  the right size with its contents parked 8.5px high reported clean.
+         *  Reads the worst offset in the chip, and reports the `baseline`
+         *  counterfactual beside it by forcing the old value and re-reading. */
+        const chipOffset = () => {
+          const chip = el('#cv .cv-side.on .cv-cur');
+          if (!chip) return null;
+          const worst = () => {
+            const c = chip.getBoundingClientRect();
+            const mid = (c.top + c.bottom) / 2;
+            return Math.max(
+              0,
+              ...[...chip.children].map((k) => {
+                const r = k.getBoundingClientRect();
+                return Math.abs((r.top + r.bottom) / 2 - mid);
+              }),
+            );
+          };
+          const now = worst();
+          const prev = chip.style.alignItems;
+          chip.style.alignItems = 'baseline';
+          void chip.offsetHeight;
+          const was = worst();
+          chip.style.alignItems = prev;
+          void chip.offsetHeight;
+          return `${now.toFixed(1)}px · היה ${was.toFixed(1)}px`;
+        };
         const secTitleH = h('#s1 .sec-title') ?? 0;
         const bodyH = visBody;
         const baseRow = h('#g-a') ?? 0;
@@ -11405,10 +11510,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ['שורת השער + "נכון ל־" · גובה', h('#cv-rate') + 'px', 'שורה אחת, כי זו עובדה אחת'],
           ['הגיליון כולו · גובה', h('#cv .modal-card') + 'px', `מול ${bodyH}px גוף גלוי · גיליון לא ממלא מסך`],
 
-          ['· §4/§5 · הבוחר והשדה', '', ''],
+          ['· §4/§5/§7 · הבוחר והשדות', '', ''],
           ['שורה בבוחר המטבע · גובה', h('#pk .zp-row') + 'px', 'רצפת מגע 44px · שורת ZonePicker כמו שהיא'],
           ['מטבעות מ-<code>Intl.supportedValuesOf</code>', ALL_CUR.length, 'מול 5 ב-<code>CURRENCY_OPTIONS</code>'],
-          ['טריגר המטבע בהגדרות · גובה', h('#st-a-trig') + 'px', 'מול ה-<code>select</code> היום ' + h('#st-b-trig') + 'px · <b>פגם B</b> תוקן ל-44px'],
+          ['טריגר המטבע בהגדרות הטיול · גובה', h('#st-a-trig') + 'px', 'מול ה-<code>select</code> היום ' + h('#st-b-trig') + 'px · <b>פגם B</b> תוקן ל-44px'],
+          ['טריגר המטבע בהגדרות המשתמש · גובה', h('#ac-a-trig') + 'px', 'קריאה שלישית לאותו פקד · אותה רצפה'],
+          ['שבב המטבע בגיליון · מרכז התוכן מול מרכז השבב', chipOffset(), '<b>הפגם שדווח</b> · <code>baseline</code> מול <code>center</code>'],
         ];
         document.querySelector('#meas tbody').innerHTML = rows
           .map((x) =>

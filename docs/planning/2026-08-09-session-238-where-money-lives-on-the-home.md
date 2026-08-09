@@ -157,22 +157,38 @@ already uses, opening the currency picker. **The screen's own copy has to change
 `t.settings.derivedHint` currently promises _"אזור-זמן ומטבע נערכים ידנית כרגע · בעתיד ייגזרו
 אוטומטית מהיעד"_, which becomes a lie the day this ships.
 
-## Slice 2's hidden schema question
+## Slice 2's hidden schema question — **answered by the owner, against the recommendation**
 
 The pair is trip currency ↔ the member's **home** currency, and `User` has no preference field of
-any kind today. The recommendation is **to add no column in this version**:
+any kind today. This note originally recommended adding **no column**: derive from the device
+region, keep the override device-local beside `waypoint:theme`, on the ADR-0113 precedent that a
+stored value's "only real value is marginal against the model cost".
 
-- the default is derived from the device region
-  (`new Intl.Locale(navigator.language).region` → `IL`) through **the same** `COUNTRY_CURRENCY`
-  table slice 1 adds, so the card works on first open with no settings visit;
-- the override is stored per device beside `waypoint:theme`, and lives in the converter sheet
-  (tap the home currency → the picker), so the card carries no control;
-- it is reversible upward — a `User.homeCurrency` column can land later and be seeded from the
-  local value.
+**Owner's call (2026-08-09): it is a user preference, it lives in user settings, and it is
+persisted in the database.** That is the better answer and the recommendation was wrong on a
+simple point — the same person on a phone and on a tablet is the same person, and a preference
+that does not travel with the account is a preference you set twice. Recorded as a reversal
+rather than quietly rewritten, because the rejected reasoning is the part a future reader would
+otherwise re-propose.
 
-The cost is honest and small: someone with a phone and a tablet sets it twice. The precedent is
-ADR-0113's rejection of a stored trip origin — "its only real value is marginal against the model
-cost". This is fork 3 below.
+So: **`User.preferredCurrency`**, nullable, edited in `UserSettings`' existing `תצוגה` section
+through the same trigger + picker both other call sites now use (mockup §7). The device region
+survives only as the **seed** for a user who has never set one — `new Intl.Locale(navigator.language).region`
+through the same `COUNTRY_CURRENCY` table slice 1 adds — so the card still works on first open
+without a settings visit.
+
+**This does not overrule [ADR-0133](../decisions/0133-user-settings-identity-and-account.md) §7 —
+it meets the condition §7 itself set.** That section rejected exactly this list ("a theme toggle,
+a language picker, **units**, a user-level home timezone…") for one stated reason: _"A switch that
+does nothing is worse than a thin page."_ A currency preference **was** that switch, until this
+slice gave it two readers. It is the same route the theme toggle already travelled — rejected in
+July, back once ADR-0158 §8 made the remap real — and `UserSettings.tsx`'s own comment states the
+principle: _"The rejection is amended by its own condition, not overturned."_ Second instance,
+same sentence.
+
+**One trap, and §7 draws it.** The new row's neighbour in `תצוגה` is the theme, whose hint reads
+_"הבחירה נשמרת במכשיר הזה"_. Currency is the opposite — account, not device — so a row that
+inherits its neighbour's hint promises the reverse of the truth. It gets its own.
 
 ## Slice 3, and where the minor-unit decision actually lands
 
@@ -195,31 +211,99 @@ The design-level statement the build inherits:
 The file draws JPY↔ILS (0 against 2) and ILS↔KWD (2 against **3**) as switchable frames, so no
 reader can come away thinking the world is `/1` or `/100`.
 
-## The forks for the owner
+## Owner answers, 2026-08-09 (second pass)
 
-1. **§1 — is it the card (ד׳) or the tile (ג׳)?** The recommendation is ד׳: `מבט מהיר` restored,
+Four of the questions came back, plus one defect caught on a real phone. Recorded here; §7 was
+added to the mockup and §3 was fixed.
+
+**The reported defect — the currency chip's contents sat high in the chip.** Two faults stacked,
+and only one is the obvious one. `align-items: baseline` on `.cv-cur`: an inline SVG has **no
+baseline**, so the caret aligned by its bottom margin edge and landed 4.5px above the code beside
+it — and on a flex line **taller than its content** (the chip is floored at 44px for ADR-0017),
+`baseline` parks the whole group near the top rather than centring it. Measured **13.0px** off
+the chip's own centre; `center` takes it to **0.0px**. A row of a symbol, a code and a caret has
+nothing to align baselines _for_.
+
+The instrument matters more than the fix, and it is the same lesson as session 236's: **the
+measurement table could not see this.** Every reading was a width or a height, and the chip's
+width and height were correct the whole time — the contents inside it were not. The file now
+measures **each child's centre against its container's centre**, and prints the `baseline`
+counterfactual beside it by forcing the old value and re-reading. An alignment bug is a
+relationship, and a table of boxes cannot express one.
+_(Worth a look during the build: `zone-picker.css:43` sets `align-items: baseline` on `.zp-row`,
+which is fine today because that row is all text — but it is the rule this chip copied.)_
+
+**Currencies: all of them.** Already true of the picker, which reads
+`Intl.supportedValuesOf('currency')` rather than a curated list — nothing to decide, and nothing
+to ship or age. What this **does** decide is fork 4, below, because it makes the picker's reach
+and the rate source's reach two different numbers.
+
+**The trip's currency is auto-derived** — slice 1, unchanged. One correction of key rather than
+of intent: the derivation runs off the destination's **`destinationCountryCode`**, not off the
+timezone. A timezone is a poor route to a currency (`Europe/Zurich` and `Europe/Berlin` are
+different currencies; `America/New_York` and `America/Chicago` are the same one), and ADR-0113
+already stores the country code from the same pick. Same behaviour, better key, and it is what
+§5 draws.
+
+## Fork 4 — the rate source, and no, it was not covered
+
+It was named (ECB reference rates) and never decided, and **"all currencies" is what breaks it.**
+The ECB publishes a euro reference rate for roughly **30** currencies once per TARGET business
+day. The picker offers ~160. That gap is not theoretical for this app:
+
+- **Iceland is the second entry in `DESTINATIONS`** (`{ code: 'IS', he: 'איסלנד' }`), and the ECB
+  has not published an ISK reference rate since suspending it in 2008.
+- **Vietnam is the tenth**, and VND is not on the list either.
+- The mockup's own §3 pair control offers **`ISK↔USD`** — a pair the source this file printed
+  `שער יציג · ECB` against **cannot price**. The drawing caught its own source out.
+
+So a decision is needed, and the shape of it is:
+
+- **Primary: a broad-coverage feed.** The candidates that need no key and cover ~160+ ISO-4217
+  codes daily are ExchangeRate-API's open-access endpoint (`open.er-api.com`, attribution
+  required on the free tier) and the CDN-hosted `@fawazahmed0/exchange-api` dataset (200+,
+  including crypto, no key). Volume is a non-issue either way: the server fetches **once a day**
+  and every trip reads one cached global table.
+- **ECB stays useful as the authoritative rate for the majors**, and the way to hold both without
+  building two pipes now is the shape ADR-0166 §5 already established — a **provider registry
+  with field-level precedence**. Declare the interface, ship one provider, add the second when
+  someone wants the ECB's authority for EUR pairs. Second consumer of an existing pattern, not
+  new machinery.
+- **A pair the source cannot price is a real state, not an error.** With a broad source it is
+  rare rather than impossible (a currency dropped, a crypto code, a newly redenominated one), and
+  it degrades exactly like the never-fetched case in §2: no card, and the converter says so.
+- **Kill switch**, as ADR-0166 §14 gave enrichment. This is the second thing in the app that
+  talks to a third party on its own initiative.
+
+**Everything in that paragraph needs a live check before it is written into an ADR**, and this
+session could not do one: the sandbox's egress proxy blocks all three hosts (`api.frankfurter.dev`,
+`open.er-api.com`, `ecb.europa.eu` — 403 at the tunnel), so the coverage counts and the free-tier
+terms here come from documentation and recall, not from a response. **The build's first task is
+to fetch each candidate once and diff its currency list against the `COUNTRY_CURRENCY` table** —
+that diff, not a vendor's marketing number, is what "covers our destinations" means.
+
+## The forks still open
+
+1. **§1 — the card (ד׳) or the tile (ג׳)?** Recommendation: ד׳, `מבט מהיר` restored with
    `RateCard` as its first real tenant, the section absent when it has no cards, weather joining
-   later. It is cheaper by measurement and it is what ADR-0045 §4 said would happen. The thing
-   worth saying no to it for, if anything, is the third section heading on a screen whose
-   grammar is "one loud element, two quiet sections".
-2. **§4 — extract a shared picker, or write a sibling?** The recommendation is a **small
-   extraction**: the sheet + search + suggested-group + empty-state machinery is ~40 lines and
-   entirely label-agnostic, and `ZonePicker` keeps its three exported helpers. Root rule 8
-   requires asking before taking on a refactor of a shipped, tested primitive rather than
-   quietly duplicating it — so this is the ask.
-3. **Where does the home currency live?** Recommendation above: derived + device-local, no
-   `User` or `Membership` column in v1. The alternative is a `User.homeCurrency` column now,
-   which syncs across devices and costs a migration for a display preference.
-4. **The source, and whether it may be called at all.** ECB daily reference rates (free, keyless,
-   attribution "שער יציג · ECB"), fetched server-side, stored globally like `PlaceEnrichment`
-   (§1's "the world's facts go global"), triggered off the snapshot read. This is the second
-   thing in the app that talks to a third party on its own initiative, so it should ship behind
-   the same kind of kill switch ADR-0166 §14 gave enrichment.
+   later. Cheaper by measurement, and what ADR-0045 §4 said would happen. The thing worth saying
+   no to it for is the third section heading on a screen whose grammar is "one loud element, two
+   quiet sections".
+2. **§4 — extract a shared picker from `ZonePicker`, or write a sibling?** Recommendation: a
+   **small extraction** — the sheet + search + suggested-group + empty-state machinery is ~40
+   lines and entirely label-agnostic, and `ZonePicker` keeps its three exported helpers. Root
+   rule 8 requires asking before refactoring a shipped, tested primitive rather than quietly
+   duplicating it. **Now a three-call-site question, not two:** trip settings, user settings, and
+   both sides of the converter sheet.
 
 ## Owed next, once those are answered
 
-- The ADR, with ADR-0045 §4 amended **in place** (its promise is being kept, not superseded) and
-  ADR-0014's second amendment cross-linked as the origin story.
+- The ADR, with ADR-0045 §4 amended **in place** (its promise is being kept, not superseded),
+  ADR-0014's second amendment cross-linked as the origin story, and **ADR-0133 §7 amended in
+  place too** — `User.preferredCurrency` meets that section's own condition, exactly as the theme
+  toggle did, and the amendment belongs beside the rejection rather than in a new ADR.
+- **A live coverage check against every candidate rate source**, diffed against `COUNTRY_CURRENCY`
+  — the one thing this session could not do, and the thing fork 4 actually turns on.
 - `design-language.md`'s component lexicon: `RateCard` added, and the `GlanceCard` entry noting
   the name collision explicitly so the next card does not reach for it.
 - `feature-catalog.md`: the _"Currency rate display"_ row and the FX half of
