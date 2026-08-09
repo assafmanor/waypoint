@@ -59,3 +59,4 @@ mockups/when-field-drawing-v1.html
 # as the inline-app-css.mjs files above; the generator's output is canonical.
 mockups/dark-mode-v1.html
 mockups/dark-mode-v1.dom.json
+mockups/plan-row-title-overflow-v1.html
