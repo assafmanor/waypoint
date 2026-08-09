@@ -185,8 +185,26 @@ converter sheet already has the slot (§3's rate line ends in a source, drawn as
 fixed it at three elements — icon, rate, "as of" — and it displays a rate. This
 is consistent with existing practice rather than novel (ADR-0166 §5 already
 renders a source's licence verbatim, `© OpenStreetMap contributors`), but where
-the mark sits on a 76px card is a design question §3 did not answer. **Held for
-the owner** rather than decided in a build.
+the mark sits on a 76px card is a design question §3 did not answer.
+
+**Drawn as mockup §9, four placements, measured.** A structural constraint
+narrows it before taste does: the card is a `<button>`, and an `<a>` inside one
+is invalid markup — so any placement _inside_ the card is not a placement, it is
+a decision to drop the link. That option then **died on the render as well**: it
+wraps to three lines and forces the rate itself onto two (`¥100 =` / `₪2.43`).
+
+|                                      | cost                   | scales to a second source? |
+| ------------------------------------ | ---------------------- | -------------------------- |
+| the existing `.sec-title .hint` slot | **+0px**, zero new CSS | no                         |
+| a line under the card                | **+21px**              | yes                        |
+
+**Recommended: the line under the card**, despite costing more. Attribution
+belongs beside the data it attributes, and a section heading attributes the
+_section_ — which ADR-0045 §4 has already promised to a second tenant, weather,
+from a different source. One slot cannot carry two sources honestly, and "move
+it when weather lands" is how the wrong thing stays. Both clear the 44px floor
+through an `::after` overlay. **The owner's call; the section slot is the
+reasonable answer if paying zero today is worth the later move.**
 
 **What §7 got wrong, and it was the headline example.** It claimed the ECB "has
 not quoted ISK since 2008" and that Iceland — the second entry in `DESTINATIONS`
