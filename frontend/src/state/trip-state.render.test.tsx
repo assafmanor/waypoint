@@ -59,6 +59,7 @@ const SNAPSHOT: TripSnapshot = {
   notes: [],
   documentAttachments: [],
   enrichments: {},
+  fxRates: null,
   latestSeq: '0',
 };
 

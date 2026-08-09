@@ -36,6 +36,7 @@ import {
   TRIP_ICON_CLUSTERS,
   type Trip,
 } from '@waypoint/shared';
+import { currencyForNewTrip } from '../lib/currency';
 import { useIsOffline } from '../lib/outbox';
 import { useActiveTripId } from '../state/active-trip-id';
 import { useAppBack } from '../state/nav-state';
@@ -83,6 +84,8 @@ export function CreateTrip() {
   // the device default.
   const [destPlace, setDestPlace] = useState<Omit<PickedDestination, 'name'>>({});
   const [timezone, setTimezone] = useState(DEVICE_TZ);
+  // Derived from the destination's country, never collected (ADR-0180 §1).
+  const [currency, setCurrency] = useState<string | undefined>(undefined);
   const [candidateZones, setCandidateZones] = useState<string[] | undefined>(undefined);
   const [tzPickerOpen, setTzPickerOpen] = useState(false);
   const [startDate, setStartDate] = useState('');
@@ -113,6 +116,12 @@ export function CreateTrip() {
     setDestPlace(place);
     setTimezone(place.timezone ?? DEVICE_TZ);
     setCandidateZones(place.candidateZones);
+    // The currency rides the same pick (ADR-0180 §1) and stays INVISIBLE here:
+    // creation is minimal (ADR-0032) and a currency is not a question worth
+    // asking someone naming a trip. A miss degrades to "not set", never to a
+    // guess, and trip settings is where it becomes editable — see `lib/currency`
+    // for why that differs from the edit rule.
+    setCurrency(currencyForNewTrip(place.countryCode));
     suggest(destName, startDate);
   };
 
@@ -166,6 +175,7 @@ export function CreateTrip() {
       startDate,
       endDate,
       timezone,
+      currency,
       icon: icon.value,
     });
     if (!parsed.success) return;

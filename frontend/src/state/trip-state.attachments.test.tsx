@@ -99,6 +99,7 @@ const SNAPSHOT: TripSnapshot = {
     link('a3', { bookingId: 'b2', documentId: 'doc-shared' }),
   ],
   enrichments: {},
+  fxRates: null,
   latestSeq: '10',
 };
 

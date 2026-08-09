@@ -105,3 +105,31 @@ describe('TripSettings — a read row never inherits the screen direction', () =
     expect(document.querySelector('.set-row .fv.mono')?.textContent).toBe('Asia/Tokyo');
   });
 });
+
+// The currency field stopped being a five-option `<select>` (ADR-0180 §1). What
+// is pinned here is the swap itself and the label it now shows — the picker's
+// own behaviour is `CurrencyPicker.test.tsx`, and the derivation rule is
+// `lib/currency.test.ts`. Three small tests beat one that reaches through all
+// three layers and fails for any of them.
+describe('TripSettings — the currency field is a picker trigger, not a select', () => {
+  it('renders the shared trigger with the currency’s full label', () => {
+    openEditor();
+    const trigger = document.querySelector('#s-currency');
+    expect(trigger?.tagName).toBe('BUTTON');
+    expect(trigger?.className).toContain('set-pick-trigger');
+    // name · symbol · code, from the runtime — not the bare "JPY" the select showed.
+    expect(trigger?.textContent).toContain('JPY');
+    expect(trigger?.textContent).toContain('¥');
+  });
+
+  it('has no <select> left in the form', () => {
+    openEditor();
+    expect(document.querySelector('.set-edit-form select')).toBeNull();
+  });
+
+  it('opens the currency sheet on press', () => {
+    openEditor();
+    fireEvent.click(document.querySelector('#s-currency')!);
+    expect(screen.getByPlaceholderText(t.currencyPicker.searchPlaceholder)).toBeTruthy();
+  });
+});

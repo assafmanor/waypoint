@@ -63,6 +63,24 @@ export const APP_LOCALE = 'he-IL';
  *  trip-local timezone) is loaded yet, e.g. the boot screen's clock. */
 export const DEVICE_TIMEZONE =
   typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC';
+
+/** The device's ISO-3166 region ("IL"), or `undefined` when the platform's
+ *  locale carries no region — `he` alone does, `he-IL` does not.
+ *
+ *  Deliberately NOT `APP_LOCALE`'s region, which is always IL by construction:
+ *  this is the one place the app asks where the DEVICE is rather than what
+ *  language it speaks, and it feeds exactly one thing — the currency a person
+ *  is most likely to think in (ADR-0180 §1/§2), read through the same
+ *  `COUNTRY_CURRENCY` table the trip's own currency comes from. A wrong answer
+ *  costs a picker tap, which is why a guess is acceptable here and nowhere near
+ *  a time. */
+export const DEVICE_REGION: string | undefined = (() => {
+  try {
+    return new Intl.Locale(navigator.language).region ?? undefined;
+  } catch {
+    return undefined;
+  }
+})();
 export const MINUTES_PER_HOUR = 60;
 export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 

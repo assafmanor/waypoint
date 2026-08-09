@@ -41,6 +41,7 @@ export const toUserDto = (u: User): SharedUser => ({
   avatarChoice: u.avatarChoice,
   googleAvatarUrl: u.googleAvatarUrl,
   uploadedAvatarUrl: u.uploadedAvatarKey ? avatarContentPath(u.id, u.uploadedAvatarKey) : null,
+  preferredCurrency: u.preferredCurrency,
   createdAt: u.createdAt.toISOString(),
 });
 

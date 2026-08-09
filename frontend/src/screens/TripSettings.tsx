@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  currencyForCountry,
   DESTINATIONS,
   TRIP_ICON_CLUSTERS,
   type Membership,
@@ -18,6 +19,8 @@ import { useAuth } from '../state/auth-state';
 import { useAppBack } from '../state/nav-state';
 import { ConfirmDialog, type ConfirmTone } from '../ui/primitives/ConfirmDialog';
 import { ZonePicker, zoneLabel } from '../ui/primitives/ZonePicker';
+import { CurrencyPicker, currencyLabel } from '../ui/primitives/CurrencyPicker';
+import { currencyAfterDestinationEdit, currencyForDeviceRegion } from '../lib/currency';
 import { FormError } from '../ui/primitives/FormError';
 import { DateField } from '../ui/primitives/DateField';
 import { tokenClass } from '../ui/primitives/ValueToken';
@@ -36,13 +39,6 @@ import { t } from '../i18n/he';
 import { Avatar } from '../ui/primitives/Avatar';
 import { MemberRow } from '../ui/domain/MemberRow';
 import { MemberSheet } from '../ui/domain/MemberSheet';
-
-// Currency stays a small stable select; timezone is now the shared ZonePicker
-// over the full IANA set (ADR-0113 §6), replacing the old 5-item TZ_OPTIONS. The
-// trip's current value is always included so nothing is silently dropped on save.
-const CURRENCY_OPTIONS = ['JPY', 'ILS', 'USD', 'EUR', 'GBP'];
-const withCurrent = (options: string[], current?: string) =>
-  current && !options.includes(current) ? [current, ...options] : options;
 
 type ConfirmState = {
   tone: ConfirmTone;
@@ -480,8 +476,20 @@ function DetailsEditor({
     setDestPlace(place);
     if (place.timezone) setTimezone(place.timezone);
     setCandidateZones(place.candidateZones);
+    // The currency follows the same rule as the zone above, one line down and
+    // for the same reason (ADR-0180 §1): a resolved pick sets it, and anything
+    // that does NOT resolve — "use as typed", or a country the table doesn't
+    // carry — leaves the trip's existing currency alone rather than clearing it.
+    //
+    // The overwrite is safe here in a way it would not have been before: this
+    // sets FORM state, so it is visible above the save button and one tap from
+    // being changed back. And the deliberate non-default it used to trample
+    // ("I keep this trip in shekels") now has a field of its own — the member's
+    // preferred currency (ADR-0180 §2) — so the trip's is the destination's again.
+    setCurrency((prev) => currencyAfterDestinationEdit(place.countryCode, prev) ?? '');
   };
   const [currency, setCurrency] = useState(trip.currency ?? '');
+  const [currencyPickerOpen, setCurrencyPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   // Every refusal this form can make, marked at the field it is about (ADR-0150).
   const errors = useFormErrors<SettingsField>();
@@ -494,6 +502,15 @@ function DetailsEditor({
     ...(candidateZones ?? []),
     ...places.map((p) => p.timezone).filter((z): z is string => !!z),
   ];
+
+  // The same idea one field down: the currencies most likely to be wanted, ahead
+  // of the full ISO-4217 list. The destination's own is first (it is what the
+  // derivation would have chosen), then the device region's — which is the same
+  // COUNTRY_CURRENCY table read against the phone rather than the trip.
+  const suggestedCurrencies = [
+    currencyForCountry(destPlace.countryCode),
+    currencyForDeviceRegion(),
+  ].filter((c): c is string => !!c);
 
   // No floor-to-today here (unlike creation, PR #92): an existing trip may be
   // under way or already past, so editing its dates must stay unbounded below.
@@ -606,7 +623,7 @@ function DetailsEditor({
         <button
           type="button"
           id="s-tz"
-          className="set-tz-trigger"
+          className="set-pick-trigger"
           onClick={() => setTzPickerOpen(true)}
         >
           <span>{zoneLabel(timezone)}</span>
@@ -626,20 +643,27 @@ function DetailsEditor({
       )}
       <div className="set-fld">
         <label htmlFor="s-currency">{t.settings.currencyLabel}</label>
-        <select
+        <button
+          type="button"
           id="s-currency"
-          className="currency-select"
-          value={currency}
-          onChange={(e) => setCurrency(e.target.value)}
+          className="set-pick-trigger"
+          onClick={() => setCurrencyPickerOpen(true)}
         >
-          <option value="">-</option>
-          {withCurrent(CURRENCY_OPTIONS, currency || undefined).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
+          <span>{currency ? currencyLabel(currency) : t.settings.currencyUnset}</span>
+          <Icon name="caret" dir="down" />
+        </button>
       </div>
+      {currencyPickerOpen && (
+        <CurrencyPicker
+          value={currency || undefined}
+          suggested={suggestedCurrencies}
+          onChange={(picked) => {
+            setCurrency(picked);
+            setCurrencyPickerOpen(false);
+          }}
+          onClose={() => setCurrencyPickerOpen(false)}
+        />
+      )}
       <div className="set-hint-block">{t.settings.derivedHint}</div>
       <div className="set-form-actions">
         {/* Disabled only while a write is in flight — never as a stand-in for a

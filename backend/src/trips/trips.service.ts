@@ -24,6 +24,7 @@ import type {
 import { resolveAvatarHue } from '@waypoint/shared';
 import { ENTITY_TYPE, ERROR_CODE } from '@waypoint/shared';
 import { EnrichmentScheduler } from '../enrichment/enrichment.scheduler';
+import { FxService } from '../fx/fx.service';
 import { EnrichmentService } from '../enrichment/enrichment.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from '../sync/change.service';
@@ -70,6 +71,7 @@ export class TripsService {
     private readonly changes: ChangeService,
     private readonly enrichment: EnrichmentService,
     private readonly scheduler: EnrichmentScheduler,
+    private readonly fx: FxService,
   ) {}
 
   async createTrip(userId: string, input: CreateTripInput): Promise<Trip> {
@@ -496,6 +498,13 @@ export class TripsService {
     // yesterday. Holding RepeatableRead open across a second query would buy nothing and
     // lengthen the app's most contended read.
     const { enrichments, stale } = await this.enrichment.readForPlaces(places);
+    // The rates ride the same seat, and for the same two reasons (ADR-0180 §7):
+    // they are a global read model with no `seq` to be coherent with, and this
+    // read is also the feed's only trigger — there is no scheduler in this repo
+    // and this is not a good enough reason to introduce the first one
+    // (ADR-0157 §6, ADR-0166 §14). `readAndRefresh` never throws and never waits
+    // on the network: it returns the stored set at whatever age it is.
+    const fxRates = await this.fx.readAndRefresh();
     // **The read is also the trigger** (§14). The join just told us which of this trip's places
     // nobody has looked up or whose values have lapsed, for no extra query — so this is where
     // backfill, TTL refresh and recovery-after-a-redeploy all happen. Synchronous and `void`:
@@ -514,6 +523,7 @@ export class TripsService {
       notes: notes.map(toNoteDto),
       documentAttachments: documentAttachments.map(toDocumentAttachmentDto),
       enrichments,
+      fxRates,
       latestSeq: latestChange ? latestChange.seq.toString() : '0',
     };
   }

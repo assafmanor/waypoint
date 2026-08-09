@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import {
   ATTACHMENT_HOST_KEYS,
+  NOTE_HOST_KEYS,
   bookingTypeSchema,
   documentTypeSchema,
   eventCategorySchema,
@@ -12,9 +13,9 @@ import {
   eventStatusSchema,
   membershipRoleSchema,
   placeSearchKindSchema,
-  NOTE_HOST_KEYS,
   type NoteHostKey,
 } from './entities';
+import { currencyCodeSchema } from './currency';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 import {
   MAX_DISPLAY_NAME_LENGTH,
@@ -553,6 +554,10 @@ export const updateMeSchema = z
     displayName: z.string().trim().min(1).max(MAX_DISPLAY_NAME_LENGTH).optional(),
     avatarChoice: avatarChoiceSchema.optional(),
     avatarHue: identityHueSchema.nullable().optional(),
+    // `null` clears the pick and hands the client back to its device-region
+    // default (ADR-0180 §2) — the same nullable-means-unchosen shape as
+    // `avatarHue` above, so the patch needs no separate "reset" verb.
+    preferredCurrency: currencyCodeSchema.nullable().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'patch must change at least one field' });
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;

@@ -1261,6 +1261,12 @@ export const t = {
       themeLight: 'בהיר',
       themeDark: 'כהה',
       themeHint: 'הבחירה נשמרת במכשיר הזה. במצב מערכת האפליקציה עוקבת אחרי הטלפון.',
+      // The home currency (ADR-0180 §2). Its hint has to say ACCOUNT where its
+      // neighbour above says device — a row that inherited the theme's promise
+      // would state the opposite of the truth.
+      currencyLabel: 'מטבע',
+      currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · הוא הצד השני של כל המרה בטיול.',
+      currencyUnset: '-',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
       emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',
@@ -2007,6 +2013,17 @@ export const t = {
     allZones: 'כל האזורים',
     noResults: 'לא נמצא אזור זמן',
   },
+  // The currency picker (ADR-0180 §6) — the zone picker's sibling over
+  // `Intl.supportedValuesOf('currency')`. Its own strings rather than a shared
+  // set: "מוצע" happens to be the same word, and pretending that is one string
+  // is how a picker ends up unable to say "כל המטבעות".
+  currencyPicker: {
+    title: 'מטבע',
+    searchPlaceholder: 'חיפוש לפי שם, סמל או קוד…',
+    suggested: 'מוצע',
+    allCurrencies: 'כל המטבעות',
+    noResults: 'לא נמצא מטבע',
+  },
   // The "when" standard (WhenField). Shared span-endpoint copy for the tap-to-open
   // time field, the derived duration read-out, and the crosses-a-day marker.
   whenField: {
@@ -2047,7 +2064,14 @@ export const t = {
     dateTo: 'עד',
     timezoneLabel: 'אזור זמן',
     currencyLabel: 'מטבע',
-    derivedHint: 'אזור-זמן ומטבע נערכים ידנית כרגע · בעתיד ייגזרו אוטומטית מהיעד',
+    // Was a promise in the future tense until the derivation landed (ADR-0180
+    // §1). Shipping the derivation without rewriting this would have left the
+    // screen saying the feature does not exist yet.
+    derivedHint: 'אזור-זמן ומטבע נגזרים מהיעד · אפשר לשנות ידנית בכל רגע',
+    // The currency trigger before anything is derived — a country the table
+    // does not carry, or a "use as typed" destination. A regular dash is the
+    // app's "no value" placeholder.
+    currencyUnset: '-',
     peerManaged: 'רק מנהל יכול לערוך את פרטי הטיול',
     party: 'חבורה',
     memberCount: (n: number) => `${n} משתתפים`,

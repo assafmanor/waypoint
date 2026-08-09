@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 import { tripEnrichmentsSchema } from './enrichment';
+import { currencyCodeSchema } from './currency';
+import { fxRatesSchema } from './fx';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 
 export const idSchema = z.string();
@@ -109,6 +111,10 @@ export const userSchema = z.object({
   // Relative to the API origin, since the server has no reliable notion of its own
   // public URL (`FRONTEND_URL` is the frontend's, not ours).
   uploadedAvatarUrl: z.string().nullable(),
+  // The member's home currency (ADR-0180 §2), or null when they have never
+  // chosen one — the client then seeds a default from the device region rather
+  // than the server guessing on their behalf.
+  preferredCurrency: currencyCodeSchema.nullable(),
   createdAt: z.string(),
 });
 export type User = z.infer<typeof userSchema>;
@@ -463,6 +469,17 @@ export const tripSnapshotSchema = z.object({
    *  is global and no client writes it, so it carries no `Change` and never appears in the
    *  change feed. Absent-or-empty is the normal state — most places have nothing. */
   enrichments: tripEnrichmentsSchema,
+  /** **The world's exchange rates** (ADR-0180 §7), on the same terms as
+   *  `enrichments` above: global, server-owned, no `Change`, never client-written.
+   *  `null` is the normal cold state — nothing has been fetched yet, or the
+   *  fetcher is switched off — and every surface that reads it treats absence as
+   *  a state to render rather than an error.
+   *
+   *  **Defaulted rather than required**, which is a compatibility decision and not
+   *  laziness: a client can meet a server that predates this field mid-deploy, and
+   *  a missing key must read as the cold state it already has a rendering for
+   *  rather than failing the whole snapshot parse and blanking the trip. */
+  fxRates: fxRatesSchema.nullable().default(null),
   latestSeq: z.string(), // BigInt serialized as string, see Change.seq
 });
 export type TripSnapshot = z.infer<typeof tripSnapshotSchema>;

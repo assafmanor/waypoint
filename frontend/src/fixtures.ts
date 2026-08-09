@@ -36,6 +36,7 @@ export const USERS: User[] = [
     avatarChoice: 'initials',
     googleAvatarUrl: null,
     uploadedAvatarUrl: null,
+    preferredCurrency: null,
     createdAt: NOW_ISO,
   },
   {
@@ -46,6 +47,7 @@ export const USERS: User[] = [
     avatarChoice: 'initials',
     googleAvatarUrl: null,
     uploadedAvatarUrl: null,
+    preferredCurrency: null,
     createdAt: NOW_ISO,
   },
   {
@@ -56,6 +58,7 @@ export const USERS: User[] = [
     avatarChoice: 'initials',
     googleAvatarUrl: null,
     uploadedAvatarUrl: null,
+    preferredCurrency: null,
     createdAt: NOW_ISO,
   },
   {
@@ -66,6 +69,7 @@ export const USERS: User[] = [
     avatarChoice: 'initials',
     googleAvatarUrl: null,
     uploadedAvatarUrl: null,
+    preferredCurrency: null,
     createdAt: NOW_ISO,
   },
   {
@@ -76,6 +80,7 @@ export const USERS: User[] = [
     avatarChoice: 'initials',
     googleAvatarUrl: null,
     uploadedAvatarUrl: null,
+    preferredCurrency: null,
     createdAt: NOW_ISO,
   },
 ];

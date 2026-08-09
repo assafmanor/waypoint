@@ -10441,6 +10441,37 @@ button.wp-av:focus-visible {
         font-weight: 700;
         font-size: 1.15rem;
       }
+      /* ══ §9 · the attribution. OUTSIDE the card, because the card is a
+         `<button>` and an `<a>` inside one is invalid markup — so "in the card"
+         is not a placement, it is a decision to drop the link. Muted, one line,
+         and it wears the app's own link colour rather than a new one. ══ */
+      .fx-attr {
+        margin: 6px 4px 0;
+        font-size: 0.68rem;
+        line-height: 1.4;
+        color: var(--muted);
+      }
+      .fx-attr-link {
+        color: inherit;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        /* 44px without growing a 10px line — the `ValueToken` overlay trick, and
+           the same one §8's refresh uses. */
+        position: relative;
+        display: inline-block;
+      }
+      .fx-attr-link::after {
+        content: '';
+        position: absolute;
+        inset: -16px -8px;
+      }
+      /* The in-card variant (ד׳), drawn only so the option can be judged: plain
+         text, because it cannot be a link here. */
+      .fx-card .fx-src {
+        display: block;
+        font-size: 0.62rem;
+        opacity: 0.8;
+      }
       .fx-card .asof {
         margin-inline-start: auto;
         font-size: 0.72rem;
@@ -10980,6 +11011,43 @@ button.wp-av:focus-visible {
           נוחת בגיליון, ומוצא את הפקד על אותה עובדה בדיוק.
         </p>
         <div class="pair" id="s8"></div>
+      </section>
+
+      <!-- ══════════════════════════ §9 ══════════════════════════ -->
+      <section class="case">
+        <h2>§9 · שורת הייחוס · איפה יושב <code>Rates By Exchange Rate API</code></h2>
+        <p class="note">
+          <b>בדיקת הכיסוי רצה (ADR-0180, תיקון 2026-08-09) והספק נבחר: ExchangeRate-API Open
+          Access</b> · 151 מתוך 152 המטבעות שלנו, מול 30 של ה-ECB. התנאים שלו מרשים מפורשות
+          קאשינג ושימוש מסחרי, ואוסרים רק חשיפה מחדש של השערים כשירות · מה שהאפליקציה הזאת לא
+          עושה. מה שכן נדרש הוא <b>ייחוס גלוי בכל משטח שמציג שער</b>, כקישור.
+          <br /><br />
+          <b>הגיליון פתור מראש</b> · שורת השער כבר מסתיימת ב-<code>.src</code>, ושם היה כתוב "שער
+          יציג · ECB". הכרטיס במסך הבית הוא הבעיה: §3 קיבע אותו על שלושה איברים, והוא מציג שער.
+          <br /><br />
+          <b>ומגבלה מבנית קובעת כאן יותר מטעם:</b> הכרטיס הוא
+          <code>&lt;button&gt;</code> אחד, ו-<code>&lt;a&gt;</code> בתוך <code>&lt;button&gt;</code>
+          אינו HTML תקין. כלומר כל אפשרות שמכניסה את הייחוס <b>לתוך</b> הכרטיס מוותרת על הקישור
+          ומשאירה טקסט בלבד (ד׳) · והתנאים מבקשים קישור. לכן הבחירה האמיתית היא בין ב׳ ל-ג׳, ושתיהן
+          מניחות את הייחוס <b>מחוץ</b> לכפתור.
+          <br /><br />
+          <b>מבחן ההרחבה הוא מה שמפריד ביניהן:</b> מזג האוויר הוא הדייר השני של אותו סעיף
+          (ADR-0045 §4), <b>ממקור אחר</b>. חריץ אחד בכותרת הסעיף (ב׳) לא יכול לשאת שני מקורות בלי
+          לשקר על אחד מהם; שורה לכל כרטיס (ג׳) גדלה איתם. ב׳ עולה פחות היום, ג׳ נשאר נכון מחר.
+        </p>
+        <p class="note">
+          <b>מה שהמדידה הוסיפה.</b> ד׳ מת פעמיים, לא פעם אחת: מלבד הקישור שאי-אפשר לשים בו, הוא
+          <b>שובר את השער עצמו לשתי שורות</b> · <code>¥100 =</code> ואז <code>₪2.43</code> · כי
+          הייחוס תופס את העמודה שהמספר צריך. אין צורך להכריע אותו בטיעון מבני; הוא נופל על המסך.
+          <br /><br />
+          ב׳ עולה <b>+0px</b> ואפס CSS · החריץ <code>.sec-title .hint</code> כבר קיים ומשמש בדיוק
+          לזה. ג׳ עולה <b>+21px</b>, והוא מה שמומלץ בכל זאת: ייחוס שייך <b>ליד הנתון שהוא מייחס</b>,
+          וכותרת הסעיף מייחסת את הסעיף · שעוד מעט יחזיק שני מקורות. 21px זה מחיר קטן, והוא נגבה רק
+          כשיש כרטיס בכלל (הסעיף נעדר בלעדיו). ב׳ הוא הבחירה הסבירה אם מעדיפים לשלם אפס היום
+          ולהזיז את הסימן כשמזג האוויר ינחת · אבל "נתקן כשזה יגיע" הוא בדיוק איך שהדבר הלא-נכון
+          נשאר.
+        </p>
+        <div class="pair" id="s9"></div>
       </section>
 
       <div class="panel">
@@ -11665,6 +11733,41 @@ button.wp-av:focus-visible {
         </div>`;
       };
 
+      /* ── §9 the attribution, four placements ─────────────────────────────
+            The mark is a brand name and the terms give its wording, so it is
+            NOT translated: `Rates By Exchange Rate API`, isolated per ADR-0118
+            because it is a Latin run inside Hebrew chrome. Everything else
+            about it is ours to place. */
+      const ATTR_TEXT = 'Rates By Exchange Rate API';
+      const attrLink = (cls) =>
+        `<a class="${cls}" href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">${iso(ATTR_TEXT)}</a>`;
+
+      const attrFrame = (option, id) => {
+        const p = pair();
+        const card = `
+          <button type="button" class="fx-card" id="${id}-card">
+            <span class="ic" aria-hidden="true">${ic('currency')}</span>
+            <span class="v" dir="auto">${rateLine(p)}</span>
+            <span class="asof">נכון ל־<span dir="auto">${AS_OF[fresh] ?? '9.8'}</span>${
+              option === 'in-card' ? `<br /><span class="fx-src">${iso(ATTR_TEXT)}</span>` : ''
+            }</span>
+          </button>`;
+        return `<div class="mk-phone frag" id="${id}">
+          <div class="app" data-mode="trip">
+            <main class="body" style="padding-block:14px">
+              <div class="sec-title" id="${id}-title">
+                מבט מהיר
+                ${option === 'section' ? `<span class="hint">${attrLink('fx-attr-link')}</span>` : ''}
+              </div>
+              <div id="${id}-stack">
+                ${card}
+                ${option === 'per-card' ? `<div class="fx-attr" id="${id}-attr">${attrLink('fx-attr-link')}</div>` : ''}
+              </div>
+            </main>
+          </div>
+        </div>`;
+      };
+
       /* ══════════════════════════ paint ══════════════════════════ */
       const paint = () => {
         document.querySelector('#s1').innerHTML = [
@@ -11740,6 +11843,13 @@ button.wp-av:focus-visible {
         document.querySelector('#s7').innerHTML = [
           col('<span class="tag before">היום</span>', 'המסך כמו שהוא · ערכת נושא לבדה בסעיף תצוגה', accountRow(false, 'ac-b')),
           col('<span class="tag after">בהצעה</span>', 'כרטיס שני בתוך אותו סעיף · ורמז משלו, כי הוא לא של המכשיר', accountRow(true, 'ac-a')),
+        ].join('');
+
+        document.querySelector('#s9').innerHTML = [
+          col('<span class="tag before">א׳ · שום דבר על הבית</span>', 'הקישור רק בגיליון · הזול ביותר, וכנראה לא עומד בתנאי', attrFrame('none', 'a9-a')),
+          col('<span class="tag alt">ב׳ · בחריץ כותרת הסעיף</span>', 'קישור אמיתי · אפס CSS חדש · לא גדל עם דייר שני', attrFrame('section', 'a9-b')),
+          col('<span class="tag after">ג׳ · שורה מתחת לכרטיס</span>', 'קישור אמיתי, מחוץ לכפתור · גדל עם כל כרטיס', attrFrame('per-card', 'a9-c')),
+          col('<span class="tag before">ד׳ · בתוך הכרטיס</span>', 'לא יכול להיות קישור · <code>&lt;a&gt;</code> בתוך <code>&lt;button&gt;</code>', attrFrame('in-card', 'a9-d')),
         ].join('');
 
         document.querySelector('#s8').innerHTML = [
@@ -11924,13 +12034,22 @@ button.wp-av:focus-visible {
         /** The refresh's real target, which is its `::after` overlay and not its
          *  own box — so it has to be read from the pseudo, not from the button.
          *  A rect on the button alone would report 17px and call it a failure. */
-        const refreshTarget = () => {
-          const btn = el('#r8-b-btn');
-          if (!btn) return null;
-          const cs = getComputedStyle(btn, '::after');
+        const targetOf = (sel) => {
+          const node = el(sel);
+          if (!node) return null;
+          const cs = getComputedStyle(node, '::after');
           const top = parseFloat(cs.top) || 0;
           const bottom = parseFloat(cs.bottom) || 0;
-          return Math.round(btn.getBoundingClientRect().height - top - bottom);
+          return Math.round(node.getBoundingClientRect().height - top - bottom);
+        };
+        const refreshTarget = () => targetOf('#r8-b-btn');
+        /** What each attribution placement costs against drawing none. */
+        const deltaAttr = (sel) => {
+          const base = h('#a9-a .body');
+          const now = h(sel + ' .body');
+          if (base == null || now == null) return '-';
+          const d = Math.round(now - base);
+          return (d >= 0 ? '+' : '') + d + 'px';
         };
         const secTitleH = h('#s1 .sec-title') ?? 0;
         const bodyH = visBody;
@@ -11975,6 +12094,13 @@ button.wp-av:focus-visible {
           ['שורת השער · <b>עם</b> פקד הרענון (§8)', h('#r8-b-line') + 'px', 'מול ' + h('#r8-a-line') + 'px בלעדיו · הפקד לא מוסיף שורה'],
           ['ה"נכון ל־" כפקד · גובה נראה / אזור מגע', h('#r8-b-btn') + 'px / ' + refreshTarget() + 'px', 'רצפת מגע 44px · הרחבה ב-<code>::after</code>'],
           ['הגיליון כולו · גובה', h('#cv .modal-card') + 'px', `מול ${bodyH}px גוף גלוי · גיליון לא ממלא מסך`],
+
+          ['· §9 · מחיר הייחוס', '', ''],
+          ['גובה הסעיף · א׳ (בלי ייחוס)', h('#a9-a .body') + 'px', 'קו הבסיס · לא עומד בתנאי'],
+          ['גובה הסעיף · ב׳ (חריץ הכותרת)', h('#a9-b .body') + 'px', deltaAttr('#a9-b') + ' · <b>אפס CSS חדש</b>'],
+          ['גובה הסעיף · ג׳ (שורה לכרטיס)', h('#a9-c .body') + 'px', deltaAttr('#a9-c') + ' · גדל עם הדייר השני'],
+          ['הקישור · גובה נראה / אזור מגע · ג׳', h('#a9-c .fx-attr-link') + 'px / ' + targetOf('#a9-c .fx-attr-link') + 'px', 'רצפת מגע 44px · הרחבה ב-<code>::after</code>'],
+          ['הקישור · גובה נראה / אזור מגע · ב׳', h('#a9-b .fx-attr-link') + 'px / ' + targetOf('#a9-b .fx-attr-link') + 'px', 'אותה רצפה, בחריץ קיים'],
 
           ['· §4/§5/§7 · הבוחר והשדות', '', ''],
           ['שורה בבוחר המטבע · גובה', h('#pk .zp-row') + 'px', 'רצפת מגע 44px · שורת ZonePicker כמו שהיא'],

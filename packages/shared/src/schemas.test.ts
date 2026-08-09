@@ -5,6 +5,7 @@ import {
   createNoteSchema,
   createTripSchema,
   moveEventSchema,
+  updateMeSchema,
   updateNoteSchema,
 } from './schemas';
 import { ATTACHMENT_HOST_KEYS, NOTE_HOST_KEYS } from './entities';
@@ -172,5 +173,42 @@ describe('document attachment input validation', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.id).toBe('att-1234abcd');
+  });
+});
+
+// The home currency's wire contract (ADR-0180 §2). The validation lives in
+// `currencyCodeSchema`, which is the currency twin of `timezoneSchema` and
+// exists for the same reason: a bad code stored here surfaces as a RangeError
+// inside Intl at a render site, and with no ErrorBoundary that is a blank
+// screen. A 400 is strictly better.
+describe('updateMeSchema — preferredCurrency', () => {
+  it('accepts a real ISO-4217 code', () => {
+    expect(updateMeSchema.safeParse({ preferredCurrency: 'ILS' }).success).toBe(true);
+    expect(updateMeSchema.safeParse({ preferredCurrency: 'KWD' }).success).toBe(true);
+  });
+
+  it('accepts null — "never chosen", which hands the client back to its device default', () => {
+    expect(updateMeSchema.safeParse({ preferredCurrency: null }).success).toBe(true);
+  });
+
+  // Deliberately ACCEPTED, and the comment on `currencyCodeSchema` is why:
+  // existence can only be checked against the answering engine's own ICU list,
+  // so a stricter rule would let an older server reject a code its own client
+  // offered. A nonexistent code renders as itself rather than throwing, and the
+  // picker cannot emit one anyway.
+  it('accepts a well-shaped code it cannot verify, rather than risking a false rejection', () => {
+    expect(updateMeSchema.safeParse({ preferredCurrency: 'ZZZ' }).success).toBe(true);
+  });
+
+  // ICU itself accepts `ils` and normalises it to ₪; we do not, so that stored
+  // values stay canonical and `symbol === code` comparisons keep working.
+  it('rejects the wrong shape, including the lower-case ICU would have taken', () => {
+    for (const bad of ['ils', 'SHEKEL', '₪', '', 'IL', 'ILSS']) {
+      expect(updateMeSchema.safeParse({ preferredCurrency: bad }).success).toBe(false);
+    }
+  });
+
+  it('still refuses an empty patch', () => {
+    expect(updateMeSchema.safeParse({}).success).toBe(false);
   });
 });

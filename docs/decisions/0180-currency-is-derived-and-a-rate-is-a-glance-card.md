@@ -1,6 +1,6 @@
 # 0180 — Currency is **derived**, a rate is a **glance card**, and money is stored in **minor units**
 
-**Status:** Accepted (2026-08-09) — design only; **nothing built**. The build is a separate change.
+**Status:** Accepted (2026-08-09) — **slice 1 built** the same day (see the build log at the foot for the three places the build decided something the design left open); slices 2 and 3 (the `User` column, the feed, `RateCard`, the converter) are still unbuilt.
 **Date:** 2026-08-09
 **Session note:** [`planning/2026-08-09-session-238-where-money-lives-on-the-home.md`](../planning/2026-08-09-session-238-where-money-lives-on-the-home.md)
 **Mockup:** [`mockups/currency-becomes-a-feature-v1.html`](../../mockups/currency-becomes-a-feature-v1.html) (§1–§8)
@@ -99,7 +99,7 @@ The currency picker is `ZonePicker`'s geometry over `Intl.supportedValuesOf('cur
 
 ### 7. The feed is a pipe: a broad-coverage source, on the provider-registry shape, behind a switch
 
-**Coverage is the deciding constraint, because §6 offers every currency.** The ECB — which the design's first pass named — publishes roughly **30**. That gap is not theoretical for this app: **Iceland is the second entry in `DESTINATIONS`** and the ECB has not quoted ISK since 2008; Vietnam is the tenth and VND is absent too. The mockup's own pair control offers `ISK↔USD`, a pair the source printed beneath it cannot price.
+**Coverage is the deciding constraint, because §6 offers every currency.** The ECB — which the design's first pass named — publishes roughly **30**. That gap is not theoretical for this app: **it covers 30 of our 152 codes and cannot price 17 of the app's own 57 destinations** — Vietnam, Georgia, Nepal, Sri Lanka, Cambodia, Taiwan, the UAE, Jordan, Egypt, Morocco, Kenya, Tanzania, Argentina, Peru, Chile, Colombia, Costa Rica.
 
 - **A broad-coverage feed is the primary** (~160 ISO-4217 codes, daily, keyless). Volume is a non-issue: the server fetches **once a day** and every trip reads one cached global table.
 - **The store is global**, like `PlaceEnrichment` — §1's "the trip's opinion stays trip-scoped; the world's facts go global" applies unchanged, and so does its consequence that this sits outside `ChangeService` with a stated reason.
@@ -140,3 +140,122 @@ No money hue is proposed. The rate is a numeric run and the app's mono treatment
 - **`Membership.preferredCurrency`** instead of `User`. Rejected: it is a property of the person, not of the trip, and per-trip storage would ask the same question once per trip.
 - **The ECB as the only source.** Rejected on coverage — §7. It remains a good _second_ provider for the majors.
 - **Deriving the currency from `Trip.timezone`.** Rejected — §1; the zone is lossy in both directions and the country code is already stored.
+
+## Amendment (2026-08-09) — the coverage check ran, and it picked the provider
+
+§7 made the provider conditional on one measurement and refused to guess it. The
+measurement was run outside the sandbox (this environment's egress policy blocks
+all three candidate hosts, and the proxy's own README says to report a denial
+rather than route around it). Live, 2026-08-09:
+
+| candidate                           | codes | of our 152 | missing  |
+| ----------------------------------- | ----- | ---------- | -------- |
+| Frankfurter / ECB                   | 30    | **30**     | 122      |
+| **ExchangeRate-API Open Access**    | 166   | **151**    | KPW      |
+| fawazahmed0 currency-api (jsDelivr) | 338   | 150        | KPW, SYP |
+
+**The decision is ExchangeRate-API Open Access** (`open.er-api.com`), and it is
+chosen on more than the coverage column, which is effectively a tie with the
+third candidate:
+
+- **It publishes its own next-update time.** `time_last_update_utc` is the "as
+  of" §4 demands, and `time_next_update_utc` is something the design assumed it
+  would have to _compute_ — §4's refresh appears "when a publication has closed
+  since our date", which this turns from a client-side inference about business
+  days into a stored field. A rule that was going to need a TARGET-calendar
+  approximation becomes a comparison.
+- **Its terms are explicit about exactly our use.** Caching is expressly
+  permitted, commercial end-use is permitted, and the one prohibition —
+  re-exposing the raw rates as a data service — is not something this app does.
+  CC0 on the third candidate is freer, but "freer licence" was never the
+  binding constraint; a stated permission to cache is.
+- **It is an FX service rather than a community dataset behind a public CDN.**
+  With one fetch a day and a global cached table, the third candidate's
+  operational risk is manageable — but it is a risk taken for nothing, since
+  the coverage it buys is one currency we cannot reach anyway.
+
+**KPW is unpriceable and that is fine.** North Korea is not in `DESTINATIONS`,
+and an unpriceable pair already has a defined behaviour (§4/§7): no card, and the
+converter says so. It is the graceful-absence path, not a gap to fill.
+
+**One design consequence, and it is not free.** Attribution is **mandatory and
+visible** on surfaces using the rates — `Rates By Exchange Rate API`, linked. The
+converter sheet already has the slot (§3's rate line ends in a source, drawn as
+`שער יציג · ECB`), so the sheet costs nothing. **The Home card does not**: §3
+fixed it at three elements — icon, rate, "as of" — and it displays a rate. This
+is consistent with existing practice rather than novel (ADR-0166 §5 already
+renders a source's licence verbatim, `© OpenStreetMap contributors`), but where
+the mark sits on a 76px card is a design question §3 did not answer.
+
+**Drawn as mockup §9, four placements, measured.** A structural constraint
+narrows it before taste does: the card is a `<button>`, and an `<a>` inside one
+is invalid markup — so any placement _inside_ the card is not a placement, it is
+a decision to drop the link. That option then **died on the render as well**: it
+wraps to three lines and forces the rate itself onto two (`¥100 =` / `₪2.43`).
+
+|                                      | cost                   | scales to a second source? |
+| ------------------------------------ | ---------------------- | -------------------------- |
+| the existing `.sec-title .hint` slot | **+0px**, zero new CSS | no                         |
+| a line under the card                | **+21px**              | yes                        |
+
+**Decided (owner, 2026-08-09): the line under the card**, despite costing more. Attribution
+belongs beside the data it attributes, and a section heading attributes the
+_section_ — which ADR-0045 §4 has already promised to a second tenant, weather,
+from a different source. One slot cannot carry two sources honestly, and "move
+it when weather lands" is how the wrong thing stays. Both clear the 44px floor
+through an `::after` overlay. The free section slot was the alternative and was
+not taken: paying 21px once is cheaper than moving the mark when weather lands.
+
+**What §7 got wrong, and it was the headline example.** It claimed the ECB "has
+not quoted ISK since 2008" and that Iceland — the second entry in `DESTINATIONS`
+— was therefore unpriceable. **ISK is in the ECB's live list.** The suspension
+was real in 2008 and the rate was later reinstated; the claim was recalled rather
+than checked, in the one paragraph that existed because a source's coverage
+cannot be assumed. The conclusion is unchanged and in fact far stronger than the
+wrong example made it — the ECB misses **122 of 152**, and cannot price **17 of
+the app's own 57 destinations** (Vietnam, Georgia, Nepal, Sri Lanka, Cambodia,
+Taiwan, the UAE, Jordan, Egypt, Morocco, Kenya, Tanzania, Argentina, Peru, Chile,
+Colombia, Costa Rica) — but the sentence was false and is corrected wherever it
+was repeated.
+
+## Build log — 2026-08-09, slice 1
+
+Built: `COUNTRY_CURRENCY` + `currencyForCountry` (§1), `lib/money.ts` (§5), the
+`CodePicker` extraction + `CurrencyPicker` (§6), the derivation at both call
+sites, the settings field, the copy, and both CSS defects from the Consequences.
+Not built: §2's column, §3's card, §4's freshness, §7's feed.
+
+**Three things the build decided that the design left open, and one it got wrong.**
+
+1. **`ValueToken` is not the right host for the settings trigger**, so §Consequences'
+   "renamed, or replaced by `ValueToken` if that turns out to be the right host"
+   resolves to the rename. `ValueToken`'s own header defines it as a value **inside
+   a line of prose** — a hairline chip wearing the type and column of the text it
+   replaces. The settings control is a block-level form row with a label above it
+   and a caret at its end. Sharing the name would have meant sharing chip geometry
+   that is wrong for a field. It is `.set-pick-trigger`, at 44px.
+
+2. **The create/edit asymmetry is a named rule, not an inline `if`.** The design
+   describes it in prose and the obvious build is two `if`s, one per screen — which
+   is exactly what the **zone** does today, as two comments with no test tying them
+   together. `lib/currency.ts` names both halves (`currencyForNewTrip`,
+   `currencyAfterDestinationEdit`) and its test asserts every case against **both**,
+   so they cannot converge unnoticed. Cheap, and it is the drift this ADR's §1 is
+   most exposed to.
+
+3. **`.zp-*` became `.cp-*`.** The design drew the picker in the shipped zone
+   classes, which was right for a drawing and wrong to ship: a shared sheet named
+   after its first consumer is the same smell as `.set-tz-trigger`, which this
+   change renames one directory over for the same reason. `ZonePicker`'s existing
+   test passes **untouched** across the extraction, which is the check that mattered
+   — the rename is cosmetic, the extraction is not.
+
+**And the one the design had backwards.** §5 justifies rounding in `toMinor` as
+"binary floats lose an agora", which measurement does not support: a bare
+`Math.round(major * scale)` is correct for **all 200,000** two-decimal values from
+0.00 to 1,999.99. The real defect is narrower and stranger — input carrying _more_
+precision than the currency has rounds **arbitrarily**, `1.005 → 100` but
+`1.015 → 102`, decided by binary representation rather than by the typed number.
+The guard rounds the decimal string first so over-precise input goes half-up
+consistently. The code says so; the ADR's sentence is left as written, with this
+correction beside it.
