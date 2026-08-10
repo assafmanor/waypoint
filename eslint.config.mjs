@@ -178,6 +178,18 @@ const BACK_TRAVERSAL_SELECTORS = [
   },
 ];
 
+// F-14: `crypto.randomUUID` is secure-context-only, so it is simply absent on a
+// plain-HTTP LAN host — the way this app gets opened on a real phone. Sixteen call
+// sites reached for it directly before `lib/id.ts` collected them; this is what
+// keeps the seventeenth from being written.
+const ID_SELECTORS = [
+  {
+    selector: "CallExpression[callee.property.name='randomUUID']",
+    message:
+      'Use `generateId()` (lib/id) instead of `crypto.randomUUID()` — it is secure-context-only and absent on a plain-HTTP test host (F-14).',
+  },
+];
+
 export default tseslint.config(
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/.turbo/**', '_internal/**'],
@@ -228,11 +240,15 @@ export default tseslint.config(
     },
   },
   {
-    // The back-traversal ban, on app code only — see BACK_TRAVERSAL_SELECTORS. Layered as
+    // The app-code-only bans — back traversal, control emoji, `randomUUID`. Layered as
     // its own block so it composes with the frontend selectors above rather than replacing
     // them (the note at the top of this file), and so the test exemption is one `ignores`.
     files: ['frontend/src/**/*.{ts,tsx}'],
-    ignores: ['frontend/src/**/*.test.{ts,tsx}', 'frontend/src/lib/useClock.ts'],
+    ignores: [
+      'frontend/src/**/*.test.{ts,tsx}',
+      'frontend/src/lib/useClock.ts',
+      'frontend/src/lib/id.ts',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -241,6 +257,7 @@ export default tseslint.config(
         ...CONTROL_EMOJI_SELECTORS,
         ...BIDI_SELECTORS,
         ...BACK_TRAVERSAL_SELECTORS,
+        ...ID_SELECTORS,
       ],
     },
   },

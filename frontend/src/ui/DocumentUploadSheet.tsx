@@ -15,6 +15,7 @@ import { FilePicker } from './primitives/FilePicker';
 import { useFormErrors } from './primitives/useFormErrors';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { useTrip } from '../state/trip-state';
+import { generateId } from '../lib/id';
 import { queueDocumentUpload, withChangeGroup } from '../lib/outbox';
 import { useToast } from './Toast';
 import { DOCUMENT_TYPE_ICON, CONTROL_ICON } from '../constants';
@@ -87,7 +88,7 @@ export function DocumentUploadSheet({
     if (!file) return void refuse(t.docs.upload.fileRequired);
     // Title required non-empty (createDocumentSchema); an unnamed doc falls back
     // to its type label (e.g. "דרכון"), never the raw filename.
-    const id = crypto.randomUUID();
+    const id = generateId();
     // One user action → one change group (ADR-0092), and the notes queue AFTER the upload:
     // the outbox is FIFO, so offline a note still finds its host on the server. The id is
     // client-generated, so it is known before either write leaves (ADR-0152 §6b).

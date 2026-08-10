@@ -31,6 +31,7 @@ import {
   type BookingSheetDraft,
   type LegTimes,
 } from '../lib/booking-draft';
+import { generateId } from '../lib/id';
 import { offerDayTimes, offerLegTimes, offeredEnd } from '../lib/booking-prefill';
 import { useRoundTripPartner, type PartnerLeg } from '../lib/booking-journey';
 import { useTrip } from '../state/trip-state';
@@ -670,7 +671,7 @@ export function BookingSheet({
               : finalTitle,
             fromPlaceId: from,
             toPlaceId: to,
-            event: seed ? { ...seed, id: crypto.randomUUID() } : undefined,
+            event: seed ? { ...seed, id: generateId() } : undefined,
             ...(firstOfJourney ? outerStart : undefined),
             ...(lastOfJourney ? outerEnd : undefined),
           };
@@ -719,7 +720,7 @@ export function BookingSheet({
               ...base,
               title: finalTitle,
               placeId,
-              event: seed ? { ...seed, id: seed.id ?? crypto.randomUUID() } : undefined,
+              event: seed ? { ...seed, id: seed.id ?? generateId() } : undefined,
               ...startPatch,
               ...endPatch,
             });
@@ -745,7 +746,7 @@ export function BookingSheet({
                 startZone,
               );
           const event = seed
-            ? { ...seed, id: seed.id ?? linkedEvent?.id ?? crypto.randomUUID() }
+            ? { ...seed, id: seed.id ?? linkedEvent?.id ?? generateId() }
             : undefined;
           await indexVerbs.updateBooking(booking.id, {
             title: finalTitle,

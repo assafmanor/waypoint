@@ -22,6 +22,7 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { generateId } from '../lib/id';
 import { withChangeGroup } from '../lib/outbox';
 import { authoringZone, eventDisplayZones, placeTimezone } from '../lib/places';
 import { useAuth } from '../state/auth-state';
@@ -548,7 +549,7 @@ export function EventForm({
       const parsed = createEventSchema.safeParse(fields);
       if (!parsed.success) return refuseUnexpected(parsed.error.issues[0]?.message);
       const now = new Date(getNow()).toISOString();
-      const id = crypto.randomUUID();
+      const id = generateId();
       void writeNotesBehind(
         verbs
           .create({

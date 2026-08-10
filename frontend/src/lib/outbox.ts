@@ -53,6 +53,7 @@ import {
   uploadDocument,
 } from './api';
 import { applyOutboxOpToCache } from './cache';
+import { generateId } from './id';
 import { PhaseTimeoutError } from './deadline';
 
 /** The queued-write discriminants (T-013): one named value per outbox op, so no
@@ -294,7 +295,7 @@ let activeGroupId: string | undefined;
  *  its own change. Nestable — the previous group is restored on exit. */
 export async function withChangeGroup<T>(run: () => Promise<T>): Promise<T> {
   const previous = activeGroupId;
-  activeGroupId = crypto.randomUUID();
+  activeGroupId = generateId();
   try {
     return await run();
   } finally {
@@ -507,7 +508,7 @@ export function usePendingChangeCount(): number {
 
 export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void> {
   // Join the active user action's change group, or stand alone as its own change.
-  const groupId = activeGroupId ?? crypto.randomUUID();
+  const groupId = activeGroupId ?? generateId();
   await db.outbox.add({ tripId, op, groupId });
   // Mirror the queued change into the read cache so a reopen while still offline
   // shows it (best-effort — a cache failure must not block queueing the write).
