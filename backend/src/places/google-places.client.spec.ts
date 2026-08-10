@@ -61,6 +61,71 @@ describe('GooglePlacesClient (ADR-0113: Hebrew-first place names)', () => {
     ).toBeUndefined();
   });
 
+  /* ── AN UNSENDABLE VIEWPORT IS DROPPED, NOT SENT (field report #34) ────────────────────────
+     Production: `/v1/places:searchText` → `400 INVALID_ARGUMENT — Invalid rectangle viewport.
+     The rectangle viewport cannot be wider than 180.` The bias is a ranking hint, so every case
+     below still sends a complete, valid query; what changes is only whether `locationBias` is on
+     it. Nothing is clamped: a narrower rectangle would rank results toward somewhere the user is
+     not looking, which reads as an answer and is not one. */
+  const sentBody = (mock: ReturnType<typeof stubFetch>) =>
+    JSON.parse((mock.mock.calls[0][1] as RequestInit).body as string);
+
+  it('drops a world-wide viewport bias and still sends the query', async () => {
+    const mock = stubFetch({ places: [] });
+    await client.textSearch('קפה', { south: -85, west: -180, north: 85, east: 180 });
+    const body = sentBody(mock);
+    expect(body.locationBias).toBeUndefined();
+    // The query itself is untouched — the whole point of #34 is that it must still run.
+    expect(body.textQuery).toBe('קפה');
+    expect(body.languageCode).toBe('he');
+  });
+
+  it('sends an antimeridian-wrapped viewport as the inverted range Google reads it as', async () => {
+    const mock = stubFetch({ places: [] });
+    // Auckland↔Fiji across ±180: `west > east`, true span 10°.
+    await client.textSearch('קפה', { south: -20, west: 175, north: -15, east: -175 });
+    expect(sentBody(mock).locationBias).toEqual({
+      rectangle: {
+        low: { latitude: -20, longitude: 175 },
+        high: { latitude: -15, longitude: -175 },
+      },
+    });
+  });
+
+  it('drops a wrapped viewport whose real span is the whole world', async () => {
+    const mock = stubFetch({ places: [] });
+    // `east - west` here is -0.1; the span is 359.9. The naive subtraction is what shipped the 400.
+    await client.textSearch('קפה', { south: -85, west: 100, north: 85, east: 99.9 });
+    expect(sentBody(mock).locationBias).toBeUndefined();
+  });
+
+  it('OMITS a non-finite or inverted bias rather than refusing the search', async () => {
+    // The deliberate choice, pinned: an unusable bias is never an error of ours. Rejecting it
+    // would turn a valid query into a 400 from our own API, which is the failure #34 removes.
+    const nan = stubFetch({ places: [] });
+    await expect(
+      client.textSearch('קפה', { south: NaN, west: 139.6, north: 35.75, east: 139.8 }),
+    ).resolves.toEqual([]);
+    expect(sentBody(nan).locationBias).toBeUndefined();
+
+    const inverted = stubFetch({ places: [] });
+    await client.textSearch('קפה', { south: 35.75, west: 139.6, north: 35.6, east: 139.8 });
+    expect(sentBody(inverted).locationBias).toBeUndefined();
+  });
+
+  it('keeps the airport restriction intact when the bias is dropped', async () => {
+    const mock = stubFetch({ places: [] });
+    await client.textSearch(
+      'נתב"ג',
+      { south: -85, west: -180, north: 85, east: 180 },
+      PLACE_SEARCH_KIND.AIRPORT,
+    );
+    const body = sentBody(mock);
+    expect(body.locationBias).toBeUndefined();
+    expect(body.includedType).toBe('airport');
+    expect(body.strictTypeFiltering).toBe(true);
+  });
+
   // ── AIRPORT-ONLY SEARCH (field report #6) ─────────────────────────────────────
   it('textSearch restricts to airports when asked, strictly, and not otherwise', async () => {
     const mock = stubFetch({ places: [] });

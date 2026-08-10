@@ -16,6 +16,7 @@ import {
   type NoteHostKey,
 } from './entities';
 import { currencyCodeSchema } from './currency';
+import { geoBoundsSchema } from './geo';
 import { avatarChoiceSchema, identityHueSchema } from './identity';
 import {
   MAX_DISPLAY_NAME_LENGTH,
@@ -235,14 +236,12 @@ export const searchPlacesTextSchema = z.object({
   /** Restrict the answer to one kind of place (field report #6). Absent = the whole corpus,
    *  which is every search but a flight leg's. */
   kind: placeSearchKindSchema.optional(),
-  bias: z
-    .object({
-      south: z.number(),
-      west: z.number(),
-      north: z.number(),
-      east: z.number(),
-    })
-    .optional(),
+  /** **Stays permissive on purpose — do not add a span or validity refinement here**
+   *  (field report #34). A world-wide viewport is a real thing to be looking at, and
+   *  refusing it here 400s the search from our own API, which is the failure that report
+   *  is about. Google's geometry rules are enforced where Google is called, by dropping
+   *  the hint: `isSendableViewport` / `GooglePlacesClient.textSearch`. */
+  bias: geoBoundsSchema.optional(),
 });
 export type SearchPlacesTextInput = z.infer<typeof searchPlacesTextSchema>;
 

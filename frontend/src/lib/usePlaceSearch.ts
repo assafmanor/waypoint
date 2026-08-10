@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { Place, PlacePrediction, PlaceResult, PlaceSearchKind } from '@waypoint/shared';
+import { isSendableViewport } from '@waypoint/shared';
 import {
   PLACE_CORPUS,
   PLACE_SEARCH_DEBOUNCE_MS,
@@ -124,10 +125,13 @@ export function usePlaceSearch({
     const timer = setTimeout(() => {
       // The bias is read HERE, inside the fired request, so the effect does not depend
       // on it: a camera idle must never re-run a billed search.
+      // A viewport the proxy could not pass on to Google is not sent at all (field report #34).
+      // Defence in depth only: the server drops it too, and its check is the one that counts.
+      const bias = biasRef?.current ?? undefined;
       const fetching = textCorpus
         ? searchPlacesText(tripId, {
             input: trimmed,
-            bias: biasRef?.current ?? undefined,
+            bias: bias && isSendableViewport(bias) ? bias : undefined,
             kind,
             signal: controller.signal,
           })

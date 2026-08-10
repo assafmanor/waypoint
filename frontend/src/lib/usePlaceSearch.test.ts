@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react';
 import type { Place } from '@waypoint/shared';
 import { PLACE_SEARCH_KIND } from '@waypoint/shared';
 import { PLACE_CORPUS, PLACE_SEARCH_DEBOUNCE_MS, PLACE_SEARCH_MIN_CHARS } from '../constants';
+import type { MapBounds } from './map-camera';
 
 // Real ApiError/isRateLimitedError; only the network call is stubbed.
 vi.mock('./api', async (importOriginal) => {
@@ -197,5 +198,59 @@ describe('usePlaceSearch — restricting the corpus', () => {
       't1',
       expect.objectContaining({ kind: PLACE_SEARCH_KIND.AIRPORT }),
     );
+  });
+});
+
+/* ── THE VIEWPORT BIAS IS A HINT, NOT A REQUIREMENT (field report #34) ─────────────────────────
+   A world-wide viewport used to reach Google as a rectangle wider than 180° and come back
+   `400 INVALID_ARGUMENT`, so panning out turned address search into the generic failure. The
+   server is what guarantees this now; declining to send one is defence in depth. What these
+   pin is the lifecycle either way: loading ends, results render, `failed` stays false. */
+describe('usePlaceSearch — an unsendable viewport bias', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    places = [];
+    events = [];
+    bookings = [];
+    maybeItems = [];
+    textSearchMock.mockReset().mockResolvedValue([PREDICTION]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const searchWithBias = async (bounds: MapBounds) => {
+    // One stable ref across renders, as `Map.tsx`'s `useRef` is — a fresh object per render
+    // would make the bias an effect dependency that changes every time and re-ask the query.
+    const biasRef = { current: bounds };
+    const { result } = renderHook(() => usePlaceSearch({ corpus: PLACE_CORPUS.text, biasRef }));
+    act(() => result.current.setQuery(PAST_FLOOR));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PLACE_SEARCH_DEBOUNCE_MS + 50);
+    });
+    return result;
+  };
+
+  it('passes an ordinary city viewport through as the ranking hint it is', async () => {
+    const tokyo = { south: 35.6, west: 139.6, north: 35.75, east: 139.8 };
+    const result = await searchWithBias(tokyo);
+    expect(textSearchMock).toHaveBeenCalledWith('t1', expect.objectContaining({ bias: tokyo }));
+    expect(result.current.predictions).toEqual([PREDICTION]);
+  });
+
+  it('searches unranked from a world-wide viewport, and the lifecycle completes', async () => {
+    const result = await searchWithBias({ south: -85, west: -180, north: 85, east: 180 });
+    expect(textSearchMock).toHaveBeenCalledWith('t1', expect.objectContaining({ bias: undefined }));
+    // The whole point: results, not the generic failure, and nothing left spinning.
+    expect(result.current.predictions).toEqual([PREDICTION]);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.failed).toBe(false);
+  });
+
+  it('leaves an empty answer as no-results rather than a failure', async () => {
+    textSearchMock.mockResolvedValue([]);
+    const result = await searchWithBias({ south: -85, west: -180, north: 85, east: 180 });
+    expect(result.current.predictions).toEqual([]);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.failed).toBe(false);
+    expect(result.current.active).toBe(true);
   });
 });
