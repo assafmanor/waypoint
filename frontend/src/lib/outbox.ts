@@ -329,11 +329,16 @@ function bumpPendingForOp(op: OutboxOp, delta: number): void {
   for (const id of outboxOpEntityIds(op)) bumpPending(id, delta);
 }
 
-/** Primes the in-memory count from IndexedDB so a queue left over from a
- *  previous session (closed while offline) shows up without a first mutation.
- *  Sync failures are in-memory only (not persisted), so a fresh prime resets
- *  them too — nothing has failed to sync yet this session. */
-export async function initOutboxCount(): Promise<void> {
+/** Re-derives all three in-memory mirrors (`pendingCount`, `pendingGroups`,
+ *  `pendingByEntity`) from the persisted queue — the store is the truth, they are
+ *  a synchronous snapshot for `useSyncExternalStore`. Reads the whole table, not
+ *  one trip: concurrent flushes are what drift them (F-15), and `flushAllOutbox`
+ *  runs one per trip.
+ *
+ *  Deliberately does NOT touch the failure store. Clearing it is `initOutboxCount`'s
+ *  fresh-session concern, and doing it here would erase the `SyncFailure` (F-03) a
+ *  flush had just recorded — breaking failed-write visibility while "fixing" a count. */
+async function resyncOutboxCounters(): Promise<void> {
   const entries = await db.outbox.toArray();
   pendingByEntity.clear();
   pendingGroups.clear();
@@ -342,6 +347,14 @@ export async function initOutboxCount(): Promise<void> {
     bumpGroup(entryGroupId(entry), 1);
   }
   setPendingCount(entries.length);
+}
+
+/** Primes the in-memory count from IndexedDB so a queue left over from a
+ *  previous session (closed while offline) shows up without a first mutation.
+ *  Sync failures are in-memory only (not persisted), so a fresh prime resets
+ *  them too — nothing has failed to sync yet this session. */
+export async function initOutboxCount(): Promise<void> {
+  await resyncOutboxCounters();
   clearSyncFailures();
 }
 
@@ -757,12 +770,25 @@ export async function flushAllOutbox(): Promise<void> {
 }
 
 async function doFlushOutbox(tripId: string): Promise<void> {
-  // Re-read the queue each round instead of draining one snapshot (F-12). A write
-  // enqueued while this flush is mid-loop — `queueDocumentUpload` kicking a flush
-  // while one runs, ADR-0056 — is handed *this* promise by the coalescing above, so
-  // no other flush is coming for it: the round it lands in has to be ours, or it
-  // sits in Dexie until the next reconnect/visibility trigger. Terminates because
-  // every path below either deletes its entry or throws.
+  try {
+    await drainOutbox(tripId);
+  } finally {
+    // The three mirrors are hand-decremented one op at a time by the drain, and two
+    // flushes interleave freely (`flushAllOutbox` starts one per trip). Now that this
+    // trip's drain is done, re-derive them from the store, which never drifts (F-15).
+    // In the `finally` because a halted flush is exactly when the mirrors are least
+    // trusted — and a resync that itself failed must not mask the halt.
+    await resyncOutboxCounters().catch(() => {});
+  }
+}
+
+/** The FIFO drain itself. Re-reads the queue each round instead of looping over one
+ *  opening snapshot (F-12): a write enqueued while this flush is mid-loop —
+ *  `queueDocumentUpload` kicking a flush while one runs, ADR-0056 — is handed *this*
+ *  promise by the coalescing above, so no other flush is coming for it. The round it
+ *  lands in has to be ours, or it sits in Dexie until the next reconnect/visibility
+ *  trigger. Terminates because every path below either deletes its entry or throws. */
+async function drainOutbox(tripId: string): Promise<void> {
   for (;;) {
     const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
     if (entries.length === 0) return;

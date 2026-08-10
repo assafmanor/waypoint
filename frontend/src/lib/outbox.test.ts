@@ -447,6 +447,58 @@ describe('outbox pending count', () => {
     expect(getPendingChangeCount()).toBe(2);
   });
 
+  it('re-derives a drifted count from the store once the flush is done (F-15)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(canonicalBody(), { status: 200 }))),
+    );
+    // The three mirrors are hand-maintained, so an interleaved flush can leave them
+    // describing a queue that no longer exists. Poke one out of sync directly — the
+    // drift itself isn't the contract, the correction is.
+    await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
+    await db.outbox.clear();
+    expect(getOutboxCount()).toBe(1); // stale: the store is already empty
+    expect(getPendingChangeCount()).toBe(1);
+
+    await flushOutbox(TRIP_ID);
+
+    expect(getOutboxCount()).toBe(0);
+    expect(getPendingChangeCount()).toBe(0);
+    expect(getSyncStatus('ev-1')).toEqual({ state: 'synced' });
+  });
+
+  it('the post-flush resync keeps a failure that same flush recorded (F-03 × F-15)', async () => {
+    // The trap the resync has to avoid: `initOutboxCount` also calls
+    // `clearSyncFailures()`, right for a fresh session and destructive here — it would
+    // erase the rejection this very flush just recorded, so the header would go quiet
+    // about a write that never landed.
+    vi.stubGlobal('fetch', reject400('BOOKING_INVALID'));
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-fail'));
+
+    await flushOutbox(TRIP_ID);
+
+    expect(getOutboxCount()).toBe(0);
+    expect(getSyncFailures()).toHaveLength(1);
+    expect(getSyncStatus('bk-fail')).toEqual({ state: 'failed', reason: 'BOOKING_INVALID' });
+  });
+
+  it('a device-wide flush of two trips lands both counts at zero', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(canonicalBody(), { status: 200 }))),
+    );
+    await enqueueOutbox('trip-a', statusOp('ev-a'));
+    await enqueueOutbox('trip-b', statusOp('ev-b'));
+    expect(getOutboxCount()).toBe(2);
+
+    // Concurrent per-trip flushes, each resyncing from the whole table — so the first
+    // to finish must not zero a count the other trip's queue still owns.
+    await flushAllOutbox();
+
+    expect(getOutboxCount()).toBe(0);
+    expect(getPendingChangeCount()).toBe(0);
+  });
+
   it('drains a group from the change count only once all its ops flush', async () => {
     const placeBody = JSON.stringify({
       id: 'pl-1',

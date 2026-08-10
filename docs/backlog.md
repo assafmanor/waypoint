@@ -228,9 +228,8 @@ Three requests triaged together: a user settings page reachable from inside a tr
 
 ## Frontend review follow-ups (open findings)
 
-Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/frontend-architecture-review.md). F-01–F-04 shipped session 35; F-05–F-08 + F-10 shipped session 36; F-13 shipped session 239 (ADR-0181); F-11 shipped session 240; F-09 is a deliberate non-fix (ADR-0062). Only the Low/Informational items remain:
+Full write-up + evidence in [reviews/frontend-architecture-review.md](reviews/frontend-architecture-review.md). F-01–F-04 shipped session 35; F-05–F-08 + F-10 shipped session 36; F-13 shipped session 239 (ADR-0181); F-11 shipped session 240; F-12 + F-14 + F-15 shipped session 241 (the flush drains until the queue is empty rather than until its opening snapshot is; `lib/id.ts`'s `generateId` collects all 16 `crypto.randomUUID` call sites behind a `getRandomValues` fallback, held by a lint guard; the outbox's three in-memory mirrors are re-derived from the store after each flush, without touching the F-03 failure store); F-09 is a deliberate non-fix (ADR-0062). **Every Low/Informational finding is now closed.** One optional item is left, and it is a deliberate deferral rather than a follow-up:
 
-- **Minor sync-robustness (F-12, F-14, F-15)** — flush loop for writes enqueued mid-flush; a `crypto.randomUUID` fallback for non-secure test hosts; derive the outbox pending-count from the store rather than a shared counter.
 - **(Optional) Route verb optimistic in-memory writes through the applier (ADR-0094 tail)** — the cache mirror + member keying are unified (`applyOutboxOpToCache` → `applyChangeToCache`); the one remaining parallel path is each verb's own optimistic `setState`/dispatch. Routing it through `applyEntityChange` too would need each verb's rollback rewritten as an inverse-change and entangles the event one-slot undo (ADR-0019) — real risk for little further dedup. Low priority.
 
 ## UI/UX review follow-ups (open findings)
