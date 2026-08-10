@@ -7728,6 +7728,20 @@ textarea {
         </p>
         <div class="pair" id="s1"></div>
         <p class="note" id="s1note"></p>
+        <p class="note">
+          <b>ובמצב <code>כל הימים</code> אין מסלול בכלל · וזה לא פקד מושבת.</b>
+          <code>buildPinOrderIndex</code> נפתח ב-<code>if (!onDate) return new Map()</code>, וההערה
+          שלו מסבירה: "אין יום, אין רצף להיות אינדקס בתוכו · ומספור מחדש לכל יום גרוע מכלום: שתי
+          סיכות שכתוב על שתיהן ⁦1⁩ על אותו קנבס". ADR-0121 §6 סוגר את אותה נקודה מהצד השני · "לכל
+          הימים אין למה להיות אינדקס: המשווה היה מסדר את כל הטיול וסיכה הייתה קוראת ⁦27⁩". ולכן
+          <code>buildDayStopSequence</code> מחזיר רשימה ריקה, ואין דרך אחת לצעוד בה. השורה במצב
+          הזה אומרת את היום שלה במילים במקום במספר · זה כבר קיים. הכרטיס פשוט נשאר כרטיס אחד
+          ברוחב מלא, <b>בלי <code>data-track</code></b>: שקופית בודדה בתוך מסלול הייתה מודדת את
+          עצמה ב-<code>calc(100% - 2×מציץ - 2×gap)</code> ויושבת צרה מהכרטיס עם מרזבים ריקים משני
+          הצדדים · כרטיס גרוע יותר מזה שקיים היום. זה בדיוק הכלל שהטאב כבר מריץ ל<code>קרוב
+          עכשיו</code>, <code>אולי</code>, <code>מה נשאר</code> ו<code>באזור</code> באפס: פקד מופיע
+          רק היכן שיש לו מה לעשות · וכאן זה אפילו לא פקד אלא פריסה שקיימת רק כשליום יש בה חברים.
+        </p>
       </section>
 
       <section class="case">
@@ -7735,8 +7749,8 @@ textarea {
         <p class="note">
           העצירה הראשונה, עצירה באמצע, והעצירה האחרונה · <b>היעדר המציץ בצד אחד הוא הקצה</b>. אין
           תנועה לתזמן, אין מה להוריד תחת <code>prefers-reduced-motion</code>, ואין אמפליטודה
-          לחסום מול המרזב של ⁦8px⁩ · כל שלושת אלה היו סעיפים ב-v1. הבעלים אמר "אולי" על הגלישה,
-          ולכן היא מצוירת כאן כהיעדר כדי שאפשר יהיה לשפוט אותה במבט ולא במילים.
+          לחסום מול המרזב של ⁦8px⁩ · כל שלושת אלה היו סעיפים ב-v1. <b>והגלישה הוכרעה: אין.</b> "הקצוות הם קצוות" ·
+          וזה הופך החלטה שהתקבלה לפני שהמנגנון נבחר, שהיא גם הקלט היחיד שאפשר את כל הגרסה הזאת.
         </p>
         <div class="pair" id="s2"></div>
       </section>
@@ -7981,6 +7995,20 @@ textarea {
         document.querySelector('#s1').innerHTML = [
           col(tag('', 'המציץ', 'ההצעה'), split(track(seq, mid, { load, density, id: 'probe' }), seq[mid].id)),
           col(tag('before', 'היום', 'כרטיס אחד, ואין לאן לצעוד'), split(`<div class="map-placecard">${placeRow(seq[mid], { selected: true, expanded: true, load })}</div>`, seq[mid].id)),
+          // **`כל הימים` — the same card, and NO track.** Not a disabled control: with
+          // no day there is no sequence at all (`buildPinOrderIndex` opens with
+          // `if (!onDate) return new Map()`), so `buildDayStopSequence` returns `[]`
+          // and the peek has no neighbours to show. Drawn deliberately WITHOUT
+          // `data-track`: a lone slide inside one would size to
+          // `calc(100% - 2*peek - 2*gap)` and sit narrower than the card with empty
+          // gutters either side — a worse all-days card than the one that ships now.
+          col(
+            tag('', 'כל הימים', 'אין רצף, ולכן אין מסלול'),
+            split(
+              `<div class="map-placecard">${placeRow({ ...seq[mid], n: undefined, when: 'יום ג׳ · 12:40' }, { selected: true, expanded: true, load })}</div>`,
+              seq[mid].id,
+            ),
+          ),
         ].join('');
 
         document.querySelector('#s2').innerHTML = [

@@ -310,7 +310,25 @@ collapsed rows" is no longer true: **three full cards** are mounted. Three, not 
 neighbour either side. That is a mounting cost on a screen that re-renders every second, not a pixel
 cost; the proposal still adds **0px** of pinned height.
 
-**Still open:** wrap — the word was _"maybe"_, and §2 draws its absence so it can be judged on sight.
+**Answered: no wrap.** Once the trade was spelled out — a snap scroller is physically a line with two
+ends, so wrapping means teleporting `scrollLeft` under live momentum, which is the exact reason v1 §6
+rejected this mechanism — the owner's answer was _"the ends are ends."_ That **reverses a pre-session
+decision** ("navigation wraps"), which had been taken before the mechanism was, and the reversal is
+what made the whole amendment possible. The absent peek on one side is now the end.
+
+**Answered: the camera pans and does not zoom.** `keepCentred` zooms in when the view is too far out
+(ADR-0127 §1) — right for arriving at a place whose pin you cannot see, wrong for stepping through
+eight stops, where it reads as busy and takes away the sense of the area. ADR-0148's amendment says
+the fix for a wrong-for-this-surface default belongs _inside_ the component rather than as an
+override at the new caller, or the next caller inherits it too.
+
+**And confirmed, at the owner's request:** swiping changes the selected pin and moves the map.
+Neither half needs new machinery — `MapPin.selected` reads `selectedId` and `MapPane`'s focus effect
+is keyed on it. Worth writing down because the density decision changed it: with every slide at one
+density `cardReserve` no longer varies between stops, so a pan keyed on the card's height would
+silently never fire. **The selection is the key, not the card.** It commits on snap-settle rather
+than during the scroll, and calls `select()` bare like a pin tap — `fromRow`/`land` normalise the
+sheet to `half`, which would take away the map being swiped on.
 
 ## Verification still owed
 
