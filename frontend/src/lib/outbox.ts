@@ -714,7 +714,9 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
   }
 }
 
-/** Flushes queued mutations for a trip in FIFO order. A transient/server error
+/** Flushes queued mutations for a trip in FIFO order, draining until the queue comes
+ *  back empty — so a write enqueued *during* the flush leaves with it rather than
+ *  waiting for the next trigger (F-12). A transient/server error
  *  (network failure, 5xx) halts the flush and leaves the remaining queue
  *  (including the failed entry) in place — the caller retries the whole flush
  *  later rather than skipping ahead and breaking ordering. A duplicate re-POST
@@ -754,33 +756,42 @@ export async function flushAllOutbox(): Promise<void> {
 }
 
 async function doFlushOutbox(tripId: string): Promise<void> {
-  const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
-  for (const entry of entries) {
-    try {
-      await runOp(tripId, entry.op);
-    } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-        if (!err.code || !QUIET_DROP_CODES.has(err.code)) {
-          recordSyncFailure({
-            tripId,
-            entityId: outboxOpEntityId(entry.op),
-            verb: entry.op.verb,
-            code: err.code,
-            op: entry.op,
-          });
+  // Re-read the queue each round instead of draining one snapshot (F-12). A write
+  // enqueued while this flush is mid-loop — `queueDocumentUpload` kicking a flush
+  // while one runs, ADR-0056 — is handed *this* promise by the coalescing above, so
+  // no other flush is coming for it: the round it lands in has to be ours, or it
+  // sits in Dexie until the next reconnect/visibility trigger. Terminates because
+  // every path below either deletes its entry or throws.
+  for (;;) {
+    const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
+    if (entries.length === 0) return;
+    for (const entry of entries) {
+      try {
+        await runOp(tripId, entry.op);
+      } catch (err) {
+        if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+          if (!err.code || !QUIET_DROP_CODES.has(err.code)) {
+            recordSyncFailure({
+              tripId,
+              entityId: outboxOpEntityId(entry.op),
+              verb: entry.op.verb,
+              code: err.code,
+              op: entry.op,
+            });
+          }
+          await db.outbox.delete(entry.seq!);
+          bumpPendingForOp(entry.op, -1);
+          bumpGroup(entryGroupId(entry), -1);
+          setPendingCount(pendingCount - 1);
+          continue;
         }
-        await db.outbox.delete(entry.seq!);
-        bumpPendingForOp(entry.op, -1);
-        bumpGroup(entryGroupId(entry), -1);
-        setPendingCount(pendingCount - 1);
-        continue;
+        throw err;
       }
-      throw err;
+      await db.outbox.delete(entry.seq!);
+      bumpPendingForOp(entry.op, -1);
+      bumpGroup(entryGroupId(entry), -1);
+      setPendingCount(pendingCount - 1);
     }
-    await db.outbox.delete(entry.seq!);
-    bumpPendingForOp(entry.op, -1);
-    bumpGroup(entryGroupId(entry), -1);
-    setPendingCount(pendingCount - 1);
   }
 }
 

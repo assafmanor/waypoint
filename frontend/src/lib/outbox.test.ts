@@ -213,6 +213,30 @@ describe('flushOutbox (FIFO)', () => {
     expect(getSyncFailures()).toHaveLength(0);
   });
 
+  it('drains a write enqueued mid-flush instead of stranding it for the next trigger (F-12)', async () => {
+    // The real shape: processing one op queues another for the same trip (a document
+    // upload kicking a flush, ADR-0056). `flushOutbox` hands that caller the in-flight
+    // promise, so if this flush only drained its opening snapshot nobody would come
+    // back for the newcomer until the next online/visibility/mount trigger.
+    const seen: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      seen.push(String(url));
+      if (String(url).includes('ev-1')) await enqueueOutbox(TRIP_ID, statusOp('ev-2'));
+      return new Response(canonicalBody(), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
+    await flushOutbox(TRIP_ID);
+
+    expect(seen).toEqual([
+      expect.stringContaining('ev-1'),
+      expect.stringContaining('ev-2'), // sent by this flush, not left for the next one
+    ]);
+    expect(await db.outbox.count()).toBe(0);
+    expect(getOutboxCount()).toBe(0);
+  });
+
   it('a duplicate create retry is idempotent — the backend returns 200 for an already-applied client id', async () => {
     // ADR-0018: client-generated ids make a re-POST of an already-created event
     // hit a unique-constraint that the backend treats as "already applied"
