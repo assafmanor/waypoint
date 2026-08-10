@@ -7,9 +7,11 @@ import {
   matchesAnyTerm,
   type Booking,
   type BookingType,
+  type Place,
   type Trip,
   type TripEvent,
 } from '@waypoint/shared';
+import { bookingDestinationId, bookingPlaceId, placeName } from './places';
 import { formatTime, isEventPast, relativeDayLabel, todayInTz } from './time';
 import { plainTimingLabel, timingLabels } from './booking-timing';
 import { revealRows, type Revealed } from './filter-reveal';
@@ -77,27 +79,38 @@ export function countByCategory(bookings: Booking[]): Record<BookingType, number
 
 /** A booking's searchable terms (ADR-0102): title, confirmation code, its
  *  type's Hebrew label in both grammatical numbers ("מסעדה"/"מסעדות" both find
- *  a restaurant booking), and any alternate vocabulary for that type ("מלון"/
- *  "הוסטל"/"airbnb" all find a hotel booking) — an array, not a fixed handful
- *  of `||`-chained fields, so a future searchable facet (e.g. a linked
- *  place's name) is a one-line push here, not a new branch in `matchesQuery`
- *  itself. */
-function searchTerms(booking: Booking): (string | undefined)[] {
+ *  a restaurant booking), any alternate vocabulary for that type ("מלון"/
+ *  "הוסטל"/"airbnb" all find a hotel booking), and its linked place's name — an
+ *  array, not a fixed handful of `||`-chained fields, so the next searchable
+ *  facet is a push here, not a new branch in `matchesQuery` itself.
+ *
+ *  **Both ends of a transport booking**, resolved through the same authority rule
+ *  everything else reads (ADR-0048): searching `פרנקפורט` finds the flight that lands
+ *  there, not only the ones leaving from it. A single-place booking resolves both
+ *  calls to the same place, and that duplicate term costs nothing — `matchesAnyTerm`
+ *  already tolerates repeats and `undefined`s — so neither case earns a branch. */
+function searchTerms(booking: Booking, places: Place[]): (string | undefined)[] {
   return [
     booking.title,
     booking.confirmationCode,
     t.index.bookingType[booking.type],
     t.index.bookingTypePlural[booking.type],
     ...t.index.bookingTypeSynonyms[booking.type],
+    placeName(places, bookingPlaceId(booking)),
+    placeName(places, bookingDestinationId(booking)),
   ];
 }
 
-/** Search match: title, confirmation code, or category label (singular or
- *  plural), case/punctuation-insensitive. An empty/blank query matches
- *  everything (ADR-0098 §2). */
-export function matchesQuery(booking: Booking, query: string): boolean {
+/** Search match: title, confirmation code, category label (singular or plural),
+ *  or a linked place's name, case/punctuation-insensitive. An empty/blank query
+ *  matches everything (ADR-0098 §2).
+ *
+ *  `places` defaults to none — honestly "no places known", which drops that one facet
+ *  and leaves every other term as it was. The production path (`visibleRows`) takes
+ *  them as required, so the facet can't go missing by omission there. */
+export function matchesQuery(booking: Booking, query: string, places: Place[] = []): boolean {
   if (!query.trim()) return true;
-  return matchesAnyTerm(query, searchTerms(booking));
+  return matchesAnyTerm(query, searchTerms(booking, places));
 }
 
 export interface BookingRow {
@@ -125,11 +138,12 @@ export function visibleRows(
   rows: BookingRow[],
   category: CategoryFilter,
   query: string,
+  places: Place[],
   startIndex = 0,
 ): { rows: Revealed<BookingRow>[]; nextIndex: number } {
   return revealRows(
     rows,
-    ({ booking }) => matchesCategory(booking, category) && matchesQuery(booking, query),
+    ({ booking }) => matchesCategory(booking, category) && matchesQuery(booking, query, places),
     startIndex,
   );
 }

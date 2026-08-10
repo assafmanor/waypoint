@@ -135,8 +135,8 @@ export function IndexBookingsView({
   };
   useBackLayer(backOrResetCategory);
 
-  const upcomingVisible = visibleRows(upcoming, activeCategory, query);
-  const pastVisible = visibleRows(past, activeCategory, query, upcomingVisible.nextIndex);
+  const upcomingVisible = visibleRows(upcoming, activeCategory, query, places);
+  const pastVisible = visibleRows(past, activeCategory, query, places, upcomingVisible.nextIndex);
   const upcomingMatchCount = countVisible(upcomingVisible.rows);
   const pastMatchCount = countVisible(pastVisible.rows);
   // "No active bookings right now" rather than "no matches" (ADR-0101) — fires
@@ -157,7 +157,7 @@ export function IndexBookingsView({
   // before opening it (ADR-0102) — search is a deliberate escape hatch from
   // the current filter, not a continuation of it.
   const searchRows = [...upcoming, ...past];
-  const searchVisible = visibleRows(searchRows, CATEGORY_ALL, query);
+  const searchVisible = visibleRows(searchRows, CATEGORY_ALL, query, places);
   const searchMatchCount = countVisible(searchVisible.rows);
 
   // Zero-count booking types don't get a chip at all (ADR-0101) — "הכל" always
