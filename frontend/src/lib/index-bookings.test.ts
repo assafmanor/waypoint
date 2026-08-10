@@ -5,6 +5,7 @@ import {
   EVENT_KIND,
   EVENT_STATUS,
   type Booking,
+  type Place,
   type TripEvent,
 } from '@waypoint/shared';
 import { type Trip } from '@waypoint/shared';
@@ -35,6 +36,15 @@ const booking = (
   type,
   title,
   source: BOOKING_SOURCE.MANUAL,
+  createdAt: ISO,
+  updatedAt: ISO,
+  updatedBy: 'u1',
+});
+
+const place = (id: string, name: string): Place => ({
+  id,
+  tripId: 't1',
+  name,
   createdAt: ISO,
   updatedAt: ISO,
   updatedBy: 'u1',
@@ -346,6 +356,57 @@ describe('matchesQuery (ADR-0098 §2 search)', () => {
     // A word that shares no prefix is still cleanly excluded.
     expect(matchesQuery(booking('b4', 'x', BOOKING_TYPE.HOTEL), 'רכב')).toBe(false);
   });
+
+  // The place facet: a booking is findable by WHERE it is, not only by what it's called.
+  describe('by linked place', () => {
+    const PLACES = [
+      place('pl-shinjuku', 'Shinjuku'),
+      place('pl-nrt', 'נתב״ג'),
+      place('pl-fra', 'פרנקפורט'),
+    ];
+
+    it("matches a single-place booking by its place's name", () => {
+      const hotel = { ...booking('b1', 'Granbell'), placeId: 'pl-shinjuku' };
+      expect(matchesQuery(hotel, 'shinjuku', PLACES)).toBe(true);
+      expect(matchesQuery(hotel, 'shibuya', PLACES)).toBe(false);
+    });
+
+    // BOTH ends, deliberately: `פרנקפורט` has to find the flight that lands there.
+    it('matches a transport booking by either endpoint', () => {
+      const flight = {
+        ...booking('b1', 'JL407', BOOKING_TYPE.FLIGHT),
+        fromPlaceId: 'pl-nrt',
+        toPlaceId: 'pl-fra',
+      };
+      expect(matchesQuery(flight, 'נתב״ג', PLACES)).toBe(true);
+      expect(matchesQuery(flight, 'פרנקפורט', PLACES)).toBe(true);
+      expect(matchesQuery(flight, 'Shinjuku', PLACES)).toBe(false);
+    });
+
+    // Free via `matchesAnyTerm`, and worth pinning: a name is stored text, so nobody
+    // types its gershayim.
+    it('is case- and punctuation-insensitive on the place name too', () => {
+      const hotel = { ...booking('b1', 'Granbell'), placeId: 'pl-shinjuku' };
+      expect(matchesQuery(hotel, 'SHINJUKU', PLACES)).toBe(true);
+      const flight = { ...booking('b2', 'JL407', BOOKING_TYPE.FLIGHT), fromPlaceId: 'pl-nrt' };
+      expect(matchesQuery(flight, 'נתבג', PLACES)).toBe(true);
+    });
+
+    it('leaves the other facets alone for a booking with no linked place', () => {
+      const loose = booking('b1', 'Ichiran Ramen', BOOKING_TYPE.RESTAURANT);
+      expect(matchesQuery(loose, 'ramen', PLACES)).toBe(true);
+      expect(matchesQuery(loose, 'מסעדות', PLACES)).toBe(true);
+      expect(matchesQuery(loose, 'shinjuku', PLACES)).toBe(false);
+    });
+
+    // A place the trip no longer holds resolves to nothing, and a term that resolves to
+    // nothing must not turn into a match-everything.
+    it('ignores a placeId with no matching place row', () => {
+      const orphan = { ...booking('b1', 'Granbell'), placeId: 'pl-gone' };
+      expect(matchesQuery(orphan, 'shinjuku', PLACES)).toBe(false);
+      expect(matchesQuery(orphan, 'granbell', PLACES)).toBe(true);
+    });
+  });
 });
 
 describe('visibleRows (ADR-0098 §4 stagger)', () => {
@@ -353,7 +414,7 @@ describe('visibleRows (ADR-0098 §4 stagger)', () => {
     Array.from({ length: n }, (_, i) => ({ booking: booking(`b${i}`, `row${i}`, type) }));
 
   it('marks every row visible and increments the delay for "all" with no query', () => {
-    const { rows: out, nextIndex } = visibleRows(rows(3), CATEGORY_ALL, '');
+    const { rows: out, nextIndex } = visibleRows(rows(3), CATEGORY_ALL, '', []);
     expect(out.every((r) => r.visible)).toBe(true);
     expect(out.map((r) => r.delayMs)).toEqual([0, FILTER_STAGGER_MS, FILTER_STAGGER_MS * 2]);
     expect(nextIndex).toBe(3);
@@ -365,7 +426,7 @@ describe('visibleRows (ADR-0098 §4 stagger)', () => {
       { booking: booking('b2', 'y', BOOKING_TYPE.HOTEL) },
       { booking: booking('b3', 'z', BOOKING_TYPE.FLIGHT) },
     ];
-    const { rows: out, nextIndex } = visibleRows(mixed, BOOKING_TYPE.FLIGHT, '');
+    const { rows: out, nextIndex } = visibleRows(mixed, BOOKING_TYPE.FLIGHT, '', []);
     expect(out.map((r) => r.visible)).toEqual([true, false, true]);
     expect(out[1].delayMs).toBe(0);
     expect(out[2].delayMs).toBe(FILTER_STAGGER_MS); // second VISIBLE row, not third row
@@ -373,14 +434,26 @@ describe('visibleRows (ADR-0098 §4 stagger)', () => {
   });
 
   it('caps the delay at FILTER_STAGGER_MAX_MS for a long list', () => {
-    const { rows: out } = visibleRows(rows(50), CATEGORY_ALL, '');
+    const { rows: out } = visibleRows(rows(50), CATEGORY_ALL, '', []);
     expect(out.at(-1)?.delayMs).toBe(FILTER_STAGGER_MAX_MS);
   });
 
   it('chains a startIndex so upcoming → past shares one continuous stagger', () => {
-    const upcoming = visibleRows(rows(2), CATEGORY_ALL, '');
-    const past = visibleRows(rows(2), CATEGORY_ALL, '', upcoming.nextIndex);
+    const upcoming = visibleRows(rows(2), CATEGORY_ALL, '', []);
+    const past = visibleRows(rows(2), CATEGORY_ALL, '', [], upcoming.nextIndex);
     expect(past.rows.map((r) => r.delayMs)).toEqual([FILTER_STAGGER_MS * 2, FILTER_STAGGER_MS * 3]);
+  });
+
+  // The place facet reaching all the way through the row predicate — the actual work
+  // here, since neither function could see a place before.
+  it('hides a row whose place does not match, and keeps the one whose does', () => {
+    const mixed = [
+      { booking: { ...booking('b1', 'Granbell'), placeId: 'pl-shinjuku' } },
+      { booking: { ...booking('b2', 'Hoshinoya'), placeId: 'pl-kyoto' } },
+    ];
+    const places = [place('pl-shinjuku', 'Shinjuku'), place('pl-kyoto', 'Kyoto')];
+    const { rows: out } = visibleRows(mixed, CATEGORY_ALL, 'kyoto', places);
+    expect(out.map((r) => r.visible)).toEqual([false, true]);
   });
 });
 
