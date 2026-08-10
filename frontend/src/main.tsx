@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import './styles/fonts.css';
 import './styles/tokens.css';
 import { startTheme } from './lib/theme';
 import { App } from './App';

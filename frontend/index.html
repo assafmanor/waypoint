@@ -65,12 +65,10 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>%APP_TITLE%</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700&family=Secular+One&family=JetBrains+Mono:wght@500;700&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Fonts are self-hosted (F-11): src/styles/fonts.css, imported by main.tsx.
+         There is deliberately no Google Fonts <link> here — an external origin the
+         service worker cannot precache is a fallback font on an offline first paint,
+         not a fallback. -->
   </head>
   <body>
     <div id="root"></div>
