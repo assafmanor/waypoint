@@ -1261,7 +1261,6 @@ describe('placeGlyph — a chosen glyph, else the category’s, else the place d
 
 describe('buildDayStopSequence — the day in order, which is what you step through (ADR-0182 §1)', () => {
   const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
-  const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
   const ids = (stops: DayStop[]) => stops.map((s) => s.usage.placeId);
   const orders = (stops: DayStop[]) => stops.map((s) => s.order);
 
@@ -1335,19 +1334,24 @@ describe('buildDayStopSequence — the day in order, which is what you step thro
   });
 
   it('ambient is excluded — a middle night of a stay is backdrop, not a stop', () => {
+    // A stay spanning the day either side makes DAY a strictly-middle night: no arrival,
+    // no departure, nothing to step TO. (A `Booking` carries no dates of its own — ADR-0048
+    // puts them on its events — so the span is an event's `date`/`endDate`.)
     const all = [
       ...usages({
         places: [place('hotel'), place('museum')],
-        bookings: [
-          booking({
+        events: [
+          event({
             id: 'stay',
-            type: BOOKING_TYPE.HOTEL,
             placeId: 'hotel',
+            category: 'lodging' as TripEvent['category'],
+            date: PREV_DAY,
+            endDate: NEXT_DAY,
             startsAt: `${PREV_DAY}T15:00:00Z`,
             endsAt: `${NEXT_DAY}T11:00:00Z`,
           }),
+          event({ id: 'm', placeId: 'museum', startsAt: at2('10:00') }),
         ],
-        events: [event({ id: 'm', placeId: 'museum', startsAt: at2('10:00') })],
       }).values(),
     ];
     // Neither a stop nor a tail member: `PIN_TIER.ambient` already calls it backdrop, and
