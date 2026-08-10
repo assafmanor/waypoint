@@ -97,6 +97,15 @@ export const t = {
     loading: 'טוען',
     errorTitle: 'משהו השתבש',
     dismiss: 'סגירה',
+    // The service-worker update notice (ADR-0181). It says what is true — a new
+    // version is already installed — not "an update is available to download",
+    // because by the time this shows, the swap has happened and only the open
+    // tab is behind. Kept to three words because the drawn banner wraps to a
+    // second line at 360px past that, and the verb beside it carries the ask.
+    update: {
+      message: 'גרסה חדשה הותקנה',
+      action: 'רענון',
+    },
   },
   // No arrow lives in the copy: every visible arrow renders as an SVG (ui/NavArrow,
   // ui/Icon) because the Assistant body font has no arrow glyphs and the fallback

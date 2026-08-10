@@ -58,11 +58,25 @@ export default defineConfig(({ command }) => {
       react(),
       appTitle(),
       VitePWA({
+        // Paired with `src/lib/useAppUpdate.ts` (ADR-0181), which is the actual
+        // registration: importing `virtual:pwa-register/react` flips the plugin's
+        // `injectRegister: 'auto'` to "don't inject", so there is exactly one
+        // registration and it has callbacks. Left unset on purpose — pinning it to
+        // `false` here would mean NO registration at all if that import ever went.
+        //
+        // **`'prompt'` is not a drop-in swap**, and the trap is silent: the plugin
+        // forces `skipWaiting`/`clientsClaim` on under `autoUpdate` but does not
+        // force them OFF under `'prompt'`, so the explicit `true`s below would
+        // survive the change, the new SW would keep self-activating, and the
+        // `waiting` event that mode's whole prompt hangs off would never fire.
         registerType: 'autoUpdate',
         // Static assets outside the Vite graph that the SW should precache.
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         // Without these, a rebuilt SW only takes over after all tabs of the old
         // one close — an offline reload in between would still run stale JS.
+        // What they cost is paid in the tab that is ALREADY open: it keeps running
+        // the old build's JS against the new build's precache, which is what
+        // `useAppUpdate` exists to tell the user about.
         workbox: {
           skipWaiting: true,
           clientsClaim: true,
