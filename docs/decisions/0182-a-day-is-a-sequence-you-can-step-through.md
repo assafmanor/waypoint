@@ -146,6 +146,19 @@ That needs one real change in the code. Today `expanded` and `selected` are the 
 
 **And it costs the amendment its own cheapness argument, which is worth stating plainly.** "The peek is cheap because neighbours are collapsed rows" is no longer true: three **full** cards are mounted at once. Three, not N — a peek can only ever show one neighbour either side, so that is what the window holds. The cost is mounting on a screen that re-renders every second (`frontend/CLAUDE.md`'s memoisation note), not pixels: the proposal still adds **0px** of pinned height.
 
+### 10. Swiping is a selection, so the pin and the camera follow — and the mechanism already exists
+
+Confirmed with the owner: stepping to another slide **changes which pin is selected and moves the map to it**. Nothing new is needed for either half.
+
+- **The pin.** `MapPin.selected` reads `screens/Map.tsx`'s `selectedId`, so the highlight moves the moment the selection does. The swipe sets the selection; it does not touch pins.
+- **The camera.** `MapPane`'s focus effect is keyed on `[selectedId, cardReserve, canvasH]` and calls `keepCentred` — and `selectedId` alone re-runs it. This matters because with every slide at one density (§ the density amendment) `cardReserve` no longer changes between stops, so a pan keyed on the card's height would silently never fire. **The selection is the key, not the card.**
+
+Three specifics that are decisions rather than details:
+
+- **It commits on snap-settle, never during the scroll.** `google.maps.Map` is a live, billed object and the screen re-renders every second; driving the camera on every scroll frame would thrash it. The selection changes when the track settles on a slide.
+- **The swipe calls `select(placeId)` bare** — no `fromRow`, no `land`. Those options normalise the sheet to `half` and scroll the list row into view, and raising the sheet would take away the map you are swiping on, which is ADR-0122 §7's own rule. So the swipe copies the **pin tap**, which already calls `select(placeId)` with nothing, and not the row tap.
+- **It pans; whether it also zooms is the one open item here.** `keepCentred` pans _and_ zooms in when the view is too far out to read the place (ADR-0127 §1). That default was written for a selection arriving from a row whose pin you cannot see. Stepping through eight stops is a different surface, and re-zooming at each one may read as busy — which is exactly ADR-0148's amendment about inheriting a component's defaults onto a surface unlike the ones they grew up on. Named here so the device pass answers it rather than the build assuming it.
+
 ## Consequences
 
 - One new exported derivation, `buildDayStopSequence`, with `buildPinOrderIndex` as its first consumer — so the numbering and the traversal cannot drift. `orderedStops` and `mapsDayRouteUrl` should move onto it too; that is cleanup the extraction makes available, not a precondition.
