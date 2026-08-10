@@ -51,6 +51,7 @@ import { useTripHandoffTarget } from './lib/trip-handoff';
 import { mapPaneAvailable } from './lib/map-config';
 import { BootScreen, HomeSkeleton, LoadingState } from './ui/feedback';
 import { SyncReviewSheet } from './ui/SyncReviewSheet';
+import { AppUpdateNotice } from './ui/AppUpdateNotice';
 import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
 import { DayStrip } from './ui/domain/DayStrip';
@@ -903,6 +904,11 @@ export function App() {
             <ConfirmProvider>
               <OutboxAutoFlush />
               <AppRoutes />
+              {/* Also outside AppRoutes, and for the same shape of reason: a service
+                  worker swapping the build under an open tab is not a fact about the
+                  screen you happen to be on (ADR-0181). AppShell frames only the
+                  in-trip surfaces, so the notice mounts at the root instead. */}
+              <AppUpdateNotice />
               {/* Outside AppRoutes on purpose: the glyph a trip pick puts in the air has
                   to outlive both the list it came from and the boot screen that follows
                   it (ADR-0140 §7). */}

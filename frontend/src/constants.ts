@@ -117,6 +117,14 @@ export const TOAST_DURATION_MS = 3600;
 /** Live-clock tick. */
 export const CLOCK_TICK_MS = 1000;
 
+/** How often an open tab asks the browser to re-check `sw.js` for a new build
+ *  (ADR-0181). The browser only checks on navigation and roughly every 24h, and
+ *  this app is a standalone PWA that is left open for days on a trip — without a
+ *  poll, a tab opened before a deploy can run the old build for the rest of the
+ *  trip. An hour is well under a day and costs one small conditional GET; the
+ *  poll is skipped while offline, so a plane costs nothing. */
+export const SW_UPDATE_CHECK_MS = 60 * 60 * 1000;
+
 /** Realtime socket liveness (F-04, sync-and-offline.md "Realtime channel"). The
  *  client pings on `WS_HEARTBEAT_INTERVAL_MS`; a watchdog forces a reconnect if
  *  no frame (a `pong` or any message) lands within `WS_WATCHDOG_TIMEOUT_MS`, so a

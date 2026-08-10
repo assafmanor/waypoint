@@ -97,6 +97,16 @@ describe('StatusBanner', () => {
     ).toBe(true);
   });
 
+  it('fires the action and shows the verb only when provided', () => {
+    const onClick = vi.fn();
+    const { rerender } = render(<StatusBanner>גרסה חדשה</StatusBanner>);
+    expect(screen.queryByRole('button')).toBeNull();
+
+    rerender(<StatusBanner action={{ label: 'רענון', onClick }}>גרסה חדשה</StatusBanner>);
+    fireEvent.click(screen.getByRole('button', { name: 'רענון' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
   it('fires onDismiss and shows the dismiss control only when provided', () => {
     const onDismiss = vi.fn();
     const { rerender } = render(<StatusBanner tone="ok">נשמר</StatusBanner>);

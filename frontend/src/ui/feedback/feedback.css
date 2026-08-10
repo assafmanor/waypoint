@@ -225,6 +225,34 @@
   --tone-line: color-mix(in srgb, var(--ok) 40%, transparent);
 }
 
+/* The banner's optional verb (ADR-0181). `--cta`, the neutral primary — reloading
+   for a new build is a generic action, so it spends nothing from the amber/teal/plan
+   budget (design-language.md). */
+.fb-banner-action {
+  position: relative;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: var(--radius-999);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  background: var(--cta);
+  color: var(--cta-text);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+/* The target grows, the line does not — ADR-0161 §7's overlay, the same one
+   `ValueToken` uses, so ADR-0017's 44px floor costs the banner no height. */
+.fb-banner-action::after {
+  content: '';
+  position: absolute;
+  inset: -9px -4px;
+}
+.fb-banner-action:active {
+  transform: scale(var(--press-scale));
+}
+
 .fb-banner-dismiss {
   flex: 0 0 auto;
   inline-size: 24px;
