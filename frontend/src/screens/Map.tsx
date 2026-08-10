@@ -29,6 +29,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type RefObject,
   type ReactNode,
 } from 'react';
 import {
@@ -88,9 +89,12 @@ import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';
 import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
+import { useCenterSelected } from '../lib/useCenterSelected';
 import {
+  buildDayStopSequence,
   buildPinOrderIndex,
   isAsidePin,
+  type DayStop,
   isFramedByCamera,
   PIN_TIER,
   pinOutcome,
@@ -142,6 +146,7 @@ import {
   MAP_ROW_DISCLOSURE,
   MAP_SHEET_ORDER,
   MAP_SHEET_STOPS,
+  MAP_TRACK_SETTLE_MS,
   MAP_SHEET_STRIP_H,
   MAP_SHEET_VIEW,
   PLACE_CORPUS,
@@ -1073,18 +1078,29 @@ export function MapView() {
   // Keyed on the MINUTE, which is the granularity the question actually has: a stop's moment
   // passes at a minute boundary, and the app shows no finer time than that anywhere.
   const orderMinute = Math.floor(nowMs / MS_PER_MINUTE);
+  // ONE context for both readers of the day's order (ADR-0182 §1). The numbering on the
+  // pins and the sequence the card steps through are the same derivation asked twice, so
+  // they cannot disagree about what a stop is — which is the failure ADR-0121 §6's
+  // 2026-08-06 amendment was written to end, reached from a second direction.
+  const dayStopCtx = {
+    nameOf,
+    onDate: scopedDate,
+    eventById: eventLookup,
+    // The same lookup the pin's WORD reads (ADR-0159 §6), so a place cannot be a
+    // layover in one sentence and two stops in the other.
+    isConnectionStop: (placeId: string, date: string) => connectionWordAt(placeId, date) != null,
+  };
   const orderIndex = useMemo(
-    () =>
-      buildPinOrderIndex(dayScoped, {
-        nameOf,
-        onDate: scopedDate,
-        nowMs: nowRef.current,
-        eventById: eventLookup,
-        // The same lookup the pin's WORD reads (ADR-0159 §6), so a place cannot be a
-        // layover in one sentence and two stops in the other.
-        isConnectionStop: (placeId, date) => connectionWordAt(placeId, date) != null,
-      }),
+    () => buildPinOrderIndex(dayScoped, { ...dayStopCtx, nowMs: nowRef.current }),
     [dayScoped, scopedDate, placeById, orderMinute],
+  );
+  /** **The day's stops, in order** — what the card's track steps through (ADR-0182 §1).
+   *  Clock-free by construction, so it is NOT keyed on `orderMinute`: a tick must not
+   *  reorder a traversal any more than it may renumber a pin. Empty in an all-days scope,
+   *  which is why there is no traversal there and nothing to disable (§11). */
+  const dayStops = useMemo(
+    () => buildDayStopSequence(dayScoped, dayStopCtx),
+    [dayScoped, scopedDate, placeById],
   );
 
   // `planning` withdraws the behind-you tier in Plan mode (ADR-0130 §2): the clock still
@@ -2474,6 +2490,18 @@ export function MapView() {
       forceDay?: boolean;
       onFrame?: () => void;
       onChoose?: (placeId: string) => void;
+      /** **Render at the selected density even when this row is not the selection**
+       *  (ADR-0182's density amendment). The two were one fact until the card became a
+       *  track: everything below is gated on `selected` because the LIST can hold the
+       *  whole trip and a note section per row is a section nobody is looking at — a
+       *  reason about cost, not about selection. A track holds three slides and wants
+       *  them all at one density with exactly one selection, so the two questions come
+       *  apart here and nowhere else. Defaults to `selected`, so every existing caller
+       *  is unchanged. */
+      revealed?: boolean;
+      /** The centring ref, on the slide that is the current selection — see
+       *  `useCenterSelected`. Absent everywhere else, including the list. */
+      slideRef?: RefObject<HTMLDivElement | null>;
     }) =>
     (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
@@ -2488,6 +2516,11 @@ export function MapView() {
       const usageDay = placeMetaDay(usage, metaCtx(opts));
       const outcome = usageDay?.prominence === 'ambient' ? undefined : usageDay?.outcome;
       const selected = selectedId === usage.placeId;
+      // The density, which is `selected` everywhere but inside the card's track — see
+      // `revealed` above. `selected` still decides the CHROME (the ink border, the ring,
+      // the rename pencil), and deliberately so: making every slide look selected would
+      // trade the track's imbalance for an ambiguity about which card you are on.
+      const revealed = opts.revealed ?? selected;
       return (
         <PlaceRow
           photo={badgePhoto(place, enrichments[usage.placeId])}
@@ -2507,6 +2540,7 @@ export function MapView() {
           distance={distanceLabel(usage)}
           distanceStale={staleDistances}
           selected={selected}
+          rowRef={opts.slideRef}
           notes={noteCountForContext(
             noteCounts,
             resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
@@ -2523,20 +2557,20 @@ export function MapView() {
           // on `selected` for the same reason the refs are: the list can hold dozens of rows,
           // and a note section per unselected row is a section nobody is looking at.
           notesSlot={
-            selected ? (
+            revealed ? (
               <HostNotes host={{ kind: 'place', id: place.id, name: place.name }} />
             ) : undefined
           }
           // Above the notes, the order every other read surface uses. Gated on `selected`
           // for the same reason they are: the list can hold the whole trip.
           documentsSlot={
-            selected ? <HostDocuments host={{ kind: 'place', id: place.id }} /> : undefined
+            revealed ? <HostDocuments host={{ kind: 'place', id: place.id }} /> : undefined
           }
           onSelect={opts.onSelect && (() => opts.onSelect!(usage.placeId))}
           onDeselect={opts.onDeselect}
           // Gated on `selected` for the same reason the notes and the refs are: the list can hold
           // the whole trip, and a summary block per unselected row is 64px nobody is reading.
-          summary={selected ? placeSummary(enrichments[usage.placeId]) : undefined}
+          summary={revealed ? placeSummary(enrichments[usage.placeId]) : undefined}
           // **The mode change** (ADR-0167 §11.1): expanding shows what an un-added research place
           // shows, so the notes, the references and the schedule footer come OFF while the hero
           // and the whole summary go on. One presentation in two states, not two cards.
@@ -2550,12 +2584,12 @@ export function MapView() {
             const image = enrichments[usage.placeId]?.image;
             if (image) setFullPicture({ title: place.name, image });
           }}
-          image={selected ? enrichments[usage.placeId]?.image : undefined}
+          image={revealed ? enrichments[usage.placeId]?.image : undefined}
           // Free, and present even when we know nothing (ADR-0167 §6) — but not under an errand,
           // where the tab answers one question and the verbs CHANGE rather than accumulate
           // (ADR-0134 §3), which is the same rule that takes `נווט` and the schedule verb off.
-          moreUrl={selected && !pendingErrand ? mapsKnowledgeUrl(place) : undefined}
-          refs={selected ? refEntriesFor(usage, opts) : undefined}
+          moreUrl={revealed && !pendingErrand ? mapsKnowledgeUrl(place) : undefined}
+          refs={revealed ? refEntriesFor(usage, opts) : undefined}
           onSchedule={
             // Absent under a place errand (ADR-0134 §3 / ADR-0135 §7): the tab is answering
             // one question, so the verb changes rather than accumulating — exactly as `נווט`
@@ -2927,17 +2961,104 @@ export function MapView() {
     sheetView === MAP_SHEET_VIEW.map && selectedId && !draft
       ? usageIndex.get(selectedId)
       : undefined;
+  /** **THE SELECTION COMMITS ON SETTLE, never during the scroll** (ADR-0182 §10).
+   *
+   *  `google.maps.Map` is a live, billed object and this screen re-renders every second, so
+   *  driving the camera from every scroll frame is the one thing this must not do. The track
+   *  reports continuously; the selection changes once, when it has stopped.
+   *
+   *  A debounce rather than `scrollend`, which is not on every engine we ship to yet, and
+   *  rather than an `IntersectionObserver`, which answers "is it visible" where the question
+   *  is "which one is centred".
+   *
+   *  It calls `select(placeId)` BARE — no `fromRow`, no `land`. Those normalise the sheet to
+   *  `half` and scroll the list row into view, and raising the sheet would take away the map
+   *  you are swiping on (ADR-0122 §7). So this is the PIN tap's call, not the row tap's. */
+  const trackSettle = useRef(0);
+  useEffect(() => () => window.clearTimeout(trackSettle.current), []);
+  const onTrackScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const track = e.currentTarget;
+    window.clearTimeout(trackSettle.current);
+    trackSettle.current = window.setTimeout(() => {
+      const middle = track.scrollLeft + track.clientWidth / 2;
+      let centred: HTMLElement | undefined;
+      let closest = Infinity;
+      for (const slide of track.querySelectorAll<HTMLElement>('.place[data-place]')) {
+        const distance = Math.abs(slide.offsetLeft + slide.offsetWidth / 2 - middle);
+        if (distance < closest) {
+          closest = distance;
+          centred = slide;
+        }
+      }
+      const placeId = centred?.dataset.place;
+      if (placeId && placeId !== selectedId) select(placeId);
+    }, MAP_TRACK_SETTLE_MS);
+  };
+
+  /** **THE WINDOW: previous · current · next, and never more** (ADR-0182's peek amendment).
+   *
+   *  A peek can only ever show one neighbour either side, so that is what is mounted —
+   *  three full cards rather than the day's. That bound is the whole reason this is
+   *  affordable on a screen that re-renders every second and whose memoisation is measured
+   *  (§4's note); mounting the day would put a note section and a way-in block per stop
+   *  behind a 28px sliver nobody has looked at yet.
+   *
+   *  Empty in an all-days scope, because `dayStops` is (§11): there is no sequence to step
+   *  through rather than a control to disable, and the card falls back to the single
+   *  full-width card it has always been. */
+  const trackStops = useMemo(() => {
+    const at = cardUsage ? dayStops.findIndex((s) => s.usage.placeId === cardUsage.placeId) : -1;
+    if (at < 0) return [];
+    return [dayStops[at - 1], dayStops[at], dayStops[at + 1]].filter(Boolean);
+  }, [dayStops, cardUsage]);
+  /** The selected slide centres itself when the selection arrives from somewhere else — a
+   *  pin tap, a row tap, an arrival. `lib/useCenterSelected.ts` already is this, on the
+   *  inline axis, including the trap it needs: under MANDATORY snap the centred child must
+   *  say `scroll-snap-align: center` or the browser re-snaps the offset back to a
+   *  start-aligned boundary. `active` is off with no track, which also resets its arrival
+   *  latch so re-entering centres instantly rather than animating. */
+  const trackSlideRef = useCenterSelected<HTMLDivElement>(selectedId, {
+    active: trackStops.length > 1,
+  });
+  const renderSlide = (stop: DayStop) => {
+    const usage = stop.usage;
+    const isCurrent = usage.placeId === cardUsage?.placeId;
+    return (
+      <Fragment key={usage.placeId}>
+        {renderRow({
+          forceDay: !inDayScope(usage),
+          onFrame: isCurrent ? frameSelected : undefined,
+          // A card is the only way to reach one of OUR places at this stop, so under an
+          // errand it has to be able to choose it — otherwise a trip place is pickable from
+          // the list and not from the canvas, on the tab that exists to show you where things
+          // are (ADR-0134 §3).
+          onChoose: errandTakesOurPlaces && isCurrent ? finishErrand : undefined,
+          // **One density across the track, one selection in it.** The neighbours read as
+          // cards rather than as short rows floating at the bottom of a tall one, which is
+          // what the peek has to show for the edge to mean anything.
+          revealed: true,
+          slideRef: isCurrent ? trackSlideRef : undefined,
+        })(usage)}
+      </Fragment>
+    );
+  };
   const placeCard = cardUsage && (
-    <div className="map-placecard" ref={cardRef}>
-      {renderRow({
-        forceDay: !inDayScope(cardUsage),
-        onFrame: frameSelected,
-        // A card is the only way to reach one of OUR places at this stop, so under an
-        // errand it has to be able to choose it — otherwise a trip place is pickable from
-        // the list and not from the canvas, on the tab that exists to show you where things
-        // are (ADR-0134 §3).
-        onChoose: errandTakesOurPlaces ? finishErrand : undefined,
-      })(cardUsage)}
+    <div
+      className="map-placecard"
+      ref={cardRef}
+      // The attribute, not a class: `map.css` keys the track's whole geometry on it, and a
+      // day with one stop must stay the plain full-width card rather than a lone slide
+      // measuring itself at `calc(100% - 2×peek - 2×gap)` inside empty gutters.
+      {...(trackStops.length > 1 ? { 'data-track': '' } : null)}
+      onScroll={trackStops.length > 1 ? onTrackScroll : undefined}
+    >
+      {trackStops.length > 1
+        ? trackStops.map(renderSlide)
+        : renderRow({
+            forceDay: !inDayScope(cardUsage),
+            onFrame: frameSelected,
+            onChoose: errandTakesOurPlaces ? finishErrand : undefined,
+          })(cardUsage)}
     </div>
   );
 
@@ -3566,6 +3687,7 @@ export function MapView() {
 // Place-lite offers "＋ מיקום" to enrich it in place. Commitment (hard) shows a 🔒;
 // a pure shelf idea shows "על המדף".
 function PlaceRow({
+  rowRef,
   usage,
   place,
   photo,
@@ -3603,6 +3725,9 @@ function PlaceRow({
   onRename,
   onDelete,
 }: {
+  /** Attached by the card's track to the slide that is the current selection, so
+   *  `useCenterSelected` can scroll it to the centre (ADR-0182). Absent in the list. */
+  rowRef?: RefObject<HTMLDivElement | null>;
   usage: PlaceUsage;
   place: Place;
   /** **The photograph that fills the badge** (ADR-0167 §1), or absent for the glyph — which is
@@ -3807,6 +3932,7 @@ function PlaceRow({
   const bodyIsControl = !!onBodyTap && !expanded;
   return (
     <div
+      ref={rowRef}
       className={rowClass}
       data-place={usage.placeId}
       {...(onBodyTap

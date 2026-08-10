@@ -274,26 +274,73 @@ export function pinTransition(
  *   a twice-visited place displays, so no other pin's number can move under it.
  * - **A pin with no position in the schedule gets no number** (`hasScheduleSlot`), unchanged.
  */
-export function buildPinOrderIndex(
+/** One moment of one place, as the day's sequence holds it. */
+export interface DayStopMoment {
+  at?: number;
+  eventId?: string;
+  edge?: 'start' | 'end';
+}
+
+/**
+ * **A stop of the day** — the unit you step through (ADR-0182 §1).
+ *
+ * `order` is the 1-based number the pin and the row wear, and it is absent for exactly the
+ * two populations that cannot carry one: a moment the app does not KNOW (a floor, a ceiling,
+ * a clockless edge — ADR-0171 §10b), and a tail member, which has no moment at all.
+ */
+export interface DayStop {
+  usage: PlaceUsage;
+  day: DayUsage;
+  moment: DayStopMoment;
+  order?: number;
+  /** **The tail** (ADR-0182 §2): on the day, but with no schedule slot to hold a position —
+   *  an idea pencilled in with no event. It is traversable and it is never numbered. */
+  tail?: true;
+}
+
+export interface DayStopContext {
+  nameOf: PlaceOrderContext['nameOf'];
+  onDate?: string;
+  /** The moment's event, so this can ask what its time MEANS (ADR-0171 §10b). Absent
+   *  on surfaces that cannot resolve events, which then number every moment as before. */
+  eventById?: (id: string) => TripEvent | undefined;
+  /** **Is this place a connection stop on this day** — `connectionStops`, the same
+   *  derivation the day's band and the pin's word already read (ADR-0159 §6). Absent
+   *  where journeys are not resolved. */
+  isConnectionStop?: (placeId: string, date: string) => boolean;
+}
+
+/**
+ * **THE DAY, IN ORDER** (ADR-0182 §1) — the array `buildPinOrderIndex` used to build,
+ * number and then throw away. It had no name because it had one reader; it has two now,
+ * and the second one steps through it rather than looking places up in it.
+ *
+ * **There is deliberately one derivation and not two.** `buildPinOrderIndex` below is this
+ * function's first consumer, so a number on a pin and a position in the traversal cannot
+ * disagree — which is the whole failure ADR-0121 §6's 2026-08-06 amendment was written to
+ * end, arriving from a new direction.
+ *
+ * **CLOCK-FREE, and that is load-bearing.** No `nowMs` reaches here: a tick can never
+ * renumber a pin (§6's own property) and it must never reorder a traversal either. The clock
+ * enters exactly one line, in `buildPinOrderIndex`, deciding which of its own stops a
+ * twice-visited place is currently about.
+ *
+ * The order is: the day's timed stops by their moment, with one connection collapsed to one
+ * stop; then the untimed ones; then the **tail** — places on the day with no schedule slot at
+ * all, which never entered this function's first step and are what "untimed items come after
+ * the timed portion" actually names. `ambient` is excluded throughout, because a strictly
+ * middle night of a stay is backdrop and not a stop ({@link PIN_TIER}).
+ */
+export function buildDayStopSequence(
   usages: readonly PlaceUsage[],
-  ctx: {
-    nameOf: PlaceOrderContext['nameOf'];
-    onDate?: string;
-    nowMs?: number;
-    /** The moment's event, so this can ask what its time MEANS (ADR-0171 §10b). Absent
-     *  on surfaces that cannot resolve events, which then number every moment as before. */
-    eventById?: (id: string) => TripEvent | undefined;
-    /** **Is this place a connection stop on this day** — `connectionStops`, the same
-     *  derivation the day's band and the pin's word already read (ADR-0159 §6). Absent
-     *  where journeys are not resolved. */
-    isConnectionStop?: (placeId: string, date: string) => boolean;
-  },
-): Map<string, number> {
-  const { nameOf, onDate, nowMs, eventById, isConnectionStop } = ctx;
+  ctx: DayStopContext,
+): DayStop[] {
+  const { nameOf, onDate, eventById, isConnectionStop } = ctx;
   // No day, no sequence to be an index in — and renumbering per day is worse than
   // nothing: two pins both reading `1` on one canvas, with nothing on either saying
-  // which day it belongs to.
-  if (!onDate) return new Map();
+  // which day it belongs to. Which is also why an all-days scope has no traversal:
+  // there is no sequence to traverse rather than a control to disable (ADR-0182 §11).
+  if (!onDate) return [];
   const onDay = usages
     .map((usage) => ({ usage, day: placeDay(usage, { onDate }) }))
     .filter((entry): entry is { usage: PlaceUsage; day: DayUsage } => hasScheduleSlot(entry.day));
@@ -345,13 +392,51 @@ export function buildPinOrderIndex(
     const event = moment.eventId ? eventById?.(moment.eventId) : undefined;
     return event ? isExactEdge(event, moment.edge ?? 'start') : true;
   };
-  const numbered = merged.filter((stop) => knows(stop.moment));
+  let counted = 0;
+  const sequence: DayStop[] = merged.map((stop) => ({
+    ...stop,
+    order: knows(stop.moment) ? ++counted : undefined,
+  }));
+  // **THE TAIL** (ADR-0182 §2). `hasScheduleSlot` above wants `prominence === 'edge'` AND an
+  // `eventId`, so an idea pencilled to this day with no event never entered the sequence at
+  // all — while the list shows it, because the list asks the much wider `inDayScope`. That
+  // gap IS the tail, and it is what the owner's "untimed items come after the timed portion"
+  // names once a floor is understood to have an instant (§3).
+  //
+  // `ambient` is excluded rather than parked: a strictly middle night of a stay is backdrop,
+  // not somewhere you step to, which {@link PIN_TIER} already says in those words.
+  const tail = usages
+    .map((usage) => ({ usage, day: placeDay(usage, { onDate }) }))
+    .filter(
+      (entry): entry is { usage: PlaceUsage; day: DayUsage } =>
+        entry.day != null && entry.day.prominence !== 'ambient' && !hasScheduleSlot(entry.day),
+    )
+    // The same tie-break tail the timed sort ends with, so one comparator orders the whole
+    // sequence rather than two that could drift.
+    .sort(
+      (a, b) =>
+        (a.day.sortOrder ?? 0) - (b.day.sortOrder ?? 0) ||
+        nameOf(a.usage).localeCompare(nameOf(b.usage)),
+    )
+    .map(({ usage, day }): DayStop => ({ usage, day, moment: {}, tail: true }));
+  return [...sequence, ...tail];
+}
+
+export function buildPinOrderIndex(
+  usages: readonly PlaceUsage[],
+  ctx: DayStopContext & { nowMs?: number },
+): Map<string, number> {
+  const { onDate, nowMs } = ctx;
+  if (!onDate) return new Map();
+  // The one derivation, read rather than repeated (ADR-0182 §1). Only stops that carry a
+  // number are candidates; the tail never had one and never will.
+  const numbered = buildDayStopSequence(usages, ctx).filter((stop) => stop.order != null);
   // …and each place takes the number of the stop it is CURRENTLY about, which is the same
   // moment `placeMetaDay` puts on its row. This is the only line the clock reaches.
   const index = new Map<string, number>();
-  for (const { usage, day } of onDay) {
+  for (const { usage, day } of numbered) {
     const naming = relevantMoment(day, nowMs);
-    const at = numbered.findIndex(
+    const at = numbered.find(
       (stop) =>
         stop.usage.placeId === usage.placeId &&
         (naming == null ||
@@ -359,7 +444,7 @@ export function buildPinOrderIndex(
             stop.moment.eventId === naming.eventId &&
             stop.moment.edge === naming.edge)),
     );
-    if (at >= 0) index.set(usage.placeId, at + 1);
+    if (at) index.set(usage.placeId, at.order!);
   }
   return index;
 }

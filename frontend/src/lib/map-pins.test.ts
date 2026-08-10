@@ -14,6 +14,7 @@ import {
 } from '@waypoint/shared';
 import { buildPlaceUsageIndex, type PlaceUsage } from './place-usage';
 import {
+  buildDayStopSequence,
   buildPinOrderIndex,
   hasScheduleSlot,
   isAsidePin,
@@ -28,6 +29,7 @@ import {
   pinOutcome,
   pinTransition,
   pinZIndex,
+  type DayStop,
 } from './map-pins';
 import { DEFAULT_EVENT_ICON, DEFAULT_MAYBE_ICON, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 
@@ -679,6 +681,29 @@ describe('what a pin number is allowed to claim', () => {
     // …and the known stops still count 1, 2 with no hole: nothing is hidden to hint at.
     expect(index.get('kef')).toBe(1);
     expect(index.get('tlv')).toBe(2);
+
+    // **AND IT KEEPS ITS PLACE IN THE SEQUENCE** (ADR-0182 §3). Losing the number is not
+    // leaving the day: the check-out sorts at its ceiling, between the two flights, and a
+    // traversal steps through it. Interleaved rather than parked in a tail, because the
+    // pins on the same canvas carry these numbers and the two must not disagree.
+    const stops = buildDayStopSequence(all, {
+      nameOf,
+      onDate: DAY,
+      eventById: eventsById([
+        event({
+          id: 'stay',
+          category: 'lodging',
+          date: '2026-07-05',
+          endDate: DAY,
+          startsAt: `2026-07-05T15:00:00Z`,
+          endsAt: at2('11:00'),
+        }),
+        event({ id: 'dep', category: 'transport', icon: '✈️', startsAt: at2('07:40') }),
+        event({ id: 'arr', category: 'transport', icon: '✈️', startsAt: at2('15:20') }),
+      ]),
+    });
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['kef', 'hotel', 'tlv']);
+    expect(stops.map((s) => s.order)).toEqual([1, undefined, 2]);
   });
 
   it('gives an UNTIMED place no number either — the same claim, unreported', () => {
@@ -1230,6 +1255,133 @@ describe('placeGlyph — a chosen glyph, else the category’s, else the place d
         const first = placeGlyph({ icon }, category);
         expect(placeGlyph({ icon }, category)).toBe(first);
       }
+    }
+  });
+});
+
+describe('buildDayStopSequence — the day in order, which is what you step through (ADR-0182 §1)', () => {
+  const at2 = (hhmm: string) => `${DAY}T${hhmm}:00Z`;
+  const eventsById = (all: TripEvent[]) => (id: string) => all.find((e) => e.id === id);
+  const ids = (stops: DayStop[]) => stops.map((s) => s.usage.placeId);
+  const orders = (stops: DayStop[]) => stops.map((s) => s.order);
+
+  it('is the day in clock order, numbered 1..n over the moments it knows', () => {
+    const all = [
+      ...usages({
+        places: [place('kef'), place('hotel'), place('market')],
+        events: [
+          event({ id: 'a', placeId: 'kef', startsAt: at2('06:20') }),
+          event({ id: 'b', placeId: 'hotel', startsAt: at2('11:30') }),
+          event({ id: 'c', placeId: 'market', startsAt: at2('12:40') }),
+        ],
+      }).values(),
+    ];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY });
+    expect(ids(stops)).toEqual(['kef', 'hotel', 'market']);
+    expect(orders(stops)).toEqual([1, 2, 3]);
+  });
+
+  it('ONE CONNECTION IS ONE STOP, and a later return to the same place is not', () => {
+    // The landing that brings you in and the departure that takes you out are one wait,
+    // not two visits (ADR-0171 §7) — but the airport you come back to at 18:00 to return a
+    // car is a genuine revisit, and the stops in between are what prove it.
+    const all = [
+      ...usages({
+        places: [place('tlv'), place('market')],
+        events: [
+          event({ id: 'land', placeId: 'tlv', startsAt: at2('06:20') }),
+          event({ id: 'dep', placeId: 'tlv', startsAt: at2('08:05') }),
+          event({ id: 'mkt', placeId: 'market', startsAt: at2('12:40') }),
+          event({ id: 'car', placeId: 'tlv', startsAt: at2('18:00') }),
+        ],
+      }).values(),
+    ];
+    const stops = buildDayStopSequence(all, {
+      nameOf,
+      onDate: DAY,
+      isConnectionStop: (placeId) => placeId === 'tlv',
+    });
+    // Three stops, not four: the two adjacent airport moments collapsed, the later one did not.
+    expect(ids(stops)).toEqual(['tlv', 'market', 'tlv']);
+    expect(orders(stops)).toEqual([1, 2, 3]);
+  });
+
+  it('adjacency alone does not collapse — without the connection gate both moments stand', () => {
+    const all = [
+      ...usages({
+        places: [place('tlv')],
+        events: [
+          event({ id: 'land', placeId: 'tlv', startsAt: at2('06:20') }),
+          event({ id: 'car', placeId: 'tlv', startsAt: at2('18:00') }),
+        ],
+      }).values(),
+    ];
+    expect(ids(buildDayStopSequence(all, { nameOf, onDate: DAY }))).toEqual(['tlv', 'tlv']);
+  });
+
+  it('THE TAIL: a day idea with no schedule slot comes last, unnumbered, and marked', () => {
+    const all = [
+      ...usages({
+        places: [place('museum'), place('cafe')],
+        events: [event({ id: 'm', placeId: 'museum', startsAt: at2('10:00') })],
+        maybeItems: [maybe({ id: 'idea', placeId: 'cafe', targetDate: DAY })],
+      }).values(),
+    ];
+    const stops = buildDayStopSequence(all, { nameOf, onDate: DAY });
+    expect(ids(stops)).toEqual(['museum', 'cafe']);
+    expect(orders(stops)).toEqual([1, undefined]);
+    expect(stops[1].tail).toBe(true);
+    expect(stops[0].tail).toBeUndefined();
+  });
+
+  it('ambient is excluded — a middle night of a stay is backdrop, not a stop', () => {
+    const all = [
+      ...usages({
+        places: [place('hotel'), place('museum')],
+        bookings: [
+          booking({
+            id: 'stay',
+            type: BOOKING_TYPE.HOTEL,
+            placeId: 'hotel',
+            startsAt: `${PREV_DAY}T15:00:00Z`,
+            endsAt: `${NEXT_DAY}T11:00:00Z`,
+          }),
+        ],
+        events: [event({ id: 'm', placeId: 'museum', startsAt: at2('10:00') })],
+      }).values(),
+    ];
+    // Neither a stop nor a tail member: `PIN_TIER.ambient` already calls it backdrop, and
+    // you do not step to somewhere you are asleep in the middle of.
+    expect(ids(buildDayStopSequence(all, { nameOf, onDate: DAY }))).toEqual(['museum']);
+  });
+
+  it('ALL-DAYS HAS NO SEQUENCE, which is why it has no traversal (§11)', () => {
+    const all = [
+      ...usages({
+        places: [place('museum')],
+        events: [event({ id: 'm', placeId: 'museum', startsAt: at2('10:00') })],
+      }).values(),
+    ];
+    // Not "a control that is disabled" — there is nothing for a position to be an index of,
+    // so the comparator would sequence the whole trip and a pin would read `27`.
+    expect(buildDayStopSequence(all, { nameOf })).toEqual([]);
+  });
+
+  it('the pin numbers ARE this sequence, so the two cannot disagree', () => {
+    const all = [
+      ...usages({
+        places: [place('kef'), place('hotel'), place('market')],
+        events: [
+          event({ id: 'a', placeId: 'kef', startsAt: at2('06:20') }),
+          event({ id: 'b', placeId: 'hotel', startsAt: at2('11:30') }),
+          event({ id: 'c', placeId: 'market', startsAt: at2('12:40') }),
+        ],
+      }).values(),
+    ];
+    const ctx = { nameOf, onDate: DAY };
+    const index = buildPinOrderIndex(all, ctx);
+    for (const stop of buildDayStopSequence(all, ctx)) {
+      if (stop.order != null) expect(index.get(stop.usage.placeId)).toBe(stop.order);
     }
   });
 });

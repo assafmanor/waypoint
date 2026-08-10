@@ -1,6 +1,6 @@
 # 0182 — A day is a **sequence you can step through**, and the card is where you step
 
-**Status:** Accepted (2026-08-10) — **not yet built, and §9 is a hard prerequisite**: the loaded place card already clips its own primary actions, and this feature cannot put a control there until that is fixed.
+**Status:** Accepted (2026-08-10) — **built 2026-08-11**, §9's prerequisite discharged first in the same change. The real-device pass (peek width, and whether a horizontal snap over a pannable canvas feels right) is still owed.
 **Date:** 2026-08-10
 **Session note:** [`planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md`](../planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md)
 **Mockups:** [`map-stop-traversal-v1.html`](../../mockups/map-stop-traversal-v1.html) (§1–§7, the rail) · [`map-stop-traversal-v2.html`](../../mockups/map-stop-traversal-v2.html) (§1–§5, **the peek that replaced it — see the 2026-08-10 amendment**)
