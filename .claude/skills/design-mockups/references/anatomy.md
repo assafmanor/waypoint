@@ -33,8 +33,15 @@ RTL is the app's real direction, and half the bidi traps only exist there.
 ## 3. Fonts
 
 Assistant (UI), Secular One (headings), JetBrains Mono (code/numerals) from
-Google Fonts, with the two `preconnect` links. The app loads the same families;
+Google Fonts, with the two `preconnect` links. The app uses the same families;
 a mockup in the system font is measuring the wrong text.
+
+**The app itself no longer loads them this way** (F-11) — it self-hosts the same
+woff2 subsets from `frontend/src/assets/fonts/`, so the service worker can
+precache them. Don't "sync" the two: a mockup is a standalone file opened
+straight from `mockups/`, with no build step and no path into the app's asset
+graph, so the CDN link is the right thing *here* and a relative one would render
+every mockup in a system font.
 
 ## 4. The `APP-CSS:` manifest and its generated block
 

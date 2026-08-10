@@ -80,6 +80,17 @@ export default defineConfig(({ command }) => {
         workbox: {
           skipWaiting: true,
           clientsClaim: true,
+          // The self-hosted fonts (F-11) do NOT precache on their own. Being in
+          // the Vite graph gets them hashed into dist/assets/, which is not the
+          // same thing: workbox-build's default globPatterns is
+          // `['**/*.{js,wasm,css,html}']`, so a .woff2 sitting right beside the
+          // matched .css is silently skipped — the exact offline-fallback-font
+          // bug self-hosting was meant to fix, only now with no CDN to fall back
+          // to. Overriding replaces that default rather than extending it, so
+          // the four original extensions are restated here on purpose.
+          // (`includeAssets` is not the knob: it globs `public/`, and these are
+          // build outputs.)
+          globPatterns: ['**/*.{js,wasm,css,html,woff2}'],
           // Backend-owned navigations (OAuth redirect, /health) must hit the
           // network — the default fallback serves the cached shell for ALL paths.
           navigateFallbackDenylist: [SERVER_ROUTE_PATTERN],
