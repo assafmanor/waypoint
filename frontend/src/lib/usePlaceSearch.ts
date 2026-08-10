@@ -7,6 +7,7 @@ import {
   type PlaceCorpus,
 } from '../constants';
 import { useTrip } from '../state/trip-state';
+import { generateId } from './id';
 import { isRateLimitedError, searchPlaces, searchPlacesText } from './api';
 import type { MapBounds } from './map-camera';
 import { referencedPlaceIds } from './places';
@@ -96,7 +97,7 @@ export function usePlaceSearch({
   // the cost difference, not an oversight.
   const sessionTokenRef = useRef<string | null>(null);
   const ensureToken = useCallback((): string => {
-    sessionTokenRef.current ??= crypto.randomUUID();
+    sessionTokenRef.current ??= generateId();
     return sessionTokenRef.current;
   }, []);
   const retireSession = useCallback(() => {

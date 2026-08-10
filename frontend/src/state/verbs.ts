@@ -53,6 +53,7 @@ import {
   OUTBOX_VERB,
   type OutboxOp,
 } from '../lib/outbox';
+import { generateId } from '../lib/id';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
 import { soleIdeaFor, type PlaceLink } from '../lib/place-refs';
@@ -430,7 +431,7 @@ export function buildScheduleEvent(
   fields?: ScheduleFields,
 ): TripEvent {
   return {
-    id: crypto.randomUUID(),
+    id: generateId(),
     tripId: trip.id,
     date: fields?.date ?? activeDate,
     title: fields?.title ?? m.title,
@@ -1292,7 +1293,7 @@ export function useVerbs() {
   const parkedIdea = (event: TripEvent, targetDate: string | null | undefined): MaybeItem => {
     const now = new Date(getNow()).toISOString();
     return {
-      id: crypto.randomUUID(),
+      id: generateId(),
       tripId: trip.id,
       title: event.title,
       icon: event.icon,
@@ -1372,7 +1373,7 @@ export function useVerbs() {
       if (!trimmed) return;
       const now = new Date(getNow()).toISOString();
       const item: MaybeItem = {
-        id: crypto.randomUUID(),
+        id: generateId(),
         tripId: trip.id,
         title: trimmed,
         icon: opts.icon ?? DEFAULT_MAYBE_ICON,

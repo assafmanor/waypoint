@@ -213,6 +213,30 @@ describe('flushOutbox (FIFO)', () => {
     expect(getSyncFailures()).toHaveLength(0);
   });
 
+  it('drains a write enqueued mid-flush instead of stranding it for the next trigger (F-12)', async () => {
+    // The real shape: processing one op queues another for the same trip (a document
+    // upload kicking a flush, ADR-0056). `flushOutbox` hands that caller the in-flight
+    // promise, so if this flush only drained its opening snapshot nobody would come
+    // back for the newcomer until the next online/visibility/mount trigger.
+    const seen: string[] = [];
+    const fetchMock = vi.fn(async (url: string) => {
+      seen.push(String(url));
+      if (String(url).includes('ev-1')) await enqueueOutbox(TRIP_ID, statusOp('ev-2'));
+      return new Response(canonicalBody(), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
+    await flushOutbox(TRIP_ID);
+
+    expect(seen).toEqual([
+      expect.stringContaining('ev-1'),
+      expect.stringContaining('ev-2'), // sent by this flush, not left for the next one
+    ]);
+    expect(await db.outbox.count()).toBe(0);
+    expect(getOutboxCount()).toBe(0);
+  });
+
   it('a duplicate create retry is idempotent — the backend returns 200 for an already-applied client id', async () => {
     // ADR-0018: client-generated ids make a re-POST of an already-created event
     // hit a unique-constraint that the backend treats as "already applied"
@@ -421,6 +445,58 @@ describe('outbox pending count', () => {
     await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
     await enqueueOutbox(TRIP_ID, statusOp('ev-2'));
     expect(getPendingChangeCount()).toBe(2);
+  });
+
+  it('re-derives a drifted count from the store once the flush is done (F-15)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(canonicalBody(), { status: 200 }))),
+    );
+    // The three mirrors are hand-maintained, so an interleaved flush can leave them
+    // describing a queue that no longer exists. Poke one out of sync directly — the
+    // drift itself isn't the contract, the correction is.
+    await enqueueOutbox(TRIP_ID, statusOp('ev-1'));
+    await db.outbox.clear();
+    expect(getOutboxCount()).toBe(1); // stale: the store is already empty
+    expect(getPendingChangeCount()).toBe(1);
+
+    await flushOutbox(TRIP_ID);
+
+    expect(getOutboxCount()).toBe(0);
+    expect(getPendingChangeCount()).toBe(0);
+    expect(getSyncStatus('ev-1')).toEqual({ state: 'synced' });
+  });
+
+  it('the post-flush resync keeps a failure that same flush recorded (F-03 × F-15)', async () => {
+    // The trap the resync has to avoid: `initOutboxCount` also calls
+    // `clearSyncFailures()`, right for a fresh session and destructive here — it would
+    // erase the rejection this very flush just recorded, so the header would go quiet
+    // about a write that never landed.
+    vi.stubGlobal('fetch', reject400('BOOKING_INVALID'));
+    await enqueueOutbox(TRIP_ID, bookingOp('bk-fail'));
+
+    await flushOutbox(TRIP_ID);
+
+    expect(getOutboxCount()).toBe(0);
+    expect(getSyncFailures()).toHaveLength(1);
+    expect(getSyncStatus('bk-fail')).toEqual({ state: 'failed', reason: 'BOOKING_INVALID' });
+  });
+
+  it('a device-wide flush of two trips lands both counts at zero', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(canonicalBody(), { status: 200 }))),
+    );
+    await enqueueOutbox('trip-a', statusOp('ev-a'));
+    await enqueueOutbox('trip-b', statusOp('ev-b'));
+    expect(getOutboxCount()).toBe(2);
+
+    // Concurrent per-trip flushes, each resyncing from the whole table — so the first
+    // to finish must not zero a count the other trip's queue still owns.
+    await flushAllOutbox();
+
+    expect(getOutboxCount()).toBe(0);
+    expect(getPendingChangeCount()).toBe(0);
   });
 
   it('drains a group from the change count only once all its ops flush', async () => {

@@ -53,6 +53,7 @@ import {
   uploadDocument,
 } from './api';
 import { applyOutboxOpToCache } from './cache';
+import { generateId } from './id';
 import { PhaseTimeoutError } from './deadline';
 
 /** The queued-write discriminants (T-013): one named value per outbox op, so no
@@ -294,7 +295,7 @@ let activeGroupId: string | undefined;
  *  its own change. Nestable — the previous group is restored on exit. */
 export async function withChangeGroup<T>(run: () => Promise<T>): Promise<T> {
   const previous = activeGroupId;
-  activeGroupId = crypto.randomUUID();
+  activeGroupId = generateId();
   try {
     return await run();
   } finally {
@@ -328,11 +329,16 @@ function bumpPendingForOp(op: OutboxOp, delta: number): void {
   for (const id of outboxOpEntityIds(op)) bumpPending(id, delta);
 }
 
-/** Primes the in-memory count from IndexedDB so a queue left over from a
- *  previous session (closed while offline) shows up without a first mutation.
- *  Sync failures are in-memory only (not persisted), so a fresh prime resets
- *  them too — nothing has failed to sync yet this session. */
-export async function initOutboxCount(): Promise<void> {
+/** Re-derives all three in-memory mirrors (`pendingCount`, `pendingGroups`,
+ *  `pendingByEntity`) from the persisted queue — the store is the truth, they are
+ *  a synchronous snapshot for `useSyncExternalStore`. Reads the whole table, not
+ *  one trip: concurrent flushes are what drift them (F-15), and `flushAllOutbox`
+ *  runs one per trip.
+ *
+ *  Deliberately does NOT touch the failure store. Clearing it is `initOutboxCount`'s
+ *  fresh-session concern, and doing it here would erase the `SyncFailure` (F-03) a
+ *  flush had just recorded — breaking failed-write visibility while "fixing" a count. */
+async function resyncOutboxCounters(): Promise<void> {
   const entries = await db.outbox.toArray();
   pendingByEntity.clear();
   pendingGroups.clear();
@@ -341,6 +347,14 @@ export async function initOutboxCount(): Promise<void> {
     bumpGroup(entryGroupId(entry), 1);
   }
   setPendingCount(entries.length);
+}
+
+/** Primes the in-memory count from IndexedDB so a queue left over from a
+ *  previous session (closed while offline) shows up without a first mutation.
+ *  Sync failures are in-memory only (not persisted), so a fresh prime resets
+ *  them too — nothing has failed to sync yet this session. */
+export async function initOutboxCount(): Promise<void> {
+  await resyncOutboxCounters();
   clearSyncFailures();
 }
 
@@ -507,7 +521,7 @@ export function usePendingChangeCount(): number {
 
 export async function enqueueOutbox(tripId: string, op: OutboxOp): Promise<void> {
   // Join the active user action's change group, or stand alone as its own change.
-  const groupId = activeGroupId ?? crypto.randomUUID();
+  const groupId = activeGroupId ?? generateId();
   await db.outbox.add({ tripId, op, groupId });
   // Mirror the queued change into the read cache so a reopen while still offline
   // shows it (best-effort — a cache failure must not block queueing the write).
@@ -714,7 +728,9 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
   }
 }
 
-/** Flushes queued mutations for a trip in FIFO order. A transient/server error
+/** Flushes queued mutations for a trip in FIFO order, draining until the queue comes
+ *  back empty — so a write enqueued *during* the flush leaves with it rather than
+ *  waiting for the next trigger (F-12). A transient/server error
  *  (network failure, 5xx) halts the flush and leaves the remaining queue
  *  (including the failed entry) in place — the caller retries the whole flush
  *  later rather than skipping ahead and breaking ordering. A duplicate re-POST
@@ -754,33 +770,55 @@ export async function flushAllOutbox(): Promise<void> {
 }
 
 async function doFlushOutbox(tripId: string): Promise<void> {
-  const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
-  for (const entry of entries) {
-    try {
-      await runOp(tripId, entry.op);
-    } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
-        if (!err.code || !QUIET_DROP_CODES.has(err.code)) {
-          recordSyncFailure({
-            tripId,
-            entityId: outboxOpEntityId(entry.op),
-            verb: entry.op.verb,
-            code: err.code,
-            op: entry.op,
-          });
+  try {
+    await drainOutbox(tripId);
+  } finally {
+    // The three mirrors are hand-decremented one op at a time by the drain, and two
+    // flushes interleave freely (`flushAllOutbox` starts one per trip). Now that this
+    // trip's drain is done, re-derive them from the store, which never drifts (F-15).
+    // In the `finally` because a halted flush is exactly when the mirrors are least
+    // trusted — and a resync that itself failed must not mask the halt.
+    await resyncOutboxCounters().catch(() => {});
+  }
+}
+
+/** The FIFO drain itself. Re-reads the queue each round instead of looping over one
+ *  opening snapshot (F-12): a write enqueued while this flush is mid-loop —
+ *  `queueDocumentUpload` kicking a flush while one runs, ADR-0056 — is handed *this*
+ *  promise by the coalescing above, so no other flush is coming for it. The round it
+ *  lands in has to be ours, or it sits in Dexie until the next reconnect/visibility
+ *  trigger. Terminates because every path below either deletes its entry or throws. */
+async function drainOutbox(tripId: string): Promise<void> {
+  for (;;) {
+    const entries = await db.outbox.where('tripId').equals(tripId).sortBy('seq');
+    if (entries.length === 0) return;
+    for (const entry of entries) {
+      try {
+        await runOp(tripId, entry.op);
+      } catch (err) {
+        if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+          if (!err.code || !QUIET_DROP_CODES.has(err.code)) {
+            recordSyncFailure({
+              tripId,
+              entityId: outboxOpEntityId(entry.op),
+              verb: entry.op.verb,
+              code: err.code,
+              op: entry.op,
+            });
+          }
+          await db.outbox.delete(entry.seq!);
+          bumpPendingForOp(entry.op, -1);
+          bumpGroup(entryGroupId(entry), -1);
+          setPendingCount(pendingCount - 1);
+          continue;
         }
-        await db.outbox.delete(entry.seq!);
-        bumpPendingForOp(entry.op, -1);
-        bumpGroup(entryGroupId(entry), -1);
-        setPendingCount(pendingCount - 1);
-        continue;
+        throw err;
       }
-      throw err;
+      await db.outbox.delete(entry.seq!);
+      bumpPendingForOp(entry.op, -1);
+      bumpGroup(entryGroupId(entry), -1);
+      setPendingCount(pendingCount - 1);
     }
-    await db.outbox.delete(entry.seq!);
-    bumpPendingForOp(entry.op, -1);
-    bumpGroup(entryGroupId(entry), -1);
-    setPendingCount(pendingCount - 1);
   }
 }
 

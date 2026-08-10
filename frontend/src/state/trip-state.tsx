@@ -82,6 +82,7 @@ import {
   coerceTripPatch,
   readCachedSnapshot,
 } from '../lib/cache';
+import { generateId } from '../lib/id';
 import { dropNotesForHostChange } from '../lib/notes';
 import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
@@ -1233,7 +1234,7 @@ function TripReady({
     input: CreateDocumentAttachmentInput,
     opts?: { queue?: boolean },
   ): Promise<DocumentAttachment | undefined> => {
-    const id = input.id ?? crypto.randomUUID();
+    const id = input.id ?? generateId();
     const withId = { ...input, id };
     const optimistic = {
       ...withId,
@@ -1294,7 +1295,7 @@ function TripReady({
     const stamp = () => new Date(getNow()).toISOString();
     return {
       createBooking: async (input, opts = {}) => {
-        const id = input.id ?? crypto.randomUUID();
+        const id = input.id ?? generateId();
         const withId = { ...input, id };
         const { event: seed, ...fields } = withId;
         const optimistic = {
@@ -1417,7 +1418,7 @@ function TripReady({
         }
       },
       createPlace: async (input) => {
-        const id = input.id ?? crypto.randomUUID();
+        const id = input.id ?? generateId();
         const withId = { ...input, id };
         const optimistic = {
           ...withId,
@@ -1538,7 +1539,7 @@ function TripReady({
     const stamp = () => new Date(getNow()).toISOString();
     return {
       createNote: async (input, opts) => {
-        const id = input.id ?? crypto.randomUUID();
+        const id = input.id ?? generateId();
         const withId = { ...input, id };
         const optimistic = {
           ...withId,

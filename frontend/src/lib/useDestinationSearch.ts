@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DestinationResult, PlacePrediction } from '@waypoint/shared';
 import { PLACE_SEARCH_DEBOUNCE_MS, PLACE_SEARCH_MIN_CHARS } from '../constants';
+import { generateId } from './id';
 import { isRateLimitedError, resolveDestination, searchDestinations } from './api';
 
 export interface UseDestinationSearch {
@@ -32,7 +33,7 @@ export function useDestinationSearch(): UseDestinationSearch {
 
   const sessionTokenRef = useRef<string | null>(null);
   const ensureToken = useCallback((): string => {
-    sessionTokenRef.current ??= crypto.randomUUID();
+    sessionTokenRef.current ??= generateId();
     return sessionTokenRef.current;
   }, []);
   const retire = useCallback(() => {
