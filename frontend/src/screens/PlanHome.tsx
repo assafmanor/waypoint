@@ -14,6 +14,7 @@ import { BOOKING_TYPE } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { useClock } from '../lib/useClock';
+import { useCountUp } from '../lib/useCountUp';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
@@ -90,6 +91,13 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   };
 
   const total = dayNumberOf(trip.endDate, trip.startDate);
+  // Called unconditionally, above the past/upcoming branch below, because both
+  // branches' StatTiles share these same three counts (ADR-0143: "a value that
+  // changes should be seen to change" — day/event/booking counts were named but
+  // never claimed). Hooks can't be called only from inside one branch.
+  const countedTotal = useCountUp(total);
+  const countedEvents = useCountUp(events.length);
+  const countedBookings = useCountUp(bookings.length);
 
   // A finished trip is a calm read-only archive (ADR-0040): no prep dashboard,
   // no countdown, no board — a quiet retrospective and a way back into the days.
@@ -107,9 +115,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
         <div className="sec-title">{t.planHome.past.summary}</div>
         <div className="prep-stats">
-          <StatTile value={total} label={t.planHome.past.days} />
-          <StatTile value={events.length} label={t.planHome.stats.events} />
-          <StatTile value={bookings.length} label={t.planHome.stats.bookings} />
+          <StatTile value={countedTotal} label={t.planHome.past.days} />
+          <StatTile value={countedEvents} label={t.planHome.stats.events} />
+          <StatTile value={countedBookings} label={t.planHome.stats.bookings} />
         </div>
 
         <button className="addbtn" onClick={() => onNavigate('days')}>
@@ -344,9 +352,13 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
       <div className="sec-title">{t.planHome.stats.title}</div>
       <div className="prep-stats">
-        <StatTile value={bookings.length} label={t.planHome.stats.bookings} />
-        <StatTile value={events.length} label={t.planHome.stats.events} />
+        <StatTile value={countedBookings} label={t.planHome.stats.bookings} />
+        <StatTile value={countedEvents} label={t.planHome.stats.events} />
         <StatTile
+          // Not counted-up: `readiness` (and so `emptyDates.length`) is computed
+          // below the past-trip branch's early return above, so a `useCountUp`
+          // call here would run conditionally on `tripPhase` — the hooks-rules
+          // violation the two calls above avoid by sitting ahead of that return.
           value={
             <span
               style={readiness.emptyDates.length > 0 ? { color: 'var(--miss-deep)' } : undefined}
