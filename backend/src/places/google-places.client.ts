@@ -4,7 +4,8 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import type { PlacePrediction, PlaceResult, PlaceSearchKind } from '@waypoint/shared';
+import type { GeoBounds, PlacePrediction, PlaceResult, PlaceSearchKind } from '@waypoint/shared';
+import { isSendableViewport } from '@waypoint/shared';
 import { GOOGLE_MAPS_SERVER_KEY, requireEnv } from '../common/env';
 
 const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
@@ -189,7 +190,8 @@ export class GooglePlacesClient {
    *  `autocomplete` there is **no session token**: this SKU has no session, so each
    *  call is billed on its own, and what it buys is N results that already carry
    *  coordinates. `bias` is the caller's current viewport, which changes ranking and
-   *  not price.
+   *  not price — and which is dropped, never clamped, when Google could not accept it
+   *  as a rectangle (field report #34).
    *
    *  `kind` restricts the corpus to one type (field report #6). It is a request parameter,
    *  **not a field-mask entry**, so it moves neither the mask nor the SKU tier ADR-0108 §3
@@ -197,9 +199,18 @@ export class GooglePlacesClient {
    *  unrestricted one costs. */
   async textSearch(
     input: string,
-    bias?: { south: number; west: number; north: number; east: number },
+    bias?: GeoBounds,
     kind?: PlaceSearchKind,
   ): Promise<PlaceResult[]> {
+    // **The bias is checked HERE, at the boundary that owns Google's contract** (field report
+    // #34): a world view reached this as a rectangle spanning 360°, Google answered
+    // `400 INVALID_ARGUMENT`, and an optional ranking hint failed a perfectly valid query. Never
+    // trust the client's rectangle enough to make a call already known to be invalid — and never
+    // clamp it into a narrower one, for the reason `isSendableViewport` gives.
+    const rectangleBias = bias && isSendableViewport(bias) ? bias : undefined;
+    if (bias && !rectangleBias) {
+      this.logger.debug(`Text Search viewport bias dropped as unsendable: ${JSON.stringify(bias)}`);
+    }
     const body = await this.post<TextSearchResponse>(TEXT_SEARCH_URL, {
       headers: {
         'X-Goog-Api-Key': this.key(),
@@ -218,11 +229,11 @@ export class GooglePlacesClient {
           includedType: PLACE_SEARCH_KIND_TYPE[kind],
           strictTypeFiltering: true,
         }),
-        ...(bias && {
+        ...(rectangleBias && {
           locationBias: {
             rectangle: {
-              low: { latitude: bias.south, longitude: bias.west },
-              high: { latitude: bias.north, longitude: bias.east },
+              low: { latitude: rectangleBias.south, longitude: rectangleBias.west },
+              high: { latitude: rectangleBias.north, longitude: rectangleBias.east },
             },
           },
         }),
