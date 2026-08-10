@@ -606,6 +606,12 @@ export const MAP_SHEET_STOPS = {
   full: { inset: MAP_CONTROLS_H },
 } as const satisfies Record<MapSheetView, SnapStop>;
 
+/** **How long the card's stop track must be still before the selection follows it**
+ *  (ADR-0182 §10). Selecting pans a live, billed `google.maps.Map`, so it happens once the
+ *  scroll has settled and never per frame. Long enough to sit out a snap's own tail,
+ *  short enough that the map is not visibly late — a feel call the device pass owns. */
+export const MAP_TRACK_SETTLE_MS = 120;
+
 /** How far a finger must travel before the sheet's top region reads a press as a
  *  DRAG rather than as a tap (ADR-0122 §4). Load-bearing, not polish: the region is
  *  390×51 and contains real controls, and a finger emits `pointermove` on a tap — so

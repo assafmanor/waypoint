@@ -505,6 +505,10 @@ const row = (name: string) =>
 const listButton = (label: string) => screen.getByRole('button', { name: new RegExp(label) });
 const toggle = (label: string) => screen.getByRole('button', { name: label });
 const placeCard = () => document.querySelector('.map-placecard') as HTMLElement | null;
+/** The SELECTED slide of the card. The card is a stop track now (ADR-0182), so it holds the
+ *  previous and next stops either side — `.map-placecard .map-name` is the neighbour's. */
+const cardSlide = () => placeCard()?.querySelector('.place.selected') as HTMLElement | null;
+const cardName = () => cardSlide()?.querySelector('.map-name')?.textContent;
 const tapCanvas = () => fireEvent.click(document.querySelector('[data-canvas]')!);
 /** Where the stubbed long press and POI tap land. Fixed, because the point is data the screen
  *  threads through, not something it derives. */
@@ -1484,14 +1488,55 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(pin('lunch')!);
       expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
       expect(placeCard()).toBeTruthy();
-      expect(placeCard()!.querySelector('.map-name')?.textContent).toBe('lunch');
+      expect(cardName()).toBe('lunch');
       // The card IS the row — same markup, same way-in block — not a second object with
       // its own vocabulary.
-      expect(placeCard()!.querySelector('.place')).toBeTruthy();
-      expect(placeCard()!.querySelector('.map-refs')).toBeTruthy();
+      expect(cardSlide()).toBeTruthy();
+      expect(cardSlide()!.querySelector('.map-refs')).toBeTruthy();
       // And nothing is scrolled: there is no list on screen to scroll.
       await nextFrame();
       expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('the card is a TRACK: the day either side, at one density, one selection (ADR-0182)', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+
+      const card = placeCard()!;
+      // The affordance IS the neighbouring card's edge, so there is a neighbour to show —
+      // and `data-track` is what carries the whole snap geometry in `map.css`.
+      expect(card.dataset.track).toBe('');
+      const slides = [...card.querySelectorAll('.place')];
+      expect(slides.length).toBeGreaterThan(1);
+      // The window is previous · current · next and never the day: a peek can only ever
+      // show one neighbour either side, and three full cards is what that costs.
+      expect(slides.length).toBeLessThanOrEqual(3);
+
+      // ONE DENSITY. Every slide carries the way-in block, so the peek shows a card's edge
+      // rather than a short row floating at the bottom of a tall one.
+      for (const slide of slides) expect(slide.querySelector('.map-refs')).toBeTruthy();
+      // ONE SELECTION. Making them all look selected would trade the imbalance for an
+      // ambiguity about which card you are on, so the chrome stays on exactly one.
+      expect(card.querySelectorAll('.place.selected')).toHaveLength(1);
+      expect(cardName()).toBe('lunch');
+    });
+
+    it('all-days has no track, because it has no sequence (ADR-0182 §11)', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(listButton(t.map.allDays));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+
+      const card = placeCard()!;
+      // Not a disabled control — `buildDayStopSequence` returns nothing without a day, so
+      // there is nothing to step through and the card stays the one it has always been. A
+      // lone slide inside a track would sit narrower than the card with empty gutters.
+      expect(card.dataset.track).toBeUndefined();
+      expect(card.querySelectorAll('.place')).toHaveLength(1);
+      expect(cardName()).toBe('lunch');
     });
 
     it('the card carries a tapped GHOST too, named with the day it belongs to', () => {
