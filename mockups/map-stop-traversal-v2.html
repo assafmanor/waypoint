@@ -7068,7 +7068,11 @@ textarea {
          that prerequisite, it needs it. */
       .map-placecard[data-track] {
         display: flex;
-        align-items: flex-end;
+        /* Every slide is the same card at the same density, so they stretch to one
+           height and the peek shows a CARD's edge rather than a short row floating at
+           the bottom of a tall one. `flex-end` was the first draft's answer to slides
+           of unequal height, and that problem no longer exists. */
+        align-items: stretch;
         gap: var(--map-peek-gap, 8px);
         overflow-x: auto;
         /* Never `visible` — see above. `clip` on the block axis keeps the track
@@ -7101,7 +7105,7 @@ textarea {
          revealed by selection and absent otherwise, so a neighbour is the 73px
          `.place` row the list already renders. Nothing is added to make it cheap;
          it is cheap because the card was always built this way. */
-      /* **THE SELECTED SLIDE STRETCHES TO THE TRACK'S SETTLED HEIGHT.** A
+      /* **EVERY SLIDE STRETCHES TO THE TRACK'S SETTLED HEIGHT.** A
          percentage `max-height` is no use on a slide: the track is absolutely
          positioned with only a `max-height`, so its height is indefinite and a
          percentage on a child computes to `none` — measured, the slide came out
@@ -7112,54 +7116,23 @@ textarea {
          auto; min-height: 0 }`) — the same mechanism, moved in by one. Only the
          selected slide: stretching a 73px peek row to the full height would draw a
          neighbour as tall as the subject. */
-      .map-placecard[data-track] > .place.selected {
-        align-self: stretch;
+      /* MOCKUP-ONLY, labelled: §4's "what this replaced" frame. The first draft let
+         a neighbour keep its own (collapsed) height, which is what made the peek show
+         a short row floating at the bottom of a tall card. Nothing here ships. */
+      .map-placecard[data-track][data-density='collapsed'] > .place:not(.selected) {
+        align-self: flex-end;
       }
       .map-placecard[data-track] > .place:not(.selected) {
-        /* Subordinate, because it is context and not the subject. The one thing
-           the peek asserts is "there is another one" — so it keeps the card's own
-           ground and loses only its prominence. */
+        /* Subordinate, because it is context and not the subject — and now that every
+           slide carries the same content, this is the ONLY thing left saying which
+           card you are on, besides `.selected`'s own border and ring. */
         opacity: 0.85;
       }
 
-      /* §4's ONE surviving arrow option, if the owner wants arrows at all:
-         `.map-refs-foot` is already the card's pinned bottom row, already present
-         on every selected place, and its children are already 44px — so this adds
-         no height whatsoever. `space-between` pushes them to the outer edges,
-         because the foot's own comment is a warning about 8px between a primary
-         and a destructive (ADR-0157 §2). */
-      .map-refs-foot.has-nav {
-        justify-content: space-between;
-        gap: 8px;
-      }
-      .map-stopnav-btn {
-        position: relative;
-        flex: 0 0 auto;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 30px;
-        height: 30px;
-        padding: 0;
-        border: 0;
-        border-radius: 999px;
-        background: none;
-        color: var(--muted);
-        font-size: 17px;
-        cursor: pointer;
-      }
-      .map-stopnav-btn::after {
-        content: '';
-        position: absolute;
-        inset: 50% auto auto 50%;
-        width: 44px;
-        height: 44px;
-        transform: translate(50%, -50%);
-      }
-      .map-stopnav-btn:focus-visible {
-        outline: 2px solid var(--cta);
-        outline-offset: 1px;
-      }
+      /* NO ARROW CSS AT ALL — the owner closed that fork: _"no arrows, only peek."_
+         What the first draft proposed here (a `.map-refs-foot.has-nav` seat and a
+         `.map-stopnav-btn`) is deleted rather than commented out, because the honest
+         size of this proposal is the point: a track and a slide. */
 /* ══════════════════════════════════════════════════════════════════════
          mk-* — this file's own chrome. Nothing below ships.
          Theme-aware per ADR-0158 §16: the toggle writes `data-theme` on <html>,
@@ -7739,9 +7712,9 @@ textarea {
         <button type="button" data-peek="20" aria-pressed="true">⁦20px⁩</button>
         <button type="button" data-peek="28">⁦28px⁩</button>
         <span class="sep"></span>
-        <span class="lbl">חיצים</span>
-        <button type="button" data-nav="off" aria-pressed="true">בלי</button>
-        <button type="button" data-nav="foot">בפוטר</button>
+        <span class="lbl">צפיפות השקופיות</span>
+        <button type="button" data-density="equal" aria-pressed="true">כולן פרושות</button>
+        <button type="button" data-density="collapsed">רק הנבחרת</button>
       </div>
 
       <section class="case">
@@ -7781,17 +7754,25 @@ textarea {
       </section>
 
       <section class="case">
-        <h2>§4 · החיצים · השאלה הפתוחה היחידה</h2>
+        <h2>§4 · כל השקופיות באותה צפיפות</h2>
         <p class="note">
-          ההחלטה המקורית הייתה החלקה <b>וגם</b> חיצים מפורשים. המציץ נותן את ההחלקה בחינם ואינו
-          נותן חיצים כלל. <b>וה"⁦0px⁩" של מושב הפוטר התברר כלא נכון ברוחב של שקופית</b> · זה
-          התיקון שהרינדור עשה לטיוטה של הקובץ הזה. <code>.map-refs-foot</code> הוא
-          <code>flex-wrap: wrap</code> עם <code>gap: 16px</code> ושני פעלים של ⁦44px⁩; ברוחב הכרטיס
-          המלא שני חיצים נכנסים בשורה אחת, אבל השקופית צרה מהכרטיס במציץ · והפוטר נשבר לשתי
-          שורות: <b>⁦44px⁩ → ⁦82px⁩, כלומר ⁦38px⁩</b>, מול ⁦50px⁩ שהפס של v1 עלה. זה לא זול יותר
-          במידה שמשנה. ועל זה מצטרפת ההתנגדות שאינה של גובה: הפוטר מחזיק שיבוץ ומחיקה, ומעבר
-          לעצירה הבאה אינו פועל על המקום הזה (ADR-0157 §2). <b>ההמלצה: בלי חיצים · המציץ הוא
-          האפשור.</b> זה שינוי של החלטה קודמת של הבעלים ולכן הוא שאלה, לא מסקנה.
+          הבעלים, על הטיוטה הראשונה: <b>"אני רוצה שכולן יהיו פרושות באותה צורה · כאילו לחצת על
+          הסיכה · זה נראה מאוזן יותר."</b> נכון, וזה גם מתקן משהו שהטיוטה הראשונה טענה: שם השכנים
+          היו שורות מכונסות של ⁦73px⁩, ולכן המציץ הראה קצה של שורה נמוכה שצפה בתחתית כרטיס גבוה ·
+          לא קצה של כרטיס. עכשיו כולן נמתחות לאותו גובה והמציץ מראה מה שהוא אמור להראות.
+        </p>
+        <p class="note">
+          <b>מה שזה דורש בקוד:</b> <em>פרוש</em> ו<em>נבחר</em> הופכים לשתי תכונות. היום הם אחד ·
+          <code>Map.tsx</code> מעביר פתקים, הפניות ותקציר רק לשורה הנבחרת, ו<code>.map-rename</code>
+          נחשף ב-CSS על <code>.place.selected</code>. מסלול הוא המשטח הראשון שרוצה צפיפות אחידה עם
+          בחירה אחת. <b>ולא הפכנו את כולן ל"נבחרות"</b> · זה היה גרוע מחוסר האיזון שהוא מתקן, כי
+          אז המציץ מפסיק להגיד על איזה כרטיס אתה נמצא. הצבע והטבעת נשארים על אחת.
+        </p>
+        <p class="note">
+          <b>ומה שזה עולה, בכנות:</b> הטיעון "המציץ זול כי השכנים מכונסים" נפל. שלושה כרטיסים
+          מלאים מורכבים בו-זמנית במקום אחד · לא כל היום, כי מציץ יכול להראות שכן אחד בכל צד. זו
+          עלות של הרכבה על מסך שמתרנדר כל שנייה, לא עלות של פיקסלים · ההצעה עדיין מוסיפה ⁦0px⁩ של
+          גובה מוצמד.
         </p>
         <div class="pair" id="s4"></div>
         <p class="note" id="s4note"></p>
@@ -7890,10 +7871,21 @@ textarea {
       /** One `.place`. `selected` is the whole difference between the centred slide
        *  and a peeking neighbour — every heavy block below is gated on it, which is
        *  the app's own rule and the reason the peek is affordable. */
-      function placeRow(s, { selected = false, load = 'min', nav = 'off' } = {}) {
-        const many = selected && (load === 'refs' || load === 'all');
-        const rich = selected && (load === 'rich' || load === 'all');
-        const refList = selected
+      /** **`expanded` is the CONTENT, `selected` is the CHROME, and they are two
+       *  props now** (owner: _"I want them all to be expanded the same way (as if you
+       *  clicked on the place pin), that makes it look more balanced"_).
+       *
+       *  They were one flag, and the app itself never needed them apart: `Map.tsx`
+       *  passes the notes, the references and the summary only for the row that is
+       *  selected, and `.map-rename` is revealed by `.place.selected` in CSS. A track
+       *  is the first surface that wants every slide at one density while exactly one
+       *  of them is the current selection — so the split is real, not cosmetic. Making
+       *  all three LOOK selected would be worse than the imbalance it fixes: the peek
+       *  would stop saying which card you are on. */
+      function placeRow(s, { selected = false, expanded = false, load = 'min' } = {}) {
+        const many = expanded && (load === 'refs' || load === 'all');
+        const rich = expanded && (load === 'rich' || load === 'all');
+        const refList = expanded
           ? many
             ? [...(s.refs ?? []), { kind: 'הזמנה', label: 'סיור מודרך · 4 מבוגרים', when: '13:00' }, { kind: 'אירוע', label: 'מפגש עם הקבוצה בכניסה', when: '12:30' }]
             : (s.refs ?? [])
@@ -7905,13 +7897,13 @@ textarea {
           .join('');
         // `.map-right` is a COLUMN holding the distance AND `נווט` — which is why the
         // shipped selected row is 73px and not the 64px a distance alone would give.
-        const right = `<span class="map-right">${s.km ? `<span class="map-dist">${lri(s.km + ' ק״מ')}</span>` : ''}${selected ? `<a class="map-navbtn" href="#" onclick="return false">${icon(P.navigate)} ניווט</a>` : ''}</span>`;
+        const right = `<span class="map-right">${s.km ? `<span class="map-dist">${lri(s.km + ' ק״מ')}</span>` : ''}${expanded ? `<a class="map-navbtn" href="#" onclick="return false">${icon(P.navigate)} ניווט</a>` : ''}</span>`;
         return `<div class="place${selected ? ' selected' : ''}" data-place="${s.id}">
           <span class="map-badge cat-${s.hue}"${s.n ? ` data-order="${lri(s.n)}"` : ''}>${s.glyph}</span>
           <span class="map-main">
             <span class="map-t">
               <span class="map-name" dir="auto">${s.name}</span>
-              ${selected ? `<button type="button" class="map-rename" aria-label="שינוי שם">${icon(P.edit)}</button>` : ''}
+              ${expanded ? `<button type="button" class="map-rename" aria-label="שינוי שם">${icon(P.edit)}</button>` : ''}
             </span>
             <span class="map-m">
               ${s.tier === 'idea' ? '<span class="map-tag mbadge">על המדף</span>' : `<span class="map-tag time">${s.when.replace(/([\d:]+|מ-[\d:]+)/g, (m) => lri(m))}</span>`}
@@ -7922,7 +7914,7 @@ textarea {
           ${rich ? `<span class="map-sum"><span class="map-tag map-sum-lang">EN</span><span class="map-sum-t" dir="auto">${SUM}</span><button type="button" class="map-know-more">עוד ›</button></span>` : ''}
           ${rich ? `<div class="note-sec"><div class="note-sec-h"><span class="t">${icon(P.clipboard)} פתקים</span><button type="button" class="add">${icon(P.plus)} פתק</button></div><div class="note-sec-list">${['לקנות כרטיסים מראש', 'הכניסה הדרומית פחות עמוסה', 'לקחת כיסוי לכתפיים'].map((n) => `<div class="note-item"><button type="button" class="note-item-b">${n}</button></div>`).join('')}</div></div>` : ''}
           ${refs ? `<div class="map-refs"><div class="map-reflist">${refs}</div></div>` : ''}
-          ${selected ? `<span class="map-refs-foot${nav === 'foot' ? ' has-nav' : ''}">${nav === 'foot' ? arrowBtn('back') : ''}<button type="button" class="map-addmaybe">${icon(P.plus)} שיבוץ ליום</button><a class="map-gbtn" href="#" onclick="return false">עוד בגוגל</a>${nav === 'foot' ? arrowBtn('forward') : ''}</span>` : ''}
+          ${expanded ? `<span class="map-refs-foot"><button type="button" class="map-addmaybe">${icon(P.plus)} שיבוץ ליום</button><a class="map-gbtn" href="#" onclick="return false">עוד בגוגל</a></span>` : ''}
         </div>`;
       }
 
@@ -7931,11 +7923,21 @@ textarea {
        *  load-bearing, so a card per stop is a cost the file should not pretend away.
        *  Three slides is what a peek can ever show, and re-centring on snap-settle is
        *  the same `useCenterSelected` call the selection already needs. */
-      function track(seq, i, { load, nav, id = '' }) {
+      function track(seq, i, { load, id = '', density = 'equal' } = {}) {
+        // `data-density` is carried on the track so §4's "what this replaced" frame
+        // renders the first draft's behaviour rather than a stretched empty card.
         const at = (k) => (k >= 0 && k < seq.length ? seq[k] : null);
         const slides = [at(i - 1), seq[i], at(i + 1)].filter(Boolean);
-        return `<div class="map-placecard" data-track${id ? ` id="${id}"` : ''}>${slides
-          .map((s) => placeRow(s, { selected: s === seq[i], load, nav }))
+        return `<div class="map-placecard" data-track data-density="${density}"${id ? ` id="${id}"` : ''}>${slides
+          .map((s) =>
+            placeRow(s, {
+              selected: s === seq[i],
+              // Every slide at the CURRENT slide's density — the owner's call. The
+              // `collapsed` value is kept only so §4 can draw what it replaced.
+              expanded: density === 'equal' ? true : s === seq[i],
+              load,
+            }),
+          )
           .join('')}</div>`;
       }
 
@@ -7971,31 +7973,31 @@ textarea {
 
       function paint() {
         const load = pick('load');
-        const nav = pick('nav');
+        const density = pick('density');
         const seq = sequence();
         document.documentElement.style.setProperty('--map-peek', pick('peek') + 'px');
         const mid = seq.findIndex((s) => s.id === 'market');
 
         document.querySelector('#s1').innerHTML = [
-          col(tag('', 'המציץ', 'ההצעה'), split(track(seq, mid, { load, nav, id: 'probe' }), seq[mid].id)),
-          col(tag('before', 'היום', 'כרטיס אחד, ואין לאן לצעוד'), split(`<div class="map-placecard">${placeRow(seq[mid], { selected: true, load, nav })}</div>`, seq[mid].id)),
+          col(tag('', 'המציץ', 'ההצעה'), split(track(seq, mid, { load, density, id: 'probe' }), seq[mid].id)),
+          col(tag('before', 'היום', 'כרטיס אחד, ואין לאן לצעוד'), split(`<div class="map-placecard">${placeRow(seq[mid], { selected: true, expanded: true, load })}</div>`, seq[mid].id)),
         ].join('');
 
         document.querySelector('#s2').innerHTML = [
-          col(tag('', 'העצירה הראשונה', 'מציץ בצד אחד'), split(track(seq, 0, { load, nav, id: 'first' }), seq[0].id)),
-          col(tag('', 'באמצע', 'מציץ בשני הצדדים'), split(track(seq, mid, { load, nav }), seq[mid].id)),
-          col(tag('', 'האחרונה', 'מציץ בצד אחד'), split(track(seq, seq.length - 1, { load, nav, id: 'last' }), seq[seq.length - 1].id)),
+          col(tag('', 'העצירה הראשונה', 'מציץ בצד אחד'), split(track(seq, 0, { load, density, id: 'first' }), seq[0].id)),
+          col(tag('', 'באמצע', 'מציץ בשני הצדדים'), split(track(seq, mid, { load, density }), seq[mid].id)),
+          col(tag('', 'האחרונה', 'מציץ בצד אחד'), split(track(seq, seq.length - 1, { load, density, id: 'last' }), seq[seq.length - 1].id)),
         ].join('');
 
         const heavy = seq.findIndex((s) => s.id === 'watpho');
         document.querySelector('#s3').innerHTML = [
-          col(tag('', 'v2 · מציץ', 'אין פס שייחתך'), split(track(seq, heavy, { load: 'all', nav, id: 'heavy2' }), seq[heavy].id)),
-          col(tag('before', 'v1 · פס', 'הפס היה כאן'), split(`<div class="map-placecard" id="heavy1">${placeRow(seq[heavy], { selected: true, load: 'all', nav: 'off' })}<div class="mk-v1rail">${arrowBtn('back')}<span></span>${arrowBtn('forward')}</div></div>`, seq[heavy].id)),
+          col(tag('', 'v2 · מציץ', 'אין שורה מוצמדת שתיחתך'), split(track(seq, heavy, { load: 'all', density, id: 'heavy2' }), seq[heavy].id)),
+          col(tag('before', 'הכרטיס של היום', 'בלי מסלול'), split(`<div class="map-placecard" id="heavy1">${placeRow(seq[heavy], { selected: true, expanded: true, load: 'all' })}</div>`, seq[heavy].id)),
         ].join('');
 
         document.querySelector('#s4').innerHTML = [
-          col(tag('', 'בלי חיצים', 'המציץ הוא האפשור'), split(track(seq, mid, { load, nav: 'off', id: 'nav-off' }), seq[mid].id)),
-          col(tag('', 'חיצים בפוטר', '⁦0px⁩ גובה'), split(track(seq, mid, { load, nav: 'foot', id: 'nav-foot' }), seq[mid].id)),
+          col(tag('', 'כולן פרושות', 'ההחלטה'), split(track(seq, mid, { load, density: 'equal', id: 'dens-equal' }), seq[mid].id)),
+          col(tag('before', 'רק הנבחרת', 'מה שזה החליף'), split(track(seq, mid, { load, density: 'collapsed', id: 'dens-coll' }), seq[mid].id)),
         ].join('');
 
         centre();
@@ -8078,7 +8080,7 @@ textarea {
       });
       group('load');
       group('peek');
-      group('nav');
+      group('density');
 
       function measure() {
         const r1 = (v) => (v == null ? '—' : Math.round(v * 10) / 10);
@@ -8096,35 +8098,28 @@ textarea {
         const T = box('#probe');
         const sel = box('#probe .place.selected');
         const peekL = T && sel ? sel.left - T.left : null;
-        const nOff = box('#nav-off .place.selected');
-        const nFoot = box('#nav-foot .place.selected');
-        const footNav = document.querySelector('#nav-foot .map-refs-foot.has-nav');
-        let gap = null;
-        if (footNav) {
-          const a = footNav.querySelector('.map-stopnav-btn')?.getBoundingClientRect();
-          const v = footNav.querySelector('.map-addmaybe')?.getBoundingClientRect();
-          if (a && v) gap = Math.min(Math.abs(v.left - a.right), Math.abs(a.left - v.right));
-        }
+        // What the equal density costs: the neighbour's own height, and how many
+        // full cards are mounted at once. Three, never N — a peek can only ever show
+        // one either side, so that is what the window holds.
+        const eqPeek = box('#dens-equal .place:not(.selected)');
+        const collPeek = box('#dens-coll .place:not(.selected)');
+        const mounted = document.querySelectorAll('#dens-equal .place').length;
         const railV2 = seen('#heavy2', '.map-refs-foot');
         const footV1 = seen('#heavy1', '.map-refs-foot');
         // Does the foot WRAP once two arrows join it? At a slide narrower than the card
         // this is the question the "0px seat" stands or falls on — `.map-refs-foot` is
         // `flex-wrap: wrap` with a 16px gap and two 44px verbs already in it.
-        const footLines = (() => {
-          const f = document.querySelector('#nav-foot .map-refs-foot.has-nav');
-          const g = document.querySelector('#nav-off .map-refs-foot');
-          if (!f || !g) return null;
-          return { navH: f.getBoundingClientRect().height, bareH: g.getBoundingClientRect().height };
-        })();
+
         const rows = [
           ['המסלול · רוחב', `<b>${r1(T?.width)}px</b>`, `<code>inset-inline: 8px</code> · המסלול הוא הכרטיס לשעבר`],
           ['השקופית הנבחרת · רוחב', `<b>${r1(sel?.width)}px</b>`, `מציץ נבחר ${lri(pick('peek') + 'px')} בכל צד ועוד ${lri('8px')} של gap`],
           ['המציץ · רוחב נראה בפועל', `<b>${r1(peekL)}px</b>`, `<span class="${(peekL ?? 0) >= 12 ? 'good' : 'bad'}">מה שנראה מהשכן</span> · קריאת תחושה, המעבר במכשיר מכריע`],
-          ['גובה שההצעה מוסיפה לכרטיס', `<b class="good">${r1((nFoot?.height ?? 0) - (nOff?.height ?? 0))}px</b>`, `חיצים בפוטר מול בלי חיצים · v1 שילם ${lri('50px')} על פס`],
-          ['חץ בפוטר · פער מהפועל הקרוב', gap == null ? '—' : `<b>${r1(gap)}px</b>`, `מול ה-${lri('16px')} ש-ADR-0157 §2 קבע לשורה הזאת`],
+          ['גובה שההצעה מוסיפה לכרטיס', `<b class="good">${lri('0px')}</b>`, `אין שורה מוצמדת · המציץ הוא כל האפשור, והחיצים ירדו`],
+          ['שקופית שכנה · גובה', `<b>${r1(eqPeek?.height)}px</b>`, `פרושה · מול ${lri(r1(collPeek?.height) + 'px')} מכונסת. שווה לנבחרת, וזה מה שמאזן את השורה`],
+          ['כרטיסים מלאים מורכבים בו-זמנית', `<b>${mounted}</b>`, `חלון של קודם·נוכחי·הבא · לא היום כולו, כי מציץ יכול להראות שכן אחד בכל צד`],
           ['כרטיס עמוס · פוטר נראה (v2)', railV2 == null ? '—' : `<b>${r1(railV2.vis)} / ${r1(railV2.h)}px</b>`, `שיבוץ ליום ועוד בגוגל · התקלה של v1 §7 עדיין קיימת ואינה של הפיצ׳ר`],
           ['כרטיס עמוס · פוטר נראה בכרטיס מלא-רוחב', footV1 == null ? '—' : `<b>${r1(footV1.vis)} / ${r1(footV1.h)}px</b>`, `הכרטיס של היום, בלי מסלול · לצד השני של ההשוואה`],
-          ['הפוטר · האם הוא נשבר לשתי שורות עם חיצים', footLines == null ? '—' : `<b class="${footLines.navH > footLines.bareH + 1 ? 'bad' : 'good'}">${r1(footLines.bareH)}px → ${r1(footLines.navH)}px</b>`, `<code>flex-wrap: wrap</code> עם gap של ⁦16px⁩ ושני פעלים של ⁦44px⁩ · זה מה שקובע אם "⁦0px⁩" נכון ברוחב של שקופית`],
+
         ];
         document.querySelector('#meas tbody').innerHTML = rows
           .map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`)
@@ -8135,7 +8130,7 @@ textarea {
         document.querySelector('#s3note').innerHTML =
           `<b>וזו התשובה ל-v1 §7:</b> ההצעה הזאת <b>אינה מוסיפה שורה מוצמדת לכרטיס</b>, ולכן אין לה מה שייחתך · הפס של v1 היה ⁦39px⁩ תיבה עם ⁦0px⁩ נראים בדיוק כאן (המספר נמדד ב-v1 §7, לא כאן). הפוטר בגרסה הזאת נראה ${lri(r1(railV2?.vis ?? 0) + 'px')} מתוך ${lri(r1(railV2?.h ?? 0) + 'px')}. שתי התקלות של v1 §7 עדיין קיימות ועדיין שוות תיקון · אבל הן מפסיקות <b>לחסום</b> את הפיצ׳ר.`;
         document.querySelector('#s4note').innerHTML =
-          `<b>נמדד:</b> חיצים בפוטר מוסיפים ${lri(r1((nFoot?.height ?? 0) - (nOff?.height ?? 0)) + 'px')} לגובה הכרטיס${gap == null ? '' : `, והפער מהחץ לפועל הקרוב הוא ${lri(r1(gap) + 'px')}`}. הגובה אינו הטיעון · המשמעות הוא: הפוטר מחזיק שיבוץ ומחיקה, ומעבר לעצירה אינו פועל על המקום הזה.`;
+          `<b>נמדד:</b> שקופית שכנה פרושה היא ${lri(r1(eqPeek?.height) + 'px')} מול ${lri(r1(collPeek?.height) + 'px')} מכונסת · שווה לנבחרת. <b>${lri(mounted)}</b> כרטיסים מלאים מורכבים בו-זמנית, ולא היום כולו: מציץ יכול להראות שכן אחד בכל צד, ולכן זה מה שהחלון מחזיק. מה שזה עולה הוא הרכבה, לא פיקסלים · ההצעה עדיין מוסיפה ${lri('0px')} של גובה מוצמד.`;
         document.querySelector('#s5note').innerHTML =
           `v1 הציע פס, שני כפתורים, מחוון נקודות, קיפריים של גלישה ושתי הרחבות של <code>grid-template-rows</code>. v2 מציע <b>מסלול ושקופית</b>. מה שנמחק, ולא שונה: <b>הפס</b> (${lri('50px')} → ${lri('0px')}), <b>מזהה המחוות</b> · אין <code>setPointerCapture</code>, אין סף החלקה לכייל במכשיר, אין <code>armClickSwallow</code>, ואין חידה של <code>touch-action</code> · <b>המחוון והסתירה שלו</b> · אורדינל לא יכול לסתור תג אם אין אורדינל · ו<b>משוב הגלישה</b> · היעדר מציץ הוא הקצה. מה שנשאר מ-v1: הרצף עצמו (ADR-0182 §1–§3), ההצמדה של הבחירה לגלילה דרך <code>useCenterSelected</code>, ושהפאן קורה בהתייצבות ולא תוך כדי גלילה.`;
 

@@ -138,7 +138,13 @@ The owner read §9's numbers and drew the conclusion they invite: _"do we even w
 
 **Revised decision.** §5 and §6 are superseded: there is no rail and no indicator. §7's wrap is dropped, pending the owner's _"maybe"_ becoming a yes. §1–§3 (the sequence) and §8 (selection card only, `map` stop only) stand unchanged. §4's arbitration is deleted, not replaced.
 
-**The one open question, and it revises an owner decision.** The original scope was swipe **and** explicit arrows; the peek carries the swipe and carries no arrows. The recommendation is **no arrows** — the peek is the affordance, and the only seat that costs anything like nothing costs 38px and sits beside the delete. That needs the owner's word, because it is their earlier decision being revised, not a detail.
+**The arrows are dropped.** The original scope was swipe **and** explicit arrows; the peek carries the swipe and carries no arrows, the only seat that looked free costs 38px, and it sits beside the delete. Owner: _"no arrows, only peek."_ So this amendment revises the scope of the ADR's own Context paragraph, and the proposal's whole surface is now a track and a slide — there is no `.map-stopnav`, no `NavArrow` on this card, and nothing added to `.map-refs-foot`.
+
+**Every slide renders at the same density, and `expanded` splits from `selected`.** Owner, on the first draft: _"I want them all to be expanded the same way (as if you clicked on the place pin), that makes it look more balanced."_ Correct, and it also fixes something that draft asserted: with collapsed neighbours the peek showed the edge of a **64px** row floating at the bottom of a **209px** card — a short sliver, not a card edge. Equal density measured: neighbour 209px against the selected slide's 209px.
+
+That needs one real change in the code. Today `expanded` and `selected` are the same fact — `Map.tsx` passes the notes, the references and the summary only for the selected row, and `.map-rename` is revealed by `.place.selected` in CSS. A track is the first surface that wants **one density across all slides with exactly one selection**, so they become two props. What is deliberately _not_ done is making them all look selected: the border and the ring stay on one, because otherwise the peek stops saying which card you are on — the imbalance would be traded for an ambiguity.
+
+**And it costs the amendment its own cheapness argument, which is worth stating plainly.** "The peek is cheap because neighbours are collapsed rows" is no longer true: three **full** cards are mounted at once. Three, not N — a peek can only ever show one neighbour either side, so that is what the window holds. The cost is mounting on a screen that re-renders every second (`frontend/CLAUDE.md`'s memoisation note), not pixels: the proposal still adds **0px** of pinned height.
 
 ## Consequences
 

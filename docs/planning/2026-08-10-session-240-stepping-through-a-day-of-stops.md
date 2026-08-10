@@ -289,10 +289,28 @@ peek reading came off a track resting at `scrollLeft: 0` — the table printed a
 negative measurement is the file catching itself, the same class as v1's seam reading an entrance
 animation instead of the resting box.
 
-**Open, and it revises an owner decision:** the original scope was swipe **and** explicit arrows. The
-peek gives swipe and no arrows, and the recommendation is to drop them. That is the owner's call, not
-a detail. **Also still open:** wrap — the word was _"maybe"_, and §2 draws its absence so it can be
-judged on sight.
+**Answered: no arrows.** _"No arrows, only peek."_ So the proposal's whole surface is a track and a
+slide — no `.map-stopnav`, no `NavArrow` on this card, nothing added to `.map-refs-foot`. The 38px
+measurement stands as the reason rather than being deleted with the option.
+
+**And one more correction, which fixed something the amendment had asserted.** _"In the mockups only
+one card was expanded. I want them all to be expanded the same way (as if you clicked on the place
+pin), that makes it look more balanced."_ Right — with collapsed neighbours the peek showed the edge
+of a **64px** row floating at the bottom of a **209px** card: a sliver, not a card edge. Equal
+density measures the neighbour at **209px** against the selected slide's 209px.
+
+It needs `expanded` to split from `selected`, which are one fact today (`Map.tsx` passes the notes,
+references and summary only for the selected row; `.map-rename` is CSS-gated on `.place.selected`). A
+track is the first surface wanting one density across all slides with exactly one selection. What is
+deliberately not done is making them all _look_ selected — that trades the imbalance for an
+ambiguity about which card you are on, so the border and ring stay on one.
+
+**And it costs the amendment its own cheapness argument.** "The peek is cheap because neighbours are
+collapsed rows" is no longer true: **three full cards** are mounted. Three, not N — a peek shows one
+neighbour either side. That is a mounting cost on a screen that re-renders every second, not a pixel
+cost; the proposal still adds **0px** of pinned height.
+
+**Still open:** wrap — the word was _"maybe"_, and §2 draws its absence so it can be judged on sight.
 
 ## Verification still owed
 
