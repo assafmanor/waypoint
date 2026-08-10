@@ -244,6 +244,56 @@ overrun (83px → 44px) rather than removing it, and because the foot holds `ש�
 delete: a stop-to-stop arrow is not a verb about this place, and that spacing rule exists because a
 mis-press there is destructive. Both numbers are in §7; the seat goes to the owner.
 
+## The third correction, and it deleted most of the design
+
+> _"That begs the question, do we even want the rail if it adds that much pixels. Maybe we should do
+> the wanderlog approach, show just a little of the next card. And lose the circularity, maybe it's
+> not that important."_
+
+The right conclusion from the previous section's numbers, and **v1 had already drawn it and rejected
+it** — §6, the scroll-snap carousel, refused on exactly one argument: a snap scroller is a line with
+two ends, and wrapping means jumping `scrollLeft` while momentum is still running. **Wrap was the
+only blocker.** Offering to drop it changes one input, not the taste, and then the carousel wins
+outright. Drawn in [`mockups/map-stop-traversal-v2.html`](../../mockups/map-stop-traversal-v2.html);
+v1 stays as the record of what was decided before.
+
+What it deletes rather than restyles: the rail (**50px → 0px**), the whole pointer-gesture apparatus
+(`scroll-snap-type: x mandatory` is the browser's, so no `setPointerCapture`, no slop threshold for
+the device pass, no `touch-action` puzzle, no `armClickSwallow`), the indicator **and** its badge
+contradiction (a peek asserts no ordinal), and the wrap nudge with its 8px ceiling (no peek on a side
+**is** the end). Measured at 360×640: track 342px, slide 286px, peek 28px per side.
+
+**It is cheap because of the card's own rule.** A peek slide is the collapsed 73px `.place` row —
+every heavy block is revealed by selection and absent otherwise — and the selection↔scroll coupling
+is `lib/useCenterSelected.ts` on the `inline` axis, already built, already carrying the mandatory-snap
+trap this needs.
+
+**Two corrections the render forced on the amendment's own first draft**, and they are the useful
+part:
+
+- **The bound must move from the card to the slide.** `overflow-x: auto` with `overflow-y: visible`
+  is not available — the used value becomes `auto` — so a track scrolls on both axes. Unbounded, the
+  slide measured **422px inside a 315px track**, its top **53px above the split**, the identity row
+  **82px behind the controls row**: _worse_ than the rail, and exactly the second failure mode from
+  the previous section. `align-self: stretch` on the selected slide binds it (a percentage
+  `max-height` computes to `none` against an indefinite-height parent), which is the pair `map.css`
+  already writes one element out. **So the peek does not remove the card-bound prerequisite; it needs
+  it.**
+- **The "0px" arrow seat is not 0px.** `.map-refs-foot` is `flex-wrap: wrap` with a 16px gap and two
+  44px verbs, and the slide is narrower than the card by the peek — so the foot breaks to two lines:
+  **44px → 82px, i.e. 38px** against the rail's 50px. Not cheap enough to justify putting navigation
+  in the row that holds delete.
+
+And a third, smaller: the file had to **centre the selected slide itself**, and until it did, every
+peek reading came off a track resting at `scrollLeft: 0` — the table printed a peek of **−238px**. A
+negative measurement is the file catching itself, the same class as v1's seam reading an entrance
+animation instead of the resting box.
+
+**Open, and it revises an owner decision:** the original scope was swipe **and** explicit arrows. The
+peek gives swipe and no arrows, and the recommendation is to drop them. That is the owner's call, not
+a detail. **Also still open:** wrap — the word was _"maybe"_, and §2 draws its absence so it can be
+judged on sight.
+
 ## Verification still owed
 
 A **real-device pass** is not optional for this one. The original report is a mobile-ergonomics

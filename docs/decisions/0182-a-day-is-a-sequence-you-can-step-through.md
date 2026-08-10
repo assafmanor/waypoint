@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-10) — **not yet built, and §9 is a hard prerequisite**: the loaded place card already clips its own primary actions, and this feature cannot put a control there until that is fixed.
 **Date:** 2026-08-10
 **Session note:** [`planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md`](../planning/2026-08-10-session-240-stepping-through-a-day-of-stops.md)
-**Mockup:** [`mockups/map-stop-traversal-v1.html`](../../mockups/map-stop-traversal-v1.html) (§1–§7)
+**Mockups:** [`map-stop-traversal-v1.html`](../../mockups/map-stop-traversal-v1.html) (§1–§7, the rail) · [`map-stop-traversal-v2.html`](../../mockups/map-stop-traversal-v2.html) (§1–§5, **the peek that replaced it — see the 2026-08-10 amendment**)
 **Backlog:** **J**, from field report **#25 / ADD-04** ([`planning/2026-08-08-…-addendum`](../planning/2026-08-08-session-224-incremental-field-reports-addendum.md) §5). The addendum's **#22–#26** is its own numbering and is unrelated to the Map epic's internal **#1–#23**; this is addendum #25.
 
 **Amends in place:**
@@ -120,6 +120,25 @@ Owner, on the fork: **nudge at 6px**.
 `.map-placecard` has three occupants (ADR-0122 §7, ADR-0132 §8, ADR-0147 §4): the selected place's row, the make/rename form, and a tapped Google ring. **Traversal belongs to the first only.** A form is about one point you are naming, and an unsaved search result is not a stop on the day — neither has a sequence to be in. Building the swipe on `.map-placecard` rather than on its selection occupant would catch all three.
 
 And it exists only at the `map` snap, because that is the only place the card does. At `half` and `full` the row is in the list and stepping through the day is **scrolling**, which already works — so there is nothing to add there and nothing to keep in step.
+
+## AMENDED 2026-08-10, same day: the peek replaces the rail, and §5–§7 go with it
+
+The owner read §9's numbers and drew the conclusion they invite: _"do we even want the rail if it adds that much pixels. Maybe we should do the wanderlog approach, show just a little of the next card. And lose the circularity, maybe it's not that important."_
+
+**§7 above already drew this and rejected it, on one argument: wrap.** A snap scroller is a line with two ends, and wrapping it means jumping `scrollLeft` while momentum is still running. Wrap was the only blocker. Give it up and the carousel wins outright — so this is not a change of taste, it is the same reasoning with one input changed. Drawn in `map-stop-traversal-v2.html`.
+
+**What it deletes rather than restyles.** §5's rail (50px → **0px**; the affordance is the neighbouring card's edge). §4's entire gesture apparatus — `scroll-snap-type: x mandatory` is the browser's, so no pointer recogniser, no `setPointerCapture`, no slop threshold for a device pass to tune, no `touch-action` puzzle, no `armClickSwallow`. §6's indicator **and its contradiction**: a peek asserts no number, so it cannot disagree with the badge. §7's wrap nudge and its 8px ceiling: no peek on a side **is** the end.
+
+**Why it is cheap, and this is the code's own doing.** A peek slide is the **collapsed** 73px `.place` row, because every heavy block on the card — the way-in list, the summary, the notes, the documents, the foot — is revealed by selection and absent otherwise. Only the centred slide is the tall card. And the selection↔scroll coupling is `lib/useCenterSelected.ts` on the `inline` axis, already built, already carrying the trap this needs (under mandatory snap the selected child needs `scroll-snap-align: center`, or the browser re-snaps a centred offset back to a start boundary). The snap precedent is `.map-facetstrip` in the same stylesheet.
+
+**Two things the render forced, and both are corrections to this amendment's own first draft.**
+
+- **The bound must move from the card to the slide.** `overflow-x: auto` with `overflow-y: visible` is not available: the used value becomes `auto`, so a track scrolls on both axes. Measured, that was **worse than the rail** — the slide came out 422px inside a 315px track, its top **53px above the split**, the identity row **82px behind the controls row**, i.e. exactly §9's second failure mode. `align-self: stretch` on the selected slide is what binds it (a percentage `max-height` computes to `none` against an indefinite-height parent), which is the pair `map.css` already writes one element out. **So this design does not remove §9's prerequisite — it needs it.**
+- **The 0px arrow seat is not 0px.** `.map-refs-foot` is `flex-wrap: wrap` with a 16px gap and two 44px verbs; at the card's full width two arrows fit on one line, but the **slide is narrower than the card by the peek**, and the foot breaks to two lines: **44px → 82px, i.e. 38px** against the rail's 50px. Not cheaper in any way that justifies putting a navigation control in the row that holds delete.
+
+**Revised decision.** §5 and §6 are superseded: there is no rail and no indicator. §7's wrap is dropped, pending the owner's _"maybe"_ becoming a yes. §1–§3 (the sequence) and §8 (selection card only, `map` stop only) stand unchanged. §4's arbitration is deleted, not replaced.
+
+**The one open question, and it revises an owner decision.** The original scope was swipe **and** explicit arrows; the peek carries the swipe and carries no arrows. The recommendation is **no arrows** — the peek is the affordance, and the only seat that costs anything like nothing costs 38px and sits beside the delete. That needs the owner's word, because it is their earlier decision being revised, not a detail.
 
 ## Consequences
 
