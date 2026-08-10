@@ -76,12 +76,69 @@
        This file's first draft shipped 10px and clipped by 2px. The control now
        offers 4/6/8 and the table prints the overhang.
 
-     · **The card is 177px, not the 94px the first draft drew.** Two things were
+     · **The card is 197px, not the 94px the first draft drew.** Two things were
        missing from the row: `.map-right` is a COLUMN holding the distance *and*
        `נווט` (which is why the shipped row is 73px, as its own comment states),
-       and selection reveals the way-in block. At 360×640 that leaves **146px** of
-       free canvas above the card — so the 30px rail is a fifth of what is left for
-       pan, pinch and the long press. That is the honest price of §2 א׳.
+       and selection reveals the way-in block. **The rail costs 50px** — its own
+       39px box plus the 11px of wrapped-line `gap` above it — of a card that has
+       ~126px of free canvas left above it at 360×640. That is the honest price of
+       §2 א׳, and it is the number the owner is buying the feature with.
+
+     ─────────────────────────────────────────────────────────────────────────
+     THE OWNER'S CORRECTION TO v1's FIRST DRAFT, which reshaped §2 rather than
+     restyling it: _"the bottom rail is rounded but the place card itself is
+     rounded as well · that makes it look awkward and not related."_
+
+     Right, and structural. The rail was a SIBLING of `.place` inside
+     `.map-placecard`, and `.place` is a self-contained card — its own ground,
+     `border-radius: 16px`, hairline, floating shadow, and `.selected`'s 2px ring,
+     which stopped halfway down and proved the point. Nothing outside that box can
+     read as part of it.
+
+     The fix was already written in the app three times over. `.map-refs`,
+     `.place > .note-sec` and `.place > .docr-sec` are the SAME five declarations
+     for "a full-width line inside the card", and `.place` is `flex-wrap: wrap`
+     precisely so such a line can exist — its own comment says so. The rail is the
+     fourth tenant of that grammar, so this file's proposed CSS **lost**
+     declarations: ground, radius, shadow, clip and the selection ring are all
+     inherited now. Two things the move surfaced that the source hides: those five
+     declarations want collapsing into one `.place > .place-line` class (rule 8,
+     and not this feature's job), and their `margin-top: 8px` is invisible spend —
+     `.place` is `gap: 11px` and flex gap applies between wrapped lines, so those
+     blocks are separated by 19px and the margin is the third separator. The rail
+     drops it and reads the same.
+
+     ─────────────────────────────────────────────────────────────────────────
+     §7 EXISTS BECAUSE THE OWNER ASKED THE RIGHT QUESTION: _"there could be cards
+     with enrichment data or multiple bookings of events so they could be much
+     higher, did you take that into account?"_ No — §2–§6 all draw the MINIMUM card
+     (one reference, no enrichment, no notes), and the loaded card breaks two ways.
+     Neither break is caused by this proposal; both are made worse by it, and one
+     of them makes the proposal invisible.
+
+     · **The bounded card clips its own PINNED rows.** With notes or a hero present,
+       `map.css` caps the card and `.place` becomes a grid where only
+       `.note-sec-list` scrolls. At 360×640 with three references plus enrichment,
+       the pinned rows alone overrun the cap by **83px**: the note track is already
+       **0px**, `.map-refs-foot` — `שיבוץ ליום` and `עוד בגוגל`, the selected row's
+       primary actions — shows **10 of 44px**, and the rail is **39px tall with 0px
+       visible**. ADR-0148 §1 promised "the shortfall becomes a SCROLL instead of a
+       clip"; that holds only while the shortfall is in the note list. Nothing
+       bounds the pinned rows.
+
+     · **The unbounded card clips the other end.** The `max-height` fires only on
+       `:has(> .map-draft)`, `:has(.note-sec)`, `:has(.map-hero)` — so a place with
+       several bookings and no notes and no enrichment is bounded by **nothing**. It
+       is anchored to the split's bottom and grows UP, past the floating controls
+       row, which paints after it in the JSX and therefore over it: **~15px of the
+       identity row goes behind the chips**. ADR-0148 §1's own words for that shape
+       were "what survived was the actions row and what died was the title, which is
+       the worst way round".
+
+     So a height table was the wrong instrument and this file used it for six
+     sections. `frontend/CLAUDE.md` names the trap exactly — "Reading a rect and
+     calling it visibility" — and §7 now intersects every section's rect with the
+     card's own clipping box and draws the cut line on the frame.
 
      ─────────────────────────────────────────────────────────────────────────
      THIS FILE'S SECTIONS AGAINST THE ADR'S:
@@ -89,6 +146,7 @@
        §1 הרצף            → ADR §2 (the sequence)      §4 המונה         → ADR §5 (the indicator)
        §2 הפקדים          → ADR §3 (the affordances)   §5 גלישה בקצה    → ADR §6 (wrap)
        §3 גיאומטריה       → ADR §4 (the gesture)       §6 מה נדחה       → ADR §7 (alternatives)
+       §7 כרטיסים גבוהים  → ADR §9 (the blocker) + its own backlog lines
 
      ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (בהיר · כהה), screen (⁦360×640⁩ · ⁦390×844⁩), fork ⓐ (זמן גמיש: משובץ ·
@@ -7060,22 +7118,81 @@ textarea {
          would mean a primitive went unused (rule 8).
          ══════════════════════════════════════════════════════════════════════ */
 
-      /* The rail: the card's own footer, below the row it belongs to. Inside
-         `.map-placecard` rather than floating beside it, because the card's
-         `inset-inline: 8px` leaves 8px of canvas on each side and a 44px control
-         cannot live there without either overlapping the card or eating the pan
-         gutter (§3 measures both). */
+      /* THE RAIL IS A LINE INSIDE THE CARD, not a second card under it.
+         (Owner, on v1's first draft: _"the bottom rail is rounded but the place
+         card itself is rounded as well · that makes it look awkward and not
+         related."_ Exactly right, and structural rather than cosmetic: the rail
+         was a SIBLING of `.place`, and `.place` is a self-contained card — its own
+         ground, `border-radius: 16px`, hairline, `.map-placecard .place`'s floating
+         shadow, and `.selected`'s 2px ring. Nothing outside that box can read as
+         part of it, and the ring proved it by stopping halfway down.)
+
+         So it goes INSIDE `.place`, as its last child, and it is the **fourth
+         tenant of a grammar the card already has written three times** —
+         `.map-refs`, `.place > .note-sec`, `.place > .docr-sec` are the identical
+         five declarations, and `.place` is `flex-wrap: wrap` precisely so a
+         full-width line can exist (its own comment says so). Everything the rail
+         needed its own copy of — ground, radius, shadow, clip, the selection ring
+         — it now simply inherits, which is why this block LOST declarations
+         instead of gaining them.
+
+         Worth naming for a later cleanup rather than doing here: those five
+         declarations are now written FOUR times in `map.css`. One
+         `.place > .place-line` class is the obvious collapse (rule 8), and it is
+         not this feature's to take on. */
       .map-stopnav {
+        flex-basis: 100%;
+        min-width: 0;
+        /* **THE ONE DECLARATION NOT COPIED, and the render is why.** `.map-refs`,
+           `.note-sec` and `.docr-sec` all carry `margin-top: 8px` — but `.place` is
+           `gap: 11px`, and flex `gap` applies between WRAPPED LINES too, so those
+           blocks are actually spending 19px above themselves and the margin is
+           invisible in the source. Copied verbatim the rail cost 47px of card;
+           without it, 39px, and the separation still reads because the hairline is
+           doing that job. On a card with only 118px of free canvas left above it
+           (measured below) 8px is not nothing. */
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        padding: 2px 6px 4px;
-        /* The card's own ground continues; the rail is not a second surface. */
-        background: var(--card);
-        border-radius: 0 0 var(--radius-lg, 16px) var(--radius-lg, 16px);
-        margin-block-start: -6px;
       }
+      /* §7's SECOND SEAT: the arrows inside `.map-refs-foot`, which is already the
+         card's pinned bottom row on every selected place and whose children are
+         already 44px — so this costs **0px of height**. `space-between` rather than
+         joining the centred group, because the foot's own comment is a warning:
+         _"Wide on purpose: the two verbs in here are a create and a delete, and 8px
+         between a 44px primary and a 44px destructive is how the wrong one gets
+         pressed"_ (ADR-0157 §2). Pushing the arrows to the outer edges buys the most
+         separation the row can give; the table measures whether it clears 16px. */
+      .map-refs-foot.has-nav {
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      /* THE ONE VARIANT WHERE A FULL-WIDTH LINE IS NOT ONE DECLARATION. On a place
+         with notes, and on the expanded research card, `.place` becomes a GRID so
+         the one scrolling track can be made flexible (ADR-0148 §1's shape) — and a
+         block dropped into a grid with an explicit template is unplaced, which is
+         the trap `.docr-sec`'s own comment records ("its two `grid-row` rules were
+         inert declarations on a flex row", the same mistake from the other side).
+         So each template gains one `auto` and the rail takes the last row. Three
+         declarations for both variants, not one — and this is the honest cost of
+         the rail on the two cards that can grow. */
+      .map-placecard:has(.note-sec) > .place:not(.result) {
+        grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto auto;
+      }
+      .map-placecard:has(.map-hero) > .place:not(.result) {
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+      }
+      .map-placecard:is(:has(.note-sec), :has(.map-hero))
+        > .place:not(.result)
+        > .map-stopnav {
+        grid-row: -2 / -1;
+        grid-column: 1 / -1;
+      }
+
       /* 30px of visible box, 44px of target through the `::after` overlay —
          ADR-0161 §7's shape, the same one `.map-rename` uses, so meeting
          ADR-0017's floor costs the card no height. */
@@ -7146,7 +7263,6 @@ textarea {
          KIND of dot, it is a different part of the sequence. */
       .map-stopdots > i[data-tail] {
         margin-inline-start: 7px;
-        box-shadow: -4px 0 0 -3px color-mix(in srgb, var(--muted) 55%, transparent);
       }
 
       /* The numeric alternative (§4 ב׳), drawn so it can be measured and rejected
@@ -7458,6 +7574,31 @@ textarea {
          is what positions a `.map-pin` on the real canvas — the pin itself is
          `position: relative` and carries no coordinates. Everything inside is the
          shipped tree and the shipped stylesheet; only the placement is ours. */
+      .mk-flag {
+        color: var(--mk-warn);
+      }
+      /* Where the card's clip actually falls, drawn on the frame — because a height
+         table cannot show it and this file's own first pass proved that. */
+      .mk-cutline {
+        position: absolute;
+        inset-inline: 0;
+        height: 0;
+        border-top: 2px dashed var(--mk-warn);
+        z-index: 7;
+        pointer-events: none;
+      }
+      .mk-cutline::after {
+        content: attr(data-cut);
+        position: absolute;
+        inset-inline-end: 4px;
+        top: 2px;
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--mk-warn);
+        background: var(--mk-surface);
+        padding: 0 4px;
+        border-radius: 4px;
+      }
       .mk-marker {
         position: absolute;
         z-index: 1;
@@ -7685,6 +7826,17 @@ textarea {
         <button type="button" data-n="8" aria-pressed="true">⁦8⁩</button>
         <button type="button" data-n="20">⁦20⁩</button>
         <span class="sep"></span>
+        <span class="lbl">עומס הכרטיס</span>
+        <button type="button" data-load="min" aria-pressed="true">מינימלי</button>
+        <button type="button" data-load="refs">הזמנות מרובות</button>
+        <button type="button" data-load="rich">העשרה</button>
+        <button type="button" data-load="all">הכל</button>
+        <span class="sep"></span>
+        <span class="lbl">מיקום הפס</span>
+        <button type="button" data-seat="line" aria-pressed="true">שורה נפרדת</button>
+        <button type="button" data-seat="foot">בתוך הפוטר</button>
+        <button type="button" data-seat="off">בלי</button>
+        <span class="sep"></span>
         <span class="lbl">דחיפת הגלישה</span>
         <button type="button" data-nudge="4">⁦4px⁩</button>
         <button type="button" data-nudge="6" aria-pressed="true">⁦6px⁩</button>
@@ -7796,6 +7948,29 @@ textarea {
         <div class="pair" id="s6"></div>
       </section>
 
+      <!-- ══════════════════════════ §7 ══════════════════════════ -->
+      <section class="case">
+        <h2>§7 · כרטיסים גבוהים · מה הפס עולה כשיש מה לראות</h2>
+        <p class="note">
+          <b>§2 עד §6 מציירים את הכרטיס המינימלי, וזו לא הצורה היחידה שלו.</b> מקום יכול להחזיק
+          כמה הזמנות או אירועים באותו יום (כל <code>.map-ref</code> הוא שורה בפני עצמה), תקציר
+          העשרה, תמונה, מסמכים ופתקים · והכרטיס <b>חסום</b> בחשבון שכבר קיים ב<code>map.css</code>
+          (⁦100%⁩ פחות שורת הפקדים, הגיליון, ייחוס גוגל והמרווחים). ברגע שיש
+          <code>.note-sec</code>, <code>.place</code> הופך לגריד: <b>רשימת הפתקים היא המסלול
+          היחיד שנגלל וכל השאר מוצמד</b> · ולכן פס מוצמד לא לוקח ⁦50px⁩ מהכרטיס אלא
+          <b>מהמסלול שנגלל</b>. זה המספר שקובע, והוא נמדד למטה עם הפס ובלעדיו.
+        </p>
+        <p class="note">
+          <code>.map-refs-foot</code> כבר <b>קיים בכל שורה נבחרת</b>, כבר מוצמד בגריד (שורה 7),
+          וילדיו כבר ⁦44px⁩ · ולכן חיצים בתוכו עולים <b>⁦0px⁩</b> של גובה. מה שההערה שלו עצמו אומרת
+          הוא הצד השני: _"רווח רחב במכוון · שני פקדים של ⁦44px⁩ במרחק ⁦8px⁩ זה איך שנלחץ הלא נכון"_
+          (ADR-0157 §2), והפוטר מחזיק שיבוץ ומחיקה. <b>מעבר לעצירה הבאה אינו פועל על המקום הזה</b>,
+          ולכן שתי האפשרויות מצוירות עם המספר של כל אחת · הפער בין חץ לפועל נמדד מול אותם ⁦16px⁩.
+        </p>
+        <div class="pair" id="s7"></div>
+        <p class="note" id="s7note"></p>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -7857,9 +8032,34 @@ textarea {
             חריגה אלא פינה קטומה. הטיוטה הראשונה של הקובץ הזה כתבה ⁦10px⁩ וחתכה ⁦2px⁩.
           </li>
           <li>
-            <b>המחיר של פס תחתון, במספר.</b> הכרטיס הנבחר הוא ⁦177px⁩ · ⁦147px⁩ שורה ועוד ⁦30px⁩ פס ·
-            ובמסך ⁦360×640⁩ נשארים ⁦146px⁩ של קנבס חופשי מעליו. הפס הוא חמישית ממה שנותר לפאן, לפינץ׳
-            וללחיצה הארוכה. זה המחיר, והוא נמדד ולא הוערך.
+            <b>המחיר של פס תחתון, במספר.</b> הכרטיס הנבחר הוא ⁦197px⁩ · ⁦147px⁩ בלי הפס ועוד ⁦50px⁩
+            שהפס עולה (תיבה ⁦39px⁩ ועוד ⁦11px⁩ של <code>gap</code> בין שורות עטופות) · ובמסך ⁦360×640⁩
+            נשארים ⁦126px⁩ של קנבס חופשי מעליו. זה המחיר, והוא נמדד ולא הוערך. הכרטיס גם חסום
+            בחשבון שכבר קיים ב<code>map.css</code>, ולכן כרטיס שגדל מדי הופך לגלילה ולא לחיתוך.
+          </li>
+          <li>
+            <b>נדחה, ובעקבות תיקון של הבעלים: פס כאח של <code>.place</code>.</b> הטיוטה הראשונה
+            ציירה אותו כך והבעלים אמר שזה "נראה מגושם ולא קשור" · וזה נכון מסיבה מבנית ולא
+            אסתטית. <code>.place</code> הוא כרטיס בפני עצמו: קרקע, <code>border-radius: 16px</code>,
+            קו שיער, צל צף וטבעת הבחירה · שנעצרה באמצע והוכיחה את הטענה. שום דבר מחוץ לתיבה הזאת
+            לא יכול להיקרא כחלק ממנה. הפס נכנס פנימה והוא הדייר הרביעי של דקדוק שכבר כתוב שלוש
+            פעמים (<code>.map-refs</code>, <code>.note-sec</code>, <code>.docr-sec</code>) · ולכן
+            הבלוק המוצע כאן <b>איבד</b> הצהרות ולא צבר.
+          </li>
+          <li>
+            <b>הכרטיס העמוס שובר את ההצעה, וזה חוסם ולא מסייג (§7).</b> בעומס של שלוש הפניות ועוד
+            העשרה ב-⁦360×640⁩ התוכן <em>המוצמד</em> לבדו עובר את התקרה ב-⁦83px⁩: מסלול הפתקים כבר ⁦0px⁩,
+            <code>.map-refs-foot</code> נראה ⁦10px⁩ מתוך ⁦44px⁩, והפס ⁦39px⁩ תיבה עם ⁦0px⁩ נראים. ובעומס
+            של כמה הזמנות בלי פתקים אין תקרה בכלל והכרטיס גדל אל מתחת לשורת הפקדים. שתי התקלות
+            קיימות <b>לפני</b> ההצעה · ההצעה רק מחמירה אותן, ואחת מהן הופכת אותה לבלתי נראית. לכן
+            הגבול של הכרטיס הוא <b>תנאי מקדים</b> לבנייה, לא ניקיון אחריה.
+          </li>
+          <li>
+            <b>מושב הפוטר · ⁦0px⁩, ובכל זאת לא נבחר לבד.</b> <code>.map-refs-foot</code> כבר קיים
+            בכל שורה נבחרת, כבר מוצמד וילדיו כבר ⁦44px⁩, והפער שנמדד מהחץ לפועל הקרוב הוא ⁦16.9px⁩ ·
+            מעל ה-⁦16px⁩ ש-ADR-0157 §2 דורש. אבל הוא מוריד את החריגה מ-⁦83px⁩ ל-⁦44px⁩ ולא מבטל אותה,
+            והפוטר מחזיק שיבוץ ומחיקה · <b>מעבר לעצירה הבאה אינו פועל על המקום הזה</b>. שאלה
+            לבעלים, עם שני המספרים.
           </li>
           <li>
             <b>לא הוכרע כאן, במכוון:</b> קיבוץ רחב יותר מאיחוד שני רגעים צמודים באותו חיבור. זו
@@ -7891,6 +8091,9 @@ textarea {
         calendar:
           'M8 2.6v3.4 M16 2.6v3.4 M3.4 10.2h17.2 M5.4 4.3h13.2a2 2 0 0 1 2 2v13.1a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2V6.3a2 2 0 0 1 2-2Z',
         navigate: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
+        plus: 'M12 5v14 M5 12h14',
+        clipboard:
+          'M9 4.5h6a1 1 0 0 1 1 1v1H8v-1a1 1 0 0 1 1-1Z M8 6.5H6.5a1.5 1.5 0 0 0-1.5 1.5v10.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V8a1.5 1.5 0 0 0-1.5-1.5H16',
       };
       const navArrow = (variant) =>
         `<svg class="nav-arrow nav-arrow-${variant}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${NAV_D}"/></svg>`;
@@ -8111,7 +8314,10 @@ textarea {
          Same element types, same nesting, same class names as `PlaceRow` in
          `screens/Map.tsx`. Real css over an invented tree renders something the
          app cannot produce, which has burned a session here before. */
-      function placeRow(s, { selected = true, inrowArrows = false } = {}) {
+      function placeRow(
+        s,
+        { selected = true, inrowArrows = false, tail = '', load = 'min', seat = 'line' } = {},
+      ) {
         // `.map-right` is a COLUMN holding the distance AND `נווט` — which is why the
         // shipped selected row measures 73px and not the 64px the first draft drew.
         // Its own comment says so: "a verb ADDED beside `נווט` would cost height and
@@ -8126,7 +8332,21 @@ textarea {
         // the references that put this place on the day, each ≥40px. The card at the
         // `map` stop always shows it, so it is part of the box a swipe is happening on
         // and part of every height in the table below.
-        const refs = (s.refs ?? [])
+        // §7's load control decides which of the card's optional blocks are present.
+        // `refs` at `min` is the one reference the fixture carries; at the heavier
+        // loads a place holds several bookings/events on the same day, which is the
+        // owner's own case ("multiple bookings of events").
+        const many = load === 'refs' || load === 'all';
+        const rich = load === 'rich' || load === 'all';
+        const baseRefs = s.refs ?? [];
+        const refList = many
+          ? [
+              ...baseRefs,
+              { kind: 'הזמנה', label: 'סיור מודרך · 4 מבוגרים', when: '13:00' },
+              { kind: 'אירוע', label: 'מפגש עם הקבוצה בכניסה', when: '12:30' },
+            ]
+          : baseRefs;
+        const refs = refList
           .map(
             (r) => `<span class="map-ref">
               <button type="button" class="map-ref-open">
@@ -8161,7 +8381,11 @@ textarea {
             </span>
           </span>
           ${right}
+          ${rich ? sumBlock : ''}
+          ${rich ? noteBlock : ''}
           ${refs ? `<div class="map-refs"><div class="map-reflist">${refs}</div></div>` : ''}
+          ${load !== 'min' ? footBlock(seat === 'foot') : ''}
+          ${seat === 'line' ? tail : ''}
         </div>`;
       }
 
@@ -8251,6 +8475,39 @@ textarea {
           .join('')}</span>`;
       }
 
+      /* ── §7: THE CARD'S OTHER SECTIONS, in the app's own order and markup ──
+         `.map-sum` (PlaceKnowledge collapsed) · `.docr-sec` · `.note-sec` (a
+         pinned `.note-sec-h` over a scrolling `.note-sec-list`) · `.map-refs` ·
+         `.map-refs-foot`. The order is the grid's own row order, because on this
+         variant `.place` IS a grid and the rows are numbered in `map.css`. */
+      const SUM =
+        'מקדש בודהיסטי מהמאה ה-16 עם גן פסלים, בריכות נוי ושוק פרחים קטן בכניסה הדרומית. פתוח מ-08:00, כניסה בתשלום.';
+      const sumBlock = `<span class="map-sum">
+          <span class="map-tag map-sum-lang">EN</span>
+          <span class="map-sum-t" dir="auto">${SUM}</span>
+          <button type="button" class="map-know-more">עוד ›</button>
+        </span>`;
+      const noteBlock = `<div class="note-sec">
+          <div class="note-sec-h">
+            <span class="t">${icon(P.clipboard)} פתקים</span>
+            <button type="button" class="add">${icon(P.plus)} פתק</button>
+          </div>
+          <div class="note-sec-list">
+            ${['לקנות כרטיסים מראש', 'הכניסה הדרומית פחות עמוסה', 'לקחת כיסוי לכתפיים']
+              .map(
+                (n) =>
+                  `<div class="note-item"><button type="button" class="note-item-b">${n}</button></div>`,
+              )
+              .join('')}
+          </div>
+        </div>`;
+      const footBlock = (arrows) => `<span class="map-refs-foot${arrows ? ' has-nav' : ''}">
+          ${arrows ? arrowBtn('back') : ''}
+          <button type="button" class="map-addmaybe">${icon(P.plus)} שיבוץ ליום</button>
+          <a class="map-gbtn" href="#" onclick="return false">עוד בגוגל</a>
+          ${arrows ? arrowBtn('forward') : ''}
+        </span>`;
+
       /** §2 א׳ — the rail as the card's own footer. */
       const rail = (seq, i, ind) =>
         `<div class="map-stopnav">${arrowBtn('back')}${indicator(seq, i, ind)}${arrowBtn('forward')}</div>`;
@@ -8261,15 +8518,15 @@ textarea {
        *  different tree, not the rail relabelled. Drawing it that way is what
        *  shows its cost: `.map-t` already holds the name, the lock mark and the
        *  rename pencil, and the name is the row's one flexible column. */
-      function card(seq, i, { arrow, ind, wrapped = false, id = '' } = {}) {
+      function card(seq, i, { arrow, ind, wrapped = false, id = '', load = 'min', seat = 'line' } = {}) {
         const s = seq[i];
-        const rowHtml = placeRow(s, { inrowArrows: arrow === 'inrow' });
-        const body =
+        const tail =
           arrow === 'rail'
             ? rail(seq, i, ind)
             : arrow === 'inrow'
               ? `<div class="map-stopnav">${indicator(seq, i, ind)}</div>`
               : '';
+        const rowHtml = placeRow(s, { inrowArrows: arrow === 'inrow', tail, load, seat });
         const edge =
           arrow === 'edge'
             ? `<button type="button" class="map-stopnav-btn mk-edge" data-side="start" aria-label="העצירה הקודמת">${navArrow('back')}</button>
@@ -8277,7 +8534,7 @@ textarea {
             : '';
         return `<div class="map-placecard" data-swipe${wrapped ? ' data-wrapped' : ''}${
           id ? ` id="${id}"` : ''
-        }>${rowHtml}${body}</div>${edge}`;
+        }>${rowHtml}</div>${edge}`;
       }
 
       /* ── A whole split, at the `map` snap: the real tree ──────────────────
@@ -8416,9 +8673,53 @@ textarea {
           ),
         ].join('');
 
+        // §7 — the same stop, at four loads, with the rail seated per the control.
+        // The frames are built from the SAME renderer as every other section, so a
+        // tall card cannot quietly disagree with the short one.
+        const load = pick('load');
+        const seat = pick('seat');
+        const at7 = seq.findIndex((x) => x.id === 'watpho');
+        const i7 = at7 < 0 ? 0 : at7;
+        document.querySelector('#s7').innerHTML = [
+          col(
+            tag('', 'עומס נבחר', load === 'min' ? 'מינימלי' : load === 'refs' ? 'הזמנות מרובות' : load === 'rich' ? 'העשרה' : 'הכל'),
+            split(card(seq, i7, { arrow: 'rail', ind, load, seat, id: 'tall-card' }), {
+              selectedId: seq[i7].id,
+            }),
+          ),
+          col(
+            tag('before', 'אותו עומס · בלי הפס', 'להשוואה'),
+            split(card(seq, i7, { arrow: 'rail', ind, load, seat: 'off', id: 'tall-bare' }), {
+              selectedId: seq[i7].id,
+            }),
+          ),
+        ].join('');
+
         edges();
         bands();
+        cutlines();
         measure();
+        tall();
+      }
+
+      /** Where the clip falls, ON the frame. A height table cannot show a clip — the
+       *  rects all read healthy — so the boundary is drawn from the card's own box. */
+      function cutlines() {
+        for (const card of document.querySelectorAll('#s7 .map-placecard')) {
+          const place = card.querySelector('.place');
+          if (!place) continue;
+          const over = place.scrollHeight - Math.round(place.getBoundingClientRect().height);
+          if (over <= 0) continue;
+          const split = card.closest('.map-split');
+          const S = split.getBoundingClientRect();
+          const C = card.getBoundingClientRect();
+          split.insertAdjacentHTML(
+            'beforeend',
+            `<span class="mk-cutline" style="top:${Math.round(C.bottom - S.top)}px" data-cut="נחתך ${lri(
+              Math.round(over) + 'px',
+            )}"></span>`,
+          );
+        }
       }
 
       /** §2 ג׳'s canvas arrows, centred on the card they flank — measured, because
@@ -8500,6 +8801,127 @@ textarea {
           )} של קנבס חופשי מעל הכרטיס, שבהם הפאן והלחיצה הארוכה ממשיכים לעבוד בלי שינוי.`;
       }
 
+      /** §7's prose, written from the two frames rather than about them.
+       *
+       *  **And it reports a CLIP, not a height** — which is the correction the owner's
+       *  question forced. §2–§6 measure the card's height and that is the wrong
+       *  instrument here: `.place` is a grid with `overflow: hidden` on the bounded
+       *  variants, so an over-full card does not get taller, it loses its bottom rows
+       *  while every height still reads healthy. `frontend/CLAUDE.md` names this exact
+       *  trap ("Reading a rect and calling it visibility"), and it caught this file
+       *  out on the first pass. So each section's visible band is the rect
+       *  INTERSECTED with the card's own clipping box. */
+      function tall() {
+        const withRail = document.querySelector('#tall-card');
+        const bare = document.querySelector('#tall-bare');
+        const out = document.querySelector('#s7note');
+        if (!withRail || !bare || !out) return;
+        const r1 = (v) => Math.round(v * 10) / 10;
+        // The visible band of `sel` inside `card`'s clip — never its bare rect.
+        const seen = (card, sel) => {
+          const el = card.querySelector(sel);
+          if (!el) return null;
+          const b = el.getBoundingClientRect();
+          const C = card.getBoundingClientRect();
+          const vis = Math.max(0, Math.min(b.bottom, C.bottom) - Math.max(b.top, C.top));
+          return { h: b.height, vis, cut: b.height - vis };
+        };
+        const place = withRail.querySelector('.place');
+        const over = place.scrollHeight - Math.round(place.getBoundingClientRect().height);
+        const rail = seen(withRail, '.map-stopnav');
+        const foot = seen(withRail, '.map-refs-foot');
+        const trackA = seen(withRail, '.note-sec-list');
+        const trackB = seen(bare, '.note-sec-list');
+        const cardH = withRail.getBoundingClientRect().height;
+        const bareH = bare.getBoundingClientRect().height;
+
+        const bits = [
+          `<b>נמדד עכשיו:</b> הכרטיס ${lri(r1(cardH) + 'px')} מול ${lri(
+            r1(bareH) + 'px',
+          )} בלי הפס.`,
+        ];
+        if (over > 0) {
+          // The finding, and it is not about the rail.
+          bits.push(
+            `<b class="mk-flag">והכרטיס לא גדל · הוא חותך.</b> <code>.place</code> הוא גריד עם
+             <code>overflow: hidden</code> בגרסה החסומה, ולכן ${lri(
+               r1(over) + 'px',
+             )} של תוכן מוצמד פשוט נעלמים · כל מדידת גובה ממשיכה להיראות תקינה.`,
+          );
+          if (foot && foot.cut > 0.5)
+            bits.push(
+              `<b class="mk-flag">וזה קורה כבר בלי ההצעה:</b> <code>.map-refs-foot</code> · שיבוץ
+               ליום ועוד בגוגל · נראה ${lri(r1(foot.vis) + 'px')} מתוך ${lri(
+                 r1(foot.h) + 'px',
+               )}. אלה הפעולות הראשיות של השורה הנבחרת, והן חתוכות לפני שהפס בכלל נכנס.`,
+            );
+          if (rail)
+            bits.push(
+              rail.vis <= 0.5
+                ? `<b class="mk-flag">והפס עצמו לא נראה בכלל</b> · ${lri(
+                    r1(rail.h) + 'px',
+                  )} תיבה, ${lri('0px')} נראים. פקד ניווט שאין לו איפה להיות אינו פקד.`
+                : `הפס נראה ${lri(r1(rail.vis) + 'px')} מתוך ${lri(r1(rail.h) + 'px')}.`,
+            );
+          bits.push(
+            `ADR-0148 §1 הבטיח ש"החוסר הופך לגלילה ולא לחיתוך" · וההבטחה מחזיקה רק כשהחוסר הוא
+             ברשימת הפתקים. כאן <b>התוכן המוצמד לבדו</b> עובר את התקרה, ולרשימה כבר אין מה לתת:
+             המסלול הנגלל הוא ${lri(r1(trackA?.h ?? 0) + 'px')} עם הפס ו-${lri(
+               r1(trackB?.h ?? 0) + 'px',
+             )} בלעדיו.`,
+          );
+        } else {
+          bits.push(
+            trackB && trackB.h > 0
+              ? `בעומס הזה הכרטיס נכנס · מסלול הפתקים הנגלל הוא ${lri(
+                  r1(trackA.h) + 'px',
+                )} עם הפס מול ${lri(r1(trackB.h) + 'px')} בלעדיו, כלומר הפס לוקח מהמסלול ולא מהכרטיס.`
+              : `בעומס הזה אין <code>.note-sec</code>, אין מסלול נגלל, והפס פשוט מגביה את הכרטיס ב-${lri(
+                  r1(cardH - bareH) + 'px',
+                )}.`,
+          );
+        }
+        // THE MIRROR FAILURE, and it is the same ADR from the other side. The
+        // `max-height` fires only on `:has(> .map-draft)`, `:has(.note-sec)` and
+        // `:has(.map-hero)` — so a place with several bookings and NO notes and no
+        // enrichment is bounded by nothing. It is anchored to the split's bottom and
+        // grows UP, so it grows past the floating controls row, which paints after it
+        // in the JSX and therefore over it: the identity row goes behind the chips.
+        // ADR-0148 §1's own words for this shape were "what survived was the actions
+        // row and what died was the title, which is the worst way round".
+        const split = withRail.closest('.map-split');
+        const ctrlB = split.querySelector('.map-controls').getBoundingClientRect();
+        const badgeT = withRail.querySelector('.map-badge').getBoundingClientRect().top;
+        const behind = ctrlB.bottom - badgeT;
+        if (getComputedStyle(withRail).maxHeight === 'none' && behind > 0.5) {
+          bits.push(
+            `<b class="mk-flag">ובעומס הזה אין תקרה בכלל.</b> ה-<code>max-height</code> חל רק על
+             כרטיס עם <code>.note-sec</code>, <code>.map-hero</code> או טופס · מקום עם כמה הזמנות
+             ובלי פתקים ובלי העשרה אינו חסום בכלום. הוא עוגן לתחתית וגדל למעלה, ולכן ${lri(
+               r1(behind) + 'px',
+             )} משורת הזהות · התג והשם · יוצאים <b>מתחת לשורת הפקדים הצפה</b>, שנצבעת אחריו ולכן
+             מעליו. זה בדיוק הצד שההערה של ADR-0148 §1 קראה לו "הדרך הגרועה ביותר": מה ששרד היה
+             שורת הפעולות ומה שמת היה הכותרת.`,
+          );
+        }
+        const footNav = withRail.querySelector('.map-refs-foot.has-nav');
+        if (footNav) {
+          const a = footNav.querySelector('.map-stopnav-btn')?.getBoundingClientRect();
+          const v = footNav.querySelector('.map-addmaybe')?.getBoundingClientRect();
+          const gap =
+            a && v ? Math.min(Math.abs(v.left - a.right), Math.abs(a.left - v.right)) : null;
+          bits.push(
+            `<b>מושב הפוטר:</b> ⁦0px⁩ של גובה נוסף${
+              gap != null
+                ? `, והפער מהחץ לפועל הקרוב הוא ${lri(r1(gap) + 'px')} מול ה-⁦16px⁩ ש-ADR-0157 §2
+                   קבע לשורה הזאת`
+                : ''
+            } · אבל הוא מוריד את החריגה ולא מבטל אותה, ומעבר לעצירה אינו פועל על המקום הזה.`,
+          );
+        }
+        out.innerHTML = bits.join(' ');
+      }
+
       /* ══ Controls ══ */
       const press = (btns, on) =>
         btns.forEach((b) => b.setAttribute('aria-pressed', String(b === on)));
@@ -8526,6 +8948,8 @@ textarea {
       group('n');
       group('slop');
       group('srch');
+      group('load');
+      group('seat');
       group('nudge', (b) =>
         document.documentElement.style.setProperty('--map-wrap-nudge', b.dataset.nudge + 'px'),
       );
@@ -8550,6 +8974,17 @@ textarea {
         const split = card.closest('.map-split').getBoundingClientRect();
         const c = card.getBoundingClientRect();
         return Math.max(split.left - c.left, c.right - split.right);
+      }
+
+      /** What the rail actually costs the card: its own border box plus the wrapped-line
+       *  `gap` above it, which is the part `margin-top` made invisible in the source. */
+      function railCost() {
+        const rail = document.querySelector('#probe-card .map-stopnav');
+        if (!rail) return 0;
+        const cs = getComputedStyle(rail);
+        const place = rail.parentElement;
+        const gap = parseFloat(getComputedStyle(place).rowGap) || 0;
+        return rail.getBoundingClientRect().height + parseFloat(cs.marginTop || 0) + gap;
       }
 
       function measure() {
@@ -8577,14 +9012,14 @@ textarea {
             `מסגרת ${lri(r1(S?.width) + 'px')} · <code>inset-inline: 8px</code>`,
           ],
           [
-            'הכרטיס · גובה עם הפס',
+            'הכרטיס הנבחר · גובה',
             `<b>${r1(cardEl?.height)}px</b>`,
-            `השורה לבדה ${lri(r1(row?.height) + 'px')} · הפס מוסיף ${lri(r1((cardEl?.height ?? 0) - (row?.height ?? 0)) + 'px')}`,
+            `זהות ועוד בלוק הדרך פנימה ועוד הפס · הפס הוא הדבר היחיד שההצעה מוסיפה`,
           ],
           [
-            'הפס · גובה',
-            `<b>${r1(railEl?.height)}px</b>`,
-            'התוספת היחידה לכרטיס · כל השאר שורה משוכפלת',
+            'הפס · מה הוא עולה לכרטיס',
+            `<b>${r1(railCost())}px</b>`,
+            `התיבה ${lri(r1(railEl?.height) + 'px')} ועוד ${lri('11px')} של <code>gap</code> בין שורות עטופות · בלי הפס הכרטיס הוא ${lri(r1((cardEl?.height ?? 0) - railCost()) + 'px')}`,
           ],
           [
             'חץ · תיבה נראית',

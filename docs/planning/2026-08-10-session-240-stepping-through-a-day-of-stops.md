@@ -2,10 +2,9 @@
 
 **2026-08-10 · design session, nothing built.**
 Deliverable: [`mockups/map-stop-traversal-v1.html`](../../mockups/map-stop-traversal-v1.html)
-(+ its catalog entry, + backlog line **J** rewritten). The ADR is **not** written yet: three forks
-are genuinely open and this repo's convention is to record a decision, not to invent one. What is
-settled below is settled because the code or a measurement settled it, not because the session
-preferred it.
+(+ its catalog entry, + backlog line **J** rewritten) → **[ADR-0182](../decisions/0182-a-day-is-a-sequence-you-can-step-through.md), Accepted the same day**, once the owner had answered all three forks. It was deliberately not written before that: this repo's convention is to record a decision, not to invent one. All three answers were the session's recommendation — flexible **interleaved**, the **dot rail**, the nudge at **6px**. The build follows, and it is not done without a device pass.
+
+Then the owner reviewed the rendered file and sent back one correction that reshaped §2 rather than restyling it. It is the most useful thing in this note, so it has its own section below.
 
 ## The brief
 
@@ -140,7 +139,44 @@ escapes only because the entire block is **duplicated** at line 216 and that cop
 which is also the fingerprint of how it happened. The mockup carries a control toggling the break
 against the one-line repair. Fix belongs in `screens/map.css`, not in this feature.
 
-## The three forks put to the owner
+## The correction, and why it made the proposal smaller
+
+> _"The bottom rail is rounded but the place card itself is rounded as well · that makes it look
+> awkward and not related."_
+
+Right, and **structural rather than cosmetic**. The rail was drawn as a **sibling** of `.place`
+inside `.map-placecard` — and `.place` is a self-contained card: its own ground,
+`border-radius: 16px`, hairline, `.map-placecard .place`'s floating shadow, and `.selected`'s 2px
+ring, which stopped halfway down the card and made the fault visible in the owner's screenshot.
+**Nothing outside that box can read as part of it.** No amount of matching radii fixes that; two
+elements pretending to be one card would still have left the selection ring around only the first.
+
+The fix was already written in the app, three times. `.map-refs`, `.place > .note-sec` and
+`.place > .docr-sec` are the **same five declarations** for "a full-width line inside the card", and
+`.place` is `flex-wrap: wrap` _precisely_ so such a line can exist — its own comment says so. The
+rail is that grammar's fourth tenant, so the file's proposed CSS **lost** declarations: ground,
+radius, shadow, clip and the selection ring are all inherited now.
+
+This is the shape the skill warns about from the other side — a long hand-written CSS block usually
+means a primitive went unused, and here the block shrank when the primitive was found. It is also
+the reason the first draft looked wrong at all: drawing a _new mechanism_ (a footer) where the app
+already had one (a line) is exactly how a duplicate gets born.
+
+Two things the move surfaced that the source hides:
+
+- Those five declarations now appear **four** times in `map.css`. One `.place > .place-line` class
+  is the obvious collapse (rule 8). **Flagged, not taken** — it is not this feature's job.
+- Their `margin-top: 8px` is invisible spend. `.place` is `gap: 11px` and flex gap applies between
+  **wrapped lines**, so those blocks are separated by 19px and the margin is a third separator. The
+  rail drops it and reads identically, which is 8px back on a card that needs it.
+
+And the honest number moved with it. **The rail costs 50px** — its own 39px box plus the 11px
+wrapped-line gap — of a card whose free canvas above it is **~126px** at 360×640. That is what the
+feature is bought with, and it is stated because the alternatives measured worse, not because it is
+cheap. The card's existing `max-height` arithmetic in `map.css` already turns an over-tall card into
+a scroll rather than a clip, so it degrades gracefully.
+
+## The three forks put to the owner — all answered, all as recommended
 
 - **ⓐ Where a flexible time sits in the traversal order.** _Interleaved_ at its floor instant,
   which is where `buildPinOrderIndex` leaves it today and therefore what the pins on the same
@@ -148,15 +184,65 @@ against the one-line repair. Fix belongs in `screens/map.css`, not in this featu
   and what ADR-0171 §10a does on the day view. Session recommendation: **interleaved**, because the
   numbers are visible on the pins and on the card's own badge, and a traversal order contradicting
   them is the defect §6's amendment closed. The word "flexible" in the owner's rule most likely
-  meant _clockless_, which the tail already covers.
-- **ⓑ The indicator.** Dot rail · numeric · none. Recommendation: **dot rail**.
+  meant _clockless_, which the tail already covers. **Owner: interleaved.**
+- **ⓑ The indicator.** Dot rail · numeric · none. Recommendation: **dot rail**. **Owner: dot rail.**
 - **ⓒ The wrap feedback.** The nudge motion at 4/6/8px, or nothing but the indicator's own jump.
-  Recommendation: **the nudge at 6px**, with the final value owned by the device pass.
+  Recommendation: **the nudge at 6px**, with the final value owned by the device pass. **Owner: 6px.**
 
 ## Not decided here, deliberately
 
 Broader grouping than "two adjacent moments of one place in one connection" — the owner set that
 aside for a future session and this file assumes nothing about it.
+
+## The second correction, and it blocks the build
+
+> _"There could be cards with enrichment data or multiple bookings of events so they could be much
+> higher, did you take that into account with your design?"_
+
+**No.** §2–§6 were all reasoned on the **minimum** card: one reference, no enrichment, no notes. The
+loaded card breaks two ways, neither caused by this feature, and one of them makes this feature
+invisible.
+
+**The bounded card clips its pinned rows.** With notes or a hero present, `map.css` caps the card and
+`.place` becomes a grid in which only `.note-sec-list` scrolls. At 360×640 with three references plus
+enrichment, the **pinned rows alone** overrun that cap by **83px** — measured on the frame,
+intersected with the card's clip box:
+
+|                                              |                          |
+| -------------------------------------------- | ------------------------ |
+| `.note-sec-list`, the one scrolling track    | **0px**                  |
+| `.map-refs-foot` — `שיבוץ ליום`, `עוד בגוגל` | **10 of 44px**           |
+| the traversal rail                           | **39px tall, 0 visible** |
+
+ADR-0148 §1 promised _"the shortfall becomes a SCROLL instead of a clip"_ — and that holds only while
+the shortfall is in the note list. Nothing bounds the pinned rows, so past a certain load the card
+drops them from the bottom, and the selected row's primary actions go first.
+
+**The unbounded card clips the other end.** The `max-height` fires only on `:has(> .map-draft)`,
+`:has(.note-sec)` and `:has(.map-hero)`. A place with several bookings and no notes and no enrichment
+is bounded by **nothing**: anchored to the split's bottom, it grows **up** past the floating controls
+row, which paints after it in the JSX and therefore over it — **~15px of the identity row ends up
+behind the chips.** ADR-0148 §1's own words for that shape: _"what survived was the actions row and
+what died was the title, which is the worst way round."_
+
+**Both are filed as their own backlog lines and both block J.** The build order is now fixed: the
+card's bound is fixed first, then the rail. Shipping the other way round puts a navigation control on
+a card that does not draw it.
+
+**And the method lesson, which is the part worth keeping.** Six of the file's seven sections measured
+**heights**, and a height cannot see a clip — `.place` carries `overflow: hidden` on the bounded
+variants, so every rect reads healthy while content is gone. `frontend/CLAUDE.md` names this exact
+trap ("Reading a rect and calling it visibility") and lists two evenings where it bit this same card.
+§7 now intersects each section's rect with the card's clipping box and draws the cut line on the
+frame. The instrument was wrong, not the numbers.
+
+**One option the question surfaced, and it is the ADR's one open item.** `.map-refs-foot` is already
+the card's pinned bottom row, already on every selected place, and its children are already 44px — so
+arrows inside it cost **0px**, and pushed to the row's outer edges they measure **16.9px** from the
+nearest verb, clearing ADR-0157 §2's 16px. It is not chosen outright because it only reduces the
+overrun (83px → 44px) rather than removing it, and because the foot holds `שיבוץ ליום` and the
+delete: a stop-to-stop arrow is not a verb about this place, and that spacing rule exists because a
+mis-press there is destructive. Both numbers are in §7; the seat goes to the owner.
 
 ## Verification still owed
 
