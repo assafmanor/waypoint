@@ -10,10 +10,11 @@
 
 The unifying primitive is the **`Change`** record. Every **data-plane** mutation produces one; it drives realtime fan-out, the change-feed UI, undo, and offline catch-up. (Scope: the data plane is the collaborative timeline — events, bookings, maybe-shelf, notes, documents. The **control plane** — users, trips, memberships — is plain authenticated CRUD and does **not** produce `Change` records; ADR-0022. It's still in the snapshot, just refreshed rather than streamed.)
 
-**Two invariants underpin everything below (ADR-0019):**
+**Three invariants underpin everything below (ADR-0019; the third from field report #33, session 245):**
 
 1. **Atomic write.** The entity write and its `Change` insert commit in **one transaction** (`prisma.$transaction`), through a single shared `ChangeService.mutate()`; the WS broadcast happens **only after commit**. A mutation is never logged separately or half-applied.
 2. **Monotonic cursor.** `Change.seq` is a strictly-increasing `BigInt`. All catch-up and gap-detection cursor on `seq`, never on timestamps. **It is monotonic, not contiguous, and it is GLOBAL rather than per-trip** (`Change.seq BIGSERIAL`, `schema.prisma`): a write to any trip advances it, so one trip's own changes are `…, 78, 93, 94, 210, …`. Anything that needs "did I miss a change **for this trip**?" must be told, not infer it from arithmetic — see the realtime channel's `prevSeq` below. `sinceSeq` cursoring is unaffected: a `>` comparison only needs monotonicity.
+3. **`after` is the ROW, not the request.** A receiving client merges `after` straight into its list (`applyControlChangeToList`), so whatever a `create` omits is simply absent on every device — including the author's, since a client that writes through the offline outbox learns its entity from its own WS echo rather than from the POST response. Recording the input the client sent therefore publishes only what that client already knew and drops every field the server mints: the generated id, `createdAt`/`updatedAt`, `updatedBy`. Half a row does not exist until the write runs, so build `after` from what `apply` returned — `ChangeService.mutate` takes a mapper (`after: toDocumentSummaryDto`) for exactly that, and `mutateMany`'s ops are built after their writes. The one deliberate exception is a marker payload that is not an entity state at all (`{ swept: true }`, ADR-0157 §6).
 
 ## Realtime channel
 

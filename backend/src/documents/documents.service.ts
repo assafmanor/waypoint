@@ -106,7 +106,12 @@ export class DocumentsService {
         entityType: ENTITY_TYPE.DOCUMENT,
         entityId: id,
         action: 'create',
-        after: { ...input, mimeType: file.mimetype, sizeBytes: file.size },
+        // **The whole row, not the input** (field report #33). Both devices build their
+        // document row from this payload — the uploader's included, since the outbox flush
+        // discards `uploadDocument`'s response and waits for its own WS echo — and a payload
+        // without `updatedAt` gave every fresh upload a row with no version to read content
+        // by (ADR-0055 keys the client blob cache on it).
+        after: toDocumentSummaryDto,
         apply: (tx) =>
           tx.document.create({
             data: {
@@ -168,10 +173,10 @@ export class DocumentsService {
       entityId: documentId,
       action: 'update',
       before: toDocumentSummaryDto(existing),
-      after: {
-        ...input,
-        ...(fileFields ? { mimeType: fileFields.mimeType, sizeBytes: fileFields.sizeBytes } : {}),
-      },
+      // Symmetric with `before`, and for the same reason `create` states the row: a rename
+      // that publishes only the fields it changed leaves every peer's `updatedAt` at the
+      // value it had before the edit.
+      after: toDocumentSummaryDto,
       apply: (tx) =>
         tx.document.update({
           where: { id: documentId },

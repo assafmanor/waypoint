@@ -419,12 +419,23 @@ export function MediaViewer({
     // is why the pre-save preview cost a source variant rather than a second viewer.
     // `updatedAt` versions the client blob cache (ADR-0055): a replaced file bumps it, so a
     // stale cached blob is never served for the same docId.
+    // **The version is a cache key, not an address** (field report #33). Requiring one to
+    // fetch at all turned a document whose `updatedAt` had not arrived — a queued upload,
+    // whose row is stamped only once it flushes, or a row cached from a change that
+    // published less than the whole entity — into a read that never started: no request, no
+    // rejection, and so a spinner with no end and no retry, on the uploader and on a peer
+    // alike. `docId` addresses the content; an absent version only costs the cache.
     const bytes = localFile
       ? Promise.resolve<Blob>(localFile)
-      : blobTripId && blobDocId && blobVersion
-        ? fetchDocumentContent(blobTripId, blobDocId, blobVersion)
+      : blobTripId && blobDocId
+        ? fetchDocumentContent(blobTripId, blobDocId, blobVersion || undefined)
         : null;
-    if (!bytes) return;
+    // No reachable source left. Nothing will resolve, so this is a failure the user can
+    // answer — never the loading state it used to sit in forever (ADR-0078's `ErrorState`).
+    if (!bytes) {
+      setFailed(true);
+      return;
+    }
     let objectUrl: string | null = null;
     let cancelled = false;
     bytes.then(

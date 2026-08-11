@@ -5,6 +5,23 @@ import { PrismaService } from '../prisma/prisma.service';
 import { toChangeDto } from './change.mapper';
 import { SyncGateway } from './sync.gateway';
 
+/** What a change carries as the entity's new state.
+ *
+ *  **A function form, because `after` is supposed to be the ROW and half of a row does
+ *  not exist until the write runs** (field report #33). A caller that passes the input it
+ *  was handed publishes exactly the fields the client already knew and omits every one the
+ *  server mints — the id it generated, `createdAt`/`updatedAt`, `updatedBy` — and the
+ *  receiving client merges that partial straight into its list (`applyControlChangeToList`),
+ *  so a freshly created entity lands with server fields missing on every device including
+ *  the author's. `mutateMany` could already build a payload from the written entity; this
+ *  gives the single-entity path the same reach without restructuring the call.
+ *
+ *  Pass a NAMED mapper (`after: toDocumentSummaryDto`) rather than an inline arrow: an
+ *  annotated function reference is what pins `T`, while two unannotated closures — this one
+ *  and `apply` — leave the compiler nothing to infer it from and both land on `unknown`.
+ *  An inline arrow is still fine with an explicit `mutate<Entity>(…)`. */
+export type ChangePayload<T> = Record<string, unknown> | ((entity: T) => Record<string, unknown>);
+
 export interface MutateInput<T> {
   tripId: string;
   actorUserId: string;
@@ -12,7 +29,7 @@ export interface MutateInput<T> {
   entityId: string;
   action: ChangeAction;
   before?: Record<string, unknown>;
-  after?: Record<string, unknown>;
+  after?: ChangePayload<T>;
   apply: (tx: Prisma.TransactionClient) => Promise<T>;
 }
 
@@ -100,6 +117,7 @@ export class ChangeService {
       await lockTrip(tx, input.tripId);
       const prevSeq = await latestTripSeq(tx, input.tripId);
       const entity = await input.apply(tx);
+      const after = typeof input.after === 'function' ? input.after(entity) : input.after;
       const changeRow = await tx.change.create({
         data: {
           tripId: input.tripId,
@@ -108,7 +126,7 @@ export class ChangeService {
           entityId: input.entityId,
           action: input.action,
           before: input.before as Prisma.InputJsonValue | undefined,
-          after: input.after as Prisma.InputJsonValue | undefined,
+          after: after as Prisma.InputJsonValue | undefined,
         },
       });
       return [entity, changeRow, prevSeq] as const;
