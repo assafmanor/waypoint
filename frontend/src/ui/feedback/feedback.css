@@ -80,6 +80,14 @@
 .fb-error-title {
   color: var(--miss);
 }
+/* An error state that owns a whole pane (the Map's canvas, field report #28) rather than
+   sitting in a scrolling flow — `.fb-empty-pane`'s twin rule, one sibling over. The host box
+   is already sized (an absolute inset, not a scroller), so this centres in the FULL height
+   rather than `.fb-empty-pane`'s 55% floor inside a sheet that can grow past its content. */
+.fb-error-pane {
+  justify-content: center;
+  height: 100%;
+}
 .fb-error-retry {
   display: inline-flex;
   align-items: center;

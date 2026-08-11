@@ -12,7 +12,14 @@
 // to a no-op diff. That is the marker-level restatement of §4, and the reason
 // `memo` below is load-bearing rather than an optimisation.
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { APIProvider, AdvancedMarker, Map, Polyline, useMap } from '@vis.gl/react-google-maps';
+import {
+  APILoadingStatus,
+  APIProvider,
+  AdvancedMarker,
+  Map,
+  Polyline,
+  useMap,
+} from '@vis.gl/react-google-maps';
 import {
   isAsidePin,
   isFramedByCamera,
@@ -26,12 +33,20 @@ import {
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import { observeResize } from '../../lib/observe-resize';
+import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
-import { MAP_CONNECTOR, MAP_ZOOM, type PinHue } from '../../constants';
-import { TUNE, tune } from '../../lib/dev-tuning';
+import {
+  MAP_CONNECTOR,
+  MAP_LOAD_PHASE,
+  MAP_LOAD_TIMEOUT_MS,
+  MAP_ZOOM,
+  type PinHue,
+} from '../../constants';
+import { publishMapReading, TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
 import { Icon, type IconName } from '../Icon';
+import { ErrorState } from '../feedback/ErrorState';
 import { t } from '../../i18n/he';
 import './map-pane.css';
 
@@ -369,106 +384,169 @@ function MapPaneInner({
     },
     [onSelectPin],
   );
+  // **A load failure is a third reason to be list-only, never a fourth grammar**
+  // (field report #28; ADR-0121's 2026-08-11 amendment). `onError` below catches a
+  // failed *script* load (bad key, blocked network) — but our own markers are DOM
+  // overlays that render independently of Google's tile layer, so a script that
+  // loaded fine and never painted a tile says nothing through it. Google exposes no
+  // event for THAT, so it is `lib/deadline.ts`'s own heuristic: `onTilesLoaded`
+  // never firing within `MAP_LOAD_TIMEOUT_MS.TILES` of construction is treated as a
+  // failure too. Either failure clears the canvas for `ErrorState`, in the pane's
+  // own slot — the place list beside it is untouched and still useful.
+  const [mapFailed, setMapFailed] = useState(false);
+  // Bumped on retry so the `<APIProvider>` subtree below remounts under a fresh
+  // `key` — never reused: ADR-0121 §4's one-instantiation-per-visit invariant means
+  // a second `google.maps.Map` is constructed only on a genuinely failed one, never
+  // on a rerender, which is exactly what a `key` bump (rather than clearing local
+  // state and hoping the failed instance recovers) buys here.
+  const [attempt, setAttempt] = useState(0);
+  const tilesLoadedRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    setMapFailed(false);
+    // The device-pass capture (§1b, backlog workstream M) rides on this attempt's OWN
+    // signals rather than a second probe — cleared here so a retry does not show the
+    // FAILED attempt's status while the fresh one is still loading.
+    if (import.meta.env.DEV) {
+      publishMapReading({
+        apiStatus: APILoadingStatus.NOT_LOADED,
+        apiError: null,
+        tilesLoaded: false,
+      });
+    }
+    let live = true;
+    withDeadline(
+      MAP_LOAD_PHASE.TILES,
+      MAP_LOAD_TIMEOUT_MS.TILES,
+      () => new Promise<void>((resolve) => (tilesLoadedRef.current = resolve)),
+    ).catch((error) => {
+      if (live && error instanceof PhaseTimeoutError) setMapFailed(true);
+    });
+    return () => {
+      live = false;
+      tilesLoadedRef.current = null;
+    };
+  }, [attempt]);
+  const handleTilesLoaded = useCallback(() => {
+    tilesLoadedRef.current?.();
+    tilesLoadedRef.current = null;
+    if (import.meta.env.DEV) {
+      publishMapReading({ apiStatus: APILoadingStatus.LOADED, tilesLoaded: true });
+    }
+  }, []);
+  const handleMapError = useCallback((error: unknown) => {
+    setMapFailed(true);
+    if (import.meta.env.DEV) {
+      publishMapReading({ apiStatus: APILoadingStatus.FAILED, apiError: String(error) });
+    }
+  }, []);
+  const retryMap = useCallback(() => setAttempt((n) => n + 1), []);
   return (
     <div className="map-pane" ref={paneRef}>
-      <APIProvider apiKey={config.apiKey}>
-        <Map
-          id={MAP_ID}
-          className="map-canvas"
-          // Construction-time and never changed: a `mapId` swap is a new map, and
-          // a new map is a billed load (§4/§11 — which is also why there are no
-          // per-mode map styles).
-          mapId={config.mapId}
-          // A Map ID holds BOTH a light and a dark style; this is what picks one.
-          // Google's default is LIGHT, so without it the night Map ID renders its
-          // light slot — the failure that reads exactly like an unimported style
-          // (ADR-0158 §12). Construction-time too, and latched by the same memo.
-          colorScheme={config.colorScheme}
-          defaultCenter={defaultCentre ?? { lat: 0, lng: 0 }}
-          defaultZoom={defaultCentre ? MAP_ZOOM.PLACE : MAP_ZOOM.WORLD}
-          // Google's controls are Google-chromed, unlabelled and unaware of an RTL
-          // page, so: none of them, then add back only what we need (§12). Zoom is
-          // the pinch; the one control we add is re-centre, below.
-          disableDefaultUI
-          // The default demands two fingers inside a scrollable page and shows
-          // Google's un-styleable "use two fingers" overlay — a phone-first
-          // regression (ADR-0017). The pane is fixed, not inline content, so
-          // one-finger pan is unambiguous; the sheet handle owns vertical drags.
-          gestureHandling="greedy"
-          // **Google's POI labels are looked at, never tapped** (owner, 2026-07-30, on a
-          // real phone: _"I want to disable Google maps POI"_ — ADR-0125 §6's amendment).
-          // The labels themselves stay: ADR-0125 §6's curated sights set is a cloud style
-          // and untouched, so the Eiffel Tower is still drawn and still named. What goes is
-          // GOOGLE'S ANSWER to a tap on one — its info window, which lands on the same canvas
-          // band our place card owns and belongs to a product this one is not.
-          //
-          // Nothing needed the tap any more. It was ADR-0147 §4's free input for the
-          // "make a place from a sight" source, and ADR-0148 §6 removed that source; what
-          // remained was a tap whose whole effect was to open something we did not draw.
-          clickableIcons={false}
-          onIdle={(event) => onViewChange(readMapBounds(event.map))}
-          // A tap on the BACKGROUND clears the selection. An `AdvancedMarker` is a DOM
-          // overlay, so a tap on a pin should not reach here at all — the guard is cheap
-          // insurance against the one ordering that would matter, selecting a pin and
-          // then immediately clearing it.
-          //
-          // A tap on one of GOOGLE's sight labels (ADR-0125 §6) lands here as an ordinary
-          // canvas tap and clears, which is what it always did. What changed is that
-          // `clickableIcons={false}` above means it now arrives with **no `placeId`** and
-          // with no info window behind it — so the outcome the three previous passes were
-          // arguing about (two stacked cards) can no longer arise at all, from either end.
-          //
-          // **A release that completed one of our own gestures is not a tap.** The long
-          // press's release lands here as an ordinary canvas tap, and since ADR-0148 §7 a
-          // canvas tap dismisses the form — so a drop opened the form and lifting the finger
-          // closed it again. The DOM-level swallow cannot cover this: what arrives here is
-          // Google's own callback, and a subscription is not a stream to stop propagating.
-          onClick={(event) => {
-            const target = event.domEvent?.target as HTMLElement | null;
-            if (target?.closest?.('.map-pin')) return;
-            if (gestureTapRef.current) return;
-            onCanvasTap();
-          }}
-        >
-          {pins.map((pin) => (
-            <PinMarker key={pin.placeId} pin={pin} onSelect={selectPin} />
-          ))}
-          {results.map((result) => (
-            <ResultMarker
-              key={result.googlePlaceId}
-              result={result}
-              onSelect={onSelectResult ?? noop}
-            />
-          ))}
-          {me && <MeMarker at={me} />}
-          {draftMarker && <DraftMarker marker={draftMarker} />}
-          <DayConnector path={connector} scheme={config.colorScheme} />
-        </Map>
-        {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
+      {mapFailed ? (
+        <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
+      ) : (
+        <APIProvider key={attempt} apiKey={config.apiKey} onError={handleMapError}>
+          <Map
+            id={MAP_ID}
+            className="map-canvas"
+            // Construction-time and never changed: a `mapId` swap is a new map, and
+            // a new map is a billed load (§4/§11 — which is also why there are no
+            // per-mode map styles).
+            mapId={config.mapId}
+            // A Map ID holds BOTH a light and a dark style; this is what picks one.
+            // Google's default is LIGHT, so without it the night Map ID renders its
+            // light slot — the failure that reads exactly like an unimported style
+            // (ADR-0158 §12). Construction-time too, and latched by the same memo.
+            colorScheme={config.colorScheme}
+            defaultCenter={defaultCentre ?? { lat: 0, lng: 0 }}
+            defaultZoom={defaultCentre ? MAP_ZOOM.PLACE : MAP_ZOOM.WORLD}
+            // Google's controls are Google-chromed, unlabelled and unaware of an RTL
+            // page, so: none of them, then add back only what we need (§12). Zoom is
+            // the pinch; the one control we add is re-centre, below.
+            disableDefaultUI
+            // The default demands two fingers inside a scrollable page and shows
+            // Google's un-styleable "use two fingers" overlay — a phone-first
+            // regression (ADR-0017). The pane is fixed, not inline content, so
+            // one-finger pan is unambiguous; the sheet handle owns vertical drags.
+            gestureHandling="greedy"
+            // **Google's POI labels are looked at, never tapped** (owner, 2026-07-30, on a
+            // real phone: _"I want to disable Google maps POI"_ — ADR-0125 §6's amendment).
+            // The labels themselves stay: ADR-0125 §6's curated sights set is a cloud style
+            // and untouched, so the Eiffel Tower is still drawn and still named. What goes is
+            // GOOGLE'S ANSWER to a tap on one — its info window, which lands on the same canvas
+            // band our place card owns and belongs to a product this one is not.
+            //
+            // Nothing needed the tap any more. It was ADR-0147 §4's free input for the
+            // "make a place from a sight" source, and ADR-0148 §6 removed that source; what
+            // remained was a tap whose whole effect was to open something we did not draw.
+            clickableIcons={false}
+            onIdle={(event) => onViewChange(readMapBounds(event.map))}
+            // The base map's own success signal (see `mapFailed` above) — nothing else on
+            // this component says tiles actually painted.
+            onTilesLoaded={handleTilesLoaded}
+            // A tap on the BACKGROUND clears the selection. An `AdvancedMarker` is a DOM
+            // overlay, so a tap on a pin should not reach here at all — the guard is cheap
+            // insurance against the one ordering that would matter, selecting a pin and
+            // then immediately clearing it.
+            //
+            // A tap on one of GOOGLE's sight labels (ADR-0125 §6) lands here as an ordinary
+            // canvas tap and clears, which is what it always did. What changed is that
+            // `clickableIcons={false}` above means it now arrives with **no `placeId`** and
+            // with no info window behind it — so the outcome the three previous passes were
+            // arguing about (two stacked cards) can no longer arise at all, from either end.
+            //
+            // **A release that completed one of our own gestures is not a tap.** The long
+            // press's release lands here as an ordinary canvas tap, and since ADR-0148 §7 a
+            // canvas tap dismisses the form — so a drop opened the form and lifting the finger
+            // closed it again. The DOM-level swallow cannot cover this: what arrives here is
+            // Google's own callback, and a subscription is not a stream to stop propagating.
+            onClick={(event) => {
+              const target = event.domEvent?.target as HTMLElement | null;
+              if (target?.closest?.('.map-pin')) return;
+              if (gestureTapRef.current) return;
+              onCanvasTap();
+            }}
+          >
+            {pins.map((pin) => (
+              <PinMarker key={pin.placeId} pin={pin} onSelect={selectPin} />
+            ))}
+            {results.map((result) => (
+              <ResultMarker
+                key={result.googlePlaceId}
+                result={result}
+                onSelect={onSelectResult ?? noop}
+              />
+            ))}
+            {me && <MeMarker at={me} />}
+            {draftMarker && <DraftMarker marker={draftMarker} />}
+            <DayConnector path={connector} scheme={config.colorScheme} />
+          </Map>
+          {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
-        <PinDensity paneRef={paneRef} />
-        {/* The device-pass panel's zoom readout (ADR-0146 §5). Deliberately `PinDensity`'s
+          <PinDensity paneRef={paneRef} />
+          {/* The device-pass panel's zoom readout (ADR-0146 §5). Deliberately `PinDensity`'s
             shape and position: stateless, null-rendering, one listener — so it cannot
             re-render this subtree, which is what keeps a dev tool clear of a marker
             re-diff. Dropped entirely from a production build with the gate. */}
-        {import.meta.env.DEV && <DevMapProbe mapId={MAP_ID} />}
-        <MapCameraControls
-          paneRef={paneRef}
-          pins={pins}
-          results={results}
-          me={me}
-          setSignal={setSignal}
-          areaCount={areaCount}
-          areaSorted={areaSorted}
-          onAreaSort={onAreaSort}
-          onLocate={onLocate}
-          arrival={arrival}
-          cardReserve={cardReserve}
-          cardReserveAt={cardReserveAt}
-          onHold={handleHold}
-          gestureTapRef={gestureTapRef}
-        />
-      </APIProvider>
+          {import.meta.env.DEV && <DevMapProbe mapId={MAP_ID} />}
+          <MapCameraControls
+            paneRef={paneRef}
+            pins={pins}
+            results={results}
+            me={me}
+            setSignal={setSignal}
+            areaCount={areaCount}
+            areaSorted={areaSorted}
+            onAreaSort={onAreaSort}
+            onLocate={onLocate}
+            arrival={arrival}
+            cardReserve={cardReserve}
+            cardReserveAt={cardReserveAt}
+            onHold={handleHold}
+            gestureTapRef={gestureTapRef}
+          />
+        </APIProvider>
+      )}
     </div>
   );
 }

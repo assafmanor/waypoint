@@ -11,14 +11,19 @@ export function ErrorState({
   body,
   onRetry,
   retryLabel,
+  size = 'md',
 }: {
   title: string;
   body?: ReactNode;
   onRetry?: () => void;
   retryLabel?: string;
+  /** `'pane'` for an error state that owns a whole region rather than sitting in a
+   *  list's flow — `EmptyState`'s own `size` prop (ADR-0078), one sibling over: the
+   *  Map's canvas slot (field report #28) is the first caller. */
+  size?: 'md' | 'pane';
 }) {
   return (
-    <div className="fb-error">
+    <div className={size === 'pane' ? 'fb-error fb-error-pane' : 'fb-error'}>
       <div className="fb-error-icon" aria-hidden="true">
         <Icon name="warn" />
       </div>

@@ -24,8 +24,32 @@ const nextTap: { placeId: string | null } = { placeId: null };
  *  `stopPropagation` reaches an event stream and cannot reach a subscription. */
 type CanvasClick = (e: { domEvent: unknown; detail: { placeId: string | null } }) => void;
 const googleTap: { fire: CanvasClick | undefined } = { fire: undefined };
+/** `APIProvider`'s own failure channel (field report #28) — Google's script-load
+ *  rejection, surfaced as a plain callback the stub exposes for a test to call. */
+const apiError: { fire: ((error: unknown) => void) | undefined } = { fire: undefined };
+/** The base map's success signal — a real `<Map>` fires this once tiles paint. A test
+ *  calls it (or doesn't, to exercise the watchdog) exactly like `googleTap` above. */
+const tilesLoaded: { fire: (() => void) | undefined } = { fire: undefined };
 vi.mock('@vis.gl/react-google-maps', () => ({
-  APIProvider: ({ children }: { children?: ReactNode }) => <div data-api>{children}</div>,
+  // The real enum's shape (`index.d.ts`'s `APILoadingStatus`) — `MapPane` reads it by
+  // member name to publish the dev diagnostic, so the stub has to carry the same names.
+  APILoadingStatus: {
+    NOT_LOADED: 'NOT_LOADED',
+    LOADING: 'LOADING',
+    LOADED: 'LOADED',
+    FAILED: 'FAILED',
+    AUTH_FAILURE: 'AUTH_FAILURE',
+  },
+  APIProvider: ({
+    children,
+    onError,
+  }: {
+    children?: ReactNode;
+    onError?: (error: unknown) => void;
+  }) => {
+    apiError.fire = onError;
+    return <div data-api>{children}</div>;
+  },
   Map: ({ children, ...props }: Record<string, unknown> & { children?: ReactNode }) => (
     <div
       data-map
@@ -39,6 +63,7 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       // has to pass it through in the same shape.
       ref={() => {
         googleTap.fire = props.onClick as CanvasClick | undefined;
+        tilesLoaded.fire = props.onTilesLoaded as (() => void) | undefined;
       }}
       onClick={(event) =>
         (props.onClick as CanvasClick | undefined)?.({
@@ -166,7 +191,13 @@ class FakeZoomMap {
 import { MapPane, type MapPin } from './MapPane';
 import { PIN_TIER } from '../../lib/map-pins';
 import { MAP_COLOR_SCHEME } from '../../lib/map-config';
-import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS, MAP_CONNECTOR, MAP_ZOOM } from '../../constants';
+import {
+  DRAG_CLICK_SWALLOW_MS,
+  DRAG_HOLD_MS,
+  MAP_CONNECTOR,
+  MAP_LOAD_TIMEOUT_MS,
+  MAP_ZOOM,
+} from '../../constants';
 import { t } from '../../i18n/he';
 
 const CONFIG = { apiKey: 'k', mapId: 'waypoint-day', colorScheme: MAP_COLOR_SCHEME.light };
@@ -219,6 +250,8 @@ afterEach(() => {
   mapStub.current = null;
   idleHandlers.length = 0;
   nextTap.placeId = null;
+  apiError.fire = undefined;
+  tilesLoaded.fire = undefined;
 });
 
 describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
@@ -927,5 +960,62 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
     act(() => map.pinchTo(MAP_ZOOM.DOT_BELOW - 4));
     expect(pane().dataset.pins).toBe('dot');
     expect(markers()).toEqual(before);
+  });
+});
+
+// The base map's own load failure (field report #28): the canvas can mount and our own
+// markers can render — they are DOM overlays, independent of Google's tile layer — while
+// Google's tiles never draw. Two channels feed the pane's `mapFailed` state: `APIProvider`'s
+// `onError` (a failed script load) and the `onTilesLoaded` watchdog below (tiles that never
+// painted at all). Both replace the canvas with `ErrorState` in the PANE's own slot, never
+// the whole tab — this suite only touches `MapPane`, whose box is exactly that slot.
+describe('a load failure falls back to ErrorState, in the pane, with a bounded retry', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('a failed script load (APIProvider onError) swaps the canvas for ErrorState', () => {
+    paint();
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+    act(() => apiError.fire?.(new Error('boom')));
+    expect(document.querySelector('[data-map]')).toBeNull();
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe(t.map.loadError);
+    expect(screen.getByRole('button', { name: new RegExp(t.feedback.retry) })).toBeTruthy();
+  });
+
+  it('tiles that never load within the bound are treated as a failure too', async () => {
+    vi.useFakeTimers();
+    paint();
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+    // The `setMapFailed(true)` that decides this lands from a timer's `.catch`, outside
+    // any event React already knows to flush around — `act` is what forces the commit
+    // before the assertion below reads the DOM.
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(document.querySelector('[data-map]')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
+  });
+
+  it('tiles loading before the bound never fails at all', async () => {
+    vi.useFakeTimers();
+    paint();
+    act(() => tilesLoaded.fire?.());
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('retry remounts a fresh map, never reusing the failed instance', async () => {
+    vi.useFakeTimers();
+    paint();
+    act(() => apiError.fire?.(new Error('boom')));
+    expect(screen.getByRole('alert')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    // The retry swaps `ErrorState` back for a freshly keyed `<APIProvider>` — a NEW
+    // watchdog, not the settled/rejected one the failed attempt left behind.
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    // And the new attempt gets its own full bound rather than inheriting none of it —
+    // failing again only once ITS watchdog, not the first one's leftovers, expires.
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(screen.getByRole('alert')).toBeTruthy();
   });
 });

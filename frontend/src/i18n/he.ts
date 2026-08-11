@@ -120,6 +120,10 @@ export const t = {
   },
   // Map tab (Phase 3, ADR-0109/0110): the list-first pinned-place surface.
   map: {
+    // The base map's own canvas failed to draw (field report #28) — a script load
+    // failure or tiles that silently never painted. The place list beside it still
+    // works, so this takes only the canvas's own slot, never the whole tab.
+    loadError: 'לא הצלחנו לטעון את המפה',
     filter: {
       all: 'הכל',
       maybes: 'אולי',

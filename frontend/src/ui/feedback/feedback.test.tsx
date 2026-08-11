@@ -72,6 +72,18 @@ describe('ErrorState', () => {
     render(<ErrorState title="שגיאה" onRetry={() => {}} retryLabel="טעינה מחדש" />);
     expect(screen.getByRole('button', { name: /טעינה מחדש/ })).toBeTruthy();
   });
+
+  // `size="pane"` for an error state that owns a region rather than sitting in a list's
+  // flow — `EmptyState`'s own variant (ADR-0138's 2026-08-02 amendment), one sibling over;
+  // the Map's canvas slot (field report #28) is the first caller.
+  it('marks a pane-sized error state on the shell, and leaves the default alone', () => {
+    const { container } = render(<ErrorState size="pane" title="שגיאה" />);
+    expect(container.querySelector('.fb-error')?.className).toContain('fb-error-pane');
+
+    cleanup();
+    const plain = render(<ErrorState title="שגיאה" />);
+    expect(plain.container.querySelector('.fb-error')?.className).not.toContain('fb-error-pane');
+  });
 });
 
 describe('StatusBanner', () => {

@@ -97,11 +97,38 @@ function writeStored(): void {
 }
 
 /** What the map is doing right now, for the panel's readouts (ADR-0146 §1b). Published by
- *  `DevMapProbe`, which is stateless precisely so publishing costs no render. */
+ *  `DevMapProbe`, which is stateless precisely so publishing costs no render.
+ *
+ *  **The load-diagnostic fields** (field report #28's device-pass capture, backlog
+ *  workstream M) are published from two places, deliberately not one new probe: `apiStatus`
+ *  / `apiError` / `tilesLoaded` come straight off `MapPane`'s own production `onError` /
+ *  `onTilesLoaded` handlers — the exact signals §1a already decides a failure from, reused
+ *  rather than duplicated — and `webglContextLost` / `online` come off `DevMapProbe`, which
+ *  listens for the one thing production deliberately does not (a context loss AFTER a map
+ *  already rendered once is a different question than "did it ever load"). */
 export interface DevMapReading {
   zoom: number | null;
+  /** `@vis.gl/react-google-maps`'s own `APILoadingStatus`, as its string value — `null`
+   *  before the current attempt's `<APIProvider>` has mounted at all. */
+  apiStatus: string | null;
+  /** `APIProvider`'s `onError` message, for the CURRENT attempt only — cleared on retry. */
+  apiError: string | null;
+  /** Has `onTilesLoaded` fired at least once THIS attempt — the production watchdog's own
+   *  success signal (`constants.ts`'s `MAP_LOAD_TIMEOUT_MS.TILES`). */
+  tilesLoaded: boolean;
+  /** The canvas's own `webglcontextlost` (field report #28's likeliest single cause on a
+   *  real device) — `null` until a real `<Map>` canvas has been observed. */
+  webglContextLost: boolean | null;
+  online: boolean;
 }
-const reading: DevMapReading = { zoom: null };
+const reading: DevMapReading = {
+  zoom: null,
+  apiStatus: null,
+  apiError: null,
+  tilesLoaded: false,
+  webglContextLost: null,
+  online: typeof navigator === 'undefined' ? true : navigator.onLine,
+};
 
 export function publishMapReading(next: Partial<DevMapReading>): void {
   Object.assign(reading, next);

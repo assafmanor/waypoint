@@ -1,6 +1,7 @@
 import { useCallback, useState, type CSSProperties } from 'react';
 import { MAP_CARD_BODY_H, MAP_SHEET_STOPS } from '../constants';
 import { zoomPerLevelPx } from '../lib/canvas-gestures';
+import { mapsConfig } from '../lib/map-config';
 import {
   clearTuning,
   mapReading,
@@ -21,11 +22,14 @@ import {
 // `import.meta.env.DEV`, as a SIBLING inside the split — never a wrapper around
 // `<MapPane>`, which would remount it, and a remount is a billed map load (ADR-0121 §4).
 //
-// Three things it does, because the cluster it serves is three kinds of thing (§1):
-// steppers for the seven preferences, readouts for the two values that turned out to be
-// measurements rather than tastes, and a checklist for the five look questions that need
-// no control at all. Then it emits all of it as text, because a sitting whose result
-// cannot be reproduced has to be repeated.
+// Four things it does, because the cluster it serves is four kinds of thing (§1, plus
+// field report #28's load-failure capture): steppers for the seven preferences, readouts
+// for the two values that turned out to be measurements rather than tastes, the
+// load-failure diagnostics `diag` (§1b — SDK status, tiles-loaded, WebGL context loss,
+// online state — for the device pass that has to reproduce #28 on a real phone before
+// anyone can say which failure mode it is), and a checklist for the five look questions
+// that need no control at all. Then it emits all of it as text, because a sitting whose
+// result cannot be reproduced has to be repeated.
 //
 // **Steppers, not sliders** (§5): a slider fires tens of events per gesture — the
 // re-render shape this surface is most expensive about — and cannot reliably land on 0.40
@@ -36,10 +40,13 @@ type LookAnswer = 'ok' | 'bad';
 /** One section open at a time, because the panel must not cover the thing being judged —
  *  the same reason `DevTimeTravel` is a badge. All four at once measured 430px of an 844px
  *  phone, which is the whole canvas at the `half` stop. */
-const SECTION = { tune: 'tune', read: 'read', look: 'look', out: 'out' } as const;
+const SECTION = { tune: 'tune', read: 'read', diag: 'diag', look: 'look', out: 'out' } as const;
 type Section = (typeof SECTION)[keyof typeof SECTION];
 
 export function DevMapTuner() {
+  // Build-time and unchanging (§2), so a plain call rather than a memo — this is a dev
+  // panel, not a surface `MapPane`'s per-second re-render makes a re-read costly on.
+  const mapConfig = mapsConfig();
   const [section, setSection] = useState<Section>(SECTION.tune);
   const [overrides, setOverrides] = useState(() => tuningOverrides());
   const [looks, setLooks] = useState<Partial<Record<LookQuestionKey, LookAnswer>>>({});
@@ -74,7 +81,7 @@ export function DevMapTuner() {
             type="button"
             onClick={() => {
               setSection(id);
-              if (id === SECTION.read) refresh();
+              if (id === SECTION.read || id === SECTION.diag) refresh();
             }}
             aria-pressed={section === id}
             style={{ flex: 1, opacity: section === id ? 1 : 0.5 }}
@@ -139,6 +146,31 @@ export function DevMapTuner() {
         </div>
       )}
 
+      {/* **The load-failure device pass** (field report #28, backlog workstream M) — the
+          diagnostic capture §1b asked for, none of it a control: `apiStatus`/`apiError`/
+          `tilesLoaded` are production's OWN `onError`/`onTilesLoaded` signals, reused rather
+          than duplicated; `webglContextLost`/`online` are `DevMapProbe`'s two additions.
+          Device/browser is `navigator.userAgent` directly — there is no build-id constant
+          in this app yet, so that field is left out rather than invented. */}
+      {section === SECTION.diag && (
+        <div style={readoutStyle}>
+          <div>api status: {readings.apiStatus ?? '-'}</div>
+          <div>tiles loaded this attempt: {readings.tilesLoaded ? 'yes' : 'no'}</div>
+          <div>
+            webgl context lost:{' '}
+            {readings.webglContextLost === null ? 'n/a' : readings.webglContextLost ? 'YES' : 'no'}
+          </div>
+          <div>online: {readings.online ? 'yes' : 'no'}</div>
+          {readings.apiError != null && <div>last error: {readings.apiError}</div>}
+          <div>mapId: {mapConfig?.mapId ?? '-'}</div>
+          <div>colorScheme: {mapConfig?.colorScheme ?? '-'}</div>
+          <div style={{ wordBreak: 'break-all' }}>ua: {navigator.userAgent}</div>
+          <button type="button" onClick={refresh}>
+            measure
+          </button>
+        </div>
+      )}
+
       {section === SECTION.look &&
         MAP_LOOK_QUESTIONS.map((q) => (
           <div key={q.key} style={rowStyle}>
@@ -168,7 +200,10 @@ export function DevMapTuner() {
       {section === SECTION.out && (
         <>
           <div style={rowStyle}>
-            <button type="button" onClick={() => setEmitted(emit(overrides, looks, measure()))}>
+            <button
+              type="button"
+              onClick={() => setEmitted(emit(overrides, looks, measure(), mapConfig))}
+            >
               emit
             </button>
             <button type="button" onClick={reset}>
@@ -221,6 +256,11 @@ interface Readings {
   sheetFraction: string | null;
   cardH: number | null;
   perLevel: number | null;
+  apiStatus: string | null;
+  apiError: string | null;
+  tilesLoaded: boolean;
+  webglContextLost: boolean | null;
+  online: boolean;
 }
 
 /** One layout read, on demand, which is exactly the thing prod may not do on this screen
@@ -236,14 +276,20 @@ function measure(): Readings {
   const paneH = height('.map-pane');
   const splitH = height('.map-split');
   const sheetH = height('.wp-snapsheet');
+  const reading = mapReading();
   return {
-    zoom: mapReading().zoom,
+    zoom: reading.zoom,
     paneH,
     splitH,
     sheetH,
     sheetFraction: sheetH && splitH ? (sheetH / splitH).toFixed(3) : null,
     cardH: height('.map-placecard'),
     perLevel: paneH ? Math.round(zoomPerLevelPx(paneH)) : null,
+    apiStatus: reading.apiStatus,
+    apiError: reading.apiError,
+    tilesLoaded: reading.tilesLoaded,
+    webglContextLost: reading.webglContextLost,
+    online: reading.online,
   };
 }
 
@@ -251,9 +297,24 @@ function emit(
   overrides: Partial<Record<DevTunableKey, number>>,
   looks: Partial<Record<LookQuestionKey, LookAnswer>>,
   readings: Readings,
+  mapConfig: { mapId: string; colorScheme: string } | null,
 ): string {
   const lines = ['# map device pass — ADR-0146', ''];
   lines.push(`viewport ${window.innerWidth}×${window.innerHeight}`);
+  lines.push(`ua: ${navigator.userAgent}`);
+  lines.push('');
+  // Field report #28 / backlog workstream M: the load-failure capture, so a sitting that
+  // finally reproduces it on a real phone leaves a record rather than a memory.
+  lines.push('## load diagnostics (#28)');
+  lines.push(`mapId: ${mapConfig?.mapId ?? '(list-only, no map)'}`);
+  lines.push(`colorScheme: ${mapConfig?.colorScheme ?? '-'}`);
+  lines.push(`api status: ${readings.apiStatus ?? '?'}`);
+  lines.push(`tiles loaded this attempt: ${readings.tilesLoaded ? 'yes' : 'no'}`);
+  lines.push(
+    `webgl context lost: ${readings.webglContextLost === null ? 'n/a' : readings.webglContextLost ? 'YES' : 'no'}`,
+  );
+  lines.push(`online: ${readings.online ? 'yes' : 'no'}`);
+  if (readings.apiError != null) lines.push(`last error: ${readings.apiError}`);
   lines.push('');
   lines.push('## preferences');
   for (const t of MAP_TUNABLES) {
