@@ -19,6 +19,7 @@ import {
   formatTripDates,
   relativeDay,
   hardConflicts,
+  isCalendarDay,
   isoToTimeInput,
   minutesUntil,
   monthLabelFor,
@@ -317,6 +318,23 @@ describe('clampDate', () => {
 describe('shiftIso', () => {
   it('shifts an instant by whole minutes', () => {
     expect(shiftIso('2026-07-07T19:30:00+09:00', 30)).toBe('2026-07-07T11:00:00.000Z');
+  });
+});
+
+// The precondition `zonedIso` had only in prose, and field report #38 is what it costs
+// when a caller cannot meet it: an empty date builds `new Date('T12:00:00Z')`, whose
+// offset probe throws `RangeError` — in a render path, in an app with no error boundary.
+describe('isCalendarDay', () => {
+  it('accepts a real YYYY-MM-DD and nothing else', () => {
+    expect(isCalendarDay('2026-09-12')).toBe(true);
+    expect(isCalendarDay('2026-02-29')).toBe(true); // JS rolls it to March 1, still a date
+    for (const bad of ['', '2026-09', '12.09.2026', '2026-9-12', 'not-a-day', '2026-13-40'])
+      expect(isCalendarDay(bad)).toBe(false);
+  });
+
+  it('is exactly the line between an instant and a RangeError', () => {
+    expect(() => zonedIso('', '12:00', 'Asia/Tokyo')).toThrow(RangeError);
+    expect(isCalendarDay('')).toBe(false);
   });
 });
 

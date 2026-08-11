@@ -15,7 +15,14 @@ import {
 } from '@waypoint/shared';
 import { ltrIsolate } from './bidi';
 import type { PlaceLabels } from './place-label';
-import { deriveNow, eventPhase, todayInTz, zoneOffsetMinutes, zonedIso } from './time';
+import {
+  deriveNow,
+  eventPhase,
+  isCalendarDay,
+  todayInTz,
+  zoneOffsetMinutes,
+  zonedIso,
+} from './time';
 import { DAY_NOON, LIVE_ZONE_WINDOW_MS } from '../constants';
 import { formatDuration } from './duration';
 
@@ -480,12 +487,21 @@ export function eventDisplayZones(
  *  an instant — and the instant needs a zone. Two passes reach the fixed point
  *  wherever the two agree, which is everywhere but a time within a few hours of a
  *  crossing. With no time typed yet the day's **noon** stands in, so a fresh draft
- *  on a post-crossing day starts in that day's segment rather than the primary. */
+ *  on a post-crossing day starts in that day's segment rather than the primary.
+ *
+ *  **A day it cannot read is no evidence, not a crash.** Forms call this on every
+ *  render with whatever their date field holds, so it is the one place a date that
+ *  never should have existed still arrives — and `zonedIso` on one throws `RangeError`
+ *  in that render (field report #38). Without a day there is no instant to place
+ *  against a crossing, so the trip's primary zone is the honest answer, and the form
+ *  stays on screen to be corrected. `DateField` makes this unreachable from the
+ *  platform's Clear; the guard is what keeps the next caller from re-finding it. */
 export function authoringZone(
   base: Partial<TripEvent>,
   at: { date: string; time?: string },
   evidence: ZoneEvidence,
 ): string {
+  if (!isCalendarDay(at.date)) return evidence.primaryZone;
   const wallClock = at.time || DAY_NOON;
   const resolve = (interpretIn: string): string =>
     eventDisplayZones(

@@ -500,8 +500,20 @@ export function formatZoneDelta(minutes: number): string {
     : ltrIsolate(`${sign}${h}:${String(m).padStart(2, '0')}`);
 }
 
+/** **Is this a real calendar day?** The precondition every helper here states in prose
+ *  and none could check: `zonedIso('', …)` builds `new Date('T12:00:00Z')`, an Invalid
+ *  Date whose offset probe throws `RangeError` — in a render path, which is how one
+ *  empty date from a platform control blanked the app (field report #38). Callers that
+ *  can be handed a date they did not author test it here rather than each inventing a
+ *  regex. */
+export function isCalendarDay(date: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
+}
+
 /** Combine a form's `date` (YYYY-MM-DD) + `time` (HH:MM) inputs, read as wall-clock
- *  in `timeZone`, into a UTC ISO instant.
+ *  in `timeZone`, into a UTC ISO instant. **`date` must be a real calendar day**
+ *  (`isCalendarDay`) and `time` an `HH:MM` — anything else is an Invalid Date and
+ *  throws rather than returning one.
  *
  *  The offset for a given wall-clock reading depends on the instant itself (DST),
  *  which is exactly what we're trying to compute — so this resolves the

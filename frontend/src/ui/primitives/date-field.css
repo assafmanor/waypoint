@@ -57,12 +57,19 @@
   box-shadow: none;
 }
 
-/* Focused, the native control IS the control: its editable segments and its calendar
-   affordance are back, and the face steps aside rather than double-printing the value.
-   On a phone that is the moment the platform's picker owns the screen anyway. */
-.df:focus-within .df-input {
+/* **BEING TYPED INTO**, the native control IS the control: its editable segments are
+   back and the face steps aside rather than double-printing a value that is mid-entry.
+   Keyed on `data-typing` (set by the first keystroke, cleared on blur) rather than on
+   `:focus-within`, which was the same thing only until a phone was holding it: the
+   platform's picker leaves the input FOCUSED when it closes, so the field then read its
+   platform format — `12.9.2026` where the face says `שבת, 12 בספט׳` — and clipped it,
+   because a native date is one unwrappable line inside a box the face sized (field
+   report #36). A touch user never types a segment, so on a phone the face now never
+   steps aside; the picker's own surface is still the platform's, which is where its
+   format belongs. */
+.df[data-typing] .df-input {
   opacity: 1;
 }
-.df:focus-within .df-face {
+.df[data-typing] .df-face {
   visibility: hidden;
 }

@@ -1357,4 +1357,87 @@ describe('EventForm (folded into Modal, U-01)', () => {
       });
     });
   });
+
+  // ── the platform's date Clear (field report #38) ─────────────────────────────
+  // The crash, end to end and in the app's own words: Android's date picker has a
+  // Clear button, `DateField` forwarded its `''`, `EventForm` derived a zone from the
+  // date on EVERY render, and `zonedIso('')` built an Invalid Date whose `Intl` read
+  // threw `RangeError` — in render, with no error boundary anywhere in `frontend/src`,
+  // so the whole tree unmounted and the screen went blank. These tests fail by
+  // throwing, which is the failure they are about.
+  describe('clearing the date in the platform picker', () => {
+    const dateInput = () => document.querySelector('#ef-date') as HTMLInputElement;
+    const clear = () => fireEvent.change(dateInput(), { target: { value: '' } });
+    const saved = {
+      id: 'ev-9',
+      tripId: 't1',
+      date: '2026-07-22',
+      title: 'ארוחת ערב',
+      kind: 'soft',
+      icon: '🍜',
+      category: 'food',
+      status: 'planned',
+      sortOrder: 1,
+      source: 'manual',
+      startsAt: '2026-07-22T10:00:00.000Z',
+      createdAt: '',
+      updatedAt: '',
+      updatedBy: 'u1',
+    };
+
+    it('leaves a new event\u2019s form standing, on the date it was showing', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+        target: { value: 'קפה' },
+      });
+      clear();
+
+      // Still mounted at all — the thing the report is about.
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      expect(dateInput().value).toBe('2026-07-20');
+      // …and nothing else the draft was holding went with it.
+      expect(
+        (screen.getByPlaceholderText(t.eventForm.titlePlaceholder) as HTMLInputElement).value,
+      ).toBe('קפה');
+    });
+
+    it('saves the restored date, not an empty one', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+        target: { value: 'קפה' },
+      });
+      clear();
+      fireEvent.click(screen.getByText(t.eventForm.save));
+      expect(verbs.create).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-07-20' }));
+    });
+
+    it('rolls an edited event back to the date it had, after a tentative move', () => {
+      render(wrapNav(<EventForm event={saved as never} onClose={() => {}} />));
+      expect(dateInput().value).toBe('2026-07-22');
+
+      fireEvent.pointerDown(dateInput());
+      fireEvent.change(dateInput(), { target: { value: '2026-07-24' } });
+      expect(dateInput().value).toBe('2026-07-24');
+
+      clear();
+      expect(screen.getByRole('dialog')).toBeTruthy();
+      expect(dateInput().value).toBe('2026-07-22');
+      fireEvent.click(screen.getByText(t.eventForm.save));
+      expect(verbs.update).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ev-9' }),
+        expect.objectContaining({ date: '2026-07-22' }),
+      );
+    });
+
+    it('still takes a date the picker actually selected', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+        target: { value: 'קפה' },
+      });
+      fireEvent.pointerDown(dateInput());
+      fireEvent.change(dateInput(), { target: { value: '2026-07-23' } });
+      fireEvent.click(screen.getByText(t.eventForm.save));
+      expect(verbs.create).toHaveBeenCalledWith(expect.objectContaining({ date: '2026-07-23' }));
+    });
+  });
 });
