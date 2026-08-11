@@ -26,10 +26,10 @@ import { generateId } from '../lib/id';
 import { withChangeGroup } from '../lib/outbox';
 import {
   authoringZone,
+  effectiveTitle,
   eventDisplayZones,
   placeDerivedTitle,
   placeTimezone,
-  titleAfterErrand,
 } from '../lib/places';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
@@ -78,12 +78,11 @@ import { RouteField } from './domain';
  *  `error` is deliberately absent: it is a statement about the last save attempt, not
  *  something the user typed. */
 export interface EventFormDraft {
+  /** **The EXPLICIT title only** (field report #37) — blank means the linked Place answers.
+   *  So there is no `titleTouched` to carry beside it: the emptiness IS the provenance, and a
+   *  round trip that changes the place changes the effective title by itself, which is what
+   *  the flag was working around. */
   title: string;
-  /** **Has a human typed this name?** (field report #30.) While false the title follows the
-   *  linked Place, and it must travel for the same reason `kindTouched` does: a Map errand
-   *  that dropped it would come back having silently handed the user's own title back to the
-   *  derivation — or frozen a derived one against the place it just went to fetch. */
-  titleTouched: boolean;
   date: string;
   start: string;
   end: string;
@@ -219,25 +218,27 @@ export function EventForm({
   // explicit `pickBookingType` could have put it there.
   const derivedIcon = initialCategory ? iconForCategory(initialCategory) : undefined;
   const initialIconTouched = storedIcon != null && storedIcon !== derivedIcon;
-  // **The derivation runs here, at the initial value, and NOT again at mount** — which is
-  // what keeps an untouched open off the discard guard. `dirty` diffs against `initialTitle`,
-  // so re-deriving a saved event's title from a place that has since been renamed would
-  // report a form nobody typed in as dirty. An existing event (or an idea) opens on the title
-  // it was saved with; only a fresh form with a place already attached derives one.
-  const derivedTitle = placeDerivedTitle(places, initialPlaceId);
-  const initialTitle = event?.title ?? maybeItem?.title ?? derivedTitle ?? '';
-  const initialTitleTouched = initialTitle.trim() !== '' && initialTitle.trim() !== derivedTitle;
+  // **The same value test, one form over** (field report #37). The record stores only the
+  // EFFECTIVE title, so a stored name that is exactly what the Place derives is read as the
+  // derivation's answer and the box opens empty — the Place goes on answering, and changing
+  // it changes the name. Anything else is a person's and opens as the text they typed.
+  //
+  // The derivation runs here, at the INITIAL place, and the box holds explicit text only:
+  // `dirty` diffs against `initialTitle`, so a saved event whose place has since been
+  // renamed must not open reporting a change nobody made.
+  //
+  // Both reads are guarded by `showPlace` for one reason: a booking-linked event authors no
+  // place here (ADR-0051), so nothing on this form could re-derive a name it decided was the
+  // derivation's — the box must open on the stored title and the save must keep it.
+  const derivedTitle = placeDerivedTitle(places, showPlace ? initialPlaceId : undefined);
+  const storedTitle = (event?.title ?? maybeItem?.title ?? '').trim();
+  const initialTitle = storedTitle && storedTitle !== derivedTitle ? storedTitle : '';
 
   // A returning draft wins over every derived initial value (ADR-0134 §2) — including
   // the ones derived from the trip, since the user may well have changed the day since.
-  //
-  // The title is the exception, and `titleAfterErrand` is why: the errand assigns the chosen
-  // place into the draft blob without knowing anything derives from it, so an untouched title
-  // catches up with the place it was sent to fetch.
-  const title = useDerivedField(
-    draft ? titleAfterErrand(places, draft.placeId, draft.title, draft.titleTouched) : initialTitle,
-    draft?.titleTouched ?? initialTitleTouched,
-  );
+  // The title needs no `titleAfterErrand` catch-up any more: an untouched title travels as
+  // the empty string, and the place it comes back with is what answers on the next render.
+  const [title, setTitle] = useState(draft ? draft.title : initialTitle);
   const [date, setDate] = useState(draft?.date ?? initialDate);
   const [start, setStart] = useState(draft?.start ?? initialStart);
   const [end, setEnd] = useState(draft?.end ?? initialEnd);
@@ -314,13 +315,24 @@ export function EventForm({
   // defaulted, trivially fixable", the posture ADR-0113/0116 §1 set.
   const routeFrom = fromPlaceId ?? placeId;
 
+  // ── THE NAME IN FORCE (field report #37) ────────────────────────────────────────────
+  // The precedence, recomputed every render rather than latched anywhere: what a person
+  // typed, else the linked Place's name, else nothing — and nothing is what `submit`
+  // refuses. It is one value because it feeds four consumers that must not be able to
+  // disagree: the box's placeholder, the errand's label, the save, and (through the save)
+  // every card, rail, list and readiness read of `Event.title`.
+  //
+  // The place is the one the save writes, so a title cannot outlive the field that derived
+  // it. Transport keeps its endpoint-derived name (ADR-0059 §3) and never reads this.
+  const placeTitle = placeDerivedTitle(places, showPlace ? placeId : undefined);
+  const finalTitle = effectiveTitle(title, placeTitle);
+
   /** **ONE hand-over blob for all three place errands** (ADR-0134 §2). It was written out
    *  inline when there was one errand; there are three now (the place and the two route
    *  ends), and a field missed in one copy is silently lost on the way back — which is the
    *  failure that §2 exists to name. Built at call time so it captures the latest state. */
   const errandDraft = (): EventFormDraft => ({
-    title: title.value,
-    titleTouched: title.touched,
+    title,
     date,
     start,
     end,
@@ -356,16 +368,12 @@ export function EventForm({
     deriveKind(booked.redrive(CATEGORY_DEFAULT_BOOKED[next]), CATEGORY_TO_BOOKING_TYPE[next]);
   };
 
-  /** **The place fills the name until a person types one** (field report #30). The only
-   *  in-form path is the clear (a pick is a Map errand, applied at mount), and clearing
-   *  re-derives to nothing on purpose: an untouched title was never anything but the
-   *  place's echo, and a placeless event has no derivation left — so the save's own
-   *  `titleRequired` asks for a real one rather than saving a name for a place that is
-   *  no longer linked. */
-  const pickPlace = (next?: string) => {
-    setPlaceId(next);
-    title.redrive(placeDerivedTitle(places, next) ?? '');
-  };
+  /** **The place answers the name while nobody has typed one** (field reports #30/#37), and
+   *  it takes no title state with it: the name in force is recomputed below from whatever
+   *  place is linked now. So a clear here leaves a blank box with no derivation behind it,
+   *  and the save's own `titleRequired` asks for a real name rather than keeping the name of
+   *  a place that is no longer linked. */
+  const pickPlace = (next?: string) => setPlaceId(next);
 
   const toggleBooked = () => {
     const next = !booked.value;
@@ -401,7 +409,9 @@ export function EventForm({
 
   const dirty =
     override !== initialOverride ||
-    title.value !== initialTitle ||
+    // The EXPLICIT text, which is all this field now holds: a derived name is not an edit,
+    // and the box is empty while the Place is answering.
+    title !== initialTitle ||
     date !== initialDate ||
     start !== initialStart ||
     end !== initialEnd ||
@@ -488,11 +498,13 @@ export function EventForm({
     // two things missing says so once, instead of sending the user round the save
     // loop a second time to be told the next one.
     const problems: FieldProblem<'title' | 'date' | 'time'>[] = [];
-    // **Still the refusal it was.** A placed event never reaches it — the title follows the
-    // Place — but an event with no location has nothing to derive from, so the form must
-    // still ask. (`BookingSheet` deleted its equivalent when field report #9 gave it a type
-    // label to fall back on; an event has no such last resort.)
-    if (!title.value.trim()) problems.push({ field: 'title', message: t.eventForm.titleRequired });
+    // **Still the refusal it was, and now only where it is answerable** (field report #37).
+    // It reads the name IN FORCE, so a placed event never reaches it whether the name was
+    // typed or derived — and deleting a typed one hands the Place back its answer instead of
+    // refusing a save nothing in the open form could cure. An event with no location and no
+    // text has nothing left to be called. (`BookingSheet` deleted its equivalent when field
+    // report #9 gave it a type label to fall back on; an event has no such last resort.)
+    if (!finalTitle) problems.push({ field: 'title', message: t.eventForm.titleRequired });
     // Native min/max guides the picker, but a typed value can still land outside
     // the trip. An event belongs to a day within [startDate, endDate] — an
     // overnight event on the last day still files under that day (ADR-0037).
@@ -519,7 +531,10 @@ export function EventForm({
 
     const fields = {
       date,
-      title: title.value.trim(),
+      // **The RESOLVED name is what is persisted** (field report #37) — the shape
+      // `BookingSheet` already saves through. Every consumer of `Event.title` keeps reading a
+      // plain string, and the box stays the explicit half.
+      title: finalTitle,
       icon: icon.value,
       category,
       kind: kind.value,
@@ -681,9 +696,17 @@ export function EventForm({
               <IconPicker icon={icon.value} onChange={icon.set} />
               <input
                 className="title-input"
-                value={title.value}
-                onChange={(e) => title.set(e.target.value)}
-                placeholder={t.eventForm.titlePlaceholder}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                // **The placeholder is the name this will actually save** while the box is
+                // empty (field report #37, the shape `BookingSheet` has carried since #9) —
+                // so an automatic name is visible without being typed into the field, and
+                // deleting what you typed shows you what you are handing back to.
+                placeholder={placeTitle ?? t.eventForm.titlePlaceholder}
+                // The `Field` label sits over a two-control row and names neither, and the
+                // placeholder is a value now — naming the box after it would name it after
+                // its own content, so the caption is the accessible name.
+                aria-label={t.eventForm.titleLabel}
               />
             </div>
           </Field>
@@ -745,7 +768,7 @@ export function EventForm({
                   onFind={(end, side) =>
                     startErrand?.({
                       target: { kind: 'event', id: event?.id, field: end },
-                      label: [title.value.trim() || t.map.errand.untitledEvent, side]
+                      label: [finalTitle || t.map.errand.untitledEvent, side]
                         .filter(Boolean)
                         .join(` ${DOT_SEPARATOR} `),
                       draft: errandDraft(),
@@ -773,7 +796,9 @@ export function EventForm({
                   onFind={() =>
                     startErrand?.({
                       target: { kind: 'event', id: event?.id, field: 'placeId' },
-                      label: title.value.trim() || t.map.errand.untitledEvent,
+                      // The name in force, so an errand to REPLACE a place is announced by
+                      // the name that place is currently giving the event.
+                      label: finalTitle || t.map.errand.untitledEvent,
                       draft: errandDraft(),
                     })
                   }

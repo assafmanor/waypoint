@@ -1006,9 +1006,11 @@ describe('EventForm (folded into Modal, U-01)', () => {
   // and both are answered by a VALUE TEST rather than a stored flag (`chosenIcon`'s precedent).
   // So the tests that matter most are the reopen ones: what the app persists is the effective
   // value, and reading that back as a human's choice is exactly the defect.
-  describe('derived title + icon (field reports #30/#31)', () => {
+  describe('derived title + icon (field reports #30/#31/#37)', () => {
+    // By the LABEL, not the placeholder: the placeholder is a value now (the name the save
+    // will write), so a test that found the box by it would only ever find a placeless one.
     const titleBox = () =>
-      screen.getByPlaceholderText(t.eventForm.titlePlaceholder) as HTMLInputElement;
+      screen.getByRole('textbox', { name: t.eventForm.titleLabel }) as HTMLInputElement;
     const iconChip = () => screen.getByRole('button', { name: t.iconPicker.open });
     const type = (value: string) => fireEvent.change(titleBox(), { target: { value } });
     const pickCategory = (category: keyof typeof t.iconPicker.categories) =>
@@ -1050,14 +1052,19 @@ describe('EventForm (folded into Modal, U-01)', () => {
       tripState.places = [];
     });
 
-    it('fills a blank untouched title from the place that comes back', () => {
+    // ── #37: the precedence, not a latch ─────────────────────────────────────────────
+    // The box holds the EXPLICIT half only. The Place's answer is shown where it cannot be
+    // mistaken for something a person typed — and is what the save writes.
+    it('shows the place that comes back as the placeholder, and leaves the box empty', () => {
       render(wrapNav(<EventForm onClose={() => {}} />));
       expect(titleBox().value).toBe('');
+      expect(titleBox().placeholder).toBe(t.eventForm.titlePlaceholder);
       errandBack(PLACE_B.id);
-      expect(titleBox().value).toBe(PLACE_B.name);
+      expect(titleBox().value).toBe('');
+      expect(titleBox().placeholder).toBe(PLACE_B.name);
     });
 
-    it('follows a REPLACEMENT place while the title is still derived', () => {
+    it('follows a REPLACEMENT place while the explicit title is blank', () => {
       render(
         wrapNav(
           <EventForm
@@ -1066,37 +1073,111 @@ describe('EventForm (folded into Modal, U-01)', () => {
           />,
         ),
       );
-      expect(titleBox().value).toBe(PLACE_A.name);
+      expect(titleBox().value).toBe('');
+      expect(titleBox().placeholder).toBe(PLACE_A.name);
       errandBack(PLACE_B.id);
-      expect(titleBox().value).toBe(PLACE_B.name);
+      expect(titleBox().placeholder).toBe(PLACE_B.name);
+
+      // The errand re-opens the form from its draft, so the save is a create here — what
+      // matters is the name it carries: the place in force, never the one it opened on.
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.create).toHaveBeenCalledWith(expect.objectContaining({ title: PLACE_B.name }));
     });
 
-    // The whole point of the latch: a name a person typed is theirs, and no later place
-    // change may take it back.
+    // The whole point of the precedence's first rung: a name a person typed is theirs, and
+    // no later place change may take it back.
     it('keeps a manually typed title through a place change', () => {
       render(wrapNav(<EventForm onClose={() => {}} />));
       type('ארוחת ערב');
       errandBack(PLACE_B.id);
       expect(titleBox().value).toBe('ארוחת ערב');
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'ארוחת ערב', placeId: PLACE_B.id }),
+      );
     });
 
-    // ADR-0134 §2's failure mode, for this field: a flag left off the blob comes back
-    // reset, so the errand itself would hand the user's title back to the derivation.
-    it('carries the title latch across the errand, in both states', () => {
+    // ADR-0134 §2's failure mode, for this field — and #37's answer to it: the emptiness IS
+    // the provenance, so the blob carries the explicit text and no flag beside it.
+    it('carries the EXPLICIT title across the errand, and nothing else', () => {
       render(wrapNav(<EventForm onClose={() => {}} />));
       fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
-      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({ titleTouched: false });
+      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({ title: '' });
+      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).not.toHaveProperty('titleTouched');
 
       type('ארוחת ערב');
       fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
-      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({
-        title: 'ארוחת ערב',
-        titleTouched: true,
-      });
+      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({ title: 'ארוחת ערב' });
+    });
+
+    // **The reported dead end** (#37): clearing the box used to leave the form refusing a
+    // save with no way to satisfy it while it was open. Deleting hands control BACK.
+    it('hands a deleted title back to the place, with no missing-name refusal', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      type('ארוחת ערב');
+      errandBack(PLACE_B.id);
+      type('');
+
+      expect(titleBox().placeholder).toBe(PLACE_B.name);
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(titleBox().closest('.field')?.hasAttribute('data-invalid')).toBe(false);
+      expect(verbs.create).toHaveBeenCalledWith(expect.objectContaining({ title: PLACE_B.name }));
+    });
+
+    // Whitespace is blank wherever this rule is asked — the box, the save and the refusal.
+    it('treats a whitespace-only title as blank, deriving where it can and refusing where it cannot', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      errandBack(PLACE_B.id);
+      type('   ');
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.create).toHaveBeenCalledWith(expect.objectContaining({ title: PLACE_B.name }));
+
+      cleanup();
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      type('   ');
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.create).toHaveBeenCalledTimes(1);
+      expect(titleBox().closest('.field')?.hasAttribute('data-invalid')).toBe(true);
+    });
+
+    // Removing the place while the box is blank leaves nothing to be called, so the refusal
+    // comes back — the third rung of the precedence.
+    it('restores the required-title refusal when the place is removed', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      errandBack(PLACE_B.id);
+      fireEvent.click(screen.getByRole('button', { name: t.placePicker.clear }));
+
+      expect(titleBox().placeholder).toBe(t.eventForm.titlePlaceholder);
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.create).not.toHaveBeenCalled();
+      expect(titleBox().closest('.field')?.hasAttribute('data-invalid')).toBe(true);
+    });
+
+    // A booking-linked event authors no place here (ADR-0051), so there is no derivation on
+    // this form to hand the name back to: the stored title is the only answer, whatever it
+    // happens to equal. Read as derived, its box would open empty and its save would refuse.
+    it('keeps a linked event’s stored title, even when a place happens to share it', () => {
+      tripState.bookings = [{ id: 'bk-1', title: PLACE_A.name, type: 'restaurant' }];
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: PLACE_A.name, placeId: PLACE_A.id, bookingId: 'bk-1' })}
+            onClose={() => {}}
+          />,
+        ),
+      );
+      expect(titleBox().value).toBe(PLACE_A.name);
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.update).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ title: PLACE_A.name }),
+      );
+      tripState.bookings = [];
     });
 
     // Save then reopen, in BOTH directions — the direction that used to be wrong for the
-    // icon, and the one that must not break while fixing it.
+    // icon, and the one that must not break while fixing it. A stored name that is exactly
+    // what the place derives is the derivation's answer, not evidence anyone typed it.
     it('reopens a place-named event as still derived, and a typed one as chosen', () => {
       render(
         wrapNav(
@@ -1107,7 +1188,8 @@ describe('EventForm (folded into Modal, U-01)', () => {
         ),
       );
       errandBack(PLACE_B.id);
-      expect(titleBox().value).toBe(PLACE_B.name);
+      expect(titleBox().value).toBe('');
+      expect(titleBox().placeholder).toBe(PLACE_B.name);
 
       cleanup();
       render(

@@ -107,13 +107,33 @@ export function placeDerivedTitle(places: Place[], placeId?: string): string | u
   return placeName(places, placeId)?.trim() || undefined;
 }
 
+/** **The title in force, by the owner's precedence** (field report #37): what a person
+ *  explicitly typed, else what the linked Place derives, else whatever last resort the
+ *  caller has (`BookingSheet`'s type label, ADR-0163 §3; an Event has none, so its save
+ *  still refuses). Blank is blank — whitespace-only text was never a title.
+ *
+ *  **One function because the three answers must not be able to disagree.** The visible
+ *  value, the placeholder and the saved value are three `||` chains at three call sites
+ *  otherwise, and #37 is what that costs: `EventForm` resolved the same question a fourth
+ *  way and refused a save a person could not fix. */
+export function effectiveTitle(...candidates: (string | undefined)[]): string {
+  for (const candidate of candidates) {
+    const trimmed = candidate?.trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
 /** **The title a form re-opens with after a place errand** (field report #30). The errand
  *  channel assigns the chosen place into the opaque draft (`assignErrandPlace`) and cannot
  *  know that anything derives from it, so the re-mounting form asks here: an untouched title
  *  follows the place that came back, a title a person typed is theirs and survives the trip.
  *
- *  One function rather than the same ternary in both forms — the round trip is exactly where
- *  a second copy would drift (`EventFormDraft`'s header names that failure). */
+ *  **One caller left, and that is the whole story of #37.** `EventForm` no longer holds a
+ *  derived name in its field at all — a blank box means the Place answers, so there is
+ *  nothing for an errand to catch up on. `BookingSheet` still carries the derived name as
+ *  its field's value, so it still needs this; the day the two forms author alike, this goes
+ *  with the flag it serves. */
 export function titleAfterErrand(
   places: Place[],
   placeId: string | undefined,

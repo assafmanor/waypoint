@@ -1621,6 +1621,37 @@ describe('BookingSheet — the name follows the place, the glyph follows the typ
     );
   });
 
+  // ── PARITY, ASSERTED RATHER THAN CHANGED (field report #37) ─────────────────────────
+  // `EventForm` adopted this sheet's precedence and both now resolve it through the one
+  // `effectiveTitle`. These two pin the behaviour that was already here, so the sharing
+  // cannot quietly move it.
+  it('shows the linked place as the placeholder — the name the save will write', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    pastTypeStep();
+    expect(titleBox().placeholder).toBe(t.index.sheet.titlePlaceholder);
+    errandBack('pl-nrt');
+    expect(titleBox().placeholder).toBe('טוקיו');
+  });
+
+  it('treats a whitespace-only name as blank and saves the place instead', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={hotel({ title: 'טוקיו', placeId: 'pl-nrt' })} onClose={() => {}} />,
+      ),
+    );
+    fireEvent.change(titleBox(), { target: { value: '   ' } });
+    toLastStep();
+    save();
+    expect(indexVerbs.updateBooking).toHaveBeenCalledWith(
+      'bk-h',
+      expect.objectContaining({ title: 'טוקיו' }),
+    );
+  });
+
   // A journey is named by its route (ADR-0059 §3) and a hire by its company (ADR-0163 §3):
   // neither reads the title box, and neither is pulled into the place rule.
   it('leaves a flight route-derived', () => {
