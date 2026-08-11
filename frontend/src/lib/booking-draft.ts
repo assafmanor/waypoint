@@ -23,9 +23,10 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { findPlaceByName, isoToDateTimeLocal } from './booking-edit';
-import { bookingZoneOverrides, placeTimezone } from './places';
+import { bookingZoneOverrides, placeDerivedTitle, placeTimezone } from './places';
 import { isoToTimeInput } from './time';
 import { BOOKING_TYPE_ICON, chosenIcon } from '../constants';
+import { t } from '../i18n/he';
 
 /** What a checklist CTA can prefill (`PlanHome`'s flight/lodging rows). */
 export interface BookingSeed {
@@ -39,9 +40,16 @@ export interface BookingSeed {
  *  are deliberately absent: they describe the last save attempt, not anything typed. */
 export interface BookingSheetDraft {
   type: BookingType;
+  /** **Has a human picked this glyph?** (field report #31.) A value test rather than a
+   *  stored flag — see `chosenIcon`, whose comment argues the case, and `EventForm`'s
+   *  own initial state, which answers the same question the same way. */
   iconTouched: boolean;
   icon: string;
   title: string;
+  /** **Has a human typed this name?** (field report #30.) While false the title follows the
+   *  linked Place, so the value on screen is the one `finalTitle` would save rather than a
+   *  ghost of it — and it travels on the draft so a Map errand cannot reset the answer. */
+  titleTouched: boolean;
   code: string;
   /** **The company behind the booking** (ADR-0163 §2) — `Booking.provider`. Travels in
    *  the draft like every other typed field, so a place errand to the Map cannot lose it. */
@@ -189,11 +197,27 @@ export function bookingSheetDraft(input: {
     ? zoneOf(toPlaceId || undefined, endOverride)
     : zoneOf(placeId, startOverride);
 
+  // **STORING AN EFFECTIVE VALUE IS NOT EVIDENCE OF A CHOICE** (field reports #30/#31).
+  // Both flags below are value tests, the shape `chosenIcon` established: a stored
+  // explicitness column would have to be maintained by every writer, would go stale the
+  // moment someone genuinely picks the default, and would be wrong for every row written
+  // before it existed. The cost is the same honest one: pick the glyph the type would have
+  // picked anyway, or type the place's own name, and the derivation keeps following — which
+  // costs nothing, since what it re-derives is exactly what was picked.
+  const storedIcon = chosenIcon(linkedEvent?.icon);
+  // The full fallback chain `finalTitle` saves through — the place's name, then the type
+  // label (field report #9) — so a booking saved with either reopens still following it.
+  // A journey's and a hire's titles come from their route and their company instead
+  // (ADR-0059 §3 / ADR-0163 §3), so neither reads this flag.
+  const derivedTitle = placeDerivedTitle(places, placeId) ?? t.index.bookingType[type];
+  const title = booking?.title ?? '';
+
   return {
     type,
-    iconTouched: false,
-    icon: chosenIcon(linkedEvent?.icon) ?? BOOKING_TYPE_ICON[type],
-    title: booking?.title ?? '',
+    icon: storedIcon ?? BOOKING_TYPE_ICON[type],
+    iconTouched: storedIcon != null && storedIcon !== BOOKING_TYPE_ICON[type],
+    title,
+    titleTouched: title.trim() !== '' && title.trim() !== derivedTitle,
     code: booking?.confirmationCode ?? '',
     provider: booking?.provider ?? '',
     fromPlaceId: fromPlaceId || undefined,

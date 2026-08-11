@@ -35,8 +35,10 @@ import {
   mapsDayRouteUrl,
   mapsKnowledgeUrl,
   nextDestination,
+  placeDerivedTitle,
   referencedPlaceIds,
   segmentZoneAt,
+  titleAfterErrand,
   tripZoneCrossings,
   type ZoneContext,
   type ZoneCrossing,
@@ -1350,5 +1352,28 @@ describe('eventShowOnMap / bookingShowOnMap / ideaShowOnMap', () => {
     expect(ideaShowOnMap({}, PL, nop)).toBeUndefined();
     expect(ideaShowOnMap({ placeId: 'pl-lite' }, PL, nop)).toBeUndefined();
     expect(ideaShowOnMap({ placeId: 'pl-c' }, PL, null)).toBeUndefined();
+  });
+});
+// **What a Place derives as a title, in one place** (field report #30) — read by `EventForm`
+// and by `BookingSheet`'s `finalTitle`, which is exactly why it is not written twice.
+describe('placeDerivedTitle / titleAfterErrand', () => {
+  const named = (name: string): Place =>
+    ({ id: 'p1', tripId: 't1', name, createdAt: '', updatedAt: '', updatedBy: 'u' }) as Place;
+
+  it('answers the place name, and undefined where there is nothing to derive from', () => {
+    expect(placeDerivedTitle([named('איצ׳ירן')], 'p1')).toBe('איצ׳ירן');
+    expect(placeDerivedTitle([named('איצ׳ירן')], undefined)).toBeUndefined();
+    expect(placeDerivedTitle([named('איצ׳ירן')], 'p-missing')).toBeUndefined();
+    // Blank-but-present is nothing to derive from either, so the `??` chain keeps running.
+    expect(placeDerivedTitle([named('   ')], 'p1')).toBeUndefined();
+  });
+
+  it('lets an untouched title follow the place an errand came back with, and never a touched one', () => {
+    const places = [named('איצ׳ירן')];
+    expect(titleAfterErrand(places, 'p1', '', false)).toBe('איצ׳ירן');
+    expect(titleAfterErrand(places, 'p1', 'ארוחת ערב', true)).toBe('ארוחת ערב');
+    // A cancelled errand comes back with no place: an untouched title keeps what it had
+    // rather than being blanked by a derivation that has nothing to answer with.
+    expect(titleAfterErrand(places, undefined, 'קפה', false)).toBe('קפה');
   });
 });

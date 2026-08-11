@@ -89,6 +89,33 @@ export function placeName(places: Place[], placeId?: string): string | undefined
   return places.find((p) => p.id === placeId)?.name;
 }
 
+/** **What a linked Place derives as a title** (field reports #30/#31) — the ONE answer both
+ *  authoring forms read, so the value shown while typing and the value `BookingSheet`'s
+ *  `finalTitle` saves can never disagree. `undefined` when nothing is linked or the place is
+ *  nameless, so the `??`/`||` chain behind it keeps running.
+ *
+ *  Transport is deliberately not in here: a journey is named by its route (ADR-0059 §3), and
+ *  a hire by its company (ADR-0163 §3). Both are titles a Place cannot supply. */
+export function placeDerivedTitle(places: Place[], placeId?: string): string | undefined {
+  return placeName(places, placeId)?.trim() || undefined;
+}
+
+/** **The title a form re-opens with after a place errand** (field report #30). The errand
+ *  channel assigns the chosen place into the opaque draft (`assignErrandPlace`) and cannot
+ *  know that anything derives from it, so the re-mounting form asks here: an untouched title
+ *  follows the place that came back, a title a person typed is theirs and survives the trip.
+ *
+ *  One function rather than the same ternary in both forms — the round trip is exactly where
+ *  a second copy would drift (`EventFormDraft`'s header names that failure). */
+export function titleAfterErrand(
+  places: Place[],
+  placeId: string | undefined,
+  draftTitle: string,
+  touched: boolean,
+): string {
+  return touched ? draftTitle : (placeDerivedTitle(places, placeId) ?? draftTitle);
+}
+
 /** Convenience: resolve an event straight to its display place name. */
 export function eventPlaceName(
   event: TripEvent,

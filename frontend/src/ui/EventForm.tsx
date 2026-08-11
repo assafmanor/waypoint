@@ -24,7 +24,13 @@ import {
 import { useTrip } from '../state/trip-state';
 import { generateId } from '../lib/id';
 import { withChangeGroup } from '../lib/outbox';
-import { authoringZone, eventDisplayZones, placeTimezone } from '../lib/places';
+import {
+  authoringZone,
+  eventDisplayZones,
+  placeDerivedTitle,
+  placeTimezone,
+  titleAfterErrand,
+} from '../lib/places';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
 import { useStartPlaceErrand } from '../state/map-scope-state';
@@ -36,6 +42,7 @@ import { buildEventSeed } from '../lib/booking-edit';
 import {
   BOOKING_TYPE_ICON,
   CATEGORY_DEFAULT_BOOKED,
+  chosenIcon,
   DEFAULT_EVENT_ICON,
   DOT_SEPARATOR,
   TRANSPORT_BOOKING_TYPES,
@@ -72,6 +79,11 @@ import { RouteField } from './domain';
  *  something the user typed. */
 export interface EventFormDraft {
   title: string;
+  /** **Has a human typed this name?** (field report #30.) While false the title follows the
+   *  linked Place, and it must travel for the same reason `kindTouched` does: a Map errand
+   *  that dropped it would come back having silently handed the user's own title back to the
+   *  derivation — or frozen a derived one against the place it just went to fetch. */
+  titleTouched: boolean;
   date: string;
   start: string;
   end: string;
@@ -169,7 +181,6 @@ export function EventForm({
 
   // Initial values captured up front so the unsaved-changes guard can diff
   // against them (props are stable while the form is open).
-  const initialTitle = event?.title ?? maybeItem?.title ?? '';
   const initialDate = event?.date ?? defaults?.date ?? activeDate;
   const initialZone =
     initialOverride ??
@@ -183,16 +194,50 @@ export function EventForm({
     ? isoToTimeInput(event.endsAt, initialZone)
     : (defaults?.end ?? '');
   const initialKind: TripEvent['kind'] = event?.kind ?? EVENT_KIND.SOFT;
-  const initialIcon = event?.icon ?? maybeItem?.icon ?? DEFAULT_EVENT_ICON;
   const initialCategory = event?.category ?? maybeItem?.category;
   // `defaults.placeId` is the Map's way in (ADR-0135 §1): you are standing on the place, so it
   // arrives pre-filled. Lowest priority of the three — an existing event's own place wins, and
   // so does the idea's, since either is a statement about THIS thing rather than a prefill.
   const initialPlaceId = event?.placeId ?? maybeItem?.placeId ?? defaults?.placeId;
 
+  // ── DERIVED OR CHOSEN? A VALUE TEST, NOT A STORED FLAG (field reports #30/#31) ───────
+  // Both fields below face the same question on open: is what this event carries the
+  // derivation's answer, or a person's? The app persists only the EFFECTIVE value, so the
+  // record cannot say — and the precedent for answering it anyway is `chosenIcon`, which is
+  // deliberately a value test on the grounds that a stored `*IsDefault` column would have to
+  // be maintained by every writer, would go stale the moment someone genuinely picks the
+  // placeholder, and would be wrong for every row written before it existed. Same trade
+  // accepted here, and it is the same honest cost: someone who deliberately picks the glyph
+  // the category would have picked anyway — or types the place's own name as the title —
+  // reads as not having chosen, and the derivation keeps following. Nothing is lost when it
+  // does, because what it re-derives is the value they picked.
+  const storedIcon = chosenIcon(event?.icon ?? maybeItem?.icon);
+  const initialIcon = storedIcon ?? DEFAULT_EVENT_ICON;
+  // Against the CATEGORY's glyph, which is the derivation this form actually runs on a
+  // category change. A booked transport event badged with its finer booking-type glyph
+  // (🚆 where `transport` derives ✈️) therefore reads as chosen — correctly: only an
+  // explicit `pickBookingType` could have put it there.
+  const derivedIcon = initialCategory ? iconForCategory(initialCategory) : undefined;
+  const initialIconTouched = storedIcon != null && storedIcon !== derivedIcon;
+  // **The derivation runs here, at the initial value, and NOT again at mount** — which is
+  // what keeps an untouched open off the discard guard. `dirty` diffs against `initialTitle`,
+  // so re-deriving a saved event's title from a place that has since been renamed would
+  // report a form nobody typed in as dirty. An existing event (or an idea) opens on the title
+  // it was saved with; only a fresh form with a place already attached derives one.
+  const derivedTitle = placeDerivedTitle(places, initialPlaceId);
+  const initialTitle = event?.title ?? maybeItem?.title ?? derivedTitle ?? '';
+  const initialTitleTouched = initialTitle.trim() !== '' && initialTitle.trim() !== derivedTitle;
+
   // A returning draft wins over every derived initial value (ADR-0134 §2) — including
   // the ones derived from the trip, since the user may well have changed the day since.
-  const [title, setTitle] = useState(draft?.title ?? initialTitle);
+  //
+  // The title is the exception, and `titleAfterErrand` is why: the errand assigns the chosen
+  // place into the draft blob without knowing anything derives from it, so an untouched title
+  // catches up with the place it was sent to fetch.
+  const title = useDerivedField(
+    draft ? titleAfterErrand(places, draft.placeId, draft.title, draft.titleTouched) : initialTitle,
+    draft?.titleTouched ?? initialTitleTouched,
+  );
   const [date, setDate] = useState(draft?.date ?? initialDate);
   const [start, setStart] = useState(draft?.start ?? initialStart);
   const [end, setEnd] = useState(draft?.end ?? initialEnd);
@@ -204,12 +249,13 @@ export function EventForm({
     draft?.kindTouched ?? Boolean(event),
   );
   // The icon is a pure badge (ADR-0109 §11): picking a category defaults the glyph via
-  // `iconForCategory`, unless the user has deliberately chosen one. Editing an event that
-  // already carries a glyph counts as chosen, so a later category change doesn't clobber it;
-  // a fresh event starts untouched.
+  // `iconForCategory`, unless the user has deliberately chosen one. **Carrying a glyph is not
+  // choosing one** (field report #31): this read `Boolean(event?.icon ?? maybeItem?.icon)`,
+  // and since the effective default is what gets persisted, every saved event with any icon
+  // reopened as chosen and the category stopped moving it. The value test above answers it.
   const icon = useDerivedField(
     draft?.icon ?? initialIcon,
-    draft?.iconTouched ?? Boolean(event?.icon ?? maybeItem?.icon),
+    draft?.iconTouched ?? initialIconTouched,
   );
   const [category, setCategory] = useState<EventCategory | undefined>(
     draft ? draft.category : initialCategory,
@@ -273,7 +319,8 @@ export function EventForm({
    *  ends), and a field missed in one copy is silently lost on the way back — which is the
    *  failure that §2 exists to name. Built at call time so it captures the latest state. */
   const errandDraft = (): EventFormDraft => ({
-    title,
+    title: title.value,
+    titleTouched: title.touched,
     date,
     start,
     end,
@@ -307,6 +354,17 @@ export function EventForm({
     // `redrive` answers with the value now in force, so the kind's derivation below reads the
     // row's real state rather than a `useState` React has not flushed yet.
     deriveKind(booked.redrive(CATEGORY_DEFAULT_BOOKED[next]), CATEGORY_TO_BOOKING_TYPE[next]);
+  };
+
+  /** **The place fills the name until a person types one** (field report #30). The only
+   *  in-form path is the clear (a pick is a Map errand, applied at mount), and clearing
+   *  re-derives to nothing on purpose: an untouched title was never anything but the
+   *  place's echo, and a placeless event has no derivation left — so the save's own
+   *  `titleRequired` asks for a real one rather than saving a name for a place that is
+   *  no longer linked. */
+  const pickPlace = (next?: string) => {
+    setPlaceId(next);
+    title.redrive(placeDerivedTitle(places, next) ?? '');
   };
 
   const toggleBooked = () => {
@@ -343,7 +401,7 @@ export function EventForm({
 
   const dirty =
     override !== initialOverride ||
-    title !== initialTitle ||
+    title.value !== initialTitle ||
     date !== initialDate ||
     start !== initialStart ||
     end !== initialEnd ||
@@ -430,7 +488,11 @@ export function EventForm({
     // two things missing says so once, instead of sending the user round the save
     // loop a second time to be told the next one.
     const problems: FieldProblem<'title' | 'date' | 'time'>[] = [];
-    if (!title.trim()) problems.push({ field: 'title', message: t.eventForm.titleRequired });
+    // **Still the refusal it was.** A placed event never reaches it — the title follows the
+    // Place — but an event with no location has nothing to derive from, so the form must
+    // still ask. (`BookingSheet` deleted its equivalent when field report #9 gave it a type
+    // label to fall back on; an event has no such last resort.)
+    if (!title.value.trim()) problems.push({ field: 'title', message: t.eventForm.titleRequired });
     // Native min/max guides the picker, but a typed value can still land outside
     // the trip. An event belongs to a day within [startDate, endDate] — an
     // overnight event on the last day still files under that day (ADR-0037).
@@ -457,7 +519,7 @@ export function EventForm({
 
     const fields = {
       date,
-      title: title.trim(),
+      title: title.value.trim(),
       icon: icon.value,
       category,
       kind: kind.value,
@@ -619,8 +681,8 @@ export function EventForm({
               <IconPicker icon={icon.value} onChange={icon.set} />
               <input
                 className="title-input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                value={title.value}
+                onChange={(e) => title.set(e.target.value)}
                 placeholder={t.eventForm.titlePlaceholder}
               />
             </div>
@@ -683,7 +745,7 @@ export function EventForm({
                   onFind={(end, side) =>
                     startErrand?.({
                       target: { kind: 'event', id: event?.id, field: end },
-                      label: [title.trim() || t.map.errand.untitledEvent, side]
+                      label: [title.value.trim() || t.map.errand.untitledEvent, side]
                         .filter(Boolean)
                         .join(` ${DOT_SEPARATOR} `),
                       draft: errandDraft(),
@@ -706,12 +768,12 @@ export function EventForm({
                     to route to, which no host of this form is (ADR-0134 §9). */}
                 <PlacePicker
                   value={placeId}
-                  onChange={setPlaceId}
+                  onChange={pickPlace}
                   placeholder={t.eventForm.locationPlaceholder}
                   onFind={() =>
                     startErrand?.({
                       target: { kind: 'event', id: event?.id, field: 'placeId' },
-                      label: title.trim() || t.map.errand.untitledEvent,
+                      label: title.value.trim() || t.map.errand.untitledEvent,
                       draft: errandDraft(),
                     })
                   }
