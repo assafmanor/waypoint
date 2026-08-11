@@ -195,6 +195,59 @@ export function rankIdeas(
 }
 
 /**
+ * **The pool strip as it renders** — ranked, pinned, capped, and the tail counted
+ * (ADR-0116's 2026-08-11 amendment, field report #40). One derivation, because both
+ * shelves draw the same strip and this was twelve identical lines in each of them.
+ *
+ * **The pin is the amendment.** The cap keeps the strip's width independent of how many
+ * ideas the trip has accumulated (`SHELF_POOL_CAP`), and the ranking answers "which of
+ * these is useful on this day" — but an idea you have just this second created is not
+ * asking that question. It is asking whether it landed. With the shelf healthy and
+ * fourteen undated ideas on the trip, a Map add 7km from the day's stops moved the tail
+ * count from `עוד 8` to `עוד 9` and nothing else, which to the person who made it is
+ * indistinguishable from the add having failed. So recency stops being `near-the-day`'s
+ * tiebreak here and becomes a floor: the idea this device made last leads the strip
+ * whatever it scored, and the fifth-ranked idea moves into the tail behind it.
+ *
+ * The cap is NOT raised to buy the slot, deliberately — the whole point of a constant
+ * width is that it does not track N, and one pinned tile costs one ranked tile once,
+ * not one per idea the trip accumulates.
+ *
+ * Nothing here expires the pin. It ends when the idea leaves the pool (scheduled,
+ * removed, aimed at this day) or when the next add replaces it — which is every way
+ * "I have seen that it landed" actually ends. A pin whose idea is gone simply matches
+ * nothing, so no caller has to clear one.
+ */
+export function poolStrip(
+  pool: MaybeItem[],
+  context: {
+    places: Place[];
+    date: string;
+    stops: SuggestionStop[];
+    /** Every day's stops, so `fits-a-day` can speak — the shelf is its only caller. */
+    days: { date: string; stops: SuggestionStop[] }[];
+  },
+  options: { justAdded: string | undefined; limit: number },
+): { strip: RankedIdea[]; tail: number } {
+  // Ranked WHOLE, then cut: the pin has to be able to reach in from beyond the cap, and
+  // `suggestFor` slices at the end anyway, so the unlimited call costs nothing.
+  const ranked = rankIdeas(
+    pool,
+    context.places,
+    context.date,
+    context.stops,
+    undefined,
+    context.days,
+  );
+  const pinned = options.justAdded
+    ? ranked.find((r) => r.item.id === options.justAdded)
+    : undefined;
+  const ordered = pinned ? [pinned, ...ranked.filter((r) => r !== pinned)] : ranked;
+  const strip = ordered.slice(0, options.limit);
+  return { strip, tail: pool.length - strip.length };
+}
+
+/**
  * **The shelf, ranked against one slot** — the whole input `SlotFillSheet` needs, in one
  * call (ADR-0161 §6).
  *

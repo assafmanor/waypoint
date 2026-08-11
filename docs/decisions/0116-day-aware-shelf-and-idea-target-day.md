@@ -414,3 +414,57 @@ Four things the build found that the mockup could not:
 4. **The strategy's ordering is the mockup's, not this ADR's prose.** §3 of ADR-0151 reads as a priority list with distance first; the mockup's own `ranked()` partitions on spoken-for and sorts by distance _within_ it. The mockup is right, because the other reading silently reverses §2's dateless-before-aimed-elsewhere grouping — the one thing this build was not supposed to touch.
 
 **Also recorded: a distance past ~5km stops discriminating.** Two ideas across town are both simply "not near today", so they tie there and recency breaks it — which keeps an idea that merely _has_ coordinates from outranking a placeless one on that alone.
+
+## Amendment (2026-08-11, session 253) — the idea you just added is pinned to the strip
+
+Field report #40 ("a Place added to the Maybe shelf from the Map did not appear in the
+Maybe shelf in Day-by-day") reopened field report #32 with a local witness. Two causes,
+and only the second is this ADR's. The first was a sync defect with no bearing on the
+shelf's design, fixed in the same change and recorded in
+[the session note](../planning/2026-08-11-session-253-a-map-add-lands-on-the-shelf.md);
+this section is the shelf half.
+
+**It answers the open question §5 left.** That question was written as _"whether a capped
+strip reads as 'the five best' or as 'something is missing'"_ — a device-pass judgement.
+The report is the answer, and it is sharper than either reading: **the strip reads as
+"the five best" exactly when you needed it to read as "and here is the one you just
+made".** Measured on a real stack with the sync path healthy: fourteen undated ideas, a
+Map add roughly 7km from the day's stops, and the only thing that moved on screen was
+the tail count, `עוד 8` → `עוד 9`. Nothing about that is wrong by §5 — the added idea
+genuinely is not one of the five most useful ideas for the day being viewed — and it is
+still indistinguishable, to the person who made it, from the add having failed.
+
+**The rule.** The idea **this device added last** leads the pool strip, whatever it
+scored. `SHELF_POOL_CAP` is unchanged at 5: the pinned tile takes a slot and the
+fifth-ranked idea moves into the `+ N · במפה` tail behind it.
+
+The rule is stated at the level the mismatch is at. ADR-0151's ranking answers _which of
+these is useful on the day I am looking at_, and it is right about the just-added idea —
+recency is only its tiebreak, and correctly so. But an idea created a second ago is not
+asking that question. It is asking whether it landed. So recency stops being a tiebreak
+in this one case and becomes a **floor**.
+
+**The cap is not raised to buy the slot,** and that is the whole discipline of §5: a
+constant strip width is the promise, so one pinned tile costs one ranked tile **once**,
+not one per idea the trip accumulates. Nudging `SHELF_POOL_CAP` to 6 would have hidden
+this witness and left the next one — an idea added onto a trip with six better-ranked
+ones — to report it again.
+
+**Nothing expires the pin, deliberately.** It ends when the idea leaves the pool
+(scheduled, removed, or aimed at the day you are on) or when the next add replaces it,
+which is every way "I have seen that it landed" actually ends. A timer would be a second
+clock on a surface that has none, and a pin whose idea is gone simply matches nothing —
+so no caller has to clear one, and the derivation stays pure.
+
+**Where it lives.** `lib/shelf.ts`'s `poolStrip` — ranked whole, pinned, capped, tail
+counted — which is one derivation for both shelves. The twelve lines it replaces were
+duplicated verbatim in `DayView` and `PlanDay`, so a rule added at either call site would
+have been the two shelves drifting again, which is what `shelfGroups` exists to prevent.
+The pin's input is `justAddedIdea`, canonical reducer state written by `ADD_MAYBE` — the
+add happens on the Map and the pin has to be true on the day you land on, which no
+screen's own `useState` can promise.
+
+**Not decided here:** whether the pinned tile should say so. It currently renders as an
+ordinary tile with its own ranking reason (`recently-added` takes no line, ADR-0151), so
+it leads the strip with nothing marking it as pinned. Whether that wants a mark is a
+drawing question, and it is on the backlog rather than guessed at here.

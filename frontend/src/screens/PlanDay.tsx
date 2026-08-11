@@ -86,6 +86,7 @@ import {
 import {
   dayStops,
   proposedDay,
+  poolStrip,
   rankIdeas,
   reasonText,
   tripDayStops,
@@ -236,6 +237,7 @@ export function PlanDay() {
     trip,
     events,
     maybeItems,
+    justAddedIdea,
     bookings,
     places,
     notes,
@@ -546,20 +548,23 @@ export function PlanDay() {
   // …and ranked (ADR-0116 session-202 §3 / ADR-0151). Order and reason only; the
   // grouping, and every drop the drag can make, are unchanged.
   const stops = dayStops(events, bookings, places, activeDate);
-  // Capped, with the tail handed to the Map's אולי facet (§5) — which is what keeps
-  // the strip's width independent of how many ideas the trip has accumulated.
-  // `fits-a-day` needs every day's stops, not just this one's (ADR-0151's 2026-08-04
-  // amendment) — so a dateless idea can name the day it belongs to instead of saying
-  // "added recently" on every day of the trip.
-  const rankedPool = rankIdeas(
+  // Capped, with the tail handed to the Map's אולי facet (§5), and the idea you just
+  // added held at the head whatever it scored (ADR-0116's 2026-08-11 amendment). The
+  // same shared derivation Trip mode's day view calls, for the same reason the grouping
+  // above is shared: two shelves, one strip.
+  const { strip: rankedPool, tail: poolTail } = poolStrip(
     shelf.pool,
-    places,
-    activeDate,
-    stops,
-    SHELF_POOL_CAP,
-    tripDayStops(tripDates(trip.startDate, trip.endDate), events, bookings, places),
+    {
+      places,
+      date: activeDate,
+      stops,
+      // `fits-a-day` needs every day's stops, not just this one's (ADR-0151's 2026-08-04
+      // amendment) — so a dateless idea can name the day it belongs to instead of saying
+      // "added recently" on every day of the trip.
+      days: tripDayStops(tripDates(trip.startDate, trip.endDate), events, bookings, places),
+    },
+    { justAdded: justAddedIdea, limit: SHELF_POOL_CAP },
   );
-  const poolTail = shelf.pool.length - rankedPool.length;
   const reasonById = new Map(rankedPool.map((r) => [r.item.id, r.reason]));
   // The day's own group keeps its order (it is small by construction) and gains
   // only the distance line — see `stopReasonText` for why it says nothing else.

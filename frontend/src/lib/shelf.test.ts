@@ -10,6 +10,7 @@ import {
 } from '@waypoint/shared';
 import {
   dayStops,
+  poolStrip,
   rankIdeas,
   proposedDay,
   reasonText,
@@ -348,6 +349,60 @@ describe('rankIdeas', () => {
   it('ranks with no stops at all, which is the offline / no-places day', () => {
     const pool = [withPlace('a', 'p-near'), withPlace('b', 'p-far')];
     expect(rankIdeas(pool, places, DAY, []).map((r) => r.item.id)).toHaveLength(2);
+  });
+
+  // **Field report #40's second cause** (ADR-0116's 2026-08-11 amendment). Reproduced on a
+  // real stack before it was written down: fourteen undated ideas, a Map add 7km from the
+  // day's stops, and the only thing that moved was the tail count.
+  describe('poolStrip — the pin the cap made necessary', () => {
+    const ctx = { places, date: DAY, stops, days: [] };
+    // Five ideas nearer the day than the sixth, which is the shape that buries a new one.
+    const near = ['n1', 'n2', 'n3', 'n4', 'n5'].map((id) => withPlace(id, 'p-near'));
+    const strip = (pool: MaybeItem[], justAdded?: string) =>
+      poolStrip(pool, ctx, { justAdded, limit: SHELF_POOL_CAP });
+
+    it('holds the idea you just added at the head, past a full cap of better-ranked ones', () => {
+      const pool = [...near, withPlace('justAdded', 'p-far')];
+      expect(strip(pool).strip.map((r) => r.item.id)).not.toContain('justAdded');
+      expect(strip(pool, 'justAdded').strip.map((r) => r.item.id)[0]).toBe('justAdded');
+    });
+
+    it('spends a ranked slot on the pin rather than widening the strip', () => {
+      const pool = [...near, withPlace('justAdded', 'p-far')];
+      const pinned = strip(pool, 'justAdded');
+      expect(pinned.strip).toHaveLength(SHELF_POOL_CAP);
+      expect(pinned.tail).toBe(pool.length - SHELF_POOL_CAP);
+      // The fifth-ranked idea is what moved into the tail — not the first.
+      expect(pinned.strip.map((r) => r.item.id)).not.toContain('n5');
+      expect(pinned.strip.map((r) => r.item.id)).toContain('n1');
+    });
+
+    it('carries the pinned idea’s own reason, so its tile still says why', () => {
+      const pool = [...near, withPlace('justAdded', 'p-near')];
+      expect(strip(pool, 'justAdded').strip[0].reason.code).toBeTruthy();
+    });
+
+    it('does not reorder an idea that already ranked into view', () => {
+      const pool = [...near];
+      expect(strip(pool, 'n3').strip.map((r) => r.item.id)[0]).toBe('n3');
+      expect(strip(pool, 'n3').strip).toHaveLength(SHELF_POOL_CAP);
+    });
+
+    // Every way the pin is meant to end: the idea leaves the pool (scheduled, removed,
+    // aimed at this day) and the id simply stops matching. No caller clears one.
+    it('is a no-op once the pinned idea has left the pool', () => {
+      const pool = [...near];
+      expect(strip(pool, 'gone').strip.map((r) => r.item.id)).toEqual(
+        strip(pool).strip.map((r) => r.item.id),
+      );
+    });
+
+    it('leaves the cap and the tail exactly where they were with no pin', () => {
+      const big = Array.from({ length: 40 }, (_, i) => withPlace(`m${i}`));
+      const { strip: shown, tail } = strip(big);
+      expect(shown).toHaveLength(SHELF_POOL_CAP);
+      expect(tail).toBe(35);
+    });
   });
 });
 

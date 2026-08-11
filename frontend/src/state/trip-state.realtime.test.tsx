@@ -24,6 +24,8 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { CHANGE_ACTION, ENTITY_TYPE, type Change, type TripSnapshot } from '@waypoint/shared';
 import { TRIP } from '../fixtures';
+import { SHELF_POOL_CAP } from '../constants';
+import { t } from '../i18n/he';
 
 const h = vi.hoisted(() => ({ fetchSnapshot: vi.fn(), fetchChanges: vi.fn() }));
 
@@ -51,6 +53,10 @@ vi.mock('../lib/outbox', async (importOriginal) => ({
   getSyncFailures: () => [],
   subscribeSyncFailures: () => () => {},
   restOrQueue: vi.fn(),
+  // Nothing here has IndexedDB, and `isOffline` above sends every write to the queue —
+  // so without this a local verb rolls itself back on a Dexie error and the assertion
+  // reads as a render bug.
+  enqueueOutbox: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('./auth-state', () => ({ useAuth: () => ({ me: null }) }));
 
@@ -63,6 +69,7 @@ import { NavProvider } from './nav-state';
 import { ToastProvider } from '../ui/Toast';
 import { ConfirmProvider } from '../ui/ConfirmDialog';
 import { DayView } from '../screens/DayView';
+import { useVerbs } from './verbs';
 
 // --- the socket, faked at the browser boundary so the real ws.ts runs -------
 const sockets: FakeSocket[] = [];
@@ -323,6 +330,230 @@ describe('a peer change repaints the open screen (field report #32)', () => {
     );
 
     expect(onScreen('PEEREVENT')).toBe(true);
+  });
+});
+
+// **Field report #40 — the shelf's half of the same promise.** `maybeItem` had no memory
+// channel at all, so a peer's idea was mirrored into Dexie and then dropped: the Maybe
+// shelf, the Map's `אולי` facet and Plan's shelf all read one `maybeItems`, and all three
+// stayed stale until a route remount refetched the snapshot. Every test here mounts the
+// consumer BEFORE the frame arrives, so "it is in the reducer" cannot pass for "it is on
+// the screen" — the assertion is the rendered tile.
+describe("a peer's idea reaches the Maybe shelf (field report #40)", () => {
+  const IDEA_ID = 'mb-peer';
+  const idea = (over: Partial<Change> = {}): Change =>
+    change({
+      entityType: ENTITY_TYPE.MAYBE_ITEM,
+      entityId: IDEA_ID,
+      after: { id: IDEA_ID, title: 'PEERIDEA', icon: '📍', consumed: false },
+      ...over,
+    });
+
+  it('paints an idea a peer added, with no remount and no route change', async () => {
+    await booted();
+    expect(onScreen('PEERIDEA')).toBe(false);
+
+    await deliver(frame('101', '100', idea()));
+
+    expect(onScreen('PEERIDEA')).toBe(true);
+    expect(h.fetchSnapshot).toHaveBeenCalledTimes(1); // the boot read, and nothing else
+  });
+
+  // The witness the report actually described is an add from the MAP, which creates an idea
+  // with no `targetDate` — so it lands in the pool rather than the day's own group. Ranking
+  // and grouping are the shelf's, but the idea has to arrive at all first.
+  it('paints an undated idea, which is what a Map add creates', async () => {
+    await booted();
+
+    await deliver(frame('140', '100', idea({ seq: '140' })));
+
+    expect(onScreen('PEERIDEA')).toBe(true);
+  });
+
+  it('paints on a day other than the one on screen — the pool is not day-scoped', async () => {
+    await booted('2026-07-10');
+
+    await deliver(frame('140', '100', idea({ seq: '140' })));
+
+    expect(onScreen('PEERIDEA')).toBe(true);
+  });
+
+  describe('update and delete travel the same path', () => {
+    beforeEach(() =>
+      h.fetchSnapshot.mockResolvedValue({
+        ...SNAPSHOT,
+        maybeItems: [
+          {
+            id: IDEA_ID,
+            tripId: TRIP.id,
+            title: 'PEERIDEA',
+            icon: '📍',
+            consumed: false,
+            createdBy: 'u-noam',
+            createdAt: '2026-07-08T02:00:00.000Z',
+            updatedAt: '2026-07-08T02:00:00.000Z',
+            updatedBy: 'u-noam',
+          },
+        ],
+      } satisfies TripSnapshot),
+    );
+
+    it('repaints a peer rename', async () => {
+      await booted();
+      expect(onScreen('PEERIDEA')).toBe(true);
+
+      await deliver(
+        frame(
+          '140',
+          '100',
+          idea({ seq: '140', action: CHANGE_ACTION.UPDATE, after: { title: 'RENAMEDIDEA' } }),
+        ),
+      );
+
+      expect(onScreen('RENAMEDIDEA')).toBe(true);
+      expect(onScreen('PEERIDEA')).toBe(false);
+    });
+
+    // The other direction, and the one a stale shelf gets wrong most visibly: a peer
+    // scheduled the idea, so it is spoken for and must leave the shelf here too.
+    it('drops an idea a peer consumed', async () => {
+      await booted();
+
+      await deliver(
+        frame(
+          '140',
+          '100',
+          idea({ seq: '140', action: CHANGE_ACTION.UPDATE, after: { consumed: true } }),
+        ),
+      );
+
+      expect(onScreen('PEERIDEA')).toBe(false);
+    });
+
+    it('removes a peer delete', async () => {
+      await booted();
+      expect(onScreen('PEERIDEA')).toBe(true);
+
+      await deliver(
+        frame('140', '100', idea({ seq: '140', action: CHANGE_ACTION.DELETE, after: undefined })),
+      );
+
+      expect(onScreen('PEERIDEA')).toBe(false);
+    });
+  });
+});
+
+// **Field report #40's second cause, at the render.** The sync half above is only half the
+// report: with a healthy shelf and a pool bigger than `SHELF_POOL_CAP`, an idea the user
+// just made can rank out of the visible five and the only thing that moves is the tail
+// count — which reads as "it did not appear". The pin is asserted through the SCREEN and
+// through the app's own verb, with the consumer mounted first, because "it is in
+// `maybeItems`" was never the claim in doubt.
+describe('an idea you just added is on the shelf (field report #40)', () => {
+  /** Five located ideas nearer the day's stop than anything a Map add is likely to be. */
+  const seeded: TripSnapshot = {
+    ...SNAPSHOT,
+    events: [
+      {
+        id: 'ev-stop',
+        tripId: TRIP.id,
+        date: TRIP_TZ_DAY,
+        title: 'STOP',
+        kind: 'soft',
+        status: 'planned',
+        source: 'manual',
+        sortOrder: 0,
+        placeId: 'p-stop',
+        startsAt: '2026-07-08T04:00:00.000Z',
+        endsAt: '2026-07-08T05:00:00.000Z',
+        createdAt: '2026-07-01T00:00:00.000Z',
+        updatedAt: '2026-07-01T00:00:00.000Z',
+        updatedBy: 'u-me',
+      },
+    ],
+    places: [
+      { id: 'p-stop', tripId: TRIP.id, name: 'STOP', lat: 35.6812, lng: 139.7671 },
+      { id: 'p-near', tripId: TRIP.id, name: 'NEAR', lat: 35.6813, lng: 139.7671 },
+    ].map((p) => ({
+      ...p,
+      createdAt: '',
+      updatedAt: '',
+      updatedBy: 'u-me',
+    })) as TripSnapshot['places'],
+    maybeItems: Array.from({ length: 5 }, (_, i) => ({
+      id: `mb-${i}`,
+      tripId: TRIP.id,
+      title: `RANKED${i}`,
+      placeId: 'p-near',
+      consumed: false,
+      createdBy: 'u-me',
+      createdAt: '2026-07-01T00:00:00.000Z',
+      updatedAt: '2026-07-01T00:00:00.000Z',
+      updatedBy: 'u-me',
+    })) as TripSnapshot['maybeItems'],
+  };
+
+  /** The Map's add, reached through the real verb rather than a hand-built dispatch. */
+  let add: (title: string) => void;
+  function VerbProbe() {
+    add = useVerbs().addMaybe;
+    return null;
+  }
+
+  const mountWithProbe = () =>
+    render(
+      <MemoryRouter initialEntries={[`/?tab=days&day=${TRIP_TZ_DAY}`]}>
+        <ToastProvider>
+          <NavProvider>
+            <ConfirmProvider>
+              <TripProvider tripId={TRIP.id}>
+                <ModeProvider>
+                  <MapScopeProvider>
+                    <DragProvider>
+                      <DayView />
+                      <VerbProbe />
+                    </DragProvider>
+                  </MapScopeProvider>
+                </ModeProvider>
+              </TripProvider>
+            </ConfirmProvider>
+          </NavProvider>
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+
+  beforeEach(() => h.fetchSnapshot.mockResolvedValue(seeded));
+
+  it('shows it on the strip though five better-ranked ideas already fill the cap', async () => {
+    mountWithProbe();
+    await act(async () => {});
+    expect(onScreen('RANKED0')).toBe(true); // the cap is genuinely full before the add
+
+    await act(async () => {
+      add('JUSTADDED');
+      await Promise.resolve();
+    });
+
+    expect(onScreen('JUSTADDED')).toBe(true);
+  });
+
+  // The pin costs one ranked tile, once — it does not widen the strip, which is the whole
+  // reason `SHELF_POOL_CAP` exists (ADR-0116 §5). `.more` is the tail affordance, which is
+  // not a tile and is exactly what the displaced idea went behind.
+  it('spends a ranked slot rather than growing the strip', async () => {
+    const tiles = () => document.querySelectorAll('.shelf .wp-maybecard:not(.more)').length;
+    mountWithProbe();
+    await act(async () => {});
+    expect(tiles()).toBe(SHELF_POOL_CAP);
+
+    await act(async () => {
+      add('JUSTADDED');
+      await Promise.resolve();
+    });
+
+    expect(tiles()).toBe(SHELF_POOL_CAP);
+    // …and the displaced one is behind the tail affordance rather than gone.
+    expect(screen.getByText(t.day.shelfMore(1))).toBeTruthy();
   });
 });
 
