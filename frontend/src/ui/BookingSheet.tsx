@@ -65,7 +65,13 @@ import {
   dateOutOfTripRange,
 } from '../lib/booking-edit';
 import { routeTitle } from '../lib/route-title';
-import { placeDerivedTitle, placeName, placeTimezone, titleAfterErrand } from '../lib/places';
+import {
+  effectiveTitle,
+  placeDerivedTitle,
+  placeName,
+  placeTimezone,
+  titleAfterErrand,
+} from '../lib/places';
 import { withChangeGroup } from '../lib/outbox';
 import { zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
@@ -477,17 +483,16 @@ export function BookingSheet({
    *  website, not of a place you are sleeping at. The hire is the exception that keeps its
    *  own rule, because there the provider IS the thing — you rent from Hertz. */
   const placeTitle = () => placeDerivedTitle(places, placeId);
-  const derivedTitle = () => placeTitle() || typeLabel;
-  // Unchanged by field report #30, and that is the point: the title INPUT now carries the
-  // derived name instead of ghosting it, so `title.trim()` returns the same string this
-  // chain would have fallen through to. Every branch resolves exactly as it did — a place's
-  // name when one is linked, the type label when nothing is, a typed name whenever there is
-  // one, and (since clearing the box is an explicit act) the fallback again if it is emptied.
+  // Unchanged by field reports #30/#37, and that is the point: this chain is now the SHARED
+  // `effectiveTitle` (`EventForm` adopted this precedence rather than inventing a third one),
+  // and it resolves every branch exactly as the hand-written `||` did — a typed name whenever
+  // there is one, a place's name when one is linked, the type label when nothing is, and the
+  // fallback again the moment the box is emptied.
   const finalTitle = titlesFromRoute(type)
     ? routeTitle(placeName(places, fromPlaceId) ?? '', placeName(places, toPlaceId) ?? '')
     : isHire
       ? hireTitle()
-      : title.value.trim() || derivedTitle();
+      : effectiveTitle(title.value, placeTitle(), typeLabel);
 
   /** **Every refusal this form can make, in one place** — and it stays one place now that
    *  the form is stepped (ADR-0155 §3). A step gate and the save both read THIS and filter

@@ -27,6 +27,7 @@ import {
   dayAmbientZone,
   authoringZone,
   dayZoneContext,
+  effectiveTitle,
   isDayOver,
   liveToday,
   liveZone,
@@ -1388,5 +1389,32 @@ describe('placeDerivedTitle / titleAfterErrand', () => {
     // A cancelled errand comes back with no place: an untouched title keeps what it had
     // rather than being blanked by a derivation that has nothing to answer with.
     expect(titleAfterErrand(places, undefined, 'קפה', false)).toBe('קפה');
+  });
+});
+
+// **The precedence both authoring forms resolve through** (field report #37): explicit text,
+// then the Place, then whatever last resort the caller has. One function, so the box's
+// placeholder, the save and the refusal cannot answer the same question differently.
+describe('effectiveTitle', () => {
+  it('prefers explicit text over every derived candidate', () => {
+    expect(effectiveTitle('ארוחת ערב', 'איצ׳ירן', 'מסעדה')).toBe('ארוחת ערב');
+  });
+
+  it('falls through to the next candidate as each one empties, in order', () => {
+    expect(effectiveTitle('', 'איצ׳ירן', 'מסעדה')).toBe('איצ׳ירן');
+    expect(effectiveTitle('', undefined, 'מסעדה')).toBe('מסעדה');
+  });
+
+  // The event case: nothing typed, no place, and no last resort — which is the refusal
+  // `EventForm` still makes, expressed as an empty answer rather than a special value.
+  it('answers the empty string when nothing can name it', () => {
+    expect(effectiveTitle('', undefined)).toBe('');
+  });
+
+  // Whitespace has never been a title, at any rung.
+  it('treats whitespace-only candidates as blank, and trims the one it returns', () => {
+    expect(effectiveTitle('   ', 'איצ׳ירן')).toBe('איצ׳ירן');
+    expect(effectiveTitle('  ארוחת ערב  ', 'איצ׳ירן')).toBe('ארוחת ערב');
+    expect(effectiveTitle('   ', '  ')).toBe('');
   });
 });

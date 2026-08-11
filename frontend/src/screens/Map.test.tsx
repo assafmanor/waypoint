@@ -451,7 +451,9 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         fireEvent.click(scheduleBtn()!);
       };
       const saveForm = () => {
-        fireEvent.change(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
+        // By the label: the form opens on a place here, so its title placeholder is that
+        // place's name — the derived title the save would write (field report #37).
+        fireEvent.change(screen.getByRole('textbox', { name: t.eventForm.titleLabel }), {
           target: { value: 'ארוחה' },
         });
         fireEvent.click(screen.getByText(t.eventForm.save));
