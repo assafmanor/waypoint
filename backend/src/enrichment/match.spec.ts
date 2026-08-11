@@ -12,6 +12,7 @@ import {
   isMatchConfident,
   nameOnlyConfidence,
   nameProximityConfidence,
+  nameCanRefuse,
   namesComparable,
   nameSimilarity,
   proximityScore,
@@ -82,16 +83,10 @@ describe('nameSimilarity', () => {
     expect(nameSimilarity('Røros', 'Røros')).toBe(1);
   });
 
-  it('still scores a name plus a bare feature-type word below the threshold — KNOWN, UNFIXED', () => {
-    // **Not a regression, and not to be "fixed" by loosening the geometric mean.** Google
-    // labels the crater `Kerið Crater` and Wikidata labels it `Kerið`, so one shared token
-    // over `sqrt(2 × 1)` = 0.707, under `MATCH_MIN_NAME_SIMILARITY` — a likelier cause of
-    // field report #29 than the letter fold above, which both sides turned out not to need.
-    //
-    // It is left refusing on purpose: the shape is indistinguishable from `Tsukiji` inside
-    // `Tsukiji Outer Market`, which this file scores 0.58 deliberately, and telling the two
-    // apart is a matching-policy call with a false-positive budget, not a normalization
-    // tweak. See docs/planning/2026-08-11-session-248-a-letter-that-is-not-an-accent.md.
+  it('scores a name plus a bare feature-type word below the threshold', () => {
+    // The scorer is NOT changed for this: `Kerið Crater` against `Kerið` is one shared token
+    // over `sqrt(2 × 1)`, and a partial overlap is a partial score. What changed is who is
+    // allowed to act on it — see `nameCanRefuse`.
     expect(nameSimilarity('Kerið Crater', 'Kerið')).toBeCloseTo(0.7071, 4);
     expect(nameSimilarity('Kerið Crater', 'Kerið')).toBeLessThan(MATCH_MIN_NAME_SIMILARITY);
   });
@@ -302,6 +297,48 @@ describe('namesComparable — a cross-script comparison is uninformative, not ne
   });
 });
 
+describe('nameCanRefuse — a name that says MORE has not disagreed (owner report, 2026-08-11)', () => {
+  it('cannot refuse the candidate our own name merely elaborates', () => {
+    // Kerið, measured: Google saves `Kerið Crater`, `Q1435393` is labelled `Kerið`, and 0.707
+    // vetoed the only article within 150m of the pin.
+    expect(nameCanRefuse('Kerið Crater', 'Kerið')).toBe(false);
+    expect(nameCanRefuse('Gullfoss Waterfall', 'Gullfoss')).toBe(false);
+    // Across the transliterated variants too, since those are what `nameSimilarity` scores.
+    expect(nameCanRefuse('Kerið Crater', 'Kerid')).toBe(false);
+  });
+
+  it('STILL refuses the candidate whose name is ours plus a qualifying noun (§15)', () => {
+    // The direction is the whole guard. Piccadilly Circus matched the tube station under it,
+    // and `MATCH_MIN_NAME_SIMILARITY` exists to refuse that at this very same 0.707 — so the
+    // rule above must not reach it.
+    expect(nameSimilarity('Piccadilly Circus', 'Piccadilly Circus tube station')).toBeCloseTo(
+      0.7071,
+      4,
+    );
+    expect(nameCanRefuse('Piccadilly Circus', 'Piccadilly Circus tube station')).toBe(true);
+  });
+
+  it('leaves a name that already corroborates on the name route (§12.3)', () => {
+    // 0.816 is above the floor, so the name is deciding rather than refusing, and it keeps
+    // deciding — this must not be demoted to a distance-only match.
+    expect(nameCanRefuse('Meiji Jingū / Meiji Shrine', 'Meiji Shrine')).toBe(true);
+    expect(nameCanRefuse('Nezu Museum', 'Nezu Museum')).toBe(true);
+    // A one-word descriptor on a two-word name is already 0.816 and already matched — this
+    // rule is only for the names that fell UNDER the floor.
+    expect(nameCanRefuse('Sensō-ji Temple', 'Sensō-ji')).toBe(true);
+  });
+
+  it('keeps refusing a name that genuinely disagrees', () => {
+    expect(nameCanRefuse('Nezu Museum', 'Golden Gai')).toBe(true);
+    // A shared word is not containment: neither name says everything the other does.
+    expect(nameCanRefuse('Ueno Park', 'Ueno Zoo')).toBe(true);
+  });
+
+  it('still answers false for a comparison across scripts (§15, unchanged)', () => {
+    expect(nameCanRefuse('מגדל אייפל', 'Eiffel Tower')).toBe(false);
+  });
+});
+
 describe('geoProximityConfidence — the coordinates find it, the name checks it (§15)', () => {
   const NEZU = { name: 'מוזיאון נזו', lat: 35.6656, lng: 139.7167 };
 
@@ -343,6 +380,39 @@ describe('geoProximityConfidence — the coordinates find it, the name checks it
       { name: 'Golden Gai', lat: 35.66562, lng: 139.71672 },
     );
     expect(isMatchConfident(disagreeing.confidence)).toBe(false);
+  });
+
+  it('matches Kerið on the distance, now that its name can no longer veto it', () => {
+    // Every number here is real (2026-08-11): the pin is what Google gives for `Kerið Crater`,
+    // the candidate is `Q1435393`'s own `P625`, and the live geosearch returns exactly one
+    // other article within 3km (Grímsnes, 1.2km away). Before this rule the confidence was 0.
+    const scored = geoProximityConfidence(
+      { name: 'Kerið Crater', lat: 64.0408, lng: -20.8847 },
+      { name: 'Kerið', lat: 64.0409804167, lng: -20.8826540713 },
+    );
+    expect(scored.distanceMeters).toBeLessThan(150);
+    expect(scored.confidence).toBe(0.8);
+    expect(isMatchConfident(scored.confidence)).toBe(true);
+    // Zero because the name was set aside, not because it disagreed — §12.3's evidence must
+    // still be able to say which of the two happened.
+    expect(scored.nameSimilarity).toBe(0);
+  });
+
+  it('will not let a district ride in on a name our own place name contains', () => {
+    // The measured risk of the rule above, at the real distances: a district's centroid is
+    // far from any one place inside it, and distance-only credit is gone well before it.
+    // Tsukiji's `chōchō` sits 366m from the fish market, Ueno 492m from the park.
+    const district = (distanceLat: number) =>
+      geoProximityConfidence(
+        { name: 'Tsukiji Outer Market', lat: 35.6614, lng: 139.7697 },
+        { name: 'Tsukiji', lat: 35.6614 + distanceLat, lng: 139.7697 },
+      );
+    expect(isMatchConfident(district(0.0033).confidence)).toBe(false); // ~366m
+    expect(isMatchConfident(district(0.0044).confidence)).toBe(false); // ~492m
+    // And the classes themselves are now named, so the geo route skips them outright.
+    expect(granularityRefusals({ instanceOf: ['Q5327369'] })).toEqual({
+      summary: MATCH_REFUSAL.BROADER_TYPE,
+    });
   });
 
   it('is no match at all without coordinates on both sides — the route IS the coordinates', () => {

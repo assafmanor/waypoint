@@ -1,9 +1,9 @@
 # Session 248 — a letter that is not an accent (field report #29, workstream N)
 
 **Date:** 2026-08-11
-**Workstream:** `N` — a bounded normalization extension that ships, **plus a finding that redirects the report's own diagnosis and is deliberately left unfixed**.
-**Touches:** `backend/src/enrichment/match.ts`, `backend/src/enrichment/match.spec.ts`, `docs/backlog.md`.
-**No new ADR** — matching _policy_ is unchanged; this extends the "score every form the name offers, keep the best" mechanism [ADR-0166](../decisions/0166-place-enrichment-is-a-multi-source-pipe.md) §15 already established and §19 already built once (the parenthetical alias). **No mockup** — nothing visual.
+**Workstream:** `N` — a bounded normalization extension, **plus (after the owner re-reported the place still matching nothing) the real cause, found, fixed and verified against the live APIs**. See §5, written after the fact; §0–§4 are left as they were written, including the recommendation not to fix §2, so the reasoning that got that wrong stays legible.
+**Touches:** `backend/src/enrichment/match.ts` (+ spec), `backend/src/enrichment/providers/wikidata.provider.ts` (+ spec), `backend/src/enrichment/providers/fixtures.ts`, `docs/decisions/0166-place-enrichment-is-a-multi-source-pipe.md` (§21, amended in place), `docs/backlog.md`.
+**ADR-0166 amended in place (§21)** — the §5 fix changes what the name is allowed to refuse on the coordinate route, which is matching policy. The §1 fix needed no ADR and still doesn't. **No mockup** — nothing visual.
 
 ## 0. Read this first: what shipped is not what the report is about
 
@@ -78,3 +78,63 @@ So it is **encoded as a test that asserts the current, refusing behaviour**, wit
 - Four new cases in `match.spec.ts`'s existing `describe('nameSimilarity', …)` block, in that block's own style: plain string literals, no fixture machinery. **No entries were added to `fixtures.ts`** — those exist for provider-level tests (`wikidata.provider.spec.ts`), and nothing here needs a provider round trip to prove. The real research data (QIDs, coordinates, `P31`s) is recorded in this note instead of being frozen into fixtures no test would read.
 - `match.spec.ts` 53 passed. `pnpm typecheck` and `pnpm build` green across the workspace.
 - **The DB-backed backend specs cannot run in this sandbox** — no Docker daemon, so no Postgres, and `enrichment.service.spec.ts` (plus 16 other service specs) fails with `Can't reach database server at 127.0.0.1:5432`. Confirmed identical on an unmodified tree before making any change; these are environmental, not this PR's. Everything that runs without a database passes.
+
+## 5. Addendum, same day — the owner re-reported it, and §2 was right about the cause and wrong about deferring
+
+§0–§4 above shipped, and the owner came back with: _"Kerið Crater is still not matching to anything."_ Correct, and predicted by §0 — but the deferral in §2 was the wrong call, and the handoff that mandated it (its own §2/§6, unattended, no questions) does not make it less wrong: a field report was closed with the reported place still broken. What follows is what a proper trace found.
+
+### 5.1 The trace, against the live APIs
+
+Not arithmetic this time — the real endpoints, captured 2026-08-11:
+
+| what                                           | result                                                    |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| `wbsearchentities`, saved name                 | **zero hits** — `Q1435393` has no `he` label at all       |
+| `generator=geosearch`, 3km around Google's pin | **two** articles: Kerið at **27m**, Grímsnes at 1.2km     |
+| `Q1435393` `P625` vs the pin                   | **~102m** — inside `GEO_TRUST_METERS` (150m)              |
+| `Q1435393` `P31`                               | `Q109391`, `Q204324` — correctly **not** in the deny-list |
+
+So the coordinate-first route found the right entity, alone, essentially at the pin. And then:
+
+```
+geoProximityConfidence({name:'Kerið Crater', pin}, {name:'Kerið', P625})
+  → namesComparable         true   (both Latin)
+  → nameProximityConfidence → similarity 0.707 < 0.8 → confidence 0
+```
+
+**The same entity, with a Hebrew saved name, scores 0.8.** That is the defect in one line: a name that half-agrees was worse evidence than no readable name at all. §2's arithmetic was right about the number and wrong to call it "a policy call for someone else" — the policy §15 needed was already written, one clause short.
+
+### 5.2 The fix
+
+`nameCanRefuse(ourName, candidateName)`, asked by `geoProximityConfidence` and by both coordinate-fed routes' `corroborated` check in place of `namesComparable`. False when the scripts are disjoint (§15, unchanged) **and** when our name says strictly more than theirs. Then distance answers alone under the `geosearch` ceiling — with Rule 2's broader-subject skip and §16's ambiguity refusal still behind it.
+
+**Two guards, both load-bearing, both found by trying to break it:**
+
+- **Direction.** Only _ours_ may say more. A candidate that adds a qualifying noun is §16's Piccadilly Circus refusal at this very same 0.707 — `Piccadilly Circus` does not contain `Piccadilly Circus tube station`, so it still refuses. My first draft was symmetric and would have re-opened that defect; the provider spec for it is what caught it.
+- **Only below the floor.** At or above 0.8 the name is corroborating and keeps deciding, so `Meiji Jingū / Meiji Shrine` → `Meiji Shrine` (0.816) is untouched. My first draft demoted it to distance-only, which the ADR explicitly forbids.
+
+### 5.3 The residual risk, measured rather than assumed — and a pre-existing hole it exposed
+
+The dangerous shape is a district whose name our place name contains. Distance-only credit reaches the 0.6 threshold **only within 238m**, and measured against live Wikidata:
+
+| our place                 | district | distance | distance-only score |
+| ------------------------- | -------- | -------- | ------------------- |
+| Tsukiji fish market       | Tsukiji  | 366 m    | 0.31                |
+| Ueno Park                 | Ueno     | 492 m    | 0.02                |
+| Shibuya scramble crossing | Shibuya  | 529 m    | 0.00                |
+
+All three refuse. **But the check found something worse and older:** I had assumed the broader-type skip would catch these, and it would not have. Tokyo's districts carry **none** of `BROADER_INSTANCE_OF_QIDS`'s classes — `Tsukiji` is a `chōchō` (`Q5327369`), `Shibuya` a ward/special ward, `Ueno` adds `city center`. So §11.2's own motivating case, "a district for a shop", has been landing **unrefused** for the exact city the coverage spike was built on, independent of anything in this session. Four classes added.
+
+That assumption is the one thing here I would have shipped wrong if I had trusted the design instead of querying the API.
+
+### 5.4 Verification
+
+- **End to end on live payloads**, not hand-written fixtures: real geosearch / `wbgetentities` / search responses replayed through `WikidataProvider`. **Before: `null`. After: `Q1435393`, `geosearch`, 0.8, image `Kerid-08-Krater-1980-gje.jpg`, no per-field refusals.**
+- **The whole backend suite green for real** — 578/578. §4 recorded 215 failures as "environmental, no Docker"; that was true but lazy. Postgres 16 is present in the image, so it was initdb'd under the `postgres` user, migrated and seeded, and the DB-backed specs run. Nobody needs to take the sandbox's word for it again.
+- New specs: `nameCanRefuse`'s five cases in `match.spec.ts`, the Kerið geo match and the district counter-case in `wikidata.provider.spec.ts`, and a `KERID` fixture whose every value is live-read.
+
+### 5.5 What is still open
+
+- **The owner's actual stored `Place` row.** Still unseen. Everything above assumes the saved name is `Kerið Crater`, which is what Google returns and what the owner calls it. If it is stored differently the arithmetic differs — though the geo route now succeeds for any saved name that doesn't actively contradict `Kerið`.
+- **Clear the negative cache before re-testing** — 30-day miss TTL, so the pipe will not re-attempt on its own. `delete from "PlaceEnrichment"` is safe; it holds no trip data.
+- **`BROADER_INSTANCE_OF_QIDS` is now known to be country-shaped.** Four Japanese/city classes were added because Tokyo was measured. Nobody has looked at Reykjavík, Paris or Bangkok's district classes, and the same hole is presumably there.

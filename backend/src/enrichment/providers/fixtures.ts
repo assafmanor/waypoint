@@ -398,6 +398,32 @@ export const TSUKIJI = {
   }),
 };
 
+/** **Kerið** (owner report, 2026-08-11: it matched nothing). Every value here was read off live
+ *  Wikidata and the live GeoData API on that date, not reconstructed: `Q1435393` is labelled
+ *  `Kerið` in en/is/de/fr and has **no Hebrew label**, so no name search can reach it from a
+ *  Hebrew saved name; its `P625` is ~100m from the pin Google gives for `Kerið Crater`; and a
+ *  3km geosearch around that pin returns exactly two articles — this one at 27m and Grímsnes at
+ *  1.2km. Its `P31`s are deliberately NOT in `BROADER_INSTANCE_OF_QIDS`: a crater is a place you
+ *  visit as itself, which is why nothing else in the pipe refuses it. */
+export const KERID = {
+  place: { name: 'Kerið Crater', lat: 64.0408, lng: -20.8847, googlePlaceId: 'ChIJ-kerid' },
+  qid: 'Q1435393',
+  entity: entity({
+    qid: 'Q1435393',
+    labels: { en: 'Kerið', is: 'Kerið' },
+    instanceOf: ['Q109391', 'Q204324'], // volcanic crater, volcanic crater lake
+    lat: 64.0409804167,
+    lng: -20.8826540713,
+    sitelinks: { enwiki: 'Kerið' },
+  }),
+  summaryEn: restSummary({
+    lang: 'en',
+    title: 'Kerið',
+    extract:
+      'Kerið is a volcanic crater lake located in the Grímsnes area in south Iceland, along the Golden Circle.',
+  }),
+};
+
 /* ── THE AIRPORT PAIR (ADR-0166 §18, field reports #7/#23) ──────────────────────────────────
    Unlike everything above, these are **not** rows from the coverage spike — that spike had no
    airport stratum. What is real here is the shape the §18 research measured, and it is the only
