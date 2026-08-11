@@ -166,6 +166,25 @@ export const LOCAL_READ_TIMEOUT_MS = {
   SNAPSHOT: 10_000,
 } as const;
 
+/** **Bound on the base map's first tiles** (field report #28) — the canvas can mount, our
+ *  own markers can render (they are DOM overlays, independent of Google's tile layer), and
+ *  Google's own tiles can still never draw. `@vis.gl/react-google-maps` exposes no event for
+ *  that: `APIProvider`'s `onError` only fires on a failed *script* load, and nothing tells a
+ *  load that never happened from tiles that silently stopped. So this is the `withDeadline`
+ *  heuristic `lib/deadline.ts` exists for: `onTilesLoaded` never firing within this bound is
+ *  treated as a failure (ADR-0121's 2026-08-11 amendment records the trade).
+ *
+ *  Unmeasured — no device has reproduced #28 yet, the same caveat #22's bounds carried — so
+ *  it takes the same order of magnitude as the two groups above: more forgiving than a single
+ *  `LOCAL_READ_TIMEOUT_MS.HANDLE` read since a first paint is many tiles, less patient than a
+ *  full `API_TIMEOUT_MS.FETCH` round trip since nothing here left the device idle. */
+export const MAP_LOAD_TIMEOUT_MS = {
+  TILES: 10_000,
+} as const;
+export const MAP_LOAD_PHASE = {
+  TILES: 'map-tiles',
+} as const;
+
 /** Which await gave up, for `PhaseTimeoutError`. Named rather than inline strings because
  *  callers branch on them: the viewer tells a decode that TIMED OUT (a missing optimization)
  *  from one that FAILED (bytes the browser cannot render), and `isNetworkError` reads a

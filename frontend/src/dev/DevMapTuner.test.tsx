@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MAP_DRAG_ZOOM, MAP_ZOOM } from '../constants';
-import { clearTuning, tuningOverrides } from '../lib/dev-tuning';
+import { clearTuning, publishMapReading, tuningOverrides } from '../lib/dev-tuning';
 import { zoomPerLevelPx } from '../lib/canvas-gestures';
 import { DevMapTuner } from './DevMapTuner';
 
@@ -84,6 +84,36 @@ describe('DevMapTuner', () => {
     expect(value).toContain('ADR-0126 באזור pill reads as tappable: OK');
     // Unanswered stays visibly unanswered rather than defaulting to fine.
     expect(value).toContain('crosshair ≠ frame glyph over real tiles: ?');
+  });
+
+  // Field report #28 / backlog workstream M: the load-failure capture rides on
+  // production's OWN `onError`/`onTilesLoaded` signals (published via `publishMapReading`
+  // exactly as `MapPane` does), so this only has to assert the panel reads them — not
+  // re-derive the failure detection this suite already covers in `MapPane.test.tsx`.
+  it('shows the load-failure diagnostics captured off production’s own signals', () => {
+    publishMapReading({
+      apiStatus: 'LOADED',
+      apiError: null,
+      tilesLoaded: true,
+      webglContextLost: false,
+      online: true,
+    });
+    open('diag');
+    expect(screen.getByText(/api status: LOADED/)).toBeTruthy();
+    expect(screen.getByText(/tiles loaded this attempt: yes/)).toBeTruthy();
+    expect(screen.getByText(/webgl context lost: no/)).toBeTruthy();
+    expect(screen.getByText(/online: yes/)).toBeTruthy();
+  });
+
+  it('emits the diagnostics block alongside the tuning report', () => {
+    publishMapReading({ apiStatus: 'FAILED', apiError: 'boom', tilesLoaded: false });
+    open();
+    tap('out');
+    tap('emit');
+    const value = (screen.getByRole('textbox') as HTMLTextAreaElement).value;
+    expect(value).toContain('## load diagnostics (#28)');
+    expect(value).toContain('api status: FAILED');
+    expect(value).toContain('last error: boom');
   });
 
   it('resets everything, so a sitting can start over without a reload', () => {

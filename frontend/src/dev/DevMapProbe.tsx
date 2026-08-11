@@ -20,5 +20,42 @@ export function DevMapProbe({ mapId }: { mapId: string }) {
     const listener = map.addListener('zoom_changed', sync);
     return () => listener.remove();
   }, [map]);
+
+  // **WebGL context loss** (field report #28's device-pass capture, backlog workstream M)
+  // — the one load-failure signal production (`MapPane`'s own `mapFailed`) deliberately does
+  // NOT act on: a context lost after the map already painted once is "recovered mid-session",
+  // a different question from "did it ever load" (§1a stays scoped to the latter). A real DOM
+  // event on the canvas Google draws into, so the device pass that finally reproduces #28 on a
+  // phone can tell this failure mode from the others rather than guessing from a blank canvas.
+  useEffect(() => {
+    if (!map) return;
+    // Optional-chained on `querySelector` itself, not only its result: the suite's own
+    // map fake (`MapPane.test.tsx`'s `FakeZoomMap`) returns a `getDiv()` that is not a
+    // real element, and this probe must stay inert against that rather than throw.
+    const canvas = map.getDiv?.()?.querySelector?.('canvas');
+    if (!canvas) return;
+    const lost = () => publishMapReading({ webglContextLost: true });
+    const restored = () => publishMapReading({ webglContextLost: false });
+    canvas.addEventListener('webglcontextlost', lost);
+    canvas.addEventListener('webglcontextrestored', restored);
+    return () => {
+      canvas.removeEventListener('webglcontextlost', lost);
+      canvas.removeEventListener('webglcontextrestored', restored);
+    };
+  }, [map]);
+
+  // Trivially reachable and one of the report's own candidates: a device abroad losing its
+  // connection mid-session reads identically to a tile failure on the canvas alone.
+  useEffect(() => {
+    const sync = () => publishMapReading({ online: navigator.onLine });
+    sync();
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    return () => {
+      window.removeEventListener('online', sync);
+      window.removeEventListener('offline', sync);
+    };
+  }, []);
+
   return null;
 }
