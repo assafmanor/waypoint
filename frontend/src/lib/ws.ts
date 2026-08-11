@@ -13,10 +13,19 @@ import {
 import { API_BASE_URL } from './api';
 
 export interface TripStreamHandlers {
-  /** A `Change` broadcast in-order (no gap). */
-  onChange: (change: Change) => void;
-  /** Gap detected (seq skipped) or a post-reconnect `hello` is ahead of our cursor —
-   *  caller should refetch the whole snapshot (no incremental catch-up, per the doc). */
+  /** A `Change` that arrived over the socket. **Always called for a frame we hold**,
+   *  gap or no gap: a delivered change is certain data, and trading it for a network
+   *  round-trip that is allowed to fail is how a peer's edit went missing until the
+   *  screen was remounted (field report #32).
+   *
+   *  `afterGap` says the frames before this one were missed, so the caller must apply
+   *  the payload but **not** advance its `sinceSeq` cursor past it — the resync that
+   *  follows owns the cursor, and if the resync fails, the next `changes?sinceSeq=`
+   *  catch-up still has to replay what was skipped rather than start after it. */
+  onChange: (change: Change, afterGap?: boolean) => void;
+  /** Frames were missed, or a post-reconnect `hello` is ahead of our cursor — caller
+   *  should refetch the whole snapshot (no incremental catch-up, per the doc). Fires
+   *  IN ADDITION to `onChange` for a gapped frame, never instead of it. */
   onResync: () => void;
   /** The socket was re-opened after dropping. The caller should run its catch-up
    *  (flush the outbox + replay `changes?sinceSeq=`) since frames may have been
@@ -37,7 +46,10 @@ function streamUrl(tripId: string): string {
 
 type ServerMessage =
   | { type: typeof WS_MESSAGE_TYPE.HELLO; latestSeq: string }
-  | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; change: Change }
+  // `prevSeq` is THIS TRIP's preceding change, stamped by the writer under the same
+  // per-trip lock that allocated `seq` (sync-and-offline.md "Realtime channel").
+  // Optional only so a client running against an older server still connects.
+  | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; prevSeq?: string; change: Change }
   | { type: typeof WS_MESSAGE_TYPE.PRESENCE }
   // No `seq`: enrichment is outside the change log (ADR-0166 §6).
   | {
@@ -154,10 +166,29 @@ export function openTripStream(
         lastSeq = BigInt(msg.latestSeq);
       } else if (msg.type === WS_MESSAGE_TYPE.CHANGE) {
         const seq = BigInt(msg.seq);
-        const isGap = seq > lastSeq + 1n;
+        // The trip-deletion frame is EPHEMERAL: nothing persisted it, so it carries no
+        // cursor at all (`seq: '0'`, trips.service's `syntheticChange`). Deliver it and
+        // touch neither `lastSeq` nor the gap test — the same rule enrichment follows.
+        if (seq === 0n) {
+          handlers.onChange(msg.change);
+          return;
+        }
+        // A frame we already applied — the mount-time reconnect briefly runs two
+        // sockets, so the same change can arrive twice. Nothing to do, and it must
+        // not read as a gap on the way past.
+        if (seq <= lastSeq) return;
+        // **`Change.seq` is a GLOBAL autoincrement, not a per-trip one** (schema.prisma):
+        // a write to ANY trip advances it, so `seq === lastSeq + 1` stops being true for a
+        // perfectly ordered frame the moment the database holds a second active trip. That
+        // arithmetic was the whole gap test, so ordinary live delivery was being classified
+        // as a gap. `prevSeq` answers the question exactly instead of inferring it.
+        const isGap =
+          msg.prevSeq === undefined ? seq > lastSeq + 1n : BigInt(msg.prevSeq) !== lastSeq;
         lastSeq = seq;
+        // Apply first, reconcile second — see `onChange`. A gapped frame is still a real
+        // change we are holding; the resync only fills in what came before it.
+        handlers.onChange(msg.change, isGap);
         if (isGap) handlers.onResync();
-        else handlers.onChange(msg.change);
       } else if (msg.type === WS_MESSAGE_TYPE.ENRICHMENT) {
         // **Touches neither `lastSeq` nor the gap check** (ADR-0166 §6): enrichment is outside
         // the change log, so it has no place in the cursor. Advancing on one would make the

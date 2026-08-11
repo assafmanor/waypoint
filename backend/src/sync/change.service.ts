@@ -63,6 +63,28 @@ async function lockTrip(tx: Prisma.TransactionClient, tripId: string): Promise<v
 }
 
 /**
+ * This trip's newest `Change.seq` — the cursor a connected client should be holding
+ * right now, so a broadcast can name its own predecessor (`prevSeq`).
+ *
+ * A receiving client cannot work that out for itself: `Change.seq` is a **global**
+ * autoincrement, so a write to any other trip advances it and the next frame for THIS
+ * trip arrives with a number that skips. The client's gap test read that skip as lost
+ * frames and threw the change away (field report #32). Answering it here is exact and
+ * costs one index-only read (`@@index([tripId, seq])`) inside a transaction that already
+ * holds the trip's advisory lock — so nothing can insert between this read and ours.
+ *
+ * Called AFTER `lockTrip` and BEFORE the insert, always.
+ */
+async function latestTripSeq(tx: Prisma.TransactionClient, tripId: string): Promise<bigint> {
+  const latest = await tx.change.findFirst({
+    where: { tripId },
+    orderBy: { seq: 'desc' },
+    select: { seq: true },
+  });
+  return latest?.seq ?? 0n;
+}
+
+/**
  * The single choke point for data-plane mutations (ADR-0019): entity write + Change
  * insert commit in one transaction, and the WS broadcast fires only after commit.
  */
@@ -74,8 +96,9 @@ export class ChangeService {
   ) {}
 
   async mutate<T>(input: MutateInput<T>): Promise<MutateResult<T>> {
-    const [entity, changeRow] = await this.prisma.$transaction(async (tx) => {
+    const [entity, changeRow, prevSeq] = await this.prisma.$transaction(async (tx) => {
       await lockTrip(tx, input.tripId);
+      const prevSeq = await latestTripSeq(tx, input.tripId);
       const entity = await input.apply(tx);
       const changeRow = await tx.change.create({
         data: {
@@ -88,11 +111,11 @@ export class ChangeService {
           after: input.after as Prisma.InputJsonValue | undefined,
         },
       });
-      return [entity, changeRow] as const;
+      return [entity, changeRow, prevSeq] as const;
     });
 
     const change = toChangeDto(changeRow);
-    this.gateway.broadcast(input.tripId, change);
+    this.gateway.broadcast(input.tripId, change, prevSeq.toString());
     return { entity, change };
   }
 
@@ -103,8 +126,9 @@ export class ChangeService {
    * entities — e.g. auto-creating an Event alongside its Booking (ADR-0047 §1).
    */
   async mutateMany<T>(input: MutateManyInput<T>): Promise<MutateManyResult<T>> {
-    const [entity, changeRows] = await this.prisma.$transaction(async (tx) => {
+    const [entity, changeRows, firstPrevSeq] = await this.prisma.$transaction(async (tx) => {
       await lockTrip(tx, input.tripId);
+      const firstPrevSeq = await latestTripSeq(tx, input.tripId);
       const { entity, ops } = await input.apply(tx);
       const changeRows = [];
       for (const op of ops) {
@@ -122,11 +146,17 @@ export class ChangeService {
           }),
         );
       }
-      return [entity, changeRows] as const;
+      return [entity, changeRows, firstPrevSeq] as const;
     });
 
     const changes = changeRows.map(toChangeDto);
-    for (const change of changes) this.gateway.broadcast(input.tripId, change);
+    // Each op's predecessor is the op broadcast just before it — these rows were inserted
+    // in array order under the trip lock, so within one `mutateMany` they ARE contiguous.
+    let prevSeq = firstPrevSeq.toString();
+    for (const change of changes) {
+      this.gateway.broadcast(input.tripId, change, prevSeq);
+      prevSeq = change.seq;
+    }
     return { entity, changes };
   }
 
