@@ -1492,3 +1492,174 @@ describe('BookingSheet — a flight leg asks the Map for an airport', () => {
     expect(startErrand.mock.calls[0][0]).not.toHaveProperty('kind');
   });
 });
+// ── A derived value follows its source until a person overrides it (field reports #30/#31)
+//
+// Field report #9 gave this sheet the right SAVED name and left the authoring behaviour
+// behind: the derived title showed as a ghost placeholder while the input stayed empty. The
+// visible value and `finalTitle` are one precedence rule now — which is why every case here
+// asserts the box AND what the save sends, so the two can never drift apart again.
+describe('BookingSheet — the name follows the place, the glyph follows the type', () => {
+  // By class, not by placeholder: the placeholder IS the derived name once a place is
+  // linked (field report #9), so querying by it would stop finding the box exactly where
+  // these tests need to read it.
+  const titleBox = () => document.querySelector('.bs-title') as HTMLInputElement;
+  const iconChip = () => screen.getByRole('button', { name: t.iconPicker.open });
+  /** The errand round trip, as the app performs it (`PlacePicker` launches, the Map answers,
+   *  `assignErrandPlace` writes the id into the opaque draft and the sheet re-mounts). */
+  const errandBack = (placeId: string) => {
+    fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+    const draft = startErrand.mock.calls.at(-1)?.[0]?.draft as BookingSheetDraft;
+    cleanup();
+    render(
+      wrapNav(<BookingSheet booking={null} draft={{ ...draft, placeId }} onClose={() => {}} />),
+    );
+  };
+  const hotel = (fields: Partial<Booking>): Booking => ({
+    id: 'bk-h',
+    tripId: 't1',
+    type: BOOKING_TYPE.HOTEL,
+    title: '',
+    source: BOOKING_SOURCE.MANUAL,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: 'u1',
+    ...fields,
+  });
+
+  afterEach(cleanup);
+
+  it('fills a blank untouched name from the place that comes back', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    pastTypeStep();
+    expect(titleBox().value).toBe('');
+    errandBack('pl-nrt');
+    expect(titleBox().value).toBe('טוקיו');
+    toLastStep();
+    save();
+    expect(indexVerbs.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'טוקיו' }),
+    );
+  });
+
+  it('follows a REPLACEMENT place while the name is still derived', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={hotel({ title: 'טוקיו', placeId: 'pl-nrt' })} onClose={() => {}} />,
+      ),
+    );
+    expect(titleBox().value).toBe('טוקיו');
+    errandBack('pl-dxb');
+    expect(titleBox().value).toBe('דובאי');
+  });
+
+  it('keeps a typed name through a place change, and saves it', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    pastTypeStep();
+    fireEvent.change(titleBox(), { target: { value: 'הבקתה' } });
+    errandBack('pl-nrt');
+    expect(titleBox().value).toBe('הבקתה');
+    toLastStep();
+    save();
+    expect(indexVerbs.createBooking).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'הבקתה' }),
+    );
+  });
+
+  it('carries the name latch across the errand', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    pastTypeStep();
+    fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+    expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({ titleTouched: false });
+    fireEvent.change(titleBox(), { target: { value: 'הבקתה' } });
+    fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+    expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({
+      title: 'הבקתה',
+      titleTouched: true,
+    });
+  });
+
+  // The type label is the other half of #9's chain, and it is just as derived as a place
+  // name — so a booking saved nameless must still pick up a place added later.
+  it('reopens a type-labelled booking as still derived', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={hotel({ title: t.index.bookingType.hotel })} onClose={() => {}} />,
+      ),
+    );
+    expect(titleBox().value).toBe(t.index.bookingType.hotel);
+    errandBack('pl-nrt');
+    expect(titleBox().value).toBe('טוקיו');
+  });
+
+  // Clearing the box is an explicit act, so the SAVE still falls back exactly as it did
+  // before — the branch field report #9 built and this change must not have moved.
+  it('falls back to the type label when the name is cleared', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={hotel({ title: 'טוקיו', placeId: 'pl-nrt' })} onClose={() => {}} />,
+      ),
+    );
+    fireEvent.change(titleBox(), { target: { value: '' } });
+    toLastStep();
+    save();
+    // The place is still linked, so the chain's first rung answers — as it always has.
+    expect(indexVerbs.updateBooking).toHaveBeenCalledWith(
+      'bk-h',
+      expect.objectContaining({ title: 'טוקיו' }),
+    );
+  });
+
+  // A journey is named by its route (ADR-0059 §3) and a hire by its company (ADR-0163 §3):
+  // neither reads the title box, and neither is pulled into the place rule.
+  it('leaves a flight route-derived', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    expect(screen.queryByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeNull();
+    toLastStep();
+    save();
+    expect(indexVerbs.updateBooking).toHaveBeenCalledWith(
+      'bk',
+      expect.objectContaining({ title: routeTitle('תל אביב', 'טוקיו') }),
+    );
+  });
+
+  // ── #31, the sheet's own half ────────────────────────────────────────────────────────
+  // `iconTouched` was a flat `false` here, so a genuinely custom saved glyph reopened
+  // claiming nobody had picked it — and the ✨ revert, whose whole job is to hand the
+  // glyph back to the derivation, never appeared on a booking that had one to revert.
+  it('offers the revert for a saved custom glyph, and not for the type’s own', () => {
+    render(wrapNav(<BookingSheet booking={hotel({ title: 'הבקתה' })} onClose={() => {}} />));
+    expect(iconChip().textContent).toBe('🏨');
+    expect(screen.queryByText(t.index.form.reset)).toBeNull();
+  });
+
+  it('keeps a picked glyph and reverts it back to the type on ✨', () => {
+    render(
+      wrapNav(
+        <BookingSheet booking={null} seed={{ type: BOOKING_TYPE.HOTEL }} onClose={() => {}} />,
+      ),
+    );
+    pastTypeStep();
+    fireEvent.click(iconChip());
+    const other = [...document.querySelectorAll<HTMLElement>('.icon-cell')].find(
+      (cell) => cell.textContent !== '🏨',
+    )!;
+    const glyph = other.textContent;
+    fireEvent.click(other);
+    expect(iconChip().textContent).toBe(glyph);
+    // The ✨ hands it back to the derivation, which is the type's own glyph again.
+    fireEvent.click(screen.getByText(t.index.form.reset));
+    expect(iconChip().textContent).toBe('🏨');
+  });
+});

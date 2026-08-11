@@ -65,7 +65,7 @@ import {
   dateOutOfTripRange,
 } from '../lib/booking-edit';
 import { routeTitle } from '../lib/route-title';
-import { placeName, placeTimezone } from '../lib/places';
+import { placeDerivedTitle, placeName, placeTimezone, titleAfterErrand } from '../lib/places';
 import { withChangeGroup } from '../lib/outbox';
 import { zoneOffsetMinutes, zonedIso } from '../lib/time';
 import { hoursPhrase } from '../lib/duration';
@@ -164,12 +164,26 @@ export function BookingSheet({
 
   const [type, setType] = useState<BookingType>(draft ? draft.type : initial.type);
   // The badge glyph follows the booking TYPE while untouched, and the ✨ caption below offers a
-  // revert once a human has picked one (`reset` hands it back to the derivation).
+  // revert once a human has picked one (`reset` hands it back to the derivation). Whether a
+  // SAVED glyph counts as picked is `bookingSheetDraft`'s value test (field report #31) — it
+  // used to be a flat `false` here, so the ✨ never appeared on a reopened booking.
   const icon = useDerivedField(
     draft ? draft.icon : initial.icon,
-    draft ? draft.iconTouched : false,
+    draft ? draft.iconTouched : initial.iconTouched,
   );
-  const [title, setTitle] = useState(draft ? draft.title : initial.title);
+  // **The name follows the linked Place until a person types one** (field report #30). It was
+  // a plain `useState` whose derived value showed only as a PLACEHOLDER, so the field looked
+  // empty while the save (`finalTitle`, field report #9) already knew what it would write —
+  // the visible value and the saved value are one precedence rule now, not two.
+  //
+  // `titleAfterErrand` is why the draft branch is not a plain read: the errand assigns the
+  // chosen place into the blob without knowing the title derives from it.
+  const title = useDerivedField(
+    draft
+      ? titleAfterErrand(places, draft.placeId, draft.title, draft.titleTouched)
+      : initial.title,
+    draft ? draft.titleTouched : initial.titleTouched,
+  );
   const [code, setCode] = useState(draft ? draft.code : initial.code);
   // **The company** (ADR-0163 §2). `Booking.provider` has existed since the schema was
   // written and `BookingDetail` has always rendered it — no form ever wrote it, so an
@@ -253,14 +267,15 @@ export function BookingSheet({
       // no type for yet.
       ...(type === BOOKING_TYPE.FLIGHT &&
         field !== 'placeId' && { kind: PLACE_SEARCH_KIND.AIRPORT }),
-      label: [title.trim() || t.map.errand.untitledBooking, side]
+      label: [title.value.trim() || t.map.errand.untitledBooking, side]
         .filter(Boolean)
         .join(` ${DOT_SEPARATOR} `),
       draft: {
         type,
         iconTouched: icon.touched,
         icon: icon.value,
-        title,
+        title: title.value,
+        titleTouched: title.touched,
         code,
         provider,
         fromPlaceId,
@@ -393,7 +408,7 @@ export function BookingSheet({
   const dirty =
     type !== initial.type ||
     icon.value !== initial.icon ||
-    title !== initial.title ||
+    title.value !== initial.title ||
     code !== initial.code ||
     fromPlaceId !== initial.fromPlaceId ||
     toPlaceId !== initial.toPlaceId ||
@@ -429,6 +444,16 @@ export function BookingSheet({
   };
   const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
+  /** **The place fills the name until a person types one** (field report #30). The only
+   *  in-form path is the clear (a pick is a Map errand, applied at mount): an untouched
+   *  title was never anything but the place's echo, so it goes back to empty and the
+   *  placeholder — and `finalTitle` — fall through to the type label, exactly as they did
+   *  before a place was ever linked. */
+  const pickPlace = (next?: string) => {
+    setPlaceId(next);
+    title.redrive(placeDerivedTitle(places, next) ?? '');
+  };
+
   // A JOURNEY is identified by its route, not a name (ADR-0059 §3): the stored title is
   // derived from origin→destination (it backs the linked event's title and any place-less
   // fallback), so a flight never carries a hand-typed name.
@@ -451,13 +476,18 @@ export function BookingSheet({
    *  through (field report #12), so it would title a hotel `Booking.com`: the name of a
    *  website, not of a place you are sleeping at. The hire is the exception that keeps its
    *  own rule, because there the provider IS the thing — you rent from Hertz. */
-  const placeTitle = () => placeName(places, placeId)?.trim();
+  const placeTitle = () => placeDerivedTitle(places, placeId);
   const derivedTitle = () => placeTitle() || typeLabel;
+  // Unchanged by field report #30, and that is the point: the title INPUT now carries the
+  // derived name instead of ghosting it, so `title.trim()` returns the same string this
+  // chain would have fallen through to. Every branch resolves exactly as it did — a place's
+  // name when one is linked, the type label when nothing is, a typed name whenever there is
+  // one, and (since clearing the box is an explicit act) the fallback again if it is emptied.
   const finalTitle = titlesFromRoute(type)
     ? routeTitle(placeName(places, fromPlaceId) ?? '', placeName(places, toPlaceId) ?? '')
     : isHire
       ? hireTitle()
-      : title.trim() || derivedTitle();
+      : title.value.trim() || derivedTitle();
 
   /** **Every refusal this form can make, in one place** — and it stays one place now that
    *  the form is stepped (ADR-0155 §3). A step gate and the save both read THIS and filter
@@ -966,8 +996,8 @@ export function BookingSheet({
                     ) : (
                       <input
                         className="bs-title"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
+                        value={title.value}
+                        onChange={(e) => title.set(e.target.value)}
                         // **The placeholder is the name this will actually save** when the
                         // linked place can supply one (field report #9) — otherwise the
                         // field looks required exactly where it stopped being required.
@@ -1074,7 +1104,7 @@ export function BookingSheet({
                   >
                     <PlacePicker
                       value={placeId}
-                      onChange={setPlaceId}
+                      onChange={pickPlace}
                       onFind={findPlace('placeId')}
                     />
                   </Field>

@@ -83,6 +83,7 @@ const PLACE_B = { id: 'p-nrt', tripId: 't1', name: 'נריטה', timezone: 'Asia
 
 import { EventForm } from './EventForm';
 import { setSimulatedNow } from '../lib/useClock';
+import { iconForCategory } from '@waypoint/shared';
 import { t } from '../i18n/he';
 import { buildHostContextIndex } from '../lib/host-context';
 
@@ -996,6 +997,218 @@ describe('EventForm (folded into Modal, U-01)', () => {
       const title = screen.getByPlaceholderText(t.eventForm.titlePlaceholder);
       fireEvent.input(title, { target: { value: 'ארוחת ערב' } });
       expect(fieldOf(title)?.hasAttribute('data-invalid')).toBe(false);
+    });
+  });
+
+  // ── A derived value follows its source until a person overrides it (field reports #30/#31)
+  //
+  // Both halves are one distinction — **effective derived value vs explicit user override** —
+  // and both are answered by a VALUE TEST rather than a stored flag (`chosenIcon`'s precedent).
+  // So the tests that matter most are the reopen ones: what the app persists is the effective
+  // value, and reading that back as a human's choice is exactly the defect.
+  describe('derived title + icon (field reports #30/#31)', () => {
+    const titleBox = () =>
+      screen.getByPlaceholderText(t.eventForm.titlePlaceholder) as HTMLInputElement;
+    const iconChip = () => screen.getByRole('button', { name: t.iconPicker.open });
+    const type = (value: string) => fireEvent.change(titleBox(), { target: { value } });
+    const pickCategory = (category: keyof typeof t.iconPicker.categories) =>
+      fireEvent.click(
+        within(screen.getByRole('radiogroup', { name: t.eventForm.categoryLabel })).getByRole(
+          'radio',
+          { name: t.iconPicker.categories[category] },
+        ),
+      );
+    /** The place errand's round trip, as the app performs it: the form hands its draft over,
+     *  unmounts, and re-opens from that draft with the chosen place assigned into it — which
+     *  is the ONLY way a place is picked (`PlacePicker` launches; the Map answers). */
+    const errandBack = (placeId: string, onClose = () => {}) => {
+      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+      const draft = startErrand.mock.calls.at(-1)?.[0]?.draft;
+      cleanup();
+      render(wrapNav(<EventForm draft={{ ...draft, placeId }} onClose={onClose} />));
+    };
+
+    const saved = (fields: Record<string, unknown>) =>
+      ({
+        id: 'ev-1',
+        tripId: 't1',
+        date: '2026-07-20',
+        kind: 'soft',
+        status: 'planned',
+        sortOrder: 0,
+        source: 'manual',
+        createdAt: '2026-07-19T00:00:00.000Z',
+        updatedAt: '2026-07-19T00:00:00.000Z',
+        updatedBy: 'u1',
+        ...fields,
+      }) as unknown as Parameters<typeof EventForm>[0]['event'];
+
+    beforeEach(() => {
+      tripState.places = [PLACE_A, PLACE_B];
+    });
+    afterEach(() => {
+      tripState.places = [];
+    });
+
+    it('fills a blank untouched title from the place that comes back', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      expect(titleBox().value).toBe('');
+      errandBack(PLACE_B.id);
+      expect(titleBox().value).toBe(PLACE_B.name);
+    });
+
+    it('follows a REPLACEMENT place while the title is still derived', () => {
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: PLACE_A.name, placeId: PLACE_A.id })}
+            onClose={() => {}}
+          />,
+        ),
+      );
+      expect(titleBox().value).toBe(PLACE_A.name);
+      errandBack(PLACE_B.id);
+      expect(titleBox().value).toBe(PLACE_B.name);
+    });
+
+    // The whole point of the latch: a name a person typed is theirs, and no later place
+    // change may take it back.
+    it('keeps a manually typed title through a place change', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      type('ארוחת ערב');
+      errandBack(PLACE_B.id);
+      expect(titleBox().value).toBe('ארוחת ערב');
+    });
+
+    // ADR-0134 §2's failure mode, for this field: a flag left off the blob comes back
+    // reset, so the errand itself would hand the user's title back to the derivation.
+    it('carries the title latch across the errand, in both states', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({ titleTouched: false });
+
+      type('ארוחת ערב');
+      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({
+        title: 'ארוחת ערב',
+        titleTouched: true,
+      });
+    });
+
+    // Save then reopen, in BOTH directions — the direction that used to be wrong for the
+    // icon, and the one that must not break while fixing it.
+    it('reopens a place-named event as still derived, and a typed one as chosen', () => {
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: PLACE_A.name, placeId: PLACE_A.id })}
+            onClose={() => {}}
+          />,
+        ),
+      );
+      errandBack(PLACE_B.id);
+      expect(titleBox().value).toBe(PLACE_B.name);
+
+      cleanup();
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: 'ארוחת ערב', placeId: PLACE_A.id })}
+            onClose={() => {}}
+          />,
+        ),
+      );
+      errandBack(PLACE_B.id);
+      expect(titleBox().value).toBe('ארוחת ערב');
+    });
+
+    // An untouched open must never read as dirty — the discard guard would fire on a form
+    // nobody typed in, which in Plan mode is a dialog for backing out of a row.
+    it('does not count a derived title as an unsaved change on open', () => {
+      const onClose = vi.fn();
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: PLACE_A.name, placeId: PLACE_A.id })}
+            onClose={onClose}
+          />,
+        ),
+      );
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(onClose).toHaveBeenCalled();
+      expect(screen.queryByText(t.common.discardTitle)).toBeNull();
+    });
+
+    // `BookingSheet` deleted its own `titleRequired` once field report #9 gave it a type
+    // label to fall back on. An event has no such last resort, so this refusal stays.
+    it('still refuses a save on an event with no place and no name', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.create).not.toHaveBeenCalled();
+      expect(titleBox().closest('.field')?.hasAttribute('data-invalid')).toBe(true);
+    });
+
+    it('saves the derived name as the title, with no typing at all', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      errandBack(PLACE_B.id);
+      fireEvent.click(screen.getByText(t.common.save));
+      expect(verbs.create).toHaveBeenCalledWith(expect.objectContaining({ title: PLACE_B.name }));
+    });
+
+    // ── #31: the icon ────────────────────────────────────────────────────────────────
+    // Storing the effective glyph is not evidence anyone picked it. This is the exact
+    // reproduction: before the value test, EVERY saved event carrying any icon reopened as
+    // chosen, so the category stopped moving it from the second edit on.
+    it('keeps following the category after a save + reopen with no manual pick', () => {
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: 'ארוחה', icon: iconForCategory('food'), category: 'food' })}
+            onClose={() => {}}
+          />,
+        ),
+      );
+      expect(iconChip().textContent).toBe(iconForCategory('food'));
+      pickCategory('sightseeing');
+      expect(iconChip().textContent).toBe(iconForCategory('sightseeing'));
+    });
+
+    it('leaves a genuinely picked glyph alone through a save + reopen + category change', () => {
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: 'ארוחה', icon: '🚀', category: 'food' })}
+            onClose={() => {}}
+          />,
+        ),
+      );
+      pickCategory('sightseeing');
+      expect(iconChip().textContent).toBe('🚀');
+    });
+
+    // The placeholder glyphs are what `chosenIcon` discards, and the shelf's `💡` is one:
+    // scheduling an idea must not arrive already claiming a human chose that pin.
+    it('does not convert a maybe item’s placeholder glyph into an override', () => {
+      const idea = { id: 'm1', tripId: 't1', title: 'רעיון', icon: '💡' };
+      render(wrapNav(<EventForm maybeItem={idea as never} onClose={() => {}} />));
+      pickCategory('nature');
+      expect(iconChip().textContent).toBe(iconForCategory('nature'));
+    });
+
+    it('carries the icon latch across the errand once a glyph is actually picked', () => {
+      render(
+        wrapNav(
+          <EventForm
+            event={saved({ title: 'ארוחה', icon: '🚀', category: 'food' })}
+            onClose={() => {}}
+          />,
+        ),
+      );
+      fireEvent.click(screen.getByRole('button', { name: t.placePicker.open }));
+      expect(startErrand.mock.calls.at(-1)?.[0]?.draft).toMatchObject({
+        icon: '🚀',
+        iconTouched: true,
+      });
     });
   });
 
