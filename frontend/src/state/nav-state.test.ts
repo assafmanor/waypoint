@@ -11,11 +11,13 @@ import {
   navDirectionFrom,
   NAV_DIR,
   correctionForUncancelableBack,
+  dayCarriedFrom,
   daySelectTarget,
   needsBackGuard,
   resolveActiveDate,
   resolveBack,
   shouldResetToHomeOnResume,
+  tabShowsSelectedDay,
   tabTarget,
   type BackAction,
   type NavSnapshot,
@@ -203,6 +205,66 @@ describe('tabTarget — where a tab tap navigates (always replace, flat history)
     expect(tabTarget('index')).toBe('/?tab=index');
     expect(tabTarget('map')).toBe('/?tab=map');
   });
+
+  // Field report #39: a tab move that dropped `?day=` resolved the day back to today,
+  // so entering the Map from the tab bar forgot the day that tapping a day kept.
+  it('carries the day it is given, so a lateral move cannot lose it', () => {
+    expect(tabTarget('map', '2026-07-10')).toBe('/?tab=map&day=2026-07-10');
+    expect(tabTarget('days', '2026-07-10')).toBe('/?tab=days&day=2026-07-10');
+  });
+
+  // The Index does not date-filter and shows no selected pill, but it still CARRIES the
+  // day — that is what makes Day → Index → Day come back to the day you left.
+  it('carries the day across the Index too, where it is remembered but not shown', () => {
+    expect(tabTarget('index', '2026-07-10')).toBe('/?tab=index&day=2026-07-10');
+  });
+
+  it('stays clean with no day, and keeps Home clean whatever it is handed', () => {
+    expect(tabTarget('map', null)).toBe('/?tab=map');
+    expect(tabTarget('map', undefined)).toBe('/?tab=map');
+    expect(tabTarget('home', '2026-07-10')).toBe('/');
+  });
+});
+
+describe('dayCarriedFrom — the remembered day IS the `?day=` param (field report #39)', () => {
+  const from = (search: string) => dayCarriedFrom(new URLSearchParams(search));
+
+  it('carries the day off any non-Home tab, the Index included', () => {
+    expect(from('?tab=days&day=2026-07-10')).toBe('2026-07-10');
+    expect(from('?tab=map&day=2026-07-10')).toBe('2026-07-10');
+    expect(from('?tab=index&day=2026-07-10')).toBe('2026-07-10');
+  });
+
+  it('carries nothing when there is no day to carry', () => {
+    expect(from('?tab=days')).toBeNull();
+    expect(from('')).toBeNull();
+  });
+
+  // Home is today-anchored in both modes, so a stray `?day=` on a Home URL is already
+  // ignored by `activeDate` — leaving Home must not bring it back to life.
+  it('carries nothing out of Home, even with a stray `?day=` on the URL', () => {
+    expect(from('?day=2026-07-10')).toBeNull();
+    expect(from('?tab=home&day=2026-07-10')).toBeNull();
+  });
+});
+
+describe('tabShowsSelectedDay — which surface singles a day out (field report #39)', () => {
+  it('is true on the day-scoped surfaces and on today-anchored Home', () => {
+    expect(tabShowsSelectedDay('days')).toBe(true);
+    expect(tabShowsSelectedDay('map')).toBe(true);
+    expect(tabShowsSelectedDay('home')).toBe(true);
+  });
+
+  it('is false on the trip-wide Index, whose content is the whole trip', () => {
+    expect(tabShowsSelectedDay('index')).toBe(false);
+  });
+
+  // The two halves are independent on purpose: the Index remembers the day it does not
+  // show, which is the whole shape of the report's invariant.
+  it('does not stop the Index carrying the day it will not display', () => {
+    expect(tabShowsSelectedDay('index')).toBe(false);
+    expect(tabTarget('index', '2026-07-10')).toContain('day=2026-07-10');
+  });
 });
 
 describe('needsBackGuard — Android OS-back needs a same-document entry to traverse into (ADR-0090)', () => {
@@ -293,6 +355,10 @@ describe('resolveActiveDate — day-in-URL round-trip (J7 / review Q5)', () => {
   });
 });
 
+// This is also all a resume can do to the remembered day (field report #39): the day is
+// `?day=` and nothing else, so the only way a foreground can move it is by navigating —
+// below the threshold nothing navigates at all and the param survives untouched, and at it
+// the reset is ADR-0060's own, to Home, which is today by construction.
 describe('shouldResetToHomeOnResume — reopen-after-idle reset (ADR-0060)', () => {
   it('resets only when hidden at least the idle threshold in Trip mode', () => {
     expect(shouldResetToHomeOnResume(RESET_TO_HOME_AFTER_HIDDEN_MS, 'trip')).toBe(true);

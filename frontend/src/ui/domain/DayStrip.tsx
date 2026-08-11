@@ -47,10 +47,16 @@ export interface DayStripProps {
   today: string;
   mode: DayStripMode;
   onSelect: (date: string) => void;
-  /** The Map's "all days" scope is active (ADR-0110 §4): no day is singled out,
-   *  so the filled selection is suppressed (today keeps its anchor, empty-day
-   *  markers stay). Tapping any pill exits all-days at the caller. */
-  allScope?: boolean;
+  /** **The host surface is not showing one day**, so no pill is "the selected one":
+   *  the filled selection and its `aria-pressed` are withheld (today keeps its
+   *  anchor, empty-day markers stay) and the strip does not force-scroll to a day it
+   *  is not showing as selected. Two surfaces say this — the Map's "all days" scope
+   *  (ADR-0110 §4) and a trip-wide tab like the Index, whose content is the whole
+   *  trip (field report #39) — which is why the prop describes the SURFACE rather
+   *  than being named after either one of them. The pills stay tappable: what the
+   *  tap means is the caller's (`useSelectDay` exits all-days; `daySelectTarget`
+   *  routes to the Day view). */
+  unscoped?: boolean;
   /** A drag is in flight somewhere in the app (`state/drag-state`). The pills then
    *  announce themselves as drop targets with `data-day-pill`, which is what the
    *  drag's hit-test looks for — resting on one switches to that day, so a card or a
@@ -73,19 +79,20 @@ function pillClass(
     today,
     mode,
     hasEvents,
-    allScope,
+    unscoped,
   }: {
     selected: string;
     today: string;
     mode: DayStripMode;
     hasEvents?: boolean;
-    allScope?: boolean;
+    unscoped?: boolean;
   },
 ): string {
   const c = ['wp-daypill'];
-  // Under all-days scope no pill is "the selected one", so the filled-selection
-  // classes are withheld — the today-anchor (Trip) and empty markers (Plan) stay.
-  const isSelected = date === selected && !allScope;
+  // On a surface that isn't showing one day no pill is "the selected one", so the
+  // filled-selection classes are withheld — the today-anchor (Trip) and empty
+  // markers (Plan) stay.
+  const isSelected = date === selected && !unscoped;
   if (mode === 'trip') {
     if (isSelected) c.push(date === today ? 'on' : date < today ? 'sel-history' : 'sel-future');
     else if (date === today) c.push('today-anchor');
@@ -104,12 +111,13 @@ export function DayStrip({
   today,
   mode,
   onSelect,
-  allScope,
+  unscoped,
   dragging,
   overDate,
 }: DayStripProps) {
-  // Don't force-scroll to a day that isn't visually selected (all-days scope).
-  const selectedRef = useCenterSelected<HTMLButtonElement>(selected, { active: !allScope });
+  // Don't force-scroll to a day that isn't visually selected (all-days, or a
+  // trip-wide tab).
+  const selectedRef = useCenterSelected<HTMLButtonElement>(selected, { active: !unscoped });
 
   return (
     <div className="wp-daystrip" data-mode={mode}>
@@ -125,11 +133,11 @@ export function DayStrip({
             ref={d.date === selected ? selectedRef : undefined}
             type="button"
             className={
-              pillClass(d.date, { selected, today, mode, hasEvents: d.hasEvents, allScope }) +
+              pillClass(d.date, { selected, today, mode, hasEvents: d.hasEvents, unscoped }) +
               (dragging && overDate === d.date ? ' drop-over' : '')
             }
             onClick={() => onSelect(d.date)}
-            aria-pressed={d.date === selected && !allScope}
+            aria-pressed={d.date === selected && !unscoped}
             data-day-pill={dragging ? d.date : undefined}
           >
             <span className="l">{d.letter}</span>

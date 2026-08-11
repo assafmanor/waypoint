@@ -214,6 +214,17 @@ describe('the system back, against a fake Navigation API', () => {
     await pressBack('/');
   });
 
+  // **A remembered day does not change what back does** (field report #39). The day rides
+  // every lateral move now, so the entry on top can carry `?day=` where it never used to —
+  // and since those moves are all `replace`, there is still exactly ONE in-trip entry and
+  // back is still the structural Home. A day the platform back could walk INTO would be
+  // the stranded-entry problem reappearing on the surface that has to stay flat.
+  it('leaves a day-scoped tab for Home with a remembered day on the URL', async () => {
+    window.history.replaceState(null, '', '/?tab=map&day=2026-07-11');
+    render(wrap(<ScreenWithToggleLayer />));
+    await pressBack('/');
+  });
+
   // **A LAYER THAT SURVIVED A `replace` OF ITS OWN URL** (owner, session 177: _"back (goes
   // back to event form) -> back (closes app instead of closing the modal)"_).
   //

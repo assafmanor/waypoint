@@ -48,7 +48,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import type { PlaceSearchKind } from '@waypoint/shared';
 import { useHandoff, type Handoff } from '../lib/handoff';
-import { HOME_TAB, TAB_PARAM, tabTarget } from './nav-state';
+import { dayCarriedFrom, tabOfParams, tabTarget } from './nav-state';
 import type { TabId } from '../constants';
 import { useTrip } from './trip-state';
 
@@ -244,6 +244,26 @@ export function useSelectDay(): (date: string) => void {
   );
 }
 
+/** **The navigation half of every way in to the Map**, as one function. The three
+ *  way-ins below each hand the Map some scope of their own and then land on the tab,
+ *  and that landing was written out three times — `tabTarget('map')` with `&day=`
+ *  appended by hand. Which is precisely how the tab bar's own move came to lose the
+ *  day (field report #39): the rule lived in the copies rather than in `tabTarget`,
+ *  so the one caller that did not copy it silently resolved the day back to today.
+ *  One function now, over the day-aware `tabTarget` (rule 8).
+ *
+ *  One explicit `replace` (ADR-0090: back is computed from state, so in-trip history
+ *  stays flat), and the day is read at CALL time off the live URL — the callback
+ *  stays identity-stable for its memoized consumers while still navigating from the
+ *  day you are actually on. */
+function useGoToMapTab(): () => void {
+  const navigate = useNavigate();
+  return useCallback(() => {
+    const day = dayCarriedFrom(new URLSearchParams(window.location.search));
+    navigate(tabTarget('map', day), { replace: true });
+  }, [navigate]);
+}
+
 /** "Show this place on the map" — the in-app destination that replaced the Google
  *  place view (ADR-0121 §8). It hands the Map a focus and lands on the tab in one
  *  explicit `replace` navigation, through the shared `tabTarget` rather than a
@@ -258,16 +278,15 @@ export function useSelectDay(): (date: string) => void {
  *  tab-navigation context it doesn't own. */
 export function useShowPlaceOnMap(): ((placeId: string) => void) | null {
   const scope = useContext(MapScopeContext);
-  const navigate = useNavigate();
+  const goToMapTab = useGoToMapTab();
   const requestFocus = scope?.requestFocus;
   return useMemo(() => {
     if (!requestFocus) return null;
     return (placeId: string) => {
       requestFocus(placeId);
-      const day = new URLSearchParams(window.location.search).get('day');
-      navigate(tabTarget('map') + (day ? `&day=${day}` : ''), { replace: true });
+      goToMapTab();
     };
-  }, [requestFocus, navigate]);
+  }, [requestFocus, goToMapTab]);
 }
 
 /** **"The rest of my ideas are over there"** — the shelf's tail, as one call
@@ -290,16 +309,15 @@ export function useShowPlaceOnMap(): ((placeId: string) => void) | null {
  *  bet rests on. */
 export function useShowMaybesOnMap(): (() => void) | null {
   const scope = useContext(MapScopeContext);
-  const navigate = useNavigate();
+  const goToMapTab = useGoToMapTab();
   const hand = scope?.maybesFacet.hand;
   return useMemo(() => {
     if (!hand) return null;
     return () => {
       hand(true);
-      const day = new URLSearchParams(window.location.search).get('day');
-      navigate(tabTarget('map') + (day ? `&day=${day}` : ''), { replace: true });
+      goToMapTab();
     };
-  }, [hand, navigate]);
+  }, [hand, goToMapTab]);
 }
 
 /** **"Find me a place for this field"** — the errand, as one call (ADR-0134 §1). Composed
@@ -315,22 +333,21 @@ export function useShowMaybesOnMap(): (() => void) | null {
  *  follows (and the same reason `useShowPlaceOnMap` returns null there). */
 export function useStartPlaceErrand(): ((errand: Omit<PlaceErrand, 'returnTo'>) => void) | null {
   const scope = useContext(MapScopeContext);
-  const navigate = useNavigate();
+  const goToMapTab = useGoToMapTab();
   const hand = scope?.errand.hand;
   return useMemo(() => {
     if (!hand) return null;
     return (errand: Omit<PlaceErrand, 'returnTo'>) => {
       hand({ ...errand, returnTo: window.location.pathname + window.location.search });
-      const day = new URLSearchParams(window.location.search).get('day');
-      navigate(tabTarget('map') + (day ? `&day=${day}` : ''), { replace: true });
+      goToMapTab();
     };
-  }, [hand, navigate]);
+  }, [hand, goToMapTab]);
 }
 
-/** Which tab a path addresses. Home carries no `?tab=`, so an absent one IS `home` rather
- *  than "unknown" — every in-trip screen lives under exactly one tab. */
+/** Which tab a path addresses — the query-string form of it is `tabOfParams`, shared
+ *  with the nav layer that answers the same question about the URL you are on. */
 const tabOfPath = (path: string): TabId =>
-  (new URLSearchParams(path.split('?')[1] ?? '').get(TAB_PARAM) as TabId | null) ?? HOME_TAB;
+  tabOfParams(new URLSearchParams(path.split('?')[1] ?? ''));
 
 /** The other end: a form's HOST takes the answer and re-opens the form from the draft
  *  with the place assigned (ADR-0134 §2). Returns `null` when nothing is waiting, or when

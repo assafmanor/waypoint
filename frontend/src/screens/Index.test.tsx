@@ -97,6 +97,17 @@ describe('Index landing (ADR-0098)', () => {
     expect(screen.getByText('1')).toBeTruthy(); // bookings count
   });
 
+  // The Index is trip-wide, and a remembered `?day=` rides along on its URL now (field
+  // report #39) — so the guard is that the param changes NOTHING here: the same tiles, the
+  // same counts, the same readiness. There is no date filter on this screen to remove, and
+  // this is what stops one growing.
+  it('renders the same trip-wide landing with a remembered ?day= on the URL', () => {
+    const plain = render(wrap(<Index />, ['/?tab=index'])).container.textContent;
+    cleanup();
+    const withDay = render(wrap(<Index />, ['/?tab=index&day=2026-07-23'])).container.textContent;
+    expect(withDay).toBe(plain);
+  });
+
   it('opens the bookings screen on tile tap, and returns to the landing on back', () => {
     render(wrap(<Index />));
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.index.bookingsTitle) }));

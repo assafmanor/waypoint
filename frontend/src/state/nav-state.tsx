@@ -247,18 +247,66 @@ export function correctionForUncancelableBack(action: BackAction): BackCorrectio
   return action.kind === 'exit-trip' ? { kind: 'redirect-exit' } : { kind: 'none' };
 }
 
+/** Which tab a URL's params address. Home carries no `?tab=`, so an absent one IS
+ *  `home` rather than "unknown" — every in-trip screen lives under exactly one tab. */
+export function tabOfParams(params: URLSearchParams): TabId {
+  return (params.get(TAB_PARAM) as TabId | null) ?? HOME_TAB;
+}
+
 /** Where a tab tap navigates (ADR-0090). Always `replace` — history depth doesn't
  *  resolve back, `resolveBack` does, so in-trip history stays flat. Home → the
  *  clean `/` (no params, so `activeDate` derives to today); any other tab → its
- *  `?tab=` URL. A no-op when already on the target is the caller's guard. */
-export function tabTarget(next: TabId): string {
-  return next === HOME_TAB ? '/' : `/?${TAB_PARAM}=${next}`;
+ *  `?tab=` URL, carrying `day` when it is given one. A no-op when already on the
+ *  target is the caller's guard.
+ *
+ *  **The day is a parameter because a lateral move must not lose it** (field report
+ *  #39). `activeDate` derives from `?day=` alone (ADR-0035 §4), so a target without
+ *  the param resolves the day back to today: entering the Map by tapping a day kept
+ *  the day, entering it from the tab bar silently forgot it. The three way-ins in
+ *  `map-scope-state` were each appending `&day=` to this function's output by hand —
+ *  the one-off that this parameter collapses rather than being copied a fourth time
+ *  (rule 8). `dayCarriedFrom` decides WHICH day; `?day=` remains its only copy.
+ *
+ *  Home takes no day whatever it is handed: it is today-anchored in both modes, and
+ *  the clean `/` is what makes that structural rather than an effect (ADR-0035 §4). */
+export function tabTarget(next: TabId, day?: string | null): string {
+  if (next === HOME_TAB) return '/';
+  return `/?${TAB_PARAM}=${next}${day ? `&${DAY_PARAM}=${day}` : ''}`;
+}
+
+/** The day a lateral move carries forward — the "remembered day" of field report #39,
+ *  which is the `?day=` param itself and never a second copy of it in React state
+ *  (ADR-0035 §4; `trip-state` records what that second copy used to do). So this is a
+ *  pure read of the URL you are leaving, and the whole of the remembering.
+ *
+ *  It rides to the Index too, which is what lets Day → Index → Day come back to the
+ *  day you left: the Index does not date-filter anything and its strip singles out no
+ *  pill (`tabShowsSelectedDay`), so the param is remembered there without being shown.
+ *
+ *  Nothing rides out of Home: Home derives to today in both modes, so a stray `?day=`
+ *  on a Home URL is already ignored there and must not come back to life by leaving. */
+export function dayCarriedFrom(params: URLSearchParams): string | null {
+  return tabOfParams(params) === HOME_TAB ? null : params.get(DAY_PARAM);
 }
 
 /** Tabs that are day-scoped surfaces (ADR-0110 §4): tapping a strip day focuses
  *  that day IN PLACE instead of routing to the Day view. The Day view was the
  *  only such surface; the Map joins it (its content is "this day's places"). */
 export const DAY_SCOPED_TABS = new Set<TabId>(['days', 'map']);
+
+/** Whether the header's day strip singles out a selected pill on this tab (field
+ *  report #39). The two day-scoped surfaces show one day's content, and Home is
+ *  today-anchored (ADR-0035 §4) — on all three, a selected day is a fact about what
+ *  you are looking at. The **Index is trip-wide**: its cards, counts and readiness
+ *  are the whole trip, so no pill there is "the selected one" — the remembered day
+ *  stays in the URL (`dayCarriedFrom`) without being displayed, and is shown again
+ *  the moment you return to a day surface.
+ *
+ *  The pills stay TAPPABLE on the Index: a tap from a non-day-scoped tab routes to
+ *  the Day view (`daySelectTarget`), which is how you pick a day from there. */
+export function tabShowsSelectedDay(tab: TabId): boolean {
+  return DAY_SCOPED_TABS.has(tab) || tab === HOME_TAB;
+}
 
 /** Where a day-selection lands (ADR-0035 §4, single-source day; retained). The
  *  selected day lives in exactly ONE place — the `?day=` URL param — and
@@ -836,17 +884,22 @@ export function needsBackGuard(
 
 /** The in-trip tab (ADR-0090). Every move is an explicit `replace` to the tab's
  *  URL; back is resolved from state, not from history depth, so there is no
- *  push/anchor bookkeeping to keep in sync. */
+ *  push/anchor bookkeeping to keep in sync.
+ *
+ *  **The day you are on rides along** (field report #39): the tab bar's move used to
+ *  navigate to a bare `?tab=`, which is the one place the remembered day was being
+ *  dropped — see `tabTarget`/`dayCarriedFrom`, which now decide that for every
+ *  caller instead of each one appending the param itself. */
 export function useTripTab(): { tab: TabId; goToTab: (t: TabId) => void } {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const tab = (params.get(TAB_PARAM) as TabId | null) ?? HOME_TAB;
+  const tab = tabOfParams(params);
   const goToTab = useCallback(
     (next: TabId) => {
       if (next === tab) return;
-      navigate(tabTarget(next), { replace: true });
+      navigate(tabTarget(next, dayCarriedFrom(params)), { replace: true });
     },
-    [tab, navigate],
+    [tab, params, navigate],
   );
   return { tab, goToTab };
 }

@@ -113,7 +113,10 @@ describe('DayStrip', () => {
     expect(pills[0].classList.contains('empty')).toBe(false); // has events
   });
 
-  it('allScope (Map all-days): drops the filled selection but keeps the today-anchor', () => {
+  // `unscoped` = the host surface isn't showing one day: the Map's all-days scope
+  // (ADR-0110 §4) and a trip-wide tab like the Index (field report #39). Both want
+  // exactly this — the day is still in the URL, it is simply not the selected one here.
+  it('unscoped (all-days / a trip-wide tab): drops the filled selection but keeps the today-anchor', () => {
     const { container } = render(
       <DayStrip
         days={DAYS}
@@ -121,11 +124,11 @@ describe('DayStrip', () => {
         today="2026-07-19"
         mode="trip"
         onSelect={() => {}}
-        allScope
+        unscoped
       />,
     );
     const pills = container.querySelectorAll('.wp-daypill');
-    // The 20th is the active date but must NOT read as selected under all-days.
+    // The 20th is the active date but must NOT read as selected while unscoped.
     expect(pills[2].classList.contains('sel-future')).toBe(false);
     expect(pills[2].getAttribute('aria-pressed')).toBe('false');
     // today still anchors; the 20th falls back to plain future styling.
@@ -133,9 +136,49 @@ describe('DayStrip', () => {
     expect(pills[2].classList.contains('future')).toBe(true);
   });
 
+  // Suppressing the selection must not suppress the CONTROL: from the Index the pill
+  // is how you pick a day (its tap routes to the Day view, `daySelectTarget`).
+  it('keeps every pill tappable while unscoped', () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-20"
+        today="2026-07-19"
+        mode="trip"
+        onSelect={onSelect}
+        unscoped
+      />,
+    );
+    const pills = container.querySelectorAll('.wp-daypill');
+    fireEvent.click(pills[2]); // the day that would have been "selected"
+    fireEvent.click(pills[0]);
+    expect(onSelect.mock.calls).toEqual([['2026-07-20'], ['2026-07-18']]);
+    expect([...pills].some((p) => p.hasAttribute('disabled'))).toBe(false);
+  });
+
+  // Plan mode has its own selection grammar (violet `on` + the empty-day markers), so
+  // the suppression has to hold there too — and the markers have to survive it.
+  it('withholds the selection in Plan mode too, keeping the empty-day markers', () => {
+    const { container } = render(
+      <DayStrip
+        days={DAYS}
+        selected="2026-07-18"
+        today="2026-07-19"
+        mode="plan"
+        onSelect={() => {}}
+        unscoped
+      />,
+    );
+    const pills = container.querySelectorAll('.wp-daypill');
+    expect(pills[0].classList.contains('on')).toBe(false);
+    expect(pills[0].getAttribute('aria-pressed')).toBe('false');
+    expect(pills[1].classList.contains('empty')).toBe(true);
+  });
+
   // The centring itself — the arrival, the axis, the latch — is `lib/useCenterSelected`'s
   // own test. What belongs here is the WIRING: that the ref rides the selected pill, and
-  // that all-days scope withholds it. The harness has to be installed after mount (React
+  // that an unscoped surface withholds it. The harness has to be installed after mount (React
   // creates the strip during the commit that also runs the effect), so these drive the
   // selection change rather than the arrival.
   const LONG_TRIP: DayStripDay[] = Array.from({ length: 5 }, (_, i) => ({
@@ -147,17 +190,17 @@ describe('DayStrip', () => {
 
   /** Render a 5-day strip and make its 100px pills a 300px scroller (see the harness): the
    *  first pill's centre is 100px before the viewport's, the third's 100px after. */
-  function scrollableStrip(selected: string, allScope?: boolean) {
+  function scrollableStrip(selected: string, unscoped?: boolean) {
     const props = { days: LONG_TRIP, today: '2026-07-19', mode: 'trip' as const, onSelect() {} };
     const { container, rerender } = render(
-      <DayStrip {...props} selected={selected} allScope={allScope} />,
+      <DayStrip {...props} selected={selected} unscoped={unscoped} />,
     );
     const strip = container.querySelector<HTMLElement>('.wp-daystrip')!;
     const pills = Array.from(container.querySelectorAll<HTMLElement>('.wp-daypill'));
     return {
       scroller: fakeScroller(strip, pills),
       select: (date: string) =>
-        rerender(<DayStrip {...props} selected={date} allScope={allScope} />),
+        rerender(<DayStrip {...props} selected={date} unscoped={unscoped} />),
     };
   }
 
@@ -170,7 +213,7 @@ describe('DayStrip', () => {
     expect(scroller.lastDelta()).toBe(-100);
   });
 
-  it('does not centre a day that is not visually selected (all-days scope)', () => {
+  it('does not centre a day that is not visually selected (unscoped surface)', () => {
     const { scroller, select } = scrollableStrip('2026-07-19', true);
     select('2026-07-20');
     expect(scroller.calls).toHaveLength(0);
