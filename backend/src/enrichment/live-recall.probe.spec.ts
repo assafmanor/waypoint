@@ -11,7 +11,7 @@
 // It writes every verdict to `PROBE_OUT` as it goes and resumes from that file, so a run
 // interrupted by a rate limit continues rather than starting over; `PROBE_FRESH=1` ignores it.
 // **The comparison is the point**: run it on `main`, run it on the branch, diff the two files.
-// Two sessions have now been spent reconstructing this by hand (sessions 248 and 250); the
+// Two sessions have now been spent reconstructing this by hand (sessions 248 and 254); the
 // third should not have to.
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
