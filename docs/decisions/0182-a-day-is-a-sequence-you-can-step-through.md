@@ -50,6 +50,23 @@ The owner's rule — "untimed/flexible items appear after the timed portion" —
 
 Owner, on the fork: **interleaved**.
 
+**REVERSED 2026-08-11, and the reason is that the section above was answering the wrong question.** Owner: _"I prefer that unnumbered events will be at the end, so a hotel check in/out, a place with an untimed event, a maybe place, etc. should be at the end of the list — and same thing for the map sequential cards."_
+
+The argument for interleaving was that the numbers are on screen and a traversal order contradicting them is the screen contradicting itself. That is true, and it only ever applied to **numbered** stops. An unnumbered one carries nothing to contradict — so sinking it costs the invariant nothing, and it buys agreement with the Day view, which has parked floors out of its sequence since ADR-0171 §10a.
+
+**What the build then found is that the defect was never really about interleaving.** The list and the number were asking two different questions:
+
+|                                       | asks                                       | so a hotel check-in…                     |
+| ------------------------------------- | ------------------------------------------ | ---------------------------------------- |
+| the number (`buildPinOrderIndex`)     | is this moment **exact**? (`isExactEdge`)  | **unnumbered** — "from 15:00" is a floor |
+| the order (`comparePlacesBySchedule`) | does it have a **clock**? (`d.at == null`) | sorted at 15:00, among the numbered      |
+
+A check-in has a time and no defensible position; a check-out is the same with a ceiling. Both were unnumbered _and_ sorted as timed — so the owner's two examples that "already worked" (an untimed event, a maybe place) were the ones whose clock happened to be absent, and the two that did not were the ones carrying a clock they could not defend.
+
+So the fix is not a new ordering rule. **The order asks the same question the number asks**, and the predicate that answers it is one function with two readers: `knowsMoment`, lifted out of `buildDayStopSequence` where it was a local `knows` with a single caller (root rule 8 — generalise the one-off rather than write a second beside it). `PlaceOrderContext` gains an optional `eventById` in the shape ADR-0171 already uses: absent, every clocked moment counts as known and the order is exactly what it was.
+
+Deliberately **not** generalised: the two `rank` functions. They sort different units — places against moments — and the sequence excludes `ambient` outright, so a shared rank would be half-inert in one caller. The predicate is the shared unit; the ranks stay local.
+
 ### 4. The gesture: capture on recognition, `pan-y`, and no new arbitration.
 
 The fifth gesture does not join the canvas's four-way arbitration, and the reason is structural rather than careful design: **`.map-placecard` is a sibling of `<MapPane>` inside `.map-split`, not a descendant** (wrapping the pane remounts it, and a remount is a billed map load — ADR-0121 §4). `useCanvasGestures` attaches its capture-phase listeners to the **pane**, so a `pointerdown` on the card never reaches the canvas recogniser at all.

@@ -682,10 +682,11 @@ describe('what a pin number is allowed to claim', () => {
     expect(index.get('kef')).toBe(1);
     expect(index.get('tlv')).toBe(2);
 
-    // **AND IT KEEPS ITS PLACE IN THE SEQUENCE** (ADR-0182 §3). Losing the number is not
-    // leaving the day: the check-out sorts at its ceiling, between the two flights, and a
-    // traversal steps through it. Interleaved rather than parked in a tail, because the
-    // pins on the same canvas carry these numbers and the two must not disagree.
+    // **AND IT SINKS TO THE END** (ADR-0182 §3, as reversed 2026-08-11). Losing the number
+    // is not leaving the day — the check-out is still traversable — but it no longer sorts
+    // between the two flights on a ceiling it cannot defend. "By 11:00" is any time before,
+    // so placing it at 11:00 claims a position the app does not have; the numbered stops
+    // keep the clock and everything unnumbered follows them.
     const stops = buildDayStopSequence(all, {
       nameOf,
       onDate: DAY,
@@ -702,8 +703,8 @@ describe('what a pin number is allowed to claim', () => {
         event({ id: 'arr', category: 'transport', icon: '✈️', startsAt: at2('15:20') }),
       ]),
     });
-    expect(stops.map((s) => s.usage.placeId)).toEqual(['kef', 'hotel', 'tlv']);
-    expect(stops.map((s) => s.order)).toEqual([1, undefined, 2]);
+    expect(stops.map((s) => s.usage.placeId)).toEqual(['kef', 'tlv', 'hotel']);
+    expect(stops.map((s) => s.order)).toEqual([1, 2, undefined]);
   });
 
   it('gives an UNTIMED place no number either — the same claim, unreported', () => {
@@ -1316,6 +1317,44 @@ describe('buildDayStopSequence — the day in order, which is what you step thro
       }).values(),
     ];
     expect(ids(buildDayStopSequence(all, { nameOf, onDate: DAY }))).toEqual(['tlv', 'tlv']);
+  });
+
+  it('a CHECK-IN carries a clock and still sinks: unnumbered is what decides, not untimed', () => {
+    // The owner's own case (2026-08-11): _"a hotel check in/out … should be at the end"_.
+    // It has a time, so the weaker "is it clocked" question sorted it at 15:00 between the
+    // 14:00 and 16:00 stops while it wore no number. A floor is open on the side you act, so
+    // 15:00 is any hour after — the order asks `knowsMoment` now, the same question the
+    // number asks, and the two can no longer disagree about the same stop.
+    const stay = event({
+      id: 'stay',
+      category: 'lodging' as TripEvent['category'],
+      date: DAY,
+      endDate: NEXT_DAY,
+      startsAt: at2('15:00'),
+      endsAt: `${NEXT_DAY}T11:00:00Z`,
+    });
+    const all = [
+      ...usages({
+        places: [place('hotel'), place('museum'), place('dinner')],
+        events: [
+          { ...stay, placeId: 'hotel' },
+          event({ id: 'm', placeId: 'museum', startsAt: at2('14:00') }),
+          event({ id: 'd', placeId: 'dinner', startsAt: at2('16:00') }),
+        ],
+      }).values(),
+    ];
+    const stops = buildDayStopSequence(all, {
+      nameOf,
+      onDate: DAY,
+      eventById: (id) =>
+        [
+          stay,
+          event({ id: 'm', startsAt: at2('14:00') }),
+          event({ id: 'd', startsAt: at2('16:00') }),
+        ].find((e) => e.id === id),
+    });
+    expect(ids(stops)).toEqual(['museum', 'dinner', 'hotel']);
+    expect(orders(stops)).toEqual([1, 2, undefined]);
   });
 
   it('THE TAIL: a day idea with no schedule slot comes last, unnumbered, and marked', () => {
