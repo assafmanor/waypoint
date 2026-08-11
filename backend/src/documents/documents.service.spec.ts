@@ -9,6 +9,7 @@ import {
   NotFoundException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
+import { documentSummarySchema } from '@waypoint/shared';
 import { DOC_LOCAL_STORAGE_DIR } from '../common/env';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
@@ -87,6 +88,55 @@ describe('DocumentsService', () => {
   // B-03: an executable "document" (HTML/SVG/XHTML) uploaded by one member runs
   // script in the app origin when a co-traveler opens it. The allow-list rejects
   // those types before anything is encrypted or stored — no row, no orphan blob.
+  // Field report #33. This payload is what BOTH devices build their document row from — the
+  // uploader's too, since the outbox flush discards `uploadDocument`'s response and waits for
+  // its own WS echo — and the client merges it straight into its list. Recording the input
+  // rather than the row therefore published a document with no `updatedAt`, which is the
+  // version ADR-0055 keys the blob cache on and the viewer reads content by: a fresh upload
+  // opened on a spinner with nothing behind it, on the uploader and on a peer alike.
+  it('broadcasts the whole document row on create, not the fields the client already had', async () => {
+    const tripId = await newTrip();
+    const plaintext = Buffer.from('boarding pass');
+    const created = await service.create(
+      tripId,
+      DEV_USER,
+      { type: 'other', title: 'Boarding pass' },
+      { buffer: plaintext, mimetype: 'application/pdf', size: plaintext.length },
+    );
+
+    const change = await prisma.change.findFirstOrThrow({
+      where: { tripId, entityId: created.id, action: 'create' },
+    });
+    // A complete `DocumentSummary`, asserted by the schema the receiving client parses
+    // snapshots with rather than field by field — so a future field cannot go missing quietly.
+    expect(() => documentSummarySchema.parse(change.after)).not.toThrow();
+    expect(change.after).toMatchObject({ id: created.id, updatedAt: created.updatedAt });
+    // And still not the blob reference: `before`/`after` are summaries for the same reason
+    // the list route is (ADR-0015/0034), and a fuller payload must not become a leakier one.
+    expect(change.after).not.toHaveProperty('fileRef');
+  });
+
+  // The same rule on the other write. A rename that publishes only what it changed leaves
+  // every peer's row carrying the `updatedAt` it had BEFORE the edit.
+  it('broadcasts the whole document row on update too', async () => {
+    const tripId = await newTrip();
+    const plaintext = Buffer.from('passport scan');
+    const created = await service.create(
+      tripId,
+      DEV_USER,
+      { type: 'passport', title: 'Passport' },
+      { buffer: plaintext, mimetype: 'application/pdf', size: plaintext.length },
+    );
+    const updated = await service.update(tripId, DEV_USER, created.id, { title: 'ד' }, undefined);
+
+    const change = await prisma.change.findFirstOrThrow({
+      where: { tripId, entityId: created.id, action: 'update' },
+    });
+    expect(() => documentSummarySchema.parse(change.after)).not.toThrow();
+    expect(change.after).toMatchObject({ title: 'ד', updatedAt: updated.updatedAt });
+    expect(change.after).not.toHaveProperty('fileRef');
+  });
+
   it('rejects a disallowed upload MIME type (text/html) before storing anything', async () => {
     const tripId = await newTrip();
     const payload = Buffer.from('<script>alert(document.cookie)</script>');

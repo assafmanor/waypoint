@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import type { Place } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService, type ChangeOp } from './change.service';
 import { SyncGateway } from './sync.gateway';
@@ -61,6 +62,33 @@ describe('ChangeService', () => {
 
     // The trip's first change, so its predecessor is the "nothing yet" cursor.
     expect(broadcast).toHaveBeenCalledWith(tripId, change, '0');
+  });
+
+  // Field report #33: half a row does not exist until the write runs, so a caller that can
+  // only name `after` up front can only publish what the client already knew — never the id,
+  // the timestamps or `updatedBy` the server mints. The function form reads them off the row
+  // that was just written, inside the same transaction.
+  it('takes `after` from the entity it just wrote when given a function', async () => {
+    const tripId = await newTrip();
+
+    // Explicit type argument because both closures here are inline: a real caller passes a
+    // named mapper (`after: toDocumentSummaryDto`), which pins it on its own.
+    const { entity, change } = await service.mutate<Place>({
+      tripId,
+      actorUserId: DEV_USER,
+      entityType: 'place',
+      entityId: 'pending',
+      action: 'create',
+      after: (place) => ({ id: place.id, name: place.name, updatedBy: place.updatedBy }),
+      apply: (tx) =>
+        tx.place.create({ data: { tripId, name: 'Kiyomizu-dera', updatedBy: DEV_USER } }),
+    });
+
+    expect(change.after).toEqual({
+      id: entity.id,
+      name: 'Kiyomizu-dera',
+      updatedBy: DEV_USER,
+    });
   });
 
   it('rolls back the entity write and writes no Change when apply throws', async () => {

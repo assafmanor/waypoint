@@ -877,7 +877,12 @@ export async function fetchDocumentContent(
   // write is pure optimization — awaiting it meant a jammed or full cache held up a read
   // that had already succeeded, and the eviction sweep it runs first walks every key.
   // It cannot reject (`doc-cache.ts` is best-effort throughout).
-  void writeCachedBlob(url, blob, baseUrl);
+  //
+  // **Unversioned reads are served but never stored** (field report #33). Without a version
+  // the key would be the bare `/content` path, which no later version can supersede — the
+  // one entry ADR-0055's keying exists to prevent. Skipping the write costs such a read its
+  // offline copy and keeps every entry in the store version-keyed.
+  if (version) void writeCachedBlob(url, blob, baseUrl);
   return blob;
 }
 

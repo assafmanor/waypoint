@@ -252,6 +252,49 @@ describe('a read that never answers ends in a retryable error, not an endless sp
   });
 });
 
+// ── Field-report #33: a document with no version still reaches its bytes ───────────────
+// The read used to require a `updatedAt` before it would start, so a row that had one on the
+// way — a queued upload, stamped only when it flushes; a row built from a change that
+// published less than the whole entity — produced NO request at all. Nothing to resolve and
+// nothing to reject means the one thing #20 set out to end: a spinner with no exit and no
+// retry. Placed here for the same reason as the block above — the retry press must land
+// before any pinch has armed the click swallow.
+describe('a document whose version has not arrived (field report #33)', () => {
+  const unversioned = () => ({ doc: doc({ updatedAt: '' }) });
+
+  it('reads by id, with no version, rather than never starting', async () => {
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+    vi.mocked(fetchDocumentContent).mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }));
+    open(unversioned());
+    await waitFor(() => expect(document.querySelector('.doc-viewer-img')).not.toBeNull());
+    // The version is the CACHE key (ADR-0055) and `docId` is the address, so an absent one is
+    // passed as absent — never as an empty `?v=`, which would be a key of its own.
+    expect(fetchDocumentContent).toHaveBeenCalledWith('t1', 'd1', undefined);
+    expect(document.querySelector('.doc-viewer-loading')).toBeNull();
+  });
+
+  // The queued-upload case end to end: the content genuinely is not on the server yet, so the
+  // read SHOULD fail — and what the report asked for is that it fails answerably and that the
+  // retry works once the flush lands, with no restart.
+  it('lands in the retryable error state while the bytes are still on their way up', async () => {
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => Promise.resolve(),
+    });
+    vi.mocked(fetchDocumentContent).mockRejectedValue(new Error('not uploaded yet'));
+    open(unversioned());
+    const retry = await screen.findByRole('button', { name: /נסו שוב/ });
+    expect(document.querySelector('.doc-viewer-loading')).toBeNull();
+
+    vi.mocked(fetchDocumentContent).mockResolvedValue(new Blob(['x'], { type: 'image/jpeg' }));
+    fireEvent.click(retry);
+    await waitFor(() => expect(document.querySelector('.doc-viewer-img')).not.toBeNull());
+  });
+});
+
 // **THE THIRD SOURCE** (ADR-0086's 2026-08-08 amendment). A file the user has picked and not
 // saved: the bytes are already in memory, so what needs asserting is that they reach the same
 // surface WITHOUT the document machinery in front of them — no fetch, no cache key, no version

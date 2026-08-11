@@ -602,6 +602,23 @@ describe('fetchDocumentContent — every phase is bounded (field-report #20)', (
     await expect(fetchDocumentContent('t1', 'd1', 'v1')).resolves.toBeInstanceOf(Blob);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  // Field report #33. A document whose version has not arrived is still readable — `docId`
+  // is the address — but the entry it would write has the bare `/content` path for a key,
+  // and nothing a later version writes can supersede that. ADR-0055's whole keying rule is
+  // that the URL is reused across a replace, so an unkeyed entry is the one it forbids.
+  it('serves an unversioned read but stores nothing under the unkeyed URL', async () => {
+    const put = vi.fn(() => Promise.resolve());
+    stubCaches({ put });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(['net'])) }),
+      ),
+    );
+    await expect(fetchDocumentContent('t1', 'd1')).resolves.toBeInstanceOf(Blob);
+    expect(put).not.toHaveBeenCalled();
+  });
 });
 
 // ── Field-report #22: every OTHER read had the same missing bound ──────────────────────
