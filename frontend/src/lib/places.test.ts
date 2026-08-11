@@ -1135,6 +1135,19 @@ describe('authoringZone — a form types in the zone the view reads back (sessio
     expect(authoringZone({}, { date: '2026-07-08' }, evidence)).toBe(TYO);
   });
 
+  // A form calls this on EVERY render with whatever its date field holds, so it is the
+  // one place a date nobody authored still arrives — and `zonedIso` on one throws
+  // `RangeError` in that render, which is the crash of field report #38 (no error
+  // boundary exists, so the tree unmounts). Without a day there is no instant to place
+  // against a crossing, so the trip's primary is the honest answer and the form stays
+  // on screen to be corrected. `DateField` makes this unreachable from the platform's
+  // Clear; the guard is what keeps the next caller from re-finding it.
+  it('answers the primary zone for a day it cannot read, instead of throwing', () => {
+    for (const date of ['', '2026-07', 'not-a-day', '2026-13-40']) {
+      expect(authoringZone({}, { date, time: '15:00' }, evidence)).toBe(TYO);
+    }
+  });
+
   it('round-trips: the instant it builds reads back as the time that was typed', () => {
     // The bug this closes — the shelf slotted 15:00 in the trip primary (Tokyo)
     // while the day view rendered the row in the day's own zone (Jerusalem), so a

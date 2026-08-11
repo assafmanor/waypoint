@@ -73,6 +73,84 @@ test.describe('a when can be operated', () => {
     await expect(form(page).locator('.vt-date .df-face').first()).toContainText('בספט׳');
   });
 
+  // **THE CLOSED FIELD IS OURS, EVEN AFTER THE PICKER HAS BEEN IN IT** (field report
+  // #36). The face used to step aside on `:focus-within`, which was the same thing as
+  // "the platform's picker owns the screen" only until a phone was holding it: the
+  // picker leaves the input FOCUSED when it closes, so the field then read the
+  // platform's own format and clipped it — in exactly the state a reader checks the date
+  // they just entered. Measured here rather than asserted in jsdom, because what was
+  // wrong was a computed style and a box, and neither is visible to the unit suite.
+  test('the field still reads by name after a real press has focused it', async ({ page }) => {
+    const token = form(page).locator('.vt-date').first();
+    const input = token.locator('input[type="date"]');
+    await input.fill('2026-09-12');
+
+    await token.click();
+    await expect(input).toBeFocused();
+    // The reported string is the NATIVE control's rendering of the same date — the one
+    // thing ADR-0176 exists to hide. So the assertion is that ours is what paints.
+    await expect(token.locator('.df-face')).toBeVisible();
+    await expect(token.locator('.df-face')).toContainText('בספט׳');
+    await expect(input).toHaveCSS('opacity', '0');
+  });
+
+  // Android's text scaling multiplies computed font sizes, and every size in this app
+  // derives from the three type tokens — so raising them is what a larger system font
+  // does to this line. The owner's rule: the whole Hebrew date, at any scale, adapting
+  // rather than shrinking, ellipsing or falling back to digits.
+  for (const factor of [1.6, 2.2]) {
+    test(`the date survives ${factor}x system text without clipping`, async ({ page }) => {
+      const token = form(page).locator('.vt-date').first();
+      await token.locator('input[type="date"]').fill('2026-09-12');
+      await token.click();
+      await page.addStyleTag({
+        content: `:root { --text-body: ${14.5 * factor}px; --text-secondary: ${13 * factor}px; --text-caption: ${11 * factor}px; }`,
+      });
+
+      const face = token.locator('.df-face');
+      // Visible, not merely present: what the report saw was OUR face stepped aside and
+      // the native control's `12.9.2026` in its place, and a text assertion alone cannot
+      // tell those apart — hidden text still matches.
+      await expect(face).toBeVisible();
+      await expect(face).toContainText('בספט׳');
+      // A rect is not visibility (frontend/CLAUDE.md): what clipped was text overflowing
+      // its own box, which only the scroll/client pair can see.
+      const m = await face.evaluate((el) => ({
+        overflow: el.scrollWidth - el.clientWidth,
+        right: el.getBoundingClientRect().right,
+      }));
+      expect(m.overflow).toBeLessThanOrEqual(0);
+      // …and the line it sits in reflows around it rather than cutting it off.
+      const line = await form(page).locator('.wf-line').first().boundingBox();
+      expect(m.right).toBeLessThanOrEqual(line!.x + line!.width + 1);
+    });
+  }
+
+  // **THE PICKER'S CLEAR IS A CANCELLATION** (field report #38). Android's date picker
+  // has a Clear button; the crash it caused was a render-path `RangeError` on the empty
+  // date it reported, and with no error boundary anywhere the tree unmounted. The unit
+  // tests pin the rollback; this one pins that a REAL control writing a real empty value
+  // — through React's own value tracking, which a synthetic jsdom event bypasses — still
+  // leaves an app on screen.
+  test('a cleared date rolls back rather than blanking the app', async ({ page }) => {
+    const token = form(page).locator('.vt-date').first();
+    const input = token.locator('input[type="date"]');
+    await input.fill('2026-09-12');
+    await token.click();
+
+    await input.evaluate((el: HTMLInputElement) => {
+      // The platform writes the value itself, so React's tracker sees the change. The
+      // prototype setter is how a test reaches past the instance property React patches.
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    await expect(form(page)).toBeVisible();
+    await expect(input).toHaveValue('2026-09-12');
+    await expect(token.locator('.df-face')).toContainText('בספט׳');
+  });
+
   test('"ללא שעה" is styled by us, not by the user agent', async ({ page }) => {
     // Give the event a time so the clear appears at all.
     await form(page).locator('.vt-time').first().click();
