@@ -941,8 +941,12 @@ function TripReady({
     // Fan a remote change into every consumer: the event reducer, the Dexie
     // cache, and the reactive trip/roster state (ADR-0039). Setters are stable,
     // so this closes over them safely without effect-dep churn.
-    function applyRemoteChange(change: Change) {
-      lastSeqRef.current = change.seq;
+    function applyRemoteChange(change: Change, afterGap?: boolean) {
+      // The cursor holds at the last CONTIGUOUS change when frames were missed (ws.ts's
+      // `afterGap`): the resync that fires alongside this owns it from here, and if that
+      // refetch fails, `changes?sinceSeq=` must still replay the skipped frames rather
+      // than resume after them. The change itself is applied either way.
+      if (!afterGap) lastSeqRef.current = change.seq;
       // Narrate (don't re-apply) into the change-feed: a peer edit becomes a
       // visible, attributed line (ADR-0081). Our own edits return null (already
       // optimistic on our screen). Covers WS-live + reconnect catch-up (both

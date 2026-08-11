@@ -13,7 +13,7 @@ The unifying primitive is the **`Change`** record. Every **data-plane** mutation
 **Two invariants underpin everything below (ADR-0019):**
 
 1. **Atomic write.** The entity write and its `Change` insert commit in **one transaction** (`prisma.$transaction`), through a single shared `ChangeService.mutate()`; the WS broadcast happens **only after commit**. A mutation is never logged separately or half-applied.
-2. **Monotonic cursor.** `Change.seq` is a strictly-increasing `BigInt`. All catch-up and gap-detection cursor on `seq`, never on timestamps.
+2. **Monotonic cursor.** `Change.seq` is a strictly-increasing `BigInt`. All catch-up and gap-detection cursor on `seq`, never on timestamps. **It is monotonic, not contiguous, and it is GLOBAL rather than per-trip** (`Change.seq BIGSERIAL`, `schema.prisma`): a write to any trip advances it, so one trip's own changes are `…, 78, 93, 94, 210, …`. Anything that needs "did I miss a change **for this trip**?" must be told, not infer it from arithmetic — see the realtime channel's `prevSeq` below. `sinceSeq` cursoring is unaffected: a `>` comparison only needs monotonicity.
 
 ## Realtime channel
 
@@ -23,13 +23,20 @@ The unifying primitive is the **`Change`** record. Every **data-plane** mutation
 ### Message shapes (server → client)
 
 ```jsonc
-{ "type": "change", "seq": 412, "change": { /* Change record, incl. its seq */ } }
+{ "type": "change", "seq": 412, "prevSeq": 398, "change": { /* Change record, incl. its seq */ } }
 { "type": "presence", "members": [{ "userId": "...", "connected": true }] }
 { "type": "hello", "serverTime": "2026-07-09T18:00:00Z", "latestSeq": 412 }
 { "type": "enrichment", "placeId": "...", "fields": { /* what we know about that place */ } }
 ```
 
-The client tracks `lastSeq`. If an arriving `change.seq > lastSeq + 1` (a gap), or `hello.latestSeq > lastSeq` after reconnect, it runs catch-up (below). This gap-detection is what makes "WS receives, REST writes" safe against a dropped frame.
+The client tracks `lastSeq`. A frame is in order when **`prevSeq === lastSeq`**; anything else means frames were missed. `prevSeq` is **this trip's** preceding change, read by the writer inside the transaction that allocated `seq`, under the same per-trip advisory lock — so nothing can insert between the read and the write. It is present on every persisted change and absent only on the ephemeral trip-deletion frame, which carries `seq: 0` and no cursor at all. A `hello.latestSeq > lastSeq` after reconnect also means missed frames.
+
+**Two rules follow, and the second is not optional** (field report #32, session 244):
+
+- **A gap is what the server says it is, never what `seq + 1` implies.** `seq` is global (§2), so an ordered frame for one trip routinely skips numbers. The old test — `seq > lastSeq + 1` — read ordinary live delivery as lost frames the moment a second trip existed. The arithmetic survives only as a fallback for a frame with no `prevSeq`.
+- **A delivered change is applied, gap or no gap.** A frame in hand is certain data; the snapshot refetch that reconciles a gap is a network round-trip that is allowed to fail. Discarding the one for the other is how a peer's edit went missing until the screen was remounted: `lastSeq` had already moved past it, so no later gap and no `sinceSeq` replay would ever mention it again. On a gap the client applies the payload, holds its `sinceSeq` cursor at the last **contiguous** change (so a failed resync still replays what was skipped), and resyncs alongside.
+
+Together these are what makes "WS receives, REST writes" safe against a dropped frame.
 
 **`enrichment` is the one message with no `seq`, and that is the point** (ADR-0166 §6). Place enrichment is deliberately **outside the change log**: the row is global with no `tripId`, the server is its only writer, and none of LWW/undo/ordering applies to a value no client authored. So it produces no `Change`, narrates nothing into the change feed, and a receiving client must **neither advance `lastSeq` nor gap-check it** — doing either would make the next real change look like a gap and trigger a needless full resync.
 

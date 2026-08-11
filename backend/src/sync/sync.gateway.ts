@@ -18,7 +18,7 @@ const STREAM_PATH_RE = /^\/trips\/([^/?]+)\/stream(?:\?.*)?$/;
 
 type ServerMessage =
   | { type: typeof WS_MESSAGE_TYPE.HELLO; serverTime: string; latestSeq: string }
-  | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; change: Change }
+  | { type: typeof WS_MESSAGE_TYPE.CHANGE; seq: string; prevSeq?: string; change: Change }
   | { type: typeof WS_MESSAGE_TYPE.PRESENCE; members: { userId: string; connected: boolean }[] }
   // No `seq` on purpose — enrichment is outside the change log (ADR-0166 §6).
   | {
@@ -159,12 +159,20 @@ export class SyncGateway implements OnApplicationShutdown {
     this.channels.delete(tripId);
   }
 
-  /** Called by ChangeService after a mutation commits — never before (ADR-0019). */
-  broadcast(tripId: string, change: Change): void {
+  /**
+   * Called by ChangeService after a mutation commits — never before (ADR-0019).
+   *
+   * `prevSeq` is this TRIP's preceding change, read under the same advisory lock that
+   * allocated `seq`. A client cannot derive it: `Change.seq` is a global autoincrement,
+   * so an ordered frame for one trip routinely skips numbers, and the receiver's
+   * `seq === lastSeq + 1` gap test then reads live delivery as lost frames. Omitted only
+   * by the ephemeral trip-deletion broadcast, which has no cursor to be the successor of.
+   */
+  broadcast(tripId: string, change: Change, prevSeq?: string): void {
     const channel = this.channels.get(tripId);
     if (!channel) return;
     for (const client of channel.keys()) {
-      this.send(client, { type: WS_MESSAGE_TYPE.CHANGE, seq: change.seq, change });
+      this.send(client, { type: WS_MESSAGE_TYPE.CHANGE, seq: change.seq, prevSeq, change });
     }
   }
 

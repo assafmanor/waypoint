@@ -88,20 +88,91 @@ describe('openTripStream', () => {
     const onChange = vi.fn();
     const onResync = vi.fn();
     const close = openTripStream('trip-japan-26', '1', { onChange, onResync });
-    FakeWebSocket.instances[0].emit({ type: 'change', seq: '2', change });
-    expect(onChange).toHaveBeenCalledWith(change);
+    FakeWebSocket.instances[0].emit({ type: 'change', seq: '2', prevSeq: '1', change });
+    expect(onChange).toHaveBeenCalledWith(change, false);
     expect(onResync).not.toHaveBeenCalled();
     close();
   });
 
-  it('detects a gap and triggers resync instead of applying the change', () => {
+  // `Change.seq` is a GLOBAL autoincrement, so a skip is what an ordered frame for one
+  // trip normally looks like once a second trip exists (field report #32). `prevSeq` says
+  // this one follows ours, so the skip must not read as a gap.
+  it('applies a change whose seq skipped, when prevSeq says nothing was missed', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onChange = vi.fn();
+    const onResync = vi.fn();
+    const close = openTripStream('trip-japan-26', '1', { onChange, onResync });
+    FakeWebSocket.instances[0].emit({
+      type: 'change',
+      seq: '40',
+      prevSeq: '1',
+      change: { ...change, seq: '40' },
+    });
+    expect(onChange).toHaveBeenCalledWith({ ...change, seq: '40' }, false);
+    expect(onResync).not.toHaveBeenCalled();
+    close();
+  });
+
+  // A REAL gap. The change is still applied — it is data we are holding, and the resync
+  // that reconciles what came before it is a network round-trip that is allowed to fail.
+  it('applies a gapped change AND resyncs, flagging it so the caller holds its cursor', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onChange = vi.fn();
+    const onResync = vi.fn();
+    const close = openTripStream('trip-japan-26', '1', { onChange, onResync });
+    FakeWebSocket.instances[0].emit({
+      type: 'change',
+      seq: '5',
+      prevSeq: '4',
+      change: { ...change, seq: '5' },
+    });
+    expect(onResync).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({ ...change, seq: '5' }, true);
+    close();
+  });
+
+  // A server that predates `prevSeq` (mid-deploy): fall back to the arithmetic rather
+  // than treating every frame as in order.
+  it('falls back to seq arithmetic when a frame carries no prevSeq', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     const onChange = vi.fn();
     const onResync = vi.fn();
     const close = openTripStream('trip-japan-26', '1', { onChange, onResync });
     FakeWebSocket.instances[0].emit({ type: 'change', seq: '5', change: { ...change, seq: '5' } });
     expect(onResync).toHaveBeenCalledTimes(1);
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalledWith({ ...change, seq: '5' }, true);
+    close();
+  });
+
+  // The mount-time reconnect briefly runs two sockets, so a frame can arrive twice.
+  it('ignores a repeated frame, and does not read the repeat as a gap', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onChange = vi.fn();
+    const onResync = vi.fn();
+    const close = openTripStream('trip-japan-26', '1', { onChange, onResync });
+    const frame = { type: 'change', seq: '2', prevSeq: '1', change };
+    FakeWebSocket.instances[0].emit(frame);
+    FakeWebSocket.instances[0].emit(frame);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onResync).not.toHaveBeenCalled();
+    close();
+  });
+
+  // The trip-deletion broadcast is ephemeral: nothing persisted it, so it carries no
+  // cursor at all (`seq: '0'`). It must be delivered without touching the sequence.
+  it('delivers the cursor-less trip-deletion frame without disturbing the cursor', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    const onChange = vi.fn();
+    const onResync = vi.fn();
+    const close = openTripStream('trip-japan-26', '1', { onChange, onResync });
+    const gone = { ...change, seq: '0' };
+    FakeWebSocket.instances[0].emit({ type: 'change', seq: '0', change: gone });
+    expect(onChange).toHaveBeenCalledWith(gone);
+    expect(onResync).not.toHaveBeenCalled();
+    // The cursor is untouched, so the next real change is still in order.
+    FakeWebSocket.instances[0].emit({ type: 'change', seq: '2', prevSeq: '1', change });
+    expect(onChange).toHaveBeenCalledWith(change, false);
+    expect(onResync).not.toHaveBeenCalled();
     close();
   });
 
@@ -137,8 +208,8 @@ describe('openTripStream', () => {
     // sequence. If it advanced `lastSeq`, seq 2 below would read as already-seen; if it were
     // gap-checked, it would have triggered a needless full resync of its own.
     FakeWebSocket.instances[0].emit({ type: 'enrichment', placeId: 'pl-1', fields: {} });
-    FakeWebSocket.instances[0].emit({ type: 'change', seq: '2', change });
-    expect(onChange).toHaveBeenCalledWith(change);
+    FakeWebSocket.instances[0].emit({ type: 'change', seq: '2', prevSeq: '1', change });
+    expect(onChange).toHaveBeenCalledWith(change, false);
     expect(onResync).not.toHaveBeenCalled();
     close();
   });

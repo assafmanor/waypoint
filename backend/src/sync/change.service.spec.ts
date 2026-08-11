@@ -59,7 +59,8 @@ describe('ChangeService', () => {
     const changeRow = await prisma.change.findUnique({ where: { id: change.id } });
     expect(changeRow).toMatchObject({ tripId, actorUserId: DEV_USER, action: 'create' });
 
-    expect(broadcast).toHaveBeenCalledWith(tripId, change);
+    // The trip's first change, so its predecessor is the "nothing yet" cursor.
+    expect(broadcast).toHaveBeenCalledWith(tripId, change, '0');
   });
 
   it('rolls back the entity write and writes no Change when apply throws', async () => {
@@ -188,9 +189,44 @@ describe('ChangeService', () => {
     // seq is strictly increasing in op order, and broadcasts follow the same order.
     expect(BigInt(changes[1].seq)).toBeGreaterThan(BigInt(changes[0].seq));
     expect(broadcast.mock.calls.map((c) => c[1])).toEqual(changes);
+    // Each op's `prevSeq` chains off the one broadcast before it, so a receiver reading
+    // them in order never sees a hole between two changes of the same save.
+    expect(broadcast.mock.calls.map((c) => c[2])).toEqual(['0', changes[0].seq]);
 
     const persisted = await prisma.change.findMany({ where: { tripId } });
     expect(persisted).toHaveLength(2);
+  });
+
+  // **Field report #32.** `Change.seq` is a GLOBAL autoincrement, so this trip's changes
+  // are not consecutive integers as soon as any other trip is written to — and the client's
+  // gap test (`seq === lastSeq + 1`) then reads ordinary live delivery as lost frames and
+  // drops the change it is holding. `prevSeq` is what makes that test exact, so it has to
+  // name THIS trip's predecessor, not `seq - 1`.
+  it("broadcasts this trip's own predecessor as prevSeq, across another trip's writes", async () => {
+    const tripId = await newTrip();
+    const otherTripId = await newTrip();
+
+    const write = (id: string, name: string) =>
+      service.mutate({
+        tripId: id,
+        actorUserId: DEV_USER,
+        entityType: 'place',
+        entityId: 'pending',
+        action: 'create',
+        apply: (tx) => tx.place.create({ data: { tripId: id, name, updatedBy: DEV_USER } }),
+      });
+
+    const first = await write(tripId, 'ours-one');
+    // Another trip advances the shared sequence — the production condition.
+    await write(otherTripId, 'theirs-one');
+    await write(otherTripId, 'theirs-two');
+
+    const broadcast = vi.spyOn(gateway, 'broadcast');
+    const second = await write(tripId, 'ours-two');
+
+    // The global seq skipped, and prevSeq still points at our own previous change.
+    expect(BigInt(second.change.seq)).toBeGreaterThan(BigInt(first.change.seq) + 1n);
+    expect(broadcast).toHaveBeenCalledWith(tripId, second.change, first.change.seq);
   });
 
   it('mutateMany rolls back every write when apply throws', async () => {
