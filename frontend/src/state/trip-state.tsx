@@ -134,6 +134,13 @@ interface Snapshot {
 interface State extends Snapshot {
   ripple: RippleSuggestion | null;
   undo: Snapshot | null; // state to restore for the last undoable action
+  /** **The idea this device just made** (ADR-0116's 2026-08-11 amendment, field report
+   *  #40) — what `poolStrip` holds at the head of the shelf whatever the ranking says.
+   *  Canonical state beside `maybeItems` rather than a screen's `useState`, because the
+   *  add happens on the Map and the pin has to be true on the day you land on. Nothing
+   *  clears it: the next add overwrites it, and an idea that leaves the pool stops
+   *  matching, which is every way the pin is meant to end. */
+  justAddedIdea?: string;
 }
 
 /** Reducer action discriminants. Named so the reducer `switch`, every
@@ -161,6 +168,7 @@ export const TRIP_ACTION = {
   RECONCILE_EVENT: 'RECONCILE_EVENT',
   SET_RIPPLE: 'SET_RIPPLE',
   REMOTE_EVENT_CHANGE: 'REMOTE_EVENT_CHANGE',
+  REMOTE_MAYBE_CHANGE: 'REMOTE_MAYBE_CHANGE',
   RESYNC: 'RESYNC',
 } as const;
 
@@ -226,6 +234,11 @@ export type Action =
   | { type: typeof TRIP_ACTION.RECONCILE_EVENT; event: TripEvent }
   | { type: typeof TRIP_ACTION.SET_RIPPLE; ripple: RippleSuggestion | null }
   | { type: typeof TRIP_ACTION.REMOTE_EVENT_CHANGE; change: Change }
+  // The shelf's half of the same thing (field report #40). `maybeItems` is the one
+  // rendered store that lives in this reducer besides `events`, so a peer's idea needs
+  // an action of its own to reach it — a `useState` setter is not available to the
+  // memory channel the way it is for bookings/places/notes.
+  | { type: typeof TRIP_ACTION.REMOTE_MAYBE_CHANGE; change: Change }
   | { type: typeof TRIP_ACTION.RESYNC; events: TripEvent[]; maybeItems: MaybeItem[] };
 
 // Compare/sort by instant, never by string: a delayed event's startsAt is a
@@ -326,6 +339,7 @@ export function reducer(state: State, action: Action): State {
       return {
         ...state,
         maybeItems: [...state.maybeItems, action.item],
+        justAddedIdea: action.item.id,
         ripple: null,
         undo: snapshotOf(state),
       };
@@ -383,6 +397,10 @@ export function reducer(state: State, action: Action): State {
       return { ...state, ripple: action.ripple };
     case TRIP_ACTION.REMOTE_EVENT_CHANGE:
       return { ...state, events: applyRemoteEventChange(state.events, action.change) };
+    // The same by-id upsert/delete every other list channel uses — no undo snapshot and
+    // no ripple reset, because a peer's edit is not this device's action to undo.
+    case TRIP_ACTION.REMOTE_MAYBE_CHANGE:
+      return { ...state, maybeItems: applyControlChangeToList(state.maybeItems, action.change) };
     case TRIP_ACTION.RESYNC:
       return { ...state, events: action.events, maybeItems: action.maybeItems, ripple: null };
     default:
@@ -395,10 +413,10 @@ export function reducer(state: State, action: Action): State {
  *  fields (e.g. a ripple-shifted `endsAt`). Good enough at this trip's scale;
  *  a richer Change payload is a backend change, out of T-014's scope. */
 function applyRemoteEventChange(events: TripEvent[], change: Change): TripEvent[] {
-  // Only the `event` UI state lives in this reducer — bookings/notes/maybe-items
-  // have no consuming UI yet (T-048 etc.), so this stays event-only. The Dexie
-  // cache still stays coherent for all entity types via lib/cache.ts (T-058),
-  // independent of what this reducer renders.
+  // Event-only by construction: this is the `event` channel's applier, and the shelf's
+  // is `REMOTE_MAYBE_CHANGE` beside it. It used to say maybe-items had no consuming UI
+  // yet, which stopped being true and is what field report #40 cost — a note left in the
+  // applier is not a note the registry can act on.
   if (change.entityType !== ENTITY_TYPE.EVENT) return events;
   if (change.action === 'delete') return events.filter((e) => e.id !== change.entityId);
   const partial = change.after as Partial<TripEvent> | undefined;
@@ -577,6 +595,10 @@ interface TripContextValue {
   setActiveDate: (date: string) => void;
   events: TripEvent[];
   maybeItems: MaybeItem[];
+  /** The id of the idea this device added last, or `undefined` — `poolStrip`'s pin
+   *  (ADR-0116's 2026-08-11 amendment). Both shelves read it; nobody writes it but the
+   *  `ADD_MAYBE` reducer. */
+  justAddedIdea: string | undefined;
   ripple: RippleSuggestion | null;
   dispatch: React.Dispatch<Action>;
   settings: SettingsVerbs;
@@ -872,11 +894,18 @@ function TripReady({
   const lastSeqRef = useRef(snapshot.latestSeq);
 
   // Per-entity memory channels (ADR-0094): each entity type declares how a Change
-  // applies to its in-memory store — the reactive lists, or the event reducer. No
+  // applies to its in-memory store — the reactive lists, or the reducer. No
   // per-type branching in the apply path, so adding an entity type (or moving one
   // between stores) is a single entry here; the cache half is the mirror registry
   // in lib/cache.ts. Setters + dispatch are stable, so this only rebinds per trip.
-  const memoryChannels = useMemo<Partial<Record<EntityType, (change: Change) => void>>>(
+  //
+  // **TOTAL over `EntityType`, exactly like `CACHE_CHANNELS`, and that is the point**
+  // (field report #40). This was `Partial<…>` and had no `maybeItem` entry, so every
+  // remote change to an idea was mirrored into Dexie and then dropped from memory by an
+  // `?.` that read as defensive: a peer's Map add never reached the Maybe shelf, on any
+  // of the four surfaces that render `maybeItems`, until a route remount refetched the
+  // snapshot. A `Partial` registry cannot report a hole it was declared to allow.
+  const memoryChannels = useMemo<Record<EntityType, (change: Change) => void>>(
     () => ({
       [ENTITY_TYPE.EVENT]: (change) => dispatch({ type: TRIP_ACTION.REMOTE_EVENT_CHANGE, change }),
       [ENTITY_TYPE.TRIP]: (change) =>
@@ -888,6 +917,8 @@ function TripReady({
       [ENTITY_TYPE.BOOKING]: (change) =>
         setBookings((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.PLACE]: (change) => setPlaces((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.MAYBE_ITEM]: (change) =>
+        dispatch({ type: TRIP_ACTION.REMOTE_MAYBE_CHANGE, change }),
       [ENTITY_TYPE.NOTE]: (change) => setNotes((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: (change) =>
         setDocumentAttachments((prev) => applyControlChangeToList(prev, change)),
@@ -929,7 +960,7 @@ function TripReady({
         setBookings((prev) => clearPlaceRefs(prev, ENTITY_TYPE.BOOKING, gonePlaceId));
         dispatch({ type: TRIP_ACTION.REMOTE_PLACE_DELETED, placeId: gonePlaceId });
       }
-      memoryChannels[change.entityType]?.(change);
+      memoryChannels[change.entityType](change);
     },
     [tripId, memoryChannels],
   );
@@ -1634,6 +1665,7 @@ function TripReady({
       setActiveDate,
       events: state.events,
       maybeItems: state.maybeItems,
+      justAddedIdea: state.justAddedIdea,
       ripple: state.ripple,
       dispatch,
       settings,

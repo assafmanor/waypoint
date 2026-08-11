@@ -66,6 +66,7 @@ import {
 } from '../lib/time';
 import {
   dayStops,
+  poolStrip,
   proposedDay,
   rankIdeas,
   reasonText,
@@ -197,6 +198,7 @@ export function DayView() {
     trip,
     events,
     maybeItems,
+    justAddedIdea,
     bookings,
     places,
     notes,
@@ -331,20 +333,22 @@ export function DayView() {
   // …and ranked (ADR-0116 session-202 §3 / ADR-0151). The grouping above is
   // untouched — this only orders what it produced, and attaches each idea's reason.
   const stops = dayStops(events, bookings, places, activeDate);
-  // Capped, with the tail handed to the Map's אולי facet (§5) — which is what keeps
-  // the strip's width independent of how many ideas the trip has accumulated.
-  // `fits-a-day` needs every day's stops, not just this one's (ADR-0151's 2026-08-04
-  // amendment) — so a dateless idea can name the day it belongs to instead of saying
-  // "added recently" on every day of the trip.
-  const rankedPool = rankIdeas(
+  // Capped, with the tail handed to the Map's אולי facet (§5), and the idea you just
+  // added held at the head whatever it scored (ADR-0116's 2026-08-11 amendment). One
+  // shared derivation, so this shelf and Plan's cannot draw two different strips.
+  const { strip: rankedPool, tail: poolTail } = poolStrip(
     shelf.pool,
-    places,
-    activeDate,
-    stops,
-    SHELF_POOL_CAP,
-    tripDayStops(tripDates(trip.startDate, trip.endDate), events, bookings, places),
+    {
+      places,
+      date: activeDate,
+      stops,
+      // `fits-a-day` needs every day's stops, not just this one's (ADR-0151's 2026-08-04
+      // amendment) — so a dateless idea can name the day it belongs to instead of saying
+      // "added recently" on every day of the trip.
+      days: tripDayStops(tripDates(trip.startDate, trip.endDate), events, bookings, places),
+    },
+    { justAdded: justAddedIdea, limit: SHELF_POOL_CAP },
   );
-  const poolTail = shelf.pool.length - rankedPool.length;
   // The day's own group keeps its order (it is small by construction) and gains
   // only the distance line — see `stopReasonText` for why it says nothing else.
   const forDayReasons = new Map(

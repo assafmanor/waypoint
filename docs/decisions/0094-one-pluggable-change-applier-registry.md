@@ -46,3 +46,34 @@ Per-op cache quirks (a new event defaults `status: planned`; a new maybe-item `c
 - **Keep the per-type `if/else`/`switch` appliers (status quo).** Rejected: they drift (the member-keying bug) and every entity change touches several of them.
 - **One unified registry object for memory + cache.** Rejected: memory channels close over React setters (component scope); cache channels are module-scope Dexie. Two mirror registries is the honest split; forcing one object would leak React into the persistence layer.
 - **Also route every verb's optimistic in-memory write through `applyEntityChange`.** Deferred: it rewrites each verb's rollback into an inverse-change and entangles the event one-slot undo — real regression risk on the most-used surface, for little dedup beyond what the cache collapse already bought.
+
+## Amendment (2026-08-11, session 253) — the memory registry is total, because a `Partial` one cannot report a hole
+
+The Decision above writes `memoryChannels: Record<entityType, (change) => void>` and the
+apply as `memoryChannels[type]?.(change)`. Those two are not the same claim, and the code
+had drifted to the weaker one: the type was `Partial<Record<EntityType, …>>`, so the `?.`
+was not defensive — it was the only thing standing between a missing entry and a crash,
+and it turned that entry's absence into a silent no-op.
+
+**`maybeItem` was the missing entry**, for as long as the shelf has had a consuming UI.
+Every remote change to an idea was mirrored into Dexie by `CACHE_CHANNELS` (which **is**
+total, and always was) and then dropped from memory — so a peer's Map add never reached
+the Maybe shelf, the Map's `אולי` facet or Plan's shelf until a route remount refetched
+the snapshot, and the two halves of the mirror disagreed in the meantime. Field report
+#40; reproduced end to end on a real stack and fixed in
+[session 253](../planning/2026-08-11-session-253-a-map-add-lands-on-the-shelf.md).
+
+**`memoryChannels` is now `Record<EntityType, …>` and the apply is
+`memoryChannels[change.entityType](change)`** — no optional call. `entityType` is a zod
+enum parsed at the socket, so the index is total in fact as well as in type, and a new
+`ENTITY_TYPE` member now fails `tsc` here exactly as it already did in `CACHE_CHANNELS`.
+Verified by deleting the entry: the compiler names it.
+
+This repairs the Decision's stated intent rather than revising it, so nothing above
+changes. The lesson is narrower than "add the entry": **the two registries are described
+as mirrors of each other, and one of them could not enforce being one.** Session 206's
+notes build plan had already written the warning in as many words — "a missing memory
+channel means a peer's note never appears until reload" — filed against the note channel
+it was adding, next to a table marking the memory half `no — silently optional`. The
+warning was acted on for notes and nobody came back for the entry that was already
+missing. A registry that can only be checked by a human reading it is not a registry.
