@@ -556,7 +556,6 @@ export function MediaViewer({
               <div className="doc-viewer-handoff-ic" aria-hidden="true">
                 <Icon name="documents" />
               </div>
-              <p className="doc-viewer-msg">{t.docs.viewer.handoff}</p>
               <div className="doc-viewer-actions">
                 {canOpenInTab && (
                   <a className="dv-open" href={url} target="_blank" rel="noopener noreferrer">

@@ -767,7 +767,6 @@ export const t = {
       returnWhereLabel: 'מקום ההחזרה',
       returnSame: 'באותו מקום',
       returnElsewhere: 'במקום אחר',
-      hireHint: 'רוב ההשכרות חוזרות לאותו דלפק',
       // The swap between the two endpoints (ADR-0154 §3). An existing transport event
       // carries one place and cannot say which end it is, so it lands in the origin and
       // this moves it — the correction that makes the guess safe.
@@ -857,7 +856,6 @@ export const t = {
       routeRequired: 'צריך מוצא או יעד',
       dateOutOfRange: 'התאריך מחוץ לטווח הטיול',
       endBeforeStart: 'זמן הסיום צריך להיות אחרי ההתחלה',
-      autoCaption: 'נבחר לפי סוג ההזמנה',
       reset: 'איפוס',
     },
     del: {
@@ -956,10 +954,10 @@ export const t = {
       another: 'פתק נוסף',
       add: 'פתק נוסף',
       remove: 'הסרת הפתק',
-      hint: 'יורש את הקטגוריה והסמל · ＋ רק אם רוצים עוד אחד',
-      // A host with no category of its own (a document, a place) has nothing to inherit, so
-      // the hint does not promise it.
-      hintPlain: '＋ רק אם רוצים עוד אחד',
+      // The INHERITANCE only (owner, 2026-08-11). The `＋` clause it used to carry restated
+      // that button's own label (`פתק נוסף`), so a host with nothing to inherit — a document,
+      // a place — now shows no hint at all rather than a plainer restatement.
+      hint: 'יורש את הקטגוריה והסמל',
     },
     // An OPEN note (ADR-0153 §4's 2026-08-02 amendment, round two). The row expands where it
     // is rather than opening a sheet, so this is the one line under it: where the note
@@ -1044,7 +1042,6 @@ export const t = {
       error: 'לא הצלחנו לפתוח את המסמך',
       open: 'פתח בכרטיסייה',
       download: 'הורדה',
-      handoff: 'הקובץ מוכן · פתחו אותו באפליקציה המתאימה או הורידו',
     },
     // Per-row manage menu + optimistic-action toasts (ADR-0052).
     manage: {
@@ -1178,7 +1175,6 @@ export const t = {
       datePast: 'רגע - התאריך כבר עבר',
       nameLabel: 'איך נקרא לזה?',
       namePlaceholder: 'נציע שם ברגע שנדע לאן',
-      nameHint: 'הצענו לפי היעד - אפשר לשנות',
       draftGhost: 'הטיול שלכם',
       draftPending: 'עוד רגע מקבל צורה…',
       draftMeta: (destination: string, days: number) => `${destination} · ${days} ימים`,
@@ -1198,7 +1194,7 @@ export const t = {
       emoji: '🎉',
       title: 'יש טיול!',
       sub: 'עכשיו הכי חשוב - להכניס את החבורה.',
-      inviteLabel: 'לינק הזמנה · לחצו להעתקה ושיתוף',
+      inviteLabel: 'לינק הזמנה',
       invitePending: 'טוען לינק הזמנה…',
       inviteFailed: 'הלינק יהיה מוכן בהגדרות הטיול',
       inviteCopied: 'הלינק הועתק · שתף בקבוצת הוואטסאפ',
@@ -1226,7 +1222,6 @@ export const t = {
       expired: 'הטיול הזה כבר הסתיים · הלינק כבר לא פעיל.',
       offline: 'צריך חיבור לרשת כדי לטעון את ההזמנה',
       heroTitle: 'הוזמנת לטיול!',
-      heroBody: 'החברים כבר בפנים - נשארה רק ההצטרפות שלך.',
       ticketBadge: 'כרטיס הזמנה',
       members: (count: number) => (count === 1 ? 'חבר אחד כבר בפנים' : `${count} חברים כבר בפנים`),
       membersSub: 'מחכים רק לך',
@@ -1621,11 +1616,9 @@ export const t = {
     // The empty day group, conjured up mid-drag so there is somewhere to drop.
     shelfDropHere: 'שחררו כאן ליום הזה',
     maybeShelf: 'מדף האולי',
-    // A tap opens the idea rather than the schedule form (ADR-0116's 2026-08-01
-    // amendment), so the hint says both: what a tap does, and that shibutz is still
-    // what it is mostly for.
-    tapToSchedule: 'לחצו לפתיחה ולשיבוץ',
-    skippedTag: 'דילגתם · לחצו להחזרה',
+    // The STATE, not the gesture (owner, 2026-08-11): the card is a button and its tap
+    // restores — what the line has to say is that this one was skipped.
+    skippedTag: 'דילגתם',
     // The idea's sheet — the surface a tap now opens. `שיבוץ ליום` leads it, so the
     // verb the tile used to perform is one press away and named.
     idea: {
@@ -1700,10 +1693,6 @@ export const t = {
     rowActions: 'פעולות',
     // The sheet's own copy moved to `slotFill` below: it serves two headers on two screens
     // now (ADR-0161 §6), so it stopped being Plan mode's.
-    // Plan mode's shelf also drags (ADR-0116 §5): the hint teaches the hold, since
-    // a press-and-hold is the one part of the gesture nobody guesses — and it is now
-    // the FAST path for slotting, which is what makes the tap's extra step affordable.
-    shelfHint: 'לחצו לפתיחה · לחיצה ארוכה לגרירה ליום',
     addIdea: 'הוסף רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
     removeIdea: 'הסר רעיון',

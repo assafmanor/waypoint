@@ -668,10 +668,7 @@ export function DayView() {
         </div>
       ) : (
         <>
-          <div className="sec-title">
-            {t.day.maybeShelf}
-            <span className="hint">{t.day.tapToSchedule}</span>
-          </div>
+          <div className="sec-title">{t.day.maybeShelf}</div>
           {/* Two groups (ADR-0116 §2): what's pencilled in for this day — plus the
               day's skipped events, which belong to it — then the rest of the pool,
               each out-of-day idea naming its own day. A header appears only when its
@@ -693,8 +690,8 @@ export function DayView() {
                   />
                 ))}
                 {/* Skipped soft events park here, restorable (ADR-0027 parking lot).
-                    The tile drops the action line; `skippedTag` already says what a
-                    tap does, which is why it is the one card that loses nothing. */}
+                    No action line: the card is a button and `skippedTag` marks the state
+                    it is in, which is the part a reader cannot get from the tile itself. */}
                 {shelf.skipped.map((e) => (
                   <MaybeCard
                     key={e.id}

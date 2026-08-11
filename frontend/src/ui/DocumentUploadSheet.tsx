@@ -159,7 +159,7 @@ export function DocumentUploadSheet({
 
         {/* **The note is written on the way** (ADR-0152 §6b) — one box, and a blank one
             writes nothing, so a document that needs no note costs no press. */}
-        <Field label={t.notes.composer.label} htmlFor={noteId} hint={t.notes.composer.hintPlain}>
+        <Field label={t.notes.composer.label} htmlFor={noteId}>
           <NoteComposer state={composer} id={noteId} />
         </Field>
 

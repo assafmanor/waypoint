@@ -2714,15 +2714,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   font-weight: 700;
   color: var(--ink);
 }
-.cat-readout {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--muted);
-  background: var(--screen);
-  border-radius: 999px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
 .icon-cats {
   display: flex;
   gap: 5px;
@@ -3465,13 +3456,6 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   font-size: 11px;
   color: var(--muted);
   margin-top: -4px;
-}
-.booking-sheet .bs-caption .cat-readout {
-  font-weight: 700;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  border-radius: 6px;
-  padding: 1px 7px;
 }
 .booking-sheet .bs-revert {
   font: inherit;

@@ -298,7 +298,6 @@ function Ready({ preview, outcome }: { preview: InvitePreview; outcome: string |
         <h1>
           {t.shell.join.heroTitle} <span className="hero-em">{GLYPH.celebrate}</span>
         </h1>
-        <p>{t.shell.join.heroBody}</p>
       </div>
 
       <div className="join-ticket-wrap">
