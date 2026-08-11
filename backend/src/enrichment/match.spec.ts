@@ -59,6 +59,43 @@ describe('nameSimilarity', () => {
     expect(nameSimilarity('Tsukiji Outer Market', 'Tsukiji fish market')).toBeCloseTo(2 / 3, 5);
   });
 
+  it('folds a letter that is not an accented letter (field report #29)', () => {
+    // `ð`/`þ`/`ø`/`ß` are letters, not letters-with-an-accent: they decompose to themselves,
+    // so `tokenize`'s `NFD` + `\p{M}` fold leaves them untouched and the two spellings of one
+    // name score 0 on the syllable they agree about.
+    //
+    // Giessen is the measured case. Google's own name for the place is `Giessen`; Wikidata's
+    // German label (`Q3874`) is `Gießen`, and its English one is the plain form — which is
+    // exactly the split this variant closes.
+    expect(nameSimilarity('Giessen', 'Gießen')).toBe(1);
+    // Þingvellir's IS label against the EN alias the same entity (`Q107370`) carries.
+    expect(nameSimilarity('Þingvellir', 'Thingvellir')).toBe(1);
+    expect(nameSimilarity('Kerið', 'Kerid Crater lake')).toBeGreaterThan(0);
+    expect(nameSimilarity('Røros', 'Roros')).toBe(1);
+  });
+
+  it('does not disturb a name both sides already spell the same way', () => {
+    // Kerið and Røros are the field report's own places, and Wikidata labels both with the
+    // local letter — as does Google (`Kerið Crater`, `Røros`). Nothing here needed folding;
+    // the variant must not make that worse.
+    expect(nameSimilarity('Kerið', 'Kerið')).toBe(1);
+    expect(nameSimilarity('Røros', 'Røros')).toBe(1);
+  });
+
+  it('still scores a name plus a bare feature-type word below the threshold — KNOWN, UNFIXED', () => {
+    // **Not a regression, and not to be "fixed" by loosening the geometric mean.** Google
+    // labels the crater `Kerið Crater` and Wikidata labels it `Kerið`, so one shared token
+    // over `sqrt(2 × 1)` = 0.707, under `MATCH_MIN_NAME_SIMILARITY` — a likelier cause of
+    // field report #29 than the letter fold above, which both sides turned out not to need.
+    //
+    // It is left refusing on purpose: the shape is indistinguishable from `Tsukiji` inside
+    // `Tsukiji Outer Market`, which this file scores 0.58 deliberately, and telling the two
+    // apart is a matching-policy call with a false-positive budget, not a normalization
+    // tweak. See docs/planning/2026-08-11-session-248-a-letter-that-is-not-an-accent.md.
+    expect(nameSimilarity('Kerið Crater', 'Kerið')).toBeCloseTo(0.7071, 4);
+    expect(nameSimilarity('Kerið Crater', 'Kerið')).toBeLessThan(MATCH_MIN_NAME_SIMILARITY);
+  });
+
   it('scores unrelated names 0', () => {
     expect(nameSimilarity('Ueno Park', 'Katz’s Delicatessen')).toBe(0);
   });

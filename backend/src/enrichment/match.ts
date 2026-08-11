@@ -64,28 +64,48 @@ const NO_PROXIMITY_FACTOR = 0.8;
  * Otherwise token-set overlap rather than an edit distance, because the differences that
  * matter here are whole words: `Meiji Jingū / Meiji Shrine` against `Meiji Shrine`. An edit
  * distance calls those distant and a human does not.
+ *
+ * **Every form of the name is scored and the best kept** (`nameVariants`), which is the same
+ * fix §15's cross-script bug got: the search found the right item and the scoring threw it
+ * away, so the answer is to stop trusting the single string we happen to hold. Two classes of
+ * variant have earned their place, both **additive** — a variant can only raise a score, never
+ * lower one, so nothing that matches today stops matching.
  */
 export function nameSimilarity(a: string, b: string): number {
-  // **A PARENTHETICAL ALIAS IS NOT PART OF THE NAME** (owner report, 2026-08-08: Frankfurt
-  // Airport never matched). Google returns `נמל התעופה של פרנקפורט (Frankfurter Flughafen –
-  // FRA)`, which tokenizes to SEVEN tokens against Wikidata's four — measured overlap
-  // **0.756**, just under `MATCH_MIN_NAME_SIMILARITY`, so the entity was read and then
-  // refused. The three extra tokens are a second name for the same place, and a name written
-  // twice must not score lower than a name written once.
-  //
-  // Same shape as §15's cross-script bug — the search found the right item and the scoring
-  // threw it away — so the fix is the same one: score every form the name offers and keep the
-  // best, rather than trusting the single string we happen to hold.
-  //
-  // **It cannot manufacture a false match**, which is what makes it safe to do here rather
-  // than at one call site: dropping a parenthetical only ever makes OUR name shorter and more
-  // specific, and the distance veto in `nameProximityConfidence` still refuses a same-named
-  // place 9,000km away. Scored as a max rather than replacing the raw form, because the
-  // parenthetical sometimes IS the discriminating part (`Terminal 1 (Departures)`).
-  return Math.max(
-    tokenSimilarity(a, b),
-    ...withoutParenthetical(a, b).map(([left, right]) => tokenSimilarity(left, right)),
-  );
+  let best = 0;
+  for (const left of nameVariants(a)) {
+    for (const right of nameVariants(b)) {
+      best = Math.max(best, tokenSimilarity(left, right));
+      if (best === 1) return best;
+    }
+  }
+  return best;
+}
+
+/**
+ * The forms of a name worth comparing: the raw string, plus one per documented mismatch class.
+ * Deduped and de-emptied, so the ordinary name costs exactly one comparison.
+ *
+ * **1. A PARENTHETICAL ALIAS IS NOT PART OF THE NAME** (owner report, 2026-08-08: Frankfurt
+ * Airport never matched). Google returns `נמל התעופה של פרנקפורט (Frankfurter Flughafen – FRA)`,
+ * which tokenizes to SEVEN tokens against Wikidata's four — measured overlap **0.756**, just
+ * under `MATCH_MIN_NAME_SIMILARITY`, so the entity was read and then refused. The three extra
+ * tokens are a second name for the same place, and a name written twice must not score lower
+ * than a name written once. Kept as a variant rather than replacing the raw form, because the
+ * parenthetical sometimes IS the discriminating part (`Terminal 1 (Departures)`).
+ *
+ * **2. A LETTER THAT IS NOT AN ACCENTED LETTER DOESN'T FOLD** (field report #29). `tokenize`'s
+ * `NFD` + `\p{M}` fold rescues `Sensō-ji`/`Sensoji` because a macron is a combining mark; `ð`,
+ * `þ`, `ø`, `ß` are letters in their own right and decompose to themselves, so `Gießen` never
+ * meets Google's own `Giessen` and the two score 0 on the syllable they agree about. See
+ * `NON_DECOMPOSING_LATIN`.
+ *
+ * Both are cross-producted rather than applied to one side: the alias may be on either name,
+ * and it is as often Wikidata that keeps the local spelling as it is Google.
+ */
+function nameVariants(name: string): string[] {
+  const written = [name, stripParenthetical(name)];
+  return [...new Set([...written, ...written.map(transliterate)])].filter((v) => v.length > 0);
 }
 
 /** A trailing/embedded `(…)` or `[…]` segment — an alias Google appends, not a name. */
@@ -93,20 +113,47 @@ const PARENTHETICAL = /[([][^)\]]*[)\]]/gu;
 
 const stripParenthetical = (name: string): string => name.replace(PARENTHETICAL, ' ').trim();
 
-/** The de-parenthesised pairs worth also scoring — none when neither side has one, so the
- *  common case does no extra work. */
-function withoutParenthetical(a: string, b: string): [string, string][] {
-  const left = stripParenthetical(a);
-  const right = stripParenthetical(b);
-  if (left === a && right === b) return [];
-  // Both sides stripped, and each side stripped alone: the alias may be on either name, and
-  // `(Frankfurter Flughafen – FRA)` on ours must still meet a plain label on theirs.
-  return [
-    [left, right],
-    [left, b],
-    [a, right],
-  ].filter(([l, r]) => l.length > 0 && r.length > 0) as [string, string][];
-}
+/**
+ * **Latin letters that survive `tokenize`'s diacritic fold untouched**, with the plain spelling
+ * the English-speaking world writes them as. Every entry was checked in the runtime: unlike
+ * `ō`/`é`/`å`, none of these has a combining-mark decomposition to strip.
+ *
+ * A curated table rather than a transliteration dependency — the class is small and closed, and
+ * a general romanizer would bring opinions about scripts this function deliberately does not
+ * compare at all (`namesComparable` sets a Hebrew name against a Japanese one aside; it must not
+ * quietly start "reading" one).
+ *
+ * **It cannot manufacture a false match on its own** — the same property that makes the
+ * parenthetical variant safe. It only ever spells one side the way the other already does, and
+ * a name that clears `MATCH_MIN_NAME_SIMILARITY` on the strength of it still faces the distance
+ * veto in `nameProximityConfidence`, which refuses a same-named place 9,000km away.
+ */
+const NON_DECOMPOSING_LATIN: Readonly<Record<string, string>> = {
+  ð: 'd',
+  Ð: 'D',
+  þ: 'th',
+  Þ: 'Th',
+  æ: 'ae',
+  Æ: 'Ae',
+  œ: 'oe',
+  Œ: 'Oe',
+  ø: 'o',
+  Ø: 'O',
+  ł: 'l',
+  Ł: 'L',
+  đ: 'd',
+  Đ: 'D',
+  ß: 'ss',
+  ẞ: 'SS',
+};
+
+const NON_DECOMPOSING_LATIN_PATTERN = new RegExp(
+  `[${Object.keys(NON_DECOMPOSING_LATIN).join('')}]`,
+  'gu',
+);
+
+const transliterate = (name: string): string =>
+  name.replace(NON_DECOMPOSING_LATIN_PATTERN, (letter) => NON_DECOMPOSING_LATIN[letter] ?? letter);
 
 function tokenSimilarity(a: string, b: string): number {
   const left = tokenize(a);
