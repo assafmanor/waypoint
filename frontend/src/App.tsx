@@ -20,6 +20,7 @@ import {
   SETTINGS_FROM,
   settingsPath,
   shouldResetToHomeOnResume,
+  tabShowsSelectedDay,
   useCloseAllOverlays,
   navDirectionFrom,
   type NavDir,
@@ -194,16 +195,17 @@ export function Header({
   onOpenSwitcher,
   onOpenPeople,
   onOpenSettings,
-  allScope,
+  allDays,
   otherTripCount = 0,
 }: {
   onSelectDay: (date: string) => void;
   onOpenSwitcher: () => void;
   onOpenPeople: () => void;
   onOpenSettings: () => void;
-  /** Map all-days scope is active (ADR-0110 §4): the strip drops its filled
-   *  selection while still anchoring today. */
-  allScope?: boolean;
+  /** The Map's all-days scope is on (ADR-0110 §4) — screen-local state the shell
+   *  hands down, since the app tracks exactly one active date. Whether the strip
+   *  then singles out a day is this header's own call (see `unscoped` below). */
+  allDays?: boolean;
   /** How many OTHER trips this account has. Drives the deck cue and the `swap`
    *  mark — absent at one trip, which is the common case: no deck, no swap,
    *  nothing in the chrome suggesting anywhere else to be (ADR-0149 §2, the same
@@ -214,6 +216,16 @@ export function Header({
   const { trip, users, zoneEvidence, activeDate, usingCachedSnapshot, events } = useTrip();
   const { me } = useAuth();
   const { mode } = useMode();
+  // **Which surface is asking** decides whether the strip singles out a day at all
+  // (field report #39). The remembered day is the `?day=` param wherever you are
+  // (ADR-0035 §4 — one copy, nothing to sync), but it is only shown as selected on a
+  // surface that is actually showing that day: the two day-scoped tabs and Home. On
+  // the Index — trip-wide cards, counts and readiness — and on the Map at all-days,
+  // no pill is the selected one, while the day itself is untouched and comes back
+  // with you. The pills stay tappable everywhere; `onSelectDay` decides where a tap
+  // lands.
+  const { tab } = useTripTab();
+  const unscoped = !tabShowsSelectedDay(tab) || (tab === 'map' && !!allDays);
   // A drag in flight anywhere makes the strip's day pills spring-loaded, so a card or
   // a row can be carried to another day (ADR-0116 session-119).
   const { dragging, overDate } = useDragState();
@@ -443,7 +455,7 @@ export function Header({
             today={today}
             mode={mode}
             onSelect={onSelectDay}
-            allScope={allScope}
+            unscoped={unscoped}
             dragging={dragging}
             overDate={overDate}
           />
@@ -611,7 +623,7 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
           onOpenSwitcher={() => navigate('/trips')}
           onOpenPeople={() => setRosterOpen(true)}
           onOpenSettings={() => navigate(`/trip/${trip.id}/settings`)}
-          allScope={tab === 'map' && allDays}
+          allDays={allDays}
           otherTripCount={otherTripCount}
         />
       }

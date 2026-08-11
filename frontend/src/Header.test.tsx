@@ -79,7 +79,9 @@ vi.mock('./lib/outbox', () => ({
 const { Header } = await import('./App');
 
 const noop = () => {};
-const renderHeader = (props: Partial<Parameters<typeof Header>[0]> = {}) =>
+/** `at` is the URL the header is standing on: the strip's selection depends on which tab
+ *  is showing (field report #39), so it is part of the header's input. */
+const renderHeader = (props: Partial<Parameters<typeof Header>[0]> & { at?: string } = {}) =>
   render(
     wrapNav(
       <Header
@@ -88,8 +90,9 @@ const renderHeader = (props: Partial<Parameters<typeof Header>[0]> = {}) =>
         onOpenPeople={props.onOpenPeople ?? noop}
         onOpenSettings={props.onOpenSettings ?? noop}
         otherTripCount={props.otherTripCount}
-        allScope={props.allScope}
+        allDays={props.allDays}
       />,
+      { path: props.at ?? '/' },
     ),
   );
 
@@ -221,6 +224,71 @@ describe('the anchor slot', () => {
     activeDate = '2026-07-22';
     const { container } = renderHeader();
     expect(container.querySelector('.hdr-anchor')!.classList.contains('is-back')).toBe(false);
+  });
+});
+
+// **One remembered day, shown only where a day is what you are looking at** (field
+// report #39). The day itself is the `?day=` param wherever you are (ADR-0035 §4), so
+// what is asserted here is the DISPLAY half: which surface paints a selected pill.
+describe('the day strip per surface', () => {
+  const pillsIn = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll<HTMLElement>('.wp-daypill'));
+  const pillFor = (container: HTMLElement, dayOfMonth: string) =>
+    pillsIn(container).find((p) => p.querySelector('.n')?.textContent === dayOfMonth)!;
+  // A remembered day that is NOT today (today is the 20th here), so the filled-selection
+  // classes are the ones under test rather than today's own anchor.
+  const REMEMBERED = '2026-07-22';
+  const at = (tab: string) => `/?tab=${tab}&day=${REMEMBERED}`;
+
+  beforeEach(() => {
+    activeDate = REMEMBERED;
+  });
+
+  it('singles the day out on the Day view and on the Map', () => {
+    for (const path of [at('days'), at('map')]) {
+      const { container, unmount } = renderHeader({ at: path });
+      const pill = pillFor(container, '22');
+      expect(pill.getAttribute('aria-pressed')).toBe('true');
+      expect(pill.classList.contains('sel-future')).toBe(true);
+      unmount();
+    }
+  });
+
+  // The Index is trip-wide — no pill there is "the selected one", in styling OR in what
+  // it announces. The ARIA half is the part a class assertion alone would have missed.
+  it('singles no day out on the Index, in styling or in ARIA', () => {
+    const { container } = renderHeader({ at: at('index') });
+    const pills = pillsIn(container);
+    expect(pills.some((p) => p.getAttribute('aria-pressed') === 'true')).toBe(false);
+    expect(pills.some((p) => /(^| )(on|sel-history|sel-future)( |$)/.test(p.className))).toBe(
+      false,
+    );
+    // Today keeps its anchor, so "where's now?" is still answerable from the chrome.
+    expect(pillFor(container, '20').classList.contains('today-anchor')).toBe(true);
+  });
+
+  // …and the pills stay controls: tapping one from the Index is how you go to that day
+  // (`daySelectTarget` routes a non-day-scoped tab to the Day view).
+  it('keeps the Index pills tappable, including the remembered day', () => {
+    const onSelectDay = vi.fn();
+    const { container } = renderHeader({ at: at('index'), onSelectDay });
+    fireEvent.click(pillFor(container, '22'));
+    expect(onSelectDay).toHaveBeenCalledWith(REMEMBERED);
+  });
+
+  it('singles no day out on the Map at all-days, and does again once a day is picked', () => {
+    const allDaysRender = renderHeader({ at: at('map'), allDays: true });
+    expect(pillFor(allDaysRender.container, '22').getAttribute('aria-pressed')).toBe('false');
+    allDaysRender.unmount();
+    const dayScoped = renderHeader({ at: at('map'), allDays: false });
+    expect(pillFor(dayScoped.container, '22').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  // All-days is lifted above the shell, so it outlives a tab change (`map-scope-state`) —
+  // it must not reach out and unselect the Day view's own day.
+  it('ignores a stale all-days scope on the Day view', () => {
+    const { container } = renderHeader({ at: at('days'), allDays: true });
+    expect(pillFor(container, '22').getAttribute('aria-pressed')).toBe('true');
   });
 });
 

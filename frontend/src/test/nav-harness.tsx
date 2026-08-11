@@ -13,9 +13,12 @@ import { MemoryRouter } from 'react-router-dom';
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider } from '../state/nav-state';
 
-export function wrapNav(node: ReactNode) {
+/** `path` for the surfaces whose behaviour depends on WHERE you are — the shared header's
+ *  day strip singles out a day only on a tab that is showing one (`tabShowsSelectedDay`),
+ *  which cannot be asserted from the default `/`. Defaults to Home, as before. */
+export function wrapNav(node: ReactNode, { path = '/' }: { path?: string } = {}) {
   return (
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <ToastProvider>
         <NavProvider>{node}</NavProvider>
       </ToastProvider>
