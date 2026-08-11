@@ -12,6 +12,7 @@ import {
   FixtureFetcher,
   geosearch,
   KEFLAVIK,
+  KERID,
   LONDON_CITY,
   MEGURO_RIVER,
   search,
@@ -307,6 +308,52 @@ describe('WikidataProvider', () => {
       expect((await p.match({ name: 'כיכר פיקדילי', lat: 51.51, lng: -0.1348 }))?.ref).toBe(
         'Q189040',
       );
+    });
+  });
+
+  // **KERIÐ MATCHED NOTHING** (owner, 2026-08-11) — and the reason was the mirror image of the
+  // Piccadilly refusal above, which is why the two live next to each other. Same 0.707, same
+  // route, opposite direction: there the CANDIDATE's name added a qualifying noun and had to be
+  // refused; here OUR name adds the feature's own type and had to be let through.
+  describe('a name of ours that only says more than the candidate’s (§15)', () => {
+    it('matches Kerið on the coordinates, which the name may no longer veto', async () => {
+      const { provider: p } = provider({
+        // No Hebrew label and no name-search hit — the real entity has neither, so the
+        // coordinate route is genuinely the only one that can answer.
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: KERID.qid, title: 'Kerið', lat: 64.0409804167, lng: -20.8826540713 },
+        ]),
+        wbgetentities: KERID.entity,
+      });
+
+      const match = await p.match(KERID.place);
+      expect(match?.ref).toBe(KERID.qid);
+      expect(match?.method).toBe(MATCH_METHOD.GEOSEARCH);
+      expect(match?.confidence).toBe(MATCH_METHOD_CONFIDENCE.geosearch);
+      // The name was set aside, not compared and matched — the evidence has to say so (§12.3).
+      expect(match?.evidence.nameSimilarity).toBe(0);
+      // A crater is a place you visit as itself, so nothing is refused per-field either.
+      expect(match?.refusedFields ?? {}).toEqual({});
+    });
+
+    it('does not let the district our name contains ride in on the same rule', async () => {
+      // The measured counter-case: `Tsukiji` is 366m from the outer market's pin, and it is a
+      // `chōchō` — so distance credit is gone AND the broader-subject skip drops it first.
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q1201337', title: 'Tsukiji', lat: 35.6647, lng: 139.7703 },
+        ]),
+        wbgetentities: entity({
+          qid: 'Q1201337',
+          labels: { en: 'Tsukiji' },
+          instanceOf: ['Q5327369'], // chōchō — a subdivision of a city
+          lat: 35.6647,
+          lng: 139.7703,
+        }),
+      });
+      expect(await p.match(TSUKIJI.place)).toBeNull();
     });
   });
 

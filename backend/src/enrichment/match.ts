@@ -320,6 +320,62 @@ export function namesComparable(a: string, b: string): boolean {
   return false;
 }
 
+/**
+ * **May this name REFUSE the candidate the coordinates found?** (owner report, 2026-08-11:
+ * Kerið still matched nothing.)
+ *
+ * §15 established that a name comparison can be *uninformative* rather than negative, and set
+ * one case aside: disjoint scripts. **There is a second, and it was measured on Kerið.** Google
+ * saves `Kerið Crater`; Wikidata's label for the same entity (`Q1435393`, sitting ~100m from the
+ * pin and the only article within 150m of it) is `Kerið`. One shared token over `sqrt(2 × 1)` is
+ * **0.707**, under `MATCH_MIN_NAME_SIMILARITY`, so the name vetoed the one candidate the
+ * coordinates had found — and the identical entity would have matched at 0.8 had our name been
+ * in Hebrew, because then nothing would have been readable enough to refuse it. **A name that
+ * half-agrees was worse evidence than no readable name at all**, which cannot be right.
+ *
+ * So the rule §15 states for scripts is stated once more for words:
+ *
+ * > **A name that says strictly MORE than the candidate's has not disagreed with it.**
+ *
+ * `Kerið Crater` contains everything `Kerið` says and adds the feature's own type. That is a
+ * failure to discriminate, not a contradiction, and the honest answer is to set the name aside
+ * and let the distance answer alone — under the `geosearch` ceiling, with the broader-subject
+ * skip and the ambiguity refusal still standing behind it, exactly as for a name we cannot read.
+ *
+ * **Two guards keep this from becoming §15's own false positive**, and both are load-bearing:
+ *
+ *  - **Direction.** Only OUR name may say more. A *candidate* whose name is ours plus a
+ *    qualifying noun is the documented Piccadilly Circus failure — the tube station under the
+ *    square, the shop inside the mall — and `MATCH_MIN_NAME_SIMILARITY` exists to refuse it at
+ *    that same 0.707. It still does: `Piccadilly Circus` does not contain
+ *    `Piccadilly Circus tube station`.
+ *  - **Only where the name was going to refuse anyway.** At or above the floor the name is
+ *    corroborating and keeps deciding, so `Meiji Jingū / Meiji Shrine` against `Meiji Shrine`
+ *    (0.816, which §12.3 says must survive) is untouched and still scores on the name route
+ *    rather than being demoted to distance.
+ *
+ * Asymmetric, so the argument order is the whole meaning: **ours first, theirs second.**
+ */
+export function nameCanRefuse(ourName: string, candidateName: string): boolean {
+  if (!namesComparable(ourName, candidateName)) return false;
+  if (nameSimilarity(ourName, candidateName) >= MATCH_MIN_NAME_SIMILARITY) return true;
+  return !saysStrictlyMore(ourName, candidateName);
+}
+
+/** Does `ours` contain every word of `theirs` and more? Checked across the same variants
+ *  `nameSimilarity` scores, so a name that only agrees once transliterated counts here too. */
+function saysStrictlyMore(ours: string, theirs: string): boolean {
+  for (const mine of nameVariants(ours)) {
+    const left = tokenize(mine);
+    for (const yours of nameVariants(theirs)) {
+      const right = tokenize(yours);
+      if (right.size === 0 || left.size <= right.size) continue;
+      if ([...right].every((token) => left.has(token))) return true;
+    }
+  }
+  return false;
+}
+
 /** Full distance credit inside this radius, for a candidate the coordinates found. Tighter
  *  than `MATCH_NEAR_METERS` by an order of magnitude, and it has to be: that radius is what a
  *  *name* match is allowed to be wrong by, whereas here the distance is carrying the match on
@@ -348,10 +404,11 @@ const AIRPORT_FAR_METERS = 8000;
  * Confidence for the coordinate-first route: the distance found it, and the name is a check
  * that can only refuse, never promote.
  *
- * - **Names comparable** → exactly the name route's arithmetic, so a candidate whose name
+ * - **The name may refuse** → exactly the name route's arithmetic, so a candidate whose name
  *   disagrees is refused just as it would be if the name had done the finding. The nearest
  *   article to a ramen bar is often the district it sits in, and that is a real refusal.
- * - **Names not comparable** → distance alone, capped at the `geosearch` ceiling. Nothing
+ * - **The name may not** — a script we cannot compare, or a name of ours that only says more
+ *   than theirs (`nameCanRefuse`) → distance alone, capped at the `geosearch` ceiling. Nothing
  *   contradicted us and nothing corroborated us either.
  */
 export function geoProximityConfidence(
@@ -367,7 +424,7 @@ export function geoProximityConfidence(
   // **The name still wins when it can be read** — but an airport's ordinary distance veto is
   // the wrong ruler even then, since `nameProximityConfidence` refuses past `MATCH_FAR_METERS`
   // on a centroid that is legitimately kilometres from the door.
-  if (namesComparable(place.name, candidate.name) && !candidate.isAirport) {
+  if (nameCanRefuse(place.name, candidate.name) && !candidate.isAirport) {
     return nameProximityConfidence(place, candidate);
   }
   return {
@@ -468,6 +525,16 @@ export const BROADER_INSTANCE_OF_QIDS: Readonly<Record<string, string>> = {
   Q188509: 'suburb',
   Q515: 'city',
   Q3957: 'town',
+  // **The districts this list already meant and did not name** (2026-08-11). Checked against
+  // live Wikidata while measuring `nameCanRefuse`: Tokyo's districts carry none of the classes
+  // above — `Tsukiji` is a `chōchō` (Q5327369), `Ueno` adds `city center`, `Shibuya` is a
+  // `ward`/`special ward` — so "a district for a shop" was landing unrefused for exactly the
+  // city the coverage spike was built on. Each is a subdivision of a city, which is the same
+  // fact `neighborhood` and `suburb` state for other countries.
+  Q5327369: 'chōchō (Japanese city subdivision)',
+  Q5327704: 'special ward of Japan',
+  Q137773: 'ward of Japan',
+  Q1468524: 'city center',
 };
 
 /**

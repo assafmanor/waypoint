@@ -41,9 +41,9 @@ import {
   granularityRefusals,
   isAirportEntity,
   isMatchConfident,
+  nameCanRefuse,
   nameOnlyConfidence,
   nameProximityConfidence,
-  namesComparable,
 } from '../match';
 import { nearbyWikidataItems, wikipediaSearchItems } from '../geosearch';
 import { EnrichmentFetcher } from '../outbound-fetch';
@@ -292,10 +292,12 @@ export class WikidataProvider implements EnrichmentProvider {
    *
    * Two rules make it safe, and they are the whole design:
    *
-   *  1. **A name comparison across disjoint scripts is uninformative, not negative** — see
-   *     `geoProximityConfidence`. When the scripts overlap the name must corroborate exactly as
-   *     it does on the name route; when they do not, distance answers alone under a lower
-   *     ceiling, so a coordinate-only identity is always outranked by a named one.
+   *  1. **A name that cannot arbitrate is uninformative, not negative** — see `nameCanRefuse`,
+   *     which knows two ways to be unable to: disjoint scripts (§15) and a name of ours that
+   *     merely says more than theirs (`Kerið Crater` against `Kerið`). When the name can
+   *     arbitrate it must corroborate exactly as it does on the name route; when it cannot,
+   *     distance answers alone under a lower ceiling, so a coordinate-only identity is always
+   *     outranked by a named one.
    *  2. **A broader entity found ONLY by proximity is skipped, not accepted with refusals.**
    *     §11.2's asymmetry — refuse the summary, keep the image — is right when the name matched
    *     and the entity is a broader description of the *right* subject. Here, with the name
@@ -328,10 +330,12 @@ export class WikidataProvider implements EnrichmentProvider {
     for (const entity of entities) {
       const labels = labelsOf(entity);
       const point = coordinateOf(entity);
-      const corroborated = labels.some((label) => namesComparable(identity.name, label));
+      const corroborated = labels.some((label) => nameCanRefuse(identity.name, label));
 
-      // Rule 2: without a readable name to check it against, a broader entity is the wrong
-      // subject rather than a broader view of the right one.
+      // Rule 2: with no name able to check it, a broader entity is the wrong subject rather
+      // than a broader view of the right one. This now also catches the district our own name
+      // contains — `Tsukiji` under `Tsukiji Outer Market` — which is the guard that keeps
+      // `nameCanRefuse`'s second clause from admitting one.
       const broader = Object.keys(
         granularityRefusals({
           instanceOf: instanceOfOf(entity),
@@ -363,7 +367,7 @@ export class WikidataProvider implements EnrichmentProvider {
       }
     }
     if (!best || !isMatchConfident(best.confidence)) return null;
-    // **Ambiguity refuses.** Only for a winner nothing readable corroborated: distance cannot
+    // **Ambiguity refuses.** Only for a winner no name could corroborate: distance cannot
     // separate two subjects that share a coordinate, so "the nearest" is a coin toss dressed as
     // a match. With a name that agrees, several candidates at the pin are not ambiguous at all.
     if (!best.corroborated && coordinatesAreAmbiguous(scoreable)) return null;
@@ -403,10 +407,10 @@ export class WikidataProvider implements EnrichmentProvider {
       const labels = labelsOf(entity);
       const point = coordinateOf(entity);
       const airport = isAirportEntity(instanceOfOf(entity));
-      const corroborated = labels.some((label) => namesComparable(identity.name, label));
+      const corroborated = labels.some((label) => nameCanRefuse(identity.name, label));
 
-      // Same rule the coordinate route follows: with no readable name to check it against, a
-      // broader entity is the wrong subject rather than a broader view of the right one.
+      // Same rule the coordinate route follows: with no name able to check it, a broader
+      // entity is the wrong subject rather than a broader view of the right one.
       if (
         !corroborated &&
         Object.keys(
