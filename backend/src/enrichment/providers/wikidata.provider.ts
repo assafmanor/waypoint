@@ -18,11 +18,12 @@
 // `FIELD_SOURCE_PRECEDENCE.image` names Commons.
 //
 // CC0, so nothing it contributes carries an attribution obligation.
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   ENRICHMENT_FIELD,
   MATCH_METHOD,
   MATCH_METHOD_CONFIDENCE,
+  MATCH_MIN_NAME_SIMILARITY,
   SOURCE_POLICY,
   ENRICHMENT_SOURCE,
   type EnrichmentField,
@@ -42,8 +43,10 @@ import {
   isAirportEntity,
   isMatchConfident,
   nameCanRefuse,
-  nameOnlyConfidence,
   nameProximityConfidence,
+  nameSimilarity,
+  namesComparable,
+  type ProximityConfidence,
 } from '../match';
 import { nearbyWikidataItems, wikipediaSearchItems } from '../geosearch';
 import { EnrichmentFetcher } from '../outbound-fetch';
@@ -78,18 +81,28 @@ const CITY_LANG_PREFERENCE = ['he', 'en'] as const;
 const ENTITY_MEMO_TTL_MS = 60_000;
 const ENTITY_MEMO_MAX = 16;
 
+/** How many class labels are held. Sized for "a trip's worth of feature types" rather than a
+ *  pass's — a waterfall is a waterfall for every waterfall the trip saves (§22). */
+const CLASS_NOUN_MEMO_MAX = 256;
+
+/** `wbgetentities` takes 50 ids per call, and every batch here is capped at that so a wide
+ *  candidate set can never silently become a 414. */
+const ENTITY_IDS_PER_CALL = 50;
+
+const ENTITY_PROPS = 'labels|aliases|claims|sitelinks';
+
+/**
+ * **The id is all this response is read for now** (§22).
+ *
+ * It used to be scored — against `match.text`, `label` and `aliases`, which is how §15 got a
+ * Hebrew saved name past a hit labelled `Eiffel Tower` — because scoring here decided which
+ * single hit was worth an entity read. Every hit is read now, in the one call that read the
+ * winner, so the scoring happens where the coordinates are and the search response has nothing
+ * left to contribute. §15's lesson is kept, not dropped: the entity pass scores against every
+ * name the item offers, which is a superset of what the hit carried.
+ */
 interface WbSearchResponse {
-  search?: {
-    id?: string;
-    label?: string;
-    description?: string;
-    /** **What actually matched the query, and in which language.** The reason this field is
-     *  read rather than `label`: `label` is the item's name in the DISPLAY language, which is
-     *  not necessarily the language the query hit. Wikidata returns it on every hit. */
-    match?: { language?: string; text?: string };
-    /** Returned when the hit came through an alias rather than the label. */
-    aliases?: string[];
-  }[];
+  search?: { id?: string }[];
 }
 
 interface WbEntity {
@@ -159,12 +172,49 @@ export class WikidataProvider implements EnrichmentProvider {
     // Name first, because a name that agrees is stronger evidence than being nearby — half of
     // Tokyo is within 5km of the other half. Coordinates second, and only when the name found
     // nothing: that is the recall hole §15 opened this route for, not a competing answer.
-    return (
-      (await this.matchByName(identity)) ??
-      (await this.matchByCoordinates(identity)) ??
-      this.matchByArticleText(identity)
+    const trace: RouteTrace = [];
+    const found =
+      (await this.matchByName(identity, trace)) ??
+      (await this.matchByCoordinates(identity, trace)) ??
+      (await this.matchByArticleText(identity, trace));
+    if (!found) this.logMiss(identity, trace);
+    return found;
+  }
+
+  /**
+   * **Why this place matched nothing, in one line** (field report #41).
+   *
+   * Two sessions have now been spent reconstructing, by hand and against the live APIs, which
+   * route saw which candidate and which guard refused it — evidence the pass itself had and
+   * threw away. So a miss records it: every route attempted, every candidate it returned, and
+   * the number that killed each one. `debug`, because a miss is a normal outcome for most
+   * places (Tokyo restaurants scored 0 of 7) and this is a diagnosis to switch on, not a
+   * warning; `ENRICHMENT_LIVE_PROBE` in the specs replays the same routes offline.
+   */
+  private logMiss(identity: PlaceIdentity, trace: RouteTrace): void {
+    if (!this.logger.debug) return;
+    this.logger.debug(
+      `no wikidata match for ${JSON.stringify(identity.name)} ` +
+        `@${identity.lat ?? '-'},${identity.lng ?? '-'} :: ` +
+        (trace.length === 0
+          ? 'no route returned a candidate'
+          : trace
+              .map(
+                (route) =>
+                  `${route.route}[${route.candidates
+                    .map(
+                      (c) =>
+                        `${c.qid} ${JSON.stringify(c.name)} sim=${c.nameSimilarity.toFixed(2)}` +
+                        `${c.distanceMeters == null ? '' : ` d=${Math.round(c.distanceMeters)}m`}` +
+                        ` conf=${c.confidence.toFixed(2)}${c.refusedBy ? ` ${c.refusedBy}` : ''}`,
+                    )
+                    .join('; ')}]`,
+              )
+              .join(' ')),
     );
   }
+
+  private readonly logger = new Logger(WikidataProvider.name);
 
   /**
    * **The airport pair, off the item `match` already found** (§18).
@@ -250,40 +300,107 @@ export class WikidataProvider implements EnrichmentProvider {
 
   private readonly entityMemo = new Map<string, { entity: WbEntity | null; at: number }>();
 
-  private async matchByName(identity: PlaceIdentity): Promise<ProviderMatch | null> {
-    const candidates = await this.search(identity.name);
-    if (candidates.length === 0) return null;
+  /**
+   * **Every hit the search returned is read and scored, not just the best-named one** (field
+   * report #41, ADR-0166 §22).
+   *
+   * This used to pick one candidate on the name alone and then verify it — so a namesake that
+   * scored identically won the tie and, once its coordinates refuted it, the route returned
+   * `null` with the right answer sitting untouched at rank 2. Measured on `Brúarfoss`: Wikidata
+   * has two waterfalls of that exact name 130km apart plus three ships, the search returns all
+   * five, and the first one is the wrong waterfall. **A pre-filter that discards a candidate
+   * before its coordinate has been read is deciding on evidence it does not have yet** — §15's
+   * own lesson, which is why `nameOnlyConfidence` exists rather than the full scorer, and the
+   * honest conclusion is not to decide there at all.
+   *
+   * It costs nothing: `wbgetentities` takes 50 ids, so five candidates are the same one call the
+   * single winner used to take.
+   */
+  private async matchByName(
+    identity: PlaceIdentity,
+    trace: RouteTrace,
+  ): Promise<ProviderMatch | null> {
+    const hits = await this.search(identity.name);
+    const ids = hits.map((hit) => hit.id).filter((id): id is string => !!id);
+    const seen = note(trace, MATCH_METHOD.NAME_PROXIMITY);
+    if (ids.length === 0) return null;
 
-    // Score the hit before reading its entity, so the follow-up read only happens for a
-    // candidate worth reading — the search response carries enough to reject a namesake.
-    //
-    // **Scored against every name the hit offers, not just its label** (see `bestName`): the
-    // saved name and the item's label are frequently in different scripts, and comparing
-    // across scripts scores 0 and refuses a correct match.
-    let best: { id: string; confidence: number } | null = null;
-    for (const candidate of candidates) {
-      if (!candidate.id) continue;
-      const confidence = bestNameConfidence(identity, namesOf(candidate));
-      if (!best || confidence > best.confidence) best = { id: candidate.id, confidence };
+    const entities = await this.entities(ids);
+    const classNouns = await this.classNouns(identity, entities);
+
+    let best: { entity: WbEntity; scored: ReturnType<typeof nameProximityConfidence> } | null =
+      null;
+    for (const entity of entities) {
+      // Against ALL of the names the entity offers — labels, aliases and article titles — for
+      // the cross-script reason below, and with the entity's own coordinate, which the search
+      // response does not carry. This is where a same-named place in the wrong city is refused.
+      const scored = bestNameMatch(
+        identity,
+        namesOfEntity(entity),
+        coordinateOf(entity),
+        classNouns.get(entity.id ?? ''),
+      );
+      if (!scored) continue;
+      seen(entity, scored);
+      if (!best || scored.confidence > best.scored.confidence) best = { entity, scored };
     }
-    if (!best || !isMatchConfident(best.confidence)) return null;
+    if (!best || !isMatchConfident(best.scored.confidence)) return null;
 
-    const entity = await this.entity(best.id);
-    if (!entity) return null;
-
-    // Re-score with the entity's own coordinate, which the search response does not carry.
-    // This is where a same-named place in the wrong city is refused. Against ALL of the
-    // entity's labels for the same cross-script reason as above — `wbgetentities` is asked for
-    // `he|en`, so a Hebrew saved name meets the Hebrew label here rather than the English one.
-    const point = coordinateOf(entity);
-    const scored = bestNameMatch(identity, labelsOf(entity), point);
-    if (!scored || !isMatchConfident(scored.confidence)) return null;
-
-    return this.toMatch(entity, MATCH_METHOD.NAME_PROXIMITY, scored.confidence, {
-      nameSimilarity: scored.nameSimilarity,
-      distanceMeters: scored.distanceMeters,
+    return this.toMatch(best.entity, MATCH_METHOD.NAME_PROXIMITY, best.scored.confidence, {
+      nameSimilarity: best.scored.nameSimilarity,
+      distanceMeters: best.scored.distanceMeters,
     });
   }
+
+  /**
+   * **What each candidate IS, in words** — the labels of its `P31` classes, which is what lets
+   * the matcher tell `Brúarfoss Waterfall`/`Brúarfoss` (a type noun our name adds) from
+   * `Tsukiji Outer Market`/`Tsukiji` (a different place). ADR-0166 §22 is the policy; this is
+   * the one lookup it needs.
+   *
+   * **Asked only when it could change an answer.** A candidate whose name already clears the
+   * floor, or whose extra words are not ours to begin with, is unaffected by a class noun — so
+   * the common case makes no request at all and the pass costs exactly what it did before.
+   *
+   * Memoized process-wide because feature classes are the most repeated data in this pipe: a
+   * trip through Iceland asks about `Q34038` (waterfall) a dozen times, and the label of a class
+   * does not change. Same evict-oldest shape as `airportEntity`'s memo, with no TTL — a class
+   * label is not a fact that goes stale within a process's life.
+   */
+  private async classNouns(
+    identity: PlaceIdentity,
+    entities: readonly WbEntity[],
+  ): Promise<Map<string, string[]>> {
+    const relevant = entities.filter((entity) => descriptorCouldRescue(identity.name, entity));
+    const wanted = new Set(relevant.flatMap(instanceOfOf));
+    const missing = [...wanted].filter((qid) => !this.classNounMemo.has(qid));
+    // In batches of what one call takes, rather than one truncated call: a class we never asked
+    // about must not be remembered as having no label, which is what a silent `slice` would do.
+    for (let from = 0; from < missing.length; from += ENTITY_IDS_PER_CALL) {
+      const batch = missing.slice(from, from + ENTITY_IDS_PER_CALL);
+      for (const entity of await this.entities(batch, 'labels')) {
+        if (entity.id) this.remember(entity.id, labelsOf(entity));
+      }
+      // Remembered as "no label" too, so an unlabelled class is asked about once, not per pass.
+      for (const qid of batch) if (!this.classNounMemo.has(qid)) this.remember(qid, []);
+    }
+    const byEntity = new Map<string, string[]>();
+    for (const entity of relevant) {
+      const nouns = instanceOfOf(entity).flatMap((qid) => this.classNounMemo.get(qid) ?? []);
+      if (entity.id && nouns.length > 0) byEntity.set(entity.id, nouns);
+    }
+    return byEntity;
+  }
+
+  private remember(qid: string, labels: string[]): void {
+    if (this.classNounMemo.size >= CLASS_NOUN_MEMO_MAX) {
+      const oldest = this.classNounMemo.keys().next().value;
+      if (oldest) this.classNounMemo.delete(oldest);
+    }
+    this.classNounMemo.set(qid, labels);
+  }
+
+  private readonly classNounMemo = new Map<string, string[]>();
 
   /**
    * **The coordinates find it and the name checks it** (ADR-0166 §15) — the inverse of
@@ -305,17 +422,22 @@ export class WikidataProvider implements EnrichmentProvider {
    *     and its `P18` on a ramen bar is the "confidently wrong" failure this ADR exists to
    *     prevent. So it is dropped and the next candidate is tried.
    */
-  private async matchByCoordinates(identity: PlaceIdentity): Promise<ProviderMatch | null> {
+  private async matchByCoordinates(
+    identity: PlaceIdentity,
+    trace: RouteTrace,
+  ): Promise<ProviderMatch | null> {
     if (identity.lat == null || identity.lng == null) return null;
     const nearby = await nearbyWikidataItems(this.fetcher, {
       lat: identity.lat,
       lng: identity.lng,
     });
+    const seen = note(trace, MATCH_METHOD.GEOSEARCH);
     if (nearby.length === 0) return null;
 
     // One call for every candidate: `wbgetentities` takes several ids, so the fallback route
     // costs two requests in total however many articles the point had.
     const entities = await this.entities(nearby.map((item) => item.qid));
+    const classNouns = await this.classNouns(identity, entities);
 
     let best: {
       entity: WbEntity;
@@ -328,9 +450,12 @@ export class WikidataProvider implements EnrichmentProvider {
     // already refused is not one of the things competing to be this place.
     const scoreable: number[] = [];
     for (const entity of entities) {
-      const labels = labelsOf(entity);
+      const labels = namesOfEntity(entity);
+      const nouns = classNouns.get(entity.id ?? '');
       const point = coordinateOf(entity);
-      const corroborated = labels.some((label) => nameCanRefuse(identity.name, label));
+      const corroborated = labels.some((label) =>
+        nameCanRefuse(identity.name, { name: label, classNouns: nouns }),
+      );
 
       // Rule 2: with no name able to check it, a broader entity is the wrong subject rather
       // than a broader view of the right one. This now also catches the district our own name
@@ -342,20 +467,25 @@ export class WikidataProvider implements EnrichmentProvider {
           endedProperties: endedPropertiesOf(entity),
         }) ?? {},
       ).length;
-      if (!corroborated && broader > 0) continue;
+      if (!corroborated && broader > 0) {
+        seen(entity, { confidence: 0, nameSimilarity: 0 }, 'skipped: broader type, uncorroborated');
+        continue;
+      }
 
       const airport = isAirportEntity(instanceOfOf(entity));
       const scored =
         corroborated && !airport
-          ? bestNameMatch(identity, labels, point)
+          ? bestNameMatch(identity, labels, point, nouns)
           : geoProximityConfidence(identity, {
               name: labels[0] ?? '',
+              classNouns: nouns,
               ...point,
               // **An airport is allowed to be kilometres from its own door** (§20). Earned by
               // the candidate's `P31`, so nothing that is not an airport gets the allowance.
               isAirport: airport,
             });
       if (!scored) continue;
+      seen(entity, scored, corroborated ? undefined : 'distance only');
       if (scored.distanceMeters != null) scoreable.push(scored.distanceMeters);
       if (!best || scored.confidence > best.confidence) {
         best = {
@@ -370,7 +500,10 @@ export class WikidataProvider implements EnrichmentProvider {
     // **Ambiguity refuses.** Only for a winner no name could corroborate: distance cannot
     // separate two subjects that share a coordinate, so "the nearest" is a coin toss dressed as
     // a match. With a name that agrees, several candidates at the pin are not ambiguous at all.
-    if (!best.corroborated && coordinatesAreAmbiguous(scoreable)) return null;
+    if (!best.corroborated && coordinatesAreAmbiguous(scoreable)) {
+      seen(best.entity, { confidence: 0, nameSimilarity: 0 }, 'refused: two things at one pin');
+      return null;
+    }
 
     const found = nearby.find((item) => item.qid === best!.entity.id);
     return this.toMatch(best.entity, MATCH_METHOD.GEOSEARCH, best.confidence, {
@@ -397,17 +530,25 @@ export class WikidataProvider implements EnrichmentProvider {
    * scripts allow it, the distance otherwise, and the broader-subject skip when nothing readable
    * corroborated it.
    */
-  private async matchByArticleText(identity: PlaceIdentity): Promise<ProviderMatch | null> {
+  private async matchByArticleText(
+    identity: PlaceIdentity,
+    trace: RouteTrace,
+  ): Promise<ProviderMatch | null> {
     const hits = await wikipediaSearchItems(this.fetcher, identity.name);
+    const seen = note(trace, MATCH_METHOD.WIKI_SEARCH);
     if (hits.length === 0) return null;
     const entities = await this.entities(hits.map((hit) => hit.qid));
+    const classNouns = await this.classNouns(identity, entities);
 
     let best: { entity: WbEntity; confidence: number; nameSimilarity: number } | null = null;
     for (const entity of entities) {
-      const labels = labelsOf(entity);
+      const labels = namesOfEntity(entity);
+      const nouns = classNouns.get(entity.id ?? '');
       const point = coordinateOf(entity);
       const airport = isAirportEntity(instanceOfOf(entity));
-      const corroborated = labels.some((label) => nameCanRefuse(identity.name, label));
+      const corroborated = labels.some((label) =>
+        nameCanRefuse(identity.name, { name: label, classNouns: nouns }),
+      );
 
       // Same rule the coordinate route follows: with no name able to check it, a broader
       // entity is the wrong subject rather than a broader view of the right one.
@@ -420,19 +561,22 @@ export class WikidataProvider implements EnrichmentProvider {
           }) ?? {},
         ).length > 0
       ) {
+        seen(entity, { confidence: 0, nameSimilarity: 0 }, 'skipped: broader type, uncorroborated');
         continue;
       }
 
       const scored =
         corroborated && !airport
-          ? bestNameMatch(identity, labels, point)
+          ? bestNameMatch(identity, labels, point, nouns)
           : geoProximityConfidence(identity, {
               name: labels[0] ?? '',
+              classNouns: nouns,
               ...point,
               isAirport: airport,
             });
       if (!scored) continue;
       const capped = Math.min(scored.confidence, MATCH_METHOD_CONFIDENCE.wiki_search);
+      seen(entity, { ...scored, confidence: capped });
       if (!best || capped > best.confidence) {
         best = { entity, confidence: capped, nameSimilarity: scored.nameSimilarity };
       }
@@ -505,14 +649,19 @@ export class WikidataProvider implements EnrichmentProvider {
   }
 
   /** Several items in one call — what makes the coordinate route two requests rather than six.
-   *  Order is not relied on: every candidate is scored and the best wins. */
-  private async entities(qids: readonly string[]): Promise<WbEntity[]> {
+   *  Order is not relied on: every candidate is scored and the best wins.
+   *
+   *  **`aliases` is in the default props** because a candidate's aliases are names it offers and
+   *  the scorer was never shown them: `Q185382`'s label is `Trevi Fountain` and `Fontana di
+   *  Trevi` — the name Google returns in Italy — is sitting in its aliases. Free: the same call,
+   *  one more field. */
+  private async entities(qids: readonly string[], props = ENTITY_PROPS): Promise<WbEntity[]> {
     if (qids.length === 0) return [];
     const url = new URL(API);
     url.searchParams.set('action', 'wbgetentities');
     url.searchParams.set('format', 'json');
-    url.searchParams.set('ids', qids.join('|'));
-    url.searchParams.set('props', 'labels|claims|sitelinks');
+    url.searchParams.set('ids', qids.slice(0, ENTITY_IDS_PER_CALL).join('|'));
+    url.searchParams.set('props', props);
     url.searchParams.set('sitefilter', SITE_FILTER);
     url.searchParams.set('languages', 'he|en');
     const body = await this.fetcher.fetchJson<WbEntitiesResponse>(url.toString());
@@ -534,6 +683,49 @@ export class WikidataProvider implements EnrichmentProvider {
     return body.entities?.[qid] ?? null;
   }
 }
+
+/* ── THE EVIDENCE A MISS LEAVES BEHIND (ADR-0166 §22) ──────────────────────────────────────
+   A refusal used to be a `null` with the reasoning discarded, and reconstructing it took a
+   session with the live APIs open. These record what each route saw as it goes, cheaply enough
+   to run always — it is a few strings per candidate, built only from values the scorer computed
+   anyway — and `logMiss` prints them when, and only when, nothing matched. */
+
+type RouteTrace = { route: string; candidates: TracedCandidate[] }[];
+
+interface TracedCandidate {
+  qid: string;
+  name: string;
+  confidence: number;
+  nameSimilarity: number;
+  distanceMeters?: number;
+  refusedBy?: string;
+}
+
+/** Opens a route's section of the trace and returns the recorder for its candidates. Capped, so
+ *  a dense city's twenty articles cannot turn one miss into a paragraph. */
+function note(trace: RouteTrace, route: string) {
+  const candidates: TracedCandidate[] = [];
+  trace.push({ route, candidates });
+  return (
+    entity: WbEntity,
+    scored: Omit<ProximityConfidence, 'distanceMeters'> & {
+      distanceMeters?: number;
+    },
+    refusedBy?: string,
+  ) => {
+    if (candidates.length >= TRACED_CANDIDATES_MAX) return;
+    candidates.push({
+      qid: entity.id ?? '?',
+      name: labelOf(entity) ?? '',
+      confidence: scored.confidence,
+      nameSimilarity: scored.nameSimilarity,
+      distanceMeters: scored.distanceMeters,
+      refusedBy,
+    });
+  };
+}
+
+const TRACED_CANDIDATES_MAX = 8;
 
 /** Every alias the item offers in one language. */
 function aliasesOf(entity: WbEntity, lang: string): string[] {
@@ -591,14 +783,6 @@ const labelOf = (entity: WbEntity): string | undefined =>
    own, and the distance veto still applies to whichever name won. What changes is that the
    right name is among the ones tried. */
 
-/** Every string a search hit offers as its own name. `match.text` first because it is what
- *  actually matched the query, so it is in the query's own script by construction. */
-function namesOf(hit: NonNullable<WbSearchResponse['search']>[number]): string[] {
-  return [hit.match?.text, hit.label, ...(hit.aliases ?? [])].filter(
-    (name): name is string => !!name,
-  );
-}
-
 /** Every label the entity read returned — `wbgetentities` is asked for `he|en`. */
 function labelsOf(entity: WbEntity): string[] {
   return Object.values(entity.labels ?? {})
@@ -606,25 +790,62 @@ function labelsOf(entity: WbEntity): string[] {
     .filter((value): value is string => !!value);
 }
 
-/** The best confidence any of these names earns, with no coordinate to corroborate it yet.
+/**
+ * **Every name this entity offers**, which is more than its labels (field report #41).
  *
- *  `nameOnlyConfidence` and not the full scorer, deliberately: the search response has no
- *  coordinates, and the full scorer now REFUSES a candidate that has none when we have ours
- *  (the song-named-after-the-place fix). Applied here that would reject every hit before the
- *  entity carrying the coordinate is read. The veto belongs to the entity pass. */
-function bestNameConfidence(identity: PlaceIdentity, names: readonly string[]): number {
-  return names.reduce((best, name) => Math.max(best, nameOnlyConfidence(identity, name)), 0);
+ * The scorer used to see two strings — the `he` and `en` labels — and refuse everything the
+ * item calls itself by any other name. Two free sources were sitting in the response it had
+ * already paid for:
+ *
+ *  - **aliases**, which is where the name a country actually uses usually lives (`Fontana di
+ *    Trevi` against a label of `Trevi Fountain`);
+ *  - **the article titles**, which are a language's own name for the subject and routinely
+ *    differ from the Wikidata label — Gullfoss's Hebrew label is `גאלפוס` and its Hebrew article
+ *    is `גוטלפוס`, two transliterations of one Icelandic word.
+ *
+ * Additive, like every other name variant here: `nameSimilarity` keeps the best, so an extra
+ * name can only raise a candidate's score, and everything it raises still faces the distance
+ * veto and the granularity skip.
+ */
+function namesOfEntity(entity: WbEntity): string[] {
+  const aliases = Object.values(entity.aliases ?? {}).flatMap((list) =>
+    (list ?? []).map((alias) => alias?.value),
+  );
+  const titles = Object.values(entity.sitelinks ?? {}).map((link) => link?.title);
+  return [...new Set([...labelsOf(entity), ...aliases, ...titles])].filter(
+    (value): value is string => !!value,
+  );
 }
+
+/**
+ * **Is this a candidate a feature-type noun could rescue?** (ADR-0166 §22.)
+ *
+ * The gate in front of the class-label lookup, so the common case still makes no extra request:
+ * a class noun can only matter where our name is readable against one of the candidate's, says
+ * MORE words than it, and does not already clear the floor. Anything else is answered without
+ * knowing what the candidate is.
+ */
+function descriptorCouldRescue(ourName: string, entity: WbEntity): boolean {
+  return namesOfEntity(entity).some(
+    (name) =>
+      namesComparable(ourName, name) &&
+      nameSimilarity(ourName, name) < MATCH_MIN_NAME_SIMILARITY &&
+      countWords(ourName) > countWords(name),
+  );
+}
+
+const countWords = (name: string): number => name.split(/[^\p{L}\p{N}]+/u).filter(Boolean).length;
 
 /** The best-scoring name WITH the entity's coordinate — the pass that can veto on distance. */
 function bestNameMatch(
   identity: PlaceIdentity,
   names: readonly string[],
   point: { lat?: number; lng?: number },
+  classNouns?: readonly string[],
 ): ReturnType<typeof nameProximityConfidence> | undefined {
   let best: ReturnType<typeof nameProximityConfidence> | undefined;
   for (const name of names) {
-    const scored = nameProximityConfidence(identity, { name, ...point });
+    const scored = nameProximityConfidence(identity, { name, classNouns, ...point });
     if (!best || scored.confidence > best.confidence) best = scored;
   }
   return best;

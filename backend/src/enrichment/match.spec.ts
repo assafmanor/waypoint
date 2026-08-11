@@ -7,6 +7,7 @@ import {
 } from '@waypoint/shared';
 import {
   coordinatesAreAmbiguous,
+  descriptorAwareSimilarity,
   geoProximityConfidence,
   granularityRefusals,
   isMatchConfident,
@@ -16,6 +17,7 @@ import {
   namesComparable,
   nameSimilarity,
   proximityScore,
+  tokensNear,
 } from './match';
 
 // Real coordinates and names from the coverage spike dataset
@@ -23,6 +25,10 @@ import {
 const SENSOJI = { name: 'Sensō-ji', lat: 35.7148, lng: 139.7967 };
 const MEIJI = { name: 'Meiji Jingū / Meiji Shrine', lat: 35.6764, lng: 139.6993 };
 const SHIBUYA_CROSSING = { name: 'Shibuya Crossing', lat: 35.6595, lng: 139.7005 };
+
+/** What one near-spelled word is worth (`NEAR_TOKEN_CREDIT`) — asserted here rather than
+ *  exported, so a change to it has to come back through these cases. */
+const NEAR_CREDIT = 0.75;
 
 describe('nameSimilarity', () => {
   it('scores an exact name 1', () => {
@@ -86,7 +92,9 @@ describe('nameSimilarity', () => {
   it('scores a name plus a bare feature-type word below the threshold', () => {
     // The scorer is NOT changed for this: `Kerið Crater` against `Kerið` is one shared token
     // over `sqrt(2 × 1)`, and a partial overlap is a partial score. What changed is who is
-    // allowed to act on it — see `nameCanRefuse`.
+    // allowed to act on it — `nameCanRefuse` (§21), and, once the caller has read what the
+    // candidate IS, `descriptorAwareSimilarity` (§22). Told nothing about the candidate's type,
+    // this still refuses, and that is the safe default it should keep.
     expect(nameSimilarity('Kerið Crater', 'Kerið')).toBeCloseTo(0.7071, 4);
     expect(nameSimilarity('Kerið Crater', 'Kerið')).toBeLessThan(MATCH_MIN_NAME_SIMILARITY);
   });
@@ -298,13 +306,40 @@ describe('namesComparable — a cross-script comparison is uninformative, not ne
 });
 
 describe('nameCanRefuse — a name that says MORE has not disagreed (owner report, 2026-08-11)', () => {
-  it('cannot refuse the candidate our own name merely elaborates', () => {
+  it('lets the name DECIDE once the extra word is known to be the candidate’s type', () => {
     // Kerið, measured: Google saves `Kerið Crater`, `Q1435393` is labelled `Kerið`, and 0.707
-    // vetoed the only article within 150m of the pin.
-    expect(nameCanRefuse('Kerið Crater', 'Kerið')).toBe(false);
-    expect(nameCanRefuse('Gullfoss Waterfall', 'Gullfoss')).toBe(false);
+    // vetoed the only article within 150m of the pin. §21 answered that by setting the name
+    // aside; §22 does better — told that a crater is what `Q1435393` IS, the two names AGREE,
+    // so the name corroborates and the match is a named one rather than a distance-only one.
+    const crater = ['volcanic crater', 'volcanic crater lake'];
+    expect(nameCanRefuse('Kerið Crater', { name: 'Kerið', classNouns: crater })).toBe(true);
+    expect(descriptorAwareSimilarity('Kerið Crater', 'Kerið', crater)).toBe(1);
     // Across the transliterated variants too, since those are what `nameSimilarity` scores.
-    expect(nameCanRefuse('Kerið Crater', 'Kerid')).toBe(false);
+    expect(descriptorAwareSimilarity('Kerið Crater', 'Kerid', crater)).toBe(1);
+  });
+
+  it('sets the name aside when the type word agrees but the spelling only nearly does', () => {
+    // Hebrew Gullfoss, which is what the second clause is FOR: `מפלי` is the class noun, and
+    // `גולפוס`/`גאלפוס` are one edit apart — corroborating, not carrying, so the pair lands
+    // under the floor and the distance answers alone exactly as it does for a script we cannot
+    // read at all.
+    expect(nameCanRefuse('מפלי גולפוס', { name: 'גאלפוס', classNouns: ['מפל מים'] })).toBe(false);
+  });
+
+  it('REFUSES when the extra words are not what the candidate is (§22)', () => {
+    // The measured false positive: a café named after the waterfall says `גולפוס` and more,
+    // exactly as `מפלי גולפוס` does, and sits inside the trust radius of the same coordinate.
+    // Distance cannot separate them; the surplus words can, and `בית קפה` is not a waterfall.
+    expect(nameCanRefuse('בית קפה גולפוס', { name: 'גאלפוס', classNouns: ['מפל מים'] })).toBe(true);
+    expect(nameCanRefuse('Tsukiji Outer Market', { name: 'Tsukiji', classNouns: ['chōchō'] })).toBe(
+      true,
+    );
+  });
+
+  it('refuses by default when nobody looked up what the candidate is', () => {
+    // The safe direction: with no type words there is no word that can be surplus, so this is
+    // the pre-§21 answer. The one route that needs the exception is the one that fetches them.
+    expect(nameCanRefuse('Kerið Crater', 'Kerið')).toBe(true);
   });
 
   it('STILL refuses the candidate whose name is ours plus a qualifying noun (§15)', () => {
@@ -382,20 +417,32 @@ describe('geoProximityConfidence — the coordinates find it, the name checks it
     expect(isMatchConfident(disagreeing.confidence)).toBe(false);
   });
 
-  it('matches Kerið on the distance, now that its name can no longer veto it', () => {
+  it('matches Kerið, now that its name can no longer veto it', () => {
     // Every number here is real (2026-08-11): the pin is what Google gives for `Kerið Crater`,
     // the candidate is `Q1435393`'s own `P625`, and the live geosearch returns exactly one
-    // other article within 3km (Grímsnes, 1.2km away). Before this rule the confidence was 0.
+    // other article within 3km (Grímsnes, 1.2km away). Before §21 the confidence was 0; §21
+    // made it 0.8 on the distance, and §22's type word makes it a NAMED match at 0.9.
     const scored = geoProximityConfidence(
       { name: 'Kerið Crater', lat: 64.0408, lng: -20.8847 },
-      { name: 'Kerið', lat: 64.0409804167, lng: -20.8826540713 },
+      {
+        name: 'Kerið',
+        classNouns: ['volcanic crater', 'volcanic crater lake'],
+        lat: 64.0409804167,
+        lng: -20.8826540713,
+      },
     );
     expect(scored.distanceMeters).toBeLessThan(150);
-    expect(scored.confidence).toBe(0.8);
     expect(isMatchConfident(scored.confidence)).toBe(true);
-    // Zero because the name was set aside, not because it disagreed — §12.3's evidence must
-    // still be able to say which of the two happened.
-    expect(scored.nameSimilarity).toBe(0);
+    expect(scored.nameSimilarity).toBe(1);
+
+    // And with nothing known about the candidate's type, §21's distance-only answer stands —
+    // the name is set aside rather than believed, and the evidence says so with a 0 (§12.3).
+    const unTyped = geoProximityConfidence(
+      { name: 'מכתש קריד', lat: 64.0408, lng: -20.8847 },
+      { name: 'Kerið', lat: 64.0409804167, lng: -20.8826540713 },
+    );
+    expect(unTyped.confidence).toBe(0.8);
+    expect(unTyped.nameSimilarity).toBe(0);
   });
 
   it('will not let a district ride in on a name our own place name contains', () => {
@@ -534,5 +581,125 @@ describe('nameProximityConfidence — the veto survives the alias fix', () => {
       { name: 'נמל התעופה של פרנקפורט', lat: 50.0379, lng: 8.5622 },
     );
     expect(scored.confidence).toBeGreaterThanOrEqual(MATCH_CONFIDENCE_THRESHOLD);
+  });
+});
+
+describe('tokensNear — one word, two transliterations (§22, field report #41)', () => {
+  // The measured case: Google's Hebrew for Gullfoss is `גולפוס`, Wikidata's label is `גאלפוס`,
+  // and the Hebrew Wikipedia's article is `גוטלפוס`. Token-set overlap scored every pair 0.
+  it('is true for two spellings of the same borrowed word', () => {
+    expect(tokensNear('גולפוס', 'גאלפוס')).toBe(true);
+    expect(tokensNear('גולפוס', 'גוטלפוס')).toBe(true);
+  });
+
+  it('is false for short words, where one letter is a different word', () => {
+    // The whole false-positive budget: at four letters a single edit is not a spelling variant.
+    expect(tokensNear('bali', 'bari')).toBe(false);
+    expect(tokensNear('ueno', 'ueda')).toBe(false);
+    expect(tokensNear('park', 'part')).toBe(false);
+    expect(tokensNear('oia', 'oea')).toBe(false);
+  });
+
+  it('allows a second edit only in a word long enough to survive it', () => {
+    expect(tokensNear('suvarnabhumi', 'suvarnaphumi')).toBe(true);
+    expect(tokensNear('reykjavik', 'reykjanes')).toBe(false);
+  });
+
+  it('is false for words that merely start alike', () => {
+    expect(tokensNear('tsukiji', 'tsukishima')).toBe(false);
+    expect(tokensNear('ueno', 'uenohara')).toBe(false);
+  });
+
+  it('is knowingly true for the long near-pairs the FLOOR has to settle', () => {
+    // `Kensington` and `Kennington` are two real London places one edit apart, and this rule
+    // cannot tell them apart — nor is it asked to.
+    expect(tokensNear('kensington', 'kennington')).toBe(true);
+    // 4.9km apart: INSIDE `MATCH_FAR_METERS`, so the distance veto does not fire and the name
+    // floor is the only thing refusing them. That is why a near word is worth less than a whole
+    // one — see `NEAR_TOKEN_CREDIT`.
+    expect(
+      nameProximityConfidence(
+        { name: 'Kensington', lat: 51.4988, lng: -0.1749 },
+        { name: 'Kennington', lat: 51.4879, lng: -0.1053 },
+      ).confidence,
+    ).toBe(0);
+  });
+
+  it('reaches the scorer, so a near-spelled name is not scored 0', () => {
+    // What `מפלי גולפוס` against Wikidata's `גאלפוס` used to be worth: nothing at all.
+    expect(nameSimilarity('מפלי גולפוס', 'גאלפוס')).toBeGreaterThan(0);
+  });
+
+  it('corroborates but never carries — a lone near word stays under the floor', () => {
+    // The false-positive budget in one line: two long words one edit apart cannot match on the
+    // name, however long they are. A name that agrees about its OTHER words is lifted.
+    expect(nameSimilarity('Kensington', 'Kennington')).toBeLessThan(MATCH_MIN_NAME_SIMILARITY);
+    expect(nameSimilarity('Fushimi Inari Taisha', 'Fushimi Inari Taisya')).toBeGreaterThan(
+      MATCH_MIN_NAME_SIMILARITY,
+    );
+  });
+});
+
+describe('descriptorAwareSimilarity — the word that names what the candidate IS (§22)', () => {
+  it('reads Google’s appended feature type as agreement, not disagreement', () => {
+    expect(descriptorAwareSimilarity('Brúarfoss Waterfall', 'Brúarfoss', ['waterfall'])).toBe(1);
+    expect(descriptorAwareSimilarity('Kerið Crater', 'Kerið', ['volcanic crater'])).toBe(1);
+  });
+
+  it('reads a Hebrew descriptive name against the class’s own Hebrew label', () => {
+    // `מפלי` is the construct plural of `מפל`, the first word of `Q34038`'s Hebrew label —
+    // and `גולפוס`/`גאלפוס` then meet through `tokensNear`.
+    // `גולפוס` against `גאלפוס` is a spelling variant, which corroborates rather than carries —
+    // so this clears 0 and stays under the floor, and the distance decides, as it did for Kerið.
+    expect(descriptorAwareSimilarity('מפלי גולפוס', 'גאלפוס', ['מפל מים'])).toBe(NEAR_CREDIT);
+    expect(nameCanRefuse('מפלי גולפוס', { name: 'גאלפוס', classNouns: ['מפל מים'] })).toBe(false);
+  });
+
+  it('KEEPS refusing the district our own name contains (§11.2’s motivating case)', () => {
+    // `Outer` and `Market` do not name what a `chōchō` is, so nothing is stripped and the
+    // deny-list case is untouched. This is the guard that made the rule safe to build.
+    expect(
+      descriptorAwareSimilarity('Tsukiji Outer Market', 'Tsukiji', ['chōchō', 'neighborhood']),
+    ).toBeCloseTo(0.5774, 4);
+  });
+
+  it('is asymmetric — a CANDIDATE’s type word is never stripped (§16)', () => {
+    // Strip both sides and `Piccadilly Circus tube station` becomes `Piccadilly Circus tube`,
+    // 0.816 against the square: §16's exact defect, reopened. Only our name may be shortened.
+    expect(
+      descriptorAwareSimilarity('Piccadilly Circus', 'Piccadilly Circus tube station', [
+        'London Underground station',
+      ]),
+    ).toBeCloseTo(0.7071, 4);
+  });
+
+  it('does not strip a name down to nothing', () => {
+    // A place actually saved as `Waterfall` is a name, not a descriptor.
+    expect(descriptorAwareSimilarity('Waterfall', 'Brúarfoss', ['waterfall'])).toBe(0);
+  });
+
+  it('scores exactly as before when the caller knows no classes', () => {
+    expect(descriptorAwareSimilarity('Kerið Crater', 'Kerið', undefined)).toBeCloseTo(0.7071, 4);
+    expect(descriptorAwareSimilarity('Kerið Crater', 'Kerið', [])).toBeCloseTo(0.7071, 4);
+  });
+
+  it('lets a type noun promote a coordinate match to a NAMED one', () => {
+    // The difference this makes downstream: 0.707 is refused, 1.0 blends with the distance and
+    // matches on the name route, which outranks a distance-only identity (§12.3).
+    const scored = nameProximityConfidence(
+      { name: 'Brúarfoss Waterfall', lat: 64.2646, lng: -20.5145 },
+      { name: 'Brúarfoss', classNouns: ['waterfall'], lat: 64.2645, lng: -20.5165 },
+    );
+    expect(scored.nameSimilarity).toBe(1);
+    expect(isMatchConfident(scored.confidence)).toBe(true);
+  });
+
+  it('still refuses the same name in the wrong country, type noun or not', () => {
+    // Brúarfoss's own namesake, 130km away on the Hítará — the distance veto is untouched.
+    const scored = nameProximityConfidence(
+      { name: 'Brúarfoss Waterfall', lat: 64.2646, lng: -20.5145 },
+      { name: 'Brúarfoss', classNouns: ['waterfall'], lat: 64.7317, lng: -22.1852 },
+    );
+    expect(scored.confidence).toBe(0);
   });
 });

@@ -24,6 +24,28 @@ import { EnrichmentFetcher } from './outbound-fetch';
  *  Israeli subject `hewiki` genuinely has articles `enwiki` does not. */
 const WIKIS = ['en', 'he'] as const;
 
+/**
+ * **The place with no article in any language we asked for** (field report #41).
+ *
+ * The route above is Wikipedia-shaped, and that is a hard recall floor nobody had measured: a
+ * Wikidata item reachable only through a wiki outside `WIKIS` is invisible to it, and so is one
+ * with **no article anywhere**. `Brúarfoss` (`Q2557346`) is both — a waterfall on the Golden
+ * Circle with an Icelandic article, no English or Hebrew one, and a geosearch at its pin that
+ * returns nothing at all in either wiki. The name route holds the only copy of it, and until §22
+ * that route threw it away.
+ *
+ * Commons closes it, and it is the right shape rather than a lucky one: its category tree is
+ * **language-neutral by construction**, it is geotagged for far more of the world than any one
+ * Wikipedia, its categories carry the `wikibase_item` pageprop the rest of this pipe joins on,
+ * and it is a host §7 already allows because the image pipeline reads licenses there.
+ *
+ * Last, not first: a Commons category is often coarser than an article (`Category:Árnessýsla`
+ * for a county), so it answers where the wikis were silent rather than competing with them. The
+ * candidate it produces faces every check the others do — the granularity skip catches the
+ * county, the ambiguity refusal catches a tie, and an item with no `P625` scores nothing.
+ */
+const COMMONS = { host: 'commons.wikimedia.org', lang: 'commons', namespace: 14 } as const;
+
 /** How far out to look.
  *
  *  **Widened from 500m for one category** (§20, owner report: Bangkok never matched). GeoData
@@ -87,7 +109,7 @@ export async function nearbyWikidataItems(
     const found = await search(fetcher, lang, point);
     if (found.length > 0) return found;
   }
-  return [];
+  return search(fetcher, COMMONS.lang, point);
 }
 
 /**
@@ -155,9 +177,13 @@ async function search(
   lang: string,
   point: LatLng,
 ): Promise<NearbyItem[]> {
-  const url = new URL(`https://${lang}.wikipedia.org/w/api.php`);
+  const onCommons = lang === COMMONS.lang;
+  const url = new URL(`https://${onCommons ? COMMONS.host : `${lang}.wikipedia.org`}/w/api.php`);
   url.searchParams.set('action', 'query');
   url.searchParams.set('format', 'json');
+  // Categories only. Commons geotags individual FILES too, and a photograph's own coordinate is
+  // where the photographer stood — not a claim about a subject, and thousands of them per point.
+  if (onCommons) url.searchParams.set('ggsnamespace', String(COMMONS.namespace));
   // `generator=geosearch` rather than `list=geosearch` so the QIDs arrive in the SAME call:
   // as a list it would return titles we then have to look up, doubling the calls on a route
   // that is already a fallback. The prefix `ggs` is the generator's own.

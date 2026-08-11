@@ -80,12 +80,45 @@ describe('nearbyWikidataItems (ADR-0166 §15)', () => {
         },
       ]),
       'he.wikipedia.org': geosearch([]),
+      'commons.wikimedia.org': geosearch([]),
     });
     expect(await ask(f)).toEqual([]);
   });
 
   it('is empty rather than throwing when nothing is anywhere near', async () => {
-    const f = fetcher({ 'en.wikipedia.org': geosearch([]), 'he.wikipedia.org': geosearch([]) });
+    const f = fetcher({
+      'en.wikipedia.org': geosearch([]),
+      'he.wikipedia.org': geosearch([]),
+      'commons.wikimedia.org': geosearch([]),
+    });
     expect(await ask(f)).toEqual([]);
+  });
+
+  // **A place can have no article in any language we ask for** (field report #41): Brúarfoss is
+  // on the Golden Circle, has an Icelandic article and nothing in `en` or `he`, so a
+  // Wikipedia-shaped geosearch returns literally nothing at its pin. Commons' category tree is
+  // language-neutral and carries the same `wikibase_item` join.
+  it('reaches Commons when no Wikipedia we ask has anything at the point', async () => {
+    const f = fetcher({
+      'en.wikipedia.org': geosearch([]),
+      'he.wikipedia.org': geosearch([]),
+      'commons.wikimedia.org': geosearch([
+        { qid: 'Q2557346', title: 'Category:Brúarfoss', lat: 35.6656, lng: 139.7167 },
+      ]),
+    });
+    const found = await ask(f);
+    expect(found.map((item) => item.qid)).toEqual(['Q2557346']);
+    // Categories, not files: a photograph's coordinate is where the photographer stood.
+    expect(f.requested.at(-1)).toContain('ggsnamespace=14');
+  });
+
+  it('does not ask Commons when a Wikipedia already answered', async () => {
+    const f = fetcher({
+      'en.wikipedia.org': geosearch([
+        { qid: 'Q1054134', title: 'Nezu Museum', lat: 35.6656, lng: 139.7167 },
+      ]),
+    });
+    await ask(f);
+    expect(f.countMatching('commons.wikimedia.org')).toBe(0);
   });
 });
