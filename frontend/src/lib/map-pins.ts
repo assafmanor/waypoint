@@ -8,11 +8,12 @@
 // `PlaceUsage` the list rows read, the same `comparePlacesBySchedule` order the
 // Day view renders. That is the property the list-first investment was for — a
 // chip that changes the list changes the pins in the same pass (ADR-0110 §2).
-import { iconForCategory, isExactEdge, type EventCategory, type TripEvent } from '@waypoint/shared';
+import { iconForCategory, type EventCategory, type TripEvent } from '@waypoint/shared';
 import { chosenIcon, DEFAULT_PLACE_ICON, MAP_PIN } from '../constants';
 import {
   isDayUsagePast,
   isOnShelf,
+  knowsMoment,
   placeDay,
   relevantMoment,
   placeMetaDay,
@@ -352,13 +353,20 @@ export function buildDayStopSequence(
       : [{ at: day.at, eventId: day.eventId, edge: day.edge }]
     ).map((moment) => ({ usage, day, moment })),
   );
-  // The day's own order, and no clock in it: timed stops by their moment, untimed ones after
+  // The day's own order, and no clock in it: **known** stops by their moment, the rest after
   // (they cannot claim a position they do not have), then the manual `sortOrder` and the name
   // — the same tail `comparePlacesBySchedule` breaks its ties with.
+  //
+  // AMENDED (ADR-0182 §3's reversal): this sank only the CLOCKLESS, so a floor or a ceiling
+  // sorted among the numbered stops on a time it cannot defend — a hotel check-in at "from
+  // 15:00" between the stops at 14:00 and 16:00, wearing no number. It asks `knowsMoment`
+  // now, which is the same question the numbering asks one block down, so a stop cannot sort
+  // as timed and read as unnumbered.
+  const known = (m: DayStopMoment) => knowsMoment(m, eventById);
   stops.sort((a, b) => {
-    if (a.moment.at != null && b.moment.at != null && a.moment.at !== b.moment.at)
-      return a.moment.at - b.moment.at;
-    if ((a.moment.at == null) !== (b.moment.at == null)) return a.moment.at == null ? 1 : -1;
+    if (known(a.moment) && known(b.moment) && a.moment.at !== b.moment.at)
+      return a.moment.at! - b.moment.at!;
+    if (known(a.moment) !== known(b.moment)) return known(a.moment) ? -1 : 1;
     const sa = a.day.sortOrder ?? 0;
     const sb = b.day.sortOrder ?? 0;
     if (sa !== sb) return sa - sb;
@@ -387,15 +395,10 @@ export function buildDayStopSequence(
   // Tel Aviv. The unknown ones keep their place in the list and lose the mark — so the
   // known stops still count 1, 2, 3 with no hole, unlike a filter's informative gaps,
   // because nothing is hidden here to hint at.
-  const knows = (moment: { at?: number; eventId?: string; edge?: 'start' | 'end' }) => {
-    if (moment.at == null) return false;
-    const event = moment.eventId ? eventById?.(moment.eventId) : undefined;
-    return event ? isExactEdge(event, moment.edge ?? 'start') : true;
-  };
   let counted = 0;
   const sequence: DayStop[] = merged.map((stop) => ({
     ...stop,
-    order: knows(stop.moment) ? ++counted : undefined,
+    order: knowsMoment(stop.moment, eventById) ? ++counted : undefined,
   }));
   // **THE TAIL** (ADR-0182 §2). `hasScheduleSlot` above wants `prominence === 'edge'` AND an
   // `eventId`, so an idea pencilled to this day with no event never entered the sequence at

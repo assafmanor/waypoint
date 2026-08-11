@@ -19,6 +19,7 @@ import {
   EVENT_STATUS,
   eventCategorySchema,
   isAmbient,
+  isExactEdge,
   isMultiDay,
   type Booking,
   type EventCategory,
@@ -625,6 +626,11 @@ export interface PlaceOrderContext {
    *  an **untimed** event on a day that has passed sinks with the rest of it rather
    *  than floating at the top for want of a clock. */
   today?: string;
+  /** The moment's event, so the order can ask what its time MEANS rather than merely
+   *  whether it has one (ADR-0171 §10b, ADR-0182 §3). Absent on surfaces that cannot
+   *  resolve events, which then rank every clocked moment as known — the behaviour this
+   *  had before the two questions were told apart. */
+  eventById?: (id: string) => TripEvent | undefined;
 }
 
 /** Whether a place's day is behind you: everything anchored there has ended.
@@ -701,6 +707,33 @@ export function placeMetaDay(usage: PlaceUsage, ctx: PlaceDayContext): DayUsage 
     : day;
 }
 
+/**
+ * **DOES THE APP KNOW WHEN THIS MOMENT IS?** (ADR-0171 §10b.)
+ *
+ * Not "does it carry a clock" — that is a weaker question and the two come apart on the
+ * cases that matter most. A hotel check-in has a time and it is a **floor**: "from 15:00"
+ * is any hour after. A check-out has one and it is a **ceiling**. Both have an `at`, and
+ * neither is a moment you can say you were at.
+ *
+ * It lived inside `buildDayStopSequence` as a local `knows`, with the numbering as its one
+ * reader. It has two now (root rule 8: generalise the one-off rather than write a second
+ * beside it), and that is the point — **the order and the number must ask one question**,
+ * or a stop sorts as timed while carrying no number, which is exactly the drift this was
+ * extracted to end.
+ *
+ * `eventById` absent means every clocked moment counts as known, which is how every surface
+ * that cannot resolve events behaves — unchanged, and the same "absent on surfaces that
+ * cannot resolve journeys" shape the rest of this file already uses.
+ */
+export function knowsMoment(
+  moment: { at?: number; eventId?: string; edge?: 'start' | 'end' },
+  eventById?: (id: string) => TripEvent | undefined,
+): boolean {
+  if (moment.at == null) return false;
+  const event = moment.eventId ? eventById?.(moment.eventId) : undefined;
+  return event ? isExactEdge(event, moment.edge ?? 'start') : true;
+}
+
 /** The list's three blocks, in reading order (ADR-0109 session-110 + its session-127
  *  amendment). Named because the list both **orders** by them and **labels** them:
  *  the group a row lands in is the one the header above it claims. */
@@ -748,10 +781,18 @@ export function comparePlacesBySchedule(
   // still want, and the trip's opening day is the least interesting row on screen.
   const dir = behind(da) ? -1 : 1;
   if (da.date !== db.date) return dir * da.date.localeCompare(db.date);
-  // Within a day, ahead of you: clocked → untimed → ambient backdrop. The sunk block
-  // has no such hierarchy — everything there is equally done — so it goes by clock.
+  // Within a day, ahead of you: **known moment → unknown → ambient backdrop**. The sunk
+  // block has no such hierarchy — everything there is equally done — so it goes by clock.
+  //
+  // AMENDED (ADR-0182 §3's reversal, owner: _"unnumbered events should be at the end"_):
+  // this ranked on `d.at == null`, which is a WEAKER question than the one the number asks
+  // and the two came apart on the case the owner named. A hotel check-in carries a time and
+  // is a floor, a check-out carries one and is a ceiling — so both were unnumbered and yet
+  // sorted among the numbered stops by a clock that cannot be defended. `knowsMoment` is
+  // the numbering's own predicate, so the order and the mark can no longer disagree.
   if (!behind(da)) {
-    const rank = (d: DayUsage) => (d.prominence === 'ambient' ? 2 : d.at == null ? 1 : 0);
+    const rank = (d: DayUsage) =>
+      d.prominence === 'ambient' ? 2 : knowsMoment(d, ctx.eventById) ? 0 : 1;
     if (rank(da) !== rank(db)) return rank(da) - rank(db);
   }
   // A row with no clock can't claim recency, so it trails the timed ones either way.

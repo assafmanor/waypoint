@@ -577,6 +577,50 @@ describe('comparePlacesBySchedule (the list reads in trip order)', () => {
       .sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate, nowMs, today }))
       .map((u) => u.placeId);
 
+  it('an unnumbered stop sinks even though it carries a clock (ADR-0182 §3, 2026-08-11)', () => {
+    // The owner's case: _"a hotel check in/out … should be at the end of the list"_. A
+    // check-in has a time and it is a FLOOR — "from 15:00" is any hour after — so it was
+    // sorting at 15:00, between the 14:00 and 16:00 stops, while carrying no number. The
+    // rank asks `knowsMoment` now, the same question the numbering asks.
+    const stay = event({
+      id: 'stay',
+      placeId: 'hotel',
+      category: 'lodging',
+      date: DAY,
+      endDate: '2026-07-08',
+      startsAt: at('15:00'),
+      endsAt: '2026-07-08T11:00:00Z',
+    });
+    const idx = buildPlaceUsageIndex(
+      [
+        stay,
+        event({ id: 'e1', placeId: 'museum', date: DAY, startsAt: at('14:00') }),
+        event({ id: 'e2', placeId: 'dinner', date: DAY, startsAt: at('16:00') }),
+      ],
+      [],
+      [],
+      [place('hotel'), place('museum'), place('dinner')],
+    );
+    const eventById = (id: string) =>
+      [
+        stay,
+        event({ id: 'e1', date: DAY, startsAt: at('14:00') }),
+        event({ id: 'e2', date: DAY, startsAt: at('16:00') }),
+      ].find((e) => e.id === id);
+    expect(
+      [...idx.values()]
+        .sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate: DAY, eventById }))
+        .map((u) => u.placeId),
+    ).toEqual(['museum', 'dinner', 'hotel']);
+    // …and with no way to resolve events the order is exactly what it always was, which is
+    // what keeps every surface that cannot answer the question unchanged.
+    expect(
+      [...idx.values()]
+        .sort((a, b) => comparePlacesBySchedule(a, b, { nameOf, onDate: DAY }))
+        .map((u) => u.placeId),
+    ).toEqual(['museum', 'hotel', 'dinner']);
+  });
+
   it('orders a day by the clock, not the alphabet', () => {
     // Named so alphabetical order would be the exact reverse of the schedule.
     const idx = buildPlaceUsageIndex(

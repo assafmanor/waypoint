@@ -892,7 +892,19 @@ export function MapView() {
   // so the two surfaces can't disagree about a day. In BOTH modes: a list that opens
   // on last Tuesday is wrong while you're planning too.
   const nameOf = (u: PlaceUsage) => placeById.get(u.placeId)?.name ?? '';
-  const orderCtx = { nameOf, ...listCtx };
+  // Declared up here rather than beside the row helpers that also read it: the list's ORDER
+  // needs it now (ADR-0182 §3 — whether a moment is known, not merely clocked), and so do
+  // the pins (a place's transition word comes off the event that owns its day). One lookup
+  // for all of them is the same reason they share every other derivation.
+  const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+  const eventLookup = useCallback((id: string) => eventById.get(id), [eventById]);
+
+  // `eventById` is what lets the order ask whether a moment is KNOWN rather than merely
+  // clocked (ADR-0182 §3) — so a check-in's floor and a check-out's ceiling sink to the end
+  // of the list exactly as they carry no number, instead of sorting among the numbered
+  // stops on a time neither can defend. The same lookup `dayStopCtx` hands the sequence,
+  // so the list and the card's track cannot order the day differently.
+  const orderCtx = { nameOf, ...listCtx, eventById: eventLookup };
   const bySchedule = (a: PlaceUsage, b: PlaceUsage) => comparePlacesBySchedule(a, b, orderCtx);
   // Which block each row is in — the list labels where each one starts rather than
   // reordering silently as the clock passes each stop. Read from the same derivation
@@ -1040,12 +1052,6 @@ export function MapView() {
     if (mode !== 'trip') return undefined;
     return currentDestination(events, bookings, places, nowMs)?.place.id;
   }, [mode, events, bookings, places, nowMs]);
-
-  // Declared up here rather than beside the row helpers that also read it: the pins need
-  // it too now (a place's transition word comes off the event that owns its day), and one
-  // lookup for both halves is the same reason they share every other derivation.
-  const eventById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
-  const eventLookup = useCallback((id: string) => eventById.get(id), [eventById]);
 
   // **Which places are connection stops** (ADR-0159), from the same rule the day list
   // draws its bands from — so the pin, the row beneath it and the day's own band say
