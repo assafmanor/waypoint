@@ -77,7 +77,7 @@ export function RouteField({
   shape = 'journey',
 }: RouteFieldProps) {
   if (shape === 'hire') {
-    return <HireEndsField from={from} to={to} onChange={onChange} onFind={onFind} hint={hint} />;
+    return <HireEndsField from={from} to={to} onChange={onChange} onFind={onFind} />;
   }
   return (
     <JourneyField
@@ -111,8 +111,7 @@ function HireEndsField({
   to,
   onChange,
   onFind,
-  hint,
-}: Pick<RouteFieldProps, 'from' | 'to' | 'onChange' | 'onFind' | 'hint'>) {
+}: Pick<RouteFieldProps, 'from' | 'to' | 'onChange' | 'onFind'>) {
   const [returnsElsewhere, setReturnsElsewhere] = useState(() => !!to && to !== from);
 
   const setPickup = (id: string | undefined) =>
@@ -163,9 +162,6 @@ function HireEndsField({
             />
           </div>
         )}
-      </div>
-      <div className="route-field-hint">
-        <Icon name="pin" /> {hint ?? t.index.form.hireHint}
       </div>
     </>
   );

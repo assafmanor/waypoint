@@ -77,10 +77,12 @@ The tile's tap went straight to the schedule sheet. It now opens a `RowManageShe
 Rejected, with what each costs:
 
 - **A `⋯` in a corner.** Plan's remove `✕` already owns top-inline-end and ADR-0153 §7 puts the note mark at top-inline-start — three controls on a 140×76 tile, two of them 20px.
-- **Long-press.** Taken by hold-to-drag (§5), and it is the gesture nobody guesses without the hint.
+- **Long-press.** Taken by hold-to-drag (§5), and it is the gesture nobody guesses.
 - **Tapping the note mark as the way in.** The right instinct, and the app's own `PlaceBadge` idiom, but the mark is ~13px against a 44px floor (ADR-0017) — the same objection that made it read-only in ADR-0153 §8.
 
 **Capabilities are unchanged.** The sheet offers `הסרה` only where the host already allowed it (Plan mode's `✕`, §4), and it offers **no `עריכה`** — the mockup drew one and the app has no idea-edit surface, so inventing a form here would be a second decision hidden behind a gesture change. The section hints say what a tap now does (`לחצו לפתיחה ולשיבוץ`, and Plan's `לחצו לפתיחה · לחיצה ארוכה לגרירה ליום`).
+
+**Amended 2026-08-11 (owner, on a report from a real user):** both section hints are **removed**, along with the gesture clause in `skippedTag` (now the state alone, `דילגתם`). The objection was that a surface needing a sentence to be operable should be fixed rather than captioned, and that the caption made the screen look cluttered. Capabilities are again unchanged — what a tap opens is exactly what it opened before; only the sentence announcing it is gone.
 
 ## Consequences
 
@@ -121,6 +123,8 @@ The first fix was `touch-action: pan-x` — split the gesture by **direction**: 
 - **A long press on a button starts a text selection / iOS callout**, so a draggable card sets `user-select: none` + `-webkit-touch-callout: none`, and the context menu is prevented while the hold is live. **That is not sufficient on its own** (reported from the running app): `selectstart` is the event that actually begins a selection, and once the finger moves it is selecting whatever sits _under_ it — a row, a header, anything but the card. So a pending hold cancels `selectstart` document-wide, and an armed drag additionally parks a `body.wp-dragging` class that turns selection off page-wide until the drop; a selection that slipped through before the listener attached is cleared on release. The guard is its own `useSelectionGuard`, shared with the reorder grip — which arms on contact rather than on a hold, but drags across the same text.
 
 The mechanism is `lib/useHoldToDrag.ts`, tested through the arbitration itself (a flick never arms, a hold does, a wobble is tolerated, a cancel is not a drop, a drop is not a tap). The Plan-mode shelf hint now teaches it (`לחצו כדי לשבץ · לחיצה ארוכה לגרירה`) — the hold is the one part of the gesture nobody guesses.
+
+**Amended 2026-08-11 (owner):** that hint is **removed** with the rest of the shelf's explanatory copy (§4's amendment). The hold is still the part nobody guesses, so **the drag's discoverability is now an open question this ADR no longer answers.** What makes the removal affordable rather than a capability loss: the tap path reaches everything the drag does — a tap opens the idea's sheet and `שיבוץ ליום` is its first action — so the hold is a fast path, not the only one. If the drag turns out to go unused, the fix owed is an affordance, not the sentence back.
 
 **5. An idea can be dragged between the two groups.** §2 grouped the shelf by `targetDate` but left **no way to set one** except parking an event — research and the quick-add both create dateless ideas, so the `לְיום הזה` group was unreachable for most ideas. Dragging an idea onto the day's strip now pencils it in for that day, and dragging one back to the pool clears it to "someday". This is a **day re-aim, not a schedule** (the drop targets are distinct: a gap chip schedules, a group only re-aims), and the toast says so rather than reusing "שובץ".
 

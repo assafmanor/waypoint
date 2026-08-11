@@ -319,7 +319,6 @@ export function CreateTrip() {
           style={{ '--i': 3 } as React.CSSProperties}
           label={t.shell.newTrip.nameLabel}
           htmlFor="tripName"
-          hint={t.shell.newTrip.nameHint}
           {...nameMark}
         >
           <div className="title-row">

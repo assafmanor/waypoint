@@ -152,9 +152,8 @@ describe('RouteField · shape="hire"', () => {
     expect(onFind).toHaveBeenLastCalledWith('toPlaceId', t.index.form.dropoffPlaceLabel);
   });
 
-  it('states the hire note rather than the journey one', () => {
+  it('states no note — the return toggle already shows both options', () => {
     hire();
-    expect(document.body.textContent).toContain(t.index.form.hireHint);
     expect(document.body.textContent).not.toContain(t.index.form.routeHint);
   });
 });

@@ -1103,10 +1103,7 @@ export function PlanDay() {
           read-only trip drops it entirely (ADR-0040). */}
       {!readOnly && (
         <div className="builder-side">
-          <div className="sec-title">
-            {t.day.maybeShelf}
-            <span className="hint">{t.planDay.shelfHint}</span>
-          </div>
+          <div className="sec-title">{t.day.maybeShelf}</div>
           {/* Two groups (ADR-0116 §2), and Plan mode finally renders ADR-0027's
               union: the day's skipped soft events were invisible here, on the very
               surface you rebuild the day from. */}

@@ -1012,12 +1012,13 @@ export function BookingSheet({
                   </div>
                 </Field>
 
-                <div className="bs-caption">
-                  <span>
-                    <Icon name="sparkle" /> {t.index.form.autoCaption}{' '}
-                    <span className="cat-readout">{t.index.bookingType[type]}</span>
-                  </span>
-                  {icon.touched && (
+                {/* The way BACK to the derived glyph, and nothing else. The caption that
+                    used to lead it narrated the derivation and repeated the type — which
+                    `BookingTypeRow` already states on this very step — and it said
+                    "נבחר לפי סוג ההזמנה" even once a person had overridden it, i.e. exactly
+                    when it was no longer true. */}
+                {icon.touched && (
+                  <div className="bs-caption">
                     <button
                       type="button"
                       className="bs-revert"
@@ -1025,8 +1026,8 @@ export function BookingSheet({
                     >
                       <Icon name="reset" /> {t.index.form.reset}
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* **The direction control** (ADR-0154 §4), directly ABOVE the route field
                     rather than inside it. §4 put it "in the route field" to keep it next to
