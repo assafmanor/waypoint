@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { ENRICHMENT_DISABLED } from '../common/env';
 import type { PlaceIdentity } from './enrichment.provider';
 import { EnrichmentScheduler } from './enrichment.scheduler';
@@ -133,7 +134,7 @@ describe('EnrichmentScheduler', () => {
     expect(calls).toHaveLength(2);
   });
 
-  it('caps concurrency and DROPS the surplus rather than queueing it', async () => {
+  it('caps concurrency and DROPS the surplus on the PICK path rather than queueing it', async () => {
     const { service, calls, finishAll } = controllablePass();
     const scheduler = new EnrichmentScheduler(service);
 
@@ -141,8 +142,10 @@ describe('EnrichmentScheduler', () => {
     expect(calls).toHaveLength(3);
     expect(scheduler.activePasses).toBe(3);
 
-    // Dropped, not queued: finishing the in-flight three starts nothing new. Safe because the
-    // read trigger re-fires and `attemptedAt` was never written for the dropped ones.
+    // Dropped, not queued: finishing the in-flight three starts nothing new. `schedule` is the
+    // PICK trigger — one place somebody just added — so there is no backlog for it to belong to;
+    // the snapshot read's backlog is `scheduleMany`'s, below. Safe because the read trigger
+    // re-fires and `attemptedAt` was never written for the dropped ones.
     await finishAll();
     expect(calls).toHaveLength(3);
     expect(scheduler.activePasses).toBe(0);
@@ -169,14 +172,76 @@ describe('EnrichmentScheduler', () => {
     expect(calls).toEqual([]);
   });
 
-  it('bounds how many stale places one snapshot read may start', () => {
+  it('starts a snapshot read’s stale places at the cap, not all forty at once', () => {
     const { service, calls } = controllablePass();
     const scheduler = new EnrichmentScheduler(service);
 
-    // A trip whose 40 places are all unattempted must not try all 40 on first open; it fills
-    // in over the next few reads instead.
+    // The rate is unchanged and is the whole point of the cap: Wikimedia etiquette is about
+    // requests in flight, not about how many a backlog holds.
     scheduler.scheduleMany(Array.from({ length: 40 }, (_, i) => place(`ChIJ-${i}`)));
-    expect(calls.length).toBeLessThanOrEqual(3);
+    expect(calls).toHaveLength(3);
+    expect(scheduler.activePasses).toBe(3);
+  });
+
+  // **The owner report this changed for** (2026-08-11): after `PlaceEnrichment` was cleared,
+  // every place was stale at once and a read started three and discarded the other 37 — so a
+  // 40-place trip needed fourteen app-opens, and looked like enrichment being slow when the
+  // places were simply never being asked about.
+  it('DRAINS the rest of a snapshot read’s backlog as slots free, from one read', async () => {
+    const { service, calls, finishAll } = controllablePass();
+    const scheduler = new EnrichmentScheduler(service);
+
+    scheduler.scheduleMany(Array.from({ length: 40 }, (_, i) => place(`ChIJ-${i}`)));
+    expect(calls).toHaveLength(3);
+
+    // No second read, no clock, no queue that outlives the process — each completion takes the
+    // next one.
+    for (let round = 1; round < 14; round++) await finishAll();
+    expect(calls.length).toBeGreaterThan(3);
+
+    while (scheduler.activePasses > 0) await finishAll();
+    expect(calls).toHaveLength(40);
+    expect(new Set(calls.map((c) => c.googlePlaceId)).size).toBe(40);
+  });
+
+  it('queues a place once however many reads offer it', async () => {
+    const { service, calls, finishAll } = controllablePass();
+    const scheduler = new EnrichmentScheduler(service);
+    const stale = Array.from({ length: 6 }, (_, i) => place(`ChIJ-${i}`));
+
+    // Two members opening the same trip, or one member opening it twice.
+    scheduler.scheduleMany(stale);
+    scheduler.scheduleMany(stale);
+    while (scheduler.activePasses > 0) await finishAll();
+
+    expect(calls).toHaveLength(6);
+  });
+
+  it('drops a backlog past its memory bound rather than growing without limit', () => {
+    const { service } = controllablePass();
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const scheduler = new EnrichmentScheduler(service);
+
+    scheduler.scheduleMany(Array.from({ length: 260 }, (_, i) => place(`ChIJ-${i}`)));
+
+    // Logged rather than silently truncated — and what was dropped is still stale, so the next
+    // snapshot read offers it again.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('enrichment backlog full'));
+    warn.mockRestore();
+  });
+
+  it('abandons the backlog when the kill switch goes on mid-drain', async () => {
+    const { service, calls, finishAll } = controllablePass();
+    const scheduler = new EnrichmentScheduler(service);
+
+    scheduler.scheduleMany(Array.from({ length: 20 }, (_, i) => place(`ChIJ-${i}`)));
+    expect(calls).toHaveLength(3);
+
+    vi.stubEnv(ENRICHMENT_DISABLED, '1');
+    while (scheduler.activePasses > 0) await finishAll();
+
+    // The three in flight finish; nothing else starts.
+    expect(calls).toHaveLength(3);
   });
 
   // ── A PASS SOMEBODY IS WAITING FOR (§17) ─────────────────────────────────────────────
