@@ -191,6 +191,7 @@ class FakeZoomMap {
 import { MapPane, type MapPin } from './MapPane';
 import { PIN_TIER } from '../../lib/map-pins';
 import { MAP_COLOR_SCHEME } from '../../lib/map-config';
+import { mapReading } from '../../lib/dev-tuning';
 import {
   DRAG_CLICK_SWALLOW_MS,
   DRAG_HOLD_MS,
@@ -1001,6 +1002,47 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
     expect(document.querySelector('[data-map]')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  // Backlog workstream M / field report #35: the bound is a heuristic `constants.ts` itself
+  // labels unmeasured, so the device pass has to answer how long a SUCCESSFUL paint costs on
+  // that phone and network. The panel reads it off production's own `onTilesLoaded` — the
+  // signal already here — measured from the same instant the watchdog starts counting.
+  it('publishes how long the tiles phase took, for the pass that has to size the bound', async () => {
+    vi.useFakeTimers();
+    paint();
+    expect(mapReading().tilesLoadedMs).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(2_500));
+    act(() => tilesLoaded.fire?.());
+    expect(mapReading().tilesLoadedMs).toBe(2_500);
+    // A retry starts a fresh clock rather than carrying the previous attempt's elapsed —
+    // the same reason the other three fields are cleared on `[attempt]`.
+    act(() => apiError.fire?.(new Error('boom')));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    expect(mapReading().tilesLoadedMs).toBeNull();
+  });
+
+  // Field report #35's other half: a blank canvas with our own pins on it and nothing said
+  // is indistinguishable from the failure this suite covers above — and with the bound at
+  // 20s a slow network holds that picture for real seconds. The cue rides `onTilesLoaded`,
+  // the signal the watchdog already waits for, so there is no second mechanism to drift.
+  it('says the wait is a wait until the first tile paints, and stops saying it after', () => {
+    paint();
+    expect(screen.getByText(t.map.loading)).toBeTruthy();
+    act(() => tilesLoaded.fire?.());
+    expect(screen.queryByText(t.map.loading)).toBeNull();
+  });
+
+  it('never says loading and failed at once, and says it again on a retry', () => {
+    vi.useFakeTimers();
+    paint();
+    act(() => apiError.fire?.(new Error('boom')));
+    // The failure replaced the canvas, so the cue went with it — one answer on screen.
+    expect(screen.queryByText(t.map.loading)).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    // A fresh attempt is loading again, not still showing the failed one's last word.
+    expect(screen.getByText(t.map.loading)).toBeTruthy();
   });
 
   it('retry remounts a fresh map, never reusing the failed instance', async () => {

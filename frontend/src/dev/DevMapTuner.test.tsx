@@ -1,27 +1,36 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MAP_DRAG_ZOOM, MAP_ZOOM } from '../constants';
+import { MAP_DRAG_ZOOM, MAP_LOAD_TIMEOUT_MS, MAP_ZOOM } from '../constants';
 import { clearTuning, publishMapReading, tuningOverrides } from '../lib/dev-tuning';
 import { zoomPerLevelPx } from '../lib/canvas-gestures';
+import { MAP_COLOR_SCHEME, type MapsConfig } from '../lib/map-config';
+import { THEME } from '../lib/theme';
 import { DevMapTuner } from './DevMapTuner';
 
 afterEach(() => {
   cleanup();
   clearTuning();
+  document.documentElement.removeAttribute('data-theme');
 });
 
 const tap = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 
-const open = (section?: string) => {
-  render(<DevMapTuner />);
+const DAY_CONFIG: MapsConfig = {
+  apiKey: 'k',
+  mapId: 'waypoint-day',
+  colorScheme: MAP_COLOR_SCHEME.light,
+};
+
+const open = (section?: string, config: MapsConfig | null = null) => {
+  render(<DevMapTuner config={config} />);
   tap('map tuning');
   if (section) tap(section);
 };
 
 describe('DevMapTuner', () => {
   it('is a badge until it is tapped, so it never covers the tab it sits on', () => {
-    render(<DevMapTuner />);
+    render(<DevMapTuner config={null} />);
     expect(screen.getByRole('button', { name: 'map tuning' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'zoom: place up' })).toBeNull();
   });
@@ -95,6 +104,7 @@ describe('DevMapTuner', () => {
       apiStatus: 'LOADED',
       apiError: null,
       tilesLoaded: true,
+      tilesLoadedMs: 1234,
       webglContextLost: false,
       online: true,
     });
@@ -103,17 +113,49 @@ describe('DevMapTuner', () => {
     expect(screen.getByText(/tiles loaded this attempt: yes/)).toBeTruthy();
     expect(screen.getByText(/webgl context lost: no/)).toBeTruthy();
     expect(screen.getByText(/online: yes/)).toBeTruthy();
+    // Field report #35's deciding measurement, shown against the bound it is judged by:
+    // a boolean cannot tell a hard failure from a first paint that was merely slow.
+    expect(
+      screen.getByText(`tiles paint: 1234ms of ${MAP_LOAD_TIMEOUT_MS.TILES}ms bound`),
+    ).toBeTruthy();
+  });
+
+  // The instrument must describe the canvas that exists, not the one a theme flip would
+  // build next: `screens/Map.tsx` latches its config at mount, and `system` is the default
+  // theme pick, so Android's scheduled dark flips `data-theme` mid-sitting with no user
+  // action. A panel re-reading `mapsConfig()` here would report DARK and the night Map ID
+  // over light tiles and quietly invalidate the capture.
+  it('reports the config the map was BUILT from, not what the live theme would pick now', () => {
+    open('diag', DAY_CONFIG);
+    expect(screen.getByText('mapId: waypoint-day')).toBeTruthy();
+    document.documentElement.dataset.theme = THEME.dark;
+    tap('measure');
+    expect(screen.getByText('mapId: waypoint-day')).toBeTruthy();
+    expect(screen.getByText(`colorScheme: ${MAP_COLOR_SCHEME.light}`)).toBeTruthy();
+    // The live theme is still reported — beside the latched pair, so a real disagreement is
+    // visible as a finding rather than hidden by agreeing with whichever was read last.
+    expect(screen.getByText(`document theme now: ${THEME.dark}`)).toBeTruthy();
   });
 
   it('emits the diagnostics block alongside the tuning report', () => {
-    publishMapReading({ apiStatus: 'FAILED', apiError: 'boom', tilesLoaded: false });
-    open();
-    tap('out');
+    publishMapReading({
+      apiStatus: 'FAILED',
+      apiError: 'boom',
+      tilesLoaded: false,
+      tilesLoadedMs: null,
+    });
+    open('out', DAY_CONFIG);
     tap('emit');
     const value = (screen.getByRole('textbox') as HTMLTextAreaElement).value;
     expect(value).toContain('## load diagnostics (#28)');
     expect(value).toContain('api status: FAILED');
     expect(value).toContain('last error: boom');
+    expect(value).toContain('mapId: waypoint-day');
+    // A sitting that never got a paint has to say so as plainly as one that did — an absent
+    // line would read as "not captured" where this reads as the finding it is.
+    expect(value).toContain(
+      `tiles paint: (never painted) ms of MAP_LOAD_TIMEOUT_MS.TILES ${MAP_LOAD_TIMEOUT_MS.TILES} ms`,
+    );
   });
 
   it('resets everything, so a sitting can start over without a reload', () => {

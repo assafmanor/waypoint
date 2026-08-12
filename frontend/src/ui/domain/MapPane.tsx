@@ -400,17 +400,32 @@ function MapPaneInner({
   // on a rerender, which is exactly what a `key` bump (rather than clearing local
   // state and hoping the failed instance recovers) buys here.
   const [attempt, setAttempt] = useState(0);
+  // **The wait is stated, not left blank** (field report #35's other half). Before the first
+  // tile paints, the canvas is empty while our own markers already draw on it — the exact
+  // picture #28 reported as a failure, and with the bound now at 20s it is a picture a slow
+  // network can hold for real seconds. So the pane says which it is. Cheap and honest:
+  // `onTilesLoaded` is already the success signal the watchdog waits for, so this is that
+  // same boolean rendered, not a second mechanism, and it resets with `[attempt]` below so a
+  // retry says "loading" again rather than staying on the failed attempt's last word.
+  const [tilesPainted, setTilesPainted] = useState(false);
   const tilesLoadedRef = useRef<(() => void) | null>(null);
+  // Dev-only, and the zero point for the elapsed reading below — stamped here rather than
+  // anywhere else because `withDeadline` starts counting on the next line, so the number the
+  // panel reports and the bound it is judged against cannot drift apart.
+  const attemptStartRef = useRef<number | null>(null);
   useEffect(() => {
     setMapFailed(false);
+    setTilesPainted(false);
     // The device-pass capture (§1b, backlog workstream M) rides on this attempt's OWN
     // signals rather than a second probe — cleared here so a retry does not show the
     // FAILED attempt's status while the fresh one is still loading.
     if (import.meta.env.DEV) {
+      attemptStartRef.current = performance.now();
       publishMapReading({
         apiStatus: APILoadingStatus.NOT_LOADED,
         apiError: null,
         tilesLoaded: false,
+        tilesLoadedMs: null,
       });
     }
     let live = true;
@@ -429,8 +444,14 @@ function MapPaneInner({
   const handleTilesLoaded = useCallback(() => {
     tilesLoadedRef.current?.();
     tilesLoadedRef.current = null;
+    setTilesPainted(true);
     if (import.meta.env.DEV) {
-      publishMapReading({ apiStatus: APILoadingStatus.LOADED, tilesLoaded: true });
+      const started = attemptStartRef.current;
+      publishMapReading({
+        apiStatus: APILoadingStatus.LOADED,
+        tilesLoaded: true,
+        tilesLoadedMs: started == null ? null : Math.round(performance.now() - started),
+      });
     }
   }, []);
   const handleMapError = useCallback((error: unknown) => {
@@ -521,6 +542,19 @@ function MapPaneInner({
             {draftMarker && <DraftMarker marker={draftMarker} />}
             <DayConnector path={connector} scheme={config.colorScheme} />
           </Map>
+          {/* **The wait, stated** (field report #35). Until the first tile paints the canvas
+            is empty while our own markers already draw on it — the very picture #28 reported
+            as a failure — and with the bound at 20s a slow network holds it for real seconds.
+            Outside `<Map>` like every other piece of our chrome (the rule right below), over
+            the canvas rather than instead of it: Google needs its own div live to paint into,
+            so this can never be a branch AROUND the map the way `ErrorState` is. It carries
+            no timer and no second signal — `onTilesLoaded` is already what the watchdog
+            waits for, so this is that boolean rendered. */}
+          {!tilesPainted && (
+            <div className="map-loading" role="status">
+              {t.map.loading}
+            </div>
+          )}
           {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
           <PinDensity paneRef={paneRef} />
