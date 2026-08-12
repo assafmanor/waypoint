@@ -12,6 +12,9 @@ import {
   FixtureFetcher,
   geosearch,
   KEFLAVIK,
+  BRUARFOSS,
+  FEATURE_CLASSES,
+  GULLFOSS_HE,
   KERID,
   LONDON_CITY,
   MEGURO_RIVER,
@@ -324,17 +327,38 @@ describe('WikidataProvider', () => {
         'generator=geosearch': geosearch([
           { qid: KERID.qid, title: 'Kerið', lat: 64.0409804167, lng: -20.8826540713 },
         ]),
+        'props=labels&': FEATURE_CLASSES,
         wbgetentities: KERID.entity,
       });
 
       const match = await p.match(KERID.place);
       expect(match?.ref).toBe(KERID.qid);
       expect(match?.method).toBe(MATCH_METHOD.GEOSEARCH);
-      expect(match?.confidence).toBe(MATCH_METHOD_CONFIDENCE.geosearch);
-      // The name was set aside, not compared and matched — the evidence has to say so (§12.3).
-      expect(match?.evidence.nameSimilarity).toBe(0);
+      // §22 improved on §21 here: told that a crater is what `Q1435393` IS, the two names agree
+      // rather than merely failing to disagree — so the coordinates still FIND it and the name
+      // now CORROBORATES it, which is a stronger claim than distance alone ever was.
+      expect(match?.evidence.nameSimilarity).toBe(1);
       // A crater is a place you visit as itself, so nothing is refused per-field either.
       expect(match?.refusedFields ?? {}).toEqual({});
+    });
+
+    it('still matches it on the distance alone from a Hebrew saved name', async () => {
+      // The arm §21 built, unchanged: nothing about `Q1435393` is readable from `מכתש קריד`, so
+      // the distance answers alone under the `geosearch` ceiling.
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: KERID.qid, title: 'Kerið', lat: 64.0409804167, lng: -20.8826540713 },
+        ]),
+        'props=labels&': FEATURE_CLASSES,
+        wbgetentities: KERID.entity,
+      });
+
+      const match = await p.match({ ...KERID.place, name: 'מכתש קריד' });
+      expect(match?.ref).toBe(KERID.qid);
+      expect(match?.confidence).toBe(MATCH_METHOD_CONFIDENCE.geosearch);
+      // Zero because the name was set aside, not compared and refused (§12.3).
+      expect(match?.evidence.nameSimilarity).toBe(0);
     });
 
     it('does not let the district our name contains ride in on the same rule', async () => {
@@ -389,19 +413,19 @@ describe('WikidataProvider', () => {
         'generator=geosearch': geosearch([
           { qid: 'Q189040', title: 'Piccadilly Circus', lat: 51.51, lng: -0.1348 },
         ]),
-        wbgetentities: {
-          entities: {
-            ...song.entities,
-            ...entity({
-              qid: 'Q189040',
-              labels: { en: 'Piccadilly Circus', he: 'פיקדילי סירקוס' },
-              instanceOf: ['Q3153117'],
-              image: 'Piccadilly Circus at night.jpg',
-              lat: 51.51,
-              lng: -0.1348,
-            }).entities,
-          },
-        },
+        // Keyed by the ids each call actually asks for, because the name route now reads the
+        // hits it got and the coordinate route reads the ones the point gave — two different
+        // `wbgetentities` calls, and answering both with both entities would let the name route
+        // see a candidate its own search never returned.
+        'ids=Q7194656': song,
+        'ids=Q189040': entity({
+          qid: 'Q189040',
+          labels: { en: 'Piccadilly Circus', he: 'פיקדילי סירקוס' },
+          instanceOf: ['Q3153117'],
+          image: 'Piccadilly Circus at night.jpg',
+          lat: 51.51,
+          lng: -0.1348,
+        }),
       });
       const match = await p.match(PICCADILLY);
       expect(match?.ref).toBe('Q189040');
@@ -798,5 +822,128 @@ describe('WikidataProvider — the article-text route', () => {
 
     expect(values[ENRICHMENT_FIELD.IATA]?.value).toBe('BKK');
     expect(values[ENRICHMENT_FIELD.SERVED_CITY]?.value).toBe('בנגקוק');
+  });
+  /* ── THE THREE FIELD-REPORT WITNESSES (ADR-0166 §22, field report #41) ────────────────────
+     Kerið's own regression lives with the `nameCanRefuse` specs above. These are the two the
+     owner reported next, and each fails for a different reason — so each is kept as a permanent
+     witness rather than folded into one "Iceland" test. Every payload is live-read; see the
+     fixtures for what was measured and when. */
+  describe('Brúarfoss — a namesake first, no article anywhere, and a type noun (#41)', () => {
+    const searchHits = search([
+      // The order is the API's own, and it is the defect: the wrong waterfall is first.
+      { id: BRUARFOSS.namesakeQid, label: 'Brúarfoss' },
+      { id: BRUARFOSS.qid, label: 'Brúarfoss' },
+    ]);
+
+    it('reaches the right waterfall though the search returned the wrong one first', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: searchHits,
+        'ids=Q16422005%7CQ2557346': {
+          entities: { ...BRUARFOSS.namesake.entities, ...BRUARFOSS.entity.entities },
+        },
+        'props=labels&': FEATURE_CLASSES,
+      });
+
+      const match = await p.match(BRUARFOSS.place);
+      // Not the namesake 130km away, which is what "verify only the best-named hit" returned —
+      // and it returned it as `null`, because the coordinates then refuted the one it had picked.
+      expect(match?.ref).toBe(BRUARFOSS.qid);
+      expect(match?.method).toBe(MATCH_METHOD.NAME_PROXIMITY);
+      expect(match?.settled?.commonsFilename).toBe('Brúarfoss (15657306391).jpg');
+    });
+
+    it('reads `Waterfall` as the type this candidate IS, not as a word it disagrees about', async () => {
+      const { provider: p } = provider({
+        wbsearchentities: search([{ id: BRUARFOSS.qid, label: 'Brúarfoss' }]),
+        'ids=Q2557346': BRUARFOSS.entity,
+        'props=labels&': FEATURE_CLASSES,
+      });
+      const match = await p.match(BRUARFOSS.place);
+      // 0.707 without the class noun — under the floor, and under the threshold even before it.
+      expect(match?.evidence.nameSimilarity).toBe(1);
+    });
+
+    it('still refuses it when the class label does not name the extra words', async () => {
+      // The same shape with the type noun withheld — `Q131596` is a farm, and `Waterfall` is not
+      // what a farm is called. This is `Tsukiji Outer Market` against `Tsukiji` in miniature.
+      const { provider: p } = provider({
+        wbsearchentities: search([{ id: BRUARFOSS.qid, label: 'Brúarfoss' }]),
+        'ids=Q2557346': entity({
+          qid: BRUARFOSS.qid,
+          labels: { en: 'Brúarfoss' },
+          instanceOf: ['Q131596'],
+          lat: 64.2645,
+          lng: -20.5165,
+        }),
+        'props=labels&': FEATURE_CLASSES,
+        'generator=geosearch': geosearch([]),
+        'commons.wikimedia.org': geosearch([]),
+      });
+      expect(await p.match(BRUARFOSS.place)).toBeNull();
+    });
+
+    it('finds it through Commons when no Wikipedia we ask for has an article', async () => {
+      // The Hebrew saved name: the label search returns nothing, and neither `enwiki` nor
+      // `hewiki` has a page at the pin. Commons' category is the only geotagged thing there.
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'en.wikipedia.org': geosearch([]),
+        'he.wikipedia.org': geosearch([]),
+        'commons.wikimedia.org': BRUARFOSS.commonsNearby,
+        wbgetentities: {
+          entities: {
+            ...BRUARFOSS.entity.entities,
+            ...entity({
+              qid: 'Q252246',
+              labels: { en: 'Árnessýsla' },
+              instanceOf: ['Q56061'], // the county — the granularity skip must drop it
+              lat: 64.25,
+              lng: -20.5,
+            }).entities,
+          },
+        },
+      });
+
+      const match = await p.match({ ...BRUARFOSS.place, name: 'מפלי ברואארפוס' });
+      expect(match?.ref).toBe(BRUARFOSS.qid);
+      expect(match?.method).toBe(MATCH_METHOD.GEOSEARCH);
+    });
+  });
+
+  describe('מפלי גולפוס — one Icelandic word, three Hebrew spellings (#41)', () => {
+    it('matches Gullfoss despite a Hebrew label spelled differently from ours', async () => {
+      const { provider: p } = provider({
+        // No Wikidata item is labelled with Google's spelling, so the name route sees nothing.
+        wbsearchentities: search([]),
+        'generator=geosearch': GULLFOSS_HE.nearby,
+        'ids=Q38519': GULLFOSS_HE.entity,
+        'props=labels&': FEATURE_CLASSES,
+      });
+
+      const match = await p.match(GULLFOSS_HE.place);
+      expect(match?.ref).toBe(GULLFOSS_HE.qid);
+      expect(match?.settled?.commonsFilename).toBe('GullfossOverview.jpg');
+      // A waterfall is a place you visit as itself: nothing is refused per field.
+      expect(match?.refusedFields ?? {}).toEqual({});
+    });
+
+    it('does not match a place whose Hebrew label genuinely disagrees', async () => {
+      // The guard the case above must not break: same script, same distance, a real
+      // disagreement — `גייסיר` is not `גולפוס` by any spelling, and it stays refused.
+      const { provider: p } = provider({
+        wbsearchentities: search([]),
+        'generator=geosearch': geosearch([
+          { qid: 'Q1128186', title: 'גייסיר', lat: 64.3271, lng: -20.1199 },
+        ]),
+        wbgetentities: entity({
+          qid: 'Q1128186',
+          labels: { he: 'גייסיר', en: 'Geysir' },
+          instanceOf: ['Q1502963'],
+          lat: 64.3271,
+          lng: -20.1199,
+        }),
+      });
+      expect(await p.match(GULLFOSS_HE.place)).toBeNull();
+    });
   });
 });

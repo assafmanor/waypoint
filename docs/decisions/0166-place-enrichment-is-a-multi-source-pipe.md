@@ -446,6 +446,49 @@ So the coordinate route found the right entity, alone, essentially at the pin �
 
 **Verified end to end on live payloads**, not on hand-written fixtures: the real geosearch, `wbgetentities` and search responses captured on 2026-08-11 and replayed through `WikidataProvider`. Before: `null`. After: `Q1435393`, method `geosearch`, confidence **0.8**, image `Kerid-08-Krater-1980-gje.jpg`, no per-field refusals.
 
+### 22. Amendment (2026-08-11, second) — recall, measured: what the matcher could not RETRIEVE, could not READ, and would not FORGIVE
+
+Owner report `#41`, the same day as §21: enrichment still missed **`Brúarfoss`** and **`מפלי גולפוס`**. Session note: [session 254](../planning/2026-08-11-session-254-what-a-name-says-and-what-it-cannot-carry.md).
+
+**The first thing this amendment changes is that recall is now a number.** §11's coverage spike measured what the sources _have_; nobody had ever measured what the matcher _reaches_. A live probe now runs the production pipeline against the real Wikimedia APIs over a **170-name corpus** — most of it Hebrew, because Google is asked with `languageCode=he` and a Hebrew saved name is the normal case, with the same place repeated under a Latin name so the alphabet is the only variable — plus refusal controls that must keep refusing. It is checked in, opt-in and skipped by CI (`ENRICHMENT_LIVE_PROBE=1`), and every claim below is a diff between two of its runs, not an argument.
+
+**The three witnesses failed in three unrelated ways, and none of them was §21's.** That is the finding that reframed the report: `Kerið` was one defect, and "still missing" was three more.
+
+**1. Retrieval — the route threw the right answer away.** `matchByName` scored the search hits on their names, picked the single best, read _that_ entity, and returned `null` if its coordinates then refuted it. Wikidata holds **two waterfalls named exactly `Brúarfoss`**, 130km apart, and the search returns the wrong one first — so the route picked the namesake, the distance veto correctly killed it, and the right entity sat unread at rank 2. `wbgetentities` takes 50 ids, so **reading all five hits is the same one call** the single winner already cost. The pre-filter that did the discarding was §15's own `nameOnlyConfidence`, and §15's lesson applies to it too: **a candidate discarded before its coordinate has been read was refused on evidence we did not have yet.**
+
+**2. Retrieval — the coordinate route is Wikipedia-shaped, and some places have no article.** `Q2557346` has an Icelandic article and none in `en` or `he`, so a geosearch at its pin returns **literally nothing** in both wikis we ask. A Wikidata item reachable only through a wiki outside that pair — or through none at all — was structurally invisible to the route built to be language-independent. **Commons closes it**: its category tree is language-neutral by construction, far more of the world is geotagged there than in any single Wikipedia, its categories carry the same `wikibase_item` join, and it is already on §7's allowlist because the image pipeline reads licenses there. Asked last, only when both wikis were silent, so the common case costs nothing.
+
+**3. Reading — a same-script label in a different transliteration was worse than no label at all.** This is §15 and §21's mistake one level further down, and `מפלי גולפוס` is the measured case. Wikidata's Hebrew label for Gullfoss is **`גאלפוס`**; the Hebrew Wikipedia's article is **`גוטלפוס`**; Google's is **`גולפוס`**. Three transliterations of one Icelandic word, and token-set overlap scores every pair of them **0** — so the label was Hebrew enough to be _comparable_, disagreed completely, and vetoed the one candidate the coordinates had found. Had the entity carried no Hebrew label at all, the scripts would have been disjoint and Kerið's own rule would have matched it at 0.8. **A word we can read but cannot spell the same way is not a disagreement**, so tokens now match within a bounded edit distance.
+
+**4. Forgiving — the descriptor-suffix gap, which §2 of session 248 deferred and this amendment closes.** `Brúarfoss Waterfall` against `Brúarfoss`, `Kerið Crater` against `Kerið`, `מפלי גולפוס` against `מפל מים` — Google habitually appends the feature's own type to a label that omits it, and one shared token over `sqrt(2 × 1)` is **0.707**. §21 let that case survive on the _coordinate_ routes by setting the name aside; on the **name** route it still refused, and below the 0.6 threshold outright once `NO_PROXIMITY_FACTOR` was applied.
+
+> **Rule 1c — a word of OURS that names what the candidate IS has not disagreed with it.**
+
+Session 248 §2 said the only honest version of this rule "would have to read the candidate's `P31` and ask whether the dropped word _names that class_", called it a matching-policy change with a false-positive budget, and left it. **That is exactly what is now built, because it is the version that keeps §11.2 intact.** The class labels are read from Wikidata (one extra call, gated to candidates a type noun could actually rescue, memoized process-wide because a waterfall is a waterfall for every waterfall a trip saves), and our name is scored again with those words removed. `Brúarfoss Waterfall` becomes `Brúarfoss` and matches at 1.0. **`Tsukiji Outer Market` still scores 0.577 against `Tsukiji`**, because a `chōchō` is not an outer market — which is the whole difference between this rule and the "strip a trailing word" rule §2 rejected, and the reason the deny-list is not quietly undermined. And it is **asymmetric for §21's reason**: strip a candidate's type word too and `Piccadilly Circus tube station` becomes `Piccadilly Circus tube`, 0.816 against the square, and §16's defect is back.
+
+**5. Reading — the scorer was never shown most of the names the candidate offers.** It compared against the `he` and `en` _labels_ only, while the same response carried **aliases** (`Fontana di Trevi`, sitting under a label of `Trevi Fountain`) and **article titles** (`גוטלפוס`), both free. Additive like every other variant here: an extra name can only raise a score, and whatever it raises still faces the distance veto and the granularity skip.
+
+**The false-positive cost, measured against live data rather than reasoned about — and one of the four fixes had to be weakened because of it.** The near-token rule was drafted counting a spelling variant as a whole shared word. **`Kensington` and `Kennington` are two real London places one edit apart and 4.9km apart** — _inside_ `MATCH_FAR_METERS`, so the distance veto does not fire — and at full credit they matched each other at 0.652. So a near-spelled word is now worth **0.75 of an exact one**, deliberately below `MATCH_MIN_NAME_SIMILARITY`: **a spelling variant corroborates and can never carry.** It lifts a multi-word name that agrees about its other words, and it lets `nameCanRefuse` see that `מפלי גולפוס` does not contradict `גאלפוס` — after which the distance answers alone under the `geosearch` ceiling, which is precisely where §21 put Kerið. Tokens shorter than five letters are never near at all, which is what keeps `Bali`/`Bari`, `Ueno`/`Ueda` and `park`/`part` apart.
+
+**What the corpus says — both runs on the live APIs the same day, same 170 names, same pins:**
+
+| saved name                           | before  | after   |
+| ------------------------------------ | ------- | ------- |
+| **all 170**                          | **114** | **142** |
+| Hebrew (93 of them, the normal case) | 54      | 67      |
+| Latin (77)                           | 60      | 75      |
+| refusal controls                     | 2 of 3  | 2 of 3  |
+
+**Twenty-eight names newly matched and not one newly wrong.** The refusal controls are part of that number rather than a separate reassurance — the ambiguous same-name cases, the multi-country ones (`Cambridge` twice, `Santiago`, `San José`), the district-for-a-shop cases and §16's Piccadilly pair all answer as they did. The one control that does not pass fails **identically before and after**: a shop inside Shibuya still matches a school 200m away, which is a pre-existing hole in the country-shaped `BROADER_INSTANCE_OF_QIDS` (§5.3's finding, still open) and not something this branch touched. One control **did** move mid-branch, and moving it back is what produced the rule above.
+
+**What is still missed, and why — because a recall number with an unexplained tail is not a measurement.** Three residual classes, each now classified rather than guessed at:
+
+- **Distance, not naming.** `מפלי סקוגאפוס`: the entity offers no Hebrew name, so distance decides alone — and its `P625` is **294m** from the visitor pin, past the ~238m where distance-only credit reaches 0.6. Widening that is precisely what §21 measured as unsafe (Tsukiji's district centroid is 366m), so this stays refused **on purpose**.
+- **A colloquial descriptor is not a class label.** `Jökulsárlón Glacier Lagoon`: Wikidata's classes for it are not called "glacier lagoon", so Rule 1c has nothing to strip. Rule 1c is deliberately not a synonym table.
+- **`wbsearchentities` is a label search.** `Sun Voyager` does not prefix-match the label `The Sun Voyager`, and that article carries no GeoData coordinate, so neither name nor point reaches it. Recorded, not fixed.
+
+**And the miss now leaves evidence.** Every route records the candidates it saw, each one's similarity, distance and confidence, and the guard that refused it; on a total miss the provider logs the lot at `debug`. Two sessions have been spent reconstructing that by hand from the live APIs. The next one reads a log line.
+
 ## Consequences
 
 - **The global cross-trip cache ADR-0112 left open is now decided** — as a _sibling_ table rather than as a change to `Place`, which is why the `Place.icon` objection recorded in the backlog does not block it. ADR-0112's own "cache vs trip entity" split is the precedent, applied once more.

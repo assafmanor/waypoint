@@ -72,8 +72,31 @@ const NO_PROXIMITY_FACTOR = 0.8;
  * lower one, so nothing that matches today stops matching.
  */
 export function nameSimilarity(a: string, b: string): number {
+  return similarityAgainst(a, b, undefined);
+}
+
+/**
+ * The same score, **asymmetric**, told what the candidate IS.
+ *
+ * `classNouns` are the labels of the candidate's own `P31` classes (`waterfall`, `מפל מים`,
+ * `volcanic crater`), and they license exactly one extra variant of OUR name: the one with the
+ * feature-type words taken out. See `nameVariants`' third clause for why only our side.
+ */
+export function descriptorAwareSimilarity(
+  ourName: string,
+  candidateName: string,
+  classNouns: readonly string[] | undefined,
+): number {
+  return similarityAgainst(ourName, candidateName, classNouns);
+}
+
+function similarityAgainst(
+  a: string,
+  b: string,
+  classNouns: readonly string[] | undefined,
+): number {
   let best = 0;
-  for (const left of nameVariants(a)) {
+  for (const left of nameVariants(a, classNouns)) {
     for (const right of nameVariants(b)) {
       best = Math.max(best, tokenSimilarity(left, right));
       if (best === 1) return best;
@@ -102,10 +125,63 @@ export function nameSimilarity(a: string, b: string): number {
  *
  * Both are cross-producted rather than applied to one side: the alias may be on either name,
  * and it is as often Wikidata that keeps the local spelling as it is Google.
+ *
+ * **3. GOOGLE APPENDS THE FEATURE'S OWN TYPE TO A LABEL THAT OMITS IT** (field reports #29/#41,
+ * ADR-0166 §22). `Brúarfoss Waterfall` against `Brúarfoss`, `Kerið Crater` against `Kerið`,
+ * `מפלי גולפוס` against `גאלפוס` — one shared token over `sqrt(2 × 1)` is 0.707, under the
+ * floor, on two names that name the same thing. The word that makes the difference is the
+ * candidate's own `P31` class, so this variant only exists when the caller supplies those class
+ * labels: it is not "drop the last word", it is "drop the word that names what this candidate
+ * is". `Tsukiji Outer Market` keeps refusing `Tsukiji`, because a `chōchō` is not an outer
+ * market.
+ *
+ * **Only ever OUR name is stripped**, which is `nameCanRefuse`'s direction guard restated: strip
+ * a candidate's type word too and `Piccadilly Circus tube station` becomes `Piccadilly Circus
+ * tube` — 0.816 against the square, and §16's defect is back.
  */
-function nameVariants(name: string): string[] {
+function nameVariants(name: string, classNouns?: readonly string[]): string[] {
   const written = [name, stripParenthetical(name)];
+  if (classNouns?.length) {
+    for (const form of [...written]) {
+      const stripped = stripClassNouns(form, classNouns);
+      if (stripped) written.push(stripped);
+    }
+  }
   return [...new Set([...written, ...written.map(transliterate)])].filter((v) => v.length > 0);
+}
+
+/** The name with every word that names the candidate's own type removed — or `undefined` when
+ *  that would leave nothing, which is the `Waterfall`-saved-as-`Waterfall` case and is not a
+ *  name at all. */
+function stripClassNouns(name: string, classNouns: readonly string[]): string | undefined {
+  const nouns = new Set(classNouns.flatMap((noun) => [...tokenize(noun)]));
+  if (nouns.size === 0) return undefined;
+  const kept = [...tokenize(name)].filter(
+    (token) => ![...nouns].some((noun) => namesClass(noun, token)),
+  );
+  return kept.length > 0 && kept.length < tokenize(name).size ? kept.join(' ') : undefined;
+}
+
+/**
+ * **Is `token` the word for this class?** An inflection of it, or the same word spelled the way
+ * the other language spells it — `Strokkur Geysir` against a class Wikidata calls `geyser` is
+ * one edit, and refusing over that would be `tokensNear`'s own lesson unlearned one line later.
+ */
+const namesClass = (noun: string, token: string): boolean =>
+  isInflectionOf(noun, token) || tokensNear(noun, token);
+
+/**
+ * Is `token` the class noun `noun` in some inflected form?
+ *
+ * A prefix plus at most two letters, which is what a plural or a construct state costs:
+ * `waterfall`/`waterfalls`, `beach`/`beaches`, `מפל`/`מפלי`. Deliberately not an edit distance —
+ * `park`/`part` differ by one letter and are different words, while every inflection this needs
+ * to catch grows at the end.
+ */
+function isInflectionOf(noun: string, token: string): boolean {
+  if (noun === token) return true;
+  const [short, long] = noun.length <= token.length ? [noun, token] : [token, noun];
+  return short.length >= 3 && long.length - short.length <= 2 && long.startsWith(short);
 }
 
 /** A trailing/embedded `(…)` or `[…]` segment — an alias Google appends, not a name. */
@@ -163,14 +239,96 @@ function tokenSimilarity(a: string, b: string): number {
   const joined = (tokens: Set<string>) => [...tokens].join('');
   if (joined(left) === joined(right)) return 1;
 
-  let shared = 0;
-  for (const token of left) if (right.has(token)) shared += 1;
+  const { exact, near } = sharedTokens(left, right);
+  const shared = exact + near * NEAR_TOKEN_CREDIT;
   // The **geometric mean** of the two coverages, not overlap against the smaller set.
   // Both halves have to be answered: `Meiji Shrine` inside `Meiji Jingū / Meiji Shrine` is
   // a strong match (0.82) and `Tsukiji` inside `Tsukiji Outer Market` is a weak one (0.58),
   // and dividing by the smaller set alone scores both a perfect 1 — which would have let a
   // one-word prefix match anything that starts with it.
   return shared / Math.sqrt(left.size * right.size);
+}
+
+/**
+ * How many of `left`'s words `right` also says — **exact matches first**, so a near match can
+ * never consume the token an exact one needed, and each token on the right is spent once.
+ *
+ * Counted apart, because they are not worth the same: see `NEAR_TOKEN_CREDIT`.
+ */
+function sharedTokens(left: Set<string>, right: Set<string>): { exact: number; near: number } {
+  const unspent = [...right].filter((token) => !left.has(token));
+  const exact = [...left].filter((token) => right.has(token)).length;
+  let near = 0;
+  for (const token of left) {
+    if (right.has(token)) continue;
+    const at = unspent.findIndex((other) => tokensNear(token, other));
+    if (at >= 0) {
+      unspent.splice(at, 1);
+      near += 1;
+    }
+  }
+  return { exact, near };
+}
+
+/**
+ * **What a word spelled two ways is worth against the same word spelled once**, and the number
+ * is chosen so that **a lone near-spelled word can never carry a match**: below
+ * `MATCH_MIN_NAME_SIMILARITY`, so a one-word name agreeing only by spelling scores under the
+ * floor and the name refuses exactly as it did before.
+ *
+ * Measured, not picked. `Kensington` and `Kennington` are two real London places one edit apart
+ * and **4.9km apart** — inside `MATCH_FAR_METERS`, so the distance veto does NOT save them, and
+ * at full credit they score 0.652 and match each other. That is the false positive this rule
+ * would otherwise buy, and it is not affordable (§5.5: no enrichment beats wrong enrichment).
+ *
+ * So a spelling variant **corroborates and never carries**: it lifts a multi-word name that
+ * agrees about its other words (`Wat Phra Kaew` / `Wat Phra Keo` → 0.92), and it lets
+ * `nameCanRefuse` see that `מפלי גולפוס` does not contradict `גאלפוס` — after which the distance
+ * answers alone, under the `geosearch` ceiling, which is precisely where §21 put Kerið.
+ */
+const NEAR_TOKEN_CREDIT = 0.75;
+
+/**
+ * **The same word, transliterated twice** (field report #41, ADR-0166 §22).
+ *
+ * Google's Hebrew for Gullfoss is `גולפוס`; Wikidata's Hebrew label is `גאלפוס`; the Hebrew
+ * Wikipedia calls its article `גוטלפוס`. Three spellings of one Icelandic word, and token-set
+ * overlap scores every pair of them **0** — the same "different alphabet reads as wrong place"
+ * mistake §15 fixed for scripts, one level down at the word. There is no folding table for this:
+ * the variance is in how a language without those sounds writes them down, and it is the normal
+ * case for every place whose name reached Hebrew, Cyrillic, Greek, Thai or Arabic by ear.
+ *
+ * **Tight on purpose, because this is the one rule here that can invent a match.** A word has to
+ * be long enough that a single-letter difference is unlikely to be a different word: five letters
+ * for one edit, eight for two. That is what keeps `Bali` and `Bari`, `Ueno` and `Ueda`, `park`
+ * and `part` apart — all four are too short to qualify at all. Everything that clears it still
+ * faces the distance veto, which refuses a same-named place 9,000 km away.
+ */
+export function tokensNear(a: string, b: string): boolean {
+  if (a === b) return true;
+  const shortest = Math.min(a.length, b.length);
+  const budget = shortest >= 8 ? 2 : shortest >= 5 ? 1 : 0;
+  if (budget === 0 || Math.abs(a.length - b.length) > budget) return false;
+  return editDistanceWithin(a, b, budget);
+}
+
+/** Levenshtein, abandoned as soon as it exceeds `budget` — the strings here are single words
+ *  and the budget is 1 or 2, so this never walks a full matrix. */
+function editDistanceWithin(a: string, b: string, budget: number): boolean {
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(
+        previous[j]! + 1,
+        row[j - 1]! + 1,
+        previous[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    if (Math.min(...row) > budget) return false;
+    previous = row;
+  }
+  return previous[b.length]! <= budget;
 }
 
 /** Words worth comparing. Folds diacritics, splits on non-alphanumerics so `Sensō-ji` →
@@ -203,6 +361,14 @@ export interface ProximityConfidence {
   distanceMeters?: number;
 }
 
+/** A candidate's name, with the labels of the classes it is an instance of when the caller has
+ *  read them — the input to `nameVariants`' feature-type clause (§22). Absent means "not looked
+ *  up", which scores exactly as this file did before that clause existed. */
+export interface CandidateName {
+  name: string;
+  classNouns?: readonly string[];
+}
+
 /**
  * Confidence for the **last-resort** route (§12.3): name similarity plus distance, capped
  * below what an exact identity join scores so an alias or a `wikidata` tag always outranks
@@ -210,9 +376,9 @@ export interface ProximityConfidence {
  */
 export function nameProximityConfidence(
   place: { name: string; lat?: number; lng?: number },
-  candidate: { name: string; lat?: number; lng?: number },
+  candidate: CandidateName & { lat?: number; lng?: number },
 ): ProximityConfidence {
-  const similarity = nameSimilarity(place.name, candidate.name);
+  const similarity = descriptorAwareSimilarity(place.name, candidate.name, candidate.classNouns);
   const from = asLatLng(place);
   const to = asLatLng(candidate);
 
@@ -356,21 +522,58 @@ export function namesComparable(a: string, b: string): boolean {
  *
  * Asymmetric, so the argument order is the whole meaning: **ours first, theirs second.**
  */
-export function nameCanRefuse(ourName: string, candidateName: string): boolean {
-  if (!namesComparable(ourName, candidateName)) return false;
-  if (nameSimilarity(ourName, candidateName) >= MATCH_MIN_NAME_SIMILARITY) return true;
-  return !saysStrictlyMore(ourName, candidateName);
+export function nameCanRefuse(ourName: string, candidate: CandidateName | string): boolean {
+  const { name, classNouns } = typeof candidate === 'string' ? { name: candidate } : candidate;
+  if (!namesComparable(ourName, name)) return false;
+  if (descriptorAwareSimilarity(ourName, name, classNouns) >= MATCH_MIN_NAME_SIMILARITY) {
+    return true;
+  }
+  return !surplusIsOnlyTypeWords(ourName, name, classNouns);
 }
 
-/** Does `ours` contain every word of `theirs` and more? Checked across the same variants
- *  `nameSimilarity` scores, so a name that only agrees once transliterated counts here too. */
-function saysStrictlyMore(ours: string, theirs: string): boolean {
-  for (const mine of nameVariants(ours)) {
+/**
+ * **Does our name say all of theirs, and add nothing but the word for what they ARE?**
+ *
+ * §21 asked only the first half — "does ours contain theirs and more?" — and the second half is
+ * what a **measured false positive** put here (§22). `בית קפה גולפוס`, a café named after the
+ * waterfall, contains `גולפוס` and adds more, exactly as `מפלי גולפוס` does; both sit inside
+ * `GEO_TRUST_METERS` of the waterfall's own coordinate, so setting the name aside for both hands
+ * the café the waterfall's article and photograph. Distance cannot separate them and was never
+ * going to.
+ *
+ * **The surplus words are what separates them, and Rule 1c already knows how to read them.** A
+ * waterfall's class is called `waterfall` / `מפל מים`, so `מפלי` is a type word and `בית`/`קפה`
+ * are not. So §21's Rule 1b and §22's Rule 1c are one rule with one test:
+ *
+ * > **a word of OURS that names what the candidate IS has not disagreed with it — and every
+ * > other extra word HAS.**
+ *
+ * Its default is the safe one: told nothing about the candidate's type, there is no word that
+ * can be surplus, so the name refuses exactly as it did before §21 — and the caller that could
+ * have looked the type up is the one route that ever needs this (`descriptorCouldRescue`).
+ */
+function surplusIsOnlyTypeWords(
+  ours: string,
+  theirs: string,
+  classNouns: readonly string[] | undefined,
+): boolean {
+  const typeWords = new Set((classNouns ?? []).flatMap((noun) => [...tokenize(noun)]));
+  if (typeWords.size === 0) return false;
+  for (const mine of nameVariants(ours, classNouns)) {
     const left = tokenize(mine);
     for (const yours of nameVariants(theirs)) {
       const right = tokenize(yours);
       if (right.size === 0 || left.size <= right.size) continue;
-      if ([...right].every((token) => left.has(token))) return true;
+      // Containment counts words, not credit: "did our name say all of theirs?" is a yes/no
+      // question, and a word we spell differently is still a word we said.
+      const { exact, near } = sharedTokens(right, left);
+      if (exact + near < right.size) continue;
+      const surplus = [...left].filter(
+        (token) => ![...right].some((word) => tokensNear(token, word)),
+      );
+      if (surplus.every((token) => [...typeWords].some((word) => namesClass(word, token)))) {
+        return true;
+      }
     }
   }
   return false;
@@ -413,7 +616,7 @@ const AIRPORT_FAR_METERS = 8000;
  */
 export function geoProximityConfidence(
   place: { name: string; lat?: number; lng?: number },
-  candidate: { name: string; lat?: number; lng?: number; isAirport?: boolean },
+  candidate: CandidateName & { lat?: number; lng?: number; isAirport?: boolean },
 ): ProximityConfidence {
   const from = asLatLng(place);
   const to = asLatLng(candidate);
@@ -424,7 +627,7 @@ export function geoProximityConfidence(
   // **The name still wins when it can be read** — but an airport's ordinary distance veto is
   // the wrong ruler even then, since `nameProximityConfidence` refuses past `MATCH_FAR_METERS`
   // on a centroid that is legitimately kilometres from the door.
-  if (nameCanRefuse(place.name, candidate.name) && !candidate.isAirport) {
+  if (nameCanRefuse(place.name, candidate) && !candidate.isAirport) {
     return nameProximityConfidence(place, candidate);
   }
   return {

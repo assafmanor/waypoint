@@ -424,6 +424,94 @@ export const KERID = {
   }),
 };
 
+/** **Brúarfoss** (field report #41). Live-read 2026-08-11, and it is three separate holes in
+ *  one place:
+ *
+ *   - Wikidata holds **two waterfalls named exactly `Brúarfoss`** 130km apart (`Q2557346` on the
+ *     Golden Circle, `Q16422005` on the Hítará) plus three ships of the name, and the search
+ *     returns the wrong waterfall FIRST;
+ *   - `Q2557346` has **no `enwiki` or `hewiki` article** — its only wikis are `is`, `de`, `it`,
+ *     `nl`, `sv`, `ceb` — so a geosearch at its pin returns **nothing at all** in either
+ *     language, and only its Commons category is there to be found;
+ *   - Google's own name for it carries the feature type (`Brúarfoss Waterfall`) against a
+ *     one-word label, which is 0.707.
+ *
+ *  `P31` is `Q34038` (waterfall), whose label is exactly the descriptor Google appends — the
+ *  measured case for §22's class-noun rule. */
+export const BRUARFOSS = {
+  place: {
+    name: 'Brúarfoss Waterfall',
+    lat: 64.2646,
+    lng: -20.5145,
+    googlePlaceId: 'ChIJ-bruarfoss',
+  },
+  qid: 'Q2557346',
+  /** The namesake that wins the name search's first place — and is 130km away. */
+  namesakeQid: 'Q16422005',
+  entity: entity({
+    qid: 'Q2557346',
+    labels: { en: 'Brúarfoss', is: 'Brúarfoss' },
+    instanceOf: ['Q34038'], // waterfall
+    image: 'Brúarfoss (15657306391).jpg',
+    lat: 64.2645,
+    lng: -20.5165,
+  }),
+  namesake: entity({
+    qid: 'Q16422005',
+    labels: { is: 'Brúarfoss', en: 'Brúarfoss' },
+    instanceOf: ['Q131596', 'Q34038'],
+    image: 'Brúarfoss 2024 0725 175736.jpg',
+    lat: 64.7316779385,
+    lng: -22.1851583469,
+  }),
+  /** The Commons category that is the only geotagged page at the pin — plus the county's, which
+   *  the granularity skip has to refuse. */
+  commonsNearby: geosearch([
+    { qid: 'Q2557346', title: 'Category:Brúarfoss', lat: 64.2645, lng: -20.5165 },
+    { qid: 'Q252246', title: 'Category:Árnessýsla', lat: 64.25, lng: -20.5 },
+  ]),
+};
+
+/** **Gullfoss, saved in Hebrew** (field report #41: `מפלי גולפוס` matched nothing). Live-read
+ *  2026-08-11, and the reason it failed is one word spelled three ways:
+ *
+ *   - Google's Hebrew is **`גולפוס`**, Wikidata's Hebrew label is **`גאלפוס`**, and the Hebrew
+ *     Wikipedia's article is **`גוטלפוס`** — three transliterations of one Icelandic word;
+ *   - a `wbsearchentities` for either of Google's spellings returns **zero hits**;
+ *   - so the coordinate route is the only one left, it finds `Q38519` at 124m — and then the
+ *     Hebrew label, being Hebrew, was *comparable* and scored **0**, which vetoed it. A label in
+ *     a script we can read but a spelling we cannot was worse evidence than Kerið's no label at
+ *     all.
+ *
+ *  `מפלי` is the construct plural of `מפל`, the first word of `Q34038`'s own Hebrew label. */
+export const GULLFOSS_HE = {
+  place: { name: 'מפלי גולפוס', lat: 64.3271, lng: -20.1199, googlePlaceId: 'ChIJ-gullfoss' },
+  qid: 'Q38519',
+  entity: entity({
+    qid: 'Q38519',
+    labels: { en: 'Gullfoss', is: 'Gullfoss', he: 'גאלפוס' },
+    instanceOf: ['Q34038'], // waterfall
+    image: 'GullfossOverview.jpg',
+    lat: 64.326111111111,
+    lng: -20.121111111111,
+    sitelinks: { enwiki: 'Gullfoss', hewiki: 'גוטלפוס' },
+  }),
+  nearby: geosearch([
+    { qid: 'Q38519', title: 'Gullfoss', lat: 64.326111111111, lng: -20.121111111111 },
+  ]),
+};
+
+/** The `P31` classes the two fixtures above point at, as `wbgetentities` returns them — a class
+ *  read is an ordinary entity read, and its LABEL is the whole payload §22 needs. */
+export const FEATURE_CLASSES = {
+  entities: {
+    ...entity({ qid: 'Q34038', labels: { en: 'waterfall', he: 'מפל מים' } }).entities,
+    ...entity({ qid: 'Q131596', labels: { en: 'farm' } }).entities,
+    ...entity({ qid: 'Q109391', labels: { en: 'volcanic crater' } }).entities,
+    ...entity({ qid: 'Q204324', labels: { en: 'volcanic crater lake' } }).entities,
+  },
+};
+
 /* ── THE AIRPORT PAIR (ADR-0166 §18, field reports #7/#23) ──────────────────────────────────
    Unlike everything above, these are **not** rows from the coverage spike — that spike had no
    airport stratum. What is real here is the shape the §18 research measured, and it is the only
