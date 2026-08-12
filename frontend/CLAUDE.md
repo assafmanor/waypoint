@@ -295,6 +295,16 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   ambient zone) instead of `dayZoneContext`/`liveZoneContext` over trip-state's
   `zoneEvidence` — shared resolver + per-screen input is not shared behaviour, and
   the two day surfaces diverged for a release (ADR-0107 session-102).
+- **Changing a day-surface derivation in `DayView` only.** The generalisation of
+  the line above, and it has now cost a release twice. `DayView` and `PlanDay`
+  render the **same** components (`TransitionRow`, `UnplacedCommitment`,
+  `GapStrip`, `EventCard`) off the **same** derivation, and differ only in
+  **posture** — Plan has no inline settle pair, and its gap is a `שבץ` control
+  where Trip's is a statement. ADR-0159 §1 allows a difference in posture and
+  forbids one about a **fact**; ADR-0171 §10e is the repair for exactly this,
+  where a check-in read as unplaced in Trip and interleaved by its floor in Plan.
+  Touching `placeDayEntries`, `dayBlocks`, `mergeDayEntries` or anything either
+  screen reads means checking **both**, in code and in the mockup.
 - Turning a typed wall-clock into an instant with `trip.timezone` (or any zone the
   call site happened to have) instead of `authoringZone(…, zoneEvidence)` — the
   event then renders at a different time than it was typed at. A `WhenField`
@@ -329,6 +339,28 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   too), and **never on an `<input>`**, where `auto` sniffs the value and so
   left-anchors a Hebrew placeholder while the field is empty — a field inherits
   the page, a rendered text node sniffs.
+- **Assuming a numeric run is safe because the row beside it is** — the two
+  entries above interact, and the interaction is not intuitive. `dir="auto"`
+  resolves from the first **strong** character and falls back to **`ltr`** when
+  there is none, so a digits-only value (`17:00–21:00` in `.tr-time`) is fine
+  under `auto` with no isolate at all. The same string inside an element that
+  **also carries a Hebrew word and no `dir`** — `UnplacedCommitment`'s `.as`,
+  which renders `${label} · ${when}` — leads with a strong RTL character and
+  flips the range to `21:00–17:00`. Two rows that look identical in source
+  disagree on screen, and adding `dir` to the container is the wrong repair:
+  **`ltrIsolate` the numeric run** (`lib/bidi.ts`), because the container is
+  exactly what differs between the safe case and the broken one. A design session
+  asserted the opposite here and caught it only by rendering both.
+- **Putting a WIDER value in a row without checking the sibling row shape.** The
+  app answers "where does the time go" two opposite ways on purpose:
+  `.transition-row` is flex with `.tr-time` at the trailing edge
+  (`flex: 0 0 auto` · `nowrap`), while `.wp-event-face` is a grid whose areas
+  are `'badge title' / 'badge when'` — the time **under** the title. That is a
+  wash for a single time and expensive for anything wider: measured at 360, a
+  `17:00–21:00` range at the trailing edge took **45px of 210** off `.tr-title`,
+  the only element in that row that ellipsises. When a value grows, find the
+  sibling shape that answers differently and measure the trade; ADR-0171 hit this
+  at 8px and a range hits it at 45px, so it scales with the value.
 
 ## Testing
 

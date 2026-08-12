@@ -72,6 +72,14 @@ Conventional Commits, branch per task (create the branch _before_ the first comm
 
 **No em dashes (`—`) in UI copy — never.** For a separator between peer bits of info use the small middle dot (`·`, the app's separator, e.g. `עכשיו · במקביל`); for a "no value" placeholder a regular dash (`-`) reads best; otherwise a comma or period. User-facing strings only (Hebrew UI copy, placeholders, option labels), not English code comments.
 
+## Two ways a session goes wrong that no rule above catches
+
+Both cost real time in session 257 (2026-08-13) and neither is a knowledge gap — they are habits, so they are written where every session loads them.
+
+**A correction is not a fork.** When the owner says something is _wrong_, change the default. Drawing the alternative beside the old one and handing the choice back reads as thoroughness and is actually the work returned unfinished — the same thing then has to be asked twice. Measure the trade by all means, but measure it to _show the cost of the change you made_, not to avoid making it.
+
+**Count the call sites before claiming what a derivation does.** "This doesn't affect X" written from memory is a coin flip, and it stays a coin flip when it happens to land right. One `grep` over the consumers of the function in question turns it into a fact — and in the case that prompted this line, the count is what found the one consumer that _would_ have broken (five tested `=== 'exact'` and were safe by construction; the sixth tested `!== 'not-before'` and was not). The audit is usually the deliverable, not the preamble to it.
+
 ## Agent Instructions: Context Engineering
 
 Treat your context window as scarce RAM. The goal is **progressive disclosure**, not exhaustive loading — reading the whole `docs/` tree up front is the failure mode, not diligence.

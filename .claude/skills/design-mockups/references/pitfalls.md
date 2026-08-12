@@ -12,6 +12,22 @@ around any numeric or Latin run; its lint guard reads `dir="ltr"` attributes and
 cannot see a template string, so this ships. Found by rendering
 `day-scheduling-grammar-v1.html` — in the *shipped* gap-fill header.
 
+**…but NOT everywhere, and guessing which is which is how a mockup ships a
+false claim.** `dir="auto"` picks direction from the first **strong** character
+and falls back to **`ltr`** when there is none — so a digits-only run
+(`17:00–21:00`) under `dir="auto"` is **safe**, and `.tr-time` was never at
+risk. What breaks is an element with **no `dir` at all** whose content leads
+with Hebrew: `UnplacedCommitment`'s `.as` renders `${label} · ${when}`, the
+Hebrew word makes the element RTL, and the range inside it flips. The first
+draft of `an-edge-can-be-a-window-v1.html` asserted the opposite, drew two trap
+frames, and they rendered **identical** — which is what exposed it.
+
+Two rules follow. **A bidi claim is a render result, never a deduction** — draw
+both sides and look, because the wrong one is invisible in source and stated
+confidently in prose. And the fix is always ADR-0118's: isolate the **numeric
+run**, never set a direction on the container — the container is what differs
+between the safe case and the broken one.
+
 **A directional glyph flips.** `‹` `›` `→` are `Bidi_Mirrored`: inside
 `dir="rtl"` they silently point the other way. Use the real `NavArrow`/`Icon`
 SVGs (`index-findability-v1.html` confirmed this by rendering test).
@@ -117,3 +133,37 @@ where the layout is actually decided.
 what is left over.** Two unrelated verbs reaching for the same icon means neither
 was placed, only filed — that collision is a reliable tell, and it shows up in a
 render before it shows up in reasoning.
+
+## Coverage — the things a file silently leaves out
+
+**Trip AND Plan, every time.** `DayView` and `PlanDay` render the *same*
+components off the *same* derivation (`placeDayEntries`, `TransitionRow`,
+`UnplacedCommitment`, `GapStrip`) and differ only in **posture** — Plan has no
+inline settle pair and its gap is a `שבץ` control. ADR-0159 §1 permits a
+difference in posture and forbids one about a **fact**, and ADR-0171 §10e exists
+*because* a build shipped a split in `DayView` only, so the two modes said
+different things about one booking. Drawing Trip alone reproduces that bug at the
+design stage, where it is cheapest and least visible.
+`an-edge-can-be-a-window-v1.html` had to grow its §2c after the owner asked —
+having already read §10e that session.
+
+**When a value gets WIDER, the row shape is a decision, not an inheritance.** The
+app answers "where does the time go" two opposite ways on purpose:
+`.transition-row` is flex with `.tr-time` at the trailing edge
+(`flex: 0 0 auto` · `nowrap`), `.wp-event-face` is a grid with
+`'badge title' / 'badge when'` — the time **under** the title. It makes no
+difference for a single time and a large one for anything wider: measured at 360,
+a `17:00–21:00` range at the trailing edge took **45px of 210** off `.tr-title`,
+the only element in that row that ellipsises. Whichever shape you copy from, find
+the sibling that answers differently and **measure the trade** before choosing.
+ADR-0171 found the same thing at 8px and this file found it at 45px, so the
+question scales with the value.
+
+**A claim about a derivation is worth counting the call sites for.** "A window
+bounds no gap" was written into a mockup's prose before `day-joins.ts` was
+opened. It happened to be true, named the wrong function, and did not know *why*
+it held. Reading it properly took one grep, confirmed the rule holds **by
+construction** (every consumer tests `=== 'exact'`), and turned up the one
+consumer that does not follow the pattern and would have shipped a defect
+(`glance.ts:457` tests `!== 'not-before'`). The count is usually the deliverable,
+not the preamble.
