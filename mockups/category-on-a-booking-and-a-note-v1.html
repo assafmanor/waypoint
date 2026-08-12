@@ -39,11 +39,20 @@
        "No need to be over descriptive in the warning, really short and no need
         to list everything that will be deleted."
 
-     So the dialog is one line — `חלק מהפרטים לא עוברים לסוג החדש` — with no
-     itemised losses and no `consequence` row, and **the in-grid banner the
-     second draft added is gone entirely**: one warning, in one place, short. A
-     banner and a dialog carrying the same short sentence is the duplication
-     session 246 (workstream L) was written to delete.
+     So the dialog is one line — `חלק מהפרטים יימחקו.` (the owner's own wording,
+     and the more accurate of the two drafts: the fields ARE deleted on save,
+     they do not merely "fail to carry over") — with no itemised losses and no
+     `consequence` row, and **the in-grid banner the second draft added is gone
+     entirely**: one warning, in one place, short. A banner and a dialog carrying
+     the same short sentence is the duplication session 246 (workstream L) was
+     written to delete.
+
+     One thing the shortening forced, and it is a fix rather than a trim: the
+     cancel could not stay `ביטול`. This dialog fires from **שמירה**, inside a
+     form that already has its own discard confirm — so `ביטול` here reads as
+     "abandon the edit" rather than "go back to the form". It becomes
+     `המשך עריכה`, which is verbatim what `common.discardCancel` already says in
+     this app for that exact intent.
 
      What survives of the counting is §2c's MATRIX, and it survives as
      documentation rather than as copy — because it is what makes "חלק מהפרטים"
@@ -10344,12 +10353,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         </p>
         <p class="note">
           <b>אבל האישור עצמו קצר, ולא מונה כלום</b> (קריאת הבעלים, 2026-08-12: _"really short and
-          no need to list everything that will be deleted"_). שורה אחת ·
-          <code>חלק מהפרטים לא עוברים לסוג החדש</code> · ובלי שורת ה<code>consequence</code> שהטיוטה
-          הקודמת שמה שם. מה שהטבלה הזאת עושה הוא להפוך את "חלק" ל<b>נבדק</b> ולא למעורפל: היא
-          קיימת כאן, בתיעוד, בדיוק כדי שהמשפט הקצר בממשק יוכל להיות קצר. וזו גם הסיבה שהמנגנון
-          בקוד הוא <b>בוליאני</b> · <code>switchIsLossy(from, to)</code>, ולא רשימה שמישהו צריך
-          לתרגם לקופי.
+          no need to list everything that will be deleted"_). שלוש מילים ·
+          <code>חלק מהפרטים יימחקו.</code> · ובלי שורת ה<code>consequence</code> שהטיוטה הקודמת
+          שמה שם. <b>פעיל ולא מרוכך</b>, וזה גם המדויק מהשניים: השדות באמת נמחקים בשמירה, הם לא
+          "לא עוברים". והוא נופל בדיוק על הדפוס של <code>manage.plainBody</code>
+          (<code>ההזמנה תוסר מהאינדקס.</code>) · משפט אחד, עתיד, נקודה.
+        </p>
+        <p class="note">
+          <b>ו-<code>ביטול</code> לא היה יכול להישאר.</b> הדיאלוג הזה נורה מ<b>שמירה</b>, ובטופס
+          שיש לו כבר אישור־נטישה משלו · <code>ביטול</code> כאן נקרא "לבטל את העריכה", לא "לחזור
+          לטופס". הזוג <code>המשך עריכה</code> הוא בדיוק מה ש<code>common.discardCancel</code> כבר
+          אומר באפליקציה לאותה כוונה, ולכן זו גם מילה קיימת ולא מילה חדשה. מה שהטבלה למעלה עושה
+          הוא להפוך את "חלק" ל<b>נבדק</b> ולא למעורפל: היא תיעוד, בדיוק כדי שהמשפט בממשק יוכל
+          להיות קצר · ולכן המנגנון בקוד הוא <b>בוליאני</b>, <code>switchIsLossy(from, to)</code>,
+          ולא רשימה שמישהו צריך לתרגם לקופי.
         </p>
         <table class="m" id="matrix">
           <thead>
@@ -10896,10 +10913,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
                   <span aria-hidden="true">${icon('warn')}</span>
                   להחליף ל${TYPE[to].l}?
                 </div>
-                <p class="confirm-text">חלק מהפרטים לא עוברים לסוג החדש.</p>
+                <p class="confirm-text">חלק מהפרטים יימחקו.</p>
                 <div class="confirm-actions">
                   <button type="button" class="confirm-confirm">החלפה</button>
-                  <button type="button" class="confirm-cancel">ביטול</button>
+                  <button type="button" class="confirm-cancel">המשך עריכה</button>
                 </div>
               </div>
             </div>
@@ -11099,7 +11116,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           col(
             '<span class="tag after">בהצעה · האישור בשמירה</span>',
             saveConfirm(SAVED.type, ty),
-            'שורה אחת, ולא רשימה · הטבלה למעלה היא מה שהופך את "חלק מהפרטים" לנבדק, והיא תיעוד ולא קופי. בקוד זה בוליאני אחד.',
+            'שלוש מילים, ולא רשימה · הטבלה למעלה היא מה שהופך את "חלק מהפרטים" לנבדק, והיא תיעוד ולא קופי. בקוד זה בוליאני אחד.',
           ),
           col(
             '<span class="tag alt">נדחה · אישור בנגיעה</span>',
@@ -11332,7 +11349,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           [
             'האישור בשמירה · הכרטיס',
             hw('#s2c .confirm'),
-            'שורה אחת · <code>ConfirmDialog tone="danger"</code>, בלי CSS חדש ובלי שורת <code>consequence</code>',
+            'שלוש מילים · <code>ConfirmDialog tone="danger"</code>, בלי CSS חדש ובלי שורת <code>consequence</code>',
           ],
           [
             '<code>ValueToken</code> · החלופה שנדחתה',
