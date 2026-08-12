@@ -1789,3 +1789,41 @@ describe('BookingSheet — the name follows the place, the glyph follows the typ
     expect(iconChip().textContent).toBe('🏨');
   });
 });
+
+// **THE WINDOW IS OFF BY DEFAULT, AND THAT IS THE WHOLE BRIEF** (ADR-0184 §2; owner:
+// _"I don't want the default to have both the check-in start and check-in end time. I want
+// a separate click or something to enable this feature."_). So the assertions here are
+// mostly about ABSENCE — what the form does not show, and to whom it does not show it.
+describe('BookingSheet — the opt-in check-in window', () => {
+  afterEach(() => cleanup());
+
+  const openWhenStep = (type: BookingType) => {
+    render(wrapNav(<BookingSheet booking={null} seed={{ type }} onClose={() => {}} />));
+    pastTypeStep();
+    next();
+  };
+
+  it('offers ONE dashed token per held edge, and nothing is filled in', () => {
+    openWhenStep(BOOKING_TYPE.HOTEL);
+    // Check-in and check-out each carry the offer, and both are empty.
+    const offers = screen.getAllByText(t.whenField.addWindow);
+    expect(offers).toHaveLength(2);
+    // The prose words only appear once a window exists, so an untouched form has none.
+    expect(screen.queryByText(t.whenField.rangeTo)).toBeNull();
+  });
+
+  it('does not offer it on a flight, whose ends are instants', () => {
+    openWhenStep(BOOKING_TYPE.FLIGHT);
+    expect(screen.queryByText(t.whenField.addWindow)).toBeNull();
+  });
+
+  it('offers it on a car hire too — the gate is the profile, not the type', () => {
+    openWhenStep(BOOKING_TYPE.CAR);
+    expect(screen.getAllByText(t.whenField.addWindow).length).toBeGreaterThan(0);
+  });
+
+  it('does not offer it on a booking with no span to widen', () => {
+    openWhenStep(BOOKING_TYPE.RESTAURANT);
+    expect(screen.queryByText(t.whenField.addWindow)).toBeNull();
+  });
+});

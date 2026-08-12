@@ -637,6 +637,10 @@ export function EventForm({
           .create({
             ...parsed.data,
             displayTimezone: parsed.data.displayTimezone ?? undefined,
+            // Same seam as the line above: `null` is the wire's "clear this", and a
+            // rendered event simply has no window (ADR-0184).
+            startWindowEnd: parsed.data.startWindowEnd ?? undefined,
+            endWindowStart: parsed.data.endWindowStart ?? undefined,
             id,
             tripId: trip.id,
             status: EVENT_STATUS.PLANNED,

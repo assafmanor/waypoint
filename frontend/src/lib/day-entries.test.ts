@@ -226,3 +226,51 @@ describe('placeDayEntries', () => {
     expect(checkout?.atMs).toBe(ms('2026-07-09', '11:00'));
   });
 });
+
+describe('placeDayEntries — a closed window comes back into the list (ADR-0184 §4)', () => {
+  const windowed = ev({
+    id: 'hotel-window',
+    category: 'lodging',
+    date: '2026-07-07',
+    endDate: '2026-07-09',
+    startsAt: at('2026-07-07', '17:00'),
+    endsAt: at('2026-07-09', '11:00'),
+    startWindowEnd: at('2026-07-07', '21:00'),
+  });
+  const landing = ev({
+    id: 'flight',
+    category: 'transport',
+    icon: '✈️',
+    startsAt: at('2026-07-07', '15:30'),
+    endsAt: at('2026-07-07', '18:15'),
+  });
+
+  const place = (events: TripEvent[]) => {
+    const transitions = dayTransitions(events, '2026-07-07');
+    const timed = events.filter((e) => e.startsAt && !e.endDate);
+    const groups = buildTimeTree(timed);
+    return placeDayEntries(mergeDayEntries(groups, transitions), [], groups);
+  };
+
+  it('parks a bare floor in the strip, as it always has', () => {
+    const { positioned, commitments } = place([hotel2Nights, landing]);
+    expect(commitments.map((r) => r.event.id)).toEqual(['hotel']);
+    expect(positioned.some((e) => e.kind === 'transition' && e.event.id === 'hotel')).toBe(false);
+  });
+
+  it('gives the SAME stay a position once its window is closed', () => {
+    const { positioned, commitments } = place([windowed, landing]);
+    expect(commitments).toHaveLength(0);
+    const row = positioned.find((e) => e.kind === 'transition' && e.event.id === 'hotel-window');
+    expect(row).toBeDefined();
+    // At its floor, not at its ceiling: the row is placed, never re-timed.
+    expect(row?.atMs).toBe(ms('2026-07-07', '17:00'));
+  });
+
+  it('leaves the check-OUT edge alone — only the end it was authored on changes', () => {
+    const { positioned } = place([windowed]);
+    const out = positioned.filter((e) => e.kind === 'transition');
+    // Day 1 carries the check-in only; the check-out belongs to the 9th.
+    expect(out.every((e) => e.edge === 'start')).toBe(true);
+  });
+});

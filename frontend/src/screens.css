@@ -322,6 +322,22 @@
   color: var(--amber-deep);
   white-space: nowrap;
 }
+/* **A WINDOW SITS UNDER THE TITLE** (ADR-0184 §5). Only the PLACEMENT moves — the mono
+   face, the size and the amber all stay `.tr-time`'s, which is why this is three
+   declarations and not a second time style. A bare clock keeps the trailing edge it has
+   always had, so no existing row changes and the ~20px of height is charged only where a
+   window was actually authored.
+
+   This is `.wp-event-face`'s own answer to the same question (`'badge title' /
+   'badge when'`), reused rather than re-decided: measured at 360px, a range at the
+   trailing edge took 45px of 210 off `.tr-title`, the one element in this row that
+   ellipsises. */
+.tr-time.wnd-under {
+  margin-block-start: 2px;
+  white-space: normal;
+  color: var(--amber-deep);
+}
+
 /* Zone-shift pill on a transition edge (ADR-0107): the clock jump vs the day's
    ambient zone, amber like the time it annotates. Usually absent. */
 /* Surface tweak only — the pill itself is ui/zone-shift-pill.css. */

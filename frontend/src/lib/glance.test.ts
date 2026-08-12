@@ -915,3 +915,38 @@ describe('buildDayGlance — per-anchor display zones (ADR-0107)', () => {
     }
   });
 });
+
+describe('a windowed check-in expires from נותרו היום (ADR-0184 §6)', () => {
+  const stay = (extra: Partial<TripEvent> = {}) =>
+    ev({
+      id: 'hotel',
+      category: 'lodging',
+      kind: EVENT_KIND.HARD,
+      startsAt: at('17:00'),
+      endsAt: at('11:00', '2026-07-11'),
+      endDate: '2026-07-11',
+      ...extra,
+    });
+  const count = (events: TripEvent[], now: number) =>
+    buildDayGlance(events, DATE, now, day07, day23, TZ).remaining;
+
+  // The trap the audit found: `glance.ts` is the ONE consumer that named a flexible
+  // value instead of testing `exact`, so a window fell through to the clock test against
+  // its FLOOR and stopped counting at 17:01 while the window ran to 21:00.
+  it('still counts after the floor passes, because the floor is not the thing happening', () => {
+    expect(count([stay({ startWindowEnd: at('21:00') })], ms('18:30'))).toBe(1);
+  });
+
+  it('stops counting once the window shuts — which a bare floor never does', () => {
+    expect(count([stay({ startWindowEnd: at('21:00') })], ms('21:30'))).toBe(0);
+    // The same stay with no window is still counted at 21:30: a floor stays pending
+    // until it is settled or the day ends (ADR-0171 §6, unchanged).
+    expect(count([stay()], ms('21:30'))).toBe(1);
+  });
+
+  it('a settled check-in counts nothing, window or not', () => {
+    expect(
+      count([stay({ startWindowEnd: at('21:00'), status: EVENT_STATUS.DONE })], ms('18:30')),
+    ).toBe(0);
+  });
+});

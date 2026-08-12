@@ -340,6 +340,8 @@ export class BookingsService {
       kind: f.kind,
       startsAt: f.startsAt ? new Date(f.startsAt) : undefined,
       endsAt: f.endsAt ? new Date(f.endsAt) : undefined,
+      startWindowEnd: f.startWindowEnd ? new Date(f.startWindowEnd) : undefined,
+      endWindowStart: f.endWindowStart ? new Date(f.endWindowStart) : undefined,
       placeId: null,
       bookingId: f.bookingId,
       updatedBy: actorUserId,
@@ -363,6 +365,12 @@ export class BookingsService {
       ...(seed.kind !== undefined && { kind: seed.kind }),
       ...(seed.startsAt !== undefined && { startsAt: new Date(seed.startsAt) }),
       ...(seed.endsAt !== undefined && { endsAt: new Date(seed.endsAt) }),
+      // **Absent CLEARS**, like `endDate` above and for the same reason: the client
+      // rebuilds this seed whole on each save, so a window that is gone was removed
+      // rather than left untouched. Treating it as untouched is how a check-in the user
+      // reverted to "from 17:00" would keep claiming it shuts at 21:00.
+      startWindowEnd: seed.startWindowEnd ? new Date(seed.startWindowEnd) : null,
+      endWindowStart: seed.endWindowStart ? new Date(seed.endWindowStart) : null,
       placeId: null, // linked → place stays on the booking
       updatedBy: actorUserId,
     };
