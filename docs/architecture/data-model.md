@@ -106,9 +106,9 @@ Idempotency map for one-way calendar push (ADR-0003) — per member, per event.
 
 ### Document
 
-Sensitive files (passports, insurance).
+Sensitive files (passports, tickets, insurance).
 
-- `id`, `tripId`, `type` (`passport` | `insurance` | `visa` | `other`), `title`
+- `id`, `tripId`, `type` (`passport` | `visa` | `license` | `ticket` | `reservation` | `insurance` | `health` | `other` — shown in that order, which is `DOCUMENT_TYPE`'s; the Postgres enum's own order is append-only and differs), `title`
 - `fileRef` (server-side-encrypted blob, ADR-0015 — trust model in ADR-0034), `mimeType`, `sizeBytes`, `ownerUserId?` (null = group doc)
 - `createdAt`, `updatedAt`, `updatedBy`
 

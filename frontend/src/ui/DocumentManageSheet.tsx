@@ -4,25 +4,19 @@
 // document is irreversible). Each action calls the backend PATCH/DELETE; the live
 // list updates from the WS self-echo (ADR-0058), so no callback is needed.
 import { useId, useState } from 'react';
-import { DOCUMENT_TYPE, type DocumentSummary, type DocumentType } from '@waypoint/shared';
+import { type DocumentSummary, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
+import { DocumentTypeGrid } from './DocumentTypeGrid';
 import { RowManageSheet } from './domain';
 import { HostNotes, useHostNoteCount } from './HostNotes';
 import { Icon } from './Icon';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
-import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { ConfirmDialog } from './primitives/ConfirmDialog';
 import { deleteDocument, updateDocument } from '../lib/api';
 import { useToast } from './Toast';
-import { CONTROL_ICON, DOCUMENT_TYPE_ICON } from '../constants';
+import { CONTROL_ICON } from '../constants';
 import { t } from '../i18n/he';
-
-const TYPE_OPTIONS = Object.values(DOCUMENT_TYPE).map((ty) => ({
-  value: ty,
-  icon: DOCUMENT_TYPE_ICON[ty],
-  label: t.docs.type[ty],
-}));
 
 type Mode = 'menu' | 'edit' | 'delete';
 
@@ -139,13 +133,7 @@ export function DocumentManageSheet({
               />
             </Field>
             <Field label={t.docs.upload.typeLabel}>
-              <ChoiceGrid
-                options={TYPE_OPTIONS}
-                value={type}
-                onChange={setType}
-                disabled={busy}
-                ariaLabel={t.docs.upload.typeLabel}
-              />
+              <DocumentTypeGrid value={type} onChange={setType} disabled={busy} />
             </Field>
             <FormActions
               primary={{ label: t.docs.manage.save, onClick: save, busy }}

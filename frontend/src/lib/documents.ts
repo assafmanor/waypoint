@@ -3,13 +3,10 @@
 import { DOCUMENT_TYPE, type DocumentSummary, type DocumentType } from '@waypoint/shared';
 import type { PendingUpload } from './outbox';
 
-/** Display order for the document-type groups. */
-const TYPE_ORDER: DocumentType[] = [
-  DOCUMENT_TYPE.PASSPORT,
-  DOCUMENT_TYPE.INSURANCE,
-  DOCUMENT_TYPE.VISA,
-  DOCUMENT_TYPE.OTHER,
-];
+/** Display order for the document-type groups — the shared table's own order (its
+ *  header explains why that is the one place it is stated), which is also the order
+ *  the upload and manage grids offer. */
+const TYPE_ORDER = Object.values(DOCUMENT_TYPE);
 
 export interface DocumentGroup {
   type: DocumentType;
