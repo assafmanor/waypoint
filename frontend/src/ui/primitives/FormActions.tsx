@@ -26,10 +26,17 @@ interface Action {
 export function FormActions({
   primary,
   secondary,
+  alternate,
   destructive,
 }: {
   primary: Action;
   secondary?: Action;
+  /** **A second way forward, beside the primary** — not a lesser version of it and not the
+   *  `secondary` (which is the way BACK: cancel, or the previous step). Its one caller is a
+   *  stepped form being edited, where `שמירה` has to sit next to `הבא` so someone who is done
+   *  is not made to page through the rest of the form to commit. Rendered in the middle so the
+   *  bar still reads back · alternate · forward in the RTL flow. */
+  alternate?: Action;
   destructive?: Action;
 }) {
   return (
@@ -43,6 +50,16 @@ export function FormActions({
         >
           {primary.busy ? <Spinner /> : primary.label}
         </button>
+        {alternate && (
+          <button
+            type={alternate.type ?? 'button'}
+            className="fa-alternate"
+            onClick={alternate.onClick}
+            disabled={alternate.disabled || alternate.busy}
+          >
+            {alternate.busy ? <Spinner /> : alternate.label}
+          </button>
+        )}
         {secondary && (
           <button
             type={secondary.type ?? 'button'}

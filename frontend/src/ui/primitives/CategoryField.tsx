@@ -94,7 +94,13 @@ export function CategoryField({
         layout="pills"
         options={options}
         value={value ?? NO_CATEGORY}
-        onChange={(next) => onChange(next === NO_CATEGORY ? undefined : next)}
+        onChange={(next) => {
+          onChange(next === NO_CATEGORY ? undefined : next);
+          // **Choosing collapses it.** A single-select chooser has nothing left to ask once it
+          // is answered, and staying open hides the statement the answer just rewrote — the
+          // one thing the reader wants to see. Harmless when the field is not a disclosure.
+          setOpen(false);
+        }}
         ariaLabel={name}
       />
     </div>

@@ -49,6 +49,21 @@
   cursor: default;
 }
 
+/* A second way FORWARD (`alternate`): outlined in the CTA's ink rather than filled, so the
+   bar still has exactly one filled button and the eye still knows which one continues the
+   flow. Sized like the secondary, because it is a peer of it and not of the primary. */
+.fa-alternate {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--cta);
+  border: 1px solid var(--cta);
+}
+.fa-alternate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .fa-secondary {
   flex: 0 0 auto;
   padding-inline: var(--space-5);

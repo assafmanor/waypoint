@@ -352,7 +352,12 @@ export class BookingsService {
   ): Prisma.EventUncheckedUpdateInput {
     return {
       date: new Date(seed.date),
-      ...(seed.endDate !== undefined && { endDate: new Date(seed.endDate) }),
+      // **An absent `endDate` CLEARS**, unlike every other key here. The client rebuilds this
+      // seed whole on each save, so absent means "this is no longer a span" rather than
+      // "untouched" — and treating it as untouched left a stay switched to a point type still
+      // spanning its old nights on the timeline, which is half of what the switch's own
+      // confirm promises to drop.
+      endDate: seed.endDate ? new Date(seed.endDate) : null,
       ...(seed.icon !== undefined && { icon: seed.icon }),
       ...(seed.category !== undefined && { category: seed.category }),
       ...(seed.kind !== undefined && { kind: seed.kind }),

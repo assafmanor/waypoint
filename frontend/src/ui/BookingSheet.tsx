@@ -444,6 +444,9 @@ export function BookingSheet({
 
   const applyType = (next: BookingType) => {
     setType(next);
+    // The chooser is answered, so it collapses — and only here, on the change itself, which is
+    // what leaves the grid up after a REFUSED confirm for the next choice to be made from.
+    setTypeOpen(false);
     icon.redrive(BOOKING_TYPE_ICON[next]);
     kind.redrive(defaultKindForBookingType(next));
     // **An offered end belongs to the type that offered it** (field report #11). A
@@ -820,6 +823,13 @@ export function BookingSheet({
             ? { ...seed, id: seed.id ?? linkedEvent?.id ?? generateId() }
             : undefined;
           await indexVerbs.updateBooking(booking.id, {
+            // **The type, and it was the bug.** This payload never carried it — for the honest
+            // reason that the type was not editable, so there was nothing to send — and the
+            // omission survived making it editable: every other edited field saved and the
+            // type silently did not, which reads exactly as "the category did not change",
+            // since a booking's category IS its type (ADR-0038). The create paths always
+            // spread it (`legBooking`, `createBooking`); only the update had no reason to.
+            type,
             title: finalTitle,
             ...base,
             event,
@@ -1443,6 +1453,11 @@ export function BookingSheet({
           <FormStepActions
             steps={steps}
             onCancel={requestClose}
+            // An EDIT can be finished from any step (owner, 2026-08-12) — the save re-validates
+            // every step and lands on the first refusal, so it cannot commit an unanswered one.
+            // A CREATE cannot: its steps are questions the type shaped, and offering to finish
+            // before they are asked is offering a save the form will refuse.
+            saveAnywhere={!isCreate}
             busy={saving}
             destructive={
               isCreate || !steps.isLast
