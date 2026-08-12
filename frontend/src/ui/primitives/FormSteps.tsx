@@ -243,6 +243,7 @@ export function FormStepActions<Id extends string>({
   steps,
   onCancel,
   saveLabel,
+  saveAnywhere = false,
   busy,
   destructive,
 }: {
@@ -250,6 +251,19 @@ export function FormStepActions<Id extends string>({
   onCancel: () => void;
   /** Overrides `שמירה` on the last step, for a surface whose commit is not a save. */
   saveLabel?: string;
+  /** **Offer the commit on every step, beside `הבא`** (owner, 2026-08-12: _"add a save button
+   *  next to the הבא so that if the user is done editing they don't have to go through all
+   *  steps all over just to save"_).
+   *
+   *  Safe by construction rather than by care, and §2 is why: `steps.submit` **re-validates
+   *  every step** and navigates to the first one carrying a problem, so a save from step one
+   *  cannot commit past an unanswered step two — it lands you on it, marked. And it does not
+   *  touch §5's commit-once rule: this is still one commit, just reachable earlier.
+   *
+   *  Off by default, and `BookingSheet` turns it on only for an EDIT. On a create the steps are
+   *  questions the type shapes, and a form that offers to finish before it has asked them is
+   *  inviting a save it will refuse. */
+  saveAnywhere?: boolean;
   busy?: boolean;
   destructive?: { label: string; onClick: () => void };
 }) {
@@ -260,6 +274,11 @@ export function FormStepActions<Id extends string>({
         onClick: steps.isLast ? steps.submit : steps.next,
         busy,
       }}
+      alternate={
+        saveAnywhere && !steps.isLast
+          ? { label: saveLabel ?? t.common.save, onClick: steps.submit, busy }
+          : undefined
+      }
       secondary={{
         label: steps.isFirst ? t.common.cancel : t.common.steps.back,
         onClick: steps.isFirst ? onCancel : steps.back,

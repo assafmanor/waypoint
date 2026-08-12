@@ -1,7 +1,7 @@
 # Session 256 — a category you can change, on a booking and on a note
 
 **Date:** 2026-08-12
-**Output:** [`mockups/category-on-a-booking-and-a-note-v1.html`](../../mockups/category-on-a-booking-and-a-note-v1.html), its catalog entry, and the backlog section under "Re-filing what is already saved". **No code, no ADR, no schema change** — the mockup is _Proposed_ and the build waits on approval.
+**Output:** [`mockups/category-on-a-booking-and-a-note-v1.html`](../../mockups/category-on-a-booking-and-a-note-v1.html), its catalog entry, the backlog section under "Re-filing what is already saved" — and, after the owner approved on the mockup, **the build**: [ADR-0183](../decisions/0183-what-a-thing-is-is-editable-and-the-statement-is-the-control.md), shipped in [#579](https://github.com/assafmanor/waypoint/pull/579) the same day. §7 below records the three reports that came back off the built surface, and the defect the first of them uncovered was the sharpest finding of the whole session.
 **Baseline:** every file, line and constant cited below was read on `24da021` (`fix(enrichment): a backfill that finishes…`, `origin/main`) in this session.
 
 ## 0. The report, and why it is two reports
@@ -145,3 +145,21 @@ Four pieces, each reviewable alone, in this order:
 4. `NoteSheet` + `HostNotes` — the row, the sentinel pill, and the host resolved from the one index.
 
 **And an ADR on approval**, because the premise "a saved booking's type is immutable" was never written down as a decision and this reverses it. The mockup is the spec; the ADR is what makes the reversal citable.
+
+## 7. Three reports off the built surface, and the one that mattered
+
+The build shipped and the owner drove it. Three reports, in the order they arrived.
+
+**(a) The grid did not collapse after a choice.** A single-select chooser has nothing left to ask once it is answered, and staying open hides the statement the answer just rewrote — the one thing the reader is there to see. Both hosts now close on the change: `CategoryField` on `onChange`, and `BookingSheet` inside `applyType`. Deliberately **not** on the tap of a card that raises the confirm: a refused confirm leaves the grid up, which is what makes `ביטול` there a clean "pick something else" rather than a dead end.
+
+**(b) "The changes are saved but the category isn't changed."** The real defect, and it is a good lesson in where to look.
+
+`updateBooking`'s payload **never carried `type`**. Not an oversight introduced by this change — the omission was correct for as long as it existed, because the type was not editable and there was nothing to send. What it did was **survive** the change that made it editable. Both create paths spread `type` explicitly (`legBooking`, `createBooking`); only the update had never needed to, so every other edited field saved and the type silently did not. A booking's category **is** its type (ADR-0038), so the surface read exactly as "the category did not change".
+
+Worth naming the shape, because it will recur: **making a field editable is two changes, and the second one is invisible.** The form gained a control and the wire did not gain a field. Every test passed, because every test asserted on the form. The regression test now asserts on the **payload**.
+
+The same read found a second one next door: `eventUpdateFromSeed` spread `endDate` only when present, so a stay switched to a point type kept spanning its old nights on the timeline — half of what the switch's own confirm promises to drop. An absent `endDate` clears now, because the client rebuilds that seed whole on every save.
+
+**(c) A save beside `הבא`.** Owner: _"if the user is done editing they don't have to go through all steps all over just to save."_ `FormActions` gains an `alternate` slot — a second way **forward**, distinct from `secondary`, which is the way back — and `FormStepActions` offers the commit on every step behind a `saveAnywhere` flag that `BookingSheet` sets only for an **edit**.
+
+It needed no new safety, and that is ADR-0155 §2 paying off: `steps.submit` already re-validates **every** step and navigates to the first one carrying a problem, so a save from step one cannot commit past an unanswered step two — it lands you on it, marked. Still one commit (§5), just reachable earlier. A **create** does not get it: its steps are questions the type shaped, and offering to finish before they are asked is offering a save the form will refuse.

@@ -94,6 +94,17 @@ describe('CategoryField', () => {
       expect(screen.getByText(t.eventForm.categoryLabel)).toBeTruthy();
     });
 
+    // Reported on the shipped build: the grid stayed open after a pick, hiding the very
+    // statement the pick had just rewritten.
+    it('collapses again once a category is chosen', () => {
+      render(<CategoryField disclosure onChange={() => {}} />);
+      const row = screen.getByRole('button', { name: t.eventForm.categoryLabel });
+      fireEvent.click(row);
+      expect(row.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.click(screen.getByRole('radio', { name: t.iconPicker.categories.lodging }));
+      expect(row.getAttribute('aria-expanded')).toBe('false');
+    });
+
     it('opens the pills in place on a tap, and they are out of reach until then', () => {
       render(<CategoryField disclosure onChange={() => {}} />);
       expect(pills().closest('[inert]')).toBeTruthy();

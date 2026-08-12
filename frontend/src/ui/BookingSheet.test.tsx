@@ -1365,6 +1365,82 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     expect(stepLabel()).toBe(t.index.form.stepWhat);
   });
 
+  // **The type has to reach the wire**, and for one release it did not: this payload never
+  // carried `type` — honestly, since the type was not editable — and the omission survived
+  // making it editable. Every other edited field saved and the type silently did not, which
+  // reads as "the category did not change", a booking's category being its type (ADR-0038).
+  const typeRowControl = () => screen.getByRole('button', { name: t.index.form.stepType });
+  /** Open the collapsed row, pick a type, and accept the confirm if one is raised. Flight is
+   *  route-shaped, so a switch away from it strands a route and therefore always asks. */
+  const switchTypeTo = (label: string) => {
+    fireEvent.click(typeRowControl());
+    fireEvent.click(screen.getByText(label));
+    const confirm = screen.queryByText(t.index.form.switchConfirm);
+    if (confirm) fireEvent.click(confirm);
+  };
+
+  it('sends the new type on save, so the category actually moves', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    switchTypeTo(t.index.bookingType.activity);
+    await save();
+    expect(indexVerbs.updateBooking).toHaveBeenCalled();
+    expect(indexVerbs.updateBooking.mock.calls[0][1]).toMatchObject({
+      type: BOOKING_TYPE.ACTIVITY,
+    });
+  });
+
+  // Reported on the shipped build: the grid stayed open after a pick, hiding the very statement
+  // the pick had just rewritten.
+  it('collapses the type grid once a type is chosen', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    fireEvent.click(typeRowControl());
+    expect(typeRowControl().getAttribute('aria-expanded')).toBe('true');
+    switchTypeTo(t.index.bookingType.activity);
+    expect(typeRowControl().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  // **A lossy switch asks at the TAP**, because the tap is what takes the route off the form —
+  // by the save those boxes are long gone. And a refused confirm changes nothing AND leaves the
+  // grid up, which is what makes `ביטול` clean here and useless at save time.
+  it('asks before a switch that strands something, and a refusal changes nothing', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    fireEvent.click(typeRowControl());
+    fireEvent.click(screen.getByText(t.index.bookingType.activity));
+    expect(screen.getByText(t.index.form.switchBody)).toBeTruthy();
+
+    const dialog = screen.getByRole('dialog', {
+      name: t.index.form.switchTitle(t.index.bookingType.activity),
+    });
+    fireEvent.click(within(dialog).getByText(t.common.cancel));
+    expect(within(typeRowControl()).getByText(t.index.bookingType.flight)).toBeTruthy();
+    expect(typeRowControl().getAttribute('aria-expanded')).toBe('true');
+  });
+
+  // A switch that strands nothing is silent and instant — which is why browsing the grid on a
+  // near-empty create form never raises this at all.
+  it('does not ask for a switch that strands nothing', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    fireEvent.click(typeRowControl());
+    fireEvent.click(screen.getByText(t.index.bookingType.train));
+    expect(screen.queryByText(t.index.form.switchBody)).toBeNull();
+    expect(within(typeRowControl()).getByText(t.index.bookingType.train)).toBeTruthy();
+  });
+
+  // **An edit can be finished from any step** (owner, 2026-08-12) — paging through the rest of
+  // the form just to commit is the cost this removes. Safe because `submit` re-validates every
+  // step and lands on the first refusal (ADR-0155 §2), so it is still one commit.
+  it('offers שמירה beside הבא on an edit, and not on a create', () => {
+    const { unmount } = render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    expect(screen.getByRole('button', { name: t.common.steps.next })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.common.save })).toBeTruthy();
+    unmount();
+
+    openCreate(BOOKING_TYPE.HOTEL);
+    press(t.common.steps.next);
+    // A create's steps are questions the type shaped; finishing early would only be refused.
+    expect(screen.queryByRole('button', { name: t.common.save })).toBeNull();
+  });
+
   // **A booking is named by its place when nobody names it** (field report #9). The name
   // is DERIVED, not merely optional — it is what gets stored, so every surface that
   // receives only a title reads the place rather than a blank.
