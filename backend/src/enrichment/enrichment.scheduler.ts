@@ -16,11 +16,18 @@
 //     snapshot and the WS nudge, both keyed by `placeId`; a candidate has no `placeId`, so its
 //     answer travels back down the request that asked.
 //
-// **Nothing is ever queued — surplus work is dropped.** That looks lossy and is not: the
-// read trigger is idempotent and re-fires on the next snapshot, and `attemptedAt` is only
-// written when a pass completes, so a dropped or interrupted pass simply still reads as stale.
-// A queue here would be state that a redeploy loses anyway, protecting work that costs nothing
-// to redo.
+// **The read starts the backfill; each pass's completion continues it** (§14's 2026-08-11
+// amendment). The original shape started three passes per read and discarded the rest, on the
+// reasoning that the read trigger is idempotent and the next snapshot would re-offer them. It
+// is idempotent — but the next snapshot only happens when somebody opens the trip again, so a
+// cleared cache needed one app-open per three places and looked, correctly, like enrichment
+// being slow. A completed pass now takes the next stale place instead.
+//
+// **This is still not a scheduler** (ADR-0157 §6's refusal stands): nothing ticks, nothing is
+// persisted, nothing needs shutting down, and the concurrency ceiling is unchanged — it is the
+// same three passes, kept busy instead of stopping. A restart loses the backlog, and the next
+// snapshot read rebuilds it for free, which is exactly what made dropping it safe in the first
+// place.
 //
 // **What keeps this from hammering Wikimedia is the negative cache, not this file.** A place
 // that has nothing is re-attempted at most once every 30 days (§6.4's miss TTL) however many
@@ -46,13 +53,23 @@ import { EnrichmentService, type StoredEnrichment } from './enrichment.service';
 const MAX_CONCURRENT_PASSES = 3;
 
 /**
- * How many stale places one snapshot read may schedule.
+ * How many stale places one snapshot read may hold **waiting** for a slot.
  *
- * Bounds the cold-start burst: a trip whose 40 places are all unattempted would otherwise try
- * to enrich all 40 the first time anyone opens it. At this rate the trip fills in over the next
- * few reads instead, which nobody notices because nothing renders enrichment synchronously.
+ * This used to be `MAX_PASSES_PER_READ = 3` — a read started three passes and **discarded the
+ * rest**, so a trip only filled in three places per app-open and nothing re-fired on its own
+ * (owner report, 2026-08-11: enrichment "takes a long time", after clearing `PlaceEnrichment`
+ * made every place stale at once). A 40-place trip needed fourteen opens. The places were not
+ * failing to match; they were never being asked about.
+ *
+ * So the surplus is **held** now rather than dropped, and `pump` feeds it into the same three
+ * slots as they free up (see the header's amended note). The cap is a memory bound on one
+ * process's backlog, not a rate: the rate is still `MAX_CONCURRENT_PASSES`, unchanged, because
+ * that is what Wikimedia etiquette is about and nothing measured says three is too few.
+ *
+ * **Anything past this is logged, not silently dropped** — it is also still stale, so the next
+ * read re-offers it.
  */
-const MAX_PASSES_PER_READ = 3;
+const MAX_PENDING_BACKFILL = 200;
 
 /**
  * The ceiling a pass **somebody is waiting for** may use, above the background cap.
@@ -111,10 +128,59 @@ export class EnrichmentScheduler {
     void this.start(identity, MAX_CONCURRENT_PASSES);
   }
 
-  /** Schedule the stale places a snapshot read turned up, bounded per read. */
+  /**
+   * Schedule the stale places a snapshot read turned up — **all of them**, drained at the
+   * concurrency cap rather than truncated to it.
+   *
+   * Still synchronous and `void`: this queues and pumps, and the pumping is what the completion
+   * of each pass continues. A cleared cache now drains from one app-open instead of needing one
+   * open per three places.
+   */
   scheduleMany(identities: readonly PlaceIdentity[]): void {
-    for (const identity of identities.slice(0, MAX_PASSES_PER_READ)) this.schedule(identity);
+    if (this.disabled()) return;
+    let dropped = 0;
+    for (const identity of identities) {
+      const key = identity.googlePlaceId;
+      if (!key || this.inFlight.has(key) || this.pending.has(key)) continue;
+      if (this.pending.size >= MAX_PENDING_BACKFILL) {
+        dropped += 1;
+        continue;
+      }
+      this.pending.set(key, identity);
+    }
+    // No silent caps: a backlog this long is worth knowing about, and everything past the bound
+    // is still stale, so the next snapshot read offers it again.
+    if (dropped > 0) {
+      this.logger.warn(`enrichment backlog full: ${dropped} stale places left for a later read`);
+    }
+    this.pump();
   }
+
+  /**
+   * **Fill every free slot from the backlog, and keep filling it as slots free.**
+   *
+   * The one change that makes a cold start finish: called once when a read queues work, and
+   * again from every pass's `finally`, so the three slots stay busy until the backlog is empty
+   * instead of stopping after the first three places. It is not a scheduler and not a clock —
+   * there is nothing to tick, nothing to persist and nothing to shut down; a restart simply
+   * loses a backlog that the next snapshot read rebuilds for free (ADR-0166 §14).
+   */
+  private pump(): void {
+    if (this.disabled()) {
+      this.pending.clear();
+      return;
+    }
+    while (this.pending.size > 0 && this.inFlight.size < MAX_CONCURRENT_PASSES) {
+      const [key, identity] = this.pending.entries().next().value!;
+      this.pending.delete(key);
+      void this.start(identity, MAX_CONCURRENT_PASSES);
+    }
+  }
+
+  /** Stale places waiting for a slot, keyed by `googlePlaceId` so a place queued twice — by two
+   *  members' reads, or by a read and a pick — is queued once. Insertion-ordered, so a backlog
+   *  drains in the order the snapshot listed it. */
+  private readonly pending = new Map<string, PlaceIdentity>();
 
   /**
    * **A pass with somebody waiting on it** (§17) — what a place the trip does not hold yet is
@@ -168,7 +234,12 @@ export class EnrichmentScheduler {
         this.logger.warn(`enrichment pass failed for ${key}: ${(err as Error).message}`);
         return null;
       })
-      .finally(() => this.inFlight.delete(key));
+      .finally(() => {
+        this.inFlight.delete(key);
+        // **The chain.** A freed slot immediately takes the next stale place, which is what
+        // turns "three per app-open" into "the trip drains from one".
+        this.pump();
+      });
     this.inFlight.set(key, pass);
     return pass;
   }
