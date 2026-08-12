@@ -11,6 +11,7 @@
 import {
   CATEGORY_DEFAULT_ICON,
   edgeMeaning,
+  windowBoundOf,
   EVENT_STATUS,
   eventDurationUnit,
   eventTransitionKeys,
@@ -454,12 +455,23 @@ export function buildDayGlance(
   // drops settled events, so that is not a second rule here.
   const remainingEdges = transitions.filter((t) => {
     if (!isAmbient(t.event)) return false;
-    if (edgeMeaning(t.event, t.edge) !== 'not-before') return t.atMs > nowMs;
+    const meaning = edgeMeaning(t.event, t.edge);
     // A floor is still ahead of you until somebody says otherwise. `transitions` is
     // already scoped to `activeDate`, so "or the day ends" needs no condition — but
     // "settled" does: `bookingTransitionsOnDate` drops only SKIPPED, and a check-in you
     // have actually done is the whole reason this branch is settleable at all.
-    return t.event.status !== EVENT_STATUS.DONE;
+    if (meaning === 'not-before') return t.event.status !== EVENT_STATUS.DONE;
+    // **A WINDOW DOES expire, and that is the whole of what closing it buys** (ADR-0184
+    // §6). This is the one branch that had to change here, and it is the one place in
+    // the app that asked `edgeMeaning` for a specific FLEXIBLE value rather than testing
+    // `exact` — so without it a windowed check-in fell into the clock test below against
+    // its FLOOR, and stopped counting at 17:01 while its window ran to 21:00. The end
+    // edge needs nothing: a check-out window's ceiling is the deadline it already had.
+    if (meaning === 'window' && t.edge === 'start') {
+      const shuts = windowBoundOf(t.event, t.edge);
+      return t.event.status !== EVENT_STATUS.DONE && (!shuts || Date.parse(shuts) > nowMs);
+    }
+    return t.atMs > nowMs;
   }).length;
   const remaining = remainingBlocks + remainingEdges;
 

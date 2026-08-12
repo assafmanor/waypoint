@@ -12,6 +12,7 @@ import {
   CATEGORY_TIME_PROFILE,
   defaultKindForBookingType,
   hasSpanSchedule,
+  edgeHoldsPosition,
   edgeMeaning,
   eventDurationUnit,
   eventEndBoundary,
@@ -20,6 +21,7 @@ import {
   isAmbient,
   isBracketed,
   isExactEdge,
+  windowBoundOf,
   isJourney,
   isMultiDay,
   searchVibeIcons,
@@ -543,5 +545,53 @@ describe('BOOKING_TYPE_PROFILE (ADR-0154 §2)', () => {
     // Untouched types still answer from their category — that is the fallback working.
     expect(bookingTypeDurationUnit(BOOKING_TYPE.HOTEL)).toBe('nights');
     expect(bookingTypeDurationUnit(BOOKING_TYPE.RESTAURANT)).toBe('auto');
+  });
+});
+
+describe('an authored window is the meaning (ADR-0184 §1)', () => {
+  const stay = { category: 'lodging' as const, icon: '🏨' };
+
+  it('leaves every edge exactly as it was when nothing is authored', () => {
+    expect(edgeMeaning(stay, 'start')).toBe('not-before');
+    expect(edgeMeaning(stay, 'end')).toBe('not-after');
+    expect(edgeMeaning({ category: 'transport' as const, icon: '✈️' }, 'start')).toBe('exact');
+  });
+
+  it('a window wins over the profile, on the edge that has one and only there', () => {
+    const withWindow = { ...stay, startWindowEnd: '2026-09-15T18:00:00.000Z' };
+    expect(edgeMeaning(withWindow, 'start')).toBe('window');
+    expect(edgeMeaning(withWindow, 'end')).toBe('not-after');
+  });
+
+  it('reaches an ORDINARY event too — the model generalises even though the form does not', () => {
+    const museum = { category: 'sightseeing' as const, icon: '🖼️' };
+    expect(edgeMeaning(museum, 'start')).toBe('exact');
+    expect(edgeMeaning({ ...museum, startWindowEnd: '2026-09-15T18:00:00.000Z' }, 'start')).toBe(
+      'window',
+    );
+  });
+
+  it('a window is still not a MOMENT, so it earns no stop number (ADR-0171 §10b holds)', () => {
+    expect(isExactEdge({ ...stay, startWindowEnd: '2026-09-15T18:00:00.000Z' }, 'start')).toBe(
+      false,
+    );
+  });
+
+  it('holds a position, which a bare floor does not — the width of the window is the test', () => {
+    expect(edgeHoldsPosition(stay, 'start')).toBe(false);
+    expect(edgeHoldsPosition(stay, 'end')).toBe(true);
+    expect(
+      edgeHoldsPosition({ ...stay, startWindowEnd: '2026-09-15T18:00:00.000Z' }, 'start'),
+    ).toBe(true);
+  });
+
+  it('pairs each edge with its own field, which is the thing that inverts silently', () => {
+    const both = {
+      ...stay,
+      startWindowEnd: '2026-09-15T18:00:00.000Z',
+      endWindowStart: '2026-09-18T04:00:00.000Z',
+    };
+    expect(windowBoundOf(both, 'start')).toBe('2026-09-15T18:00:00.000Z');
+    expect(windowBoundOf(both, 'end')).toBe('2026-09-18T04:00:00.000Z');
   });
 });

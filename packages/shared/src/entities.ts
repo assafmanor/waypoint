@@ -111,7 +111,7 @@ export const userSchema = z.object({
   // Relative to the API origin, since the server has no reliable notion of its own
   // public URL (`FRONTEND_URL` is the frontend's, not ours).
   uploadedAvatarUrl: z.string().nullable(),
-  // The member's home currency (ADR-0180 §2), or null when they have never
+  // The member's home currency (ADR-0184 §2), or null when they have never
   // chosen one — the client then seeds a default from the device region rather
   // than the server guessing on their behalf.
   preferredCurrency: currencyCodeSchema.nullable(),
@@ -191,6 +191,16 @@ export const tripEventSchema = z.object({
   kind: eventKindSchema,
   startsAt: z.string().optional(), // UTC instant
   endsAt: z.string().optional(),
+  /** **The other bound of a flexible edge's window** (ADR-0184). A held span's start is
+   *  already a floor and its end a deadline (ADR-0171 §1), i.e. each is a window with
+   *  ONE side open; these close them. `startWindowEnd` is the latest a check-in can
+   *  happen, `endWindowStart` the earliest a check-out can.
+   *
+   *  Instants, like `startsAt`/`endsAt` rather than `HH:MM`, so a reception open until
+   *  01:00 is expressible and the display-zone derivation applies unchanged (ADR-0107).
+   *  Absent on nearly every event, which is the point: the form does not ask. */
+  startWindowEnd: z.string().optional(),
+  endWindowStart: z.string().optional(),
   placeId: z.string().optional(), // authoritative only for unlinked events (ADR-0048)
   /** Manual display-zone override (ADR-0107 §7 / ADR-0110): the only writer is the
    *  time-field zone chip. Null trusts the derived zone (place > segment > trip
@@ -469,7 +479,7 @@ export const tripSnapshotSchema = z.object({
    *  is global and no client writes it, so it carries no `Change` and never appears in the
    *  change feed. Absent-or-empty is the normal state — most places have nothing. */
   enrichments: tripEnrichmentsSchema,
-  /** **The world's exchange rates** (ADR-0180 §7), on the same terms as
+  /** **The world's exchange rates** (ADR-0184 §7), on the same terms as
    *  `enrichments` above: global, server-owned, no `Change`, never client-written.
    *  `null` is the normal cold state — nothing has been fetched yet, or the
    *  fetcher is switched off — and every surface that reads it treats absence as

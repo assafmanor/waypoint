@@ -16,6 +16,7 @@ import {
   connectionWindow,
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
+  edgeMeaning,
   PLACE_SEARCH_KIND,
   EVENT_KIND,
   carriesRoute,
@@ -304,6 +305,8 @@ export function BookingSheet({
         end,
         stopPlaceIds,
         legs,
+        startWindow,
+        endWindow,
         roundTrip,
         returnLegs,
         endTouched,
@@ -415,11 +418,25 @@ export function BookingSheet({
   // stays lodging, so nights/check-in-out/ambient behaviour all follow the type.
   const category = BOOKING_TYPE_TO_CATEGORY[type];
 
+  // **The opt-in window bounds** (ADR-0184). Bare clocks; the day each lands on is its
+  // edge's own and is resolved at save by `windowBoundIso`.
+  const [startWindow, setStartWindow] = useState(draft ? draft.startWindow : initial.startWindow);
+  const [endWindow, setEndWindow] = useState(draft ? draft.endWindow : initial.endWindow);
+
+  /** **Which ends may carry a window: the flexible ones, asked of the profile.**
+   *  `edgeMeaning` on the shape being edited — no `BookingType` branch, so a hotel and a
+   *  car hire both offer it because both are `held`, and a flight never does because its
+   *  ends are instants. A booking with no span has no edge to widen at all. */
+  const windowOffer = (edge: 'start' | 'end') =>
+    isSpan && edgeMeaning({ category, icon: icon.value }, edge) !== 'exact';
+
   // Diffed against the SAME blob the fields were seeded from, so "what did this open with"
   // has exactly one answer. `iconTouched`/`kindTouched` are not state the user typed, so
   // they are not part of dirtiness.
   const dirty =
     type !== initial.type ||
+    startWindow !== initial.startWindow ||
+    endWindow !== initial.endWindow ||
     icon.value !== initial.icon ||
     title.value !== initial.title ||
     code !== initial.code ||
@@ -781,6 +798,8 @@ export function BookingSheet({
                     kind: kind.value,
                     icon: icon.value,
                     category,
+                    startWindow,
+                    endWindow,
                   },
                   startZone,
                   endZone,
@@ -811,6 +830,8 @@ export function BookingSheet({
                   kind: kind.value,
                   icon: icon.value,
                   category,
+                  startWindow,
+                  endWindow,
                 },
                 startZone,
                 endZone,
@@ -1282,6 +1303,16 @@ export function BookingSheet({
                               endOverride,
                               setEndOverride,
                             )
+                          : undefined,
+                      }}
+                      // Only a held edge has an open side to close, and only the one
+                      // leg an edit has — a journey's stops are exact at both ends.
+                      windows={{
+                        start: windowOffer('start')
+                          ? { value: startWindow, onChange: setStartWindow }
+                          : undefined,
+                        end: windowOffer('end')
+                          ? { value: endWindow, onChange: setEndWindow }
                           : undefined,
                       }}
                       marks={{

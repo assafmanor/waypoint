@@ -7,7 +7,14 @@
 // conflict / write paths); a typed derived entry keeps transitions read-only and
 // honours "derive, never store" (ADR-0043/0054/0018). Same-day brackets are
 // unchanged — they stay their single spanning event row (ADR-0064).
-import { edgeMeaning, isJourney, isMultiDay, EVENT_KIND, type TripEvent } from '@waypoint/shared';
+import {
+  edgeHoldsPosition,
+  edgeMeaning,
+  isJourney,
+  isMultiDay,
+  EVENT_KIND,
+  type TripEvent,
+} from '@waypoint/shared';
 import { bookingTransitionsOnDate, type BookingTransition } from './glance';
 import type { TimeGroup, TimeItem } from './time';
 
@@ -134,12 +141,20 @@ export function placeDayEntries(
       placement.positioned.push(entry);
       continue;
     }
-    const meaning = edgeMeaning(entry.event, entry.edge);
-    if (meaning === 'not-before') {
+    // **A floor holds no position; anything else does** (ADR-0171 §10a, extended by
+    // ADR-0184 §4). The test is the width of the window and it lives in one predicate,
+    // because the day's split and the map's numbering must not drift apart on it: a
+    // floor is open on the side you act, and an AUTHORED window is closed on both, so
+    // closing it is what brings the row back into the list.
+    if (!edgeHoldsPosition(entry.event, entry.edge)) {
       park({ event: entry.event, labelKey: entry.labelKey, edge: entry.edge, atMs: entry.atMs });
       continue;
     }
-    if (meaning !== 'not-after') {
+    // The intersect belongs to a CEILING, which is what an end edge has whether it is a
+    // bare deadline or the closed end of a window — you cannot check out after you have
+    // flown either way. A start edge sits at its own instant, and so does an exact end.
+    const meaning = edgeMeaning(entry.event, entry.edge);
+    if (entry.edge !== 'end' || meaning === 'exact') {
       placement.positioned.push(entry);
       continue;
     }

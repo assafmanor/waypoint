@@ -160,6 +160,15 @@
   color: #7fd8cc;
   background: rgba(44, 156, 144, 0.16);
 }
+/* **A shut window** (ADR-0184 §6). The board's own low-alpha-fill-plus-brightened-ink
+   recipe — the same one `.tlabel`, `.code` and `.wp-board-countdown` already use on this
+   always-dark surface — in `--miss` rather than amber. No new hue: rule 4 already spends
+   `--miss` on exactly this, and until now a lodging edge had no way to fail. */
+.wp-board-next-meta .tlabel.missed {
+  color: #f0a0a0;
+  background: rgba(198, 40, 40, 0.18);
+}
+
 .wp-board-now-meta .tlabel.emph {
   box-shadow: 0 0 0 1px rgba(44, 156, 144, 0.5);
 }

@@ -18,6 +18,7 @@ import {
   hasSpanSchedule,
 } from '@waypoint/shared';
 import { zonedIso, resolveEndIso, isoToTimeInput, todayInTz } from './time';
+import { MS_PER_DAY } from '../constants';
 
 /** Editable free-form detail fields the sheet exposes (the rest of the booking's
  *  `details` blob is preserved untouched). */
@@ -167,6 +168,39 @@ export function isoToDateTimeLocal(iso: string, timeZone: string): string {
   return `${todayInTz(timeZone, new Date(iso))}T${isoToTimeInput(iso, timeZone)}`;
 }
 
+/** **A window bound is a wall-clock on its edge's own day, and it may be tomorrow**
+ *  (ADR-0184 §3). The form collects `HH:MM` because that is the only part a person
+ *  knows — the day is the edge's — but a reception open `17:00–01:00` closes on the
+ *  NEXT day, and a check-out window `07:00–11:00` opens on the same one.
+ *
+ *  So the roll is decided by direction rather than by a flag: a `start` window closes
+ *  after its floor, an `end` window opens before its deadline, and whichever of those
+ *  the bare clock contradicts is the day that moves. Returns undefined for no time,
+ *  which is how removing a window reaches the server as a clear.
+ *
+ *  Exported for its own test: the midnight case is exactly the sort of thing that
+ *  reads correct and is off by a day. */
+export function windowBoundIso(
+  edgeLocal: string,
+  time: string,
+  edge: 'start' | 'end',
+  timeZone: string,
+): string | undefined {
+  const parts = splitLocal(edgeLocal);
+  if (!parts || !time) return undefined;
+  // `start`: the ceiling is later than the floor, so a smaller clock is tomorrow.
+  // `end`: the floor is earlier than the deadline, so a larger clock is yesterday.
+  const rolls = edge === 'start' ? time <= parts.time : time >= parts.time;
+  const day = rolls ? shiftDay(parts.date, edge === 'start' ? 1 : -1) : parts.date;
+  return zonedIso(day, time, timeZone);
+}
+
+/** A YYYY-MM-DD shifted by whole days, UTC-anchored so DST never eats one. */
+function shiftDay(date: string, days: number): string {
+  const t = Date.parse(`${date}T00:00:00Z`) + days * MS_PER_DAY;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
 /** Linked-event seed for a two-endpoint booking (ADR-0047 §1): flight/train
  *  departure→arrival, or a hotel check-in→check-out. Each endpoint is a full
  *  datetime in the trip timezone; the event spans calendar days via `endDate`
@@ -179,6 +213,9 @@ export function buildSpanSeed(
     kind: EventKind;
     icon?: string;
     category?: EventCategory;
+    /** The two optional window bounds, as bare `HH:MM` from the form. */
+    startWindow?: string;
+    endWindow?: string;
   },
   timeZone: string,
   // The end leg's zone (ADR-0107): a zone-crossing flight's arrival is entered in
@@ -197,6 +234,12 @@ export function buildSpanSeed(
     startsAt,
     endsAt,
     endDate,
+    // Null rather than undefined: the seed is rebuilt whole on every save, so a window
+    // the user removed has to reach the server as a CLEAR (bookings.service mirrors
+    // `endDate`'s rule here).
+    startWindowEnd:
+      windowBoundIso(input.startAt, input.startWindow ?? '', 'start', timeZone) ?? null,
+    endWindowStart: windowBoundIso(input.endAt, input.endWindow ?? '', 'end', endTimeZone) ?? null,
     kind: input.kind,
     icon: input.icon,
     category: input.category,
@@ -218,8 +261,14 @@ export function eventFromBookingSeed(
 ): TripEvent {
   // The booking→event mapping is shared with the server (bookingEventFields), so
   // the two can't diverge; this only adds the client-side event shape around it.
+  const fields = bookingEventFields(booking, seed);
   return {
-    ...bookingEventFields(booking, seed),
+    ...fields,
+    // `null` is the WIRE's way of saying "clear this" (bookings.service reads it that
+    // way); a rendered event just doesn't have one. Normalised here rather than in the
+    // shared builder, because the server genuinely needs to tell the two apart.
+    startWindowEnd: fields.startWindowEnd ?? undefined,
+    endWindowStart: fields.endWindowStart ?? undefined,
     id: seed.id,
     tripId: booking.tripId,
     placeId: undefined,

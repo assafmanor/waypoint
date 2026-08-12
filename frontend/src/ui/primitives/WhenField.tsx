@@ -73,6 +73,18 @@ type SpanProps = {
   minDate?: string;
   maxDate?: string;
   labels: { start: string; end: string };
+  /** **The opt-in second bound of a flexible edge** (ADR-0184 §2). Absent → the leg is
+   *  exactly what it was, which is every leg the app has ever drawn; present → the leg
+   *  offers one extra `ValueToken`, dashed and empty until somebody taps it.
+   *
+   *  Offered per END rather than per form, because only a HELD edge has an open side to
+   *  close — the caller asks `edgeMeaning`, so a flight's legs never see it and nothing
+   *  here knows what a hotel is. Value is a bare `HH:MM`; the day it lands on is the
+   *  edge's own and is resolved by `windowBoundIso` at save. */
+  windows?: {
+    start?: { value: string; onChange: (hhmm: string) => void };
+    end?: { value: string; onChange: (hhmm: string) => void };
+  };
   /** Fallback day for the start leg when only a time is picked first. */
   defaultDate?: string;
   timeZone: string;
@@ -157,6 +169,7 @@ function WhenSpan({
   durationUnit,
   zones,
   marks,
+  windows,
 }: SpanProps) {
   const setStart = (v: string) => onChange({ start: v, end });
   const setEnd = (v: string) => onChange({ start, end: v });
@@ -195,6 +208,8 @@ function WhenSpan({
           minDate={minDate}
           maxDate={maxDate}
           defaultDate={defaultDate}
+          window={windows?.start}
+          edge="start"
         />
       </Field>
       {zones?.start && <ZoneChip {...zones.start} />}
@@ -213,6 +228,8 @@ function WhenSpan({
           defaultDate={startDay || defaultDate}
           minTime={endFloor}
           badge={crossesDays ? `+${daysApart}` : undefined}
+          window={windows?.end}
+          edge="end"
         />
       </Field>
       {zones?.end && <ZoneChip {...zones.end} />}
@@ -249,6 +266,8 @@ function SpanLeg({
   defaultDate,
   minTime,
   badge,
+  window,
+  edge,
 }: {
   label: string;
   value: string;
@@ -259,6 +278,9 @@ function SpanLeg({
   /** Passed straight through to the `TimeField` that owns the rule (field report #4). */
   minTime?: string;
   badge?: string;
+  /** The optional second bound (ADR-0184). See `SpanProps.windows`. */
+  window?: { value: string; onChange: (hhmm: string) => void };
+  edge?: 'start' | 'end';
 }) {
   const [date, setDate] = useState(() => dayOf(value));
   const [time, setTime] = useState(() => timeOf(value));
@@ -312,6 +334,10 @@ function SpanLeg({
           value={date}
           onChange={(next) => commit(next, time)}
         />
+        {/* **The line reads as prose, and the window is one more word in it** (ADR-0177's
+            grammar, ADR-0184 §2): `מ־ 17:00 עד 21:00`. `מ־` appears only once a window
+            does — with one time there is nothing to be "from". */}
+        {window?.value && <span className="wf-word">{t.whenField.rangeFrom}</span>}
         <TimeField
           value={time}
           onChange={(hhmm) => commit(date || defaultDate || '', hhmm)}
@@ -320,6 +346,28 @@ function SpanLeg({
           placeholder={t.whenField.addTime}
           minTime={minTime}
         />
+        {/* **The opt-in bound is just another `TimeField`** — which already draws itself as
+            a dashed, muted token while empty (`ValueToken`'s `empty`), already opens a
+            panel, and already offers removal in that panel's footer via `onClear`. So the
+            affordance costs one token when untouched and no new mechanism at all.
+
+            The impossible bound is PREVENTED rather than refused (ADR-0150 §8): a start
+            window closes after its floor, an end window opens before its deadline, and the
+            picker simply does not offer the other slots. */}
+        {window && (
+          <>
+            {window.value && <span className="wf-word">{t.whenField.rangeTo}</span>}
+            <TimeField
+              value={window.value}
+              onChange={window.onChange}
+              onClear={() => window.onChange('')}
+              label={t.whenField.windowCap}
+              placeholder={t.whenField.addWindow}
+              minTime={edge === 'start' ? time || undefined : undefined}
+              maxTime={edge === 'end' ? time || undefined : undefined}
+            />
+          </>
+        )}
       </div>
     </div>
   );

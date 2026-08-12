@@ -8,9 +8,10 @@
 // but only when a caller supplies `onNavigate` (Trip mode, live day, and the
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
-import { CATEGORY_DEFAULT_ICON, edgeMeaning, type Booking } from '@waypoint/shared';
+import { CATEGORY_DEFAULT_ICON, edgeMeaning, windowBoundOf, type Booking } from '@waypoint/shared';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
 import { formatTime } from '../lib/time';
+import { ltrIsolate } from '../lib/bidi';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
 import { PlaceBadge } from './domain/PlaceBadge';
@@ -76,6 +77,24 @@ export function TransitionRow({
   const icon =
     chosenIcon(event.icon) ??
     (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : DEFAULT_EVENT_ICON);
+  // **The window, if this edge has one** (ADR-0184 §5). Both bounds render in this
+  // edge's own zone, like the single clock does.
+  //
+  // `ltrIsolate` is not optional and not decoration: a range is a run of digits with a
+  // separator and NO strong character, so it takes its direction from whatever contains
+  // it. It survives here today because `.tr-time` carries `dir="auto"` (which falls back
+  // to ltr with no strong character) — and it would flip the moment a Hebrew word joined
+  // it in this box, which is exactly what happens one component over in
+  // `UnplacedCommitment`. Isolating the RUN is the rule that holds in both (ADR-0118).
+  const windowBound = windowBoundOf(event, edge);
+  const range = windowBound
+    ? ltrIsolate(
+        `${formatTime(new Date(Math.min(atMs, Date.parse(windowBound))), zone ?? tz)}–${formatTime(
+          new Date(Math.max(atMs, Date.parse(windowBound))),
+          zone ?? tz,
+        )}`,
+      )
+    : null;
   return (
     <div className="transition-row">
       <button
@@ -92,20 +111,36 @@ export function TransitionRow({
           <span className="tr-title">
             <TitleLabel title={title} />
           </span>
+          {/* **A RANGE GOES UNDER THE TITLE; A BARE TIME DOES NOT** (ADR-0184 §5, owner's
+              call on the mockup). `.tr-time` is `flex: 0 0 auto` + `nowrap` at the row's
+              trailing edge, and `.tr-title` is the only thing here that ellipsises — so a
+              range, being about twice a clock's width, took 45px of 210 off a long hotel
+              name at 360px. Under the title it gets the full width and the row pays 20px
+              of height, charged ONLY to a row that has a window. This is `EventCard`'s own
+              answer (`'badge title' / 'badge when'`), reused rather than re-decided. */}
+          {range && (
+            <span className="tr-time wnd-under" dir="auto">
+              {range}
+            </span>
+          )}
         </span>
-        <span className="tr-time" dir="auto">
-          {/* **A ceiling says so** (ADR-0171 §3). A check-out reads `עד 11:00`, because
+        {!range && (
+          <span className="tr-time" dir="auto">
+            {/* **A ceiling says so** (ADR-0171 §3). A check-out reads `עד 11:00`, because
               11:00 is a deadline rather than the moment it happens — and the row may
               have been pinned earlier than 11:00 by a flight leaving before it (§10b),
               which makes an unmarked clock actively wrong. `exact` stays unmarked: it
               is the default, and marking it would put a word on nearly every row in
               the app to say "normal". A floor never reaches this row at all — it holds
               no position, so it renders in the strip above the list. */}
-          {edgeMeaning(event, edge) === 'not-after'
-            ? t.day.untilTime(formatTime(new Date(atMs), zone ?? tz))
-            : formatTime(new Date(atMs), zone ?? tz)}
-          {deltaMinutes != null && <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />}
-        </span>
+            {edgeMeaning(event, edge) === 'not-after'
+              ? t.day.untilTime(formatTime(new Date(atMs), zone ?? tz))
+              : formatTime(new Date(atMs), zone ?? tz)}
+            {deltaMinutes != null && (
+              <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />
+            )}
+          </span>
+        )}
       </button>
       {edge === 'start' && onNavigate && (
         <button className="tr-nav" onClick={onNavigate}>

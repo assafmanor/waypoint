@@ -1351,6 +1351,9 @@ export const t = {
     freeTitle: 'זמן חופשי',
     until: 'עד',
     nextLabel: 'הבא בתור',
+    // The countdown's unit while a window is shutting (ADR-0184 §6) — the number is the
+    // minutes left, so this says what they are left OF.
+    closesIn: 'לסגירה',
     endOfDay: 'סוף היום',
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.
@@ -2100,6 +2103,11 @@ export const t = {
     // words inside it. A word in a wrapping line cannot be clipped by an edge.
     rangeFrom: 'מ־',
     rangeTo: 'עד',
+    // The opt-in second bound (ADR-0184). The placeholder carries the word so the empty
+    // token says what it would add — `＋ עד` reads as an invitation where a bare `＋`
+    // reads as a mystery. `windowCap` is the hidden caption a screen reader hears.
+    addWindow: '＋ עד',
+    windowCap: 'סוף החלון',
   },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {

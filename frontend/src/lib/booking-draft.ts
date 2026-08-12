@@ -78,6 +78,10 @@ export interface BookingSheetDraft {
    *  spellings of "when does leg N happen" is exactly the drift this file exists to
    *  prevent. */
   legs: LegTimes[];
+  /** The opt-in window bounds, `HH:MM` in each edge's zone; '' when there is none
+   *  (ADR-0184). Only a held edge ever offers them, which the sheet decides. */
+  startWindow: string;
+  endWindow: string;
   /** The round trip (ADR-0154 §4) and its own legs, which mirror the outbound sequence
    *  in reverse. Form state, not `Booking` state — the save turns them into more
    *  bookings — but they travel on the draft for the same reason everything else does:
@@ -249,6 +253,15 @@ export function bookingSheetDraft(input: {
     // unspent and leaves the question open. Editing never offers the control at all.
     roundTrip: undefined,
     returnLegs: [],
+    // The two optional window bounds (ADR-0184), as bare clocks in each edge's own
+    // zone — the same read as `start`/`end` above, so a stay opened for editing shows
+    // the window it was saved with and an empty pair simply offers.
+    startWindow: linkedEvent?.startWindowEnd
+      ? isoToTimeInput(linkedEvent.startWindowEnd, startZone)
+      : '',
+    endWindow: linkedEvent?.endWindowStart
+      ? isoToTimeInput(linkedEvent.endWindowStart, endZone)
+      : '',
     // A saved end is an answer; a form with none is still offering (field report #11).
     endTouched: !!linkedEvent?.endsAt,
     kind: linkedEvent?.kind ?? defaultKindForBookingType(type),

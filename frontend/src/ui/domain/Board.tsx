@@ -117,6 +117,10 @@ export interface BoardNext {
   code?: string;
   /** That zone vs where you are now → the pill beside the time. */
   shift?: ZoneShift;
+  /** **This edge's window shut and nobody answered** (ADR-0184 §6). The transition word
+   *  wears `--miss` instead of amber — the app's existing failure hue, spent on the first
+   *  lodging edge that can actually fail. No new word and no new row shape. */
+  missed?: boolean;
 }
 
 export interface BoardProps {
@@ -432,7 +436,9 @@ export function Board(props: BoardProps) {
               {next && (
                 <div className="wp-board-next-meta">
                   {next.labelKey && (
-                    <span className="tlabel">{transitionLabel(next.labelKey)}</span>
+                    <span className={next.missed ? 'tlabel missed' : 'tlabel'}>
+                      {transitionLabel(next.labelKey)}
+                    </span>
                   )}
                   {next.time && <span dir="auto">{next.time}</span>}
                   {next.shift != null && <ZoneShiftPill minutes={next.shift} className="on-dark" />}

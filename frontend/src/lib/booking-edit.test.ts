@@ -140,7 +140,61 @@ describe('buildSpanSeed', () => {
       kind: 'hard',
       icon: '✈️',
       category: undefined,
+      // **`null`, not absent** (ADR-0184): the seed is rebuilt whole on every save, so a
+      // window that is gone has to reach the server as a CLEAR. A flight has none to
+      // begin with and still says so, which is what makes removal expressible at all.
+      startWindowEnd: null,
+      endWindowStart: null,
     });
+  });
+
+  it('carries a check-in window as an instant on the edge’s own day', () => {
+    const seed = buildSpanSeed(
+      {
+        startAt: '2026-07-15T17:00',
+        endAt: '2026-07-20T11:00',
+        kind: 'hard',
+        startWindow: '21:00',
+      },
+      TZ,
+    );
+    // 17:00 and 21:00 the same evening, both +09:00.
+    expect(seed?.startsAt).toBe('2026-07-15T08:00:00.000Z');
+    expect(seed?.startWindowEnd).toBe('2026-07-15T12:00:00.000Z');
+    expect(seed?.endWindowStart).toBeNull();
+  });
+
+  it('rolls a check-in window that shuts after midnight onto the next day', () => {
+    const seed = buildSpanSeed(
+      {
+        startAt: '2026-07-15T22:00',
+        endAt: '2026-07-20T11:00',
+        kind: 'hard',
+        startWindow: '01:00',
+      },
+      TZ,
+    );
+    // Reception open 22:00–01:00: the ceiling is the 16th, not the 15th. Off by a day
+    // here reads perfectly correct and is wrong by 24 hours, which is why it has a test.
+    expect(seed?.startWindowEnd).toBe('2026-07-15T16:00:00.000Z'); // 01:00 on the 16th +09:00
+  });
+
+  it('opens a check-out window BEFORE its deadline, on the same morning', () => {
+    const seed = buildSpanSeed(
+      { startAt: '2026-07-15T15:00', endAt: '2026-07-20T11:00', kind: 'hard', endWindow: '07:00' },
+      TZ,
+    );
+    // 07:00 the same morning as the 11:00 deadline — an end window opens earlier, so it
+    // must NOT roll forward the way a start window does.
+    expect(seed?.endWindowStart).toBe('2026-07-19T22:00:00.000Z'); // 07:00 on the 20th +09:00
+  });
+
+  it('emits null for a window that was removed, so the save clears it', () => {
+    const seed = buildSpanSeed(
+      { startAt: '2026-07-15T15:00', endAt: '2026-07-20T11:00', kind: 'hard', startWindow: '' },
+      TZ,
+    );
+    expect(seed?.startWindowEnd).toBeNull();
   });
 
   it('spans multiple days for a hotel check-in → check-out', () => {

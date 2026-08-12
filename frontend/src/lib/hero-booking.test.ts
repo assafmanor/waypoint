@@ -248,3 +248,64 @@ describe('deriveHeroBooking — misc', () => {
     expect(r.event?.id).toBe('flight');
   });
 });
+
+describe('a check-in window on the hero (ADR-0184 §6)', () => {
+  const windowed = (extra: Partial<TripEvent> = {}) =>
+    ev({
+      id: 'stay',
+      category: 'lodging',
+      date: DATE,
+      endDate: '2026-07-10',
+      startsAt: at('17:00'),
+      endsAt: at('11:00', '2026-07-10'),
+      startWindowEnd: at('21:00'),
+      ...extra,
+    });
+
+  it('holds the hero for the WHOLE window, where the grace would have dropped it', () => {
+    // 19:30 is floor + 150min: past CHECKIN_GRACE_MIN, still inside the window.
+    expect(CHECKIN_GRACE_MIN).toBeLessThan(150);
+    const hero = deriveHeroBooking([windowed()], ms('19:30'), DATE);
+    expect(hero.kind).toBe('transition-checkin');
+    expect(hero.closesAt).toBe(at('21:00'));
+    expect(hero.missed).toBeUndefined();
+  });
+
+  it('marks the last hour as closing, and NOT before the window opens', () => {
+    expect(deriveHeroBooking([windowed()], ms('20:30'), DATE).closing).toBe(true);
+    // 16:00 is before the floor: there is nothing to hurry yet.
+    expect(deriveHeroBooking([windowed()], ms('16:00'), DATE).closing).toBe(false);
+  });
+
+  it('a closing window outranks a departure three hours out', () => {
+    const flight = ev({
+      id: 'flight',
+      category: 'transport',
+      icon: '✈️',
+      startsAt: at('22:00'),
+      endsAt: at('23:30'),
+    });
+    const hero = deriveHeroBooking([windowed(), flight], ms('20:30'), DATE);
+    expect(hero.event?.id).toBe('stay');
+    expect(hero.kind).toBe('transition-checkin');
+  });
+
+  it('says the window was MISSED once it shuts — the state the app could not express', () => {
+    const hero = deriveHeroBooking([windowed()], ms('21:30'), DATE);
+    expect(hero.kind).toBe('transition-checkin');
+    expect(hero.missed).toBe(true);
+  });
+
+  it('a check-in you actually did is done, not missed', () => {
+    const hero = deriveHeroBooking([windowed({ status: EVENT_STATUS.DONE })], ms('21:30'), DATE);
+    expect(hero.kind).toBe('none');
+  });
+
+  it('leaves a windowless check-in on the grace exactly as it was', () => {
+    const plain = windowed({ startWindowEnd: undefined });
+    expect(deriveHeroBooking([plain], ms('18:30'), DATE).kind).toBe('transition-checkin');
+    // floor + 120min + a minute: gone, and no miss — a bare floor cannot fail.
+    const after = deriveHeroBooking([plain], ms('17:00') + (CHECKIN_GRACE_MIN + 1) * MIN, DATE);
+    expect(after.kind).toBe('none');
+  });
+});

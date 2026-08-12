@@ -386,8 +386,11 @@ export const isJourney = (event: Pick<TripEvent, 'category' | 'icon'>): boolean 
  *
  *  - `exact` — the instant IS the commitment. A flight departs, a table is booked.
  *  - `not-before` — the earliest it can be. A room from 15:00, a hire counter at 10:00.
- *  - `not-after` — a deadline. Out by 11:00, the car back by 18:00. */
-export type TimeMeaning = 'exact' | 'not-before' | 'not-after';
+ *  - `not-after` — a deadline. Out by 11:00, the car back by 18:00.
+ *  - `window` — BOTH bounds are known and neither is the moment. Check-in 17:00–21:00.
+ *    Added by ADR-0184, and it is the closed form of the two flexible values above
+ *    rather than a fourth kind of thing. */
+export type TimeMeaning = 'exact' | 'not-before' | 'not-after' | 'window';
 
 /** **What one END of this event's time means**, resolved from the profile that already
  *  answers it under another name: `midSpan.kind` (ADR-0171 §2).
@@ -403,24 +406,53 @@ export type TimeMeaning = 'exact' | 'not-before' | 'not-after';
  *  nobody having thought about cars. Anything with no `midSpan` is an ordinary point,
  *  which is `exact` at both ends and is most of the app.
  *
- *  **The seam if a mode ever disagrees** (a hotel that really does hold check-in to the
- *  minute): it states an explicit `edges` in its `ICON_TIME_PROFILE` row and this reads
- *  that first. Not added before something needs it. */
+ *  **The seam ADR-0171 §2 named is now taken, by data rather than by a field** (ADR-0184):
+ *  an AUTHORED window on the event wins over the profile's answer. Nobody is asked to
+ *  classify anything — a second number was typed, and having one IS being bounded — so
+ *  this is not the per-event authoring question §8 there refused. An explicit `edges` on
+ *  `ICON_TIME_PROFILE` is still the seam for a MODE that disagrees, and still unbuilt. */
 export const edgeMeaning = (
-  event: Pick<TripEvent, 'category' | 'icon'>,
+  event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
   edge: 'start' | 'end',
 ): TimeMeaning => {
+  if (windowBoundOf(event, edge) != null) return 'window';
   if (timeProfileFor(event).midSpan?.kind !== 'held') return 'exact';
   return edge === 'start' ? 'not-before' : 'not-after';
 };
 
+/** The authored other-bound of this edge's window, if there is one. One accessor rather
+ *  than `edge === 'start' ? … : …` at six call sites — the pairing of edge to field is
+ *  the kind of thing that reads fine and inverts silently. */
+export const windowBoundOf = (
+  event: Pick<TripEvent, 'startWindowEnd' | 'endWindowStart'>,
+  edge: 'start' | 'end',
+): string | undefined =>
+  (edge === 'start' ? event.startWindowEnd : event.endWindowStart) ?? undefined;
+
 /** Does this end name a moment the app actually KNOWS? The one predicate the day's
  *  ordering and the map's numbering both ask (ADR-0171 §10a/§10b) — and they must ask
- *  the same one, or a row can hold a position its pin refuses to number. */
+ *  the same one, or a row can hold a position its pin refuses to number.
+ *
+ *  **A window is not a moment** (ADR-0184 §4), so it stays false here: the row regains a
+ *  list POSITION because it is placeable, and still earns no stop number, which is
+ *  ADR-0171 §10b's Iceland rule holding rather than being re-litigated. */
 export const isExactEdge = (
-  event: Pick<TripEvent, 'category' | 'icon'>,
+  event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
   edge: 'start' | 'end',
 ): boolean => edgeMeaning(event, edge) === 'exact';
+
+/** **Does this edge hold a position in its day?** The test is ADR-0171 §10a's own — the
+ *  width of the window — and it is a predicate rather than an inlined comparison because
+ *  the day's split and the day's count must not drift apart on it.
+ *
+ *  A floor is open on the side you act (any time after 15:00, so the app would have to
+ *  guess which) and holds none. A deadline is closed on the side you act and holds one.
+ *  A `window` is closed on both, so it holds one too — which is the whole behavioural
+ *  consequence of authoring it. */
+export const edgeHoldsPosition = (
+  event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
+  edge: 'start' | 'end',
+): boolean => edgeMeaning(event, edge) !== 'not-before';
 
 /** The unit an event's duration reads in — its category's, unless its glyph names a
  *  different one (ADR-0063 extension, ADR-0162's refinement). A null/unset category

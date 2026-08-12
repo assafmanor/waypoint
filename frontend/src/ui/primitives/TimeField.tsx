@@ -55,6 +55,7 @@ export function TimeField({
   onOpenChange,
   onClear,
   minTime,
+  maxTime,
   triggerClassName,
 }: {
   value: string; // HH:MM or ''
@@ -73,6 +74,11 @@ export function TimeField({
    *  refusal worth making if the slot was never offered. A later day passes nothing, which
    *  is what keeps an overnight flight and a multi-day stay offering the full 24 hours. */
   minTime?: string;
+  /** **The latest time this field may name**, `HH:MM`, EXCLUSIVE — `minTime`'s mirror,
+   *  added for the check-out window (ADR-0184 §2), whose FLOOR must fall before the
+   *  deadline beside it. Same posture as its twin: the impossible slot is never offered,
+   *  so no refusal has to explain it afterwards. */
+  maxTime?: string;
   triggerClassName?: string;
 }) {
   const [openState, setOpenState] = useState(false);
@@ -80,10 +86,15 @@ export function TimeField({
   const setOpen = (o: boolean) => (onOpenChange ? onOpenChange(o) : setOpenState(o));
 
   const floor = minTime ? toMin(minTime) : null;
-  const times = floor == null ? ALL_TIMES : ALL_TIMES.filter((m) => m > floor);
-  // The native input's `min` is inclusive, so the floor's own minute is the first legal
-  // one — clamped away entirely at 23:59, where there is no later minute to name.
+  const ceiling = maxTime ? toMin(maxTime) : null;
+  const times = ALL_TIMES.filter(
+    (m) => (floor == null || m > floor) && (ceiling == null || m < ceiling),
+  );
+  // The native input's `min`/`max` are inclusive, so each bound's neighbouring minute is
+  // the first legal one — clamped away entirely at the ends of the day, where there is no
+  // later (or earlier) minute to name.
   const exactMin = floor != null && floor + 1 < MINUTES_PER_DAY ? toHHMM(floor + 1) : undefined;
+  const exactMax = ceiling != null && ceiling > 0 ? toHHMM(ceiling - 1) : undefined;
 
   const min = value ? toMin(value) : null;
   const suggest = min != null && min % STEP !== 0 ? nearestRoundSlot(min) : null;
@@ -129,6 +140,7 @@ export function TimeField({
               type="time"
               step={60}
               min={exactMin}
+              max={exactMax}
               lang="he"
               dir="ltr"
               className="tp-time-input"

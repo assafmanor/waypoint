@@ -94,3 +94,81 @@ describe('a transition row names the end it is about', () => {
     expect(row('end', 'ארוחת ערב אצל יוקי')).toContain('ארוחת ערב אצל יוקי');
   });
 });
+
+// **A WINDOW READS AS A RANGE, UNDER THE TITLE** (ADR-0184 §5). The placement is the
+// owner's call off the mockup, where a range at the row's trailing edge measured 45px of
+// 210 off a long hotel name — `.tr-time` is `flex: 0 0 auto` + `nowrap` and `.tr-title`
+// is the only thing in this row that ellipsises.
+describe('a check-in with a window', () => {
+  const stay: TripEvent = {
+    ...base,
+    id: 'ev-stay',
+    bookingId: 'ht',
+    date: '2026-09-15',
+    title: 'מלון סנטרל',
+    category: 'lodging',
+    icon: '🏨',
+    kind: EVENT_KIND.HARD,
+    status: EVENT_STATUS.PLANNED,
+    source: EVENT_SOURCE.MANUAL,
+    sortOrder: 0,
+    startsAt: '2026-09-15T14:00:00Z', // 17:00 Asia/Jerusalem
+    endsAt: '2026-09-18T08:00:00Z',
+    endDate: '2026-09-18',
+    startWindowEnd: '2026-09-15T18:00:00Z', // 21:00 Asia/Jerusalem
+  } as TripEvent;
+  const hotel: Booking = {
+    ...base,
+    id: 'ht',
+    type: BOOKING_TYPE.HOTEL,
+    title: 'מלון סנטרל',
+    source: BOOKING_SOURCE.MANUAL,
+  } as Booking;
+
+  const renderStay = (event: TripEvent) => {
+    const entry: TransitionEntry = {
+      kind: 'transition',
+      event,
+      edge: 'start',
+      atMs: Date.parse(event.startsAt!),
+      labelKey: 'checkIn',
+    };
+    render(<TransitionRow entry={entry} tz="Asia/Jerusalem" bookings={[hotel]} onOpen={vi.fn()} />);
+  };
+
+  it('reads both bounds as one range, in the edge’s own zone', () => {
+    renderStay(stay);
+    expect(document.querySelector('.tr-time')!.textContent).toContain('17:00');
+    expect(document.querySelector('.tr-time')!.textContent).toContain('21:00');
+  });
+
+  it('puts the range UNDER the title, and leaves nothing at the trailing edge', () => {
+    renderStay(stay);
+    // One time element, and it lives inside `.tr-main` beside the title.
+    expect(document.querySelectorAll('.tr-time')).toHaveLength(1);
+    expect(document.querySelector('.tr-main .tr-time.wnd-under')).not.toBeNull();
+  });
+
+  // The trap the mockup caught by rendering: a range is a run of digits with no strong
+  // character, so it takes its direction from whatever contains it. Isolating the RUN is
+  // what holds wherever it is put (ADR-0118) — and it is invisible in a screenshot.
+  it('isolates the numeric run, so the range cannot render reversed', () => {
+    renderStay(stay);
+    const text = document.querySelector('.tr-time')!.textContent!;
+    expect(text.startsWith('⁦')).toBe(true);
+    expect(text.endsWith('⁩')).toBe(true);
+  });
+
+  it('a bare check-out keeps the trailing edge it has always had', () => {
+    const entry: TransitionEntry = {
+      kind: 'transition',
+      event: { ...stay, startWindowEnd: undefined },
+      edge: 'end',
+      atMs: Date.parse(stay.endsAt!),
+      labelKey: 'checkOut',
+    };
+    render(<TransitionRow entry={entry} tz="Asia/Jerusalem" bookings={[hotel]} onOpen={vi.fn()} />);
+    expect(document.querySelector('.tr-time.wnd-under')).toBeNull();
+    expect(document.querySelector('.tr-main .tr-time')).toBeNull();
+  });
+});

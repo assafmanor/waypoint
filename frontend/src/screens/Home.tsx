@@ -13,9 +13,11 @@ import {
   isAmbient,
   isBracketed,
   isJourney,
+  windowBoundOf,
   type DocumentSummary,
   type TripEvent,
 } from '@waypoint/shared';
+import { ltrIsolate } from '../lib/bidi';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
@@ -404,11 +406,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
           MS_PER_DAY,
       )
     : 0;
-  const countdown = !nextInstant
-    ? null
-    : minsToNext >= MINUTES_PER_DAY
-      ? countdownParts(nextDayDelta)
-      : formatCountdown(minsToNext);
+  // **Inside a window, the thing worth counting is the SHUTTING** (ADR-0184 §6): the
+  // floor has passed, so a countdown to it would be negative and meaningless, while the
+  // ceiling is the moment you can no longer check in at all.
+  const closingMins = hero.closing && hero.closesAt ? minutesUntil(hero.closesAt, now) : null;
+  const countdown =
+    closingMins != null
+      ? { ...formatCountdown(closingMins), unit: t.board.closesIn }
+      : !nextInstant
+        ? null
+        : minsToNext >= MINUTES_PER_DAY
+          ? countdownParts(nextDayDelta)
+          : formatCountdown(minsToNext);
 
   const nowZones = zonesOf(nowEvent);
   // The NEXT slot's instant is a start for an ordinary event but an **end** for a
@@ -416,6 +425,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const nextZones = zonesOf(shownNext);
   const nextZone =
     nextInstant && nextInstant === shownNext?.endsAt ? nextZones?.endZone : nextZones?.startZone;
+
+  /** **The window on the NEXT slot, when the row showing there has one** (ADR-0184 §6).
+   *  Same isolate rule as the day row: a range is a run of digits with no strong
+   *  character, so the RUN is isolated rather than the box it sits in (ADR-0118). */
+  const nextWindowBound =
+    shownNext && shownNext === hero.event ? windowBoundOf(shownNext, 'start') : undefined;
+  const nextRange =
+    nextWindowBound && nextInstant
+      ? ltrIsolate(
+          `${formatTime(nextInstant, nextZone ?? tz)}–${formatTime(nextWindowBound, nextZone ?? tz)}`,
+        )
+      : undefined;
 
   const wifi = hotelWifi(bookings, events, nowMs);
   // Quick-access derived tiles (ADR-0050): the next confirmation code you'll need
@@ -571,7 +592,9 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         title: <EventTitle event={shownNext} bookings={bookings} places={places} />,
         icon: shownNext.icon,
         labelKey: nextLabelKey,
-        time: nextInstant ? formatTime(nextInstant, nextZone ?? tz) : undefined,
+        // A window reads as its range; everything else is the one clock it always was.
+        time: nextRange ?? (nextInstant ? formatTime(nextInstant, nextZone ?? tz) : undefined),
+        missed: hero.missed && shownNext === hero.event,
         hard: shownNext.kind === EVENT_KIND.HARD,
         code: nextCode,
         // For a zone-crossing flight this is the jump the flight itself makes

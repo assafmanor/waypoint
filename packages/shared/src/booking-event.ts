@@ -23,6 +23,12 @@ export interface BookingEventFields {
   endDate?: string;
   startsAt?: string;
   endsAt?: string;
+  /** The other bound of a flexible edge's window (ADR-0184). Passes through from the
+   *  seed like the rest of the schedule, so the client mirror and the server agree —
+   *  and `null` is meaningful here: the seed is rebuilt whole on every save, so an
+   *  absent window means the user removed it, exactly as `endDate` already works. */
+  startWindowEnd?: string | null;
+  endWindowStart?: string | null;
   bookingId: string;
 }
 
@@ -39,6 +45,8 @@ export function bookingEventFields(
     endDate: seed.endDate,
     startsAt: seed.startsAt,
     endsAt: seed.endsAt,
+    startWindowEnd: seed.startWindowEnd ?? null,
+    endWindowStart: seed.endWindowStart ?? null,
     bookingId: booking.id,
   };
 }
