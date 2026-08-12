@@ -43,6 +43,30 @@ This is the design. The collapsed type row already sits at the top of every step
 
 That preserves what ADR-0152 §6b bought. **The row states; it does not ask.** A note written on a host still needs no answer from anyone.
 
+**Call 3 — and what does hotel → restaurant even mean?**
+
+> "So some category changes are going to become intransferable right? What does it mean to change from a hotel booking to a restaurant for example? On these changes we should probably pop up a warning for doing that will reset and you will have to refill everything, makes sense?"
+
+**Yes to the warning, with one correction that is the whole of §2c.** Yes it needs more weight than a banner, so it becomes a `ConfirmDialog` — reusing the `consequence` slot that primitive already has, whose own comment describes it as "what else this delete takes … a `--miss` statement of consequence". But **not** "reset and refill everything", because that is not what happens, and saying it would push the user straight back into delete-and-recreate — the behaviour this change exists to end.
+
+Counted off the real profile axes, `hotel → restaurant` drops **three** things and carries **eight** across:
+
+| drops                                        | why                                                             |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| the end clock, and the spread across days    | `span` → `point`: a four-night stay becomes a point on one day  |
+| the room number and the WiFi                 | `BookingSheet.tsx:633-635` already prunes these when `!isHotel` |
+| (conditional) the derived round-trip pairing | route → no route breaks the mirror ADR-0154 §3 pairs on         |
+
+| carries across                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the name, the place, the confirmation code, the provider, the start date and time, the notes, the attached documents, the linked event's identity |
+
+So the confirm **names the three**. A prompt that overstates gets dismissed unread; one that understates is the ambush. The list is what makes it neither — and the same function generates the in-grid banner and the dialog, so the two cannot drift.
+
+**And the confirm is on the SAVE, not on the tap.** Three reasons, each a rule rather than a taste: (1) at the tap it confirms something that has not happened — the form commits once (ADR-0155) and form state still holds the place, the route and the end, so switching back restores them; (2) a grid of eight cards that throws a dialog on every tap is a minefield, and on create `changeType` is tapped freely; (3) it is already the app's grammar — the hard-event guard (ADR-0011) and the delete/unlink prompt (ADR-0047 §3) both confirm **at the destructive action**, not when editing begins. §2c draws the rejected version over the open grid, because that is the argument.
+
+**Not** a refusal, either: blocking a lossy switch blocks exactly the report. A stay misfiled as a restaurant is a wrong classification to correct, not a state to defend — and the block leaves the user with the delete-and-recreate that loses more than any switch does.
+
 ## 3. What the mockup settles, and the one thing it does not
 
 | §   | question                               | answer                                                                                                |
@@ -50,6 +74,7 @@ That preserves what ADR-0152 §6b bought. **The row states; it does not ask.** A
 | §1  | where does a category live, per entity | a table over all six · four editable today, two not                                                   |
 | §2  | how does a booking's type open         | the statement is a `<button>`; the grid reveals in the shared `Collapsible`                           |
 | §2  | what does a shape-changing switch say  | one `StatusBanner tone="warn"` naming exactly what the save will drop, and nothing when it drops none |
+| §2c | what a switch actually costs           | a matrix computed from the axes · and a `ConfirmDialog` on the SAVE, naming the losses and the keeps  |
 | §3  | how does a note's category open        | the same row, same mechanism                                                                          |
 | §3  | how do you get back to "no category"   | a leading sentinel pill · `IndexNotesView`'s `הכל` shape, zero new CSS                                |
 | §3b | why not a sheet, why not `ValueToken`  | drawn and measured rather than asserted                                                               |
@@ -89,9 +114,10 @@ None of these is a design choice; all four are recorded in the backlog where the
 
 Four pieces, each reviewable alone, in this order:
 
+0. `lib/booking-edit.ts` — one `bookingTypeSwitchLosses(from, to, booking)` beside `mergeBookingDetails`, computed from `BOOKING_TYPE_PROFILE`'s axes so a ninth type answers by existing. The banner and the confirm both read it; two lists is how they drift.
 1. `packages/shared` — the three place FKs become `.nullish()` on the update path, mirrored to `schema.prisma` (rule 3), with a test for the clear.
 2. `ui/primitives/ChoiceDisclosure` + `ui/primitives/CategoryField`, each with its own test file, and the three existing category call sites moved onto the latter (the Map keeps its always-open row: there the category **is** the pin's hue, and `MapPlaceForm`'s own comment says absence of a choice is wrong information rather than absent information).
-3. `BookingSheet` — the type control on edit, `changeType`'s existing preserve-what-a-human-typed rule unchanged, the loss statement, and the payload that actually nulls the stranded place fields.
+3. `BookingSheet` — the type control on edit, `changeType`'s existing preserve-what-a-human-typed rule unchanged, the in-grid loss statement, the save's `ConfirmDialog` (a variant on the one already rendered there for discard, not a second prompt), and the payload that actually nulls the stranded place fields.
 4. `NoteSheet` + `HostNotes` — the row, the sentinel pill, and the host resolved from the one index.
 
 **And an ADR on approval**, because the premise "a saved booking's type is immutable" was never written down as a decision and this reverses it. The mockup is the spec; the ADR is what makes the reversal citable.

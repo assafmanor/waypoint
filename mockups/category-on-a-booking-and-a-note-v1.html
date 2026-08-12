@@ -16,11 +16,27 @@
        "Yeah the edit already has a category on top, so it should probably become
         clickable — for both notes and bookings."
 
-     Those two together ARE the design, and they are a principle rather than two
-     fixes: **the thing is already stated at the top of the editor, so the
-     statement is the control** — and it costs nothing until it is used. §2
-     applies it to a booking, where that statement already exists; §3 applies the
-     same shape to a note, where it does not yet.
+     …and a third, which is what §2c exists to answer:
+
+       "So some category changes are going to become intransferable right? What
+        does it mean to change from a hotel booking to a restaurant for example?
+        On these changes we should probably pop up a warning for doing that will
+        reset and you will have to refill everything, makes sense?"
+
+     The first two together are the shape: **the thing is already stated at the
+     top of the editor, so the statement is the control** — and it costs nothing
+     until it is used. §2 applies it to a booking, where that statement already
+     exists; §3 applies the same shape to a note, where it does not yet.
+
+     THE THIRD IS ANSWERED YES, WITH ONE CORRECTION, and the correction is the
+     substance of §2c. A warning: **yes**, and stronger than the first draft's
+     banner — a `ConfirmDialog`, on the save. "Reset and refill everything":
+     **no**, because it is not what happens and saying it would push the user
+     back into delete-and-recreate, which is the hole this whole change digs
+     out of. Counted from the real profile axes, `hotel → restaurant` drops
+     **three** things and carries **eight** across. So the confirm names the
+     three. A prompt that overstates gets dismissed unread, and one that
+     understates is the ambush; the list is what makes it neither.
 
      ─────────────────────────────────────────────────────────────────────────
      WHAT READING THE CODE CHANGED — six findings, and the first one reshapes
@@ -79,6 +95,22 @@
         pills render at the Index FILTER density — measured in §4, and it is a
         shipped defect rather than a preference.
 
+     8. HOTEL → RESTAURANT DROPS MORE THAN THE SCHEDULE, and the code already
+        does it silently. `BookingSheet.tsx:633-635` passes `room`/`wifiNetwork`/
+        `wifiPassword` into `mergeBookingDetails` **only when `isHotel`**, so a
+        stay saved as a restaurant loses its room number and its WiFi — and the
+        WiFi is one of the Trip-mode Home's three quick-access shortcuts
+        (ADR-0045), so the loss is visible two surfaces away. That pruning is
+        CORRECT (a restaurant with an invisible room number is the stale-decoration
+        trap `constants.ts` warns about); what was missing is that nobody is told.
+        Together with the span→point end and the multi-day spread, that is the
+        three-item list §2c's confirm carries.
+
+        The fourth item is conditional and the sheet already computes it:
+        `useRoundTripPartner` (`BookingSheet.tsx:36`) knows when this booking is
+        half of a derived round trip, and since that pairing is a **mirrored
+        route** (ADR-0154 §3), switching to a type with no route silently ends it.
+
      7. FOUND BY RENDERING, not by reading: at 360×640 the booking form with the
         grid revealed measures **686px against a 640px screen**, so the thing you
         just opened is partly below the sheet's own bound. In the app the sheet
@@ -101,6 +133,7 @@
 
        §1  the diagnosis · no fork, read it first
        §2  a booking · the statement on top becomes the control
+       §2c what a switch actually costs · the matrix, and the save's confirm
        §3  a note · the same shape, and the way back to "no category"
        §3b the two shapes that were rejected, drawn so the rejection is checkable
        §4  the three layers, and the density defect the extraction removes
@@ -134,7 +167,7 @@
          INLINED, never linked. Regenerate with:
              node mockups/tools/inline-app-css.mjs mockups/category-on-a-booking-and-a-note-v1.html
          Idempotent, and re-run after ANY change to a listed sheet. -->
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/form-errors.css, ui/primitives/modal.css, ui/primitives/field.css, ui/primitives/choice-grid.css, ui/primitives/collapsible.css, ui/primitives/form-actions.css, ui/primitives/form-steps.css, ui/primitives/value-token.css, ui/notes.css, ui/feedback/feedback.css -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/form-errors.css, ui/primitives/modal.css, ui/primitives/field.css, ui/primitives/choice-grid.css, ui/primitives/collapsible.css, ui/primitives/form-actions.css, ui/primitives/form-steps.css, ui/primitives/confirm-dialog.css, ui/primitives/value-token.css, ui/notes.css, ui/feedback/feedback.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -9156,6 +9189,89 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   color: var(--muted);
 }
 
+/* ═══ ui/primitives/confirm-dialog.css — generated, do not edit here ═══ */
+/* One confirm dialog (U-02), rendered inside the neutral Modal `dialog` card.
+   The card chrome stays neutral (ADR-0079); `tone` colors only the confirm
+   action and a subtle heading accent. Token-based, logical properties (RTL). */
+
+.confirm-heading {
+  font-weight: 700;
+  font-size: var(--text-h3);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.confirm-text {
+  font-size: var(--text-secondary);
+  color: var(--muted);
+  line-height: var(--leading-normal);
+  margin-block: var(--space-2) var(--space-4);
+}
+
+/* What else this delete takes (ADR-0152 §2's cascade). `--miss` because it is a
+   destructive consequence, never `--amber`, which in this app means commitment and
+   already has a job two lines up in the hard-edit gate's own heading. */
+.confirm-consequence {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--miss);
+  margin-block: calc(-1 * var(--space-2)) var(--space-4);
+}
+
+.confirm-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.confirm-actions button {
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  border-radius: var(--radius-8);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  cursor: pointer;
+}
+
+.confirm-cancel {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.confirm-confirm {
+  border: 0;
+  color: var(--cta-text);
+  background: var(--cta);
+}
+
+/* danger = a destructive confirm (delete/leave): --miss fill, light text. */
+.confirm[data-tone='danger'] .confirm-confirm {
+  background: var(--miss);
+  color: var(--on-fill);
+}
+
+/* hard = the hard-edit commitment guard (ADR-0011): amber fill + amber heading
+   accent — the one place the confirm deliberately wears the commitment hue. */
+.confirm[data-tone='hard'] .confirm-confirm {
+  background: var(--amber);
+  color: var(--on-amber);
+}
+.confirm[data-tone='hard'] .confirm-heading {
+  color: var(--amber-deep);
+}
+
+.confirm-actions button:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
 /* ═══ ui/primitives/value-token.css — generated, do not edit here ═══ */
 /* ValueToken (ADR-0177 §2) — "a value you can change", inline.
 
@@ -10696,9 +10812,9 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <button type="button" data-w="390">⁦390×844⁩</button>
         <span class="sep"></span>
         <span class="lbl">§2 · סוג חדש</span>
-        <button type="button" data-ty="train" aria-pressed="true">🚄 רכבת</button>
-        <button type="button" data-ty="hotel">🏨 לינה</button>
-        <button type="button" data-ty="restaurant">🍜 מסעדה</button>
+        <button type="button" data-ty="train">🚄 רכבת</button>
+        <button type="button" data-ty="flight">✈️ טיסה</button>
+        <button type="button" data-ty="restaurant" aria-pressed="true">🍜 מסעדה</button>
         <button type="button" data-ty="car">🚗 השכרת רכב</button>
         <button type="button" data-ty="activity">🎟️ פעילות</button>
         <button type="button" data-ty="other">📄 אחר</button>
@@ -10746,8 +10862,45 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           נעלם כשאין מה למחוק. שימו לב למה שהוא <b>לא</b> אומר: "צריך מוצא ויעד" היא סירוב קיים
           (<code>routeRequired</code>, ADR-0150) שנורה בשמירה על הצעד שמחזיק את השדה, ואמירה נוספת
           עליו כאן היא אותו דבר פעמיים. וכלום לא נאבד בנגיעה עצמה: הטופס מתחייב פעם אחת, בצעד
-          האחרון (ADR-0155), ולכן החלפה חזרה מחזירה את המקום ואת המוצא/יעד ממצב הטופס.
+          האחרון (ADR-0155), ולכן החלפה חזרה מחזירה את המקום ואת המוצא/יעד ממצב הטופס · <b>מה
+          שקורה בשמירה, ומה שהאישור שם אומר, זה §2c</b>.
         </p>
+      </section>
+
+      <!-- ══════════════════════════ §2c ══════════════════════════ -->
+      <section class="case">
+        <h2>§2c · מה תחליף סוג באמת עולה · המטריצה, והאישור בשמירה</h2>
+        <p class="note">
+          <b>"מה זה אומר להפוך לינה למסעדה?"</b> · שאלה טובה, ויש לה תשובה מדויקת ולא תשובה
+          כללית. שלושת הצירים ב<code>BOOKING_TYPE_PROFILE</code> (מקום אחד מול מסלול · נקודה מול
+          פרישה · והשדות שהסוג בכלל מציג) קובעים אותה, ולכן היא ניתנת לחישוב · הטבלה למטה מחושבת
+          מהם, לא נכתבה ביד. <b>ולינה ← מסעדה מפילה שלושה דברים ומעבירה שמונה.</b> זו הסיבה
+          שהאישור אומר <b>מה</b> נמחק ולא "הכול יתאפס": אזהרה שמגדילה נדחית בלי שקוראים אותה,
+          ואזהרה שמקטינה היא המארב · הרשימה היא מה שהופך אותה ללא אחת מהשתיים. וגם: "תצטרכו למלא
+          הכול מחדש" הוא בדיוק מה ש"למחוק וליצור מחדש" עושה היום, וזו הבור שהשינוי הזה מוציא
+          ממנו.
+        </p>
+        <table class="m" id="matrix">
+          <thead>
+            <tr>
+              <th>תחליף</th>
+              <th>מה מפילה</th>
+              <th>מה עוברת איתה</th>
+              <th>מה הטופס עושה</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="note">
+          <b>והאישור הוא בשמירה, לא בנגיעה</b> · שלוש סיבות, וכולן כלל ולא טעם. (1) בנגיעה זה
+          אישור על משהו שעוד לא קרה: הטופס מתחייב פעם אחת (ADR-0155), ומצב הטופס שומר את המקום,
+          את המוצא/יעד ואת שעת הסיום · תחליף חזרה מחזיר אותם. (2) גריד של שמונה כרטיסים שכל
+          נגיעה בו זורקת דיאלוג הוא שדה מוקשים, וביצירה <code>changeType</code> נוגעים בו בחופשיות.
+          (3) זו כבר הדקדוק של האפליקציה · השומר של אירוע קשה (ADR-0011) ובקשת המחיקה/ניתוק
+          (ADR-0047 §3) שתיהן מאשרות <b>בפעולה ההרסנית</b>, לא כשמתחילים לערוך. הבאנר אומר תוך
+          כדי, האישור אומר בסוף · <b>ומשפט אחד מייצר את שניהם</b>, כך שהם לא יכולים להתפצל.
+        </p>
+        <div class="pair" id="s2c"></div>
       </section>
 
       <!-- ══════════════════════════ §3 ══════════════════════════ -->
@@ -10888,10 +11041,25 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             של עורך, והמדידה למטה אומרת בכמה פיקסלים היא גדלה.
           </li>
           <li>
-            <b><code>ConfirmDialog</code> ברגע החלפת הסוג.</b> נדחה · הטופס מתחייב פעם אחת, בצעד
-            האחרון (ADR-0155), ולכן שום דבר לא נאבד בנגיעה: מצב הטופס שומר את המקום ואת
-            המוצא/יעד, והחלפה חזרה מחזירה אותם. דיאלוג היה מבקש אישור על מה שעוד לא קרה. השמירה
-            היא האישור, והבאנר הוא מה שהופך אותה למיודעת.
+            <b><code>ConfirmDialog</code> ברגע נגיעה בכרטיס.</b> נדחה · אבל <b>לא</b> הדיאלוג
+            עצמו, שהבעלים ביקש והוא נכנס (§2c): רק הרגע. בנגיעה זה אישור על משהו שעוד לא קרה ·
+            הטופס מתחייב פעם אחת (ADR-0155) ומצב הטופס שומר הכול, כך שתחליף חזרה מחזיר. ובגריד של
+            שמונה כרטיסים, דיאלוג בכל נגיעה הוא שדה מוקשים, וביצירה נוגעים בו בחופשיות. האישור
+            יושב בשמירה, שם שתי בקשות האישור הקיימות באפליקציה כבר יושבות · השומר של אירוע קשה
+            (ADR-0011) ובקשת המחיקה/ניתוק (ADR-0047 §3).
+          </li>
+          <li>
+            <b>"הכול יתאפס ותצטרכו למלא מחדש"</b> כנוסח האזהרה, כפי שהוצע. נדחה על העובדות ·
+            <code>לינה → מסעדה</code> מפילה <b>שלושה</b> דברים ומעבירה <b>שמונה</b> (§2c מחשב את
+            שניהם מאותם צירים). אזהרה שמגדילה נדחית בלי שקוראים אותה, והמשתמש שמאמין לה חוזר
+            ל"למחוק וליצור מחדש" · בדיוק ההתנהגות שהשינוי הזה נכתב כדי לבטל. האישור מונה את
+            השלושה, ושורת ה<code>consequence</code> מונה את מה שנשאר. אין תחליף שמאפס הכול · הקשה
+            שבהם, <code>טיסה → לינה</code>, עוד מעבירה את הקוד, הספק, התאריך, הפתקים והמסמכים.
+          </li>
+          <li>
+            <b>לרסן תחליפים שמפילים משהו</b> (לאסור, לא להזהיר). נדחה · זה בדיוק המקרה שדווח.
+            מלון שנשמר כמסעדה הוא סיווג שגוי שצריך לתקן, ולא מצב שצריך להגן עליו · והחסימה משאירה
+            את המשתמש עם המחיקה־ויצירה שמפילה יותר מכל תחליף.
           </li>
           <li>
             <b>לנעול את החלפת הסוג כשיש קוד אישור.</b> נדחה · קוד אישור אינו הסוג. מלון שנשמר
@@ -10969,6 +11137,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       const ICON = {
         reset: 'M3 4v6h6M3.5 15a9 9 0 1 0 2.2-9.4L3 10',
+        warn: 'M12 3.6 22 20.4H2Z M12 9.8v4.6 M12 17.4v.02',
         ticket:
           'M4 8.4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1.2a2.4 2.4 0 0 0 0 4.8v1.2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1.2a2.4 2.4 0 0 0 0-4.8Z',
         clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M12 7.4V12l3.2 2',
@@ -10982,14 +11151,20 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       /* ── The app's own tables, copied verbatim so the frames cannot disagree
             with the code (`packages/shared/src/icons.ts` + `constants.ts`). */
       const TYPE = {
-        flight: { g: '✈️', l: 'טיסה', places: 'route', schedule: 'span' },
-        hotel: { g: '🏨', l: 'לינה', places: 'single', schedule: 'span' },
-        restaurant: { g: '🍜', l: 'מסעדה', places: 'single', schedule: 'point' },
-        train: { g: '🚄', l: 'רכבת', places: 'route', schedule: 'span' },
-        transit: { g: '🚌', l: 'נסיעה', places: 'route', schedule: 'span' },
-        car: { g: '🚗', l: 'השכרת רכב', places: 'route', schedule: 'span' },
-        activity: { g: '🎟️', l: 'פעילות', places: 'single', schedule: 'span' },
-        other: { g: '📄', l: 'אחר', places: 'single', schedule: 'point' },
+        flight: { g: '✈️', l: 'טיסה', places: 'route', schedule: 'span', titleFrom: 'route' },
+        hotel: { g: '🏨', l: 'לינה', places: 'single', schedule: 'span', titleFrom: 'name' },
+        restaurant: {
+          g: '🍜',
+          l: 'מסעדה',
+          places: 'single',
+          schedule: 'point',
+          titleFrom: 'name',
+        },
+        train: { g: '🚄', l: 'רכבת', places: 'route', schedule: 'span', titleFrom: 'route' },
+        transit: { g: '🚌', l: 'נסיעה', places: 'route', schedule: 'span', titleFrom: 'route' },
+        car: { g: '🚗', l: 'השכרת רכב', places: 'route', schedule: 'span', titleFrom: 'name' },
+        activity: { g: '🎟️', l: 'פעילות', places: 'single', schedule: 'span', titleFrom: 'name' },
+        other: { g: '📄', l: 'אחר', places: 'single', schedule: 'point', titleFrom: 'name' },
       };
       const CAT = {
         transport: { g: '✈️', l: 'תחבורה' },
@@ -11014,24 +11189,54 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         none: { name: null, word: null, cat: null },
       };
 
-      /* The booking §2 edits: a stay saved as `אחר`, which is the report's own
-         case — you filed it wrong and cannot re-file it. */
-      const SAVED = { type: 'other', title: 'Granbell Shinjuku', placeId: 'p-granbell' };
+      /* THE BOOKING §2 EDITS, and it is the owner's own example: a four-night stay,
+         so the default switch on the page is `hotel → restaurant` and the matrix
+         opens on the case that was asked about. `partner` is what
+         `useRoundTripPartner` would answer — absent for a stay, present for a leg. */
+      const SAVED = {
+        type: 'hotel',
+        title: 'Granbell Shinjuku',
+        placeId: 'p-granbell',
+        partner: null,
+      };
 
-      let ty = 'train';
+      let ty = 'restaurant';
       let host = 'booking';
       let shape = 'disclose';
 
-      /* What a type switch strands, from the real axes. Nothing is lost until the
-         save (ADR-0155 commits once), which is why this is a statement and not a
-         confirm. */
+      /* WHAT A TYPE SWITCH STRANDS — computed from the real axes, never listed by
+         hand, so a ninth booking type answers here by existing. One function feeds
+         BOTH the in-grid banner and the save's confirm, so the two cannot drift.
+         In the app this belongs beside `mergeBookingDetails` in `lib/booking-edit.ts`.
+
+         Note the third case: `details`' room/WiFi are ALREADY pruned on a non-hotel
+         save (`BookingSheet.tsx:633-635`). Correct, and unannounced until now. */
       const losses = (from, to) => {
         const a = TYPE[from],
           b = TYPE[to],
           out = [];
-        if (a.places === 'route' && b.places === 'single') out.push('המוצא והיעד');
+        if (a.places === 'route' && b.places === 'single') {
+          out.push('המוצא והיעד');
+          // A journey has no name of its own — its title IS its route (ADR-0059 §3).
+          if (a.titleFrom === 'route') out.push('הכותרת, שנגזרת מהמסלול');
+          if (SAVED.partner) out.push('הזיהוי כהלוך־חזור עם ' + SAVED.partner);
+        }
         if (a.places === 'single' && b.places === 'route' && SAVED.placeId) out.push('המקום');
-        if (a.schedule === 'span' && b.schedule === 'point') out.push('שעת הסיום');
+        if (a.schedule === 'span' && b.schedule === 'point')
+          out.push('שעת הסיום, והפרישה על פני הימים');
+        if (from === 'hotel' && to !== 'hotel') out.push('מספר החדר וה-WiFi');
+        return out;
+      };
+
+      /* WHAT COMES ACROSS. Drawn beside the losses on purpose: the confirm has to
+         be true in both directions, or it is either dismissed unread or an ambush. */
+      const keeps = (from, to) => {
+        const a = TYPE[from],
+          b = TYPE[to],
+          out = ['קוד האישור', 'הספק', 'המסמכים המקושרים', 'הפתקים'];
+        if (a.titleFrom === 'name' && b.titleFrom === 'name') out.unshift('השם');
+        if (a.places === b.places) out.unshift(a.places === 'route' ? 'המסלול' : 'המקום');
+        out.push('תאריך ההתחלה ושעתה');
         return out;
       };
 
@@ -11205,6 +11410,35 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         return sheet('עריכת פתק', body);
       };
 
+      /* ── The save's confirm. `ConfirmDialog tone="danger"` unchanged, and the
+       *  `consequence` slot is used for exactly what its own comment describes:
+       *  "what else this delete takes … a `--miss` statement of consequence".
+       *  Nothing new is drawn; the list comes from `losses()`. */
+      const saveConfirm = (from, to) => {
+        const l = losses(from, to);
+        const k = keeps(from, to);
+        return `
+          <div class="modal-overlay" data-variant="dialog">
+            <div class="modal-card" role="dialog" aria-modal="true">
+              <div class="confirm" data-tone="danger">
+                <div class="confirm-heading">
+                  <span aria-hidden="true">${icon('warn')}</span>
+                  להחליף ל${TYPE[to].l}?
+                </div>
+                <p class="confirm-text">
+                  ${TYPE[to].l} לא מחזיקה את כל מה ש${TYPE[from].l} החזיקה, ולכן בשמירה יימחקו:
+                  ${l.join(' · ')}.
+                </p>
+                <p class="confirm-consequence">${k.join(' · ')} · נשמרים.</p>
+                <div class="confirm-actions">
+                  <button type="button" class="confirm-confirm">שמירה בכל זאת</button>
+                  <button type="button" class="confirm-cancel">חזרה לטופס</button>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      };
+
       /* ── The two rejected shapes. */
       const rejectedSheetOverForm = () => {
         const under = `
@@ -11376,6 +11610,41 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             l.length
               ? `הגריד נחשף במקום, בלי צעד ובלי שכבה. החלפה מ${TYPE[SAVED.type].l} ל${TYPE[ty].l} משנה צורה · הבאנר אומר בדיוק מה לא עובר.`
               : `הגריד נחשף במקום. החלפה מ${TYPE[SAVED.type].l} ל${TYPE[ty].l} לא מפילה כלום · ואז אין באנר. אמירה שמופיעה תמיד מפסיקה להיקרא.`,
+          ),
+        ].join('');
+
+        /* §2c — the matrix, computed, and the confirm the save shows. */
+        const CLASSES = ['hotel', 'restaurant', 'flight', 'activity', 'car', 'other'];
+        document.querySelector('#matrix tbody').innerHTML = CLASSES.filter(
+          (to) => to !== SAVED.type,
+        )
+          .map((to) => {
+            const l = losses(SAVED.type, to);
+            const k = keeps(SAVED.type, to);
+            return `<tr>
+              <td><code>${TYPE[SAVED.type].l} → ${TYPE[to].l}</code></td>
+              <td class="${l.length ? 'bad' : 'good'}">${l.length ? l.join(' · ') : 'כלום'}</td>
+              <td>${k.join(' · ')}</td>
+              <td>${
+                l.length ? 'באנר בגריד, ואישור בשמירה' : 'שותק · אין מה להזהיר עליו'
+              }</td>
+            </tr>`;
+          })
+          .join('');
+
+        document.querySelector('#s2c').innerHTML = [
+          col(
+            '<span class="tag after">בהצעה · האישור בשמירה</span>',
+            saveConfirm(SAVED.type, ty),
+            'אותו משפט שהבאנר אמר תוך כדי · נוצר מאותה פונקציה, ולכן השניים לא יכולים להתפצל. שורת ה<code>consequence</code> אומרת מה כן נשמר, וזה מה שמונע ממנו להיות אזהרה מוגזמת.',
+          ),
+          col(
+            '<span class="tag alt">נדחה · אישור בנגיעה</span>',
+            /* The same dialog, drawn OVER the open grid — which is the argument
+               itself: this is what a tap on any of eight cards would produce,
+               while you are still choosing. */
+            bookingSheet({ row: 'new', open: true }) + saveConfirm(SAVED.type, ty),
+            'אותו דיאלוג, ברגע הלא נכון · הוא נופל תוך כדי הבחירה, על משהו שעוד לא קרה. שמונה כרטיסים, ובכל נגיעה בהם זה מה שקורה · וביצירה נוגעים בגריד בחופשיות.',
           ),
         ].join('');
 
@@ -11601,6 +11870,16 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'רוחב שורת הגלולות מול המסך',
             hw('#d-new'),
             'עשר גלולות · הרשימה גוללת, והנבחרת ממרכזת את עצמה (<code>useCenterSelected</code>)',
+          ],
+          [
+            'האישור בשמירה · הכרטיס',
+            hw('#s2c .confirm'),
+            'רשימת שלושה פריטים · <code>ConfirmDialog tone="danger"</code> בלי CSS חדש',
+          ],
+          [
+            'שורת <code>consequence</code> · "מה כן נשמר"',
+            H('#s2c .confirm-consequence'),
+            'מה שמונע מהאישור להיות אזהרה מוגזמת',
           ],
           [
             '<code>ValueToken</code> · החלופה שנדחתה',
