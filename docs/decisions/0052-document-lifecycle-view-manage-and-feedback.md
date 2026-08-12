@@ -67,3 +67,24 @@ The frontend surfaces these as a **"⋯" menu per document row** (and in the vie
 - **A two-choice delete prompt like bookings (ADR-0047 §3).** Rejected: that prompt exists to unlink a _linked event_; a document has no linked entity (ADR-0047 §4), so a plain confirm is the honest shape.
 - **Leave 🛂/🛃 (they are different codepoints).** Rejected: different codepoint, identical pictogram at badge size — the confusion is real and the fix is a one-line constant change.
 - **Per-type animated illustrations / richer feedback.** Deferred: one shared spinner clears the "looks frozen" problem; bespoke motion is polish for later.
+
+## Amendment (2026-08-13, session 259) — eight types, and the form opens on none of them
+
+Reported from use: _"document creation should not auto select its category, as currently it defaults to passport while most documents aren't"_, and _"we're still missing some basic document categories such as tickets (flight, train, rsvps, various activities)"_. Both halves are the same defect seen from two ends — §6 settled what four badges should look like and never asked whether four was the right number, and the upload form answered the question for you with the least likely answer.
+
+**1. The set is eight: passport · visa · license · ticket · reservation · insurance · health · other.** `DOCUMENT_TYPE` (`@waypoint/shared`) declares them in that order — identity, then what you present on the way, then cover, then the leftover — and that order IS the display order for the picker grids and the Index's groups, so it is stated once rather than beside a second display list. The four new ones each name something the old set filed as "אחר":
+
+- **`ticket` (כרטיס)** — the boarding pass, the rail ticket, the museum entry. The most common attachment a booking has (ADR-0173) and the one the report named.
+- **`reservation` (הזמנה)** — the confirmation, which is not a ticket: a hotel booking, a restaurant table, an RSVP. Its label is the app's own word for a booking, so the document and the row it hangs off read the same.
+- **`license` (רישיון)** — a driving licence / IDP. `passport` already covers the identity document you cross a border with; what it does not cover is the one a car hire asks for (ADR-0162).
+- **`health` (בריאות)** — vaccination records and prescriptions.
+
+Not added: `receipt`. Expenses are a domain of their own and a receipt filed as a document is a guess about a feature that does not exist yet.
+
+**2. §6's invariant costs `visa` its glyph.** "Four unmistakable badges, one source" becomes eight, and `🎫` — which §6 gave the visa — is what a ticket obviously is. So `visa` takes **🛂**, which §6 could not use while the passport was also a signage pictogram and can now, because the passport is 📕. New: `license 🪪 · ticket 🎫 · reservation 🧾 · health 💉`.
+
+**3. The upload form opens with nothing selected, and unanswered means `other`.** `ChoiceGrid` has taken an optional value since ADR-0109 §11, so an unanswered single-select is the primitive's own documented state. It is deliberately **not** a refusal (ADR-0150): a document you have not classified is exactly what `other` has always meant, and stopping a save to make someone name it would be the app asking a question it can live without. The manage sheet's edit step still opens on the document's current type — that one is an answer, not a default.
+
+**4. One picker, not two.** With eight cards the grid needs `columns={3}` (the booking type picker's answer to the same count) and both sheets need the same one — so the options list, the column count and the label are `ui/DocumentTypeGrid.tsx`, rendered by the upload sheet and the manage sheet's edit step. Two copies of an eight-card grid is how two modes start disagreeing about what a type picker is.
+
+**5. No backfill.** Additive enum values (Postgres cannot remove one without rewriting the type), and nothing stored distinguishes an existing `other` that is really a ticket. Existing rows keep their type; re-typing one is one tap in the edit sheet.

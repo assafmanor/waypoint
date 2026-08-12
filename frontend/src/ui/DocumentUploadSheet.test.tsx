@@ -10,6 +10,7 @@
 // which is what `{ queue: true }` below is, and why it is asserted rather than assumed.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { DOCUMENT_TYPE, type DocumentType } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 
 // jsdom has no layout engine, so the form's focus-follows-into-view has nothing to call.
@@ -17,7 +18,8 @@ Element.prototype.scrollIntoView = vi.fn();
 
 /** The two writes, in the shapes the assertions read them back in — the upload's own
  *  client-generated id is what the note's FK has to match. */
-const queueDocumentUpload = vi.fn((_tripId: string, _input: { id: string }, _file: File) => {
+type UploadInput = { id: string; type: DocumentType; title: string };
+const queueDocumentUpload = vi.fn((_tripId: string, _input: UploadInput, _file: File) => {
   order.push('upload');
   return Promise.resolve();
 });
@@ -41,7 +43,7 @@ vi.mock('../lib/outbox', async (importOriginal) => {
   // must not READ it until the call happens.
   return {
     ...actual,
-    queueDocumentUpload: (tripId: string, input: { id: string }, file: File) =>
+    queueDocumentUpload: (tripId: string, input: UploadInput, file: File) =>
       queueDocumentUpload(tripId, input, file),
   };
 });
@@ -100,6 +102,29 @@ describe('DocumentUploadSheet — notes written on the way', () => {
     await waitFor(() => expect(createNote).toHaveBeenCalledTimes(2));
     expect(order).toEqual(['upload', 'note', 'note']);
     expect(createNote.mock.calls.map((c) => c[0].body)).toEqual(['הראשון', 'השני']);
+  });
+
+  // **The form opens on nothing** (owner, 2026-08-13): it used to open on `passport`, so
+  // a quick upload filed a ticket as a passport. Unanswered is `other`, not a refusal.
+  it('opens with no type chosen and files an unanswered upload as other', async () => {
+    open();
+    expect(screen.queryByRole('radio', { checked: true })).toBeNull();
+    pickFile();
+    save();
+    await waitFor(() => expect(queueDocumentUpload).toHaveBeenCalled());
+    expect(queueDocumentUpload.mock.calls[0][1]).toMatchObject({
+      type: DOCUMENT_TYPE.OTHER,
+      title: t.docs.type.other,
+    });
+  });
+
+  it('files it under the type that was chosen', async () => {
+    open();
+    fireEvent.click(screen.getByRole('radio', { name: t.docs.type.ticket }));
+    pickFile();
+    save();
+    await waitFor(() => expect(queueDocumentUpload).toHaveBeenCalled());
+    expect(queueDocumentUpload.mock.calls[0][1]).toMatchObject({ type: DOCUMENT_TYPE.TICKET });
   });
 
   // The refusal runs first: a form that will not save must not leave notes behind.

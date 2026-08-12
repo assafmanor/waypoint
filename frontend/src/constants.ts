@@ -434,11 +434,18 @@ export const TRANSPORT_BOOKING_TYPES = [
   BOOKING_TYPE.CAR,
 ] as const satisfies readonly BookingType[];
 
-/** Glyph per document type, for the Index documents section badges. */
+/** Glyph per document type, for the Index documents section badges. ADR-0052 §6's
+ *  invariant is unmistakable badges from one source, and the 2026-08-13 set is where
+ *  it bit: `ticket` wants 🎫, which `visa` was wearing — so a visa takes the passport-
+ *  control mark it can now hold without colliding with 📕. */
 export const DOCUMENT_TYPE_ICON = {
   passport: '📕',
+  visa: '🛂',
+  license: '🪪',
+  ticket: '🎫',
+  reservation: '🧾',
   insurance: '🛡️',
-  visa: '🎫',
+  health: '💉',
   other: '📄',
 } as const satisfies Record<DocumentType, string>;
 

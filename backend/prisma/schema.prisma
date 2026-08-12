@@ -75,10 +75,16 @@ enum MembershipRole {
   peer
 }
 
+// Append-only, so this lists the values in the ORDER POSTGRES HOLDS THEM, which is not
+// the order they are shown in (`DOCUMENT_TYPE` in @waypoint/shared owns that).
 enum DocumentType {
   passport
   insurance
   visa
+  ticket
+  reservation
+  license
+  health
   other
 }
 
