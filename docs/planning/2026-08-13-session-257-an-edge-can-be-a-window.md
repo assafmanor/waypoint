@@ -145,7 +145,7 @@ recorded rather than solved.
 
 ## Session failings, recorded on purpose
 
-Three, all caught by the render or by the owner rather than by review. They are
+Five, all caught by the render or by the owner rather than by review. They are
 written down because each has a general form that will recur.
 
 1. **A bidi claim asserted backwards, and the file shipped it in prose.** The
@@ -164,9 +164,25 @@ written down because each has a general form that will recur.
    and its lesson still was not carried into coverage. The general form: any
    change to a day-surface derivation covers **Trip and Plan**, and the check
    belongs on the checklist, not on the reviewer.
+4. **A correction was answered with a fork instead of a change.** Told the time
+   looked wrong on the row, the response was to add §2b as a comparison and leave
+   every other frame drawing the old placement — so the same thing had to be
+   asked twice. The general form: when the owner points at something as **wrong**,
+   fix the default and use the comparison to _show the cost_, rather than
+   deferring the fix back to them as a choice. Measuring a trade is not a
+   substitute for making the change the measurement supports.
+5. **A claim about the gap went into the file's prose before the derivation was
+   read.** "A window bounds no gap" happened to be correct, and it was written
+   down with the wrong function named (`freeBetween`'s signature rather than
+   `dayBlocks`' `prevEnd` rule) and without knowing _why_ it held. Reading it on
+   the owner's prompt turned a lucky assertion into the section's strongest
+   finding — including `glance.ts:457`, which is not safe. The general form: a
+   claim about a derivation is worth **counting its call sites**, and the count
+   is usually the deliverable.
 
 ## Status
 
-**Nothing here is decided.** The mockup exists so the owner can pick א vs ב, the
-§2b placement, and whether §4 ever opens the control to ordinary events. An ADR
-is owed on approval; the backlog carries the item and the four build pieces.
+**Nothing here is decided.** The mockup exists so the owner can pick א vs ב and
+whether §4 ever opens the control to ordinary events; §2b's placement was decided
+in session. An ADR is owed on approval; the backlog carries the item and the four
+build pieces.
