@@ -387,7 +387,14 @@ export class BookingsService {
    *  single `placeId`. The two are mutually exclusive (ADR-0048). */
   private assertPlaceShape(
     type: BookingType,
-    input: { placeId?: string; fromPlaceId?: string; toPlaceId?: string },
+    // `null` is a CLEAR (`updateBookingSchema`) and reads here exactly as absent does — which
+    // is what lets a type change across the route↔single axis pass at all: the update sends
+    // the fields the new shape cannot hold as null, and this then sees a shape that matches.
+    input: {
+      placeId?: string | null;
+      fromPlaceId?: string | null;
+      toPlaceId?: string | null;
+    },
   ): void {
     if (carriesRoute(type)) {
       if (input.placeId) {

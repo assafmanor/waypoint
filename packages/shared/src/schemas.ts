@@ -139,8 +139,21 @@ export const createBookingSchema = z.object({
 });
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 
-/** Partial update to a booking. */
-export const updateBookingSchema = createBookingSchema.partial();
+/** Partial update to a booking.
+ *
+ *  **The three place FKs are `nullish` here and `optional` on create, and the difference is
+ *  load-bearing**: `null` CLEARS, exactly as `startDisplayTimezone` above already documents
+ *  for itself. Under `.partial()` alone they were merely optional, so `null` never survived
+ *  validation and `undefined` is dropped by `JSON.stringify` — which made clearing a
+ *  booking's place a **silent no-op**, and made a type change across the route↔single axis
+ *  impossible at all: `bookings.service.ts` merges the previous value under the NEW type and
+ *  `assertPlaceShape` then rejects the pair with a 400. `bookingUpdateData` already spreads
+ *  a present-but-null key straight through to Prisma, so nothing downstream changes. */
+export const updateBookingSchema = createBookingSchema.partial().extend({
+  placeId: z.string().nullish(),
+  fromPlaceId: z.string().nullish(),
+  toPlaceId: z.string().nullish(),
+});
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
 
 export const createPlaceSchema = z.object({

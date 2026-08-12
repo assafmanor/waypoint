@@ -156,6 +156,17 @@
         half of a derived round trip, and since that pairing is a **mirrored
         route** (ADR-0154 §3), switching to a type with no route silently ends it.
 
+     9. FOUND BY BUILDING IT, and added here because the drawing could not have shown it:
+        `Collapsible` **never unmounts its children** — that is its contract, so its
+        transition has something to animate against — and `max-height: 0` hides a thing
+        from the EYE only. Collapsed, the chooser's nine or ten radios therefore stay in
+        the accessibility tree and in the tab order, so a screen reader reads out a picker
+        that is not on screen and a keyboard lands inside it. `ChoiceDisclosure` marks its
+        own panel `inert` while closed, which fixes both and costs no layout. It is scoped
+        to this component rather than added to `Collapsible`: four other call sites share
+        that primitive and none is a radiogroup, so widening it is a change to make on its
+        own evidence.
+
      7. FOUND BY RENDERING, not by reading: at 360×640 the booking form with the
         grid revealed measures **686px against a 640px screen**, so the thing you
         just opened is partly below the sheet's own bound. In the app the sheet

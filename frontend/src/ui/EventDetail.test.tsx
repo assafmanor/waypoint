@@ -15,6 +15,9 @@ let tripPlaces: Place[] = [];
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     hostContexts: buildHostContextIndex([], []),
+    // Note hosts resolve through trip-state's one index; this file asserts nothing
+    // about an inherited name or category, so the index-miss fallback carries it.
+    noteHosts: new Map(),
     trip: { id: 't1', timezone: 'Asia/Tokyo' },
     events: [],
     bookings: [] as Booking[],

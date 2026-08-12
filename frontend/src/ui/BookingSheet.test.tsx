@@ -97,6 +97,9 @@ vi.mock('../state/trip-state', () => ({
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex([], tripBookings),
+    // Note hosts resolve through trip-state's one index; this file asserts nothing about an
+    // inherited name or category, so the index-miss fallback carries the host it is handed.
+    noteHosts: new Map(),
     trip,
     events: [],
     bookings: tripBookings,
@@ -1308,7 +1311,7 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     // The grid is gone; only the one card that was chosen remains.
     expect(screen.queryByRole('radiogroup', { name: t.index.form.kindLabel })).toBeNull();
 
-    fireEvent.click(screen.getByText(t.index.form.changeType));
+    fireEvent.click(screen.getByText(t.common.change));
     expect(stepLabel()).toBe(t.index.form.stepType);
     fireEvent.click(screen.getByText(t.index.bookingType.restaurant));
     press(t.common.steps.next);
@@ -1338,12 +1341,28 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     expect(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeTruthy();
   });
 
-  it('adds no step to an EDIT, and offers no way to change the type there', () => {
+  // An edit still gains NO step — a step is paid on every pass through the form and changing
+  // a type is a rare edit (owner, 2026-08-12) — but the row it collapses into is a control
+  // now, and the grid arrives in place.
+  it('adds no step to an EDIT, and reveals the type grid in place instead', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
-    // Straight to the identity step: a saved booking's type is not a question.
+    // Straight to the identity step: a saved booking's type is still not a question.
     expect(stepLabel()).toBe(t.index.form.stepWhat);
-    expect(within(typeRow() as HTMLElement).getByText(t.index.bookingType.flight)).toBeTruthy();
-    expect(screen.queryByText(t.index.form.changeType)).toBeNull();
+    const row = screen.getByRole('button', { name: t.index.form.stepType });
+    expect(within(row).getByText(t.index.bookingType.flight)).toBeTruthy();
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    // Closed, the grid is MOUNTED but unreachable — `Collapsible` never unmounts (so the
+    // reveal has something to animate against), and `max-height: 0` hides a thing from the eye
+    // only, so without `inert` a screen reader would read out eight radios that are not on
+    // screen and a keyboard would tab into them.
+    const grid = () => screen.getByRole('radiogroup', { name: t.index.form.kindLabel });
+    expect(grid().closest('[inert]')).toBeTruthy();
+
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(grid().closest('[inert]')).toBeNull();
+    // And no step was added on the way.
+    expect(stepLabel()).toBe(t.index.form.stepWhat);
   });
 
   // **A booking is named by its place when nobody names it** (field report #9). The name

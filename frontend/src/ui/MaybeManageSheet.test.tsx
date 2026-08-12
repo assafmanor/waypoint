@@ -29,6 +29,7 @@ const createNote = vi.fn(() => Promise.resolve(undefined));
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
     notes: tripNotes,
+    noteHosts: new Map(),
     users: [
       { id: 'u1', displayName: 'דנה' },
       { id: 'u2', displayName: 'מיכל' },

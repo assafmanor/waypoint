@@ -13,9 +13,17 @@
 // **There is no host picker** (ADR-0153 §5): a note written here is always general, and a
 // note opened from a host states that host as a fact. Attachment is established from the
 // host's side, which is where it is natural anyway — a real limitation, accepted knowingly.
+//
+// **The category is present on every note, hosted or not, and it STATES rather than asks.**
+// It used to be rendered behind `{!host && …}`, which meant the common note — the one written
+// on a booking, an event, an idea, a place or a document (ADR-0152 §6b's whole point) — could
+// never be re-filed at all. What §6b actually bought is that a note is written with **no
+// category chosen**, and that is intact: `CategoryField`'s collapsed row arrives already
+// showing the value in force and where it came from, so there is nothing to answer. Choosing
+// writes `Note.category`; choosing the leading pill writes `null` and returns to inheritance,
+// which §5's amendment requires to be RESOLVED at render and never copied at write time.
 import { useId, useState } from 'react';
-import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
-import type { EventCategory, Note } from '@waypoint/shared';
+import { iconForCategory, type EventCategory, type Note } from '@waypoint/shared';
 import type { NoteHostRef } from '../lib/notes';
 import { Sheet } from './Sheet';
 import { Icon } from './Icon';
@@ -23,7 +31,7 @@ import { NOTE_HOST_ICON } from '../constants';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
 import { FormError } from './primitives/FormError';
-import { ChoiceGrid } from './primitives/ChoiceGrid';
+import { CategoryField } from './primitives/CategoryField';
 import { useFormErrors } from './primitives/useFormErrors';
 import { t } from '../i18n/he';
 import './notes.css';
@@ -62,7 +70,10 @@ export function NoteSheet({
   const [title, setTitle] = useState(note?.title ?? '');
   const [url, setUrl] = useState(note?.url ?? '');
   // A hosted note carries no category of its own — it resolves from the host at render
-  // (ADR-0152 §5's amendment), so the picker is absent rather than pre-filled.
+  // (ADR-0152 §5's amendment), so this opens ABSENT rather than pre-filled with the host's,
+  // and the field states the inherited value instead of seeding itself from it. `undefined`
+  // survives the round trip as a clear without any special casing: the note PATCH is a
+  // whole-content submit and its service writes `category ?? null` unconditionally.
   const [category, setCategory] = useState<EventCategory | undefined>(note?.category);
 
   const save = () => {
@@ -126,19 +137,29 @@ export function NoteSheet({
           />
         </Field>
 
-        {/* A hosted note inherits its category, so it is not asked for one — everything
-            that can be spared from the user is (ADR-0152 §6b). */}
-        {!host && (
-          <Field label={t.notes.sheet.categoryLabel}>
-            <ChoiceGrid
-              options={EVENT_CATEGORY_OPTIONS}
-              value={category}
-              onChange={setCategory}
-              layout="pills"
-              ariaLabel={t.notes.sheet.categoryLabel}
-            />
-          </Field>
-        )}
+        {/* **The category STATES itself, and opens on a tap** — which is how it can be present
+            on a hosted note without breaking what ADR-0152 §6b bought. §6b's rule is that a
+            note is written with no category CHOSEN, and it holds: the row arrives already
+            showing the value in force and where it came from (`לפי ההזמנה`), so nothing is
+            asked and nothing has to be answered. What it fixes is that the picker used to be
+            absent altogether here — so the common note, the one written on a host, could never
+            be re-filed at all, which is the report this closes.
+
+            `fallback` is what `undefined` MEANS on this note: the host's own category while
+            one is inherited, plainly nothing otherwise. Picking the leading pill writes
+            `null` and returns to inheritance — the field's `category` stays absent and the
+            render resolves it again (§5's amendment: resolved, never copied). */}
+        <CategoryField
+          label={t.notes.sheet.categoryLabel}
+          disclosure
+          value={category}
+          onChange={setCategory}
+          fallback={{
+            category: host?.category,
+            glyph: host?.category ? iconForCategory(host.category) : undefined,
+            from: host?.category ? t.notes.sheet.categoryFrom[host.kind] : undefined,
+          }}
+        />
 
         {/* The same slot `EventForm` and `BookingSheet` keep for what has no field to
             point at. Here it is the only refusal, and it sits against the button that was
