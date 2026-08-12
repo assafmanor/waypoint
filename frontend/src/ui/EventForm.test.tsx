@@ -14,6 +14,9 @@ const tripState = {
   // The one context index every note surface resolves through (ADR-0172 §1). Empty here:
   // this form only ever hosts an UNLINKED event, whose context is itself.
   hostContexts: buildHostContextIndex([], []),
+  // Note hosts resolve through trip-state's one index; this file asserts nothing about an
+  // inherited name or category, so the index-miss fallback carries the host it is handed.
+  noteHosts: new Map(),
   trip: {
     id: 't1',
     timezone: 'Asia/Tokyo',

@@ -117,6 +117,16 @@ vi.mock('../state/trip-state', () => ({
     places: [],
     maybeItems: [],
     documents: [],
+    // The screen resolves every row's host through trip-state's one index (ADR-0152 §5's
+    // amendment), so a real one built from this file's own fixtures — a stub Map would make
+    // every hosted note read as general and prove nothing.
+    noteHosts: buildNoteHosts({
+      events: [dinner],
+      bookings: [hotel],
+      places: [],
+      maybeItems: [],
+      documents: [],
+    }),
     users: [{ id: 'u1', displayName: 'דנה' }],
     noteVerbs: {
       createNote: async (input: unknown) => void created.push(input),
@@ -140,6 +150,7 @@ import { NavProvider } from '../state/nav-state';
 import { ModeProvider } from '../state/mode-state';
 import { IndexNotesView } from './IndexNotesView';
 import { t } from '../i18n/he';
+import { buildNoteHosts } from '../lib/notes';
 
 function wrap(node: ReactNode) {
   return (

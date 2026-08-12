@@ -3,12 +3,20 @@
 import type {
   Booking,
   BookingEventSeed,
+  BookingType,
   EventCategory,
   EventKind,
   Place,
   TripEvent,
 } from '@waypoint/shared';
-import { EVENT_SOURCE, EVENT_STATUS, bookingEventFields } from '@waypoint/shared';
+import {
+  BOOKING_TYPE,
+  EVENT_SOURCE,
+  EVENT_STATUS,
+  bookingEventFields,
+  carriesRoute,
+  hasSpanSchedule,
+} from '@waypoint/shared';
 import { zonedIso, resolveEndIso, isoToTimeInput, todayInTz } from './time';
 
 /** Editable free-form detail fields the sheet exposes (the rest of the booking's
@@ -47,6 +55,44 @@ export function mergeBookingDetails(
   if (network || password) next.wifi = { network, password };
 
   return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** **What the form is currently holding that a type change could strand.** Read off the
+ *  live form rather than off the saved booking, because the form is what the person is
+ *  looking at: an end they already cleared cannot be lost, and a place they just picked
+ *  can be. */
+export interface BookingSwitchState {
+  /** Either route endpoint is set. */
+  hasRoute: boolean;
+  /** A single place is linked. */
+  hasPlace: boolean;
+  /** An end clock has a value. */
+  hasEnd: boolean;
+  /** Room or WiFi carries something — the fields only a stay shows. */
+  hasStayDetails: boolean;
+}
+
+/** **Would saving this type change delete something the form is holding?**
+ *
+ *  A boolean and deliberately not a list: the confirm says `חלק מהפרטים יימחקו` and never
+ *  enumerates (owner's call, 2026-08-12), so a list would be a second thing to keep true
+ *  with no reader. The itemisation lives in `mockups/category-on-a-booking-and-a-note-v1.html`
+ *  §2c, which is where it belongs — it is what makes the short sentence checkable.
+ *
+ *  Every clause reads an axis of `BOOKING_TYPE_PROFILE`, so a ninth booking type answers
+ *  here by existing rather than by being added to a list. The last one is the exception and
+ *  names itself: room + WiFi are the only fields keyed to a single TYPE rather than to an
+ *  axis (`BookingSheet`'s `isHotel`), and it is `mergeBookingDetails` above that drops them. */
+export function switchIsLossy(
+  from: BookingType,
+  to: BookingType,
+  state: BookingSwitchState,
+): boolean {
+  if (from === to) return false;
+  if (carriesRoute(from) && !carriesRoute(to) && state.hasRoute) return true;
+  if (!carriesRoute(from) && carriesRoute(to) && state.hasPlace) return true;
+  if (hasSpanSchedule(from) && !hasSpanSchedule(to) && state.hasEnd) return true;
+  return from === BOOKING_TYPE.HOTEL && state.hasStayDetails;
 }
 
 /** Delete-prompt choice → the `deleteBooking` flags (ADR-0047 §3). Both choices

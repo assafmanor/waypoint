@@ -47,6 +47,23 @@ export function useHostContext(kind: NoteHostKind, id: string): HostContext {
   return useMemo(() => resolveHostContext(hostContexts, { kind, id }), [hostContexts, kind, id]);
 }
 
+/** **A host as the index knows it**, not as a call site happened to spell it.
+ *
+ *  Five surfaces hand-built a `NoteHostRef` literal and three left `category` off — so the
+ *  editor could not state an inherited category even where the row beside it was already
+ *  showing one, because the row resolved through trip-state's index and the sheet took the
+ *  literal. Two derivations of one fact, which is the shape rule 8 exists for. The literal
+ *  now supplies only the identity; everything derived comes from `noteHosts`.
+ *
+ *  Falls back to what the caller passed when the index misses — a stale offline cache, or a
+ *  peer's delete mid-render. On a LIST that case reads as a general note (`noteHost`'s own
+ *  documented degradation); on a host's own surface the host is the thing you are looking at,
+ *  so keeping its name beats blanking it. */
+function useResolvedHost(host: NoteHostRef): NoteHostRef {
+  const { noteHosts } = useTrip();
+  return noteHosts.get(`${host.kind}:${host.id}`) ?? host;
+}
+
 /** The name of the host a surface's rows are ANCHORED to, when that is not the surface
  *  itself. `undefined` on every host that authors its own — which is every host but a place
  *  with exactly one relevant context (ADR-0172 §3).
@@ -82,6 +99,8 @@ export function HostNotes({
   const { notes, users, noteVerbs } = useTrip();
   const now = useClock();
   const [editing, setEditing] = useState<Note | 'create' | null>(null);
+  // The host as the index knows it — so the editor can state the category this note inherits.
+  const resolved = useResolvedHost(host);
   // Read the whole context, write to its anchor (ADR-0172 §1/§2). On a place those differ:
   // it shows its single context's notes and a new one lands on that context's booking, which
   // is what keeps the note with the original context if the place is ever reused (§4).
@@ -113,7 +132,7 @@ export function HostNotes({
       {editing && (
         <NoteSheet
           note={editing === 'create' ? undefined : editing}
-          host={host}
+          host={resolved}
           onSave={(draft) => {
             const note = editing === 'create' ? null : editing;
             setEditing(null);

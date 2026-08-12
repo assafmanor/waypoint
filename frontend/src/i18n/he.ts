@@ -1,7 +1,7 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
-import { type BookingType } from '@waypoint/shared';
+import { NOTE_HOST_FIELD, type BookingType } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
@@ -65,6 +65,11 @@ export const t = {
     save: 'שמירה',
     cancel: 'ביטול',
     delete: 'מחיקה',
+    // The way back to a chooser from the value it produced — `ChoiceDisclosure`'s trailing
+    // verb, on every editor that states what a thing is at the top. Here rather than at each
+    // host for the same reason as the three above: it was `index.form.changeType`, private to
+    // the booking sheet, and the note editor is the second surface to need the same word.
+    change: 'שינוי',
     // A stepped surface's footer and its read-out (ADR-0155 §2). Here rather than at
     // each host so `הבא`/`הקודם` cannot drift between two stepped surfaces — the same
     // reason `save`/`cancel` above are shared.
@@ -811,7 +816,15 @@ export const t = {
       stepWhen: 'מתי',
       stepDetails: 'פרטים',
       // Back to the type grid from the collapsed row that replaced it.
-      changeType: 'שינוי',
+      // **A lossy type switch asks once, at the tap, in three words** (owner, 2026-08-12:
+      // _"really short and no need to list everything that will be deleted"_). `יימחקו` is
+      // active and it is the accurate half of the two drafts: the fields genuinely are deleted
+      // on save, they do not merely fail to carry over. Same shape as `manage.plainBody` —
+      // one future-tense sentence, full stop. The cancel is the shared `common.cancel`: at the
+      // TAP there is nothing to abandon, so it means "don't switch" and needs no other word.
+      switchTitle: (type: string) => `להחליף ל${type}?`,
+      switchBody: 'חלק מהפרטים יימחקו.',
+      switchConfirm: 'החלפה',
       stepWhenOut: `מתי ${LEG.out}`,
       stepBackAndShared: `${LEG.back} ופרטים`,
       // Shared across every leg of the save, said where the question actually occurs.
@@ -943,6 +956,18 @@ export const t = {
       urlLabel: 'קישור · לא חובה',
       urlPlaceholder: 'instagram.com/p/',
       categoryLabel: 'קטגוריה',
+      // **Where an unchosen category came from**, per host kind (ADR-0152 §5's amendment: a
+      // hosted note's category is RESOLVED, never copied). It is the leading pill's label and
+      // the collapsed row's caption, so the state is stated rather than left to be guessed
+      // from a pre-filled selection. A `Record` over the five hostable kinds, so a sixth host
+      // has to answer here rather than silently inheriting someone else's noun.
+      categoryFrom: {
+        booking: 'לפי ההזמנה',
+        event: 'לפי האירוע',
+        place: 'לפי המקום',
+        maybeItem: 'לפי הרעיון',
+        document: 'לפי המסמך',
+      } as const satisfies Record<keyof typeof NOTE_HOST_FIELD, string>,
       save: 'שמירה',
       cancel: 'ביטול',
       needsBodyOrUrl: 'כדי לשמור צריך לכתוב משהו או להוסיף קישור',
@@ -1937,6 +1962,10 @@ export const t = {
     locationLabel: 'מיקום',
     locationPlaceholder: 'אופציונלי',
     categoryLabel: 'קטגוריה',
+    // `CategoryField`'s leading pill when nothing is chosen AND nothing is inherited — the
+    // way back to no category at all. A host that DOES inherit replaces this with where the
+    // value came from (`לפי ההזמנה`), so this word only ever means "genuinely none".
+    categoryNone: 'ללא',
     kindLabel: 'סוג',
     kindHard: 'קשיח',
     kindSoft: 'גמיש',

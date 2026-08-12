@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EVENT_KIND, EVENT_STATUS, type Booking, type Place } from '@waypoint/shared';
+import { BOOKING_TYPE, EVENT_KIND, EVENT_STATUS, type Booking, type Place } from '@waypoint/shared';
 import {
   buildEventSeed,
   buildSpanSeed,
@@ -8,6 +8,7 @@ import {
   eventFromBookingSeed,
   findPlaceByName,
   mergeBookingDetails,
+  switchIsLossy,
 } from './booking-edit';
 
 const TZ = 'Asia/Tokyo';
@@ -214,5 +215,76 @@ describe('eventFromBookingSeed', () => {
     );
     expect(ev.kind).toBe(EVENT_KIND.SOFT);
     expect(ev.category).toBe('transport');
+  });
+});
+
+/** **What a type switch would delete**, read off the live form (`switchIsLossy`). A boolean and
+ *  not a list, because the confirm says `חלק מהפרטים יימחקו` and never enumerates — the itemised
+ *  version lives in `mockups/category-on-a-booking-and-a-note-v1.html` §2c, which is what makes
+ *  that short sentence checkable. */
+describe('switchIsLossy', () => {
+  const nothing = { hasRoute: false, hasPlace: false, hasEnd: false, hasStayDetails: false };
+  const full = { hasRoute: true, hasPlace: true, hasEnd: true, hasStayDetails: true };
+
+  it('is false for a switch to the same type', () => {
+    expect(switchIsLossy(BOOKING_TYPE.HOTEL, BOOKING_TYPE.HOTEL, full)).toBe(false);
+  });
+
+  // An empty form has nothing to strand, which is what makes browsing the grid on CREATE
+  // silent — the "eight cards throwing a dialog per tap" objection to a tap-time confirm.
+  it('is false on an empty form, whatever the switch', () => {
+    expect(switchIsLossy(BOOKING_TYPE.FLIGHT, BOOKING_TYPE.HOTEL, nothing)).toBe(false);
+    expect(switchIsLossy(BOOKING_TYPE.HOTEL, BOOKING_TYPE.RESTAURANT, nothing)).toBe(false);
+  });
+
+  it('is false where the shape does not change and the stay fields are not in play', () => {
+    // Both single-place spans: an activity holds everything a hotel's schedule does.
+    expect(switchIsLossy(BOOKING_TYPE.ACTIVITY, BOOKING_TYPE.HOTEL, full)).toBe(false);
+    // Both single-place points.
+    expect(switchIsLossy(BOOKING_TYPE.RESTAURANT, BOOKING_TYPE.OTHER, full)).toBe(false);
+  });
+
+  it('catches route → single place, and only when a route is actually set', () => {
+    const route = { ...nothing, hasRoute: true };
+    expect(switchIsLossy(BOOKING_TYPE.FLIGHT, BOOKING_TYPE.HOTEL, route)).toBe(true);
+    expect(switchIsLossy(BOOKING_TYPE.FLIGHT, BOOKING_TYPE.HOTEL, nothing)).toBe(false);
+    // Transport → transport keeps the route, so nothing is stranded by the axis.
+    expect(switchIsLossy(BOOKING_TYPE.FLIGHT, BOOKING_TYPE.TRAIN, route)).toBe(false);
+  });
+
+  it('catches single place → route, and only when a place is actually linked', () => {
+    const place = { ...nothing, hasPlace: true };
+    expect(switchIsLossy(BOOKING_TYPE.HOTEL, BOOKING_TYPE.FLIGHT, place)).toBe(true);
+    expect(switchIsLossy(BOOKING_TYPE.HOTEL, BOOKING_TYPE.FLIGHT, nothing)).toBe(false);
+  });
+
+  it('catches span → point, and only when an end is actually entered', () => {
+    const end = { ...nothing, hasEnd: true };
+    expect(switchIsLossy(BOOKING_TYPE.ACTIVITY, BOOKING_TYPE.RESTAURANT, end)).toBe(true);
+    expect(switchIsLossy(BOOKING_TYPE.ACTIVITY, BOOKING_TYPE.RESTAURANT, nothing)).toBe(false);
+    // A point → span offers an end rather than dropping one.
+    expect(switchIsLossy(BOOKING_TYPE.RESTAURANT, BOOKING_TYPE.ACTIVITY, end)).toBe(false);
+  });
+
+  // The room + WiFi are the only fields keyed to a single TYPE rather than to an axis, and
+  // `mergeBookingDetails` already prunes them on a non-hotel save — silently, until now.
+  it('catches a stay leaving hotel with its room or WiFi filled in', () => {
+    const stay = { ...nothing, hasStayDetails: true };
+    expect(switchIsLossy(BOOKING_TYPE.HOTEL, BOOKING_TYPE.ACTIVITY, stay)).toBe(true);
+    expect(switchIsLossy(BOOKING_TYPE.HOTEL, BOOKING_TYPE.ACTIVITY, nothing)).toBe(false);
+    // Arriving AT hotel gains the fields; nothing is dropped.
+    expect(switchIsLossy(BOOKING_TYPE.ACTIVITY, BOOKING_TYPE.HOTEL, stay)).toBe(false);
+  });
+
+  // The owner's own example, and the case the confirm's copy was written against: three
+  // things go (the end + its day spread, and the room + WiFi) and eight come across.
+  it('catches the reported case, hotel → restaurant', () => {
+    expect(
+      switchIsLossy(BOOKING_TYPE.HOTEL, BOOKING_TYPE.RESTAURANT, {
+        ...nothing,
+        hasEnd: true,
+        hasStayDetails: true,
+      }),
+    ).toBe(true);
   });
 });

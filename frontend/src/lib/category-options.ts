@@ -16,3 +16,12 @@ export const EVENT_CATEGORY_OPTIONS: {
   icon: iconForCategory(c),
   label: t.iconPicker.categories[c],
 }));
+
+/** **"No answer of its own"**, as a `ChoiceGrid` option value — what `CategoryField`'s
+ *  leading pill carries, and the only way back to `undefined` from a grid whose `onChange`
+ *  only ever sets.
+ *
+ *  A sentinel rather than a primitive change, because the app already does exactly this:
+ *  `IndexNotesView`'s filter row prepends `NOTE_CATEGORY_ALL` to this same list. Prefixed so
+ *  it can never collide with an `EventCategory` value, present or future. */
+export const NO_CATEGORY = '@none' as const;
