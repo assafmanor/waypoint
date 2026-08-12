@@ -1,7 +1,10 @@
 import { useCallback, useState, type CSSProperties } from 'react';
-import { MAP_CARD_BODY_H, MAP_SHEET_STOPS } from '../constants';
+import { MAP_CARD_BODY_H, MAP_LOAD_TIMEOUT_MS, MAP_SHEET_STOPS } from '../constants';
 import { zoomPerLevelPx } from '../lib/canvas-gestures';
-import { mapsConfig } from '../lib/map-config';
+import type { MapsConfig } from '../lib/map-config';
+// The theme's own owner (ADR-0158 §8), not `map-config`'s `documentMapTheme` alias for it —
+// which is the same function, but reached through a module the Map screen's suites mock.
+import { documentTheme } from '../lib/theme';
 import {
   clearTuning,
   mapReading,
@@ -43,10 +46,17 @@ type LookAnswer = 'ok' | 'bad';
 const SECTION = { tune: 'tune', read: 'read', diag: 'diag', look: 'look', out: 'out' } as const;
 type Section = (typeof SECTION)[keyof typeof SECTION];
 
-export function DevMapTuner() {
-  // Build-time and unchanging (§2), so a plain call rather than a memo — this is a dev
-  // panel, not a surface `MapPane`'s per-second re-render makes a re-read costly on.
-  const mapConfig = mapsConfig();
+/** The config is **handed in, never re-read here.** It used to be a plain `mapsConfig()` call
+ *  in render, under a comment claiming it was build-time and unchanging — which is true of the
+ *  three `VITE_` vars and false of the call, because it resolves `mapId`/`colorScheme` through
+ *  the LIVE `documentTheme()` while the map itself latches its config at mount
+ *  (`screens/Map.tsx`'s `useMemo(…, [])`). After any theme flip — and the default pick is
+ *  `system`, whose `matchMedia` listener fires on Android's scheduled dark theme with no user
+ *  action at all — the panel reported the config the map WOULD be built from over a canvas
+ *  built from the other one: DARK and the night Map ID above light tiles. An instrument that
+ *  misreports the thing under test invalidates the capture, so it now reads the same latched
+ *  value the pane was constructed with, exactly as `DayConnector` already does. */
+export function DevMapTuner({ config }: { config: MapsConfig | null }) {
   const [section, setSection] = useState<Section>(SECTION.tune);
   const [overrides, setOverrides] = useState(() => tuningOverrides());
   const [looks, setLooks] = useState<Partial<Record<LookQuestionKey, LookAnswer>>>({});
@@ -156,14 +166,24 @@ export function DevMapTuner() {
         <div style={readoutStyle}>
           <div>api status: {readings.apiStatus ?? '-'}</div>
           <div>tiles loaded this attempt: {readings.tilesLoaded ? 'yes' : 'no'}</div>
+          {/* The bound sits beside the number because the question is not "how long" but
+              "how close to failing" — a success at 9s and a success at 900ms point at
+              opposite causes for #35. */}
+          <div>
+            tiles paint: {readings.tilesLoadedMs ?? '-'}ms of {MAP_LOAD_TIMEOUT_MS.TILES}ms bound
+          </div>
           <div>
             webgl context lost:{' '}
             {readings.webglContextLost === null ? 'n/a' : readings.webglContextLost ? 'YES' : 'no'}
           </div>
           <div>online: {readings.online ? 'yes' : 'no'}</div>
           {readings.apiError != null && <div>last error: {readings.apiError}</div>}
-          <div>mapId: {mapConfig?.mapId ?? '-'}</div>
-          <div>colorScheme: {mapConfig?.colorScheme ?? '-'}</div>
+          <div>mapId: {config?.mapId ?? '-'}</div>
+          <div>colorScheme: {config?.colorScheme ?? '-'}</div>
+          {/* The document's theme NOW, beside the config the canvas was built from. They agree
+              until a theme flips mid-sitting, and a disagreement is a real finding about the
+              canvas rather than a defect in this panel. */}
+          <div>document theme now: {readings.theme}</div>
           <div style={{ wordBreak: 'break-all' }}>ua: {navigator.userAgent}</div>
           <button type="button" onClick={refresh}>
             measure
@@ -202,7 +222,7 @@ export function DevMapTuner() {
           <div style={rowStyle}>
             <button
               type="button"
-              onClick={() => setEmitted(emit(overrides, looks, measure(), mapConfig))}
+              onClick={() => setEmitted(emit(overrides, looks, measure(), config))}
             >
               emit
             </button>
@@ -259,8 +279,10 @@ interface Readings {
   apiStatus: string | null;
   apiError: string | null;
   tilesLoaded: boolean;
+  tilesLoadedMs: number | null;
   webglContextLost: boolean | null;
   online: boolean;
+  theme: string;
 }
 
 /** One layout read, on demand, which is exactly the thing prod may not do on this screen
@@ -288,8 +310,10 @@ function measure(): Readings {
     apiStatus: reading.apiStatus,
     apiError: reading.apiError,
     tilesLoaded: reading.tilesLoaded,
+    tilesLoadedMs: reading.tilesLoadedMs,
     webglContextLost: reading.webglContextLost,
     online: reading.online,
+    theme: documentTheme(),
   };
 }
 
@@ -297,7 +321,7 @@ function emit(
   overrides: Partial<Record<DevTunableKey, number>>,
   looks: Partial<Record<LookQuestionKey, LookAnswer>>,
   readings: Readings,
-  mapConfig: { mapId: string; colorScheme: string } | null,
+  config: MapsConfig | null,
 ): string {
   const lines = ['# map device pass — ADR-0146', ''];
   lines.push(`viewport ${window.innerWidth}×${window.innerHeight}`);
@@ -306,10 +330,17 @@ function emit(
   // Field report #28 / backlog workstream M: the load-failure capture, so a sitting that
   // finally reproduces it on a real phone leaves a record rather than a memory.
   lines.push('## load diagnostics (#28)');
-  lines.push(`mapId: ${mapConfig?.mapId ?? '(list-only, no map)'}`);
-  lines.push(`colorScheme: ${mapConfig?.colorScheme ?? '-'}`);
+  lines.push(`mapId: ${config?.mapId ?? '(list-only, no map)'}`);
+  lines.push(`colorScheme: ${config?.colorScheme ?? '-'}`);
+  lines.push(`document theme at emit: ${readings.theme}`);
   lines.push(`api status: ${readings.apiStatus ?? '?'}`);
   lines.push(`tiles loaded this attempt: ${readings.tilesLoaded ? 'yes' : 'no'}`);
+  // The whole point of workstream M's reopening (#35): whether a failure at the bound is a
+  // failure or a slow success is a number, and it has to leave the sitting written down.
+  lines.push(
+    `tiles paint: ${readings.tilesLoadedMs ?? '(never painted)'} ms` +
+      ` of MAP_LOAD_TIMEOUT_MS.TILES ${MAP_LOAD_TIMEOUT_MS.TILES} ms`,
+  );
   lines.push(
     `webgl context lost: ${readings.webglContextLost === null ? 'n/a' : readings.webglContextLost ? 'YES' : 'no'}`,
   );

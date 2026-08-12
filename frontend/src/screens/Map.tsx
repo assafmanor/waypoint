@@ -3678,8 +3678,12 @@ export function MapView() {
             split — wrapping `<MapPane>` would remount it, and a remount is billed
             (ADR-0121 §4) — and it holds all of its state itself, so a stepper tap
             re-renders the panel and nothing else. Dropped from a production build with
-            the gate, the way `App.tsx` mounts `DevTimeTravel`. */}
-        {import.meta.env.DEV && <DevMapTuner />}
+            the gate, the way `App.tsx` mounts `DevTimeTravel`.
+
+            It is handed the LATCHED `config` rather than reading one of its own: the panel's
+            job is to report what the canvas beside it was built from, and a live re-read says
+            what the next canvas would be built from instead. */}
+        {import.meta.env.DEV && <DevMapTuner config={config} />}
       </div>
 
       {overlays}

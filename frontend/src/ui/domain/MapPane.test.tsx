@@ -191,6 +191,7 @@ class FakeZoomMap {
 import { MapPane, type MapPin } from './MapPane';
 import { PIN_TIER } from '../../lib/map-pins';
 import { MAP_COLOR_SCHEME } from '../../lib/map-config';
+import { mapReading } from '../../lib/dev-tuning';
 import {
   DRAG_CLICK_SWALLOW_MS,
   DRAG_HOLD_MS,
@@ -1001,6 +1002,24 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
     expect(document.querySelector('[data-map]')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  // Backlog workstream M / field report #35: the bound is a heuristic `constants.ts` itself
+  // labels unmeasured, so the device pass has to answer how long a SUCCESSFUL paint costs on
+  // that phone and network. The panel reads it off production's own `onTilesLoaded` — the
+  // signal already here — measured from the same instant the watchdog starts counting.
+  it('publishes how long the tiles phase took, for the pass that has to size the bound', async () => {
+    vi.useFakeTimers();
+    paint();
+    expect(mapReading().tilesLoadedMs).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(2_500));
+    act(() => tilesLoaded.fire?.());
+    expect(mapReading().tilesLoadedMs).toBe(2_500);
+    // A retry starts a fresh clock rather than carrying the previous attempt's elapsed —
+    // the same reason the other three fields are cleared on `[attempt]`.
+    act(() => apiError.fire?.(new Error('boom')));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    expect(mapReading().tilesLoadedMs).toBeNull();
   });
 
   it('retry remounts a fresh map, never reusing the failed instance', async () => {
