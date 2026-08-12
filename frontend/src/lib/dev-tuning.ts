@@ -116,6 +116,13 @@ export interface DevMapReading {
   /** Has `onTilesLoaded` fired at least once THIS attempt — the production watchdog's own
    *  success signal (`constants.ts`'s `MAP_LOAD_TIMEOUT_MS.TILES`). */
   tilesLoaded: boolean;
+  /** How long that took, measured from the same instant the watchdog starts counting, so
+   *  the number and the bound it is judged against share a zero point. `null` until tiles
+   *  paint. **This is the measurement workstream M turns on** — the bound is a heuristic
+   *  `constants.ts` labels unmeasured, and until a real device says what a SUCCESSFUL first
+   *  paint costs there, a failure at 10s cannot be told from a success that was merely slow.
+   *  Read here only: production decides from `tilesLoaded`, never from this. */
+  tilesLoadedMs: number | null;
   /** The canvas's own `webglcontextlost` (field report #28's likeliest single cause on a
    *  real device) — `null` until a real `<Map>` canvas has been observed. */
   webglContextLost: boolean | null;
@@ -126,6 +133,7 @@ const reading: DevMapReading = {
   apiStatus: null,
   apiError: null,
   tilesLoaded: false,
+  tilesLoadedMs: null,
   webglContextLost: null,
   online: typeof navigator === 'undefined' ? true : navigator.onLine,
 };
