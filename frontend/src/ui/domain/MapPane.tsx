@@ -401,16 +401,22 @@ function MapPaneInner({
   // state and hoping the failed instance recovers) buys here.
   const [attempt, setAttempt] = useState(0);
   const tilesLoadedRef = useRef<(() => void) | null>(null);
+  // Dev-only, and the zero point for the elapsed reading below — stamped here rather than
+  // anywhere else because `withDeadline` starts counting on the next line, so the number the
+  // panel reports and the bound it is judged against cannot drift apart.
+  const attemptStartRef = useRef<number | null>(null);
   useEffect(() => {
     setMapFailed(false);
     // The device-pass capture (§1b, backlog workstream M) rides on this attempt's OWN
     // signals rather than a second probe — cleared here so a retry does not show the
     // FAILED attempt's status while the fresh one is still loading.
     if (import.meta.env.DEV) {
+      attemptStartRef.current = performance.now();
       publishMapReading({
         apiStatus: APILoadingStatus.NOT_LOADED,
         apiError: null,
         tilesLoaded: false,
+        tilesLoadedMs: null,
       });
     }
     let live = true;
@@ -430,7 +436,12 @@ function MapPaneInner({
     tilesLoadedRef.current?.();
     tilesLoadedRef.current = null;
     if (import.meta.env.DEV) {
-      publishMapReading({ apiStatus: APILoadingStatus.LOADED, tilesLoaded: true });
+      const started = attemptStartRef.current;
+      publishMapReading({
+        apiStatus: APILoadingStatus.LOADED,
+        tilesLoaded: true,
+        tilesLoadedMs: started == null ? null : Math.round(performance.now() - started),
+      });
     }
   }, []);
   const handleMapError = useCallback((error: unknown) => {
