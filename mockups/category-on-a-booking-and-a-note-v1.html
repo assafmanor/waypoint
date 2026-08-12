@@ -28,8 +28,30 @@
      until it is used. §2 applies it to a booking, where that statement already
      exists; §3 applies the same shape to a note, where it does not yet.
 
+     …and a fifth, which reversed the previous draft's answer to the third:
+
+       "Are you sure it shouldn't be אישור בנגיעה? I mean does it make sense to
+        first remove the fields from the form, then after the user went through
+        the whole form and decided to save, only then you'll warn? At this point
+        they probably know what they're doing."
+
+     Yes — and it broke the previous draft's main reason outright. That draft
+     argued save-time on "nothing is lost until the save", which is true of the
+     STORED data and false of the FORM: the tap is what takes the route field,
+     the span's end and the hotel block off the screen. So the tap is the last
+     moment the thing being warned about is visible, and by the save it is long
+     gone. The other two reasons did not survive either — the "minefield" barely
+     exists because the dialog only fires on a lossy switch and a near-empty
+     create form loses nothing, and "the app confirms at the destructive action"
+     turns out to be the argument FOR the tap once the destructive action is
+     located correctly. §2c now draws the save-time version with its fields
+     already missing, which is the whole of the point, and records the sharpest
+     tell: **save-time has a broken cancel** — you press שמירה, get warned,
+     cancel, and land in a form whose boxes are gone with nothing saying how to
+     get them back.
+
      THE THIRD IS ANSWERED YES, and §2c is the answer. A warning: **yes**, as a
-     `ConfirmDialog` on the SAVE. "Reset and refill everything": **no**, because
+     `ConfirmDialog` on the TAP. "Reset and refill everything": **no**, because
      it is not what happens and saying it would push the user back into
      delete-and-recreate, which is the hole this whole change digs out of.
 
@@ -47,12 +69,12 @@
      the same short sentence is the duplication session 246 (workstream L) was
      written to delete.
 
-     One thing the shortening forced, and it is a fix rather than a trim: the
-     cancel could not stay `ביטול`. This dialog fires from **שמירה**, inside a
-     form that already has its own discard confirm — so `ביטול` here reads as
-     "abandon the edit" rather than "go back to the form". It becomes
-     `המשך עריכה`, which is verbatim what `common.discardCancel` already says in
-     this app for that exact intent.
+     The cancel label moved twice, and the second move is worth reading as
+     evidence rather than as fussing. While the confirm sat on the SAVE, `ביטול`
+     read as "abandon the edit" and had to become `המשך עריכה`. On the TAP that
+     ambiguity does not exist — you never left the form — so the pair is
+     `החלפה · ביטול` again. **The label could not be settled without settling the
+     moment**, which is a fair sign the moment was the real question all along.
 
      What survives of the counting is §2c's MATRIX, and it survives as
      documentation rather than as copy — because it is what makes "חלק מהפרטים"
@@ -156,7 +178,7 @@
 
        §1  the diagnosis · no fork, read it first
        §2  a booking · the statement on top becomes the control
-       §2c what a switch actually costs · the matrix, and the save's confirm
+       §2c what a switch actually costs · the matrix, and the tap's confirm
        §3  a note · the same shape, and the way back to "no category"
        §3b the two shapes that were rejected, drawn so the rejection is checkable
        §4  the three layers, and the density defect the extraction removes
@@ -10344,7 +10366,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       <!-- ══════════════════════════ §2c ══════════════════════════ -->
       <section class="case">
-        <h2>§2c · מה תחליף סוג באמת עולה · המטריצה, והאישור בשמירה</h2>
+        <h2>§2c · מה תחליף סוג באמת עולה · המטריצה, והאישור בנגיעה</h2>
         <p class="note">
           <b>"מה זה אומר להפוך לינה למסעדה?"</b> · שאלה טובה, ויש לה תשובה מדויקת. שלושת הצירים
           ב<code>BOOKING_TYPE_PROFILE</code> (מקום אחד מול מסלול · נקודה מול פרישה · והשדות שהסוג
@@ -10380,13 +10402,31 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           <tbody></tbody>
         </table>
         <p class="note">
-          <b>ובשמירה, לא בנגיעה</b> · שלוש סיבות, וכולן כלל ולא טעם. (1) בנגיעה זה אישור על משהו
-          שעוד לא קרה: הטופס מתחייב פעם אחת (ADR-0155), ומצב הטופס שומר את המקום, את המוצא/יעד ואת
-          שעת הסיום · תחליף חזרה מחזיר אותם. (2) גריד של שמונה כרטיסים שכל נגיעה בו זורקת דיאלוג
-          הוא שדה מוקשים, וביצירה <code>changeType</code> נוגעים בו בחופשיות. (3) זו כבר הדקדוק של
-          האפליקציה · השומר של אירוע קשה (ADR-0011) ובקשת המחיקה/ניתוק (ADR-0047 §3) שתיהן מאשרות
-          <b>בפעולה ההרסנית</b>, לא כשמתחילים לערוך. המסגרת הימנית מציירת את החלופה שנדחתה, ועם
-          הגריד פתוח מתחתיה · כי זו כל הטענה.
+          <b>ובנגיעה, לא בשמירה.</b> הטיוטה הקודמת אמרה את ההפוך, והבעלים הפיל אותה במשפט אחד:
+          <i>"does it make sense to first remove the fields from the form, then after the user
+          went through the whole form and decided to save, only then you'll warn? At this point
+          they probably know what they're doing."</i> זה נכון, וזה מפיל את הנימוק המרכזי של
+          הטיוטה ההוא. <b>הנגיעה היא לא תצוגה מקדימה · היא מה שמסיר את השדות מהטופס</b>, ולכן היא
+          הרגע האחרון שבו החדר, ה-WiFi ושעת היציאה עוד על המסך. אזהרה שווה הכי הרבה כשמה שהיא
+          מדברת עליו נראה · בשמירה, השדות האלה ירדו מזמן, והדיאלוג שואל על נתונים שאין.
+        </p>
+        <p class="note">
+          <b>ושני הנימוקים הנותרים לא החזיקו בבדיקה.</b> "גריד שכל נגיעה בו זורקת דיאלוג הוא שדה
+          מוקשים" · אבל הדיאלוג נורה רק כשיש מה להפיל, וב<b>יצירה</b> טופס כמעט ריק לא מפיל כלום,
+          אז שדה המוקשים כמעט ואינו קיים (ו<code>changeType</code> כבר שומר במפורש קצה
+          ש<b>אדם הקליד</b>, field report #11). ו"האפליקציה מאשרת בפעולה ההרסנית" · נכון, וזה
+          בדיוק הנימוק ההפוך ממה שנטען: הפעולה ההרסנית כאן <b>היא הנגיעה</b>. מה ששרד מהטיוטה
+          ההוא הוא רק המשפט שהופך את האישור לזול · הטופס מתחייב פעם אחת (ADR-0155), ולכן גם אחרי
+          אישור, נגיעה חזרה בסוג המקורי מחזירה הכול ממצב הטופס. השאלה בנגיעה היא לא שאלה מפחידה.
+        </p>
+        <p class="note">
+          <b>והמדידה הכי חדה כאן היא לא בפיקסלים אלא ב<code>ביטול</code>.</b> בנגיעה הוא נקי · שום
+          דבר לא השתנה, הגריד נשאר על הסוג הקודם. בשמירה הוא כמעט חסר משמעות: לוחצים
+          <code>שמירה</code>, מקבלים אזהרה, מבטלים · וחוזרים לטופס שהשדות שלו כבר לא שם, בלי שום
+          דבר שמלמד שצריך לנגוע בסוג המקורי כדי להחזיר אותם. <b>מסלול ביטול שבור הוא סימן שהאישור
+          יושב ברגע הלא נכון</b>, וזה מה שהחליף את התווית: הזוג חזר להיות
+          <code>החלפה · ביטול</code>, כי <code>המשך עריכה</code> נכתב כדי לפתור עמימות שקיימת רק
+          בשמירה. התווית עקבה אחרי הרגע · וזו עדות בזכות עצמה לכך שהרגע היה השאלה האמיתית.
         </p>
         <div class="pair" id="s2c"></div>
       </section>
@@ -10626,6 +10666,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       const ICON = {
         reset: 'M3 4v6h6M3.5 15a9 9 0 1 0 2.2-9.4L3 10',
         warn: 'M12 3.6 22 20.4H2Z M12 9.8v4.6 M12 17.4v.02',
+        wifi: 'M12 19.6h.02 M8.6 16.2a4.8 4.8 0 0 1 6.8 0 M5.2 12.8a9.6 9.6 0 0 1 13.6 0 M2 9.4a14.4 14.4 0 0 1 20 0',
         ticket:
           'M4 8.4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1.2a2.4 2.4 0 0 0 0 4.8v1.2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1.2a2.4 2.4 0 0 0 0-4.8Z',
         clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M12 7.4V12l3.2 2',
@@ -10855,11 +10896,29 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               ${field('', `<div class="titlerow">${input(SAVED.title)}</div>`)}
               ${field('הוזמן דרך', input('Booking.com'))}
               ${field('קוד אישור', input('4HGT-2291'))}
+              ${o.type === 'hotel' ? hotelFields() : ''}
             </div>
             ${actions('שמירה', 'ביטול')}
           </div>`;
         return sheet('עריכת הזמנה', body);
       };
+
+      /** THE FIELDS ONLY A HOTEL HAS (`BookingSheet.tsx:1292-1320`), reproduced so the
+       *  question "when should the warning fire" can be LOOKED at: these are the boxes a
+       *  switch away from `hotel` takes off the form, and `mergeBookingDetails` then drops
+       *  their values on save. The check-out clock goes too; its control is `WhenField`'s
+       *  and is deliberately not redrawn here (§2c's caption says so). */
+      const hotelFields = () => `
+        ${field('חדר', input('1204'))}
+        <div class="bs-wifi">
+          <div class="bs-wifi-head">
+            ${icon('wifi')} WiFi<span class="bs-hint"> · שדה למלון בלבד</span>
+          </div>
+          <div class="bs-row2">
+            ${field('רשת', input('Granbell-Guest'))}
+            ${field('סיסמה', input('shinjuku2026'))}
+          </div>
+        </div>`;
 
       /* ── The note editor. `mode`: today | disclose | field. */
       const noteSheet = (o) => {
@@ -10916,7 +10975,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
                 <p class="confirm-text">חלק מהפרטים יימחקו.</p>
                 <div class="confirm-actions">
                   <button type="button" class="confirm-confirm">החלפה</button>
-                  <button type="button" class="confirm-cancel">המשך עריכה</button>
+                  <button type="button" class="confirm-cancel">ביטול</button>
                 </div>
               </div>
             </div>
@@ -11072,12 +11131,12 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         document.querySelector('#s2').innerHTML = [
           col(
             '<span class="tag before">היום · עריכה</span>',
-            bookingSheet({ row: 'today', mode: 'statement' }),
+            bookingSheet({ row: 'today', mode: 'statement', type: SAVED.type }),
             'אמירה בלי פקד. הדרך היחידה לתקן סוג היא למחוק וליצור מחדש · ואיתה נופלים הקוד, המסמכים, הפתקים והאירוע המקושר.',
           ),
           col(
             '<span class="tag after">בהצעה · סגור</span>',
-            bookingSheet({ row: 'new', open: false, rowId: 'bk-row' }),
+            bookingSheet({ row: 'new', open: false, rowId: 'bk-row', type: SAVED.type }),
             'אותה שורה, אותו מקום · עכשיו כפתור ברוחב מלא. <b>0px נוספים</b> לכל עריכה שלא נוגעת בסוג, וזו רוב העריכות.',
           ),
           col(
@@ -11088,6 +11147,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               rowId: 'bk-row-open',
               panelId: 'bk-panel',
               gridId: 'bk-grid',
+              type: SAVED.type,
             }),
             `הגריד נחשף במקום, בלי צעד ובלי שכבה · והוא <b>שותק</b>. בחירה היא בחירה, לא אזהרה; מה שקורה כשמפילים משהו הוא §2c.`,
           ),
@@ -11106,7 +11166,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
               <td class="${l.length ? 'bad' : 'good'}">${l.length ? l.join(' · ') : 'כלום'}</td>
               <td>${k.join(' · ')}</td>
               <td class="${l.length ? 'bad' : 'good'}">${
-                l.length ? 'מאשר בשמירה' : 'שותק'
+                l.length ? 'מאשר בנגיעה' : 'שותק'
               }</td>
             </tr>`;
           })
@@ -11114,17 +11174,21 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
         document.querySelector('#s2c').innerHTML = [
           col(
-            '<span class="tag after">בהצעה · האישור בשמירה</span>',
-            saveConfirm(SAVED.type, ty),
-            'שלוש מילים, ולא רשימה · הטבלה למעלה היא מה שהופך את "חלק מהפרטים" לנבדק, והיא תיעוד ולא קופי. בקוד זה בוליאני אחד.',
+            '<span class="tag after">בהצעה · אישור בנגיעה</span>',
+            /* Drawn OVER the open grid and over the fields still on screen —
+               which is the argument: this is the last moment the room, the WiFi
+               and the check-out are visible, so it is the moment the question is
+               about something you can see. */
+            bookingSheet({ row: 'new', open: true, type: SAVED.type }) + saveConfirm(SAVED.type, ty),
+            'הדיאלוג נופל בזמן שהחדר וה-WiFi <b>עוד על המסך</b> · זו הנגיעה שתסיר אותם, וזה הרגע האחרון שבו השאלה היא על משהו שרואים. <code>ביטול</code> כאן נקי לגמרי: שום דבר לא השתנה, והגריד נשאר על הסוג הקודם.',
           ),
           col(
-            '<span class="tag alt">נדחה · אישור בנגיעה</span>',
-            /* The same dialog, drawn OVER the open grid — which is the argument
-               itself: this is what a tap on any of eight cards would produce,
-               while you are still choosing. */
-            bookingSheet({ row: 'new', open: true }) + saveConfirm(SAVED.type, ty),
-            'אותו דיאלוג, ברגע הלא נכון · הוא נופל תוך כדי הבחירה, על משהו שעוד לא קרה. שמונה כרטיסים, ובכל נגיעה בהם זה מה שקורה · וביצירה נוגעים בגריד בחופשיות.',
+            '<span class="tag alt">נדחה · אישור בשמירה</span>',
+            /* The same dialog after the switch already happened: the hotel block
+               is gone from the form, so the dialog asks about data that is no
+               longer on screen — and `ביטול` here has nothing clean to return to. */
+            bookingSheet({ row: 'new', open: false, type: ty }) + saveConfirm(SAVED.type, ty),
+            'אותו דיאלוג, אחרי שהשדות כבר ירדו · שימו לב מה <b>אין</b> בטופס שמאחוריו. הוא שואל על נתונים שלא רואים, אחרי שהמשתמש כבר עבר את כל הטופס · ובעיקר: אין ל<code>ביטול</code> לאן לחזור.',
           ),
         ].join('');
 
@@ -11347,7 +11411,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'עשר גלולות · הרשימה גוללת, והנבחרת ממרכזת את עצמה (<code>useCenterSelected</code>)',
           ],
           [
-            'האישור בשמירה · הכרטיס',
+            'האישור בנגיעה · הכרטיס',
             hw('#s2c .confirm'),
             'שלוש מילים · <code>ConfirmDialog tone="danger"</code>, בלי CSS חדש ובלי שורת <code>consequence</code>',
           ],

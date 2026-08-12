@@ -71,9 +71,23 @@ Two things follow, and both are improvements rather than costs:
 
 - **The mechanism the build needs is a boolean**, `switchIsLossy(from, to, booking)`, not a list anyone has to phrase into copy. The itemised version stays in the mockup as the matrix — **documentation, not copy** — and that is what earns the short sentence: a reader can check that "חלק מהפרטים" means three of eleven and not "everything".
 - **It measures smaller twice.** The confirm card halves, 196.5px → 99.8px. And dropping the banner takes the opened booking form from 704.9px to 649.3px, so at 360×640 it now overruns the screen by 9px instead of 65px.
-- **The cancel label could not stay `ביטול`**, and this is a fix the shortening surfaced rather than a trim. The dialog fires from **שמירה**, inside a form that already has its own discard confirm — so `ביטול` here reads as "abandon the edit", not "go back to the form". It becomes `המשך עריכה`, which is verbatim what `common.discardCancel` already says in this app for that exact intent, so it is a reused string and not a new one.
+- **The cancel label then moved back**, once call 5 moved the moment — see below; the label following the moment is itself evidence about which of the two was the real question.
 
-**And the confirm is on the SAVE, not on the tap.** Three reasons, each a rule rather than a taste: (1) at the tap it confirms something that has not happened — the form commits once (ADR-0155) and form state still holds the place, the route and the end, so switching back restores them; (2) a grid of eight cards that throws a dialog on every tap is a minefield, and on create `changeType` is tapped freely; (3) it is already the app's grammar — the hard-event guard (ADR-0011) and the delete/unlink prompt (ADR-0047 §3) both confirm **at the destructive action**, not when editing begins. §2c draws the rejected version over the open grid, because that is the argument.
+**Call 5 — and it reversed the answer above.**
+
+> "Are you sure it shouldn't be אישור בנגיעה? I mean does it make sense to first remove the fields from the form, then after the user went through the whole form and decided to save, only then you'll warn? At this point they probably know what they're doing."
+
+The previous draft put the confirm on the **save** and gave three reasons. The owner's question breaks the main one and inverts the third; the second does not survive a count either. Recorded in full because the reasoning, not the outcome, is the reusable part:
+
+1. **"Nothing is lost until the save."** True of the STORED data, false of the FORM — and the form is what the user is looking at. The tap is what takes the route field, the span's end and the whole hotel block (room, WiFi) off the screen. So **the tap is the last moment the thing being warned about is visible**, and by the save it has been gone for several interactions. A warning is worth most when its subject is on screen.
+2. **"A grid of eight cards throwing a dialog per tap is a minefield."** Barely exists. The dialog only fires on a **lossy** switch, and on create a near-empty form loses nothing — plus `changeType` already preserves an end a human typed (field report #11). The minefield was mostly imaginary; the taps that do warn are deliberate edits.
+3. **"The app confirms at the destructive action."** Correct, and it is the argument FOR the tap once the destructive action is located properly. The tap is the destruction; the save merely persists what the tap already did on screen.
+
+**And the sharpest tell is the cancel path.** At the tap, `ביטול` is perfectly clean: nothing changed, the grid keeps the previous type. At the save it is nearly useless — you press שמירה, get warned, cancel, and land back in a form whose boxes are already gone, with nothing telling you that re-tapping the original type is what brings them back. **A broken cancel path is a sign the confirm is sitting at the wrong moment.**
+
+That also explains the label moving twice, which is evidence rather than fussing: while the confirm sat on the save, `ביטול` read as "abandon the edit" and had to become `המשך עריכה`; on the tap that ambiguity does not exist, so the pair is `החלפה · ביטול` again. **The label could not be settled without settling the moment.**
+
+What survives of the save-time draft is the one fact that makes a tap-time confirm cheap rather than frightening: the form commits once (ADR-0155), so even after confirming, re-tapping the original type restores everything from form state. §2c draws both — the recommended dialog over the fields **still on screen**, and the rejected one over a form where they are **already missing**, which is the whole of the argument.
 
 **Not** a refusal, either: blocking a lossy switch blocks exactly the report. A stay misfiled as a restaurant is a wrong classification to correct, not a state to defend — and the block leaves the user with the delete-and-recreate that loses more than any switch does.
 
@@ -127,7 +141,7 @@ Four pieces, each reviewable alone, in this order:
 0. `lib/booking-edit.ts` — one `switchIsLossy(from, to, booking)` beside `mergeBookingDetails`, computed from `BOOKING_TYPE_PROFILE`'s axes so a ninth booking type answers by existing. A **boolean**, not a list: the dialog's copy is one fixed sentence in `he.ts`, and the itemisation lives in the mockup as documentation.
 1. `packages/shared` — the three place FKs become `.nullish()` on the update path, mirrored to `schema.prisma` (rule 3), with a test for the clear.
 2. `ui/primitives/ChoiceDisclosure` + `ui/primitives/CategoryField`, each with its own test file, and the three existing category call sites moved onto the latter (the Map keeps its always-open row: there the category **is** the pin's hue, and `MapPlaceForm`'s own comment says absence of a choice is wrong information rather than absent information).
-3. `BookingSheet` — the type control on edit, `changeType`'s existing preserve-what-a-human-typed rule unchanged, the save's one-line `ConfirmDialog` (the sheet already renders one for discard; this is a second call of the same primitive, not a second prompt), and the payload that actually nulls the stranded place fields. No banner.
+3. `BookingSheet` — the type control on edit, `changeType`'s existing preserve-what-a-human-typed rule unchanged, the **tap's** three-word `ConfirmDialog` gated on `switchIsLossy` (the sheet already renders one for discard; this is a second call of the same primitive, not a second prompt), and the payload that actually nulls the stranded place fields. No banner, and no second confirm at the save.
 4. `NoteSheet` + `HostNotes` — the row, the sentinel pill, and the host resolved from the one index.
 
 **And an ADR on approval**, because the premise "a saved booking's type is immutable" was never written down as a decision and this reverses it. The mockup is the spec; the ADR is what makes the reversal citable.
