@@ -174,12 +174,26 @@ export const LOCAL_READ_TIMEOUT_MS = {
  *  heuristic `lib/deadline.ts` exists for: `onTilesLoaded` never firing within this bound is
  *  treated as a failure (ADR-0121's 2026-08-11 amendment records the trade).
  *
- *  Unmeasured — no device has reproduced #28 yet, the same caveat #22's bounds carried — so
- *  it takes the same order of magnitude as the two groups above: more forgiving than a single
- *  `LOCAL_READ_TIMEOUT_MS.HANDLE` read since a first paint is many tiles, less patient than a
- *  full `API_TIMEOUT_MS.FETCH` round trip since nothing here left the device idle. */
+ *  **MEASURED 2026-08-12 (session 256 §2), and that is why this is 20s rather than 10s.** The
+ *  first value was a guess in `API_TIMEOUT_MS.FETCH`'s order of magnitude, and field report #35
+ *  is what a guess that lands too low looks like from the outside: _"sometimes there is a map
+ *  and sometimes there is not"_, which is the signature of a threshold, not of a broken map.
+ *  Sampled in real Chrome against a real Google canvas, every sample a **successful** first
+ *  paint: **~650ms** warm, **0.9–1.5s** cold, **~2.5s** on Fast 3G, and **8.15s** on Slow 3G —
+ *  82% of the old bound, three samples inside 15ms of each other. Adding a 4× CPU slowdown
+ *  moved it only ~500ms, so **this is bandwidth-bound, not CPU-bound**: the phone's silicon
+ *  barely enters into it and the network decides, which is exactly why a bound sized for a
+ *  good link fails a real one.
+ *
+ *  20s doubles the worst measured success. **The cost of being generous here is small and
+ *  asymmetric**, which is the whole argument: a failed *script* load still surfaces
+ *  immediately through `onError`, so a longer deadline only delays the one case Google gives
+ *  no event for — and while it runs, `MapPane` now says `t.map.loading` rather than showing a
+ *  blank canvas, so the wait is explained instead of silent. Being too SHORT, by contrast,
+ *  reports a working map as broken and bills a fresh instantiation on every retry tap
+ *  (ADR-0121 §4). Still owed: the owner's own phone on real mobile data. */
 export const MAP_LOAD_TIMEOUT_MS = {
-  TILES: 10_000,
+  TILES: 20_000,
 } as const;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',

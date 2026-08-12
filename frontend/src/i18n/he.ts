@@ -129,6 +129,11 @@ export const t = {
     // failure or tiles that silently never painted. The place list beside it still
     // works, so this takes only the canvas's own slot, never the whole tab.
     loadError: 'לא הצלחנו לטעון את המפה',
+    // Said while the tiles are still on their way, because the alternative is a blank
+    // canvas with our own pins floating on it and nothing to explain the wait — which is
+    // indistinguishable from the failure above (field report #35). On a slow network that
+    // wait is real seconds, not a flicker.
+    loading: 'טוען את המפה…',
     filter: {
       all: 'הכל',
       maybes: 'אולי',

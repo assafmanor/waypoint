@@ -450,6 +450,31 @@
   display: none;
 }
 
+/* ── THE FAILED PANE AND THE PRE-PROMPT BOTH WANT THIS BAND ───────────────────────
+   Field report #35's second cause, measured in session 256 §3. The card above is pinned to
+   the pane's TOP; `.fb-error-pane` centres in the pane's FULL height — so on a short pane
+   (360×640: pane 222px, card 133px) the card covered the error outright and `Retry` was not
+   hittable at all, `.map-gbtn` winning the tap. That is the whole of _"an error is shown and
+   the Reload/Retry button does not help"_: the retry was never broken, the tap never arrived.
+
+   **The card yields, and it has to be the card.** Raising the error above it instead was built
+   and looked at first: the tap resolved correctly and it read as two cards printed on top of
+   each other, because a 222px pane genuinely cannot hold both — so this is not a z-order
+   question, it is a room question, and one of them has to go. The error is the screen's only
+   explanation of why there is no map and it carries the only way out of that state; the card
+   is transient, asks about a canvas that is not currently drawing, and its feature (near-me
+   sorts the LIST, no canvas needed) comes back with the map. This is also just the rule above
+   applied honestly — ONE floating object over the canvas at a time, and a failed pane's error
+   is that object.
+
+   Note what is NOT claimed: near-me by pre-prompt is unavailable while the pane is failed,
+   because `promptOpen` stays true behind this and the chip cannot re-open what is already
+   open. That is a degradation of a secondary control during a failure, taken deliberately
+   over hiding the primary explanation, and it lifts the moment the map loads. */
+.map-split:has(> .map-pane .fb-error) > .map-geoprompt {
+  display: none;
+}
+
 /* THE PLACE CARD — the tapped pin's own row, hosted on the canvas (§7), rendered only
    where the sheet cannot show that row. The bottom gutter is contractual, not taste:
    Google draws its logo and terms link at the bottom-inline-start of the map div and the

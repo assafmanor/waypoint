@@ -1022,6 +1022,29 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     expect(mapReading().tilesLoadedMs).toBeNull();
   });
 
+  // Field report #35's other half: a blank canvas with our own pins on it and nothing said
+  // is indistinguishable from the failure this suite covers above — and with the bound at
+  // 20s a slow network holds that picture for real seconds. The cue rides `onTilesLoaded`,
+  // the signal the watchdog already waits for, so there is no second mechanism to drift.
+  it('says the wait is a wait until the first tile paints, and stops saying it after', () => {
+    paint();
+    expect(screen.getByText(t.map.loading)).toBeTruthy();
+    act(() => tilesLoaded.fire?.());
+    expect(screen.queryByText(t.map.loading)).toBeNull();
+  });
+
+  it('never says loading and failed at once, and says it again on a retry', () => {
+    vi.useFakeTimers();
+    paint();
+    act(() => apiError.fire?.(new Error('boom')));
+    // The failure replaced the canvas, so the cue went with it — one answer on screen.
+    expect(screen.queryByText(t.map.loading)).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    // A fresh attempt is loading again, not still showing the failed one's last word.
+    expect(screen.getByText(t.map.loading)).toBeTruthy();
+  });
+
   it('retry remounts a fresh map, never reusing the failed instance', async () => {
     vi.useFakeTimers();
     paint();

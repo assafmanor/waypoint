@@ -1054,3 +1054,25 @@
 .map-areacount.on b {
   color: inherit;
 }
+
+/* ── THE WAIT, STATED (field report #35) ──────────────────────────────────────────
+   Before the first tile paints, the canvas is empty while our own markers already draw
+   on it. That picture is what #28 reported as a failure, and it is also what a healthy
+   slow load looks like — so with `MAP_LOAD_TIMEOUT_MS.TILES` now at 20s the pane says
+   which one it is instead of leaving a blank.
+
+   Centred over the canvas, NOT a block that reserves height: the pane's box is what the
+   pin size and the camera fit are read off (ADR-0123), so anything that changed its
+   layout would move the map to say "loading". `pointer-events: none` because the pan and
+   the long press belong to the canvas underneath — a cue is a statement, never a target,
+   and Google's callbacks would not see a tap this swallowed (ADR-0148's gesture seam). */
+.map-loading {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  translate: 0 -50%;
+  pointer-events: none;
+  text-align: center;
+  font-size: var(--text-secondary);
+  color: var(--muted);
+}
