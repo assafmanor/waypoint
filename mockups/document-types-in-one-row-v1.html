@@ -124,6 +124,34 @@
         here — only a choice about what the 32px holds.
 
      ─────────────────────────────────────────────────────────────────────────
+     DECIDED IN SESSION (owner, 2026-08-13): **ב׳ — the chips come, and the group
+     headings stay.** Recorded against a recommendation of א׳, and all three stay
+     drawn: this file is the record of what was compared, not of what won.
+
+     The owner's call is what makes §4 SIMPLER than either draft of it, and that is
+     worth reading rather than skipping:
+
+       Because the screen keeps `.doc-group`, the search results can be **the same
+       grouped renderer as the screen** rather than a second shape — heading outside
+       its own card, exactly as shipped. That deletes this file's only piece of
+       proposed CSS beyond the optional touch floor (a `.gt` re-padded for life
+       inside a `.listcard`, which only א׳'s single flat list ever needed), so **the
+       whole search now costs zero new CSS.** The rejected shape stays drawn in §4's
+       second frame, because "we compared them" is the part a later reader cannot
+       recover.
+
+     What ב׳ must not be built as, and it is the one non-obvious part of it: a
+     group that empties **cannot** be `groups.filter(g => g.docs.length > 0)`. That
+     is exactly the `.filter()`-instead-of-reveal one-off `frontend/CLAUDE.md` names
+     (ADR-0120, the two releases the Map jumped for), and it would pop a heading and
+     a card frame out with no collapse while the rows beside them animate. The
+     primitive for it already exists and is exported and currently used only by its
+     own test: **`RevealRow`** takes any children, so a `.doc-group` wraps in one
+     with `visible={countVisible(rows) > 0}`, holding the heading and the group's own
+     `RevealList`. Nested reveal, one primitive, no new CSS, and a group leaves the
+     way its rows do.
+
+     ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (בהיר · כהה), screen (360×640 · 390×844), state (העלאה,
      nothing chosen · עריכה, a ticket already filed — which is what makes the
      selected pill's self-centring visible), pill height (35px · 44px), and the
@@ -9773,14 +9801,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         padding-block: 12px;
       }
 
-      /* §4's group heading, and the ONLY new rule the search needs (it moves into
-         `screens.css` beside `.doc-group .gt`). A heading emitted by `RevealList`'s
-         `renderBefore` lands INSIDE the list container, where the shipped `.gt` — which
-         sits outside its own card, at `padding: 6px 2px 7px` — is 2px from a card edge
-         the rows are 12px from. So: the card's own inline padding, and the hairline
-         `.map-grouphead::after` already draws for the app's other in-list heading
-         (`Map.tsx:2674`, the primitive's first consumer). Selector is `.listcard .gt`,
-         which cannot reach the shipped one — that one has no `.listcard` ancestor. */
+      /* ── NOT PROPOSED ANY MORE, and kept so §4's second frame still renders what was
+         rejected. This was the heading rule a SINGLE flat results list needed: a heading
+         emitted by `RevealList`'s `renderBefore` lands inside the list container, where
+         the shipped `.gt` — which sits outside its own card at `padding: 6px 2px 7px` —
+         is 2px from a card edge the rows are 12px from, so it wanted the card's inline
+         padding and the hairline `.map-grouphead::after` already draws (`Map.tsx:2674`).
+         The owner's choice of ב׳ keeps `.doc-group` on the screen, so the results reuse
+         that shape and this rule is not needed: the search ships zero new CSS. */
       .index .listcard .gt {
         display: flex;
         align-items: center;
@@ -10168,12 +10196,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <h2>§3 · חיפוש במסמכים · שלוש הצורות, ומה כל אחת אומרת פעמיים</h2>
         <p class="note">
           הבריף: <b>«add search like bookings and notes have (where category titles are also
-          shown)»</b>. שתי המסכים האחרים מחזיקים <code>.filter-row</code> אחד — גלולות סינון ואז
+          shown)»</b>. שני המסכים האחרים מחזיקים <code>.filter-row</code> אחד — גלולות סינון ואז
           כפתור החיפוש — אבל הם נבדלים בצפיפות: בהזמנות הגלולות <b>נושאות מילה</b>, בפתקים הן
-          <code>compact</code> (סמל ומספר בלבד, ADR-0122 §2). הסוגריים בבריף הם ההכרעה בין השתיים:
-          <b>גלולות עם מילה</b>, כמו בהזמנות. מה שנשאר פתוח הוא הרשימה שמתחת, כי במסמכים הקטגוריה
-          כבר כתובה על המסך — <b>ככותרת קבוצה</b>. ג׳ הוא השינוי הקטן ביותר, ב׳ אומר את הסוג פעמיים,
-          ו-א׳ הוא היחיד ששלושת מסכי האינדקס יוצאים ממנו זהים.
+          <code>compact</code> (סמל ומספר בלבד, ADR-0122 §2). הסוגריים בבריף מכריעים בין השתיים:
+          <b>גלולות עם מילה</b>, כמו בהזמנות · זה לא היה הפיצול. מה שכן היה הוא הרשימה שמתחת, כי
+          במסמכים הקטגוריה כבר כתובה על המסך — <b>ככותרת קבוצה</b>.
+          <b>הוכרע: ב׳</b> — הגלולות באות והקבוצות נשארות · הפריים הימני. א׳ וג׳ נשארות מצוירות
+          לידה, כי ההשוואה היא הרשומה.
         </p>
         <div class="pair" id="s3"></div>
       </section>
@@ -10184,11 +10213,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         <p class="note">
           אותו <code>SearchOverlay</code> ששולח את ההזמנות והפתקים (ההערה בראשו כבר צופה את הקורא
           הזה: <i>"a future document search … reuses this rather than growing a second one-off"</i>).
-          ההבדל היחיד בין שני הצדדים הוא אם השורות מקובצות: <b>שטוח</b> כמו בשני המסכים האחרים, או
-          <b>עם כותרת קבוצה</b> — שזו הקריאה השנייה של הסוגריים בבריף. הכותרות אינן מנגנון חדש:
-          <code>RevealList</code> כבר מקבל <code>renderBefore</code> בדיוק לזה, והמפה היא הצרכן
-          הראשון (<code>Map.tsx:2674</code>) — כותרת נגזרת מהשורות ה<b>נראות</b> בלבד, אחרת קבוצה
-          שכל שורותיה סוננו משאירה כותרת מעל כלום.
+          <b>וההכרעה בב׳ פישטה את הסעיף הזה.</b> מכיוון שהמסך שומר על <code>.doc-group</code>,
+          התוצאות הן <b>אותו מרנדר מקובץ</b> — כותרת מחוץ לכרטיס שלה, בדיוק כמו המשוגר — ולא צורה
+          שנייה · הפריים הימני, וללא שורת CSS חדשה. שני רבדים של אותו reveal: השורות בתוך קבוצה
+          (<code>RevealList</code>), והקבוצה עצמה (<code>RevealRow</code>) כשאין בה התאמה. הצד
+          שנדחה, בפריים השמאלי, הוא הרשימה השטוחה עם כותרות <b>בתוך</b> הכרטיס דרך
+          <code>renderBefore</code> — נכון וקיים כפרימיטיב (<code>Map.tsx:2674</code> הוא הצרכן
+          הראשון), אבל בתוך <code>.listcard</code> הוא היה דורש כלל מרווח משלו. בשני הצדדים הכותרת
+          נגזרת מהשורות ה<b>נראות</b> בלבד, אחרת קבוצה שסוננה משאירה כותרת מעל כלום.
         </p>
         <div class="pair" id="s4"></div>
       </section>
@@ -10245,7 +10277,32 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             להגיד על עצמה.
           </li>
           <li>
-            <b>§3 · ההמלצה היא א׳, על מספרים ולא על טעם.</b> שורת הכרום היא ⁦32px⁩ בשלושתן —
+            <b>§3 · הוכרע בשיחה (2026-08-13): ב׳ · הגלולות באות, והקבוצות נשארות.</b> ההמלצה כאן
+            הייתה א׳, וההכרעה נרשמת כמו שהיא · שלוש הצורות נשארות מצוירות, כי מה שהושווה הוא הרשומה,
+            לא מי ניצח. <b>מה שההכרעה מייקרת:</b> ⁦195px⁩ על שנים־עשר מסמכים, והסוג נאמר פעמיים
+            כשגלולה דלוקה. <b>ומה שהיא מוזילה, וזה לא היה בתחזית:</b> מכיוון שהמסך שומר על
+            <code>.doc-group</code>, תוצאות החיפוש הן <b>אותו מרנדר מקובץ</b> ולא צורה שנייה — מה
+            שמוחק את כלל ה-CSS היחיד שהקובץ ביקש מעבר לרצפת המגע האופציונלית. <b>החיפוש כולו יוצא
+            ללא שורת CSS חדשה.</b>
+          </li>
+          <li>
+            <b>ב׳ · איך לא לבנות אותה, וזה החלק הלא־מובן־מאליו.</b> קבוצה שכל שורותיה סוננו
+            <b>אינה</b> <code>groups.filter(g =&gt; g.docs.length &gt; 0)</code> · זה בדיוק ה-one-off
+            ש-<code>frontend/CLAUDE.md</code> מזהיר ממנו (ADR-0120, שתי גרסאות שבהן המפה קפצה), והוא
+            יעיף כותרת ומסגרת כרטיס בלי סגירה בזמן שהשורות לידן מונפשות. הפרימיטיב קיים, מיוצא,
+            ועד עכשיו רק הטסט שלו משתמש בו: <code>RevealRow</code> עוטף כל ילד, כך שקבוצה נכנסת
+            לתוכו עם <code>visible={countVisible(rows) &gt; 0}</code> ומחזיקה את הכותרת ואת
+            <code>RevealList</code> שלה. שני רבדים של אותו reveal, בלי CSS.
+          </li>
+          <li>
+            <b>§1 · ההנמקה לדחיית <code>disclosure</code> קיבלה תקדים משוגר בזמן שהקובץ נכתב.</b>
+            ADR-0183, בתיקון של 2026-08-13 (#588): <code>disclosure</code> ב-<code>NoteSheet</code>
+            הוא <code>note !== undefined</code> — יצירה מקבלת את השדה הפתוח, כי ההתכנסות נבנתה
+            <b>לתיוק מחדש של משהו שכבר נשמר</b>. טופס העלאה הוא יצירה בהגדרה, ואחרי #586 הוא נפתח
+            בלי בחירה · אותו כלל, אותה תשובה.
+          </li>
+          <li>
+            <b>§3 · ההמלצה שלא נבחרה: א׳, על מספרים ולא על טעם.</b> שורת הכרום היא ⁦32px⁩ בשלושתן —
             ג׳ משלמת בדיוק מה שא׳ משלמת ומקבלת שורה שמחזיקה כפתור אחד — ואותם שנים־עשר מסמכים
             נמדדים ⁦733px⁩ שטוחים מול ⁦928px⁩ מקובצים, כלומר <b>⁦195px⁩</b> בשש כותרות ושש מסגרות
             כרטיס, שגדלים עם כל סוג שנוסף. א׳ גם אומרת את הסוג <b>פעם אחת</b> במקום פעמיים, והיא
@@ -10258,8 +10315,8 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             שהגלולות מדברות. זו הכרעה, לא ניקוי.
           </li>
           <li>
-            <b>ב׳ · נדחתה, ובאותו טיעון שדחה את הרשת ב-§1.</b> כשגלולה נבחרת, נשארת קבוצה אחת
-            שהכותרת שלה חוזרת על מה שהגלולה הדלוקה כבר אומרת · אותו ציר, פעמיים.
+            <b>מה שנטען נגד ב׳ ולא הכריע:</b> כשגלולה נבחרת נשארת קבוצה אחת שהכותרת שלה חוזרת על
+            מה שהגלולה הדלוקה אומרת · אותו ציר, פעמיים. נרשם כאן כמחיר מודע ולא כהתנגדות פתוחה.
           </li>
           <li>
             <b>ג׳ · נדחתה, ולא בגלל שהיא קטנה מדי.</b> היא לא קטנה יותר — ⁦32px⁩ זהים — ואין בה
@@ -10572,6 +10629,39 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           .join('')}</div>`;
       };
 
+      /** **The chosen results shape (ב׳)** — the SAME grouped renderer the screen uses,
+       *  so the overlay needs no shape of its own and no CSS: `.doc-group` › `.gt` outside
+       *  its own `.listcard`, per type. Two reveals, both `ADR-0120`'s: the rows inside a
+       *  group (`RevealList`), and the group itself (`RevealRow`, exported and until now
+       *  used only by its own test) when nothing in it matches — never
+       *  `groups.filter(...)`, which pops a heading out with no collapse. */
+      const revealGrouped = (docs, matches) => {
+        let vis = 0;
+        return TYPES.filter((t) => docs.some((d) => d.ty === t.v))
+          .map((t) => {
+            const mine = docs.filter((d) => d.ty === t.v);
+            const anyVisible = mine.some(matches);
+            const rows = mine
+              .map((d) => {
+                const on = matches(d);
+                const delay = on ? Math.min(vis++ * 28, 140) : 0;
+                return `<div class="wp-reveal${on ? '' : ' hidden'}" style="transition-delay:${delay}ms"${
+                  on ? '' : ' inert'
+                }><div class="wp-reveal-inner">${libRow(d)}</div></div>`;
+              })
+              .join('');
+            return `<div class="wp-reveal${anyVisible ? '' : ' hidden'}"${anyVisible ? '' : ' inert'}>
+                <div class="wp-reveal-inner">
+                  <div class="doc-group">
+                    <div class="gt">${GROUP_LABEL[t.v]}</div>
+                    <div class="listcard">${rows}</div>
+                  </div>
+                </div>
+              </div>`;
+          })
+          .join('');
+      };
+
       /** The real `SearchOverlay` tree, `Modal variant="full"`. */
       const searchOverlay = (results) => `
         <div class="modal-overlay" data-variant="full">
@@ -10629,16 +10719,18 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         const lib = inTypeOrder(LIBRARY);
         const screen = (inner) => `<div class="index mk-list">${inner}</div>`;
         const optTag = (k, txt) => `<span class="tag ${k}">${txt}</span>`;
+        // The chosen shape carries the `after` tag; the two that were compared and not
+        // taken carry the neutral one. All three stay drawn — the comparison IS the record.
         document.querySelector('#s3').innerHTML = [
           col(
-            optTag('after', 'א׳ · גלולות במקום הקבוצות'),
-            screen(filterRow(true) + addBtn + flatList(lib)),
-            'pane s3a',
-          ),
-          col(
-            optTag('mid', 'ב׳ · גלולות והקבוצות נשארות'),
+            optTag('after', 'ב׳ · נבחר · גלולות והקבוצות נשארות'),
             screen(filterRow(true) + addBtn + groupedList(lib)),
             'pane s3b',
+          ),
+          col(
+            optTag('mid', 'א׳ · גלולות במקום הקבוצות'),
+            screen(filterRow(true) + addBtn + flatList(lib)),
+            'pane s3a',
           ),
           col(
             optTag('mid', 'ג׳ · חיפוש בלבד'),
@@ -10647,18 +10739,19 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ),
         ].join('');
 
-        // §4 · the overlay, flat vs grouped. Same rows, same query, same predicate.
+        // §4 · the overlay. Same rows, same query, same predicate — the only difference is
+        // whether the results reuse the screen's grouped shape or a flat list of their own.
         const matches = (d) => d.q;
         document.querySelector('#s4').innerHTML = [
           col(
-            optTag('mid', 'שטוח · כמו הזמנות ופתקים'),
-            searchOverlay(revealList(lib, matches, false)),
-            's4flat',
+            optTag('after', 'נבחר · אותו מרנדר מקובץ כמו המסך · ללא CSS חדש'),
+            searchOverlay(revealGrouped(lib, matches)),
+            's4group',
           ),
           col(
-            optTag('after', 'עם כותרות קבוצה'),
+            optTag('mid', 'נדחה · רשימה שטוחה עם כותרות בתוך הכרטיס'),
             searchOverlay(revealList(lib, matches, true)),
-            's4group',
+            's4flat',
           ),
         ].join('');
 
@@ -10857,9 +10950,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'ההפרש הוא שש כותרות קבוצה ושש מסגרות כרטיס · המחיר הקבוע של ב׳/ג׳',
           ],
           [
-            '§4 · תוצאה ראשונה · שטוח מול כותרות',
-            `⁦${h('#s4 .s4flat .wp-reveal:not(.hidden)')}px⁩ · כותרת ⁦${h('#s4 .s4group .gt')}px⁩`,
-            'הכותרת היא מה שהסוגריים בבריף מבקשות · <code>renderBefore</code>, לא מנגנון חדש',
+            '§4 · כותרת קבוצה בתוצאות',
+            `⁦${h('#s4 .s4group .gt')}px⁩`,
+            'הכותרת שהסוגריים בבריף מבקשות · <code>.doc-group .gt</code> המשוגר, ללא כלל חדש',
+          ],
+          [
+            '§4 · קבוצה שכל שורותיה סוננו',
+            `<span class="good">⁦${h('#s4 .s4group .wp-reveal.hidden')}px⁩</span>`,
+            'נסגרת ל-⁦0px⁩ דרך <code>RevealRow</code> · לא <code>groups.filter</code> (ADR-0120)',
           ],
         ];
         document.querySelector('#meas tbody').innerHTML = rows
