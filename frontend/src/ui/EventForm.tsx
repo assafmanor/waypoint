@@ -48,7 +48,7 @@ import {
   TRANSPORT_BOOKING_TYPES,
 } from '../constants';
 import { t } from '../i18n/he';
-import { EVENT_CATEGORY_OPTIONS } from '../lib/category-options';
+import { CategoryField } from './primitives/CategoryField';
 import { IconPicker } from './IconPicker';
 import { TitleLabel } from './TitleLabel';
 import { Icon } from './Icon';
@@ -358,14 +358,19 @@ export function EventForm({
   const deriveKind = (nextBooked: boolean, nextType: BookingType) =>
     kind.redrive(nextBooked ? defaultKindForBookingType(nextType) : EVENT_KIND.SOFT);
 
-  const pickCategory = (next: EventCategory) => {
+  /** **`undefined` is a real answer** (`CategoryField`'s leading pill), not a no-op: an event
+   *  filed by mistake can be un-filed. It re-derives exactly as a pick does, from the values
+   *  a category-less event opens with — the placeholder glyph, and `other`'s guesses, which
+   *  is what the form already assumes for an event with no category. */
+  const pickCategory = (next?: EventCategory) => {
     setCategory(next);
-    icon.redrive(iconForCategory(next));
+    icon.redrive(next ? iconForCategory(next) : DEFAULT_EVENT_ICON);
     // A new category is a new question, so an explicit type does not survive it.
     setBookingType(null);
     // `redrive` answers with the value now in force, so the kind's derivation below reads the
     // row's real state rather than a `useState` React has not flushed yet.
-    deriveKind(booked.redrive(CATEGORY_DEFAULT_BOOKED[next]), CATEGORY_TO_BOOKING_TYPE[next]);
+    const guess = next ?? EVENT_CATEGORY.OTHER;
+    deriveKind(booked.redrive(CATEGORY_DEFAULT_BOOKED[guess]), CATEGORY_TO_BOOKING_TYPE[guess]);
   };
 
   /** **The place answers the name while nobody has typed one** (field reports #30/#37), and
@@ -632,6 +637,10 @@ export function EventForm({
           .create({
             ...parsed.data,
             displayTimezone: parsed.data.displayTimezone ?? undefined,
+            // Same seam as the line above: `null` is the wire's "clear this", and a
+            // rendered event simply has no window (ADR-0184).
+            startWindowEnd: parsed.data.startWindowEnd ?? undefined,
+            endWindowStart: parsed.data.endWindowStart ?? undefined,
             id,
             tripId: trip.id,
             status: EVENT_STATUS.PLANNED,
@@ -677,19 +686,7 @@ export function EventForm({
         >
           {/* Category leads (ADR-0109 §11): choosing it defaults the badge glyph,
               so it reads naturally above the icon + name row. */}
-          {showCategory && (
-            <Field label={t.eventForm.categoryLabel}>
-              <div className="category-pills">
-                <ChoiceGrid
-                  layout="pills"
-                  options={EVENT_CATEGORY_OPTIONS}
-                  value={category}
-                  onChange={pickCategory}
-                  ariaLabel={t.eventForm.categoryLabel}
-                />
-              </div>
-            </Field>
-          )}
+          {showCategory && <CategoryField value={category} onChange={pickCategory} />}
 
           <Field label={t.eventForm.titleLabel} {...errors.field('title')}>
             <div className="title-row">

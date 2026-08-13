@@ -3,6 +3,7 @@
 // primitives from here so the co-located CSS loads exactly once.
 import './feedback.css';
 
+export { AppErrorBoundary } from './AppErrorBoundary';
 export { BootScreen } from './BootScreen';
 export { ChromeSkeleton } from './ChromeSkeleton';
 export { EmptyState } from './EmptyState';

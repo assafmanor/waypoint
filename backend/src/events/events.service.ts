@@ -87,6 +87,8 @@ export class EventsService {
               category: input.category,
               kind: input.kind,
               startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
+              startWindowEnd: input.startWindowEnd ? new Date(input.startWindowEnd) : undefined,
+              endWindowStart: input.endWindowStart ? new Date(input.endWindowStart) : undefined,
               endsAt: input.endsAt ? new Date(input.endsAt) : undefined,
               // Authority invariant (ADR-0048): a linked event's place lives on its
               // booking, so it never carries its own placeId.
@@ -155,6 +157,12 @@ export class EventsService {
             ...(input.category !== undefined && { category: input.category }),
             ...(input.kind !== undefined && { kind: input.kind }),
             ...(input.startsAt !== undefined && { startsAt: new Date(input.startsAt) }),
+            ...(input.startWindowEnd !== undefined && {
+              startWindowEnd: input.startWindowEnd ? new Date(input.startWindowEnd) : null,
+            }),
+            ...(input.endWindowStart !== undefined && {
+              endWindowStart: input.endWindowStart ? new Date(input.endWindowStart) : null,
+            }),
             ...(input.endsAt !== undefined && { endsAt: new Date(input.endsAt) }),
             ...(input.displayTimezone !== undefined && {
               displayTimezone: input.displayTimezone, // manual zone override (ADR-0107 §7)

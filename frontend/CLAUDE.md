@@ -295,6 +295,16 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   ambient zone) instead of `dayZoneContext`/`liveZoneContext` over trip-state's
   `zoneEvidence` — shared resolver + per-screen input is not shared behaviour, and
   the two day surfaces diverged for a release (ADR-0107 session-102).
+- **Changing a day-surface derivation in `DayView` only.** The generalisation of
+  the line above, and it has now cost a release twice. `DayView` and `PlanDay`
+  render the **same** components (`TransitionRow`, `UnplacedCommitment`,
+  `GapStrip`, `EventCard`) off the **same** derivation, and differ only in
+  **posture** — Plan has no inline settle pair, and its gap is a `שבץ` control
+  where Trip's is a statement. ADR-0159 §1 allows a difference in posture and
+  forbids one about a **fact**; ADR-0171 §10e is the repair for exactly this,
+  where a check-in read as unplaced in Trip and interleaved by its floor in Plan.
+  Touching `placeDayEntries`, `dayBlocks`, `mergeDayEntries` or anything either
+  screen reads means checking **both**, in code and in the mockup.
 - Turning a typed wall-clock into an instant with `trip.timezone` (or any zone the
   call site happened to have) instead of `authoringZone(…, zoneEvidence)` — the
   event then renders at a different time than it was typed at. A `WhenField`
@@ -329,6 +339,28 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   too), and **never on an `<input>`**, where `auto` sniffs the value and so
   left-anchors a Hebrew placeholder while the field is empty — a field inherits
   the page, a rendered text node sniffs.
+- **Assuming a numeric run is safe because the row beside it is** — the two
+  entries above interact, and the interaction is not intuitive. `dir="auto"`
+  resolves from the first **strong** character and falls back to **`ltr`** when
+  there is none, so a digits-only value (`17:00–21:00` in `.tr-time`) is fine
+  under `auto` with no isolate at all. The same string inside an element that
+  **also carries a Hebrew word and no `dir`** — `UnplacedCommitment`'s `.as`,
+  which renders `${label} · ${when}` — leads with a strong RTL character and
+  flips the range to `21:00–17:00`. Two rows that look identical in source
+  disagree on screen, and adding `dir` to the container is the wrong repair:
+  **`ltrIsolate` the numeric run** (`lib/bidi.ts`), because the container is
+  exactly what differs between the safe case and the broken one. A design session
+  asserted the opposite here and caught it only by rendering both.
+- **Putting a WIDER value in a row without checking the sibling row shape.** The
+  app answers "where does the time go" two opposite ways on purpose:
+  `.transition-row` is flex with `.tr-time` at the trailing edge
+  (`flex: 0 0 auto` · `nowrap`), while `.wp-event-face` is a grid whose areas
+  are `'badge title' / 'badge when'` — the time **under** the title. That is a
+  wash for a single time and expensive for anything wider: measured at 360, a
+  `17:00–21:00` range at the trailing edge took **45px of 210** off `.tr-title`,
+  the only element in that row that ellipsises. When a value grows, find the
+  sibling shape that answers differently and measure the trade; ADR-0171 hit this
+  at 8px and a range hits it at 45px, so it scales with the value.
 
 ## Testing
 
@@ -355,8 +387,9 @@ methods, so a ~60-line fake map covers it completely — see
 `lib/useMapCamera.test.tsx`. Before declaring imperative glue untestable, count
 the methods it actually calls; usually a fake is cheaper than the bug.
 
-Two rules that exist because their absence hid real bugs for three review
-rounds (the Map tab's ordering, ADR-0109 session-110):
+Three rules that exist because their absence hid real bugs for three review
+rounds (the Map tab's ordering, ADR-0109 session-110) or ten releases (the env
+leak, session 260):
 
 - **Pin the clock.** A test whose fixtures carry fixed dates must set its own
   `now` via `setSimulatedNow` (`lib/useClock.ts`) — otherwise it silently reads
@@ -366,3 +399,23 @@ rounds (the Map tab's ordering, ADR-0109 session-110):
   the **Map**, `DAY_SCOPED_TABS`). The Map's day-scoped and all-days paths are
   genuinely different renders: an ordering bug that only showed in all-days
   survived three sessions because every test for it was day-scoped.
+- **The suite reads no environment it did not set** (`vite.config.ts`'s
+  `test.env`, session 260). This is the clock rule with a different input, and it
+  had been costing ten failures on any machine that had followed the quickstart
+  while CI — which has no `frontend/.env` — stayed green, so nobody's local red
+  was believed. Vite loads `.env` for the unit run too: `VITE_API_BASE_URL` made
+  every same-origin assertion absolute (`Avatar.test.tsx` even had a comment
+  _stating_ the value was empty under test, which nothing enforced), and the
+  Maps keys handed `Map.test.tsx` a rendered map when the whole file exists to
+  cover the **list-only** graceful-absence path. Both are now pinned empty in
+  `test.env`. A spec that wants config **mocks `lib/map-config`** where the
+  reader can see it (`Map.embedded.test.tsx`), rather than depending on a file
+  outside the repo's control. Same reflex for anything else ambient: if the
+  assertion depends on it, the suite states it.
+  - Its companion, and the reason it went unnoticed for so long: **a file that
+    fails to COLLECT reports as one red filename and hides every test in it.**
+    `virtual:pwa-register/react` has no file behind it, so two specs whose graph
+    reaches `lib/useAppUpdate.ts` ran **zero** assertions between them
+    (`src/test/pwa-register-stub.ts` is the alias that fixed it). When you read a
+    failure count, read the **file** count beside it — 3564 passing looked
+    healthy while 23 tests were not running at all.

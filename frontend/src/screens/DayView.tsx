@@ -80,8 +80,10 @@ import { blockFor, ideaBlock, nextSlot, type Gap, type GapDefaults } from '../li
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
   dayTransitions,
+  edgeEntryOf,
   mergeDayEntries,
   placeDayEntries,
+  staysOnDate,
   type TransitionEntry,
 } from '../lib/day-entries';
 import { dayBlocks, type DayBlock, type DayJoin } from '../lib/day-joins';
@@ -92,6 +94,7 @@ import { hoursPhrase } from '../lib/duration';
 import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
 import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel } from '../lib/glance';
+import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -318,14 +321,10 @@ export function DayView() {
   const dayEvents = events
     .filter((e) => e.date === activeDate && e.status !== EVENT_STATUS.SKIPPED && !isAmbient(e))
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063) are backdrop, not timeline rows.
-  // The strip now renders only on STRICTLY-MIDDLE nights (ADR-0064 §C): edge days
-  // show the transition entry instead, so no day shows the stay twice and the
-  // (wrong) checkout-day strip disappears. A 1-night stay has no middle day → no
-  // strip, just its two edge entries.
-  const middleStays = events.filter(
-    (e) => isAmbient(e) && e.date < activeDate && activeDate < e.endDate!,
-  );
+  // Ambient-span stays (a hotel, ADR-0054/0063) are backdrop, not timeline rows — and the
+  // backdrop is there on every day of the stay now, edges included. One shared predicate
+  // with Plan, which is where that rule belongs (ADR-0171 §10e).
+  const staysToday = staysOnDate(events, activeDate);
   // The shelf, grouped (ADR-0116 §2) by one shared derivation both hosts call —
   // ideas pencilled in for this day, the rest of the pool, and (ADR-0027's parking
   // lot) the day's skipped soft events, durable and restorable in place.
@@ -508,17 +507,29 @@ export function DayView() {
         </span>
       </div>
 
-      {(middleStays.length > 0 || placement.commitments.length > 0) && (
+      {(staysToday.length > 0 || placement.commitments.length > 0) && (
         <div className="day-ambient">
-          {middleStays.map((e) => (
-            <div className="ambient" key={e.id}>
-              <span className="ai" aria-hidden="true">
-                {e.icon ?? DEFAULT_STAY_ICON}
-              </span>
-              <span className="an">{e.title}</span>
-              <span className="as">{ambientSpanLabel(e, activeDate)}</span>
-            </div>
-          ))}
+          {/* **AN EDGE DAY SAYS THE EDGE; A MIDDLE DAY SAYS THE COUNT** (owner, 2026-08-13).
+              `לילה 1 מתוך 1` on both of two guesthouses — one being left this morning, one
+              being arrived at tonight — is the same words for opposite events. The sentence
+              comes from the day's PLACED entry, so this line and the row below it cannot
+              print two different clocks for one edge. */}
+          {staysToday.map((e) => {
+            const edge = edgeEntryOf(placement.positioned, e.id);
+            return (
+              <div className="ambient" key={e.id}>
+                <span className="ai" aria-hidden="true">
+                  {e.icon ?? DEFAULT_STAY_ICON}
+                </span>
+                <span className="an">{e.title}</span>
+                <span className="as">
+                  {edge
+                    ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
+                    : ambientSpanLabel(e, activeDate)}
+                </span>
+              </div>
+            );
+          })}
           {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
               claim on your day, carried all day, rather than something buried at its
               foot. It lands in the strip a multi-night stay's MIDDLE days already use,
@@ -586,6 +597,14 @@ export function DayView() {
                     dayCtx.showPlaceOnMap,
                     entry.edge,
                   )}
+                  // The settle pair the strip used to carry, moved with the floors that
+                  // moved into this list (2026-08-13). `TransitionRow` renders it on a
+                  // FLOOR only; passing it unconditionally here keeps that one rule in
+                  // one place. Trip mode's alone — Plan settles off a row menu (ADR-0171
+                  // §10e) — and gated on `readOnly` like every other write on a past day.
+                  onDone={dayCtx.readOnly ? undefined : () => verbs.done(entry.event)}
+                  onSkip={dayCtx.readOnly ? undefined : () => verbs.skip(entry.event)}
+                  onUndo={dayCtx.readOnly ? undefined : () => verbs.restore(entry.event)}
                 />
               )}
             </Fragment>

@@ -85,7 +85,7 @@ export type NoteHostKind = keyof typeof NOTE_HOST_FIELD;
 export interface NoteHostSources {
   events: { id: string; title: string; category?: EventCategory; date: string }[];
   bookings: { id: string; title: string; type: BookingType }[];
-  places: { id: string; name: string }[];
+  places: { id: string; name: string; category?: EventCategory }[];
   maybeItems: { id: string; title: string; category?: EventCategory; targetDate?: string | null }[];
   documents: { id: string; title: string }[];
 }
@@ -108,7 +108,12 @@ export function buildNoteHosts(sources: NoteHostSources): Map<string, NoteHostRe
     put('event', { id: e.id, name: e.title, category: e.category, date: e.date });
   for (const b of sources.bookings)
     put('booking', { id: b.id, name: b.title, category: categoryForBookingType(b.type) });
-  for (const p of sources.places) put('place', { id: p.id, name: p.name });
+  // **A place says what it is** (ADR-0165), which is newer than the ADR-0147 reasoning this
+  // line was written under: the "the referencing entity is ambiguous" objection was answered
+  // by putting `category` on the place itself. Without this a note on a categorised place
+  // still fell back to the no-category glyph, and its editor could not state an inheritance
+  // the place was perfectly able to supply.
+  for (const p of sources.places) put('place', { id: p.id, name: p.name, category: p.category });
   for (const m of sources.maybeItems)
     put('maybeItem', {
       id: m.id,

@@ -18,6 +18,7 @@ import {
   AdvancedMarker,
   Map,
   Polyline,
+  __resetModuleState,
   useMap,
 } from '@vis.gl/react-google-maps';
 import {
@@ -33,6 +34,8 @@ import {
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import { observeResize } from '../../lib/observe-resize';
+import { observeVisibility } from '../../lib/visibility';
+import { RELOAD_GUARD_KEY, reloadOnce } from '../../lib/guarded-reload';
 import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
@@ -40,6 +43,8 @@ import {
   MAP_CONNECTOR,
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
+  MAP_RECOVERY_BACKOFF_MS,
+  MAP_RELOAD_COOLDOWN_MS,
   MAP_ZOOM,
   type PinHue,
 } from '../../constants';
@@ -324,6 +329,54 @@ function PinDensity({ paneRef }: { paneRef: RefObject<HTMLDivElement | null> }) 
   return null;
 }
 
+/** **A map that started and then DIED, which nothing here could previously see**
+ *  (field report #35's real cause; ADR-0121's 2026-08-14 amendment).
+ *
+ *  Reproduced deterministically with `WEBGL_lose_context` — which is what a phone's GPU
+ *  does to a long-backgrounded page, and why the trigger was always _"resuming the app
+ *  after a while"_ rather than anything about the network, the loader or the bound.
+ *
+ *  Measured with the context lost: the terrain is **gone**, Google's own logo and
+ *  attribution are still drawn, the place list is fine, and the app says **nothing** — no
+ *  cue, no error, no recovery, for 26s+. That picture is field report #28 verbatim.
+ *
+ *  **Why no watchdog caught it:** `MAP_LOAD_TIMEOUT_MS.TILES` guards the FIRST paint, and
+ *  `tilesPainted` is already true by the time the context dies, so no timer is armed.
+ *  Every earlier fix addressed _the map never started_; this is _the map started, then
+ *  died_, which had no detector at all. Session 247 declined to act on this event on the
+ *  reasoning that a post-paint loss is "recovered mid-session" — **it is not.**
+ *
+ *  Three properties, each measured rather than assumed:
+ *
+ *  - **Capture phase, on the PANE.** `webglcontextlost` does not bubble, but a capture
+ *    listener on an ancestor sees it on the way down — so this survives Google replacing
+ *    its own canvas, which a listener bound to the canvas would not.
+ *  - **Rebuild, not restore.** Calling `restoreContext()` does redraw, at the DEFAULT
+ *    world camera — the Atlantic instead of Tokyo. Only a fresh map gets both a live
+ *    context and the right camera back.
+ *  - **Deferred until visible.** The loss happens while backgrounded, and a map built
+ *    while the page is hidden is the failure that started all of this. So the rebuild
+ *    waits for a resume that a person is actually present for. */
+function ContextLossRecovery({
+  paneRef,
+  onLost,
+}: {
+  paneRef: RefObject<HTMLDivElement | null>;
+  onLost: () => void;
+}) {
+  const onLostRef = useRef(onLost);
+  onLostRef.current = onLost;
+
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const onContextLost = () => onLostRef.current();
+    pane.addEventListener('webglcontextlost', onContextLost, true);
+    return () => pane.removeEventListener('webglcontextlost', onContextLost, true);
+  }, [paneRef]);
+  return null;
+}
+
 /** No-op default for the ring callback, hoisted so it is a stable identity — an inline
  *  arrow here would be a fresh prop every render on a screen that ticks every second,
  *  which is the exact hazard §4 exists for. */
@@ -386,13 +439,15 @@ function MapPaneInner({
   );
   // **A load failure is a third reason to be list-only, never a fourth grammar**
   // (field report #28; ADR-0121's 2026-08-11 amendment). `onError` below catches a
-  // failed *script* load (bad key, blocked network) — but our own markers are DOM
-  // overlays that render independently of Google's tile layer, so a script that
-  // loaded fine and never painted a tile says nothing through it. Google exposes no
-  // event for THAT, so it is `lib/deadline.ts`'s own heuristic: `onTilesLoaded`
-  // never firing within `MAP_LOAD_TIMEOUT_MS.TILES` of construction is treated as a
-  // failure too. Either failure clears the canvas for `ErrorState`, in the pane's
-  // own slot — the place list beside it is untouched and still useful.
+  // failed *script* load (bad key, blocked network), which clears the canvas for
+  // `ErrorState` in the pane's own slot — the place list beside it is untouched and
+  // still useful.
+  //
+  // **This is now the SCRIPT failure only** (ADR-0121's 2026-08-13 amendment). The
+  // tiles watchdog used to land here too, and that was the defect: expiry unmounted
+  // the whole `<APIProvider>` subtree, so an in-flight load was destroyed at the bound
+  // and every retry restarted from zero — a map that needed longer than the bound could
+  // never finish, no matter how many times you asked. See `tilesLate` below.
   const [mapFailed, setMapFailed] = useState(false);
   // Bumped on retry so the `<APIProvider>` subtree below remounts under a fresh
   // `key` — never reused: ADR-0121 §4's one-instantiation-per-visit invariant means
@@ -400,13 +455,121 @@ function MapPaneInner({
   // on a rerender, which is exactly what a `key` bump (rather than clearing local
   // state and hoping the failed instance recovers) buys here.
   const [attempt, setAttempt] = useState(0);
+  // **The wait is stated, not left blank** (field report #35's other half). Before the first
+  // tile paints, the canvas is empty while our own markers already draw on it — the exact
+  // picture #28 reported as a failure, and with the bound now at 20s it is a picture a slow
+  // network can hold for real seconds. So the pane says which it is. Cheap and honest:
+  // `onTilesLoaded` is already the success signal the watchdog waits for, so this is that
+  // same boolean rendered, not a second mechanism, and it resets with `[attempt]` below so a
+  // retry says "loading" again rather than staying on the failed attempt's last word.
+  const [tilesPainted, setTilesPainted] = useState(false);
+  // **The tiles took longer than the bound, and that is all it means** (ADR-0121's
+  // 2026-08-13 amendment; owner: the 20s bound was _"waiting 20 seconds for nothing"_).
+  // Our own markers being on screen proves the script loaded and the map constructed, so
+  // while the attempt is still alive we have no evidence of a FAILURE — only of slowness.
+  // So the wait's own slot changes its words and gains a way out, the canvas stays live
+  // underneath, and `tilesPainted` retires this by itself if the tiles do land.
+  //
+  // Keeping the instance is also the CHEAPER branch under ADR-0121 §4, which counts
+  // instantiations rather than seconds: tearing down and retrying is what buys a second
+  // billed load. So this tightens §4 rather than bending it.
+  const [tilesLate, setTilesLate] = useState(false);
   const tilesLoadedRef = useRef<(() => void) | null>(null);
   // Dev-only, and the zero point for the elapsed reading below — stamped here rather than
   // anywhere else because `withDeadline` starts counting on the next line, so the number the
   // panel reports and the bound it is judged against cannot drift apart.
   const attemptStartRef = useRef<number | null>(null);
+
+  // ── THE CANVAS SUPERVISOR ───────────────────────────────────────────────────────────
+  // **The map heals itself, and never stops trying** (ADR-0121's 2026-08-14 amendment and
+  // its same-day correction). Two things leave a dead canvas and neither has a
+  // Google-exposed signal: a context the phone reclaimed while backgrounded, and tiles
+  // that never arrived. Both route here.
+  //
+  // **`consecutiveRef` counts FAILURES IN A ROW, never rebuilds in a lifetime** — and that
+  // distinction is the whole correction. The first version budgeted three rebuilds per
+  // MOUNT, so a phone (which drops the context on roughly every background) exhausted it
+  // in three resumes and left the pane dead on the fourth, needing a human tap. Measured
+  // as 3/8 healthy cycles. A recovery that paints is proof the GPU is fine, so
+  // `handleTilesLoaded` resets this to zero and the budget can never run out on a map
+  // that keeps coming back.
+  const consecutiveRef = useRef(0);
+  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Read inside a visibility handler that must not re-subscribe on every paint. */
+  const tilesPaintedRef = useRef(false);
+  /** Set once every rebuild has been spent and the canvas is still dead — see
+   *  `scheduleRecovery`. Read by the hidden-moment reload below. */
+  const unrecoverableRef = useRef(false);
+
+  /** Ask for a fresh map after a delay that grows with consecutive failures.
+   *
+   *  Two guards, both load-bearing: **one pending attempt at a time**, so a burst of
+   *  events cannot queue a pile of rebuilds; and **only while visible**, because a map
+   *  constructed against a hidden page is the failure being recovered from. An attempt
+   *  that comes due while hidden is not lost — the resume below asks again. */
+  const scheduleRecovery = useCallback(() => {
+    if (pendingRef.current !== null) return;
+    const step = Math.min(consecutiveRef.current, MAP_RECOVERY_BACKOFF_MS.length - 1);
+    pendingRef.current = setTimeout(() => {
+      pendingRef.current = null;
+      if (document.visibilityState !== 'visible') return;
+      // **When rebuilding has demonstrably failed, rebuilding again is not a plan.**
+      // (ADR-0121's 2026-08-14 second amendment; owner: _"Reloading the map … doesn't
+      // recover the map. Once it's dead, it's dead until you switch to another app"_.)
+      //
+      // Every step of the backoff has now been spent on fresh `google.maps.Map`
+      // instances with fresh canvases, and the map is still dead — so whatever is
+      // broken outlives the map object, and only a new DOCUMENT clears it. That is
+      // also the one cure the owner has ever found to work every time: restart the app.
+      //
+      // Guarded to once per session (`reloadOnce`) and only at a moment a reload costs
+      // nothing — `canReloadQuietly` is ADR-0185's own test, so this cannot throw away
+      // an open sheet or something being typed. If either guard refuses, we fall
+      // through to `ErrorState`, whose action offers the same reload as a deliberate tap.
+      if (consecutiveRef.current > MAP_RECOVERY_BACKOFF_MS.length) {
+        unrecoverableRef.current = true;
+        setMapFailed(true);
+        return;
+      }
+      consecutiveRef.current += 1;
+      setAttempt((n) => n + 1);
+    }, MAP_RECOVERY_BACKOFF_MS[step]);
+  }, []);
+
+  useEffect(() => {
+    // A tab coming back is the moment to try again: visible, laid out, someone looking at
+    // it. This is also what runs an attempt that came due while the page was hidden.
+    const stop = observeVisibility({
+      onResume: () => {
+        if (!tilesPaintedRef.current) scheduleRecovery();
+      },
+      // **The one moment a reload is free** — ADR-0185 chose exactly this for the build
+      // swap, and for the same reason: nobody is looking, nothing is mid-sentence, and
+      // there is no overlay to lose because there is no interaction happening.
+      //
+      // It is also precisely the owner's own workaround, done for them: once every
+      // rebuild has been spent, whatever is broken outlives the map object and only a new
+      // DOCUMENT clears it — _"restarting the app fixes it"_. So the next time the app
+      // goes to the background, it quietly becomes a fresh one, and coming back finds a
+      // working map instead of a dead pane. Guarded to once per cooldown, so a device
+      // that keeps losing its GPU degrades to the visible error rather than reloading
+      // itself under someone repeatedly.
+      onHidden: () => {
+        if (unrecoverableRef.current) reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS);
+      },
+    });
+    return () => {
+      stop();
+      if (pendingRef.current !== null) clearTimeout(pendingRef.current);
+      pendingRef.current = null;
+    };
+  }, [scheduleRecovery]);
+
   useEffect(() => {
     setMapFailed(false);
+    setTilesPainted(false);
+    tilesPaintedRef.current = false;
+    setTilesLate(false);
     // The device-pass capture (§1b, backlog workstream M) rides on this attempt's OWN
     // signals rather than a second probe — cleared here so a retry does not show the
     // FAILED attempt's status while the fresh one is still loading.
@@ -425,16 +588,25 @@ function MapPaneInner({
       MAP_LOAD_TIMEOUT_MS.TILES,
       () => new Promise<void>((resolve) => (tilesLoadedRef.current = resolve)),
     ).catch((error) => {
-      if (live && error instanceof PhaseTimeoutError) setMapFailed(true);
+      if (!live || !(error instanceof PhaseTimeoutError)) return;
+      // Say so, AND start trying again. Before this the notice was the whole response and
+      // the map sat there until a human tapped — which is the case the owner kept hitting.
+      setTilesLate(true);
+      scheduleRecovery();
     });
     return () => {
       live = false;
       tilesLoadedRef.current = null;
     };
-  }, [attempt]);
+  }, [attempt, scheduleRecovery]);
   const handleTilesLoaded = useCallback(() => {
     tilesLoadedRef.current?.();
     tilesLoadedRef.current = null;
+    setTilesPainted(true);
+    // **A paint is proof the GPU is fine**, so the failure streak resets here. Not doing
+    // this is exactly what made the fixed budget a regression.
+    tilesPaintedRef.current = true;
+    consecutiveRef.current = 0;
     if (import.meta.env.DEV) {
       const started = attemptStartRef.current;
       publishMapReading({
@@ -450,9 +622,54 @@ function MapPaneInner({
       publishMapReading({ apiStatus: APILoadingStatus.FAILED, apiError: String(error) });
     }
   }, []);
-  const retryMap = useCallback(() => setAttempt((n) => n + 1), []);
+  // **A retry has to reset the LIBRARY, not just our subtree** (field report #35's third
+  // cause, and the one that made the first two fixes look like they had not worked).
+  //
+  // `@vis.gl/react-google-maps` holds the Maps-API loading status in MODULE state and writes
+  // it **once**: the first attempt stamps `serializedApiParams` and only sets `LOADED` while
+  // that stamp is still empty. Every later mount therefore takes the "already loaded
+  // externally" branch, re-imports `core`/`maps` — successfully — and never moves the status
+  // off `FAILED`; a status left at `LOADING` is worse still, since the loader returns early
+  // with no error at all. Either way `useApiIsLoaded()` stays false, so vis.gl never calls
+  // `new google.maps.Map()`: the pane renders, our markers draw, the loading cue stays up,
+  // and 20s later the watchdog reports a failure on an API that is sitting there loaded.
+  // A `key` bump builds a fresh component over a dead loader, which is exactly why the
+  // Retry did nothing and only a real app restart recovered — the state it clears is the
+  // page's, not the component's. **One transient failure poisons the whole page**, and a
+  // warm resume onto a just-restored mobile link is the ordinary way to get one (the pane
+  // also unmounts and remounts as `offline` flaps there, so the poisoning can happen with
+  // nothing on screen to report it).
+  //
+  // Google's own bootstrap is already retryable — it clears its promise in `script.onerror`
+  // — so this global is the single broken link in the chain.
+  //
+  // ponytail: `__resetModuleState` is vis.gl's own test-only hook. It is the only thing that
+  // clears that global, and the alternative is `location.reload()`, which throws away the
+  // trip state to fix a canvas. Safe here because `retryMap` is only reachable from
+  // `ErrorState`, i.e. with no `APIProvider` mounted to be orphaned by the listener clear.
+  // Delete it if vis.gl ever makes the status recoverable.
+  /** The tap on `ErrorState`. **It reloads the app once the rebuilds have been spent**,
+   *  because by then a fresh map is known not to help and the owner's own workaround —
+   *  restarting the app — is the only thing that has ever worked every time. Before that
+   *  point it is the cheaper thing: reset the loader global (session 262's cause) and
+   *  build a fresh map. */
+  const retryMap = useCallback(() => {
+    if (consecutiveRef.current > MAP_RECOVERY_BACKOFF_MS.length) {
+      // A deliberate tap, so no `canReloadQuietly` gate: the person asking IS the
+      // consent. The once-per-session guard still holds, and if it refuses we fall
+      // through to rebuilding rather than doing nothing.
+      if (reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS)) return;
+    }
+    __resetModuleState();
+    consecutiveRef.current = 0;
+    setAttempt((n) => n + 1);
+  }, []);
   return (
     <div className="map-pane" ref={paneRef}>
+      {/* OUTSIDE the branch below, deliberately: the pane element is what carries the
+          capture listener, and it has to keep hearing a context die even once the canvas
+          has been swapped for `ErrorState`. */}
+      <ContextLossRecovery paneRef={paneRef} onLost={scheduleRecovery} />
       {mapFailed ? (
         <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
       ) : (
@@ -532,6 +749,30 @@ function MapPaneInner({
             {draftMarker && <DraftMarker marker={draftMarker} />}
             <DayConnector path={connector} scheme={config.colorScheme} />
           </Map>
+          {/* **The wait, stated** (field report #35). Until the first tile paints the canvas
+            is empty while our own markers already draw on it — the very picture #28 reported
+            as a failure — and with the bound at 20s a slow network holds it for real seconds.
+            Outside `<Map>` like every other piece of our chrome (the rule right below), over
+            the canvas rather than instead of it: Google needs its own div live to paint into,
+            so this can never be a branch AROUND the map the way `ErrorState` is. It carries
+            no timer and no second signal — `onTilesLoaded` is already what the watchdog
+            waits for, so this is that boolean rendered. */}
+          {!tilesPainted && (
+            <div className="map-loading" role="status">
+              {tilesLate ? t.map.loadingSlow : t.map.loading}
+              {/* **The way out, in the wait's own slot** (ADR-0121's 2026-08-13 amendment).
+                One element with two states rather than a second surface: the words change
+                and a control appears, so §11's "one floating object over the canvas" holds
+                and there is never a moment with both a wait and an error on screen. The
+                button re-enables pointer events for itself alone — the cue around it stays
+                `none`, so the pan and the long press still belong to the canvas. */}
+              {tilesLate && (
+                <button type="button" className="map-loading-retry" onClick={retryMap}>
+                  {t.feedback.retry}
+                </button>
+              )}
+            </div>
+          )}
           {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
           <PinDensity paneRef={paneRef} />

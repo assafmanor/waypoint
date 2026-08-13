@@ -88,6 +88,18 @@
   justify-content: center;
   height: 100%;
 }
+
+/* The crash boundary's mount (ADR-0185). It is the only thing on the document
+   when it renders — the tree it replaces is gone — so it owns the viewport and
+   paints the screen ground itself; nothing above it is left to do that. `dvh`
+   because the mobile toolbar is exactly the case this shows up in. */
+.fb-crash {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: var(--screen);
+}
 .fb-error-retry {
   display: inline-flex;
   align-items: center;

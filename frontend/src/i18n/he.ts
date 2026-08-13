@@ -1,7 +1,7 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
-import { type BookingType } from '@waypoint/shared';
+import { NOTE_HOST_FIELD, type BookingType, type DocumentType } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
@@ -65,6 +65,11 @@ export const t = {
     save: 'שמירה',
     cancel: 'ביטול',
     delete: 'מחיקה',
+    // The way back to a chooser from the value it produced — `ChoiceDisclosure`'s trailing
+    // verb, on every editor that states what a thing is at the top. Here rather than at each
+    // host for the same reason as the three above: it was `index.form.changeType`, private to
+    // the booking sheet, and the note editor is the second surface to need the same word.
+    change: 'שינוי',
     // A stepped surface's footer and its read-out (ADR-0155 §2). Here rather than at
     // each host so `הבא`/`הקודם` cannot drift between two stepped surfaces — the same
     // reason `save`/`cancel` above are shared.
@@ -106,6 +111,14 @@ export const t = {
       message: 'גרסה חדשה הותקנה',
       action: 'רענון',
     },
+    // The app-wide crash boundary (ADR-0185). It reuses `errorTitle` — an
+    // unhandled render error IS the generic failure — and adds only the one thing
+    // the user can do about it. No apology and no detail: the body has to be true
+    // of a crash nobody predicted.
+    crash: {
+      body: 'רענון יחזיר את האפליקציה לפעולה.',
+      action: 'רענון האפליקציה',
+    },
   },
   // No arrow lives in the copy: every visible arrow renders as an SVG (ui/NavArrow,
   // ui/Icon) because the Assistant body font has no arrow glyphs and the fallback
@@ -124,6 +137,15 @@ export const t = {
     // failure or tiles that silently never painted. The place list beside it still
     // works, so this takes only the canvas's own slot, never the whole tab.
     loadError: 'לא הצלחנו לטעון את המפה',
+    // Said while the tiles are still on their way, because the alternative is a blank
+    // canvas with our own pins floating on it and nothing to explain the wait — which is
+    // indistinguishable from the failure above (field report #35). On a slow network that
+    // wait is real seconds, not a flicker.
+    loading: 'טוען את המפה…',
+    // …and what the same slot says once the wait passes `MAP_LOAD_TIMEOUT_MS.TILES`. It
+    // deliberately does NOT claim the failure above: the attempt is still running and may
+    // still paint, so the honest statement is that this is slow, with a way out beside it.
+    loadingSlow: 'הטעינה איטית מהרגיל',
     filter: {
       all: 'הכל',
       maybes: 'אולי',
@@ -404,6 +426,11 @@ export const t = {
     // are already looking at the map.
     frameOnPlace: 'התמקדות במקום הזה',
     frameAll: 'התאמת התצוגה לכל המקומות',
+    // The canvas card's own way out (ADR-0182's device pass). The card was already dismissible
+    // three ways — a tap on blank canvas, system back, selecting something else — and none of
+    // them is visible on it. Names the card, because `סגירה` alone sits beside a filter close
+    // and a search close on the same screen.
+    closeCard: 'סגירת כרטיס המקום',
     // The way-in block's one primary action (ADR-0135 §1): a place in the trip could only
     // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
     // the schema — "event or booking?" is the app's question, not the traveller's.
@@ -811,7 +838,15 @@ export const t = {
       stepWhen: 'מתי',
       stepDetails: 'פרטים',
       // Back to the type grid from the collapsed row that replaced it.
-      changeType: 'שינוי',
+      // **A lossy type switch asks once, at the tap, in three words** (owner, 2026-08-12:
+      // _"really short and no need to list everything that will be deleted"_). `יימחקו` is
+      // active and it is the accurate half of the two drafts: the fields genuinely are deleted
+      // on save, they do not merely fail to carry over. Same shape as `manage.plainBody` —
+      // one future-tense sentence, full stop. The cancel is the shared `common.cancel`: at the
+      // TAP there is nothing to abandon, so it means "don't switch" and needs no other word.
+      switchTitle: (type: string) => `להחליף ל${type}?`,
+      switchBody: 'חלק מהפרטים יימחקו.',
+      switchConfirm: 'החלפה',
       stepWhenOut: `מתי ${LEG.out}`,
       stepBackAndShared: `${LEG.back} ופרטים`,
       // Shared across every leg of the save, said where the question actually occurs.
@@ -943,6 +978,18 @@ export const t = {
       urlLabel: 'קישור · לא חובה',
       urlPlaceholder: 'instagram.com/p/',
       categoryLabel: 'קטגוריה',
+      // **Where an unchosen category came from**, per host kind (ADR-0152 §5's amendment: a
+      // hosted note's category is RESOLVED, never copied). It is the leading pill's label and
+      // the collapsed row's caption, so the state is stated rather than left to be guessed
+      // from a pre-filled selection. A `Record` over the five hostable kinds, so a sixth host
+      // has to answer here rather than silently inheriting someone else's noun.
+      categoryFrom: {
+        booking: 'לפי ההזמנה',
+        event: 'לפי האירוע',
+        place: 'לפי המקום',
+        maybeItem: 'לפי הרעיון',
+        document: 'לפי המסמך',
+      } as const satisfies Record<keyof typeof NOTE_HOST_FIELD, string>,
       save: 'שמירה',
       cancel: 'ביטול',
       needsBodyOrUrl: 'כדי לשמור צריך לכתוב משהו או להוסיף קישור',
@@ -1006,19 +1053,151 @@ export const t = {
     loading: 'טוען מסמכים…',
     offline: 'המסמכים ייטענו כשנחזור לרשת',
     emptyTitle: 'אין עדיין מסמכים שמורים',
-    emptyBody: 'דרכונים, ביטוח וויזות · מוצפנים ונשמרים בבטחה',
+    emptyBody: 'דרכונים, כרטיסים וביטוח · מוצפנים ונשמרים בבטחה',
     emptyAdd: 'העלה מסמך ראשון',
     group: {
       passport: 'דרכונים',
-      insurance: 'ביטוח נסיעות',
       visa: 'ויזות',
+      license: 'רישיונות',
+      ticket: 'כרטיסים',
+      reservation: 'אישורי הזמנה',
+      insurance: 'ביטוח נסיעות',
+      health: 'בריאות',
       other: 'אחר',
     },
+    // One short word per pill — in the type picker (`DocumentTypePills`) and, since
+    // ADR-0052 §7, on the section's filter chips too. Short is what lets eight of them ride
+    // one scrollable row instead of three rows of cards.
     type: {
       passport: 'דרכון',
-      insurance: 'ביטוח',
       visa: 'ויזה',
+      license: 'רישיון',
+      ticket: 'כרטיס',
+      reservation: 'הזמנה',
+      insurance: 'ביטוח',
+      health: 'בריאות',
       other: 'אחר',
+    },
+    // **Extra words the search matches, never displayed** — the same idea as
+    // `index.bookingTypeSynonyms`, and it earns its place for the same reason: what people
+    // type is the thing in their hand, not the category we filed it under. Widened on the
+    // owner's call (2026-08-13) from the first sparse pass; two rules govern what may join.
+    //
+    // **1. The match is `term.includes(query)`, not the other way round** (`matchesAnyTerm`),
+    // which is what makes partial typing work and is worth reading before adding a word. A
+    // LONGER, more specific term is nearly free — `ביטוח בריאות` on `health` is reached by
+    // `ביטוח`, `ביטוח ב`, `בריאות`, and it cannot be reached by anything it does not contain.
+    // A SHORT term is the one to think about, because every prefix of it now matches. It also
+    // means a word already in the label or the plural (`t.docs.type` / `t.docs.group`, both
+    // already search terms) does not belong here — `דרכון` and `דרכונים` are covered.
+    //
+    // **2. A word belongs to a type only if someone typing it wants THAT type's documents.**
+    // Bookings learned this the expensive way: leaving the car words on `transit` made every
+    // bus answer a search for `השכרת רכב`. `other` therefore gets nothing by definition.
+    //
+    // Two consequences worth naming rather than discovering:
+    //
+    //  - **A word may legitimately sit on two types.** `ביטוח` reaches both the travel policy
+    //    and the health cover; `רפואי` reaches both. That is not the bus problem — both
+    //    answers are ones the person asking wants, which is the test, not uniqueness.
+    //  - **`רכב` is a prefix of `רכבת`**, so searching for the car hire also surfaces rail
+    //    tickets. Inherent to substring matching in Hebrew and not worth exact-word matching
+    //    to fix, since that would break partial typing on every other query. Pinned in
+    //    `lib/documents.test.ts` so it stays a known behaviour instead of a surprise.
+    typeSynonyms: {
+      passport: ['פספורט', 'passport'],
+      // `אשרה` is the formal word the stamp itself uses; `esta`/`eta` are the travel
+      // authorisations people photograph and would never think to call a visa.
+      visa: ['אשרה', 'אשרת כניסה', 'visa', 'esta', 'eta'],
+      // `רשיון` without the yod is at least as commonly typed as the label's spelling, and no
+      // amount of normalising reaches it — `normalizeSearchTerm` folds punctuation, not
+      // orthography. `בינלאומי` is how the IDP is asked for at a hire desk.
+      license: [
+        'נהיגה',
+        'רישיון נהיגה',
+        'רשיון',
+        'רשיון נהיגה',
+        'בינלאומי',
+        'רישיון בינלאומי',
+        'idp',
+        'license',
+      ],
+      // The one type whose label is the LEAST likely thing typed: you look for the boarding
+      // pass or the rail pass, not for the generic word `כרטיס`. No venue words (`מוזיאון`,
+      // `הופעה`) — only SOME tickets are those, so they would make every ticket answer.
+      ticket: [
+        'בורדינג',
+        'בורדינג פס',
+        'בורדינג פאס',
+        'boarding',
+        'עלייה למטוס',
+        'כרטיס טיסה',
+        'טיסה',
+        'מטוס',
+        'רכבת',
+        'רכבות',
+        'שינקנסן',
+        'jr pass',
+        'כרטיס כניסה',
+      ],
+      // A confirmation is remembered by what was booked, which is exactly the vocabulary
+      // `BOOKING_TYPE` uses next door — so a hotel confirmation answers `מלון` and the car
+      // hire answers `רכב`/`אוטו`. The car words live here rather than on `license` because
+      // this is the document the hire desk issued; the licence is what you already had.
+      reservation: [
+        'אישור',
+        'אישור הזמנה',
+        'booking',
+        'מלון',
+        'מלונות',
+        'הוסטל',
+        'צימר',
+        'airbnb',
+        'לינה',
+        'מסעדה',
+        'שולחן',
+        'רכב',
+        'רכב שכור',
+        'השכרת רכב',
+        'השכרה',
+        'אוטו',
+        'מכונית',
+        'רנט א קאר',
+      ],
+      // The label is `ביטוח`, so what is missing is the paperwork's own noun and the kind of
+      // cover — `ביטוח נסיעות` is already the plural label and needs no entry.
+      insurance: ['פוליסה', 'פוליסת ביטוח', 'ביטוח רפואי', 'כיסוי', 'insurance'],
+      health: [
+        'ביטוח בריאות',
+        'תעודת חיסון',
+        'חיסון',
+        'חיסונים',
+        'תרכיב',
+        'מרשם',
+        'תרופה',
+        'תרופות',
+        'בדיקה',
+        'קורונה',
+        'covid',
+        'health',
+      ],
+      other: [],
+    } as const satisfies Record<DocumentType, readonly string[]>,
+    filter: {
+      all: 'הכל',
+      categoryLabel: 'סינון לפי סוג',
+      noResults: 'אין מסמכים מהסוג הזה',
+    },
+    search: {
+      button: 'חיפוש מסמכים',
+      modeTitle: 'חיפוש מסמכים',
+      // Names the type label as a thing you can search by, because it is the half of this
+      // that nobody would guess — the same service `index.search.placeholder` does with
+      // `או קטגוריה`.
+      placeholder: 'חפשו לפי שם או סוג…',
+      clear: 'נקה חיפוש',
+      backAria: 'סגירת חיפוש',
+      noResults: 'לא נמצאו מסמכים',
     },
     upload: {
       title: 'העלאת מסמך',
@@ -1321,6 +1500,9 @@ export const t = {
     freeTitle: 'זמן חופשי',
     until: 'עד',
     nextLabel: 'הבא בתור',
+    // The countdown's unit while a window is shutting (ADR-0184 §6) — the number is the
+    // minutes left, so this says what they are left OF.
+    closesIn: 'לסגירה',
     endOfDay: 'סוף היום',
     // Concurrency on the board (ADR-0041): the "ועוד N עכשיו" expander for extra
     // in-progress events, and the group-split header when several run at once.
@@ -1937,6 +2119,10 @@ export const t = {
     locationLabel: 'מיקום',
     locationPlaceholder: 'אופציונלי',
     categoryLabel: 'קטגוריה',
+    // `CategoryField`'s leading pill when nothing is chosen AND nothing is inherited — the
+    // way back to no category at all. A host that DOES inherit replaces this with where the
+    // value came from (`לפי ההזמנה`), so this word only ever means "genuinely none".
+    categoryNone: 'ללא',
     kindLabel: 'סוג',
     kindHard: 'קשיח',
     kindSoft: 'גמיש',
@@ -2066,6 +2252,21 @@ export const t = {
     // words inside it. A word in a wrapping line cannot be clipped by an edge.
     rangeFrom: 'מ־',
     rangeTo: 'עד',
+    // The opt-in second bound (ADR-0184). The placeholder carries the word so the empty
+    // token says what it would add — `＋ עד` reads as an invitation where a bare `＋`
+    // reads as a mystery. `windowCap` is the hidden caption a screen reader hears.
+    //
+    // **THE WORD IS PER EDGE, AND THAT IS A BUG FIX, NOT A NICETY.** A start edge's own
+    // time is the window's FLOOR, so the second bound is its ceiling and reads `עד`. An
+    // end edge is the other way round: the check-out time IS the deadline and the field
+    // stores `endWindowStart`, the EARLIEST you may leave. Labelling that one `עד` too
+    // invited exactly the input it cannot mean — check-out `06:00` plus `עד 11:00`, which
+    // `windowBoundIso` then rolled back a day (a larger clock on an end edge reads as
+    // yesterday) into a 19-hour window that rendered `11:00–06:00`.
+    addWindow: '＋ עד',
+    addWindowFrom: '＋ מ־',
+    windowCap: 'סוף החלון',
+    windowFromCap: 'תחילת החלון',
   },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {

@@ -177,13 +177,27 @@
   font-size: 16px;
   flex: 0 0 auto;
 }
+/* **THE READ-OUT IS PROTECTED; THE TITLE IS WHAT GIVES WAY**, and that became necessary the
+   moment an edge day started saying `צ׳ק-אאוט · עד 09:40` (2026-08-13) where it used to say
+   `לילה 1 מתוך 1`. `.an` had no ellipsis and could not shrink, so a long guesthouse name and
+   the longer sentence would have wrapped the line — the same trade `.index .bk-when` states
+   and for the same reason: a truncated name still identifies the booking, a truncated clock
+   is the fact the line exists for. The block is `.as-open`'s own, which the unplaced variant
+   beside it has always carried — generalised here rather than copied a second time, so both
+   strip rows agree. */
 .day-ambient .an {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .day-ambient .as {
   margin-inline-start: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
@@ -314,19 +328,39 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* **THE TIME SITS UNDER THE TITLE** (owner, 2026-08-13), which is `.wp-event-time`'s and
+   `.bld-time`'s answer at this row's density rather than a third one. It replaces a pair
+   of rules that put a range here and a bare clock at the row's trailing edge — the only
+   time in the app whose position depended on what it said.
+
+   No `dir` on the element any more (`TransitionRow.tsx` says why at length): `dir="auto"`
+   over a digits-only run resolves the box to ltr, so `text-align: start` meant *left* and
+   the range hung off the wrong margin. The box stays RTL and each clock is isolated at the
+   run (ADR-0118). `nowrap` keeps a range on one line; it has the title's full width here,
+   so there is nothing to wrap for. */
 .tr-time {
-  flex: 0 0 auto;
+  margin-block-start: 2px;
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-weight: 700;
   color: var(--amber-deep);
   white-space: nowrap;
 }
+
 /* Zone-shift pill on a transition edge (ADR-0107): the clock jump vs the day's
    ambient zone, amber like the time it annotates. Usually absent. */
 /* Surface tweak only — the pill itself is ui/zone-shift-pill.css. */
 .tr-tzdelta {
   margin-inline-start: 6px;
+}
+/* The settle pair on a FLOOR row (2026-08-13), where the strip's copy of it used to be.
+   `.transition-row` is `align-items: stretch`, so this needs `.tr-nav`'s own two lines to
+   sit on the row's centre line instead of being pulled to full height — which is the whole
+   of what this surface owns. The control is `SettleControl`'s `compact` unchanged: same
+   words, same marks, same hues (ADR-0139). */
+.transition-row .wp-settle.compact {
+  align-self: center;
+  margin-inline-end: 10px;
 }
 .tr-nav {
   flex: 0 0 auto;

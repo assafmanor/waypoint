@@ -340,6 +340,8 @@ export class BookingsService {
       kind: f.kind,
       startsAt: f.startsAt ? new Date(f.startsAt) : undefined,
       endsAt: f.endsAt ? new Date(f.endsAt) : undefined,
+      startWindowEnd: f.startWindowEnd ? new Date(f.startWindowEnd) : undefined,
+      endWindowStart: f.endWindowStart ? new Date(f.endWindowStart) : undefined,
       placeId: null,
       bookingId: f.bookingId,
       updatedBy: actorUserId,
@@ -352,12 +354,23 @@ export class BookingsService {
   ): Prisma.EventUncheckedUpdateInput {
     return {
       date: new Date(seed.date),
-      ...(seed.endDate !== undefined && { endDate: new Date(seed.endDate) }),
+      // **An absent `endDate` CLEARS**, unlike every other key here. The client rebuilds this
+      // seed whole on each save, so absent means "this is no longer a span" rather than
+      // "untouched" — and treating it as untouched left a stay switched to a point type still
+      // spanning its old nights on the timeline, which is half of what the switch's own
+      // confirm promises to drop.
+      endDate: seed.endDate ? new Date(seed.endDate) : null,
       ...(seed.icon !== undefined && { icon: seed.icon }),
       ...(seed.category !== undefined && { category: seed.category }),
       ...(seed.kind !== undefined && { kind: seed.kind }),
       ...(seed.startsAt !== undefined && { startsAt: new Date(seed.startsAt) }),
       ...(seed.endsAt !== undefined && { endsAt: new Date(seed.endsAt) }),
+      // **Absent CLEARS**, like `endDate` above and for the same reason: the client
+      // rebuilds this seed whole on each save, so a window that is gone was removed
+      // rather than left untouched. Treating it as untouched is how a check-in the user
+      // reverted to "from 17:00" would keep claiming it shuts at 21:00.
+      startWindowEnd: seed.startWindowEnd ? new Date(seed.startWindowEnd) : null,
+      endWindowStart: seed.endWindowStart ? new Date(seed.endWindowStart) : null,
       placeId: null, // linked → place stays on the booking
       updatedBy: actorUserId,
     };
@@ -387,7 +400,14 @@ export class BookingsService {
    *  single `placeId`. The two are mutually exclusive (ADR-0048). */
   private assertPlaceShape(
     type: BookingType,
-    input: { placeId?: string; fromPlaceId?: string; toPlaceId?: string },
+    // `null` is a CLEAR (`updateBookingSchema`) and reads here exactly as absent does — which
+    // is what lets a type change across the route↔single axis pass at all: the update sends
+    // the fields the new shape cannot hold as null, and this then sees a shape that matches.
+    input: {
+      placeId?: string | null;
+      fromPlaceId?: string | null;
+      toPlaceId?: string | null;
+    },
   ): void {
     if (carriesRoute(type)) {
       if (input.placeId) {

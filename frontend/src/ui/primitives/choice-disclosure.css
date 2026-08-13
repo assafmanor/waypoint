@@ -1,0 +1,78 @@
+/* ChoiceDisclosure — the statement at the top of an editor, and the chooser it reveals.
+   Logical properties only (RTL).
+
+   MOSTLY MOVED, NOT WRITTEN: the box, the glyph, the label and the trailing verb are
+   `.bs-type-row`'s shipped rules lifted out of `.booking-sheet` scope so a second editor
+   can wear them (they were `screens.css`'s). Three things are genuinely new — the button
+   reset, ADR-0017's 44px floor, and the `--muted` caption that says where an inherited
+   value came from.
+
+   No hue anywhere. A category is neither time (amber), place (teal) nor Plan mode
+   (violet); the same sentence `notes.css` writes over `.note-mark`. */
+
+.wp-disclose {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  inline-size: 100%;
+  /* A REAL floor, not ADR-0177's `::after` reach — that trick exists because a list LINE
+     must not grow (a measured 44px took a Plan row 58px→75px), and this is an editor's
+     header row where the whole cost is the 5px it measures. */
+  min-block-size: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--soft-line);
+  border-radius: 10px;
+  background: var(--card);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.wp-disclose:active {
+  transform: scale(var(--press-scale));
+}
+.wp-disclose:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+}
+
+.wp-disclose-ic {
+  font-size: 18px;
+  line-height: 1;
+}
+.wp-disclose-lbl {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* Where an unchosen value came from — `לפי ההזמנה`. */
+.wp-disclose-from {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Pushed to the far edge so the row reads "this is what it is … change it", and sized like
+   `.bs-revert` — `.bs-type-change`'s own words. A <span>, not a button: the row is the
+   target, so a second hit box inside it would be two targets for one action. */
+.wp-disclose-verb {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* `.wp-collapsible` carries no chrome by design ("callers own all visual chrome"), so this
+   is the caller's half and it is one property. Its `max-height: 2000px` cap is safe here
+   for the reason ADR-0152 §6's trap was not: nine pills and eight cards cannot outgrow it,
+   where a note composer can. */
+.wp-disclose-panel {
+  padding-block-start: var(--space-3);
+}

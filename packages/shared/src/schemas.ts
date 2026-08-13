@@ -63,6 +63,12 @@ const eventFieldsSchema = z.object({
   kind: eventKindSchema,
   startsAt: isoDateTimeSchema.optional(), // UTC instant
   endsAt: isoDateTimeSchema.optional(),
+  // The other bound of a flexible edge's window (ADR-0184). `nullish` for the same
+  // reason `displayTimezone` is: **null clears** the window back to the open-ended
+  // floor/deadline it was, absent leaves it untouched in a patch — and removing a
+  // window is a control the form actually offers (`TimeField`'s `onClear`).
+  startWindowEnd: isoDateTimeSchema.nullish(),
+  endWindowStart: isoDateTimeSchema.nullish(),
   placeId: z.string().optional(), // FK → Place; cleared server-side when bookingId is set (ADR-0048)
   // Manual display-zone override (ADR-0107 §6-7), written only by the zone chip:
   // a real IANA zone pins the event's display zone forever; **null clears it**
@@ -81,15 +87,40 @@ const endAfterStart = (data: { startsAt?: string; endsAt?: string }) =>
   !data.startsAt || !data.endsAt || Date.parse(data.endsAt) > Date.parse(data.startsAt);
 const endAfterStartIssue = { message: 'endsAt must be after startsAt', path: ['endsAt'] };
 
+/** **A window must contain the edge it widens** (ADR-0184 §3). A check-in window closes
+ *  AFTER its floor opens and a check-out window opens BEFORE its deadline — an inverted
+ *  pair is nonsense rather than an unusual booking, so it is refused on both ends like
+ *  the span above. Only checked when both halves are present: a window with no edge to
+ *  hang off is caught by the same rule that would reject a bare `endsAt`. */
+const windowsContainTheirEdge = (data: {
+  startsAt?: string;
+  endsAt?: string;
+  startWindowEnd?: string | null;
+  endWindowStart?: string | null;
+}) =>
+  (!data.startsAt ||
+    !data.startWindowEnd ||
+    Date.parse(data.startWindowEnd) > Date.parse(data.startsAt)) &&
+  (!data.endsAt ||
+    !data.endWindowStart ||
+    Date.parse(data.endWindowStart) < Date.parse(data.endsAt));
+const windowIssue = {
+  message: 'a window must close after its floor and open before its deadline',
+  path: ['startWindowEnd'],
+};
+
 /** Payload to create an event. Client supplies `id`; server assigns updatedBy/timestamps. */
-export const createEventSchema = eventFieldsSchema.refine(endAfterStart, endAfterStartIssue);
+export const createEventSchema = eventFieldsSchema
+  .refine(endAfterStart, endAfterStartIssue)
+  .refine(windowsContainTheirEdge, windowIssue);
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 
 /** Partial update to an event. Hard events require confirmation server-side (ADR-0011). */
 export const updateEventSchema = eventFieldsSchema
   .partial()
   .extend({ status: eventStatusSchema.optional() })
-  .refine(endAfterStart, endAfterStartIssue);
+  .refine(endAfterStart, endAfterStartIssue)
+  .refine(windowsContainTheirEdge, windowIssue);
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 
 /** Move an event to another date/time/order. ADR-0018 (no dayId). */
@@ -112,6 +143,10 @@ export const bookingEventSeedSchema = z.object({
   date: dateOnlySchema,
   startsAt: isoDateTimeSchema.optional(),
   endsAt: isoDateTimeSchema.optional(),
+  // A booking's window rides the seed, because the Event is the sole time authority
+  // (ADR-0047 §1) and a hotel's check-in window is the only place one is authored today.
+  startWindowEnd: isoDateTimeSchema.nullish(),
+  endWindowStart: isoDateTimeSchema.nullish(),
   endDate: dateOnlySchema.optional(),
   kind: eventKindSchema.optional(),
   icon: z.string().optional(),
@@ -139,8 +174,21 @@ export const createBookingSchema = z.object({
 });
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 
-/** Partial update to a booking. */
-export const updateBookingSchema = createBookingSchema.partial();
+/** Partial update to a booking.
+ *
+ *  **The three place FKs are `nullish` here and `optional` on create, and the difference is
+ *  load-bearing**: `null` CLEARS, exactly as `startDisplayTimezone` above already documents
+ *  for itself. Under `.partial()` alone they were merely optional, so `null` never survived
+ *  validation and `undefined` is dropped by `JSON.stringify` — which made clearing a
+ *  booking's place a **silent no-op**, and made a type change across the route↔single axis
+ *  impossible at all: `bookings.service.ts` merges the previous value under the NEW type and
+ *  `assertPlaceShape` then rejects the pair with a 400. `bookingUpdateData` already spreads
+ *  a present-but-null key straight through to Prisma, so nothing downstream changes. */
+export const updateBookingSchema = createBookingSchema.partial().extend({
+  placeId: z.string().nullish(),
+  fromPlaceId: z.string().nullish(),
+  toPlaceId: z.string().nullish(),
+});
 export type UpdateBookingInput = z.infer<typeof updateBookingSchema>;
 
 export const createPlaceSchema = z.object({
@@ -554,7 +602,7 @@ export const updateMeSchema = z
     avatarChoice: avatarChoiceSchema.optional(),
     avatarHue: identityHueSchema.nullable().optional(),
     // `null` clears the pick and hands the client back to its device-region
-    // default (ADR-0180 §2) — the same nullable-means-unchosen shape as
+    // default (ADR-0184 §2) — the same nullable-means-unchosen shape as
     // `avatarHue` above, so the patch needs no separate "reset" verb.
     preferredCurrency: currencyCodeSchema.nullable().optional(),
   })

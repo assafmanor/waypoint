@@ -1054,3 +1054,59 @@
 .map-areacount.on b {
   color: inherit;
 }
+
+/* ── THE WAIT, STATED (field report #35) ──────────────────────────────────────────
+   Before the first tile paints, the canvas is empty while our own markers already draw
+   on it. That picture is what #28 reported as a failure, and it is also what a healthy
+   slow load looks like — so the pane says which one it is instead of leaving a blank. Past
+   `MAP_LOAD_TIMEOUT_MS.TILES` this same slot says the wait is slow and offers the way out
+   (`.map-loading-retry` below), because the canvas underneath is still trying.
+
+   Centred over the canvas, NOT a block that reserves height: the pane's box is what the
+   pin size and the camera fit are read off (ADR-0123), so anything that changed its
+   layout would move the map to say "loading". `pointer-events: none` because the pan and
+   the long press belong to the canvas underneath — a cue is a statement, never a target,
+   and Google's callbacks would not see a tap this swallowed (ADR-0148's gesture seam). */
+.map-loading {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  translate: 0 -50%;
+  pointer-events: none;
+  text-align: center;
+  font-size: var(--text-secondary);
+  color: var(--muted);
+}
+
+/* …and the way out, once the wait passes the bound (ADR-0121's 2026-08-13 amendment). It
+   lives INSIDE the cue so the two can never be on screen as separate objects (§11), which
+   is also why the cue keeps `pointer-events: none` and only this re-enables them: the
+   canvas underneath keeps every gesture except the one square this occupies.
+
+   `ErrorState`'s pill, at the cue's own scale — the hard failure is a bigger claim and
+   keeps the bigger control. `--press-scale` rather than a hand-picked transform (ADR-0140),
+   and the touch floor is met by `ValueToken`'s `::after` overlay idiom rather than by a
+   `min-height`, so reaching 44px does not grow the line the cue is centred on. */
+.map-loading-retry {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-block-start: var(--space-2);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  background: var(--card);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--text-secondary);
+  pointer-events: auto;
+}
+.map-loading-retry::after {
+  content: '';
+  position: absolute;
+  inset: -9px -4px;
+}
+.map-loading-retry:active {
+  transform: scale(var(--press-scale));
+}

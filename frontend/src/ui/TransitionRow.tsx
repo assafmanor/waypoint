@@ -2,19 +2,21 @@
 // for one edge of a multi-day bracketed booking — badge + transition label (from
 // the profile, ADR-0063) + booking title + mono time, amber (time + commitment).
 // Tapping opens the read-only booking detail (ADR-0053), where edit/delete live;
-// it carries NO inline settle/skip/delay verbs (mutating half a derived span is
-// ambiguous). Shared by the Trip-mode day view and the Plan-mode builder so the
-// grammar can't diverge. A start edge (check-in / departure) offers Navigate —
+// it carries no inline delay/swap verbs (mutating half a derived span is ambiguous)
+// — but it DOES settle a floor, since 2026-08-13, when floors moved into the list
+// from the strip that used to carry that control. See `onDone` below for why that is
+// a count rather than a nicety. Shared by the Trip-mode day view and the Plan-mode
+// builder so the grammar can't diverge. A start edge (check-in / departure) offers Navigate —
 // but only when a caller supplies `onNavigate` (Trip mode, live day, and the
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
-import { CATEGORY_DEFAULT_ICON, edgeMeaning, type Booking } from '@waypoint/shared';
+import { CATEGORY_DEFAULT_ICON, edgeMeaning, EVENT_STATUS, type Booking } from '@waypoint/shared';
+import { SettleControl, type SettleOutcome } from './domain/SettleControl';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
-import { formatTime } from '../lib/time';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
 import { PlaceBadge } from './domain/PlaceBadge';
-import { transitionLabel } from '../lib/transitions';
+import { edgeTimePhrase, transitionLabel } from '../lib/transitions';
 import { parseRouteTitle } from '../lib/route-title';
 import { placeLabelOf } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
@@ -30,6 +32,9 @@ export function TransitionRow({
   onOpen,
   onNavigate,
   onShowOnMap,
+  onDone,
+  onSkip,
+  onUndo,
 }: {
   entry: TransitionEntry;
   tz: string;
@@ -48,6 +53,20 @@ export function TransitionRow({
    *  place on the map as where you check in, and orientation is not a live-only
    *  question the way directions are. */
   onShowOnMap?: () => void;
+  /** **The settle pair, on a FLOOR only** — inherited wholesale from
+   *  `UnplacedCommitment` when floors moved from the strip into the list (2026-08-13),
+   *  and it is load-bearing rather than parity: `glance.ts` keeps a `not-before` edge in
+   *  `נותרו היום` until it is `DONE`, because 15:01 does not mean anybody checked in
+   *  (ADR-0171 §6). Without a way to say `היינו` here the number the owner reported on
+   *  2026-08-04 sticks all evening. A ceiling and a window expire by their own clock and
+   *  need none; Trip mode supplies these and Plan supplies nothing, which is ADR-0171
+   *  §10e's posture difference and not a fact.
+   *
+   *  This is the one thing the header comment above still says this row does not do — so:
+   *  it settles a floor, and only a floor. */
+  onDone?: () => void;
+  onSkip?: () => void;
+  onUndo?: () => void;
 }) {
   const placeLabels = usePlaceLabels();
   const { event, edge, atMs, labelKey } = entry;
@@ -76,6 +95,12 @@ export function TransitionRow({
   const icon =
     chosenIcon(event.icon) ??
     (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : DEFAULT_EVENT_ICON);
+  // **What this edge's clock says is `edgeTimePhrase`'s** (`lib/transitions.ts`), not this
+  // row's — the ambient strip above the list says the same fact now, and one edge saying two
+  // things on one screen is the defect that would follow from writing it twice. Both bounds
+  // render in this edge's own zone, like the single clock does.
+  const meaning = edgeMeaning(event, edge);
+  const time = edgeTimePhrase(event, edge, atMs, zone ?? tz);
   return (
     <div className="transition-row">
       <button
@@ -92,21 +117,49 @@ export function TransitionRow({
           <span className="tr-title">
             <TitleLabel title={title} />
           </span>
-        </span>
-        <span className="tr-time" dir="auto">
-          {/* **A ceiling says so** (ADR-0171 §3). A check-out reads `עד 11:00`, because
-              11:00 is a deadline rather than the moment it happens — and the row may
-              have been pinned earlier than 11:00 by a flight leaving before it (§10b),
-              which makes an unmarked clock actively wrong. `exact` stays unmarked: it
-              is the default, and marking it would put a word on nearly every row in
-              the app to say "normal". A floor never reaches this row at all — it holds
-              no position, so it renders in the strip above the list. */}
-          {edgeMeaning(event, edge) === 'not-after'
-            ? t.day.untilTime(formatTime(new Date(atMs), zone ?? tz))
-            : formatTime(new Date(atMs), zone ?? tz)}
-          {deltaMinutes != null && <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />}
+          {/* **THE TIME GOES UNDER THE TITLE, WHATEVER IT SAYS** (owner, 2026-08-13,
+              replacing ADR-0184 §5's split). A range already read here and a bare clock
+              read at the row's trailing edge, which made this the one row in the app whose
+              time moved depending on its own content — and against `EventCard`
+              (`'badge title' / 'badge when'`) and Plan's builder row, which both put every
+              time under the title, it was the row that stood out.
+
+              Two things were wrong with the trailing edge, not one. `.tr-title` is the only
+              element here that ellipsises, so the time was charged against a long hotel
+              name (measured at 360px: 45px of 210 for a range). And `dir="auto"` on this
+              box resolved the ELEMENT to ltr — a digits-only run has no strong character —
+              so its inherited `text-align: start` meant *left*, and the one time that had
+              already moved under the title sat at the wrong margin. The attribute is gone
+              and every clock is isolated at the run instead (ADR-0118).
+
+              Cost, stated because it is charged to every transition row now and not only to
+              a windowed one: ~20px of height. */}
+          <span className="tr-time">
+            {time}
+            {deltaMinutes != null && (
+              <ZoneShiftPill minutes={deltaMinutes} className="tr-tzdelta" />
+            )}
+          </span>
         </span>
       </button>
+      {/* `compact` is the density `UnplacedCommitment` already picked for this exact row
+          shape — icon-only beside a label that needs the width — so nothing new is minted
+          (ADR-0139's Consequences: four settle affordances drifted before one collected
+          them). Gated on the MEANING, not on the props alone: only a floor is cleared by
+          being settled. */}
+      {meaning === 'not-before' && onDone && onSkip && (
+        <SettleControl
+          variant="compact"
+          outcome={
+            event.status === EVENT_STATUS.DONE || event.status === EVENT_STATUS.SKIPPED
+              ? (event.status as SettleOutcome)
+              : undefined
+          }
+          onDone={onDone}
+          onSkip={onSkip}
+          onUndo={onUndo}
+        />
+      )}
       {edge === 'start' && onNavigate && (
         <button className="tr-nav" onClick={onNavigate}>
           {t.actions.navigate}

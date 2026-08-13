@@ -12,15 +12,26 @@ import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { ToastProvider } from '../ui/Toast';
 import { NavProvider } from '../state/nav-state';
+import { ModeProvider } from '../state/mode-state';
 
 /** `path` for the surfaces whose behaviour depends on WHERE you are — the shared header's
  *  day strip singles out a day only on a tab that is showing one (`tabShowsSelectedDay`),
- *  which cannot be asserted from the default `/`. Defaults to Home, as before. */
-export function wrapNav(node: ReactNode, { path = '/' }: { path?: string } = {}) {
+ *  which cannot be asserted from the default `/`. Defaults to Home, as before.
+ *
+ *  `mode` adds `ModeProvider`, which anything reaching for `useMode()` needs — a
+ *  `SearchOverlay` host is the common case, since the overlay wears the mode's chrome tint
+ *  (ADR-0101). **Opt-in, not default**, and for a reason: `ModeProvider` itself calls
+ *  `useTrip()`, so it can only be mounted by a test that has a trip (real provider or
+ *  mocked module). `IndexNotesView.test.tsx` open-codes this same four-provider stack and
+ *  moves onto this flag when it is next touched. */
+export function wrapNav(
+  node: ReactNode,
+  { path = '/', mode = false }: { path?: string; mode?: boolean } = {},
+) {
   return (
     <MemoryRouter initialEntries={[path]}>
       <ToastProvider>
-        <NavProvider>{node}</NavProvider>
+        <NavProvider>{mode ? <ModeProvider>{node}</ModeProvider> : node}</NavProvider>
       </ToastProvider>
     </MemoryRouter>
   );

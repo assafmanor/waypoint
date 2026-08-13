@@ -83,7 +83,7 @@ import {
   readCachedSnapshot,
 } from '../lib/cache';
 import { generateId } from '../lib/id';
-import { dropNotesForHostChange } from '../lib/notes';
+import { buildNoteHosts, dropNotesForHostChange, type NoteHostRef } from '../lib/notes';
 import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
 import { PlaceLabelsProvider } from './place-labels';
@@ -107,6 +107,7 @@ import {
   type ChangeEntry,
 } from './change-feed';
 import { getNow } from '../lib/useClock';
+import { observeVisibility } from '../lib/visibility';
 import { clampDate, shiftIso } from '../lib/time';
 import { bookingLinkedEventChange } from '../lib/outbox-effects';
 import { useToast } from '../ui/Toast';
@@ -570,6 +571,13 @@ interface TripContextValue {
    *  one. Derived, never stored: "shared" is a way of reading rows, not a way of keeping
    *  them, which is why #24 cost no migration. */
   hostContexts: HostContextIndex;
+  /** **What every hostable entity is CALLED and what CATEGORY it lends** (ADR-0152 §5's
+   *  amendment), keyed `kind:id`. Derived here for `hostContexts`' reason exactly: the notes
+   *  screen resolves a host per row and every host surface resolves its own, and while this
+   *  was built locally on one screen the ROW and the EDITOR disagreed — the row went through
+   *  the index, the sheet took a literal a call site hand-wrote, and three of those left
+   *  `category` off. One derivation, one answer. */
+  noteHosts: Map<string, NoteHostRef>;
   documents: DocumentSummary[];
   /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
    *  notes alike — what a note is about is a field on the row, not a separate store. */
@@ -831,6 +839,24 @@ function TripReady({
     [state.events, bookings],
   );
 
+  // **Every hostable entity's name and lent category** (ADR-0152 §5's amendment), for the
+  // same reason as the index above and with the same failure behind it: `IndexNotesView` built
+  // this locally while it was the only reader, so the moment a second surface needed it the
+  // editor was handed a hand-written literal instead — and three of the five call sites that
+  // wrote one left `category` off, which is why a note on a booking could not state what it
+  // inherits. A place lends its own category too, since ADR-0165 gave it one.
+  const noteHosts = useMemo(
+    () =>
+      buildNoteHosts({
+        events: state.events,
+        bookings,
+        places,
+        maybeItems: state.maybeItems,
+        documents,
+      }),
+    [state.events, bookings, places, state.maybeItems, documents],
+  );
+
   // **The display label for every place that has one** (ADR-0166 §18) — a nickname, or the
   // city an airport serves, which the enrichment pipe derived. Resolved once here, for the same reason
   // `zoneCrossings` is: every glanceable route surface asks the same question about the same
@@ -1077,17 +1103,11 @@ function TripReady({
     // goes stale. Re-run the same catch-up when the tab becomes visible again
     // after being hidden past the threshold. A true app close → reopen already
     // cold-loads fresh via the boot fetch; this covers the warm resume.
-    let hiddenAt = 0;
-    function handleVisibility() {
-      if (document.visibilityState === 'hidden') {
-        hiddenAt = getNow();
-        return;
-      }
-      const awayMs = hiddenAt === 0 ? 0 : getNow() - hiddenAt;
-      hiddenAt = 0;
-      if (awayMs >= RESYNC_AFTER_HIDDEN_MS && !isOffline()) handleOnline();
-    }
-    document.addEventListener('visibilitychange', handleVisibility);
+    const stopVisibility = observeVisibility({
+      onResume: (awayMs) => {
+        if (awayMs >= RESYNC_AFTER_HIDDEN_MS && !isOffline()) handleOnline();
+      },
+    });
 
     // F-03: a queued write dropped on flush leaves a phantom optimistic entity in
     // the reactive lists (the outbox already wrote it through to the cache). On a
@@ -1103,7 +1123,7 @@ function TripReady({
 
     return () => {
       window.removeEventListener('online', handleOnline);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      stopVisibility();
       unsubscribeFailures();
       closeSocket?.();
     };
@@ -1655,6 +1675,7 @@ function TripReady({
       zoneCrossings,
       zoneEvidence,
       hostContexts,
+      noteHosts,
       documents,
       notes,
       documentAttachments,
@@ -1688,6 +1709,7 @@ function TripReady({
       zoneCrossings,
       zoneEvidence,
       hostContexts,
+      noteHosts,
       documents,
       notes,
       documentAttachments,

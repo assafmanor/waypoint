@@ -19,14 +19,13 @@
 // draft's identity is how a form built out of `useState` is reset without a synchronising
 // effect, and it is the only reason there is no `useEffect` in this file.
 import { useId, useState } from 'react';
-import { iconForCategory, MAX_PLACE_NICKNAME_LENGTH, type EventCategory } from '@waypoint/shared';
+import { MAX_PLACE_NICKNAME_LENGTH, type EventCategory } from '@waypoint/shared';
 import { useDerivedField } from '../../lib/useDerivedField';
 import { placeGlyph } from '../../lib/map-pins';
-import { EVENT_CATEGORY_OPTIONS } from '../../lib/category-options';
 import { t } from '../../i18n/he';
 import { Icon } from '../Icon';
 import { IconPicker } from '../IconPicker';
-import { ChoiceGrid } from '../primitives/ChoiceGrid';
+import { CategoryField } from '../primitives/CategoryField';
 import { Field } from '../primitives/Field';
 import { NoteComposer, useNoteComposer } from '../NoteComposer';
 import { useFormErrors } from '../primitives/useFormErrors';
@@ -264,33 +263,38 @@ export function MapPlaceForm({
           way (`EventForm`/`BookingSheet`: a scrolling body with pinned `FormActions`); this one
           did not, because it was drawn as a card. It can be both. */}
       <div className="map-draft-scroll">
-        {/* ALL NINE `EventCategory` values, from the ONE options list `EventForm` and the shelf's
-          add already read (`EVENT_CATEGORY_OPTIONS`) — so `other` (כללי) is present and last
-          because the enum puts it there, not because this surface chose an order.
+        {/* ALL NINE `EventCategory` values, through the ONE selector `EventForm` and `NoteSheet`
+          also read (`CategoryField`) — so `other` (כללי) is present and last because the enum
+          puts it there, not because this surface chose an order.
           **Here the category is not invisible metadata: it is the pin's HUE.** That is why the
           map differs from session 76's recorded rejection of a category picker on quick-add
           (ADR-0109 §11) — without a choice a restaurant's pin comes out `leisure` green, which
           on a surface whose entire grammar is "colour = category" is wrong information rather
-          than absent information. */}
-        <div className="category-pills">
-          <ChoiceGrid
-            layout="pills"
-            options={EVENT_CATEGORY_OPTIONS}
-            value={category.value}
-            onChange={(next) => {
-              category.set(next);
-              // `redrive` answers with the value now in force — derived, or whatever a human
-              // already set — so the report reads the truth rather than a `useState` React has
-              // not flushed yet. That return value is exactly why the hook has one.
-              report({
-                category: next,
-                categoryTouched: true,
-                icon: icon.redrive(iconForCategory(next)),
-              });
-            }}
-            ariaLabel={t.map.make.categoryLabel}
-          />
-        </div>
+          than absent information. It follows that this is the one host that must **not**
+          collapse the pills behind a statement (`disclosure` stays off), and that it carries
+          no visible caption (`label={null}`): this card's height is arithmetic (ADR-0148 §1),
+          and the row is named for assistive tech instead. */}
+        <CategoryField
+          label={null}
+          clearable={false}
+          ariaLabel={t.map.make.categoryLabel}
+          value={category.value}
+          onChange={(next) => {
+            category.set(next);
+            // `redrive` answers with the value now in force — derived, or whatever a human
+            // already set — so the report reads the truth rather than a `useState` React has
+            // not flushed yet. That return value is exactly why the hook has one.
+            //
+            // `placeGlyph` rather than `iconForCategory`, so the glyph is derived by the one
+            // function that already answers "what does a place with this category show" —
+            // including the `undefined` the type permits and `clearable={false}` prevents.
+            report({
+              category: next,
+              categoryTouched: true,
+              icon: icon.redrive(placeGlyph({}, next)),
+            });
+          }}
+        />
         {/* **The short label** (ADR-0166 §18), in the scroll region and not the pinned head —
             the head is what you are naming and the actions are how you get out, and this card's
             height is arithmetic (ADR-0148 §1). It is `Field` + an input like every other text

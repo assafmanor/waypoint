@@ -6,8 +6,8 @@
 // through `NOTE_HOST_FIELD`, so this file drives all five kinds rather than the two phase 5
 // happens to wire: the place case is phase 6's, and the point is that it needs no code.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { Booking, Note, TripEvent } from '@waypoint/shared';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { BOOKING_TYPE, type Booking, type Note, type TripEvent } from '@waypoint/shared';
 import { wrapNav } from '../test/nav-harness';
 import { setSimulatedNow } from '../lib/useClock';
 import type { NoteHostKind } from '../lib/notes';
@@ -38,6 +38,16 @@ vi.mock('../state/trip-state', () => ({
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
+    // The EDITOR states the category a hosted note inherits, and it reads it from here — the
+    // defect this index replaced was five call sites hand-writing a `NoteHostRef`, three of
+    // them without a category. Built from this file's fixtures so the inheritance is real.
+    noteHosts: buildNoteHosts({
+      events: tripEvents,
+      bookings: tripBookings,
+      places: [],
+      maybeItems: [],
+      documents: [],
+    }),
     events: tripEvents,
     bookings: tripBookings,
     notes: tripNotes,
@@ -52,9 +62,16 @@ vi.mock('../state/trip-state', () => ({
 import { HostNotes } from './HostNotes';
 import { t } from '../i18n/he';
 import { buildHostContextIndex } from '../lib/host-context';
+import { buildNoteHosts } from '../lib/notes';
 
 const open = (kind: NoteHostKind, id: string) =>
   render(wrapNav(<HostNotes host={{ kind, id, name: 'המארח' }} />));
+
+/** The editor's category chooser, however the sheet is showing it. */
+const categoryPills = () => screen.getByRole('radiogroup', { name: t.notes.sheet.categoryLabel });
+
+const precedes = (a: Element, b: Element) =>
+  a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING;
 
 describe('HostNotes', () => {
   beforeEach(() => {
@@ -123,13 +140,68 @@ describe('HostNotes', () => {
     });
   });
 
-  // A hosted note carries no category of its own (§5's amendment) — so the editor opened
-  // from a host offers no picker, and the host is stated instead.
-  it('states the host and asks for no category', () => {
+  // A hosted note carries no category OF ITS OWN (§5's amendment), and the editor says so
+  // instead of hiding the question: the leading pill arrives selected, so what is in force is
+  // stated and nothing is asked. A document lends no category at all, so the honest statement
+  // is `ללא` rather than an invented inheritance — and it is the way back to no category,
+  // which is what the picker being absent altogether used to make unreachable.
+  it('states the host, and states a category rather than asking for one', () => {
     render(wrapNav(<HostNotes host={{ kind: 'document', id: 'd1', name: 'דרכון של דנה' }} />));
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.section.add) }));
     expect(screen.getByText('דרכון של דנה')).toBeTruthy();
-    expect(screen.queryByText(t.notes.sheet.categoryLabel)).toBeNull();
+    const leading = within(categoryPills()).getAllByRole('radio')[0];
+    expect(within(leading).getByText(t.eventForm.categoryNone)).toBeTruthy();
+    expect(leading.getAttribute('aria-checked')).toBe('true');
+  });
+
+  // **The category a hosted note INHERITS is stated, with where it came from** — the half that
+  // was impossible before, because the sheet took a hand-written `NoteHostRef` from the call
+  // site and three of the five omitted `category` (the row, meanwhile, resolved it correctly).
+  it('states the category a booking-hosted note inherits, and names the source', () => {
+    tripBookings = [{ id: 'host-1', title: 'Granbell', type: BOOKING_TYPE.HOTEL }] as never;
+    render(wrapNav(<HostNotes host={{ kind: 'booking', id: 'host-1', name: 'Granbell' }} />));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.section.add) }));
+    const leading = within(categoryPills()).getAllByRole('radio')[0];
+    // A hotel lends `lodging` through `categoryForBookingType` (ADR-0038), never a copy — so
+    // the pill in force is the one that says where the value came from, and `לינה`'s own pill
+    // stays unchosen beside it.
+    expect(within(leading).getByText(t.notes.sheet.categoryFrom.booking)).toBeTruthy();
+    expect(within(leading).getByText('🏨')).toBeTruthy();
+    expect(leading.getAttribute('aria-checked')).toBe('true');
+    expect(
+      screen
+        .getByRole('radio', { name: t.iconPicker.categories.lodging })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+  });
+
+  // **A create asks nothing and hides nothing** (owner, 2026-08-13; ADR-0183 §4's amendment).
+  // The collapse was built for re-filing what is already saved, and on a brand-new note it is
+  // a tap to open plus a tap to close paid for no earlier answer — so the create gets the plain
+  // open field every other form's category is, above the boxes like `EventForm`'s.
+  it('leads a create with the category, open, like every other form', () => {
+    render(wrapNav(<HostNotes host={{ kind: 'document', id: 'd1', name: 'דרכון של דנה' }} />));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.section.add) }));
+
+    const pills = categoryPills();
+    // Nothing to tap open, and nothing held out of reach by `inert`.
+    expect(screen.queryByRole('button', { name: t.notes.sheet.categoryLabel })).toBeNull();
+    expect(pills.closest('[inert]')).toBeNull();
+    expect(precedes(pills, screen.getByLabelText(t.notes.sheet.bodyLabel))).toBeTruthy();
+  });
+
+  // An EDIT keeps the statement-as-control (ADR-0183 §1) — there is a saved answer to state,
+  // and changing it is the rare pass through the form — but it moves to the top too, so the
+  // two modes differ in one thing only: whether the row is collapsed.
+  it('leads an edit with the category too, and there it is the statement', () => {
+    tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
+    open('document', 'd1');
+    fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.notes.open.edit) }));
+
+    const row = screen.getByRole('button', { name: t.notes.sheet.categoryLabel });
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    expect(precedes(row, screen.getByLabelText(t.notes.sheet.bodyLabel))).toBeTruthy();
   });
 
   // A line HERE never clamped, so the words are already whole and opening one adds none —

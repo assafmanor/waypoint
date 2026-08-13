@@ -72,6 +72,9 @@ vi.mock('../state/trip-state', () => ({
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, [booking]),
+    // Note hosts resolve through trip-state's one index; this file asserts nothing
+    // about an inherited name or category, so the index-miss fallback carries it.
+    noteHosts: new Map(),
     trip: { id: 't1', timezone: 'Asia/Tokyo' },
     bookings: [booking],
     events: tripEvents,

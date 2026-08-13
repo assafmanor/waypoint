@@ -119,15 +119,18 @@ import {
 } from '../constants';
 import {
   dayTransitions,
+  edgeEntryOf,
   placeDayEntries,
   type DayEntry,
   groupEndEvent,
   groupMembers,
   groupStartEvent,
   mergeDayEntries,
+  staysOnDate,
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
 import { ambientSpanLabel } from '../lib/glance';
+import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -312,14 +315,9 @@ export function PlanDay() {
         e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !isAmbient(e),
     )
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop, not builder rows. The
-  // strip now renders only on STRICTLY-MIDDLE nights (ADR-0064 §C, mirroring the
-  // Trip-mode day view): edge days show the transition entry instead, so no day
-  // shows the stay twice and the (wrong) checkout-day strip disappears. A 1-night
-  // stay has no middle day → no strip, just its two edge entries.
-  const middleStays = events.filter(
-    (e) => isAmbient(e) && e.date < activeDate && activeDate < e.endDate!,
-  );
+  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop, not builder rows — on every day
+  // of the stay, edges included. One shared predicate with the Trip day view (ADR-0171 §10e).
+  const staysToday = staysOnDate(events, activeDate);
 
   // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
   // `dayEvents` — so their edge days would show nothing in the list. Interleave
@@ -967,17 +965,27 @@ export function PlanDay() {
           </span>
         </div>
 
-        {(middleStays.length > 0 || placement.commitments.length > 0) && (
+        {(staysToday.length > 0 || placement.commitments.length > 0) && (
           <div className="day-ambient">
-            {middleStays.map((e) => (
-              <div className="ambient" key={e.id}>
-                <span className="ai" aria-hidden="true">
-                  {e.icon ?? DEFAULT_STAY_ICON}
-                </span>
-                <span className="an">{e.title}</span>
-                <span className="as">{ambientSpanLabel(e, activeDate)}</span>
-              </div>
-            ))}
+            {/* An edge day says the edge, a middle day says the count — the same rule Trip
+                reads, from the same two functions (ADR-0171 §10e). No posture difference
+                here: what the strip STATES is a fact about the booking. */}
+            {staysToday.map((e) => {
+              const edge = edgeEntryOf(placement.positioned, e.id);
+              return (
+                <div className="ambient" key={e.id}>
+                  <span className="ai" aria-hidden="true">
+                    {e.icon ?? DEFAULT_STAY_ICON}
+                  </span>
+                  <span className="an">{e.title}</span>
+                  <span className="as">
+                    {edge
+                      ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
+                      : ambientSpanLabel(e, activeDate)}
+                  </span>
+                </div>
+              );
+            })}
             {/* **The same row, without the control** (ADR-0171 §10e). Plan settles through
                 a sheet off the row menu and never inline, and `נותרו היום` — the number
                 that made settling load-bearing on Trip's copy — is a Trip-mode number.

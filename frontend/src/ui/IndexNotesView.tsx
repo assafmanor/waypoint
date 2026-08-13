@@ -21,7 +21,6 @@ import { useClock } from '../lib/useClock';
 import { useBackLayer, type BackResult } from '../state/nav-state';
 import { countVisible } from '../lib/filter-reveal';
 import {
-  buildNoteHosts,
   countNotesByCategory,
   noteGlyph,
   noteHost,
@@ -54,7 +53,7 @@ import { t } from '../i18n/he';
 import './notes.css';
 
 export function IndexNotesView({ onClose }: { onClose: () => void }) {
-  const { trip, notes, events, bookings, places, maybeItems, documents, noteVerbs } = useTrip();
+  const { trip, notes, noteHosts, noteVerbs } = useTrip();
   const { mode } = useMode();
   const now = useClock();
 
@@ -72,12 +71,10 @@ export function IndexNotesView({ onClose }: { onClose: () => void }) {
   // needs `?day=` unless it IS today).
   const wayIn = useNoteHostWayIn(todayInTz(trip.timezone, now));
 
-  // The host lookup, built once per source change rather than per row: every note's badge,
-  // chip, chip-count and filter position needs its host resolved (ADR-0152 §5's amendment).
-  const hosts = useMemo(
-    () => buildNoteHosts({ events, bookings, places, maybeItems, documents }),
-    [events, bookings, places, maybeItems, documents],
-  );
+  // The host lookup from trip-state's one index, not a second `buildNoteHosts` call: this
+  // screen built it locally while it was the only reader, and that is exactly how the editor
+  // ended up unable to state a category the row beside it already showed (ADR-0152 §5).
+  const hosts = noteHosts;
 
   const ordered = useMemo(() => sortNotes(notes), [notes]);
   const categoryCounts = useMemo(() => countNotesByCategory(ordered, hosts), [ordered, hosts]);

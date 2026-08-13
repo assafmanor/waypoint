@@ -16,6 +16,7 @@ import {
   connectionWindow,
   BOOKING_TYPE,
   BOOKING_TYPE_TO_CATEGORY,
+  edgeMeaning,
   PLACE_SEARCH_KIND,
   EVENT_KIND,
   carriesRoute,
@@ -49,6 +50,7 @@ import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes, useHostNoteCount } from './HostNotes';
+import { ChoiceDisclosure } from './primitives/ChoiceDisclosure';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { FormError } from './primitives/FormError';
 import { ChoiceGrid } from './primitives/ChoiceGrid';
@@ -63,6 +65,8 @@ import {
   buildEventSeed,
   buildSpanSeed,
   dateOutOfTripRange,
+  switchIsLossy,
+  type BookingSwitchState,
 } from '../lib/booking-edit';
 import { routeTitle } from '../lib/route-title';
 import {
@@ -169,6 +173,10 @@ export function BookingSheet({
   );
 
   const [type, setType] = useState<BookingType>(draft ? draft.type : initial.type);
+  /** The in-place chooser's disclosure state, on an edit. Create keeps its own step. */
+  const [typeOpen, setTypeOpen] = useState(false);
+  /** A lossy switch waiting on its confirm. `null` = nothing pending. */
+  const [pendingType, setPendingType] = useState<BookingType | null>(null);
   // The badge glyph follows the booking TYPE while untouched, and the ✨ caption below offers a
   // revert once a human has picked one (`reset` hands it back to the derivation). Whether a
   // SAVED glyph counts as picked is `bookingSheetDraft`'s value test (field report #31) — it
@@ -297,6 +305,8 @@ export function BookingSheet({
         end,
         stopPlaceIds,
         legs,
+        startWindow,
+        endWindow,
         roundTrip,
         returnLegs,
         endTouched,
@@ -408,11 +418,25 @@ export function BookingSheet({
   // stays lodging, so nights/check-in-out/ambient behaviour all follow the type.
   const category = BOOKING_TYPE_TO_CATEGORY[type];
 
+  // **The opt-in window bounds** (ADR-0184). Bare clocks; the day each lands on is its
+  // edge's own and is resolved at save by `windowBoundIso`.
+  const [startWindow, setStartWindow] = useState(draft ? draft.startWindow : initial.startWindow);
+  const [endWindow, setEndWindow] = useState(draft ? draft.endWindow : initial.endWindow);
+
+  /** **Which ends may carry a window: the flexible ones, asked of the profile.**
+   *  `edgeMeaning` on the shape being edited — no `BookingType` branch, so a hotel and a
+   *  car hire both offer it because both are `held`, and a flight never does because its
+   *  ends are instants. A booking with no span has no edge to widen at all. */
+  const windowOffer = (edge: 'start' | 'end') =>
+    isSpan && edgeMeaning({ category, icon: icon.value }, edge) !== 'exact';
+
   // Diffed against the SAME blob the fields were seeded from, so "what did this open with"
   // has exactly one answer. `iconTouched`/`kindTouched` are not state the user typed, so
   // they are not part of dirtiness.
   const dirty =
     type !== initial.type ||
+    startWindow !== initial.startWindow ||
+    endWindow !== initial.endWindow ||
     icon.value !== initial.icon ||
     title.value !== initial.title ||
     code !== initial.code ||
@@ -435,8 +459,11 @@ export function BookingSheet({
   const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
   const requestClose = () => guardedClose(onClose);
 
-  const changeType = (next: BookingType) => {
+  const applyType = (next: BookingType) => {
     setType(next);
+    // The chooser is answered, so it collapses — and only here, on the change itself, which is
+    // what leaves the grid up after a REFUSED confirm for the next choice to be made from.
+    setTypeOpen(false);
     icon.redrive(BOOKING_TYPE_ICON[next]);
     kind.redrive(defaultKindForBookingType(next));
     // **An offered end belongs to the type that offered it** (field report #11). A
@@ -447,6 +474,35 @@ export function BookingSheet({
       list.map((leg, i) => (i === 0 ? { ...leg, end: offeredEnd(next, leg.start) ?? '' } : leg)),
     );
     setEnd('');
+  };
+
+  /** **What the form is holding that this switch would delete** — read off the live form and
+   *  not off the saved booking, because the form is what the person is looking at: an end
+   *  they already cleared cannot be lost. */
+  const switchState = (): BookingSwitchState => ({
+    hasRoute: Boolean(fromPlaceId || toPlaceId),
+    hasPlace: Boolean(placeId),
+    hasEnd: Boolean(legs[0]?.end || end),
+    hasStayDetails: Boolean(room.trim() || wifiNetwork.trim() || wifiPassword.trim()),
+  });
+
+  /** **A lossy switch asks, AT THE TAP** (owner, 2026-08-12: _"does it make sense to first
+   *  remove the fields from the form, then after the user went through the whole form and
+   *  decided to save, only then you'll warn?"_).
+   *
+   *  The tap is the destructive action, not the save: it is what takes the route field, the
+   *  span's end and the stay block OFF the form, so it is the last moment the thing being
+   *  warned about is on screen. Confirming at the save would ask about boxes that are already
+   *  gone — and would leave `ביטול` with nothing clean to return to, which is the tell that a
+   *  confirm is sitting at the wrong moment.
+   *
+   *  A switch that strands nothing is silent and instant, so browsing the grid on create — a
+   *  near-empty form, where almost nothing can be lost — never sees this at all. And because
+   *  the form commits once (ADR-0155), confirming is still cheap: tapping the original type
+   *  back restores everything from form state. */
+  const pickType = (next: BookingType) => {
+    if (switchIsLossy(type, next, switchState())) return setPendingType(next);
+    applyType(next);
   };
   const pickKind = (k: 'hard' | 'soft') => kind.set(k);
 
@@ -742,6 +798,8 @@ export function BookingSheet({
                     kind: kind.value,
                     icon: icon.value,
                     category,
+                    startWindow,
+                    endWindow,
                   },
                   startZone,
                   endZone,
@@ -772,6 +830,8 @@ export function BookingSheet({
                   kind: kind.value,
                   icon: icon.value,
                   category,
+                  startWindow,
+                  endWindow,
                 },
                 startZone,
                 endZone,
@@ -784,12 +844,29 @@ export function BookingSheet({
             ? { ...seed, id: seed.id ?? linkedEvent?.id ?? generateId() }
             : undefined;
           await indexVerbs.updateBooking(booking.id, {
+            // **The type, and it was the bug.** This payload never carried it — for the honest
+            // reason that the type was not editable, so there was nothing to send — and the
+            // omission survived making it editable: every other edited field saved and the
+            // type silently did not, which reads exactly as "the category did not change",
+            // since a booking's category IS its type (ADR-0038). The create paths always
+            // spread it (`legBooking`, `createBooking`); only the update had no reason to.
+            type,
             title: finalTitle,
             ...base,
             event,
             ...startPatch,
             ...endPatch,
-            ...(isTransport ? { fromPlaceId, toPlaceId: hireReturnId } : { placeId }),
+            // **The shape the NEW type has, and an explicit clear of the other one.** `null`
+            // rather than an absent key, because absent means untouched: `JSON.stringify`
+            // drops `undefined`, so the server would merge the previous shape's places under
+            // the new type and `assertPlaceShape` would reject the pair with a 400 — which is
+            // what made a type change across this axis impossible before
+            // `updateBookingSchema` learned that null clears. It also fixes clearing a
+            // place without changing type at all, which was a silent no-op for the same
+            // reason.
+            ...(isTransport
+              ? { fromPlaceId: fromPlaceId ?? null, toPlaceId: hireReturnId ?? null, placeId: null }
+              : { placeId: placeId ?? null, fromPlaceId: null, toPlaceId: null }),
           });
         }
 
@@ -825,6 +902,19 @@ export function BookingSheet({
       setSaving(false); // the verb already toasted + rolled back
     }
   };
+
+  /** **The type chooser, written once** and rendered by whichever surface is showing it —
+   *  the create form's own step, or the edit form's in-place disclosure. Two copies of an
+   *  eight-card grid is how the two modes start disagreeing about what a type picker is. */
+  const typeGrid = (
+    <ChoiceGrid
+      options={BOOKING_TYPE_OPTIONS}
+      value={type}
+      onChange={pickType}
+      columns={3}
+      ariaLabel={t.index.form.kindLabel}
+    />
+  );
 
   // **THE FORM IS STEPPED** (ADR-0155 §5, revised by the owner 2026-08-02 — see that ADR's
   // build log). It measures ~1565px against ~675px of visible sheet on a 390×844 phone, and
@@ -934,27 +1024,40 @@ export function BookingSheet({
           }}
         >
           <FormStepPanel steps={steps} labels={stepLabels}>
-            {/* **The picked type, on every step but its own** (field report #2). Collapsed
-                to the one card that was chosen, with the way back to the grid beside it —
-                so the eight-option grid is paid for once, at the moment it is being
-                answered, and the answer stays legible everywhere after that. On an edit it
-                carries no control, because a saved booking's type is not editable. */}
-            {steps.step !== 'type' && (
-              <BookingTypeRow
-                type={type}
-                onChange={isCreate ? () => steps.goTo('type') : undefined}
-              />
-            )}
+            {/* **The picked type, on every step but its own** (field report #2). Collapsed to
+                the one card that was chosen, with the way back to the grid on the row itself —
+                so the eight-option grid is paid for once, at the moment it is being answered,
+                and the answer stays legible everywhere after that.
 
-            {steps.step === 'type' && (
-              <ChoiceGrid
-                options={BOOKING_TYPE_OPTIONS}
-                value={type}
-                onChange={changeType}
-                columns={3}
-                ariaLabel={t.index.form.kindLabel}
-              />
-            )}
+                **And on an edit it is a CONTROL now**, which is the whole of this change. The
+                grid reached only create, so the only way to fix a stay filed as `אחר` was to
+                delete it and start again — losing its code, its documents, its notes and its
+                linked event. Nothing decided that: session 221 recorded it as a premise, and
+                one `isCreate` here withheld a row that already had an `onChange`.
+
+                On create the row still jumps to the type STEP, which shapes every step after
+                it and earns one. On an edit there is no step to jump to (a step is paid on
+                every pass through the form, and this is a rare edit — owner, 2026-08-12), so
+                the grid reveals in place through `ChoiceDisclosure`: 0px until it is asked
+                for. Note that the row being a `<button>` is what makes the revealed grid
+                scroll itself into view — the body's own `onFocusCapture` above catches a
+                focusable row where the old `<div>` was invisible to it. */}
+            {steps.step !== 'type' &&
+              (isCreate ? (
+                <BookingTypeRow type={type} onChange={() => steps.goTo('type')} />
+              ) : (
+                <ChoiceDisclosure
+                  glyph={BOOKING_TYPE_ICON[type]}
+                  label={typeLabel}
+                  open={typeOpen}
+                  onToggle={() => setTypeOpen((v) => !v)}
+                  ariaLabel={t.index.form.stepType}
+                >
+                  {typeGrid}
+                </ChoiceDisclosure>
+              ))}
+
+            {steps.step === 'type' && typeGrid}
 
             {steps.step === 'what' && (
               <>
@@ -1202,6 +1305,16 @@ export function BookingSheet({
                             )
                           : undefined,
                       }}
+                      // Only a held edge has an open side to close, and only the one
+                      // leg an edit has — a journey's stops are exact at both ends.
+                      windows={{
+                        start: windowOffer('start')
+                          ? { value: startWindow, onChange: setStartWindow }
+                          : undefined,
+                        end: windowOffer('end')
+                          ? { value: endWindow, onChange: setEndWindow }
+                          : undefined,
+                      }}
                       marks={{
                         start: errors.field(legField(legStep.side, legStep.index, 'start')),
                         end: errors.field(legField(legStep.side, legStep.index, 'end')),
@@ -1371,6 +1484,11 @@ export function BookingSheet({
           <FormStepActions
             steps={steps}
             onCancel={requestClose}
+            // An EDIT can be finished from any step (owner, 2026-08-12) — the save re-validates
+            // every step and lands on the first refusal, so it cannot commit an unanswered one.
+            // A CREATE cannot: its steps are questions the type shaped, and offering to finish
+            // before they are asked is offering a save the form will refuse.
+            saveAnywhere={!isCreate}
             busy={saving}
             destructive={
               isCreate || !steps.isLast
@@ -1394,6 +1512,26 @@ export function BookingSheet({
             setDeleting(false);
             onClose();
           }}
+        />
+      )}
+
+      {/* **A lossy type switch, confirmed at the tap.** Three words and no list: the itemised
+          version was drawn and cut (owner, 2026-08-12 — _"really short and no need to list
+          everything that will be deleted"_), which is also why `switchIsLossy` answers a
+          boolean rather than a list nobody would print. A second call of the one confirm
+          primitive, not a second prompt (ADR-0079). */}
+      {pendingType && (
+        <ConfirmDialog
+          tone="danger"
+          icon={<Icon name="warn" />}
+          title={t.index.form.switchTitle(t.index.bookingType[pendingType])}
+          body={t.index.form.switchBody}
+          confirmLabel={t.index.form.switchConfirm}
+          onConfirm={() => {
+            applyType(pendingType);
+            setPendingType(null);
+          }}
+          onCancel={() => setPendingType(null)}
         />
       )}
 
@@ -1428,7 +1566,7 @@ function BookingTypeRow({ type, onChange }: { type: BookingType; onChange?: () =
       <span className="bs-type-lbl">{t.index.bookingType[type]}</span>
       {onChange && (
         <button type="button" className="bs-type-change" onClick={onChange}>
-          <Icon name="reset" /> {t.index.form.changeType}
+          <Icon name="reset" /> {t.common.change}
         </button>
       )}
     </div>

@@ -125,6 +125,31 @@ export const CLOCK_TICK_MS = 1000;
  *  poll is skipped while offline, so a plane costs nothing. */
 export const SW_UPDATE_CHECK_MS = 60 * 60 * 1000;
 
+/** The three clocks the automatic build swap runs on (ADR-0185). A waiting build
+ *  is **harmless** — the tab keeps a complete, self-consistent old build — so the
+ *  only question these answer is when a reload costs the user nothing.
+ *
+ *  `IDLE_APPLY` is the foreground backstop: the phone is face-up on a table, not
+ *  in a hand. Deliberately long, because the cheap moment (the tab going hidden)
+ *  fires on every screen lock and app switch and gets there first almost always;
+ *  a short one would buy nothing and would reload pages people are reading.
+ *  `RECHECK` re-asks the safety question while an update waits — an overlay
+ *  closes, a field blurs — and is a slow poll on purpose: this runs only while an
+ *  update is pending, which ends in a reload. `NOTICE_AFTER` is when the banner
+ *  gives up on staying quiet, so it can only appear after the automatic path has
+ *  been blocked for twice as long as the idle rule waits. */
+export const SW_UPDATE_IDLE_APPLY_MS = 5 * 60 * 1000;
+export const SW_UPDATE_RECHECK_MS = 30 * 1000;
+export const SW_UPDATE_NOTICE_AFTER_MS = 10 * 60 * 1000;
+
+/** How long a self-healing reload suppresses the next one (`lib/lazy-chunk.ts`).
+ *  A chunk that 404s because the build swapped underneath the page is cured by
+ *  one reload; a chunk that 404s because it was never deployed is not, and
+ *  reloading again would spin. Wide enough that a second stale import during the
+ *  same swap is not read as a loop, short enough that an unrelated failure hours
+ *  later still gets its own cure. */
+export const CHUNK_RELOAD_COOLDOWN_MS = 60 * 1000;
+
 /** Realtime socket liveness (F-04, sync-and-offline.md "Realtime channel"). The
  *  client pings on `WS_HEARTBEAT_INTERVAL_MS`; a watchdog forces a reconnect if
  *  no frame (a `pong` or any message) lands within `WS_WATCHDOG_TIMEOUT_MS`, so a
@@ -166,21 +191,70 @@ export const LOCAL_READ_TIMEOUT_MS = {
   SNAPSHOT: 10_000,
 } as const;
 
-/** **Bound on the base map's first tiles** (field report #28) — the canvas can mount, our
- *  own markers can render (they are DOM overlays, independent of Google's tile layer), and
- *  Google's own tiles can still never draw. `@vis.gl/react-google-maps` exposes no event for
- *  that: `APIProvider`'s `onError` only fires on a failed *script* load, and nothing tells a
- *  load that never happened from tiles that silently stopped. So this is the `withDeadline`
- *  heuristic `lib/deadline.ts` exists for: `onTilesLoaded` never firing within this bound is
- *  treated as a failure (ADR-0121's 2026-08-11 amendment records the trade).
+/** **When the base map's wait stops being silent** (field reports #28/#35) — the canvas can
+ *  mount, our own markers can render (they are DOM overlays, independent of Google's tile
+ *  layer), and Google's own tiles can still never draw. `@vis.gl/react-google-maps` exposes no
+ *  event for that: `APIProvider`'s `onError` only fires on a failed *script* load, and nothing
+ *  tells a load that never happened from tiles that silently stopped. So this is the
+ *  `withDeadline` heuristic `lib/deadline.ts` exists for.
  *
- *  Unmeasured — no device has reproduced #28 yet, the same caveat #22's bounds carried — so
- *  it takes the same order of magnitude as the two groups above: more forgiving than a single
- *  `LOCAL_READ_TIMEOUT_MS.HANDLE` read since a first paint is many tiles, less patient than a
- *  full `API_TIMEOUT_MS.FETCH` round trip since nothing here left the device idle. */
+ *  **READ THE NAME CAREFULLY: this is no longer a verdict** (ADR-0121's 2026-08-13 amendment,
+ *  owner's call). Until then, expiry meant "declare failure and tear the attempt down", and
+ *  that is what forced the number UP — sessions 256/257 measured a successful Slow-3G paint at
+ *  8.15s and set 20s so a working map could not be killed by its own bound. But the teardown
+ *  was the defect: destroying an in-flight map at expiry meant **a load that needed 25s could
+ *  never finish**, because every attempt was restarted from zero. Since the attempt now
+ *  SURVIVES expiry, crossing this line only changes what the pane SAYS, and a late
+ *  `onTilesLoaded` clears it.
+ *
+ *  That inverts the old asymmetry, so the number comes down hard. Session 256's successes:
+ *  **~650ms** warm, **0.9–1.5s** cold, **~2.5s** Fast 3G, **8.15s** Slow 3G (bandwidth-bound,
+ *  not CPU-bound — 4× CPU moved it ~500ms). 4s sits above every one of those but the Slow-3G
+ *  edge, and that edge now resolves itself: the notice shows at 4s and disappears when the
+ *  tiles land. Waiting 20s to say something we could say at 4s — and then saying the wrong
+ *  thing — was the worst of both.
+ *
+ *  **The cost of being wrong is now one line of muted text**, which is why this is a cheap
+ *  number to move. A failed *script* load still surfaces immediately through `onError` and
+ *  still takes the hard `ErrorState`; only the tiles path routes through here. */
 export const MAP_LOAD_TIMEOUT_MS = {
-  TILES: 10_000,
+  TILES: 4_000,
 } as const;
+
+/** **How long to wait before each successive attempt to bring a dead canvas back**
+ *  (field report #35, ADR-0121's 2026-08-14 amendment and its same-day correction).
+ *
+ *  A phone reclaims a backgrounded page's WebGL context, and the canvas that comes back is
+ *  blank — the tiles watchdog cannot see it, because that guards only the FIRST paint and
+ *  `tilesPainted` is already true by then. The only cure is a fresh `google.maps.Map`.
+ *
+ *  **This replaces a fixed budget of three rebuilds, which was a REGRESSION** and a
+ *  measured one: the count was per MOUNT, so three background/resume cycles exhausted it
+ *  and the fourth left the pane in a dead `ErrorState` until a human tapped retry. A phone
+ *  drops the context on roughly every background, so that arrived within minutes of real
+ *  use and was strictly worse than the blank map it replaced. The error was counting
+ *  lifetime rebuilds when the only meaningful number is **consecutive failures** — a
+ *  recovery that paints is proof the GPU is fine, and resets this.
+ *
+ *  So: **it never gives up.** The delays grow, cap at a minute, and the map keeps trying
+ *  for as long as it is on screen and broken. That is affordable under §4's arithmetic
+ *  (10,000 free loads/month against ~5 people) because the worst case is one instantiation
+ *  a minute while a map is *visibly broken* — and a map nobody can see is worth less than
+ *  the load it saves. */
+export const MAP_RECOVERY_BACKOFF_MS = [0, 2_000, 8_000, 30_000, 60_000] as const;
+
+/** **How long before the map may reload the app again** (ADR-0121's second 2026-08-14
+ *  amendment). Once every backoff step has been spent on a fresh `google.maps.Map` and the
+ *  canvas is still dead, whatever is broken outlives the map object and only a new
+ *  DOCUMENT clears it — which is also the owner's own workaround: _"until you switch to
+ *  another app … restarting the app fixes it"_.
+ *
+ *  Longer than `CHUNK_RELOAD_COOLDOWN_MS` because the stakes differ: a stale chunk is a
+ *  blank app that must come back at once, where a dead map is one broken pane on a screen
+ *  whose list still works. Ten minutes is "this session has had its reload", so a device
+ *  that loses its GPU repeatedly degrades to a visible error with a manual way out rather
+ *  than reloading the app under someone every minute. */
+export const MAP_RELOAD_COOLDOWN_MS = 10 * 60 * 1000;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',
 } as const;
@@ -420,11 +494,29 @@ export const TRANSPORT_BOOKING_TYPES = [
   BOOKING_TYPE.CAR,
 ] as const satisfies readonly BookingType[];
 
-/** Glyph per document type, for the Index documents section badges. */
+/** Glyph per document type, for the Index documents section badges. ADR-0052 §6's
+ *  invariant is unmistakable badges from one source, and the 2026-08-13 set is where
+ *  it bit twice.
+ *
+ *  First: `ticket` wants 🎫, which `visa` was wearing — so a visa takes the passport-
+ *  control mark it can now hold without colliding with 📕.
+ *
+ *  Then `reservation` shipped as 🧾 beside `other`'s 📄 and the invariant failed on its own
+ *  terms. Different codepoints, **one silhouette** — two white pages — which is invisible
+ *  in this table and unmissable at the 36px a badge is actually read at. The pair was not
+ *  even new: `icons.ts` offers both in its *services* group as two options for one idea. So
+ *  🛎️, which no other table in the app uses, has no silhouette twin in this set, and covers
+ *  all three things `הזמנה` means — a hotel, a table, an RSVP. 📄 stays with `other`: a blank
+ *  page is the right mark for a document nobody classified. 📅 was the runner-up and is
+ *  refused on sight, because `Icon.tsx` already retired it from two jobs. */
 export const DOCUMENT_TYPE_ICON = {
   passport: '📕',
+  visa: '🛂',
+  license: '🪪',
+  ticket: '🎫',
+  reservation: '🛎️',
   insurance: '🛡️',
-  visa: '🎫',
+  health: '💉',
   other: '📄',
 } as const satisfies Record<DocumentType, string>;
 

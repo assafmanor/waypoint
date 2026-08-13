@@ -58,27 +58,35 @@ export default defineConfig(({ command }) => {
       react(),
       appTitle(),
       VitePWA({
-        // Paired with `src/lib/useAppUpdate.ts` (ADR-0181), which is the actual
-        // registration: importing `virtual:pwa-register/react` flips the plugin's
-        // `injectRegister: 'auto'` to "don't inject", so there is exactly one
-        // registration and it has callbacks. Left unset on purpose — pinning it to
-        // `false` here would mean NO registration at all if that import ever went.
+        // Paired with `src/lib/useAppUpdate.ts` (ADR-0181, ADR-0185), which is the
+        // actual registration: importing `virtual:pwa-register/react` flips the
+        // plugin's `injectRegister: 'auto'` to "don't inject", so there is exactly
+        // one registration and it has callbacks. Left unset on purpose — pinning it
+        // to `false` here would mean NO registration at all if that import ever went.
         //
-        // **`'prompt'` is not a drop-in swap**, and the trap is silent: the plugin
-        // forces `skipWaiting`/`clientsClaim` on under `autoUpdate` but does not
-        // force them OFF under `'prompt'`, so the explicit `true`s below would
-        // survive the change, the new SW would keep self-activating, and the
-        // `waiting` event that mode's whole prompt hangs off would never fire.
-        registerType: 'autoUpdate',
+        // **`'prompt'` and `skipWaiting: false` are one change, not two** (ADR-0185).
+        // The plugin forces both Workbox flags ON under `autoUpdate` and does not
+        // force them off under `'prompt'`, so leaving `skipWaiting: true` below
+        // would keep the new SW self-activating and the `waiting` event this mode's
+        // whole flow hangs off would never fire — a mode with no trigger, and no
+        // error anywhere. It is also what makes the swap ATOMIC, which is the point:
+        // a waiting SW leaves the old precache intact, so the open page keeps a
+        // complete, self-consistent build instead of running old JS against a
+        // precache that has already dropped every chunk it has not loaded yet.
+        // That mixed state is what blanked the app after a deploy.
+        registerType: 'prompt',
         // Static assets outside the Vite graph that the SW should precache.
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
-        // Without these, a rebuilt SW only takes over after all tabs of the old
-        // one close — an offline reload in between would still run stale JS.
-        // What they cost is paid in the tab that is ALREADY open: it keeps running
-        // the old build's JS against the new build's precache, which is what
-        // `useAppUpdate` exists to tell the user about.
         workbox: {
-          skipWaiting: true,
+          // The swap is the app's to time, not the browser's: `useAppUpdate` posts
+          // SKIP_WAITING itself once a reload costs nothing, and the generated
+          // worker only listens for that message in this branch (workbox-build's
+          // sw-template emits the listener ONLY when this is false).
+          skipWaiting: false,
+          // Kept ON, and it is not the other half of the pair: with no previous SW
+          // there is no old build to be inconsistent with, so this is purely "the
+          // first visit is offline-capable without a second load". On an update the
+          // claim rides `skipWaiting` instead, which is now ours to call.
           clientsClaim: true,
           // The self-hosted fonts (F-11) do NOT precache on their own. Being in
           // the Vite graph gets them hashed into dist/assets/, which is not the
@@ -126,6 +134,48 @@ export default defineConfig(({ command }) => {
       // vitest — they import @playwright/test and drive a real browser. Keep them
       // out of the jsdom unit run so `pnpm test` doesn't try to execute them.
       exclude: [...configDefaults.exclude, 'e2e/**'],
+      /**
+       * **The unit suite does not inherit `frontend/.env`.**
+       *
+       * Vite loads that file for the test run too, so ten specs meant something
+       * different on a machine that had followed the quickstart than they did in CI
+       * (which has no `.env`) — and they failed there, quietly, for anyone with a
+       * working dev setup. Two distinct symptoms, one cause:
+       *
+       *  - `VITE_API_BASE_URL` turned every same-origin assertion into an absolute
+       *    URL. `Avatar.test.tsx`'s own comment already SAID "API_BASE_URL is empty
+       *    under test (same-origin)" — it was a stated assumption that nothing made
+       *    true, which is the whole reason it went unnoticed.
+       *  - `VITE_GOOGLE_MAPS_BROWSER_KEY`/`_MAP_ID` gave `Map.test.tsx` a rendered
+       *    map. That file exists to cover the **graceful-absence, list-only** path
+       *    (ADR-0121 §2, and `frontend/CLAUDE.md` says it must stay tested as such),
+       *    so it deliberately does not mock `lib/map-config` the way
+       *    `Map.embedded.test.tsx` does. With keys present it was testing the other
+       *    branch, and the branch it names in its own describe block went uncovered.
+       *
+       * Pinned here rather than in a `.env.test`: the point is that the values are a
+       * FACT OF THE SUITE, not a file a developer can shadow — the same reasoning as
+       * pinning the clock with `setSimulatedNow` instead of reading the real one. A
+       * spec that wants config supplies it by mocking `lib/map-config`, which is
+       * visible in the spec that needs it.
+       */
+      env: {
+        VITE_API_BASE_URL: '',
+        VITE_GOOGLE_MAPS_BROWSER_KEY: '',
+        VITE_GOOGLE_MAPS_MAP_ID: '',
+        VITE_GOOGLE_MAPS_MAP_ID_DARK: '',
+      },
+      /** `vite-plugin-pwa`'s virtual module has no file behind it, and under vitest its id
+       *  resolves to `file:///@vite-plugin-pwa/virtual:…`, which Node refuses as a filename.
+       *  Any spec whose import graph reaches `lib/useAppUpdate.ts` therefore failed to
+       *  COLLECT — no test in the file ran at all — which is a failure mode that looks like
+       *  two red filenames and hides ~90 assertions. Aliased to a stub for the unit run;
+       *  see `src/test/pwa-register-stub.ts` for why it is here and not a `vi.mock` per spec. */
+      alias: {
+        'virtual:pwa-register/react': fileURLToPath(
+          new URL('./src/test/pwa-register-stub.ts', import.meta.url),
+        ),
+      },
     },
   };
 });

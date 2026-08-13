@@ -75,10 +75,16 @@ enum MembershipRole {
   peer
 }
 
+// Append-only, so this lists the values in the ORDER POSTGRES HOLDS THEM, which is not
+// the order they are shown in (`DOCUMENT_TYPE` in @waypoint/shared owns that).
 enum DocumentType {
   passport
   insurance
   visa
+  ticket
+  reservation
+  license
+  health
   other
 }
 
@@ -105,7 +111,7 @@ model User {
   // is on `initials`, so "use my Google photo" has somewhere to come back from.
   googleAvatarUrl   String?
   uploadedAvatarKey String? // set by ADR-0133's Phase 4 only
-  // The member's HOME currency (ADR-0180 §2) — the other side of every trip
+  // The member's HOME currency (ADR-0184 §2) — the other side of every trip
   // conversion. Nullable because "never chosen" is a real state the client
   // resolves for itself from the device region, through the same
   // COUNTRY_CURRENCY table the trip's own currency is derived from. A column
@@ -257,6 +263,12 @@ model Event {
   kind            EventKind
   startsAt        DateTime? // UTC instant
   endsAt          DateTime?
+  // The other bound of a flexible edge's window (ADR-0184). A held span's start is
+  // already a floor and its end a deadline (ADR-0171 §1); these close them, so a
+  // check-in reads 17:00–21:00 instead of "from 17:00". Instants, not HH:MM, so a
+  // reception open until 01:00 works and the display-zone derivation is unchanged.
+  startWindowEnd  DateTime? // latest a check-in / pick-up can happen
+  endWindowStart  DateTime? // earliest a check-out / return can happen
   placeId         String? // authoritative only for unlinked events; cleared when bookingId is set (ADR-0048)
   displayTimezone String? // manual display-zone override; null trusts the derived zone (ADR-0107 §7)
   status          EventStatus    @default(planned)
@@ -568,7 +580,7 @@ model PlaceEnrichment {
   updatedAt DateTime @updatedAt
 }
 
-/// The world's exchange rates (ADR-0180 §7) — global, server-owned, and outside
+/// The world's exchange rates (ADR-0184 §7) — global, server-owned, and outside
 /// the change log for exactly the reasons ADR-0166 §6 gives for `PlaceEnrichment`:
 /// no `tripId`, one writer (us), never mutated by a client, so there is no LWW to
 /// arbitrate, no undo to offer and no per-trip ordering to keep. Writing one

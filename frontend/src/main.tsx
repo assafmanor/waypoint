@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import './styles/fonts.css';
 import './styles/tokens.css';
 import { startTheme } from './lib/theme';
+import { AppErrorBoundary } from './ui/feedback';
 import { App } from './App';
 
 // The inline script in index.html already applied the theme before first paint;
@@ -15,8 +16,12 @@ startTheme();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    {/* Outermost, above the router: a crash anywhere below it used to unmount the
+        whole document and leave a blank page (ADR-0185). */}
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </AppErrorBoundary>
   </React.StrictMode>,
 );

@@ -574,3 +574,169 @@ Field report **#28** (backlog workstream M): on some devices the Map tab keeps d
 **What this amendment does not settle.** Nobody has confirmed WHICH failure mode #28 actually is on a real device — tile/network, WebGL context loss, SDK lifecycle, service-worker interaction, or GPU-specific — and the fix above does not depend on knowing: it treats "never painted" as one outcome regardless of cause. The device-pass instrument (ADR-0146) gained a matching capture for when that sitting happens — `DevMapProbe` now also publishes `webglcontextlost`/`webglcontextrestored` (a real DOM event on the canvas, the one signal production deliberately does not act on, since a context lost after a map already painted once is "recovered mid-session" rather than "never loaded") and `online` state; `DevMapTuner` gained a `diag` tab reading both that and production's own `onError`/`onTilesLoaded` signals (reused, not duplicated) plus the live `mapId`/`colorScheme`. Dev-gated exactly as the rest of ADR-0146's panel is, and not a substitute for §1a's fix, which ships regardless of whether that sitting ever happens.
 
 **And one thing the smaller marker surfaced rather than caused:** at 21×17 this badge is far under ADR-0017's floor, on the host that introduced a badge that small (the other three are 32–40px). The tap area now grows out of flow to ~33×29 — the most the card's 10px padding and its 8px gap to the title allow without a tap on the words opening the map, which is asserted. Still short of 44, and recorded as a device-pass item rather than hidden: the honest fix is a bigger badge on this tile, which is a tile redesign and not this amendment's business.
+
+## Amendment (2026-08-12, session 257) — the bound is measured, the wait is stated, and the error owns the band
+
+Field report **#35** reopened the amendment above with _"still cannot load the map: an error is shown and the Reload/Retry button does not help. Sometimes there is a map and sometimes there is not."_ Session 256 measured it; this is what the measurement changed. Three parts, and none of them touches the two-signal detection itself — that held.
+
+**The bound was too short, and it is now 20s.** The amendment above sized `MAP_LOAD_TIMEOUT_MS.TILES` at 10s and said so honestly: _"unmeasured … owed a real device pass before it can be called right."_ Sampled in real Chrome against a real Google canvas, every sample a **successful** first paint: ~650ms warm, 0.9–1.5s cold, ~2.5s on Fast 3G, and **8.15s on Slow 3G — 82% of the bound**, three samples inside 15ms. A 4× CPU slowdown moved it only ~500ms, so **this is bandwidth-bound, not CPU-bound**: the phone's silicon barely enters into it. A bound sized against a good link therefore reports a working map as broken on a real one, which is exactly the reported _"sometimes there is a map and sometimes there is not"_ — the signature of a threshold, not of a broken map. **The asymmetry is the argument for being generous:** a failed script load still surfaces immediately through `onError`, so a longer deadline delays only the one case Google gives no event for, while too short a bound both lies and bills a fresh instantiation per retry tap (§4).
+
+**The wait is now stated rather than left blank.** Before the first tile, the canvas is empty while our own markers already draw on it — which is _the same picture_ #28 reported as a failure, and at 20s a slow link can hold it for real seconds. `MapPane` now renders `t.map.loading` over the canvas until `onTilesLoaded` fires. It is that boolean rendered, not a second mechanism or a timer; it sits **outside `<Map>`** like every other piece of our chrome, and **over** the canvas rather than instead of it, because Google needs its own div live to paint into (which is why `ErrorState` can be a branch around the map and this cannot). `pointer-events: none`, because a cue is a statement and never a target — the pan and the long press belong to the canvas underneath (ADR-0148's gesture seam).
+
+**A failed pane owns its band, and the near-me pre-prompt yields.** This is the report's second cause and it was a defect in its own right: ADR-0109 §6's reason-first card is canvas furniture pinned to the pane's **top** at `z-index: 2`, and session 247 put `ErrorState` — which centres in the pane's **full** height — into that same slot without accounting for it. At 360×640 (pane 222px, card 133px) the card **covered the error outright** and `Retry` was not hittable at all, `.map-gbtn` winning the tap. So _"the Reload/Retry button does not help"_ was never a broken retry: **the tap never arrived.**
+
+Raising the error above the card was built first and rejected on looking at it — the tap resolved correctly and it read as two cards printed over each other, because a 222px pane cannot hold both. **So it is a room question, not a z-order one, and the card is what goes:** the error is the screen's only explanation of why there is no map and carries the only way out of it, while the card is transient, asks about a canvas that is not currently drawing, and its feature (near-me sorts the **list**, no canvas needed) returns with the map. That is also just §11's own "ONE floating object over the canvas at a time" applied honestly, so it is one `:has()` rule beside the one that already hides `.map-areacount`/`.map-camctl` for the same reason — no prop, since `MapPane`'s props stay identity-stable on a screen that re-renders every second (§4/§6).
+
+**Stated rather than hidden:** near-me _by pre-prompt_ is unavailable while the pane is failed, because `promptOpen` stays true behind the hidden card and the chip cannot re-open what is already open. A secondary control degrades during a failure so the primary explanation can be seen, and it lifts the moment the map loads. **And still owed to a handset:** whether the owner's own network crosses even 20s, and the WebGL question — every session-256 sample read `webgl context lost: n/a`, meaning the probe never observed a canvas, so a GPU/context-loss cause remains untested rather than excluded.
+
+## Amendment (2026-08-13, session 262) — a `key` bump is not a retry, because the loader is a page-global
+
+Field report **#35**, third round, and this one **corrects §4's own retry rule** rather than tuning around it. The owner reported it now happening on their own phone too, with a lead the previous two rounds did not have: it starts after **a peer adds places to the shared trip**, and the shape is _"loading map… until the timeout; the retry gives the same result; only restarting the app fixes it."_
+
+**Reproduced, in real Chrome, and the reproduction is the finding.** Fail the very first Maps-script fetch once (session 256's own technique — redirect it to a dead host), then tap Retry with the network healthy again. The script re-fetches and **succeeds** — `google.maps.Map` is present in the page — and **no map is ever constructed.** Zero canvases, the loading cue up, 20s later the error again, every later tab visit the same, and a page reload cures it instantly.
+
+**The cause is that the Maps-API loading status is MODULE state in `@vis.gl/react-google-maps`, and it is written once.** The first attempt stamps a module-level `serializedApiParams` and only calls `updateLoadingStatus(LOADED)` while that stamp is still empty. Every later mount therefore takes the "already loaded externally" branch — because Google's bootstrap defined `google.maps.importLibrary` on the very first try — re-imports `core`/`maps` successfully, and **never moves the status off `FAILED`**. A status left at `LOADING` is worse: the loader returns early with no error at all, which is precisely why the reported symptom **opens on the loading cue and not on an error**. Either way `useApiIsLoaded()` stays false, so `useMapInstance` never reaches `new google.maps.Map()`.
+
+So **one transient failure poisons the map for the life of the page**, and §4's "always a fresh instance" was true and insufficient: a `key` bump builds a fresh component **over a dead loader**. The state that had to be cleared was never the component's. That is the whole of _"the Reload/Retry button does not help"_ — session 257 found a second, real reason for the same words (the card covering the tap) and fixing it could not fix this one.
+
+**`MapPane`'s `retryMap` now calls the library's `__resetModuleState()` before bumping the key.** Both entry paths then recover on one tap, verified in Chrome: a script that **errors** (status `FAILED`) and one that **hangs** on a black-holed connection (status `LOADING`, no error, the cue held for the full 20s first). Google's own bootstrap was never the broken link — it clears its promise in `script.onerror` and is happy to re-fetch. The happy path is untouched: a clean load and three tab revisits each construct exactly one canvas, as §4 requires.
+
+**Why a peer's edits are the trigger, and it is a window rather than a cause.** `screens/Map.tsx` reads `offline = useIsOffline() || usingCachedSnapshot`, and `mapPaneAvailable` makes the pane **absent** while that is true (§11). On a warm resume the flag flaps, so the pane unmounts and remounts — and it remounts into the resume burst `trip-state.tsx` fires at exactly that moment: `flushOutbox`, a paged `changes?sinceSeq=` replay, and a full snapshot refetch on a hello-ahead. **A peer's additions are what give that burst real work to do**, so the Maps-script fetch is competing on a link that has just come back. Worse, the pane can unmount mid-load, and then `onError` lands on an unmounted component: the global is poisoned **with nothing on screen to report it**, which is why the next visit opens straight on the cue.
+
+**Two limits, stated rather than buried.** `__resetModuleState()` is vis.gl's own test-only hook (it is exported and typed, and it is the only thing that clears that global); the alternative was `location.reload()`, which throws away the trip state to fix a canvas. It is safe at this one call site because `retryMap` is reachable only from `ErrorState`, i.e. with no `APIProvider` mounted for its listener-clear to orphan — a second call site would have to re-check that. And the silently-poisoned case still costs **one bound's wait** before the now-working retry is offered, because nothing outside an `APIProvider` can read that status; auto-retrying instead was rejected on §4's arithmetic. Delete the hook if vis.gl ever makes the status recoverable.
+
+## Amendment (2026-08-13, session 262b) — the deadline stops the WAIT, it does not kill the ATTEMPT
+
+The owner, on the amendment above shipping and the map still failing sometimes: _"first thing I would do is shorten the map load timeout by a lot. When the map loads successfully, in most cases it's a few seconds tops. So when the map has a problem loading, we're waiting for 20 seconds for nothing."_ Right on both counts, and acting on it exposed a defect underneath that made the bound impossible to size well.
+
+### 1. The defect: expiry destroyed an in-flight load
+
+`mapFailed` fed the ternary that chooses between `ErrorState` and the `<APIProvider>` subtree, so **the tiles watchdog firing unmounted the live `google.maps.Map`** — mid-load, along with the `onTilesLoaded` listener that was about to resolve it. Every retry then started from zero. So **a load that genuinely needed longer than the bound could never complete, however many times you asked**, and the observable was precisely _"reloading the map solves the problem sometimes"_: each attempt re-rolls a dice that requires the whole load to fit inside the bound, with only the browser's HTTP cache tilting it.
+
+That is also what forced the bound up. Sessions 256/257 measured a successful Slow-3G paint at 8.15s and chose 20s so a working map could not be killed by its own deadline — correct reasoning under teardown semantics, and the reason the number could not come down.
+
+### 2. The correction: two signals, two outcomes
+
+§11 named two detection signals and then collapsed them into one outcome. They are not the same claim, and they now diverge:
+
+- **`onError`, a failed _script_ load** — unchanged. There is no map to preserve, so the canvas is replaced by `ErrorState` and the retry rebuilds. `mapFailed` is now this signal **only**.
+- **The tiles deadline expiring** — a new state, `tilesLate`. Our own markers being on screen prove the script loaded and the map constructed, so while the attempt is alive we have evidence of **slowness, not failure**. The canvas stays live, and the wait's own slot changes its words and gains a way out. A late `onTilesLoaded` retires it with nobody tapping anything.
+
+**One slot, not a second surface.** `t.map.loadingSlow` (`הטעינה איטית מהרגיל`) and a `נסו שוב` pill render inside the existing `.map-loading` element, so §11's "ONE floating object over the canvas at a time" holds by construction and there is never a moment showing both a wait and an error. The cue keeps `pointer-events: none` and only the button re-enables them, so the pan and the long press still belong to the canvas (ADR-0148's gesture seam) — **hit-tested, not assumed**: topmost at the button's centre is `.map-loading-retry`, and topmost over the cue's text is the map div beneath. The button is 26px tall with a 44px target via `ValueToken`'s `::after` overlay idiom, so ADR-0017's floor is met without growing the line the cue is centred on.
+
+**And this is the CHEAPER branch under §4**, which is worth stating because it looks like the opposite. §4 counts instantiations, not seconds: tearing the map down and retrying is exactly what buys a second billed load. Keeping the instance alive avoids one. The amendment tightens §4 rather than bending it.
+
+### 3. The bound: 20s → 4s, because it is no longer a verdict
+
+Once expiry only changes what the pane _says_, the asymmetry session 257 reasoned from inverts. A short bound costs one line of muted text that may retract itself; a long one costs twenty seconds of silence followed by a false claim. Against session 256's own successes (~650ms warm, 0.9–1.5s cold, ~2.5s Fast 3G, 8.15s Slow 3G), **4s** sits above all but the Slow-3G edge — and that edge now resolves itself.
+
+Verified in real Chrome on Chrome's Slow 3G, entering the tab for a fresh instance: cue at 1.5s and 3s, **slow notice with the retry at 5s, canvas alive, no hard error**, still slow at 7s, and at 10s **the tiles landed and the notice cleared itself**. That exact load was a hard failure and a destroyed map before this change.
+
+`MAP_LOAD_TIMEOUT_MS.TILES`'s comment now says what the number is for, since its whole justification changed. It is also a cheap number to move now, which it was not before.
+
+### 4. What this does not claim
+
+It does not claim to be the last cause of #35. It is a fix for a defect that is certain from reading the code and reproducible on demand, **and it is simultaneously the experiment**: if the map still fails after it, that result rules out the merely-slow reading, at which point getting `DevMapTuner`'s `diag` reading off the owner's own phone is the next step — and that needs a channel, because `dev-tuning.ts` is deliberately tree-shaken out of production and shipping the constant-override layer to reach it is the wrong trade.
+
+## Amendment (2026-08-14, session 264) — the map does not fail to START; it starts and then DIES
+
+**This is field report #35's actual cause, reproduced deterministically at last**, and it retires the guessing that produced the four amendments above. The owner reported the map still failing after all of them, with one decisive detail: _"resuming the app after a while"_, and earlier, _"after going to another app and then returning to the map it loaded."_
+
+### 1. What reproduces it
+
+`WEBGL_lose_context.loseContext()` on the map's canvas — which is what a phone's GPU does to a long-backgrounded page: it reclaims the context. Every previous theory was about the network, the loader, the bound or the retry, and none of them could explain why a **resume** was the trigger. This one is only ever a resume.
+
+Measured, with the context lost:
+
+| Reading                     | Result                                      |
+| --------------------------- | ------------------------------------------- |
+| `gl.isContextLost()`        | `true`, and stays true — 26s+, indefinitely |
+| Terrain                     | **gone**, pane blank                        |
+| Google's logo + attribution | still drawn                                 |
+| Place list, sheet, chrome   | fine                                        |
+| `t.map.loading` cue         | **absent**                                  |
+| `ErrorState`                | **absent**                                  |
+| Recovery                    | **none, ever**                              |
+
+That is field report **#28** verbatim — _"kept drawing the place list and the app's pins while the Google-rendered terrain stayed blank"_ — so #28 and #35 were one bug all along, and it has been in front of us since session 247.
+
+### 2. Why nothing here could see it
+
+**`MAP_LOAD_TIMEOUT_MS.TILES` guards the FIRST paint only.** By the time the context dies, `tilesPainted` is already `true` and the deadline has long since resolved, so no timer is armed and no signal exists. Every fix in the amendments above addresses _the map never started_. This is _the map started, then died_ — a state the pane had no detector for at all.
+
+**And session 247 named this exact event and declined to act on it**, on the reasoning that a context lost after a successful paint is _"recovered mid-session rather than never loaded"_. That assumption is now measured and **false**: it is not recovered.
+
+### 3. The fix: a lost context rebuilds the map
+
+`ContextLossRecovery` listens for `webglcontextlost` and reconstructs the map. Three properties, each measured rather than reasoned:
+
+- **Capture phase, on the PANE.** `webglcontextlost` does not bubble, but a capture listener on an ancestor sees it on the way down — so this survives Google replacing its own canvas, which a listener bound to the canvas would not.
+- **Rebuild, not restore.** `restoreContext()` does redraw — at the **default world camera** (the Atlantic instead of Tokyo). Only a fresh map returns both a live context and the right camera. The cost is that a manual pan is lost, which is the correct trade against a blank map.
+- **Deferred until visible.** The loss happens while backgrounded, and a map constructed while the page is hidden is the failure that started all of this, so the rebuild waits for a resume a person is present for.
+
+> **Corrected the same day — the bound below was a REGRESSION, and a measured one.** It read "three rebuilds per mount, then `ErrorState`". A phone drops the GPU context on roughly **every** background, so three resumes exhausted the budget and the fourth left the pane dead until a human tapped retry: an 8-cycle soak measured **3/8 healthy, broken from cycle 4 onward**. The owner found it within a day — _"I feel like today we introduced some regression that has made it way worse than it was before"_ — and they were right.
+>
+> The error was counting **rebuilds in a lifetime** when the only meaningful number is **consecutive failures**: a recovery that paints is proof the GPU is fine. See the correction below, which replaces the budget with a backoff that never gives up. Kept visible rather than rewritten, because "a bounded retry" looked obviously prudent and was the thing that broke it.
+
+### 4. Verified in a real browser, not only in jsdom
+
+Forced context loss against the running app, all four asserted mechanically: **a single loss recovers** (`webgl: LOST` → `ok`, cue at +500ms, map back by +2s); **exactly one loss event is seen**, so tearing down the old canvas does not fire another and loop; **it stays recovered** 10s later; and **four losses degrade to `ErrorState`**, from which the retry recovers. The offline-flap and never-painted paths were re-run and are unchanged.
+
+### 5. What this retires
+
+**The resume nudge (`moveCamera({})`) is deleted.** It came from the right observation — a resume fixes it — and the wrong inference: that the map was alive and merely not rendering. It also had a hole that made it inert in the case it was written for: it was gated on `useMap()` returning an instance, and when the loader never reaches `LOADED` there is no instance, so no listener was ever registered. Nothing is lost by removing it; a lost context is now handled by the mechanism that can actually see it.
+
+**And ADR-0186's framing needs correcting**: the offline-map migration was partly justified as the cure for #35. It is not — MapLibre is also a WebGL canvas and inherits context loss identically. It would have needed this same recovery. The offline map remains worth building for the reason it always had: a map that works on a plane.
+
+## Amendment (2026-08-14, session 265) — the canvas supervises itself, and never gives up
+
+The correction to the amendment above, on the owner reporting the map **still** failing and, decisively, _"it may be that we did introduce some kind of a regression"_ — which was true and which the 8-cycle soak above measures.
+
+### 1. Why a bounded retry was the wrong shape
+
+Three rebuilds sounded prudent and was the defect. The count was per MOUNT, so it measured **how many times this pane has ever recovered**, not **how badly it is failing now** — and on a device that drops the context on every background those are wildly different numbers. Recovering three times is evidence the mechanism WORKS; it was being read as evidence the GPU is broken.
+
+Worse than the blank map it replaced, because a blank map still had chrome and a working list, where the exhausted budget swapped the whole canvas for `ErrorState`.
+
+### 2. The shape that is right
+
+**`MAP_RECOVERY_BACKOFF_MS` = `[0, 2s, 8s, 30s, 60s]`, counting CONSECUTIVE failures, reset by any successful paint.** So:
+
+- A resume that drops the context recovers **immediately**, every time, forever — the common case costs nothing and cannot run out.
+- A genuinely broken GPU backs off to one attempt a minute instead of spinning.
+- **There is no state from which the map stops trying.** That property is the whole point, and it is asserted directly rather than implied.
+
+Affordable under §4: 10,000 free loads/month against ~5 people, and the worst case is one instantiation a minute **while a map is visibly broken**. A map nobody can see is worth less than the load it saves — which is the trade §4 was always making, read the right way round.
+
+### 3. Both dead-canvas routes now heal
+
+The tiles watchdog previously showed `t.map.loadingSlow` and then **waited for a human**. It now also schedules a recovery, so a map that never painted retries itself on the same backoff. That was the other half of the owner's experience: a notice that never became a map.
+
+### 4. Measured
+
+An 8-cycle soak went **3/8 → 8/8**; extended to **20/20**. The offline-flap path is 2/2 unchanged, and the never-painted path retries where it used to sit. The unit suite keeps the regression as a named test — eight losses with a paint between each must all recover — so the fixed budget cannot come back by accident.
+
+## Amendment (2026-08-14, session 266) — when rebuilding has failed, rebuilding again is not a plan
+
+The owner, after the backoff shipped: _"Reloading the map (with the button for example, or the backoff) doesn't recover the map. Once it's dead, it's dead until you switch to another app … The backoff was a good idea if reloading was the solution, but it isn't."_
+
+**That retires the whole premise of the two amendments above.** They assumed a dead canvas is a dead _map object_, curable by constructing another. It is not: a brand-new `google.maps.Map` with a brand-new canvas is still dead, so whatever is broken **outlives the map object**. Only a new **document** clears it — which is exactly the workaround the owner has had all along, restarting the app.
+
+### 1. What is honestly known, and what is not
+
+**Not reproducible here, and that is stated rather than worked around.** Everything forcible on this desktop recovers: `WEBGL_lose_context` (20/20 with the backoff), a full `Browser.crashGpuProcess` (Chrome restarts the GPU process and the map returns in ~4s), connectivity flapping (2/2), context-budget exhaustion. Desktop Chrome heals what a phone does not, so the mechanism behind the phone's failure is **still unidentified**.
+
+What is known is empirical and comes from the owner: rebuilds do not help, the retry button does not help, an app switch sometimes does, a restart always does.
+
+### 2. So the fix does the thing that is known to work
+
+Once every backoff step has been spent on a fresh map and the canvas is still dead, the pane stops pretending another rebuild will help and escalates to a **reload of the document**:
+
+- **Automatically, at the next hidden moment.** ADR-0185 chose exactly this instant for the build swap and for the same reasons: nobody is looking, nothing is mid-sentence, no overlay can be lost. It is also the owner's own workaround performed for them — the app goes to the background, quietly becomes a fresh one, and coming back finds a working map instead of a dead pane.
+- **Or immediately on a tap**, since `ErrorState`'s action now reloads rather than rebuilding something known not to recover. A deliberate tap is its own consent, so it needs no quiet-moment gate.
+
+**Guarded to once per `MAP_RELOAD_COOLDOWN_MS` (10 minutes)** through `guarded-reload.ts` — which is `lazy-chunk.ts`'s own "one reload, then stop" cooldown, extracted rather than copied now that there is a second caller (rule 8). A device that keeps losing its GPU therefore degrades to a visible error with a manual way out, instead of reloading itself under someone every minute. Ten minutes rather than the chunk's sixty seconds because the stakes differ: a stale chunk is a blank app that must return at once, a dead map is one pane on a screen whose list still works.
+
+### 3. What this is, plainly
+
+**A mitigation, not a root-cause fix.** It makes the app do automatically the one thing the owner found that always works, and it is bounded so it cannot become its own problem. The actual mechanism is still unknown, and the honest next step is not a seventh guess but a reading from the device while it is broken — which is what the diagnostic on the failed pane is for.

@@ -97,6 +97,9 @@ vi.mock('../state/trip-state', () => ({
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex([], tripBookings),
+    // Note hosts resolve through trip-state's one index; this file asserts nothing about an
+    // inherited name or category, so the index-miss fallback carries the host it is handed.
+    noteHosts: new Map(),
     trip,
     events: [],
     bookings: tripBookings,
@@ -1308,7 +1311,7 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     // The grid is gone; only the one card that was chosen remains.
     expect(screen.queryByRole('radiogroup', { name: t.index.form.kindLabel })).toBeNull();
 
-    fireEvent.click(screen.getByText(t.index.form.changeType));
+    fireEvent.click(screen.getByText(t.common.change));
     expect(stepLabel()).toBe(t.index.form.stepType);
     fireEvent.click(screen.getByText(t.index.bookingType.restaurant));
     press(t.common.steps.next);
@@ -1338,12 +1341,104 @@ describe('BookingSheet — the type step, the derived name and the offered sched
     expect(screen.getByPlaceholderText(t.index.sheet.titlePlaceholder)).toBeTruthy();
   });
 
-  it('adds no step to an EDIT, and offers no way to change the type there', () => {
+  // An edit still gains NO step — a step is paid on every pass through the form and changing
+  // a type is a rare edit (owner, 2026-08-12) — but the row it collapses into is a control
+  // now, and the grid arrives in place.
+  it('adds no step to an EDIT, and reveals the type grid in place instead', () => {
     render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
-    // Straight to the identity step: a saved booking's type is not a question.
+    // Straight to the identity step: a saved booking's type is still not a question.
     expect(stepLabel()).toBe(t.index.form.stepWhat);
-    expect(within(typeRow() as HTMLElement).getByText(t.index.bookingType.flight)).toBeTruthy();
-    expect(screen.queryByText(t.index.form.changeType)).toBeNull();
+    const row = screen.getByRole('button', { name: t.index.form.stepType });
+    expect(within(row).getByText(t.index.bookingType.flight)).toBeTruthy();
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    // Closed, the grid is MOUNTED but unreachable — `Collapsible` never unmounts (so the
+    // reveal has something to animate against), and `max-height: 0` hides a thing from the eye
+    // only, so without `inert` a screen reader would read out eight radios that are not on
+    // screen and a keyboard would tab into them.
+    const grid = () => screen.getByRole('radiogroup', { name: t.index.form.kindLabel });
+    expect(grid().closest('[inert]')).toBeTruthy();
+
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(grid().closest('[inert]')).toBeNull();
+    // And no step was added on the way.
+    expect(stepLabel()).toBe(t.index.form.stepWhat);
+  });
+
+  // **The type has to reach the wire**, and for one release it did not: this payload never
+  // carried `type` — honestly, since the type was not editable — and the omission survived
+  // making it editable. Every other edited field saved and the type silently did not, which
+  // reads as "the category did not change", a booking's category being its type (ADR-0038).
+  const typeRowControl = () => screen.getByRole('button', { name: t.index.form.stepType });
+  /** Open the collapsed row, pick a type, and accept the confirm if one is raised. Flight is
+   *  route-shaped, so a switch away from it strands a route and therefore always asks. */
+  const switchTypeTo = (label: string) => {
+    fireEvent.click(typeRowControl());
+    fireEvent.click(screen.getByText(label));
+    const confirm = screen.queryByText(t.index.form.switchConfirm);
+    if (confirm) fireEvent.click(confirm);
+  };
+
+  it('sends the new type on save, so the category actually moves', async () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    switchTypeTo(t.index.bookingType.activity);
+    await save();
+    expect(indexVerbs.updateBooking).toHaveBeenCalled();
+    expect(indexVerbs.updateBooking.mock.calls[0][1]).toMatchObject({
+      type: BOOKING_TYPE.ACTIVITY,
+    });
+  });
+
+  // Reported on the shipped build: the grid stayed open after a pick, hiding the very statement
+  // the pick had just rewritten.
+  it('collapses the type grid once a type is chosen', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    fireEvent.click(typeRowControl());
+    expect(typeRowControl().getAttribute('aria-expanded')).toBe('true');
+    switchTypeTo(t.index.bookingType.activity);
+    expect(typeRowControl().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  // **A lossy switch asks at the TAP**, because the tap is what takes the route off the form —
+  // by the save those boxes are long gone. And a refused confirm changes nothing AND leaves the
+  // grid up, which is what makes `ביטול` clean here and useless at save time.
+  it('asks before a switch that strands something, and a refusal changes nothing', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    fireEvent.click(typeRowControl());
+    fireEvent.click(screen.getByText(t.index.bookingType.activity));
+    expect(screen.getByText(t.index.form.switchBody)).toBeTruthy();
+
+    const dialog = screen.getByRole('dialog', {
+      name: t.index.form.switchTitle(t.index.bookingType.activity),
+    });
+    fireEvent.click(within(dialog).getByText(t.common.cancel));
+    expect(within(typeRowControl()).getByText(t.index.bookingType.flight)).toBeTruthy();
+    expect(typeRowControl().getAttribute('aria-expanded')).toBe('true');
+  });
+
+  // A switch that strands nothing is silent and instant — which is why browsing the grid on a
+  // near-empty create form never raises this at all.
+  it('does not ask for a switch that strands nothing', () => {
+    render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    fireEvent.click(typeRowControl());
+    fireEvent.click(screen.getByText(t.index.bookingType.train));
+    expect(screen.queryByText(t.index.form.switchBody)).toBeNull();
+    expect(within(typeRowControl()).getByText(t.index.bookingType.train)).toBeTruthy();
+  });
+
+  // **An edit can be finished from any step** (owner, 2026-08-12) — paging through the rest of
+  // the form just to commit is the cost this removes. Safe because `submit` re-validates every
+  // step and lands on the first refusal (ADR-0155 §2), so it is still one commit.
+  it('offers שמירה beside הבא on an edit, and not on a create', () => {
+    const { unmount } = render(wrapNav(<BookingSheet booking={flight} onClose={() => {}} />));
+    expect(screen.getByRole('button', { name: t.common.steps.next })).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.common.save })).toBeTruthy();
+    unmount();
+
+    openCreate(BOOKING_TYPE.HOTEL);
+    press(t.common.steps.next);
+    // A create's steps are questions the type shaped; finishing early would only be refused.
+    expect(screen.queryByRole('button', { name: t.common.save })).toBeNull();
   });
 
   // **A booking is named by its place when nobody names it** (field report #9). The name
@@ -1692,5 +1787,49 @@ describe('BookingSheet — the name follows the place, the glyph follows the typ
     // The ✨ hands it back to the derivation, which is the type's own glyph again.
     fireEvent.click(screen.getByText(t.index.form.reset));
     expect(iconChip().textContent).toBe('🏨');
+  });
+});
+
+// **THE WINDOW IS OFF BY DEFAULT, AND THAT IS THE WHOLE BRIEF** (ADR-0184 §2; owner:
+// _"I don't want the default to have both the check-in start and check-in end time. I want
+// a separate click or something to enable this feature."_). So the assertions here are
+// mostly about ABSENCE — what the form does not show, and to whom it does not show it.
+describe('BookingSheet — the opt-in check-in window', () => {
+  afterEach(() => cleanup());
+
+  const openWhenStep = (type: BookingType) => {
+    render(wrapNav(<BookingSheet booking={null} seed={{ type }} onClose={() => {}} />));
+    pastTypeStep();
+    next();
+  };
+
+  it('offers ONE dashed token per held edge, and nothing is filled in', () => {
+    openWhenStep(BOOKING_TYPE.HOTEL);
+    // Check-in and check-out each carry the offer, and both are empty — **and they carry
+    // DIFFERENT words** (2026-08-13). A check-in's own time is the window's floor, so its
+    // second bound is a ceiling and reads `עד`; a check-out's own time IS the deadline and
+    // its second bound is the earliest you may leave, so it reads `מ־`. Labelling both `עד`
+    // invited a check-out of `06:00` plus `עד 11:00`, which stored an 11:00 that
+    // `windowBoundIso` rolled back a day into a 19-hour window.
+    expect(screen.getAllByText(t.whenField.addWindow)).toHaveLength(1);
+    expect(screen.getAllByText(t.whenField.addWindowFrom)).toHaveLength(1);
+    // The prose words only appear once a window exists, so an untouched form has none.
+    expect(screen.queryByText(t.whenField.rangeTo)).toBeNull();
+    expect(screen.queryByText(t.whenField.rangeFrom)).toBeNull();
+  });
+
+  it('does not offer it on a flight, whose ends are instants', () => {
+    openWhenStep(BOOKING_TYPE.FLIGHT);
+    expect(screen.queryByText(t.whenField.addWindow)).toBeNull();
+  });
+
+  it('offers it on a car hire too — the gate is the profile, not the type', () => {
+    openWhenStep(BOOKING_TYPE.CAR);
+    expect(screen.getAllByText(t.whenField.addWindow).length).toBeGreaterThan(0);
+  });
+
+  it('does not offer it on a booking with no span to widen', () => {
+    openWhenStep(BOOKING_TYPE.RESTAURANT);
+    expect(screen.queryByText(t.whenField.addWindow)).toBeNull();
   });
 });
