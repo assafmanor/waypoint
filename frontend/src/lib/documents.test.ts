@@ -95,6 +95,52 @@ describe('matchesDocumentQuery (ADR-0052 §7)', () => {
   it('does not match another type’s label', () => {
     expect(matchesDocumentQuery(ticket, 'דרכון')).toBe(false);
   });
+
+  // The words the owner named when the table was widened (2026-08-13), each on the type whose
+  // documents someone typing it actually wants.
+  describe('the widened synonym table', () => {
+    const hire = doc('h1', DOCUMENT_TYPE.RESERVATION, 'Toyota · שדה התעופה');
+    const vaccines = doc('v1', DOCUMENT_TYPE.HEALTH, 'נועה');
+    const policy = doc('i1', DOCUMENT_TYPE.INSURANCE, 'הראל');
+    const idp = doc('l1', DOCUMENT_TYPE.LICENSE, 'אסף');
+
+    it('reaches the car hire by רכב and אוטו', () => {
+      expect(matchesDocumentQuery(hire, 'רכב')).toBe(true);
+      expect(matchesDocumentQuery(hire, 'אוטו')).toBe(true);
+      expect(matchesDocumentQuery(hire, 'השכרת רכב')).toBe(true);
+    });
+
+    it('reaches health cover by ביטוח בריאות, and the policy by פוליסה', () => {
+      expect(matchesDocumentQuery(vaccines, 'ביטוח בריאות')).toBe(true);
+      expect(matchesDocumentQuery(policy, 'פוליסה')).toBe(true);
+    });
+
+    it('reaches the licence by the spelling without the yod', () => {
+      expect(matchesDocumentQuery(idp, 'רשיון')).toBe(true);
+      expect(matchesDocumentQuery(idp, 'בינלאומי')).toBe(true);
+    });
+
+    // **A word may legitimately sit on two types**, and this is the test that distinguishes
+    // that from the noise bookings warned about: both answers are ones the asker wants.
+    it('lets ביטוח reach both the travel policy and the health cover', () => {
+      expect(matchesDocumentQuery(policy, 'ביטוח')).toBe(true);
+      expect(matchesDocumentQuery(vaccines, 'ביטוח')).toBe(true);
+    });
+
+    // Pinned as a KNOWN consequence, not asserted as desirable: `matchesAnyTerm` is
+    // `term.includes(query)`, and `רכב` is a prefix of `רכבת`. Fixing it would mean
+    // exact-word matching, which breaks partial typing on every other query.
+    it('surfaces rail tickets on רכב too, because רכב is a prefix of רכבת', () => {
+      expect(matchesDocumentQuery(doc('t2', DOCUMENT_TYPE.TICKET, 'JR'), 'רכב')).toBe(true);
+      // The reverse does not hold, which is the half that keeps the table cheap: a longer
+      // query only ever reaches a term that contains it.
+      expect(matchesDocumentQuery(hire, 'רכבת')).toBe(false);
+    });
+
+    it('still refuses a word that belongs to no type — `other` carries none by definition', () => {
+      expect(matchesDocumentQuery(doc('o1', DOCUMENT_TYPE.OTHER, 'סריקה'), 'מלון')).toBe(false);
+    });
+  });
 });
 
 describe('visibleDocumentGroups (ADR-0052 §7 / ADR-0120)', () => {
