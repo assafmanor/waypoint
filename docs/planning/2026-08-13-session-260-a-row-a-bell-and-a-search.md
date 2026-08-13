@@ -124,7 +124,43 @@ read from the mockup's own DOM. **The running app was not driven** — Docker wa
 Postgres and no backend — so the visual claim rests on the mockup render and the unit suite, not on a
 screenshot of the app.
 
-Ten frontend tests fail on this branch and did before it. Eight are a local `.env` leak
-(`VITE_API_BASE_URL` is set, so same-origin path assertions see an absolute URL — they pass with the
-variable cleared); the remaining two are `Map.test.tsx` assertions about `.map-controls`/`in-flow`, in
-files neither this change nor #586 touches.
+## The ten failing tests were one bug, and it was ours
+
+Reported at the end of the session as _"what tests are failing? all should pass"_ — and the right
+answer turned out not to be "they were already failing." **All ten had one cause: the unit suite
+inherits `frontend/.env`.** Vite loads it for the test run, so the suite meant something different on
+any machine that had followed the quickstart than it did in CI, which has no `.env` and was therefore
+green. That asymmetry is why nobody's local red was ever believed.
+
+Two symptoms, one cause:
+
+- **`VITE_API_BASE_URL`** turned every same-origin assertion into an absolute URL (8 failures across
+  Avatar / PlaceKnowledge / PlaceResearch / Map.embedded). `Avatar.test.tsx` already carried the
+  comment _"API_BASE_URL is empty under test (same-origin)"_ — a stated assumption that nothing made
+  true, which is exactly why it survived.
+- **`VITE_GOOGLE_MAPS_BROWSER_KEY`/`_MAP_ID`** handed `Map.test.tsx` a rendered map (2 failures). That
+  file exists to cover the **list-only graceful-absence** path (ADR-0121 §2, and `frontend/CLAUDE.md`
+  requires it stay tested as such), so it deliberately does not mock `lib/map-config` the way
+  `Map.embedded.test.tsx` does. With keys present it was testing the other branch, and the branch its
+  own describe block names went uncovered.
+
+Fixed by pinning all four empty in `vite.config.ts`'s `test.env` — the same reasoning as pinning the
+clock: the value is a fact of the suite, not a file a developer can shadow. A spec that wants config
+mocks `lib/map-config`, visibly, in the spec that needs it.
+
+**And a second finding came out of the first, which is the one worth carrying forward:** two of the
+seven red files were not failing assertions at all, they were failing to **collect**.
+`virtual:pwa-register/react` is a `vite-plugin-pwa` virtual module with no file behind it, and under
+vitest its id resolves to `file:///@vite-plugin-pwa/virtual:…`, which Node refuses as a filename — so
+`App.authgate.test.tsx` and `Header.test.tsx` ran **zero** assertions between them. A collection
+failure reports as one red filename and hides every test in the file: the run said 3564 passing, which
+looks healthy, while 23 tests were not executing. Aliased to `src/test/pwa-register-stub.ts` for the
+unit run, as a stub rather than a `vi.mock` per spec, because the reach is transitive — anything that
+renders `App` or the shared header is in that graph. `AppUpdateNotice.test.tsx` still mocks the id
+itself and is unaffected, since a `vi.mock` beats an alias.
+
+Both rules are now in `frontend/CLAUDE.md` beside "pin the clock", which is the same failure with a
+different input.
+
+**Whole repo green after the fix: 209 frontend files / 3587 tests, 224 shared, 609 backend.** The
+frontend count rose by 23 without a single new spec — that is the two files that had never run.

@@ -387,8 +387,9 @@ methods, so a ~60-line fake map covers it completely — see
 `lib/useMapCamera.test.tsx`. Before declaring imperative glue untestable, count
 the methods it actually calls; usually a fake is cheaper than the bug.
 
-Two rules that exist because their absence hid real bugs for three review
-rounds (the Map tab's ordering, ADR-0109 session-110):
+Three rules that exist because their absence hid real bugs for three review
+rounds (the Map tab's ordering, ADR-0109 session-110) or ten releases (the env
+leak, session 260):
 
 - **Pin the clock.** A test whose fixtures carry fixed dates must set its own
   `now` via `setSimulatedNow` (`lib/useClock.ts`) — otherwise it silently reads
@@ -398,3 +399,23 @@ rounds (the Map tab's ordering, ADR-0109 session-110):
   the **Map**, `DAY_SCOPED_TABS`). The Map's day-scoped and all-days paths are
   genuinely different renders: an ordering bug that only showed in all-days
   survived three sessions because every test for it was day-scoped.
+- **The suite reads no environment it did not set** (`vite.config.ts`'s
+  `test.env`, session 260). This is the clock rule with a different input, and it
+  had been costing ten failures on any machine that had followed the quickstart
+  while CI — which has no `frontend/.env` — stayed green, so nobody's local red
+  was believed. Vite loads `.env` for the unit run too: `VITE_API_BASE_URL` made
+  every same-origin assertion absolute (`Avatar.test.tsx` even had a comment
+  _stating_ the value was empty under test, which nothing enforced), and the
+  Maps keys handed `Map.test.tsx` a rendered map when the whole file exists to
+  cover the **list-only** graceful-absence path. Both are now pinned empty in
+  `test.env`. A spec that wants config **mocks `lib/map-config`** where the
+  reader can see it (`Map.embedded.test.tsx`), rather than depending on a file
+  outside the repo's control. Same reflex for anything else ambient: if the
+  assertion depends on it, the suite states it.
+  - Its companion, and the reason it went unnoticed for so long: **a file that
+    fails to COLLECT reports as one red filename and hides every test in it.**
+    `virtual:pwa-register/react` has no file behind it, so two specs whose graph
+    reaches `lib/useAppUpdate.ts` ran **zero** assertions between them
+    (`src/test/pwa-register-stub.ts` is the alias that fixed it). When you read a
+    failure count, read the **file** count beside it — 3564 passing looked
+    healthy while 23 tests were not running at all.
