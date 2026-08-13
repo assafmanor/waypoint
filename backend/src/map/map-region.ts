@@ -84,8 +84,24 @@ export function mapRegionFor(points: readonly LatLng[]): MapRegion | null {
   return { areas, geojson, signature };
 }
 
+/** The prefix every map object shares, so Phase 3's eviction can find a trip's archives
+ *  without a second index. */
+export const MAP_KEY_PREFIX = 'map_';
+
 /** Where a built extract lives in the byte sink (`common/storage.ts`). The signature is
- *  IN the key on purpose — see `MapRegion.signature`. */
+ *  IN the key on purpose — see `MapRegion.signature`.
+ *
+ * **Flat, not `map/<tripId>/<sig>`**, and that is the sink's contract rather than a
+ * preference: `storage.ts` is "one flat keyspace of UUIDs" and writes with a bare
+ * `writeFile`, so a key containing `/` asks its local-disk branch to create directories
+ * it has never had to (found by the first real request — the archive cut fine and the
+ * write threw `ENOENT`). Prefix-matching gives eviction everything a folder would have. */
 export function mapExtractKey(tripId: string, signature: string): string {
-  return `map/${tripId}/${signature}.pmtiles`;
+  return `${MAP_KEY_PREFIX}${tripId}_${signature}.pmtiles`;
+}
+
+/** Every extract belonging to one trip, for eviction — see `mapExtractKey` on why this is
+ *  a prefix test rather than a directory listing. */
+export function isExtractKeyFor(tripId: string, key: string): boolean {
+  return key.startsWith(`${MAP_KEY_PREFIX}${tripId}_`) && key.endsWith('.pmtiles');
 }

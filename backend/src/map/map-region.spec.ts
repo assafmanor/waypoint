@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAP_EXTRACT_MAXZOOM, mapExtractKey, mapRegionFor } from './map-region';
+import { MAP_EXTRACT_MAXZOOM, isExtractKeyFor, mapExtractKey, mapRegionFor } from './map-region';
 
 /* The pure half of ADR-0186 §4. The clustering itself is covered in
    `packages/shared/src/geo.test.ts` against the owner's own three cases; what is
@@ -72,10 +72,24 @@ describe('mapRegionFor', () => {
 describe('mapExtractKey', () => {
   it('carries the signature, so a rebuild is a new object rather than an overwrite', () => {
     // Atomicity: the old archive stays readable until the new one is stored.
-    expect(mapExtractKey('trip-japan-26', 'abc123')).toBe('map/trip-japan-26/abc123.pmtiles');
     expect(mapExtractKey('trip-japan-26', 'def456')).not.toBe(
       mapExtractKey('trip-japan-26', 'abc123'),
     );
+  });
+
+  it('is FLAT, because the byte sink is a flat keyspace', () => {
+    // Not a preference: `storage.ts` writes with a bare `writeFile`, so a `/` in the key
+    // asks its local branch to create directories it never has. Found by the first real
+    // request — the archive cut fine and the write threw ENOENT.
+    expect(mapExtractKey('trip-japan-26', 'abc123')).not.toContain('/');
+  });
+
+  it('lets eviction find one trip by prefix, and never a neighbouring one', () => {
+    const mine = mapExtractKey('trip-japan-26', 'abc123');
+    expect(isExtractKeyFor('trip-japan-26', mine)).toBe(true);
+    expect(isExtractKeyFor('trip-paris-26', mine)).toBe(false);
+    // A trip id that PREFIXES another must not match it — `trip-1` vs `trip-12`.
+    expect(isExtractKeyFor('trip-japan', mine)).toBe(false);
   });
 });
 
