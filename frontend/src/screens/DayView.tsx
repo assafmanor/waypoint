@@ -80,6 +80,7 @@ import { blockFor, ideaBlock, nextSlot, type Gap, type GapDefaults } from '../li
 import { dayPositions, firstPositionFitting } from '../lib/day-positions';
 import {
   dayTransitions,
+  edgeEntryOf,
   mergeDayEntries,
   placeDayEntries,
   staysOnDate,
@@ -93,6 +94,7 @@ import { hoursPhrase } from '../lib/duration';
 import { ConnectionBand, GapStrip } from '../ui/domain/DayJoinRow';
 import { CODE_PREFIX, DEFAULT_STAY_ICON, MS_PER_DAY, SHELF_POOL_CAP } from '../constants';
 import { ambientSpanLabel } from '../lib/glance';
+import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -507,15 +509,27 @@ export function DayView() {
 
       {(staysToday.length > 0 || placement.commitments.length > 0) && (
         <div className="day-ambient">
-          {staysToday.map((e) => (
-            <div className="ambient" key={e.id}>
-              <span className="ai" aria-hidden="true">
-                {e.icon ?? DEFAULT_STAY_ICON}
-              </span>
-              <span className="an">{e.title}</span>
-              <span className="as">{ambientSpanLabel(e, activeDate)}</span>
-            </div>
-          ))}
+          {/* **AN EDGE DAY SAYS THE EDGE; A MIDDLE DAY SAYS THE COUNT** (owner, 2026-08-13).
+              `לילה 1 מתוך 1` on both of two guesthouses — one being left this morning, one
+              being arrived at tonight — is the same words for opposite events. The sentence
+              comes from the day's PLACED entry, so this line and the row below it cannot
+              print two different clocks for one edge. */}
+          {staysToday.map((e) => {
+            const edge = edgeEntryOf(placement.positioned, e.id);
+            return (
+              <div className="ambient" key={e.id}>
+                <span className="ai" aria-hidden="true">
+                  {e.icon ?? DEFAULT_STAY_ICON}
+                </span>
+                <span className="an">{e.title}</span>
+                <span className="as">
+                  {edge
+                    ? edgeSentence(edge, transitionZoneProps(edge, zoneCtx).zone)
+                    : ambientSpanLabel(e, activeDate)}
+                </span>
+              </div>
+            );
+          })}
           {/* **A commitment with no position reads at the TOP** (ADR-0171 §10a-i) — a
               claim on your day, carried all day, rather than something buried at its
               foot. It lands in the strip a multi-night stay's MIDDLE days already use,

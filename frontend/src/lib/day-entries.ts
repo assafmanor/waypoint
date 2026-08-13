@@ -53,6 +53,19 @@ export function dayTransitions(events: TripEvent[], activeDate: string): Booking
   return bookingTransitionsOnDate(events, activeDate).filter((tr) => isMultiDay(tr.event));
 }
 
+/** The transition entry a given stay has in TODAY's placed list, if any. The ambient strip
+ *  reads this so it can say the edge (`צ׳ק-אאוט · עד 09:40`) instead of the day count, and so
+ *  the strip and the row below it read ONE derivation — the entry's clock is the one `edgeAt`
+ *  bounded, which is not the authored one. */
+export function edgeEntryOf(
+  positioned: readonly DayEntry[],
+  eventId: string,
+): TransitionEntry | undefined {
+  return positioned.find(
+    (e): e is TransitionEntry => e.kind === 'transition' && e.event.id === eventId,
+  );
+}
+
 /** **The ambient-span stays covering `date`, edges INCLUDED** (owner, 2026-08-13, amending
  *  ADR-0064 §C): the strip above the list, on every day of a stay rather than only its
  *  strictly-middle nights. The strip and the edge row answer different questions — where you

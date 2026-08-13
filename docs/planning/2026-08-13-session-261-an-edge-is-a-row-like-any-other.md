@@ -42,6 +42,18 @@ That is ADR-0171 §10a's original reason for existing, arriving as a bug report.
 - `TransitionRow`: one `.tr-time` under the title for every edge, no `dir` on the box, every clock `ltrIsolate`d, `SettleControl` on a floor.
 - The window token's word is per edge (`＋ עד` / `＋ מ־`).
 
+## Follow-up, same day, after the above merged (#590)
+
+The device pass on the merged build produced a fourth report, and it is §9a's own consequence: the strip was on the edge days now, still saying `ambientSpanLabel`.
+
+> _"edge days should state 'check in from…', 'check out until…', 'car returned until' etc (and also ranges), not day 1/1, that way we can't differentiate between check in and check out."_
+
+Two guesthouses on one day, one being left and one being arrived at, both reading `לילה 1 מתוך 1`. Shipped as [ADR-0184 §9f](../decisions/0184-an-edge-can-be-a-window.md): an edge day states the edge, a middle day keeps the count, and `edgeTimePhrase`/`edgeSentence` are shared with the row so one edge cannot print two clocks.
+
+The owner asked which way to go on repeating the row's clock in the strip, noting _"I prefer consistency"_. Recommended keeping it, on the ground that `${label} · ${phrase}` is not a new shape — it is what `UnplacedCommitment` rendered **in this same box** until §9a emptied it. A bare label would have been the third form.
+
+**And the test caught a bug in what had just merged.** The range was built from `atMs` — the `edgeAt`-bounded instant, which for a windowed edge is not one of the window's ends. A 17:00–20:00 window pushed to a 22:00 landing rendered `20:00–22:00`: a window nobody typed, hiding that the real one had closed. Written as an assertion about "whichever bound it was handed", it failed immediately; read as code it looks fine, which is the second time this pair of sessions that the assertion was the thing that found it.
+
 ## Not verified
 
-**The render on a real phone**, again — which is the same line ADR-0184 closed with, and the reason this session exists. Everything here is unit-tested (3601 frontend + 223 shared, green) and the row's new height has been reasoned about, not seen.
+**The render on a real phone**, again — which is the same line ADR-0184 closed with, and the reason this session exists. Everything here is unit-tested (3606 frontend + 223 shared, green) and the row's new height has been reasoned about, not seen.

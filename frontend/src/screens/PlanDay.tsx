@@ -119,6 +119,7 @@ import {
 } from '../constants';
 import {
   dayTransitions,
+  edgeEntryOf,
   placeDayEntries,
   type DayEntry,
   groupEndEvent,
@@ -129,6 +130,7 @@ import {
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
 import { ambientSpanLabel } from '../lib/glance';
+import { edgeSentence } from '../lib/transitions';
 import { t } from '../i18n/he';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
@@ -965,15 +967,25 @@ export function PlanDay() {
 
         {(staysToday.length > 0 || placement.commitments.length > 0) && (
           <div className="day-ambient">
-            {staysToday.map((e) => (
-              <div className="ambient" key={e.id}>
-                <span className="ai" aria-hidden="true">
-                  {e.icon ?? DEFAULT_STAY_ICON}
-                </span>
-                <span className="an">{e.title}</span>
-                <span className="as">{ambientSpanLabel(e, activeDate)}</span>
-              </div>
-            ))}
+            {/* An edge day says the edge, a middle day says the count — the same rule Trip
+                reads, from the same two functions (ADR-0171 §10e). No posture difference
+                here: what the strip STATES is a fact about the booking. */}
+            {staysToday.map((e) => {
+              const edge = edgeEntryOf(placement.positioned, e.id);
+              return (
+                <div className="ambient" key={e.id}>
+                  <span className="ai" aria-hidden="true">
+                    {e.icon ?? DEFAULT_STAY_ICON}
+                  </span>
+                  <span className="an">{e.title}</span>
+                  <span className="as">
+                    {edge
+                      ? edgeSentence(edge, eventEdgeZone(edge.event, edge.edge, zoneCtx).zone)
+                      : ambientSpanLabel(e, activeDate)}
+                  </span>
+                </div>
+              );
+            })}
             {/* **The same row, without the control** (ADR-0171 §10e). Plan settles through
                 a sheet off the row menu and never inline, and `נותרו היום` — the number
                 that made settling load-bearing on Trip's copy — is a Trip-mode number.

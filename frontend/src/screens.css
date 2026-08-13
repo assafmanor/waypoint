@@ -177,13 +177,27 @@
   font-size: 16px;
   flex: 0 0 auto;
 }
+/* **THE READ-OUT IS PROTECTED; THE TITLE IS WHAT GIVES WAY**, and that became necessary the
+   moment an edge day started saying `צ׳ק-אאוט · עד 09:40` (2026-08-13) where it used to say
+   `לילה 1 מתוך 1`. `.an` had no ellipsis and could not shrink, so a long guesthouse name and
+   the longer sentence would have wrapped the line — the same trade `.index .bk-when` states
+   and for the same reason: a truncated name still identifies the booking, a truncated clock
+   is the fact the line exists for. The block is `.as-open`'s own, which the unplaced variant
+   beside it has always carried — generalised here rather than copied a second time, so both
+   strip rows agree. */
 .day-ambient .an {
   font-size: 12.5px;
   font-weight: 700;
   color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .day-ambient .as {
   margin-inline-start: auto;
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
   color: var(--muted);
