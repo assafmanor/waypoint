@@ -531,8 +531,13 @@
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   /* Horizontal is the browser's; the slide's own content keeps the vertical one. This one
-     declaration replaces a pointer recogniser, a capture handshake and a click swallow. */
-  touch-action: pan-x;
+     declaration replaces a pointer recogniser, a capture handshake and a click swallow.
+     AMENDED 2026-08-13 (ADR-0182's device pass): `pan-x` alone did not mean what the sentence
+     above claims. `touch-action` is INTERSECTED down the ancestor chain, so `pan-x` on the track
+     took the vertical pan away from every scroller inside the slide — including `.note-sec-list`,
+     the card's one scrolling region. Both axes are named, and the browser still picks by
+     direction; double-tap zoom stays suppressed by `:root`'s `manipulation` (tokens.css). */
+  touch-action: pan-x pan-y;
   scroll-padding-inline: var(--map-peek);
 }
 .map-placecard[data-track]::-webkit-scrollbar {
@@ -624,10 +629,25 @@
 
    A card taller than its room is never right, whatever it happens to contain, so the
    question the selector was asking was the wrong one. The arithmetic is unchanged. */
+/* AMENDED 2026-08-13 (ADR-0182's device pass): a SECOND bound, and the two answer different
+   questions. The arithmetic above is a guarantee — the card is never taller than the room it
+   has — and on a tall phone that room is most of the pane: measured on the owner's handset the
+   card came out ~535pt inside a ~629pt canvas, i.e. 85% of the map, and ~218pt of it was empty
+   because every slide stretches to the tallest one (ADR-0182's density amendment, the owner's
+   own call) and that stop had no notes. `--map-card-max` is a BUDGET instead: a card over a map
+   is a card, not a page, so past this height the card stops growing and the note list — the
+   one flexible track — shrinks and scrolls, which is ADR-0148 §1's shrink order already built.
+   `min()` and not a replacement: it can only ever bind LOWER than the guarantee, so a small
+   phone (where the arithmetic is ~320px) is byte-identical to before.
+   A device-pass number like `--map-peek`, not a decision — retune it on a handset. */
 .map-placecard {
   display: flex;
-  max-height: calc(
-    100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) - 8px
+  --map-card-max: 420px;
+  max-height: min(
+    calc(
+      100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) - 8px
+    ),
+    var(--map-card-max)
   );
 }
 /* A flex item in a container with a max-height: the container settles at
@@ -724,7 +744,14 @@
   align-self: stretch;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* **`-y`, AND THAT IS THE WHOLE OF THE SWIPE-FROM-ANYWHERE REPORT** (ADR-0182's device pass;
+     owner: _"swiping left or right should be made available no matter where you place your
+     finger on the card"_). A one-axis `overflow-y` still makes this a scrollPORT on BOTH axes
+     (an `overflow-x: visible` beside it computes to `auto`), so an unqualified `contain` refused
+     to chain the HORIZONTAL gesture to the track above — the card was swipeable from the title
+     and dead from the notes. Vertical stays contained, which is the fact this property was
+     added for: reaching the end of the text must not hand the gesture to the canvas. */
+  overscroll-behavior-y: contain;
   scrollbar-width: none;
 }
 .map-placecard:has(.map-hero) > .place:not(.result) > .map-sum::-webkit-scrollbar {
@@ -758,7 +785,9 @@
   align-self: stretch;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* `-y` for the reason spelled out on `.map-sum` above: this region is a scrollport on both
+     axes, so an unqualified `contain` swallowed the track's horizontal swipe. */
+  overscroll-behavior-y: contain;
   scrollbar-width: none;
 }
 .map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list::-webkit-scrollbar {
@@ -771,6 +800,68 @@
 .map-placecard:has(.note-sec) > .place > .map-refs-foot {
   grid-row: 7;
   grid-column: 1 / -1;
+}
+
+/* ── THE CARD'S OWN CLOSE (ADR-0182's device pass) ─────────────────────────────
+   Owner: _"we should add a way to close the card and/or collapse it."_ The card had three
+   dismissals and no visible one — blank canvas, system back, selecting elsewhere — because its
+   body is inert by design (ADR-0122 §7) where a list row answers a second tap.
+
+   **It sits IN the identity row, as its fourth column**, not as a corner overlay: the card
+   scrolls as a whole once its pinned rows alone exceed the cap (§9's 2026-08-11 amendment), and
+   an absolute corner control would scroll out of reach at exactly the card's tallest. So it costs
+   ~28px of the row's WIDTH and 0px of its height — which is the axis this pass is about.
+
+   Everything about the control itself is `.map-rename`'s, one line up in this file: 16px of
+   layout, 44px of target as an `::after` outside it (ADR-0017), muted ink because closing is
+   neither a time nor a place nor a status (ADR-0028). */
+/* **The fourth column is declared where the control is, not in the template.** An implicit track
+   would have done it with no rule at all — and silently broken every `grid-column: 1 / -1` block
+   below, since `-1` names the last EXPLICIT line and those rows would stop short of the card's
+   edge. A fourth `auto` in the template itself is the other near-miss: an empty track still gets
+   its 11px column gap, so every neighbour slide in the track would lay out 11px narrower than the
+   card you are on. `:has()` gives the column to the slide that has the control and to no other. */
+.map-placecard:is(:has(.note-sec), :has(.map-hero)) > .place:not(.result):has(> .map-cardclose) {
+  grid-template-columns: auto 1fr auto auto;
+}
+.map-placecard > .place > .map-cardclose {
+  grid-row: 1;
+  grid-column: 4;
+  /* Aligned with the badge's top rather than the row's middle: on a two-line identity row the
+     middle puts it beside the meta line, where it reads as belonging to a fact. */
+  align-self: start;
+}
+.map-cardclose {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.map-cardclose::after {
+  content: '';
+  position: absolute;
+  inset: -14px;
+}
+.map-cardclose .icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.map-cardclose:active {
+  transform: scale(var(--press-scale));
+}
+.map-cardclose:focus-visible {
+  outline: 2px solid var(--cta);
+  outline-offset: 2px;
 }
 
 .map-draft {

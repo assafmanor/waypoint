@@ -2508,6 +2508,10 @@ export function MapView() {
       /** The centring ref, on the slide that is the current selection — see
        *  `useCenterSelected`. Absent everywhere else, including the list. */
       slideRef?: RefObject<HTMLDivElement | null>;
+      /** **The card's visible dismissal** — see `PlaceRow`'s `onClose`. Passed by the canvas
+       *  card only, and only for the slide that IS the selection: a `✕` on a neighbour would
+       *  close a card you are not on. */
+      onClose?: () => void;
     }) =>
     (usage: PlaceUsage) => {
       const place = placeById.get(usage.placeId);
@@ -2621,6 +2625,7 @@ export function MapView() {
           // Selection-gated on the same rule as the pencil (ADR-0157 §2), so the trash is
           // wherever the row is — the sheet's list AND the canvas card, one `renderRow`.
           onDelete={selected && !pendingErrand ? () => setDeletingId(usage.placeId) : undefined}
+          onClose={opts.onClose}
         />
       );
     };
@@ -3044,6 +3049,7 @@ export function MapView() {
           // what the peek has to show for the edge to mean anything.
           revealed: true,
           slideRef: isCurrent ? trackSlideRef : undefined,
+          onClose: isCurrent ? clearSelection : undefined,
         })(usage)}
       </Fragment>
     );
@@ -3064,6 +3070,7 @@ export function MapView() {
             forceDay: !inDayScope(cardUsage),
             onFrame: frameSelected,
             onChoose: errandTakesOurPlaces ? finishErrand : undefined,
+            onClose: clearSelection,
           })(cardUsage)}
     </div>
   );
@@ -3734,6 +3741,7 @@ function PlaceRow({
   onChoose,
   onRename,
   onDelete,
+  onClose,
 }: {
   /** Attached by the card's track to the slide that is the current selection, so
    *  `useCenterSelected` can scroll it to the centre (ADR-0182). Absent in the list. */
@@ -3861,6 +3869,16 @@ function PlaceRow({
    *  beside the schedule pill, which is also where the eye already looks for this row's
    *  verbs. */
   onDelete?: () => void;
+  /** **Close this card** (ADR-0182's device pass; owner: _"we should add a way to close the card
+   *  and/or collapse it"_). The canvas card's only, and it is the one control this row was
+   *  missing: the card is dismissible three ways already — a tap on blank canvas, system back,
+   *  selecting something else — and **none of them is visible on it**, the body being
+   *  deliberately inert there (ADR-0122 §7) where a list row answers a second tap with
+   *  `onDeselect`.
+   *
+   *  It is `clearSelection` itself and not a handler beside it: whatever dismisses a surface runs
+   *  the same function system back does (ADR-0103's 2026-07-29 amendments). */
+  onClose?: () => void;
 }) {
   // **THE WAY-IN BLOCK IS FOLDED BY DEFAULT** (ADR-0121 §8's 2026-08-05 amendment). A hub
   // place carries a reference per leg, and the block sits between the notes and the row's
@@ -4109,6 +4127,26 @@ function PlaceRow({
           />
         )}
       </span>
+      {/* **THE CARD'S ONE VISIBLE WAY OUT** (ADR-0182's device pass). A fourth column of the
+          identity row rather than a corner overlay, and that is what keeps it PINNED: the card
+          becomes a scroller once its pinned rows alone exceed the cap (§9's amendment), and an
+          absolutely-positioned corner control scrolls away exactly when the card is at its
+          tallest. `stopPropagation` for the same reason the pencil has it — the body's own tap
+          means something else. */}
+      {onClose && (
+        <button
+          type="button"
+          className="map-cardclose"
+          aria-label={t.map.closeCard}
+          title={t.map.closeCard}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+        >
+          <Icon name="close" />
+        </button>
+      )}
       {/* **WHAT THE WORLD KNOWS, pinned under the identity** (ADR-0167 §9.3). Two lines,
           always visible while the row is selected, and NOT inside the notes scroller: the
           group's own writing does not share a region with fetched text (§9.5), and this block
