@@ -637,3 +637,51 @@ Verified in real Chrome on Chrome's Slow 3G, entering the tab for a fresh instan
 ### 4. What this does not claim
 
 It does not claim to be the last cause of #35. It is a fix for a defect that is certain from reading the code and reproducible on demand, **and it is simultaneously the experiment**: if the map still fails after it, that result rules out the merely-slow reading, at which point getting `DevMapTuner`'s `diag` reading off the owner's own phone is the next step — and that needs a channel, because `dev-tuning.ts` is deliberately tree-shaken out of production and shipping the constant-override layer to reach it is the wrong trade.
+
+## Amendment (2026-08-14, session 264) — the map does not fail to START; it starts and then DIES
+
+**This is field report #35's actual cause, reproduced deterministically at last**, and it retires the guessing that produced the four amendments above. The owner reported the map still failing after all of them, with one decisive detail: _"resuming the app after a while"_, and earlier, _"after going to another app and then returning to the map it loaded."_
+
+### 1. What reproduces it
+
+`WEBGL_lose_context.loseContext()` on the map's canvas — which is what a phone's GPU does to a long-backgrounded page: it reclaims the context. Every previous theory was about the network, the loader, the bound or the retry, and none of them could explain why a **resume** was the trigger. This one is only ever a resume.
+
+Measured, with the context lost:
+
+| Reading                     | Result                                      |
+| --------------------------- | ------------------------------------------- |
+| `gl.isContextLost()`        | `true`, and stays true — 26s+, indefinitely |
+| Terrain                     | **gone**, pane blank                        |
+| Google's logo + attribution | still drawn                                 |
+| Place list, sheet, chrome   | fine                                        |
+| `t.map.loading` cue         | **absent**                                  |
+| `ErrorState`                | **absent**                                  |
+| Recovery                    | **none, ever**                              |
+
+That is field report **#28** verbatim — _"kept drawing the place list and the app's pins while the Google-rendered terrain stayed blank"_ — so #28 and #35 were one bug all along, and it has been in front of us since session 247.
+
+### 2. Why nothing here could see it
+
+**`MAP_LOAD_TIMEOUT_MS.TILES` guards the FIRST paint only.** By the time the context dies, `tilesPainted` is already `true` and the deadline has long since resolved, so no timer is armed and no signal exists. Every fix in the amendments above addresses _the map never started_. This is _the map started, then died_ — a state the pane had no detector for at all.
+
+**And session 247 named this exact event and declined to act on it**, on the reasoning that a context lost after a successful paint is _"recovered mid-session rather than never loaded"_. That assumption is now measured and **false**: it is not recovered.
+
+### 3. The fix: a lost context rebuilds the map
+
+`ContextLossRecovery` listens for `webglcontextlost` and reconstructs the map. Three properties, each measured rather than reasoned:
+
+- **Capture phase, on the PANE.** `webglcontextlost` does not bubble, but a capture listener on an ancestor sees it on the way down — so this survives Google replacing its own canvas, which a listener bound to the canvas would not.
+- **Rebuild, not restore.** `restoreContext()` does redraw — at the **default world camera** (the Atlantic instead of Tokyo). Only a fresh map returns both a live context and the right camera. The cost is that a manual pan is lost, which is the correct trade against a blank map.
+- **Deferred until visible.** The loss happens while backgrounded, and a map constructed while the page is hidden is the failure that started all of this, so the rebuild waits for a resume a person is present for.
+
+**Bounded at `MAP_CONTEXT_LOSS_REBUILDS` (3).** A rebuild is a billed instantiation (§4), and a machine whose GPU keeps dropping contexts would otherwise rebuild forever; past the bound the pane degrades to `ErrorState`, where a human tap is the throttle — §4's own posture. A human retry resets the budget, because that is a person saying "start over".
+
+### 4. Verified in a real browser, not only in jsdom
+
+Forced context loss against the running app, all four asserted mechanically: **a single loss recovers** (`webgl: LOST` → `ok`, cue at +500ms, map back by +2s); **exactly one loss event is seen**, so tearing down the old canvas does not fire another and loop; **it stays recovered** 10s later; and **four losses degrade to `ErrorState`**, from which the retry recovers. The offline-flap and never-painted paths were re-run and are unchanged.
+
+### 5. What this retires
+
+**The resume nudge (`moveCamera({})`) is deleted.** It came from the right observation — a resume fixes it — and the wrong inference: that the map was alive and merely not rendering. It also had a hole that made it inert in the case it was written for: it was gated on `useMap()` returning an instance, and when the loader never reaches `LOADED` there is no instance, so no listener was ever registered. Nothing is lost by removing it; a lost context is now handled by the mechanism that can actually see it.
+
+**And ADR-0186's framing needs correcting**: the offline-map migration was partly justified as the cure for #35. It is not — MapLibre is also a WebGL canvas and inherits context loss identically. It would have needed this same recovery. The offline map remains worth building for the reason it always had: a map that works on a plane.
