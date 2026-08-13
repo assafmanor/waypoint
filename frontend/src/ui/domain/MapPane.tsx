@@ -40,6 +40,7 @@ import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
 import {
   MAP_CONNECTOR,
+  MAP_CONTEXT_LOSS_REBUILDS,
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
   MAP_ZOOM,
@@ -326,41 +327,64 @@ function PinDensity({ paneRef }: { paneRef: RefObject<HTMLDivElement | null> }) 
   return null;
 }
 
-/** **A resumed tab nudges a map that never painted** (field report #35's fifth cause;
- *  ADR-0121's 2026-08-14 amendment). The owner: _"After going to another app and then
- *  returning to the map it loaded."_
+/** **A map that started and then DIED, which nothing here could previously see**
+ *  (field report #35's real cause; ADR-0121's 2026-08-14 amendment).
  *
- *  That sentence rules out most of what this bug was assumed to be. Switching apps fetches
- *  nothing, clears no global and builds no map — it takes the page through hidden →
- *  visible, which forces a relayout and resumes the compositor. So the map was **already
- *  constructed and alive**, and simply never rendered: it needed a nudge, not a retry.
- *  That also explains why a retry was inert (a fresh map under the same conditions does
- *  the same nothing) while a restart was not.
+ *  Reproduced deterministically with `WEBGL_lose_context` — which is what a phone's GPU
+ *  does to a long-backgrounded page, and why the trigger was always _"resuming the app
+ *  after a while"_ rather than anything about the network, the loader or the bound.
  *
- *  **The library already knows this failure mode.** `use-map-instance.ts` does exactly
- *  this on its own remount path — _"causes the map to collapse and no longer render tiles
- *  … triggering moveCamera after remounting should trigger a re-layout"_ — just for a
- *  different trigger than ours.
+ *  Measured with the context lost: the terrain is **gone**, Google's own logo and
+ *  attribution are still drawn, the place list is fine, and the app says **nothing** — no
+ *  cue, no error, no recovery, for 26s+. That picture is field report #28 verbatim.
  *
- *  `moveCamera({})` is the whole fix: no camera argument, so it moves nothing and cannot
- *  fight ADR-0129 §3's one-eased-driver invariant; it exists to make the map re-measure
- *  and repaint. **Gated on `!tilesPainted`** so it can only ever touch a map that is
- *  already failing — a working canvas is never poked.
+ *  **Why no watchdog caught it:** `MAP_LOAD_TIMEOUT_MS.TILES` guards the FIRST paint, and
+ *  `tilesPainted` is already true by the time the context dies, so no timer is armed.
+ *  Every earlier fix addressed _the map never started_; this is _the map started, then
+ *  died_, which had no detector at all. Session 247 declined to act on this event on the
+ *  reasoning that a post-paint loss is "recovered mid-session" — **it is not.**
  *
- *  This is deliberately renderer-independent: MapLibre is also a WebGL canvas driven by
- *  rAF, so ADR-0186's migration would have carried this across untouched. */
-function ResumeNudge({ painted }: { painted: boolean }) {
-  const map = useMap(MAP_ID);
-  const paintedRef = useRef(painted);
-  paintedRef.current = painted;
+ *  Three properties, each measured rather than assumed:
+ *
+ *  - **Capture phase, on the PANE.** `webglcontextlost` does not bubble, but a capture
+ *    listener on an ancestor sees it on the way down — so this survives Google replacing
+ *    its own canvas, which a listener bound to the canvas would not.
+ *  - **Rebuild, not restore.** Calling `restoreContext()` does redraw, at the DEFAULT
+ *    world camera — the Atlantic instead of Tokyo. Only a fresh map gets both a live
+ *    context and the right camera back.
+ *  - **Deferred until visible.** The loss happens while backgrounded, and a map built
+ *    while the page is hidden is the failure that started all of this. So the rebuild
+ *    waits for a resume that a person is actually present for. */
+function ContextLossRecovery({
+  paneRef,
+  onLost,
+}: {
+  paneRef: RefObject<HTMLDivElement | null>;
+  onLost: () => void;
+}) {
+  const lostRef = useRef(false);
+  const onLostRef = useRef(onLost);
+  onLostRef.current = onLost;
+
   useEffect(() => {
-    if (!map) return;
-    return observeVisibility({
-      onResume: () => {
-        if (!paintedRef.current) map.moveCamera({});
-      },
-    });
-  }, [map]);
+    const pane = paneRef.current;
+    if (!pane) return;
+    const rebuildIfVisible = () => {
+      if (!lostRef.current || document.visibilityState !== 'visible') return;
+      lostRef.current = false;
+      onLostRef.current();
+    };
+    const onContextLost = () => {
+      lostRef.current = true;
+      rebuildIfVisible();
+    };
+    pane.addEventListener('webglcontextlost', onContextLost, true);
+    const stopWatching = observeVisibility({ onResume: rebuildIfVisible });
+    return () => {
+      pane.removeEventListener('webglcontextlost', onContextLost, true);
+      stopWatching();
+    };
+  }, [paneRef]);
   return null;
 }
 
@@ -542,10 +566,30 @@ function MapPaneInner({
   // Delete it if vis.gl ever makes the status recoverable.
   const retryMap = useCallback(() => {
     __resetModuleState();
+    rebuildsRef.current = 0;
+    setAttempt((n) => n + 1);
+  }, []);
+  // **A lost context rebuilds, up to a point** — see `ContextLossRecovery`. Bounded by
+  // `MAP_CONTEXT_LOSS_REBUILDS` because a rebuild is a billed instantiation (§4) and a
+  // machine whose GPU keeps dropping contexts would otherwise rebuild forever; past the
+  // bound it degrades to the error state, where a human tap is the throttle. A ref rather
+  // than state: it must not re-render the marker subtree, and the human retry above
+  // resets it because that is a person saying "start over".
+  const rebuildsRef = useRef(0);
+  const recoverContext = useCallback(() => {
+    if (rebuildsRef.current >= MAP_CONTEXT_LOSS_REBUILDS) {
+      setMapFailed(true);
+      return;
+    }
+    rebuildsRef.current += 1;
     setAttempt((n) => n + 1);
   }, []);
   return (
     <div className="map-pane" ref={paneRef}>
+      {/* OUTSIDE the branch below, deliberately: the pane element is what carries the
+          capture listener, and it has to keep hearing a context die even once the canvas
+          has been swapped for `ErrorState`. */}
+      <ContextLossRecovery paneRef={paneRef} onLost={recoverContext} />
       {mapFailed ? (
         <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
       ) : (
@@ -652,7 +696,6 @@ function MapPaneInner({
           {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
           <PinDensity paneRef={paneRef} />
-          <ResumeNudge painted={tilesPainted} />
           {/* The device-pass panel's zoom readout (ADR-0146 §5). Deliberately `PinDensity`'s
             shape and position: stateless, null-rendering, one listener — so it cannot
             re-render this subtree, which is what keeps a dev tool clear of a marker

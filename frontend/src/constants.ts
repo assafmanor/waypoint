@@ -220,6 +220,21 @@ export const LOCAL_READ_TIMEOUT_MS = {
 export const MAP_LOAD_TIMEOUT_MS = {
   TILES: 4_000,
 } as const;
+
+/** **How many times a lost GPU context may rebuild the map before we stop trying**
+ *  (field report #35's real cause, ADR-0121's 2026-08-14 amendment).
+ *
+ *  A phone reclaims a backgrounded page's WebGL context, and the canvas that comes back is
+ *  blank forever — measured at 26s+ with no cue, no error and no recovery, because the
+ *  tiles watchdog guards only the FIRST paint and `tilesPainted` is already true by then.
+ *  The only cure is a fresh `google.maps.Map`, so a loss rebuilds.
+ *
+ *  It is BOUNDED because a rebuild is a billed instantiation (ADR-0121 §4) and a machine
+ *  whose GPU keeps dropping contexts would otherwise rebuild forever. Three is "twice more
+ *  than the once a normal resume needs": past it the map degrades to `ErrorState`, where a
+ *  human tap is the throttle — the posture §4 already takes for retry. The count is per
+ *  mount, and a human retry resets it. */
+export const MAP_CONTEXT_LOSS_REBUILDS = 3;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',
 } as const;

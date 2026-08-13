@@ -163,11 +163,7 @@ class FakeZoomMap {
     const c = this.centre;
     return { lat: () => c.lat, lng: () => c.lng };
   }
-  /** Counted, because the resume nudge's whole payload is an ARGUMENT-LESS call — it
-   *  moves nothing on purpose, so nothing about the camera's state can witness it. */
-  moveCameras = 0;
   moveCamera(at: { center?: { lat: number; lng: number }; zoom?: number }) {
-    this.moveCameras += 1;
     if (at.center) this.centre = at.center;
     if (at.zoom != null) this.zoom = at.zoom;
   }
@@ -207,6 +203,7 @@ import {
   DRAG_CLICK_SWALLOW_MS,
   DRAG_HOLD_MS,
   MAP_CONNECTOR,
+  MAP_CONTEXT_LOSS_REBUILDS,
   MAP_LOAD_TIMEOUT_MS,
   MAP_ZOOM,
 } from '../../constants';
@@ -1107,36 +1104,90 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     expect(moduleReset.calls).toBe(before + 1);
   });
 
-  /* Field report #35's FIFTH cause, and the owner's own observation is the whole finding:
-     "After going to another app and then returning to the map it loaded." Switching apps
-     fetches nothing, clears no global and builds no map — so the map was already alive and
-     simply never rendered. It needed a nudge, not a retry, which is also why a retry was
-     inert while a restart was not. */
-  describe('a resumed tab nudges a map that never painted', () => {
+  /* **Field report #35's real cause**, reproduced deterministically with
+     `WEBGL_lose_context` in a real browser before any of this was written: a phone reclaims
+     a backgrounded page's GPU context, and the canvas that comes back is blank FOREVER —
+     measured at 26s+ with no cue, no error and no recovery, because the tiles watchdog
+     guards only the first paint and `tilesPainted` is already true by then. The screenshot
+     matches field report #28 word for word. Session 247 declined to act on this event
+     believing a post-paint loss is "recovered mid-session"; it is not. */
+  describe('a lost GPU context rebuilds the map', () => {
+    const setVisibility = (state: 'visible' | 'hidden') =>
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
     const resume = () => {
-      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      setVisibility('visible');
       act(() => void document.dispatchEvent(new Event('visibilitychange')));
     };
+    /** The event as the browser fires it: on the CANVAS, and it does not bubble. */
+    const loseContext = () =>
+      act(() => {
+        (
+          document.querySelector('[data-map]') ?? document.querySelector('.map-pane')!
+        ).dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
+      });
 
-    it('re-lays out a map whose tiles never arrived', () => {
-      const map = new FakeZoomMap();
-      mapStub.current = map;
+    afterEach(() => setVisibility('visible'));
+
+    it('rebuilds the canvas when the context dies while the tab is visible', () => {
       paint();
-      const before = map.moveCameras;
-      resume();
-      expect(map.moveCameras).toBe(before + 1);
+      const before = document.querySelector('[data-map]');
+      loseContext();
+      const after = document.querySelector('[data-map]');
+      expect(after).toBeTruthy();
+      // A NEW element: the key bumped, so this is a fresh map with a live context rather
+      // than the dead one nursed back — `restoreContext()` returns the DEFAULT camera.
+      expect(after).not.toBe(before);
     });
 
-    it('never touches a canvas that is already painting', () => {
-      // The gate: a working map must not be poked on every app switch, or the fix
-      // becomes a camera driver nobody asked for (ADR-0129 §3).
-      const map = new FakeZoomMap();
-      mapStub.current = map;
+    it('hears the event through the CAPTURE phase, since it does not bubble', () => {
+      // The listener is on the pane, not the canvas, so it survives Google replacing its
+      // own canvas — but that only works because capture reaches a non-bubbling event.
       paint();
-      act(() => tilesLoaded.fire?.());
-      const before = map.moveCameras;
+      const before = document.querySelector('[data-map]');
+      act(() => {
+        document
+          .querySelector('[data-map]')!
+          .dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
+      });
+      expect(document.querySelector('[data-map]')).not.toBe(before);
+    });
+
+    it('waits for the tab to come back before rebuilding', () => {
+      // The loss happens while backgrounded, and a map built while the page is hidden is
+      // the failure that started all of this — so the rebuild waits for someone to be there.
+      paint();
+      const before = document.querySelector('[data-map]');
+      setVisibility('hidden');
+      loseContext();
+      expect(document.querySelector('[data-map]')).toBe(before);
       resume();
-      expect(map.moveCameras).toBe(before);
+      expect(document.querySelector('[data-map]')).not.toBe(before);
+    });
+
+    it('gives up after the bound rather than rebuilding forever', () => {
+      // A rebuild is a billed instantiation (ADR-0121 §4), so a GPU that keeps dropping
+      // contexts must degrade to the error state rather than loop.
+      vi.useFakeTimers();
+      paint();
+      for (let i = 0; i < MAP_CONTEXT_LOSS_REBUILDS; i++) {
+        expect(document.querySelector('[data-map]')).toBeTruthy();
+        loseContext();
+      }
+      loseContext();
+      expect(document.querySelector('[data-map]')).toBeNull();
+      expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
+    });
+
+    it('a human retry restores the budget, because that is a person saying try again', () => {
+      vi.useFakeTimers();
+      paint();
+      for (let i = 0; i <= MAP_CONTEXT_LOSS_REBUILDS; i++) loseContext();
+      expect(screen.getByRole('alert')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+      const rebuilt = document.querySelector('[data-map]');
+      expect(rebuilt).toBeTruthy();
+      loseContext();
+      expect(document.querySelector('[data-map]')).not.toBe(rebuilt);
     });
   });
 
