@@ -30,6 +30,10 @@ const apiError: { fire: ((error: unknown) => void) | undefined } = { fire: undef
 /** The base map's success signal — a real `<Map>` fires this once tiles paint. A test
  *  calls it (or doesn't, to exercise the watchdog) exactly like `googleTap` above. */
 const tilesLoaded: { fire: (() => void) | undefined } = { fire: undefined };
+/** vis.gl's module-level loading status, which is write-once and survives every remount —
+ *  the third cause of field report #35. The stub counts the resets rather than modelling the
+ *  status, because what the pane owes is to CLEAR that global before rebuilding over it. */
+const moduleReset = { calls: 0 };
 vi.mock('@vis.gl/react-google-maps', () => ({
   // The real enum's shape (`index.d.ts`'s `APILoadingStatus`) — `MapPane` reads it by
   // member name to publish the dev diagnostic, so the stub has to carry the same names.
@@ -112,6 +116,9 @@ vi.mock('@vis.gl/react-google-maps', () => ({
       data-color={props.strokeColor}
     />
   ),
+  __resetModuleState: () => {
+    moduleReset.calls += 1;
+  },
   // `null` by default — the honest stub, since there is no map — but settable, because
   // the dot tier (ADR-0128 §1) is decided from the map's own zoom. The fake below is
   // deliberately inert for the CAMERA (no bounds, a 0x0 div) so setting it cannot make
@@ -1043,6 +1050,24 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
     // A fresh attempt is loading again, not still showing the failed one's last word.
     expect(screen.getByText(t.map.loading)).toBeTruthy();
+  });
+
+  // Field report #35's THIRD cause, and the one that made the previous two fixes read as no
+  // fix at all. vis.gl keeps the Maps-API loading status in module state and writes it once,
+  // so a single failed or stalled load leaves it at FAILED/LOADING for the life of the page:
+  // `useApiIsLoaded()` stays false, `new google.maps.Map()` is never called, and a `key` bump
+  // rebuilds the component over a dead loader — the retry that "does nothing", cured only by
+  // restarting the app. Reproduced in real Chrome by failing the first Maps script fetch: the
+  // retry then re-fetched it SUCCESSFULLY (`google.maps.Map` present) and still painted no
+  // canvas. So the retry has to clear the page's state, not only the component's.
+  it('retry clears the library-level loading status, not just its own subtree', () => {
+    vi.useFakeTimers();
+    const before = moduleReset.calls;
+    paint();
+    act(() => apiError.fire?.(new Error('boom')));
+    expect(moduleReset.calls).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    expect(moduleReset.calls).toBe(before + 1);
   });
 
   it('retry remounts a fresh map, never reusing the failed instance', async () => {
