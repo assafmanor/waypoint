@@ -387,13 +387,15 @@ function MapPaneInner({
   );
   // **A load failure is a third reason to be list-only, never a fourth grammar**
   // (field report #28; ADR-0121's 2026-08-11 amendment). `onError` below catches a
-  // failed *script* load (bad key, blocked network) — but our own markers are DOM
-  // overlays that render independently of Google's tile layer, so a script that
-  // loaded fine and never painted a tile says nothing through it. Google exposes no
-  // event for THAT, so it is `lib/deadline.ts`'s own heuristic: `onTilesLoaded`
-  // never firing within `MAP_LOAD_TIMEOUT_MS.TILES` of construction is treated as a
-  // failure too. Either failure clears the canvas for `ErrorState`, in the pane's
-  // own slot — the place list beside it is untouched and still useful.
+  // failed *script* load (bad key, blocked network), which clears the canvas for
+  // `ErrorState` in the pane's own slot — the place list beside it is untouched and
+  // still useful.
+  //
+  // **This is now the SCRIPT failure only** (ADR-0121's 2026-08-13 amendment). The
+  // tiles watchdog used to land here too, and that was the defect: expiry unmounted
+  // the whole `<APIProvider>` subtree, so an in-flight load was destroyed at the bound
+  // and every retry restarted from zero — a map that needed longer than the bound could
+  // never finish, no matter how many times you asked. See `tilesLate` below.
   const [mapFailed, setMapFailed] = useState(false);
   // Bumped on retry so the `<APIProvider>` subtree below remounts under a fresh
   // `key` — never reused: ADR-0121 §4's one-instantiation-per-visit invariant means
@@ -409,6 +411,17 @@ function MapPaneInner({
   // same boolean rendered, not a second mechanism, and it resets with `[attempt]` below so a
   // retry says "loading" again rather than staying on the failed attempt's last word.
   const [tilesPainted, setTilesPainted] = useState(false);
+  // **The tiles took longer than the bound, and that is all it means** (ADR-0121's
+  // 2026-08-13 amendment; owner: the 20s bound was _"waiting 20 seconds for nothing"_).
+  // Our own markers being on screen proves the script loaded and the map constructed, so
+  // while the attempt is still alive we have no evidence of a FAILURE — only of slowness.
+  // So the wait's own slot changes its words and gains a way out, the canvas stays live
+  // underneath, and `tilesPainted` retires this by itself if the tiles do land.
+  //
+  // Keeping the instance is also the CHEAPER branch under ADR-0121 §4, which counts
+  // instantiations rather than seconds: tearing down and retrying is what buys a second
+  // billed load. So this tightens §4 rather than bending it.
+  const [tilesLate, setTilesLate] = useState(false);
   const tilesLoadedRef = useRef<(() => void) | null>(null);
   // Dev-only, and the zero point for the elapsed reading below — stamped here rather than
   // anywhere else because `withDeadline` starts counting on the next line, so the number the
@@ -417,6 +430,7 @@ function MapPaneInner({
   useEffect(() => {
     setMapFailed(false);
     setTilesPainted(false);
+    setTilesLate(false);
     // The device-pass capture (§1b, backlog workstream M) rides on this attempt's OWN
     // signals rather than a second probe — cleared here so a retry does not show the
     // FAILED attempt's status while the fresh one is still loading.
@@ -435,7 +449,7 @@ function MapPaneInner({
       MAP_LOAD_TIMEOUT_MS.TILES,
       () => new Promise<void>((resolve) => (tilesLoadedRef.current = resolve)),
     ).catch((error) => {
-      if (live && error instanceof PhaseTimeoutError) setMapFailed(true);
+      if (live && error instanceof PhaseTimeoutError) setTilesLate(true);
     });
     return () => {
       live = false;
@@ -582,7 +596,18 @@ function MapPaneInner({
             waits for, so this is that boolean rendered. */}
           {!tilesPainted && (
             <div className="map-loading" role="status">
-              {t.map.loading}
+              {tilesLate ? t.map.loadingSlow : t.map.loading}
+              {/* **The way out, in the wait's own slot** (ADR-0121's 2026-08-13 amendment).
+                One element with two states rather than a second surface: the words change
+                and a control appears, so §11's "one floating object over the canvas" holds
+                and there is never a moment with both a wait and an error on screen. The
+                button re-enables pointer events for itself alone — the cue around it stays
+                `none`, so the pan and the long press still belong to the canvas. */}
+              {tilesLate && (
+                <button type="button" className="map-loading-retry" onClick={retryMap}>
+                  {t.feedback.retry}
+                </button>
+              )}
             </div>
           )}
           {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
