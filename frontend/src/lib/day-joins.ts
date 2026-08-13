@@ -115,8 +115,10 @@ export interface DayBlock {
  * hour. Before this, any transition nulled `prevEnd`, so a check-in sitting between two
  * flight legs suppressed the join between them entirely — no gap AND no connection band
  * could be derived for that window at all, which is how a misplaced row was also hiding
- * a layover. (Its own half of that fix is that a floor now leaves the list before this
- * runs; this half is for the ceiling, which stays.)
+ * a layover. **This rule now carries that fix on its own**: ADR-0184's 2026-08-13
+ * amendment puts every edge back in the list, so the floor no longer leaves before this
+ * runs and the transparency test here is the only thing keeping a check-in from splitting
+ * two legs apart.
  */
 export function dayBlocks(entries: readonly DayEntry[], ctx: JoinContext): DayBlock[] {
   const blocks: DayBlock[] = [];

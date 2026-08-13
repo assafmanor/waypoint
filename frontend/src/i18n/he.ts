@@ -2243,8 +2243,18 @@ export const t = {
     // The opt-in second bound (ADR-0184). The placeholder carries the word so the empty
     // token says what it would add — `＋ עד` reads as an invitation where a bare `＋`
     // reads as a mystery. `windowCap` is the hidden caption a screen reader hears.
+    //
+    // **THE WORD IS PER EDGE, AND THAT IS A BUG FIX, NOT A NICETY.** A start edge's own
+    // time is the window's FLOOR, so the second bound is its ceiling and reads `עד`. An
+    // end edge is the other way round: the check-out time IS the deadline and the field
+    // stores `endWindowStart`, the EARLIEST you may leave. Labelling that one `עד` too
+    // invited exactly the input it cannot mean — check-out `06:00` plus `עד 11:00`, which
+    // `windowBoundIso` then rolled back a day (a larger clock on an end edge reads as
+    // yesterday) into a 19-hour window that rendered `11:00–06:00`.
     addWindow: '＋ עד',
+    addWindowFrom: '＋ מ־',
     windowCap: 'סוף החלון',
+    windowFromCap: 'תחילת החלון',
   },
   // Trip settings (ADR-0039): admin-governed. Mode-neutral chrome.
   settings: {
