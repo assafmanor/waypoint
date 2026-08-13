@@ -1,4 +1,11 @@
-// The app-wide "a new version took over, reload" notice (ADR-0181, F-13).
+// The app-wide "a new version took over, reload" notice (ADR-0181, ADR-0185).
+//
+// It is no longer the mechanism, it is the exception. A new build normally
+// installs, waits, and swaps itself in at a moment nobody is looking
+// (`lib/useAppUpdate.ts`) — this renders only when that could not happen: another
+// tab took the swap and left this one running orphaned JS, or an open sheet has
+// blocked the quiet path long enough to be worth mentioning. Which is why the
+// copy still reads in the past tense and did not need rewriting.
 //
 // Deliberately NOT in `ui/feedback/` despite being a feedback surface: that
 // directory's barrel is imported by lazy route chunks, and this file pulls in the
@@ -14,8 +21,8 @@ import { useAppUpdate } from '../lib/useAppUpdate';
 import { t } from '../i18n/he';
 
 export function AppUpdateNotice() {
-  const { updateReady, reload, dismiss } = useAppUpdate();
-  if (!updateReady) return null;
+  const { noticeVisible, reload, dismiss } = useAppUpdate();
+  if (!noticeVisible) return null;
   return (
     <div className="app-update">
       {/* `neutral`, not `warn`: nothing is wrong, and nothing failed. */}

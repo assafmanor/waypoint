@@ -107,6 +107,7 @@ import {
   type ChangeEntry,
 } from './change-feed';
 import { getNow } from '../lib/useClock';
+import { observeVisibility } from '../lib/visibility';
 import { clampDate, shiftIso } from '../lib/time';
 import { bookingLinkedEventChange } from '../lib/outbox-effects';
 import { useToast } from '../ui/Toast';
@@ -1102,17 +1103,11 @@ function TripReady({
     // goes stale. Re-run the same catch-up when the tab becomes visible again
     // after being hidden past the threshold. A true app close → reopen already
     // cold-loads fresh via the boot fetch; this covers the warm resume.
-    let hiddenAt = 0;
-    function handleVisibility() {
-      if (document.visibilityState === 'hidden') {
-        hiddenAt = getNow();
-        return;
-      }
-      const awayMs = hiddenAt === 0 ? 0 : getNow() - hiddenAt;
-      hiddenAt = 0;
-      if (awayMs >= RESYNC_AFTER_HIDDEN_MS && !isOffline()) handleOnline();
-    }
-    document.addEventListener('visibilitychange', handleVisibility);
+    const stopVisibility = observeVisibility({
+      onResume: (awayMs) => {
+        if (awayMs >= RESYNC_AFTER_HIDDEN_MS && !isOffline()) handleOnline();
+      },
+    });
 
     // F-03: a queued write dropped on flush leaves a phantom optimistic entity in
     // the reactive lists (the outbox already wrote it through to the cache). On a
@@ -1128,7 +1123,7 @@ function TripReady({
 
     return () => {
       window.removeEventListener('online', handleOnline);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      stopVisibility();
       unsubscribeFailures();
       closeSocket?.();
     };

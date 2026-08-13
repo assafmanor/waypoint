@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Navigate,
   Outlet,
@@ -64,21 +64,31 @@ import { ZeroState } from './screens/ZeroState';
 // Trip-mode Home) stays eager; the Plan surfaces, the Index (which pulls in the
 // document viewer + zoom math), and the full-page shell routes load on demand so
 // they stay out of the initial bundle — the exact win for weak connectivity abroad.
-const PlanHome = lazy(() => import('./screens/PlanHome').then((m) => ({ default: m.PlanHome })));
-const PlanDay = lazy(() => import('./screens/PlanDay').then((m) => ({ default: m.PlanDay })));
-const DayView = lazy(() => import('./screens/DayView').then((m) => ({ default: m.DayView })));
-const Index = lazy(() => import('./screens/Index').then((m) => ({ default: m.Index })));
-const MapView = lazy(() => import('./screens/Map').then((m) => ({ default: m.MapView })));
-const AllTrips = lazy(() => import('./screens/AllTrips').then((m) => ({ default: m.AllTrips })));
-const CreateTrip = lazy(() =>
+// `lazyRoute`, never `lazy` directly (ADR-0185): a chunk that 404s because the
+// build moved underneath the page takes the whole app down through a bare `lazy`.
+const PlanHome = lazyRoute(() =>
+  import('./screens/PlanHome').then((m) => ({ default: m.PlanHome })),
+);
+const PlanDay = lazyRoute(() => import('./screens/PlanDay').then((m) => ({ default: m.PlanDay })));
+const DayView = lazyRoute(() => import('./screens/DayView').then((m) => ({ default: m.DayView })));
+const Index = lazyRoute(() => import('./screens/Index').then((m) => ({ default: m.Index })));
+const MapView = lazyRoute(() => import('./screens/Map').then((m) => ({ default: m.MapView })));
+const AllTrips = lazyRoute(() =>
+  import('./screens/AllTrips').then((m) => ({ default: m.AllTrips })),
+);
+const CreateTrip = lazyRoute(() =>
   import('./screens/CreateTrip').then((m) => ({ default: m.CreateTrip })),
 );
-const JoinTrip = lazy(() => import('./screens/JoinTrip').then((m) => ({ default: m.JoinTrip })));
-const TripSettings = lazy(() =>
+const JoinTrip = lazyRoute(() =>
+  import('./screens/JoinTrip').then((m) => ({ default: m.JoinTrip })),
+);
+const TripSettings = lazyRoute(() =>
   import('./screens/TripSettings').then((m) => ({ default: m.TripSettings })),
 );
 import { DevTimeTravel } from './dev/DevTimeTravel';
-import { getNow, useClock } from './lib/useClock';
+import { useClock } from './lib/useClock';
+import { lazyRoute } from './lib/lazy-chunk';
+import { observeVisibility } from './lib/visibility';
 import { useShrinkToFit } from './lib/useShrinkToFit';
 import {
   DEFAULT_TRIP_ICON,
@@ -108,8 +118,8 @@ import { ltrIsolate } from './lib/bidi';
 import { readDurationMs } from './lib/motion';
 import { memberCluster } from './lib/member-cluster';
 import { useNarrowScreen } from './lib/useMediaQuery';
-const UserSettings = lazy(() => import('./screens/UserSettings'));
-const UserPicture = lazy(() => import('./screens/UserPicture'));
+const UserSettings = lazyRoute(() => import('./screens/UserSettings'));
+const UserPicture = lazyRoute(() => import('./screens/UserPicture'));
 
 // Small tail added past the transition's own duration before disarming the
 // mode-switch class, so we never clear it a frame early (which would snap the
@@ -534,22 +544,17 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // the view); both listen independently. Refs keep the listener bound once.
   const modeRef = useRef(mode);
   modeRef.current = mode;
-  useEffect(() => {
-    let hiddenAt = 0;
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        hiddenAt = getNow();
-        return;
-      }
-      const awayMs = hiddenAt === 0 ? 0 : getNow() - hiddenAt;
-      hiddenAt = 0;
-      if (!shouldResetToHomeOnResume(awayMs, modeRef.current)) return;
-      closeAllOverlays();
-      navigate('/', { replace: true });
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [navigate, closeAllOverlays]);
+  useEffect(
+    () =>
+      observeVisibility({
+        onResume: (awayMs) => {
+          if (!shouldResetToHomeOnResume(awayMs, modeRef.current)) return;
+          closeAllOverlays();
+          navigate('/', { replace: true });
+        },
+      }),
+    [navigate, closeAllOverlays],
+  );
   // Mode-switch transition (design-language: Motion). data-switching arms the
   // chrome transition, direction-scoped: Plan→Trip (going live) is the cinematic
   // beat, Trip→Plan (stand-down) the quieter return. It MUST land in the same

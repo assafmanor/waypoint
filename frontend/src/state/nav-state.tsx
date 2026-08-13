@@ -812,6 +812,14 @@ export function useCloseAllOverlays(): () => void {
   return useNav().closeAllOverlays;
 }
 
+/** Is any overlay layer open right now? Returns the QUESTION, not the answer —
+ *  the stack is a ref, so this deliberately does not re-render its caller. Asked
+ *  by the automatic build swap (ADR-0185) at the moment it is about to reload:
+ *  an open sheet is half-filled work, and this is the one registry that knows. */
+export function useHasOverlay(): () => boolean {
+  return useNav().hasOverlay;
+}
+
 /** Marks that the in-trip shell is mounted, so `resolveBack` applies the in-trip
  *  precedence (tab → Home → /trips) rather than the shell-route rules. */
 export function useMarkInsideTrip() {

@@ -1,9 +1,13 @@
 # 0181 — A swapped build **announces itself**, and the reload is the user's
 
-**Status:** Accepted (2026-08-10) — built the same day.
+**Status:** Accepted (2026-08-10) — built the same day. **§1 and §3 superseded by [0185](0185-a-build-swaps-whole-or-not-at-all.md) (2026-08-13).**
 **Date:** 2026-08-10
 **Session note:** [`planning/2026-08-10-session-239-the-build-swapped-under-you.md`](../planning/2026-08-10-session-239-the-build-swapped-under-you.md)
 **Mockup:** [`mockups/sw-update-prompt-v1.html`](../../mockups/sw-update-prompt-v1.html) (§1–§3)
+
+> **Read 0185 first if you are here about the service worker.** The defect §1 accepts as a bounded cost — the open tab running old JS against a new precache — turned out to be the blank-screen freeze the owner reported, because the deploy removes the old chunks from the server too and this app had no error boundary to catch the failed import. §3's rejection of `'prompt'` does not survive that: "an offline reload would still run stale JS" is a category error, since a whole old build works and half of one does not. `registerType` is now `'prompt'` with `skipWaiting: false`, and the banner below is the exception rather than the mechanism.
+>
+> **§2 stands and is extended.** Its reading of the plugin's client source is still the right method and still correct for `autoUpdate`; 0185 §3 found the same class of trap on the `'prompt'` side — where `onNeedReload` is gated on a workbox-window heuristic that skips it for any tab older than a minute — by running two builds against a live tab rather than by reading. §4–§7 are unchanged.
 
 **Amends in place:**
 

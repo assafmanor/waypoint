@@ -10,6 +10,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { ERROR_CODE } from '@waypoint/shared';
+import { REVALIDATE } from './static-cache';
 
 // Where the production image puts the built PWA; never exists in dev (ADR-0020).
 export const STATIC_ROOT = join(__dirname, '..', '..', 'public');
@@ -63,7 +64,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       isHtmlNav &&
       (status === HttpStatus.NOT_FOUND || status === HttpStatus.UNAUTHORIZED)
     ) {
-      res.sendFile(this.spaIndexPath);
+      // The shell is never cached past a revalidation (static-cache.ts): it names
+      // the current build's hashed chunks, and a deploy deletes the previous ones.
+      res.sendFile(this.spaIndexPath, { headers: { 'Cache-Control': REVALIDATE } });
       return;
     }
 
