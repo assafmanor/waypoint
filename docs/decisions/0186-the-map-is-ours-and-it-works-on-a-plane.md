@@ -62,6 +62,16 @@ PMTiles is a single-file archive addressed by HTTP range requests, and the same 
 - **Before a download exists**, the protocol range-reads the archive **through our backend**, which fronts the upstream source. Same renderer, same style, same code path, just a network read.
 - **After a download exists**, the protocol reads the local archive. Same everything, no network.
 
+> **Amended 2026-08-13 (session 263c), on the owner asking how large the upstream archive actually is.** It is **127.88 GiB**, and that number was quietly shaping the design in the wrong direction — it made "front the upstream source" read as _proxy every tile range request_, because mirroring 128 GB is obviously unattractive. **We never need the planet.** What we need are slices, and the slices are small: **42.7 MB** for the whole world at z0–6, **22.7 MB** for a city at z0–14. So the backend **builds and stores extracts**, and fetches from upstream **once per area — ever** (5 requests for the world layer, 40 for Tokyo), rather than once per tile forever.
+>
+> Three things fall out, and the third is the one that settles the fork Phase 1 was carrying:
+>
+> - **Storage is a non-issue at this scale.** One world layer plus (trips × areas) × ~23 MB: five active trips at three areas each is **~350 MB total**, all of it re-derivable. That is a volume, not a cost decision.
+> - **Latency stops being a question.** Tiles are served from our own disk instead of round-tripping a range request to another continent per tile.
+> - **The hotlinking courtesy resolves itself**, and in the direction Protomaps' own docs ask for — _"copy the tileset to your own Cloud Storage"_. We copy the ~23 MB we need rather than all 128 GB, and never touch their bucket on a user's tile fetch.
+>
+> **So there is no range-proxy.** The extract is the download artefact Phase 3 needs anyway, and once it exists, serving the online case from it is free. One artefact, both jobs.
+
 There is no "offline mode" branch in the renderer, and no second code path to keep in step. Offline is the absence of a fetch, not a feature flag.
 
 **Remote reads go through our backend, never straight to a vendor** — the rule ADR-0108/0110 already set for every Google call, applied to tiles for the same reasons: any key stays server-side, we can cache, and we can change source without shipping a client.
@@ -72,7 +82,7 @@ The naive model — a bounding box per trip — is wrong, and the owner is who f
 
 So the unit is neither the trip nor the country. It is **the coordinates the trip actually contains**:
 
-- **A coarse world layer, z0–6, downloaded once and shared by every trip.** A few MB. Nowhere is ever blank: coastlines, borders, major cities, everywhere on earth. This is the whole answer to "places outside the trip countries" — everywhere is _some_ map, just coarser.
+- **A coarse world layer, z0–6, downloaded once and shared by every trip.** Nowhere is ever blank: coastlines, borders, major cities, everywhere on earth. This is the whole answer to "places outside the trip countries" — everywhere is _some_ map, just coarser. **Measured 2026-08-13: 42.7 MB** (4s, 5 range requests). This paragraph originally guessed _"a few MB"_ and that was wrong by an order of magnitude — it is a real one-time download, though still a one-time one. **z0–6 rather than z0–8 is now a measured choice, not a taste:** z0–8 is **525.6 MB**, twelve times the bytes for detail that per-cluster extracts already supply wherever anyone actually goes. If 42.7 MB proves too much on a phone, the lever is z0–5, not the cluster zoom.
 - **One z7–14 extract per geographic cluster of the trip's places.** Cluster the coordinates, box each cluster, and skip the empty space between them.
 - **Layovers need no special case.** A flight booking's endpoints are already `Place` rows with coordinates — that is what ADR-0166 §18's airport labelling is built on. Cluster over _all_ of a trip's places, including booking endpoints, and a layover airport is simply another cluster with a small box around it.
 - **Growth is a top-up, not a re-download.** A place added in a new region adds one small extract.
@@ -169,7 +179,7 @@ The owner asked to see it before committing: _"I'd like to try it and see how it
 ## Still open
 
 - **Phase 0(a), the WebGL question** — untouched, and still the one that decides vector-vs-raster. (0(b) and 0(c) are closed by the amendment above; 0(d), iOS storage headroom, still needs the owner's device — though at 22.7 MB per city it is a much smaller worry than it was.)
-- **Whether the coarse world layer is z0–6 or a different floor** — chosen for a few MB and "nowhere is blank", not measured.
+- ~~**Whether the coarse world layer is z0–6 or a different floor**~~ — **measured 2026-08-13**: z0–6 is 42.7 MB against z0–8's 525.6 MB, so z0–6 stands and z0–5 is the lever if it must come down. See §4.
 - **Cluster geometry** — the radius that separates two clusters from one, and the padding around each box. A number to measure against real trips, not to pick here.
 - **The grace window in §6 rule 1**, and the byte budget in rule 3. Both are owner-facing numbers.
 - **Whether the budgeted-LRU store takes document blobs later** (§6). Named so it is a decision rather than a drift.
