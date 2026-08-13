@@ -1,7 +1,7 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
-import { NOTE_HOST_FIELD, type BookingType } from '@waypoint/shared';
+import { NOTE_HOST_FIELD, type BookingType, type DocumentType } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
@@ -1048,7 +1048,9 @@ export const t = {
       health: 'בריאות',
       other: 'אחר',
     },
-    // One short word per card in the picker grid, so eight of them fit three to a row.
+    // One short word per pill — in the type picker (`DocumentTypePills`) and, since
+    // ADR-0052 §7, on the section's filter chips too. Short is what lets eight of them ride
+    // one scrollable row instead of three rows of cards.
     type: {
       passport: 'דרכון',
       visa: 'ויזה',
@@ -1058,6 +1060,42 @@ export const t = {
       insurance: 'ביטוח',
       health: 'בריאות',
       other: 'אחר',
+    },
+    // **Extra words the search matches, never displayed** — the same idea as
+    // `index.bookingTypeSynonyms`, and it earns its place for the same reason: what people
+    // type is the thing in their hand, not the category we filed it under. Deliberately
+    // short. Bookings learned that an over-broad list makes every row answer the wrong
+    // query, so a type whose label is already the word people would type (`ויזה`, `ביטוח`)
+    // gets nothing, and `other` gets nothing by definition.
+    typeSynonyms: {
+      passport: ['פספורט'],
+      visa: [],
+      license: ['נהיגה', 'רישיון נהיגה'],
+      // The one type whose label is the LEAST likely thing typed: you look for the boarding
+      // pass or the rail pass, not for the generic word `כרטיס`.
+      ticket: ['בורדינג', 'בורדינג פס', 'עלייה למטוס', 'טיסה', 'רכבת'],
+      // A confirmation is remembered by what was booked, which is exactly the vocabulary
+      // `BOOKING_TYPE` uses next door — so a hotel confirmation answers `מלון`.
+      reservation: ['אישור', 'מלון', 'מסעדה', 'לינה'],
+      insurance: [],
+      health: ['חיסון', 'חיסונים', 'תרכיב'],
+      other: [],
+    } as const satisfies Record<DocumentType, readonly string[]>,
+    filter: {
+      all: 'הכל',
+      categoryLabel: 'סינון לפי סוג',
+      noResults: 'אין מסמכים מהסוג הזה',
+    },
+    search: {
+      button: 'חיפוש מסמכים',
+      modeTitle: 'חיפוש מסמכים',
+      // Names the type label as a thing you can search by, because it is the half of this
+      // that nobody would guess — the same service `index.search.placeholder` does with
+      // `או קטגוריה`.
+      placeholder: 'חפשו לפי שם או סוג…',
+      clear: 'נקה חיפוש',
+      backAria: 'סגירת חיפוש',
+      noResults: 'לא נמצאו מסמכים',
     },
     upload: {
       title: 'העלאת מסמך',

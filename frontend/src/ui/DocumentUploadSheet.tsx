@@ -4,12 +4,12 @@
 // blocking on the network — closes the sheet immediately and hands the upload to
 // the offline outbox (ADR-0056): the file flushes in the background and works
 // offline like every other write. The pick control is the shared FilePicker and
-// the type grid `DocumentTypeGrid` (ADR-0086); the header icon tracks the type, and
+// the type row `DocumentTypePills` (ADR-0086); the header icon tracks the type, and
 // shows `other`'s until one is chosen — the form opens on nothing.
 import { useId, useState } from 'react';
 import { DOCUMENT_TYPE, MAX_DOCUMENT_SIZE_BYTES, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
-import { DocumentTypeGrid } from './DocumentTypeGrid';
+import { DocumentTypePills } from './DocumentTypePills';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
 import { FilePicker } from './primitives/FilePicker';
@@ -129,7 +129,7 @@ export function DocumentUploadSheet({
         </div>
 
         <Field label={t.docs.upload.typeLabel}>
-          <DocumentTypeGrid value={type} onChange={setType} />
+          <DocumentTypePills value={type} onChange={setType} />
         </Field>
 
         <Field label={t.docs.upload.titleLabel} htmlFor={nameId}>

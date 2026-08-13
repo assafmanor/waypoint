@@ -6,7 +6,7 @@
 import { useId, useState } from 'react';
 import { type DocumentSummary, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
-import { DocumentTypeGrid } from './DocumentTypeGrid';
+import { DocumentTypePills } from './DocumentTypePills';
 import { RowManageSheet } from './domain';
 import { HostNotes, useHostNoteCount } from './HostNotes';
 import { Icon } from './Icon';
@@ -133,7 +133,7 @@ export function DocumentManageSheet({
               />
             </Field>
             <Field label={t.docs.upload.typeLabel}>
-              <DocumentTypeGrid value={type} onChange={setType} disabled={busy} />
+              <DocumentTypePills value={type} onChange={setType} disabled={busy} />
             </Field>
             <FormActions
               primary={{ label: t.docs.manage.save, onClick: save, busy }}
