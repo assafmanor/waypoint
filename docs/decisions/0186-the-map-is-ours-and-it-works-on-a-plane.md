@@ -150,9 +150,25 @@ Each phase is reviewable alone, and none depends on a later one.
 - **Phase 3 — download, storage and retention.** The budgeted-LRU store, the automatic/prompt policy, the manage surface, the eviction rules. Offline is the absence of a fetch, so this phase is about §5 and §6 rather than about rendering.
 - **Phase 4 — delete the old world.** Google renderer, its config vars, the watchdog, the billing invariant, and every comment that exists because of them.
 
+## Amendment (2026-08-13, session 263b) — drawn, rendered, and three of Phase 0's unknowns closed
+
+The owner asked to see it before committing: _"I'd like to try it and see how it looks. I'd like it to kind of look similar to how it is with Google maps and also support dark and light themes."_ [`mockups/map-basemap-ours-v1.html`](../../mockups/map-basemap-ours-v1.html) is that — and it is the first map mockup in this repo whose **canvas is real**, since every predecessor had to fake the base in CSS behind a browser key and a billed load.
+
+**Phase 0(b) and 0(c) are answered, and 0(c) was wrong by an order of magnitude.** `pmtiles extract` does work against the remote archive: central Tokyo (139.55,35.55 → 139.90,35.80, ~32×28 km) at z0–14 is **22.7 MB**, pulled from the 127.88 GiB daily build in **13.4 s over 40 HTTP range requests**. §4's storage argument is therefore far safer than it claimed — a four-cluster trip lands well under 100 MB, which changes the §5/§6 budget from a tight constraint to a comfortable one. The backend never needs the planet.
+
+**§7 is confirmed rather than assumed.** ADR-0125's palette ported almost verbatim, and the reason is that ADR's own §8: it wrote the vocabulary as **relationships** (warm land against cool water, built achromatic against chromatic nature, everything below chroma 14) rather than as a list of Google feature ids, and relationships are what survive a vendor change. Its §7 pedestrian mall on `--paper` exactly becomes a single flavour key. Both themes come from **one download**, restyled on a live map — the thing two latched Map IDs cannot do (ADR-0121 §11).
+
+**Three findings the render produced and no amount of reading would have:**
+
+1. **`.map-pin` must sit INSIDE the marker element, never be it.** MapLibre positions its marker with `.maplibregl-marker { position: absolute }`; `map-pane.css` sets `.map-pin { position: relative }` (ADR-0123 — the pin's parts position against it). Both are one class deep, so **whichever stylesheet loads last wins**, ours does, and every marker fell into normal flow: six pins stacked into a measured 204px column, painting outside the pane and clipped by its `overflow: hidden`. §2's "the pins port untouched" is true **only** with the wrapper — which is also what vis.gl's `AdvancedMarker` does today, and why the collision has never existed. A build that hands `.map-pin` straight to `new maplibregl.Marker({element})` reintroduces it.
+2. **The white ring does nothing in dark.** ADR-0125 §8 describes the pin hues running "with a white ring and a shadow". Measured here, that ring is **1.31:1** against park in light and **1.01:1** in dark, where it is `--card` (`#1a2740`) on a dark ground — so in dark the **fill** carries the separation alone (6.15–9.5:1). Coherent, and worth writing down: dimming the pin fills for dark would remove both separations at once.
+3. **MapLibre measures its container once, at construction**, so a pane whose box settles later needs an explicit `resize()`. The app already owns that problem — `lib/observe-resize.ts` watches the pane's own box for ADR-0122 §7's band — so a build wires `resize()` to that existing observer rather than adding a second one (rule 8).
+
+**What the mockup deliberately does not answer**, and neither does this amendment: how it reads on a phone in the hand, and whether OSM's coverage in Japan is good enough in practice. Both are device-pass questions. **Phase 0(a) — the WebGL question — is untouched and is still the one that decides vector-vs-raster.**
+
 ## Still open
 
-- **Every item in Phase 0.** None of them is asserted anywhere above; where this document needed one it says so.
+- **Phase 0(a), the WebGL question** — untouched, and still the one that decides vector-vs-raster. (0(b) and 0(c) are closed by the amendment above; 0(d), iOS storage headroom, still needs the owner's device — though at 22.7 MB per city it is a much smaller worry than it was.)
 - **Whether the coarse world layer is z0–6 or a different floor** — chosen for a few MB and "nowhere is blank", not measured.
 - **Cluster geometry** — the radius that separates two clusters from one, and the padding around each box. A number to measure against real trips, not to pick here.
 - **The grace window in §6 rule 1**, and the byte budget in rule 3. Both are owner-facing numbers.

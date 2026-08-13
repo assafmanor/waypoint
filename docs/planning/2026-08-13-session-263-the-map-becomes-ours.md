@@ -56,3 +56,21 @@ The ADR's §Still-open and Phase 0 carry these rather than the prose pretending 
 - **Actual extract size at z0–14 for a dense city**, and **iOS storage headroom** on the owner's device.
 
 The cluster radius, the box padding, the world-layer floor, the grace window and the byte budget are all named as numbers to measure or for the owner to set, not picked here.
+
+## 6. Second half of the session — the owner asked what MapLibre actually is, and then to see it
+
+**The design was approved before it was understood, and that is on the asking.** The four decisions in §2 were put as a single set using the words "MapLibre" and "PMTiles" without either being defined, and the owner's next message was _"Wait what you're saying is that we stop rendering a Google maps map? What's map Libre?"_ A design cannot be signed off on terms nobody defined. Building stopped; the answer was the separation the whole ADR turns on — a map is **data** plus **a renderer**, Google sells them as one bundle and lets you keep neither, and MapLibre is the renderer half and nothing else.
+
+Then: _"I'd like to try it and see how it looks. I'd like it to kind of look similar to how it is with Google maps and also support dark and light themes. So let's go ahead and do this and see if we like it."_
+
+So [`mockups/map-basemap-ours-v1.html`](../../mockups/map-basemap-ours-v1.html), which is the **first map mockup in this repo with a real canvas** — every predecessor fakes the base in CSS, because a Google map needs a browser key and a billed load, which is the dependency being removed.
+
+**What it settled** (folded into ADR-0186's own amendment, since that is where the numbers belong):
+
+- **Phase 0(b), yes**, and **0(c) was wrong by an order of magnitude**: central Tokyo at z0–14 is **22.7 MB**, extracted from the 127.88 GiB planet in 13.4s over 40 range requests. The storage argument is far safer than the ADR claimed.
+- ADR-0125's palette **ported almost verbatim**, and the reason is that ADR's own §8 — it wrote relationships, not a list of Google feature ids, and relationships survive a vendor change.
+- Both themes render from **one download**, restyled on a live map.
+
+**Three findings the render produced and reading would not**, which is the whole argument for the convention: `.map-pin` must sit **inside** the marker element rather than be it (MapLibre's `position: absolute` versus `map-pane.css`'s `position: relative`, both one class deep, ours loading last — six pins stacked into a measured 204px column and clipped outside the pane); the **white ring does nothing in dark** (1.31:1 against park in light, **1.01:1** in dark, where the fill carries it alone); and MapLibre **measures its container once**, so a late-settling pane needs a `resize()` wired to the `observe-resize` the app already has.
+
+**Still not answered, and named rather than glossed:** how it reads on a phone in the hand, whether OSM's Japan coverage is good enough in practice, and **Phase 0(a) — the WebGL question**, which is still what decides vector-vs-raster.
