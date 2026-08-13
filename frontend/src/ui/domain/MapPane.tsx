@@ -18,6 +18,7 @@ import {
   AdvancedMarker,
   Map,
   Polyline,
+  __resetModuleState,
   useMap,
 } from '@vis.gl/react-google-maps';
 import {
@@ -460,7 +461,36 @@ function MapPaneInner({
       publishMapReading({ apiStatus: APILoadingStatus.FAILED, apiError: String(error) });
     }
   }, []);
-  const retryMap = useCallback(() => setAttempt((n) => n + 1), []);
+  // **A retry has to reset the LIBRARY, not just our subtree** (field report #35's third
+  // cause, and the one that made the first two fixes look like they had not worked).
+  //
+  // `@vis.gl/react-google-maps` holds the Maps-API loading status in MODULE state and writes
+  // it **once**: the first attempt stamps `serializedApiParams` and only sets `LOADED` while
+  // that stamp is still empty. Every later mount therefore takes the "already loaded
+  // externally" branch, re-imports `core`/`maps` — successfully — and never moves the status
+  // off `FAILED`; a status left at `LOADING` is worse still, since the loader returns early
+  // with no error at all. Either way `useApiIsLoaded()` stays false, so vis.gl never calls
+  // `new google.maps.Map()`: the pane renders, our markers draw, the loading cue stays up,
+  // and 20s later the watchdog reports a failure on an API that is sitting there loaded.
+  // A `key` bump builds a fresh component over a dead loader, which is exactly why the
+  // Retry did nothing and only a real app restart recovered — the state it clears is the
+  // page's, not the component's. **One transient failure poisons the whole page**, and a
+  // warm resume onto a just-restored mobile link is the ordinary way to get one (the pane
+  // also unmounts and remounts as `offline` flaps there, so the poisoning can happen with
+  // nothing on screen to report it).
+  //
+  // Google's own bootstrap is already retryable — it clears its promise in `script.onerror`
+  // — so this global is the single broken link in the chain.
+  //
+  // ponytail: `__resetModuleState` is vis.gl's own test-only hook. It is the only thing that
+  // clears that global, and the alternative is `location.reload()`, which throws away the
+  // trip state to fix a canvas. Safe here because `retryMap` is only reachable from
+  // `ErrorState`, i.e. with no `APIProvider` mounted to be orphaned by the listener clear.
+  // Delete it if vis.gl ever makes the status recoverable.
+  const retryMap = useCallback(() => {
+    __resetModuleState();
+    setAttempt((n) => n + 1);
+  }, []);
   return (
     <div className="map-pane" ref={paneRef}>
       {mapFailed ? (
