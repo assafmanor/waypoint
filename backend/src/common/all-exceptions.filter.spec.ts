@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { AllExceptionsFilter } from './all-exceptions.filter';
+import { REVALIDATE } from './static-cache';
 
 function hostFor(req: { method: string; url?: string; headers: Record<string, string> }) {
   const res = {
@@ -93,7 +94,11 @@ describe('AllExceptionsFilter — SPA fallback (production)', () => {
   it('serves the SPA shell for a document navigation that 404d', () => {
     const { host, res } = hostFor(HTML_NAV);
     filter.catch(new NotFoundException(), host);
-    expect(res.sendFile).toHaveBeenCalledWith('/build/index.html');
+    // Never cached past a revalidation: the shell names the current build's
+    // hashed chunks and a deploy deletes the previous ones (ADR-0185).
+    expect(res.sendFile).toHaveBeenCalledWith('/build/index.html', {
+      headers: { 'Cache-Control': REVALIDATE },
+    });
     expect(res.status).not.toHaveBeenCalled();
   });
 

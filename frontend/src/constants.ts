@@ -125,6 +125,31 @@ export const CLOCK_TICK_MS = 1000;
  *  poll is skipped while offline, so a plane costs nothing. */
 export const SW_UPDATE_CHECK_MS = 60 * 60 * 1000;
 
+/** The three clocks the automatic build swap runs on (ADR-0185). A waiting build
+ *  is **harmless** — the tab keeps a complete, self-consistent old build — so the
+ *  only question these answer is when a reload costs the user nothing.
+ *
+ *  `IDLE_APPLY` is the foreground backstop: the phone is face-up on a table, not
+ *  in a hand. Deliberately long, because the cheap moment (the tab going hidden)
+ *  fires on every screen lock and app switch and gets there first almost always;
+ *  a short one would buy nothing and would reload pages people are reading.
+ *  `RECHECK` re-asks the safety question while an update waits — an overlay
+ *  closes, a field blurs — and is a slow poll on purpose: this runs only while an
+ *  update is pending, which ends in a reload. `NOTICE_AFTER` is when the banner
+ *  gives up on staying quiet, so it can only appear after the automatic path has
+ *  been blocked for twice as long as the idle rule waits. */
+export const SW_UPDATE_IDLE_APPLY_MS = 5 * 60 * 1000;
+export const SW_UPDATE_RECHECK_MS = 30 * 1000;
+export const SW_UPDATE_NOTICE_AFTER_MS = 10 * 60 * 1000;
+
+/** How long a self-healing reload suppresses the next one (`lib/lazy-chunk.ts`).
+ *  A chunk that 404s because the build swapped underneath the page is cured by
+ *  one reload; a chunk that 404s because it was never deployed is not, and
+ *  reloading again would spin. Wide enough that a second stale import during the
+ *  same swap is not read as a loop, short enough that an unrelated failure hours
+ *  later still gets its own cure. */
+export const CHUNK_RELOAD_COOLDOWN_MS = 60 * 1000;
+
 /** Realtime socket liveness (F-04, sync-and-offline.md "Realtime channel"). The
  *  client pings on `WS_HEARTBEAT_INTERVAL_MS`; a watchdog forces a reconnect if
  *  no frame (a `pong` or any message) lands within `WS_WATCHDOG_TIMEOUT_MS`, so a

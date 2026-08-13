@@ -111,6 +111,14 @@ export const t = {
       message: 'גרסה חדשה הותקנה',
       action: 'רענון',
     },
+    // The app-wide crash boundary (ADR-0185). It reuses `errorTitle` — an
+    // unhandled render error IS the generic failure — and adds only the one thing
+    // the user can do about it. No apology and no detail: the body has to be true
+    // of a crash nobody predicted.
+    crash: {
+      body: 'רענון יחזיר את האפליקציה לפעולה.',
+      action: 'רענון האפליקציה',
+    },
   },
   // No arrow lives in the copy: every visible arrow renders as an SVG (ui/NavArrow,
   // ui/Icon) because the Assistant body font has no arrow glyphs and the fallback
