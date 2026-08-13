@@ -242,6 +242,19 @@ export const MAP_LOAD_TIMEOUT_MS = {
  *  a minute while a map is *visibly broken* — and a map nobody can see is worth less than
  *  the load it saves. */
 export const MAP_RECOVERY_BACKOFF_MS = [0, 2_000, 8_000, 30_000, 60_000] as const;
+
+/** **How long before the map may reload the app again** (ADR-0121's second 2026-08-14
+ *  amendment). Once every backoff step has been spent on a fresh `google.maps.Map` and the
+ *  canvas is still dead, whatever is broken outlives the map object and only a new
+ *  DOCUMENT clears it — which is also the owner's own workaround: _"until you switch to
+ *  another app … restarting the app fixes it"_.
+ *
+ *  Longer than `CHUNK_RELOAD_COOLDOWN_MS` because the stakes differ: a stale chunk is a
+ *  blank app that must come back at once, where a dead map is one broken pane on a screen
+ *  whose list still works. Ten minutes is "this session has had its reload", so a device
+ *  that loses its GPU repeatedly degrades to a visible error with a manual way out rather
+ *  than reloading the app under someone every minute. */
+export const MAP_RELOAD_COOLDOWN_MS = 10 * 60 * 1000;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',
 } as const;

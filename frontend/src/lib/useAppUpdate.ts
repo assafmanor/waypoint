@@ -55,6 +55,7 @@ import {
   SW_UPDATE_RECHECK_MS,
 } from '../constants';
 import { useHasOverlay } from '../state/nav-state';
+import { isEditingField } from './guarded-reload';
 import { isOffline } from './outbox';
 import { getNow } from './useClock';
 import { observeVisibility } from './visibility';
@@ -75,16 +76,9 @@ export interface AppUpdate {
 /** Would a reload right now throw away something the user typed or opened? The
  *  page being hidden is not an exemption — an app switched away from mid-form is
  *  the most likely way to be mid-form. */
-function isEditing(): boolean {
-  const el = document.activeElement;
-  if (!(el instanceof HTMLElement)) return false;
-  return (
-    el.isContentEditable ||
-    el.tagName === 'INPUT' ||
-    el.tagName === 'TEXTAREA' ||
-    el.tagName === 'SELECT'
-  );
-}
+// Moved to `guarded-reload.ts` when the map became a second caller — same question, and
+// the map must not get a laxer rule about destroying an open form than this does.
+const isEditing = isEditingField;
 
 export function useAppUpdate(): AppUpdate {
   const [stage, setStage] = useState<SwapStage>('none');

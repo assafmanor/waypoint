@@ -715,3 +715,28 @@ The tiles watchdog previously showed `t.map.loadingSlow` and then **waited for a
 ### 4. Measured
 
 An 8-cycle soak went **3/8 → 8/8**; extended to **20/20**. The offline-flap path is 2/2 unchanged, and the never-painted path retries where it used to sit. The unit suite keeps the regression as a named test — eight losses with a paint between each must all recover — so the fixed budget cannot come back by accident.
+
+## Amendment (2026-08-14, session 266) — when rebuilding has failed, rebuilding again is not a plan
+
+The owner, after the backoff shipped: _"Reloading the map (with the button for example, or the backoff) doesn't recover the map. Once it's dead, it's dead until you switch to another app … The backoff was a good idea if reloading was the solution, but it isn't."_
+
+**That retires the whole premise of the two amendments above.** They assumed a dead canvas is a dead _map object_, curable by constructing another. It is not: a brand-new `google.maps.Map` with a brand-new canvas is still dead, so whatever is broken **outlives the map object**. Only a new **document** clears it — which is exactly the workaround the owner has had all along, restarting the app.
+
+### 1. What is honestly known, and what is not
+
+**Not reproducible here, and that is stated rather than worked around.** Everything forcible on this desktop recovers: `WEBGL_lose_context` (20/20 with the backoff), a full `Browser.crashGpuProcess` (Chrome restarts the GPU process and the map returns in ~4s), connectivity flapping (2/2), context-budget exhaustion. Desktop Chrome heals what a phone does not, so the mechanism behind the phone's failure is **still unidentified**.
+
+What is known is empirical and comes from the owner: rebuilds do not help, the retry button does not help, an app switch sometimes does, a restart always does.
+
+### 2. So the fix does the thing that is known to work
+
+Once every backoff step has been spent on a fresh map and the canvas is still dead, the pane stops pretending another rebuild will help and escalates to a **reload of the document**:
+
+- **Automatically, at the next hidden moment.** ADR-0185 chose exactly this instant for the build swap and for the same reasons: nobody is looking, nothing is mid-sentence, no overlay can be lost. It is also the owner's own workaround performed for them — the app goes to the background, quietly becomes a fresh one, and coming back finds a working map instead of a dead pane.
+- **Or immediately on a tap**, since `ErrorState`'s action now reloads rather than rebuilding something known not to recover. A deliberate tap is its own consent, so it needs no quiet-moment gate.
+
+**Guarded to once per `MAP_RELOAD_COOLDOWN_MS` (10 minutes)** through `guarded-reload.ts` — which is `lazy-chunk.ts`'s own "one reload, then stop" cooldown, extracted rather than copied now that there is a second caller (rule 8). A device that keeps losing its GPU therefore degrades to a visible error with a manual way out, instead of reloading itself under someone every minute. Ten minutes rather than the chunk's sixty seconds because the stakes differ: a stale chunk is a blank app that must return at once, a dead map is one pane on a screen whose list still works.
+
+### 3. What this is, plainly
+
+**A mitigation, not a root-cause fix.** It makes the app do automatically the one thing the owner found that always works, and it is bounded so it cannot become its own problem. The actual mechanism is still unknown, and the honest next step is not a seventh guess but a reading from the device while it is broken — which is what the diagnostic on the failed pane is for.

@@ -18,36 +18,15 @@
 // `sessionStorage`, which is per-tab and dies with it — and if storage refuses
 // (Safari private mode), we cannot tell a first attempt from a tenth and so do
 // not reload at all; the boundary shows a recoverable error instead.
+// The cooldown itself now lives in `guarded-reload.ts`: the map's dead canvas needs the
+// same "one reload, then stop" guarantee, so it was extracted rather than copied.
 import { lazy } from 'react';
 import { CHUNK_RELOAD_COOLDOWN_MS } from '../constants';
-import { getNow } from './useClock';
-
-const RELOAD_STAMP_KEY = 'waypoint:chunk-reload';
-
-function healedRecently(): boolean {
-  try {
-    const stamp = Number(window.sessionStorage.getItem(RELOAD_STAMP_KEY));
-    if (!stamp) return false;
-    return getNow() - stamp < CHUNK_RELOAD_COOLDOWN_MS;
-  } catch {
-    // No storage means no loop detection, so treat every attempt as a repeat.
-    return true;
-  }
-}
-
-function stampHeal(): void {
-  try {
-    window.sessionStorage.setItem(RELOAD_STAMP_KEY, String(getNow()));
-  } catch {
-    /* handled by healedRecently refusing to reload without storage */
-  }
-}
+import { RELOAD_GUARD_KEY, reloadOnce } from './guarded-reload';
 
 /** Exported for the boundary's copy, and for the test that proves one reload. */
 export function healChunkFailure(error: unknown): Promise<never> {
-  if (healedRecently()) return Promise.reject(error);
-  stampHeal();
-  window.location.reload();
+  if (!reloadOnce(RELOAD_GUARD_KEY.chunk, CHUNK_RELOAD_COOLDOWN_MS)) return Promise.reject(error);
   // The reload is asynchronous. Never settling keeps the Suspense fallback up
   // rather than flashing an error state onto a document that is already leaving.
   return new Promise<never>(() => {});

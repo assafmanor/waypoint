@@ -35,6 +35,7 @@ import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import { observeResize } from '../../lib/observe-resize';
 import { observeVisibility } from '../../lib/visibility';
+import { RELOAD_GUARD_KEY, reloadOnce } from '../../lib/guarded-reload';
 import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
@@ -43,6 +44,7 @@ import {
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
   MAP_RECOVERY_BACKOFF_MS,
+  MAP_RELOAD_COOLDOWN_MS,
   MAP_ZOOM,
   type PinHue,
 } from '../../constants';
@@ -495,6 +497,9 @@ function MapPaneInner({
   const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Read inside a visibility handler that must not re-subscribe on every paint. */
   const tilesPaintedRef = useRef(false);
+  /** Set once every rebuild has been spent and the canvas is still dead — see
+   *  `scheduleRecovery`. Read by the hidden-moment reload below. */
+  const unrecoverableRef = useRef(false);
 
   /** Ask for a fresh map after a delay that grows with consecutive failures.
    *
@@ -508,6 +513,24 @@ function MapPaneInner({
     pendingRef.current = setTimeout(() => {
       pendingRef.current = null;
       if (document.visibilityState !== 'visible') return;
+      // **When rebuilding has demonstrably failed, rebuilding again is not a plan.**
+      // (ADR-0121's 2026-08-14 second amendment; owner: _"Reloading the map … doesn't
+      // recover the map. Once it's dead, it's dead until you switch to another app"_.)
+      //
+      // Every step of the backoff has now been spent on fresh `google.maps.Map`
+      // instances with fresh canvases, and the map is still dead — so whatever is
+      // broken outlives the map object, and only a new DOCUMENT clears it. That is
+      // also the one cure the owner has ever found to work every time: restart the app.
+      //
+      // Guarded to once per session (`reloadOnce`) and only at a moment a reload costs
+      // nothing — `canReloadQuietly` is ADR-0185's own test, so this cannot throw away
+      // an open sheet or something being typed. If either guard refuses, we fall
+      // through to `ErrorState`, whose action offers the same reload as a deliberate tap.
+      if (consecutiveRef.current > MAP_RECOVERY_BACKOFF_MS.length) {
+        unrecoverableRef.current = true;
+        setMapFailed(true);
+        return;
+      }
       consecutiveRef.current += 1;
       setAttempt((n) => n + 1);
     }, MAP_RECOVERY_BACKOFF_MS[step]);
@@ -519,6 +542,20 @@ function MapPaneInner({
     const stop = observeVisibility({
       onResume: () => {
         if (!tilesPaintedRef.current) scheduleRecovery();
+      },
+      // **The one moment a reload is free** — ADR-0185 chose exactly this for the build
+      // swap, and for the same reason: nobody is looking, nothing is mid-sentence, and
+      // there is no overlay to lose because there is no interaction happening.
+      //
+      // It is also precisely the owner's own workaround, done for them: once every
+      // rebuild has been spent, whatever is broken outlives the map object and only a new
+      // DOCUMENT clears it — _"restarting the app fixes it"_. So the next time the app
+      // goes to the background, it quietly becomes a fresh one, and coming back finds a
+      // working map instead of a dead pane. Guarded to once per cooldown, so a device
+      // that keeps losing its GPU degrades to the visible error rather than reloading
+      // itself under someone repeatedly.
+      onHidden: () => {
+        if (unrecoverableRef.current) reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS);
       },
     });
     return () => {
@@ -611,7 +648,18 @@ function MapPaneInner({
   // trip state to fix a canvas. Safe here because `retryMap` is only reachable from
   // `ErrorState`, i.e. with no `APIProvider` mounted to be orphaned by the listener clear.
   // Delete it if vis.gl ever makes the status recoverable.
+  /** The tap on `ErrorState`. **It reloads the app once the rebuilds have been spent**,
+   *  because by then a fresh map is known not to help and the owner's own workaround —
+   *  restarting the app — is the only thing that has ever worked every time. Before that
+   *  point it is the cheaper thing: reset the loader global (session 262's cause) and
+   *  build a fresh map. */
   const retryMap = useCallback(() => {
+    if (consecutiveRef.current > MAP_RECOVERY_BACKOFF_MS.length) {
+      // A deliberate tap, so no `canReloadQuietly` gate: the person asking IS the
+      // consent. The once-per-session guard still holds, and if it refuses we fall
+      // through to rebuilding rather than doing nothing.
+      if (reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS)) return;
+    }
     __resetModuleState();
     consecutiveRef.current = 0;
     setAttempt((n) => n + 1);

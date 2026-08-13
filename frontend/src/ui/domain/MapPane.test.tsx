@@ -1211,17 +1211,63 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
       expect(document.querySelector('[data-map]')).not.toBe(first);
     });
 
-    it('never leaves the map permanently dead, however long it keeps failing', () => {
-      // The property the fixed budget broke: there is no state from which the map stops
-      // trying on its own.
-      vi.useFakeTimers();
-      paint();
-      for (let i = 0; i < 12; i++) {
+    /* **When rebuilding has demonstrably failed, rebuilding again is not a plan.**
+       The owner, after the backoff shipped: "Reloading the map (with the button for
+       example, or the backoff) doesn't recover the map. Once it's dead, it's dead until
+       you switch to another app." So once every step has been spent on a fresh map with a
+       fresh canvas and it is still dead, whatever is broken outlives the map object and
+       only a new DOCUMENT clears it — which is the owner's own workaround, restarting the
+       app. */
+    /** Every step spent, plus the cycle that reads the exhausted count — the check runs
+     *  before the increment, so the escalation lands one turn after the last step. */
+    const spendTheBackoff = () => {
+      for (let i = 0; i < MAP_RECOVERY_BACKOFF_MS.length + 2; i++) {
         loseContext();
         settleRecovery(MAP_RECOVERY_BACKOFF_MS.length - 1);
       }
-      expect(document.querySelector('[data-map]')).toBeTruthy();
-      expect(screen.queryByRole('alert')).toBeNull();
+    };
+
+    it('escalates to the error state once every rebuild has been spent', () => {
+      vi.useFakeTimers();
+      paint();
+      spendTheBackoff();
+      expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
+    });
+
+    it('reloads the app at the next hidden moment, which is when it costs nothing', () => {
+      // ADR-0185 chose exactly this moment for the build swap: nobody is looking, nothing
+      // is mid-sentence, and there is no overlay to lose.
+      vi.useFakeTimers();
+      const reload = vi.fn();
+      Object.defineProperty(window, 'location', {
+        value: { ...window.location, reload },
+        configurable: true,
+      });
+      window.sessionStorage.clear();
+      paint();
+      spendTheBackoff();
+      expect(reload).not.toHaveBeenCalled();
+      setVisibility('hidden');
+      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT reload while the map is merely rebuilding', () => {
+      // The guard that keeps this from becoming an app that restarts itself whenever a
+      // phone hiccups: only an exhausted backoff earns a reload.
+      vi.useFakeTimers();
+      const reload = vi.fn();
+      Object.defineProperty(window, 'location', {
+        value: { ...window.location, reload },
+        configurable: true,
+      });
+      window.sessionStorage.clear();
+      paint();
+      loseContext();
+      settleRecovery();
+      setVisibility('hidden');
+      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+      expect(reload).not.toHaveBeenCalled();
     });
 
     it('collapses a burst of losses into ONE pending rebuild', () => {
