@@ -140,6 +140,27 @@ Cost: the ~20px of row height §5 charged only to windowed rows is now charged t
 
 The word is now per edge — `＋ עד` / `＋ מ־`, with `סוף החלון` / `תחילת החלון` as the caption. **`windowBoundIso` is unchanged**: its roll is correct for the case it was written for (a car returned at 02:00 against a counter open from 22:00), and §8's refusal to put a threshold on window width still stands, so there is no number to reject a wide one by.
 
+### 9f. Amendment, 2026-08-13 (after §9 shipped): the strip states the edge, and the range stops reading `atMs`
+
+§9a put the stay's ambient line on its edge days and left `ambientSpanLabel` on it. Owner, off that build:
+
+> _"edge days should state 'check in from…', 'check out until…', 'car returned until' etc (and also ranges), not day 1/1, that way we can't differentiate between check in and check out."_
+
+Correct, and the screenshot is the proof: two guesthouses on one day — Lækjaborgir being **left** that morning, Setberg being **arrived at** that evening — both read `לילה 1 מתוך 1`. The same words for opposite events, and the clamp §9a inherited from ADR-0064 §C made it worse by rendering a night count on a day that is not a night.
+
+**An edge day states the edge; a middle day states the count.** `צ׳ק-אאוט · עד 09:40`, `צ׳ק-אין · 17:00–20:00`, `החזרת הרכב · עד 18:00` — and the car needs no branch, because `transitionLabel` resolves per profile (ADR-0063) and `החזרת הרכב` arrives with nobody having thought about cars. `N מתוך M` stays where where-you-are-sleeping is the only thing to say.
+
+**`${label} · ${phrase}` is not a new shape**, which is what settles it against the owner's stated preference for consistency: it is exactly what `UnplacedCommitment` rendered **in this same box** until §9a emptied it, with the same `·` and the same `מ-`/`עד` vocabulary as the transition row, the hero and the Index row. The rejected alternative was a bare label with no clock (to avoid repeating the row below it) — which would invent a third form existing nowhere else, and drop the one fact the strip is pinned to the top to deliver.
+
+Two things fall out of writing it once:
+
+- **`edgeTimePhrase` + `edgeSentence` are shared** (`lib/transitions.ts`), read by the row and the strip, off `edgeEntryOf(placement.positioned, …)` — so the two cannot print two different clocks for one edge, since the row's instant is `edgeAt`-bounded and the authored one is not.
+- **The read-out is protected and the title ellipsises** (`.day-ambient .an`), the trade `.index .bk-when` already states. A truncated guesthouse name still identifies the booking; a truncated clock is the fact the line exists for.
+
+**And a bug in §9b, caught by writing the assertion rather than by looking at the render.** The range was built from `atMs`, which for a windowed edge is not one of the window's ends — it is wherever `edgeAt` placed the row. A 17:00–20:00 check-in window pushed to a 22:00 landing rendered **`20:00–22:00`**: a window nobody authored, concealing that the real one had shut (§6's missed state). A window now reads its **two authored numbers**, which is §4's own rule ("the row is placed, never re-timed") applied where §9b had quietly broken it.
+
+A single clock still reads the placed instant, and that is not an inconsistency: one authored number can be intersected (§10b — "be out by 09:40" because you are on the hike), where two describe a window and intersecting one end of it invents the other. **Left open:** whether a windowed edge should show an intersected window at all (`06:00–09:40` for a 06:00–11:00 check-out against an 09:40 departure). It is a real question and inventing an answer is how §9b's bug happened.
+
 ## Consequences
 
 - **One migration, two nullable columns, nothing to backfill** — "no window" is exactly what every booking authored so far means.

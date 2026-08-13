@@ -10,21 +10,13 @@
 // but only when a caller supplies `onNavigate` (Trip mode, live day, and the
 // booking has a mappable location). Plan mode has no live "now", so it passes
 // none; a read-only past day, or a location-less booking, passes none too.
-import {
-  CATEGORY_DEFAULT_ICON,
-  edgeMeaning,
-  EVENT_STATUS,
-  windowBoundOf,
-  type Booking,
-} from '@waypoint/shared';
+import { CATEGORY_DEFAULT_ICON, edgeMeaning, EVENT_STATUS, type Booking } from '@waypoint/shared';
 import { SettleControl, type SettleOutcome } from './domain/SettleControl';
 import { chosenIcon, DEFAULT_EVENT_ICON } from '../constants';
-import { formatTime } from '../lib/time';
-import { ltrIsolate } from '../lib/bidi';
 import { ZoneShiftPill } from './ZoneShiftPill';
 import { TitleLabel } from './TitleLabel';
 import { PlaceBadge } from './domain/PlaceBadge';
-import { transitionLabel } from '../lib/transitions';
+import { edgeTimePhrase, transitionLabel } from '../lib/transitions';
 import { parseRouteTitle } from '../lib/route-title';
 import { placeLabelOf } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
@@ -103,44 +95,12 @@ export function TransitionRow({
   const icon =
     chosenIcon(event.icon) ??
     (event.category != null ? CATEGORY_DEFAULT_ICON[event.category] : DEFAULT_EVENT_ICON);
-  // **The window, if this edge has one** (ADR-0184 §5). Both bounds render in this
-  // edge's own zone, like the single clock does.
-  //
-  // `ltrIsolate` is not optional and not decoration: a range is a run of digits with a
-  // separator and NO strong character, so it takes its direction from whatever contains
-  // it. `.tr-time` no longer carries `dir="auto"` (see below — the attribute was what
-  // dragged the whole box to the left), so the isolate is now the ONLY thing holding the
-  // range's order in this RTL box. Isolating the RUN, never trusting the container, is
-  // ADR-0118's rule and the one that holds on both rows.
-  const windowBound = windowBoundOf(event, edge);
-  const range = windowBound
-    ? ltrIsolate(
-        `${formatTime(new Date(Math.min(atMs, Date.parse(windowBound))), zone ?? tz)}–${formatTime(
-          new Date(Math.max(atMs, Date.parse(windowBound))),
-          zone ?? tz,
-        )}`,
-      )
-    : null;
-  // **A ceiling says so** (ADR-0171 §3). A check-out reads `עד 11:00`, because 11:00 is a
-  // deadline rather than the moment it happens — and the row may have been pinned earlier
-  // than 11:00 by a flight leaving before it (§10b), which makes an unmarked clock
-  // actively wrong. `exact` stays unmarked: it is the default, and marking it would put a
-  // word on nearly every row in the app to say "normal". A floor renders `מ-15:00` for the
-  // same reason, and now renders it HERE — the strip it used to read from no longer holds
-  // edges (ADR-0184's 2026-08-13 amendment).
-  //
-  // Every branch isolates its clock, including the bare one: this box is RTL now, so a
-  // digits-only run has no strong character to protect it and `עד 11:00` puts a Hebrew
-  // word in front of one.
-  const clock = ltrIsolate(formatTime(new Date(atMs), zone ?? tz));
+  // **What this edge's clock says is `edgeTimePhrase`'s** (`lib/transitions.ts`), not this
+  // row's — the ambient strip above the list says the same fact now, and one edge saying two
+  // things on one screen is the defect that would follow from writing it twice. Both bounds
+  // render in this edge's own zone, like the single clock does.
   const meaning = edgeMeaning(event, edge);
-  const time =
-    range ??
-    (meaning === 'not-after'
-      ? t.day.untilTime(clock)
-      : meaning === 'not-before'
-        ? t.day.fromTime(clock)
-        : clock);
+  const time = edgeTimePhrase(event, edge, atMs, zone ?? tz);
   return (
     <div className="transition-row">
       <button

@@ -38,7 +38,9 @@ Amber accent (time + commitment; ADR-0028) — a transition is a hard, time-anch
 
 ### C. Backdrop strip → strictly middle nights
 
-> **AMENDED 2026-08-13: the strip renders on EVERY day of the stay, edges included** (`staysOnDate`, `date <= activeDate <= endDate`; see [ADR-0184 §9a](0184-an-edge-can-be-a-window.md)). "No day shows the stay twice" was the wrong thing to optimise: the strip and the edge row answer different questions — where you are sleeping tonight, versus what you do at 15:00 — and the restriction made a hotel vanish from the top of its own first and last day. The checkout-day objection below stands as an observation and is simply accepted: on that day `ambientSpanLabel` clamps to `לילה M מתוך M`, which reads as "the last day of this stay".
+> **AMENDED 2026-08-13: the strip renders on EVERY day of the stay, edges included** (`staysOnDate`, `date <= activeDate <= endDate`; see [ADR-0184 §9a](0184-an-edge-can-be-a-window.md)). "No day shows the stay twice" was the wrong thing to optimise: the strip and the edge row answer different questions — where you are sleeping tonight, versus what you do at 15:00 — and the restriction made a hotel vanish from the top of its own first and last day.
+>
+> **And the checkout-day objection below turned out to be right about the LABEL** (ADR-0184 §9f, same day): `ambientSpanLabel` clamped to `לילה M מתוך M` on a day that is not a night, and worse, two guesthouses on one day — one being left, one being arrived at — both read `לילה 1 מתוך 1`. An edge day now states the **edge** (`צ׳ק-אאוט · עד 09:40`), which is a different fact rather than a clamped one. `N מתוך M` is the middle days' readout only.
 
 The `.day-ambient` backdrop strip renders **only on strictly-middle days** of a stay (`date < activeDate < endDate`). Edge days show the transition entry instead, so no day shows the stay twice, and the previously-wrong checkout-day strip (`activeDate === endDate`, not a night) disappears for free. A 1-night stay therefore shows only its two edge entries and no strip (no day falls strictly between check-in and checkout); a 2+-night stay shows the strip on its interior night(s) (`לילה N מתוך M`).
 
