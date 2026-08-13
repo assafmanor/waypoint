@@ -61,6 +61,15 @@ Its label is what `undefined` **means** at that host: the inherited value's sour
 
 This is what keeps ADR-0152 §6b intact while making the field present on every note. The collapsed row arrives already showing the value in force and, while it is inherited, where it came from — so a note written on a host still needs no answer from anyone. Choosing writes `Note.category`; choosing the leading pill writes null and returns to inheritance, which §5's amendment requires to stay resolved at render.
 
+**Amended 2026-08-13 (owner):** on a **note the collapse is for the edit only**, and the category **leads the form** in both modes. Two separate calls, and the second is the one the first draft got wrong.
+
+- **Placement.** The category is the first field, as it already is in `EventForm` (ADR-0109 §11) and as the type row already is in `BookingSheet` — a note is filed under something, and the field saying under what belongs above the boxes rather than after them. It was last in `NoteSheet` for no reason beyond where the new component was inserted.
+- **Mode.** A **create** gets the plain always-open field every other form's category is; an **edit** keeps the statement-as-control. This resolves the one fork the mockup deliberately left open (§3 · צורה: the 44px statement row priced against the always-open field) and it splits by mode rather than by host, which is what the drawing did not consider. The collapse earns its tap where there is a saved answer to state and re-filing is the rare pass; on a brand-new note there is no earlier answer, so the same row costs a tap to open plus a tap to close and hides the field it is standing in for. §6b is untouched either way — the leading pill arrives **selected**, carrying the value in force and, while it is inherited, its source — so nothing is asked in either mode. What changes is only whether the nine options are behind a press.
+
+**The height the fork was left open for is 16px.** Read off the mockup's own live measurement table at 360×640, the note's category area is **44px collapsed against 60px as the always-open field** — a caption plus one 35px pill row, because `.choice-grid.pills` is a single horizontally-scrolling row rather than a wrapping grid (the ten options do not stack). That is the whole price of the create's shape, and it buys back the open-then-close pair of taps.
+
+One consequence worth naming: open, the grid states the inherited value as `🏨 · לפי ההזמנה` on its leading pill and leaves `לינה`'s own pill unchosen, where the collapsed row spelled `לינה` out. That is the more accurate render of what is stored (nothing — it resolves), and it is the leading pill's shipped shape rather than a new one.
+
 The inline `NoteComposer` — the one-textarea box that rides a host form's save — gains nothing. There the rule is literally "everything that can be spared", and that box asks nothing at all.
 
 ### 5. A lossy switch confirms **at the tap**, in three words
