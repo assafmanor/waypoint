@@ -4815,6 +4815,28 @@ textarea {
   color: inherit;
 }
 
+/* ── THE WAIT, STATED (field report #35) ──────────────────────────────────────────
+   Before the first tile paints, the canvas is empty while our own markers already draw
+   on it. That picture is what #28 reported as a failure, and it is also what a healthy
+   slow load looks like — so with `MAP_LOAD_TIMEOUT_MS.TILES` now at 20s the pane says
+   which one it is instead of leaving a blank.
+
+   Centred over the canvas, NOT a block that reserves height: the pane's box is what the
+   pin size and the camera fit are read off (ADR-0123), so anything that changed its
+   layout would move the map to say "loading". `pointer-events: none` because the pan and
+   the long press belong to the canvas underneath — a cue is a statement, never a target,
+   and Google's callbacks would not see a tap this swallowed (ADR-0148's gesture seam). */
+.map-loading {
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  translate: 0 -50%;
+  pointer-events: none;
+  text-align: center;
+  font-size: var(--text-secondary);
+  color: var(--muted);
+}
+
 /* ═══ screens/map.css — generated, do not edit here ═══ */
 /* Map tab (Phase 3, ADR-0109/0110) — the list-first pinned-place surface.
    Ported from mockups/map-tab-v1.html, adapted to the real tokens (--teal +
@@ -4900,29 +4922,6 @@ textarea {
 }
 .map-controls > * {
   flex: 0 0 auto;
-}
-/* Search sits at the row's fixed end — and it is where the facet strip's `✕` then
-   appears, because a close control you have to scroll to reach is not a close control. */
-.map-controls > .map-search-btn,
-.map-controls > /* ── THE QUERY, AS THE ROW'S SECOND OCCUPANT (ADR-0131 §1) ───────────────────────
-   `סינון` already covers this row in place behind a pinned `✕`; the query is the second
-   occupant of that same slot, not a second mechanism. It grows to fill the row because a
-   query field that is 90px wide is a query field nobody types in.
-
-   44 inside a 46px row (`calc(--map-controls-h - 2px)`): design-language's touch floor
-   met BY GEOMETRY rather than by a hit area painted larger than the ink — the point
-   ADR-0126 §3 had to make about the furniture band — and the split pays NOTHING, because
-   the row already exists and already floats over the canvas. `MAP_CONTROLS_H` stays 46,
-   so `mapFitPadding`'s top stays derived from it and the camera reads the same number.
-
-   It is the one member of this row that carries a fill, and ADR-0122's "no scrim, no card
-   background" still stands: the row AT REST is unchanged and still shows the map between
-   its chips. A text field with no ground is not a text field, and this one is transient.
-   The fill is the Index's own field treatment, so search reads the same wherever it
-   happens. */
-.map-controls > .map-querystrip {
-  flex: 1 1 auto;
-  min-width: 0;
 }
 .map-querystrip {
   box-sizing: border-box;
@@ -5220,6 +5219,12 @@ textarea {
    `count` slot rather than a local copy of both (session 185). Their old 7px/12.5px/600
    went with the copy: it was drift from the `.choice-pill` grammar beside them in the
    strip, undocumented and unmeasured, so the primitive's 6px/12px/700 is the correction. */
+/* It sits at the row's fixed end — which is also where the facet strip's `✕` appears,
+   because a close control you have to scroll to reach is not a close control. It grows
+   for nobody: a `.map-controls > .map-search-btn` rule used to hand it `flex: 1 1 auto`
+   by accident (a comment opened inside a selector list, so the list parsed as
+   `.map-search-btn, .map-controls > .map-controls > .map-querystrip`) and stretched this
+   34px square across the row's whole free end. */
 .map-search-btn {
   flex: 0 0 auto;
   width: 34px;
@@ -5285,6 +5290,31 @@ textarea {
   display: none;
 }
 
+/* ── THE FAILED PANE AND THE PRE-PROMPT BOTH WANT THIS BAND ───────────────────────
+   Field report #35's second cause, measured in session 256 §3. The card above is pinned to
+   the pane's TOP; `.fb-error-pane` centres in the pane's FULL height — so on a short pane
+   (360×640: pane 222px, card 133px) the card covered the error outright and `Retry` was not
+   hittable at all, `.map-gbtn` winning the tap. That is the whole of _"an error is shown and
+   the Reload/Retry button does not help"_: the retry was never broken, the tap never arrived.
+
+   **The card yields, and it has to be the card.** Raising the error above it instead was built
+   and looked at first: the tap resolved correctly and it read as two cards printed on top of
+   each other, because a 222px pane genuinely cannot hold both — so this is not a z-order
+   question, it is a room question, and one of them has to go. The error is the screen's only
+   explanation of why there is no map and it carries the only way out of that state; the card
+   is transient, asks about a canvas that is not currently drawing, and its feature (near-me
+   sorts the LIST, no canvas needed) comes back with the map. This is also just the rule above
+   applied honestly — ONE floating object over the canvas at a time, and a failed pane's error
+   is that object.
+
+   Note what is NOT claimed: near-me by pre-prompt is unavailable while the pane is failed,
+   because `promptOpen` stays true behind this and the chip cannot re-open what is already
+   open. That is a degradation of a secondary control during a failure, taken deliberately
+   over hiding the primary explanation, and it lifts the moment the map loads. */
+.map-split:has(> .map-pane .fb-error) > .map-geoprompt {
+  display: none;
+}
+
 /* THE PLACE CARD — the tapped pin's own row, hosted on the canvas (§7), rendered only
    where the sheet cannot show that row. The bottom gutter is contractual, not taste:
    Google draws its logo and terms link at the bottom-inline-start of the map div and the
@@ -5309,6 +5339,69 @@ textarea {
   );
   z-index: 2;
 }
+/* ── THE STOP TRACK (ADR-0182's peek amendment) ────────────────────────────────
+   The card becomes a horizontal scroller of the day's stops and the card itself becomes a
+   SLIDE in it. `.map-placecard` keeps every job it already had — the position, the `bottom`
+   measured off the sheet and Google's attribution, the z-index, the bound above — and stops
+   being the card's box.
+
+   The affordance is the neighbouring card's edge and nothing else: no rail, no arrows, no
+   indicator, no wrap. A peek asserts no ordinal, so it cannot disagree with the number on
+   the badge beneath it (which is dense over KNOWN moments only, so a traversal ordinal
+   WOULD disagree — the defect ADR-0121 §6's 2026-08-06 amendment closed). And the absent
+   peek on one side is what says you are at the end, which is why nothing here animates.
+
+   The snap grammar is `.map-facetstrip`'s, in this same file, for its own stated reasons.
+   `data-track` is set only when there is a neighbour to show: a lone slide would measure
+   itself at `calc(100% - 2×peek - 2×gap)` and sit narrower than the card with empty gutters
+   either side, which is a worse card than the one that ships — and that is exactly the
+   all-days case, where there is no sequence at all (§11). */
+.map-placecard[data-track] {
+  --map-peek: 20px;
+  --map-peek-gap: 8px;
+  /* Every slide is the same card at the same density, so they stretch to one height and the
+     peek shows a CARD's edge rather than a short row floating at the bottom of a tall one. */
+  align-items: stretch;
+  gap: var(--map-peek-gap);
+  overflow-x: auto;
+  /* NEVER `visible`: its used value becomes `auto` beside a scrolling axis, and a track that
+     scrolls vertically as well is two nested scrollers fighting — which `.map-facetstrip`'s
+     own comment already records one surface over. `clip` keeps the track one-dimensional. */
+  overflow-y: clip;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  /* Horizontal is the browser's; the slide's own content keeps the vertical one. This one
+     declaration replaces a pointer recogniser, a capture handshake and a click swallow.
+     AMENDED 2026-08-13 (ADR-0182's device pass): `pan-x` alone did not mean what the sentence
+     above claims. `touch-action` is INTERSECTED down the ancestor chain, so `pan-x` on the track
+     took the vertical pan away from every scroller inside the slide — including `.note-sec-list`,
+     the card's one scrolling region. Both axes are named, and the browser still picks by
+     direction; double-tap zoom stays suppressed by `:root`'s `manipulation` (tokens.css). */
+  touch-action: pan-x pan-y;
+  scroll-padding-inline: var(--map-peek);
+}
+.map-placecard[data-track]::-webkit-scrollbar {
+  display: none;
+}
+.map-placecard[data-track] > .place {
+  flex: 0 0 calc(100% - 2 * var(--map-peek) - 2 * var(--map-peek-gap));
+  /* `center`, not `start`, and it is `useCenterSelected`'s own documented trap: under
+     MANDATORY snap the browser re-snaps a centred offset back to a start-aligned boundary
+     unless the child says centre. */
+  scroll-snap-align: center;
+  /* A percentage `max-height` is no use on a slide — the track is absolutely positioned with
+     only a `max-height`, so its height is indefinite and a percentage resolves to `none`.
+     `stretch` binds it, because the track settles at `min(content, cap)` and a stretched item
+     takes exactly that. Same pair the bound above writes one element out. */
+  align-self: stretch;
+}
+/* Context, not the subject. With every slide carrying the same content this and `.selected`'s
+   own border and ring are all that say which card you are on — which is why the neighbours
+   are NOT drawn as selected. */
+.map-placecard[data-track] > .place:not(.selected) {
+  opacity: 0.85;
+}
+
 .map-placecard .place {
   margin-bottom: 0;
   box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--ink) 45%, transparent);
@@ -5364,20 +5457,45 @@ textarea {
    Found while building the DECIDING card beside it (ADR-0166 §17), which needs neither: its blocks
    are a fixed hero and a three-line clamp, so it has no track that has to be the flexible one —
    which is why every rule here excludes `.result`. */
-.map-placecard:has(> .map-draft),
-.map-placecard:has(.note-sec),
-.map-placecard:has(.place:not(.result) > .map-hero) {
+/* AMENDED 2026-08-11 (ADR-0182 §9): the `:has()` gate is GONE and the bound is
+   unconditional. Three amendments each widened the selector to catch one more card that
+   could grow, and the fourth case is the one no selector was ever going to name: a place
+   with several bookings and no notes and no enrichment renders none of `.map-draft`,
+   `.note-sec` or `.map-hero`, so it was bounded by NOTHING. Anchored to the split's bottom
+   it grows UP, past the floating controls row — which paints after it and therefore over
+   it — and ~15px of the identity row, the badge and the name, ended up behind the chips.
+   That is the side ADR-0148 §1 itself called "the worst way round": the actions survive
+   and the title dies.
+
+   A card taller than its room is never right, whatever it happens to contain, so the
+   question the selector was asking was the wrong one. The arithmetic is unchanged. */
+/* AMENDED 2026-08-13 (ADR-0182's device pass): a SECOND bound, and the two answer different
+   questions. The arithmetic above is a guarantee — the card is never taller than the room it
+   has — and on a tall phone that room is most of the pane: measured on the owner's handset the
+   card came out ~535pt inside a ~629pt canvas, i.e. 85% of the map, and ~218pt of it was empty
+   because every slide stretches to the tallest one (ADR-0182's density amendment, the owner's
+   own call) and that stop had no notes. `--map-card-max` is a BUDGET instead: a card over a map
+   is a card, not a page, so past this height the card stops growing and the note list — the
+   one flexible track — shrinks and scrolls, which is ADR-0148 §1's shrink order already built.
+   `min()` and not a replacement: it can only ever bind LOWER than the guarantee, so a small
+   phone (where the arithmetic is ~320px) is byte-identical to before.
+   A device-pass number like `--map-peek`, not a decision — retune it on a handset. */
+.map-placecard {
   display: flex;
-  max-height: calc(
-    100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) - 8px
+  --map-card-max: 420px;
+  max-height: min(
+    calc(
+      100% - var(--map-controls-h, 46px) - 8px - var(--sheet-h, 0px) - var(--map-attr-h, 22px) -
+        8px
+    ),
+    var(--map-card-max)
   );
 }
 /* A flex item in a container with a max-height: the container settles at
    `min(content, cap)` and stretch sizes the card to it, which is what makes the cap apply to
    the CARD rather than merely clipping it. `min-height: 0` is what lets it shrink at all. */
-.map-placecard:has(> .map-draft) > .map-draft,
-.map-placecard:has(.note-sec) > .place,
-.map-placecard:has(.map-hero) > .place:not(.result) {
+.map-placecard > .map-draft,
+.map-placecard > .place {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -5412,7 +5530,20 @@ textarea {
   grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0 11px;
-  overflow: hidden;
+  /* AMENDED 2026-08-11 (ADR-0182 §9): `hidden` here, which is what the shortfall used to
+     fall through to, was silently DELETING content. §1's promise — "the shortfall becomes a
+     SCROLL instead of a clip" — only ever held while the shortfall was in the note list. Once
+     the PINNED rows alone exceed the cap (three references plus enrichment does it at
+     360×640, by 83px) the `1fr` track is already at 0 and there is nothing left to give: the
+     way-in block, then `.map-refs-foot` — `שיבוץ ליום` and `עוד בגוגל`, the selected row's
+     primary actions — were simply cut off, at 10 of 44px. Every rect read healthy the whole
+     time, which is why nothing caught it.
+
+     So the last resort is a scroll, not a cut. The pinning promise is unchanged in every case
+     that fits: the notes shrink first and only they scroll, and the card itself scrolls only
+     once even the pinned rows cannot fit, where the alternative is losing them. */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .map-placecard:is(:has(.note-sec), :has(.map-hero)) > .place:not(.result) > .map-badge {
   grid-row: 1;
@@ -5454,7 +5585,14 @@ textarea {
   align-self: stretch;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* **`-y`, AND THAT IS THE WHOLE OF THE SWIPE-FROM-ANYWHERE REPORT** (ADR-0182's device pass;
+     owner: _"swiping left or right should be made available no matter where you place your
+     finger on the card"_). A one-axis `overflow-y` still makes this a scrollPORT on BOTH axes
+     (an `overflow-x: visible` beside it computes to `auto`), so an unqualified `contain` refused
+     to chain the HORIZONTAL gesture to the track above — the card was swipeable from the title
+     and dead from the notes. Vertical stays contained, which is the fact this property was
+     added for: reaching the end of the text must not hand the gesture to the canvas. */
+  overscroll-behavior-y: contain;
   scrollbar-width: none;
 }
 .map-placecard:has(.map-hero) > .place:not(.result) > .map-sum::-webkit-scrollbar {
@@ -5488,7 +5626,9 @@ textarea {
   align-self: stretch;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* `-y` for the reason spelled out on `.map-sum` above: this region is a scrollport on both
+     axes, so an unqualified `contain` swallowed the track's horizontal swipe. */
+  overscroll-behavior-y: contain;
   scrollbar-width: none;
 }
 .map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list::-webkit-scrollbar {
@@ -5501,6 +5641,69 @@ textarea {
 .map-placecard:has(.note-sec) > .place > .map-refs-foot {
   grid-row: 7;
   grid-column: 1 / -1;
+}
+
+/* ── THE CARD'S OWN CLOSE (ADR-0182's device pass) ─────────────────────────────
+   Owner: _"we should add a way to close the card and/or collapse it."_ The card had three
+   dismissals and no visible one — blank canvas, system back, selecting elsewhere — because its
+   body is inert by design (ADR-0122 §7) where a list row answers a second tap.
+
+   **It sits IN the identity row, as its fourth column**, not as a corner overlay: the card
+   scrolls as a whole once its pinned rows alone exceed the cap (§9's 2026-08-11 amendment), and
+   an absolute corner control would scroll out of reach at exactly the card's tallest. So it costs
+   ~28px of the row's WIDTH and 0px of its height — which is the axis this pass is about.
+
+   Everything about the control itself is `.map-rename`'s, one line up in this file: 16px of
+   layout, 44px of target as an `::after` outside it (ADR-0017), muted ink because closing is
+   neither a time nor a place nor a status (ADR-0028). */
+/* **The fourth column is declared where the control is, not in the template.** An implicit track
+   would have done it with no rule at all — and silently broken every `grid-column: 1 / -1` block
+   below, since `-1` names the last EXPLICIT line and those rows would stop short of the card's
+   edge. A fourth `auto` in the template itself is the other near-miss: an empty track still gets
+   its 11px column gap, so every neighbour slide in the track would lay out 11px narrower than the
+   card you are on. `:has()` gives the column to the slide that has the control and to no other. */
+.map-placecard:is(:has(.note-sec), :has(.map-hero))
+  > .place:not(.result):has(> .map-cardclose) {
+  grid-template-columns: auto 1fr auto auto;
+}
+.map-placecard > .place > .map-cardclose {
+  grid-row: 1;
+  grid-column: 4;
+  /* Aligned with the badge's top rather than the row's middle: on a two-line identity row the
+     middle puts it beside the meta line, where it reads as belonging to a fact. */
+  align-self: start;
+}
+.map-cardclose {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.map-cardclose::after {
+  content: '';
+  position: absolute;
+  inset: -14px;
+}
+.map-cardclose .icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+.map-cardclose:active {
+  transform: scale(var(--press-scale));
+}
+.map-cardclose:focus-visible {
+  outline: 2px solid var(--cta);
+  outline-offset: 2px;
 }
 
 .map-draft {
@@ -7837,6 +8040,7 @@ textarea {
           'M8 2.6v3.4 M16 2.6v3.4 M3.4 10.2h17.2 M5.4 4.3h13.2a2 2 0 0 1 2 2v13.1a2 2 0 0 1-2 2H5.4a2 2 0 0 1-2-2V6.3a2 2 0 0 1 2-2Z',
         navigate: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M15.6 8.4l-2.2 5.2-5.2 2.2 2.2-5.2Z',
         plus: 'M12 5v14 M5 12h14',
+        close: 'M6 18 18 6M6 6l12 12',
         clipboard:
           'M9 4.5h6a1 1 0 0 1 1 1v1H8v-1a1 1 0 0 1 1-1Z M8 6.5H6.5a1.5 1.5 0 0 0-1.5 1.5v10.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V8a1.5 1.5 0 0 0-1.5-1.5H16',
       };
@@ -7925,6 +8129,7 @@ textarea {
             </span>
           </span>
           ${right}
+          ${selected && expanded ? `<button type="button" class="map-cardclose" aria-label="סגירת כרטיס המקום">${icon(P.close)}</button>` : ''}
           ${rich ? `<span class="map-sum"><span class="map-tag map-sum-lang">EN</span><span class="map-sum-t" dir="auto">${SUM}</span><button type="button" class="map-know-more">עוד ›</button></span>` : ''}
           ${rich ? `<div class="note-sec"><div class="note-sec-h"><span class="t">${icon(P.clipboard)} פתקים</span><button type="button" class="add">${icon(P.plus)} פתק</button></div><div class="note-sec-list">${['לקנות כרטיסים מראש', 'הכניסה הדרומית פחות עמוסה', 'לקחת כיסוי לכתפיים'].map((n) => `<div class="note-item"><button type="button" class="note-item-b">${n}</button></div>`).join('')}</div></div>` : ''}
           ${refs ? `<div class="map-refs"><div class="map-reflist">${refs}</div></div>` : ''}

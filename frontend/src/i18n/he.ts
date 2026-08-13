@@ -414,6 +414,11 @@ export const t = {
     // are already looking at the map.
     frameOnPlace: 'התמקדות במקום הזה',
     frameAll: 'התאמת התצוגה לכל המקומות',
+    // The canvas card's own way out (ADR-0182's device pass). The card was already dismissible
+    // three ways — a tap on blank canvas, system back, selecting something else — and none of
+    // them is visible on it. Names the card, because `סגירה` alone sits beside a filter close
+    // and a search close on the same screen.
+    closeCard: 'סגירת כרטיס המקום',
     // The way-in block's one primary action (ADR-0135 §1): a place in the trip could only
     // ever be an idea, and nothing said "put this on Tuesday at 14:00". Names the verb, not
     // the schema — "event or booking?" is the app's question, not the traveller's.

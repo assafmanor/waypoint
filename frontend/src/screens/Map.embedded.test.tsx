@@ -1533,6 +1533,37 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(cardName()).toBe('lunch');
     });
 
+    // ADR-0182's device pass. The card had three dismissals — blank canvas, system back,
+    // selecting elsewhere — and NONE of them visible on it, since its body is inert by design
+    // (ADR-0122 §7) where a list row answers a second tap.
+    it('the card carries a visible close, on the selected slide only', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(toggle(t.map.view.map));
+      fireEvent.click(pin('lunch')!);
+
+      const card = placeCard()!;
+      // One control, on the card you are ON. A `✕` on a neighbour would close a card you are
+      // not looking at.
+      expect(card.querySelectorAll('.map-cardclose')).toHaveLength(1);
+      expect(cardSlide()!.querySelector('.map-cardclose')).toBeTruthy();
+
+      // And it runs `clearSelection` itself — the same function system back and a canvas tap
+      // run (ADR-0103's 2026-07-29 amendments), so the card cannot be dismissed two ways.
+      fireEvent.click(card.querySelector('.map-cardclose') as HTMLElement);
+      expect(placeCard()).toBeNull();
+      // Still at the map extreme: closing the card is not leaving the surface it sat on.
+      expect(screenEl().dataset.view).toBe(MAP_SHEET_VIEW.map);
+    });
+
+    it('the LIST’s rows carry no close: a second tap is already their answer', () => {
+      seed();
+      render(wrap(<MapView />));
+      fireEvent.click(row('lunch')!);
+      expect(row('lunch')!.className).toContain('selected');
+      expect(document.querySelector('.map-cardclose')).toBeNull();
+    });
+
     it('all-days has no track, because it has no sequence (ADR-0182 §11)', () => {
       seed();
       render(wrap(<MapView />));
