@@ -16,11 +16,13 @@
 //    gesture. A tap-the-selected-pill-to-clear was the alternative and is undiscoverable on
 //    touch (no hover, ADR-0017) as well as non-standard for a `role="radio"`.
 //  - **A `disclosure` mode**, where the field collapses to what it currently is and reveals
-//    the pills on a tap (`ChoiceDisclosure`). Opt-in per host, because it is not universally
-//    right: on the Map the category **is** the pin's hue, and `MapPlaceForm`'s own comment
-//    says that on a surface whose grammar is "colour = category" an unanswered category is
-//    wrong information rather than absent information. So the Map stays open; the editors
-//    that merely file a thing collapse.
+//    the pills on a tap (`ChoiceDisclosure`). Opt-in per **call**, not per host, because it is
+//    not universally right: on the Map the category **is** the pin's hue, and `MapPlaceForm`'s
+//    own comment says that on a surface whose grammar is "colour = category" an unanswered
+//    category is wrong information rather than absent information — and `NoteSheet` collapses
+//    only on an **edit**, where a statement of the value already saved is what the row is for
+//    (ADR-0183 §4's 2026-08-13 amendment). A create has no earlier answer to state, so it gets
+//    the open field every other form's category is.
 import { useState, type ReactNode } from 'react';
 import type { EventCategory } from '@waypoint/shared';
 import { EVENT_CATEGORY_OPTIONS, NO_CATEGORY } from '../../lib/category-options';
@@ -57,8 +59,8 @@ export function CategoryField({
   onChange: (next?: EventCategory) => void;
   /** What `undefined` MEANS here. Absent = plainly nothing. */
   fallback?: CategoryDefault;
-  /** Collapse to a statement and reveal the pills on a tap. Off by default, so the two
-   *  surfaces that must show every option keep showing them. */
+  /** Collapse to a statement and reveal the pills on a tap. Off by default, so a form that has
+   *  nothing to state — every create — keeps the plain field. */
   disclosure?: boolean;
   /** Off where "no category" is not a state worth reaching. Its one caller is `MapPlaceForm`:
    *  there the category **is** the pin's hue, and that file's own comment says an unanswered
