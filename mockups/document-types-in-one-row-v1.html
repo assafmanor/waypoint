@@ -8886,7 +8886,17 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 }
 /* The event/idea category selector (ADR-0109 §11) wants a slightly larger tap
    target than the compact Index filter chips that share `.choice-pill`; scoped
-   to the `.category-pills` wrapper so the Index chips stay as designed (ADR-0100). */
+   to the `.category-pills` wrapper so the Index chips stay as designed (ADR-0100).
+   **Second host since 2026-08-13: the document-type picker** (`DocumentTypePills`,
+   ADR-0052 §6's amendment). Eight types were drawn as a 3-column card grid, which is
+   three rows and 202px, against 38px here — so the picker joined the row that already
+   carried nine options rather than growing a shape of its own. Nothing was added for
+   it: a second consumer of this wrapper is the whole change.
+   Known and deliberately unresolved (ADR-0052 §6, 2026-08-13): the pill measures 36px
+   against ADR-0017's 44px floor, here AND on the shipped category selector. Room is not
+   the obstacle — at 44px the document row is 46px and still needs no scrolling — the
+   obstacle is that raising it moves three shipped surfaces, one of which
+   (`MapPlaceForm`) has a card height that is arithmetic (ADR-0148 §1). */
 .category-pills .choice-pill {
   font-size: var(--text-secondary);
   padding: 8px 14px;
