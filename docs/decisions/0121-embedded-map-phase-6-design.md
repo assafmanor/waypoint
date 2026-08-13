@@ -603,4 +603,37 @@ So **one transient failure poisons the map for the life of the page**, and §4's
 
 **Why a peer's edits are the trigger, and it is a window rather than a cause.** `screens/Map.tsx` reads `offline = useIsOffline() || usingCachedSnapshot`, and `mapPaneAvailable` makes the pane **absent** while that is true (§11). On a warm resume the flag flaps, so the pane unmounts and remounts — and it remounts into the resume burst `trip-state.tsx` fires at exactly that moment: `flushOutbox`, a paged `changes?sinceSeq=` replay, and a full snapshot refetch on a hello-ahead. **A peer's additions are what give that burst real work to do**, so the Maps-script fetch is competing on a link that has just come back. Worse, the pane can unmount mid-load, and then `onError` lands on an unmounted component: the global is poisoned **with nothing on screen to report it**, which is why the next visit opens straight on the cue.
 
-**Two limits, stated rather than buried.** `__resetModuleState()` is vis.gl's own test-only hook (it is exported and typed, and it is the only thing that clears that global); the alternative was `location.reload()`, which throws away the trip state to fix a canvas. It is safe at this one call site because `retryMap` is reachable only from `ErrorState`, i.e. with no `APIProvider` mounted for its listener-clear to orphan — a second call site would have to re-check that. And the silently-poisoned case still costs **one 20s wait** before the now-working retry is offered, because nothing outside an `APIProvider` can read that status; auto-retrying instead was rejected on §4's arithmetic. Delete the hook if vis.gl ever makes the status recoverable.
+**Two limits, stated rather than buried.** `__resetModuleState()` is vis.gl's own test-only hook (it is exported and typed, and it is the only thing that clears that global); the alternative was `location.reload()`, which throws away the trip state to fix a canvas. It is safe at this one call site because `retryMap` is reachable only from `ErrorState`, i.e. with no `APIProvider` mounted for its listener-clear to orphan — a second call site would have to re-check that. And the silently-poisoned case still costs **one bound's wait** before the now-working retry is offered, because nothing outside an `APIProvider` can read that status; auto-retrying instead was rejected on §4's arithmetic. Delete the hook if vis.gl ever makes the status recoverable.
+
+## Amendment (2026-08-13, session 262b) — the deadline stops the WAIT, it does not kill the ATTEMPT
+
+The owner, on the amendment above shipping and the map still failing sometimes: _"first thing I would do is shorten the map load timeout by a lot. When the map loads successfully, in most cases it's a few seconds tops. So when the map has a problem loading, we're waiting for 20 seconds for nothing."_ Right on both counts, and acting on it exposed a defect underneath that made the bound impossible to size well.
+
+### 1. The defect: expiry destroyed an in-flight load
+
+`mapFailed` fed the ternary that chooses between `ErrorState` and the `<APIProvider>` subtree, so **the tiles watchdog firing unmounted the live `google.maps.Map`** — mid-load, along with the `onTilesLoaded` listener that was about to resolve it. Every retry then started from zero. So **a load that genuinely needed longer than the bound could never complete, however many times you asked**, and the observable was precisely _"reloading the map solves the problem sometimes"_: each attempt re-rolls a dice that requires the whole load to fit inside the bound, with only the browser's HTTP cache tilting it.
+
+That is also what forced the bound up. Sessions 256/257 measured a successful Slow-3G paint at 8.15s and chose 20s so a working map could not be killed by its own deadline — correct reasoning under teardown semantics, and the reason the number could not come down.
+
+### 2. The correction: two signals, two outcomes
+
+§11 named two detection signals and then collapsed them into one outcome. They are not the same claim, and they now diverge:
+
+- **`onError`, a failed _script_ load** — unchanged. There is no map to preserve, so the canvas is replaced by `ErrorState` and the retry rebuilds. `mapFailed` is now this signal **only**.
+- **The tiles deadline expiring** — a new state, `tilesLate`. Our own markers being on screen prove the script loaded and the map constructed, so while the attempt is alive we have evidence of **slowness, not failure**. The canvas stays live, and the wait's own slot changes its words and gains a way out. A late `onTilesLoaded` retires it with nobody tapping anything.
+
+**One slot, not a second surface.** `t.map.loadingSlow` (`הטעינה איטית מהרגיל`) and a `נסו שוב` pill render inside the existing `.map-loading` element, so §11's "ONE floating object over the canvas at a time" holds by construction and there is never a moment showing both a wait and an error. The cue keeps `pointer-events: none` and only the button re-enables them, so the pan and the long press still belong to the canvas (ADR-0148's gesture seam) — **hit-tested, not assumed**: topmost at the button's centre is `.map-loading-retry`, and topmost over the cue's text is the map div beneath. The button is 26px tall with a 44px target via `ValueToken`'s `::after` overlay idiom, so ADR-0017's floor is met without growing the line the cue is centred on.
+
+**And this is the CHEAPER branch under §4**, which is worth stating because it looks like the opposite. §4 counts instantiations, not seconds: tearing the map down and retrying is exactly what buys a second billed load. Keeping the instance alive avoids one. The amendment tightens §4 rather than bending it.
+
+### 3. The bound: 20s → 4s, because it is no longer a verdict
+
+Once expiry only changes what the pane _says_, the asymmetry session 257 reasoned from inverts. A short bound costs one line of muted text that may retract itself; a long one costs twenty seconds of silence followed by a false claim. Against session 256's own successes (~650ms warm, 0.9–1.5s cold, ~2.5s Fast 3G, 8.15s Slow 3G), **4s** sits above all but the Slow-3G edge — and that edge now resolves itself.
+
+Verified in real Chrome on Chrome's Slow 3G, entering the tab for a fresh instance: cue at 1.5s and 3s, **slow notice with the retry at 5s, canvas alive, no hard error**, still slow at 7s, and at 10s **the tiles landed and the notice cleared itself**. That exact load was a hard failure and a destroyed map before this change.
+
+`MAP_LOAD_TIMEOUT_MS.TILES`'s comment now says what the number is for, since its whole justification changed. It is also a cheap number to move now, which it was not before.
+
+### 4. What this does not claim
+
+It does not claim to be the last cause of #35. It is a fix for a defect that is certain from reading the code and reproducible on demand, **and it is simultaneously the experiment**: if the map still fails after it, that result rules out the merely-slow reading, at which point getting `DevMapTuner`'s `diag` reading off the owner's own phone is the next step — and that needs a channel, because `dev-tuning.ts` is deliberately tree-shaken out of production and shipping the constant-override layer to reach it is the wrong trade.

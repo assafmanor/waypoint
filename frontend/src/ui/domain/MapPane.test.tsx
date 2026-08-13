@@ -990,16 +990,49 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     expect(screen.getByRole('button', { name: new RegExp(t.feedback.retry) })).toBeTruthy();
   });
 
-  it('tiles that never load within the bound are treated as a failure too', async () => {
+  // **Tiles past the bound say SLOW, and the attempt survives** (ADR-0121's 2026-08-13
+  // amendment). Expiry used to unmount the whole subtree, which destroyed an in-flight load
+  // and made a map that needed longer than the bound impossible to ever finish — every retry
+  // restarted from zero. Our markers being on screen prove the script loaded, so while the
+  // attempt is alive the honest claim is slowness, not failure.
+  it('tiles past the bound say the wait is slow, and keep the canvas alive', async () => {
     vi.useFakeTimers();
     paint();
     expect(document.querySelector('[data-map]')).toBeTruthy();
-    // The `setMapFailed(true)` that decides this lands from a timer's `.catch`, outside
-    // any event React already knows to flush around — `act` is what forces the commit
-    // before the assertion below reads the DOM.
+    // The state change that decides this lands from a timer's `.catch`, outside any event
+    // React already knows to flush around — `act` is what forces the commit before the
+    // assertion below reads the DOM.
     await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    expect(screen.getByRole('button', { name: new RegExp(t.feedback.retry) })).toBeTruthy();
+  });
+
+  // The payoff of not tearing it down: a load slower than the bound finishes on its own and
+  // takes the notice with it, with nobody tapping anything.
+  it('a late paint clears the slow notice by itself', async () => {
+    vi.useFakeTimers();
+    paint();
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    act(() => tilesLoaded.fire?.());
+    expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
+    expect(screen.queryByText(t.map.loading)).toBeNull();
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+  });
+
+  // And the two signals stay apart: only a SCRIPT failure is a failure, and only it takes
+  // the canvas away. Collapsing them is what the amendment undid.
+  it('a script failure still takes the canvas, where a slow tiles phase does not', async () => {
+    vi.useFakeTimers();
+    paint();
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+    act(() => apiError.fire?.(new Error('boom')));
     expect(document.querySelector('[data-map]')).toBeNull();
     expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
+    expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
   });
 
   it('tiles loading before the bound never fails at all', async () => {
@@ -1080,9 +1113,10 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     // watchdog, not the settled/rejected one the failed attempt left behind.
     expect(document.querySelector('[data-map]')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
-    // And the new attempt gets its own full bound rather than inheriting none of it —
-    // failing again only once ITS watchdog, not the first one's leftovers, expires.
+    // And the new attempt gets its own full bound rather than inheriting none of it — its
+    // own watchdog, not the first one's leftovers, is what reports the wait as slow.
+    expect(screen.getByText(t.map.loading)).toBeTruthy();
     await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
-    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
   });
 });

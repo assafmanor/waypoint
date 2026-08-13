@@ -1,9 +1,9 @@
-# Session 262 — a `key` bump is not a retry (field report #35, workstream M, third round)
+# Session 262 — a `key` bump is not a retry, and a deadline is not a verdict (field report #35, workstream M, rounds three and four)
 
 **Date:** 2026-08-13
-**Workstream:** `M` (#35) — **root cause found, reproduced, and fixed.** The two previous rounds fixed two real defects and neither was this one.
-**Touches:** `frontend/src/ui/domain/MapPane.tsx` (+ its test), `docs/decisions/0121-embedded-map-phase-6-design.md` (amended in place), `docs/backlog.md`.
-**No new ADR, no mockup.** ADR-0121 already owns the retry rule, and this corrects that rule rather than adding a surface.
+**Workstream:** `M` (#35) — **two more causes found, reproduced and fixed**, in two rounds the same day (§1–§5, then §6). The three previous rounds each fixed a real defect and none of them was either of these.
+**Touches:** `frontend/src/ui/domain/MapPane.tsx` (+ its test), `frontend/src/ui/domain/map-pane.css`, `frontend/src/constants.ts`, `frontend/src/i18n/he.ts`, `docs/decisions/0121-embedded-map-phase-6-design.md` (two amendments, in place), `docs/backlog.md`.
+**No new ADR, no mockup.** ADR-0121 already owns both the retry rule and the bound, and this corrects them rather than adding a surface.
 
 ## 0. What the owner brought that the two previous rounds did not have
 
@@ -70,11 +70,41 @@ The mechanism needs exactly one failed-or-stalled first load. Remote activity is
 
 ## 5. What is still open
 
-- **The silently-poisoned case still costs one 20s wait** before the now-working retry is offered. Nothing outside an `APIProvider` can read that status, and auto-retrying was rejected on §4's billing arithmetic — a human tap stays the throttle.
+- **The silently-poisoned case still costs one bound's wait** before the now-working retry is offered. Nothing outside an `APIProvider` can read that status, and auto-retrying was rejected on §4's billing arithmetic — a human tap stays the throttle. (§6 then cut that wait from 20s to 4s.)
 - **`__resetModuleState` is vis.gl's own test-only hook** (exported and typed; the alternative was `location.reload()`, which throws away the trip state to fix a canvas). Safe at this one call site because `retryMap` is reachable only from `ErrorState`, so no mounted `APIProvider` listener is orphaned by its `listeners.clear()`. A second call site would have to re-check that. Drop it if upstream makes the status recoverable.
 - **WebGL is still untested rather than excluded**, unchanged from session 257.
 - **Not confirmed on the owner's phone.** The mechanism is device-independent and the reproduction is deterministic, but the confirming tap is the owner's.
 
-## 6. Correction to the environment notes
+## 6. Second round the same day — the deadline was killing the load it was measuring
+
+The fix above shipped and the owner reported the map **still** failing sometimes, with retry now working _sometimes_ — consistent with §2's fix landing and something else remaining. Their instinct was the bound: _"first thing I would do is shorten the map load timeout by a lot. When the map loads successfully, in most cases it's a few seconds tops. So when the map has a problem loading, we're waiting for 20 seconds for nothing."_
+
+Acting on it found why the bound could never be sized well. **`mapFailed` fed the ternary that chooses between `ErrorState` and the `<APIProvider>` subtree**, so the tiles watchdog firing unmounted the live, mid-load `google.maps.Map` together with the `onTilesLoaded` listener about to resolve it. Every retry restarted from zero, so **a load genuinely needing longer than the bound could never finish** — and _"reloading the map solves the problem sometimes"_ is exactly what that looks like: each attempt re-rolls a dice requiring the whole load to fit inside the bound, with only the HTTP cache tilting it. The teardown is also what forced 20s: sessions 256/257 sized the bound so a working Slow-3G load could not be killed by its own deadline, which was correct reasoning about the wrong mechanism.
+
+So §11's two signals stop collapsing into one outcome:
+
+- **`onError`** (failed _script_ load) — unchanged, hard `ErrorState`, canvas gone. `mapFailed` is now this signal alone.
+- **Tiles deadline** — a new `tilesLate`. Our markers on screen prove the script loaded and the map constructed, so the honest claim is slowness. The canvas stays live; the wait's own slot says `t.map.loadingSlow` (`הטעינה איטית מהרגיל`) and gains a `נסו שוב` pill; a late `onTilesLoaded` retires it unaided.
+
+One slot rather than a second surface, so §11's one-floating-object rule holds by construction. And **it is the cheaper branch under §4** — which counts instantiations, not seconds: teardown-then-retry is what buys the second billed load.
+
+With expiry no longer a verdict the asymmetry inverts, so the bound drops **20s → 4s**, above every session-256 success but the Slow-3G edge, which now resolves itself.
+
+**Verified in real Chrome on Chrome's Slow 3G**, entering the tab for a fresh instance (session 257's isolation recipe: load unthrottled, then throttle, then re-enter):
+
+| Elapsed    | State                                                                  |
+| ---------- | ---------------------------------------------------------------------- |
+| 1.5s, 3.0s | `טוען את המפה…`, canvas constructing                                   |
+| 5.0s       | **`הטעינה איטית מהרגיל` + `נסו שוב`**, canvas alive, **no hard error** |
+| 7.0s       | still slow, way out still offered                                      |
+| 10.0s      | **cue gone — tiles landed and cleared it**, canvas alive               |
+
+That exact load was a hard failure and a destroyed map before the change. Retry **hit-tested rather than measured**: topmost at its centre is `.map-loading-retry`, topmost over the cue's text is the map div beneath (so `pointer-events: none` still holds for the cue), 26px box with a 44px target via `ValueToken`'s `::after` overlay idiom.
+
+Three new unit tests, all trap-checked by reverting the timeout handler to `setMapFailed(true)` — three fail, restored, green. **56 passing** in the file; full frontend suite **209 files / 3609 tests**.
+
+**What it does not claim:** that this is the last cause. It fixes a defect certain from the code and reproducible on demand, and it is **simultaneously the experiment** — if the map still fails, the merely-slow reading is ruled out, and the next step is a channel for `DevMapTuner`'s `diag` reading off the owner's own phone. That needs designing rather than improvising: `dev-tuning.ts` is deliberately tree-shaken out of production, and shipping the constant-override layer just to reach the panel is the wrong trade.
+
+## 7. Correction to the environment notes
 
 `pnpm --filter @waypoint/backend dev` failed on this machine with `Cannot find module 'ajv/dist/compile/codegen'` — a broken store link that `pnpm install` reports as _"Already up to date"_ and does not repair. `pnpm install --force` fixes it. Worth knowing before reading that stack as a code fault.

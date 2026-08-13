@@ -191,34 +191,34 @@ export const LOCAL_READ_TIMEOUT_MS = {
   SNAPSHOT: 10_000,
 } as const;
 
-/** **Bound on the base map's first tiles** (field report #28) — the canvas can mount, our
- *  own markers can render (they are DOM overlays, independent of Google's tile layer), and
- *  Google's own tiles can still never draw. `@vis.gl/react-google-maps` exposes no event for
- *  that: `APIProvider`'s `onError` only fires on a failed *script* load, and nothing tells a
- *  load that never happened from tiles that silently stopped. So this is the `withDeadline`
- *  heuristic `lib/deadline.ts` exists for: `onTilesLoaded` never firing within this bound is
- *  treated as a failure (ADR-0121's 2026-08-11 amendment records the trade).
+/** **When the base map's wait stops being silent** (field reports #28/#35) — the canvas can
+ *  mount, our own markers can render (they are DOM overlays, independent of Google's tile
+ *  layer), and Google's own tiles can still never draw. `@vis.gl/react-google-maps` exposes no
+ *  event for that: `APIProvider`'s `onError` only fires on a failed *script* load, and nothing
+ *  tells a load that never happened from tiles that silently stopped. So this is the
+ *  `withDeadline` heuristic `lib/deadline.ts` exists for.
  *
- *  **MEASURED 2026-08-12 (session 256 §2), and that is why this is 20s rather than 10s.** The
- *  first value was a guess in `API_TIMEOUT_MS.FETCH`'s order of magnitude, and field report #35
- *  is what a guess that lands too low looks like from the outside: _"sometimes there is a map
- *  and sometimes there is not"_, which is the signature of a threshold, not of a broken map.
- *  Sampled in real Chrome against a real Google canvas, every sample a **successful** first
- *  paint: **~650ms** warm, **0.9–1.5s** cold, **~2.5s** on Fast 3G, and **8.15s** on Slow 3G —
- *  82% of the old bound, three samples inside 15ms of each other. Adding a 4× CPU slowdown
- *  moved it only ~500ms, so **this is bandwidth-bound, not CPU-bound**: the phone's silicon
- *  barely enters into it and the network decides, which is exactly why a bound sized for a
- *  good link fails a real one.
+ *  **READ THE NAME CAREFULLY: this is no longer a verdict** (ADR-0121's 2026-08-13 amendment,
+ *  owner's call). Until then, expiry meant "declare failure and tear the attempt down", and
+ *  that is what forced the number UP — sessions 256/257 measured a successful Slow-3G paint at
+ *  8.15s and set 20s so a working map could not be killed by its own bound. But the teardown
+ *  was the defect: destroying an in-flight map at expiry meant **a load that needed 25s could
+ *  never finish**, because every attempt was restarted from zero. Since the attempt now
+ *  SURVIVES expiry, crossing this line only changes what the pane SAYS, and a late
+ *  `onTilesLoaded` clears it.
  *
- *  20s doubles the worst measured success. **The cost of being generous here is small and
- *  asymmetric**, which is the whole argument: a failed *script* load still surfaces
- *  immediately through `onError`, so a longer deadline only delays the one case Google gives
- *  no event for — and while it runs, `MapPane` now says `t.map.loading` rather than showing a
- *  blank canvas, so the wait is explained instead of silent. Being too SHORT, by contrast,
- *  reports a working map as broken and bills a fresh instantiation on every retry tap
- *  (ADR-0121 §4). Still owed: the owner's own phone on real mobile data. */
+ *  That inverts the old asymmetry, so the number comes down hard. Session 256's successes:
+ *  **~650ms** warm, **0.9–1.5s** cold, **~2.5s** Fast 3G, **8.15s** Slow 3G (bandwidth-bound,
+ *  not CPU-bound — 4× CPU moved it ~500ms). 4s sits above every one of those but the Slow-3G
+ *  edge, and that edge now resolves itself: the notice shows at 4s and disappears when the
+ *  tiles land. Waiting 20s to say something we could say at 4s — and then saying the wrong
+ *  thing — was the worst of both.
+ *
+ *  **The cost of being wrong is now one line of muted text**, which is why this is a cheap
+ *  number to move. A failed *script* load still surfaces immediately through `onError` and
+ *  still takes the hard `ErrorState`; only the tiles path routes through here. */
 export const MAP_LOAD_TIMEOUT_MS = {
-  TILES: 20_000,
+  TILES: 4_000,
 } as const;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',
