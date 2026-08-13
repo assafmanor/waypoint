@@ -134,6 +134,10 @@ export const t = {
     // indistinguishable from the failure above (field report #35). On a slow network that
     // wait is real seconds, not a flicker.
     loading: 'טוען את המפה…',
+    // …and what the same slot says once the wait passes `MAP_LOAD_TIMEOUT_MS.TILES`. It
+    // deliberately does NOT claim the failure above: the attempt is still running and may
+    // still paint, so the honest statement is that this is slow, with a way out beside it.
+    loadingSlow: 'הטעינה איטית מהרגיל',
     filter: {
       all: 'הכל',
       maybes: 'אולי',
