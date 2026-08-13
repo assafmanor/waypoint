@@ -674,7 +674,9 @@ That is field report **#28** verbatim — _"kept drawing the place list and the 
 - **Rebuild, not restore.** `restoreContext()` does redraw — at the **default world camera** (the Atlantic instead of Tokyo). Only a fresh map returns both a live context and the right camera. The cost is that a manual pan is lost, which is the correct trade against a blank map.
 - **Deferred until visible.** The loss happens while backgrounded, and a map constructed while the page is hidden is the failure that started all of this, so the rebuild waits for a resume a person is present for.
 
-**Bounded at `MAP_CONTEXT_LOSS_REBUILDS` (3).** A rebuild is a billed instantiation (§4), and a machine whose GPU keeps dropping contexts would otherwise rebuild forever; past the bound the pane degrades to `ErrorState`, where a human tap is the throttle — §4's own posture. A human retry resets the budget, because that is a person saying "start over".
+> **Corrected the same day — the bound below was a REGRESSION, and a measured one.** It read "three rebuilds per mount, then `ErrorState`". A phone drops the GPU context on roughly **every** background, so three resumes exhausted the budget and the fourth left the pane dead until a human tapped retry: an 8-cycle soak measured **3/8 healthy, broken from cycle 4 onward**. The owner found it within a day — _"I feel like today we introduced some regression that has made it way worse than it was before"_ — and they were right.
+>
+> The error was counting **rebuilds in a lifetime** when the only meaningful number is **consecutive failures**: a recovery that paints is proof the GPU is fine. See the correction below, which replaces the budget with a backoff that never gives up. Kept visible rather than rewritten, because "a bounded retry" looked obviously prudent and was the thing that broke it.
 
 ### 4. Verified in a real browser, not only in jsdom
 
@@ -685,3 +687,31 @@ Forced context loss against the running app, all four asserted mechanically: **a
 **The resume nudge (`moveCamera({})`) is deleted.** It came from the right observation — a resume fixes it — and the wrong inference: that the map was alive and merely not rendering. It also had a hole that made it inert in the case it was written for: it was gated on `useMap()` returning an instance, and when the loader never reaches `LOADED` there is no instance, so no listener was ever registered. Nothing is lost by removing it; a lost context is now handled by the mechanism that can actually see it.
 
 **And ADR-0186's framing needs correcting**: the offline-map migration was partly justified as the cure for #35. It is not — MapLibre is also a WebGL canvas and inherits context loss identically. It would have needed this same recovery. The offline map remains worth building for the reason it always had: a map that works on a plane.
+
+## Amendment (2026-08-14, session 265) — the canvas supervises itself, and never gives up
+
+The correction to the amendment above, on the owner reporting the map **still** failing and, decisively, _"it may be that we did introduce some kind of a regression"_ — which was true and which the 8-cycle soak above measures.
+
+### 1. Why a bounded retry was the wrong shape
+
+Three rebuilds sounded prudent and was the defect. The count was per MOUNT, so it measured **how many times this pane has ever recovered**, not **how badly it is failing now** — and on a device that drops the context on every background those are wildly different numbers. Recovering three times is evidence the mechanism WORKS; it was being read as evidence the GPU is broken.
+
+Worse than the blank map it replaced, because a blank map still had chrome and a working list, where the exhausted budget swapped the whole canvas for `ErrorState`.
+
+### 2. The shape that is right
+
+**`MAP_RECOVERY_BACKOFF_MS` = `[0, 2s, 8s, 30s, 60s]`, counting CONSECUTIVE failures, reset by any successful paint.** So:
+
+- A resume that drops the context recovers **immediately**, every time, forever — the common case costs nothing and cannot run out.
+- A genuinely broken GPU backs off to one attempt a minute instead of spinning.
+- **There is no state from which the map stops trying.** That property is the whole point, and it is asserted directly rather than implied.
+
+Affordable under §4: 10,000 free loads/month against ~5 people, and the worst case is one instantiation a minute **while a map is visibly broken**. A map nobody can see is worth less than the load it saves — which is the trade §4 was always making, read the right way round.
+
+### 3. Both dead-canvas routes now heal
+
+The tiles watchdog previously showed `t.map.loadingSlow` and then **waited for a human**. It now also schedules a recovery, so a map that never painted retries itself on the same backoff. That was the other half of the owner's experience: a notice that never became a map.
+
+### 4. Measured
+
+An 8-cycle soak went **3/8 → 8/8**; extended to **20/20**. The offline-flap path is 2/2 unchanged, and the never-painted path retries where it used to sit. The unit suite keeps the regression as a named test — eight losses with a paint between each must all recover — so the fixed budget cannot come back by accident.

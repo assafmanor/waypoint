@@ -221,20 +221,27 @@ export const MAP_LOAD_TIMEOUT_MS = {
   TILES: 4_000,
 } as const;
 
-/** **How many times a lost GPU context may rebuild the map before we stop trying**
- *  (field report #35's real cause, ADR-0121's 2026-08-14 amendment).
+/** **How long to wait before each successive attempt to bring a dead canvas back**
+ *  (field report #35, ADR-0121's 2026-08-14 amendment and its same-day correction).
  *
  *  A phone reclaims a backgrounded page's WebGL context, and the canvas that comes back is
- *  blank forever — measured at 26s+ with no cue, no error and no recovery, because the
- *  tiles watchdog guards only the FIRST paint and `tilesPainted` is already true by then.
- *  The only cure is a fresh `google.maps.Map`, so a loss rebuilds.
+ *  blank — the tiles watchdog cannot see it, because that guards only the FIRST paint and
+ *  `tilesPainted` is already true by then. The only cure is a fresh `google.maps.Map`.
  *
- *  It is BOUNDED because a rebuild is a billed instantiation (ADR-0121 §4) and a machine
- *  whose GPU keeps dropping contexts would otherwise rebuild forever. Three is "twice more
- *  than the once a normal resume needs": past it the map degrades to `ErrorState`, where a
- *  human tap is the throttle — the posture §4 already takes for retry. The count is per
- *  mount, and a human retry resets it. */
-export const MAP_CONTEXT_LOSS_REBUILDS = 3;
+ *  **This replaces a fixed budget of three rebuilds, which was a REGRESSION** and a
+ *  measured one: the count was per MOUNT, so three background/resume cycles exhausted it
+ *  and the fourth left the pane in a dead `ErrorState` until a human tapped retry. A phone
+ *  drops the context on roughly every background, so that arrived within minutes of real
+ *  use and was strictly worse than the blank map it replaced. The error was counting
+ *  lifetime rebuilds when the only meaningful number is **consecutive failures** — a
+ *  recovery that paints is proof the GPU is fine, and resets this.
+ *
+ *  So: **it never gives up.** The delays grow, cap at a minute, and the map keeps trying
+ *  for as long as it is on screen and broken. That is affordable under §4's arithmetic
+ *  (10,000 free loads/month against ~5 people) because the worst case is one instantiation
+ *  a minute while a map is *visibly broken* — and a map nobody can see is worth less than
+ *  the load it saves. */
+export const MAP_RECOVERY_BACKOFF_MS = [0, 2_000, 8_000, 30_000, 60_000] as const;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',
 } as const;
