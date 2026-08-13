@@ -40,9 +40,34 @@ RUN DATABASE_URL=$BUILD_DB_URL pnpm --filter @waypoint/backend prisma:generate &
 RUN pnpm --filter @waypoint/backend deploy --prod /out && \
     cd /out && DATABASE_URL=$BUILD_DB_URL npx prisma generate
 
+# The offline map's cutter (ADR-0186 §3). A single static Go binary with no runtime
+# deps — fetched in its own stage so the toolchain used to get it (curl, tar) never
+# reaches the runtime image. Pinned: this reads a 128 GiB archive over range requests,
+# and "whatever is latest" is not a thing to discover on a deploy.
+#
+# It runs a handful of times per trip EVER, not per tile — measured, one trip's two
+# areas cost 54 requests and 9.3s — which is the whole reason the backend stores slices
+# instead of proxying tiles.
+FROM base AS pmtiles
+ARG PMTILES_VERSION=1.31.2
+ARG TARGETARCH=amd64
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && case "$TARGETARCH" in \
+    amd64) PM_ARCH=x86_64 ;; \
+    arm64) PM_ARCH=arm64 ;; \
+    *) echo "unsupported arch: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/pmtiles.tar.gz \
+    "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_Linux_${PM_ARCH}.tar.gz" \
+    && tar -xzf /tmp/pmtiles.tar.gz -C /usr/local/bin pmtiles \
+    && chmod +x /usr/local/bin/pmtiles \
+    && rm /tmp/pmtiles.tar.gz
+
 FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
+COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
 # /out carries the prisma CLI + migrations for Railway's pre-deploy migrate.
 COPY --from=build /out ./
 # Served by the backend when <dist>/../public exists (spa-fallback.filter.ts).
