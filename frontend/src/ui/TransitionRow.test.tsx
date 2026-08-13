@@ -146,7 +146,16 @@ describe('a check-in with a window', () => {
     renderStay(stay);
     // One time element, and it lives inside `.tr-main` beside the title.
     expect(document.querySelectorAll('.tr-time')).toHaveLength(1);
-    expect(document.querySelector('.tr-main .tr-time.wnd-under')).not.toBeNull();
+    expect(document.querySelector('.tr-main .tr-time')).not.toBeNull();
+  });
+
+  // The alignment defect itself, and it is invisible to the eye in a screenshot only
+  // because the eye sees the RESULT: `dir="auto"` over a digits-only run resolves the box
+  // to ltr, so the inherited `text-align: start` meant *left* and the range hung off the
+  // wrong margin of an RTL card. The attribute must not come back.
+  it('carries no dir on the time box, so `start` stays the RTL start', () => {
+    renderStay(stay);
+    expect(document.querySelector('.tr-time')!.getAttribute('dir')).toBeNull();
   });
 
   // The trap the mockup caught by rendering: a range is a run of digits with no strong
@@ -159,7 +168,10 @@ describe('a check-in with a window', () => {
     expect(text.endsWith('⁩')).toBe(true);
   });
 
-  it('a bare check-out keeps the trailing edge it has always had', () => {
+  // Owner, 2026-08-13: the bare clock joins the range under the title, because a row whose
+  // time moves depending on its own content is the row that stands out. Replaces this
+  // file's original "a bare check-out keeps the trailing edge it has always had".
+  it('puts a BARE clock under the title too, isolated and marked as a ceiling', () => {
     const entry: TransitionEntry = {
       kind: 'transition',
       event: { ...stay, startWindowEnd: undefined },
@@ -168,7 +180,89 @@ describe('a check-in with a window', () => {
       labelKey: 'checkOut',
     };
     render(<TransitionRow entry={entry} tz="Asia/Jerusalem" bookings={[hotel]} onOpen={vi.fn()} />);
-    expect(document.querySelector('.tr-time.wnd-under')).toBeNull();
-    expect(document.querySelector('.tr-main .tr-time')).toBeNull();
+    const time = document.querySelector('.tr-main .tr-time');
+    expect(time).not.toBeNull();
+    // `עד` puts a strong Hebrew character in front of the digits, which is exactly the
+    // container the isolate exists for (ADR-0118 — `UnplacedCommitment`'s own trap).
+    expect(time!.textContent).toBe('עד ⁦11:00⁩');
+  });
+
+  // A floor never reached this row before — it lived in the strip above the list — so this
+  // is a new branch, not a moved one.
+  const floor = (): TransitionEntry => ({
+    kind: 'transition',
+    event: { ...stay, startWindowEnd: undefined },
+    edge: 'start',
+    atMs: Date.parse(stay.startsAt!),
+    labelKey: 'checkIn',
+  });
+
+  it('marks a FLOOR as a floor, now that a floor is placed in the list', () => {
+    render(
+      <TransitionRow entry={floor()} tz="Asia/Jerusalem" bookings={[hotel]} onOpen={vi.fn()} />,
+    );
+    expect(document.querySelector('.tr-time')!.textContent).toBe('מ-⁦17:00⁩');
+  });
+
+  // **Not parity with the strip — a COUNT.** `glance.ts` keeps a `not-before` edge in
+  // `נותרו היום` until it is `DONE`, because 15:01 does not mean anybody checked in
+  // (ADR-0171 §6). The strip that used to hold floors carried the settle pair for exactly
+  // that reason, so moving floors into this row without it strands the number all evening —
+  // the owner's 2026-08-04 report, reintroduced.
+  it('settles a FLOOR, because nothing else can clear it from `נותרו היום`', () => {
+    render(
+      <TransitionRow
+        entry={floor()}
+        tz="Asia/Jerusalem"
+        bookings={[hotel]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+    expect(document.querySelector('.wp-settle')).not.toBeNull();
+  });
+
+  it('does NOT settle a ceiling or a window — both expire by their own clock', () => {
+    const ceiling: TransitionEntry = {
+      kind: 'transition',
+      event: { ...stay, startWindowEnd: undefined },
+      edge: 'end',
+      atMs: Date.parse(stay.endsAt!),
+      labelKey: 'checkOut',
+    };
+    render(
+      <TransitionRow
+        entry={ceiling}
+        tz="Asia/Jerusalem"
+        bookings={[hotel]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+    expect(document.querySelector('.wp-settle')).toBeNull();
+    cleanup();
+
+    // The window's start edge is `window`, not `not-before` — ADR-0184 §6's whole point is
+    // that closing the window is what makes it expire.
+    render(
+      <TransitionRow
+        entry={{ ...floor(), event: stay }}
+        tz="Asia/Jerusalem"
+        bookings={[hotel]}
+        onOpen={vi.fn()}
+        onDone={vi.fn()}
+        onSkip={vi.fn()}
+      />,
+    );
+    expect(document.querySelector('.wp-settle')).toBeNull();
+  });
+
+  it('renders no control at all in Plan mode, which passes no verbs', () => {
+    render(
+      <TransitionRow entry={floor()} tz="Asia/Jerusalem" bookings={[hotel]} onOpen={vi.fn()} />,
+    );
+    expect(document.querySelector('.wp-settle')).toBeNull();
   });
 });

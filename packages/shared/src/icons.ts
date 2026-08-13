@@ -441,18 +441,12 @@ export const isExactEdge = (
   edge: 'start' | 'end',
 ): boolean => edgeMeaning(event, edge) === 'exact';
 
-/** **Does this edge hold a position in its day?** The test is ADR-0171 §10a's own — the
- *  width of the window — and it is a predicate rather than an inlined comparison because
- *  the day's split and the day's count must not drift apart on it.
- *
- *  A floor is open on the side you act (any time after 15:00, so the app would have to
- *  guess which) and holds none. A deadline is closed on the side you act and holds one.
- *  A `window` is closed on both, so it holds one too — which is the whole behavioural
- *  consequence of authoring it. */
-export const edgeHoldsPosition = (
-  event: Pick<TripEvent, 'category' | 'icon' | 'startWindowEnd' | 'endWindowStart'>,
-  edge: 'start' | 'end',
-): boolean => edgeMeaning(event, edge) !== 'not-before';
+/* `edgeHoldsPosition` lived here and is GONE (2026-08-13, amending ADR-0171 §10a and
+   ADR-0184 §4). Every span edge holds a position now — a floor is placed at the instant the
+   day's other hard facts allow (`day-entries.ts`'s `edgeAt`) rather than kept out of the
+   list — so the predicate had no consumers left and, worse, answered `false` about something
+   the app places. Not kept "in case": a name that contradicts the behaviour is what the next
+   reader trusts. */
 
 /** The unit an event's duration reads in — its category's, unless its glyph names a
  *  different one (ADR-0063 extension, ADR-0162's refinement). A null/unset category

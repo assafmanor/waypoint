@@ -12,7 +12,6 @@ import {
   CATEGORY_TIME_PROFILE,
   defaultKindForBookingType,
   hasSpanSchedule,
-  edgeHoldsPosition,
   edgeMeaning,
   eventDurationUnit,
   eventEndBoundary,
@@ -575,14 +574,6 @@ describe('an authored window is the meaning (ADR-0184 §1)', () => {
     expect(isExactEdge({ ...stay, startWindowEnd: '2026-09-15T18:00:00.000Z' }, 'start')).toBe(
       false,
     );
-  });
-
-  it('holds a position, which a bare floor does not — the width of the window is the test', () => {
-    expect(edgeHoldsPosition(stay, 'start')).toBe(false);
-    expect(edgeHoldsPosition(stay, 'end')).toBe(true);
-    expect(
-      edgeHoldsPosition({ ...stay, startWindowEnd: '2026-09-15T18:00:00.000Z' }, 'start'),
-    ).toBe(true);
   });
 
   it('pairs each edge with its own field, which is the thing that inverts silently', () => {

@@ -125,6 +125,7 @@ import {
   groupMembers,
   groupStartEvent,
   mergeDayEntries,
+  staysOnDate,
 } from '../lib/day-entries';
 import { nowLinePlacement } from '../lib/now-line';
 import { ambientSpanLabel } from '../lib/glance';
@@ -312,14 +313,9 @@ export function PlanDay() {
         e.date === activeDate && (readOnly || e.status !== EVENT_STATUS.SKIPPED) && !isAmbient(e),
     )
     .sort(byStart);
-  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop, not builder rows. The
-  // strip now renders only on STRICTLY-MIDDLE nights (ADR-0064 §C, mirroring the
-  // Trip-mode day view): edge days show the transition entry instead, so no day
-  // shows the stay twice and the (wrong) checkout-day strip disappears. A 1-night
-  // stay has no middle day → no strip, just its two edge entries.
-  const middleStays = events.filter(
-    (e) => isAmbient(e) && e.date < activeDate && activeDate < e.endDate!,
-  );
+  // Ambient-span stays (a hotel, ADR-0054/0063): backdrop, not builder rows — on every day
+  // of the stay, edges included. One shared predicate with the Trip day view (ADR-0171 §10e).
+  const staysToday = staysOnDate(events, activeDate);
 
   // Multi-day bracketed bookings (a hotel, a red-eye flight) are ambient — off
   // `dayEvents` — so their edge days would show nothing in the list. Interleave
@@ -967,9 +963,9 @@ export function PlanDay() {
           </span>
         </div>
 
-        {(middleStays.length > 0 || placement.commitments.length > 0) && (
+        {(staysToday.length > 0 || placement.commitments.length > 0) && (
           <div className="day-ambient">
-            {middleStays.map((e) => (
+            {staysToday.map((e) => (
               <div className="ambient" key={e.id}>
                 <span className="ai" aria-hidden="true">
                   {e.icon ?? DEFAULT_STAY_ICON}

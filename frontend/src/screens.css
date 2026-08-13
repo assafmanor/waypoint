@@ -314,28 +314,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* **THE TIME SITS UNDER THE TITLE** (owner, 2026-08-13), which is `.wp-event-time`'s and
+   `.bld-time`'s answer at this row's density rather than a third one. It replaces a pair
+   of rules that put a range here and a bare clock at the row's trailing edge — the only
+   time in the app whose position depended on what it said.
+
+   No `dir` on the element any more (`TransitionRow.tsx` says why at length): `dir="auto"`
+   over a digits-only run resolves the box to ltr, so `text-align: start` meant *left* and
+   the range hung off the wrong margin. The box stays RTL and each clock is isolated at the
+   run (ADR-0118). `nowrap` keeps a range on one line; it has the title's full width here,
+   so there is nothing to wrap for. */
 .tr-time {
-  flex: 0 0 auto;
+  margin-block-start: 2px;
   font-family: var(--font-mono);
   font-size: 12.5px;
   font-weight: 700;
   color: var(--amber-deep);
   white-space: nowrap;
-}
-/* **A WINDOW SITS UNDER THE TITLE** (ADR-0184 §5). Only the PLACEMENT moves — the mono
-   face, the size and the amber all stay `.tr-time`'s, which is why this is three
-   declarations and not a second time style. A bare clock keeps the trailing edge it has
-   always had, so no existing row changes and the ~20px of height is charged only where a
-   window was actually authored.
-
-   This is `.wp-event-face`'s own answer to the same question (`'badge title' /
-   'badge when'`), reused rather than re-decided: measured at 360px, a range at the
-   trailing edge took 45px of 210 off `.tr-title`, the one element in this row that
-   ellipsises. */
-.tr-time.wnd-under {
-  margin-block-start: 2px;
-  white-space: normal;
-  color: var(--amber-deep);
 }
 
 /* Zone-shift pill on a transition edge (ADR-0107): the clock jump vs the day's
@@ -343,6 +338,15 @@
 /* Surface tweak only — the pill itself is ui/zone-shift-pill.css. */
 .tr-tzdelta {
   margin-inline-start: 6px;
+}
+/* The settle pair on a FLOOR row (2026-08-13), where the strip's copy of it used to be.
+   `.transition-row` is `align-items: stretch`, so this needs `.tr-nav`'s own two lines to
+   sit on the row's centre line instead of being pulled to full height — which is the whole
+   of what this surface owns. The control is `SettleControl`'s `compact` unchanged: same
+   words, same marks, same hues (ADR-0139). */
+.transition-row .wp-settle.compact {
+  align-self: center;
+  margin-inline-end: 10px;
 }
 .tr-nav {
   flex: 0 0 auto;

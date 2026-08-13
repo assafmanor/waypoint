@@ -205,6 +205,10 @@ Three things the drawing established that the prose could not:
 
 ### 10a. The owner generalized it, and the generalization decides the pick
 
+> **AMENDED 2026-08-13 — the `not-before` row of the table below is reversed; see [ADR-0184 §9](0184-an-edge-can-be-a-window.md) for the full reasoning.** A floor now holds a position too, placed at the instant the day's other hard facts allow (`edgeAt`, generalising §10b's `deadlineAt` to both ends). Only **no clock at all** is unpositioned now, so the strip holds untimed events and nothing else, and `edgeHoldsPosition` is deleted.
+>
+> **What this section got right, and it is why the amendment costs a whole derivation:** a floor really has no obviously defendable position, and putting it back in the list reintroduced exactly the misreading §10a existed to prevent — a check-in above the flight that brought the group to the country. It is bounded rather than guessed, and where it cannot be bounded (a same-day round trip) the row reads late. That is the accepted price of the reversal, recorded in ADR-0184 §9b.
+
 Owner, on the treatments: _"we should think if we should generalize this not-before / not-after behaviour and the 'without a position' for other events that don't have times."_ **Signed off: one class.**
 
 **They are the same thing, and the test is the width of the window.** An entry holds a position when its window is narrow enough to place it:

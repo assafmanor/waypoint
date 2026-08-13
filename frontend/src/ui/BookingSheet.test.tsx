@@ -1805,11 +1805,17 @@ describe('BookingSheet — the opt-in check-in window', () => {
 
   it('offers ONE dashed token per held edge, and nothing is filled in', () => {
     openWhenStep(BOOKING_TYPE.HOTEL);
-    // Check-in and check-out each carry the offer, and both are empty.
-    const offers = screen.getAllByText(t.whenField.addWindow);
-    expect(offers).toHaveLength(2);
+    // Check-in and check-out each carry the offer, and both are empty — **and they carry
+    // DIFFERENT words** (2026-08-13). A check-in's own time is the window's floor, so its
+    // second bound is a ceiling and reads `עד`; a check-out's own time IS the deadline and
+    // its second bound is the earliest you may leave, so it reads `מ־`. Labelling both `עד`
+    // invited a check-out of `06:00` plus `עד 11:00`, which stored an 11:00 that
+    // `windowBoundIso` rolled back a day into a 19-hour window.
+    expect(screen.getAllByText(t.whenField.addWindow)).toHaveLength(1);
+    expect(screen.getAllByText(t.whenField.addWindowFrom)).toHaveLength(1);
     // The prose words only appear once a window exists, so an untouched form has none.
     expect(screen.queryByText(t.whenField.rangeTo)).toBeNull();
+    expect(screen.queryByText(t.whenField.rangeFrom)).toBeNull();
   });
 
   it('does not offer it on a flight, whose ends are instants', () => {

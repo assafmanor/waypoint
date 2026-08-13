@@ -353,16 +353,27 @@ function SpanLeg({
 
             The impossible bound is PREVENTED rather than refused (ADR-0150 §8): a start
             window closes after its floor, an end window opens before its deadline, and the
-            picker simply does not offer the other slots. */}
+            picker simply does not offer the other slots.
+
+            **The word reads per edge**, and `maxTime` alone was not enough to make that
+            optional: a start edge's own time is the floor, so its second bound is a ceiling
+            and reads `עד` — an end edge's own time IS the deadline, so its second bound is
+            the earliest and reads `מ־`. Both said `עד`, which invited a check-out of `06:00`
+            with `עד 11:00` and stored an 11:00 that `windowBoundIso` rolled to the previous
+            day. See `he.ts`. */}
         {window && (
           <>
-            {window.value && <span className="wf-word">{t.whenField.rangeTo}</span>}
+            {window.value && (
+              <span className="wf-word">
+                {edge === 'end' ? t.whenField.rangeFrom : t.whenField.rangeTo}
+              </span>
+            )}
             <TimeField
               value={window.value}
               onChange={window.onChange}
               onClear={() => window.onChange('')}
-              label={t.whenField.windowCap}
-              placeholder={t.whenField.addWindow}
+              label={edge === 'end' ? t.whenField.windowFromCap : t.whenField.windowCap}
+              placeholder={edge === 'end' ? t.whenField.addWindowFrom : t.whenField.addWindow}
               minTime={edge === 'start' ? time || undefined : undefined}
               maxTime={edge === 'end' ? time || undefined : undefined}
             />
