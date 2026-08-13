@@ -163,7 +163,11 @@ class FakeZoomMap {
     const c = this.centre;
     return { lat: () => c.lat, lng: () => c.lng };
   }
+  /** Counted, because the resume nudge's whole payload is an ARGUMENT-LESS call — it
+   *  moves nothing on purpose, so nothing about the camera's state can witness it. */
+  moveCameras = 0;
   moveCamera(at: { center?: { lat: number; lng: number }; zoom?: number }) {
+    this.moveCameras += 1;
     if (at.center) this.centre = at.center;
     if (at.zoom != null) this.zoom = at.zoom;
   }
@@ -1101,6 +1105,39 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     expect(moduleReset.calls).toBe(before);
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
     expect(moduleReset.calls).toBe(before + 1);
+  });
+
+  /* Field report #35's FIFTH cause, and the owner's own observation is the whole finding:
+     "After going to another app and then returning to the map it loaded." Switching apps
+     fetches nothing, clears no global and builds no map — so the map was already alive and
+     simply never rendered. It needed a nudge, not a retry, which is also why a retry was
+     inert while a restart was not. */
+  describe('a resumed tab nudges a map that never painted', () => {
+    const resume = () => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    };
+
+    it('re-lays out a map whose tiles never arrived', () => {
+      const map = new FakeZoomMap();
+      mapStub.current = map;
+      paint();
+      const before = map.moveCameras;
+      resume();
+      expect(map.moveCameras).toBe(before + 1);
+    });
+
+    it('never touches a canvas that is already painting', () => {
+      // The gate: a working map must not be poked on every app switch, or the fix
+      // becomes a camera driver nobody asked for (ADR-0129 §3).
+      const map = new FakeZoomMap();
+      mapStub.current = map;
+      paint();
+      act(() => tilesLoaded.fire?.());
+      const before = map.moveCameras;
+      resume();
+      expect(map.moveCameras).toBe(before);
+    });
   });
 
   it('retry remounts a fresh map, never reusing the failed instance', async () => {

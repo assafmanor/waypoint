@@ -34,6 +34,7 @@ import {
 import { readMapBounds, useMapCamera } from '../../lib/useMapCamera';
 import { useCanvasGestures } from '../../lib/useCanvasGestures';
 import { observeResize } from '../../lib/observe-resize';
+import { observeVisibility } from '../../lib/visibility';
 import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
@@ -325,6 +326,44 @@ function PinDensity({ paneRef }: { paneRef: RefObject<HTMLDivElement | null> }) 
   return null;
 }
 
+/** **A resumed tab nudges a map that never painted** (field report #35's fifth cause;
+ *  ADR-0121's 2026-08-14 amendment). The owner: _"After going to another app and then
+ *  returning to the map it loaded."_
+ *
+ *  That sentence rules out most of what this bug was assumed to be. Switching apps fetches
+ *  nothing, clears no global and builds no map — it takes the page through hidden →
+ *  visible, which forces a relayout and resumes the compositor. So the map was **already
+ *  constructed and alive**, and simply never rendered: it needed a nudge, not a retry.
+ *  That also explains why a retry was inert (a fresh map under the same conditions does
+ *  the same nothing) while a restart was not.
+ *
+ *  **The library already knows this failure mode.** `use-map-instance.ts` does exactly
+ *  this on its own remount path — _"causes the map to collapse and no longer render tiles
+ *  … triggering moveCamera after remounting should trigger a re-layout"_ — just for a
+ *  different trigger than ours.
+ *
+ *  `moveCamera({})` is the whole fix: no camera argument, so it moves nothing and cannot
+ *  fight ADR-0129 §3's one-eased-driver invariant; it exists to make the map re-measure
+ *  and repaint. **Gated on `!tilesPainted`** so it can only ever touch a map that is
+ *  already failing — a working canvas is never poked.
+ *
+ *  This is deliberately renderer-independent: MapLibre is also a WebGL canvas driven by
+ *  rAF, so ADR-0186's migration would have carried this across untouched. */
+function ResumeNudge({ painted }: { painted: boolean }) {
+  const map = useMap(MAP_ID);
+  const paintedRef = useRef(painted);
+  paintedRef.current = painted;
+  useEffect(() => {
+    if (!map) return;
+    return observeVisibility({
+      onResume: () => {
+        if (!paintedRef.current) map.moveCamera({});
+      },
+    });
+  }, [map]);
+  return null;
+}
+
 /** No-op default for the ring callback, hoisted so it is a stable identity — an inline
  *  arrow here would be a fresh prop every render on a screen that ticks every second,
  *  which is the exact hazard §4 exists for. */
@@ -613,6 +652,7 @@ function MapPaneInner({
           {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
           <PinDensity paneRef={paneRef} />
+          <ResumeNudge painted={tilesPainted} />
           {/* The device-pass panel's zoom readout (ADR-0146 §5). Deliberately `PinDensity`'s
             shape and position: stateless, null-rendering, one listener — so it cannot
             re-render this subtree, which is what keeps a dev tool clear of a marker
