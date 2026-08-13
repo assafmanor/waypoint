@@ -40,9 +40,9 @@ import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
 import {
   MAP_CONNECTOR,
-  MAP_CONTEXT_LOSS_REBUILDS,
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
+  MAP_RECOVERY_BACKOFF_MS,
   MAP_ZOOM,
   type PinHue,
 } from '../../constants';
@@ -362,28 +362,15 @@ function ContextLossRecovery({
   paneRef: RefObject<HTMLDivElement | null>;
   onLost: () => void;
 }) {
-  const lostRef = useRef(false);
   const onLostRef = useRef(onLost);
   onLostRef.current = onLost;
 
   useEffect(() => {
     const pane = paneRef.current;
     if (!pane) return;
-    const rebuildIfVisible = () => {
-      if (!lostRef.current || document.visibilityState !== 'visible') return;
-      lostRef.current = false;
-      onLostRef.current();
-    };
-    const onContextLost = () => {
-      lostRef.current = true;
-      rebuildIfVisible();
-    };
+    const onContextLost = () => onLostRef.current();
     pane.addEventListener('webglcontextlost', onContextLost, true);
-    const stopWatching = observeVisibility({ onResume: rebuildIfVisible });
-    return () => {
-      pane.removeEventListener('webglcontextlost', onContextLost, true);
-      stopWatching();
-    };
+    return () => pane.removeEventListener('webglcontextlost', onContextLost, true);
   }, [paneRef]);
   return null;
 }
@@ -490,9 +477,61 @@ function MapPaneInner({
   // anywhere else because `withDeadline` starts counting on the next line, so the number the
   // panel reports and the bound it is judged against cannot drift apart.
   const attemptStartRef = useRef<number | null>(null);
+
+  // ── THE CANVAS SUPERVISOR ───────────────────────────────────────────────────────────
+  // **The map heals itself, and never stops trying** (ADR-0121's 2026-08-14 amendment and
+  // its same-day correction). Two things leave a dead canvas and neither has a
+  // Google-exposed signal: a context the phone reclaimed while backgrounded, and tiles
+  // that never arrived. Both route here.
+  //
+  // **`consecutiveRef` counts FAILURES IN A ROW, never rebuilds in a lifetime** — and that
+  // distinction is the whole correction. The first version budgeted three rebuilds per
+  // MOUNT, so a phone (which drops the context on roughly every background) exhausted it
+  // in three resumes and left the pane dead on the fourth, needing a human tap. Measured
+  // as 3/8 healthy cycles. A recovery that paints is proof the GPU is fine, so
+  // `handleTilesLoaded` resets this to zero and the budget can never run out on a map
+  // that keeps coming back.
+  const consecutiveRef = useRef(0);
+  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Read inside a visibility handler that must not re-subscribe on every paint. */
+  const tilesPaintedRef = useRef(false);
+
+  /** Ask for a fresh map after a delay that grows with consecutive failures.
+   *
+   *  Two guards, both load-bearing: **one pending attempt at a time**, so a burst of
+   *  events cannot queue a pile of rebuilds; and **only while visible**, because a map
+   *  constructed against a hidden page is the failure being recovered from. An attempt
+   *  that comes due while hidden is not lost — the resume below asks again. */
+  const scheduleRecovery = useCallback(() => {
+    if (pendingRef.current !== null) return;
+    const step = Math.min(consecutiveRef.current, MAP_RECOVERY_BACKOFF_MS.length - 1);
+    pendingRef.current = setTimeout(() => {
+      pendingRef.current = null;
+      if (document.visibilityState !== 'visible') return;
+      consecutiveRef.current += 1;
+      setAttempt((n) => n + 1);
+    }, MAP_RECOVERY_BACKOFF_MS[step]);
+  }, []);
+
+  useEffect(() => {
+    // A tab coming back is the moment to try again: visible, laid out, someone looking at
+    // it. This is also what runs an attempt that came due while the page was hidden.
+    const stop = observeVisibility({
+      onResume: () => {
+        if (!tilesPaintedRef.current) scheduleRecovery();
+      },
+    });
+    return () => {
+      stop();
+      if (pendingRef.current !== null) clearTimeout(pendingRef.current);
+      pendingRef.current = null;
+    };
+  }, [scheduleRecovery]);
+
   useEffect(() => {
     setMapFailed(false);
     setTilesPainted(false);
+    tilesPaintedRef.current = false;
     setTilesLate(false);
     // The device-pass capture (§1b, backlog workstream M) rides on this attempt's OWN
     // signals rather than a second probe — cleared here so a retry does not show the
@@ -512,17 +551,25 @@ function MapPaneInner({
       MAP_LOAD_TIMEOUT_MS.TILES,
       () => new Promise<void>((resolve) => (tilesLoadedRef.current = resolve)),
     ).catch((error) => {
-      if (live && error instanceof PhaseTimeoutError) setTilesLate(true);
+      if (!live || !(error instanceof PhaseTimeoutError)) return;
+      // Say so, AND start trying again. Before this the notice was the whole response and
+      // the map sat there until a human tapped — which is the case the owner kept hitting.
+      setTilesLate(true);
+      scheduleRecovery();
     });
     return () => {
       live = false;
       tilesLoadedRef.current = null;
     };
-  }, [attempt]);
+  }, [attempt, scheduleRecovery]);
   const handleTilesLoaded = useCallback(() => {
     tilesLoadedRef.current?.();
     tilesLoadedRef.current = null;
     setTilesPainted(true);
+    // **A paint is proof the GPU is fine**, so the failure streak resets here. Not doing
+    // this is exactly what made the fixed budget a regression.
+    tilesPaintedRef.current = true;
+    consecutiveRef.current = 0;
     if (import.meta.env.DEV) {
       const started = attemptStartRef.current;
       publishMapReading({
@@ -566,22 +613,7 @@ function MapPaneInner({
   // Delete it if vis.gl ever makes the status recoverable.
   const retryMap = useCallback(() => {
     __resetModuleState();
-    rebuildsRef.current = 0;
-    setAttempt((n) => n + 1);
-  }, []);
-  // **A lost context rebuilds, up to a point** — see `ContextLossRecovery`. Bounded by
-  // `MAP_CONTEXT_LOSS_REBUILDS` because a rebuild is a billed instantiation (§4) and a
-  // machine whose GPU keeps dropping contexts would otherwise rebuild forever; past the
-  // bound it degrades to the error state, where a human tap is the throttle. A ref rather
-  // than state: it must not re-render the marker subtree, and the human retry above
-  // resets it because that is a person saying "start over".
-  const rebuildsRef = useRef(0);
-  const recoverContext = useCallback(() => {
-    if (rebuildsRef.current >= MAP_CONTEXT_LOSS_REBUILDS) {
-      setMapFailed(true);
-      return;
-    }
-    rebuildsRef.current += 1;
+    consecutiveRef.current = 0;
     setAttempt((n) => n + 1);
   }, []);
   return (
@@ -589,7 +621,7 @@ function MapPaneInner({
       {/* OUTSIDE the branch below, deliberately: the pane element is what carries the
           capture listener, and it has to keep hearing a context die even once the canvas
           has been swapped for `ErrorState`. */}
-      <ContextLossRecovery paneRef={paneRef} onLost={recoverContext} />
+      <ContextLossRecovery paneRef={paneRef} onLost={scheduleRecovery} />
       {mapFailed ? (
         <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
       ) : (
