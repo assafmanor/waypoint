@@ -4,13 +4,14 @@
 // blocking on the network — closes the sheet immediately and hands the upload to
 // the offline outbox (ADR-0056): the file flushes in the background and works
 // offline like every other write. The pick control is the shared FilePicker and
-// the type grid the shared ChoiceGrid (ADR-0086); the header icon tracks the type.
+// the type row `DocumentTypePills` (ADR-0086); the header icon tracks the type, and
+// shows `other`'s until one is chosen — the form opens on nothing.
 import { useId, useState } from 'react';
 import { DOCUMENT_TYPE, MAX_DOCUMENT_SIZE_BYTES, type DocumentType } from '@waypoint/shared';
 import { Sheet } from './Sheet';
+import { DocumentTypePills } from './DocumentTypePills';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
-import { ChoiceGrid } from './primitives/ChoiceGrid';
 import { FilePicker } from './primitives/FilePicker';
 import { useFormErrors } from './primitives/useFormErrors';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
@@ -22,12 +23,6 @@ import { DOCUMENT_TYPE_ICON, CONTROL_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 const MAX_MB = Math.round(MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024));
-
-const TYPE_OPTIONS = Object.values(DOCUMENT_TYPE).map((ty) => ({
-  value: ty,
-  icon: DOCUMENT_TYPE_ICON[ty],
-  label: t.docs.type[ty],
-}));
 
 /** Client-side gate mirroring the server's cap + accept filter, so the common
  *  failures surface before the round-trip. Returns an error string or null. */
@@ -58,7 +53,12 @@ export function DocumentUploadSheet({
   const noteId = useId();
   const { noteVerbs } = useTrip();
   const [file, setFile] = useState<File | null>(null);
-  const [type, setType] = useState<DocumentType>(DOCUMENT_TYPE.PASSPORT);
+  // **Nothing is selected until it is chosen** (owner, 2026-08-13). The form used to open
+  // on `passport`, which most uploads are not, so the quick path filed them as one.
+  // `ChoiceGrid` has taken an optional value since ADR-0109 §11. Unanswered is not a
+  // refusal: an upload with no type picked is `other`, the value that already means this.
+  const [type, setType] = useState<DocumentType>();
+  const headType = type ?? DOCUMENT_TYPE.OTHER;
   const [title, setTitle] = useState('');
   const composer = useNoteComposer();
   // One refusal shape for the whole app (ADR-0150): the file field is marked,
@@ -95,7 +95,7 @@ export function DocumentUploadSheet({
     void withChangeGroup(async () => {
       await queueDocumentUpload(
         tripId,
-        { id, type, title: title.trim() || t.docs.type[type] },
+        { id, type: headType, title: title.trim() || t.docs.type[headType] },
         file,
       );
       for (const body of composer.pending()) {
@@ -120,7 +120,7 @@ export function DocumentUploadSheet({
       >
         <div className="titlerow du-head">
           <span className="bs-icon" aria-hidden="true">
-            {DOCUMENT_TYPE_ICON[type]}
+            {DOCUMENT_TYPE_ICON[headType]}
           </span>
           <div className="du-head-text">
             <span className="du-head-title">{t.docs.upload.title}</span>
@@ -129,12 +129,7 @@ export function DocumentUploadSheet({
         </div>
 
         <Field label={t.docs.upload.typeLabel}>
-          <ChoiceGrid
-            options={TYPE_OPTIONS}
-            value={type}
-            onChange={setType}
-            ariaLabel={t.docs.upload.typeLabel}
-          />
+          <DocumentTypePills value={type} onChange={setType} />
         </Field>
 
         <Field label={t.docs.upload.titleLabel} htmlFor={nameId}>

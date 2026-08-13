@@ -69,7 +69,16 @@ export type EventCategory = z.infer<typeof eventCategorySchema>;
 export const membershipRoleSchema = z.enum(['admin', 'peer']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
 
-export const documentTypeSchema = z.enum(['passport', 'insurance', 'visa', 'other']);
+export const documentTypeSchema = z.enum([
+  'passport',
+  'visa',
+  'license',
+  'ticket',
+  'reservation',
+  'insurance',
+  'health',
+  'other',
+]);
 export type DocumentType = z.infer<typeof documentTypeSchema>;
 
 export const changeActionSchema = z.enum(['create', 'update', 'move', 'delete', 'status']);

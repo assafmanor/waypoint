@@ -434,11 +434,29 @@ export const TRANSPORT_BOOKING_TYPES = [
   BOOKING_TYPE.CAR,
 ] as const satisfies readonly BookingType[];
 
-/** Glyph per document type, for the Index documents section badges. */
+/** Glyph per document type, for the Index documents section badges. ADR-0052 §6's
+ *  invariant is unmistakable badges from one source, and the 2026-08-13 set is where
+ *  it bit twice.
+ *
+ *  First: `ticket` wants 🎫, which `visa` was wearing — so a visa takes the passport-
+ *  control mark it can now hold without colliding with 📕.
+ *
+ *  Then `reservation` shipped as 🧾 beside `other`'s 📄 and the invariant failed on its own
+ *  terms. Different codepoints, **one silhouette** — two white pages — which is invisible
+ *  in this table and unmissable at the 36px a badge is actually read at. The pair was not
+ *  even new: `icons.ts` offers both in its *services* group as two options for one idea. So
+ *  🛎️, which no other table in the app uses, has no silhouette twin in this set, and covers
+ *  all three things `הזמנה` means — a hotel, a table, an RSVP. 📄 stays with `other`: a blank
+ *  page is the right mark for a document nobody classified. 📅 was the runner-up and is
+ *  refused on sight, because `Icon.tsx` already retired it from two jobs. */
 export const DOCUMENT_TYPE_ICON = {
   passport: '📕',
+  visa: '🛂',
+  license: '🪪',
+  ticket: '🎫',
+  reservation: '🛎️',
   insurance: '🛡️',
-  visa: '🎫',
+  health: '💉',
   other: '📄',
 } as const satisfies Record<DocumentType, string>;
 

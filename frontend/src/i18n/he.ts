@@ -1,7 +1,7 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
-import { NOTE_HOST_FIELD, type BookingType } from '@waypoint/shared';
+import { NOTE_HOST_FIELD, type BookingType, type DocumentType } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
 import { measure } from '../lib/bidi';
@@ -1036,19 +1036,151 @@ export const t = {
     loading: 'טוען מסמכים…',
     offline: 'המסמכים ייטענו כשנחזור לרשת',
     emptyTitle: 'אין עדיין מסמכים שמורים',
-    emptyBody: 'דרכונים, ביטוח וויזות · מוצפנים ונשמרים בבטחה',
+    emptyBody: 'דרכונים, כרטיסים וביטוח · מוצפנים ונשמרים בבטחה',
     emptyAdd: 'העלה מסמך ראשון',
     group: {
       passport: 'דרכונים',
-      insurance: 'ביטוח נסיעות',
       visa: 'ויזות',
+      license: 'רישיונות',
+      ticket: 'כרטיסים',
+      reservation: 'אישורי הזמנה',
+      insurance: 'ביטוח נסיעות',
+      health: 'בריאות',
       other: 'אחר',
     },
+    // One short word per pill — in the type picker (`DocumentTypePills`) and, since
+    // ADR-0052 §7, on the section's filter chips too. Short is what lets eight of them ride
+    // one scrollable row instead of three rows of cards.
     type: {
       passport: 'דרכון',
-      insurance: 'ביטוח',
       visa: 'ויזה',
+      license: 'רישיון',
+      ticket: 'כרטיס',
+      reservation: 'הזמנה',
+      insurance: 'ביטוח',
+      health: 'בריאות',
       other: 'אחר',
+    },
+    // **Extra words the search matches, never displayed** — the same idea as
+    // `index.bookingTypeSynonyms`, and it earns its place for the same reason: what people
+    // type is the thing in their hand, not the category we filed it under. Widened on the
+    // owner's call (2026-08-13) from the first sparse pass; two rules govern what may join.
+    //
+    // **1. The match is `term.includes(query)`, not the other way round** (`matchesAnyTerm`),
+    // which is what makes partial typing work and is worth reading before adding a word. A
+    // LONGER, more specific term is nearly free — `ביטוח בריאות` on `health` is reached by
+    // `ביטוח`, `ביטוח ב`, `בריאות`, and it cannot be reached by anything it does not contain.
+    // A SHORT term is the one to think about, because every prefix of it now matches. It also
+    // means a word already in the label or the plural (`t.docs.type` / `t.docs.group`, both
+    // already search terms) does not belong here — `דרכון` and `דרכונים` are covered.
+    //
+    // **2. A word belongs to a type only if someone typing it wants THAT type's documents.**
+    // Bookings learned this the expensive way: leaving the car words on `transit` made every
+    // bus answer a search for `השכרת רכב`. `other` therefore gets nothing by definition.
+    //
+    // Two consequences worth naming rather than discovering:
+    //
+    //  - **A word may legitimately sit on two types.** `ביטוח` reaches both the travel policy
+    //    and the health cover; `רפואי` reaches both. That is not the bus problem — both
+    //    answers are ones the person asking wants, which is the test, not uniqueness.
+    //  - **`רכב` is a prefix of `רכבת`**, so searching for the car hire also surfaces rail
+    //    tickets. Inherent to substring matching in Hebrew and not worth exact-word matching
+    //    to fix, since that would break partial typing on every other query. Pinned in
+    //    `lib/documents.test.ts` so it stays a known behaviour instead of a surprise.
+    typeSynonyms: {
+      passport: ['פספורט', 'passport'],
+      // `אשרה` is the formal word the stamp itself uses; `esta`/`eta` are the travel
+      // authorisations people photograph and would never think to call a visa.
+      visa: ['אשרה', 'אשרת כניסה', 'visa', 'esta', 'eta'],
+      // `רשיון` without the yod is at least as commonly typed as the label's spelling, and no
+      // amount of normalising reaches it — `normalizeSearchTerm` folds punctuation, not
+      // orthography. `בינלאומי` is how the IDP is asked for at a hire desk.
+      license: [
+        'נהיגה',
+        'רישיון נהיגה',
+        'רשיון',
+        'רשיון נהיגה',
+        'בינלאומי',
+        'רישיון בינלאומי',
+        'idp',
+        'license',
+      ],
+      // The one type whose label is the LEAST likely thing typed: you look for the boarding
+      // pass or the rail pass, not for the generic word `כרטיס`. No venue words (`מוזיאון`,
+      // `הופעה`) — only SOME tickets are those, so they would make every ticket answer.
+      ticket: [
+        'בורדינג',
+        'בורדינג פס',
+        'בורדינג פאס',
+        'boarding',
+        'עלייה למטוס',
+        'כרטיס טיסה',
+        'טיסה',
+        'מטוס',
+        'רכבת',
+        'רכבות',
+        'שינקנסן',
+        'jr pass',
+        'כרטיס כניסה',
+      ],
+      // A confirmation is remembered by what was booked, which is exactly the vocabulary
+      // `BOOKING_TYPE` uses next door — so a hotel confirmation answers `מלון` and the car
+      // hire answers `רכב`/`אוטו`. The car words live here rather than on `license` because
+      // this is the document the hire desk issued; the licence is what you already had.
+      reservation: [
+        'אישור',
+        'אישור הזמנה',
+        'booking',
+        'מלון',
+        'מלונות',
+        'הוסטל',
+        'צימר',
+        'airbnb',
+        'לינה',
+        'מסעדה',
+        'שולחן',
+        'רכב',
+        'רכב שכור',
+        'השכרת רכב',
+        'השכרה',
+        'אוטו',
+        'מכונית',
+        'רנט א קאר',
+      ],
+      // The label is `ביטוח`, so what is missing is the paperwork's own noun and the kind of
+      // cover — `ביטוח נסיעות` is already the plural label and needs no entry.
+      insurance: ['פוליסה', 'פוליסת ביטוח', 'ביטוח רפואי', 'כיסוי', 'insurance'],
+      health: [
+        'ביטוח בריאות',
+        'תעודת חיסון',
+        'חיסון',
+        'חיסונים',
+        'תרכיב',
+        'מרשם',
+        'תרופה',
+        'תרופות',
+        'בדיקה',
+        'קורונה',
+        'covid',
+        'health',
+      ],
+      other: [],
+    } as const satisfies Record<DocumentType, readonly string[]>,
+    filter: {
+      all: 'הכל',
+      categoryLabel: 'סינון לפי סוג',
+      noResults: 'אין מסמכים מהסוג הזה',
+    },
+    search: {
+      button: 'חיפוש מסמכים',
+      modeTitle: 'חיפוש מסמכים',
+      // Names the type label as a thing you can search by, because it is the half of this
+      // that nobody would guess — the same service `index.search.placeholder` does with
+      // `או קטגוריה`.
+      placeholder: 'חפשו לפי שם או סוג…',
+      clear: 'נקה חיפוש',
+      backAria: 'סגירת חיפוש',
+      noResults: 'לא נמצאו מסמכים',
     },
     upload: {
       title: 'העלאת מסמך',

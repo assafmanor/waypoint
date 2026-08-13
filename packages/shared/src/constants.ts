@@ -78,10 +78,19 @@ export const MEMBERSHIP_ROLE = {
   PEER: 'peer',
 } as const satisfies Record<string, MembershipRole>;
 
+/** **Declaration order is the app's document order** (ADR-0052 §6, amended 2026-08-13):
+ *  identity → what you present on the way → cover → other. The upload/manage grids and
+ *  the Index's groups all read it from here, so there is one order rather than a display
+ *  list beside the value list. The Postgres enum's own order differs (values can only be
+ *  appended) and is invisible to everything. */
 export const DOCUMENT_TYPE = {
   PASSPORT: 'passport',
-  INSURANCE: 'insurance',
   VISA: 'visa',
+  LICENSE: 'license',
+  TICKET: 'ticket',
+  RESERVATION: 'reservation',
+  INSURANCE: 'insurance',
+  HEALTH: 'health',
   OTHER: 'other',
 } as const satisfies Record<string, DocumentType>;
 
