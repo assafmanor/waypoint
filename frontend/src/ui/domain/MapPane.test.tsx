@@ -1252,6 +1252,36 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
       expect(reload).toHaveBeenCalledTimes(1);
     });
 
+    /* **The reading nobody has ever had.** Six fixes have shipped for #35 on inference
+       because every reproduction attempt recovers on a desktop, so the only way to learn
+       what is true on the reporting phone is to read it there. */
+    it('offers the diagnostic only once the map is failing, never on a working one', () => {
+      vi.useFakeTimers();
+      paint();
+      expect(screen.queryByText(t.map.diagnostic)).toBeNull();
+      loseContext();
+      settleRecovery();
+      spendTheBackoff();
+      expect(screen.getByText(t.map.diagnostic)).toBeTruthy();
+    });
+
+    it('reads the facts at the tap, and names the one that decides everything', () => {
+      vi.useFakeTimers();
+      paint();
+      spendTheBackoff();
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      const out = document.querySelector('.map-diag-out')!.textContent!;
+      // `gl:` is the discriminator: if a fresh canvas cannot get a context, no rebuild
+      // can ever work and only a new document will — which is exactly what the owner
+      // reports and what nothing here has been able to confirm.
+      expect(out).toContain('gl:');
+      expect(out).toContain('canvas:');
+      expect(out).toContain('pane:');
+      expect(out).toContain('painted:');
+      expect(out).toContain('fails:');
+      expect(out).toContain('resumes:');
+    });
+
     it('does NOT reload while the map is merely rebuilding', () => {
       // The guard that keeps this from becoming an app that restarts itself whenever a
       // phone hiccups: only an exhausted backoff earns a reload.

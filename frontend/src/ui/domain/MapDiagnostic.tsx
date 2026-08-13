@@ -1,0 +1,122 @@
+// **The reading nobody has ever had** (field report #35, session 267).
+//
+// Six fixes have shipped for #35 on inference and the mechanism is still unknown, because
+// every attempt to reproduce it has failed: on a desktop, `WEBGL_lose_context`, a full
+// `Browser.crashGpuProcess`, connectivity flapping and context-budget exhaustion ALL
+// recover. Desktop Chrome heals what the reporting phone does not, so the only way to
+// learn what is actually true there is to read it there.
+//
+// **Why not the existing instrument.** ADR-0146's `DevMapTuner` already reports most of
+// this — and `lib/dev-tuning.ts` is deliberately tree-shaken out of production, so
+// reaching it would mean shipping the constant-override layer to every user to read six
+// numbers. This is the six numbers instead: no overrides, no panel, no storage.
+//
+// It appears ONLY on a pane that is already failing, so a working map never grows a
+// debug affordance — and it is collapsed behind one word, because a person looking at a
+// broken map wants the map, not a readout.
+import { useCallback, useState, type RefObject } from 'react';
+import { t } from '../../i18n/he';
+
+export interface MapDiagnosticFacts {
+  /** How many consecutive recoveries have failed — the supervisor's own counter. */
+  failures: number;
+  /** How many times the tab has been resumed since this pane mounted. */
+  resumes: number;
+  /** Milliseconds since the current attempt started. */
+  elapsedMs: number;
+  /** Did tiles ever paint on this attempt? Separates "never started" from "started and died". */
+  painted: boolean;
+}
+
+/** **Can this page make a NEW WebGL context right now?** The single most discriminating
+ *  fact, and the one no other signal carries: if this reads `none`, then no rebuild can
+ *  ever work and only a fresh document will — which is precisely what the owner reports
+ *  and what nothing here has been able to confirm.
+ *
+ *  Probed on a throwaway canvas rather than the map's own, so it answers "is WebGL
+ *  available to this document" instead of "is that particular canvas alive". The context
+ *  is released immediately: asking must not itself consume the budget it is measuring. */
+function webglAvailability(): string {
+  try {
+    const probe = document.createElement('canvas');
+    const gl = (probe.getContext('webgl2') ??
+      probe.getContext('webgl')) as WebGLRenderingContext | null;
+    if (!gl) return 'none';
+    const lost = gl.isContextLost();
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return lost ? 'born-lost' : 'ok';
+  } catch (error) {
+    return `throw:${error instanceof Error ? error.name : 'unknown'}`;
+  }
+}
+
+/** The map's own canvas, as the DOM sees it — `none` when vis.gl never constructed one,
+ *  which is what a loader stuck below `LOADED` looks like from out here (session 262). */
+function canvasState(pane: HTMLElement | null): string {
+  const canvas = pane?.querySelector('canvas');
+  if (!canvas) return 'none';
+  try {
+    const gl = (canvas.getContext('webgl2') ??
+      canvas.getContext('webgl')) as WebGLRenderingContext | null;
+    if (!gl) return 'no-gl';
+    return gl.isContextLost() ? 'LOST' : 'ok';
+  } catch {
+    return 'throw';
+  }
+}
+
+/**
+ * One line of facts, behind one word.
+ *
+ * Deliberately Latin and mono: it is data to be screenshotted and read by someone
+ * debugging, not UI copy. `dir="auto"` resolves it left-to-right without forcing a
+ * direction on the element (ADR-0118 — `dir="ltr"` is lint-blocked and would be wrong).
+ */
+export function MapDiagnostic({
+  paneRef,
+  facts,
+}: {
+  paneRef: RefObject<HTMLDivElement | null>;
+  facts: MapDiagnosticFacts;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reading, setReading] = useState('');
+
+  // Read at the moment of the tap, never on render: a value sampled every render would
+  // be a live probe running on a screen that re-renders every second, and `webglAvailability`
+  // creates a context each time it is asked.
+  const toggle = useCallback(() => {
+    setOpen((wasOpen) => {
+      if (wasOpen) return false;
+      const pane = paneRef.current;
+      const box = pane?.getBoundingClientRect();
+      setReading(
+        [
+          `gl:${webglAvailability()}`,
+          `canvas:${canvasState(pane)}`,
+          `pane:${box ? `${Math.round(box.width)}x${Math.round(box.height)}` : 'none'}`,
+          `painted:${facts.painted ? 'y' : 'n'}`,
+          `fails:${facts.failures}`,
+          `resumes:${facts.resumes}`,
+          `t:${Math.round(facts.elapsedMs / 100) / 10}s`,
+          `online:${navigator.onLine ? 'y' : 'n'}`,
+          `vis:${document.visibilityState[0]}`,
+        ].join(' '),
+      );
+      return true;
+    });
+  }, [paneRef, facts]);
+
+  return (
+    <div className="map-diag">
+      <button type="button" className="map-diag-toggle" onClick={toggle} aria-expanded={open}>
+        {t.map.diagnostic}
+      </button>
+      {open && (
+        <output className="map-diag-out" dir="auto">
+          {reading}
+        </output>
+      )}
+    </div>
+  );
+}
