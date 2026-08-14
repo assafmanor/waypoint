@@ -174,17 +174,24 @@ export function MapCanvas({
           // ADR-0121 §12's decisions, which stop being suppressions and become choices:
           // there is no vendor POI layer and no vendor chrome to disable here.
           keyboard: false,
-          // **The one vendor GESTURE we do turn off**, because it is the only one we
-          // reimplemented: `useCanvasGestures` owns the double-tap, both as a step in and as
-          // the tap-then-drag zoom (ADR-0145), and MapLibre ships its own `ClickZoomHandler`
-          // /`TapZoomHandler` for the same input. Ours wins today only because its
-          // capture-phase guard starves theirs of events — which is one `stopPropagation`
-          // away from two step-zooms on one tap. Off at the source instead.
+          // **`doubleClickZoom` is deliberately LEFT ON, and turning it off is a regression
+          // that has already shipped once** (#605, reverted here).
           //
-          // Its sibling `TapDragZoomHandler` cannot be turned off here: it is enabled and
-          // disabled with `touchZoomRotate`, i.e. with the pinch, so switching it off would
-          // cost the gesture we do want. The capture guard remains what keeps it quiet.
-          doubleClickZoom: false,
+          // The tidy-looking argument for switching it off: `useCanvasGestures` reimplements
+          // the double-tap (ADR-0145), so MapLibre's `ClickZoomHandler`/`TapZoomHandler` are
+          // a second recogniser for one input, held off only by our capture-phase guard.
+          //
+          // **What that argument misses is that `TapZoomHandler` is two gestures, not one.**
+          // It holds `_zoomIn` (one finger, two taps — the one we replace) *and* `_zoomOut`
+          // (TWO fingers, one tap — the one we never implemented and nobody wrote down). The
+          // option, and `DoubleClickZoomHandler.disable()` behind it, is all-or-nothing over
+          // both, so switching off the duplicate takes the two-finger zoom-out with it. There
+          // is no public way to reach one and not the other.
+          //
+          // So the duplicate stays, starved of events by the capture guard exactly as
+          // `TapDragZoomHandler` is — that one cannot be switched off either, since MapLibre
+          // enables it with `touchZoomRotate`, i.e. with the pinch. One guard covers both, and
+          // `useCanvasGestures`'s `SUPPRESSED` list is where it lives.
         });
         mapRef.current = map;
 

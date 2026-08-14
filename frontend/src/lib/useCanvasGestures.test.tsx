@@ -133,6 +133,26 @@ describe('the long press', () => {
     act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS * 3));
     expect(holds).toHaveLength(1);
   });
+
+  // A second finger means this is a pinch or a two-finger tap — the renderer's gestures, and
+  // neither is a long press. The timer the first finger armed has to go with it, because both
+  // clocks are 500ms: a two-finger tap held a hair too long fell past MapLibre's own
+  // `MAX_TOUCH_TIME`, so it missed the zoom-out AND dropped a pin at the first finger.
+  it('cancels the hold when a second finger lands, so a two-finger tap drops nothing', () => {
+    press(250);
+    pane.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        clientX: 180,
+        clientY: 300,
+        bubbles: true,
+        button: 0,
+        isPrimary: false,
+        pointerId: 2,
+      }),
+    );
+    act(() => void vi.advanceTimersByTime(DRAG_HOLD_MS * 3));
+    expect(holds).toHaveLength(0);
+  });
 });
 
 describe('the click swallow', () => {

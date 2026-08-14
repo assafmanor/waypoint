@@ -525,12 +525,18 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     expect(built().options.keyboard).toBe(false);
   });
 
-  // The one vendor GESTURE that is off, because `useCanvasGestures` reimplements it (ADR-0145).
-  // Its capture-phase guard already starves MapLibre's handler of events, so this asserts the
-  // belt rather than the braces — and a guard that stops working is exactly when it matters.
-  it('switches off MapLibre’s own double-tap zoom, which we own', async () => {
+  // **The vendor double-tap zoom stays ON, and this is the test that says why** (#605's
+  // regression, fixed in #606). `useCanvasGestures` reimplements the one-finger double-tap, so
+  // switching MapLibre's off looks like housekeeping — but `TapZoomHandler` carries the
+  // TWO-FINGER tap zoom-out in the same object, and the option disables both. Turning it off
+  // silently removed a gesture nothing in this repo had written down.
+  //
+  // The duplicate is starved by `useCanvasGestures`'s capture-phase guard instead. Asserted as
+  // "not false" rather than "true" because MapLibre's own default is what we are relying on:
+  // the point is that this option is never passed, not that it is passed as `true`.
+  it('leaves MapLibre’s double-tap zoom alone, so the two-finger tap still zooms out', async () => {
     await paint();
-    expect(built().options.doubleClickZoom).toBe(false);
+    expect(built().options.doubleClickZoom).not.toBe(false);
   });
 
   // ── THE READ IS AUTHENTICATED (2026-08-14, from the owner's diagnostic) ──────────────
