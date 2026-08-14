@@ -42,8 +42,7 @@ export interface MapArrival {
   frame: boolean;
 }
 
-/** A viewport / extent, in the same shape `google.maps.LatLngBoundsLiteral` uses,
- *  so the hook hands it straight to `fitBounds` with no adapter. */
+/** A renderer-neutral viewport/extent handed straight to `CameraMap.fitBounds`. */
 export interface MapBounds {
   north: number;
   south: number;

@@ -1,7 +1,6 @@
 import { useCallback, useState, type CSSProperties } from 'react';
 import { MAP_CARD_BODY_H, MAP_LOAD_TIMEOUT_MS, MAP_SHEET_STOPS } from '../constants';
 import { zoomPerLevelPx } from '../lib/canvas-gestures';
-import type { MapsConfig } from '../lib/map-config';
 // The theme's own owner (ADR-0158 §8), not `map-config`'s `documentMapTheme` alias for it —
 // which is the same function, but reached through a module the Map screen's suites mock.
 import { documentTheme } from '../lib/theme';
@@ -46,17 +45,7 @@ type LookAnswer = 'ok' | 'bad';
 const SECTION = { tune: 'tune', read: 'read', diag: 'diag', look: 'look', out: 'out' } as const;
 type Section = (typeof SECTION)[keyof typeof SECTION];
 
-/** The config is **handed in, never re-read here.** It used to be a plain `mapsConfig()` call
- *  in render, under a comment claiming it was build-time and unchanging — which is true of the
- *  three `VITE_` vars and false of the call, because it resolves `mapId`/`colorScheme` through
- *  the LIVE `documentTheme()` while the map itself latches its config at mount
- *  (`screens/Map.tsx`'s `useMemo(…, [])`). After any theme flip — and the default pick is
- *  `system`, whose `matchMedia` listener fires on Android's scheduled dark theme with no user
- *  action at all — the panel reported the config the map WOULD be built from over a canvas
- *  built from the other one: DARK and the night Map ID above light tiles. An instrument that
- *  misreports the thing under test invalidates the capture, so it now reads the same latched
- *  value the pane was constructed with, exactly as `DayConnector` already does. */
-export function DevMapTuner({ config }: { config: MapsConfig | null }) {
+export function DevMapTuner() {
   const [section, setSection] = useState<Section>(SECTION.tune);
   const [overrides, setOverrides] = useState(() => tuningOverrides());
   const [looks, setLooks] = useState<Partial<Record<LookQuestionKey, LookAnswer>>>({});
@@ -178,11 +167,7 @@ export function DevMapTuner({ config }: { config: MapsConfig | null }) {
           </div>
           <div>online: {readings.online ? 'yes' : 'no'}</div>
           {readings.apiError != null && <div>last error: {readings.apiError}</div>}
-          <div>mapId: {config?.mapId ?? '-'}</div>
-          <div>colorScheme: {config?.colorScheme ?? '-'}</div>
-          {/* The document's theme NOW, beside the config the canvas was built from. They agree
-              until a theme flips mid-sitting, and a disagreement is a real finding about the
-              canvas rather than a defect in this panel. */}
+          {/* Sampled live so a theme flip during a device sitting is visible in the report. */}
           <div>document theme now: {readings.theme}</div>
           <div style={{ wordBreak: 'break-all' }}>ua: {navigator.userAgent}</div>
           <button type="button" onClick={refresh}>
@@ -220,10 +205,7 @@ export function DevMapTuner({ config }: { config: MapsConfig | null }) {
       {section === SECTION.out && (
         <>
           <div style={rowStyle}>
-            <button
-              type="button"
-              onClick={() => setEmitted(emit(overrides, looks, measure(), config))}
-            >
+            <button type="button" onClick={() => setEmitted(emit(overrides, looks, measure()))}>
               emit
             </button>
             <button type="button" onClick={reset}>
@@ -321,7 +303,6 @@ function emit(
   overrides: Partial<Record<DevTunableKey, number>>,
   looks: Partial<Record<LookQuestionKey, LookAnswer>>,
   readings: Readings,
-  config: MapsConfig | null,
 ): string {
   const lines = ['# map device pass — ADR-0146', ''];
   lines.push(`viewport ${window.innerWidth}×${window.innerHeight}`);
@@ -330,8 +311,6 @@ function emit(
   // Field report #28 / backlog workstream M: the load-failure capture, so a sitting that
   // finally reproduces it on a real phone leaves a record rather than a memory.
   lines.push('## load diagnostics (#28)');
-  lines.push(`mapId: ${config?.mapId ?? '(list-only, no map)'}`);
-  lines.push(`colorScheme: ${config?.colorScheme ?? '-'}`);
   lines.push(`document theme at emit: ${readings.theme}`);
   lines.push(`api status: ${readings.apiStatus ?? '?'}`);
   lines.push(`tiles loaded this attempt: ${readings.tilesLoaded ? 'yes' : 'no'}`);

@@ -1,7 +1,7 @@
 # 0186 — The map is ours, and it works on a plane
 
 **Date:** 2026-08-13
-**Status:** Accepted (design). Reverses [ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §7 and [ADR-0121](0121-embedded-map-phase-6-design.md) §11/§14 on offline tiles, and replaces ADR-0121 §3's renderer choice.
+**Status:** Accepted (built). Reverses [ADR-0106](0106-maps-and-places-epic-scope-and-phasing.md) §7 and [ADR-0121](0121-embedded-map-phase-6-design.md) §11/§14 on offline tiles, and replaces ADR-0121 §3's renderer choice.
 **Supersedes on the rendering question only.** Everything ADR-0121 decided about _what the map says_ — the pin ladder, the camera's rules, the sheet, the day connector, the filters — is untouched and is the requirement this must reproduce.
 
 ## Context
@@ -903,3 +903,35 @@ This does not add topography. Water covers lakes, fjords, rivers and sea; glacie
 regional cover classes are distinct; peaks may be labelled. Mountains and volcanoes have no
 hillshade or contours in the present archive, so adding relief would require a second elevation
 dataset and a separate storage/cost decision rather than another colour edit.
+
+## Amendment (2026-08-14, session 270d) — Phase 4 deletes the Google renderer boundary
+
+Phase 4 removes `MapsConfig`, all three `VITE_GOOGLE_MAPS_*` build variables, the Map ID and
+vendor-colour fields from `DevMapTuner`, and both `@vis.gl/react-google-maps` and
+`@types/google.maps`. The Docker build and current deployment guidance no longer carry frontend
+Maps arguments. `GOOGLE_MAPS_SERVER_KEY` remains a backend Places-search credential; navigation
+deep links remain ordinary URLs. Neither is part of the renderer.
+
+The Map canvas remains available offline. There is no frontend key or connectivity gate to make it
+absent: local archives are preferred when present, and the saved world layer is the floor.
+
+Phase 3d adds no cache code at this checkpoint. The owner verified that revisiting ground inside a
+session, including after switching tabs, is already immediate on staging. MapLibre's tile cache, the
+page-global PMTiles archive registry and immutable build-pinned HTTP responses already cover those
+observed lifetimes. A dedicated client range LRU is deferred until a target-device trace proves a
+visible gap rather than assumed necessary.
+
+One misleading failure state was found during the deletion pass. A local/remote archive URL could
+change while `MapCanvas` was starting; if registering that replacement failed after `new Map()` had
+already succeeded, the outer startup catch reported the live canvas as unavailable. The existing map
+could then paint under a “failed to load” verdict. Archive/style-switch failures are now non-terminal
+once an instance exists; only renderer/protocol construction failure takes the terminal state. The
+four-second first-tile deadline is unchanged: it says only that loading is slow and already clears
+itself on a late paint.
+
+The same startup seam is ordered by style identity. If an older archive registration resolves after
+a newer switch, it may finish startup but cannot overwrite the newer style. This is guarded against
+the live map instance and the latest style key, with an out-of-order regression test.
+
+None of these changes identifies field report #35's original cause. Every concrete failure fixed on
+2026-08-14 was introduced by this migration. The renderer swap remains the experiment, not the cure.

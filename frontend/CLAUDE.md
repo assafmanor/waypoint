@@ -267,9 +267,9 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   the new host, or the next host inherits the same wrong default.
 - Handing a `memo`ized component a **fresh object or function each render** on a
   screen that re-renders on the clock. `screens/Map.tsx` ticks every second, and
-  `MapPane` holds a live `google.maps.Map` where a needless re-diff of every
-  marker is the cheap failure and a re-instantiation is a **billed** one
-  (ADR-0121 §4/§6): so its array prop is memoized on a **content key** (the
+  `MapPane` holds a live MapLibre instance where a needless re-diff of every
+  marker is the cheap failure and a re-instantiation loses the camera and canvas:
+  so its array prop is memoized on a **content key** (the
   `RevealList` trick), its handlers are `useCallback(…, [])` over a latest-ref,
   and even `defaultCentre` is a `useMemo`. One inline `{ lat, lng }` in the JSX
   undoes all of it silently.
@@ -369,20 +369,18 @@ new `ui/domain/` or `ui/primitives/` component ships with its own test file
 alongside it (the existing `*.test.tsx` co-location is the pattern, not the
 exception).
 
-**A surface Google renders can't be tested, but almost all of it can.** The Map
+**A WebGL surface cannot be seen in jsdom, but almost all of its contract can be tested.** The Map
 tab is the worked example (ADR-0121 §13): every decision about what a pin looks
-like lives in pure `lib/` functions tested with no Google in the process
+like lives in pure `lib/` functions tested without a renderer
 (`map-pins.ts`, `map-camera.ts`, `place-refs.ts`, `snap-sheet.ts`,
-`map-config.ts`); `MapPane`'s own test stubs `@vis.gl/react-google-maps` to plain
-DOM and asserts the markup that is **ours**; and the shell's test
-(`Map.embedded.test.tsx`) stubs the pane. The render itself is a human pass, and
-saying so is the point — don't imply a canvas was seen. Note the pairing:
-`Map.test.tsx` runs with **no** build config, which is the graceful-absence
-(list-only) path and must stay tested as such, so the split has its own file.
+`map-config.ts`); `MapCanvas.test.tsx` fakes the small imperative MapLibre surface,
+`MapPane.test.tsx` asserts our DOM, and the shell's test (`Map.embedded.test.tsx`)
+stubs the pane. A production-preview e2e run is mandatory for assets, chunks and worker URLs;
+the real-archive render spec is the only automated proof that the ground paints.
 
 **"It talks to a third-party object" is not the same as "it can't be tested",** and
 reading it that way shipped a camera that opened on the whole world (ADR-0121's
-session-134 build-log entry). `useMapCamera` touches eight `google.maps.Map`
+session-134 build-log entry). `useMapCamera` touches a small `CameraMap` contract,
 methods, so a ~60-line fake map covers it completely — see
 `lib/useMapCamera.test.tsx`. Before declaring imperative glue untestable, count
 the methods it actually calls; usually a fake is cheaper than the bug.
@@ -405,12 +403,10 @@ leak, session 260):
   while CI — which has no `frontend/.env` — stayed green, so nobody's local red
   was believed. Vite loads `.env` for the unit run too: `VITE_API_BASE_URL` made
   every same-origin assertion absolute (`Avatar.test.tsx` even had a comment
-  _stating_ the value was empty under test, which nothing enforced), and the
-  Maps keys handed `Map.test.tsx` a rendered map when the whole file exists to
-  cover the **list-only** graceful-absence path. Both are now pinned empty in
-  `test.env`. A spec that wants config **mocks `lib/map-config`** where the
-  reader can see it (`Map.embedded.test.tsx`), rather than depending on a file
-  outside the repo's control. Same reflex for anything else ambient: if the
+  _stating_ the value was empty under test, which nothing enforced). It is pinned
+  empty in `test.env`. A spec that wants a different capability or archive URL
+  **mocks `lib/map-config`** where the reader can see it (`Map.embedded.test.tsx`),
+  rather than depending on a file outside the repo's control. Same reflex for anything else ambient: if the
   assertion depends on it, the suite states it.
   - Its companion, and the reason it went unnoticed for so long: **a file that
     fails to COLLECT reports as one red filename and hides every test in it.**

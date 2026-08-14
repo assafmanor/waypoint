@@ -4,12 +4,12 @@
 // + the mode-tinted --idx-accent) and reads the one shared derivation
 // (lib/place-usage.ts) for the chip counts, each row's badge, AND every pin.
 //
-// Phase 6 put a real Google map above the list without replacing it: a map pane
-// over a three-height list sheet, one live map instance per tab visit, the same
+// The rendered map sits above the list without replacing it: a map pane over a
+// three-height list sheet, one live MapLibre instance per tab visit, the same
 // filtered set on both halves. Three constraints run through everything below:
 //
-//   • **One map instantiation per visit.** Dynamic Maps bills per
-//     `new google.maps.Map()`, so nothing here may re-create one — not the
+//   • **One map instantiation per visit.** Recreating it loses the camera and canvas, so
+//     nothing here may re-create one — not the
 //     `רשימה / מפה` toggle (it resizes a live map), not a filter, not a sheet drag,
 //     not the per-second clock tick. See ADR-0121 §4.
 //   • **This screen re-renders every second** (`useClock`). So the pin models are
@@ -114,7 +114,7 @@ import {
   type MapArrival,
   type MapBounds,
 } from '../lib/map-camera';
-import { mapColorScheme, mapPaneAvailable, mapsConfig, mapTileUrls } from '../lib/map-config';
+import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config';
 import { useMapArchives } from '../lib/useMapArchives';
 import { prefersReducedMotion } from '../lib/motion';
 import { observeResize } from '../lib/observe-resize';
@@ -589,14 +589,11 @@ export function MapView() {
   }, []);
 
   // ── The rendered map (Phase 6, ADR-0121; the ground is ours since ADR-0186) ────────
-  // **Latched once, all three, and for the same reason they always were**: the pane is
+  // **Latched once**, for the same reason the opening renderer values always were: the pane is
   // memoized on prop identity and this screen re-renders every second, so a fresh object here
   // would re-diff every marker — and `MapCanvas` latches its opening values at construction
   // anyway, so a live re-read would describe the map that WOULD be built next rather than the
   // one on screen (the mistake ADR-0146 §5 had to amend for `DevMapTuner`).
-  //
-  // `scheme` is what a whole `MapsConfig` collapsed to (ADR-0186 §8): with the renderer
-  // bundled and the tiles ours, there is no key and no Map ID left to resolve.
   const scheme = useMemo(() => mapColorScheme(), []);
   // The trip's own archive is what makes the map READABLE at this zoom — the world layer alone is
   // z0–6, which draws a flat landmass at `MAP_ZOOM.PLACE` (corrected 2026-08-14; see
@@ -621,14 +618,8 @@ export function MapView() {
     urls: remoteTileUrls,
   });
   const tileUrls = mapArchives.urls;
-  // Still read for `DevMapTuner`, which reports what a Google canvas was built from and is
-  // Phase 4's to delete along with the vars themselves.
-  const config = useMemo(() => mapsConfig(), []);
-  // Absent, never disabled (§2/§11) — and **offline is now its only cause**. It used to also
-  // require the three `VITE_GOOGLE_MAPS_*` vars, because without them there was no canvas to
-  // draw; there is no build configuration to be missing any more, so a checkout draws a map by
-  // existing. Phase 3 takes the last reason away too, at which point the map becomes the part
-  // of this tab that works offline best (ADR-0186 §8).
+  // The bundled renderer and local archive floor keep this true offline. The capability seam
+  // remains explicit for the list-only harness and for a future renderer capability check.
   const hasMap = mapPaneAvailable({ offline });
   const [sheetView, setSheetView] = useState<MapSheetView>(MAP_SHEET_VIEW.half);
   // Row ↔ pin are ONE selection (§8). Not `.nextstop`, whose amber means "the stop
@@ -3054,8 +3045,8 @@ export function MapView() {
       : undefined;
   /** **THE SELECTION COMMITS ON SETTLE, never during the scroll** (ADR-0182 §10).
    *
-   *  `google.maps.Map` is a live, billed object and this screen re-renders every second, so
-   *  driving the camera from every scroll frame is the one thing this must not do. The track
+   *  The map is a live imperative object and this screen re-renders every second, so driving
+   *  the camera from every scroll frame is the one thing this must not do. The track
    *  reports continuously; the selection changes once, when it has stopped.
    *
    *  A debounce rather than `scrollend`, which is not on every engine we ship to yet, and
@@ -3771,7 +3762,7 @@ export function MapView() {
             It is handed the LATCHED `config` rather than reading one of its own: the panel's
             job is to report what the canvas beside it was built from, and a live re-read says
             what the next canvas would be built from instead. */}
-        {import.meta.env.DEV && <DevMapTuner config={config} />}
+        {import.meta.env.DEV && <DevMapTuner />}
       </div>
 
       {overlays}

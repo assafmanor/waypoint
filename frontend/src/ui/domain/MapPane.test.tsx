@@ -7,8 +7,7 @@
 // it LOOKS right on a real canvas is a human step on a device.
 //
 // **The stub moved down one layer with ADR-0186, and the suite got better for it.** It used to
-// mock `@vis.gl/react-google-maps` — a vendor's four components — and therefore had to model a
-// vendor's lifecycle: a page-global loading status, a script-load rejection, `__resetModuleState`.
+// model a vendor's lifecycle: a page-global loading status, a script-load rejection and reset.
 // All of that is gone. What is stubbed now is our own `MapCanvas` (which has its own test
 // file), and the map handed through it is a MapLibre-shaped fake that goes through the REAL
 // `cameraMapFor` — so the camera, the gestures and the density probe are exercised against the

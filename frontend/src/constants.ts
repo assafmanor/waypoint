@@ -191,12 +191,9 @@ export const LOCAL_READ_TIMEOUT_MS = {
   SNAPSHOT: 10_000,
 } as const;
 
-/** **When the base map's wait stops being silent** (field reports #28/#35) — the canvas can
- *  mount, our own markers can render (they are DOM overlays, independent of Google's tile
- *  layer), and Google's own tiles can still never draw. `@vis.gl/react-google-maps` exposes no
- *  event for that: `APIProvider`'s `onError` only fires on a failed *script* load, and nothing
- *  tells a load that never happened from tiles that silently stopped. So this is the
- *  `withDeadline` heuristic `lib/deadline.ts` exists for.
+/** **When the base map's wait stops being silent** (field reports #28/#35). The MapLibre canvas
+ *  and our DOM markers can exist before any PMTiles ground paints, so the first-tile signal is
+ *  guarded by the `withDeadline` heuristic in `lib/deadline.ts`.
  *
  *  **READ THE NAME CAREFULLY: this is no longer a verdict** (ADR-0121's 2026-08-13 amendment,
  *  owner's call). Until then, expiry meant "declare failure and tear the attempt down", and
@@ -215,8 +212,8 @@ export const LOCAL_READ_TIMEOUT_MS = {
  *  thing — was the worst of both.
  *
  *  **The cost of being wrong is now one line of muted text**, which is why this is a cheap
- *  number to move. A failed *script* load still surfaces immediately through `onError` and
- *  still takes the hard `ErrorState`; only the tiles path routes through here. */
+ *  number to move. A renderer/protocol construction failure still takes the hard `ErrorState`;
+ *  only the first-tile wait routes through here. */
 export const MAP_LOAD_TIMEOUT_MS = {
   TILES: 4_000,
 } as const;
@@ -697,7 +694,7 @@ export const MAP_SHEET_STOPS = {
 } as const satisfies Record<MapSheetView, SnapStop>;
 
 /** **How long the card's stop track must be still before the selection follows it**
- *  (ADR-0182 §10). Selecting pans a live, billed `google.maps.Map`, so it happens once the
+ *  (ADR-0182 §10). Selecting pans the live map, so it happens once the
  *  scroll has settled and never per frame. Long enough to sit out a snap's own tail,
  *  short enough that the map is not visibly late — a feel call the device pass owns. */
 export const MAP_TRACK_SETTLE_MS = 120;

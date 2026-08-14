@@ -4,7 +4,6 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MAP_DRAG_ZOOM, MAP_LOAD_TIMEOUT_MS, MAP_ZOOM } from '../constants';
 import { clearTuning, publishMapReading, tuningOverrides } from '../lib/dev-tuning';
 import { zoomPerLevelPx } from '../lib/canvas-gestures';
-import { MAP_COLOR_SCHEME, type MapsConfig } from '../lib/map-config';
 import { THEME } from '../lib/theme';
 import { DevMapTuner } from './DevMapTuner';
 
@@ -16,21 +15,15 @@ afterEach(() => {
 
 const tap = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 
-const DAY_CONFIG: MapsConfig = {
-  apiKey: 'k',
-  mapId: 'waypoint-day',
-  colorScheme: MAP_COLOR_SCHEME.light,
-};
-
-const open = (section?: string, config: MapsConfig | null = null) => {
-  render(<DevMapTuner config={config} />);
+const open = (section?: string) => {
+  render(<DevMapTuner />);
   tap('map tuning');
   if (section) tap(section);
 };
 
 describe('DevMapTuner', () => {
   it('is a badge until it is tapped, so it never covers the tab it sits on', () => {
-    render(<DevMapTuner config={null} />);
+    render(<DevMapTuner />);
     expect(screen.getByRole('button', { name: 'map tuning' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'zoom: place up' })).toBeNull();
   });
@@ -120,21 +113,13 @@ describe('DevMapTuner', () => {
     ).toBeTruthy();
   });
 
-  // The instrument must describe the canvas that exists, not the one a theme flip would
-  // build next: `screens/Map.tsx` latches its config at mount, and `system` is the default
-  // theme pick, so Android's scheduled dark flips `data-theme` mid-sitting with no user
-  // action. A panel re-reading `mapsConfig()` here would report DARK and the night Map ID
-  // over light tiles and quietly invalidate the capture.
-  it('reports the config the map was BUILT from, not what the live theme would pick now', () => {
-    open('diag', DAY_CONFIG);
-    expect(screen.getByText('mapId: waypoint-day')).toBeTruthy();
+  it('reports the live document theme without legacy Google build configuration', () => {
+    open('diag');
     document.documentElement.dataset.theme = THEME.dark;
     tap('measure');
-    expect(screen.getByText('mapId: waypoint-day')).toBeTruthy();
-    expect(screen.getByText(`colorScheme: ${MAP_COLOR_SCHEME.light}`)).toBeTruthy();
-    // The live theme is still reported — beside the latched pair, so a real disagreement is
-    // visible as a finding rather than hidden by agreeing with whichever was read last.
     expect(screen.getByText(`document theme now: ${THEME.dark}`)).toBeTruthy();
+    expect(screen.queryByText(/mapId:/)).toBeNull();
+    expect(screen.queryByText(/colorScheme:/)).toBeNull();
   });
 
   it('emits the diagnostics block alongside the tuning report', () => {
@@ -144,13 +129,14 @@ describe('DevMapTuner', () => {
       tilesLoaded: false,
       tilesLoadedMs: null,
     });
-    open('out', DAY_CONFIG);
+    open('out');
     tap('emit');
     const value = (screen.getByRole('textbox') as HTMLTextAreaElement).value;
     expect(value).toContain('## load diagnostics (#28)');
     expect(value).toContain('api status: FAILED');
     expect(value).toContain('last error: boom');
-    expect(value).toContain('mapId: waypoint-day');
+    expect(value).not.toContain('mapId:');
+    expect(value).not.toContain('colorScheme:');
     // A sitting that never got a paint has to say so as plainly as one that did — an absent
     // line would read as "not captured" where this reads as the finding it is.
     expect(value).toContain(

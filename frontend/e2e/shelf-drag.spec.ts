@@ -500,13 +500,19 @@ test.describe('a day with a wide gap between two events', () => {
     const cdp = await page.context().newCDPSession(page);
     const card = await centre(page, '.wp-maybecard');
     const lastRow = page.locator('.bld').last();
+    const rowPosition = () =>
+      lastRow.evaluate((el) => {
+        const body = el.closest('.body');
+        if (!(body instanceof HTMLElement)) throw new Error('builder row has no body scroller');
+        return el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+      });
     // Asserted on the seam's LINE, not on the seam: the seam is zero-height by design, and
     // a box with no area reads as hidden to Playwright exactly as it does to
     // `elementFromPoint`. The line is the 3px that actually paints.
     const seamLine = page.locator('.bld-seam .bld-seam-line').first();
 
     await expect(seamLine).toBeHidden();
-    const before = (await lastRow.boundingBox())!;
+    const before = await rowPosition();
 
     await touch(cdp, 'touchStart', card.x, card.y);
     await expect(page.locator('.wp-maybecard.dragging')).toBeVisible();
@@ -516,8 +522,8 @@ test.describe('a day with a wide gap between two events', () => {
     await expect(seamLine).toBeVisible();
     expect(await page.locator('.bld-seam').count()).toBe(1);
     // …and the row below them has not budged.
-    const after = (await lastRow.boundingBox())!;
-    expect(Math.abs(after.y - before.y)).toBeLessThan(1);
+    const after = await rowPosition();
+    expect(Math.abs(after - before)).toBeLessThan(1);
 
     await touch(cdp, 'touchEnd');
     await expect(seamLine).toBeHidden();

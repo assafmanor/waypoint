@@ -1,4 +1,8 @@
-# Map styles (cloud-based styling, Phase 6)
+# Retired Google cloud map styles (Phase 6 history)
+
+> Retired by ADR-0186 Phase 4 on 2026-08-14. These JSON files are not consumed by the app and need
+> no Map ID or frontend environment variable. The live light and dark styles are authored in
+> `frontend/src/lib/map-style.ts`; the material below remains only as renderer-migration history.
 
 The two cloud map styles behind the embedded map ([ADR-0121](../../decisions/0121-embedded-map-phase-6-design.md)), as importable JSON:
 

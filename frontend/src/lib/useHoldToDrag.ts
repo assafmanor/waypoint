@@ -13,6 +13,7 @@
 // the same bargain the platform's own reorder gestures make.
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS, DRAG_HOLD_SLOP_PX } from '../constants';
+import type { DragSourceBox } from './useDragGhost';
 
 /** Parked on `<body>` for the length of an armed drag: turns selection off
  *  page-wide, since the finger travels over everything but the card it started on
@@ -68,9 +69,13 @@ export function useSelectionGuard(): SelectionGuard {
 export interface HoldToDragHandlers {
   /** The hold completed: the drag is live from here. Receives the held element (what
    *  an edge auto-scroll needs to find its scroller) and where the finger is (what a
-   *  drag ghost needs to sit under it rather than jump). The point is the press
-   *  origin, which after a hold is within the slop of where the finger still is. */
-  onArm: (el: HTMLElement, at: { clientX: number; clientY: number }) => void;
+   *  drag ghost needs to sit under it rather than jump). `pressBox` is captured at
+   *  pointer-down so scroll anchoring during the hold cannot change the grab offset. */
+  onArm: (
+    el: HTMLElement,
+    at: { clientX: number; clientY: number },
+    pressBox: DragSourceBox,
+  ) => void;
   /** A move while armed (never fires before the hold completes). */
   onMove: (point: { clientX: number; clientY: number }) => void;
   /** Released while armed — commit the drop. */
@@ -190,6 +195,7 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
       onPointerDown: (e) => {
         reset();
         const el = e.currentTarget as HTMLElement;
+        const pressBox = el.getBoundingClientRect();
         held.current = el;
         origin.current = { x: e.clientX, y: e.clientY };
         selection.suppress();
@@ -249,7 +255,7 @@ export function useHoldToDrag(): (handlers: HoldToDragHandlers) => HoldToDragPro
           timer.current = null;
           armed.current = true;
           selection.lock();
-          handlers.onArm(el, { clientX: e.clientX, clientY: e.clientY });
+          handlers.onArm(el, { clientX: e.clientX, clientY: e.clientY }, pressBox);
         };
         // A mouse has no scroll/drag ambiguity to resolve (the wheel scrolls), so
         // a pointer device drags immediately — waiting would just feel broken.

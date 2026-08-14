@@ -353,9 +353,8 @@ export function useMapCamera(
       // frame in flight, so re-targeting is one ease replacing another rather than two drivers.
       const going_ = going.current;
       const zoom = going_?.zoom ?? map.getZoom();
-      // A LITERAL either way, like every other projection call in this file: `getCenter()` hands
-      // back a `google.maps.LatLng`, whose `lat`/`lng` are METHODS, and reading those as numbers
-      // yields `NaN` all the way to a shift of 0 — a silent no-op rather than a throw.
+      // A literal either way: `CameraMap.getCenter()` deliberately exposes `lat`/`lng` methods,
+      // and reading the functions as numbers yields `NaN` all the way to a silent shift of 0.
       const live = map.getCenter();
       const at = going_?.center ?? (live ? { lat: live.lat(), lng: live.lng() } : null);
       if (zoom == null || !at) return;
@@ -698,14 +697,12 @@ export function latLngAtOffset(map: CameraMap, offsetPx: WorldPoint): LatLng | n
   );
 }
 
-/** The projection round trip both of the above need: hand Google a coordinate, do one
- *  power-of-two shift in ITS world space, hand the result back for un-projecting.
+/** The projection round trip both of the above need: project a coordinate, do one
+ *  power-of-two shift in world space, then un-project it.
  *
  *  Extracted from `anchoredCentre` when the long press became its second caller (ADR-0147
- *  §2) rather than copied beside it. **Nothing here constructs a `google.maps.Point`:**
- *  `fromLatLngToPoint` hands one back, so it is mutated and returned to
- *  `fromPointToLatLng` — which keeps this clear of the `google.maps` global entirely, and
- *  means both projections are Google's own (ADR-0129 §3). */
+ *  §2) rather than copied beside it. `fromLatLngToPoint` hands a structural world point back,
+ *  so no renderer-specific point class crosses this boundary. */
 function throughProjection(
   map: CameraMap,
   centre: LatLng,

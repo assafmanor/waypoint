@@ -138,27 +138,10 @@ const verbs = {
     Promise.resolve({ id: 'bk-new' }),
   ),
 };
-/**
- * **THE LIST-ONLY PATH, and its trigger changed under it** (`frontend/CLAUDE.md`; ADR-0186 §8).
- *
- * This file is the graceful-absence suite — the Map tab with no rendered map, in the ordinary
- * scrolling body — and it must stay tested as such. It used to reach that state by ACCIDENT of
- * configuration: `vite.config.ts` pins the `VITE_GOOGLE_MAPS_*` vars empty, so `mapsConfig()`
- * answered `null` and the pane was absent. **There is no build configuration left to be
- * missing**: the renderer is bundled and the tiles come from our own backend, so a checkout
- * draws a map by existing and this file would otherwise render a real `MapCanvas` into a jsdom
- * with no WebGL.
- *
- * So the condition is now stated rather than inherited, which is the better arrangement anyway
- * (the suite states what it depends on). `mapPaneAvailable` is mocked false and **`isOffline`
- * stays orthogonal**, exactly as it was before: the keys were absent whether or not the device
- * was online, so the near-me tests below that toggle `isOffline` keep meaning what they meant.
- *
- * The split's own path is `Map.embedded.test.tsx`, which is why that has its own file.
- */
+/** The list-only harness states its capability boundary explicitly; the rendered split has its
+ * own suite in `Map.embedded.test.tsx`. Offline remains orthogonal to this test seam. */
 vi.mock('../lib/map-config', () => ({
   mapPaneAvailable: () => false,
-  mapsConfig: () => null,
   mapColorScheme: () => 'LIGHT',
   mapTileUrls: () => ({
     world: '/map/world.pmtiles',

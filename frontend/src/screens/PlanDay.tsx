@@ -399,9 +399,9 @@ export function PlanDay() {
   // row's ⋯ sheet, which is where row actions live anyway.
   const rowDragProps = (id: string) =>
     holdToDrag({
-      onArm: (el, at) => {
+      onArm: (el, at, pressBox) => {
         autoScroll.start(el, at, hitTestRowDrop);
-        ghost.lift(el, at);
+        ghost.lift(el, at, pressBox);
         dayAtLift.current = live.current.activeDate;
         setDragging(true);
         const started = {
@@ -622,9 +622,9 @@ export function PlanDay() {
   // hit-test, auto-scroll — so only `onDrop` asks what was being dragged.
   const shelfDragProps = (subject: ShelfDragSubject) =>
     holdToDrag({
-      onArm: (el, at) => {
+      onArm: (el, at, pressBox) => {
         autoScroll.start(el, at, hitTestDropTarget);
-        ghost.lift(el, at);
+        ghost.lift(el, at, pressBox);
         dayAtLift.current = live.current.activeDate;
         setDragging(true);
         const started = {
