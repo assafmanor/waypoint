@@ -474,3 +474,53 @@ image, not in the code. Backlogged rather than built, since it cannot even be de
 against a 4 s watchdog. That is the designed behaviour since session 269b — the notice appears and
 retires itself when the tiles land — but it will be the first impression on a cold deploy, and it is
 better than the alternative of a bound long enough to hide a real failure.
+
+## Amendment (2026-08-14, session 269e) — nothing is built on the request path
+
+Fourth reading, and the first with **`err:none`**: `tiles:0 painted:n err:none t:5s`, and the owner
+reports it never loads — _"not on restart, not on resume"_.
+
+`err:none` is the constraining fact. A bad status, a wrong magic number or a parse failure all reach
+`onError`, and the three previous readings proved it by naming 401 and 500. So the archive request is
+**neither succeeding nor failing**: it is not settling.
+
+**Both handlers awaited the cut.** `sendRange(res, await this.map.world(), …)` holds the HTTP
+response open while a Go binary downloads and slices 42.7 MB, and `execFile`'s own ceiling is **five
+minutes**. From a client that is indistinguishable from a hang, and it is what the reading says.
+
+**And that is also why a restart never helped**, which is the part worth being precise about,
+because the owner's own guess — _"might be that we didn't give it enough time?"_ — is closer to right
+than the first three amendments were. A completed cut is stored in S3 and every later read is
+instant, so this needs to succeed **once**. It never did: each attempt was abandoned before the cut
+finished, nothing was stored, and the next attempt started another one from zero. At `t:5s`, against
+measurements of ~4 s for the world layer and ~10–13 s for a city, the reading is exactly what a
+cold cut in progress looks like.
+
+**But a longer client bound is the wrong lever**, and it is worth writing down why, because it is the
+obvious move: it makes a genuine hang invisible for longer — the distinction between "slow" and
+"broken" is the one thing this whole workstream has been short of — and it still leaves a real person
+watching a blank map for minutes. Widening a timeout to cover a cold build is treating the symptom
+at the only layer that cannot fix it.
+
+So the build comes off the request path entirely:
+
+- **Serve what is stored; otherwise answer `503` with `Retry-After` immediately** and start the cut
+  in the background. Every state is now a status code rather than an open socket: the renderer
+  surfaces it, `err:` names it, the pane offers its retry, and the retry lands once the cut is done.
+- **Pre-warm the world layer at boot** (`OnModuleInit`). Every trip falls back to that one shared
+  file, so cutting it when the container starts is what stops the first person on a fresh deploy
+  from being the one who waits. Failures are logged and swallowed — an archive is a cache (§6), and
+  refusing to boot over one would take the whole app down for the one screen that can degrade.
+- A failed build clears its in-flight entry, so the next request retries rather than inheriting a
+  wedged key.
+
+**`map.service.spec.ts` is the guard, and it is a real one**: its build promise is deliberately left
+unresolved, so a handler that awaits the cut makes the test **time out** — verified by reinstating the
+old line, where four of seven tests time out at 5 s. That is the same thing the deployed handler did
+to a real request, expressed as a failure a machine can see.
+
+**Still not established:** whether a cut now completes at all. The CA fix (269d) is unverified — no
+Docker daemon here — and this change does not depend on it: if the cut still fails, the 503 becomes a
+fast, named error instead of a hang, and `err:` will carry `explainExtractFailure`'s one-line
+verdict. The next reading distinguishes the three remaining states cleanly: `503` in `err:` means
+the cut is still running, a CA message means the image is still wrong, and `tiles:N` means it worked.

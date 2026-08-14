@@ -5,11 +5,11 @@
 // with the `pmtiles` protocol, which addresses an archive by byte range — so a server that
 // answers 200-with-everything makes the renderer download the whole file to draw one tile.
 // It is also what lets a paused download resume.
-import { Controller, Get, Param, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Param, Res, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { MembershipGuard } from '../trips/membership.guard';
-import { MapService } from './map.service';
+import { MAP_BUILD_RETRY_SECONDS, MapService } from './map.service';
 import { sendRange } from './range';
 
 /** The archive's own media type. `nosniff` rides along for the same reason documents get
@@ -27,7 +27,9 @@ export class MapController {
    *  gating it would mean a signed-in fetch per trip for one shared file. */
   @Get('map/world.pmtiles')
   async world(@Res() res: Response): Promise<void> {
-    sendRange(res, await this.map.world(), PMTILES_MIME);
+    const bytes = await this.map.worldIfReady();
+    if (!bytes) return notBuiltYet(res, 'the world layer');
+    sendRange(res, bytes, PMTILES_MIME);
   }
 
   /** What this trip covers, without building anything — so a size readout or a
@@ -43,11 +45,29 @@ export class MapController {
     };
   }
 
-  /** The trip's archive. First call cuts it (~10s for two areas); later calls are stored. */
+  /** The trip's archive, **if it has been cut**. The first request starts the cut (~10-13s for a
+   *  city) and answers 503 rather than holding the connection open for it — see `MapService`. */
   @Get('trips/:tripId/map/extract.pmtiles')
   @UseGuards(MembershipGuard)
   async extract(@Param('tripId') tripId: string, @Res() res: Response): Promise<void> {
-    const { bytes } = await this.map.extractFor(tripId);
+    const bytes = await this.map.extractIfReady(tripId);
+    if (!bytes) return notBuiltYet(res, "this trip's archive");
     sendRange(res, bytes, PMTILES_MIME);
   }
+}
+
+/**
+ * **"Not yet" is a status code, never an open connection** (2026-08-14).
+ *
+ * A 503 with `Retry-After` is the whole difference between a map that reports itself and one that
+ * hangs: the renderer surfaces the status as an error, the pane shows its retry, and the retry
+ * succeeds once the background cut has landed. Holding the socket instead produced `tiles:0` with
+ * `err:none` on a real device — no tiles and nothing to say about why.
+ */
+function notBuiltYet(res: Response, what: string): void {
+  res.setHeader('Retry-After', String(MAP_BUILD_RETRY_SECONDS));
+  res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+    message: `${what} is still being built; retry shortly`,
+    retryAfterSeconds: MAP_BUILD_RETRY_SECONDS,
+  });
 }

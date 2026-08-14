@@ -4,7 +4,7 @@
 // Nothing here proxies tiles. Upstream is touched **once per area, ever** — the planet is
 // 127.88 GiB and the slice of it a trip needs is ~16–23 MB, so storing the slice is both
 // cheaper and faster than range-proxying the source per tile (§3's 2026-08-13 amendment).
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import type { LatLng } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { getObject, putObject } from '../common/storage';
@@ -23,8 +23,32 @@ import { buildExtract } from './pmtiles-extract';
 export const WORLD_MAXZOOM = 6;
 export const WORLD_KEY = `${MAP_KEY_PREFIX}world-z${WORLD_MAXZOOM}.pmtiles`;
 
+/** **How long to tell a client to wait for an archive that is still being cut.** A world layer
+ *  is ~4s and a city extract ~10-13s measured, both against a good network; this is a hint, and
+ *  the client's own retry is what actually re-asks. */
+export const MAP_BUILD_RETRY_SECONDS = 15;
+
+/**
+ * **NOTHING IS BUILT ON THE REQUEST PATH** (2026-08-14, after four rounds of a map that would
+ * not load).
+ *
+ * The first version awaited the cut inside the handler: `sendRange(res, await map.world(), …)`.
+ * That holds the HTTP response open while a Go process downloads and slices 42.7 MB — `execFile`'s
+ * own ceiling is **five minutes** — so a range request could sit there for minutes answering
+ * neither success nor failure. From the client that is indistinguishable from a hang, and it is
+ * exactly what the device reported: `tiles:0` with `err:none`, on every load.
+ *
+ * The reason it never got better on a restart is the same fact: each attempt was abandoned before
+ * the cut finished, so nothing was ever stored, so the next attempt started another one. A cut has
+ * to **complete once** and then it is cached forever — which is the whole argument for taking it
+ * off the path where a person is waiting.
+ *
+ * So: serve what is stored, and if nothing is stored, start the build and say **503 with a
+ * `Retry-After`** immediately. Every state is then a status code rather than an open socket — the
+ * client reports it, the person sees a retry, and the retry lands once the build has finished.
+ */
 @Injectable()
-export class MapService {
+export class MapService implements OnModuleInit {
   private readonly logger = new Logger(MapService.name);
   /** One build at a time per key. Two members opening the same trip must not each spend
    *  54 upstream requests on the identical archive — they await the same promise. */
@@ -71,14 +95,65 @@ export class MapService {
     return { bytes: await this.cached(key, () => this.cut(key, region)), region };
   }
 
-  /** The shared world layer, built once and reused by every trip. */
-  async world(): Promise<Buffer> {
-    return this.cached(WORLD_KEY, async () => {
-      this.logger.log(`cutting the world layer at z${WORLD_MAXZOOM}`);
-      const bytes = await buildExtract({ maxZoom: WORLD_MAXZOOM });
-      await putObject(WORLD_KEY, bytes);
-      return bytes;
+  /**
+   * The trip's archive **if it is already stored**, or `null` with a build started in the
+   * background. Never waits for a cut — see the class comment.
+   */
+  async extractIfReady(tripId: string): Promise<Buffer | null> {
+    const region = await this.regionFor(tripId);
+    if (!region) throw new NotFoundException('trip has no mapped coordinates');
+    const key = mapExtractKey(tripId, region.signature);
+    return this.readyOrWarm(key, () => this.cut(key, region));
+  }
+
+  /** The shared world layer **if it is already stored**, or `null` with a build started. */
+  async worldIfReady(): Promise<Buffer | null> {
+    return this.readyOrWarm(WORLD_KEY, () => this.cutWorld());
+  }
+
+  /**
+   * **Cut the world layer at boot, so the common case is never a cold one.** Every trip falls
+   * back to this one shared file, so building it once at startup is what makes the first person
+   * to open a map on a fresh deploy see a map rather than a retry. Failures are logged and
+   * swallowed: a tile archive is a cache (§6), and refusing to boot over one would take the
+   * whole app down for the one screen that can degrade.
+   */
+  onModuleInit(): void {
+    void this.worldIfReady().catch((error: unknown) => {
+      this.logger.warn(`could not pre-warm the world layer: ${String(error)}`);
     });
+  }
+
+  private async cutWorld(): Promise<Buffer> {
+    this.logger.log(`cutting the world layer at z${WORLD_MAXZOOM}`);
+    const bytes = await buildExtract({ maxZoom: WORLD_MAXZOOM });
+    await putObject(WORLD_KEY, bytes);
+    return bytes;
+  }
+
+  /** The stored bytes, or `null` having started a build nobody waits on. The build still goes
+   *  through `inFlight`, so a burst of requests starts exactly one. */
+  private async readyOrWarm(key: string, build: () => Promise<Buffer>): Promise<Buffer | null> {
+    try {
+      return await getObject(key);
+    } catch {
+      // Not stored yet — the only expected reason.
+    }
+    if (!this.inFlight.has(key)) {
+      const started = build().finally(() => this.inFlight.delete(key));
+      this.inFlight.set(key, started);
+      // Nobody awaits this, so its rejection has to be handled here or it is unhandled.
+      started.catch((error: unknown) => {
+        this.logger.error(`build failed for ${key}: ${String(error)}`);
+      });
+    }
+    return null;
+  }
+
+  /** The shared world layer, waiting for the cut if it is not stored. **Not for a request
+   *  handler** — `worldIfReady` is. Kept for the boot warm and for any deliberate caller. */
+  async world(): Promise<Buffer> {
+    return this.cached(WORLD_KEY, () => this.cutWorld());
   }
 
   private async cut(key: string, region: MapRegion): Promise<Buffer> {
