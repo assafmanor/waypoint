@@ -117,6 +117,44 @@ function serviceWorkerState(): string {
   return `sw:${controller.state}`;
 }
 
+/** How long a probe waits before calling a fetch hung. Long enough that a slow mobile link
+ *  is not libelled, short enough that nobody holds a phone waiting for a readout. */
+const PROBE_TIMEOUT_MS = 3000;
+
+/**
+ * **Does a fetch from this page still complete?** — the measurement the previous fields
+ * could not make.
+ *
+ * `sw:activated` turned out not to discriminate: a controller reads `activated` whether its
+ * worker thread is running or has been terminated and is waiting to restart. So the state
+ * says nothing about whether requests through it are being answered. This asks directly.
+ *
+ * Two probes, because the pair is what localises the fault:
+ *
+ *   - **same-origin** goes through the service worker (it controls this page), so a hang
+ *     here means the worker is not answering and NOTHING on the page can fetch — which
+ *     would explain tiles stopping with no error, and would move the fix out of `MapPane`
+ *     entirely.
+ *   - **Google's host** is cross-origin. If this hangs while same-origin is fast, the
+ *     worker is fine and something is specific to Google's requests.
+ *
+ * `no-cors` on the second because we cannot read the response and do not need to: the only
+ * question is whether the promise SETTLES. A 404 settles, and answers it just as well.
+ */
+async function probe(url: string, init?: RequestInit): Promise<string> {
+  const started = performance.now();
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), PROBE_TIMEOUT_MS);
+  try {
+    await fetch(url, { ...init, cache: 'no-store', signal: abort.signal });
+    return `${Math.round(performance.now() - started)}ms`;
+  } catch (error) {
+    return error instanceof Error && error.name === 'AbortError' ? 'HUNG' : 'err';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The map's own canvas, as the DOM sees it — `none` when vis.gl never constructed one,
  *  which is what a loader stuck below `LOADED` looks like from out here (session 262). */
 function canvasState(pane: HTMLElement | null): string {
@@ -157,6 +195,13 @@ export function MapDiagnostic({
       if (wasOpen) return false;
       const pane = paneRef.current;
       const box = pane?.getBoundingClientRect();
+      // The two fetch probes are asynchronous, so the line is shown at once and gains
+      // `self:`/`goog:` when they settle — a readout that appeared only after a 3s
+      // timeout would look like the bug it is diagnosing.
+      void Promise.all([
+        probe(`${location.origin}/health`),
+        probe('https://maps.gstatic.com/generate_204', { mode: 'no-cors' }),
+      ]).then(([self, goog]) => setReading((line) => `${line} self:${self} goog:${goog}`));
       setReading(
         [
           `gl:${webglAvailability()}`,
