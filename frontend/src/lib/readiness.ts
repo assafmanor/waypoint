@@ -11,13 +11,22 @@
 import {
   BOOKING_TYPE,
   DOCUMENT_TYPE,
+  EVENT_CATEGORY,
   MULTI_ZONE_COUNTRIES,
+  spendsSpanInMotion,
   type Booking,
   type DocumentSummary,
   type Place,
   type TripEvent,
 } from '@waypoint/shared';
-import { MS_PER_DAY } from '../constants';
+import {
+  MS_PER_DAY,
+  MS_PER_MINUTE,
+  NIGHT_WINDOW_END_TIME,
+  NIGHT_WINDOW_START_TIME,
+  SLEEPABLE_NIGHT_MIN_MINUTES,
+} from '../constants';
+import { addDays, tripDates, zonedIso } from './time';
 
 export type CheckId = 'flights' | 'lodging' | 'itinerary' | 'documents' | 'group';
 
@@ -28,8 +37,9 @@ export interface ReadinessCheck {
   /** Row-copy detail: empty-day count (`itinerary`), travellers-with-passport
    *  (`documents`), or trip-nights-covered (`lodging`). */
   count?: number;
-  /** Denominator for the rollup ("count מתוך total"): travellers (`documents`)
-   *  or trip nights (`lodging`). */
+  /** Denominator for the rollup ("count מתוך total"): travellers (`documents`) or, for
+   *  `lodging`, the trip nights that NEED a bed — a night spent in the air or on a night
+   *  bus leaves the denominator rather than sitting in it uncovered forever. */
   total?: number;
   /** `flights`: is there a leg reaching the destination (outbound) / leaving it (return)? */
   hasOutbound?: boolean;
@@ -42,18 +52,6 @@ export interface Readiness {
   checks: ReadinessCheck[];
   /** Trip-local dates with no events, in chronological order. */
   emptyDates: string[];
-}
-
-/** Inclusive [startDate, endDate] as trip-local calendar-date strings. UTC-midnight
- *  arithmetic diffs whole days without a timezone re-interpreting the boundary
- *  (matches lib/mode.ts's daysUntilStart). */
-function tripDates(startDate: string, endDate: string): string[] {
-  const out: string[] = [];
-  const end = Date.parse(`${endDate}T00:00:00Z`);
-  for (let t = Date.parse(`${startDate}T00:00:00Z`); t <= end; t += MS_PER_DAY) {
-    out.push(new Date(t).toISOString().slice(0, 10));
-  }
-  return out;
 }
 
 /** Half-open [startDate, endExclusive) as trip-local date strings — the nights
@@ -127,6 +125,90 @@ function reachesDestination(place: Place | undefined, destination: DestinationRe
   );
 }
 
+/** **A stretch of a night nobody could have been in a bed for**, plus which side of the
+ *  destination it leaves you on. Only a booked leg that CARRIES you (`spendsSpanInMotion`)
+ *  becomes one: an unbooked event has no type, so a taxi and a car hire are the same shape
+ *  to us, and crediting the wrong one would be the false pass ADR-0061 forbids. */
+interface TransitLeg {
+  start: number;
+  end: number;
+  /** Its origin is the destination — after this leg you are no longer here. */
+  leavesDestination: boolean;
+  /** Its endpoint is the destination — after this leg you are here. */
+  arrivesAtDestination: boolean;
+}
+
+/** The carried legs of the trip, in chronological order. A `Booking` holds no schedule
+ *  (ADR-0047 §1), so the instants come off its linked event; a leg with no times is not
+ *  a leg here, which is what keeps an untimed flight from silently emptying a night. */
+function transitLegs(
+  events: TripEvent[],
+  bookings: Booking[],
+  placeOf: (placeId?: string) => Place | undefined,
+  destination: DestinationRef,
+): TransitLeg[] {
+  const carried = new Map<string, Booking>();
+  for (const b of bookings) if (spendsSpanInMotion(b.type)) carried.set(b.id, b);
+  const legs: TransitLeg[] = [];
+  for (const e of events) {
+    const booking = e.bookingId ? carried.get(e.bookingId) : undefined;
+    if (!booking || !e.startsAt || !e.endsAt) continue;
+    const start = Date.parse(e.startsAt);
+    const end = Date.parse(e.endsAt);
+    if (!(end > start)) continue;
+    legs.push({
+      start,
+      end,
+      leavesDestination: reachesDestination(placeOf(booking.fromPlaceId), destination),
+      arrivesAtDestination: reachesDestination(placeOf(booking.toPlaceId), destination),
+    });
+  }
+  return legs.sort((a, b) => a.start - b.start);
+}
+
+/** **Was there a bed-shaped gap in this night?** (ADR-0061's 2026-08-14 amendment.)
+ *
+ *  Take the night's window and subtract two things: the time you spent **in motion**, and
+ *  the time you spent **somewhere else** — a leg out of the destination ends your presence,
+ *  a leg into it starts one. What is left is the longest stretch a room could have been
+ *  slept in; below `SLEEPABLE_NIGHT_MIN_MINUTES` nobody books one.
+ *
+ *  Both subtractions are needed and the 01:00 departure is why. An overlap test alone
+ *  scores a 01:00 flight out and a 01:00 flight in the same, and they are opposite facts:
+ *  the first consumes the night, the second is the reason you want the bed.
+ *
+ *  **It can only ever say "no bed needed", never "no bed booked".** An untimed leg, an
+ *  endpoint no route can place, a trip with no zone: nothing is subtracted, the window
+ *  stays whole, and the check stays open — the same degradation direction ADR-0061 chose. */
+function nightNeedsABed(date: string, legs: TransitLeg[], timezone: string | undefined): boolean {
+  if (!timezone) return true;
+  const windowStart = Date.parse(zonedIso(date, NIGHT_WINDOW_START_TIME, timezone));
+  const windowEnd = Date.parse(zonedIso(addDays(date, 1), NIGHT_WINDOW_END_TIME, timezone));
+
+  let longest = 0;
+  let cursor = windowStart;
+  // You are here until a leg says otherwise. A departure that happened entirely before
+  // the window leaves this true, so the night reads as needing a bed — open, never a
+  // false pass.
+  let present = true;
+  const considerGap = (from: number, to: number) => {
+    if (present && to - from > longest) longest = to - from;
+  };
+
+  for (const leg of legs) {
+    if (leg.start >= windowEnd || leg.end <= windowStart) continue;
+    if (leg.start > cursor) considerGap(cursor, Math.min(leg.start, windowEnd));
+    cursor = Math.max(cursor, Math.min(leg.end, windowEnd));
+    // An arrival wins over a departure, so a hop between two places inside the
+    // destination (both endpoints reach it) leaves you here rather than away.
+    if (leg.arrivesAtDestination) present = true;
+    else if (leg.leavesDestination) present = false;
+  }
+  considerGap(cursor, windowEnd);
+
+  return longest >= SLEEPABLE_NIGHT_MIN_MINUTES * MS_PER_MINUTE;
+}
+
 export function computeReadiness(input: {
   startDate: string;
   endDate: string;
@@ -150,22 +232,33 @@ export function computeReadiness(input: {
   const hasOutbound = flights.some((f) => reachesDestination(placeOf(f.toPlaceId), destination));
   const hasReturn = flights.some((f) => reachesDestination(placeOf(f.fromPlaceId), destination));
 
-  // Lodging night-coverage (ADR-0061): complete only when every trip NIGHT is
-  // covered by a hotel booking, not merely "a hotel exists". A booking carries no
-  // dates — its span lives on the linked event (date = check-in, endDate =
-  // check-out; ADR-0018/0063). A stay with no endDate covers just its own night.
-  // Trip nights are [startDate, endDate): the departure day has no night.
+  // Lodging night-coverage (ADR-0061): complete only when every trip night that NEEDS a
+  // bed has one, not merely "a hotel exists". A booking carries no dates — its span lives
+  // on the linked event (date = check-in, endDate = check-out; ADR-0018/0063). A stay with
+  // no endDate covers just its own night. Trip nights are [startDate, endDate): the
+  // departure day has no night.
+  //
+  // Two widenings, both from the 2026-08-14 amendment, and both only ever CLOSE a night
+  // the old rule left falsely open: a lodging-category event covers its nights without a
+  // booking (the friend's spare room, the campsite), and a night with no sleepable stretch
+  // left in it does not need a bed at all (see `nightNeedsABed`).
   const hotelBookingIds = new Set(
     bookings.filter((b) => b.type === BOOKING_TYPE.HOTEL).map((b) => b.id),
   );
   const coveredNights = new Set<string>();
   for (const e of events) {
-    if (!e.bookingId || !hotelBookingIds.has(e.bookingId)) continue;
+    const isStay =
+      (e.bookingId != null && hotelBookingIds.has(e.bookingId)) ||
+      e.category === EVENT_CATEGORY.LODGING;
+    if (!isStay) continue;
     const nights = e.endDate && e.endDate > e.date ? nightsInSpan(e.date, e.endDate) : [e.date];
     for (const n of nights) coveredNights.add(n);
   }
-  const tripNights = nightsInSpan(startDate, endDate);
-  const nightsCovered = tripNights.filter((n) => coveredNights.has(n)).length;
+  const legs = transitLegs(events, bookings, placeOf, destination);
+  const nightsNeedingABed = nightsInSpan(startDate, endDate).filter((n) =>
+    nightNeedsABed(n, legs, destination.timezone),
+  );
+  const nightsCovered = nightsNeedingABed.filter((n) => coveredNights.has(n)).length;
 
   // Passports (ADR-0061): every traveller should have a passport uploaded. The
   // per-owner picker is deferred (ADR-0015), so uploads are group-owned and can't
@@ -180,9 +273,9 @@ export function computeReadiness(input: {
     { id: 'flights', done: hasOutbound && hasReturn, hasOutbound, hasReturn },
     {
       id: 'lodging',
-      done: tripNights.length === 0 || nightsCovered === tripNights.length,
+      done: nightsCovered === nightsNeedingABed.length,
       count: nightsCovered,
-      total: tripNights.length,
+      total: nightsNeedingABed.length,
     },
     { id: 'itinerary', done: emptyDates.length === 0, count: emptyDates.length },
     {

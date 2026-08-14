@@ -3,6 +3,7 @@ import {
   BOOKING_SOURCE,
   BOOKING_TYPE,
   DOCUMENT_TYPE,
+  EVENT_CATEGORY,
   EVENT_KIND,
   EVENT_STATUS,
 } from '@waypoint/shared';
@@ -337,6 +338,152 @@ describe('computeReadiness', () => {
       const l = check(r, 'lodging');
       expect(l.done).toBe(false);
       expect(l.count).toBe(0);
+    });
+
+    it('credits a lodging-category event that has no booking at all', () => {
+      const r = computeReadiness({
+        ...base(),
+        bookings: [outbound, inbound], // the spare room is nobody's booking
+        events: [
+          {
+            ...event('friends', '2026-07-05'),
+            endDate: '2026-07-07',
+            category: EVENT_CATEGORY.LODGING,
+          },
+        ],
+      });
+      expect(check(r, 'lodging').done).toBe(true);
+    });
+  });
+
+  // The 2026-08-14 amendment: a night you spend in the air, on a night bus, or awake
+  // waiting for a 1am flight is not a night anyone books a room for. The window is
+  // 22:00→08:00 trip-local and the threshold 5h, so every instant below is JST (UTC+9)
+  // written as the UTC it really is.
+  describe('nights nobody books a bed for', () => {
+    const JAPAN = { name: 'Japan', timezone: 'Asia/Tokyo' };
+    const OSAKA = place('osaka', 'Osaka, Japan');
+
+    // A carried leg: the instants live on the event, never on the booking (ADR-0047 §1).
+    const leg = (bookingId: string, startsAt: string, endsAt: string): TripEvent => ({
+      ...event(`leg-${bookingId}`, startsAt.slice(0, 10)),
+      bookingId,
+      startsAt,
+      endsAt,
+    });
+
+    // Nights 07-05 and 07-06; the hotel covers only the first, so the second is the
+    // one every case below is really about.
+    const firstNightOnly = () => ({
+      ...base(),
+      destination: JAPAN,
+      places: [...PLACES, OSAKA],
+      bookings: [outbound, inbound, booking('h', BOOKING_TYPE.HOTEL)],
+      events: [stay('h', '2026-07-05', '2026-07-06')],
+    });
+
+    it('does not ask for a bed on the night of a 01:00 flight home', () => {
+      // Departs Tokyo 07-07 01:00 JST — three hours between dinner and the airport.
+      const r = computeReadiness({
+        ...firstNightOnly(),
+        events: [
+          ...firstNightOnly().events,
+          leg('in', '2026-07-06T16:00:00Z', '2026-07-06T23:00:00Z'),
+        ],
+      });
+      const l = check(r, 'lodging');
+      expect(l.done).toBe(true);
+      expect(l.total).toBe(1); // night 07-06 left the denominator, it did not sit in it
+    });
+
+    it('still asks for a bed on the night before a 06:00 flight home', () => {
+      // Departs Tokyo 07-07 06:00 JST — eight sleepable hours, so you slept somewhere.
+      const r = computeReadiness({
+        ...firstNightOnly(),
+        events: [
+          ...firstNightOnly().events,
+          leg('in', '2026-07-06T21:00:00Z', '2026-07-07T04:00:00Z'),
+        ],
+      });
+      const l = check(r, 'lodging');
+      expect(l.done).toBe(false);
+      expect(l.count).toBe(1);
+      expect(l.total).toBe(2);
+    });
+
+    it('asks for a bed on the night you LAND at 01:00 (the opposite fact)', () => {
+      // The pair that decides the design: same clock reading, opposite direction.
+      // Lands Tokyo 07-06 01:00 JST, so seven hours of that night want a room.
+      const r = computeReadiness({
+        ...firstNightOnly(),
+        events: [
+          stay('h', '2026-07-06', '2026-07-07'), // covers night 06, not night 05
+          leg('out', '2026-07-05T09:00:00Z', '2026-07-05T16:00:00Z'),
+        ],
+      });
+      const l = check(r, 'lodging');
+      expect(l.done).toBe(false);
+      expect(l.total).toBe(2);
+    });
+
+    it('does not ask for a bed on an overnight bus between two places in-country', () => {
+      // Tokyo 07-05 21:00 JST → Osaka 07-06 04:00 JST. Both endpoints reach Japan, so
+      // the arrival wins and you are present for the four hours left — under the floor.
+      const r = computeReadiness({
+        ...firstNightOnly(),
+        bookings: [
+          outbound,
+          inbound,
+          booking('h', BOOKING_TYPE.HOTEL),
+          booking('bus', BOOKING_TYPE.TRANSIT, { fromPlaceId: 'dest', toPlaceId: 'osaka' }),
+        ],
+        events: [
+          stay('h', '2026-07-06', '2026-07-07'), // covers night 06 only
+          leg('bus', '2026-07-05T12:00:00Z', '2026-07-05T19:00:00Z'),
+        ],
+      });
+      expect(check(r, 'lodging').done).toBe(true);
+    });
+
+    it('leaves the night open for a leg with no times (degradation)', () => {
+      // The same 01:00 flight with no clock on it. Nothing is subtracted, so the check
+      // stays open — never a false pass, which is the whole posture of ADR-0061.
+      const r = computeReadiness({
+        ...firstNightOnly(),
+        events: [...firstNightOnly().events, { ...event('leg-in', '2026-07-07'), bookingId: 'in' }],
+      });
+      const l = check(r, 'lodging');
+      expect(l.done).toBe(false);
+      expect(l.total).toBe(2);
+    });
+
+    it('leaves every night open when the trip has no timezone to read them in', () => {
+      const r = computeReadiness({
+        ...firstNightOnly(),
+        destination: { name: 'Japan' }, // pre-ADR-0113 trip, no zone from the pick
+        events: [
+          ...firstNightOnly().events,
+          leg('in', '2026-07-06T16:00:00Z', '2026-07-06T23:00:00Z'),
+        ],
+      });
+      expect(check(r, 'lodging').total).toBe(2);
+    });
+
+    it('does not treat a car hire as time in motion', () => {
+      // A hire spans both nights and is parked through them — reading its span as motion
+      // would tell a five-day rental it needs no lodging at all.
+      const r = computeReadiness({
+        ...firstNightOnly(),
+        bookings: [
+          outbound,
+          inbound,
+          booking('car', BOOKING_TYPE.CAR, { fromPlaceId: 'dest', toPlaceId: 'dest' }),
+        ],
+        events: [leg('car', '2026-07-05T00:00:00Z', '2026-07-07T00:00:00Z')],
+      });
+      const l = check(r, 'lodging');
+      expect(l.done).toBe(false);
+      expect(l.total).toBe(2);
     });
   });
 });
