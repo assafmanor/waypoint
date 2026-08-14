@@ -2,12 +2,14 @@
    mockups/map-embedded-v1.html's PHASE-6 DELTA block, which was written against
    these very tokens.
 
-   The pane is sized to the area the SHEET LEAVES VISIBLE, not full-bleed behind it:
-   the Maps JS API draws Google's logo and attribution at the bottom-left OF THE MAP
-   DIV, and Google's terms require they not be obscured (ADR-0106 §B) — a peeking
-   sheet over an `inset: 0` pane would hide the one element we are contractually
-   obliged to show. It also makes the fit-to-bounds honest, since fitting bounds to
-   a div half-hidden behind the list centres pins under it (§5/§7).
+   The pane is sized to the area the SHEET LEAVES VISIBLE, not full-bleed behind it. The
+   original reason was Google's: it drew its logo and attribution at the bottom-left of the map
+   div and its terms required they not be obscured (ADR-0106 §B). **That reason survives the
+   renderer swap almost unchanged** — ADR-0186 replaces Google's logo requirement with
+   OpenStreetMap's ODbL attribution, which is equally non-optional, and `.map-attrib` below
+   sits in exactly the band this sizing keeps clear. The second reason never depended on a
+   vendor at all: fitting bounds to a div half-hidden behind the list centres pins under it
+   (§5/§7).
 
    `--sheet-h` is written by the screen from the SNAPPED sheet height, so a drag
    costs no relayout — the pane resizes on snap, not per drag frame (§5). */
@@ -21,17 +23,52 @@
      snapped stop leaves visible, so making it a size container is what lets a pin be a
      share of the map it sits on — in CSS, with no layout read on a screen that
      re-renders every second and no `MapPane` prop that changes on a gesture (ADR-0121
-     §4 / ADR-0122 §9). An `AdvancedMarker`'s content is a real DOM descendant of the
-     canvas div, so `cqh` inside a pin resolves against this box.
+     §4 / ADR-0122 §9). A marker's content is a real DOM descendant of the canvas div, so
+     `cqh` inside a pin resolves against this box.
 
      Safe to contain: the box is sized by its own insets (`top`/`bottom` above), never
-     by what Google draws inside it, which is the one precondition `container-type:
+     by what the renderer draws inside it, which is the one precondition `container-type:
      size` has. */
   container-type: size;
 }
 .map-canvas {
   width: 100%;
   height: 100%;
+}
+
+/* **THE MARKER WRAPPER, WHICH IS LOAD-BEARING** (ADR-0186's 2026-08-13 amendment, finding 1).
+   MapLibre adds `.maplibregl-marker` to whatever element it is handed and positions it with
+   `position: absolute` from its own stylesheet; `.map-pin` below sets `position: relative`,
+   because ADR-0123's parts position against it. **Both selectors are one class deep and ours
+   loads last**, so a build that hands `.map-pin` straight to `new maplibregl.Marker({element})`
+   loses the absolute positioning entirely: measured in the mockup, six pins stacked into a
+   204px column, painted outside the pane and clipped by its `overflow: hidden`.
+
+   So the pin sits INSIDE this wrapper and never IS it. The wrapper carries no geometry of its
+   own — MapLibre's transform is the position, and the pin's own size is a share of the pane
+   (ADR-0123's `cqh`, which still resolves because this is a DOM descendant of `.map-pane`). */
+.map-marker {
+  /* The pin is what draws; the wrapper is a positioning box and must not intercept anything
+     the pin itself does not cover. */
+  line-height: 0;
+}
+
+/* **OSM's attribution: required, ours, and RTL-aware** (ADR-0186's Consequences). It replaces
+   Google's own logo in the band the pane's sizing above keeps clear of the sheet. Latin and
+   quiet — it is a licence notice, not copy — and `pointer-events: none` so it never takes a tap
+   from the canvas underneath it, which is the same rule `.map-loading` follows. */
+.map-attrib {
+  position: absolute;
+  inset-inline-start: var(--space-2);
+  bottom: var(--space-1);
+  z-index: 1;
+  pointer-events: none;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--ink-3);
+  background: color-mix(in oklab, var(--card) 72%, transparent);
+  padding: 1px var(--space-1);
+  border-radius: var(--r-1);
 }
 /* The full-list height: the map is behind the sheet and still ONE live instance —
    hidden rather than destroyed, because destroying it is a billed load (§4). Its
@@ -44,11 +81,11 @@
 }
 
 /* ── PINS ──────────────────────────────────────────────────────────────────────
-   `AdvancedMarker` content built from OUR markup (§6), reading the very same
-   `--cat-*` tokens as `.map-badge`, so the list badge and the map teardrop are one
-   colour system by construction rather than by discipline. Google's `PinElement`
-   gives background/border/glyph and cannot express the three commitment states
-   below, which is why the content is ours.
+   Marker content built from OUR markup (§6), reading the very same `--cat-*` tokens as
+   `.map-badge`, so the list badge and the map teardrop are one colour system by construction
+   rather than by discipline. Google's `PinElement` gave background/border/glyph and could not
+   express the three commitment states below, which is why the content was ours — and being
+   ours is exactly why ADR-0186's renderer swap did not touch one line of it.
 
    No `translate(-50%, -100%)` here (the mockup needed it for absolute positioning):
    the marker's own anchor puts the tip on the coordinate.

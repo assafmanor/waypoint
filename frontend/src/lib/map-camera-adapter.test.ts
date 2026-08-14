@@ -18,6 +18,9 @@ function fakeMapLibre(overrides: Record<string, unknown> = {}) {
       getEast: () => 139.8,
       getWest: () => 139.6,
     }),
+    resize: vi.fn(),
+    getMinZoom: () => 2,
+    getMaxZoom: () => 18,
     jumpTo: vi.fn(),
     fitBounds: vi.fn(),
     on: vi.fn(),
@@ -115,5 +118,43 @@ describe('cameraMapFor', () => {
     const map = fakeMapLibre();
     cameraMapFor(map).addListener('idle', () => {});
     expect((map as unknown as { on: ReturnType<typeof vi.fn> }).on.mock.calls[0]![0]).toBe('idle');
+  });
+});
+
+/* **The two the count missed.** `useCanvasGestures` clamps the drag zoom to the map's own
+   limits, and it read them as `map.get('minZoom')` — Google's untyped `MVCObject` accessor,
+   which satisfies any type and so hid itself from ADR-0186 §2's table of seven. The compiler
+   found it the moment the hook was retyped to `CameraMap`; MapLibre has real accessors, so
+   the string keys are gone. Asserted here because a silently absent limit is not a throw —
+   `dragZoomLimits` falls back to `MAP_DRAG_ZOOM`'s own numbers, so the gesture would simply
+   stop respecting the map's range and nothing would fail. */
+describe('the zoom limits the drag gesture clamps to', () => {
+  it('reports the map’s own range', () => {
+    const camera = cameraMapFor(fakeMapLibre());
+    expect(camera.getMinZoom()).toBe(2);
+    expect(camera.getMaxZoom()).toBe(18);
+  });
+
+  it('passes an unstated limit through as-is, for `dragZoomLimits` to default', () => {
+    const camera = cameraMapFor(
+      fakeMapLibre({ getMinZoom: () => undefined, getMaxZoom: () => undefined }),
+    );
+    expect(camera.getMinZoom()).toBeUndefined();
+    expect(camera.getMaxZoom()).toBeUndefined();
+  });
+});
+
+/* **The bug the renderer swap found, and it was not in the swap.** The first version of
+   `getBounds` wrapped unconditionally, so it handed back a truthy object for a map with no
+   bounds — and `useMapCamera` reads a falsy answer as "this map has not rendered, defer the
+   framing to its own `idle`". Two failures in one line: `readMapBounds`'s `if (!bounds)` guard
+   became unreachable and then threw on `getNorth()` of `undefined` inside a React effect, and
+   the opening framing lost the signal that keeps it from fitting into an unrendered map (the
+   whole-world camera of ADR-0121's session-134 entry). Caught only when `MapPane`'s own suite
+   started driving the real adapter. */
+describe('a map with no bounds yet', () => {
+  it('answers null rather than a wrapper around nothing', () => {
+    expect(cameraMapFor(fakeMapLibre({ getBounds: () => undefined })).getBounds()).toBeNull();
+    expect(cameraMapFor(fakeMapLibre({ getBounds: () => null })).getBounds()).toBeNull();
   });
 });

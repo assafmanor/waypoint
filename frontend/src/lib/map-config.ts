@@ -1,19 +1,59 @@
-// The rendered map's build-time configuration (ADR-0121 §2). Three `VITE_` vars,
-// read once and resolved to "we can draw a map" or "we cannot" — there is no
-// third, disabled state: a checkout without Google setup renders today's
-// list-only tab rather than an empty frame (§2's graceful absence, the same rule
-// offline follows in §11).
+// The rendered map's configuration — which ground to read, and which face of it to paint.
 //
-// The browser key is public and unproxyable by construction — it lives in the
-// script URL (ADR-0108 §1) — so it is API-restricted to Maps JavaScript and
-// referrer-locked instead of hidden. The `mapId` is mandatory, not optional:
-// advanced markers do not load without one (ADR-0121 §1).
+// **The interesting thing here is what is no longer load-bearing.** ADR-0121 §2 made this file
+// about three `VITE_GOOGLE_MAPS_*` vars resolving to "we can draw a map" or "we cannot",
+// because without a browser key and a Map ID there was no canvas. ADR-0186 bundles the
+// renderer and serves the tiles from our own backend, so **there is no build configuration
+// left to be missing**: a checkout draws a map by existing, and the only remaining absence is
+// being offline (§8, until Phase 3 makes even that false).
 //
-// Build-time, not runtime: Vite inlines `import.meta.env`, so a changed value
-// needs a rebuild. `readMapsConfig` takes its env as an argument so the
-// resolution is unit-testable without one.
+// `MapsConfig` / `readMapsConfig` / `mapsConfig` below are therefore down to ONE reader —
+// `DevMapTuner`, which reports what a Google canvas was built from. They are Phase 4's to
+// delete along with the vars and the renderer; leaving them here rather than half-removing
+// them is what keeps this a reviewable phase.
 
 import { documentTheme, THEME, type Theme } from './theme';
+import { apiAssetUrl } from './api-asset';
+
+/** **Where the two archives live** (ADR-0186 §3). Both are read through the `pmtiles://`
+ *  protocol, so nothing downstream — not the style, not the canvas — knows whether it got a
+ *  range read over the network or a local file. That is the single idea keeping offline from
+ *  being a second system.
+ *
+ *  `trip` is absent until the backend has built that trip's extract; the world layer alone is
+ *  a correct, coarser map rather than a blank one (§4). */
+export interface MapTileUrls {
+  world: string;
+  trip?: string;
+}
+
+/**
+ * The archives this build reads.
+ *
+ * **Through our own backend, never a vendor** — the rule ADR-0108/0110 already set for every
+ * Google call, applied to tiles for the same three reasons: any key stays server-side, we can
+ * cache, and we can change source without shipping a client.
+ *
+ * **`trip` is deliberately not wired in Phase 2**, and the reason is worth stating because it
+ * looks like an omission. Three things make the trip extract a Phase 3 concern:
+ * `GET /trips/:id/map/extract.pmtiles` **cuts the archive synchronously on first request**
+ * (~10s for two areas), it sits behind `MembershipGuard` so the protocol's fetch must carry
+ * credentials, and `mapStyle` reads **one** source — so an extract that fails or 403s renders
+ * **nothing**, which is a self-inflicted copy of the very bug this migration exists to end.
+ * Phase 3 owns the download, and §6 rule 5 ("survive it being gone") is where that fallback
+ * is specified. Until then the world layer is the whole ground: coarse, but never blank.
+ */
+export function mapTileUrls(): MapTileUrls {
+  return { world: apiAssetUrl(MAP_ARCHIVE_PATH.world) };
+}
+
+/** The backend's own routes for the archives, named beside the reader (ADR-0095). `trip` is
+ *  unused until Phase 3 and is here so that phase is a one-line change rather than a route
+ *  invented at a call site. */
+const MAP_ARCHIVE_PATH = {
+  world: '/map/world.pmtiles',
+  trip: (tripId: string) => `/trips/${tripId}/map/extract.pmtiles`,
+} as const;
 
 /** What the pane needs to construct a map. Absent (`null`) is a first-class state. */
 export interface MapsConfig {
@@ -92,11 +132,36 @@ export function mapsConfig(): MapsConfig | null {
   return readMapsConfig(import.meta.env as unknown as MapsEnv, documentMapTheme());
 }
 
-/** Is there a rendered map on the Map tab at all? Offline there is not: the map is
- *  the one part of this tab that was never available offline, so it is **absent** —
- *  no pane, no toggle, no map instance, no billed load (ADR-0121 §11). Shared,
- *  because two callers must agree: the Map screen (which renders the split) and the
- *  shell (which makes the body full-bleed for it). */
+/**
+ * **Which face of the ground to paint.** Straight off the document's theme, because a style
+ * JSON is swappable on a live map — ADR-0186 §7's cheapest win over two latched Map IDs,
+ * where a theme flip could not reach the canvas already drawn.
+ *
+ * It keeps `MAP_COLOR_SCHEME`'s `'LIGHT'`/`'DARK'` spelling even though nothing Google reads
+ * it any more: `mapStyle`, `mapBackground` and `MAP_CONNECTOR.COLOR` are all keyed on it, and
+ * renaming the two values would be a churn with no reader asking for it.
+ */
+export function mapColorScheme(theme: MapTheme = documentMapTheme()): MapColorScheme {
+  return theme === MAP_THEME.dark ? MAP_COLOR_SCHEME.dark : MAP_COLOR_SCHEME.light;
+}
+
+/**
+ * Is there a rendered map on the Map tab at all?
+ *
+ * **Offline there is not — and that is now the ONLY reason there is not** (ADR-0186 §8). It
+ * used to also require the three `VITE_GOOGLE_MAPS_*` vars, because without a key and a Map
+ * ID there was no canvas to draw; the renderer is bundled now, so there is no build
+ * configuration left to be missing and a checkout draws a map by existing.
+ *
+ * **The graceful absence itself is unchanged, only its trigger.** §2's rule still holds — no
+ * pane, no toggle, no instance, today's list-only tab rather than an empty frame — and
+ * `Map.test.tsx` still covers that path, now by being offline rather than by having no keys.
+ *
+ * It stays true only until Phase 3: once an extract can be downloaded, the map becomes the
+ * part of this tab that works offline BEST (§8), and this function loses its last reason to
+ * return false. Shared, because two callers must agree: the Map screen (which renders the
+ * split) and the shell (which makes the body full-bleed for it).
+ */
 export function mapPaneAvailable(opts: { offline: boolean }): boolean {
-  return !opts.offline && mapsConfig() != null;
+  return !opts.offline;
 }

@@ -36,6 +36,7 @@ import {
   type DragZoomState,
 } from './canvas-gestures';
 import { latLngAtOffset, type MapCamera } from './useMapCamera';
+import type { CameraMap } from './map-camera-adapter';
 import type { LatLng } from './map-camera';
 import { armClickSwallow } from './click-swallow';
 import { DRAG_HOLD_MS } from '../constants';
@@ -45,7 +46,7 @@ import { DRAG_HOLD_MS } from '../constants';
 export type CanvasGestureCamera = Pick<MapCamera, 'zoomTo' | 'stepZoomIn'>;
 
 export function useCanvasGestures(
-  map: google.maps.Map | null,
+  map: CameraMap | null,
   camera: CanvasGestureCamera,
   paneRef: RefObject<HTMLElement | null>,
   /** A press held still: drop a pin here (ADR-0147 §1/§2), or act on whatever was under the
@@ -118,11 +119,10 @@ export function useCanvasGestures(
       // same reason the fit's padding is (ADR-0128): this screen re-renders every second and
       // a layout read must not become a dependency.
       const box = pane.getBoundingClientRect();
-      const limits = dragZoomLimits(
-        box.height,
-        live?.get('minZoom') as number | null | undefined,
-        live?.get('maxZoom') as number | null | undefined,
-      );
+      // Named accessors since ADR-0186 §2: these were `live.get('minZoom')`, Google's
+      // untyped `MVCObject` read, which is why they were missing from the adapter's own
+      // count of what the camera asks for. `CameraMap` states them now.
+      const limits = dragZoomLimits(box.height, live?.getMinZoom(), live?.getMaxZoom());
       const step = reduceDragZoom(state, { type, x, y, t }, live?.getZoom() ?? null, limits);
       state = step.state;
       switch (step.action) {

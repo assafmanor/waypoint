@@ -183,3 +183,114 @@ The owner asked to see it before committing: _"I'd like to try it and see how it
 - **Cluster geometry** — the radius that separates two clusters from one, and the padding around each box. A number to measure against real trips, not to pick here.
 - **The grace window in §6 rule 1**, and the byte budget in rule 3. Both are owner-facing numbers.
 - **Whether the budgeted-LRU store takes document blobs later** (§6). Named so it is a decision rather than a drift.
+
+## Amendment (2026-08-14, session 269) — Phase 2 is built: the renderer is swapped
+
+`MapPane` renders MapLibre over our own PMTiles. `@vis.gl/react-google-maps` has no live call
+site left in the app. What follows is what the build learned that §2 could not.
+
+**§2's "the port is small" held, and the camera is why.** `useMapCamera` (~700 lines) and
+`useCanvasGestures` changed by **eight type annotations and no logic** — `google.maps.Map` became
+`CameraMap`, and their 76 tests passed unchanged on the first run. Pins changed by **nothing**:
+ADR-0121 §6 built them from our own DOM, so `.map-pin` and ADR-0123's `--pin-u` system are
+untouched CSS on real elements. That is ADR-0121 §13's testing posture paying off exactly as §2
+predicted.
+
+**Two real defects the swap exposed, both in Phase 1, both found by machines rather than by
+reading.**
+
+1. **`CameraMap` was short by two methods, and the compiler found it.** `useCanvasGestures`
+   read the drag zoom's limits as `map.get('minZoom')` — Google's untyped `MVCObject` accessor,
+   which type-checks against _anything_ and so hid itself from §2's count of seven. `getMinZoom`
+   / `getMaxZoom` are now stated. This is the counted-the-call-sites rule working: the count was
+   right about every method that had a name.
+2. **`cameraMapFor().getBounds()` wrapped unconditionally**, so it returned a truthy object for
+   a map with no bounds. Two failures in one line: `readMapBounds`'s `if (!bounds)` guard became
+   unreachable and then threw inside a React effect, and `useMapCamera` lost the signal it reads
+   as _"this map has not rendered, defer the framing to its own `idle`"_ — which is precisely the
+   hazard ADR-0121's session-134 entry describes, where an unrendered fit resolves to a wild
+   zoom-out and §7's containment guard then makes it permanent. Found only when `MapPane`'s suite
+   started driving the real adapter instead of a hand-written Google dialect.
+
+**Three things Phase 2 deliberately did NOT do, each stated so a later session does not read
+them as oversights:**
+
+- **The trip extract is not wired. Phase 2 renders the shared z0–6 world layer only, so the
+  map is COARSE — no street detail until Phase 3.** Three reasons, and the third is
+  disqualifying on its own: `GET /trips/:id/map/extract.pmtiles` cuts the archive
+  **synchronously on first request** (~10s for two areas), it sits behind `MembershipGuard` so
+  the `pmtiles` protocol's fetch must carry credentials, and `mapStyle` reads **one** source —
+  so an extract that fails or 403s renders **nothing**. Shipping that as the experiment would be
+  a self-inflicted copy of the bug this migration exists to end. Phase 3 owns the download and
+  §6 rule 5 ("survive it being gone") is where the fallback belongs.
+- **`mapStyle` still reads one source.** §3's own prose says _"the trip's own archive over the
+  shared world layer"_ and the code picks one; making both draw needs the ~70 generated layers
+  emitted twice with remapped ids and a `maxzoom` cap so world labels do not double under trip
+  labels. That is a measurable render-cost change with no measurement available here, and it is
+  Phase 3's, beside the download it protects.
+- **The hidden-moment reload and the reload-first retry are kept unchanged.** Both were argued
+  from Google's per-instantiation billing and from _"only restarting the app fixes it"_. The
+  billing argument is dead and a rebuild is now free — but the measurement that a rebuild never
+  recovered this is not, so keeping them is the conservative reading. **The swap is the
+  experiment about that, not the answer.**
+
+**What is deleted rather than ported**, confirming §2 and §8: `APIProvider`, `APILoadingStatus`,
+`__resetModuleState` (with the page-global that made it necessary — the paragraph explaining
+_why_ survives in `MapPane`, since it is the whole case for this ADR), `mapFailed` as a
+_script_-load signal, `clickableIcons`, `disableDefaultUI`, `gestureHandling`, the mandatory
+`mapId` and its two-slot `colorScheme`, `MapInstanceProbe` (there is no renderer context to
+reach), and ADR-0121 §10's faked dashed line — `line-dasharray` is real, so `DASH_SCALE` and
+`DASH_REPEAT` go with it. **And the three `VITE_GOOGLE_MAPS_*` vars stop gating anything:**
+there is no build configuration left to be missing, so `mapPaneAvailable` is `!offline` and a
+checkout draws a map by existing. `MapsConfig` survives for `DevMapTuner` alone and is Phase 4's.
+
+**Four things the build had to add that no amount of reading would have produced:**
+
+1. **The pin's markup reaches its marker through `createPortal`**, which this repo lint-blocks.
+   A `maplibregl.Marker` owns its element, and ADR-0121 §6's pins are React. `eslint.config.mjs`
+   carries the allowlist entry and the reasoning: a marker is content positioned inside the
+   canvas by the renderer, nothing dismisses it, so ADR-0090's back-stack question answers no.
+   It is the one allowlist entry that does not call `useOverlay`.
+2. **OSM's attribution had to be drawn by us, and nearly was not.** `MapCanvas` passes
+   `attributionControl: false` because MapLibre's own control is vendor chrome that ignores an
+   RTL page — and the style's `attribution` field is surfaced _only_ by that control. Switching
+   it off while trusting the field would have shipped **no attribution at all**, which is a
+   licence failure that nothing would have failed on. `.map-attrib` renders it, in the band
+   ADR-0121 §5's layout already reserved for Google's logo, and a test asserts it.
+3. **`MapCanvas` needed two failure callbacks, not one.** A tile 404 and "the module failed"
+   both arrived through `onError`, so the pane could not tell a missing tile at the edge of an
+   extract from a canvas that cannot exist — and guessing lenient is a blank canvas with no
+   affordance, field report #28 verbatim. `onUnavailable` is the terminal channel; `onError` is
+   recorded for the diagnostic and changes nothing else.
+4. **`MapCanvas` hands the MODULE over with the instance.** Markers need `Marker`, and
+   re-entering the loader would put every pin a microtask behind the render that asked for it.
+
+**`MapDiagnostic` is ported, which was the owner's explicit condition on replacing outright.**
+`sdk:` reads the MapLibre instance through `CameraMap` (the three-way `none`/`nobox`/`z12@…`
+split survives because `getBounds`/`getZoom`/`getCenter` exist on both), the tile-traffic regex
+matches `*.pmtiles` and Protomaps' font CDN instead of four Google hosts, and the second fetch
+probe is now a one-byte range request against our own archive — strictly sharper than `goog:`,
+which could only say Google was reachable. `err:` gains rather than loses: a tile that cannot be
+range-read says so in the message, where Google's loader rejected with nothing about tiles.
+
+**And `markFailure()` still clears `tilesPainted`.** The cue, the retry pill and the diagnostic
+all render under `!tilesPainted`, so a context dying _after_ the first paint would otherwise show
+nothing at all. Carried through the swap with its test.
+
+**Measured, since Consequences asked for it and not for an assumption.** The Map tab's chunk is
+**1.09 MB raw / 286 kB gzip**; the entry chunk is unchanged at 310 kB, so the renderer stays out
+of the first-paint path as §1 requires. Against that, the Maps JS script is no longer fetched at
+runtime at all. The bytes move from a per-session vendor fetch to a versioned, cached, offline-capable
+chunk — which is the trade this ADR is about. One residual: `lib/maplibre.ts`'s `import()` is not
+a real chunk boundary, because `map-camera-adapter.ts` imports `MercatorCoordinate` statically;
+opening the Map tab therefore evaluates the renderer whether or not a canvas is built. Backlogged
+rather than fixed quietly, since the fix is hand-rolling two mercator formulas.
+
+**What Phase 2 does NOT establish, and this is the important line.** The original cause of field
+report #35 is still **unknown**. Session 268 excluded WebGL, the map's own context, layout, the
+service worker, the network and the loader by measurement from the owner's device; quota (97%)
+explains the Aug 13–14 failures only, since 4xx was flat at zero across Aug 7–13 while the bug was
+reported daily. So this is **the experiment, not the cure**: if the MapLibre pane is healthy on
+the owner's phone where Google's was not, the fault was in the SDK; if it fails the same way,
+something above was mis-excluded and `MapDiagnostic` on the new pane is what says which. Six
+sessions promised a cure. This one does not.

@@ -15,17 +15,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { mapBackground, mapStyle } from '../../lib/map-style';
-import type { MapColorScheme } from '../../lib/map-config';
+import { loadMapLibre, type MapLibreModule } from '../../lib/maplibre';
+import type { MapColorScheme, MapTileUrls } from '../../lib/map-config';
+// MapLibre's own stylesheet, which is not decoration: `.maplibregl-marker` is where a
+// marker's `position: absolute` comes from, and without it every pin falls into normal flow
+// and stacks into a column outside the pane (ADR-0186's 2026-08-13 amendment, finding 1).
+import 'maplibre-gl/dist/maplibre-gl.css';
 
-/** Where the archives live. Both are read through the `pmtiles://` protocol, so neither this
- *  component nor the style knows whether it got a range read over the network or a local
- *  file (ADR-0186 §3) — which is the single idea that keeps offline from being a second
- *  system. `trip` is absent until the backend has built that trip's extract; the world layer
- *  alone is a correct, coarser map rather than a blank one (§4). */
-export interface MapTileUrls {
-  world: string;
-  trip?: string;
-}
+/** Re-exported for this component's own consumers. It is DECLARED in `lib/map-config`, which
+ *  is what resolves the URLs — a `lib/` module cannot import from `ui/`, and the shape has one
+ *  home rather than two names for one thing (rule 8). */
+export type { MapTileUrls };
 
 export interface MapCanvasProps {
   scheme: MapColorScheme;
@@ -33,8 +33,15 @@ export interface MapCanvasProps {
   centre: { lat: number; lng: number };
   zoom: number;
   /** Handed the live instance once, and `null` on teardown. The consumer wraps it in
-   *  `cameraMapFor` — this component does not decide anything about the camera. */
-  onMap: (map: MapLibreMap | null) => void;
+   *  `cameraMapFor` — this component does not decide anything about the camera.
+   *
+   *  **The module comes with it, and that is not a convenience.** A consumer drawing markers
+   *  needs `maplibregl.Marker`, and by the time an instance exists the module is loaded — so
+   *  handing it over means markers are constructed in the SAME commit as the map rather than a
+   *  microtask later, which is the difference between a pin that is in the DOM when the pin set
+   *  changes and one that arrives after. Re-entering `loadMapLibre()` at the consumer would
+   *  resolve from the same cache and still cost that hop. */
+  onMap: (map: MapLibreMap | null, gl: MapLibreModule | null) => void;
   /** The first settled frame. MapLibre has no single "tiles painted" event, so this is the
    *  first `idle` AFTER `load`: `load` means the style is applied and the first frame is
    *  drawn, `idle` means nothing further is pending. That pair is the honest equivalent of
@@ -43,8 +50,20 @@ export interface MapCanvasProps {
   /** Every later settle, for the pane's `onViewChange`. */
   onIdle?: () => void;
   /** MapLibre's `error` event. Unlike the Google loader there is no page-global status to
-   *  get stuck in, so this is per-instance and per-failure. */
+   *  get stuck in, so this is per-instance and per-failure.
+   *
+   *  **A tile that 404s arrives here**, so this is not evidence that the map is dead — the
+   *  pane decides that from whether anything ever painted. See `onUnavailable` for the
+   *  failure that IS terminal. */
   onError?: (error: Error) => void;
+  /** **There is no canvas and there cannot be one** — the renderer module or the `pmtiles`
+   *  protocol failed, so construction never happened.
+   *
+   *  Split from `onError` because the pane's two answers are opposite: this one replaces the
+   *  canvas with `ErrorState` in the pane's own slot, where a tile error must change nothing
+   *  at all. One callback for both would force the pane to guess which it got, and guessing
+   *  wrong in the lenient direction is a blank canvas with no affordance — field report #28. */
+  onUnavailable?: (error: Error) => void;
 }
 
 /**
@@ -63,10 +82,7 @@ export interface MapCanvasProps {
 let protocolReady: Promise<void> | null = null;
 async function ensurePmtilesProtocol(): Promise<void> {
   protocolReady ??= (async () => {
-    const [{ addProtocol }, { Protocol }] = await Promise.all([
-      import('maplibre-gl'),
-      import('pmtiles'),
-    ]);
+    const [{ addProtocol }, { Protocol }] = await Promise.all([loadMapLibre(), import('pmtiles')]);
     const protocol = new Protocol();
     addProtocol('pmtiles', protocol.tile);
   })();
@@ -82,6 +98,7 @@ export function MapCanvas({
   onFirstPaint,
   onIdle,
   onError,
+  onUnavailable,
 }: MapCanvasProps) {
   const holderRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -89,8 +106,8 @@ export function MapCanvas({
   // `screens/Map.tsx` does) cannot tear down and rebuild the map. ADR-0121 §4's hazard
   // survives the renderer swap: the reason changes from "a rebuild is billed" to "a rebuild
   // is a blank canvas and a lost camera", and the discipline is identical.
-  const cbRef = useRef({ onMap, onFirstPaint, onIdle, onError });
-  cbRef.current = { onMap, onFirstPaint, onIdle, onError };
+  const cbRef = useRef({ onMap, onFirstPaint, onIdle, onError, onUnavailable });
+  cbRef.current = { onMap, onFirstPaint, onIdle, onError, onUnavailable };
   // Construction-time values, latched: MapLibre takes an opening camera and then owns it, so
   // re-reading these would fight whatever the user or the camera hook last did.
   const openingRef = useRef({ centre, zoom, scheme, urls });
@@ -106,9 +123,9 @@ export function MapCanvas({
       try {
         await ensurePmtilesProtocol();
         if (!live) return;
-        const { Map: MapLibre } = await import('maplibre-gl');
+        const gl = await loadMapLibre();
         if (!live) return;
-        const map = new MapLibre({
+        const map = new gl.Map({
           container: holder,
           style: mapStyle(opening.scheme, opening.urls),
           // **`[lng, lat]`, not `{lat, lng}`** — MapLibre is GeoJSON-ordered and the app is
@@ -116,9 +133,11 @@ export function MapCanvas({
           // `cameraMapFor` exists rather than the app learning a second dialect.
           center: [opening.centre.lng, opening.centre.lat],
           zoom: opening.zoom,
-          // Our own attribution lives in the style's `attribution` (ADR-0186's
-          // `MAP_ATTRIBUTION`); MapLibre's own control is vendor chrome on an RTL page, and
-          // §2 is explicit that we author the chrome rather than switch theirs off.
+          // MapLibre's own attribution control is vendor chrome that ignores an RTL page, and
+          // §2 is explicit that we author the chrome rather than switch theirs off. **So the
+          // pane renders `MAP_ATTRIBUTION` itself** — switching this off while trusting the
+          // style's `attribution` field would show nothing at all, and OSM's ODbL attribution
+          // is not optional (ADR-0186's Consequences). See `.map-attrib` in `MapPane`.
           attributionControl: false,
           // ADR-0121 §12's decisions, which stop being suppressions and become choices:
           // there is no vendor POI layer and no vendor UI to disable here.
@@ -155,19 +174,21 @@ export function MapCanvas({
           );
         });
 
-        cbRef.current.onMap(map);
+        cbRef.current.onMap(map, gl);
       } catch (error) {
         if (!live) return;
         // A failure HERE is the module or the protocol, not a tile: the canvas cannot exist,
-        // so say so rather than leaving an empty box.
+        // so say so rather than leaving an empty box. Reported through `onUnavailable`, which
+        // is the pane's terminal signal — never through `onError`, which a single missing
+        // tile also reaches.
         setFailed(true);
-        cbRef.current.onError?.(error instanceof Error ? error : new Error(String(error)));
+        cbRef.current.onUnavailable?.(error instanceof Error ? error : new Error(String(error)));
       }
     })();
 
     return () => {
       live = false;
-      cbRef.current.onMap(null);
+      cbRef.current.onMap(null, null);
       // `remove()` releases the WebGL context and every listener. Not doing this is how a
       // tab-switching app accumulates contexts until the browser starts reclaiming them —
       // which is the failure mode session 264 spent a day chasing on the Google renderer.

@@ -304,15 +304,30 @@ export default tseslint.config(
     // rule key from the `no-restricted-syntax` block above, so the two coexist
     // without either overriding the other for these files.
     //
-    // Allowlist: `Modal` (the one primitive that owns the portal) and
-    // `MediaViewer` (a full-screen viewer that legitimately needs its own portal
-    // but is already back-aware — it calls `useOverlay` directly; it was
-    // `DocumentViewer.tsx` until ADR-0167 §10.2 made it source-agnostic, and the
-    // rename tripping this rule is the guard working). A new portal file failing
-    // this must EITHER build on `Modal` (preferred) or, if it truly needs a raw
-    // portal, call `useOverlay()` and add itself here.
+    // Allowlist: `Modal` (the one primitive that owns the portal), `MediaViewer`
+    // (a full-screen viewer that legitimately needs its own portal but is already
+    // back-aware — it calls `useOverlay` directly; it was `DocumentViewer.tsx`
+    // until ADR-0167 §10.2 made it source-agnostic, and the rename tripping this
+    // rule is the guard working), and `MapPane` — see below. A new portal file
+    // failing this must EITHER build on `Modal` (preferred) or, if it truly needs
+    // a raw portal, call `useOverlay()` and add itself here.
+    //
+    // **`MapPane` is the one entry that does NOT call `useOverlay`, deliberately**
+    // (ADR-0186 §2). Its portals are map MARKERS: a `maplibregl.Marker` owns its
+    // element, so the pin's markup reaches it through `createPortal`. That is not
+    // what this rule guards against. A marker is content positioned INSIDE the
+    // canvas by the renderer — nothing dismisses it, there is no backdrop, no
+    // Escape and no close control, so back has nothing to peel and registering a
+    // layer per pin would flood the stack with layers that can never be popped.
+    // The test the rule is really applying (`frontend/CLAUDE.md`: "whether the
+    // gesture dismisses something you are IN") answers no. It is here rather than
+    // routed around silently, which is what that file asks for.
     files: ['frontend/src/**/*.{ts,tsx}'],
-    ignores: ['frontend/src/ui/primitives/Modal.tsx', 'frontend/src/ui/MediaViewer.tsx'],
+    ignores: [
+      'frontend/src/ui/primitives/Modal.tsx',
+      'frontend/src/ui/MediaViewer.tsx',
+      'frontend/src/ui/domain/MapPane.tsx',
+    ],
     rules: {
       'no-restricted-imports': [
         'error',

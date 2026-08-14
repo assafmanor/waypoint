@@ -114,7 +114,7 @@ import {
   type MapArrival,
   type MapBounds,
 } from '../lib/map-camera';
-import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
+import { mapColorScheme, mapPaneAvailable, mapsConfig, mapTileUrls } from '../lib/map-config';
 import { prefersReducedMotion } from '../lib/motion';
 import { observeResize } from '../lib/observe-resize';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
@@ -587,15 +587,26 @@ export function MapView() {
     setEventDraft(null);
   }, []);
 
-  // ── The rendered map (Phase 6, ADR-0121) ──────────────────────────────────
-  // Config is read ONCE: it is a build var, so it cannot change while mounted, and
-  // re-reading it per render would invite a re-mounted (re-billed) pane.
+  // ── The rendered map (Phase 6, ADR-0121; the ground is ours since ADR-0186) ────────
+  // **Latched once, all three, and for the same reason they always were**: the pane is
+  // memoized on prop identity and this screen re-renders every second, so a fresh object here
+  // would re-diff every marker — and `MapCanvas` latches its opening values at construction
+  // anyway, so a live re-read would describe the map that WOULD be built next rather than the
+  // one on screen (the mistake ADR-0146 §5 had to amend for `DevMapTuner`).
+  //
+  // `scheme` is what a whole `MapsConfig` collapsed to (ADR-0186 §8): with the renderer
+  // bundled and the tiles ours, there is no key and no Map ID left to resolve.
+  const scheme = useMemo(() => mapColorScheme(), []);
+  const tileUrls = useMemo(() => mapTileUrls(), []);
+  // Still read for `DevMapTuner`, which reports what a Google canvas was built from and is
+  // Phase 4's to delete along with the vars themselves.
   const config = useMemo(() => mapsConfig(), []);
-  // Absent, never disabled (§2/§11). Offline the rendered map is the one part of
-  // this tab that was never available, so there is no pane, no toggle, no map
-  // instance and no billed load — the tab is the list it is today. A checkout with
-  // no Google setup degrades exactly the same way.
-  const hasMap = mapPaneAvailable({ offline }) && config != null;
+  // Absent, never disabled (§2/§11) — and **offline is now its only cause**. It used to also
+  // require the three `VITE_GOOGLE_MAPS_*` vars, because without them there was no canvas to
+  // draw; there is no build configuration to be missing any more, so a checkout draws a map by
+  // existing. Phase 3 takes the last reason away too, at which point the map becomes the part
+  // of this tab that works offline best (ADR-0186 §8).
+  const hasMap = mapPaneAvailable({ offline });
   const [sheetView, setSheetView] = useState<MapSheetView>(MAP_SHEET_VIEW.half);
   // Row ↔ pin are ONE selection (§8). Not `.nextstop`, whose amber means "the stop
   // you are heading to" — selecting a row must not claim that.
@@ -3495,11 +3506,11 @@ export function MapView() {
     </>
   );
 
-  // The map is absent (offline, or no build config): the tab is exactly the list it
-  // has always been, in the ordinary scrolling body. Not a greyed watermarked frame
-  // — that would be a third grammar for a fact this tab already states two ways
-  // (ADR-0121 §11).
-  if (!hasMap || !config) {
+  // The map is absent — **offline, which is now the only way** (ADR-0186 §8, until Phase 3
+  // removes even that): the tab is exactly the list it has always been, in the ordinary
+  // scrolling body. Not a greyed watermarked frame — that would be a third grammar for a fact
+  // this tab already states two ways (ADR-0121 §11).
+  if (!hasMap) {
     return (
       <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
         {offline && <StatusBanner tone="offline">{t.header.offlineNow}</StatusBanner>}
@@ -3588,7 +3599,8 @@ export function MapView() {
           map load (ADR-0121 §4). */}
       <div className="map-split">
         <MapPane
-          config={config}
+          scheme={scheme}
+          urls={tileUrls}
           pins={pins}
           results={results}
           onSelectResult={selectResult}

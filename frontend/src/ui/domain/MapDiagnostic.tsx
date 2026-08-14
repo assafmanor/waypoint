@@ -15,6 +15,7 @@
 // debug affordance — and it is collapsed behind one word, because a person looking at a
 // broken map wants the map, not a readout.
 import { useCallback, useState, type RefObject } from 'react';
+import { mapTileUrls } from '../../lib/map-config';
 import { t } from '../../i18n/he';
 
 export interface MapDiagnosticFacts {
@@ -26,20 +27,28 @@ export interface MapDiagnosticFacts {
   elapsedMs: number;
   /** Did tiles ever paint on this attempt? Separates "never started" from "started and died". */
   painted: boolean;
-  /** What `APIProvider.onError` last rejected with, if it ever did. **The discriminator
-   *  the first version of this readout was missing**: the owner's map dies silently and
-   *  then a FRESH pane errors at once, which means `importLibrary` rejected on a page
-   *  where the script had already loaded successfully — and only the message says whether
-   *  that was the network, the referrer restriction, or a loader left poisoned. */
-  lastError: string | null;
-  /** **Google's own answer about the map it built** — the split the readout could not make.
-   *  `tiles:0` says nothing was requested, but not whether the SDK BELIEVES it is fine, and
-   *  those are two different bugs needing opposite fixes:
+  /** The last error the renderer reported, if it ever did. **The discriminator the first
+   *  version of this readout was missing**: the owner's map died silently and then a FRESH
+   *  pane errored at once, and only the message says which layer that was.
    *
-   *    - `none`   — vis.gl never got an instance, so the loader is what is wedged.
+   *  It reads MapLibre's own `error` events now rather than `APIProvider.onError`, and it
+   *  gains rather than loses by it — a tile that 404s or an archive that cannot be range-read
+   *  says so **in the message**, where Google's loader rejected with nothing about the tiles. */
+  lastError: string | null;
+  /** **The renderer's own answer about the map it built** — the split the readout could not
+   *  make. `tiles:0` says nothing was requested, but not whether the renderer BELIEVES it is
+   *  fine, and those are two different bugs needing opposite fixes:
+   *
+   *    - `none`   — there is no instance, so construction is what failed.
    *    - `nobox`  — an instance exists but has no bounds: it never completed a first render
    *                 pass, and nothing downstream of that will ever ask for a tile.
-   *    - `z12@…`  — it has a camera and thinks it has rendered, and is simply not fetching. */
+   *    - `z12@…`  — it has a camera and thinks it has rendered, and is simply not fetching.
+   *
+   *  **Kept through the renderer swap on the owner's explicit condition** (ADR-0186 §1). The
+   *  three-way split is renderer-agnostic by luck rather than design — `getBounds()`,
+   *  `getZoom()` and `getCenter()` all exist on both — so what changes is only where the pane
+   *  reads them from. And it is the instrument that says which way the swap went: if this
+   *  reads healthy on a MapLibre pane that is blank, the fault was never in Google's SDK. */
   sdk: string;
 }
 
@@ -65,8 +74,17 @@ function webglAvailability(): string {
   }
 }
 
-/** The hosts Google fetches a vector map's tiles and assets from. */
-const TILE_HOSTS = /maps\.googleapis\.com|maps\.gstatic\.com|khms\d*\.googleapis\.com/;
+/** **What a tile read looks like now** (ADR-0186 §3): a range request against our own
+ *  archive, plus Protomaps' font CDN for glyph ranges. It was
+ *  `maps.googleapis.com|maps.gstatic.com|khms\d*.googleapis.com` — a list of vendor hosts —
+ *  and the readout survives the swap because the QUESTION survives it: is this page asking
+ *  for tiles at all, and is anything coming back? That question is what split "the SDK is
+ *  wedged" from "it asked and stopped getting answers", and it is exactly as sharp against a
+ *  renderer we own.
+ *
+ *  Matched on the PATH rather than a host, because same-origin production has no host to
+ *  match: the archive is served from our own backend at `/map/*.pmtiles`. */
+const TILE_HOSTS = /\.pmtiles|basemaps-assets\.protomaps|protomaps\.github\.io/;
 
 /**
  * **Are tiles even being asked for?**
@@ -164,8 +182,9 @@ async function probe(url: string, init?: RequestInit): Promise<string> {
   }
 }
 
-/** The map's own canvas, as the DOM sees it — `none` when vis.gl never constructed one,
- *  which is what a loader stuck below `LOADED` looks like from out here (session 262). */
+/** The map's own canvas, as the DOM sees it — `none` when the renderer never constructed one,
+ *  which under Google was a loader stuck below `LOADED` (session 262) and is now the narrower
+ *  and more answerable "the module or the protocol failed". */
 function canvasState(pane: HTMLElement | null): string {
   const canvas = pane?.querySelector('canvas');
   if (!canvas) return 'none';
@@ -214,10 +233,15 @@ export function MapDiagnostic({
       // The two fetch probes are asynchronous, so the line is shown at once and gains
       // `self:`/`goog:` when they settle — a readout that appeared only after a 3s
       // timeout would look like the bug it is diagnosing.
+      // The second probe is the TILE ARCHIVE now, not a Google host — which makes the pair
+      // strictly more useful than it was. Both go through the service worker, so a hang on
+      // `self:` still means nothing on the page can fetch; but where `goog:` could only say
+      // "Google is reachable", `tile:` asks the one question that matters, and it asks for one
+      // byte so a 42.7 MB archive is not downloaded to answer it.
       void Promise.all([
         probe(`${location.origin}/health`),
-        probe('https://maps.gstatic.com/generate_204', { mode: 'no-cors' }),
-      ]).then(([self, goog]) => setReading((line) => `${line} self:${self} goog:${goog}`));
+        probe(mapTileUrls().world, { headers: { Range: 'bytes=0-0' } }),
+      ]).then(([self, tile]) => setReading((line) => `${line} self:${self} tile:${tile}`));
       setReading(
         [
           `gl:${webglAvailability()}`,

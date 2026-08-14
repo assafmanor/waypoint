@@ -42,20 +42,36 @@ export interface CameraProjection {
   fromPointToLatLng(point: CameraWorldPoint): CameraLatLng | null;
 }
 
-/** Everything `useMapCamera`, `useCanvasGestures` and `PinDensity` ask of a map — counted
- *  from the call sites rather than remembered, and deliberately nothing more. */
+/** Everything our own code asks of a map — `useMapCamera`, `useCanvasGestures`, `PinDensity`
+ *  and (for `resize` alone) `MapPane` — counted from the call sites rather than remembered,
+ *  and deliberately nothing more. */
 export interface CameraMap {
   getZoom(): number | undefined;
   getCenter(): CameraLatLng | undefined;
   getDiv(): HTMLElement;
   getProjection(): CameraProjection | undefined;
   getBounds(): { getNorthEast(): CameraLatLng; getSouthWest(): CameraLatLng } | null | undefined;
+  /** **The map's own zoom limits, which the drag zoom clamps itself to** (ADR-0145 §5).
+   *
+   *  These are the one place the counted-seven was short, and the compiler is what found it:
+   *  `useCanvasGestures` read them as `map.get('minZoom')` — Google's untyped `MVCObject`
+   *  accessor, which type-checks against anything and so hid itself from the count. MapLibre
+   *  has real accessors, so the string keys go. `undefined` stays legal: `dragZoomLimits`
+   *  already falls back to `MAP_DRAG_ZOOM.MIN`/`.MAX` for a map that states no limits. */
+  getMinZoom(): number | null | undefined;
+  getMaxZoom(): number | null | undefined;
   moveCamera(camera: { center?: { lat: number; lng: number }; zoom?: number }): void;
   fitBounds(
     bounds: { north: number; south: number; east: number; west: number },
     padding?: { top: number; bottom: number; left: number; right: number },
   ): void;
   addListener(type: string, handler: () => void): { remove(): void };
+  /** **Re-measure the container.** Not a camera verb, and here because it is the pane's one
+   *  remaining ask of the instance: MapLibre measures its container once at construction
+   *  (ADR-0186's 2026-08-13 amendment, finding 3), where Google resized itself. `MapPane`
+   *  wires it to the resize observer it already runs for the camera's own band, so the two
+   *  reads of "the box changed" cannot drift apart. */
+  resize(): void;
 }
 
 /** Google's world tile size at zoom 0. The one number that makes mercator and Google's
@@ -83,8 +99,21 @@ export function cameraMapFor(map: MapLibreMap): CameraMap {
       return asLatLng(c.lat, c.lng);
     },
     getDiv: () => map.getContainer(),
+    resize: () => map.resize(),
+    getMinZoom: () => map.getMinZoom(),
+    getMaxZoom: () => map.getMaxZoom(),
+    // **`null` when there are no bounds, and this is load-bearing rather than defensive.**
+    // The first version wrapped unconditionally, so it returned a truthy object even when the
+    // map had none — which breaks the contract in two places at once. `readMapBounds` opens
+    // with `if (!bounds) return null` and could never fire it, then threw on `getNorth()` of
+    // `undefined` inside a React effect. And `useMapCamera` reads a FALSY `getBounds()` as "the
+    // map has not rendered, defer the framing to its own `idle`" (the hazard ADR-0121's
+    // session-134 entry describes: fitting into an unrendered map resolves to a wild zoom-out,
+    // and §7's containment guard then makes it permanent because a zoomed-out view contains
+    // every pin forever). A wrapper that is always truthy tells it the opposite.
     getBounds: () => {
-      const b = map.getBounds();
+      const b = map.getBounds() as ReturnType<MapLibreMap['getBounds']> | null | undefined;
+      if (!b) return null;
       return {
         getNorthEast: () => asLatLng(b.getNorth(), b.getEast()),
         getSouthWest: () => asLatLng(b.getSouth(), b.getWest()),

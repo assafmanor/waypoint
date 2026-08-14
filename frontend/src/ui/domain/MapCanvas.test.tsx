@@ -102,6 +102,7 @@ const props = (partial: Partial<MapCanvasProps> = {}): MapCanvasProps => ({
   onFirstPaint: partial.onFirstPaint,
   onIdle: partial.onIdle,
   onError: partial.onError,
+  onUnavailable: partial.onUnavailable,
 });
 
 async function paint(partial: Partial<MapCanvasProps> = {}) {
@@ -145,16 +146,23 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     expect(first.removed).toBe(0);
   });
 
-  it('hands the live instance out, and takes it back on unmount', async () => {
+  it('hands the live instance out, with the module, and takes both back on unmount', async () => {
     const onMap = vi.fn();
     const { unmount } = await paint({ onMap });
     expect(onMap).toHaveBeenCalledTimes(1);
-    expect(onMap).toHaveBeenCalledWith(built());
+    // Asserted argument-wise rather than with `toHaveBeenCalledWith`: the second argument is the
+    // renderer MODULE, and a failure there would try to pretty-print the whole of `maplibre-gl`.
+    expect(onMap.mock.calls[0][0]).toBe(built());
+    // **The module comes with the instance**, which is what lets the consumer construct markers
+    // in the same commit instead of a microtask later. `Marker` is what it is wanted for.
+    expect(onMap.mock.calls[0][1]).toHaveProperty('Map');
     const map = built();
 
     unmount();
-    // `null` FIRST, so a consumer holding the instance drops it before the context goes.
-    expect(onMap).toHaveBeenLastCalledWith(null);
+    // `null` FIRST — both of them — so a consumer holding either drops it before the context
+    // goes. Handing back a live module beside a dead map would be an invitation to use it.
+    expect(onMap.mock.calls.at(-1)![0]).toBeNull();
+    expect(onMap.mock.calls.at(-1)![1]).toBeNull();
     // `remove()` releases the WebGL context and every listener. Not doing it is how a
     // tab-switching app accumulates contexts until the browser starts reclaiming them.
     expect(map.removed).toBe(1);
@@ -226,14 +234,19 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
   describe('an error is reported, and is not by itself a dead canvas', () => {
     const fireError = async (raw: unknown) => {
       const onError = vi.fn();
-      await paint({ onError });
+      const onUnavailable = vi.fn();
+      await paint({ onError, onUnavailable });
       act(() => built().fire('error', { error: raw }));
-      return { onError, map: built() };
+      return { onError, onUnavailable, map: built() };
     };
 
     it('does not mark the canvas failed, and does not tear the map down', async () => {
-      const { onError, map } = await fireError({ message: 'tile 404' });
+      const { onError, onUnavailable, map } = await fireError({ message: 'tile 404' });
       expect(onError).toHaveBeenCalledTimes(1);
+      // **The split that keeps the pane from guessing.** A tile error reaches `onError` and
+      // nothing else: `onUnavailable` is the terminal signal, and firing it here would put
+      // the pane into `ErrorState` over one missing tile at the edge of an extract.
+      expect(onUnavailable).not.toHaveBeenCalled();
       expect(holder().hasAttribute('data-map-failed')).toBe(false);
       expect(map.removed).toBe(0);
     });
@@ -265,9 +278,12 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
   it('marks the holder failed when the map cannot be constructed at all', async () => {
     FakeMapLibreMap.failToBuild = true;
     const onError = vi.fn();
-    await paint({ onError });
+    const onUnavailable = vi.fn();
+    await paint({ onError, onUnavailable });
     expect(holder().hasAttribute('data-map-failed')).toBe(true);
-    expect((onError.mock.calls[0][0] as Error).message).toBe('webgl unavailable');
+    expect((onUnavailable.mock.calls[0][0] as Error).message).toBe('webgl unavailable');
+    // And NOT through the tile channel, which the pane deliberately treats as harmless.
+    expect(onError).not.toHaveBeenCalled();
   });
 
   // **`[lng, lat]`, not `{lat, lng}`.** MapLibre is GeoJSON-ordered and the app is not;

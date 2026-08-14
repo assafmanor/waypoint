@@ -1035,8 +1035,12 @@ export const MAP_CONNECTOR = {
     dark: 'rgba(231, 234, 242, 0.42)',
   },
   WEIGHT: 2.5,
-  DASH_SCALE: 3,
-  DASH_REPEAT: '13px',
+  /** **A real dash at last** (ADR-0186 §2). The Maps API had no `strokeDasharray`, so
+   *  ADR-0121 §10 faked one as a repeating symbol along a fully transparent stroke —
+   *  `DASH_SCALE`/`DASH_REPEAT`, both now deleted with the hack. MapLibre's `line-dasharray`
+   *  is in LINE WIDTHS, not pixels: at `WEIGHT` 2.5 this is a ~5px dash and a ~5px gap, which
+   *  is what the symbol version measured out to. */
+  DASH: [2, 2],
 } as const;
 
 /** Per-row reveal stagger for **every** filtered/searched list (ADR-0120,

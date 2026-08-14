@@ -1,18 +1,21 @@
 import { useEffect } from 'react';
-import { useMap } from '@vis.gl/react-google-maps';
 import { publishMapReading } from '../lib/dev-tuning';
+import type { CameraMap } from '../lib/map-camera-adapter';
 
 // Dev-only — `MapPane` renders it inside `<Map>` behind `import.meta.env.DEV`, so a
 // production build drops the element, this module and everything it imports.
 //
 // It exists because the live zoom is the readout the ladder's four tunables are calibrated
-// against (ADR-0146 §1b) and only the `google.maps.Map` knows it. **It is deliberately
-// `PinDensity`'s shape** (ADR-0128 §1): a null-rendering child that takes the map from
-// context, listens on `zoom_changed`, and writes somewhere React is not looking. Holding
-// no state, it cannot re-render `MapPane` — which on this surface is the difference
-// between a dev tool and a marker re-diff on every zoom event (ADR-0121 §4).
-export function DevMapProbe({ mapId }: { mapId: string }) {
-  const map = useMap(mapId);
+// against (ADR-0146 §1b) and only the map instance knows it. **It is deliberately
+// `PinDensity`'s shape** (ADR-0128 §1): a null-rendering child that listens on
+// `zoom_changed` and writes somewhere React is not looking. Holding no state, it cannot
+// re-render `MapPane` — which on this surface is the difference between a dev tool and a
+// marker re-diff on every zoom event (ADR-0121 §4).
+//
+// It takes the map as a PROP since ADR-0186 §2, where it used to reach vis.gl's context by
+// id. There is no renderer context to reach any more, and `CameraMap` already states the
+// three methods this file wants — so the swap made this smaller.
+export function DevMapProbe({ map }: { map: CameraMap | null }) {
   useEffect(() => {
     if (!map) return;
     const sync = () => publishMapReading({ zoom: map.getZoom() ?? null });
@@ -30,8 +33,8 @@ export function DevMapProbe({ mapId }: { mapId: string }) {
   useEffect(() => {
     if (!map) return;
     // Optional-chained on `querySelector` itself, not only its result: the suite's own
-    // map fake (`MapPane.test.tsx`'s `FakeZoomMap`) returns a `getDiv()` that is not a
-    // real element, and this probe must stay inert against that rather than throw.
+    // map fake returns a `getDiv()` that is not a real element, and this probe must stay
+    // inert against that rather than throw.
     const canvas = map.getDiv?.()?.querySelector?.('canvas');
     if (!canvas) return;
     const lost = () => publishMapReading({ webglContextLost: true });

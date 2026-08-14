@@ -1,26 +1,47 @@
-// The rendered map: one canvas, our pins, our controls (ADR-0121 §5/§6/§12).
+// The rendered map: one canvas, our pins, our controls (ADR-0121 §5/§6/§12) — **now over a
+// ground we render ourselves** (ADR-0186, Phase 2).
 //
-// **One `google.maps.Map` per tab visit, and never a second.** Dynamic Maps bills
-// per instantiation, so the cost question is not "how many tiles" but "how many
-// times do we construct a map" (§4). This component is mounted once per visit and
-// re-rendered freely: the `רשימה / מפה` toggle RESIZES the live map, a filter
-// re-diffs markers, a sheet drag moves a sibling. `AppShell` keys `<main>` by tab,
-// so leaving the tab unmounts it — that is the only teardown there is.
+// **What the renderer swap changed here, and what it did not.** Everything ADR-0121 decided
+// about what the map SAYS is untouched and was the requirement this had to reproduce: the pin
+// ladder, the camera's rules, the sheet, the connector, the filters. What went is the
+// apparatus that existed only because the renderer was a third-party script fetched at
+// runtime — `APIProvider`, `APILoadingStatus`, `__resetModuleState`, `mapFailed` as a
+// *script*-load signal, `clickableIcons`, `disableDefaultUI`. There is no page-global loader
+// to poison, which is the entire point of the migration.
 //
-// It is presentational (ADR-0096's `ui/domain` rule): every pin arrives as
-// PRIMITIVES, keyed by `placeId`, so the screen's per-second clock tick reconciles
-// to a no-op diff. That is the marker-level restatement of §4, and the reason
-// `memo` below is load-bearing rather than an optimisation.
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+// **One map per tab visit, and still never a second** — but for a changed reason, and the
+// discipline is identical. Under Dynamic Maps a second instantiation was BILLED (§4); over our
+// own tiles it is merely a blank canvas and a lost camera. So the memoisation, the stable
+// handler identities and the primitive-props rule all stay exactly as they were: this
+// component is mounted once per visit and re-rendered freely (the `רשימה / מפה` toggle resizes
+// the live map, a filter re-diffs markers, a sheet drag moves a sibling), and `AppShell` keys
+// `<main>` by tab so leaving the tab is the only teardown there is.
+//
+// It is presentational (ADR-0096's `ui/domain` rule): every pin arrives as PRIMITIVES, keyed
+// by `placeId`, so the screen's per-second clock tick reconciles to a no-op diff.
+//
+// **The one import that needed permission.** A `maplibregl.Marker` owns its element, so the
+// pin's markup reaches it through `createPortal` — which this repo lint-blocks, because a
+// portal is normally the tell of a free-floating overlay that skipped the back stack
+// (ADR-0090/0035). A marker is not that: nothing dismisses it, it is content positioned
+// INSIDE the canvas by the renderer, and back has nothing to peel. `eslint.config.mjs` carries
+// the allowlist entry and that reasoning; see `MapMarker` below for the structural half.
 import {
-  APILoadingStatus,
-  APIProvider,
-  AdvancedMarker,
-  Map,
-  Polyline,
-  __resetModuleState,
-  useMap,
-} from '@vis.gl/react-google-maps';
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import { createPortal } from 'react-dom';
+import type { Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
+import { MapCanvas } from './MapCanvas';
+import { cameraMapFor, type CameraMap } from '../../lib/map-camera-adapter';
+import type { MapLibreModule } from '../../lib/maplibre';
+import { MAP_ATTRIBUTION } from '../../lib/map-style';
 import {
   isAsidePin,
   isFramedByCamera,
@@ -38,7 +59,7 @@ import { observeVisibility } from '../../lib/visibility';
 import { RELOAD_GUARD_KEY, reloadOnce } from '../../lib/guarded-reload';
 import { PhaseTimeoutError, withDeadline } from '../../lib/deadline';
 import type { LatLng, MapArrival, MapBounds } from '../../lib/map-camera';
-import { MAP_COLOR_SCHEME, type MapColorScheme, type MapsConfig } from '../../lib/map-config';
+import { MAP_COLOR_SCHEME, type MapColorScheme, type MapTileUrls } from '../../lib/map-config';
 import {
   MAP_CONNECTOR,
   MAP_LOAD_PHASE,
@@ -55,12 +76,112 @@ import { ErrorState } from '../feedback/ErrorState';
 import { t } from '../../i18n/he';
 import './map-pane.css';
 
-/** The one `<Map>` id, so sibling controls can reach the instance via `useMap`
- *  without being rendered inside the canvas div. */
-const MAP_ID = 'waypoint-map';
-
 /** A stable empty default for `results`, for the same reason `noop` below is stable. */
 const EMPTY_RESULTS: readonly MapResultPin[] = [];
+
+/**
+ * **One marker, and the wrapper is the whole reason this component exists.**
+ *
+ * ADR-0186 §2 claims the pins port untouched, and they do — but only through this element.
+ * The render that produced ADR-0186's 2026-08-13 amendment found out why: MapLibre positions
+ * its marker with `.maplibregl-marker { position: absolute }` and `map-pane.css` sets
+ * `.map-pin { position: relative }` (ADR-0123 — the pin's parts position against it). **Both
+ * are one class deep and ours loads last**, so handing `.map-pin` straight to
+ * `new maplibregl.Marker({ element })` makes every marker fall into normal flow: six pins
+ * stacked into a measured 204px column, painted outside the pane and clipped by its
+ * `overflow: hidden`. So `.map-pin` sits INSIDE a wrapper the renderer owns and never IS it —
+ * which is also exactly what vis.gl's `AdvancedMarker` did, and why the collision could not
+ * happen before.
+ *
+ * `anchor: 'bottom'` restates in MapLibre's vocabulary what `AdvancedMarker` did by default:
+ * the teardrop's tip is at the coordinate, not its middle.
+ *
+ * **The element is created once and kept**, because it is what the portal renders into and
+ * what the marker owns; recreating it per render would detach the pins on every clock tick.
+ */
+const MapMarker = memo(function MapMarker({
+  map,
+  gl,
+  lat,
+  lng,
+  zIndex,
+  title,
+  onClick,
+  children,
+}: {
+  map: MapLibreMap | null;
+  /** The renderer module, handed over with the instance by `MapCanvas` — which is what lets
+   *  this be synchronous. Constructing the marker behind an `await` would put every pin one
+   *  microtask behind the render that asked for it. */
+  gl: MapLibreModule | null;
+  /** **Primitives, not a `{lat, lng}`** — the same rule `MapPin` follows, and here it is
+   *  load-bearing twice: a fresh object per render would re-run the move effect on every
+   *  clock tick, and `memo` above would never hold. */
+  lat: number;
+  lng: number;
+  zIndex?: number;
+  title?: string;
+  /** A tap on the marker. **Bound to the WRAPPER's DOM click, not to a renderer
+   *  subscription** — and that is a simplification the swap earns rather than a shortcut.
+   *  Google reported a marker tap by CALLING us, a channel no `stopPropagation` could reach,
+   *  which is why the pane needed `gestureTapRef` as a second guard (ADR-0157's session-211
+   *  amendment). A MapLibre marker is a plain DOM element we own, so its click is an ordinary
+   *  DOM event in the same stream the gesture recogniser already swallows. The ref guard
+   *  stays anyway: it is cheap, and the recogniser's swallow is on `document` while this
+   *  listener is on the element, so the element still fires first. */
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  const [element] = useState(() => {
+    const el = document.createElement('div');
+    el.className = 'map-marker';
+    return el;
+  });
+  const markerRef = useRef<MapLibreMarker | null>(null);
+  // The opening coordinate, read through a ref so this effect does not depend on it: a moved
+  // marker is `setLngLat`, never a rebuilt one, and rebuilding would drop the element the
+  // portal is rendering into.
+  const atRef = useRef({ lat, lng });
+  atRef.current = { lat, lng };
+
+  useEffect(() => {
+    if (!map || !gl) return;
+    // **`[lng, lat]`.** MapLibre is GeoJSON-ordered and the app is not; every crossing in this
+    // file goes through `lngLat` below, so there is exactly one place to get it wrong.
+    const marker = new gl.Marker({ element, anchor: 'bottom' })
+      .setLngLat(lngLat(atRef.current))
+      .addTo(map);
+    markerRef.current = marker;
+    return () => {
+      marker.remove();
+      markerRef.current = null;
+    };
+  }, [map, gl, element]);
+
+  useEffect(() => {
+    markerRef.current?.setLngLat(lngLat({ lat, lng }));
+  }, [lat, lng]);
+
+  // Written imperatively rather than as JSX props because the wrapper is the renderer's
+  // element, not React's: it has no place in the returned tree, only children do.
+  useEffect(() => {
+    if (zIndex != null) element.style.zIndex = String(zIndex);
+    if (title != null) element.title = title;
+  }, [element, zIndex, title]);
+
+  useEffect(() => {
+    if (!onClick) return;
+    const handler = () => onClick();
+    element.addEventListener('click', handler);
+    return () => element.removeEventListener('click', handler);
+  }, [element, onClick]);
+
+  return createPortal(children, element);
+});
+
+/** The one coordinate conversion in this file, named so it cannot be open-coded a second
+ *  time and transposed (ADR-0186's trap 2). */
+const lngLat = (at: LatLng): [number, number] => [at.lng, at.lat];
 
 /** Tier → the class that draws it, mirroring `.place`'s own vocabulary so a badge
  *  and a teardrop are one visual system by construction: `soft` is the dashed
@@ -229,7 +350,13 @@ export interface MapDraftMarker {
 }
 
 export interface MapPaneProps {
-  config: MapsConfig;
+  /** Which face of the ground to paint. It replaced a whole `MapsConfig` — a browser key, a
+   *  Map ID and a colour scheme — because the renderer is bundled and the tiles are ours, so
+   *  the scheme is the only thing left that was ever a decision (ADR-0186 §8). */
+  scheme: MapColorScheme;
+  /** Where the archives are (ADR-0186 §3). Memoized by the caller like every other object
+   *  prop here: a fresh identity per render is what §4's rules exist to prevent. */
+  urls: MapTileUrls;
   pins: readonly MapPin[];
   /** Unsaved Text Search results, drawn as rings (ADR-0132 §6). Memoized on a content
    *  key by the caller, exactly like `pins` — same per-second-tick rule. */
@@ -310,8 +437,13 @@ export interface MapPaneProps {
  *
  *  Keyed on `zoom_changed` rather than `idle` so the tier flips DURING a pinch, which is
  *  when it is the answer to anything. A dataset write per zoom event is nothing. */
-function PinDensity({ paneRef }: { paneRef: RefObject<HTMLDivElement | null> }) {
-  const map = useMap(MAP_ID);
+function PinDensity({
+  map,
+  paneRef,
+}: {
+  map: CameraMap | null;
+  paneRef: RefObject<HTMLDivElement | null>;
+}) {
   useEffect(() => {
     if (!map) return;
     const sync = () => {
@@ -377,22 +509,19 @@ function ContextLossRecovery({
   return null;
 }
 
-/** **Hands the live `google.maps.Map` out to the diagnostic**, which is rendered in one
- *  place that sits inside `<APIProvider>` and one that does not (the `mapFailed` branch has
- *  replaced the whole subtree), so it cannot call `useMap` itself. Same trick `PinDensity`
- *  uses below: outside `<Map>`, inside the provider, reaching the instance by id.
+/** What the renderer thinks of the map it built. See `MapDiagnosticFacts.sdk` for why each of
+ *  these three answers points at a different bug.
  *
- *  Written during render on purpose — the latest-ref idiom this file already uses for
- *  callbacks. The CAMERA is deliberately not read here: it is sampled at the tap, so a
- *  broken map's reading is the state at the moment somebody asked. */
-function MapInstanceProbe({ into }: { into: RefObject<google.maps.Map | null> }) {
-  into.current = useMap(MAP_ID);
-  return null;
-}
-
-/** What Google thinks of the map it built. See `MapDiagnosticFacts.sdk` for why each of
- *  these three answers points at a different bug. */
-function sdkCamera(map: google.maps.Map | null): string {
+ *  **`MapInstanceProbe` is gone with the swap**, and that is the shape of the whole change:
+ *  the pane used to need a null-rendering child inside `<APIProvider>` to reach the instance
+ *  by id, because the diagnostic is rendered in one place inside the provider and one place
+ *  outside it. There is no provider and no context now — the pane HOLDS the instance — so the
+ *  indirection deletes itself.
+ *
+ *  Reads through `CameraMap` rather than the raw map so the three calls stay the ones the
+ *  adapter already guarantees; the `throw:` branch stays because a dead map is exactly the
+ *  state where these can throw rather than answer. */
+function sdkCamera(map: CameraMap | null): string {
   if (!map) return 'none';
   try {
     const zoom = map.getZoom();
@@ -409,8 +538,21 @@ function sdkCamera(map: google.maps.Map | null): string {
  *  which is the exact hazard §4 exists for. */
 const noop = () => {};
 
+/** **This attempt's own phase, which is what the loader status became.** `DevMapTuner`'s
+ *  `apiStatus` field used to hold vis.gl's page-global `APILoadingStatus` — a write-once
+ *  `NOT_LOADED`/`LOADING`/`LOADED`/`FAILED` that was itself field report #35's third cause.
+ *  There is no loader and no page-global to report, so the field now says what this pane is
+ *  doing, which is the thing a device pass actually wanted from it. Named rather than
+ *  literal, per ADR-0095. */
+const MAP_ATTEMPT = {
+  starting: 'STARTING',
+  painted: 'PAINTED',
+  failed: 'FAILED',
+} as const;
+
 function MapPaneInner({
-  config,
+  scheme,
+  urls,
   pins,
   results = EMPTY_RESULTS,
   onSelectResult,
@@ -465,23 +607,33 @@ function MapPaneInner({
     [onSelectPin],
   );
   // **A load failure is a third reason to be list-only, never a fourth grammar**
-  // (field report #28; ADR-0121's 2026-08-11 amendment). `onError` below catches a
-  // failed *script* load (bad key, blocked network), which clears the canvas for
-  // `ErrorState` in the pane's own slot — the place list beside it is untouched and
-  // still useful.
+  // (field report #28; ADR-0121's 2026-08-11 amendment). This clears the canvas for
+  // `ErrorState` in the pane's own slot — the place list beside it is untouched and still
+  // useful.
   //
-  // **This is now the SCRIPT failure only** (ADR-0121's 2026-08-13 amendment). The
-  // tiles watchdog used to land here too, and that was the defect: expiry unmounted
-  // the whole `<APIProvider>` subtree, so an in-flight load was destroyed at the bound
-  // and every retry restarted from zero — a map that needed longer than the bound could
-  // never finish, no matter how many times you asked. See `tilesLate` below.
+  // **Its one source is now `MapCanvas`'s `onUnavailable`**: the renderer module or the
+  // `pmtiles` protocol failed, so there is no canvas and there cannot be one. What it is NOT
+  // is a script load — there is no script — and it is not a tile error either, which arrives
+  // separately and deliberately changes nothing (see `handleMapError`). Collapsing those two
+  // is what ADR-0121's 2026-08-13 amendment had to undo once already, one renderer ago.
   const [mapFailed, setMapFailed] = useState(false);
-  // Bumped on retry so the `<APIProvider>` subtree below remounts under a fresh
-  // `key` — never reused: ADR-0121 §4's one-instantiation-per-visit invariant means
-  // a second `google.maps.Map` is constructed only on a genuinely failed one, never
-  // on a rerender, which is exactly what a `key` bump (rather than clearing local
-  // state and hoping the failed instance recovers) buys here.
+  // Bumped on retry so the canvas below remounts under a fresh `key`. A rebuild is no longer
+  // BILLED (ADR-0121 §4 dies with the swap) but it is still a blank frame and a lost camera,
+  // so it stays something only a failure or a deliberate tap causes — never a rerender.
   const [attempt, setAttempt] = useState(0);
+  // **The live instance, as state rather than only a ref**, because three children need it to
+  // exist before they can do anything: the camera, the density probe and the connector. It is
+  // set once per mount and cleared once on teardown, so the re-render it causes is not on any
+  // hot path — and every marker below takes it as a prop, which is what replaced vis.gl's
+  // `useMap(MAP_ID)` context lookup.
+  const [map, setMap] = useState<MapLibreMap | null>(null);
+  /** The renderer module, arriving with the instance. Markers need `Marker` from it and it is
+   *  already loaded by the time there is a map, so taking it here is what keeps every pin
+   *  synchronous — see `MapCanvas.onMap`. */
+  const [gl, setGl] = useState<MapLibreModule | null>(null);
+  // The camera's view of that instance (ADR-0186 §2). Memoized on the instance so
+  // `useMapCamera`'s effects do not see a new map object every render.
+  const cameraMap = useMemo(() => (map ? cameraMapFor(map) : null), [map]);
   // **The wait is stated, not left blank** (field report #35's other half). Before the first
   // tile paints, the canvas is empty while our own markers already draw on it — the exact
   // picture #28 reported as a failure, and with the bound now at 20s it is a picture a slow
@@ -530,12 +682,15 @@ function MapPaneInner({
    *  phone the failure arrives with a resume, so "how many" is the fact that says whether
    *  the reading was taken on the first one or the twentieth. */
   const resumesRef = useRef(0);
-  /** What `APIProvider.onError` last rejected with — see `handleMapError`. Survives the
-   *  retry that clears everything else, because the question it answers is about the
-   *  PAGE rather than about this attempt. */
+  /** What the renderer last reported — see `handleMapError`. Survives the retry that clears
+   *  everything else, because the question it answers is about the PAGE rather than about this
+   *  attempt. It now carries tile failures too, which Google's loader never told us about. */
   const lastErrorRef = useRef<string | null>(null);
-  /** Filled by `MapInstanceProbe` inside the provider; read at a diagnostic tap. */
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  /** The instance as the diagnostic reads it, sampled at the tap. A ref beside the state above
+   *  so `diagnosticFacts` can stay a `useCallback(…, [])` — a dependency there would hand
+   *  `MapDiagnostic` a new getter every render, which is what the getter exists to avoid. */
+  const cameraMapRef = useRef<CameraMap | null>(null);
+  cameraMapRef.current = cameraMap;
 
   /** **The one place a dead map is recorded.** Every detection site routes here, so the
    *  count the diagnostic reports and the cue the person sees can never disagree — which
@@ -596,7 +751,10 @@ function MapPaneInner({
     // FAILED attempt's status while the fresh one is still loading.
     if (import.meta.env.DEV) {
       publishMapReading({
-        apiStatus: APILoadingStatus.NOT_LOADED,
+        // The loader status was vis.gl's `APILoadingStatus`, a page-global enum that no
+        // longer exists in any form — there is no loader. What the panel can still report is
+        // this attempt's own phase, so the field carries that instead of a vendor's state.
+        apiStatus: MAP_ATTEMPT.starting,
         apiError: null,
         tilesLoaded: false,
         tilesLoadedMs: null,
@@ -630,52 +788,69 @@ function MapPaneInner({
     if (import.meta.env.DEV) {
       const started = attemptStartRef.current;
       publishMapReading({
-        apiStatus: APILoadingStatus.LOADED,
+        apiStatus: MAP_ATTEMPT.painted,
         tilesLoaded: true,
         tilesLoadedMs: started == null ? null : Math.round(performance.now() - started),
       });
     }
   }, []);
+
+  /** **A tile failed, and that is all it means** (ADR-0186's trap 4). MapLibre reports a 404
+   *  on one tile through the same `error` event as anything else, and an extract has edges —
+   *  so this must not touch `mapFailed`, must not call `markFailure`, and must not be read as
+   *  a dead canvas. What decides death is whether anything ever painted.
+   *
+   *  It is recorded, though, and that is a gain over Google: the loader rejected with nothing
+   *  about tiles, where this message names the archive and the range that failed. It is the
+   *  `err:` field, which is the one most likely to name the cause outright. */
   const handleMapError = useCallback((error: unknown) => {
-    setMapFailed(true);
-    // **Kept for the diagnostic, not just for DEV.** The owner's sequence — the map dies
-    // silently, then a tab switch mounts a fresh pane which errors AT ONCE — means this
-    // fires on a page where the script had already loaded successfully once. So what
-    // `importLibrary` rejected WITH is the fact that separates a network/referrer failure
-    // from a poisoned loader, and it is the one thing no reading has ever carried.
     lastErrorRef.current = String(
       error instanceof Error ? `${error.name}: ${error.message}` : error,
     ).slice(0, 120);
-    if (import.meta.env.DEV) {
-      publishMapReading({ apiStatus: APILoadingStatus.FAILED, apiError: String(error) });
-    }
   }, []);
-  // **A retry has to reset the LIBRARY, not just our subtree** (field report #35's third
-  // cause, and the one that made the first two fixes look like they had not worked).
+
+  /** **There is no canvas and there cannot be one** — `MapCanvas` could not construct the map
+   *  at all. This is the only thing that takes the canvas away for `ErrorState`, and it is the
+   *  narrow, answerable descendant of what used to be "the Google script failed to load". */
+  const handleUnavailable = useCallback(
+    (error: unknown) => {
+      setMapFailed(true);
+      handleMapError(error);
+      if (import.meta.env.DEV) {
+        publishMapReading({ apiStatus: MAP_ATTEMPT.failed, apiError: String(error) });
+      }
+    },
+    [handleMapError],
+  );
+
+  /** The canvas handing its instance over, and taking it back on teardown. Also where the
+   *  camera's view of it is minted, since nothing else may construct a second one. */
+  const handleMap = useCallback((instance: MapLibreMap | null, module: MapLibreModule | null) => {
+    setMap(instance);
+    setGl(module);
+  }, []);
+  // ── WHAT A RETRY USED TO HAVE TO DO, AND WHY IT NO LONGER DOES ──────────────────────
   //
-  // `@vis.gl/react-google-maps` holds the Maps-API loading status in MODULE state and writes
-  // it **once**: the first attempt stamps `serializedApiParams` and only sets `LOADED` while
-  // that stamp is still empty. Every later mount therefore takes the "already loaded
-  // externally" branch, re-imports `core`/`maps` — successfully — and never moves the status
-  // off `FAILED`; a status left at `LOADING` is worse still, since the loader returns early
-  // with no error at all. Either way `useApiIsLoaded()` stays false, so vis.gl never calls
-  // `new google.maps.Map()`: the pane renders, our markers draw, the loading cue stays up,
-  // and 20s later the watchdog reports a failure on an API that is sitting there loaded.
-  // A `key` bump builds a fresh component over a dead loader, which is exactly why the
-  // Retry did nothing and only a real app restart recovered — the state it clears is the
-  // page's, not the component's. **One transient failure poisons the whole page**, and a
-  // warm resume onto a just-restored mobile link is the ordinary way to get one (the pane
-  // also unmounts and remounts as `offline` flaps there, so the poisoning can happen with
-  // nothing on screen to report it).
+  // **`__resetModuleState()` is deleted, and this is the paragraph it leaves behind** — kept
+  // because the reason is the whole case for ADR-0186 and a future reader should not have to
+  // reconstruct it. `@vis.gl/react-google-maps` held the Maps-API loading status in MODULE
+  // state and wrote it **once**: the first attempt stamped `serializedApiParams` and only set
+  // `LOADED` while that stamp was empty, so every later mount took the "already loaded
+  // externally" branch, re-imported `core`/`maps` — successfully — and never moved the status
+  // off `FAILED`. A status left at `LOADING` was worse still, since the loader returned early
+  // with no error at all. Either way `useApiIsLoaded()` stayed false and vis.gl never called
+  // `new google.maps.Map()`: the pane rendered, our markers drew, the cue stayed up, and 20s
+  // later the watchdog reported a failure on an API that was sitting there loaded. **One
+  // transient failure poisoned the whole page**, a `key` bump built a fresh component over a
+  // dead loader, and only a real app restart recovered — which is precisely the "retry does
+  // nothing" the owner reported for six sessions.
   //
-  // Google's own bootstrap is already retryable — it clears its promise in `script.onerror`
-  // — so this global is the single broken link in the chain.
+  // `maplibre-gl` is bundled and constructs a map from a class. There is no script, no
+  // page-global status, no one-shot latch, and nothing for a transient failure to write down
+  // — so a retry is once again just a retry, and the vendor-specific escape hatch that had to
+  // be reached for (a test-only export, on the record as a thing to delete if upstream ever
+  // fixed it) goes away instead of being ported.
   //
-  // ponytail: `__resetModuleState` is vis.gl's own test-only hook. It is the only thing that
-  // clears that global, and the alternative is `location.reload()`, which throws away the
-  // trip state to fix a canvas. Safe here because `retryMap` is only reachable from
-  // `ErrorState`, i.e. with no `APIProvider` mounted to be orphaned by the listener clear.
-  // Delete it if vis.gl ever makes the status recoverable.
   /** Sampled at the moment the reading is asked for, never held as state — nothing here
    *  may re-render the marker subtree on a screen that ticks every second (§4). */
   const diagnosticFacts = useCallback(
@@ -685,7 +860,7 @@ function MapPaneInner({
       elapsedMs: attemptStartRef.current == null ? 0 : performance.now() - attemptStartRef.current,
       painted: tilesPaintedRef.current,
       lastError: lastErrorRef.current,
-      sdk: sdkCamera(mapInstanceRef.current),
+      sdk: sdkCamera(cameraMapRef.current),
     }),
     [],
   );
@@ -696,22 +871,54 @@ function MapPaneInner({
    *  verdict was flat: _"Once it's dead, it's dead until you switch to another app"_. No
    *  `canReloadQuietly` gate here: the person tapping IS the consent.
    *
-   *  If the cooldown refuses, fall through to the cheaper thing rather than doing nothing
-   *  — reset the loader global (session 262's cause) and build one fresh map, which is at
-   *  least a load somebody asked for. */
+   *  If the cooldown refuses, fall through to the cheaper thing rather than doing nothing —
+   *  build one fresh canvas, which is at least a map somebody asked for. That fallback is
+   *  strictly cheaper than it was: it used to have to reset a poisoned page-global first, and
+   *  the load it spent was billed. */
   const retryMap = useCallback(() => {
     if (reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS)) return;
-    __resetModuleState();
     consecutiveRef.current = 0;
     setAttempt((n) => n + 1);
   }, []);
+
+  /** The canvas settled. Both signals the pane needs come off it: the bounds for the `באזור`
+   *  readout, and — through `handleTilesLoaded` — nothing, because the FIRST paint has its own
+   *  callback. Kept separate for exactly that reason (see `MapCanvas.onFirstPaint`). */
+  const handleIdle = useCallback(() => {
+    onViewChange(readMapBounds(cameraMapRef.current));
+  }, [onViewChange]);
+
+  /** A tap on the canvas BACKGROUND clears the selection (ADR-0122 §7).
+   *
+   *  **Bound to the pane's own DOM click now**, where it was Google's `onClick` callback. Two
+   *  guards survive the move and both still earn their place: a marker is a DOM child of the
+   *  pane, so a pin tap really does bubble here and `.map-pin` is what tells the two apart;
+   *  and `gestureTapRef` refuses the click a long press's own release fires, which is
+   *  ADR-0148's build-log amendment and is unchanged.
+   *
+   *  What GOES is the third case — `event.detail.placeId`, Google's answer to a tap on one of
+   *  its own POI icons. There is no vendor POI layer to tap and no info window behind it, so
+   *  the outcome three passes argued about cannot arise from either end (ADR-0186 §2). */
+  const handlePaneClick = useCallback(
+    (event: { target: EventTarget | null }) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.('.map-pin, .map-result, .map-camctl, .map-areacount, .map-diag'))
+        return;
+      if (gestureTapRef.current) return;
+      onCanvasTap();
+    },
+    [onCanvasTap],
+  );
+
   return (
-    <div className="map-pane" ref={paneRef}>
+    <div className="map-pane" ref={paneRef} onClick={handlePaneClick}>
       {/* OUTSIDE the branch below, deliberately: the pane element is what carries the
           capture listener, and it has to keep hearing a context die even once the canvas
           has been swapped for `ErrorState`. */}
-      {/* A lost context still marks the map dead so the pane SAYS so — but it no longer
-          builds another one. See `markFailure`: a rebuild is a billed load. */}
+      {/* A lost context still marks the map dead so the pane SAYS so — but it does not build
+          another one. `markFailure` is why, and it is unchanged by the swap: the reason was
+          "a rebuild is billed", and the surviving reason is that a rebuild was never measured
+          to recover this. **The swap is the experiment about that**, not the answer. */}
       <ContextLossRecovery paneRef={paneRef} onLost={markFailure} />
       {mapFailed ? (
         <>
@@ -719,90 +926,61 @@ function MapPaneInner({
           <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts} />
         </>
       ) : (
-        <APIProvider key={attempt} apiKey={config.apiKey} onError={handleMapError}>
-          <Map
-            id={MAP_ID}
-            className="map-canvas"
-            // Construction-time and never changed: a `mapId` swap is a new map, and
-            // a new map is a billed load (§4/§11 — which is also why there are no
-            // per-mode map styles).
-            mapId={config.mapId}
-            // A Map ID holds BOTH a light and a dark style; this is what picks one.
-            // Google's default is LIGHT, so without it the night Map ID renders its
-            // light slot — the failure that reads exactly like an unimported style
-            // (ADR-0158 §12). Construction-time too, and latched by the same memo.
-            colorScheme={config.colorScheme}
-            defaultCenter={defaultCentre ?? { lat: 0, lng: 0 }}
-            defaultZoom={defaultCentre ? MAP_ZOOM.PLACE : MAP_ZOOM.WORLD}
-            // Google's controls are Google-chromed, unlabelled and unaware of an RTL
-            // page, so: none of them, then add back only what we need (§12). Zoom is
-            // the pinch; the one control we add is re-centre, below.
-            disableDefaultUI
-            // The default demands two fingers inside a scrollable page and shows
-            // Google's un-styleable "use two fingers" overlay — a phone-first
-            // regression (ADR-0017). The pane is fixed, not inline content, so
-            // one-finger pan is unambiguous; the sheet handle owns vertical drags.
-            gestureHandling="greedy"
-            // **Google's POI labels are looked at, never tapped** (owner, 2026-07-30, on a
-            // real phone: _"I want to disable Google maps POI"_ — ADR-0125 §6's amendment).
-            // The labels themselves stay: ADR-0125 §6's curated sights set is a cloud style
-            // and untouched, so the Eiffel Tower is still drawn and still named. What goes is
-            // GOOGLE'S ANSWER to a tap on one — its info window, which lands on the same canvas
-            // band our place card owns and belongs to a product this one is not.
-            //
-            // Nothing needed the tap any more. It was ADR-0147 §4's free input for the
-            // "make a place from a sight" source, and ADR-0148 §6 removed that source; what
-            // remained was a tap whose whole effect was to open something we did not draw.
-            clickableIcons={false}
-            onIdle={(event) => onViewChange(readMapBounds(event.map))}
-            // The base map's own success signal (see `mapFailed` above) — nothing else on
-            // this component says tiles actually painted.
-            onTilesLoaded={handleTilesLoaded}
-            // A tap on the BACKGROUND clears the selection. An `AdvancedMarker` is a DOM
-            // overlay, so a tap on a pin should not reach here at all — the guard is cheap
-            // insurance against the one ordering that would matter, selecting a pin and
-            // then immediately clearing it.
-            //
-            // A tap on one of GOOGLE's sight labels (ADR-0125 §6) lands here as an ordinary
-            // canvas tap and clears, which is what it always did. What changed is that
-            // `clickableIcons={false}` above means it now arrives with **no `placeId`** and
-            // with no info window behind it — so the outcome the three previous passes were
-            // arguing about (two stacked cards) can no longer arise at all, from either end.
-            //
-            // **A release that completed one of our own gestures is not a tap.** The long
-            // press's release lands here as an ordinary canvas tap, and since ADR-0148 §7 a
-            // canvas tap dismisses the form — so a drop opened the form and lifting the finger
-            // closed it again. The DOM-level swallow cannot cover this: what arrives here is
-            // Google's own callback, and a subscription is not a stream to stop propagating.
-            onClick={(event) => {
-              const target = event.domEvent?.target as HTMLElement | null;
-              if (target?.closest?.('.map-pin')) return;
-              if (gestureTapRef.current) return;
-              onCanvasTap();
-            }}
-          >
-            {pins.map((pin) => (
-              <PinMarker key={pin.placeId} pin={pin} onSelect={selectPin} />
-            ))}
-            {results.map((result) => (
-              <ResultMarker
-                key={result.googlePlaceId}
-                result={result}
-                onSelect={onSelectResult ?? noop}
-              />
-            ))}
-            {me && <MeMarker at={me} />}
-            {draftMarker && <DraftMarker marker={draftMarker} />}
-            <DayConnector path={connector} scheme={config.colorScheme} />
-          </Map>
+        <>
+          {/* **The canvas, and it is now the only thing here that touches a renderer.** Keyed
+              by `attempt` so a retry builds a genuinely fresh map rather than hoping a dead
+              one recovers — the same reasoning the `<APIProvider>` key carried, minus the
+              billing that made it fraught.
+
+              `defaultCentre` is the opening camera and nothing more: the first fit replaces
+              it, and a map must be constructed with SOME centre. */}
+          <MapCanvas
+            key={attempt}
+            scheme={scheme}
+            urls={urls}
+            centre={defaultCentre ?? WORLD_CENTRE}
+            zoom={defaultCentre ? MAP_ZOOM.PLACE : MAP_ZOOM.WORLD}
+            onMap={handleMap}
+            // The watchdog's input, and the only "tiles painted" there is (ADR-0186 §2):
+            // MapLibre has no single such event, so `MapCanvas` derives it as the first
+            // `idle` after `load`. This is where `onTilesLoaded` went.
+            onFirstPaint={handleTilesLoaded}
+            onIdle={handleIdle}
+            // A tile that 404s. Recorded for the diagnostic, and deliberately nothing else.
+            onError={handleMapError}
+            // No canvas at all — the one terminal signal.
+            onUnavailable={handleUnavailable}
+          />
+          {/* Every marker is a SIBLING of the canvas in the React tree and a child of the
+              renderer's own marker container in the DOM — see `MapMarker`. They render before
+              the map exists and simply do nothing until it does, which is what keeps the pin
+              set free of a loading branch. */}
+          {pins.map((pin) => (
+            <PinMarker key={pin.placeId} map={map} gl={gl} pin={pin} onSelect={selectPin} />
+          ))}
+          {results.map((result) => (
+            <ResultMarker
+              key={result.googlePlaceId}
+              map={map}
+              gl={gl}
+              result={result}
+              onSelect={onSelectResult ?? noop}
+            />
+          ))}
+          {me && <MeMarker map={map} gl={gl} at={me} />}
+          {draftMarker && <DraftMarker map={map} gl={gl} marker={draftMarker} />}
+          <DayConnector map={map} path={connector} scheme={scheme} />
           {/* **The wait, stated** (field report #35). Until the first tile paints the canvas
             is empty while our own markers already draw on it — the very picture #28 reported
-            as a failure — and with the bound at 20s a slow network holds it for real seconds.
-            Outside `<Map>` like every other piece of our chrome (the rule right below), over
-            the canvas rather than instead of it: Google needs its own div live to paint into,
-            so this can never be a branch AROUND the map the way `ErrorState` is. It carries
-            no timer and no second signal — `onTilesLoaded` is already what the watchdog
-            waits for, so this is that boolean rendered. */}
+            as a failure. Over the canvas rather than instead of it: the renderer needs its own
+            div live to paint into, so this can never be a branch AROUND the map the way
+            `ErrorState` is. It carries no timer and no second signal — the first-paint
+            callback is already what the watchdog waits for, so this is that boolean rendered.
+
+            **And `markFailure` clearing `tilesPainted` is what makes this reachable after a
+            paint** (ADR-0186's trap 1). The cue, the retry and the diagnostic all render under
+            `!tilesPainted`, so a context dying LATER would otherwise show nothing at all — no
+            cue, no button, no diagnostic — which is field report #28 verbatim. */}
           {!tilesPainted && (
             <div className="map-loading" role="status">
               {tilesLate ? t.map.loadingSlow : t.map.loading}
@@ -822,16 +1000,27 @@ function MapPaneInner({
               )}
             </div>
           )}
-          {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
-            but inside `<APIProvider>` so it can still reach the instance by id. */}
-          <MapInstanceProbe into={mapInstanceRef} />
-          <PinDensity paneRef={paneRef} />
+          {/* **OSM's attribution, and it is not optional** (ADR-0186's Consequences). It
+              replaces Google's logo requirement in the band ADR-0121 §5's layout already
+              reserves, so this is a copy change rather than a layout one.
+
+              It is OURS rather than MapLibre's own `AttributionControl` — which is why
+              `MapCanvas` passes `attributionControl: false`. Two reasons and the second is the
+              licence one: the vendor control is unstyleable chrome that ignores an RTL page,
+              and it renders only when it is mounted, so leaving it off while trusting the
+              style's `attribution` field would have shown **nothing at all**. Stated here in
+              the DOM, where it cannot silently not exist. */}
+          <span className="map-attrib" dir="auto">
+            {MAP_ATTRIBUTION}
+          </span>
+          <PinDensity map={cameraMap} paneRef={paneRef} />
           {/* The device-pass panel's zoom readout (ADR-0146 §5). Deliberately `PinDensity`'s
             shape and position: stateless, null-rendering, one listener — so it cannot
             re-render this subtree, which is what keeps a dev tool clear of a marker
             re-diff. Dropped entirely from a production build with the gate. */}
-          {import.meta.env.DEV && <DevMapProbe mapId={MAP_ID} />}
+          {import.meta.env.DEV && <DevMapProbe map={cameraMap} />}
           <MapCameraControls
+            map={cameraMap}
             paneRef={paneRef}
             pins={pins}
             results={results}
@@ -847,11 +1036,16 @@ function MapPaneInner({
             onHold={handleHold}
             gestureTapRef={gestureTapRef}
           />
-        </APIProvider>
+        </>
       )}
     </div>
   );
 }
+
+/** The opening centre when the screen has no better idea. Hoisted so it is one stable object
+ *  rather than a fresh literal per render — `MapCanvas` latches it, but an inline `{lat, lng}`
+ *  in the JSX is exactly the thing this file's memo rules forbid. */
+const WORLD_CENTRE: LatLng = { lat: 0, lng: 0 };
 
 /** Re-renders only when its props change identity, which the screen keeps stable
  *  across a clock tick — the whole point of the primitive-props rule above. */
@@ -874,32 +1068,47 @@ export const MapPane = memo(MapPaneInner);
  *  raises). The ring's hole is drawn by CSS, so there is nothing for the markup to carry.
  *  `aria-label` is where the name lives, as it always was. */
 const ResultMarker = memo(function ResultMarker({
+  map,
+  gl,
   result,
   onSelect,
 }: {
+  map: MapLibreMap | null;
+  gl: MapLibreModule | null;
   result: MapResultPin;
   onSelect: (googlePlaceId: string) => void;
 }) {
+  const select = useCallback(
+    () => onSelect(result.googlePlaceId),
+    [onSelect, result.googlePlaceId],
+  );
   return (
-    <AdvancedMarker
-      position={{ lat: result.lat, lng: result.lng }}
+    <MapMarker
+      map={map}
+      gl={gl}
+      lat={result.lat}
+      lng={result.lng}
       zIndex={result.selected ? MAP_RESULT_SELECTED_Z : MAP_RESULT_Z}
       title={result.label}
-      onClick={() => onSelect(result.googlePlaceId)}
+      onClick={select}
     >
       <div
         className={'map-result' + (result.selected ? ' selected' : '')}
         role="button"
         aria-label={result.label}
       />
-    </AdvancedMarker>
+    </MapMarker>
   );
 });
 
 const PinMarker = memo(function PinMarker({
+  map,
+  gl,
   pin,
   onSelect,
 }: {
+  map: MapLibreMap | null;
+  gl: MapLibreModule | null;
   pin: MapPin;
   onSelect: (placeId: string) => void;
 }) {
@@ -949,12 +1158,18 @@ const PinMarker = memo(function PinMarker({
   const hasGlyph = pin.glyph !== '';
   const centreMark = hasGlyph ? undefined : pin.outcome;
   const badgeMark = hasGlyph ? pin.outcome : undefined;
+  // Stable per pin, so `MapMarker`'s own `memo` and its click effect are not re-run by the
+  // screen's per-second tick — an inline arrow here would undo both (ADR-0121 §4).
+  const select = useCallback(() => onSelect(pin.placeId), [onSelect, pin.placeId]);
   return (
-    <AdvancedMarker
-      position={{ lat: pin.lat, lng: pin.lng }}
+    <MapMarker
+      map={map}
+      gl={gl}
+      lat={pin.lat}
+      lng={pin.lng}
       zIndex={pinZIndex(pin)}
       title={name}
-      onClick={() => onSelect(pin.placeId)}
+      onClick={select}
     >
       {/* `data-pin` is how a long press finds out WHICH place it landed on (ADR-0157 §2) —
           the canvas's one recogniser reports the pressed element and the pane resolves it
@@ -1038,17 +1253,32 @@ const PinMarker = memo(function PinMarker({
           )
         )}
       </div>
-    </AdvancedMarker>
+    </MapMarker>
   );
 });
 
 /** "You are here" — the spatial addition ADR-0109 §7 always said Phase 6 would
  *  add for free once near-me was granted. */
-const MeMarker = memo(function MeMarker({ at }: { at: LatLng }) {
+const MeMarker = memo(function MeMarker({
+  map,
+  gl,
+  at,
+}: {
+  map: MapLibreMap | null;
+  gl: MapLibreModule | null;
+  at: LatLng;
+}) {
   return (
-    <AdvancedMarker position={at} zIndex={ME_MARKER_Z} title={t.map.near.youAreHere}>
+    <MapMarker
+      map={map}
+      gl={gl}
+      lat={at.lat}
+      lng={at.lng}
+      zIndex={ME_MARKER_Z}
+      title={t.map.near.youAreHere}
+    >
       <span className="map-me" aria-hidden="true" />
-    </AdvancedMarker>
+    </MapMarker>
   );
 });
 /** Above every pin: it is the one thing on the canvas that is not a place. */
@@ -1057,69 +1287,111 @@ const ME_MARKER_Z = 1000;
 /** THE SPOT THE OPEN FORM IS ABOUT (ADR-0147 §5) — see {@link MapDraftMarker} for why one
  *  source draws a pin and the others a ring. Inert: the form beneath it is the only thing that
  *  acts on this point, so the marker says where and nothing else. */
-const DraftMarker = memo(function DraftMarker({ marker }: { marker: MapDraftMarker }) {
-  const at = { lat: marker.lat, lng: marker.lng };
+const DraftMarker = memo(function DraftMarker({
+  map,
+  gl,
+  marker,
+}: {
+  map: MapLibreMap | null;
+  gl: MapLibreModule | null;
+  marker: MapDraftMarker;
+}) {
   return (
-    <AdvancedMarker position={at} zIndex={DRAFT_MARKER_Z}>
+    <MapMarker map={map} gl={gl} lat={marker.lat} lng={marker.lng} zIndex={DRAFT_MARKER_Z}>
       <div className={`map-pin pending cat-${marker.hue ?? 'leisure'}`} aria-hidden="true">
         <span className="pin-b">
           <span className="pin-g">{marker.glyph}</span>
         </span>
       </div>
-    </AdvancedMarker>
+    </MapMarker>
   );
 });
 /** Under the device marker and over every place: the point you are naming is what you are
  *  looking at, and nothing already on the trip should hide it. */
 const DRAFT_MARKER_Z = 950;
 
-/** The day's order as a dashed neutral line (§10). Dashed because a straight
- *  segment is not the route you will walk — drawing it solid would claim it is —
- *  which also leaves **solid + amber** unspent for a real Routes polyline later.
- *  The Maps API has no `strokeDasharray`, so a dash is a repeating symbol along a
- *  fully transparent stroke. */
+/** The source and layer ids the connector owns in the style. Named, because they are read
+ *  back on every update and on teardown (ADR-0095 — a typo'd literal here is a layer that is
+ *  added and never removed). */
+const CONNECTOR = { source: 'wp-connector', layer: 'wp-connector-line' } as const;
+
+/** The day's order as a dashed neutral line (§10). Dashed because a straight segment is not
+ *  the route you will walk — drawing it solid would claim it is — which also leaves
+ *  **solid + amber** unspent for a real Routes polyline later.
+ *
+ *  **The fake is gone** (ADR-0186 §2). ADR-0121 §10 had to write _"the Maps API has no
+ *  `strokeDasharray`, so a dash is a repeating symbol along a fully transparent stroke"_;
+ *  MapLibre has `line-dasharray`, so this is now a line with a dash pattern and the
+ *  `DASH_SCALE`/`DASH_REPEAT` symbol arithmetic is deleted along with `Polyline`.
+ *
+ *  Imperative because a line is style, not a marker: there is no React element for a layer.
+ *  It renders `null` and does its work in an effect, exactly as `PinDensity` does. */
 const DayConnector = memo(function DayConnector({
+  map,
   path,
   scheme,
 }: {
+  map: MapLibreMap | null;
   path?: readonly LatLng[];
-  /** The canvas's OWN slot, not `documentTheme()`. The map latches its style at
-   *  mount (§4: a re-instantiation is a billed load), so after a theme flip the
-   *  document says dark while the canvas Google is still painting is light.
-   *  Taking the scheme from the same latched config the canvas was built from
-   *  makes the line and the ground it is drawn on agree by construction. */
+  /** The canvas's OWN scheme. This used to be latched at construction because a Map ID's
+   *  style could not be changed on a live map (ADR-0121 §11) — ADR-0186 §7 removes that
+   *  limit, and the line still takes the same value the ground was painted from so the two
+   *  cannot disagree after a theme flip. */
   scheme: MapColorScheme;
 }) {
-  const icons = useMemo(
-    () => [
-      {
-        icon: {
-          path: 'M 0,-1 0,1',
-          strokeOpacity: 1,
-          strokeWeight: MAP_CONNECTOR.WEIGHT,
-          scale: MAP_CONNECTOR.DASH_SCALE,
-        },
-        offset: '0',
-        repeat: MAP_CONNECTOR.DASH_REPEAT,
-      },
-    ],
-    [],
-  );
-  if (!path || path.length < 2) return null;
-  return (
-    <Polyline
-      path={[...path]}
-      strokeColor={
-        scheme === MAP_COLOR_SCHEME.dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light
+  // A content key, so a clock tick handing down a fresh array is not a new line. Same trick
+  // the screen uses for `pins`, one layer down.
+  const shape = path && path.length >= 2 ? path.map((at) => lngLat(at)) : null;
+  const shapeKey = shape ? JSON.stringify(shape) : '';
+
+  useEffect(() => {
+    if (!map || !shapeKey) return;
+    const data = {
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: JSON.parse(shapeKey) as number[][] },
+      properties: {},
+    };
+    const draw = () => {
+      // The style is torn down and rebuilt by a theme swap, so "already added" has to be
+      // asked rather than remembered — a flag would go stale the moment the ground restyles.
+      const existing = map.getSource(CONNECTOR.source);
+      if (existing) {
+        (existing as unknown as { setData: (d: unknown) => void }).setData(data);
+        return;
       }
-      strokeOpacity={0}
-      icons={icons}
-      // It carries no arrowheads: the numbers are the order, and at phone size an
-      // arrowhead on a 2.5px dashed line is mush (§10).
-      clickable={false}
-      zIndex={0}
-    />
-  );
+      map.addSource(CONNECTOR.source, { type: 'geojson', data });
+      map.addLayer({
+        id: CONNECTOR.layer,
+        type: 'line',
+        source: CONNECTOR.source,
+        paint: {
+          'line-color':
+            scheme === MAP_COLOR_SCHEME.dark ? MAP_CONNECTOR.COLOR.dark : MAP_CONNECTOR.COLOR.light,
+          'line-width': MAP_CONNECTOR.WEIGHT,
+          // It carries no arrowheads: the numbers are the order, and at phone size an
+          // arrowhead on a 2.5px dashed line is mush (§10).
+          'line-dasharray': [...MAP_CONNECTOR.DASH],
+        },
+      });
+    };
+    // A layer cannot be added before the style exists, and the pane may mount before the
+    // first `load` — so ask, and otherwise wait for it.
+    if (map.isStyleLoaded()) draw();
+    else map.once('load', draw);
+    return () => {
+      map.off('load', draw);
+      // Guarded rather than trusted: on unmount the map may already be `remove()`d by
+      // `MapCanvas`, in which case there is no style left to take a layer out of.
+      try {
+        if (map.getLayer(CONNECTOR.layer)) map.removeLayer(CONNECTOR.layer);
+        if (map.getSource(CONNECTOR.source)) map.removeSource(CONNECTOR.source);
+      } catch {
+        // The map is gone; its layers went with it.
+      }
+    };
+  }, [map, shapeKey, scheme]);
+
+  return null;
 });
 
 /** The canvas chrome: ONE furniture band — the two camera controls at the inline
@@ -1128,6 +1400,7 @@ const DayConnector = memo(function DayConnector({
  *  focus, so it is read off the pin set rather than plumbed as a second prop: the
  *  screen already said which pin is selected. */
 function MapCameraControls({
+  map,
   paneRef,
   pins,
   results,
@@ -1143,6 +1416,8 @@ function MapCameraControls({
   onHold,
   gestureTapRef,
 }: {
+  /** The camera's view of the live instance, or `null` before there is one. */
+  map: CameraMap | null;
   paneRef: RefObject<HTMLDivElement | null>;
   pins: readonly MapPin[];
   results: readonly MapResultPin[];
@@ -1165,7 +1440,6 @@ function MapCameraControls({
    *  a completed gesture must not be read as a tap. */
   gestureTapRef: RefObject<boolean>;
 }) {
-  const map = useMap(MAP_ID);
   // The camera answers to the day's OWN pins, never to the ghost tier: a ghost is a
   // place this day does not contain, so framing it makes the camera chase somewhere
   // you are not going (§6/§7). With the trip's other days scattered across a
@@ -1242,12 +1516,23 @@ function MapCameraControls({
   // an ordinary re-render into a camera move — and it measures against the move it may already
   // have started, so the two keys landing in SEPARATE commits (the pane resizes, then the card
   // renders and is measured) correct each other instead of the first one winning.
+  //
+  // **AND THIS IS ALSO WHERE THE RENDERER IS TOLD ITS BOX CHANGED** (ADR-0186's 2026-08-13
+  // amendment, finding 3). MapLibre measures its container **once, at construction**, so a
+  // pane whose box settles later — which is every mount, since `--sheet-h` is written by the
+  // screen after the first paint — draws at the wrong size until something says otherwise.
+  // Google resized itself; MapLibre does not. It is wired to the observer that is already
+  // here rather than to a second one of its own (rule 8): the `רשימה / מפה` toggle, a sheet
+  // snap and a rotation are all the same event, and this hook already hears all three.
   const [canvasH, setCanvasH] = useState(0);
+  const resizeRef = useRef(map);
+  resizeRef.current = map;
   useEffect(
     () =>
-      observeResize(paneRef.current, () =>
-        setCanvasH(Math.round(paneRef.current?.getBoundingClientRect().height ?? 0)),
-      ),
+      observeResize(paneRef.current, () => {
+        setCanvasH(Math.round(paneRef.current?.getBoundingClientRect().height ?? 0));
+        resizeRef.current?.resize();
+      }),
     [paneRef],
   );
   useEffect(() => {

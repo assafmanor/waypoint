@@ -113,7 +113,11 @@ vi.mock('../lib/usePlaceSearch', () => ({
   }),
 }));
 vi.mock('../lib/map-config', () => ({
+  // `mapsConfig` is Phase 4's to delete along with the Google vars; `DevMapTuner` is its last
+  // reader. What the screen hands the pane since ADR-0186 is the scheme and the archive URLs.
   mapsConfig: () => ({ apiKey: 'k', mapId: 'waypoint-day' }),
+  mapColorScheme: () => 'LIGHT',
+  mapTileUrls: () => ({ world: '/map/world.pmtiles' }),
   mapPaneAvailable: () => true,
 }));
 vi.mock('../ui/domain/MapPane', () => ({ MapPane: () => <div data-pane /> }));
