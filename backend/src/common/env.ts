@@ -41,6 +41,15 @@ export const S3_ACCESS_KEY_ID = 'S3_ACCESS_KEY_ID';
 export const S3_SECRET_ACCESS_KEY = 'S3_SECRET_ACCESS_KEY';
 export const S3_REGION = 'S3_REGION';
 
+/** The upstream planet archive an offline extract is cut from (ADR-0186 §3). Env-named
+ *  rather than hard-coded because Protomaps state their build URLs may change and ask
+ *  that people mirror rather than hotlink — this is the seam that makes moving to our
+ *  own mirror a config change instead of a deploy. */
+export const MAP_TILES_SOURCE_URL = 'MAP_TILES_SOURCE_URL';
+/** Path to the `go-pmtiles` binary; the Dockerfile puts it on `PATH`, so this exists for
+ *  a dev machine that keeps it somewhere else. */
+export const PMTILES_BIN = 'PMTILES_BIN';
+
 // Document blob read cache (ADR-0055). The cache holds ciphertext only and is never a
 // source of truth, so an unset FS dir (memory-only) or a lost dir on redeploy is fine —
 // a miss falls through to S3 (backend/src/common/blob-cache.ts).

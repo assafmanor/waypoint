@@ -106,6 +106,8 @@ _Accuracy note:_ these figures were confirmed on the date above and Google moves
 
 ### 3. The binding is `@vis.gl/react-google-maps`, not a hand-rolled loader
 
+> **Replaced 2026-08-13 by [ADR-0186](0186-the-map-is-ours-and-it-works-on-a-plane.md).** The first bullet below — _"the loader is a singleton problem"_ — was exactly right and picked the wrong remedy: adopting the binding did not remove the singleton, it inherited one we do not own, and **that singleton is field report #35's third cause** (a write-once module-level loading status no retry can clear, session 262). The other three bullets are answered rather than contradicted under MapLibre: there is no billed side effect to protect, the imperative instance is one `useRef` against seven methods, and a marker takes a plain DOM element so no portal arises at all. Kept here in full because the reasoning was sound and the trade is what changed.
+
 Adopt **`@vis.gl/react-google-maps`** (1.9.0, MIT; peer React ≥16.8 incl. 19 — we are on 19.2.7; pulls `@googlemaps/js-api-loader`, `@types/google.maps`, `fast-equals`). It is the React binding Google introduced for the Maps JS API. A real dependency in a four-dep frontend, so the reasoning is recorded:
 
 - **The loader is a singleton problem.** The modern API loads via `google.maps.importLibrary()`; two callers each bootstrapping is a documented source of conflicts and duplicate loads.
@@ -325,6 +327,8 @@ _Open, deliberately:_ whether a **pin** tap should reveal the same entries on th
 
 ### 11. Offline, archive, and theme
 
+> **Reversed on the offline half 2026-08-13 by [ADR-0186](0186-the-map-is-ours-and-it-works-on-a-plane.md).** "Offline the map is absent" was true of a Google-rendered map and of nothing else. With our own renderer over locally-held tiles the map becomes the part of this tab that works offline **best** — only the near-me chip still has to go, since you cannot re-locate without a fix. The theme half is _improved_ rather than reversed: one downloaded archive with a swappable style JSON replaces two Map IDs latched at construction, so a live theme flip reaches the canvas that is already drawn. §4's billed-load arithmetic, which this section leans on twice, goes with the vendor that charged it.
+
 **Offline the map is absent — not broken, not disabled.** The rendered map is the one part of this tab that was never offline (ADR-0106 §7). So: no map pane, no toggle, no map instance, no billed load — the tab is the list it is today under the existing "last saved" banner. The `מה נשאר` chip stays (pure derivation); the **near-me chip is removed**, already the shipped rule (ADR-0109 §7 — you cannot re-locate). The map half is **absent rather than present-and-dead**, the third application of a rule this tab already runs (near-me offline; ADR-0115's Google research half). A greyed watermarked frame would be a third grammar for one fact.
 
 **In an archived trip the map renders and the live layer drops.** ADR-0040/0044 make a finished trip read-only and the map is a read surface — positions are exactly what you want from a finished trip — but the amber next-stop cue and near-me are meaningless there, the same rule those cues already follow when mode is not live. The billed load is accepted on §4's arithmetic.
@@ -349,7 +353,7 @@ _Open, deliberately:_ whether a **pin** tap should reveal the same entries on th
 
 ### 14. What Phase 6 is not
 
-**Paid Routes / live ETAs** — a second cost envelope, a second proxy route, and now a 10-waypoint ceiling (§1); bundling them would make this phase's approval a cost decision instead of a rendering one. **Transit / traffic layers** — `TransitLayer` draws the transit **network**, not directions; it cannot show A→B at all, so it answers no question this tab asks while fighting "quiet base, loud pins" hardest. Point-to-point transit is the free Maps deep-link or paid Routes. Recorded so "but it's free" does not reopen it on its own: free to draw is not free to read. If it returns, a toggle, off by default, transit only. **An area chip** — pan/zoom _is_ the area filter (§9). **Clustering** (§6). **Offline tiles** (§11). **Member GPS sharing** (ADR-0006). **3D / tilt / altitude.** **A dark map anyone can see** (§11).
+**Paid Routes / live ETAs** — a second cost envelope, a second proxy route, and now a 10-waypoint ceiling (§1); bundling them would make this phase's approval a cost decision instead of a rendering one. **Transit / traffic layers** — `TransitLayer` draws the transit **network**, not directions; it cannot show A→B at all, so it answers no question this tab asks while fighting "quiet base, loud pins" hardest. Point-to-point transit is the free Maps deep-link or paid Routes. Recorded so "but it's free" does not reopen it on its own: free to draw is not free to read. If it returns, a toggle, off by default, transit only. **An area chip** — pan/zoom _is_ the area filter (§9). **Clustering** (§6). **Offline tiles** (§11) — _**reversed 2026-08-13 by [ADR-0186](0186-the-map-is-ours-and-it-works-on-a-plane.md)**, which also replaces §3's renderer; everything this ADR decided about what the map SAYS is untouched and is the requirement that design has to reproduce_. **Member GPS sharing** (ADR-0006). **3D / tilt / altitude.** **A dark map anyone can see** (§11).
 
 ## The remaining human gate
 

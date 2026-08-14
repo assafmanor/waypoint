@@ -13,6 +13,13 @@ export const SERVER_ROUTE_PREFIXES = [
   'enrichment',
   'health',
   'invites',
+  // The shared coarse basemap archive (ADR-0186 §4). Here for the SERVICE WORKER half,
+  // for the same reason `enrichment` and `users` are: it is fetched by the map renderer
+  // as raw bytes over byte RANGES, so without this prefix the PWA would answer with the
+  // cached app shell and the archive would fail to parse. It is deliberately trip-less —
+  // one public OSM layer shared by every trip — which is why it needs a prefix of its own
+  // rather than living under `trips`.
+  'map',
   'me',
   'trips',
   // Uploaded avatar bytes (ADR-0133 §12). It has to be here for the SERVICE WORKER
