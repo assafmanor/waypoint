@@ -55,7 +55,15 @@ The pieces in the repo:
 
 **`VITE_BUILD_BADGE=1` puts a build stamp on screen, and staging is what it is for (session 268).** Two deploys look identical on a phone, so a report against the wrong one costs a session. Set it on **staging only**; unset (the default) ships nothing, exactly like `VITE_NAV_DEBUG`. The badge is a small fixed corner label — `branch · shortSHA · MM-DD HH:MM` — that hides for the session when tapped, so it can never block the surface being tested (`ui/BuildBadge.tsx`).
 
-**Its text is deliberately not a variable.** `vite.config.ts`'s `buildLabel()` reads `RAILWAY_GIT_COMMIT_SHA`/`RAILWAY_GIT_BRANCH` (falling back to the local git checkout, then to `dev`), because a label somebody has to remember to bump is one that eventually lies, and a build indicator that lies is worse than none. `VITE_BUILD_LABEL` overrides it if a deploy wants to say something else. All four names are subject to the `ARG` rule above and are declared in the `Dockerfile`.
+**The timestamp is automatic; the commit needs one variable, and this cost a deploy to learn.** `vite.config.ts`'s `buildLabel()` always stamps the build time, which is what answers "did my redeploy land?". The commit is a bonus, and on Railway it does **not** resolve by itself: `RAILWAY_GIT_COMMIT_SHA`/`RAILWAY_GIT_BRANCH` are provided to the **service**, not forwarded into the Docker build, and the build context carries no `.git` — so the first version printed `unknown 08-14 09:22` with the commit silently missing. Declaring the `ARG`s is necessary and not sufficient.
+
+To get the commit, set one service variable and let Railway interpolate it:
+
+```
+VITE_BUILD_LABEL = ${{RAILWAY_GIT_BRANCH}} ${{RAILWAY_GIT_COMMIT_SHA}}
+```
+
+It is still not a hand-typed label — Railway substitutes the real values per deploy, so it cannot go stale. Locally it falls back to the git checkout, and when nothing can answer the commit is simply **omitted**: an honest gap beats `unknown`. All names here are subject to the `ARG` rule above and are declared in the `Dockerfile`.
 
 **`FRONTEND_URL` is not dev-only, despite the name — and it is now the environment's canonical host (ADR-0169).** It doubles as the dev `:5173`→`:3000` CORS origin locally, but `AuthController`'s Google callback (`res.redirect(frontendUrl())`, `auth.controller.ts`) also uses it as the **post-login redirect target** in every environment, and `common/canonical-host.ts` redirects any other `Host` this service answers on to it. Set it to the environment's own origin (production's own domain, staging's own domain) everywhere, single-origin topology notwithstanding.
 

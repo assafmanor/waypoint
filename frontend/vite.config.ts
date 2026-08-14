@@ -41,8 +41,6 @@ function warnIfMapsUnconfigured() {
  * `'dev'` when git is unavailable (a Docker build without the .git directory).
  */
 function buildLabel(): string {
-  const explicit = process.env.VITE_BUILD_LABEL?.trim();
-  if (explicit) return explicit;
   const git = (args: string) => {
     try {
       return execSync(`git ${args}`, {
@@ -53,12 +51,25 @@ function buildLabel(): string {
       return '';
     }
   };
-  const sha = (process.env.RAILWAY_GIT_COMMIT_SHA || git('rev-parse HEAD')).slice(0, 7);
-  const branch = process.env.RAILWAY_GIT_BRANCH || git('rev-parse --abbrev-ref HEAD') || 'unknown';
+  // **The timestamp is the part that always works, so it is never conditional.** Railway's
+  // `RAILWAY_GIT_*` are provided to the SERVICE and are not forwarded into the Docker build,
+  // and the build context carries no `.git` — so the first version of this printed
+  // `unknown 08-14 09:22` on staging, with the commit silently missing. The clock is what
+  // answered the actual question ("did my redeploy land?"); the commit is a bonus that
+  // arrives only when something can supply it.
+  //
   // Minute precision: two deploys of the same commit are a real thing to tell apart, and
-  // seconds are noise on a badge somebody reads off a phone screen.
+  // seconds are noise on a badge read off a phone screen.
   const at = new Date().toISOString().slice(5, 16).replace('T', ' ');
-  return [branch, sha, at].filter(Boolean).join(' · ');
+  // `VITE_BUILD_LABEL` is how a Railway deploy supplies the commit, since it can interpolate
+  // the provided vars itself: set it to `${{RAILWAY_GIT_BRANCH}} ${{RAILWAY_GIT_COMMIT_SHA}}`.
+  // Read from the environment first, then the local checkout (so `pnpm dev` shows a real
+  // value), and simply omitted when neither can answer — an honest gap beats "unknown".
+  const explicit = process.env.VITE_BUILD_LABEL?.trim();
+  const sha = (process.env.RAILWAY_GIT_COMMIT_SHA || git('rev-parse HEAD')).slice(0, 7);
+  const branch = process.env.RAILWAY_GIT_BRANCH || git('rev-parse --abbrev-ref HEAD');
+  const commit = explicit || [branch, sha].filter(Boolean).join(' ');
+  return [commit, at].filter(Boolean).join(' · ');
 }
 
 /** `index.html` is served to the browser, so it can't import `APP_NAME` — it carries a

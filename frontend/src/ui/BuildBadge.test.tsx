@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { BuildBadge } from './BuildBadge';
 
 /** The env var is pinned empty for the whole suite (`vite.config.ts`'s `test.env`), so the
@@ -33,17 +33,28 @@ describe('BuildBadge', () => {
 
   it('shows the build label when switched on', () => {
     withBadge('1');
-    render(<BuildBadge />);
+    const { container } = render(<BuildBadge />);
     // `__BUILD_LABEL__` is injected by `define`, so the vitest run has a real value here —
     // whatever the checkout is. Asserting it is non-empty is the honest assertion; asserting
     // a specific SHA would fail on every commit.
-    expect(screen.getByRole('button').textContent!.length).toBeGreaterThan(0);
+    expect(container.textContent!.length).toBeGreaterThan(0);
   });
 
-  it('hides for the session when tapped, so it cannot block the surface underneath', () => {
+  it('always carries a timestamp, which is the part that survives a missing commit', () => {
+    // Staging printed `unknown 08-14 09:22` because Railway does not forward its `GIT_*`
+    // vars into the Docker build and the context has no `.git`. The clock is what actually
+    // answers "did my redeploy land?", so it is never conditional on the commit resolving.
+    withBadge('1');
+    const { container } = render(<BuildBadge />);
+    expect(container.textContent).toMatch(/\d{2}-\d{2} \d{2}:\d{2}/);
+  });
+
+  it('cannot eat a tap, so it can never hide the thing being tested', () => {
+    // The first version was a button that hid itself on tap, and the owner tapped it and
+    // lost the one thing they had asked for.
     withBadge('true');
-    render(<BuildBadge />);
-    fireEvent.click(screen.getByRole('button'));
+    const { container } = render(<BuildBadge />);
     expect(screen.queryByRole('button')).toBeNull();
+    expect((container.firstChild as HTMLElement).style.pointerEvents).toBe('none');
   });
 });
