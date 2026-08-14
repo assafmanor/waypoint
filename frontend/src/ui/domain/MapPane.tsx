@@ -51,6 +51,7 @@ import {
 import { publishMapReading, TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
 import { Icon, type IconName } from '../Icon';
+import { MapDiagnostic } from './MapDiagnostic';
 import { ErrorState } from '../feedback/ErrorState';
 import { t } from '../../i18n/he';
 import './map-pane.css';
@@ -500,6 +501,10 @@ function MapPaneInner({
   /** Set once every rebuild has been spent and the canvas is still dead — see
    *  `scheduleRecovery`. Read by the hidden-moment reload below. */
   const unrecoverableRef = useRef(false);
+  /** Counted for the diagnostic only: how many times this pane has been resumed. On a
+   *  phone the failure arrives with a resume, so "how many" is the fact that says whether
+   *  the reading was taken on the first one or the twentieth. */
+  const resumesRef = useRef(0);
 
   /** Ask for a fresh map after a delay that grows with consecutive failures.
    *
@@ -541,6 +546,7 @@ function MapPaneInner({
     // it. This is also what runs an attempt that came due while the page was hidden.
     const stop = observeVisibility({
       onResume: () => {
+        resumesRef.current += 1;
         if (!tilesPaintedRef.current) scheduleRecovery();
       },
       // **The one moment a reload is free** — ADR-0185 chose exactly this for the build
@@ -570,11 +576,14 @@ function MapPaneInner({
     setTilesPainted(false);
     tilesPaintedRef.current = false;
     setTilesLate(false);
+    // **No longer DEV-gated**: the diagnostic reports elapsed time on a real device, and
+    // a clock that only exists in development is no use to the one place the answer is.
+    // It is a single `performance.now()` per attempt.
+    attemptStartRef.current = performance.now();
     // The device-pass capture (§1b, backlog workstream M) rides on this attempt's OWN
     // signals rather than a second probe — cleared here so a retry does not show the
     // FAILED attempt's status while the fresh one is still loading.
     if (import.meta.env.DEV) {
-      attemptStartRef.current = performance.now();
       publishMapReading({
         apiStatus: APILoadingStatus.NOT_LOADED,
         apiError: null,
@@ -648,6 +657,18 @@ function MapPaneInner({
   // trip state to fix a canvas. Safe here because `retryMap` is only reachable from
   // `ErrorState`, i.e. with no `APIProvider` mounted to be orphaned by the listener clear.
   // Delete it if vis.gl ever makes the status recoverable.
+  /** Sampled at the moment the reading is asked for, never held as state — nothing here
+   *  may re-render the marker subtree on a screen that ticks every second (§4). */
+  const diagnosticFacts = useCallback(
+    () => ({
+      failures: consecutiveRef.current,
+      resumes: resumesRef.current,
+      elapsedMs: attemptStartRef.current == null ? 0 : performance.now() - attemptStartRef.current,
+      painted: tilesPaintedRef.current,
+    }),
+    [],
+  );
+
   /** The tap on `ErrorState`. **It reloads the app once the rebuilds have been spent**,
    *  because by then a fresh map is known not to help and the owner's own workaround —
    *  restarting the app — is the only thing that has ever worked every time. Before that
@@ -671,7 +692,10 @@ function MapPaneInner({
           has been swapped for `ErrorState`. */}
       <ContextLossRecovery paneRef={paneRef} onLost={scheduleRecovery} />
       {mapFailed ? (
-        <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
+        <>
+          <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
+          <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts()} />
+        </>
       ) : (
         <APIProvider key={attempt} apiKey={config.apiKey} onError={handleMapError}>
           <Map
@@ -767,9 +791,12 @@ function MapPaneInner({
                 button re-enables pointer events for itself alone — the cue around it stays
                 `none`, so the pan and the long press still belong to the canvas. */}
               {tilesLate && (
-                <button type="button" className="map-loading-retry" onClick={retryMap}>
-                  {t.feedback.retry}
-                </button>
+                <>
+                  <button type="button" className="map-loading-retry" onClick={retryMap}>
+                    {t.feedback.retry}
+                  </button>
+                  <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts()} />
+                </>
               )}
             </div>
           )}

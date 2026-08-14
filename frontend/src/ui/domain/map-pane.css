@@ -1110,3 +1110,48 @@
 .map-loading-retry:active {
   transform: scale(var(--press-scale));
 }
+
+/* ── THE DIAGNOSTIC (field report #35) ────────────────────────────────────────
+   Six facts, behind one word, on a pane that is ALREADY failing — so a working map
+   never grows a debug affordance. Pinned to the pane's bottom rather than placed in
+   either failure surface, because both of them (the centred cue and `ErrorState`)
+   own the middle, and this must not push either around.
+
+   `pointer-events: auto` for the same reason `.map-loading-retry` needs it: the cue
+   above is `none` so the canvas keeps its gestures, and this is a target. */
+.map-diag {
+  position: absolute;
+  inset-inline-start: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 3;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  max-inline-size: calc(100% - var(--space-4));
+}
+.map-diag-toggle {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  text-decoration: underline;
+}
+/* Mono and wrapping, because it is DATA to be read off a screenshot — and it is the
+   one place in the app where a long Latin run is the point rather than a bidi hazard.
+   `dir="auto"` on the element resolves it LTR without forcing a direction (ADR-0118). */
+.map-diag-out {
+  font:
+    500 10.5px 'JetBrains Mono',
+    monospace;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  overflow-wrap: anywhere;
+}

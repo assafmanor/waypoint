@@ -146,6 +146,11 @@ export const t = {
     // deliberately does NOT claim the failure above: the attempt is still running and may
     // still paint, so the honest statement is that this is slow, with a way out beside it.
     loadingSlow: 'הטעינה איטית מהרגיל',
+    // The one word behind which the technical reading hides (field report #35). Shown only
+    // on a pane that is already failing, so a working map never grows a debug affordance —
+    // and it says "details" rather than naming WebGL, because the person reading it wants
+    // the map back and is doing us a favour by tapping at all.
+    diagnostic: 'פרטים',
     filter: {
       all: 'הכל',
       maybes: 'אולי',
