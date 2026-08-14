@@ -17,6 +17,7 @@
 import { useCallback, useState, type RefObject } from 'react';
 import { accessTokenForHeader } from '../../lib/api';
 import type { MapTileUrls } from '../../lib/map-config';
+import { archiveReading, type ArchiveProbePoint } from '../../lib/pmtiles';
 import { t } from '../../i18n/he';
 
 export interface MapDiagnosticFacts {
@@ -62,6 +63,13 @@ export interface MapDiagnosticFacts {
    *  reads them from. And it is the instrument that says which way the swap went: if this
    *  reads healthy on a MapLibre pane that is blank, the fault was never in Google's SDK. */
   sdk: string;
+  /** The same camera as numbers, so the archive probe can ask about **the tile the renderer would
+   *  request** rather than one this readout picked. `null` whenever `sdk` is not a camera. */
+  camera: ArchiveProbePoint | null;
+  /** **Whether the renderer took the style, and how many ground sources it holds.** `sdk:` reads
+   *  identically on a map with no style at all, so without this the readout could not tell an
+   *  archive that yields nothing from a source that was never created. See `styleState`. */
+  style: string;
 }
 
 /** **Can this page make a NEW WebGL context right now?** The single most discriminating
@@ -156,6 +164,16 @@ async function probe(url: string, init?: RequestInit): Promise<string> {
   }
 }
 
+/** The same clock for a probe that cannot be handed an `AbortSignal` — `PMTiles.getHeader()` takes
+ *  none. It must still ANSWER on a hang: a field that simply never appends looks like a readout that
+ *  is broken rather than a fetch that is. */
+function bounded(work: Promise<string>): Promise<string> {
+  return Promise.race([
+    work,
+    new Promise<string>((resolve) => setTimeout(() => resolve('HUNG'), PROBE_TIMEOUT_MS)),
+  ]);
+}
+
 /** The map's own canvas, as the DOM sees it — `none` when the renderer never constructed one,
  *  which under Google was a loader stuck below `LOADED` (session 262) and is now the narrower
  *  and more answerable "the module or the protocol failed". */
@@ -228,12 +246,20 @@ export function MapDiagnostic({
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       };
+      // Each archive gets TWO answers, and the pair is the point: the HTTP status says the bytes
+      // arrive, the archive reading says what is in them. `206` beside `0t` or `MISS` is a cut that
+      // succeeded and holds nothing useful — the state that read as healthy twice on 2026-08-14.
       void Promise.all([
         probe(`${location.origin}/health`),
         probe(urls.world, range),
         urls.trip ? probe(urls.trip, range) : Promise.resolve('none'),
-      ]).then(([self, world, extract]) =>
-        setReading((line) => `${line} self:${self} world:${world} extract:${extract}`),
+        bounded(archiveReading(urls.world, now.camera)),
+        urls.trip ? bounded(archiveReading(urls.trip, now.camera)) : Promise.resolve('none'),
+      ]).then(([self, world, extract, worldHeld, tripHeld]) =>
+        setReading(
+          (line) =>
+            `${line} self:${self} world:${world}[${worldHeld}] extract:${extract}[${tripHeld}]`,
+        ),
       );
       setReading(
         [
@@ -247,6 +273,7 @@ export function MapDiagnostic({
           `resumes:${now.resumes}`,
           `t:${Math.round(now.elapsedMs / 100) / 10}s`,
           `sdk:${now.sdk}`,
+          `style:${now.style}`,
           `online:${navigator.onLine ? 'y' : 'n'}`,
           `vis:${document.visibilityState[0]}`,
           // Last, because it is the longest and the only free-form field — and the one

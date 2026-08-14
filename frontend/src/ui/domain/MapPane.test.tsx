@@ -101,6 +101,21 @@ class FakeMapLibreMap {
   isStyleLoaded() {
     return true;
   }
+  /** **The ground sources the style declares** — what `styleState` counts. A test can empty this
+   *  to model the state `sdk:` could not distinguish: a camera that answers perfectly on a map
+   *  whose style never arrived, so no source exists and no tile is ever requested. */
+  groundSources = ['protomaps', 'protomaps-world'];
+  getStyle() {
+    return {
+      // Merged with the imperative ones, because that is what MapLibre reports: the day
+      // connector's source sits in the same object as the ground it draws over.
+      sources: {
+        ...Object.fromEntries(this.groundSources.map((id) => [id, { type: 'vector' }])),
+        ...Object.fromEntries(this.sources),
+      },
+      layers: this.layers,
+    };
+  }
   addSource(id: string, source: unknown) {
     this.sources.set(id, source);
   }
@@ -1263,6 +1278,13 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
         expect(document.querySelector('.map-diag-out')!.textContent).toContain('world:503'),
       );
       expect(document.querySelector('.map-diag-out')!.textContent).toContain('extract:503');
+      // **Each archive gets a status AND a reading of its contents**, because `206` alone read as
+      // health twice: it says the bytes arrive, not that they hold a tile. `unregistered` is the
+      // honest answer here — this suite stubs the canvas, so no archive was ever registered — and
+      // asserting the PAIR is what pins the field to the line.
+      expect(document.querySelector('.map-diag-out')!.textContent).toMatch(
+        /world:503\/\d+ms\[unregistered] extract:503\/\d+ms\[unregistered]/,
+      );
     } finally {
       globalThis.fetch = originalFetch;
       setAccessToken(null);
@@ -1471,6 +1493,29 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
       // Google's own verdict on the map it built, which splits "the loader is wedged" from
       // "it has a camera and simply is not fetching" — two bugs with opposite fixes.
       expect(out).toContain('sdk:');
+    });
+
+    // **The hole `sdk:` left, and it cost a round of diagnosis on 2026-08-14.** The camera reads
+    // perfectly on a map with no style at all, so `sdk:z14@32.12,34.82` beside `tiles:0 err:none`
+    // fitted two different bugs at once. This is the field that separates them.
+    it('reports whether the renderer took the style and holds our ground', () => {
+      paint();
+      loseContext();
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      expect(document.querySelector('.map-diag-out')!.textContent).toContain('style:y/2g');
+    });
+
+    it('reads 0g when the map holds a camera but none of our sources', () => {
+      paint();
+      mapStub.current.groundSources = [];
+      // A camera that answers — the whole point is that this half reads healthy either way.
+      mapStub.current.viewport = { north: 1, south: -1, east: 1, west: -1 };
+      loseContext();
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      const out = document.querySelector('.map-diag-out')!.textContent!;
+      expect(out).toContain('style:y/0g');
+      // And the camera still reads healthy, which is precisely why the pair is needed.
+      expect(out).toContain('sdk:z');
     });
 
     it('says so when tiles never arrive, and does not retry by itself', async () => {

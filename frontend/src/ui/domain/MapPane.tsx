@@ -41,7 +41,7 @@ import type { Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl';
 import { MapCanvas } from './MapCanvas';
 import { cameraMapFor, type CameraMap } from '../../lib/map-camera-adapter';
 import type { MapLibreModule } from '../../lib/maplibre';
-import { MAP_ATTRIBUTION } from '../../lib/map-style';
+import { MAP_ATTRIBUTION, isGroundSource } from '../../lib/map-style';
 import {
   isAsidePin,
   isFramedByCamera,
@@ -72,6 +72,7 @@ import { publishMapReading, TUNE, tune } from '../../lib/dev-tuning';
 import { DevMapProbe } from '../../dev/DevMapProbe';
 import { Icon, type IconName } from '../Icon';
 import { MapDiagnostic } from './MapDiagnostic';
+import type { ArchiveProbePoint } from '../../lib/pmtiles';
 import { ErrorState } from '../feedback/ErrorState';
 import { t } from '../../i18n/he';
 import './map-pane.css';
@@ -521,13 +522,46 @@ function ContextLossRecovery({
  *  Reads through `CameraMap` rather than the raw map so the three calls stay the ones the
  *  adapter already guarantees; the `throw:` branch stays because a dead map is exactly the
  *  state where these can throw rather than answer. */
-function sdkCamera(map: CameraMap | null): string {
-  if (!map) return 'none';
+/** Returns both facts from ONE read of the map: the line a person reads, and the same camera as
+ *  numbers for `archiveReading` to address a tile with. Deliberately not two functions — a dead map
+ *  is exactly where these can throw, and two reads could disagree about which camera was probed. */
+function sdkCamera(map: CameraMap | null): {
+  sdk: string;
+  camera: ArchiveProbePoint | null;
+} {
+  if (!map) return { sdk: 'none', camera: null };
   try {
     const zoom = map.getZoom();
     const centre = map.getCenter();
-    if (!map.getBounds() || zoom == null || !centre) return 'nobox';
-    return `z${zoom}@${centre.lat().toFixed(2)},${centre.lng().toFixed(2)}`;
+    if (!map.getBounds() || zoom == null || !centre) return { sdk: 'nobox', camera: null };
+    const [lat, lng] = [centre.lat(), centre.lng()];
+    return { sdk: `z${zoom}@${lat.toFixed(2)},${lng.toFixed(2)}`, camera: { zoom, lat, lng } };
+  } catch (error) {
+    return { sdk: `throw:${error instanceof Error ? error.name : 'unknown'}`, camera: null };
+  }
+}
+
+/**
+ * **Did the renderer take the style, and does it hold our ground?**
+ *
+ * The hole `sdk:` left, and it cost a round: `getBounds()`/`getZoom()`/`getCenter()` all answer
+ * perfectly on a map with **no style at all**, so `sdk:z14@32.12,34.82` beside `tiles:0 err:none`
+ * was consistent with two completely different bugs — an archive that yields nothing, and a style
+ * that never loaded, so no source exists and no tile is ever requested.
+ *
+ * MapLibre only fetches tiles for a source a **visible layer references**, so the source count is
+ * the fact worth reporting: `2g` is the trip's archive over the world's, `1g` is a trip with no
+ * extract (a correct map at low zoom and nearly an empty one at the zoom this app opens at), and
+ * `0g` says the style on the map is not the style this repo builds.
+ *
+ * The style's own shape is checked in `map-style.test.ts` and needs no device to verify; what only
+ * a device can say is whether the renderer there ended up with it.
+ */
+function styleState(map: MapLibreMap | null): string {
+  if (!map) return 'none';
+  try {
+    const sources = Object.keys(map.getStyle()?.sources ?? {}).filter(isGroundSource);
+    return `${map.isStyleLoaded() ? 'y' : 'n'}/${sources.length}g`;
   } catch (error) {
     return `throw:${error instanceof Error ? error.name : 'unknown'}`;
   }
@@ -702,6 +736,9 @@ function MapPaneInner({
    *  `MapDiagnostic` a new getter every render, which is what the getter exists to avoid. */
   const cameraMapRef = useRef<CameraMap | null>(null);
   cameraMapRef.current = cameraMap;
+  /** The raw instance, for the one reading `CameraMap` cannot answer — see `styleState`. */
+  const mapRef = useRef<MapLibreMap | null>(null);
+  mapRef.current = map;
 
   /** **The one place a dead map is recorded.** Every detection site routes here, so the
    *  count the diagnostic reports and the cue the person sees can never disagree — which
@@ -879,7 +916,8 @@ function MapPaneInner({
       painted: tilesPaintedRef.current,
       tiles: tilesRef.current,
       lastError: lastErrorRef.current,
-      sdk: sdkCamera(cameraMapRef.current),
+      style: styleState(mapRef.current),
+      ...sdkCamera(cameraMapRef.current),
     }),
     [],
   );

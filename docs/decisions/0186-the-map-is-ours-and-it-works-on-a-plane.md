@@ -577,3 +577,52 @@ observation.
 runtime image, cuts a small real extract, and renders it. Every failure in this chain — the CA
 store, the request-path build, and now the header metadata — has been invisible to a test suite
 running on a machine that already has a CA store and reading an archive somebody else built.
+
+## Amendment (2026-08-14, session 269g) — the fix did not land, and the readout could not say why
+
+The reading after 269f, from the same device:
+
+```
+gl:ok canvas:ok pane:411x596 painted:n tiles:0 sw:activated fails:1 resumes:0 t:4.6s
+sdk:z14@32.12,34.82 online:y vis:v err:none self:200/109ms world:206/109ms extract:206/109ms
+```
+
+Unchanged. **269f was a real defect and was not this one**, and that is the honest reading of it —
+the `url:`-vs-`tiles:` suppressor is gone by construction, and the map is still blank. Field report
+#35's cause remains unknown; the seventh session does not get to claim a cure either.
+
+**One candidate eliminated on the spot, and worth recording because it fitted the evidence
+exactly.** MapLibre requests tiles only for a source some **visible layer** references, so a style
+with sources and no referencing layers gives precisely `tiles:0`, `err:none` and a healthy camera.
+Measured instead of reasoned about: the style holds 86 layers — 70 on `protomaps`, 15 on
+`protomaps-world`, every one with a `source-layer` — and the source ids match `isGroundSource`'s two,
+so `tiles:0` and `painted:n` are honest rather than a predicate that reads its own sources wrong.
+
+**The readout's own blind spots are what this amendment fixes, because two of them let one reading
+fit several bugs at once:**
+
+- **`sdk:` says nothing about the style.** `getBounds()`, `getZoom()` and `getCenter()` all answer
+  perfectly on a map with **no style at all**, so `sdk:z14@32.12,34.82` was equally consistent with
+  "the archive yields nothing" and "no source was ever created". New field `style:y/2g` — whether the
+  renderer took the style, and how many ground sources it holds.
+- **A status code cannot describe an archive.** `206` says the bytes arrive. It cannot say the
+  archive is empty, is cut to the wrong zooms, or has no tile where the trip is — and reading `206`
+  as health is the mistake this file has now recorded three times. So each archive gets a second
+  answer beside its status: `world:206/86ms[z0-6/8221t/6:4.2k]` — the header's zoom range, its
+  addressed-tile count, and the bytes of **the tile the renderer would request at this camera**,
+  fetched through the registered archive so it shares the caches the renderer is using.
+
+**And the instrument itself is now verified, which the previous amendment's central claim required.**
+That claim was that "no test has ever read an archive our own `pmtiles extract` produced" — still
+true — but it had quietly become an excuse for the reading being unchecked too, and an instrument
+nobody has checked is not evidence. `lib/pmtiles.archive.test.ts` assembles a **real PMTiles v3
+archive byte by byte** (the 127-byte header at its documented offsets, a root directory holding one
+Hilbert-addressed entry, the tile bytes it points at) and reads it through the **unmocked** library:
+header parser, directory deserialiser, range arithmetic, our zoom clamp and formatting. It covers
+the hit, the `MISS`, the well-formed-but-empty archive, the inverted bbox, a non-archive, a 404, and
+that the probe reads only ranges. `lib/pmtiles.ts` also had no test at all before this; it has one
+now, and the 401 is pinned in it.
+
+**What this still does not close, stated plainly so it is not mistaken for coverage:** those bytes
+were written in the test, not by `pmtiles extract`. The owed CI step is unchanged and is now the only
+thing that would answer what the deployed cutter actually writes.
