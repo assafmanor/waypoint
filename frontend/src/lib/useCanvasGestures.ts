@@ -1,23 +1,23 @@
 // The one-finger zoom, applied (ADR-0145 §1/§2). The recogniser is pure and lives in
 // `canvas-gestures.ts`; this is the imperative half that feeds it pointer events, takes the
-// finger off Google, and hands the result to the camera.
+// finger off the renderer, and hands the result to the camera.
 //
 // **Why a capture-phase guard and not "both listen and the loser bails"** (ADR-0145 §2).
 // ADR-0122 §4 set that precedent one layer along and it does not transfer: the sheet's
 // drag is safe to run and abandon, because below its slop it is tracking a number and
-// rendering nothing, so a loser leaves no trace. **Google's pan writes the camera on the
-// first move.** Letting it see the gesture and then taking over means the map has already
-// panned — and ADR-0129 §4's `sameCamera` check would read that stray pan as "a finger did
-// it", which is *correct* and therefore worse: it becomes the camera's truth. So the
-// events must never reach Google at all. Google's listeners are on descendants of the
-// canvas div; a capture-phase listener on the pane runs first, so `stopPropagation` there
-// means they are never called.
+// rendering nothing, so a loser leaves no trace. **The renderer's pan writes the camera on
+// the first move.** Letting it see the gesture and then taking over means the map has
+// already panned — and ADR-0129 §4's `sameCamera` check would read that stray pan as "a
+// finger did it", which is *correct* and therefore worse: it becomes the camera's truth. So
+// the events must never reach it at all. MapLibre's handlers listen on
+// `map.getCanvasContainer()`, a descendant of the pane; a capture-phase listener on the pane
+// runs first, so `stopPropagation` there means they are never called.
 //
 // **Three event streams are suppressed, and only one of them drives the recogniser.**
 // Pointer events are the single unified stream, so they are what the state machine reads.
 // But `stopPropagation` on `pointerdown` does nothing to a `touchstart` listener — they are
-// separate streams — and we do not get to know which one Google subscribes to. So touch
-// and mouse are suppressed alongside, purely as suppressors.
+// separate streams — and MapLibre's `HandlerManager` subscribes to the touch and mouse ones,
+// not to pointer. So touch and mouse are suppressed alongside, purely as suppressors.
 //
 // **Every listener is attached at MOUNT, never at arm time**, and that is session 116's
 // scar rather than a preference: `touchmove` has to be non-passive to be preventable, and
@@ -63,10 +63,13 @@ export function useCanvasGestures(
    *  what it was on, and the pane decides which of the two acts that is. */
   onHold?: (at: LatLng, target: EventTarget | null) => void,
   /** Set true for as long as a completed gesture's own `click` is still pending, so the pane
-   *  can refuse to read that click as a canvas tap. The DOM swallow below covers the event
-   *  stream; this covers **Google's own tap callback**, which is not an event stream at all
-   *  and so cannot be stopped by anything (see `armClickSwallow`). One arm, one disarm, two
-   *  channels — a second flag with its own lifetime is what would drift. */
+   *  can refuse to read that click as a canvas tap. It was the second of two channels: the DOM
+   *  swallow covered the event stream, and this covered **Google's own tap callback**, which
+   *  was not an event stream at all and so could not be stopped by anything. ADR-0186 §2 moved
+   *  the pane's tap onto its own DOM click, so both channels are now the same one — see
+   *  `MapPane`'s `handlePaneClick`. Kept because one arm and one disarm drive both, so it
+   *  cannot drift; whether the swallow alone now suffices is a question for its own change,
+   *  not for this comment. */
   gestureTapRef?: RefObject<boolean>,
 ): void {
   // Latest-ref, and this is the scar that matters most here: `screens/Map.tsx` re-renders
@@ -132,8 +135,8 @@ export function useCanvasGestures(
           cam.zoomTo(step.zoom);
           return true;
         case DRAG_ZOOM_ACTION.STEP:
-          // Anchored at the tapped point, which is what Google's own double-click zoom did
-          // before this handler suppressed it (ADR-0145 §3's amendment). Offsets are from
+          // Anchored at the tapped point, which is what the vendor's own double-tap zoom did
+          // before this handler replaced it (ADR-0145 §3's amendment). Offsets are from
           // the canvas CENTRE, which is the space `zoomAboutPoint` works in.
           cam.stepZoomIn({
             x: x - (box.left + box.width / 2),
@@ -156,8 +159,8 @@ export function useCanvasGestures(
           // window is opened by the RELEASE, below: a hold is held for as long as the user
           // likes, so a swallow armed here has usually expired by the time the finger lifts.
           dropAwaitingRelease = true;
-          // Not `true`: we never took the finger, so the suppressors must stay off. Google
-          // has been panning within the slop all along and that is correct.
+          // Not `true`: we never took the finger, so the suppressors must stay off. The
+          // renderer has been panning within the slop all along and that is correct.
           return false;
         }
         case DRAG_ZOOM_ACTION.SETTLE:
@@ -169,15 +172,15 @@ export function useCanvasGestures(
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      // Only the primary finger: a second one landing mid-gesture is a pinch, which is
-      // Google's and must not be re-read as a new drag origin.
+      // Only the primary finger: a second one landing mid-gesture is a pinch, which is the
+      // renderer's and must not be re-read as a new drag origin.
       if (!e.isPrimary || e.button > 0) return;
       clearHold();
       pressTarget = e.target;
       const { clientX: x, clientY: y, timeStamp: t } = e;
       owned = feed(DRAG_ZOOM_EVENT.DOWN, x, y, t);
       if (!owned) {
-        // An unpaired press: not ours, so Google keeps the pan — but it MIGHT become a long
+        // An unpaired press: not ours, so the renderer keeps the pan — but it MIGHT become a long
         // press, which is the one gesture decided by time rather than by movement (ADR-0147
         // §1). The timer's stamp is the press's own clock plus the hold, so the synthetic
         // event carries the time it represents rather than a wall-clock read.
@@ -227,8 +230,8 @@ export function useCanvasGestures(
     };
 
     /** The suppressors. They drive nothing — they exist because `stopPropagation` on one
-     *  event stream says nothing to another, and Google's subscription is not ours to
-     *  know. Mount-time and non-passive, per the note at the top of this file. */
+     *  event stream says nothing to another, and the renderer subscribes to the touch and
+     *  mouse ones. Mount-time and non-passive, per the note at the top of this file. */
     const suppress = (e: Event) => {
       if (owned) block(e);
     };
@@ -267,9 +270,12 @@ export function useCanvasGestures(
   }, [paneRef]);
 }
 
-/** Everything Google might be listening on for the gestures we are taking. `dblclick` and
- *  `touchend` are in it because the double-tap step-zoom is the one we replace: leaving
- *  either through would give a step from Google on top of ours. */
+/** Everything the renderer listens on for the gestures we are taking. `dblclick` and
+ *  `touchend` are in it because the double-tap is the one we replace: leaving either through
+ *  would give a vendor step on top of ours. `MapCanvas` now also passes
+ *  `doubleClickZoom: false`, which is the source-level half of the same guard — but only
+ *  half, since MapLibre's `TapDragZoomHandler` reads the same taps and is enabled with the
+ *  pinch rather than separately. This list is what keeps that one quiet. */
 const SUPPRESSED = [
   'touchstart',
   'touchmove',
@@ -280,7 +286,7 @@ const SUPPRESSED = [
   'dblclick',
 ] as const;
 
-/** `stopPropagation` is what keeps Google out (its listeners are on descendants);
+/** `stopPropagation` is what keeps the renderer out (its listeners are on descendants);
  *  `preventDefault` is what keeps the browser from claiming the gesture as a native pan or
  *  a synthesised double-tap zoom. Cancelable-checked, because a passive-by-default
  *  `touchmove` already on the compositor cannot be prevented and warns if you try. */

@@ -1,7 +1,7 @@
 // The canvas's gesture recogniser, as pure arithmetic — the one-finger zoom (ADR-0145
 // §1/§4) and the long press that drops a pin (ADR-0147 §1).
 //
-// **All of the gestures' decisions live here, with no Google and no DOM**, which is what
+// **All of the gestures' decisions live here, with no renderer and no DOM**, which is what
 // makes a gesture this repo has got wrong five times (sessions 115/116/119/122/125)
 // testable as a table instead of by feel. `useCanvasGestures.ts` is the thin imperative half
 // that feeds it pointer events and hands its actions to the camera.
@@ -15,14 +15,13 @@
 //
 // Three phases, because the middle one is genuinely undecided (§1):
 //
-//   IDLE    → a tap passes straight through. Google gets it, a POI tap keeps its
-//             `place_id`, a canvas tap still clears the selection. Nothing is armed:
-//             arming on the FIRST tap would make every tap on the canvas pay for a
-//             gesture almost nobody is making, and it is the eager recognition that
-//             steals the pan.
+//   IDLE    → a tap passes straight through. The renderer gets it and a canvas tap still
+//             clears the selection. Nothing is armed: arming on the FIRST tap would make
+//             every tap on the canvas pay for a gesture almost nobody is making, and it is
+//             the eager recognition that steals the pan.
 //   ARMED   → a second press inside the double-tap window. The only moment anything is
-//             taken from Google, and it is PROVISIONAL: released here this is an ordinary
-//             double-tap and still owes a zoom.
+//             taken from the renderer, and it is PROVISIONAL: released here this is an
+//             ordinary double-tap and still owes a zoom.
 //   ZOOMING → the finger passed the slop. Committed.
 import { DRAG_HOLD_SLOP_PX, MAP_DRAG_ZOOM } from '../constants';
 import { TUNE, tune } from './dev-tuning';
@@ -38,14 +37,14 @@ export type DragZoomPhase = (typeof DRAG_ZOOM_PHASE)[keyof typeof DRAG_ZOOM_PHAS
  *  because two of them fire on the SAME transition out of `ARMED` and the difference is
  *  the whole of §2's repayment. */
 export const DRAG_ZOOM_ACTION = {
-  /** Not ours. Let it reach Google. */
+  /** Not ours. Let it reach the renderer. */
   PASS: 'pass',
   /** Intercept from here on, but change nothing yet. */
   ARM: 'arm',
   /** Committed: apply `zoom`. */
   ZOOM: 'zoom',
-  /** Released without ever moving — an ordinary double-tap. We suppressed Google's, so we
-   *  owe it one eased step in (§2). */
+  /** Released without ever moving — an ordinary double-tap. We suppressed the renderer's, so
+   *  we owe it one eased step in (§2). */
   STEP: 'step',
   /** Released after zooming: the drag is over and the click it fires must be swallowed. */
   SETTLE: 'settle',
@@ -89,7 +88,7 @@ export interface DragZoomState {
   /** Is a finger down right now on an UNPAIRED press — i.e. is a long press still
    *  possible? (ADR-0147 §1.) It is not derivable from `phase`: an unpaired press leaves
    *  the machine in `IDLE`, deliberately, because arming on a first tap is what steals
-   *  Google's pan. Cleared by a move past `DRAG_HOLD_SLOP_PX` (that is a pan), by the
+   *  the renderer's pan. Cleared by a move past `DRAG_HOLD_SLOP_PX` (that is a pan), by the
    *  release, and by the hold it authorises — so one press can drop at most one pin. */
   pressing: boolean;
   /** Where the committed drag is measured from, and the last y it saw. The delta is taken
@@ -265,7 +264,7 @@ export function reduceDragZoom(
   if (event.type === DRAG_ZOOM_EVENT.MOVE) {
     if (state.phase === DRAG_ZOOM_PHASE.IDLE) {
       // Wandering past the hold slop means this is a pan, so the long press is off. The
-      // event still passes through — Google owns the pan and always did.
+      // event still passes through — the renderer owns the pan and always did.
       if (!state.pressing) return pass(state);
       const travelled = Math.hypot(event.x - state.tapX, event.y - state.tapY);
       return pass(travelled < DRAG_HOLD_SLOP_PX ? state : { ...state, pressing: false });
@@ -333,12 +332,12 @@ export interface WorldPoint {
 /**
  * **Keep a screen point fixed while the zoom changes** (ADR-0145 §3, point-anchoring).
  *
- * **There is no Mercator in here, and that is the design.** This works in Google's own
+ * **There is no Mercator in here, and that is the design.** This works in the renderer's own
  * world-coordinate space, where the relationship between world units and screen px is a
  * pure power of two — so the only arithmetic is a scale change. Every nonlinear part of the
- * projection stays inside Google's `fromLatLngToPoint`/`fromPointToLatLng`, which is what
- * keeps this clear of ADR-0129 §3's warning about re-deriving Google's projection maths:
- * we are asking Google to project, not projecting ourselves.
+ * projection stays inside `CameraProjection`'s `fromLatLngToPoint`/`fromPointToLatLng`, which
+ * is what keeps this clear of ADR-0129 §3's warning about re-deriving the renderer's
+ * projection maths: we are asking it to project, not projecting ourselves.
  *
  * At zoom `z`, `screenPx = worldUnits × 2^z`. The tapped point's world position is
  * `centre + offset / 2^from`, and we want it to remain at the same `offset` afterwards,
@@ -363,9 +362,9 @@ export function zoomAboutPoint(
  *
  * Same space, same one fact: at zoom `z`, `screenPx = worldUnits × 2^z`. So a point
  * `offsetPx` from the canvas centre sits at `centre + offsetPx / 2^z` in world units, and
- * Google's `fromPointToLatLng` turns that back into a coordinate. **No Mercator here
- * either**, which is the whole reason this is safe to write (ADR-0129 §3): every nonlinear
- * step stays inside Google's projection.
+ * `fromPointToLatLng` turns that back into a coordinate. **No Mercator here either**, which
+ * is the whole reason this is safe to write (ADR-0129 §3): every nonlinear step stays inside
+ * the renderer's projection.
  *
  * `offsetPx` is from the CANVAS CENTRE (+x inline-end, +y down), the same convention
  * `zoomAboutPoint` takes, so the two cannot disagree about which way is which.
@@ -387,7 +386,7 @@ export function worldPointAtOffset(
  * which is what a camera has to know before it can decide whether something is under the card
  * (ADR-0122 §7's 2026-08-06 amendment). Written as the literal inverse of the line above —
  * `screenPx = worldUnits × 2^z` — so the two cannot drift, and for the same reason as its twin
- * there is no Mercator here: both projections stay Google's own (ADR-0129 §3).
+ * there is no Mercator here: both projections stay the renderer's own (ADR-0129 §3).
  */
 export function offsetPxOfWorldPoint(
   centre: WorldPoint,

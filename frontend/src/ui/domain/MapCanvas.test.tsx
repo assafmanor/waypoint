@@ -525,6 +525,14 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     expect(built().options.keyboard).toBe(false);
   });
 
+  // The one vendor GESTURE that is off, because `useCanvasGestures` reimplements it (ADR-0145).
+  // Its capture-phase guard already starves MapLibre's handler of events, so this asserts the
+  // belt rather than the braces — and a guard that stops working is exactly when it matters.
+  it('switches off MapLibre’s own double-tap zoom, which we own', async () => {
+    await paint();
+    expect(built().options.doubleClickZoom).toBe(false);
+  });
+
   // ── THE READ IS AUTHENTICATED (2026-08-14, from the owner's diagnostic) ──────────────
   //
   // `err:Error: Bad response code: 401`, `tiles:0`. The `pmtiles` protocol issues its own range
