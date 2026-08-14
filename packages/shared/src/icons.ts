@@ -576,6 +576,16 @@ export interface BookingTypeProfile {
    *  carries a route and is *called* Hertz — came out named `נריטה ← נריטה`. Read through
    *  `titlesFromRoute`, never by asking whether the type has a route. */
   titleFrom: 'route' | 'name';
+  /** **Is the WHOLE of this type's span time spent in motion, being carried?**
+   *  (ADR-0061's 2026-08-14 amendment.) A flight, a train and a bus hold you for their
+   *  entire length — which is why a night inside one is a night nobody books a bed for.
+   *
+   *  **Not `carriesRoute`, and the car hire is why.** A hire carries a route and spans
+   *  two instants like the three above, but its span is a period you HOLD the vehicle,
+   *  most of which is parked while you sleep somewhere; reading it as motion would tell
+   *  a five-day rental that it needs no lodging at all. Optional, so the table carries
+   *  only the types this is true of. Read through `spendsSpanInMotion`. */
+  inMotion?: boolean;
 }
 
 /** **The clock the day is assumed to begin on** (owner, field report #11: _"most events
@@ -633,6 +643,9 @@ const transportProfile = (sequence: ConnectionWindow): BookingTypeProfile => ({
   times: { kind: 'none' },
   // Nobody names a flight or a train (ADR-0059 §3) — the route IS the name.
   titleFrom: 'route',
+  // You are carried for the whole of it, so a night inside one needs no bed. Set here
+  // rather than per row, so a future carried mode inherits it by being one of these.
+  inMotion: true,
 });
 
 /** No second journey of any shape. */
@@ -728,6 +741,17 @@ export const titlesFromRoute = (type: BookingType): boolean =>
 /** Two-endpoint schedule (start + end, may span days) rather than a point on a day. */
 export const hasSpanSchedule = (type: BookingType): boolean =>
   BOOKING_TYPE_PROFILE[type].schedule === 'span';
+
+/** **Is this type's span time spent being carried** rather than time spent somewhere
+ *  (ADR-0061's 2026-08-14 amendment)? The one question behind "was there a bed-shaped
+ *  gap in this night" — see `BookingTypeProfile.inMotion` for why it is not `carriesRoute`. */
+export const spendsSpanInMotion = (type: BookingType): boolean => {
+  // Widened to the interface deliberately, same as `bookingTypeDurationUnit` above:
+  // `as const satisfies` narrows each row to its own shape, on which an OPTIONAL field
+  // simply isn't a property to read.
+  const profile: BookingTypeProfile = BOOKING_TYPE_PROFILE[type];
+  return profile.inMotion === true;
+};
 
 /** The commitment a fresh booking of this type opens with (ADR-0011 / ADR-0136 §4). */
 export const defaultKindForBookingType = (type: BookingType): EventKind =>
