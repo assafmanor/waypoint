@@ -18,6 +18,7 @@
 //     the app's own first-paint signal clears. It is skipped unless `MAP_TILES_E2E=1`, because a
 //     spec that reaches the public internet is a flake in CI and a false green when it is offline.
 import { expect, test } from '@playwright/test';
+import { MAP_LOAD_TIMEOUT_MS } from '../src/constants';
 import { bootIntoTrip, shortLiveTripDates, todayAt } from './boot';
 
 const TRIP_ID = 't1';
@@ -164,7 +165,9 @@ test('a ground that cannot be read is REPORTED, not left blank', async ({ page }
   // **All three affordances, which is the whole point.** Before the fix the pane latched
   // `tilesPainted` off `load` + `idle` — both of which settle on a map whose every tile failed —
   // so a blank canvas carried no cue, no retry and no diagnostic at all.
-  await expect(page.locator('.map-loading')).toContainText('הטעינה איטית מהרגיל');
+  await expect(page.locator('.map-loading')).toContainText('הטעינה איטית מהרגיל', {
+    timeout: MAP_LOAD_TIMEOUT_MS.TILES + 5_000,
+  });
   await expect(page.getByRole('button', { name: /נסו שוב/ })).toBeVisible();
   await expect(page.getByText('פרטים')).toBeVisible();
 
