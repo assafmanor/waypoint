@@ -1490,9 +1490,15 @@ export function MapView() {
     let framesLeft = ROW_SCROLL_WAIT_FRAMES;
     const findAndScroll = () => {
       // The sheet where there IS one, the document otherwise — because the graceful-absence path
-      // (no Maps key, or offline) renders this list straight into the shell's scrolling body with
-      // no sheet at all (§8). Scoping to a null ref there meant a selected card could open below
-      // the fold and nothing moved, which is the same defect this function exists for.
+      // renders this list straight into the shell's scrolling body with no sheet at all (§8).
+      // Scoping to a null ref there meant a selected card could open below the fold and nothing
+      // moved, which is the same defect this function exists for.
+      //
+      // **That path is reached by being OFFLINE now, and by nothing else** (ADR-0186 §8): a
+      // missing Maps key used to be its other cause, and there is no build configuration left to
+      // be missing. Worth naming, because the two layouts put this list in different scrollers and
+      // `scrollIntoView` acts on whichever one it is in — `e2e/place-know.spec.ts` measured the
+      // wrong box for exactly that reason until Phase 2 made the split e2e's default.
       const scope: ParentNode = sheetRef.current ?? document;
       const row =
         (placeId ? scope?.querySelector(`[data-place="${placeId}"]`) : null) ??

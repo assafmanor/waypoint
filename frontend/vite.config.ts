@@ -97,6 +97,16 @@ export default defineConfig(({ command }) => {
         ),
       },
     },
+    /** **MapLibre ships a web worker, and the dep optimizer breaks it** (ADR-0186 Phase 2).
+     *  Pre-bundling rewrites `maplibre-gl` into `.vite/deps/` but does not emit
+     *  `maplibre-gl-worker.mjs` beside it, so `pnpm dev` logs _"the file does not exist … the
+     *  dependency might be incompatible with the dep optimizer"_ and the renderer's worker cannot
+     *  be fetched — which on the dev server is a map that never paints a tile. Excluded rather
+     *  than worked around, which is what Vite's own message asks for; production is unaffected
+     *  (the optimizer is a dev-only step) and the build already verified clean. */
+    optimizeDeps: {
+      exclude: ['maplibre-gl'],
+    },
     plugins: [
       react(),
       appTitle(),

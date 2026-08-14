@@ -48,21 +48,32 @@ const MAX_EN =
   'Ogata Korin on a pair of celebrated folding screens are shown each spring, when the ' +
   'garden’s own irises are in flower.';
 
+const filler = (i: number) => ({
+  id: `pl-filler-${i}`,
+  tripId: TRIP_ID,
+  name: `Filler ${i}`,
+  lat: 35.666 + i / 1000,
+  lng: 139.717 + i / 1000,
+  ...stamps,
+});
+
 const places = [
+  // **Filler ABOVE, and it earns its place as much as the filler below does.** The alignment spec
+  // needs the known row to start somewhere OTHER than the top of its scroller, or there is nothing
+  // for `block: 'start'` to do and the test cannot tell `start` from `nearest` — both leave an
+  // already-flush row where it is. That was invisible while the Map tab had no rendered map in
+  // e2e: the list-only path puts the controls row and the notices above `.map-list` inside the
+  // shell's body, so the first row was never flush. On the split (ADR-0186 Phase 2 made that the
+  // path e2e takes) `.map-list` is the sheet's first content, so the first row is flush by
+  // construction and the discriminator has to come from the fixture.
+  ...[0, 1].map(filler),
   { id: 'pl-known', tripId: TRIP_ID, name: 'Nezu', lat: 35.6656, lng: 139.7167, ...stamps },
   { id: 'pl-blank', tripId: TRIP_ID, name: 'Nezu', lat: 35.6657, lng: 139.7168, ...stamps },
-  // **Filler, and it earns its place**: `scrollIntoView({ block: 'start' })` can only bring a
-  // row's top to the top if there is content BELOW it to scroll into. With two rows the scroller
-  // maxed out 102px short — a limit of the scroll extent, not of the alignment — so the spec that
-  // measures the alignment needs a list long enough to express it.
-  ...[2, 3, 4, 5].map((i) => ({
-    id: `pl-filler-${i}`,
-    tripId: TRIP_ID,
-    name: `Filler ${i}`,
-    lat: 35.666 + i / 1000,
-    lng: 139.717 + i / 1000,
-    ...stamps,
-  })),
+  // **Filler below**: `scrollIntoView({ block: 'start' })` can only bring a row's top to the top
+  // if there is content BELOW it to scroll into. With two rows the scroller maxed out 102px short
+  // — a limit of the scroll extent, not of the alignment — so the spec that measures the alignment
+  // needs a list long enough to express it.
+  ...[2, 3, 4, 5].map(filler),
 ];
 
 const events = places.map((p, i) => ({
@@ -150,9 +161,13 @@ async function boot(
   await expect(page.locator('.map-list .place')).toHaveCount(places.length);
 }
 
+/** The row we know something about, addressed by id rather than by position — it is no longer
+ *  first, and `.first()` was always saying "the known one" rather than "the top one". */
+const knownRow = (page: Page) => page.locator('.map-list .place[data-place="pl-known"]');
+
 /** Select the row we know something about — the reveal is selection-gated, like the notes. */
 async function selectKnown(page: Page) {
-  await page.locator('.map-list .place').first().click();
+  await knownRow(page).click();
   await expect(page.locator('.map-list .place.selected')).toHaveCount(1);
   await expect(page.locator('.map-sum')).toBeVisible();
 }
@@ -343,7 +358,18 @@ test('a place we know nothing about draws no block, and still offers עוד בג
 async function measureLanding(page: Page) {
   return page.evaluate(() => {
     const el = document.querySelector('.map-list .place.selected') as HTMLElement;
-    const scroller = document.querySelector('.body') as HTMLElement;
+    // **The card's OWN scroller, found rather than named.** The app scrolls with
+    // `row.scrollIntoView({ block: 'start' })`, which acts on the nearest scrollable ancestor,
+    // and which element that is depends on the path: `.wp-snapsheet-body` when a map is rendered
+    // (the card is inside the sheet), the shell's `.body` on the list-only one. Naming `.body`
+    // asserted the invariant against a box the card is not inside at all whenever there is a map.
+    // Resolved by COMPUTED OVERFLOW, not by `scrollHeight`: `.wp-reveal` overflows its content
+    // under `overflow: clip` and would otherwise win.
+    let scroller = el.parentElement;
+    while (scroller && !/^(auto|scroll)$/.test(getComputedStyle(scroller).overflowY)) {
+      scroller = scroller.parentElement;
+    }
+    scroller ??= document.querySelector('.body') as HTMLElement;
     const r = el.getBoundingClientRect();
     const s = scroller.getBoundingClientRect();
     return {
@@ -366,7 +392,7 @@ test.describe('the selected card scrolls to its top @390', () => {
 
   test('brings the card’s top to the top of the list, not its middle', async ({ page }) => {
     // A card tall enough that the old modes misbehaved: summary + the notes section + the footer.
-    const row = page.locator('.map-list .place').first();
+    const row = knownRow(page);
     const before = await row.evaluate((el) => Math.round(el.getBoundingClientRect().top));
     await row.click();
     await expect(page.locator('.map-sum')).toBeVisible();
@@ -390,7 +416,7 @@ test.describe('the selected card scrolls to its top @390', () => {
   // The expansion is the bigger version of the same growth — and the one the owner's screenshot
   // caught opening under the tab bar.
   test('does the same when the card expands', async ({ page }) => {
-    const row = page.locator('.map-list .place').first();
+    const row = knownRow(page);
     await row.click();
     await expect(page.locator('.map-sum')).toBeVisible();
     await page.getByRole('button', { name: 'עוד', exact: true }).click();
