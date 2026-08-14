@@ -550,6 +550,12 @@ const MAP_ATTEMPT = {
   failed: 'FAILED',
 } as const;
 
+/** **Everything in the pane that is not the canvas** — see `handlePaneClick`. Anything
+ *  interactive answers for its own tap, and the two named classes cover the markers that are
+ *  deliberately NOT interactive: a pin carries `role="button"`, but the draft marker is
+ *  `aria-hidden` with none and must still not read as a tap on the ground beneath it. */
+const PANE_CHROME = 'button, [role="button"], a, input, .map-pin, .map-result';
+
 function MapPaneInner({
   scheme,
   urls,
@@ -898,12 +904,20 @@ function MapPaneInner({
    *
    *  What GOES is the third case — `event.detail.placeId`, Google's answer to a tap on one of
    *  its own POI icons. There is no vendor POI layer to tap and no info window behind it, so
-   *  the outcome three passes argued about cannot arise from either end (ADR-0186 §2). */
+   *  the outcome three passes argued about cannot arise from either end (ADR-0186 §2).
+   *
+   *  **And the exclusion is by ROLE first, not by a list of our own class names**, because the
+   *  class list is the version of this that rots: it has to be remembered every time the pane
+   *  grows a control, and the two it had already missed were the retry pill and the diagnostic
+   *  toggle — both inside the pane, so tapping either also cleared the selection. Under Google
+   *  none of this arose, since the canvas reported its own taps and our chrome was never in that
+   *  stream. `.map-pin` stays named beside the roles for the one case a role cannot cover: the
+   *  draft marker is `aria-hidden` with no role, and it sits directly under the open form a
+   *  canvas tap would dismiss (ADR-0147 §5). */
   const handlePaneClick = useCallback(
     (event: { target: EventTarget | null }) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest?.('.map-pin, .map-result, .map-camctl, .map-areacount, .map-diag'))
-        return;
+      if (target?.closest?.(PANE_CHROME)) return;
       if (gestureTapRef.current) return;
       onCanvasTap();
     },

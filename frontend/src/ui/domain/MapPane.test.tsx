@@ -723,6 +723,37 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       expect(onCanvasTap).toHaveBeenCalledTimes(1);
     });
 
+    // **The two the first pass missed**, and they are the reason the exclusion is by ROLE rather
+    // than by a list of our own class names: the failure chrome lives INSIDE the pane, so under a
+    // class list a tap on the retry pill or on `אבחון` also cleared the selection. Under Google
+    // this could not arise at all — the canvas reported its own taps and our chrome was never in
+    // that stream — so it is a hazard the swap introduced and this is the guard for it.
+    it('a tap on the failure chrome is not a tap on the canvas either', () => {
+      const onCanvasTap = vi.fn();
+      paint({ onCanvasTap });
+      act(() => canvas.firstPaint?.());
+      // A context death after the paint is what puts the retry and the diagnostic on screen.
+      act(() => {
+        document
+          .querySelector('[data-map]')!
+          .dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
+      });
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      expect(onCanvasTap).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+      expect(onCanvasTap).not.toHaveBeenCalled();
+    });
+
+    // The draft marker is the one marker with no role: it is `aria-hidden`, because the form
+    // beneath it is what acts on that point (ADR-0147 §5). It still must not read as a tap on the
+    // ground, or the release of the gesture that opened the form dismisses it.
+    it('a tap on the draft marker is not a tap on the canvas', () => {
+      const onCanvasTap = vi.fn();
+      paint({ onCanvasTap, draftMarker: { lat: 35.6, lng: 139.7, hue: 'food', glyph: '🍜' } });
+      fireEvent.click(document.querySelector('.map-pin.pending')!);
+      expect(onCanvasTap).not.toHaveBeenCalled();
+    });
+
     // **The release of one of OUR gestures is not a tap** (ADR-0148's build-log amendment).
     // Reported from a phone: a long press opened the form and lifting the finger closed it
     // again, because since §7 a canvas tap dismisses the form. The seam is what this covers
