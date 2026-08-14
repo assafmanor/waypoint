@@ -13,6 +13,7 @@
 // Drawn and rendered first in `mockups/map-basemap-ours-v1.html`, which is where these
 // values were judged against real Tokyo tiles rather than reasoned about.
 import { layers, namedFlavor } from '@protomaps/basemaps';
+import { MAP_TRIP_MAXZOOM, MAP_WORLD_MAXZOOM } from '@waypoint/shared';
 import type { StyleSpecification } from 'maplibre-gl';
 import { MAP_COLOR_SCHEME, type MapColorScheme, type MapTileUrls } from './map-config';
 
@@ -171,15 +172,46 @@ export function mapBackground(scheme: MapColorScheme): string {
  */
 export function mapStyle(scheme: MapColorScheme, urls: MapTileUrls): StyleSpecification {
   const flavor = scheme === MAP_COLOR_SCHEME.dark ? DARK : LIGHT;
-  const vector = (url: string) =>
-    ({ type: 'vector', url: `pmtiles://${url}`, attribution: MAP_ATTRIBUTION }) as const;
+  /**
+   * **The tile TEMPLATE, never the archive's metadata** — and this is the whole of the
+   * 2026-08-14 blank map.
+   *
+   * A `url: 'pmtiles://…'` source makes MapLibre fetch the archive as TileJSON, and the pmtiles
+   * protocol answers by synthesising one **from the archive's own header**: `minzoom`, `maxzoom`
+   * and `bounds`. Those are then authoritative, and MapLibre clips tile loading to them. So an
+   * archive whose header carries a degenerate or wrong bbox produces a source that requests **no
+   * tiles at all and reports no error** — pmtiles only `console.error`s an invalid bbox and hands
+   * it over anyway. On the device that read exactly as `tiles:0 err:none` with the archive serving
+   * clean 206s, which is a state no amount of retrying could improve.
+   *
+   * Declaring `tiles` skips the metadata step entirely: MapLibre uses the zooms stated here and
+   * defaults `bounds` to the whole world, so what the ground covers is a decision in this repo
+   * rather than a byte in a file the backend cut. It also removes a network round trip.
+   *
+   * **This is also why the e2e passed while the app did not.** That spec reads Protomaps' planet
+   * archive, whose header is correct by construction — so it exercised the one archive that could
+   * not expose this. Ours had never been read by any test.
+   */
+  const vector = (url: string, maxzoom: number) =>
+    ({
+      type: 'vector',
+      tiles: [`pmtiles://${url}/{z}/{x}/{y}`],
+      minzoom: 0,
+      maxzoom,
+      attribution: MAP_ATTRIBUTION,
+    }) as const;
 
   // The archive the map is actually drawn from. The trip's own where it exists, and the world
   // otherwise — which is a correct map at low zoom and, at the zoom this app OPENS at, very
   // nearly an empty one. See `mapTileUrls`: that is why the extract is not optional in practice.
   const detail = layers(urls.trip ? SOURCE : WORLD_SOURCE, flavor, { lang: 'he' });
   const detailSource = urls.trip ? SOURCE : WORLD_SOURCE;
-  const sources: Record<string, unknown> = { [detailSource]: vector(urls.trip ?? urls.world) };
+  const sources: Record<string, unknown> = {
+    [detailSource]: vector(
+      urls.trip ?? urls.world,
+      urls.trip ? MAP_TRIP_MAXZOOM : MAP_WORLD_MAXZOOM,
+    ),
+  };
 
   // `background` carries no source and must appear exactly once, first.
   const background = detail.filter((layer) => layer.type === 'background');
@@ -203,7 +235,7 @@ export function mapStyle(scheme: MapColorScheme, urls: MapTileUrls): StyleSpecif
   // as a blurry double. Fills are land, water and landcover, and a doubled fill is invisible
   // because the two are the same colour by construction. Ids are prefixed because `layers()`
   // generates the same ~70 ids for any source it is given.
-  sources[WORLD_SOURCE] = vector(urls.world);
+  sources[WORLD_SOURCE] = vector(urls.world, MAP_WORLD_MAXZOOM);
   const underlay = layers(WORLD_SOURCE, flavor, { lang: 'he' })
     .filter((layer) => layer.type === 'fill')
     .map((layer) => ({ ...layer, id: `world-${layer.id}` }));

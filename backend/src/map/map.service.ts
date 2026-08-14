@@ -5,7 +5,7 @@
 // 127.88 GiB and the slice of it a trip needs is ~16–23 MB, so storing the slice is both
 // cheaper and faster than range-proxying the source per tile (§3's 2026-08-13 amendment).
 import { Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
-import type { LatLng } from '@waypoint/shared';
+import { MAP_WORLD_MAXZOOM, type LatLng } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { getObject, putObject } from '../common/storage';
 import {
@@ -20,7 +20,7 @@ import { buildExtract } from './pmtiles-extract';
 /** The shared coarse layer every trip falls back to, so nowhere is ever blank — including
  *  the ground between a trip's areas and any place it does not cover at all (§4).
  *  **Measured: 42.7 MB at z0–6**, against 525.6 MB at z0–8, which is why the floor is 6. */
-export const WORLD_MAXZOOM = 6;
+export const WORLD_MAXZOOM = MAP_WORLD_MAXZOOM;
 export const WORLD_KEY = `${MAP_KEY_PREFIX}world-z${WORLD_MAXZOOM}.pmtiles`;
 
 /** **How long to tell a client to wait for an archive that is still being cut.** A world layer

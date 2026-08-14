@@ -98,6 +98,19 @@ export function haversineMeters(from: LatLng, to: LatLng): number {
  *  spread (Shibuya→Narita is ~60km, so the airport is correctly its own area)
  *  and a city's own sprawl (Shibuya→Shinjuku is ~3km). It is a number to
  *  re-measure against real trips, not a constant anything else depends on. */
+/**
+ * **The two archives' zoom ceilings** (ADR-0186 §4, both measured rather than chosen).
+ *
+ * Shared because both sides need the same number and for opposite reasons: the backend passes it
+ * to `pmtiles extract --maxzoom`, and the frontend's style declares it as the source's `maxzoom`
+ * so MapLibre knows when to overzoom instead of asking the archive. Two copies of this number
+ * would mean a style that silently stops requesting tiles one level early.
+ */
+export const MAP_WORLD_MAXZOOM = 6;
+/** z0-14 is the detail floor that makes the map worth having on the ground: street names and
+ *  building footprints, enough to walk a neighbourhood (§4). z15+ is refused as a storage lever. */
+export const MAP_TRIP_MAXZOOM = 14;
+
 export const MAP_AREA_LINK_RADIUS_M = 40_000;
 
 /** How much ground each area keeps around its own stops. You walk off the edge of

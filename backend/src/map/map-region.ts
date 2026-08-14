@@ -7,12 +7,12 @@
 // the region as GeoJSON, and a signature that says whether an existing extract is
 // still the right one.
 import { createHash } from 'node:crypto';
-import { mapDownloadAreas, type GeoBounds, type LatLng } from '@waypoint/shared';
+import { mapDownloadAreas, type GeoBounds, type LatLng, MAP_TRIP_MAXZOOM } from '@waypoint/shared';
 
 /** The detail floor an area is cut to (ADR-0186 §4, owner's call). Street names and
  *  building footprints — enough to walk a neighbourhood, which is what the map is for
  *  on the ground. Measured at **22.7 MB** for ~32×28km of central Tokyo. */
-export const MAP_EXTRACT_MAXZOOM = 14;
+export const MAP_EXTRACT_MAXZOOM = MAP_TRIP_MAXZOOM;
 
 /** **One extract per TRIP, not per cluster** — a refinement of §4 that costs nothing and
  *  removes a moving part. `pmtiles extract` takes a GeoJSON MultiPolygon, so every one of

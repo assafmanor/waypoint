@@ -524,3 +524,56 @@ Docker daemon here — and this change does not depend on it: if the cut still f
 fast, named error instead of a hang, and `err:` will carry `explainExtractFailure`'s one-line
 verdict. The next reading distinguishes the three remaining states cleanly: `503` in `err:` means
 the cut is still running, a CA message means the image is still wrong, and `tiles:N` means it worked.
+
+## Amendment (2026-08-14, session 269f) — the archive's own header was suppressing the render
+
+`world:206/86ms extract:206/105ms` with `tiles:0 err:none`. Both archives served, authenticated,
+correct range responses — and the renderer asking for nothing, silently. I said I would stop
+patching if this reading came back and read the protocol path instead, so this is that.
+
+**`sendRange` is correct** (206, right `Content-Range`, right `Content-Length`, right slice), which
+leaves exactly one silent suppressor in the chain, and it is in the part nobody had read:
+
+```js
+// pmtiles Protocol.tilev4, the `type === 'json'` branch
+(f.minLon >= f.maxLon || f.minLat >= f.maxLat) && console.error('Bounds … are not valid.');
+return {
+  data: {
+    tiles: [`${t.url}/{z}/{x}/{y}`],
+    minzoom: f.minZoom,
+    maxzoom: f.maxZoom,
+    bounds: [f.minLon, f.minLat, f.maxLon, f.maxLat],
+  },
+};
+```
+
+A source declared as `url: 'pmtiles://…'` makes MapLibre fetch the archive **as TileJSON**, and the
+protocol synthesises that from the **archive's own header**. Those `bounds` and zooms are then
+authoritative, and MapLibre clips tile loading to them. An archive whose header carries a degenerate
+or wrong bbox therefore yields a source that requests **no tiles at all and reports no error** —
+pmtiles `console.error`s an invalid bbox and hands it over regardless. `tiles:0 err:none`, on clean
+206s, unimprovable by any retry.
+
+**So the style declares the template instead**: `tiles: ['pmtiles://<url>/{z}/{x}/{y}']` with
+`minzoom: 0` and an explicit `maxzoom`, and no `bounds` at all. MapLibre then defaults bounds to the
+whole world and clips nothing, and what the ground covers becomes a decision in this repo rather
+than a byte in a file the backend cut. It also drops a network round trip.
+
+`MAP_WORLD_MAXZOOM` (6) and `MAP_TRIP_MAXZOOM` (14) move to `@waypoint/shared`, because both sides
+now need the same number for opposite reasons — the backend passes it to `pmtiles extract --maxzoom`
+and the style states it as the source's ceiling. Two copies would be a source that silently stops
+requesting tiles one level early.
+
+**And this is why every test passed while the app did not.** `e2e/map-renders.spec.ts` reads
+Protomaps' **planet** archive, whose header is correct by construction — so the one archive it
+exercises is the one that cannot expose this. **No test has ever read an archive our own
+`pmtiles extract` produced**, and none can here: there is no `pmtiles` binary in the agent sandbox
+and no Docker daemon to build the image that has one. The guard that replaces it is structural
+rather than empirical: `map-style.test.ts` asserts no source may use `url:`, every source states its
+own zoom range, and none states `bounds` — so the class is gone by construction instead of by
+observation.
+
+**What is still owed, and it is the same thing as three amendments ago:** a CI step that builds the
+runtime image, cuts a small real extract, and renders it. Every failure in this chain — the CA
+store, the request-path build, and now the header metadata — has been invisible to a test suite
+running on a machine that already has a CA store and reading an archive somebody else built.

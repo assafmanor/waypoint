@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAP_TRIP_MAXZOOM, MAP_WORLD_MAXZOOM } from '@waypoint/shared';
 import { MAP_COLOR_SCHEME } from './map-config';
 import { MAP_ATTRIBUTION, isGroundSource, mapBackground, mapStyle } from './map-style';
 
@@ -23,15 +24,15 @@ describe('mapStyle', () => {
     // §3's "one tile source, read remotely until it is local" — nothing in the style
     // knows which it got, which is what keeps offline from being a second code path.
     const style = mapStyle(MAP_COLOR_SCHEME.light, URLS);
-    const source = Object.values(style.sources)[0] as { url: string };
-    expect(source.url).toBe(`pmtiles://${URLS.trip}`);
+    const source = Object.values(style.sources)[0] as { tiles: string[] };
+    expect(source.tiles).toEqual([`pmtiles://${URLS.trip}/{z}/{x}/{y}`]);
   });
 
   it('falls back to the world layer for a trip with no archive', () => {
     // A trip nobody has added a place to yet still draws a map (§4).
     const style = mapStyle(MAP_COLOR_SCHEME.light, { world: URLS.world });
-    const source = Object.values(style.sources)[0] as { url: string };
-    expect(source.url).toBe(`pmtiles://${URLS.world}`);
+    const source = Object.values(style.sources)[0] as { tiles: string[] };
+    expect(source.tiles).toEqual([`pmtiles://${URLS.world}/{z}/{x}/{y}`]);
   });
 
   it('carries OSM attribution, which the licence does not make optional', () => {
@@ -64,7 +65,7 @@ describe('the two reads (ADR-0186 §3/§4)', () => {
     const style = mapStyle(MAP_COLOR_SCHEME.light, WORLD_ONLY);
     const sources = Object.keys(style.sources);
     expect(sources).toHaveLength(1);
-    expect((style.sources[sources[0]!] as { url: string }).url).toContain('world.pmtiles');
+    expect((style.sources[sources[0]!] as { tiles: string[] }).tiles[0]).toContain('world.pmtiles');
   });
 
   it('puts the world UNDER the trip archive once there is one', () => {
@@ -130,5 +131,48 @@ describe('the ground keeps ADR-0125 §8 ratios', () => {
     const darkGround = luminance(mapBackground(MAP_COLOR_SCHEME.dark));
     const lightestPin = luminance('#d9c08a'); // --cat-services, the lightest of the five
     expect(lightestPin / darkGround).toBeGreaterThan(4);
+  });
+});
+
+/* **THE ARCHIVE'S HEADER MUST NOT BE ABLE TO SUPPRESS RENDERING** (2026-08-14).
+   A `url: 'pmtiles://…'` source makes MapLibre fetch the archive as TileJSON, which the pmtiles
+   protocol synthesises from the archive's own header — `minzoom`, `maxzoom` and `bounds`, all then
+   authoritative, with tile loading clipped to them. pmtiles only `console.error`s an invalid bbox
+   and hands it over anyway, so a bad header produces a source that requests NO tiles and reports NO
+   error: `tiles:0 err:none` on the device, with the archive serving clean 206s.
+
+   Declaring `tiles` instead means what the ground covers is a decision here rather than a byte in a
+   file the backend cut. Asserted because the failure mode is silence — nothing throws, nothing logs
+   in production, and the map is simply empty. */
+describe('the source spec cannot be overruled by the archive', () => {
+  const sourcesOf = (urls: { world: string; trip?: string }) =>
+    Object.values(mapStyle(MAP_COLOR_SCHEME.light, urls).sources) as Record<string, unknown>[];
+
+  it('states a tile template, never a TileJSON url', () => {
+    for (const urls of [{ world: 'w.pmtiles' }, { world: 'w.pmtiles', trip: 't.pmtiles' }]) {
+      for (const source of sourcesOf(urls)) {
+        expect(source.url).toBeUndefined();
+        expect(source.tiles).toEqual([
+          expect.stringMatching(/^pmtiles:\/\/.+\/\{z\}\/\{x\}\/\{y\}$/),
+        ]);
+      }
+    }
+  });
+
+  it('states its own zoom range, and never a bbox that could clip the world', () => {
+    const [detail, world] = sourcesOf({ world: 'w.pmtiles', trip: 't.pmtiles' });
+    // The trip archive is z0-14 and the coarse ground z0-6; a wrong ceiling here is a source that
+    // silently stops requesting tiles one level early instead of overzooming.
+    expect(detail).toMatchObject({ minzoom: 0, maxzoom: MAP_TRIP_MAXZOOM });
+    expect(world).toMatchObject({ minzoom: 0, maxzoom: MAP_WORLD_MAXZOOM });
+    // No `bounds` at all: MapLibre then defaults to the whole world and clips nothing.
+    for (const source of sourcesOf({ world: 'w.pmtiles', trip: 't.pmtiles' })) {
+      expect(source.bounds).toBeUndefined();
+    }
+  });
+
+  it('uses the WORLD ceiling when there is no trip extract yet', () => {
+    const [only] = sourcesOf({ world: 'w.pmtiles' });
+    expect(only).toMatchObject({ maxzoom: MAP_WORLD_MAXZOOM });
   });
 });
