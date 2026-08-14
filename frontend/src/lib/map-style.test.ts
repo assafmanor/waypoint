@@ -1,3 +1,5 @@
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { MAP_TRIP_MAXZOOM, MAP_WORLD_MAXZOOM } from '@waypoint/shared';
 import { MAP_COLOR_SCHEME } from './map-config';
@@ -174,5 +176,49 @@ describe('the source spec cannot be overruled by the archive', () => {
   it('uses the WORLD ceiling when there is no trip extract yet', () => {
     const [only] = sourcesOf({ world: 'w.pmtiles' });
     expect(only).toMatchObject({ maxzoom: MAP_WORLD_MAXZOOM });
+  });
+});
+
+/* **THE LABELS' GLYPHS ARE OURS AND ARE ON DISK** (ADR-0186 §3, Phase 3).
+   A GL renderer draws no label with the page's fonts — it fetches pre-rendered SDF glyphs from
+   the style's `glyphs` template, on the tile worker. That template pointed at a vendor host,
+   which §3 forbids and a plane makes useless.
+
+   Reading the directory rather than trusting the URL, because the failure this guards is a
+   fontstack `@protomaps/basemaps` starts naming that `scripts/fetch-map-glyphs.mjs` was never
+   re-run for: MapLibre then falls back to TinySDF and draws that script in the system font at
+   the wrong weight, in whatever country nobody tested. Nothing throws. */
+describe('the glyphs are self-hosted (ADR-0186 §3)', () => {
+  const GLYPH_ROOT = fileURLToPath(new URL('../../public/map-glyphs', import.meta.url));
+  const RANGES = 256;
+
+  /** The fontstacks the style really names. `text-font` is an expression, not a string, and
+   *  which stacks it reaches depends on `lang` — so this reads them out rather than listing. */
+  function fontstacks(): string[] {
+    const found = new Set<string>();
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) value.forEach(walk);
+      else if (typeof value === 'string' && value.startsWith('Noto')) found.add(value);
+    };
+    for (const scheme of [MAP_COLOR_SCHEME.light, MAP_COLOR_SCHEME.dark]) {
+      for (const layer of mapStyle(scheme, URLS).layers) {
+        walk((layer as { layout?: Record<string, unknown> }).layout?.['text-font']);
+      }
+    }
+    return [...found];
+  }
+
+  it('points at our own origin, never a vendor host', () => {
+    const { glyphs } = mapStyle(MAP_COLOR_SCHEME.light, URLS);
+    expect(glyphs).toBe('/map-glyphs/{fontstack}/{range}.pbf');
+  });
+
+  it('has every range of every fontstack the style names', () => {
+    const stacks = fontstacks();
+    expect(stacks.length).toBeGreaterThan(0);
+    for (const stack of stacks) {
+      // All 256, including the empty ones: a range that 404s is a label rendered locally.
+      expect(readdirSync(`${GLYPH_ROOT}/${stack}`)).toHaveLength(RANGES);
+    }
   });
 });

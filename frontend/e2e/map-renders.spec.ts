@@ -128,6 +128,33 @@ test('the RTL text plugin loads, from our origin, as JavaScript', async ({ page 
   expect(script!.type).toMatch(/javascript|ecmascript/i);
 });
 
+// ── THE LABELS' GLYPHS ARE SERVED, AS BYTES (ADR-0186 §3, Phase 3) ──
+//
+// A GL renderer fetches pre-rendered SDF glyphs per 256-codepoint range; that template pointed at
+// `protomaps.github.io` until Phase 3, which §3 forbids and a plane makes useless. Vendored into
+// `public/map-glyphs/` — and **whether a `public/` file is actually SERVED is a build-time fact**,
+// which is the class this suite learned to distrust the hard way (amendment 269i).
+//
+// Asked over HTTP rather than through the map, deliberately: glyphs are only requested once a tile
+// carrying a label has parsed, so routing this through a render would make it an opt-in test of the
+// network instead of a hermetic test of the build. The failure it catches is the same 200-with-HTML
+// trap as the worker's — a miss does not 404 loudly, it comes back looking like success.
+test('the glyph ranges are served from our origin as bytes, not as the app shell', async ({
+  request,
+}) => {
+  // Latin and Hebrew: the two the app cannot do without, one of them the UI's own script.
+  for (const range of ['0-255', '1280-1535']) {
+    const res = await request.get(
+      `/map-glyphs/${encodeURIComponent('Noto Sans Regular')}/${range}.pbf`,
+    );
+    expect(res.status()).toBe(200);
+    const body = await res.body();
+    expect(body.byteLength).toBeGreaterThan(1000);
+    // `<` is `index.html`. A protobuf's first byte is a field tag, never that.
+    expect(body[0]).not.toBe('<'.charCodeAt(0));
+  }
+});
+
 test('a ground that cannot be read is REPORTED, not left blank', async ({ page }) => {
   await openMap(page);
 
@@ -165,6 +192,15 @@ test('the ground draws from a real archive', async ({ page }, testInfo) => {
     });
   }
 
+  // What the spec above cannot see: whether the RENDERER asks for the ranges we serve. The
+  // fontstack is a directory name with spaces in it, MapLibre substitutes it unencoded, and a
+  // miss does not fail — it falls back to TinySDF and draws the label in the system font with a
+  // console warning nobody reads. So the request is the assertion.
+  const glyphs: number[] = [];
+  page.on('response', (res) => {
+    if (res.url().includes('/map-glyphs/')) glyphs.push(res.status());
+  });
+
   await openMap(page);
 
   // **The app's own first-paint signal is the assertion.** Since 2026-08-14 it fires only when a
@@ -173,6 +209,9 @@ test('the ground draws from a real archive', async ({ page }, testInfo) => {
   // archive from another continent.
   await expect(page.locator('.map-loading')).toHaveCount(0, { timeout: 60_000 });
   await expect(page.getByText('פרטים')).toHaveCount(0);
+
+  await expect.poll(() => glyphs.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  expect(glyphs.every((status) => status === 200)).toBe(true);
 
   // Kept as evidence rather than as an assertion about pixels: a human reads this once, and it is
   // the only artefact in the suite that shows the terrain at all.

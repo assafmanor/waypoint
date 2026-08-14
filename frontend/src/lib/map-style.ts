@@ -32,10 +32,18 @@ const WORLD_SOURCE = 'protomaps-world';
 export const isGroundSource = (id: string | undefined): boolean =>
   id === SOURCE || id === WORLD_SOURCE;
 
-/** Glyph and sprite assets. Protomaps' own public asset host, which is a static CDN of
- *  fonts rather than a tile service — it is not on the offline path, because MapLibre
- *  caches glyph ranges and our labels are a bounded set. */
-const GLYPHS = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
+/** **Where the labels' glyphs come from, and it is us** (ADR-0186 §3).
+ *
+ *  A GL renderer does not draw labels with the page's fonts: it fetches pre-rendered SDF
+ *  glyphs from this template, 256 codepoints per request, on the tile worker. This pointed at
+ *  `protomaps.github.io` until Phase 3 — a vendor host on a user's fetch path, and a map
+ *  downloaded for a flight that draws no label it has not already seen.
+ *
+ *  Vendored into `public/` by `scripts/fetch-map-glyphs.mjs`, and **relative on purpose**: the
+ *  service worker only caches what it can match same-origin, and Phase 3's download warms these
+ *  ranges through the same cache. `map-style.test.ts` fails if a fontstack the style names has
+ *  no directory on disk — which is the only way to notice upstream adding one. */
+const GLYPHS = '/map-glyphs/{fontstack}/{range}.pbf';
 
 /** OSM's licence requires attribution, and it is not optional. It replaces Google's logo
  *  in the band ADR-0121 §5's layout already reserves at the canvas's bottom. */

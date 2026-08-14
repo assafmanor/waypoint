@@ -155,6 +155,25 @@ export default defineConfig(({ command }) => {
           // Backend-owned navigations (OAuth redirect, /health) must hit the
           // network — the default fallback serves the cached shell for ALL paths.
           navigateFallbackDenylist: [SERVER_ROUTE_PATTERN],
+          // **The basemap's glyphs, cached but deliberately NOT precached**
+          // (ADR-0186 §3/§5). A GL renderer fetches pre-rendered SDF glyphs per
+          // 256-codepoint range, and `public/map-glyphs/` holds all 768 of them —
+          // 11.1 MB, which is exactly the automatic-download-on-roaming §5 was
+          // written against, so it is not put in the install manifest. Ranges
+          // arrive as labels need them and then survive offline; Phase 3's
+          // archive download warms the rest by fetching them under §5's gate,
+          // which needs no cache name of its own because this rule catches it.
+          //
+          // Ceiling worth naming: CacheFirst never revalidates, so re-vendoring
+          // different glyph bytes needs a new path (or a cacheName bump), not a
+          // redeploy. They are Noto releases — this will not happen often.
+          runtimeCaching: [
+            {
+              urlPattern: /\/map-glyphs\/.*\.pbf$/,
+              handler: 'CacheFirst',
+              options: { cacheName: 'map-glyphs' },
+            },
+          ],
         },
         manifest: {
           name: APP_TITLE,
