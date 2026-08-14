@@ -1,4 +1,4 @@
-// The one-finger zoom's recogniser (ADR-0145 §1/§4), as a table with no Google and no DOM.
+// The one-finger zoom's recogniser (ADR-0145 §1/§4), as a table with no renderer and no DOM.
 //
 // This file is the reason the gesture is not a human-pass-only change. Five sessions
 // (115/116/119/122/125) got a drag wrong in this repo, and the recurring shape was that
@@ -50,10 +50,10 @@ const M = DRAG_ZOOM_EVENT.MOVE;
 const U = DRAG_ZOOM_EVENT.UP;
 const C = DRAG_ZOOM_EVENT.CANCEL;
 
-describe('reduceDragZoom — what Google gets and what we take', () => {
-  it('passes a single tap straight through, so a POI tap and a canvas tap are untouched', () => {
+describe('reduceDragZoom — what the renderer gets and what we take', () => {
+  it('passes a single tap straight through, so a canvas tap is untouched', () => {
     // The whole of phase A: nothing is armed, nothing is intercepted. If this ever returns
-    // anything but PASS, tapping Google's own sight icons stops working.
+    // anything but PASS, a plain tap on the canvas stops clearing the selection.
     const { actions } = run([
       [D, 50, 50, 0],
       [U, 50, 50, 80],
@@ -90,7 +90,7 @@ describe('reduceDragZoom — what Google gets and what we take', () => {
 
   it('stays provisional below the slop, and releasing there owes a step-zoom', () => {
     // Phase B is undecided on purpose: a double-tap must still zoom, because intercepting
-    // the gesture suppressed Google's own (§2). This is that debt.
+    // the gesture suppressed the renderer's own (§2). This is that debt.
     const { actions } = run([
       [D, 50, 50, 0],
       [U, 50, 50, 60],
@@ -332,7 +332,7 @@ describe('doubleTapZoom — one level from wherever you are', () => {
 });
 
 describe('zoomAboutPoint — the tapped point stays put', () => {
-  // Pure scale arithmetic in Google's world space. The invariant is stated the way the
+  // Pure scale arithmetic in the renderer's world space. The invariant is stated the way the
   // derivation states it: the tapped point's world position must be reachable from the NEW
   // centre at the NEW zoom using the SAME screen offset.
   const invariant = (offset: { x: number; y: number }, from: number, to: number) => {

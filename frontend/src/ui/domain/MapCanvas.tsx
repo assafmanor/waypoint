@@ -172,8 +172,19 @@ export function MapCanvas({
           // is not optional (ADR-0186's Consequences). See `.map-attrib` in `MapPane`.
           attributionControl: false,
           // ADR-0121 §12's decisions, which stop being suppressions and become choices:
-          // there is no vendor POI layer and no vendor UI to disable here.
+          // there is no vendor POI layer and no vendor chrome to disable here.
           keyboard: false,
+          // **The one vendor GESTURE we do turn off**, because it is the only one we
+          // reimplemented: `useCanvasGestures` owns the double-tap, both as a step in and as
+          // the tap-then-drag zoom (ADR-0145), and MapLibre ships its own `ClickZoomHandler`
+          // /`TapZoomHandler` for the same input. Ours wins today only because its
+          // capture-phase guard starves theirs of events — which is one `stopPropagation`
+          // away from two step-zooms on one tap. Off at the source instead.
+          //
+          // Its sibling `TapDragZoomHandler` cannot be turned off here: it is enabled and
+          // disabled with `touchZoomRotate`, i.e. with the pinch, so switching it off would
+          // cost the gesture we do want. The capture guard remains what keeps it quiet.
+          doubleClickZoom: false,
         });
         mapRef.current = map;
 

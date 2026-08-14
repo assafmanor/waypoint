@@ -591,7 +591,7 @@ export const DRAG_SCROLLER_MIN_OVERFLOW_PX = 24;
  *
  *  Shared rather than forked because the justification is the platform's, not the
  *  surface's: a finger is a finger. If the device pass finds the canvas wants its own —
- *  it competes with Google's pan, where the shelf competes with a scroll — that is when
+ *  it competes with the renderer's pan, where the shelf competes with a scroll — that is when
  *  it splits, and not before. */
 export const DRAG_HOLD_MS = 500;
 export const DRAG_HOLD_SLOP_PX = 8;
@@ -659,10 +659,12 @@ export const MAP_CONTROLS_H = 46;
  *  from one constant that also writes the CSS `min-height` (ADR-0122 §3), so a taller
  *  top can never clip. It is also the `map` stop's whole height. */
 export const MAP_SHEET_STRIP_H = 52;
-/** Google draws its logo and terms link at the bottom-inline-start of the map div and
- *  the ToS forbids obscuring them (ADR-0106 §B), so anything floating at the pane's
- *  bottom clears them by their own height — a named clearance, not a hand-tuned
- *  offset (ADR-0122 §7). */
+/** The band the pane reserves for attribution at the bottom-inline-start of the canvas, so
+ *  anything floating there clears it by its own height — a named clearance, not a hand-tuned
+ *  offset (ADR-0122 §7). It was Google's logo and terms link, which its ToS forbade obscuring
+ *  (ADR-0106 §B); since ADR-0186 §2 the band holds `.map-attrib`, which we draw ourselves
+ *  because MapLibre's own control ignores an RTL page — and OSM's ODbL attribution is no more
+ *  optional than Google's was. */
 export const MAP_ATTRIBUTION_H = 22;
 /** The gap the pane's floating furniture leaves below the controls row. Paired with
  *  the `8px` in `map.css` / `map-pane.css`, which is the same offset the re-centre
@@ -822,7 +824,7 @@ export const MAP_ZOOM = {
  *  made again. */
 export const MAP_DRAG_ZOOM = {
   /** Raised 300 → 500 and 24 → 44 after the device pass reported the gesture sometimes
-   *  not being recognised at all, leaving Google to pan instead. A double-tap that
+   *  not being recognised at all, leaving the renderer to pan instead. A double-tap that
    *  *keeps its finger down* is slower and sloppier than a double-click: the second press
    *  is deliberate, so it lands later and further away. **44 is ADR-0017's touch floor**,
    *  which makes it the principled number rather than a guessed one — two presses inside
@@ -896,10 +898,12 @@ export const MAP_FOCUS = {
  *  the owner's own framing of this report was "careful not to pan too much". */
 export const MAP_SEARCH_CAMERA = { SPREAD_CAP_DEG: 2, FITS_AT_ZOOM_SHARE: 0.8 } as const;
 
-/** **The camera's own animation** (ADR-0129 §3). Google animates `fitBounds` "depending
- *  on an internal heuristic" and `panTo` only when the move is shorter than the
- *  viewport, so smooth movement is not something the API can be asked for — it is
- *  something we drive, with `moveCamera` (documented as instant) once per frame.
+/** **The camera's own animation** (ADR-0129 §3). Written when smooth movement was not
+ *  something the API could be asked for — Google animated `fitBounds` "depending on an
+ *  internal heuristic" and `panTo` only for short moves — and kept for a reason that outlived
+ *  that one: MapLibre eases perfectly well, and a second easer underneath ours would be two
+ *  drivers on one map. So the move stays ours, `moveCamera` once per frame, and the adapter
+ *  binds it to `jumpTo` rather than `easeTo` (`map-camera-adapter`).
  *
  *  `DURATION_MS` is one duration for every camera move, so a day change, a chip and an
  *  arrival all read as the same object moving. Under `prefers-reduced-motion` the whole
