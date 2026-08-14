@@ -97,9 +97,49 @@ export async function buildExtract(
       await writeFile(regionPath, JSON.stringify(spec.region), 'utf8');
     }
     const args = extractArgs({ outPath, maxZoom: spec.maxZoom, regionPath, source: spec.source });
-    await run(process.env[PMTILES_BIN] || 'pmtiles', args);
+    try {
+      await run(process.env[PMTILES_BIN] || 'pmtiles', args);
+    } catch (error) {
+      throw new Error(explainExtractFailure(error), { cause: error });
+    }
     return await readFile(outPath);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * **Say what went wrong in one line, because the raw failure buries it.**
+ *
+ * `execFile` rejects with `Command failed: pmtiles extract …` and a Node stack; what the CLI
+ * actually said is on its **stdout**, several frames down in a log. On 2026-08-14 the sentence
+ * that mattered was one line inside forty:
+ *
+ *     tls: failed to verify certificate: x509: certificate signed by unknown authority
+ *
+ * That is not a tile problem, a network problem or a quota problem — it is the **runtime image
+ * having no system CA store**, and the reason it is easy to misread is that nothing else in the
+ * image is affected: Node bundles its own CA bundle, so every `fetch` from JavaScript verifies
+ * fine while the Go binary beside it cannot verify anything. Naming it here means the next person
+ * reads a fix rather than a stack.
+ */
+export function explainExtractFailure(error: unknown): string {
+  const said = [
+    (error as { stdout?: unknown } | null)?.stdout,
+    (error as { stderr?: unknown } | null)?.stderr,
+    error instanceof Error ? error.message : String(error),
+  ]
+    .map((part) => (typeof part === 'string' ? part : ''))
+    .join('\n');
+  if (/x509|certificate signed by unknown authority|failed to verify certificate/i.test(said)) {
+    return (
+      'pmtiles could not verify the upstream TLS certificate: the runtime image has no system ' +
+      'CA store. Install `ca-certificates` in the RUNTIME stage — Node bundles its own bundle, ' +
+      'so only the Go binary is affected and nothing else in the image looks broken.'
+    );
+  }
+  if (/ENOENT|not found/i.test(said)) {
+    return 'the `pmtiles` binary is not on PATH in this image (see `PMTILES_BIN`).';
+  }
+  return `pmtiles extract failed: ${said.split('\n').find(Boolean) ?? 'no output'}`;
 }

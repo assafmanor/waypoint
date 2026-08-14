@@ -76,6 +76,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
+# **`ca-certificates` is required AT RUNTIME, not only to fetch the binary above** — and
+# leaving it out of this stage is what made the map fail to load on 2026-08-14:
+#
+#     pmtiles extract https://build.protomaps.com/…: tls: failed to verify certificate:
+#     x509: certificate signed by unknown authority
+#
+# The trap is that the app itself is unaffected, so nothing else in the image looks wrong.
+# **Node bundles its own CA store**, so every `fetch` from JavaScript verifies fine; the
+# `pmtiles` binary is **Go**, which reads the SYSTEM store at `/etc/ssl/certs`, and
+# `node:22-slim` ships none. The builder stage installs the package to run `curl`, and only
+# the binary is copied forward — so the one process in this image that needs a system trust
+# store is the one process that had no access to one.
+#
+# `openssl` rides along for Prisma, which logs `failed to detect the libssl/openssl version`
+# on slim images and falls back to guessing an engine. Same class of omission, same fix.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
 # /out carries the prisma CLI + migrations for Railway's pre-deploy migrate.
 COPY --from=build /out ./

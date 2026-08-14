@@ -424,3 +424,53 @@ reached. `tile:110ms` in the reading was the tell and I under-read it — the di
 _settled_, so the route answers; a 401 settles just as fast as a 206. The binary question is still
 genuinely open, and the next reading now distinguishes it: `tiles:N` means the archive is being read
 and parsed, `tiles:0` with a different `err:` means it is not.
+
+## Amendment (2026-08-14, session 269d) — the image had no CA store
+
+The reading moved from 401 to **500**, which means the previous fix worked and the request now
+reaches `MapController`. The server log names the cause in one line, forty lines into a stack:
+
+```
+[MapService] cutting the world layer at z6
+ERROR GET /map/world.pmtiles -> 500
+Error: Command failed: pmtiles extract https://build.protomaps.com/20260813.pmtiles …
+  stdout: 'Failed to create range reader for 20260813.pmtiles,
+           Get "https://build.protomaps.com/20260813.pmtiles":
+           tls: failed to verify certificate: x509: certificate signed by unknown authority'
+```
+
+**The runtime image has no system CA store.** `ca-certificates` is installed in the Dockerfile's
+`pmtiles` stage — the one that runs `curl` to download the binary — and the `runtime` stage copies
+only the binary forward. `node:22-slim` ships no CA package.
+
+**What makes this hard to see, and worth writing down.** Nothing else in the image is affected.
+**Node bundles its own CA bundle**, so every HTTPS call from the application verifies correctly —
+which is exactly why the diagnostic read `self:114ms` and `tile:104ms` and why the app is otherwise
+healthy. The `pmtiles` binary is **Go**, and Go's `crypto/x509` reads the _system_ store at
+`/etc/ssl/certs`. So the one process in the image that needed a system trust store was the only one
+that never got the package. The `openssl` warnings above it in the same log (_"Prisma failed to
+detect the libssl/openssl version"_) are the same omission showing up somewhere harmless, and both
+are fixed by installing the two packages in the runtime stage.
+
+**Two things this closes from the previous amendment.** The `pmtiles` binary IS present and does
+run — the guess that it was missing was wrong, and the log settles it. And the archive was never
+built, so the question of whether the served bytes are valid PMTiles has not been reached yet.
+
+**Not verified by building the image, and that is stated rather than implied.** There is no Docker
+daemon in this environment, so the fix is reasoned from the error text and the Dockerfile's own
+structure — every link is checkable (a Go binary, the system store, a slim image, a builder-only
+install), but the image itself is unbuilt here. `explainExtractFailure` is the hedge against being
+wrong about it: an extract failure now reports its own cause in one actionable line instead of a
+stack, with the CA case, the missing-binary case and everything else separated. If the next reading
+is still a 500, its message says which.
+
+**What would actually have caught this**, and it is the only thing that would: a CI step that
+builds the runtime image and runs `pmtiles extract` against an HTTPS URL. Every test in this repo
+runs on a machine that has a CA store, so no unit or e2e test can see it — the defect lives in the
+image, not in the code. Backlogged rather than built, since it cannot even be developed here.
+
+**Once tiles do arrive, expect the first load to say "slow".** The world layer is cut on demand
+(42.7 MB, ~4 s measured) and the trip extract too (~10–13 s), both concurrently on a cold cache,
+against a 4 s watchdog. That is the designed behaviour since session 269b — the notice appears and
+retires itself when the tiles land — but it will be the first impression on a cold deploy, and it is
+better than the alternative of a bound long enough to hide a real failure.

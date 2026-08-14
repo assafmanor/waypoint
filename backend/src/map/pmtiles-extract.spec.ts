@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { MAP_TILES_SOURCE_URL, PMTILES_BIN } from '../common/env';
-import { DEFAULT_TILES_SOURCE, buildExtract, extractArgs } from './pmtiles-extract';
+import {
+  DEFAULT_TILES_SOURCE,
+  buildExtract,
+  extractArgs,
+  explainExtractFailure,
+} from './pmtiles-extract';
 
 /* The runner is injected, so everything here runs with no binary and no network. What
    is asserted is the argv (a wrong flag produces a valid archive of the wrong thing,
@@ -86,5 +91,41 @@ describe('buildExtract', () => {
     });
     await buildExtract({ maxZoom: 6 }, bin);
     expect(bin.mock.calls[0]![0]).toBe('/opt/pmtiles');
+  });
+});
+
+/* **The 2026-08-14 outage, as one assertion.** The map failed to load and the reading said
+   `err: Bad response code: 500`; the cause was one line on the CLI's stdout, forty lines into a
+   Nest stack: `tls: failed to verify certificate: x509: certificate signed by unknown authority`.
+   The runtime image had no system CA store, because `ca-certificates` was installed in the stage
+   that DOWNLOADS the binary and only the binary was copied forward. What makes it easy to misread
+   is that nothing else breaks: Node bundles its own CA bundle, so the app's own HTTPS calls all
+   verified fine while the Go binary beside it could verify nothing. */
+describe('explainExtractFailure', () => {
+  it('names the missing CA store, which is not a network or a tile problem', () => {
+    const said = explainExtractFailure(
+      Object.assign(new Error('Command failed: pmtiles extract https://build.protomaps.com/x'), {
+        stdout:
+          'main.go:185: Failed to extract, Failed to create range reader, ' +
+          'Get "https://build.protomaps.com/x": tls: failed to verify certificate: ' +
+          'x509: certificate signed by unknown authority\n',
+        stderr: '',
+      }),
+    );
+    expect(said).toContain('ca-certificates');
+    expect(said).toContain('RUNTIME');
+  });
+
+  it('names a missing binary separately, since the fix is a different one', () => {
+    expect(explainExtractFailure(Object.assign(new Error('spawn pmtiles ENOENT'), {}))).toContain(
+      'not on PATH',
+    );
+  });
+
+  it('passes anything else through with the CLI’s own first line', () => {
+    const said = explainExtractFailure(
+      Object.assign(new Error('Command failed'), { stdout: 'region is empty\n' }),
+    );
+    expect(said).toContain('region is empty');
   });
 });
