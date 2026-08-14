@@ -1,6 +1,15 @@
 // The camera, applied (ADR-0121 §7 + §13's decomposition). The arithmetic is in
-// `lib/map-camera.ts`, unit-tested with no Google present; this is the thin
-// imperative half that talks to a live `google.maps.Map`.
+// `lib/map-camera.ts`, unit-tested with no renderer present; this is the thin
+// imperative half that talks to a live map.
+//
+// **It no longer names a vendor, and that is the whole of what the renderer swap cost it**
+// (ADR-0186 §2). Every decision below — what a fit reserves, when the camera may move at
+// all, how a selection re-centres in a band that changed under it — is about the map's
+// MEANING and was never about Google. So the swap narrowed the type to `CameraMap`, the
+// seven methods this file actually calls, and `cameraMapFor` presents MapLibre with that
+// shape. The facade speaks Google's dialect deliberately: `getCenter()` hands back an object
+// whose `lat`/`lng` are METHODS, which is the trap the comment near line 350 is about, and
+// changing the dialect would have invalidated that comment and every line under it.
 //
 // Two behaviours, deliberately different:
 //   • **Re-framing** answers a control that changed the pin SET (a day/all-days
@@ -58,13 +67,14 @@ import {
   type WorldPoint,
 } from './canvas-gestures';
 import { prefersReducedMotion } from './motion';
+import type { CameraMap } from './map-camera-adapter';
 import { MAP_CAMERA_EASE, MAP_FLOAT_GAP, MAP_ZOOM } from '../constants';
 // The zoom ladder is the device pass's, so these three reads go through the dev accessor
 // (ADR-0146 §3). In a production build `tune` IS the identity — no override layer exists.
 import { TUNE, tune } from './dev-tuning';
 
 /** The live viewport as our own bounds shape, or `null` before the first idle. */
-export function readMapBounds(map: google.maps.Map | null): MapBounds | null {
+export function readMapBounds(map: CameraMap | null): MapBounds | null {
   const bounds = map?.getBounds();
   if (!bounds) return null;
   const ne = bounds.getNorthEast();
@@ -114,7 +124,7 @@ export interface MapCamera {
 }
 
 export function useMapCamera(
-  map: google.maps.Map | null,
+  map: CameraMap | null,
   opts: {
     /** The points the camera answers to — the filtered, scoped, pinnable set. */
     points: readonly LatLng[];
@@ -180,20 +190,17 @@ export function useMapCamera(
    *  changes on a **tap**, and as a dependency it would re-run the framing effect — i.e. tapping a
    *  pin would move the camera, which is the rule ADR-0122 §7 exists to hold. A ref read at the
    *  moment a pan runs keeps that intact. */
-  const clearOfCard = useCallback(
-    (map: google.maps.Map, point: LatLng, zoom: number): LatLng | null => {
-      // The canvas's own height, read where the move happens — the same read `apply` makes, and
-      // for the same reason: it is what both insets are measured against, and this screen
-      // re-renders every second so it must not be state (ADR-0121 §5).
-      const canvas = map.getDiv().getBoundingClientRect().height;
-      const shift = panShiftForReserve(reserveNow(), mapFitPadding(canvas).top);
-      if (shift === 0) return null;
-      return throughProjection(map, point, (world) =>
-        worldPointAtOffset(world, { x: 0, y: shift }, zoom),
-      );
-    },
-    [],
-  );
+  const clearOfCard = useCallback((map: CameraMap, point: LatLng, zoom: number): LatLng | null => {
+    // The canvas's own height, read where the move happens — the same read `apply` makes, and
+    // for the same reason: it is what both insets are measured against, and this screen
+    // re-renders every second so it must not be state (ADR-0121 §5).
+    const canvas = map.getDiv().getBoundingClientRect().height;
+    const shift = panShiftForReserve(reserveNow(), mapFitPadding(canvas).top);
+    if (shift === 0) return null;
+    return throughProjection(map, point, (world) =>
+      worldPointAtOffset(world, { x: 0, y: shift }, zoom),
+    );
+  }, []);
   const focusContextRef = useRef(focusContext);
   focusContextRef.current = focusContext;
   /** The arrival this camera still owes, and the identity it was claimed from. */
@@ -637,7 +644,7 @@ export function useMapCamera(
 }
 
 /** The map's camera as our own shape, or `null` before it has one. */
-function readCamera(map: google.maps.Map): CameraAt | null {
+function readCamera(map: CameraMap): CameraAt | null {
   const centre = map.getCenter();
   const zoom = map.getZoom();
   if (!centre || zoom == null) return null;
@@ -662,7 +669,7 @@ function sameCamera(a: CameraAt | null, b: CameraAt): boolean {
  *  no projection until it has rendered, and a double-tap before then should still zoom.
  */
 function anchoredCentre(
-  map: google.maps.Map,
+  map: CameraMap,
   centre: LatLng,
   offsetPx: WorldPoint | undefined,
   fromZoom: number,
@@ -682,7 +689,7 @@ function anchoredCentre(
  *  pixel and nothing else, and asking the map what it is currently showing is the one
  *  reading that cannot go stale between the press and the drop. `null` when the map has no
  *  projection or no camera yet — a drop is refused rather than guessed at. */
-export function latLngAtOffset(map: google.maps.Map, offsetPx: WorldPoint): LatLng | null {
+export function latLngAtOffset(map: CameraMap, offsetPx: WorldPoint): LatLng | null {
   const centre = map.getCenter();
   const zoom = map.getZoom();
   if (!centre || zoom == null) return null;
@@ -700,7 +707,7 @@ export function latLngAtOffset(map: google.maps.Map, offsetPx: WorldPoint): LatL
  *  `fromPointToLatLng` — which keeps this clear of the `google.maps` global entirely, and
  *  means both projections are Google's own (ADR-0129 §3). */
 function throughProjection(
-  map: google.maps.Map,
+  map: CameraMap,
   centre: LatLng,
   transform: (world: WorldPoint) => WorldPoint,
 ): LatLng | null {

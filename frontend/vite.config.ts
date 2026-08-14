@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
@@ -21,12 +22,51 @@ function warnIfMapsUnconfigured() {
   );
   if (missing.length === 0) return;
   console.warn(
-    `\n⚠️  Maps build vars missing: ${missing.join(', ')}.\n` +
-      '   The Map tab will build fine and render LIST-ONLY (no rendered map).\n' +
-      '   These are build-time (Vite inlines them), so a runtime service variable\n' +
-      '   is not enough — a Docker build also needs a matching ARG (see Dockerfile),\n' +
-      '   and local development reads frontend/.env.local. See architecture/deployment.md.\n',
+    `\nLegacy Google map-tuner vars missing: ${missing.join(', ')}.\n` +
+      'The MapLibre map is unaffected; Phase 4 removes these vars and this warning.\n',
   );
+}
+
+/**
+ * **What build is this?** — the question a staging tester cannot otherwise answer, and the
+ * reason the answer is computed here rather than typed into an env var: a label somebody has
+ * to remember to bump is a label that eventually lies, and a build indicator that lies is
+ * worse than none. Railway exports the commit itself, so the badge can just read it.
+ *
+ * `VITE_BUILD_LABEL` still wins when set, for a deploy that wants to say something else.
+ * Falls back to the local git checkout so `pnpm dev` shows a real value too, and to
+ * `'dev'` when git is unavailable (a Docker build without the .git directory).
+ */
+function buildLabel(): string {
+  const git = (args: string) => {
+    try {
+      return execSync(`git ${args}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      return '';
+    }
+  };
+  // **The timestamp is the part that always works, so it is never conditional.** Railway's
+  // `RAILWAY_GIT_*` are provided to the SERVICE and are not forwarded into the Docker build,
+  // and the build context carries no `.git` — so the first version of this printed
+  // `unknown 08-14 09:22` on staging, with the commit silently missing. The clock is what
+  // answered the actual question ("did my redeploy land?"); the commit is a bonus that
+  // arrives only when something can supply it.
+  //
+  // Minute precision: two deploys of the same commit are a real thing to tell apart, and
+  // seconds are noise on a badge read off a phone screen.
+  const at = new Date().toISOString().slice(5, 16).replace('T', ' ');
+  // `VITE_BUILD_LABEL` is how a Railway deploy supplies the commit, since it can interpolate
+  // the provided vars itself: set it to `${{RAILWAY_GIT_BRANCH}} ${{RAILWAY_GIT_COMMIT_SHA}}`.
+  // Read from the environment first, then the local checkout (so `pnpm dev` shows a real
+  // value), and simply omitted when neither can answer — an honest gap beats "unknown".
+  const explicit = process.env.VITE_BUILD_LABEL?.trim();
+  const sha = (process.env.RAILWAY_GIT_COMMIT_SHA || git('rev-parse HEAD')).slice(0, 7);
+  const branch = process.env.RAILWAY_GIT_BRANCH || git('rev-parse --abbrev-ref HEAD');
+  const commit = explicit || [branch, sha].filter(Boolean).join(' ');
+  return [commit, at].filter(Boolean).join(' · ');
 }
 
 /** `index.html` is served to the browser, so it can't import `APP_NAME` — it carries a
@@ -53,6 +93,16 @@ export default defineConfig(({ command }) => {
           new URL('../packages/shared/src/index.ts', import.meta.url),
         ),
       },
+    },
+    /** **MapLibre ships a web worker, and the dep optimizer breaks it** (ADR-0186 Phase 2).
+     *  Pre-bundling rewrites `maplibre-gl` into `.vite/deps/` but does not emit
+     *  `maplibre-gl-worker.mjs` beside it, so `pnpm dev` logs _"the file does not exist … the
+     *  dependency might be incompatible with the dep optimizer"_ and the renderer's worker cannot
+     *  be fetched — which on the dev server is a map that never paints a tile. Excluded rather
+     *  than worked around, which is what Vite's own message asks for; production is unaffected
+     *  (the optimizer is a dev-only step) and the build already verified clean. */
+    optimizeDeps: {
+      exclude: ['maplibre-gl'],
     },
     plugins: [
       react(),
@@ -102,6 +152,25 @@ export default defineConfig(({ command }) => {
           // Backend-owned navigations (OAuth redirect, /health) must hit the
           // network — the default fallback serves the cached shell for ALL paths.
           navigateFallbackDenylist: [SERVER_ROUTE_PATTERN],
+          // **The basemap's glyphs, cached but deliberately NOT precached**
+          // (ADR-0186 §3/§5). A GL renderer fetches pre-rendered SDF glyphs per
+          // 256-codepoint range, and `public/map-glyphs/` holds all 768 of them —
+          // 11.1 MB, which is exactly the automatic-download-on-roaming §5 was
+          // written against, so it is not put in the install manifest. Ranges
+          // arrive as labels need them and then survive offline; Phase 3's
+          // archive download warms the rest by fetching them under §5's gate,
+          // which needs no cache name of its own because this rule catches it.
+          //
+          // Ceiling worth naming: CacheFirst never revalidates, so re-vendoring
+          // different glyph bytes needs a new path (or a cacheName bump), not a
+          // redeploy. They are Noto releases — this will not happen often.
+          runtimeCaching: [
+            {
+              urlPattern: /\/map-glyphs\/.*\.pbf$/,
+              handler: 'CacheFirst',
+              options: { cacheName: 'map-glyphs' },
+            },
+          ],
         },
         manifest: {
           name: APP_TITLE,
@@ -129,6 +198,11 @@ export default defineConfig(({ command }) => {
       }),
     ],
     server: { port: 5173 },
+    // A distinct global rather than an `import.meta.env.VITE_*` member: Vite inlines those
+    // itself from the environment, so defining one here would be two replacements fighting
+    // over the same expression. The BADGE is still gated by a real env var
+    // (`VITE_BUILD_BADGE`) — this is only the text it shows. See `ui/BuildBadge.tsx`.
+    define: { __BUILD_LABEL__: JSON.stringify(buildLabel()) },
     test: {
       // The Playwright e2e specs (frontend/e2e/*.spec.ts) run under `pnpm e2e`, not
       // vitest — they import @playwright/test and drive a real browser. Keep them
@@ -164,6 +238,9 @@ export default defineConfig(({ command }) => {
         VITE_GOOGLE_MAPS_BROWSER_KEY: '',
         VITE_GOOGLE_MAPS_MAP_ID: '',
         VITE_GOOGLE_MAPS_MAP_ID_DARK: '',
+        // Same reasoning as the four above: a developer with this set locally would
+        // otherwise flip `BuildBadge`'s default case in their run and not in CI.
+        VITE_BUILD_BADGE: '',
       },
       /** `vite-plugin-pwa`'s virtual module has no file behind it, and under vitest its id
        *  resolves to `file:///@vite-plugin-pwa/virtual:…`, which Node refuses as a filename.

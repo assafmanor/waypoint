@@ -19,6 +19,8 @@ import {
   hasScheduleSlot,
   isAsidePin,
   isFramedByCamera,
+  MAP_RESULT_SELECTED_Z,
+  MAP_RESULT_Z,
   PIN_TIER,
   placeGlyph,
   pinClearanceFor,
@@ -971,6 +973,16 @@ describe('the pin number is the day sequence, and nothing renumbers it (§6)', (
       pinZIndex({ tier: PIN_TIER.upcoming, order: index.get(placeId) });
     expect(z('today-stop')).toBe(z('tomorrow-stop'));
     expect(z('today-stop')).toBeGreaterThan(pinZIndex({ tier: PIN_TIER.behind }));
+  });
+});
+
+describe('MapLibre marker ordering', () => {
+  it('keeps resting search results above canvas paint but below every trip pin', () => {
+    expect(MAP_RESULT_Z).toBeGreaterThanOrEqual(0);
+    expect(MAP_RESULT_Z).toBeLessThan(pinZIndex({ tier: PIN_TIER.ghost }));
+    expect(MAP_RESULT_SELECTED_Z).toBeGreaterThan(
+      pinZIndex({ tier: PIN_TIER.upcoming, nextStop: true }),
+    );
   });
 });
 

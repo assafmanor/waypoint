@@ -11,8 +11,7 @@
 //   • **One map instantiation per visit.** Dynamic Maps bills per
 //     `new google.maps.Map()`, so nothing here may re-create one — not the
 //     `רשימה / מפה` toggle (it resizes a live map), not a filter, not a sheet drag,
-//     not the per-second clock tick, and none at all while the map is absent
-//     (offline, or no build config). See ADR-0121 §4.
+//     not the per-second clock tick. See ADR-0121 §4.
 //   • **This screen re-renders every second** (`useClock`). So the pin models are
 //     memoized on their own CONTENT, not on `nowMs`: a tick must reconcile to a
 //     no-op marker diff.
@@ -73,6 +72,7 @@ import {
   mapsKnowledgeUrl,
   mapsPredictionUrl,
   nextDestination,
+  referencedPlaceIds,
 } from '../lib/places';
 import {
   PLACE_REF_KIND,
@@ -114,7 +114,8 @@ import {
   type MapArrival,
   type MapBounds,
 } from '../lib/map-camera';
-import { mapPaneAvailable, mapsConfig } from '../lib/map-config';
+import { mapColorScheme, mapPaneAvailable, mapsConfig, mapTileUrls } from '../lib/map-config';
+import { useMapArchives } from '../lib/useMapArchives';
 import { prefersReducedMotion } from '../lib/motion';
 import { observeResize } from '../lib/observe-resize';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
@@ -587,15 +588,48 @@ export function MapView() {
     setEventDraft(null);
   }, []);
 
-  // ── The rendered map (Phase 6, ADR-0121) ──────────────────────────────────
-  // Config is read ONCE: it is a build var, so it cannot change while mounted, and
-  // re-reading it per render would invite a re-mounted (re-billed) pane.
+  // ── The rendered map (Phase 6, ADR-0121; the ground is ours since ADR-0186) ────────
+  // **Latched once, all three, and for the same reason they always were**: the pane is
+  // memoized on prop identity and this screen re-renders every second, so a fresh object here
+  // would re-diff every marker — and `MapCanvas` latches its opening values at construction
+  // anyway, so a live re-read would describe the map that WOULD be built next rather than the
+  // one on screen (the mistake ADR-0146 §5 had to amend for `DevMapTuner`).
+  //
+  // `scheme` is what a whole `MapsConfig` collapsed to (ADR-0186 §8): with the renderer
+  // bundled and the tiles ours, there is no key and no Map ID left to resolve.
+  const scheme = useMemo(() => mapColorScheme(), []);
+  // The trip's own archive is what makes the map READABLE at this zoom — the world layer alone is
+  // z0–6, which draws a flat landmass at `MAP_ZOOM.PLACE` (corrected 2026-08-14; see
+  // `mapTileUrls`). Keyed on the id so switching trips re-reads, which is the one thing that
+  // legitimately rebuilds the canvas.
+  const remoteTileUrls = useMemo(() => mapTileUrls(trip?.id), [trip?.id]);
+  const tripEnded = useMemo(
+    () => !!trip?.endDate && Date.parse(`${trip.endDate}T23:59:59.999Z`) < nowMs,
+    [nowMs, trip?.endDate],
+  );
+  const savedPlaceIds = useMemo(
+    () => referencedPlaceIds(events, bookings, maybeItems),
+    [bookings, events, maybeItems],
+  );
+  const mapArchives = useMapArchives({
+    tripId: trip.id,
+    offline,
+    ended: tripEnded,
+    hasMappedPlaces: places.some(
+      (place) => savedPlaceIds.has(place.id) && placePoint(place) != null,
+    ),
+    urls: remoteTileUrls,
+  });
+  const tileUrls = mapArchives.urls;
+  // Still read for `DevMapTuner`, which reports what a Google canvas was built from and is
+  // Phase 4's to delete along with the vars themselves.
   const config = useMemo(() => mapsConfig(), []);
-  // Absent, never disabled (§2/§11). Offline the rendered map is the one part of
-  // this tab that was never available, so there is no pane, no toggle, no map
-  // instance and no billed load — the tab is the list it is today. A checkout with
-  // no Google setup degrades exactly the same way.
-  const hasMap = mapPaneAvailable({ offline }) && config != null;
+  // Absent, never disabled (§2/§11) — and **offline is now its only cause**. It used to also
+  // require the three `VITE_GOOGLE_MAPS_*` vars, because without them there was no canvas to
+  // draw; there is no build configuration to be missing any more, so a checkout draws a map by
+  // existing. Phase 3 takes the last reason away too, at which point the map becomes the part
+  // of this tab that works offline best (ADR-0186 §8).
+  const hasMap = mapPaneAvailable({ offline });
   const [sheetView, setSheetView] = useState<MapSheetView>(MAP_SHEET_VIEW.half);
   // Row ↔ pin are ONE selection (§8). Not `.nextstop`, whose amber means "the stop
   // you are heading to" — selecting a row must not claim that.
@@ -1479,9 +1513,15 @@ export function MapView() {
     let framesLeft = ROW_SCROLL_WAIT_FRAMES;
     const findAndScroll = () => {
       // The sheet where there IS one, the document otherwise — because the graceful-absence path
-      // (no Maps key, or offline) renders this list straight into the shell's scrolling body with
-      // no sheet at all (§8). Scoping to a null ref there meant a selected card could open below
-      // the fold and nothing moved, which is the same defect this function exists for.
+      // renders this list straight into the shell's scrolling body with no sheet at all (§8).
+      // Scoping to a null ref there meant a selected card could open below the fold and nothing
+      // moved, which is the same defect this function exists for.
+      //
+      // **That path is reached by being OFFLINE now, and by nothing else** (ADR-0186 §8): a
+      // missing Maps key used to be its other cause, and there is no build configuration left to
+      // be missing. Worth naming, because the two layouts put this list in different scrollers and
+      // `scrollIntoView` acts on whichever one it is in — `e2e/place-know.spec.ts` measured the
+      // wrong box for exactly that reason until Phase 2 made the split e2e's default.
       const scope: ParentNode = sheetRef.current ?? document;
       const row =
         (placeId ? scope?.querySelector(`[data-place="${placeId}"]`) : null) ??
@@ -2936,6 +2976,46 @@ export function MapView() {
     </StatusBanner>
   );
 
+  const archiveNotice = (() => {
+    if (offline) return <StatusBanner tone="offline">{t.map.offlineMap.offline}</StatusBanner>;
+    if (!mapArchives.visible) return null;
+    if (mapArchives.status === 'prompt') {
+      return (
+        <StatusBanner
+          tone="neutral"
+          action={{ label: t.map.offlineMap.download, onClick: mapArchives.download }}
+          onDismiss={mapArchives.dismiss}
+        >
+          {t.map.offlineMap.prompt}
+        </StatusBanner>
+      );
+    }
+    if (mapArchives.status === 'downloading') {
+      return <StatusBanner tone="neutral">{t.map.offlineMap.downloading}</StatusBanner>;
+    }
+    if (mapArchives.status === 'preparing') {
+      return (
+        <StatusBanner
+          tone="neutral"
+          action={{ label: t.map.offlineMap.retry, onClick: mapArchives.download }}
+        >
+          {t.map.offlineMap.preparing}
+        </StatusBanner>
+      );
+    }
+    if (mapArchives.status === 'no-space' || mapArchives.status === 'failed') {
+      return (
+        <StatusBanner
+          tone="neutral"
+          action={{ label: t.map.offlineMap.retry, onClick: mapArchives.download }}
+        >
+          {mapArchives.status === 'no-space' ? t.map.offlineMap.noSpace : t.map.offlineMap.failed}
+        </StatusBanner>
+      );
+    }
+    return null;
+  })();
+
   // A tapped ghost, surfaced as the one row it is — reusing `.place` rather than
   // inventing an info window, and named with the day it belongs to (§6). The place card
   // below is this rule with the special case removed: **the row surfaces wherever the
@@ -3495,11 +3575,10 @@ export function MapView() {
     </>
   );
 
-  // The map is absent (offline, or no build config): the tab is exactly the list it
-  // has always been, in the ordinary scrolling body. Not a greyed watermarked frame
-  // — that would be a third grammar for a fact this tab already states two ways
-  // (ADR-0121 §11).
-  if (!hasMap || !config) {
+  // Keep the capability fallback independent of connectivity. Phase 3 means offline still
+  // has a map; this path is only for a renderer/configuration failure that makes the canvas
+  // genuinely unavailable, and preserves the useful list without inventing a broken frame.
+  if (!hasMap) {
     return (
       <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
         {offline && <StatusBanner tone="offline">{t.header.offlineNow}</StatusBanner>}
@@ -3586,9 +3665,11 @@ export function MapView() {
           card and the pre-prompt are absolutely positioned over the canvas, never
           wrappers around `<MapPane>`: wrapping it remounts it, and a remount is a billed
           map load (ADR-0121 §4). */}
+      {archiveNotice}
       <div className="map-split">
         <MapPane
-          config={config}
+          scheme={scheme}
+          urls={tileUrls}
           pins={pins}
           results={results}
           onSelectResult={selectResult}

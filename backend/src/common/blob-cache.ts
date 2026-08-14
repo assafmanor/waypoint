@@ -12,6 +12,7 @@
 // container FS may drop it on redeploy, and a miss simply falls through to S3.
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createByteLru } from './byte-lru';
 import {
   DEFAULT_DOC_CACHE_MAX_BYTES,
   DOC_CACHE_DIR,
@@ -19,10 +20,10 @@ import {
   DOC_CACHE_MAX_BYTES,
 } from './env';
 
-// In-memory LRU bounded by total bytes. A Map keeps insertion order, so the first key is
-// the least-recently-used; a read re-inserts its key to mark it most-recently-used.
-const memory = new Map<string, Buffer>();
-let memoryBytes = 0;
+// In-memory LRU bounded by total bytes — `byte-lru.ts`, which is this tier extracted when the
+// map's planet proxy needed the same shape (ADR-0187 §1). The bound is passed as a function
+// because it is read from the environment per call, below.
+const memory = createByteLru(() => maxBytes());
 
 // Env is read per call (not at module load) so tests can `stubEnv` it, mirroring
 // storage.ts's own late reads of the S3_* vars.
@@ -44,35 +45,6 @@ function cacheDir(): string | null {
 // anything that could escape the cache directory.
 function safeKey(key: string): boolean {
   return key.length > 0 && !key.includes('/') && !key.includes('\\') && !key.includes('..');
-}
-
-function memoryGet(key: string): Buffer | null {
-  const hit = memory.get(key);
-  if (!hit) return null;
-  memory.delete(key);
-  memory.set(key, hit); // move to most-recently-used
-  return hit;
-}
-
-function memoryDrop(key: string): void {
-  const existing = memory.get(key);
-  if (!existing) return;
-  memory.delete(key);
-  memoryBytes -= existing.length;
-}
-
-function memoryPut(key: string, buf: Buffer): void {
-  memoryDrop(key);
-  // A single blob larger than the whole bound would evict everything and still overflow —
-  // never worth caching in memory (the FS tier still holds it).
-  if (buf.length > maxBytes()) return;
-  memory.set(key, buf);
-  memoryBytes += buf.length;
-  while (memoryBytes > maxBytes()) {
-    const oldest = memory.keys().next().value as string | undefined;
-    if (oldest === undefined) break;
-    memoryDrop(oldest);
-  }
 }
 
 async function fsGet(key: string): Promise<Buffer | null> {
@@ -107,11 +79,11 @@ async function fsEvict(key: string): Promise<void> {
  *  memory. Returns null on a miss or when the cache is disabled. */
 export async function getCachedBlob(key: string): Promise<Buffer | null> {
   if (disabled() || !safeKey(key)) return null;
-  const hot = memoryGet(key);
+  const hot = memory.get(key);
   if (hot) return hot;
   const warm = await fsGet(key);
   if (warm) {
-    memoryPut(key, warm);
+    memory.put(key, warm);
     return warm;
   }
   return null;
@@ -120,7 +92,7 @@ export async function getCachedBlob(key: string): Promise<Buffer | null> {
 /** Warm both tiers with a blob — the just-read S3 body, or the just-written upload. */
 export async function putCachedBlob(key: string, buf: Buffer): Promise<void> {
   if (disabled() || !safeKey(key)) return;
-  memoryPut(key, buf);
+  memory.put(key, buf);
   await fsPut(key, buf);
 }
 
@@ -129,12 +101,11 @@ export async function putCachedBlob(key: string, buf: Buffer): Promise<void> {
  *  from before the kill switch was flipped. */
 export async function evictCachedBlob(key: string): Promise<void> {
   if (!safeKey(key)) return;
-  memoryDrop(key);
+  memory.drop(key);
   await fsEvict(key);
 }
 
 /** Test-only: drop the in-memory tier so the module singleton can't leak across tests. */
 export function resetBlobCacheForTests(): void {
   memory.clear();
-  memoryBytes = 0;
 }

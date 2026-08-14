@@ -967,6 +967,14 @@ function TripReady({
   const applyEntityChange = useCallback(
     (change: Change) => {
       void applyChangeToCache(tripId, change);
+      if (
+        change.entityType === ENTITY_TYPE.MEMBERSHIP &&
+        change.action === CHANGE_ACTION.DELETE &&
+        change.before?.userId === me?.user.id
+      ) {
+        void clearTripCache(tripId);
+        setTripDeleted(true);
+      }
       // The host cascade's memory half (ADR-0152 §2), beside the cache half inside
       // `applyChangeToCache`. It runs for EVERY change rather than inside a host's own
       // channel, because the thing that has to happen — a deleted host's notes leaving the
@@ -988,7 +996,7 @@ function TripReady({
       }
       memoryChannels[change.entityType](change);
     },
-    [tripId, memoryChannels],
+    [tripId, memoryChannels, me?.user.id],
   );
 
   useEffect(() => {
@@ -1191,6 +1199,7 @@ function TripReady({
           await restOrQueue(tripId, { verb: OUTBOX_VERB.REMOVE_MEMBER, userId }, () =>
             apiRemoveMember(tripId, userId),
           );
+          if (userId === me?.user.id) void clearTripCache(tripId);
         } catch (err) {
           setMembers(previous);
           fail(err);

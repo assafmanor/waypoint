@@ -92,6 +92,14 @@ let onSessionExpired: (() => void) | null = null;
 export function setAccessToken(token: string | null): void {
   accessToken = token;
 }
+/** **The token, for the one fetch that cannot go through `apiFetch`.** The map's tile reads are
+ *  issued by the `pmtiles` protocol, deep inside MapLibre and on a worker thread — so they cannot
+ *  be routed through `rawFetch` below, and without the Bearer header they hit ADR-0020's global
+ *  `JwtAuthGuard` and come back **401**. Which is exactly what they did (2026-08-14). Exported
+ *  narrowly rather than exposing the variable: `lib/pmtiles.ts` is the only reader. */
+export function accessTokenForHeader(): string | null {
+  return accessToken;
+}
 export function setOnSessionExpired(callback: (() => void) | null): void {
   onSessionExpired = callback;
 }

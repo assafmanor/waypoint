@@ -20,6 +20,7 @@ import { useRef, type RefObject } from 'react';
 import { DRAG_CLICK_SWALLOW_MS, DRAG_HOLD_MS } from '../constants';
 import { useCanvasGestures } from './useCanvasGestures';
 import type { LatLng } from './map-camera';
+import type { CameraMap } from './map-camera-adapter';
 
 /** The ~60-line fake map ADR-0145 records as sufficient: the gestures touch a handful of
  *  methods, so a fake covers them completely (`frontend/CLAUDE.md` — "before declaring
@@ -28,7 +29,11 @@ function fakeMap(zoom = 14) {
   return {
     getZoom: () => zoom,
     getCenter: () => ({ lat: () => 35.68, lng: () => 139.76 }),
-    get: () => undefined,
+    // A map that states no limits, so `dragZoomLimits` uses its own `MAP_DRAG_ZOOM`
+    // fallbacks — which is what this file has always exercised. These were one untyped
+    // `get(key)` until ADR-0186 §2 gave `CameraMap` real accessors for them.
+    getMinZoom: () => undefined,
+    getMaxZoom: () => undefined,
     // A projection that is linear on purpose: this file asserts plumbing, not arithmetic.
     // The geography is `canvas-gestures.test.ts`'s job, against Google's real Mercator.
     getProjection: () => ({
@@ -38,7 +43,7 @@ function fakeMap(zoom = 14) {
         lng: () => pt.x,
       }),
     }),
-  } as unknown as google.maps.Map;
+  } as unknown as CameraMap;
 }
 
 let root: Root;

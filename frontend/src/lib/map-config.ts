@@ -1,19 +1,56 @@
-// The rendered map's build-time configuration (ADR-0121 §2). Three `VITE_` vars,
-// read once and resolved to "we can draw a map" or "we cannot" — there is no
-// third, disabled state: a checkout without Google setup renders today's
-// list-only tab rather than an empty frame (§2's graceful absence, the same rule
-// offline follows in §11).
+// The rendered map's configuration — which ground to read, and which face of it to paint.
 //
-// The browser key is public and unproxyable by construction — it lives in the
-// script URL (ADR-0108 §1) — so it is API-restricted to Maps JavaScript and
-// referrer-locked instead of hidden. The `mapId` is mandatory, not optional:
-// advanced markers do not load without one (ADR-0121 §1).
+// **The interesting thing here is what is no longer load-bearing.** ADR-0121 §2 made this file
+// about three `VITE_GOOGLE_MAPS_*` vars resolving to "we can draw a map" or "we cannot",
+// because without a browser key and a Map ID there was no canvas. ADR-0186 bundles the
+// renderer and serves the tiles from our own backend, so **there is no build configuration
+// left to be missing**: a checkout draws a map by existing, online or offline.
 //
-// Build-time, not runtime: Vite inlines `import.meta.env`, so a changed value
-// needs a rebuild. `readMapsConfig` takes its env as an argument so the
-// resolution is unit-testable without one.
+// `MapsConfig` / `readMapsConfig` / `mapsConfig` below are therefore down to ONE reader —
+// `DevMapTuner`, which reports what a Google canvas was built from. They are Phase 4's to
+// delete along with the vars and the renderer; leaving them here rather than half-removing
+// them is what keeps this a reviewable phase.
 
+import { MAP_PLANET_BUILD } from '@waypoint/shared';
 import { documentTheme, THEME, type Theme } from './theme';
+import { apiAssetUrl } from './api-asset';
+
+/** The coarse fallback, the detailed render source, and the downloadable extract.
+ *
+ * Online `detail` is the build-pinned live proxy. Phase 3c replaces that URL with a local archive
+ * offline; the style and renderer keep reading the same shape. `extract` is intentionally not a
+ * render source while online (ADR-0187). */
+export interface MapTileUrls {
+  world: string;
+  detail: string;
+  extract?: string;
+}
+
+/**
+ * The archives this build reads.
+ *
+ * **Through our own backend, never a vendor** — the rule ADR-0108/0110 already set for every
+ * Google call, applied to tiles for the same three reasons: any key stays server-side, we can
+ * cache, and we can change source without shipping a client.
+ *
+ * The build id is part of the live URL because PMTiles caches directory pages by archive URL. A
+ * daily build moving byte offsets under one stable URL would silently map tile addresses to the
+ * wrong bytes; a new URL makes the change explicit and invalidates every layer of cache.
+ */
+export function mapTileUrls(tripId?: string | null): MapTileUrls {
+  return {
+    world: apiAssetUrl(MAP_ARCHIVE_PATH.world),
+    detail: apiAssetUrl(MAP_ARCHIVE_PATH.live),
+    ...(tripId ? { extract: apiAssetUrl(MAP_ARCHIVE_PATH.extract(tripId)) } : {}),
+  };
+}
+
+/** The backend's own routes for the archives, named beside the reader (ADR-0095). */
+const MAP_ARCHIVE_PATH = {
+  world: '/map/world.pmtiles',
+  live: `/map/planet-${MAP_PLANET_BUILD}.pmtiles`,
+  extract: (tripId: string) => `/trips/${tripId}/map/extract.pmtiles`,
+} as const;
 
 /** What the pane needs to construct a map. Absent (`null`) is a first-class state. */
 export interface MapsConfig {
@@ -87,16 +124,31 @@ export function readMapsConfig(env: MapsEnv, theme: MapTheme = MAP_THEME.light):
  *  Google-default rather than failing. */
 export const documentMapTheme = documentTheme;
 
-/** The live config for this build + document. `null` → the tab is list-only. */
+/** The live config for this build + document. */
 export function mapsConfig(): MapsConfig | null {
   return readMapsConfig(import.meta.env as unknown as MapsEnv, documentMapTheme());
 }
 
-/** Is there a rendered map on the Map tab at all? Offline there is not: the map is
- *  the one part of this tab that was never available offline, so it is **absent** —
- *  no pane, no toggle, no map instance, no billed load (ADR-0121 §11). Shared,
- *  because two callers must agree: the Map screen (which renders the split) and the
- *  shell (which makes the body full-bleed for it). */
-export function mapPaneAvailable(opts: { offline: boolean }): boolean {
-  return !opts.offline && mapsConfig() != null;
+/**
+ * **Which face of the ground to paint.** Straight off the document's theme, because a style
+ * JSON is swappable on a live map — ADR-0186 §7's cheapest win over two latched Map IDs,
+ * where a theme flip could not reach the canvas already drawn.
+ *
+ * It keeps `MAP_COLOR_SCHEME`'s `'LIGHT'`/`'DARK'` spelling even though nothing Google reads
+ * it any more: `mapStyle`, `mapBackground` and `MAP_CONNECTOR.COLOR` are all keyed on it, and
+ * renaming the two values would be a churn with no reader asking for it.
+ */
+export function mapColorScheme(theme: MapTheme = documentMapTheme()): MapColorScheme {
+  return theme === MAP_THEME.dark ? MAP_COLOR_SCHEME.dark : MAP_COLOR_SCHEME.light;
+}
+
+/**
+ * Is there a rendered map on the Map tab at all?
+ *
+ * Phase 3 removes the last absence trigger: offline uses the downloaded extract (or the coarse
+ * world floor when no extract exists yet), so the map is the part of this tab that works offline
+ * best (ADR-0186 §8). Shared because the Map screen and shell must still agree on the split.
+ */
+export function mapPaneAvailable(_opts: { offline: boolean }): boolean {
+  return true;
 }

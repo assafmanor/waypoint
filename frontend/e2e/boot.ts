@@ -151,13 +151,21 @@ export async function bootIntoTrip(
     /**
      * **Pin the app's clock**, in ms — the e2e half of the rule the unit suite already
      * follows (`frontend/CLAUDE.md`: "a test whose fixtures carry fixed dates must set its
-     * own `now`"). The app reads `waypoint:dev-now` from localStorage at module load in DEV,
-     * so seeding it before the first script runs fixes what "now" means for the whole page.
+     * own `now`").
      *
      * Opt-in, and it earns itself: a spec whose fixtures are times "today" is really a spec
      * about a PHASE — passed, now, upcoming — and which phase the clock produces changes by
      * the hour. Two specs here silently depended on being run in the afternoon and went red
      * the moment the date rolled past midnight UTC, on code that had not changed.
+     *
+     * **Pinned twice, because the app's own hook is DEV-ONLY.** `waypoint:dev-now` is read at
+     * module load by `lib/useClock.ts` behind `import.meta.env.DEV`, so under `E2E_PREVIEW=1`
+     * — a production bundle — that branch is compiled out and the whole fixture silently
+     * reads the wall clock. Thirteen specs failed that way and only there, which is exactly
+     * the disagreement between the two servers that this mode exists to expose, except that
+     * here it was the HARNESS that differed rather than the app. `page.clock.setFixedTime`
+     * pins the platform's clock instead, so both legs agree and neither depends on a
+     * debug hook surviving into a build.
      */
     now?: number;
     /** Override the trip's date range (see `shortLiveTripDates`). */
@@ -177,6 +185,20 @@ export async function bootIntoTrip(
     documentAttachments: opts.documentAttachments ?? SNAPSHOT.documentAttachments,
     enrichments: opts.enrichments ?? SNAPSHOT.enrichments,
   };
+  // **The realtime socket, answered by nothing** (ADR-0019's gateway; `lib/ws.ts` opens it).
+  //
+  // There is no backend here, so this connection has always failed — and the two servers fail it
+  // DIFFERENTLY, which the `E2E_PREVIEW=1` leg is what surfaced. `vite preview` answers the
+  // upgrade with the SPA fallback at **200**, so the handshake fails loudly enough to reach
+  // `console.error` and `boot-cross-tabs`'s clean-console assertion; the dev server does not.
+  // Neither outcome says anything about the app.
+  //
+  // Intercepted rather than tolerated in the one spec that noticed: a socket that opens and stays
+  // quiet is what "no backend" should look like everywhere, and it keeps that assertion strict
+  // enough to still catch a console error we actually caused. Not connected upstream — no
+  // `connectToServer()` — so nothing reaches a real server.
+  await page.routeWebSocket(/\/trips\/.*\/stream/, () => {});
+
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),
     (r) => r.fulfill({ json: { accessToken: 'test-token' } }),
@@ -306,6 +328,10 @@ export async function bootIntoTrip(
     },
     [JSON.stringify(ME), 't1', opts.now ? String(opts.now) : ''],
   );
+  // The half that survives a production build (see `now` above). `setFixedTime` rather than
+  // `install()`: it fixes what the clock READS and leaves timers alone, which is what the
+  // localStorage hook does too — a spec here still needs its intervals to fire.
+  if (opts.now) await page.clock.setFixedTime(opts.now);
 }
 
 /** A fixed hour on the CURRENT day, for a spec whose fixtures are times "today".

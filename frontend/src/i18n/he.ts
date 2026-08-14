@@ -146,6 +146,11 @@ export const t = {
     // deliberately does NOT claim the failure above: the attempt is still running and may
     // still paint, so the honest statement is that this is slow, with a way out beside it.
     loadingSlow: 'הטעינה איטית מהרגיל',
+    // The one word behind which the technical reading hides (field report #35). Shown only
+    // on a pane that is already failing, so a working map never grows a debug affordance —
+    // and it says "details" rather than naming WebGL, because the person reading it wants
+    // the map back and is doing us a favour by tapping at all.
+    diagnostic: 'פרטים',
     filter: {
       all: 'הכל',
       maybes: 'אולי',
@@ -184,6 +189,16 @@ export const t = {
       // query as it closes, so no filter can be on without being visible.
       close: 'סגירת חיפוש',
       noResultsTitle: 'לא נמצאו מקומות',
+    },
+    offlineMap: {
+      offline: 'אופליין · המפה מציגה את מה שנשמר במכשיר',
+      prompt: 'לשמור מפה אופליין לטיול הזה?',
+      download: 'הורדה',
+      downloading: 'מורידים את מפת הטיול לאופליין…',
+      preparing: 'מכינים את מפת הטיול · אפשר להמשיך להשתמש במפה',
+      retry: 'בדיקה שוב',
+      noSpace: 'אין מספיק מקום לשמור את מפת הטיול',
+      failed: 'הורדת המפה לא הצליחה',
     },
     // Google's half of the search (ADR-0115, re-parented into the sheet by ADR-0131 §8
     // and available in BOTH modes). Its `arm`/`armBody`/`armAria` are deleted, not
@@ -1454,6 +1469,14 @@ export const t = {
       currencyLabel: 'מטבע',
       currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · הוא הצד השני של כל המרה בטיול.',
       currencyUnset: '-',
+      mapStorage: 'מפות אופליין',
+      mapStorageSize: 'כל המפות',
+      mapStorageClear: 'למחוק הכל',
+      mapStorageWorld: 'מפת העולם',
+      mapStorageUnknownTrip: 'טיול שכבר אינו זמין',
+      mapStorageDelete: 'מחיקה',
+      mapStorageDeleteTrip: (name: string) => `מחיקת ${name}`,
+      mapStorageHint: 'המפות הן מטמון במכשיר הזה · מחיקה לא מוחקת מקומות או פרטי טיול.',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
       emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',

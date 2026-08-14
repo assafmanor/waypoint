@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useMapCamera, type MapCamera } from './useMapCamera';
 import { mapFitPadding, type LatLng, type MapArrival, type MapBounds } from './map-camera';
+import type { CameraMap } from './map-camera-adapter';
 import { MAP_ZOOM } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
@@ -124,7 +125,7 @@ class FakeMap {
   }
 }
 
-const asMap = (fake: FakeMap) => fake as unknown as google.maps.Map;
+const asMap = (fake: FakeMap) => fake as unknown as CameraMap;
 
 /** Named, so `bottomReserve` stays OPTIONAL: inferring the shape from `initialProps`
  *  would make every existing rerender have to pass it. */

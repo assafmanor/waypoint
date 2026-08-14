@@ -60,8 +60,28 @@ jobs:
   # Postgres/backend is needed; only the shared package must be built for the
   # frontend to import. Kept a separate job from the unit `ci` above (which runs
   # in jsdom and needs no browser).
+  #
+  # Two legs, on two runners, in PARALLEL — a matrix expands into independent jobs,
+  # so this costs runner-minutes rather than wall clock (the `preview` leg is the
+  # longer of the two, since `pnpm build` sits in front of its server).
+  #
+  # The second leg is not a re-run (ADR-0186 amendment 269i): it serves the
+  # PRODUCTION BUNDLE, so it is the only one that asserts asset paths, chunk
+  # boundaries and worker URLs — the class of fact that hid a blank map for a full
+  # session while the dev-server leg stayed green. `fail-fast` is off because which
+  # leg fails is the diagnosis: dev too means a logic bug, preview only means a
+  # build-time one.
+  #
+  # `MAP_TILES_E2E=1` stays opt-in and out of CI: it range-reads Protomaps' planet
+  # build, so it would make every run depend on a vendor host being up.
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        server: [dev, preview]
+    env:
+      E2E_PREVIEW: ${{ matrix.server == 'preview' && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
 

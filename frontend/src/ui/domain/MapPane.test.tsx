@@ -1,199 +1,223 @@
 // @vitest-environment jsdom
 //
-// A rendered Google map cannot be exercised in the suite (ADR-0121 §13), and this
-// does not pretend to: `@vis.gl/react-google-maps` is stubbed, so what is under test
-// is the part that is OURS — the pin markup and its class grammar, the number, the
-// z-order, the amber cue, the area readout, and the fact that a clock tick does not
-// re-diff a marker. Whether any of it LOOKS right on a real canvas is a human step
-// on a machine with the browser key.
+// A rendered map cannot be exercised in the suite (ADR-0121 §13), and this does not pretend
+// to: `./MapCanvas` is stubbed, so what is under test is the part that is OURS — the pin
+// markup and its class grammar, the number, the z-order, the amber cue, the area readout, the
+// failure supervisor, and the fact that a clock tick does not re-diff a marker. Whether any of
+// it LOOKS right on a real canvas is a human step on a device.
+//
+// **The stub moved down one layer with ADR-0186, and the suite got better for it.** It used to
+// mock `@vis.gl/react-google-maps` — a vendor's four components — and therefore had to model a
+// vendor's lifecycle: a page-global loading status, a script-load rejection, `__resetModuleState`.
+// All of that is gone. What is stubbed now is our own `MapCanvas` (which has its own test
+// file), and the map handed through it is a MapLibre-shaped fake that goes through the REAL
+// `cameraMapFor` — so the camera, the gestures and the density probe are exercised against the
+// adapter that ships rather than against a hand-written Google dialect.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '../../test/pointer-events';
-import type { ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import type { MapCanvasProps } from './MapCanvas';
 
-/** The four vis.gl pieces the pane uses, as plain DOM. `Map` renders its children
- *  (that is how markers reach the canvas), `AdvancedMarker` renders its content with
- *  the props we set on it, and `useMap` reports no instance — which is the honest
- *  stub, since there is no map. */
-const idleHandlers: ((bounds: unknown) => void)[] = [];
-/* The `placeId` the next canvas click carries — Google sets it when the tap landed on one
-   of ITS icons (a landmark, an attraction) rather than on empty canvas. */
-const nextTap: { placeId: string | null } = { placeId: null };
-/** Google's own tap handler, kept so a test can fire it the way Google does — as a CALL,
- *  not as a DOM event. That distinction is the whole of the pane's gesture guard: a
- *  `stopPropagation` reaches an event stream and cannot reach a subscription. */
-type CanvasClick = (e: { domEvent: unknown; detail: { placeId: string | null } }) => void;
-const googleTap: { fire: CanvasClick | undefined } = { fire: undefined };
-/** `APIProvider`'s own failure channel (field report #28) — Google's script-load
- *  rejection, surfaced as a plain callback the stub exposes for a test to call. */
-const apiError: { fire: ((error: unknown) => void) | undefined } = { fire: undefined };
-/** The base map's success signal — a real `<Map>` fires this once tiles paint. A test
- *  calls it (or doesn't, to exercise the watchdog) exactly like `googleTap` above. */
-const tilesLoaded: { fire: (() => void) | undefined } = { fire: undefined };
-/** vis.gl's module-level loading status, which is write-once and survives every remount —
- *  the third cause of field report #35. The stub counts the resets rather than modelling the
- *  status, because what the pane owes is to CLEAR that global before rebuilding over it. */
-const moduleReset = { calls: 0 };
-vi.mock('@vis.gl/react-google-maps', () => ({
-  // The real enum's shape (`index.d.ts`'s `APILoadingStatus`) — `MapPane` reads it by
-  // member name to publish the dev diagnostic, so the stub has to carry the same names.
-  APILoadingStatus: {
-    NOT_LOADED: 'NOT_LOADED',
-    LOADING: 'LOADING',
-    LOADED: 'LOADED',
-    FAILED: 'FAILED',
-    AUTH_FAILURE: 'AUTH_FAILURE',
-  },
-  APIProvider: ({
-    children,
-    onError,
-  }: {
-    children?: ReactNode;
-    onError?: (error: unknown) => void;
-  }) => {
-    apiError.fire = onError;
-    return <div data-api>{children}</div>;
-  },
-  Map: ({ children, ...props }: Record<string, unknown> & { children?: ReactNode }) => (
-    <div
-      data-map
-      data-mapid={String(props.mapId)}
-      data-colorscheme={String(props.colorScheme)}
-      data-gestures={String(props.gestureHandling)}
-      data-nodefaultui={String(props.disableDefaultUI)}
-      data-clickableicons={String(props.clickableIcons)}
-      // The Maps API hands its click handler a wrapped event carrying the DOM one; the
-      // pane reads that to tell a tap on the canvas from a tap on a pin, so the stub
-      // has to pass it through in the same shape.
-      ref={() => {
-        googleTap.fire = props.onClick as CanvasClick | undefined;
-        tilesLoaded.fire = props.onTilesLoaded as (() => void) | undefined;
-      }}
-      onClick={(event) =>
-        (props.onClick as CanvasClick | undefined)?.({
-          domEvent: event.nativeEvent,
-          detail: { placeId: nextTap.placeId },
-        })
-      }
-    >
-      {children}
-    </div>
-  ),
-  AdvancedMarker: ({
-    children,
-    zIndex,
-    position,
-    onClick,
-  }: {
-    children?: ReactNode;
-    zIndex?: number;
-    position?: { lat: number; lng: number };
-    onClick?: () => void;
-  }) => (
-    <div
-      data-marker
-      data-z={zIndex}
-      data-at={position ? `${position.lat},${position.lng}` : ''}
-      // TWO CHANNELS, because in the browser there are two. A marker is a DOM overlay, so a
-      // tap on it really does produce a DOM click — but the handler `AdvancedMarker` takes is
-      // wired to GOOGLE's own marker click, a subscription nothing can `stopPropagation` on.
-      // The DOM half keeps the older tests reading naturally; the ref hangs the same callback
-      // on the node so a test can fire it the way Google does, which is the only channel that
-      // reaches the pane's `gestureTapRef` guard. `googleTap` above is this same trick for the
-      // canvas, and for the same reason.
-      ref={(el) => {
-        if (el) (el as HTMLElement & { gmpClick?: () => void }).gmpClick = onClick;
-      }}
-      onClick={onClick}
-    >
-      {children}
-    </div>
-  ),
-  Polyline: (props: Record<string, unknown>) => (
-    <div
-      data-polyline
-      data-points={(props.path as unknown[])?.length}
-      data-color={props.strokeColor}
-    />
-  ),
-  __resetModuleState: () => {
-    moduleReset.calls += 1;
-  },
-  // `null` by default — the honest stub, since there is no map — but settable, because
-  // the dot tier (ADR-0128 §1) is decided from the map's own zoom. The fake below is
-  // deliberately inert for the CAMERA (no bounds, a 0x0 div) so setting it cannot make
-  // the other tests start fitting.
-  useMap: () => mapStub.current,
-}));
+/** The canvas's own callbacks, hung here so a test can fire them the way the renderer does.
+ *  `firstPaint` is the watchdog's input (`onTilesLoaded`'s successor); `unavailable` is the one
+ *  terminal signal; `error` is a tile that failed and must change nothing. */
+const canvas: {
+  firstPaint?: () => void;
+  idle?: () => void;
+  error?: (error: Error) => void;
+  unavailable?: (error: Error) => void;
+  props?: MapCanvasProps;
+} = {};
 
-const mapStub: { current: FakeZoomMap | null } = { current: null };
+type Handler = (event?: unknown) => void;
 
-class FakeZoomMap {
+/**
+ * A MapLibre map, in MapLibre's own dialect — `getCenter()` returns PROPERTIES, `getBounds()`
+ * answers corner-wise with `getNorth()`/`getSouth()`, the camera is `jumpTo`. `MapPane` wraps it
+ * in the real `cameraMapFor`, which is what makes this fake cover the adapter too.
+ *
+ * **Inert for the CAMERA by default, deliberately**, and this is inherited from the suite it
+ * replaces: no bounds and a 0×0 container, so `useMapCamera`'s `apply` bails and a test that
+ * says nothing about framing cannot start fitting. A test that wants to see the padding gives
+ * it a real box and a viewport.
+ */
+class FakeMapLibreMap {
   zoom = 14;
-  /** Keyed by event type on purpose: the camera registers an `idle` retry on this same
-   *  object, and a shared handler set would make a pinch fire the framing too. */
-  private handlers = new Map<string, Set<() => void>>();
+  centre = { lat: 0, lng: 0 };
+  /** `undefined` by default — a map that has not rendered. Half of what keeps this inert. */
+  viewport: { north: number; south: number; east: number; west: number } | null = null;
+  /** 0×0 by default: an unsized container has no honest fit. */
+  box = { width: 0, height: 0 };
+  readonly fits: { padding?: { bottom: number } }[] = [];
+  readonly sources = new Map<string, unknown>();
+  readonly layers: Record<string, unknown>[] = [];
+  removed = 0;
+  resizes = 0;
+  private readonly container = document.createElement('div');
+  /** Keyed by event type on purpose: the camera registers an `idle` retry on this same object,
+   *  and a shared handler set would make a pinch fire the framing too. */
+  private readonly handlers = new Map<string, Set<Handler>>();
+
   getZoom() {
     return this.zoom;
   }
-  /** `undefined` by default — a map that has not rendered — which is half of what keeps
-   *  this stub inert. A padding test has to make it real, or the camera defers to `idle`
-   *  and never fits at all. */
-  viewport: { north: number; south: number; east: number; west: number } | null = null;
+  getCenter() {
+    return { lat: this.centre.lat, lng: this.centre.lng };
+  }
+  getContainer() {
+    this.container.getBoundingClientRect = () => this.box as DOMRect;
+    return this.container;
+  }
+  getMinZoom() {
+    return undefined;
+  }
+  getMaxZoom() {
+    return undefined;
+  }
   getBounds() {
     const b = this.viewport;
     if (!b) return undefined;
     return {
-      getNorthEast: () => ({ lat: () => b.north, lng: () => b.east }),
-      getSouthWest: () => ({ lat: () => b.south, lng: () => b.west }),
+      getNorth: () => b.north,
+      getSouth: () => b.south,
+      getEast: () => b.east,
+      getWest: () => b.west,
     };
   }
-  /** 0×0 by default, which is what keeps this stub inert for the camera: an unsized
-   *  div has no honest fit, so `apply` bails. A test that wants to see the PADDING
-   *  gives it a real box. */
-  box = { width: 0, height: 0 };
-  getDiv() {
-    return { getBoundingClientRect: () => this.box } as unknown as HTMLElement;
-  }
-  setCenter() {}
-  setZoom() {}
-  panTo() {}
-  centre = { lat: 0, lng: 0 };
-  getCenter() {
-    const c = this.centre;
-    return { lat: () => c.lat, lng: () => c.lng };
-  }
-  moveCamera(at: { center?: { lat: number; lng: number }; zoom?: number }) {
-    if (at.center) this.centre = at.center;
+  jumpTo(at: { center?: [number, number]; zoom?: number }) {
+    if (at.center) this.centre = { lat: at.center[1], lng: at.center[0] };
     if (at.zoom != null) this.zoom = at.zoom;
   }
-  readonly fits: { padding?: { bottom: number } }[] = [];
-  fitBounds(_bounds: unknown, padding?: { bottom: number }) {
-    this.fits.push({ padding });
+  fitBounds(_bounds: unknown, options?: { padding?: { bottom: number } }) {
+    this.fits.push({ padding: options?.padding });
   }
-  addListener(type: string, fn: () => void) {
-    const set = this.handlers.get(type) ?? new Set();
-    set.add(fn);
-    this.handlers.set(type, set);
-    return { remove: () => set.delete(fn) };
+  resize() {
+    this.resizes += 1;
   }
-  /** The gesture pipeline reads the zoom limits off the map and turns a pixel into a
-   *  coordinate through Google's OWN projection (ADR-0129 §3). Linear on purpose: the
-   *  geography is `canvas-gestures.test.ts`'s job, against the real Mercator. */
-  get() {
-    return undefined;
+  remove() {
+    this.removed += 1;
   }
-  getProjection() {
+  isStyleLoaded() {
+    return true;
+  }
+  /** **The ground sources the style declares** — what `styleState` counts. A test can empty this
+   *  to model the state `sdk:` could not distinguish: a camera that answers perfectly on a map
+   *  whose style never arrived, so no source exists and no tile is ever requested. */
+  groundSources = ['protomaps', 'protomaps-world'];
+  getStyle() {
     return {
-      fromLatLngToPoint: (ll: { lat: number; lng: number }) => ({ x: ll.lng, y: ll.lat }),
-      fromPointToLatLng: (pt: { x: number; y: number }) => ({ lat: () => pt.y, lng: () => pt.x }),
+      // Merged with the imperative ones, because that is what MapLibre reports: the day
+      // connector's source sits in the same object as the ground it draws over.
+      sources: {
+        ...Object.fromEntries(this.groundSources.map((id) => [id, { type: 'vector' }])),
+        ...Object.fromEntries(this.sources),
+      },
+      layers: this.layers,
     };
   }
+  addSource(id: string, source: unknown) {
+    this.sources.set(id, source);
+  }
+  getSource(id: string) {
+    return this.sources.get(id);
+  }
+  removeSource(id: string) {
+    this.sources.delete(id);
+  }
+  addLayer(layer: Record<string, unknown>) {
+    this.layers.push(layer);
+  }
+  getLayer(id: string) {
+    return this.layers.find((layer) => layer.id === id);
+  }
+  removeLayer(id: string) {
+    const at = this.layers.findIndex((layer) => layer.id === id);
+    if (at >= 0) this.layers.splice(at, 1);
+  }
+  on(type: string, fn: Handler) {
+    const set = this.handlers.get(type) ?? new Set<Handler>();
+    set.add(fn);
+    this.handlers.set(type, set);
+    return this;
+  }
+  off(type: string, fn: Handler) {
+    this.handlers.get(type)?.delete(fn);
+    return this;
+  }
+  once(type: string, fn: Handler) {
+    return this.on(type, fn);
+  }
+  /** The gesture pipeline reads the zoom off the map, so a pinch is a zoom plus its event.
+   *  `zoom` rather than `zoom_changed`: the adapter is what translates the name, and this fake
+   *  sits on the MapLibre side of it. */
   pinchTo(zoom: number) {
     this.zoom = zoom;
-    this.handlers.get('zoom_changed')?.forEach((fn) => fn());
+    this.handlers.get('zoom')?.forEach((fn) => fn());
   }
 }
+
+/** The map the next `paint()` hands over. Always present — a test that wants no map is not a
+ *  state this pane has any more, since the canvas is ours and constructs synchronously here. */
+const mapStub: { current: FakeMapLibreMap } = { current: new FakeMapLibreMap() };
+
+/** `maplibregl.Marker`, reduced to what `MapMarker` uses. **It appends the element to the
+ *  map's container**, which is what real MapLibre does and what makes the pins queryable from
+ *  `document` — and it adds `.maplibregl-marker`, so the wrapper collision ADR-0186's amendment
+ *  found is at least structurally represented. */
+class FakeMarker {
+  private element: HTMLElement;
+  lngLat: [number, number] = [0, 0];
+  constructor(options: { element: HTMLElement; anchor?: string }) {
+    this.element = options.element;
+    this.element.classList.add('maplibregl-marker');
+    this.element.dataset.anchor = options.anchor ?? '';
+  }
+  setLngLat(at: [number, number]) {
+    this.lngLat = at;
+    this.element.dataset.at = `${at[1]},${at[0]}`;
+    return this;
+  }
+  addTo(map: FakeMapLibreMap) {
+    map.getContainer().appendChild(this.element);
+    return this;
+  }
+  remove() {
+    this.element.remove();
+    return this;
+  }
+}
+
+const fakeGl = { Marker: FakeMarker } as unknown as typeof import('maplibre-gl');
+
+/** `MapCanvas` stubbed to a plain div that hands over the fake map in an effect — synchronously
+ *  as far as the suite is concerned, because RTL's `render` flushes effects. Its own lifecycle
+ *  (constructed once, `remove()` on unmount, the first-paint pair, a tile error not being a
+ *  death) is `MapCanvas.test.tsx`'s subject, not this file's. */
+vi.mock('./MapCanvas', () => ({
+  MapCanvas: (props: MapCanvasProps) => {
+    canvas.props = props;
+    canvas.firstPaint = props.onFirstPaint;
+    canvas.idle = props.onIdle;
+    canvas.error = props.onError;
+    canvas.unavailable = props.onUnavailable;
+    const holderRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      // **The fake map's container goes into the document**, because that is where the real
+      // renderer's is — markers are appended to it, so a detached container means the pins
+      // exist in memory and cannot be queried. Everything the suite asserts about a pin depends
+      // on this one line.
+      holderRef.current?.appendChild(mapStub.current.getContainer());
+      props.onMap(mapStub.current as never, fakeGl);
+      return () => props.onMap(null, null);
+      // Once per mount, like the real thing: `props` is read fresh above on every render, and a
+      // dependency here would hand the map over again on each one.
+    }, []);
+    return (
+      <div data-map ref={holderRef} data-scheme={props.scheme} data-world={props.urls.world} />
+    );
+  },
+}));
 
 import { MapPane, type MapPin } from './MapPane';
 import { PIN_TIER } from '../../lib/map-pins';
@@ -204,12 +228,16 @@ import {
   DRAG_HOLD_MS,
   MAP_CONNECTOR,
   MAP_LOAD_TIMEOUT_MS,
-  MAP_RECOVERY_BACKOFF_MS,
   MAP_ZOOM,
 } from '../../constants';
+import { RELOAD_GUARD_KEY, stampReload } from '../../lib/guarded-reload';
+import { setAccessToken } from '../../lib/api';
 import { t } from '../../i18n/he';
 
-const CONFIG = { apiKey: 'k', mapId: 'waypoint-day', colorScheme: MAP_COLOR_SCHEME.light };
+const URLS = {
+  world: '/map/world.pmtiles',
+  detail: '/map/planet-20260813.pmtiles',
+};
 
 const pin = (partial: Partial<MapPin> & Pick<MapPin, 'placeId'>): MapPin => ({
   lat: 35.6,
@@ -226,7 +254,8 @@ const pin = (partial: Partial<MapPin> & Pick<MapPin, 'placeId'>): MapPin => ({
 function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
   return render(
     <MapPane
-      config={props.config ?? CONFIG}
+      scheme={props.scheme ?? MAP_COLOR_SCHEME.light}
+      urls={props.urls ?? URLS}
       pins={props.pins ?? [pin({ placeId: 'a' })]}
       setSignal={props.setSignal ?? 'day'}
       onSelectPin={props.onSelectPin ?? vi.fn()}
@@ -241,48 +270,82 @@ function paint(props: Partial<Parameters<typeof MapPane>[0]> = {}) {
       me={props.me}
       connector={props.connector}
       defaultCentre={props.defaultCentre}
+      results={props.results}
+      onSelectResult={props.onSelectResult}
+      draftMarker={props.draftMarker}
     />,
   );
 }
 
 const pins = () => [...document.querySelectorAll('.map-pin')];
-/** Tap a pin the way GOOGLE reports it — a call on the marker's own subscription, not a DOM
- *  event. The distinction is the whole of the pane's guard (see the `AdvancedMarker` stub). */
-const firePinTap = (pin: Element) =>
-  act(() => {
-    (pin.closest('[data-marker]') as HTMLElement & { gmpClick?: () => void }).gmpClick?.();
-  });
-const markers = () => [...document.querySelectorAll<HTMLElement>('[data-marker]')];
+/** Tap a pin. **An ordinary DOM click now**, and that is the swap's own simplification: Google
+ *  reported a marker tap by CALLING us, a channel no `stopPropagation` could reach, so the pane
+ *  needed a ref guard as its only defence (ADR-0157's session-211 amendment). A MapLibre marker
+ *  is a plain element we own, so its click is in the same stream everything else is. */
+const firePinTap = (pin: Element) => act(() => void fireEvent.click(pin));
+const markers = () => [...document.querySelectorAll<HTMLElement>('.map-marker')];
+/** The day connector, as it now exists: a line layer on the map, not a `<Polyline>` element. */
+const connectorLayer = () =>
+  mapStub.current.layers.find((layer) => layer.type === 'line') as
+    { paint: Record<string, unknown> } | undefined;
 
 afterEach(() => {
   cleanup();
-  mapStub.current = null;
-  idleHandlers.length = 0;
-  nextTap.placeId = null;
-  apiError.fire = undefined;
-  tilesLoaded.fire = undefined;
+  mapStub.current = new FakeMapLibreMap();
+  canvas.firstPaint = undefined;
+  canvas.idle = undefined;
+  canvas.error = undefined;
+  canvas.unavailable = undefined;
+  canvas.props = undefined;
 });
 
 describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
-  it('constructs one map, with the mandatory mapId and our gesture/control choices', () => {
-    paint();
-    const map = document.querySelector('[data-map]') as HTMLElement;
+  // **What this test asserted before is mostly DELETED rather than ported**, and that is the
+  // clearest single measure of the swap. It used to check a mandatory `mapId`, the
+  // `colorScheme` that picks one of its two style slots, `disableDefaultUI`, `gestureHandling`
+  // and `clickableIcons` — five props that existed to suppress a vendor's chrome, name a cloud
+  // style, or pay an admission fee for advanced markers. There is no vendor chrome, no Map ID
+  // and no POI layer (ADR-0186 §2), so what is left to assert is what the pane actually
+  // decides: one canvas, the scheme, and the ground it reads.
+  it('builds exactly one canvas, on the scheme and the archive it was given', () => {
+    paint({ scheme: MAP_COLOR_SCHEME.dark });
     expect(document.querySelectorAll('[data-map]')).toHaveLength(1);
-    // A `mapId` is the price of admission: advanced markers do not load without one.
-    expect(map.dataset.mapid).toBe('waypoint-day');
-    // And the ID alone does not choose a style: it names a light/dark PAIR, and
-    // Google renders the light one unless asked otherwise. Shipping the night Map
-    // ID without this is what left the canvas light under a dark app — a prop
-    // silently not forwarded, which is precisely what this stub exists to catch.
-    expect(map.dataset.colorscheme).toBe('LIGHT');
-    // Google's controls are un-styleable, unlabelled and RTL-unaware (§12).
-    expect(map.dataset.nodefaultui).toBe('true');
-    // The default demands two fingers inside a scrollable page (§12).
-    expect(map.dataset.gestures).toBe('greedy');
-    // Google's sight labels are drawn and not tappable (ADR-0125 §6's 2026-07-30
-    // amendment). This is the whole of that decision, so it is asserted rather than
-    // left to the render nobody can see.
-    expect(map.dataset.clickableicons).toBe('false');
+    const map = document.querySelector('[data-map]') as HTMLElement;
+    expect(map.dataset.scheme).toBe('DARK');
+    expect(map.dataset.world).toBe(URLS.world);
+    // The opening camera is the pane's to supply, and a map must be constructed with SOME
+    // centre — the first fit replaces it (ADR-0127's opening-framing rules, unchanged).
+    expect(canvas.props?.zoom).toBe(MAP_ZOOM.WORLD);
+    expect(canvas.props?.centre).toEqual({ lat: 0, lng: 0 });
+  });
+
+  it('opens on the place zoom when the screen names a centre', () => {
+    paint({ defaultCentre: { lat: 35.68, lng: 139.76 } });
+    expect(canvas.props?.centre).toEqual({ lat: 35.68, lng: 139.76 });
+    expect(canvas.props?.zoom).toBe(MAP_ZOOM.PLACE);
+  });
+
+  // **OSM's attribution is a licence obligation, not chrome** (ADR-0186's Consequences), and it
+  // is asserted here because it is exactly the kind of requirement that disappears silently:
+  // `MapCanvas` switches MapLibre's own control off, so if the pane did not draw this there
+  // would be no attribution anywhere and nothing would fail.
+  it('draws the OSM attribution the licence requires', () => {
+    paint();
+    const attribution = document.querySelector('.map-attrib');
+    expect(attribution?.textContent).toContain('OpenStreetMap');
+  });
+
+  it('marks the pin with the anchor that puts its tip on the coordinate', () => {
+    paint({ pins: [pin({ placeId: 'a', lat: 35.6, lng: 139.7 })] });
+    const marker = markers()[0];
+    expect(marker.dataset.anchor).toBe('bottom');
+    expect(marker.dataset.at).toBe('35.6,139.7');
+    // **The pin is INSIDE the marker, never IS it** — the collision ADR-0186's 2026-08-13
+    // amendment measured: `.maplibregl-marker`'s `position: absolute` and `.map-pin`'s
+    // `position: relative` are both one class deep, ours loads last, so a pin handed straight
+    // to the renderer loses its positioning and six of them stack into a column.
+    expect(marker.classList.contains('map-pin')).toBe(false);
+    expect(marker.querySelector('.map-pin')).toBeTruthy();
   });
 
   it('a pin reads the same cat-* hue vocabulary as the list badge', () => {
@@ -529,7 +592,9 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
         pin({ placeId: 'idea', tier: PIN_TIER.idea }),
       ],
     });
-    const z = (i: number) => Number(markers()[i].dataset.z);
+    // The z-order is written onto the marker's own element — the wrapper is the renderer's,
+    // not React's, so it is set imperatively rather than as a JSX prop.
+    const z = (i: number) => Number(markers()[i].style.zIndex);
     expect(z(1)).toBeGreaterThan(z(2));
     expect(z(2)).toBeGreaterThan(z(0));
   });
@@ -560,12 +625,14 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     expect(document.querySelector('.map-me')).toBeTruthy();
   });
 
-  // Dashed, neutral, no arrowheads — it says "this is the order", not "this is the
-  // route" (§10). The Maps API has no dash array, so the dash is a repeating symbol
-  // along a transparent stroke.
-  it('draws the day connector only with two or more stops, neutral and transparent-stroked', () => {
+  // Dashed, neutral, no arrowheads — it says "this is the order", not "this is the route"
+  // (§10). **And the dash is REAL now** (ADR-0186 §2): ADR-0121 §10 had to fake one as a
+  // repeating symbol along a fully transparent stroke because the Maps API had no dash array,
+  // so the assertion changes from "transparent-stroked with icons" to the thing anyone would
+  // have written in the first place.
+  it('draws the day connector only with two or more stops, dashed and neutral', () => {
     const { unmount } = paint({ connector: [{ lat: 1, lng: 1 }] });
-    expect(document.querySelector('[data-polyline]')).toBeNull();
+    expect(connectorLayer()).toBeUndefined();
     unmount();
     paint({
       connector: [
@@ -574,30 +641,53 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
         { lat: 3, lng: 3 },
       ],
     });
-    const line = document.querySelector('[data-polyline]') as HTMLElement;
-    expect(line.dataset.points).toBe('3');
-    expect(line.dataset.color).toBe(MAP_CONNECTOR.COLOR.light);
+    const line = connectorLayer()!;
+    expect(line.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.light);
+    expect(line.paint['line-dasharray']).toEqual([...MAP_CONNECTOR.DASH]);
+    expect(line.paint['line-width']).toBe(MAP_CONNECTOR.WEIGHT);
+    // All three stops, in MapLibre's own coordinate order.
+    const source = mapStub.current.getSource('wp-connector') as {
+      data: { geometry: { coordinates: number[][] } };
+    };
+    expect(source.data.geometry.coordinates).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+    ]);
   });
 
-  // The dash is a TS constant handed to Google, so it sat out the CSS remap entirely
-  // and measured 1.01:1 on the night style's land — invisible (ADR-0158 §16). It now
-  // follows the LATCHED colour scheme rather than `documentTheme()`, so the line and
-  // the canvas it is drawn on cannot disagree after a theme flip.
+  // The dash colour was a TS constant handed to Google, so it sat out the CSS remap entirely
+  // and measured 1.01:1 on the night style's land — invisible (ADR-0158 §16). It takes the same
+  // scheme the ground was painted from, so the line and the canvas cannot disagree.
   it('takes the connector colour from the canvas it was built for, not the document', () => {
     paint({
-      config: { ...CONFIG, colorScheme: MAP_COLOR_SCHEME.dark },
+      scheme: MAP_COLOR_SCHEME.dark,
       connector: [
         { lat: 1, lng: 1 },
         { lat: 2, lng: 2 },
       ],
     });
-    const line = document.querySelector('[data-polyline]') as HTMLElement;
-    expect(line.dataset.color).toBe(MAP_CONNECTOR.COLOR.dark);
+    expect(connectorLayer()!.paint['line-color']).toBe(MAP_CONNECTOR.COLOR.dark);
   });
 
   it('draws no connector when none is given (Trip mode, or all-days scope)', () => {
     paint();
-    expect(document.querySelector('[data-polyline]')).toBeNull();
+    expect(connectorLayer()).toBeUndefined();
+  });
+
+  // The layer and its source are the map's, not React's, so nothing unmounts them for us — and
+  // a leak here would stack a second `wp-connector` on the next mount and throw.
+  it('takes its layer and source back off the map on unmount', () => {
+    const { unmount } = paint({
+      connector: [
+        { lat: 1, lng: 1 },
+        { lat: 2, lng: 2 },
+      ],
+    });
+    expect(mapStub.current.getSource('wp-connector')).toBeTruthy();
+    unmount();
+    expect(mapStub.current.getLayer('wp-connector-line')).toBeUndefined();
+    expect(mapStub.current.getSource('wp-connector')).toBeUndefined();
   });
 
   // ADR-0106 §4 decided pan/zoom IS the area filter and no chip is ever built. This
@@ -622,9 +712,10 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       expect(onCanvasTap).toHaveBeenCalledTimes(1);
     });
 
-    // An `AdvancedMarker` is a DOM overlay, so a pin tap should not reach the map's own
-    // click at all — but if it ever does, selecting a pin and instantly clearing it is
-    // the one ordering that would be silently broken.
+    // A marker is a DOM child of the pane, so a pin tap really DOES bubble to the pane's own
+    // click — which makes `.map-pin` load-bearing rather than cheap insurance the way it was
+    // under Google's separate callback. Selecting a pin and instantly clearing it is the
+    // ordering this prevents.
     it('a tap on a PIN is not a tap on the canvas', () => {
       const onCanvasTap = vi.fn();
       const onSelectPin = vi.fn();
@@ -634,30 +725,65 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       expect(onCanvasTap).not.toHaveBeenCalled();
     });
 
-    // Google's sight labels are drawn but not tappable (ADR-0125 §6's amendment), so a tap
-    // that lands on one is a tap on the canvas and nothing else — no `placeId`, no info
-    // window. The stub cannot withhold the id the way the real API does, so the assertion is
-    // the one that still means something at this seam: a tap CARRYING one is not special-cased.
-    // "Skip when `event.detail.placeId` is set" reads like a fix and has been the bug twice.
-    it('a canvas tap clears the selection whether or not it carries a placeId', () => {
+    // **The `placeId` case is GONE, not ported** (ADR-0186 §2). Google set `event.detail.placeId`
+    // when a tap landed on one of its own POI icons, and "skip when it is set" read like a fix
+    // and was the bug twice — so the suite asserted that a tap CARRYING one still cleared. There
+    // is no vendor POI layer to tap and no info window behind it, so the outcome three passes
+    // argued about cannot arise from either end. What replaces it is the assertion that the
+    // pane's own chrome is not the canvas: a tap on a control must not also dismiss the card.
+    it('a tap on the pane’s own chrome is not a tap on the canvas', () => {
       const onCanvasTap = vi.fn();
-      paint({ onCanvasTap });
-      nextTap.placeId = 'ChIJLU7jZClu5kcR4PcOOO6p3I0';
+      paint({ onCanvasTap, areaCount: 4 });
+      fireEvent.click(document.querySelector('.map-areabtn')!);
+      fireEvent.click(screen.getByRole('button', { name: t.map.locate }));
+      expect(onCanvasTap).not.toHaveBeenCalled();
+      // …and the canvas itself still reports.
       fireEvent.click(document.querySelector('[data-map]')!);
       expect(onCanvasTap).toHaveBeenCalledTimes(1);
+    });
+
+    // **The two the first pass missed**, and they are the reason the exclusion is by ROLE rather
+    // than by a list of our own class names: the failure chrome lives INSIDE the pane, so under a
+    // class list a tap on the retry pill or on `אבחון` also cleared the selection. Under Google
+    // this could not arise at all — the canvas reported its own taps and our chrome was never in
+    // that stream — so it is a hazard the swap introduced and this is the guard for it.
+    it('a tap on the failure chrome is not a tap on the canvas either', () => {
+      const onCanvasTap = vi.fn();
+      paint({ onCanvasTap });
+      act(() => canvas.firstPaint?.());
+      // A context death after the paint is what puts the retry and the diagnostic on screen.
+      act(() => {
+        document
+          .querySelector('[data-map]')!
+          .dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
+      });
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      expect(onCanvasTap).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+      expect(onCanvasTap).not.toHaveBeenCalled();
+    });
+
+    // The draft marker is the one marker with no role: it is `aria-hidden`, because the form
+    // beneath it is what acts on that point (ADR-0147 §5). It still must not read as a tap on the
+    // ground, or the release of the gesture that opened the form dismisses it.
+    it('a tap on the draft marker is not a tap on the canvas', () => {
+      const onCanvasTap = vi.fn();
+      paint({ onCanvasTap, draftMarker: { lat: 35.6, lng: 139.7, hue: 'food', glyph: '🍜' } });
+      fireEvent.click(document.querySelector('.map-pin.pending')!);
+      expect(onCanvasTap).not.toHaveBeenCalled();
     });
 
     // **The release of one of OUR gestures is not a tap** (ADR-0148's build-log amendment).
     // Reported from a phone: a long press opened the form and lifting the finger closed it
     // again, because since §7 a canvas tap dismisses the form. The seam is what this covers
     // and it is why the test lives here rather than beside the recogniser: `useCanvasGestures`
-    // can only prove it armed the guard, and Google reports a tap by CALLING us — so the
-    // hook's `document` swallow never sees that channel at all.
-    it("ignores the tap Google reports for the long press's own release", () => {
+    // can only prove it armed the guard. Under Google the second channel was unavoidable — a tap
+    // arrived as a CALL, which no `stopPropagation` can reach. It is an ordinary DOM click now,
+    // but the guard stays: the recogniser's swallow is on `document` and the pane's handler is
+    // on the pane, so the pane still hears it first.
+    it("ignores the tap fired by the long press's own release", () => {
       vi.useFakeTimers();
       const onCanvasTap = vi.fn();
-      const map = new FakeZoomMap();
-      mapStub.current = map;
       paint({ onCanvasTap, onHold: vi.fn() });
       const pane = document.querySelector('.map-pane')!;
       pane.dispatchEvent(
@@ -670,11 +796,11 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
       pane.dispatchEvent(
         new PointerEvent('pointerup', { clientX: 100, clientY: 200, bubbles: true, button: 0 }),
       );
-      googleTap.fire?.({ domEvent: undefined, detail: { placeId: null } });
+      fireEvent.click(document.querySelector('[data-map]')!);
       expect(onCanvasTap).not.toHaveBeenCalled();
       // And only that one: the guard expires, so the next real tap on the canvas still lands.
       act(() => void vi.advanceTimersByTime(DRAG_CLICK_SWALLOW_MS));
-      googleTap.fire?.({ domEvent: undefined, detail: { placeId: null } });
+      fireEvent.click(document.querySelector('[data-map]')!);
       expect(onCanvasTap).toHaveBeenCalledTimes(1);
       vi.useRealTimers();
     });
@@ -690,8 +816,6 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     // until the pane has rendered.
     const hold = (targetOf: () => Element) => {
       vi.useFakeTimers();
-      const map = new FakeZoomMap();
-      mapStub.current = map;
       const onHold = vi.fn();
       paint({ onHold });
       targetOf().dispatchEvent(
@@ -726,8 +850,6 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     // us, so the recogniser's DOM swallow never sees that channel.
     it("ignores the pin tap Google reports for the long press's own release", () => {
       vi.useFakeTimers();
-      const map = new FakeZoomMap();
-      mapStub.current = map;
       const onSelectPin = vi.fn();
       paint({ onSelectPin, onHold: vi.fn() });
       const pin = pins()[0];
@@ -856,7 +978,8 @@ describe('MapPane — our markup, not PinElement (ADR-0121 §6)', () => {
     const before = markers()[0];
     view.rerender(
       <MapPane
-        config={CONFIG}
+        scheme={MAP_COLOR_SCHEME.light}
+        urls={URLS}
         pins={same}
         setSignal="day"
         onSelectPin={vi.fn()}
@@ -880,16 +1003,14 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
   const pane = () => document.querySelector('.map-pane') as HTMLElement;
 
   it('marks the pane when the zoom is below the threshold, and clears it above', () => {
-    const map = new FakeZoomMap();
-    map.zoom = MAP_ZOOM.DOT_BELOW - 1;
-    mapStub.current = map;
+    mapStub.current.zoom = MAP_ZOOM.DOT_BELOW - 1;
     paint();
     expect(pane().dataset.pins).toBe('dot');
 
     // Pinching in past the threshold restores the full teardrop, during the gesture.
-    act(() => map.pinchTo(MAP_ZOOM.DOT_BELOW));
+    act(() => mapStub.current.pinchTo(MAP_ZOOM.DOT_BELOW));
     expect(pane().dataset.pins).toBeUndefined();
-    act(() => map.pinchTo(MAP_ZOOM.DOT_BELOW - 3));
+    act(() => mapStub.current.pinchTo(MAP_ZOOM.DOT_BELOW - 3));
     expect(pane().dataset.pins).toBe('dot');
   });
 
@@ -898,21 +1019,17 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
   // test cannot see this path, so it is asserted here.
   it('the place card’s reserve reaches the camera’s padding (ADR-0128 §2)', () => {
     const WIDE = { north: 60, south: 10, east: 160, west: 110 };
-    const map = new FakeZoomMap();
-    map.box = { width: 390, height: 517 };
-    map.viewport = WIDE;
-    mapStub.current = map;
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = WIDE;
     const two = [pin({ placeId: 'a' }), pin({ placeId: 'b', lat: 35.9, lng: 139.9 })];
     const { unmount } = paint({ pins: two });
-    const plain = map.fits.at(-1)!.padding!.bottom;
+    const plain = mapStub.current.fits.at(-1)!.padding!.bottom;
     unmount();
 
-    const withCard = new FakeZoomMap();
-    withCard.box = { width: 390, height: 517 };
-    withCard.viewport = WIDE;
-    mapStub.current = withCard;
+    mapStub.current.box = { width: 390, height: 517 };
+    mapStub.current.viewport = WIDE;
     paint({ pins: two, cardReserve: 160 });
-    expect(withCard.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
+    expect(mapStub.current.fits.at(-1)!.padding!.bottom).toBeGreaterThan(plain);
   });
 
   // ADR-0128 §1's session-154 amendment: **demote what claims precision, keep what claims
@@ -928,9 +1045,7 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
   // the classes and the flag the rules key on are present. Which pins actually shrink is
   // a CSS question, and jsdom applies no CSS.
   it('the time anchors keep the classes that exempt them from the dot tier', () => {
-    const map = new FakeZoomMap();
-    map.zoom = MAP_ZOOM.DOT_BELOW - 2;
-    mapStub.current = map;
+    mapStub.current.zoom = MAP_ZOOM.DOT_BELOW - 2;
     paint({
       pins: [
         pin({ placeId: 'now', nowStop: true, order: 2 }),
@@ -949,9 +1064,7 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
   // And they keep the PARTS the rule keeps — the number and the tag are still rendered at
   // dot zoom, because it is CSS that decides who shows them, not the markup.
   it('an exempt pin still renders its number and its tag at dot zoom', () => {
-    const map = new FakeZoomMap();
-    map.zoom = MAP_ZOOM.DOT_BELOW - 2;
-    mapStub.current = map;
+    mapStub.current.zoom = MAP_ZOOM.DOT_BELOW - 2;
     paint({ pins: [pin({ placeId: 'now', nowStop: true, order: 2 })] });
     const el = document.querySelector('[aria-label="now"]')!;
     expect(el.querySelector('.pin-n')?.textContent).toBe('2');
@@ -962,11 +1075,9 @@ describe('the dot tier degrades a pin below a zoom threshold (ADR-0128 §1)', ()
   // inside a live `google.maps.Map`, where a needless re-diff is the cheap failure and a
   // re-instantiation is a billed one (ADR-0121 §4).
   it('does not touch a single marker node when the tier flips', () => {
-    const map = new FakeZoomMap();
-    mapStub.current = map;
     paint({ pins: [pin({ placeId: 'a' }), pin({ placeId: 'b' })] });
     const before = markers();
-    act(() => map.pinchTo(MAP_ZOOM.DOT_BELOW - 4));
+    act(() => mapStub.current.pinchTo(MAP_ZOOM.DOT_BELOW - 4));
     expect(pane().dataset.pins).toBe('dot');
     expect(markers()).toEqual(before);
   });
@@ -984,7 +1095,7 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
   it('a failed script load (APIProvider onError) swaps the canvas for ErrorState', () => {
     paint();
     expect(document.querySelector('[data-map]')).toBeTruthy();
-    act(() => apiError.fire?.(new Error('boom')));
+    act(() => canvas.unavailable?.(new Error('boom')));
     expect(document.querySelector('[data-map]')).toBeNull();
     const alert = screen.getByRole('alert');
     expect(alert.textContent).toBe(t.map.loadError);
@@ -1017,7 +1128,7 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     paint();
     await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
     expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
-    act(() => tilesLoaded.fire?.());
+    act(() => canvas.firstPaint?.());
     expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
     expect(screen.queryByText(t.map.loading)).toBeNull();
     expect(document.querySelector('[data-map]')).toBeTruthy();
@@ -1030,7 +1141,7 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     paint();
     await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
     expect(document.querySelector('[data-map]')).toBeTruthy();
-    act(() => apiError.fire?.(new Error('boom')));
+    act(() => canvas.unavailable?.(new Error('boom')));
     expect(document.querySelector('[data-map]')).toBeNull();
     expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
     expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
@@ -1039,7 +1150,7 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
   it('tiles loading before the bound never fails at all', async () => {
     vi.useFakeTimers();
     paint();
-    act(() => tilesLoaded.fire?.());
+    act(() => canvas.firstPaint?.());
     await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
     expect(document.querySelector('[data-map]')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -1054,11 +1165,14 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     paint();
     expect(mapReading().tilesLoadedMs).toBeNull();
     await act(() => vi.advanceTimersByTimeAsync(2_500));
-    act(() => tilesLoaded.fire?.());
+    act(() => canvas.firstPaint?.());
     expect(mapReading().tilesLoadedMs).toBe(2_500);
     // A retry starts a fresh clock rather than carrying the previous attempt's elapsed —
-    // the same reason the other three fields are cleared on `[attempt]`.
-    act(() => apiError.fire?.(new Error('boom')));
+    // the same reason the other three fields are cleared on `[attempt]`. The reload
+    // cooldown is spent first so the tap takes the rebuild path this asserts about; a
+    // deliberate retry otherwise reloads the document and there is no next attempt here.
+    stampReload(RELOAD_GUARD_KEY.map);
+    act(() => canvas.unavailable?.(new Error('boom')));
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
     expect(mapReading().tilesLoadedMs).toBeNull();
   });
@@ -1070,14 +1184,14 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
   it('says the wait is a wait until the first tile paints, and stops saying it after', () => {
     paint();
     expect(screen.getByText(t.map.loading)).toBeTruthy();
-    act(() => tilesLoaded.fire?.());
+    act(() => canvas.firstPaint?.());
     expect(screen.queryByText(t.map.loading)).toBeNull();
   });
 
   it('never says loading and failed at once, and says it again on a retry', () => {
     vi.useFakeTimers();
     paint();
-    act(() => apiError.fire?.(new Error('boom')));
+    act(() => canvas.unavailable?.(new Error('boom')));
     // The failure replaced the canvas, so the cue went with it — one answer on screen.
     expect(screen.queryByText(t.map.loading)).toBeNull();
     expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
@@ -1086,34 +1200,168 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     expect(screen.getByText(t.map.loading)).toBeTruthy();
   });
 
-  // Field report #35's THIRD cause, and the one that made the previous two fixes read as no
-  // fix at all. vis.gl keeps the Maps-API loading status in module state and writes it once,
-  // so a single failed or stalled load leaves it at FAILED/LOADING for the life of the page:
-  // `useApiIsLoaded()` stays false, `new google.maps.Map()` is never called, and a `key` bump
-  // rebuilds the component over a dead loader — the retry that "does nothing", cured only by
-  // restarting the app. Reproduced in real Chrome by failing the first Maps script fetch: the
-  // retry then re-fetched it SUCCESSFULLY (`google.maps.Map` present) and still painted no
-  // canvas. So the retry has to clear the page's state, not only the component's.
-  it('retry clears the library-level loading status, not just its own subtree', () => {
+  // ── FIELD REPORT #35's THIRD CAUSE, AND WHY THIS TEST NO LONGER EXISTS ──────────────
+  //
+  // What stood here asserted that a retry called `__resetModuleState()`. vis.gl kept the
+  // Maps-API loading status in module state and wrote it **once**, so one failed or stalled load
+  // left it at `FAILED`/`LOADING` for the life of the page: `useApiIsLoaded()` stayed false,
+  // `new google.maps.Map()` was never called, and a `key` bump rebuilt the component over a
+  // dead loader — the retry that "does nothing", cured only by restarting the app. Reproduced in
+  // real Chrome by failing the first Maps script fetch: the retry re-fetched it SUCCESSFULLY and
+  // still painted no canvas.
+  //
+  // **There is nothing to reset.** `maplibre-gl` is bundled and a map is a class instance, so a
+  // transient failure writes down no page-global state for the next attempt to inherit. The
+  // assertion that replaces it is the one that was always the POINT of the reset: a retry gets a
+  // genuinely fresh canvas rather than the failed one it was hoping would recover.
+  it('retry builds a NEW canvas rather than reusing the failed one', () => {
     vi.useFakeTimers();
-    const before = moduleReset.calls;
+    stampReload(RELOAD_GUARD_KEY.map);
     paint();
-    act(() => apiError.fire?.(new Error('boom')));
-    expect(moduleReset.calls).toBe(before);
+    const first = document.querySelector('[data-map]');
+    act(() => canvas.unavailable?.(new Error('boom')));
+    expect(document.querySelector('[data-map]')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
-    expect(moduleReset.calls).toBe(before + 1);
+    const second = document.querySelector('[data-map]');
+    expect(second).toBeTruthy();
+    expect(second).not.toBe(first);
   });
 
-  /* **Field report #35's real cause**, reproduced deterministically with
-     `WEBGL_lose_context` in a real browser before any of this was written: a phone reclaims
-     a backgrounded page's GPU context, and the canvas that comes back is blank FOREVER —
-     measured at 26s+ with no cue, no error and no recovery, because the tiles watchdog
-     guards only the first paint and `tilesPainted` is already true by then. The screenshot
-     matches field report #28 word for word. Session 247 declined to act on this event
-     believing a post-paint loss is "recovered mid-session"; it is not. */
-  describe('a lost GPU context rebuilds the map', () => {
+  // ── THE BLANK MAP THAT SAID NOTHING (2026-08-14, from the owner's own phone) ─────────
+  //
+  // The pane rendered, the attribution rendered, the pins rendered, and the ground was nothing
+  // but its own background colour — with **no cue, no retry pill and no diagnostic**. Cause:
+  // `MapCanvas` derived first paint from `load` + `idle`, and both of those settle on a map
+  // whose every tile request failed, because "nothing pending" includes "nothing left to fail".
+  // So `tilesPainted` latched on a blank canvas and took the whole affordance set with it —
+  // field report #28 verbatim, reached from a new direction.
+  //
+  // `MapCanvas` now waits for a real tile (its own suite covers that half). What this asserts is
+  // the pane's half, which is the one the owner would have seen: with no first paint, the bound
+  // expires and the pane SAYS so. It is the same shape as the post-paint context death above,
+  // and it is here because those two are the only ways a blank canvas can happen.
+  // **THE INSTRUMENT HAS TO DISTINGUISH THREE BUGS** (2026-08-14, after three rounds of reading
+  // `tile:101ms` as health). The probe reported only milliseconds and sent no credentials, so a
+  // 401, a 503 and a 206 were one indistinguishable number — and the real read is authenticated,
+  // which means the probe was answering a different question than the renderer asks. Twice I took
+  // it as evidence the archive was fine. It reports the STATUS now, with the token, for both
+  // archives, against the URLs the canvas was actually handed.
+  it('probes both archives, with credentials, and reports their status', async () => {
+    const asked: { url: string; auth?: string; range?: string }[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      asked.push({
+        url: String(input),
+        auth: headers.get('Authorization') ?? undefined,
+        range: headers.get('Range') ?? undefined,
+      });
+      return Promise.resolve(new Response('', { status: 503 }));
+    }) as typeof globalThis.fetch;
+    setAccessToken('tok-diag');
+
+    try {
+      paint({
+        urls: {
+          world: '/map/world.pmtiles',
+          detail: '/map/planet-20260813.pmtiles',
+          extract: '/trips/t1/map/extract.pmtiles',
+        },
+      });
+      act(() => canvas.unavailable?.(new Error('gone')));
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+
+      const archives = () => asked.filter((call) => call.url.includes('.pmtiles'));
+      await vi.waitFor(() => expect(archives()).toHaveLength(2));
+      // Both, because either one failing is a different fix — and the extract is the one the
+      // detail layers read.
+      expect(archives().map((call) => call.url)).toEqual(
+        expect.arrayContaining(['/map/world.pmtiles', '/map/planet-20260813.pmtiles']),
+      );
+      // Authenticated, like the real read, or the probe answers a question nobody asked.
+      expect(archives().every((call) => call.auth === 'Bearer tok-diag')).toBe(true);
+      // One byte: a 42.7 MB archive must not be downloaded to take a reading.
+      expect(archives().every((call) => call.range === 'bytes=0-0')).toBe(true);
+      // And the STATUS reaches the line, which is the whole point.
+      await vi.waitFor(() =>
+        expect(document.querySelector('.map-diag-out')!.textContent).toContain('world:503'),
+      );
+      expect(document.querySelector('.map-diag-out')!.textContent).toContain('detail:503');
+      // **Each archive gets a status AND a reading of its contents**, because `206` alone read as
+      // health twice: it says the bytes arrive, not that they hold a tile. `unregistered` is the
+      // honest answer here — this suite stubs the canvas, so no archive was ever registered — and
+      // asserting the PAIR is what pins the field to the line.
+      expect(document.querySelector('.map-diag-out')!.textContent).toMatch(
+        /world:503\/\d+ms\[unregistered] detail:503\/\d+ms\[unregistered]/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      setAccessToken(null);
+    }
+  });
+
+  it('says so when tiles never arrive, however settled the canvas claims to be', async () => {
+    vi.useFakeTimers();
+    paint();
+    // Exactly the owner's state: the renderer is happy, the archive gave it nothing.
+    act(() => canvas.idle?.());
+    act(() => canvas.idle?.());
+    expect(screen.getByText(t.map.loading)).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    // All three affordances, which is precisely what was missing on the phone.
+    expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    expect(screen.getByRole('button', { name: new RegExp(t.feedback.retry) })).toBeTruthy();
+    expect(screen.getByText(t.map.diagnostic)).toBeTruthy();
+  });
+
+  it('retires all three by itself if the tiles were only slow', async () => {
+    vi.useFakeTimers();
+    paint();
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    act(() => canvas.firstPaint?.());
+    expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
+    expect(screen.queryByText(t.map.diagnostic)).toBeNull();
+  });
+
+  // **A tile that 404s is not a dead map** (ADR-0186's trap 4). An extract has edges, so a
+  // missing tile is an ordinary event — and routing it to `mapFailed` would put the pane into
+  // `ErrorState` over one tile at the edge of the archive. It is recorded for the diagnostic and
+  // changes nothing else, which is the whole reason `MapCanvas` splits the two callbacks.
+  it('a tile error keeps the canvas, and only shows up in the diagnostic', () => {
+    paint();
+    act(() => canvas.firstPaint?.());
+    act(() => canvas.error?.(new Error('pmtiles range failed')));
+    expect(document.querySelector('[data-map]')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
+    // It did not silently become a failure either — the streak is what the reload gate reads.
+    expect(screen.queryByText(t.map.diagnostic)).toBeNull();
+  });
+
+  it('records what the tile error SAID, which Google’s loader never told us', () => {
+    paint();
+    act(() => canvas.error?.(new Error('pmtiles range failed')));
+    // Surfaced through the diagnostic, which needs the map to be failing to be offered at all.
+    act(() => canvas.unavailable?.(new Error('gone')));
+    fireEvent.click(screen.getByText(t.map.diagnostic));
+    expect(document.querySelector('.map-diag-out')!.textContent).toContain('err:');
+  });
+
+  /* **One way a canvas dies — NOT field report #35's cause**, and the correction matters
+     because this comment claimed to be for three sessions. `WEBGL_lose_context` reproduces
+     a blank canvas deterministically: a phone reclaims a backgrounded page's GPU context,
+     and the tiles watchdog cannot see it because that guards only the FIRST paint. Worth
+     handling, and it is real. But the owner's device then read `gl:ok canvas:ok` while
+     failing, so on the reporting phone the context was alive and this was not what was
+     wrong. Session 247 declined to act on this event; sessions 262-267 over-credited it. */
+  describe('a lost GPU context is REPORTED, never rebuilt', () => {
     const setVisibility = (state: 'visible' | 'hidden') =>
       Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    const hide = () => {
+      setVisibility('hidden');
+      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    };
     const resume = () => {
       setVisibility('visible');
       act(() => void document.dispatchEvent(new Event('visibilitychange')));
@@ -1125,184 +1373,196 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
           document.querySelector('[data-map]') ?? document.querySelector('.map-pane')!
         ).dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
       });
-
-    /** Recovery is SCHEDULED, never synchronous — the delay is what backs off — so a test
-     *  has to let its timer come due. `+1` because the first step is 0ms. */
-    const settleRecovery = (step = 0) =>
-      act(() => void vi.advanceTimersByTime(MAP_RECOVERY_BACKOFF_MS[step]! + 1));
+    const stubReload = () => {
+      const reload = vi.fn();
+      Object.defineProperty(window, 'location', {
+        value: { ...window.location, reload },
+        configurable: true,
+      });
+      window.sessionStorage.clear();
+      return reload;
+    };
 
     afterEach(() => setVisibility('visible'));
 
-    it('rebuilds the canvas when the context dies while the tab is visible', () => {
-      vi.useFakeTimers();
+    it('says the map is broken when the context dies after a paint', () => {
+      // **The trap this whole block exists to hold.** The cue, the retry and the diagnostic
+      // all render under `!tilesPainted`, so a post-paint death used to set `tilesLate` and
+      // show NOTHING — a blank canvas with no affordance, field report #28 verbatim. The
+      // old code hid it by rebuilding; with the rebuild gone the cue is the whole response.
       paint();
-      const before = document.querySelector('[data-map]');
+      expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
       loseContext();
-      settleRecovery();
-      const after = document.querySelector('[data-map]');
-      expect(after).toBeTruthy();
-      // A NEW element: the key bumped, so this is a fresh map with a live context rather
-      // than the dead one nursed back — `restoreContext()` returns the DEFAULT camera.
-      expect(after).not.toBe(before);
+      expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
     });
 
     it('hears the event through the CAPTURE phase, since it does not bubble', () => {
       // The listener is on the pane, not the canvas, so it survives Google replacing its
       // own canvas — but that only works because capture reaches a non-bubbling event.
-      vi.useFakeTimers();
       paint();
-      const before = document.querySelector('[data-map]');
       act(() => {
         document
           .querySelector('[data-map]')!
           .dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
       });
-      settleRecovery();
-      expect(document.querySelector('[data-map]')).not.toBe(before);
+      expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
     });
 
-    it('waits for the tab to come back before rebuilding', () => {
-      // The loss happens while backgrounded, and a map built while the page is hidden is
-      // the failure that started all of this — so the rebuild waits for someone to be there.
+    /* **The contract that replaced the backoff, and the reason it had to.** Every rebuild
+       is a billed map load (ADR-0121 §4); the load quota was measured at 97% while the pane
+       was failing, so an automatic retry spent the very thing whose exhaustion caused the
+       failure. And it never worked anyway — owner: "Reloading the map (with the button for
+       example, or the backoff) doesn't recover the map." */
+    it('does NOT build another map, because a rebuild is a billed load', () => {
       vi.useFakeTimers();
       paint();
       const before = document.querySelector('[data-map]');
-      setVisibility('hidden');
       loseContext();
-      settleRecovery();
+      // Well past every delay the retired backoff ever used.
+      act(() => void vi.advanceTimersByTime(5 * 60_000));
       expect(document.querySelector('[data-map]')).toBe(before);
+    });
+
+    it('does not rebuild on resume either', () => {
+      vi.useFakeTimers();
+      paint();
+      const before = document.querySelector('[data-map]');
+      hide();
+      loseContext();
       resume();
-      settleRecovery();
-      expect(document.querySelector('[data-map]')).not.toBe(before);
+      act(() => void vi.advanceTimersByTime(5 * 60_000));
+      expect(document.querySelector('[data-map]')).toBe(before);
     });
 
-    /* **The regression this replaced, kept as a test so it cannot come back.** The first
-       version budgeted three rebuilds per MOUNT and then gave up into `ErrorState`. A
-       phone drops the GPU context on roughly every background, so a soak of eight
-       background/resume cycles measured **3/8 healthy** — dead from the fourth onward,
-       needing a human tap. Counting a lifetime of rebuilds was the error; the only
-       meaningful number is consecutive FAILURES, and a paint resets it. */
-    it('survives many losses, because a paint clears the failure streak', () => {
-      vi.useFakeTimers();
-      paint();
-      for (let cycle = 1; cycle <= 8; cycle++) {
-        loseContext();
-        settleRecovery();
-        const canvas = document.querySelector('[data-map]');
-        expect(canvas, `cycle ${cycle} should have rebuilt`).toBeTruthy();
-        // The map comes back — which is what resets the streak, so the next cycle gets
-        // the same immediate treatment rather than a growing delay or a dead pane.
-        act(() => tilesLoaded.fire?.());
-        expect(screen.queryByRole('alert'), `cycle ${cycle} must not hard-fail`).toBeNull();
-      }
-    });
-
-    it('backs off while it keeps failing, instead of spinning', () => {
-      // No paint between losses, so the streak grows and so does the wait — a broken GPU
-      // costs at most one billed instantiation a minute (ADR-0121 §4), never a hot loop.
-      vi.useFakeTimers();
+    it('counts each failure for the diagnostic, even though it never retries', () => {
       paint();
       loseContext();
-      const first = document.querySelector('[data-map]');
-      // Second failure: nothing happens until its longer delay elapses.
       loseContext();
-      expect(document.querySelector('[data-map]')).toBe(first);
-      settleRecovery(1);
-      expect(document.querySelector('[data-map]')).not.toBe(first);
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      // The count used to be incremented inside the rebuild scheduler, so deleting that
+      // would have silently zeroed the one field that read 2 and 3 on the owner's phone.
+      expect(document.querySelector('.map-diag-out')!.textContent).toContain('fails:2');
     });
 
-    /* **When rebuilding has demonstrably failed, rebuilding again is not a plan.**
-       The owner, after the backoff shipped: "Reloading the map (with the button for
-       example, or the backoff) doesn't recover the map. Once it's dead, it's dead until
-       you switch to another app." So once every step has been spent on a fresh map with a
-       fresh canvas and it is still dead, whatever is broken outlives the map object and
-       only a new DOCUMENT clears it — which is the owner's own workaround, restarting the
-       app. */
-    /** Every step spent, plus the cycle that reads the exhausted count — the check runs
-     *  before the increment, so the escalation lands one turn after the last step. */
-    const spendTheBackoff = () => {
-      for (let i = 0; i < MAP_RECOVERY_BACKOFF_MS.length + 2; i++) {
-        loseContext();
-        settleRecovery(MAP_RECOVERY_BACKOFF_MS.length - 1);
-      }
-    };
-
-    it('escalates to the error state once every rebuild has been spent', () => {
-      vi.useFakeTimers();
-      paint();
-      spendTheBackoff();
-      expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
-    });
-
+    /* **The only automatic recovery left, and the only one ever measured to work.** A fresh
+       DOCUMENT is what clears whatever outlives the map object — the owner's own workaround,
+       done for them. ADR-0185 chose this same moment for the build swap: nobody is looking,
+       nothing is mid-sentence, no overlay to lose. */
     it('reloads the app at the next hidden moment, which is when it costs nothing', () => {
-      // ADR-0185 chose exactly this moment for the build swap: nobody is looking, nothing
-      // is mid-sentence, and there is no overlay to lose.
-      vi.useFakeTimers();
-      const reload = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { ...window.location, reload },
-        configurable: true,
-      });
-      window.sessionStorage.clear();
+      const reload = stubReload();
       paint();
-      spendTheBackoff();
+      loseContext();
       expect(reload).not.toHaveBeenCalled();
-      setVisibility('hidden');
-      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+      hide();
       expect(reload).toHaveBeenCalledTimes(1);
     });
 
-    it('does NOT reload while the map is merely rebuilding', () => {
-      // The guard that keeps this from becoming an app that restarts itself whenever a
-      // phone hiccups: only an exhausted backoff earns a reload.
-      vi.useFakeTimers();
-      const reload = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { ...window.location, reload },
-        configurable: true,
-      });
-      window.sessionStorage.clear();
+    it('never reloads under a map that is working', () => {
+      // The guard that keeps this from being an app that restarts itself on a whim.
+      const reload = stubReload();
       paint();
-      loseContext();
-      settleRecovery();
-      setVisibility('hidden');
-      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+      hide();
       expect(reload).not.toHaveBeenCalled();
     });
 
-    it('collapses a burst of losses into ONE pending rebuild', () => {
-      vi.useFakeTimers();
+    it('reloads at most once per cooldown, so a bad device degrades to the error', () => {
+      const reload = stubReload();
       paint();
-      const before = document.querySelector('[data-map]');
       loseContext();
+      hide();
+      resume();
       loseContext();
-      loseContext();
-      settleRecovery();
-      const after = document.querySelector('[data-map]');
-      expect(after).not.toBe(before);
-      // …and no further rebuild is queued behind them.
-      settleRecovery(MAP_RECOVERY_BACKOFF_MS.length - 1);
-      expect(document.querySelector('[data-map]')).toBe(after);
+      hide();
+      expect(reload).toHaveBeenCalledTimes(1);
     });
 
-    it('retries a map whose tiles never arrived, rather than only saying so', async () => {
-      // The other dead-canvas route. Before this it showed the notice and waited for a
-      // human — which is the case the owner kept hitting.
+    /* **The reading nobody has ever had.** Six fixes shipped for #35 on inference because
+       every reproduction attempt recovers on a desktop, so the only way to learn what is
+       true on the reporting phone is to read it there. */
+    it('offers the diagnostic only once the map is failing, never on a working one', () => {
+      paint();
+      expect(screen.queryByText(t.map.diagnostic)).toBeNull();
+      loseContext();
+      expect(screen.getByText(t.map.diagnostic)).toBeTruthy();
+    });
+
+    it('reads the facts at the tap, and names the one that decides everything', () => {
+      paint();
+      loseContext();
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      const out = document.querySelector('.map-diag-out')!.textContent!;
+      // `gl:` is the discriminator: if a fresh canvas cannot get a context, no rebuild
+      // can ever work and only a new document will.
+      expect(out).toContain('gl:');
+      expect(out).toContain('canvas:');
+      expect(out).toContain('pane:');
+      expect(out).toContain('painted:');
+      expect(out).toContain('fails:');
+      expect(out).toContain('resumes:');
+      // Google's own verdict on the map it built, which splits "the loader is wedged" from
+      // "it has a camera and simply is not fetching" — two bugs with opposite fixes.
+      expect(out).toContain('sdk:');
+    });
+
+    // **The hole `sdk:` left, and it cost a round of diagnosis on 2026-08-14.** The camera reads
+    // perfectly on a map with no style at all, so `sdk:z14@32.12,34.82` beside `tiles:0 err:none`
+    // fitted two different bugs at once. This is the field that separates them.
+    it('reports whether the renderer took the style and holds our ground', () => {
+      paint();
+      loseContext();
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      expect(document.querySelector('.map-diag-out')!.textContent).toContain('style:y/2g');
+    });
+
+    it('reads 0g when the map holds a camera but none of our sources', () => {
+      paint();
+      mapStub.current.groundSources = [];
+      // A camera that answers — the whole point is that this half reads healthy either way.
+      mapStub.current.viewport = { north: 1, south: -1, east: 1, west: -1 };
+      loseContext();
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      const out = document.querySelector('.map-diag-out')!.textContent!;
+      expect(out).toContain('style:y/0g');
+      // And the camera still reads healthy, which is precisely why the pair is needed.
+      expect(out).toContain('sdk:z');
+    });
+
+    it('says so when tiles never arrive, and does not retry by itself', async () => {
       vi.useFakeTimers();
       paint();
       const before = document.querySelector('[data-map]');
       // The deadline lands from a promise `.catch`, so the timer alone does not flush it.
       await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
       expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
-      await act(() => vi.advanceTimersByTimeAsync(MAP_RECOVERY_BACKOFF_MS[0] + 1));
-      expect(document.querySelector('[data-map]')).not.toBe(before);
+      await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+      expect(document.querySelector('[data-map]')).toBe(before);
     });
   });
 
-  it('retry remounts a fresh map, never reusing the failed instance', async () => {
-    vi.useFakeTimers();
+  /** **A deliberate retry reloads the app, and does it FIRST.** A fresh `google.maps.Map`
+   *  over a wedged page shipped for six sessions and the owner's verdict was flat: _"Once
+   *  it's dead, it's dead until you switch to another app"_. The person tapping is the
+   *  consent, so there is no quiet-moment gate on this one. */
+  it('retry reloads the app, which is the only recovery measured to work', () => {
+    const reload = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload },
+      configurable: true,
+    });
+    window.sessionStorage.clear();
     paint();
-    act(() => apiError.fire?.(new Error('boom')));
+    act(() => canvas.unavailable?.(new Error('boom')));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('retry remounts a fresh map once the reload cooldown refuses', async () => {
+    vi.useFakeTimers();
+    // The cooldown already spent, so the tap falls through to the cheaper thing rather
+    // than doing nothing at all — one load somebody asked for.
+    stampReload(RELOAD_GUARD_KEY.map);
+    paint();
+    act(() => canvas.unavailable?.(new Error('boom')));
     expect(screen.getByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
     // The retry swaps `ErrorState` back for a freshly keyed `<APIProvider>` — a NEW
