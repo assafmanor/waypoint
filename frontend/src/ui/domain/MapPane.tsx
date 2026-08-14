@@ -43,6 +43,7 @@ import {
   MAP_CONNECTOR,
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
+  MAP_REBUILDS_BEFORE_RELOAD,
   MAP_RECOVERY_BACKOFF_MS,
   MAP_RELOAD_COOLDOWN_MS,
   MAP_ZOOM,
@@ -535,7 +536,7 @@ function MapPaneInner({
       // nothing — `canReloadQuietly` is ADR-0185's own test, so this cannot throw away
       // an open sheet or something being typed. If either guard refuses, we fall
       // through to `ErrorState`, whose action offers the same reload as a deliberate tap.
-      if (consecutiveRef.current > MAP_RECOVERY_BACKOFF_MS.length) {
+      if (consecutiveRef.current >= MAP_REBUILDS_BEFORE_RELOAD) {
         unrecoverableRef.current = true;
         setMapFailed(true);
         return;
@@ -688,7 +689,7 @@ function MapPaneInner({
    *  point it is the cheaper thing: reset the loader global (session 262's cause) and
    *  build a fresh map. */
   const retryMap = useCallback(() => {
-    if (consecutiveRef.current > MAP_RECOVERY_BACKOFF_MS.length) {
+    if (consecutiveRef.current >= MAP_REBUILDS_BEFORE_RELOAD) {
       // A deliberate tap, so no `canReloadQuietly` gate: the person asking IS the
       // consent. The once-per-session guard still holds, and if it refuses we fall
       // through to rebuilding rather than doing nothing.

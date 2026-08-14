@@ -255,6 +255,24 @@ export const MAP_RECOVERY_BACKOFF_MS = [0, 2_000, 8_000, 30_000, 60_000] as cons
  *  that loses its GPU repeatedly degrades to a visible error with a manual way out rather
  *  than reloading the app under someone every minute. */
 export const MAP_RELOAD_COOLDOWN_MS = 10 * 60 * 1000;
+
+/** **How many rebuilds to try before reloading the document instead** — and it is two
+ *  rather than "all of them", on measured grounds (ADR-0121's 2026-08-15 amendment).
+ *
+ *  The reading from the owner's device was `gl:ok canvas:ok pane:411x596 painted:n
+ *  online:y`, with `fails:3`: three freshly constructed maps, each with a live WebGL
+ *  context on a correctly sized pane and a working network, and not one of them painted.
+ *  A reload then fixed it immediately.
+ *
+ *  So the broken state is page-scoped, is **not** the map object and **not** WebGL — which
+ *  leaves Google's own SDK module state, loaded once per document and shared by every map
+ *  constructed after it. We cannot reset that (vis.gl's global has `__resetModuleState`;
+ *  Google's has nothing), so a new document is the only thing that reaches it.
+ *
+ *  Two attempts, not zero, because a rebuild is cheap and does cure the failures that ARE
+ *  the map object's. Two, not five, because the backoff's later steps cost 100 seconds to
+ *  arrive at a reload that was always going to be the answer. */
+export const MAP_REBUILDS_BEFORE_RELOAD = 2;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',
 } as const;

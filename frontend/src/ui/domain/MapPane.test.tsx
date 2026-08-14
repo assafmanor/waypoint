@@ -204,6 +204,7 @@ import {
   DRAG_HOLD_MS,
   MAP_CONNECTOR,
   MAP_LOAD_TIMEOUT_MS,
+  MAP_REBUILDS_BEFORE_RELOAD,
   MAP_RECOVERY_BACKOFF_MS,
   MAP_ZOOM,
 } from '../../constants';
@@ -1221,7 +1222,7 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     /** Every step spent, plus the cycle that reads the exhausted count — the check runs
      *  before the increment, so the escalation lands one turn after the last step. */
     const spendTheBackoff = () => {
-      for (let i = 0; i < MAP_RECOVERY_BACKOFF_MS.length + 2; i++) {
+      for (let i = 0; i < MAP_REBUILDS_BEFORE_RELOAD + 1; i++) {
         loseContext();
         settleRecovery(MAP_RECOVERY_BACKOFF_MS.length - 1);
       }
