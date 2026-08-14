@@ -56,6 +56,40 @@ function webglAvailability(): string {
   }
 }
 
+/** The hosts Google fetches a vector map's tiles and assets from. */
+const TILE_HOSTS = /maps\.googleapis\.com|maps\.gstatic\.com|khms\d*\.googleapis\.com/;
+
+/**
+ * **Are tiles even being asked for?**
+ *
+ * The reading that arrived from the device — `gl:ok canvas:ok pane:411x596 painted:n
+ * online:y` — rules out every mechanism fixed so far: the map is constructed, its context
+ * is alive, the container has size and the network is up, yet nothing paints. What is left
+ * is the network conversation itself, and it splits two ways that need opposite fixes:
+ *
+ *   - `tiles:0` — the SDK is not requesting at all. Its own internal state is wedged, and
+ *     no amount of rebuilding OUR map object will reach that.
+ *   - `tiles:N` with an old `last` — it asked, got answers for a while, and then stopped
+ *     or started failing.
+ *
+ * `performance.getEntriesByType('resource')` only lists requests that **completed**, which
+ * is the useful bias here: a request that is hanging never appears, so `tiles:0` covers
+ * "never asked" and "asked and still waiting" together — both meaning no tile has arrived.
+ */
+function tileTraffic(sinceMs: number): string {
+  try {
+    const entries = (
+      performance.getEntriesByType('resource') as PerformanceResourceTiming[]
+    ).filter((entry) => TILE_HOSTS.test(entry.name));
+    const recent = entries.filter((entry) => entry.startTime >= sinceMs);
+    const last = entries.at(-1);
+    const agoS = last ? Math.round((performance.now() - last.responseEnd) / 100) / 10 : null;
+    return `tiles:${recent.length}/${entries.length} last:${agoS == null ? 'never' : `${agoS}s`}`;
+  } catch {
+    return 'tiles:?';
+  }
+}
+
 /** The map's own canvas, as the DOM sees it — `none` when vis.gl never constructed one,
  *  which is what a loader stuck below `LOADED` looks like from out here (session 262). */
 function canvasState(pane: HTMLElement | null): string {
@@ -102,6 +136,7 @@ export function MapDiagnostic({
           `canvas:${canvasState(pane)}`,
           `pane:${box ? `${Math.round(box.width)}x${Math.round(box.height)}` : 'none'}`,
           `painted:${facts.painted ? 'y' : 'n'}`,
+          tileTraffic(performance.now() - facts.elapsedMs),
           `fails:${facts.failures}`,
           `resumes:${facts.resumes}`,
           `t:${Math.round(facts.elapsedMs / 100) / 10}s`,
