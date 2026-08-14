@@ -765,3 +765,70 @@ unchanged and still separate.
 blank map from 2026-08-14 — Phase 2's own, introduced by this migration. It is **not** an explanation
 of the original #35, which was a Google renderer dying after backgrounding on a device; that cause
 remains unknown, and the swap remains the experiment.
+
+## Amendment (2026-08-14, session 269j) — the Hebrew ground, and three findings from the first working map
+
+**Phase 2 is now verified working on the owner's device.** The map draws, and everything below is
+what the first real look at it produced.
+
+### The labels were reversed, and the fix is the same shape as the worker's
+
+A GL renderer lays glyphs out in **logical** order; the bidi reordering is a plugin. So every RTL
+label on the ground drew backwards:
+
+```
+רופגניס → סינגפור    דנליאת → תאילנד    קוקגנב → בנגקוק    רמנאים → מיאנמר
+```
+
+`setRTLTextPlugin` is called in `loadMapLibre()` **beside `setWorkerUrl`**, and that pairing is the
+point: MapLibre imports the plugin **into the tile worker**, so it is a URL rather than a module —
+another build-time fact that has to be _named_ instead of derived. Three decisions inside it:
+
+- **Self-hosted, not unpkg.** Every MapLibre example gives a CDN URL. §3 allows no vendor host on a
+  user's fetch path and Phase 3 has no network at all. `?url` is enough here (unlike the worker's
+  `?worker&url`) because this script is a self-contained UMD bundle with **zero imports**, so
+  relocating the file breaks nothing.
+- **Pinned to 0.2.3**, the build MapLibre's docs name. 0.4.0's `exports` map exposes only an ESM
+  wasm wrapper, and `importScriptInWorkers` needs a **classic** script.
+- **`lazy: false`, and awaited.** The app is Hebrew (ADR-0009), so RTL text is not a case to defer
+  into — lazy means the first tiles shape backwards and re-shape a frame later. The await is
+  deliberately **not fatal**: reversed labels are a worse map, a map that refuses to build is no map.
+
+Verified against the **production bundle** with a real archive, and read back off a wide-camera
+screenshot: `מיאנמר · תאילנד · קמבודיה · מלזיה · סינגפור · הו צ'י מין סיטי`. Guarded two ways — a
+unit assertion that the plugin loads once per page from a relative URL and not lazily, and an e2e
+assertion that the script arrives **with a JavaScript content type**, which is the half that broke
+the worker (a missing asset gets `index.html` at 200 and looks like success).
+
+### Adding a place in a second country: correct behaviour, wrong words
+
+The owner added a place in Israel to the Thailand trip and reported three things in sequence: Israel
+was not detailed, a reload showed **"failed to load the map"**, and then _"after a few minutes the map
+of Israel got updated and the error went away"_.
+
+That sequence is the design working. A new coordinate changes the region, so `mapRegionFor` produces
+a new `signature`, so `mapExtractKey` is a **new key** that is not stored — and 269e's rule then
+applies exactly as written: serve nothing, answer **503 + `Retry-After`**, cut in the background. A
+two-cluster extract spanning Thailand and Israel takes minutes. When it landed, Israel was detailed
+and the notice retired itself.
+
+**So there is no cutting bug and no staleness bug** — and this also retires the fills-only-underlay
+hypothesis from 269h, which was never shipped. What there IS, and it is the last honest gap in Phase
+2: **the client calls a 503 a failure.** The archive says "not built yet, retry after N" and the pane
+says _"failed to load the map"_. That is precisely the slow-vs-broken distinction 269e recorded this
+workstream as being short of, one layer up — and a person who adds a place should be told the map is
+**preparing**, not that it broke. `MAP_ATTEMPT` and `markFailure` do not currently look at the
+status, and the fix is to give a 503 its own state rather than a longer timeout (269e's argument
+against longer bounds still stands).
+
+### The ground is too dark and its terrains too close together
+
+Owner's report on the first working map: _"the map is too dark and the contrast between the different
+terrains too little"_ — in **dark** mode. This is a design finding against ADR-0125's ported
+vocabulary in `lib/map-style.ts`, not a defect: §1's warm-land-against-cool-water and §4's
+achromatic-built-mass were **measured in light** (`mockups/map-basemap-ours-v1.html`), and `DARK`
+here was derived from them by reasoning rather than judged against real tiles. The whole `DARK` block
+is one object in a reviewable file and dark mode is a live restyle from one download, so this is
+cheap to re-tune — but it is a **design pass with a mockup**, not a nudge: the constraint that
+survives is the RATIO (every terrain tone separated, pins still the loudest thing at chroma
+27.8–51.8), and re-tuning hexes without re-measuring that is how §8's relationships get lost.
