@@ -39,6 +39,26 @@
   width: 100%;
   height: 100%;
 }
+/* **THE VENDOR'S TYPOGRAPHY STOPS HERE.** `maplibre-gl.css`'s very first rule is
+     `.maplibregl-map { font: 12px/20px Helvetica Neue, Arial, Helvetica, sans-serif }` — a
+     `font` SHORTHAND on the element MapLibre is handed, i.e. this one. Every marker is a DOM
+     descendant, so the pins were inheriting a Latin font stack and a fixed 20px line box:
+     measured, `היעד הבא` rendered in Helvetica rather than the app's Assistant. Google's
+     `OverlayView` container set no font, which is why nothing here ever had to say this.
+
+     `font: inherit` rather than a font-family override, because the whole shorthand is the
+     problem — a fixed line-height on a surface where ADR-0123 makes every length a fraction of
+   `--pin-u` is precisely "the one thing on the canvas that forgot to scale". Nothing inside
+   the canvas is MapLibre's own chrome (no attribution control, no popups, no controls), so
+   this reaches only our markers.
+
+   **Two classes deep on purpose.** `.map-canvas` and `.maplibregl-map` are the same
+   specificity on the same element, so a one-class rule here is decided by bundle order — and
+   the order of two CSS side-effect imports across two component modules is not something this
+   file should be betting on. Measured: at equal specificity the vendor rule won. */
+.map-pane .map-canvas {
+  font: inherit;
+}
 
 /* **THE MARKER WRAPPER, WHICH IS LOAD-BEARING** (ADR-0186's 2026-08-13 amendment, finding 1).
    MapLibre adds `.maplibregl-marker` to whatever element it is handed and positions it with
@@ -50,12 +70,16 @@
 
    So the pin sits INSIDE this wrapper and never IS it. The wrapper carries no geometry of its
    own — MapLibre's transform is the position, and the pin's own size is a share of the pane
-   (ADR-0123's `cqh`, which still resolves because this is a DOM descendant of `.map-pane`). */
-.map-marker {
-  /* The pin is what draws; the wrapper is a positioning box and must not intercept anything
-     the pin itself does not cover. */
-  line-height: 0;
-}
+   (ADR-0123's `cqh`, which still resolves because this is a DOM descendant of `.map-pane`).
+
+   **It shipped with a `line-height: 0` here and that rule bought nothing and cost the tag**
+   (2026-08-14). It was meant to keep the wrapper from gaining line-box height around the pin —
+   but `.map-pin` is `display: block`, so the wrapper has no line box to collapse: measured, its
+   height is `--pin-u` either way. What the rule DID do is inherit, and `.pin-tag` is the one
+   part of a pin whose height comes from its line box rather than from `--pin-u`. At zero the
+   pill collapsed to 8px around 17px of text, so `היעד הבא` spilled 5px out of the top and 4px
+   out of the bottom of its own card ground. The wrapper is a positioning box; it has no
+   opinion about type. */
 
 /* **OSM's attribution: required, ours, and RTL-aware** (ADR-0186's Consequences). It replaces
    Google's own logo in the band the pane's sizing above keeps clear of the sheet. Latin and
