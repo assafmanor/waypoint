@@ -14,7 +14,7 @@
 // `MapPane` is a small diff rather than a rewrite.
 import { useEffect, useRef, useState } from 'react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { mapBackground, mapStyle } from '../../lib/map-style';
+import { isGroundSource, mapBackground, mapStyle } from '../../lib/map-style';
 import { loadMapLibre, type MapLibreModule } from '../../lib/maplibre';
 import type { MapColorScheme, MapTileUrls } from '../../lib/map-config';
 // MapLibre's own stylesheet, which is not decoration: `.maplibregl-marker` is where a
@@ -42,13 +42,32 @@ export interface MapCanvasProps {
    *  changes and one that arrives after. Re-entering `loadMapLibre()` at the consumer would
    *  resolve from the same cache and still cost that hop. */
   onMap: (map: MapLibreMap | null, gl: MapLibreModule | null) => void;
-  /** The first settled frame. MapLibre has no single "tiles painted" event, so this is the
-   *  first `idle` AFTER `load`: `load` means the style is applied and the first frame is
-   *  drawn, `idle` means nothing further is pending. That pair is the honest equivalent of
-   *  Google's `onTilesLoaded`, which is what the pane's watchdog waits on. */
+  /**
+   * **The first frame with actual ground on it** — the watchdog's input, and the successor to
+   * Google's `onTilesLoaded`.
+   *
+   * **`load` + `idle` is NOT that, and shipping it as if it were put a blank map on the owner's
+   * phone with nothing said** (2026-08-14). Both events settle on their own schedule: `load`
+   * means the style parsed and a frame was drawn, `idle` means nothing further is pending — and
+   * a map whose every tile request 404'd satisfies both, because "nothing pending" includes
+   * "nothing left to fail". So the pane latched `tilesPainted`, the watchdog was satisfied, and
+   * the cue, the retry pill and the diagnostic — all of which render under `!tilesPainted` —
+   * stayed away from a canvas showing nothing but its own background colour. That is field
+   * report #28 verbatim, arrived at from a new direction.
+   *
+   * So this waits for a TILE: MapLibre reports each one through `sourcedata` with the source id
+   * and the tile it belongs to, and one such event is proof the archive is being read and parsed.
+   * Idles keep coming, so if tiles are merely slow this still fires when they land and clears the
+   * notice by itself; if they never come it never fires, and the pane says so.
+   */
   onFirstPaint?: () => void;
   /** Every later settle, for the pane's `onViewChange`. */
   onIdle?: () => void;
+  /** **One tile of our ground loaded and parsed.** Fired per tile, so the pane can count them
+   *  for the diagnostic — which it cannot do any other way: MapLibre fetches on a WORKER thread,
+   *  so `performance.getEntriesByType('resource')` on the main thread never sees a tile request
+   *  and the old `tiles:N` reading was structurally stuck at zero. */
+  onTileLoad?: () => void;
   /** MapLibre's `error` event. Unlike the Google loader there is no page-global status to
    *  get stuck in, so this is per-instance and per-failure.
    *
@@ -99,6 +118,7 @@ export function MapCanvas({
   onIdle,
   onError,
   onUnavailable,
+  onTileLoad,
 }: MapCanvasProps) {
   const holderRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -106,8 +126,8 @@ export function MapCanvas({
   // `screens/Map.tsx` does) cannot tear down and rebuild the map. ADR-0121 §4's hazard
   // survives the renderer swap: the reason changes from "a rebuild is billed" to "a rebuild
   // is a blank canvas and a lost camera", and the discipline is identical.
-  const cbRef = useRef({ onMap, onFirstPaint, onIdle, onError, onUnavailable });
-  cbRef.current = { onMap, onFirstPaint, onIdle, onError, onUnavailable };
+  const cbRef = useRef({ onMap, onFirstPaint, onIdle, onError, onUnavailable, onTileLoad });
+  cbRef.current = { onMap, onFirstPaint, onIdle, onError, onUnavailable, onTileLoad };
   // Construction-time values, latched: MapLibre takes an opening camera and then owns it, so
   // re-reading these would fight whatever the user or the camera hook last did.
   const openingRef = useRef({ centre, zoom, scheme, urls });
@@ -145,14 +165,27 @@ export function MapCanvas({
         });
         mapRef.current = map;
 
-        // One-shot: the first settled frame is what the pane's watchdog is waiting for.
-        map.once('load', () => {
-          map.once('idle', () => {
-            if (live) cbRef.current.onFirstPaint?.();
-          });
+        // **Has any tile of our own ground actually arrived?** A `sourcedata` event carrying a
+        // `tile` is one that loaded and parsed — which is the fact `load`/`idle` cannot give us
+        // (see `onFirstPaint`). Filtered by source id so a future second source cannot answer for
+        // the one the ground is drawn from.
+        let tileSeen = false;
+        map.on('sourcedata', (event) => {
+          if (!live || !event.tile || !isGroundSource(event.sourceId)) return;
+          tileSeen = true;
+          cbRef.current.onTileLoad?.();
         });
+
+        // One-shot, but *armed* on every idle rather than only the first: tiles that are merely
+        // slow arrive after several idles, and the notice has to clear itself when they do.
+        let painted = false;
         map.on('idle', () => {
-          if (live) cbRef.current.onIdle?.();
+          if (!live) return;
+          if (!painted && tileSeen) {
+            painted = true;
+            cbRef.current.onFirstPaint?.();
+          }
+          cbRef.current.onIdle?.();
         });
         map.on('error', (event) => {
           if (!live) return;

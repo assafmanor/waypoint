@@ -597,7 +597,11 @@ export function MapView() {
   // `scheme` is what a whole `MapsConfig` collapsed to (ADR-0186 §8): with the renderer
   // bundled and the tiles ours, there is no key and no Map ID left to resolve.
   const scheme = useMemo(() => mapColorScheme(), []);
-  const tileUrls = useMemo(() => mapTileUrls(), []);
+  // The trip's own archive is what makes the map READABLE at this zoom — the world layer alone is
+  // z0–6, which draws a flat landmass at `MAP_ZOOM.PLACE` (corrected 2026-08-14; see
+  // `mapTileUrls`). Keyed on the id so switching trips re-reads, which is the one thing that
+  // legitimately rebuilds the canvas.
+  const tileUrls = useMemo(() => mapTileUrls(trip?.id), [trip?.id]);
   // Still read for `DevMapTuner`, which reports what a Google canvas was built from and is
   // Phase 4's to delete along with the vars themselves.
   const config = useMemo(() => mapsConfig(), []);

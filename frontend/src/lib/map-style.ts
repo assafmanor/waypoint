@@ -14,11 +14,22 @@
 // values were judged against real Tokyo tiles rather than reasoned about.
 import { layers, namedFlavor } from '@protomaps/basemaps';
 import type { StyleSpecification } from 'maplibre-gl';
-import { MAP_COLOR_SCHEME, type MapColorScheme } from './map-config';
+import { MAP_COLOR_SCHEME, type MapColorScheme, type MapTileUrls } from './map-config';
 
-/** The tile source's name inside the style — referenced by every one of the ~70 layer
- *  definitions `layers()` generates, so it is a constant rather than a literal. */
+/** The tile sources' names inside the style — referenced by every one of the ~70 layer
+ *  definitions `layers()` generates per source, so they are constants rather than literals.
+ *
+ *  `DETAIL` is the archive the map is really drawn from; `WORLD` is the coarse ground beneath
+ *  it. Two names because there are genuinely two reads (§3/§4) whenever a trip has an extract. */
 const SOURCE = 'protomaps';
+const WORLD_SOURCE = 'protomaps-world';
+
+/** **Is this `sourcedata` event about our ground?** MapLibre reports a tile arriving with the
+ *  source it belongs to, and "did any tile of our ground actually load" is the only honest
+ *  first-paint signal there is — see `MapCanvas`. Either source answers yes: both draw ground,
+ *  and the coarse one drawing is still a map on screen. */
+export const isGroundSource = (id: string | undefined): boolean =>
+  id === SOURCE || id === WORLD_SOURCE;
 
 /** Glyph and sprite assets. Protomaps' own public asset host, which is a static CDN of
  *  fonts rather than a tile service — it is not on the offline path, because MapLibre
@@ -158,24 +169,49 @@ export function mapBackground(scheme: MapColorScheme): string {
  * remote read and a downloaded file with nothing in here knowing which it got
  * (ADR-0186 §3).
  */
-export function mapStyle(
-  scheme: MapColorScheme,
-  urls: { world: string; trip?: string },
-): StyleSpecification {
+export function mapStyle(scheme: MapColorScheme, urls: MapTileUrls): StyleSpecification {
   const flavor = scheme === MAP_COLOR_SCHEME.dark ? DARK : LIGHT;
-  // The trip's archive is listed FIRST so its layers draw over the coarse world where the
-  // two overlap; outside it, the world is all there is and nowhere is blank (§4).
-  const source = urls.trip ?? urls.world;
+  const vector = (url: string) =>
+    ({ type: 'vector', url: `pmtiles://${url}`, attribution: MAP_ATTRIBUTION }) as const;
+
+  // The archive the map is actually drawn from. The trip's own where it exists, and the world
+  // otherwise — which is a correct map at low zoom and, at the zoom this app OPENS at, very
+  // nearly an empty one. See `mapTileUrls`: that is why the extract is not optional in practice.
+  const detail = layers(urls.trip ? SOURCE : WORLD_SOURCE, flavor, { lang: 'he' });
+  const detailSource = urls.trip ? SOURCE : WORLD_SOURCE;
+  const sources: Record<string, unknown> = { [detailSource]: vector(urls.trip ?? urls.world) };
+
+  // `background` carries no source and must appear exactly once, first.
+  const background = detail.filter((layer) => layer.type === 'background');
+  const over = detail.filter((layer) => layer.type !== 'background');
+  if (!urls.trip) {
+    return {
+      version: 8,
+      glyphs: GLYPHS,
+      sources,
+      layers: [...background, ...over],
+    } as StyleSpecification;
+  }
+
+  // **THE WORLD GOES UNDERNEATH, AND ONLY ITS GROUND DOES** (§4's "nowhere is ever blank").
+  // A trip extract covers clusters, not the space between them, and it can also simply fail to
+  // build — in which case a single-source style renders NOTHING, which is a self-inflicted copy
+  // of the bug this migration exists to end. So the coarse archive stays in the style beneath it.
+  //
+  // Fills only, deliberately: taking the whole generated set would draw every label and road
+  // twice — the same city name from two archives, one overzoomed, a few pixels apart, which reads
+  // as a blurry double. Fills are land, water and landcover, and a doubled fill is invisible
+  // because the two are the same colour by construction. Ids are prefixed because `layers()`
+  // generates the same ~70 ids for any source it is given.
+  sources[WORLD_SOURCE] = vector(urls.world);
+  const underlay = layers(WORLD_SOURCE, flavor, { lang: 'he' })
+    .filter((layer) => layer.type === 'fill')
+    .map((layer) => ({ ...layer, id: `world-${layer.id}` }));
+
   return {
     version: 8,
     glyphs: GLYPHS,
-    sources: {
-      [SOURCE]: {
-        type: 'vector',
-        url: `pmtiles://${source}`,
-        attribution: MAP_ATTRIBUTION,
-      },
-    },
-    layers: layers(SOURCE, flavor, { lang: 'he' }),
+    sources,
+    layers: [...background, ...underlay, ...over],
   } as StyleSpecification;
 }

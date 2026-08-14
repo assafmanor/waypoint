@@ -34,22 +34,27 @@ export interface MapTileUrls {
  * Google call, applied to tiles for the same three reasons: any key stays server-side, we can
  * cache, and we can change source without shipping a client.
  *
- * **`trip` is deliberately not wired in Phase 2**, and the reason is worth stating because it
- * looks like an omission. Three things make the trip extract a Phase 3 concern:
- * `GET /trips/:id/map/extract.pmtiles` **cuts the archive synchronously on first request**
- * (~10s for two areas), it sits behind `MembershipGuard` so the protocol's fetch must carry
- * credentials, and `mapStyle` reads **one** source — so an extract that fails or 403s renders
- * **nothing**, which is a self-inflicted copy of the very bug this migration exists to end.
- * Phase 3 owns the download, and §6 rule 5 ("survive it being gone") is where that fallback
- * is specified. Until then the world layer is the whole ground: coarse, but never blank.
+ * **Both, and the trip's own is not optional in practice** (corrected 2026-08-14). Phase 2 first
+ * shipped the world layer alone, on the reasoning that it is "coarse but never blank" and that
+ * the extract's synchronous first cut would confound the swap. That was wrong about what coarse
+ * means: the world layer is **z0–6**, the map opens at `MAP_ZOOM.PLACE`, and a z6 tile overzoomed
+ * to z14 draws a single flat landmass — so the owner's phone showed a uniform brown rectangle
+ * with pins on it. Measured against a real archive in `e2e/map-renders.spec.ts`, the same client
+ * draws Bangkok's streets, river and labels correctly; the coarseness was the whole defect.
+ *
+ * The three risks that deferred it are answered rather than dismissed: the first cut is slow, and
+ * the pane now says "loading is slower than usual" and clears itself when it lands; the extract
+ * sits behind `MembershipGuard`, and a same-origin fetch carries cookies; and an extract that
+ * fails no longer renders nothing, because `mapStyle` keeps the world beneath it (§4).
  */
-export function mapTileUrls(): MapTileUrls {
-  return { world: apiAssetUrl(MAP_ARCHIVE_PATH.world) };
+export function mapTileUrls(tripId?: string | null): MapTileUrls {
+  return {
+    world: apiAssetUrl(MAP_ARCHIVE_PATH.world),
+    ...(tripId ? { trip: apiAssetUrl(MAP_ARCHIVE_PATH.trip(tripId)) } : {}),
+  };
 }
 
-/** The backend's own routes for the archives, named beside the reader (ADR-0095). `trip` is
- *  unused until Phase 3 and is here so that phase is a one-line change rather than a route
- *  invented at a call site. */
+/** The backend's own routes for the archives, named beside the reader (ADR-0095). */
 const MAP_ARCHIVE_PATH = {
   world: '/map/world.pmtiles',
   trip: (tripId: string) => `/trips/${tripId}/map/extract.pmtiles`,

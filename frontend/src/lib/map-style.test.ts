@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAP_COLOR_SCHEME } from './map-config';
-import { MAP_ATTRIBUTION, mapBackground, mapStyle } from './map-style';
+import { MAP_ATTRIBUTION, isGroundSource, mapBackground, mapStyle } from './map-style';
 
 /* ADR-0125's vocabulary, now a file we own (ADR-0186 §7). What is asserted here is what a
    palette edit could break silently — the RELATIONSHIPS §8 says a future edit has to
@@ -42,12 +42,70 @@ describe('mapStyle', () => {
     expect(MAP_ATTRIBUTION).toContain('OpenStreetMap');
   });
 
-  it('builds a real layer stack for both themes from one source', () => {
+  it('builds a real layer stack for both themes from the same archives', () => {
     // The claim ADR-0186 §7 makes against two latched Map IDs: same tiles, two styles.
     for (const scheme of [MAP_COLOR_SCHEME.light, MAP_COLOR_SCHEME.dark]) {
       const style = mapStyle(scheme, URLS);
       expect(style.layers.length).toBeGreaterThan(20);
-      expect(Object.keys(style.sources)).toHaveLength(1);
+    }
+  });
+});
+
+/* **THE COARSE GROUND STAYS UNDER THE DETAILED ONE** (§4's "nowhere is ever blank").
+   A trip extract covers clusters and not the space between them, and it can also simply fail to
+   build — and with one source in the style that renders NOTHING, which is a self-inflicted copy of
+   the bug this migration exists to end. The 2026-08-14 blank map is why this is asserted rather
+   than described: §3's prose already SAID "the trip's own archive over the shared world layer"
+   while the code picked one of them. */
+describe('the two reads (ADR-0186 §3/§4)', () => {
+  const WORLD_ONLY = { world: 'https://x/map/world.pmtiles' };
+
+  it('reads only the world layer when the trip has no extract yet', () => {
+    const style = mapStyle(MAP_COLOR_SCHEME.light, WORLD_ONLY);
+    const sources = Object.keys(style.sources);
+    expect(sources).toHaveLength(1);
+    expect((style.sources[sources[0]!] as { url: string }).url).toContain('world.pmtiles');
+  });
+
+  it('puts the world UNDER the trip archive once there is one', () => {
+    const style = mapStyle(MAP_COLOR_SCHEME.light, URLS);
+    expect(Object.keys(style.sources)).toHaveLength(2);
+    const ids = style.layers.map((layer) => layer.id);
+    const lastWorld = ids.findLastIndex((id) => id.startsWith('world-'));
+    const firstDetail = ids.findIndex((id, at) => at > 0 && !id.startsWith('world-'));
+    expect(lastWorld).toBeGreaterThan(0);
+    // Every world layer precedes every detail layer, so the trip's ground draws over it.
+    expect(firstDetail).toBeGreaterThan(lastWorld);
+  });
+
+  it('takes only FILLS from the world, so no label or road is drawn twice', () => {
+    // The trap this avoids: the same city name from two archives, one overzoomed, a few pixels
+    // apart, which reads as a blurry double rather than as a fallback.
+    const style = mapStyle(MAP_COLOR_SCHEME.light, URLS);
+    const underlay = style.layers.filter((layer) => layer.id.startsWith('world-'));
+    expect(underlay.length).toBeGreaterThan(0);
+    expect(underlay.every((layer) => layer.type === 'fill')).toBe(true);
+  });
+
+  it('carries exactly one background layer, first, whichever shape it is', () => {
+    // `background` has no source; two of them is an invalid style and zero is a transparent
+    // canvas showing the page through the map.
+    for (const urls of [WORLD_ONLY, URLS]) {
+      const style = mapStyle(MAP_COLOR_SCHEME.dark, urls);
+      const backgrounds = style.layers.filter((layer) => layer.type === 'background');
+      expect(backgrounds).toHaveLength(1);
+      expect(style.layers[0]!.type).toBe('background');
+    }
+  });
+
+  it('names every layer’s source as one the canvas will accept as ground', () => {
+    // `MapCanvas` decides "a tile arrived" by source id, so a source the style invents and
+    // `isGroundSource` does not know would make first paint unreachable — a blank map that says
+    // nothing, which is the exact defect of 2026-08-14.
+    const style = mapStyle(MAP_COLOR_SCHEME.light, URLS);
+    for (const layer of style.layers) {
+      const source = (layer as { source?: string }).source;
+      if (source) expect(isGroundSource(source)).toBe(true);
     }
   });
 });

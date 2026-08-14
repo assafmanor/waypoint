@@ -684,6 +684,11 @@ function MapPaneInner({
   const consecutiveRef = useRef(0);
   /** Read inside a visibility handler that must not re-subscribe on every paint. */
   const tilesPaintedRef = useRef(false);
+  /** **Tiles of our own ground that have loaded**, counted for the diagnostic. It cannot come
+   *  from `performance` any more — MapLibre fetches on a worker thread, so the main thread's
+   *  resource timeline shows nothing at all and the old reading was stuck at zero on a map that
+   *  was drawing perfectly. Counted here off `MapCanvas`'s per-tile callback. */
+  const tilesRef = useRef(0);
   /** Counted for the diagnostic only: how many times this pane has been resumed. On a
    *  phone the failure arrives with a resume, so "how many" is the fact that says whether
    *  the reading was taken on the first one or the twentieth. */
@@ -748,6 +753,7 @@ function MapPaneInner({
     setTilesPainted(false);
     tilesPaintedRef.current = false;
     setTilesLate(false);
+    tilesRef.current = 0;
     // **No longer DEV-gated**: the diagnostic reports elapsed time on a real device, and
     // a clock that only exists in development is no use to the one place the answer is.
     // It is a single `performance.now()` per attempt.
@@ -829,6 +835,12 @@ function MapPaneInner({
     [handleMapError],
   );
 
+  /** One tile arrived. A ref rather than state on purpose: this fires per tile — hundreds on a
+   *  pan — and a re-render each time would re-diff every marker (ADR-0121 §4). */
+  const handleTileLoad = useCallback(() => {
+    tilesRef.current += 1;
+  }, []);
+
   /** The canvas handing its instance over, and taking it back on teardown. Also where the
    *  camera's view of it is minted, since nothing else may construct a second one. */
   const handleMap = useCallback((instance: MapLibreMap | null, module: MapLibreModule | null) => {
@@ -865,6 +877,7 @@ function MapPaneInner({
       resumes: resumesRef.current,
       elapsedMs: attemptStartRef.current == null ? 0 : performance.now() - attemptStartRef.current,
       painted: tilesPaintedRef.current,
+      tiles: tilesRef.current,
       lastError: lastErrorRef.current,
       sdk: sdkCamera(cameraMapRef.current),
     }),
@@ -960,6 +973,7 @@ function MapPaneInner({
             // `idle` after `load`. This is where `onTilesLoaded` went.
             onFirstPaint={handleTilesLoaded}
             onIdle={handleIdle}
+            onTileLoad={handleTileLoad}
             // A tile that 404s. Recorded for the diagnostic, and deliberately nothing else.
             onError={handleMapError}
             // No canvas at all — the one terminal signal.

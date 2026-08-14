@@ -294,3 +294,84 @@ reported daily. So this is **the experiment, not the cure**: if the MapLibre pan
 the owner's phone where Google's was not, the fault was in the SDK; if it fails the same way,
 something above was mis-excluded and `MapDiagnostic` on the new pane is what says which. Six
 sessions promised a cure. This one does not.
+
+## Amendment (2026-08-14, session 269b) — the blank map, and the two defects behind it
+
+The owner opened the Map tab on staging and saw **no map**: the pane, the attribution and the
+pins all drew, the ground was a uniform brown rectangle, and **nothing on screen said anything
+was wrong**. Owner: _"Make sure that you test the rendering before pushing broken builds."_ Both
+halves of that are correct, and the second is the reason the first shipped.
+
+**What I actually verified before pushing was that the canvas CONSTRUCTED** — `data-map-failed`
+absent — and I reported that as the renderer being healthy. That is a proxy, not a render. Nothing
+in the suite asked whether a tile ever arrived, and nothing could: jsdom has no GPU, so every unit
+test stubs the renderer, and every e2e Map spec asserts markup, geometry or wiring — all of which
+were **perfectly healthy on the failing device**. The gap was structural rather than an oversight
+in one file.
+
+### Defect 1 — the first-paint signal was satisfied by a blank map
+
+`MapCanvas` derived first paint from `load` + `idle`. **Both settle on a map whose every tile
+request failed**, because "nothing pending" includes "nothing left to fail". So `tilesPainted`
+latched, the watchdog was satisfied, and the cue, the retry pill and the diagnostic — all of which
+render under `!tilesPainted` — stayed away from a canvas showing only its own background colour.
+That is field report #28 verbatim, reached from a new direction, and it is the same trap this ADR's
+own trap-1 warns about from the other end.
+
+Google's `onTilesLoaded` genuinely meant tiles. The replacement now does too: MapLibre reports each
+tile through `sourcedata` with the source it belongs to, so first paint waits for one. Armed on
+every idle rather than the first, so tiles that are merely slow still clear the notice when they
+land. Verified in a real browser: with an unreadable archive the pane now shows the slow notice,
+the retry and the diagnostic, and the diagnostic reads `painted:n`.
+
+### Defect 2 — "coarse" was the wrong word for the world layer, and it was my word
+
+Phase 2 shipped the **world layer alone** (z0–6), deferring the trip extract on three real risks —
+a synchronous ~10s first cut, `MembershipGuard`, and a single-source style rendering nothing if the
+extract fails. I described the consequence as a map that is "coarse" and would show "a correct but
+empty-looking ground". **Measured, it is not coarse, it is empty**: the map opens at
+`MAP_ZOOM.PLACE`, and a z6 tile overzoomed to z14 draws one flat landmass. The screenshot is
+exactly that. A caveat stated in a session note is not a mitigation.
+
+So the extract is wired, and each deferral reason is answered rather than dismissed: the slow first
+cut is what Defect 1's fix now reports and retires by itself; a same-origin fetch carries the
+membership cookie; and **`mapStyle` now keeps the world beneath the trip archive** rather than
+picking one — which is what §3's own prose always said (_"the trip's own archive over the shared
+world layer"_) while the code read one source. Fills only from the underlay, because taking the
+whole generated set draws every label and road twice, one overzoomed, a few pixels apart.
+
+### Defect 3 — the diagnostic's tile counter was structurally zero
+
+`tiles:N` came from `performance.getEntriesByType('resource')` filtered to the tile hosts. **MapLibre
+fetches tiles on a worker thread**, whose requests never appear in the main thread's resource
+timeline — measured at `tiles:0` on a map that was drawing Bangkok perfectly. The field that was
+meant to answer the device pass could not. It is counted from the renderer's own events now, which
+makes it the discriminator it was supposed to be: `tiles:0` is an archive that cannot be read,
+`tiles:N` with nothing on screen is an archive with no data at this zoom.
+
+### What now exists so this cannot recur silently
+
+`e2e/map-renders.spec.ts`, in two halves. The **hermetic** half runs everywhere: there is no
+backend in e2e, so the archive request is answered by the dev server's SPA fallback — HTML where
+PMTiles bytes belong, a faithful copy of the deployed failure — and the app must SAY so. That is
+the regression test for Defect 1. The **opt-in** half (`MAP_TILES_E2E=1`) points both archive
+requests at Protomaps' planet build over range requests and asserts the app's own first-paint
+signal clears, attaching a screenshot of the terrain. Run today it draws Bangkok's streets, river,
+Wat Arun and Thai labels correctly — **so the client, the style, the protocol and the pane were
+never the fault**, which is the fact that localises the blank map to the archive being served.
+
+### Still not established, and it matters
+
+Whether the deployed backend's `/map/world.pmtiles` is a valid archive at all. `buildExtract`
+shells out to a `pmtiles` binary (`PMTILES_BIN`), which is **absent from this sandbox** and unverified
+on the deployed image; if it is missing there, both archives 404 or error and the pane will now say
+so instead of sitting blank. **The next reading settles it in one tap**: `tiles:0` means the archive
+cannot be read, and `tiles:N` on a still-empty map means it can. Two findings worth recording while
+this is open: the style's `glyphs` URL points at `protomaps.github.io`, which is a **vendor host on
+a user's fetch path** — contrary to §3's own rule and unusable in Phase 3's offline case; and
+nothing yet verifies the archive the backend serves is a PMTiles file rather than whatever a
+fallback route returns.
+
+**This does not change the standing conclusion about field report #35.** The original cause is still
+unknown, and this amendment is about a blank map Phase 2 introduced, not about the one that started
+all of it.

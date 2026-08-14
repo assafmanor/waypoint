@@ -75,6 +75,11 @@ import { MapCanvas, type MapCanvasProps, type MapTileUrls } from './MapCanvas';
 import { mapBackground, mapStyle } from '../../lib/map-style';
 import { MAP_COLOR_SCHEME } from '../../lib/map-config';
 
+/** The source id the style gives the archive it draws from. Hard-coded here on purpose: the
+ *  canvas filters `sourcedata` by it, and a test that imported the same constant could not catch
+ *  the two drifting apart. `isGroundSource` is the contract, and this is the value it must accept. */
+const MAP_STYLE_SOURCE = 'protomaps';
+
 const TOKYO = { lat: 35.68, lng: 139.76 };
 const WORLD: MapTileUrls = { world: '/map/world.pmtiles' };
 const WITH_TRIP: MapTileUrls = {
@@ -180,10 +185,43 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
   // "tiles painted" event, so the honest equivalent of Google's `onTilesLoaded` — which is
   // what the pane's watchdog waits on — is the pair. Getting this wrong in either direction
   // is a watchdog that resolves on an empty canvas or one that never resolves at all.
-  describe('the first-paint signal is the idle AFTER load (the watchdog’s input)', () => {
-    it('stays silent through an idle that arrives before load', async () => {
+  describe('the first-paint signal means a TILE arrived (the watchdog’s input)', () => {
+    /** One tile of our own ground, loaded and parsed — the event `load`/`idle` cannot stand in
+     *  for. `sourceId` matters: a future second source must not answer for this one. */
+    const tileArrives = (map = built()) =>
+      act(() => map.fire('sourcedata', { sourceId: MAP_STYLE_SOURCE, tile: {} }));
+
+    // ── THE BLANK MAP THAT SAID NOTHING (2026-08-14, from the owner's phone) ──────────
+    // The whole reason this signal is not `load` + `idle`. Both settle on their own schedule,
+    // and a map whose every tile request failed satisfies both — "nothing pending" includes
+    // "nothing left to fail". Shipping that pair as the watchdog's input latched `tilesPainted`
+    // on a canvas showing only its own background colour, which took the cue, the retry pill and
+    // the diagnostic away with it. Field report #28, arrived at from a new direction.
+    it('stays silent through load and idle when NO tile ever arrives', async () => {
       const onFirstPaint = vi.fn();
       await paint({ onFirstPaint });
+      act(() => built().fire('load'));
+      act(() => built().fire('idle'));
+      act(() => built().fire('idle'));
+      expect(onFirstPaint).not.toHaveBeenCalled();
+    });
+
+    it('stays silent for a tile belonging to some other source', async () => {
+      const onFirstPaint = vi.fn();
+      await paint({ onFirstPaint });
+      act(() => built().fire('load'));
+      act(() => built().fire('sourcedata', { sourceId: 'something-else', tile: {} }));
+      act(() => built().fire('idle'));
+      expect(onFirstPaint).not.toHaveBeenCalled();
+    });
+
+    // A source-level `sourcedata` (the archive's own header parsing) carries no `tile`. It is
+    // not a painted tile and must not be read as one.
+    it('stays silent for a source event that carries no tile', async () => {
+      const onFirstPaint = vi.fn();
+      await paint({ onFirstPaint });
+      act(() => built().fire('load'));
+      act(() => built().fire('sourcedata', { sourceId: MAP_STYLE_SOURCE }));
       act(() => built().fire('idle'));
       expect(onFirstPaint).not.toHaveBeenCalled();
     });
@@ -192,15 +230,32 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
       const onFirstPaint = vi.fn();
       await paint({ onFirstPaint });
       act(() => built().fire('load'));
+      tileArrives();
       expect(onFirstPaint).not.toHaveBeenCalled();
     });
 
-    it('fires once, on the first idle after load, and not again', async () => {
+    it('fires once a tile has arrived and the map has settled, and not again', async () => {
+      const onFirstPaint = vi.fn();
+      await paint({ onFirstPaint });
+      act(() => built().fire('load'));
+      tileArrives();
+      act(() => built().fire('idle'));
+      expect(onFirstPaint).toHaveBeenCalledTimes(1);
+      act(() => built().fire('idle'));
+      expect(onFirstPaint).toHaveBeenCalledTimes(1);
+    });
+
+    // **The payoff of arming it on EVERY idle rather than only the first.** Tiles that are
+    // merely slow arrive after several idles have already gone by, and the pane's slow notice has
+    // to retire itself when they land — which only happens if this still fires late.
+    it('fires late when the tiles were only slow, after idles have already passed', async () => {
       const onFirstPaint = vi.fn();
       await paint({ onFirstPaint });
       act(() => built().fire('load'));
       act(() => built().fire('idle'));
-      expect(onFirstPaint).toHaveBeenCalledTimes(1);
+      act(() => built().fire('idle'));
+      expect(onFirstPaint).not.toHaveBeenCalled();
+      tileArrives();
       act(() => built().fire('idle'));
       expect(onFirstPaint).toHaveBeenCalledTimes(1);
     });
@@ -211,6 +266,8 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
       act(() => built().fire('load'));
       act(() => built().fire('idle'));
       act(() => built().fire('idle'));
+      // Unconditional, unlike first paint: the bounds readout wants every settle, whether or
+      // not anything painted — a panned-away empty view is a real answer for `X באזור`.
       expect(onIdle).toHaveBeenCalledTimes(2);
     });
 
@@ -221,6 +278,7 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
       const map = built();
       unmount();
       act(() => map.fire('load'));
+      act(() => map.fire('sourcedata', { sourceId: MAP_STYLE_SOURCE, tile: {} }));
       act(() => map.fire('idle'));
       expect(onFirstPaint).not.toHaveBeenCalled();
       expect(onIdle).not.toHaveBeenCalled();
@@ -344,6 +402,7 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     const later = vi.fn();
     rerender(<MapCanvas {...props({ onFirstPaint: later })} />);
     act(() => built().fire('load'));
+    act(() => built().fire('sourcedata', { sourceId: MAP_STYLE_SOURCE, tile: {} }));
     act(() => built().fire('idle'));
     expect(first).not.toHaveBeenCalled();
     expect(later).toHaveBeenCalledTimes(1);

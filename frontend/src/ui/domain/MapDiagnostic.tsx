@@ -27,6 +27,17 @@ export interface MapDiagnosticFacts {
   elapsedMs: number;
   /** Did tiles ever paint on this attempt? Separates "never started" from "started and died". */
   painted: boolean;
+  /** **How many tiles of our own ground have loaded and parsed.**
+   *
+   *  Counted from the renderer's own `sourcedata` events, and it has to be: this field used to be
+   *  `performance.getEntriesByType('resource')` filtered to the tile hosts, which was right for
+   *  Google and reads **zero forever** for MapLibre — it fetches tiles on a WORKER thread, whose
+   *  requests never appear in the main thread's resource timeline. Measured in a real browser
+   *  against a working map: `tiles:0`, on a map that was drawing Bangkok perfectly.
+   *
+   *  It is the field that separates the two blank maps: `tiles:0` is an archive that cannot be
+   *  read, and `tiles:N` with nothing on screen is an archive that has no data at this zoom. */
+  tiles: number;
   /** The last error the renderer reported, if it ever did. **The discriminator the first
    *  version of this readout was missing**: the owner's map died silently and then a FRESH
    *  pane errored at once, and only the message says which layer that was.
@@ -71,49 +82,6 @@ function webglAvailability(): string {
     return lost ? 'born-lost' : 'ok';
   } catch (error) {
     return `throw:${error instanceof Error ? error.name : 'unknown'}`;
-  }
-}
-
-/** **What a tile read looks like now** (ADR-0186 §3): a range request against our own
- *  archive, plus Protomaps' font CDN for glyph ranges. It was
- *  `maps.googleapis.com|maps.gstatic.com|khms\d*.googleapis.com` — a list of vendor hosts —
- *  and the readout survives the swap because the QUESTION survives it: is this page asking
- *  for tiles at all, and is anything coming back? That question is what split "the SDK is
- *  wedged" from "it asked and stopped getting answers", and it is exactly as sharp against a
- *  renderer we own.
- *
- *  Matched on the PATH rather than a host, because same-origin production has no host to
- *  match: the archive is served from our own backend at `/map/*.pmtiles`. */
-const TILE_HOSTS = /\.pmtiles|basemaps-assets\.protomaps|protomaps\.github\.io/;
-
-/**
- * **Are tiles even being asked for?**
- *
- * The reading that arrived from the device — `gl:ok canvas:ok pane:411x596 painted:n
- * online:y` — rules out every mechanism fixed so far: the map is constructed, its context
- * is alive, the container has size and the network is up, yet nothing paints. What is left
- * is the network conversation itself, and it splits two ways that need opposite fixes:
- *
- *   - `tiles:0` — the SDK is not requesting at all. Its own internal state is wedged, and
- *     no amount of rebuilding OUR map object will reach that.
- *   - `tiles:N` with an old `last` — it asked, got answers for a while, and then stopped
- *     or started failing.
- *
- * `performance.getEntriesByType('resource')` only lists requests that **completed**, which
- * is the useful bias here: a request that is hanging never appears, so `tiles:0` covers
- * "never asked" and "asked and still waiting" together — both meaning no tile has arrived.
- */
-function tileTraffic(sinceMs: number): string {
-  try {
-    const entries = (
-      performance.getEntriesByType('resource') as PerformanceResourceTiming[]
-    ).filter((entry) => TILE_HOSTS.test(entry.name));
-    const recent = entries.filter((entry) => entry.startTime >= sinceMs);
-    const last = entries.at(-1);
-    const agoS = last ? Math.round((performance.now() - last.responseEnd) / 100) / 10 : null;
-    return `tiles:${recent.length}/${entries.length} last:${agoS == null ? 'never' : `${agoS}s`}`;
-  } catch {
-    return 'tiles:?';
   }
 }
 
@@ -248,7 +216,7 @@ export function MapDiagnostic({
           `canvas:${canvasState(pane)}`,
           `pane:${box ? `${Math.round(box.width)}x${Math.round(box.height)}` : 'none'}`,
           `painted:${now.painted ? 'y' : 'n'}`,
-          tileTraffic(performance.now() - now.elapsedMs),
+          `tiles:${now.tiles}`,
           serviceWorkerState(),
           `fails:${now.failures}`,
           `resumes:${now.resumes}`,

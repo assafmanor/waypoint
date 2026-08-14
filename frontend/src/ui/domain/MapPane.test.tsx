@@ -1208,6 +1208,43 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     expect(second).not.toBe(first);
   });
 
+  // ── THE BLANK MAP THAT SAID NOTHING (2026-08-14, from the owner's own phone) ─────────
+  //
+  // The pane rendered, the attribution rendered, the pins rendered, and the ground was nothing
+  // but its own background colour — with **no cue, no retry pill and no diagnostic**. Cause:
+  // `MapCanvas` derived first paint from `load` + `idle`, and both of those settle on a map
+  // whose every tile request failed, because "nothing pending" includes "nothing left to fail".
+  // So `tilesPainted` latched on a blank canvas and took the whole affordance set with it —
+  // field report #28 verbatim, reached from a new direction.
+  //
+  // `MapCanvas` now waits for a real tile (its own suite covers that half). What this asserts is
+  // the pane's half, which is the one the owner would have seen: with no first paint, the bound
+  // expires and the pane SAYS so. It is the same shape as the post-paint context death above,
+  // and it is here because those two are the only ways a blank canvas can happen.
+  it('says so when tiles never arrive, however settled the canvas claims to be', async () => {
+    vi.useFakeTimers();
+    paint();
+    // Exactly the owner's state: the renderer is happy, the archive gave it nothing.
+    act(() => canvas.idle?.());
+    act(() => canvas.idle?.());
+    expect(screen.getByText(t.map.loading)).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    // All three affordances, which is precisely what was missing on the phone.
+    expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    expect(screen.getByRole('button', { name: new RegExp(t.feedback.retry) })).toBeTruthy();
+    expect(screen.getByText(t.map.diagnostic)).toBeTruthy();
+  });
+
+  it('retires all three by itself if the tiles were only slow', async () => {
+    vi.useFakeTimers();
+    paint();
+    await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
+    expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    act(() => canvas.firstPaint?.());
+    expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
+    expect(screen.queryByText(t.map.diagnostic)).toBeNull();
+  });
+
   // **A tile that 404s is not a dead map** (ADR-0186's trap 4). An extract has edges, so a
   // missing tile is an ordinary event — and routing it to `mapFailed` would put the pane into
   // `ErrorState` over one tile at the edge of the archive. It is recorded for the diagnostic and
