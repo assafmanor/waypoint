@@ -180,7 +180,7 @@ describe('archiveReading, against a real PMTiles archive', () => {
   });
 
   it('reports MISS for a point the archive does not cover', async () => {
-    await expect(reading(buildArchive(), SANTIAGO)).resolves.toBe('z0-1/1t/1:MISS');
+    await expect(reading(buildArchive(), SANTIAGO)).resolves.toBe('z0-1/1t/1:MISS@none/bbox:in');
   });
 
   // **The state the whole loop is about.** An archive that answers every range request cleanly and
@@ -188,7 +188,27 @@ describe('archiveReading, against a real PMTiles archive', () => {
   // field the readout said `206` and nothing more.
   it('reports MISS on an archive that is well-formed and empty of this trip', async () => {
     const empty = buildArchive({ tileId: 1, addressedTiles: 0 });
-    await expect(reading(empty, BANGKOK)).resolves.toBe('z0-1/0t/1:MISS');
+    await expect(reading(empty, BANGKOK)).resolves.toBe('z0-1/0t/1:MISS@none/bbox:in');
+  });
+
+  // **The shape the owner's device most likely has**, verified against the real library rather than
+  // reasoned about: an archive whose header claims z0-14 while the tiles stop far shallower. At the
+  // camera's zoom it MISSES; walking down finds where the coverage actually ends. That is a
+  // different bug from an extract of the wrong ground, and `MISS` alone cannot tell them apart.
+  it('walks down to the deepest zoom that does hold the point', async () => {
+    const shallow = buildArchive({ maxZoom: 14, tileId: Z1_NORTHEAST });
+    await expect(reading(shallow, BANGKOK)).resolves.toBe('z0-14/1t/14:MISS@1:4.2k/bbox:in');
+  });
+
+  // **The other half of the fork, and the one that would end the loop outright.** A cut is made from
+  // the trip's own places and the camera opens on one of them, so a miss should be impossible. If it
+  // happens because the archive's own bounds are somewhere else entirely, this says where — no
+  // further round trip, and no guessing about which coordinates the cutter was handed.
+  it('says the camera is outside the archive’s own bounds, and where those are', async () => {
+    const elsewhere = buildArchive({ maxZoom: 14, bbox: [100.4, 13.6, 100.6, 13.9] });
+    await expect(reading(elsewhere, SANTIAGO)).resolves.toBe(
+      'z0-14/1t/14:MISS@none/bbox:out@13.75,100.50',
+    );
   });
 
   it('names an inverted bbox, which a cutter can write and a status cannot show', async () => {
@@ -200,7 +220,9 @@ describe('archiveReading, against a real PMTiles archive', () => {
   // the probe down — a reading taken at z1 would say nothing about the zoom the app opens at.
   it('probes the camera’s own zoom when the archive goes that deep', async () => {
     const deep = buildArchive({ maxZoom: 14, tileId: 1 });
-    await expect(reading(deep, { ...BANGKOK, zoom: 14 })).resolves.toBe('z0-14/1t/14:MISS');
+    await expect(reading(deep, { ...BANGKOK, zoom: 14 })).resolves.toBe(
+      'z0-14/1t/14:MISS@none/bbox:in',
+    );
   });
 
   it('carries the library’s own words when the bytes are not an archive', async () => {

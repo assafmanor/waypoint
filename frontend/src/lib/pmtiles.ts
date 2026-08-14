@@ -93,6 +93,35 @@ function tileAt(z: number, lat: number, lng: number): { x: number; y: number } {
 }
 
 /**
+ * **Where the archive says it covers, relative to where we are looking** — free, because the header
+ * is already read, and decisive in the one case a `MISS` leaves ambiguous.
+ *
+ * A cut is made from the trip's own places plus a pad, and the camera opens on one of those places,
+ * so a miss at the camera should be impossible. When it happens anyway, this is what splits it:
+ *
+ *   - `bbox:out@13.75,100.50` — the archive's own bounds do not contain the camera. It was cut from
+ *     the wrong coordinates, and the centre it names is where it went instead.
+ *   - `bbox:in`               — the archive claims this ground and does not hold the tile, so the
+ *     fault is in what was written inside a correct region.
+ *
+ * Reported only on a miss (a hit needs no explanation), except `BAD`, which is worth saying always:
+ * inverted bounds mean the cut itself was malformed, whoever asks.
+ */
+function coverage(
+  header: { minLon: number; minLat: number; maxLon: number; maxLat: number },
+  at: ArchiveProbePoint,
+  hit: boolean,
+): string {
+  const { minLon, minLat, maxLon, maxLat } = header;
+  if (minLon >= maxLon || minLat >= maxLat) return '/bbox:BAD';
+  if (hit) return '';
+  const inside = at.lng >= minLon && at.lng <= maxLon && at.lat >= minLat && at.lat <= maxLat;
+  if (inside) return '/bbox:in';
+  const centre = `${((minLat + maxLat) / 2).toFixed(2)},${((minLon + maxLon) / 2).toFixed(2)}`;
+  return `/bbox:out@${centre}`;
+}
+
+/**
  * **What the archive itself says it holds, and whether it holds the tile under the camera.**
  *
  * The fact five rounds of diagnosis on 2026-08-14 never read. Each round measured the archive from
@@ -110,8 +139,20 @@ function tileAt(z: number, lat: number, lng: number): { x: number; y: number } {
  *   - **`8221t`** — addressed tiles. `0t` is an archive that was cut and is empty, which no HTTP
  *     status can distinguish from a good one.
  *   - **`6:4.2k`** — the tile the renderer would ask for at this camera, fetched the same way it
- *     would fetch it. `MISS` means the archive does not cover where the trip is, and that is a
- *     cutting-bounds bug rather than anything in the client.
+ *     would fetch it, and on a `MISS` the deepest zoom over the same point that DOES hold bytes.
+ *
+ * **Why the walk down exists, and it is the whole of the 2026-08-14 evening.** The reading
+ * `extract:206/411ms[z0-14/127t/14:MISS]` says the trip's archive was cut, is well-formed, serves
+ * clean 206s, and has nothing at the camera — and two completely different bugs produce that:
+ *
+ *   - `14:MISS@none`     — no zoom over this point holds anything: the extract covers **other
+ *                          ground**, so the region handed to `pmtiles extract` is wrong.
+ *   - `14:MISS@10:3.1k`  — this ground is in the archive but only to z10: the header's `maxZoom`
+ *                          **overstates** what was cut, so the style asks for a level that is not
+ *                          there. A different fix, in a different file.
+ *
+ * Guessing between those two is what has cost this workstream six sessions, so the readout answers
+ * it instead. The walk stops at the first hit, which is one extra range read in the healthy case.
  *
  * Read through the **registered** archive, deliberately: it shares the header and directory caches
  * the renderer is using, so this reports on the map on screen rather than on a fresh read that
@@ -124,16 +165,24 @@ export async function archiveReading(url: string, at: ArchiveProbePoint | null):
   try {
     const header = await archive.getHeader();
     const z = Math.min(Math.max(Math.floor(at.zoom), header.minZoom), header.maxZoom);
-    const { x, y } = tileAt(z, at.lat, at.lng);
-    const tile = await archive.getZxy(z, x, y);
-    const bytes = tile ? `${Math.round(tile.data.byteLength / 100) / 10}k` : 'MISS';
-    // The bbox is reported only when it is unusable. It stopped being load-bearing when the style
-    // began stating its own tile template (amendment 269f) — pmtiles only `console.error`s an
-    // invalid one — but an archive whose bounds are inverted is still an archive that was cut
-    // wrong, and this is the one place that would say so.
-    const bbox =
-      header.minLon >= header.maxLon || header.minLat >= header.maxLat ? '/bbox:BAD' : '';
-    return `z${header.minZoom}-${header.maxZoom}/${header.numAddressedTiles}t/${z}:${bytes}${bbox}`;
+    /** The bytes this archive holds over the point at one zoom, or null for a miss. */
+    const bytesAt = async (zoom: number): Promise<string | null> => {
+      const { x, y } = tileAt(zoom, at.lat, at.lng);
+      const tile = await archive.getZxy(zoom, x, y);
+      return tile ? `${Math.round(tile.data.byteLength / 100) / 10}k` : null;
+    };
+    /** Walked only after a miss, and only down to the archive's own floor: below `minZoom`
+     *  pmtiles refuses the lookup, so a miss there would say nothing about coverage. */
+    const deepestBelow = async (from: number): Promise<string> => {
+      for (let zoom = from - 1; zoom >= header.minZoom; zoom--) {
+        const found = await bytesAt(zoom);
+        if (found) return `@${zoom}:${found}`;
+      }
+      return '@none';
+    };
+    const held = await bytesAt(z);
+    const bytes = held ?? `MISS${await deepestBelow(z)}`;
+    return `z${header.minZoom}-${header.maxZoom}/${header.numAddressedTiles}t/${z}:${bytes}${coverage(header, at, held != null)}`;
   } catch (error) {
     // Named, not swallowed: `Wrong magic number for PMTiles archive` (the stored blob is not an
     // archive) and `Bad response code: 503` (still building) are different bugs, and this is the

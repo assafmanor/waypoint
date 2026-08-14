@@ -192,7 +192,38 @@ describe('archiveReading', () => {
     const { archiveReading, ensurePmtilesArchives } = await freshModule();
     await ensurePmtilesArchives([TRIP]);
     fake.plan.set(TRIP, { header: { ...WORLD_HEADER, maxZoom: 14, numAddressedTiles: 531 } });
-    await expect(archiveReading(TRIP, bangkok)).resolves.toBe('z0-14/531t/14:MISS');
+    // Nothing at any zoom: the archive covers other ground, so the region it was cut from is wrong.
+    await expect(archiveReading(TRIP, bangkok)).resolves.toBe('z0-14/531t/14:MISS@none/bbox:in');
+  });
+
+  // **The fork the 2026-08-14 evening turned on.** `14:MISS` alone fitted two bugs — an extract of
+  // the wrong ground, and one whose header overstates how deep it was cut. These are those.
+  it('names the deepest zoom that DOES hold the point, when a deeper one misses', async () => {
+    const { archiveReading, ensurePmtilesArchives } = await freshModule();
+    await ensurePmtilesArchives([TRIP]);
+    fake.plan.set(TRIP, {
+      header: { ...WORLD_HEADER, maxZoom: 14, numAddressedTiles: 127 },
+      // Bangkok's z10 tile. z11–z14 hold nothing, which is a `maxZoom` that overstates the cut.
+      tiles: new Map([['10/797/472', 3100]]),
+    });
+    await expect(archiveReading(TRIP, bangkok)).resolves.toBe('z0-14/127t/14:MISS@10:3.1k/bbox:in');
+  });
+
+  it('stops the walk at the archive’s own floor, never below it', async () => {
+    const { archiveReading, ensurePmtilesArchives } = await freshModule();
+    await ensurePmtilesArchives([TRIP]);
+    fake.plan.set(TRIP, { header: { ...WORLD_HEADER, minZoom: 8, maxZoom: 10 } });
+    await expect(archiveReading(TRIP, bangkok)).resolves.toBe('z8-10/8221t/10:MISS@none/bbox:in');
+    // 10, then 9, then 8 — and not 7, where pmtiles refuses the lookup and a miss means nothing.
+    expect(fake.asked.get(TRIP)).toEqual(['10/797/472', '9/398/236', '8/199/118']);
+  });
+
+  it('asks for exactly one tile when the archive holds it', async () => {
+    const { archiveReading, ensurePmtilesArchives } = await freshModule();
+    await ensurePmtilesArchives([WORLD]);
+    fake.plan.set(WORLD, { tiles: new Map([['6/49/29', 4200]]) });
+    await archiveReading(WORLD, bangkok);
+    expect(fake.asked.get(WORLD)).toHaveLength(1);
   });
 
   it('clamps the probe into the header’s zoom range, the way the renderer overzooms', async () => {
@@ -232,21 +263,36 @@ describe('archiveReading', () => {
   });
 
   // The tile math, checked where it can be checked by hand: at z1 the world is four tiles, and
-  // Bangkok is the north-east one. A wrong sign or a flipped axis fails here and nowhere else.
+  // Bangkok is the north-east one while Santiago is the south-west. A wrong sign or a flipped axis
+  // fails here and nowhere else. Asserted through a HIT rather than through the request log — only a
+  // matching address returns bytes, and a log is satisfied by asking for the wrong tile.
   it('addresses the tile the point is actually in', async () => {
     const { archiveReading, ensurePmtilesArchives } = await freshModule();
     await ensurePmtilesArchives([WORLD]);
-    fake.plan.set(WORLD, { header: { ...WORLD_HEADER, maxZoom: 1 } });
-    await archiveReading(WORLD, { zoom: 1, lat: 13.75, lng: 100.5 });
-    await archiveReading(WORLD, { zoom: 1, lat: -33.9, lng: -70.7 });
-    expect(fake.asked.get(WORLD)).toEqual(['1/1/0', '1/0/1']);
+    fake.plan.set(WORLD, {
+      header: { ...WORLD_HEADER, maxZoom: 1 },
+      tiles: new Map([
+        ['1/1/0', 1000],
+        ['1/0/1', 2000],
+      ]),
+    });
+    await expect(archiveReading(WORLD, { zoom: 1, lat: 13.75, lng: 100.5 })).resolves.toContain(
+      '1:1k',
+    );
+    await expect(archiveReading(WORLD, { zoom: 1, lat: -33.9, lng: -70.7 })).resolves.toContain(
+      '1:2k',
+    );
   });
 
   it('clamps a point at the edge of the grid rather than addressing outside it', async () => {
     const { archiveReading, ensurePmtilesArchives } = await freshModule();
     await ensurePmtilesArchives([WORLD]);
-    fake.plan.set(WORLD, { header: { ...WORLD_HEADER, maxZoom: 1 } });
-    await archiveReading(WORLD, { zoom: 1, lat: 89.9, lng: 180 });
-    expect(fake.asked.get(WORLD)).toEqual(['1/1/0']);
+    fake.plan.set(WORLD, {
+      header: { ...WORLD_HEADER, maxZoom: 1 },
+      tiles: new Map([['1/1/0', 1000]]),
+    });
+    await expect(archiveReading(WORLD, { zoom: 1, lat: 89.9, lng: 180 })).resolves.toContain(
+      '1:1k',
+    );
   });
 });

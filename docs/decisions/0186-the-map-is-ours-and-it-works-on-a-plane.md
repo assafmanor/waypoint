@@ -626,3 +626,60 @@ now, and the 401 is pinned in it.
 **What this still does not close, stated plainly so it is not mistaken for coverage:** those bytes
 were written in the test, not by `pmtiles extract`. The owed CI step is unchanged and is now the only
 thing that would answer what the deployed cutter actually writes.
+
+## Amendment (2026-08-14, session 269h) — the world archive is fine and the TRIP EXTRACT is not
+
+The first reading in this chain that names a specific artefact as wrong:
+
+```
+… tiles:0 painted:n … sdk:z14@32.12,34.82 style:n/2g err:none
+self:200/110ms world:206/104ms[z0-6/5461t/6:64.9k] extract:206/411ms[z0-14/127t/14:MISS]
+```
+
+**The world layer is correct and complete.** `5461` is exactly the whole z0–6 pyramid
+((4⁷−1)/3 = 5461), and there are 64.9 kB of real tile bytes at z6 under the camera. Storage confirms
+both objects exist (`map_world-z6.pmtiles`, `map_<tripId>_<sig>.pmtiles`). So the cutter runs, the CA
+store works, the request path serves, and the auth holds — four amendments' worth of fixes are all
+standing.
+
+**The trip extract answers `MISS` at the camera, and that should be impossible.** `defaultCentre` in
+`screens/Map.tsx` is _one of the trip's own pins_, and `mapRegionFor` cuts from those same
+coordinates plus a 5 km pad — so the tile under the opening camera is by construction inside the
+region that was cut.
+
+**Two corrections to what was said while reading it**, both recorded because each was on its way to
+becoming a wrong conclusion:
+
+- **`127` addressed tiles is not too few.** Called a defect first time round by anchoring on
+  `MAP_AREA_LINK_RADIUS_M` (40 km) — but that is the _clustering link_ radius, not the box: the box
+  is a cluster's bounding box plus `MAP_AREA_PADDING_M` (5 km). For a couple of places in one city
+  that is ~0.1° across, so ~30 tiles at z14 and roughly 120–130 over z0–14. **The count is right.**
+  The `MISS` is the signal.
+- **`style:n` does not mean the style failed to load.** `Map.isStyleLoaded()` delegates to
+  `Style.loaded()`, which is false while **any** tile manager still has a tile pending, so on this
+  reading it is a restatement of `tiles:0` rather than independent evidence. The `2g` half is what is
+  decisive, and it is: both ground sources exist on the map. Claiming more than that from the field
+  was over-reading an instrument added one amendment earlier.
+
+**One candidate eliminated by measurement rather than argument**, and it fitted the evidence exactly:
+MapLibre requests tiles only for a source that a layer _visible at the current zoom_ references, so a
+style with sources and no such layer yields `tiles:0 err:none` on a healthy camera. Measured at
+z6/10/12/13/14/15 — 15 layers on `protomaps-world` and 49→66 on `protomaps` at every one of them, all
+with a `source-layer`. Both sources are needed at the zoom the app opens at. Also confirmed
+`_tileLoaded` fires `MapSourceDataEvent("data", { tile, coord })` with `sourceId` injected, which is
+exactly what the counter reads — so `tiles:0` is honest.
+
+**So the readout gains the two fields that split the remaining fork**, because guessing between them
+is what has cost this workstream its sessions:
+
+- **A walk down from the camera's zoom on a miss** — `14:MISS@10:3.1k` means this ground _is_ in the
+  archive but only to z10, i.e. the header's `maxZoom` overstates the cut. `14:MISS@none` means no
+  zoom over this point holds anything. Stops at the first hit (one extra range read), and never goes
+  below the header's `minZoom`, where pmtiles refuses the lookup and a miss would mean nothing.
+- **The camera against the archive's own bounds**, free because the header is already read.
+  `bbox:in` — the archive claims this ground and does not hold the tile. `bbox:out@13.75,100.50` —
+  the archive's bounds are somewhere else, and that is _where_, so a mis-cut region names itself
+  without another round trip.
+
+Both branches are verified against a real byte-assembled archive through the unmocked library, not
+only against the mock.
