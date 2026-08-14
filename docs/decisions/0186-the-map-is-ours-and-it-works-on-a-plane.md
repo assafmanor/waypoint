@@ -832,3 +832,21 @@ is one object in a reviewable file and dark mode is a live restyle from one down
 cheap to re-tune — but it is a **design pass with a mockup**, not a nudge: the constraint that
 survives is the RATIO (every terrain tone separated, pins still the loudest thing at chroma
 27.8–51.8), and re-tuning hexes without re-measuring that is how §8's relationships get lost.
+
+## Amendment (2026-08-14, session 270) — §3's "no range-proxy" is narrowed, and the extract leaves the online path
+
+Superseded in part by [ADR-0187](0187-detail-is-live-and-an-extract-is-only-for-the-plane.md), which is where the
+argument lives. In short, from the owner researching a place on the first working map:
+
+**§3's 2026-08-13 amendment says _"So there is no range-proxy."_ That now holds for the offline artefact and for the
+trip's own city, and not for ground nobody has committed to.** Online, z7–14 anywhere is a range-read of the upstream
+planet through our backend; the downloaded extract stops being the online render path and becomes purely what §6
+always called it, a cache for the plane. One detail source at a time, chosen by connectivity.
+
+**And `coordinatesFor` sweeps every `Place` row, including the dedup-cache row a mere search result mints
+([ADR-0112](0112-place-in-trip-is-referenced-not-cached.md)).** So researching a place re-cuts the whole archive:
+269e's 503 for minutes, an extract grown to cover somewhere nobody saved, and a good archive binned. The
+invalidation is fired by an act that carries no commitment, and extracts must be cut from **referenced** places.
+
+Amendment 269j's open item (a) — a 503 reported as a failure — survives this but shrinks: it becomes a state on the
+**download**, not on the render, because nobody is waiting on a cut to see a map any more.
