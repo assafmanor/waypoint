@@ -964,3 +964,30 @@ checking the invariant the constant exists to satisfy, so it certified the defec
 _renderer_ is not covered by an adapter that speaks the old _dialect_. §2's "the dialect is the
 contract; the vendor behind it is not" is right about method shapes and silent about units — a unit
 has to come from whoever is drawing.
+
+## Amendment (2026-08-14, session 269j) — our markers now live inside a vendor-styled container
+
+A MapLibre marker is a DOM element **inside the map's own container**, which Google's
+`OverlayView` host never was in any way that mattered: `maplibre-gl.css` opens with
+`.maplibregl-map { font: 12px/20px Helvetica Neue, Arial, Helvetica, sans-serif }` — a `font`
+**shorthand** on the very element we hand MapLibre. Every pin inherits it. Measured, Hebrew pin
+copy rendered in the Latin stack rather than Assistant, and every pin carried a fixed 20px line
+box on a surface where ADR-0123 makes each length a fraction of `--pin-u`.
+
+The reported symptom was the second half of a pair, and the other half was ours. `.map-marker`
+— the wrapper this migration introduced — set `line-height: 0`, meaning to keep the wrapper from
+gaining line-box height around the pin. `.map-pin` is `display: block`, so there was no line box
+to collapse and the wrapper is `--pin-u` tall either way: the rule bought **nothing**. What it
+did do is inherit, and `.pin-tag` is the one part of a pin whose height comes from its line box.
+At zero the pill collapsed to 8px around 17px of text, so `היעד הבא` spilled 5px above and 4px
+below its own card ground. Removing the declaration restores the mockup's box exactly (28.41px,
+measured against `mockups/map-basemap-ours-v2.html`).
+
+**The rule worth keeping:** a vendor stylesheet is now an ancestor of our markers, so anything a
+pin does not state for itself, MapLibre may. `.map-pane .map-canvas { font: inherit }` closes the
+typography half at the seam — two classes deep, because `.map-canvas` and `.maplibregl-map` tie on
+specificity and bundle order would otherwise decide it (measured: the vendor won).
+
+Neither half can fail in the component suite — jsdom computes no layout, so a collapsed line box
+and a substituted font family are both invisible to it. `styles/map-pin-typography.contract.test.ts`
+asserts both as CSS contracts, the shape `map-stacking.contract.test.ts` already used.
