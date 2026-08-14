@@ -182,7 +182,13 @@ export function MapDiagnostic({
   facts,
 }: {
   paneRef: RefObject<HTMLDivElement | null>;
-  facts: MapDiagnosticFacts;
+  /** **A getter, not a value** — and the difference was a wrong number on a real phone.
+   *  Sampled at render, `failures` went stale the moment a second failure changed no state
+   *  (`tilesLate` already true → React bails out → no re-render), so the readout said
+   *  `fails:1` for two dead contexts. Everything else here is read at the tap; this is now
+   *  read there too. It also stops allocating a facts object every second on a screen that
+   *  ticks. */
+  facts: () => MapDiagnosticFacts;
 }) {
   const [open, setOpen] = useState(false);
   const [reading, setReading] = useState('');
@@ -193,6 +199,7 @@ export function MapDiagnostic({
   const toggle = useCallback(() => {
     setOpen((wasOpen) => {
       if (wasOpen) return false;
+      const now = facts();
       const pane = paneRef.current;
       const box = pane?.getBoundingClientRect();
       // The two fetch probes are asynchronous, so the line is shown at once and gains
@@ -207,17 +214,17 @@ export function MapDiagnostic({
           `gl:${webglAvailability()}`,
           `canvas:${canvasState(pane)}`,
           `pane:${box ? `${Math.round(box.width)}x${Math.round(box.height)}` : 'none'}`,
-          `painted:${facts.painted ? 'y' : 'n'}`,
-          tileTraffic(performance.now() - facts.elapsedMs),
+          `painted:${now.painted ? 'y' : 'n'}`,
+          tileTraffic(performance.now() - now.elapsedMs),
           serviceWorkerState(),
-          `fails:${facts.failures}`,
-          `resumes:${facts.resumes}`,
-          `t:${Math.round(facts.elapsedMs / 100) / 10}s`,
+          `fails:${now.failures}`,
+          `resumes:${now.resumes}`,
+          `t:${Math.round(now.elapsedMs / 100) / 10}s`,
           `online:${navigator.onLine ? 'y' : 'n'}`,
           `vis:${document.visibilityState[0]}`,
           // Last, because it is the longest and the only free-form field — and the one
           // most likely to name the cause outright.
-          `err:${facts.lastError ?? 'none'}`,
+          `err:${now.lastError ?? 'none'}`,
         ].join(' '),
       );
       return true;

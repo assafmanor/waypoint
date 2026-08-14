@@ -43,8 +43,6 @@ import {
   MAP_CONNECTOR,
   MAP_LOAD_PHASE,
   MAP_LOAD_TIMEOUT_MS,
-  MAP_REBUILDS_BEFORE_RELOAD,
-  MAP_RECOVERY_BACKOFF_MS,
   MAP_RELOAD_COOLDOWN_MS,
   MAP_ZOOM,
   type PinHue,
@@ -483,98 +481,77 @@ function MapPaneInner({
   const attemptStartRef = useRef<number | null>(null);
 
   // ── THE CANVAS SUPERVISOR ───────────────────────────────────────────────────────────
-  // **The map heals itself, and never stops trying** (ADR-0121's 2026-08-14 amendment and
-  // its same-day correction). Two things leave a dead canvas and neither has a
-  // Google-exposed signal: a context the phone reclaimed while backgrounded, and tiles
-  // that never arrived. Both route here.
+  // **A failed map SAYS so; it does not rebuild itself** (ADR-0121's 2026-08-15
+  // amendment). Two things leave a dead canvas and neither has a Google-exposed signal:
+  // a context the phone reclaimed while backgrounded, and tiles that never arrived. Both
+  // route through `markFailure`.
   //
-  // **`consecutiveRef` counts FAILURES IN A ROW, never rebuilds in a lifetime** — and that
-  // distinction is the whole correction. The first version budgeted three rebuilds per
-  // MOUNT, so a phone (which drops the context on roughly every background) exhausted it
-  // in three resumes and left the pane dead on the fourth, needing a human tap. Measured
-  // as 3/8 healthy cycles. A recovery that paints is proof the GPU is fine, so
-  // `handleTilesLoaded` resets this to zero and the budget can never run out on a map
-  // that keeps coming back.
+  // **Automatic rebuilding is gone, on a measurement rather than a taste.** The Maps JS
+  // **load quota** read 97% while the pane was failing, and every rebuild is a billed map
+  // load (§4) — so an automatic retry against a quota refusal spends the very thing whose
+  // exhaustion caused it. Six shipped fixes' worth of loops were accelerating the fault
+  // they were meant to cure. What actually recovers this map is a new DOCUMENT, which the
+  // owner found before any of them did: _"only restarting the app fixes it"_.
+  //
+  // `consecutiveRef` counts FAILURES IN A ROW and is what the diagnostic's `fails:` field
+  // reports — it read 2 and 3 on the reporting device, so it stays. A paint proves the GPU
+  // is fine, so `handleTilesLoaded` resets it.
   const consecutiveRef = useRef(0);
-  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Read inside a visibility handler that must not re-subscribe on every paint. */
   const tilesPaintedRef = useRef(false);
-  /** Set once every rebuild has been spent and the canvas is still dead — see
-   *  `scheduleRecovery`. Read by the hidden-moment reload below. */
-  const unrecoverableRef = useRef(false);
   /** Counted for the diagnostic only: how many times this pane has been resumed. On a
    *  phone the failure arrives with a resume, so "how many" is the fact that says whether
    *  the reading was taken on the first one or the twentieth. */
   const resumesRef = useRef(0);
   /** What `APIProvider.onError` last rejected with — see `handleMapError`. Survives the
-   *  rebuild that clears everything else, because the question it answers is about the
+   *  retry that clears everything else, because the question it answers is about the
    *  PAGE rather than about this attempt. */
   const lastErrorRef = useRef<string | null>(null);
 
-  /** Ask for a fresh map after a delay that grows with consecutive failures.
+  /** **The one place a dead map is recorded.** Every detection site routes here, so the
+   *  count the diagnostic reports and the cue the person sees can never disagree — which
+   *  they did while the increment lived inside the rebuild scheduler and the cue did not.
    *
-   *  Two guards, both load-bearing: **one pending attempt at a time**, so a burst of
-   *  events cannot queue a pile of rebuilds; and **only while visible**, because a map
-   *  constructed against a hidden page is the failure being recovered from. An attempt
-   *  that comes due while hidden is not lost — the resume below asks again. */
-  const scheduleRecovery = useCallback(() => {
-    if (pendingRef.current !== null) return;
-    const step = Math.min(consecutiveRef.current, MAP_RECOVERY_BACKOFF_MS.length - 1);
-    pendingRef.current = setTimeout(() => {
-      pendingRef.current = null;
-      if (document.visibilityState !== 'visible') return;
-      // **When rebuilding has demonstrably failed, rebuilding again is not a plan.**
-      // (ADR-0121's 2026-08-14 second amendment; owner: _"Reloading the map … doesn't
-      // recover the map. Once it's dead, it's dead until you switch to another app"_.)
-      //
-      // Every step of the backoff has now been spent on fresh `google.maps.Map`
-      // instances with fresh canvases, and the map is still dead — so whatever is
-      // broken outlives the map object, and only a new DOCUMENT clears it. That is
-      // also the one cure the owner has ever found to work every time: restart the app.
-      //
-      // Guarded to once per session (`reloadOnce`) and only at a moment a reload costs
-      // nothing — `canReloadQuietly` is ADR-0185's own test, so this cannot throw away
-      // an open sheet or something being typed. If either guard refuses, we fall
-      // through to `ErrorState`, whose action offers the same reload as a deliberate tap.
-      if (consecutiveRef.current >= MAP_REBUILDS_BEFORE_RELOAD) {
-        unrecoverableRef.current = true;
-        setMapFailed(true);
-        return;
-      }
-      consecutiveRef.current += 1;
-      setAttempt((n) => n + 1);
-    }, MAP_RECOVERY_BACKOFF_MS[step]);
+   *  **`tilesPainted` goes back to false, and that is a fact rather than a trick.** The cue,
+   *  the retry and the diagnostic all render under `!tilesPainted` (below), so a context
+   *  that dies AFTER the first paint would otherwise set `tilesLate` and show nothing at
+   *  all — a blank canvas with no affordance, which is field report #28 verbatim. The old
+   *  code hid that by rebuilding; with the rebuild gone, saying so is the whole response,
+   *  so it has to be sayable. A map whose context is dead is not painted. */
+  const markFailure = useCallback(() => {
+    consecutiveRef.current += 1;
+    tilesPaintedRef.current = false;
+    setTilesPainted(false);
+    setTilesLate(true);
   }, []);
 
   useEffect(() => {
     // A tab coming back is the moment to try again: visible, laid out, someone looking at
     // it. This is also what runs an attempt that came due while the page was hidden.
     const stop = observeVisibility({
+      // A resume does not rebuild: coming back to the app is not evidence that spending a
+      // billed load will help. Counted, because the diagnostic reads it.
       onResume: () => {
         resumesRef.current += 1;
-        if (!tilesPaintedRef.current) scheduleRecovery();
       },
       // **The one moment a reload is free** — ADR-0185 chose exactly this for the build
       // swap, and for the same reason: nobody is looking, nothing is mid-sentence, and
       // there is no overlay to lose because there is no interaction happening.
       //
-      // It is also precisely the owner's own workaround, done for them: once every
-      // rebuild has been spent, whatever is broken outlives the map object and only a new
-      // DOCUMENT clears it — _"restarting the app fixes it"_. So the next time the app
-      // goes to the background, it quietly becomes a fresh one, and coming back finds a
-      // working map instead of a dead pane. Guarded to once per cooldown, so a device
-      // that keeps losing its GPU degrades to the visible error rather than reloading
-      // itself under someone repeatedly.
+      // This is now the ONLY automatic recovery, and it is the only one ever measured to
+      // work: a fresh document clears whatever outlives the map object, which is the
+      // owner's own workaround done for them — _"restarting the app fixes it"_. It costs
+      // one load rather than a loop of them, and `reloadOnce` holds it to once per
+      // cooldown so a device that keeps failing degrades to the visible error instead of
+      // reloading itself under someone repeatedly.
       onHidden: () => {
-        if (unrecoverableRef.current) reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS);
+        if (consecutiveRef.current > 0 && !tilesPaintedRef.current) {
+          reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS);
+        }
       },
     });
-    return () => {
-      stop();
-      if (pendingRef.current !== null) clearTimeout(pendingRef.current);
-      pendingRef.current = null;
-    };
-  }, [scheduleRecovery]);
+    return stop;
+  }, []);
 
   useEffect(() => {
     setMapFailed(false);
@@ -603,16 +580,16 @@ function MapPaneInner({
       () => new Promise<void>((resolve) => (tilesLoadedRef.current = resolve)),
     ).catch((error) => {
       if (!live || !(error instanceof PhaseTimeoutError)) return;
-      // Say so, AND start trying again. Before this the notice was the whole response and
-      // the map sat there until a human tapped — which is the case the owner kept hitting.
-      setTilesLate(true);
-      scheduleRecovery();
+      // Say so, and stop there. The notice below carries a manual retry: a person tapping
+      // is a load somebody chose to spend, which is the distinction the removed automatic
+      // rebuild could not make.
+      markFailure();
     });
     return () => {
       live = false;
       tilesLoadedRef.current = null;
     };
-  }, [attempt, scheduleRecovery]);
+  }, [attempt, markFailure]);
   const handleTilesLoaded = useCallback(() => {
     tilesLoadedRef.current?.();
     tilesLoadedRef.current = null;
@@ -683,18 +660,17 @@ function MapPaneInner({
     [],
   );
 
-  /** The tap on `ErrorState`. **It reloads the app once the rebuilds have been spent**,
-   *  because by then a fresh map is known not to help and the owner's own workaround —
-   *  restarting the app — is the only thing that has ever worked every time. Before that
-   *  point it is the cheaper thing: reset the loader global (session 262's cause) and
-   *  build a fresh map. */
+  /** The tap on `ErrorState` or on the slow notice. **A deliberate retry reloads the
+   *  app**, and it does so FIRST rather than after a budget of rebuilds — because a fresh
+   *  `google.maps.Map` over a wedged page was shipped for six sessions and the owner's
+   *  verdict was flat: _"Once it's dead, it's dead until you switch to another app"_. No
+   *  `canReloadQuietly` gate here: the person tapping IS the consent.
+   *
+   *  If the cooldown refuses, fall through to the cheaper thing rather than doing nothing
+   *  — reset the loader global (session 262's cause) and build one fresh map, which is at
+   *  least a load somebody asked for. */
   const retryMap = useCallback(() => {
-    if (consecutiveRef.current >= MAP_REBUILDS_BEFORE_RELOAD) {
-      // A deliberate tap, so no `canReloadQuietly` gate: the person asking IS the
-      // consent. The once-per-session guard still holds, and if it refuses we fall
-      // through to rebuilding rather than doing nothing.
-      if (reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS)) return;
-    }
+    if (reloadOnce(RELOAD_GUARD_KEY.map, MAP_RELOAD_COOLDOWN_MS)) return;
     __resetModuleState();
     consecutiveRef.current = 0;
     setAttempt((n) => n + 1);
@@ -704,11 +680,13 @@ function MapPaneInner({
       {/* OUTSIDE the branch below, deliberately: the pane element is what carries the
           capture listener, and it has to keep hearing a context die even once the canvas
           has been swapped for `ErrorState`. */}
-      <ContextLossRecovery paneRef={paneRef} onLost={scheduleRecovery} />
+      {/* A lost context still marks the map dead so the pane SAYS so — but it no longer
+          builds another one. See `markFailure`: a rebuild is a billed load. */}
+      <ContextLossRecovery paneRef={paneRef} onLost={markFailure} />
       {mapFailed ? (
         <>
           <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
-          <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts()} />
+          <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts} />
         </>
       ) : (
         <APIProvider key={attempt} apiKey={config.apiKey} onError={handleMapError}>
@@ -809,7 +787,7 @@ function MapPaneInner({
                   <button type="button" className="map-loading-retry" onClick={retryMap}>
                     {t.feedback.retry}
                   </button>
-                  <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts()} />
+                  <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts} />
                 </>
               )}
             </div>

@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
@@ -27,6 +28,37 @@ function warnIfMapsUnconfigured() {
       '   is not enough — a Docker build also needs a matching ARG (see Dockerfile),\n' +
       '   and local development reads frontend/.env.local. See architecture/deployment.md.\n',
   );
+}
+
+/**
+ * **What build is this?** — the question a staging tester cannot otherwise answer, and the
+ * reason the answer is computed here rather than typed into an env var: a label somebody has
+ * to remember to bump is a label that eventually lies, and a build indicator that lies is
+ * worse than none. Railway exports the commit itself, so the badge can just read it.
+ *
+ * `VITE_BUILD_LABEL` still wins when set, for a deploy that wants to say something else.
+ * Falls back to the local git checkout so `pnpm dev` shows a real value too, and to
+ * `'dev'` when git is unavailable (a Docker build without the .git directory).
+ */
+function buildLabel(): string {
+  const explicit = process.env.VITE_BUILD_LABEL?.trim();
+  if (explicit) return explicit;
+  const git = (args: string) => {
+    try {
+      return execSync(`git ${args}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      return '';
+    }
+  };
+  const sha = (process.env.RAILWAY_GIT_COMMIT_SHA || git('rev-parse HEAD')).slice(0, 7);
+  const branch = process.env.RAILWAY_GIT_BRANCH || git('rev-parse --abbrev-ref HEAD') || 'unknown';
+  // Minute precision: two deploys of the same commit are a real thing to tell apart, and
+  // seconds are noise on a badge somebody reads off a phone screen.
+  const at = new Date().toISOString().slice(5, 16).replace('T', ' ');
+  return [branch, sha, at].filter(Boolean).join(' · ');
 }
 
 /** `index.html` is served to the browser, so it can't import `APP_NAME` — it carries a
@@ -129,6 +161,11 @@ export default defineConfig(({ command }) => {
       }),
     ],
     server: { port: 5173 },
+    // A distinct global rather than an `import.meta.env.VITE_*` member: Vite inlines those
+    // itself from the environment, so defining one here would be two replacements fighting
+    // over the same expression. The BADGE is still gated by a real env var
+    // (`VITE_BUILD_BADGE`) — this is only the text it shows. See `ui/BuildBadge.tsx`.
+    define: { __BUILD_LABEL__: JSON.stringify(buildLabel()) },
     test: {
       // The Playwright e2e specs (frontend/e2e/*.spec.ts) run under `pnpm e2e`, not
       // vitest — they import @playwright/test and drive a real browser. Keep them
@@ -164,6 +201,9 @@ export default defineConfig(({ command }) => {
         VITE_GOOGLE_MAPS_BROWSER_KEY: '',
         VITE_GOOGLE_MAPS_MAP_ID: '',
         VITE_GOOGLE_MAPS_MAP_ID_DARK: '',
+        // Same reasoning as the four above: a developer with this set locally would
+        // otherwise flip `BuildBadge`'s default case in their run and not in CI.
+        VITE_BUILD_BADGE: '',
       },
       /** `vite-plugin-pwa`'s virtual module has no file behind it, and under vitest its id
        *  resolves to `file:///@vite-plugin-pwa/virtual:…`, which Node refuses as a filename.

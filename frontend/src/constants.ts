@@ -221,33 +221,11 @@ export const MAP_LOAD_TIMEOUT_MS = {
   TILES: 4_000,
 } as const;
 
-/** **How long to wait before each successive attempt to bring a dead canvas back**
- *  (field report #35, ADR-0121's 2026-08-14 amendment and its same-day correction).
- *
- *  A phone reclaims a backgrounded page's WebGL context, and the canvas that comes back is
- *  blank — the tiles watchdog cannot see it, because that guards only the FIRST paint and
- *  `tilesPainted` is already true by then. The only cure is a fresh `google.maps.Map`.
- *
- *  **This replaces a fixed budget of three rebuilds, which was a REGRESSION** and a
- *  measured one: the count was per MOUNT, so three background/resume cycles exhausted it
- *  and the fourth left the pane in a dead `ErrorState` until a human tapped retry. A phone
- *  drops the context on roughly every background, so that arrived within minutes of real
- *  use and was strictly worse than the blank map it replaced. The error was counting
- *  lifetime rebuilds when the only meaningful number is **consecutive failures** — a
- *  recovery that paints is proof the GPU is fine, and resets this.
- *
- *  So: **it never gives up.** The delays grow, cap at a minute, and the map keeps trying
- *  for as long as it is on screen and broken. That is affordable under §4's arithmetic
- *  (10,000 free loads/month against ~5 people) because the worst case is one instantiation
- *  a minute while a map is *visibly broken* — and a map nobody can see is worth less than
- *  the load it saves. */
-export const MAP_RECOVERY_BACKOFF_MS = [0, 2_000, 8_000, 30_000, 60_000] as const;
-
-/** **How long before the map may reload the app again** (ADR-0121's second 2026-08-14
- *  amendment). Once every backoff step has been spent on a fresh `google.maps.Map` and the
- *  canvas is still dead, whatever is broken outlives the map object and only a new
- *  DOCUMENT clears it — which is also the owner's own workaround: _"until you switch to
- *  another app … restarting the app fixes it"_.
+/** **How long before the map may reload the app again** (ADR-0121's 2026-08-15 amendment).
+ *  A dead map is not cured by building another one — six sessions of rebuild loops proved
+ *  that, and the owner's verdict was flat: _"Once it's dead, it's dead until you switch to
+ *  another app"_. Whatever is broken outlives the map object, so only a new DOCUMENT
+ *  clears it, which is also the owner's own workaround: _"restarting the app fixes it"_.
  *
  *  Longer than `CHUNK_RELOAD_COOLDOWN_MS` because the stakes differ: a stale chunk is a
  *  blank app that must come back at once, where a dead map is one broken pane on a screen
@@ -256,23 +234,6 @@ export const MAP_RECOVERY_BACKOFF_MS = [0, 2_000, 8_000, 30_000, 60_000] as cons
  *  than reloading the app under someone every minute. */
 export const MAP_RELOAD_COOLDOWN_MS = 10 * 60 * 1000;
 
-/** **How many rebuilds to try before reloading the document instead** — and it is two
- *  rather than "all of them", on measured grounds (ADR-0121's 2026-08-15 amendment).
- *
- *  The reading from the owner's device was `gl:ok canvas:ok pane:411x596 painted:n
- *  online:y`, with `fails:3`: three freshly constructed maps, each with a live WebGL
- *  context on a correctly sized pane and a working network, and not one of them painted.
- *  A reload then fixed it immediately.
- *
- *  So the broken state is page-scoped, is **not** the map object and **not** WebGL — which
- *  leaves Google's own SDK module state, loaded once per document and shared by every map
- *  constructed after it. We cannot reset that (vis.gl's global has `__resetModuleState`;
- *  Google's has nothing), so a new document is the only thing that reaches it.
- *
- *  Two attempts, not zero, because a rebuild is cheap and does cure the failures that ARE
- *  the map object's. Two, not five, because the backoff's later steps cost 100 seconds to
- *  arrive at a reload that was always going to be the answer. */
-export const MAP_REBUILDS_BEFORE_RELOAD = 2;
 export const MAP_LOAD_PHASE = {
   TILES: 'map-tiles',
 } as const;

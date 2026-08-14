@@ -740,3 +740,37 @@ Once every backoff step has been spent on a fresh map and the canvas is still de
 ### 3. What this is, plainly
 
 **A mitigation, not a root-cause fix.** It makes the app do automatically the one thing the owner found that always works, and it is bounded so it cannot become its own problem. The actual mechanism is still unknown, and the honest next step is not a seventh guess but a reading from the device while it is broken — which is what the diagnostic on the failed pane is for.
+
+## Amendment (2026-08-15, session 268) — the loads were the fault, and every "fix" was spending them
+
+The reading finally arrived from the device, and then the owner read the Cloud Console: **the Maps JS load quota stood at 97%**, with Google's own overlay on the page (_"This page can't load Google Maps correctly"_). §4 of this ADR says a Dynamic Map is billed **per instantiation**. So six sessions of automatic rebuilds were spending the exact resource whose exhaustion produced the failure they were built to cure — the fix accelerating the fault.
+
+### 1. Two failures, not one — and the metrics prove it
+
+The owner's objection is what forced this apart: _"I only recently started approaching the quota limit. The condition existed even before."_ The 4xx series settles it. Over Aug 7–13, while the bug was being reported daily, **4xx is flat at zero**; the spike (11–55%) is confined to Aug 13 evening and Aug 14 — precisely the days rebuild loops shipped and soak probes ran against the production key.
+
+|            | Original (weeks)          | Recent (Aug 13–14)                              |
+| ---------- | ------------------------- | ----------------------------------------------- |
+| Google 4xx | none                      | 11–55%                                          |
+| Mechanism  | tiles never **requested** | loads **refused** (quota)                       |
+| Origin     | still unidentified        | this project's own rebuild loops and soak tests |
+
+The device readout says the same thing from the other side: `tiles:0/60 err:none` — not refused, never asked. So the original failure is **not** quota, and the previous six amendments' confidence was misplaced. What is now excluded by measurement rather than inference: WebGL (`gl:ok`), the map's own context (`canvas:ok`), layout (`pane:411x596`), the service worker and the network (`self:91ms goog:85ms`), and the loader (`err:none`). What remains is Google's own SDK module state, which this codebase cannot instrument, reset, or fix.
+
+### 2. Automatic rebuilding is removed
+
+`MAP_RECOVERY_BACKOFF_MS` and `MAP_REBUILDS_BEFORE_RELOAD` are deleted, along with the scheduler that spent them. All three detection sites — the tiles deadline, a lost context, and a loader error — now route through one `markFailure()`, which counts the failure and shows the cue. Nothing constructs a map that a person did not ask for.
+
+What remains, and only this:
+
+- **The hidden-moment document reload** — the one recovery ever _measured_ to work, at the one instant it costs nothing (ADR-0185's reasoning), once per `MAP_RELOAD_COOLDOWN_MS`.
+- **A manual retry**, which now reloads **first** rather than after a budget of rebuilds. A fresh `google.maps.Map` over a wedged page shipped for six sessions and never once recovered; a person tapping is a load somebody chose to spend.
+
+### 3. Two defects found while removing it, both invisible to the old tests
+
+- **`markFailure` must clear `tilesPainted`.** The cue, the retry and the diagnostic all render under `!tilesPainted`, so a context dying **after** the first paint set `tilesLate` and displayed **nothing** — a blank canvas with no affordance, which is field report #28 verbatim. The rebuild had been hiding it; with the rebuild gone, saying so is the entire response, so it has to be sayable. A map whose context is dead is not painted.
+- **The diagnostic sampled `facts` at render, not at the tap.** A second failure changes no state (`tilesLate` is already true), so React bails out, no re-render happens, and the readout reported `fails:1` for two dead contexts. `MapDiagnostic` now takes a **getter**, so every field is read at the moment of the tap. The under-reporting was in the numbers this ADR's earlier amendments reasoned from.
+
+### 4. What is still not known
+
+The original mechanism. This amendment does not claim to have found it; it removes a class of harm this project introduced and corrects two measurements. The honest next step is the renderer swap (ADR-0186), which moves the failing component from a minified third-party SDK into code this repo can read — and, by ending per-instantiation billing, removes the quota failure mode entirely rather than budgeting around it.

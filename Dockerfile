@@ -35,6 +35,15 @@ ARG BUILD_DB_URL="postgresql://build:build@build:5432/build"
 ARG VITE_GOOGLE_MAPS_BROWSER_KEY=""
 ARG VITE_GOOGLE_MAPS_MAP_ID=""
 ARG VITE_GOOGLE_MAPS_MAP_ID_DARK=""
+# Staging's build badge (`ui/BuildBadge.tsx`) — same build-time rule as the three above, so
+# it needs its own ARG or the service variable looks set and does nothing. Empty by default,
+# which is the production case: no badge ships.
+ARG VITE_BUILD_BADGE=""
+# The badge's TEXT is not a variable — `vite.config.ts` reads the commit itself, because a
+# label somebody has to remember to bump is one that eventually lies. Railway exports these
+# two, so declaring them is what lets the build see the commit it is building.
+ARG RAILWAY_GIT_COMMIT_SHA=""
+ARG RAILWAY_GIT_BRANCH=""
 RUN DATABASE_URL=$BUILD_DB_URL pnpm --filter @waypoint/backend prisma:generate && pnpm build
 # pnpm deploy rebuilds node_modules and drops the generated client — regenerate.
 RUN pnpm --filter @waypoint/backend deploy --prod /out && \

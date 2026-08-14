@@ -204,10 +204,9 @@ import {
   DRAG_HOLD_MS,
   MAP_CONNECTOR,
   MAP_LOAD_TIMEOUT_MS,
-  MAP_REBUILDS_BEFORE_RELOAD,
-  MAP_RECOVERY_BACKOFF_MS,
   MAP_ZOOM,
 } from '../../constants';
+import { RELOAD_GUARD_KEY, stampReload } from '../../lib/guarded-reload';
 import { t } from '../../i18n/he';
 
 const CONFIG = { apiKey: 'k', mapId: 'waypoint-day', colorScheme: MAP_COLOR_SCHEME.light };
@@ -1058,7 +1057,10 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     act(() => tilesLoaded.fire?.());
     expect(mapReading().tilesLoadedMs).toBe(2_500);
     // A retry starts a fresh clock rather than carrying the previous attempt's elapsed —
-    // the same reason the other three fields are cleared on `[attempt]`.
+    // the same reason the other three fields are cleared on `[attempt]`. The reload
+    // cooldown is spent first so the tap takes the rebuild path this asserts about; a
+    // deliberate retry otherwise reloads the document and there is no next attempt here.
+    stampReload(RELOAD_GUARD_KEY.map);
     act(() => apiError.fire?.(new Error('boom')));
     fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
     expect(mapReading().tilesLoadedMs).toBeNull();
@@ -1105,16 +1107,20 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     expect(moduleReset.calls).toBe(before + 1);
   });
 
-  /* **Field report #35's real cause**, reproduced deterministically with
-     `WEBGL_lose_context` in a real browser before any of this was written: a phone reclaims
-     a backgrounded page's GPU context, and the canvas that comes back is blank FOREVER —
-     measured at 26s+ with no cue, no error and no recovery, because the tiles watchdog
-     guards only the first paint and `tilesPainted` is already true by then. The screenshot
-     matches field report #28 word for word. Session 247 declined to act on this event
-     believing a post-paint loss is "recovered mid-session"; it is not. */
-  describe('a lost GPU context rebuilds the map', () => {
+  /* **One way a canvas dies — NOT field report #35's cause**, and the correction matters
+     because this comment claimed to be for three sessions. `WEBGL_lose_context` reproduces
+     a blank canvas deterministically: a phone reclaims a backgrounded page's GPU context,
+     and the tiles watchdog cannot see it because that guards only the FIRST paint. Worth
+     handling, and it is real. But the owner's device then read `gl:ok canvas:ok` while
+     failing, so on the reporting phone the context was alive and this was not what was
+     wrong. Session 247 declined to act on this event; sessions 262-267 over-credited it. */
+  describe('a lost GPU context is REPORTED, never rebuilt', () => {
     const setVisibility = (state: 'visible' | 'hidden') =>
       Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    const hide = () => {
+      setVisibility('hidden');
+      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+    };
     const resume = () => {
       setVisibility('visible');
       act(() => void document.dispatchEvent(new Event('visibilitychange')));
@@ -1126,155 +1132,126 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
           document.querySelector('[data-map]') ?? document.querySelector('.map-pane')!
         ).dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
       });
-
-    /** Recovery is SCHEDULED, never synchronous — the delay is what backs off — so a test
-     *  has to let its timer come due. `+1` because the first step is 0ms. */
-    const settleRecovery = (step = 0) =>
-      act(() => void vi.advanceTimersByTime(MAP_RECOVERY_BACKOFF_MS[step]! + 1));
-
-    afterEach(() => setVisibility('visible'));
-
-    it('rebuilds the canvas when the context dies while the tab is visible', () => {
-      vi.useFakeTimers();
-      paint();
-      const before = document.querySelector('[data-map]');
-      loseContext();
-      settleRecovery();
-      const after = document.querySelector('[data-map]');
-      expect(after).toBeTruthy();
-      // A NEW element: the key bumped, so this is a fresh map with a live context rather
-      // than the dead one nursed back — `restoreContext()` returns the DEFAULT camera.
-      expect(after).not.toBe(before);
-    });
-
-    it('hears the event through the CAPTURE phase, since it does not bubble', () => {
-      // The listener is on the pane, not the canvas, so it survives Google replacing its
-      // own canvas — but that only works because capture reaches a non-bubbling event.
-      vi.useFakeTimers();
-      paint();
-      const before = document.querySelector('[data-map]');
-      act(() => {
-        document
-          .querySelector('[data-map]')!
-          .dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
-      });
-      settleRecovery();
-      expect(document.querySelector('[data-map]')).not.toBe(before);
-    });
-
-    it('waits for the tab to come back before rebuilding', () => {
-      // The loss happens while backgrounded, and a map built while the page is hidden is
-      // the failure that started all of this — so the rebuild waits for someone to be there.
-      vi.useFakeTimers();
-      paint();
-      const before = document.querySelector('[data-map]');
-      setVisibility('hidden');
-      loseContext();
-      settleRecovery();
-      expect(document.querySelector('[data-map]')).toBe(before);
-      resume();
-      settleRecovery();
-      expect(document.querySelector('[data-map]')).not.toBe(before);
-    });
-
-    /* **The regression this replaced, kept as a test so it cannot come back.** The first
-       version budgeted three rebuilds per MOUNT and then gave up into `ErrorState`. A
-       phone drops the GPU context on roughly every background, so a soak of eight
-       background/resume cycles measured **3/8 healthy** — dead from the fourth onward,
-       needing a human tap. Counting a lifetime of rebuilds was the error; the only
-       meaningful number is consecutive FAILURES, and a paint resets it. */
-    it('survives many losses, because a paint clears the failure streak', () => {
-      vi.useFakeTimers();
-      paint();
-      for (let cycle = 1; cycle <= 8; cycle++) {
-        loseContext();
-        settleRecovery();
-        const canvas = document.querySelector('[data-map]');
-        expect(canvas, `cycle ${cycle} should have rebuilt`).toBeTruthy();
-        // The map comes back — which is what resets the streak, so the next cycle gets
-        // the same immediate treatment rather than a growing delay or a dead pane.
-        act(() => tilesLoaded.fire?.());
-        expect(screen.queryByRole('alert'), `cycle ${cycle} must not hard-fail`).toBeNull();
-      }
-    });
-
-    it('backs off while it keeps failing, instead of spinning', () => {
-      // No paint between losses, so the streak grows and so does the wait — a broken GPU
-      // costs at most one billed instantiation a minute (ADR-0121 §4), never a hot loop.
-      vi.useFakeTimers();
-      paint();
-      loseContext();
-      const first = document.querySelector('[data-map]');
-      // Second failure: nothing happens until its longer delay elapses.
-      loseContext();
-      expect(document.querySelector('[data-map]')).toBe(first);
-      settleRecovery(1);
-      expect(document.querySelector('[data-map]')).not.toBe(first);
-    });
-
-    /* **When rebuilding has demonstrably failed, rebuilding again is not a plan.**
-       The owner, after the backoff shipped: "Reloading the map (with the button for
-       example, or the backoff) doesn't recover the map. Once it's dead, it's dead until
-       you switch to another app." So once every step has been spent on a fresh map with a
-       fresh canvas and it is still dead, whatever is broken outlives the map object and
-       only a new DOCUMENT clears it — which is the owner's own workaround, restarting the
-       app. */
-    /** Every step spent, plus the cycle that reads the exhausted count — the check runs
-     *  before the increment, so the escalation lands one turn after the last step. */
-    const spendTheBackoff = () => {
-      for (let i = 0; i < MAP_REBUILDS_BEFORE_RELOAD + 1; i++) {
-        loseContext();
-        settleRecovery(MAP_RECOVERY_BACKOFF_MS.length - 1);
-      }
-    };
-
-    it('escalates to the error state once every rebuild has been spent', () => {
-      vi.useFakeTimers();
-      paint();
-      spendTheBackoff();
-      expect(screen.getByRole('alert').textContent).toBe(t.map.loadError);
-    });
-
-    it('reloads the app at the next hidden moment, which is when it costs nothing', () => {
-      // ADR-0185 chose exactly this moment for the build swap: nobody is looking, nothing
-      // is mid-sentence, and there is no overlay to lose.
-      vi.useFakeTimers();
+    const stubReload = () => {
       const reload = vi.fn();
       Object.defineProperty(window, 'location', {
         value: { ...window.location, reload },
         configurable: true,
       });
       window.sessionStorage.clear();
+      return reload;
+    };
+
+    afterEach(() => setVisibility('visible'));
+
+    it('says the map is broken when the context dies after a paint', () => {
+      // **The trap this whole block exists to hold.** The cue, the retry and the diagnostic
+      // all render under `!tilesPainted`, so a post-paint death used to set `tilesLate` and
+      // show NOTHING — a blank canvas with no affordance, field report #28 verbatim. The
+      // old code hid it by rebuilding; with the rebuild gone the cue is the whole response.
       paint();
-      spendTheBackoff();
+      expect(screen.queryByText(t.map.loadingSlow)).toBeNull();
+      loseContext();
+      expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    });
+
+    it('hears the event through the CAPTURE phase, since it does not bubble', () => {
+      // The listener is on the pane, not the canvas, so it survives Google replacing its
+      // own canvas — but that only works because capture reaches a non-bubbling event.
+      paint();
+      act(() => {
+        document
+          .querySelector('[data-map]')!
+          .dispatchEvent(new Event('webglcontextlost', { bubbles: false }));
+      });
+      expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
+    });
+
+    /* **The contract that replaced the backoff, and the reason it had to.** Every rebuild
+       is a billed map load (ADR-0121 §4); the load quota was measured at 97% while the pane
+       was failing, so an automatic retry spent the very thing whose exhaustion caused the
+       failure. And it never worked anyway — owner: "Reloading the map (with the button for
+       example, or the backoff) doesn't recover the map." */
+    it('does NOT build another map, because a rebuild is a billed load', () => {
+      vi.useFakeTimers();
+      paint();
+      const before = document.querySelector('[data-map]');
+      loseContext();
+      // Well past every delay the retired backoff ever used.
+      act(() => void vi.advanceTimersByTime(5 * 60_000));
+      expect(document.querySelector('[data-map]')).toBe(before);
+    });
+
+    it('does not rebuild on resume either', () => {
+      vi.useFakeTimers();
+      paint();
+      const before = document.querySelector('[data-map]');
+      hide();
+      loseContext();
+      resume();
+      act(() => void vi.advanceTimersByTime(5 * 60_000));
+      expect(document.querySelector('[data-map]')).toBe(before);
+    });
+
+    it('counts each failure for the diagnostic, even though it never retries', () => {
+      paint();
+      loseContext();
+      loseContext();
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+      // The count used to be incremented inside the rebuild scheduler, so deleting that
+      // would have silently zeroed the one field that read 2 and 3 on the owner's phone.
+      expect(document.querySelector('.map-diag-out')!.textContent).toContain('fails:2');
+    });
+
+    /* **The only automatic recovery left, and the only one ever measured to work.** A fresh
+       DOCUMENT is what clears whatever outlives the map object — the owner's own workaround,
+       done for them. ADR-0185 chose this same moment for the build swap: nobody is looking,
+       nothing is mid-sentence, no overlay to lose. */
+    it('reloads the app at the next hidden moment, which is when it costs nothing', () => {
+      const reload = stubReload();
+      paint();
+      loseContext();
       expect(reload).not.toHaveBeenCalled();
-      setVisibility('hidden');
-      act(() => void document.dispatchEvent(new Event('visibilitychange')));
+      hide();
       expect(reload).toHaveBeenCalledTimes(1);
     });
 
-    /* **The reading nobody has ever had.** Six fixes have shipped for #35 on inference
-       because every reproduction attempt recovers on a desktop, so the only way to learn
-       what is true on the reporting phone is to read it there. */
+    it('never reloads under a map that is working', () => {
+      // The guard that keeps this from being an app that restarts itself on a whim.
+      const reload = stubReload();
+      paint();
+      hide();
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it('reloads at most once per cooldown, so a bad device degrades to the error', () => {
+      const reload = stubReload();
+      paint();
+      loseContext();
+      hide();
+      resume();
+      loseContext();
+      hide();
+      expect(reload).toHaveBeenCalledTimes(1);
+    });
+
+    /* **The reading nobody has ever had.** Six fixes shipped for #35 on inference because
+       every reproduction attempt recovers on a desktop, so the only way to learn what is
+       true on the reporting phone is to read it there. */
     it('offers the diagnostic only once the map is failing, never on a working one', () => {
-      vi.useFakeTimers();
       paint();
       expect(screen.queryByText(t.map.diagnostic)).toBeNull();
       loseContext();
-      settleRecovery();
-      spendTheBackoff();
       expect(screen.getByText(t.map.diagnostic)).toBeTruthy();
     });
 
     it('reads the facts at the tap, and names the one that decides everything', () => {
-      vi.useFakeTimers();
       paint();
-      spendTheBackoff();
+      loseContext();
       fireEvent.click(screen.getByText(t.map.diagnostic));
       const out = document.querySelector('.map-diag-out')!.textContent!;
       // `gl:` is the discriminator: if a fresh canvas cannot get a context, no rebuild
-      // can ever work and only a new document will — which is exactly what the owner
-      // reports and what nothing here has been able to confirm.
+      // can ever work and only a new document will.
       expect(out).toContain('gl:');
       expect(out).toContain('canvas:');
       expect(out).toContain('pane:');
@@ -1283,55 +1260,40 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
       expect(out).toContain('resumes:');
     });
 
-    it('does NOT reload while the map is merely rebuilding', () => {
-      // The guard that keeps this from becoming an app that restarts itself whenever a
-      // phone hiccups: only an exhausted backoff earns a reload.
-      vi.useFakeTimers();
-      const reload = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { ...window.location, reload },
-        configurable: true,
-      });
-      window.sessionStorage.clear();
-      paint();
-      loseContext();
-      settleRecovery();
-      setVisibility('hidden');
-      act(() => void document.dispatchEvent(new Event('visibilitychange')));
-      expect(reload).not.toHaveBeenCalled();
-    });
-
-    it('collapses a burst of losses into ONE pending rebuild', () => {
-      vi.useFakeTimers();
-      paint();
-      const before = document.querySelector('[data-map]');
-      loseContext();
-      loseContext();
-      loseContext();
-      settleRecovery();
-      const after = document.querySelector('[data-map]');
-      expect(after).not.toBe(before);
-      // …and no further rebuild is queued behind them.
-      settleRecovery(MAP_RECOVERY_BACKOFF_MS.length - 1);
-      expect(document.querySelector('[data-map]')).toBe(after);
-    });
-
-    it('retries a map whose tiles never arrived, rather than only saying so', async () => {
-      // The other dead-canvas route. Before this it showed the notice and waited for a
-      // human — which is the case the owner kept hitting.
+    it('says so when tiles never arrive, and does not retry by itself', async () => {
       vi.useFakeTimers();
       paint();
       const before = document.querySelector('[data-map]');
       // The deadline lands from a promise `.catch`, so the timer alone does not flush it.
       await act(() => vi.advanceTimersByTimeAsync(MAP_LOAD_TIMEOUT_MS.TILES));
       expect(screen.getByText(t.map.loadingSlow)).toBeTruthy();
-      await act(() => vi.advanceTimersByTimeAsync(MAP_RECOVERY_BACKOFF_MS[0] + 1));
-      expect(document.querySelector('[data-map]')).not.toBe(before);
+      await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+      expect(document.querySelector('[data-map]')).toBe(before);
     });
   });
 
-  it('retry remounts a fresh map, never reusing the failed instance', async () => {
+  /** **A deliberate retry reloads the app, and does it FIRST.** A fresh `google.maps.Map`
+   *  over a wedged page shipped for six sessions and the owner's verdict was flat: _"Once
+   *  it's dead, it's dead until you switch to another app"_. The person tapping is the
+   *  consent, so there is no quiet-moment gate on this one. */
+  it('retry reloads the app, which is the only recovery measured to work', () => {
+    const reload = vi.fn();
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, reload },
+      configurable: true,
+    });
+    window.sessionStorage.clear();
+    paint();
+    act(() => apiError.fire?.(new Error('boom')));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.feedback.retry) }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('retry remounts a fresh map once the reload cooldown refuses', async () => {
     vi.useFakeTimers();
+    // The cooldown already spent, so the tap falls through to the cheaper thing rather
+    // than doing nothing at all — one load somebody asked for.
+    stampReload(RELOAD_GUARD_KEY.map);
     paint();
     act(() => apiError.fire?.(new Error('boom')));
     expect(screen.getByRole('alert')).toBeTruthy();

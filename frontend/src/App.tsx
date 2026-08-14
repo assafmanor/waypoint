@@ -57,6 +57,7 @@ import { Icon } from './ui/Icon';
 import { NavArrow } from './ui/NavArrow';
 import { DayStrip } from './ui/domain/DayStrip';
 import { NavDebugHud } from './ui/NavDebugHud';
+import { BuildBadge } from './ui/BuildBadge';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
 import { ZeroState } from './screens/ZeroState';
@@ -933,6 +934,8 @@ export function App() {
               {import.meta.env.DEV && <DevTimeTravel />}
               {/* Nav-debug HUD, gated behind VITE_NAV_DEBUG (inert in production). */}
               <NavDebugHud />
+              {/* Which build is this, gated behind VITE_BUILD_BADGE (inert in production). */}
+              <BuildBadge />
             </ConfirmProvider>
           </NavProvider>
         </ToastProvider>
