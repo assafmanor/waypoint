@@ -64,16 +64,42 @@ class FakeMapLibreMap {
   }
 }
 
+/** The archives registered with the protocol, so a test can read what headers they were given —
+ *  which is the difference between a tile read that is refused and one that is served
+ *  (ADR-0020's global `JwtAuthGuard`; the 401 of 2026-08-14). */
+const registered: { url: string; headers: Headers }[] = [];
+
+class FakeFetchSource {
+  constructor(
+    readonly url: string,
+    public customHeaders: Headers,
+    readonly credentials?: string,
+  ) {
+    registered.push({ url, headers: customHeaders });
+  }
+  setHeaders(headers: Headers) {
+    this.customHeaders = headers;
+    const mine = registered.find((entry) => entry.url === this.url);
+    if (mine) mine.headers = headers;
+  }
+}
+
 vi.mock('maplibre-gl', () => ({ Map: FakeMapLibreMap, addProtocol }));
 vi.mock('pmtiles', () => ({
   Protocol: class {
     tile = tileHandler;
+    add = vi.fn();
   },
+  PMTiles: class {
+    constructor(readonly source: unknown) {}
+  },
+  FetchSource: FakeFetchSource,
 }));
 
 import { MapCanvas, type MapCanvasProps, type MapTileUrls } from './MapCanvas';
 import { mapBackground, mapStyle } from '../../lib/map-style';
 import { MAP_COLOR_SCHEME } from '../../lib/map-config';
+import { setAccessToken } from '../../lib/api';
 
 /** The source id the style gives the archive it draws from. Hard-coded here on purpose: the
  *  canvas filters `sourcedata` by it, and a test that imported the same constant could not catch
@@ -377,6 +403,45 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     await paint();
     expect(built().options.attributionControl).toBe(false);
     expect(built().options.keyboard).toBe(false);
+  });
+
+  // ── THE READ IS AUTHENTICATED (2026-08-14, from the owner's diagnostic) ──────────────
+  //
+  // `err:Error: Bad response code: 401`, `tiles:0`. The `pmtiles` protocol issues its own range
+  // requests from inside MapLibre — never through `apiFetch` — and ADR-0020 puts a global
+  // `JwtAuthGuard` on every route that is not `@Public()`, so every read of both archives was
+  // refused. `FetchSource`'s own headers are the sanctioned seam for this, per pmtiles' docs.
+  describe('the archive reads carry the app’s credentials', () => {
+    it('registers each archive with the Bearer token', async () => {
+      setAccessToken('tok-abc');
+      await paint({ urls: WITH_TRIP });
+      const mine = registered.filter((entry) => entry.url.includes('.pmtiles'));
+      expect(mine.map((entry) => entry.url)).toEqual(
+        expect.arrayContaining([WITH_TRIP.world, WITH_TRIP.trip]),
+      );
+      expect(mine.every((entry) => entry.headers.get('Authorization') === 'Bearer tok-abc')).toBe(
+        true,
+      );
+    });
+
+    it('re-sets the headers on a later mount, so a rotated token is picked up', async () => {
+      setAccessToken('tok-one');
+      const first = await paint({ urls: WORLD });
+      first.unmount();
+      setAccessToken('tok-two');
+      await paint({ urls: WORLD });
+      const world = registered.find((entry) => entry.url === WORLD.world)!;
+      // The SAME source object, re-headered — re-registering would drop the header and directory
+      // caches that make a range read cheap.
+      expect(world.headers.get('Authorization')).toBe('Bearer tok-two');
+    });
+
+    it('sends no header at all when there is no session yet', async () => {
+      setAccessToken(null);
+      await paint({ urls: { world: '/map/nosession.pmtiles' } });
+      const entry = registered.find((it) => it.url === '/map/nosession.pmtiles')!;
+      expect(entry.headers.get('Authorization')).toBeNull();
+    });
   });
 
   // **The page-global this migration had to be explicit about.** `addProtocol` registers a

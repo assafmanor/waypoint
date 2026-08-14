@@ -375,3 +375,52 @@ fallback route returns.
 **This does not change the standing conclusion about field report #35.** The original cause is still
 unknown, and this amendment is about a blank map Phase 2 introduced, not about the one that started
 all of it.
+
+## Amendment (2026-08-14, session 269c) — the tile read was never authenticated
+
+The reading, from the owner's phone, and it names the cause outright:
+
+```
+gl:ok canvas:ok pane:411x596 painted:n tiles:0 sw:activated fails:1 resumes:0 t:4.9s
+sdk:z11.48@32.14,34.83 online:y vis:v err:Error: Bad response code: 401 self:114ms tile:110ms
+```
+
+**401.** Every range read of both archives was refused. `MapController`'s routes are not
+`@Public()`, and `app.module.ts` installs `JwtAuthGuard` globally — ADR-0020: _"every route needs a
+Bearer access JWT unless marked `@Public()`"_. The `pmtiles://` protocol issues its own range
+requests from inside MapLibre, on a **worker thread**, so they never pass through `lib/api.ts`'s
+`apiFetch` and carried no `Authorization` header at all.
+
+**Nothing in the repo could have caught this, and that is the part worth recording.** e2e has no
+backend and no guard, so an unauthenticated range read is byte-for-byte indistinguishable from an
+authenticated one there; unit tests stub the renderer entirely. The archive request was _made_, and
+every layer that could observe it was satisfied. So the new assertion is on what the client
+**sends**, not on what it gets back — `e2e/map-renders.spec.ts` reads the `Authorization` header off
+the intercepted request, and `MapCanvas.test.tsx` reads it off the registered `FetchSource`.
+Verified as a real regression test: both fail with the header suppressed.
+
+`lib/pmtiles.ts` now owns archive registration. `FetchSource` is the sanctioned seam and pmtiles'
+own documentation says so — _"This should be used instead of maplibre's `transformRequest` for
+PMTiles archives"_ — and its `Headers` are mutable, which is what makes a rotating token survivable:
+the archive object is registered once (keeping the header and directory caches that make a range
+read cheap) and re-headered on every map build, on retry, and on any tile error. That last one
+closes a gap that would otherwise be silent: `apiFetch` rotates the token on a 401, and tiles
+fetched after a rotation would keep being refused **with the map already painted**, so the cue —
+which guards only the first paint — would never appear.
+
+**What was deliberately NOT done: no route was made `@Public()`.** For the world layer that is
+arguably the right answer, and `MapController`'s own comment leans that way (_"the same public OSM
+ground for everyone, and gating it would mean a signed-in fetch per trip for one shared file"_).
+But the trip extract must stay guarded whatever else happens — the areas it covers say where the
+group is going, which is precisely what ADR-0039 revokes with membership — and making a route public
+is a security decision, so it is **raised for the owner rather than taken here**. Authenticating the
+read fixes both archives and widens nothing. If the world layer is later made public, the win is
+that the coarse ground floor survives a stale session, which is the one case this fix does not cover.
+
+**Correcting the previous amendment on one point.** It listed "whether the deployed
+`/map/world.pmtiles` is a valid archive at all" as the open question, and named the missing `pmtiles`
+binary as the likely cause. That was a reasonable guess and it was wrong: the archive was never
+reached. `tile:110ms` in the reading was the tell and I under-read it — the diagnostic's own probe
+_settled_, so the route answers; a 401 settles just as fast as a 206. The binary question is still
+genuinely open, and the next reading now distinguishes it: `tiles:N` means the archive is being read
+and parsed, `tiles:0` with a different `err:` means it is not.

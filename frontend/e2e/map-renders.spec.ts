@@ -73,6 +73,29 @@ async function openMap(page: import('@playwright/test').Page) {
   if (await notNow.isVisible()) await notNow.click();
 }
 
+// ── THE TILE READ CARRIES THE APP'S CREDENTIALS (2026-08-14, from the owner's diagnostic) ──
+//
+// `err:Error: Bad response code: 401`, `tiles:0`. The `pmtiles` protocol issues its own range
+// requests from inside MapLibre, on a worker thread, so they never pass through `apiFetch` — and
+// ADR-0020 puts a global `JwtAuthGuard` on every route that is not `@Public()`. Every read was
+// refused, and **nothing in the repo could see it**: e2e has no backend and no guard, so an
+// unauthenticated range read looks exactly like an authenticated one. So the header is the
+// assertion, not the response.
+test('every archive read carries the Bearer token', async ({ page }) => {
+  const auth: (string | undefined)[] = [];
+  await page.route('**/*.pmtiles', async (route) => {
+    auth.push(route.request().headers()['authorization']);
+    // Refused deliberately: what is under test is what we SENT, and a 401 here also exercises the
+    // reporting path the test below asserts.
+    await route.fulfill({ status: 401, body: 'nope' });
+  });
+
+  await openMap(page);
+  await expect.poll(() => auth.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  // `test-token` is what `boot.ts`'s `/auth/refresh` hands the app.
+  expect(auth.every((header) => header === 'Bearer test-token')).toBe(true);
+});
+
 test('a ground that cannot be read is REPORTED, not left blank', async ({ page }) => {
   await openMap(page);
 

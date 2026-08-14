@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { isGroundSource, mapBackground, mapStyle } from '../../lib/map-style';
 import { loadMapLibre, type MapLibreModule } from '../../lib/maplibre';
+import { ensurePmtilesArchives } from '../../lib/pmtiles';
 import type { MapColorScheme, MapTileUrls } from '../../lib/map-config';
 // MapLibre's own stylesheet, which is not decoration: `.maplibregl-marker` is where a
 // marker's `position: absolute` comes from, and without it every pin falls into normal flow
@@ -85,29 +86,6 @@ export interface MapCanvasProps {
   onUnavailable?: (error: Error) => void;
 }
 
-/**
- * **Registering the `pmtiles://` protocol is global, and that is worth being explicit
- * about**, since a page-global is exactly what this migration exists to escape.
- *
- * The distinction that makes it acceptable: `addProtocol` registers a *handler*, not a
- * *status*. There is no success/failure latch, nothing is written once and read forever, and
- * a failed tile read fails that read only. What poisoned the Google path was a one-shot
- * `LOADED`/`FAILED` global that every later map inherited; a URL scheme handler has no such
- * state to inherit.
- *
- * Guarded so a remount does not stack handlers, and never torn down: a second pane mounting
- * while the first is unmounting would otherwise pull the protocol out from under it.
- */
-let protocolReady: Promise<void> | null = null;
-async function ensurePmtilesProtocol(): Promise<void> {
-  protocolReady ??= (async () => {
-    const [{ addProtocol }, { Protocol }] = await Promise.all([loadMapLibre(), import('pmtiles')]);
-    const protocol = new Protocol();
-    addProtocol('pmtiles', protocol.tile);
-  })();
-  return protocolReady;
-}
-
 export function MapCanvas({
   scheme,
   urls,
@@ -141,7 +119,12 @@ export function MapCanvas({
 
     void (async () => {
       try {
-        await ensurePmtilesProtocol();
+        // **Both archives, with credentials, before the style can ask for a tile.** Registering
+        // them is what puts the app's Bearer token on every range read — without it ADR-0020's
+        // global guard answers 401 to all of them and the ground never draws (see `lib/pmtiles`).
+        await ensurePmtilesArchives(
+          [opening.urls.world, opening.urls.trip].filter((url): url is string => !!url),
+        );
         if (!live) return;
         const gl = await loadMapLibre();
         if (!live) return;
@@ -196,6 +179,14 @@ export function MapCanvas({
           // A tile that 404s arrives as an `error` too, so this must not be read as "the map
           // is dead" by itself — the pane decides that from whether anything ever painted.
           const raw: unknown = event.error;
+          // **A stale token heals itself here.** `apiFetch` rotates the access token on a 401 and
+          // the archive's headers were snapshotted at construction, so tiles fetched after a
+          // rotation would keep being refused with the map already painted — i.e. silently, since
+          // the cue only guards the FIRST paint. Re-setting the headers costs nothing and makes the
+          // next tile request carry the current token.
+          void ensurePmtilesArchives(
+            [opening.urls.world, opening.urls.trip].filter((url): url is string => !!url),
+          );
           cbRef.current.onError?.(
             raw instanceof Error
               ? raw
