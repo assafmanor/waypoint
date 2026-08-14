@@ -950,7 +950,7 @@ function MapPaneInner({
       {mapFailed ? (
         <>
           <ErrorState size="pane" title={t.map.loadError} onRetry={retryMap} />
-          <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts} />
+          <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts} urls={urls} />
         </>
       ) : (
         <>
@@ -1023,7 +1023,7 @@ function MapPaneInner({
                   <button type="button" className="map-loading-retry" onClick={retryMap}>
                     {t.feedback.retry}
                   </button>
-                  <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts} />
+                  <MapDiagnostic paneRef={paneRef} facts={diagnosticFacts} urls={urls} />
                 </>
               )}
             </div>

@@ -15,7 +15,8 @@
 // debug affordance — and it is collapsed behind one word, because a person looking at a
 // broken map wants the map, not a readout.
 import { useCallback, useState, type RefObject } from 'react';
-import { mapTileUrls } from '../../lib/map-config';
+import { accessTokenForHeader } from '../../lib/api';
+import type { MapTileUrls } from '../../lib/map-config';
 import { t } from '../../i18n/he';
 
 export interface MapDiagnosticFacts {
@@ -141,8 +142,13 @@ async function probe(url: string, init?: RequestInit): Promise<string> {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), PROBE_TIMEOUT_MS);
   try {
-    await fetch(url, { ...init, cache: 'no-store', signal: abort.signal });
-    return `${Math.round(performance.now() - started)}ms`;
+    const res = await fetch(url, { ...init, cache: 'no-store', signal: abort.signal });
+    // **THE STATUS, NOT JUST THE TIMING** — and the milliseconds alone cost three rounds of
+    // diagnosis on 2026-08-14. `tile:101ms` was read twice as "the archive is fine": it means only
+    // that the request SETTLED, and a 401, a 503 and a 206 all settle in about the same time. The
+    // reading has to distinguish them, because those are three different bugs with three different
+    // fixes, and the person holding the phone should not have to be asked again.
+    return `${res.status}/${Math.round(performance.now() - started)}ms`;
   } catch (error) {
     return error instanceof Error && error.name === 'AbortError' ? 'HUNG' : 'err';
   } finally {
@@ -176,8 +182,13 @@ function canvasState(pane: HTMLElement | null): string {
 export function MapDiagnostic({
   paneRef,
   facts,
+  urls,
 }: {
   paneRef: RefObject<HTMLDivElement | null>;
+  /** **The archives the canvas was actually handed**, not freshly derived ones. Probing what the
+   *  renderer was given is the difference between reporting on the map on screen and reporting on
+   *  a map that would be built next — the mistake ADR-0146 §5 had to amend once already. */
+  urls: MapTileUrls;
   /** **A getter, not a value** — and the difference was a wrong number on a real phone.
    *  Sampled at render, `failures` went stale the moment a second failure changed no state
    *  (`tilesLate` already true → React bails out → no re-render), so the readout said
@@ -206,10 +217,24 @@ export function MapDiagnostic({
       // `self:` still means nothing on the page can fetch; but where `goog:` could only say
       // "Google is reachable", `tile:` asks the one question that matters, and it asks for one
       // byte so a 42.7 MB archive is not downloaded to answer it.
+      // **The tile probe carries the app's token, because the real read does.** Without it this
+      // asked a different question than the renderer asks — an unauthenticated 401 in 100ms, read
+      // as health — which is exactly how the 2026-08-14 diagnosis went wrong twice. One byte, so a
+      // 42.7 MB archive is not downloaded to answer it.
+      const token = accessTokenForHeader();
+      const range: RequestInit = {
+        headers: {
+          Range: 'bytes=0-0',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      };
       void Promise.all([
         probe(`${location.origin}/health`),
-        probe(mapTileUrls().world, { headers: { Range: 'bytes=0-0' } }),
-      ]).then(([self, tile]) => setReading((line) => `${line} self:${self} tile:${tile}`));
+        probe(urls.world, range),
+        urls.trip ? probe(urls.trip, range) : Promise.resolve('none'),
+      ]).then(([self, world, extract]) =>
+        setReading((line) => `${line} self:${self} world:${world} extract:${extract}`),
+      );
       setReading(
         [
           `gl:${webglAvailability()}`,

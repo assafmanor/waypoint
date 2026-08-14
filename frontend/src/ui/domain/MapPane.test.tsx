@@ -216,6 +216,7 @@ import {
   MAP_ZOOM,
 } from '../../constants';
 import { RELOAD_GUARD_KEY, stampReload } from '../../lib/guarded-reload';
+import { setAccessToken } from '../../lib/api';
 import { t } from '../../i18n/he';
 
 const URLS = { world: '/map/world.pmtiles' };
@@ -1221,6 +1222,53 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
   // the pane's half, which is the one the owner would have seen: with no first paint, the bound
   // expires and the pane SAYS so. It is the same shape as the post-paint context death above,
   // and it is here because those two are the only ways a blank canvas can happen.
+  // **THE INSTRUMENT HAS TO DISTINGUISH THREE BUGS** (2026-08-14, after three rounds of reading
+  // `tile:101ms` as health). The probe reported only milliseconds and sent no credentials, so a
+  // 401, a 503 and a 206 were one indistinguishable number — and the real read is authenticated,
+  // which means the probe was answering a different question than the renderer asks. Twice I took
+  // it as evidence the archive was fine. It reports the STATUS now, with the token, for both
+  // archives, against the URLs the canvas was actually handed.
+  it('probes both archives, with credentials, and reports their status', async () => {
+    const asked: { url: string; auth?: string; range?: string }[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      asked.push({
+        url: String(input),
+        auth: headers.get('Authorization') ?? undefined,
+        range: headers.get('Range') ?? undefined,
+      });
+      return Promise.resolve(new Response('', { status: 503 }));
+    }) as typeof globalThis.fetch;
+    setAccessToken('tok-diag');
+
+    try {
+      paint({ urls: { world: '/map/world.pmtiles', trip: '/trips/t1/map/extract.pmtiles' } });
+      act(() => canvas.unavailable?.(new Error('gone')));
+      fireEvent.click(screen.getByText(t.map.diagnostic));
+
+      const archives = () => asked.filter((call) => call.url.includes('.pmtiles'));
+      await vi.waitFor(() => expect(archives()).toHaveLength(2));
+      // Both, because either one failing is a different fix — and the extract is the one the
+      // detail layers read.
+      expect(archives().map((call) => call.url)).toEqual(
+        expect.arrayContaining(['/map/world.pmtiles', '/trips/t1/map/extract.pmtiles']),
+      );
+      // Authenticated, like the real read, or the probe answers a question nobody asked.
+      expect(archives().every((call) => call.auth === 'Bearer tok-diag')).toBe(true);
+      // One byte: a 42.7 MB archive must not be downloaded to take a reading.
+      expect(archives().every((call) => call.range === 'bytes=0-0')).toBe(true);
+      // And the STATUS reaches the line, which is the whole point.
+      await vi.waitFor(() =>
+        expect(document.querySelector('.map-diag-out')!.textContent).toContain('world:503'),
+      );
+      expect(document.querySelector('.map-diag-out')!.textContent).toContain('extract:503');
+    } finally {
+      globalThis.fetch = originalFetch;
+      setAccessToken(null);
+    }
+  });
+
   it('says so when tiles never arrive, however settled the canvas claims to be', async () => {
     vi.useFakeTimers();
     paint();
