@@ -185,7 +185,7 @@ test('the ground draws from a real archive', async ({ page }, testInfo) => {
   // pointing only the world at a real archive would leave the detail source dead and test the
   // wrong shape. The planet build stands in for both: a z0–15 archive is what a trip extract is a
   // slice of, so this is the layer stack the app actually ships.
-  for (const pattern of ['**/map/world.pmtiles', '**/map/extract.pmtiles']) {
+  for (const pattern of ['**/map/world.pmtiles', '**/map/planet-*.pmtiles']) {
     await page.route(pattern, async (route) => {
       const upstream = await route.fetch({ url: PLANET });
       await route.fulfill({ response: upstream });

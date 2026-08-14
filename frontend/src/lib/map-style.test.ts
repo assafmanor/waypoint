@@ -9,7 +9,11 @@ import { MAP_ATTRIBUTION, isGroundSource, mapBackground, mapStyle } from './map-
    palette edit could break silently — the RELATIONSHIPS §8 says a future edit has to
    preserve, not the hexes, which are allowed to move. */
 
-const URLS = { world: 'https://x/map/world.pmtiles', trip: 'https://x/trips/t/extract.pmtiles' };
+const URLS = {
+  world: 'https://x/map/world.pmtiles',
+  detail: 'https://x/map/planet-20260813.pmtiles',
+  extract: 'https://x/trips/t/extract.pmtiles',
+};
 
 /** Relative luminance, so the ground's own contrast claims are checked rather than eyeballed. */
 function luminance(hex: string): number {
@@ -22,19 +26,21 @@ function luminance(hex: string): number {
 }
 
 describe('mapStyle', () => {
-  it('reads the trip archive over the world layer, both through the pmtiles protocol', () => {
+  it('reads live detail over the world layer, both through the pmtiles protocol', () => {
     // §3's "one tile source, read remotely until it is local" — nothing in the style
     // knows which it got, which is what keeps offline from being a second code path.
     const style = mapStyle(MAP_COLOR_SCHEME.light, URLS);
     const source = Object.values(style.sources)[0] as { tiles: string[] };
-    expect(source.tiles).toEqual([`pmtiles://${URLS.trip}/{z}/{x}/{y}`]);
+    expect(source.tiles).toEqual([`pmtiles://${URLS.detail}/{z}/{x}/{y}`]);
   });
 
-  it('falls back to the world layer for a trip with no archive', () => {
-    // A trip nobody has added a place to yet still draws a map (§4).
-    const style = mapStyle(MAP_COLOR_SCHEME.light, { world: URLS.world });
+  it('keeps live detail independent of whether an offline extract exists', () => {
+    const style = mapStyle(MAP_COLOR_SCHEME.light, {
+      world: URLS.world,
+      detail: URLS.detail,
+    });
     const source = Object.values(style.sources)[0] as { tiles: string[] };
-    expect(source.tiles).toEqual([`pmtiles://${URLS.world}/{z}/{x}/{y}`]);
+    expect(source.tiles).toEqual([`pmtiles://${URLS.detail}/{z}/{x}/{y}`]);
   });
 
   it('carries OSM attribution, which the licence does not make optional', () => {
@@ -55,29 +61,29 @@ describe('mapStyle', () => {
 });
 
 /* **THE COARSE GROUND STAYS UNDER THE DETAILED ONE** (§4's "nowhere is ever blank").
-   A trip extract covers clusters and not the space between them, and it can also simply fail to
-   build — and with one source in the style that renders NOTHING, which is a self-inflicted copy of
-   the bug this migration exists to end. The 2026-08-14 blank map is why this is asserted rather
-   than described: §3's prose already SAID "the trip's own archive over the shared world layer"
-   while the code picked one of them. */
+   The world archive is the offline floor and a cheap underlay while live detail arrives. It must
+   not duplicate labels or roads from the detailed source. */
 describe('the two reads (ADR-0186 §3/§4)', () => {
-  const WORLD_ONLY = { world: 'https://x/map/world.pmtiles' };
+  const WORLD_ONLY = {
+    world: 'https://x/map/world.pmtiles',
+    detail: 'https://x/map/planet-20260813.pmtiles',
+  };
 
-  it('reads only the world layer when the trip has no extract yet', () => {
+  it('reads live detail and the world underlay without an offline extract', () => {
     const style = mapStyle(MAP_COLOR_SCHEME.light, WORLD_ONLY);
     const sources = Object.keys(style.sources);
-    expect(sources).toHaveLength(1);
-    expect((style.sources[sources[0]!] as { tiles: string[] }).tiles[0]).toContain('world.pmtiles');
+    expect(sources).toHaveLength(2);
+    expect((style.sources[sources[0]!] as { tiles: string[] }).tiles[0]).toContain('planet-');
   });
 
-  it('puts the world UNDER the trip archive once there is one', () => {
+  it('puts the world UNDER live detail when an offline extract URL is also available', () => {
     const style = mapStyle(MAP_COLOR_SCHEME.light, URLS);
     expect(Object.keys(style.sources)).toHaveLength(2);
     const ids = style.layers.map((layer) => layer.id);
     const lastWorld = ids.findLastIndex((id) => id.startsWith('world-'));
     const firstDetail = ids.findIndex((id, at) => at > 0 && !id.startsWith('world-'));
     expect(lastWorld).toBeGreaterThan(0);
-    // Every world layer precedes every detail layer, so the trip's ground draws over it.
+    // Every world layer precedes every detail layer, so detailed ground draws over it.
     expect(firstDetail).toBeGreaterThan(lastWorld);
   });
 
@@ -147,11 +153,11 @@ describe('the ground keeps ADR-0125 §8 ratios', () => {
    file the backend cut. Asserted because the failure mode is silence — nothing throws, nothing logs
    in production, and the map is simply empty. */
 describe('the source spec cannot be overruled by the archive', () => {
-  const sourcesOf = (urls: { world: string; trip?: string }) =>
+  const sourcesOf = (urls: { world: string; detail: string }) =>
     Object.values(mapStyle(MAP_COLOR_SCHEME.light, urls).sources) as Record<string, unknown>[];
 
   it('states a tile template, never a TileJSON url', () => {
-    for (const urls of [{ world: 'w.pmtiles' }, { world: 'w.pmtiles', trip: 't.pmtiles' }]) {
+    for (const urls of [{ world: 'w.pmtiles', detail: 'd.pmtiles' }]) {
       for (const source of sourcesOf(urls)) {
         expect(source.url).toBeUndefined();
         expect(source.tiles).toEqual([
@@ -162,20 +168,20 @@ describe('the source spec cannot be overruled by the archive', () => {
   });
 
   it('states its own zoom range, and never a bbox that could clip the world', () => {
-    const [detail, world] = sourcesOf({ world: 'w.pmtiles', trip: 't.pmtiles' });
-    // The trip archive is z0-14 and the coarse ground z0-6; a wrong ceiling here is a source that
+    const [detail, world] = sourcesOf({ world: 'w.pmtiles', detail: 'd.pmtiles' });
+    // Live detail is z0-14 and the coarse ground z0-6; a wrong ceiling here is a source that
     // silently stops requesting tiles one level early instead of overzooming.
     expect(detail).toMatchObject({ minzoom: 0, maxzoom: MAP_TRIP_MAXZOOM });
     expect(world).toMatchObject({ minzoom: 0, maxzoom: MAP_WORLD_MAXZOOM });
     // No `bounds` at all: MapLibre then defaults to the whole world and clips nothing.
-    for (const source of sourcesOf({ world: 'w.pmtiles', trip: 't.pmtiles' })) {
+    for (const source of sourcesOf({ world: 'w.pmtiles', detail: 'd.pmtiles' })) {
       expect(source.bounds).toBeUndefined();
     }
   });
 
-  it('uses the WORLD ceiling when there is no trip extract yet', () => {
-    const [only] = sourcesOf({ world: 'w.pmtiles' });
-    expect(only).toMatchObject({ maxzoom: MAP_WORLD_MAXZOOM });
+  it('keeps the live detail ceiling when no offline extract URL is available', () => {
+    const [detail] = sourcesOf({ world: 'w.pmtiles', detail: 'd.pmtiles' });
+    expect(detail).toMatchObject({ maxzoom: MAP_TRIP_MAXZOOM });
   });
 });
 

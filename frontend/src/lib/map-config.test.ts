@@ -1,11 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { MAP_COLOR_SCHEME, MAP_THEME, readMapsConfig } from './map-config';
+import { MAP_PLANET_BUILD } from '@waypoint/shared';
+import { MAP_COLOR_SCHEME, MAP_THEME, mapTileUrls, readMapsConfig } from './map-config';
 
 const FULL = {
   VITE_GOOGLE_MAPS_BROWSER_KEY: 'key-1',
   VITE_GOOGLE_MAPS_MAP_ID: 'waypoint-day',
   VITE_GOOGLE_MAPS_MAP_ID_DARK: 'waypoint-night',
 };
+
+describe('mapTileUrls (ADR-0187)', () => {
+  it('renders online detail from the immutable live build, never from the trip extract', () => {
+    expect(mapTileUrls('t1')).toEqual({
+      world: '/map/world.pmtiles',
+      detail: `/map/planet-${MAP_PLANET_BUILD}.pmtiles`,
+      extract: '/trips/t1/map/extract.pmtiles',
+    });
+  });
+});
 
 describe('readMapsConfig (ADR-0121 §2)', () => {
   it('resolves the browser key and the day Map ID', () => {

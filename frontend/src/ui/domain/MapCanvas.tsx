@@ -122,9 +122,7 @@ export function MapCanvas({
         // **Both archives, with credentials, before the style can ask for a tile.** Registering
         // them is what puts the app's Bearer token on every range read — without it ADR-0020's
         // global guard answers 401 to all of them and the ground never draws (see `lib/pmtiles`).
-        await ensurePmtilesArchives(
-          [opening.urls.world, opening.urls.trip].filter((url): url is string => !!url),
-        );
+        await ensurePmtilesArchives([opening.urls.world, opening.urls.detail]);
         if (!live) return;
         const gl = await loadMapLibre();
         if (!live) return;
@@ -184,9 +182,7 @@ export function MapCanvas({
           // rotation would keep being refused with the map already painted — i.e. silently, since
           // the cue only guards the FIRST paint. Re-setting the headers costs nothing and makes the
           // next tile request carry the current token.
-          void ensurePmtilesArchives(
-            [opening.urls.world, opening.urls.trip].filter((url): url is string => !!url),
-          );
+          void ensurePmtilesArchives([opening.urls.world, opening.urls.detail]);
           cbRef.current.onError?.(
             raw instanceof Error
               ? raw

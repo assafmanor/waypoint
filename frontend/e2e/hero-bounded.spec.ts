@@ -149,20 +149,19 @@ async function liftedHero(page: Page) {
   await board.click();
   const hero = page.locator('.hero-lifted');
   await expect(hero).toBeVisible();
-  // Wait for the FLIP to settle — mid-flight the scroller is transiently a different size,
-  // which is a real measurement of a state nobody looks at (mirrors hero-in-transit.spec.ts).
-  await page.waitForFunction(
-    () => {
-      const el = document.querySelector('.hero-lifted') as HTMLElement | null;
-      if (!el) return false;
-      const h = Math.round(el.getBoundingClientRect().height);
-      const prev = Number(el.dataset.e2eLastHeight ?? '-1');
-      el.dataset.e2eLastHeight = String(h);
-      return h > 0 && h === prev;
-    },
-    undefined,
-    { polling: 100 },
-  );
+  // Wait for the FLIP to reach its bounded destination. Two equal height samples can both happen
+  // before a delayed production animation starts; the destination geometry is the stable signal,
+  // and a clipping regression still times out here rather than passing.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const card = document.querySelector('.modal-card') as HTMLElement | null;
+        const hero = document.querySelector('.hero-lifted') as HTMLElement | null;
+        if (!card || !hero) return Number.POSITIVE_INFINITY;
+        return hero.getBoundingClientRect().height - card.getBoundingClientRect().height;
+      }),
+    )
+    .toBeLessThanOrEqual(1);
   return hero;
 }
 

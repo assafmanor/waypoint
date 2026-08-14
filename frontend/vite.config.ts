@@ -22,11 +22,8 @@ function warnIfMapsUnconfigured() {
   );
   if (missing.length === 0) return;
   console.warn(
-    `\n⚠️  Maps build vars missing: ${missing.join(', ')}.\n` +
-      '   The Map tab will build fine and render LIST-ONLY (no rendered map).\n' +
-      '   These are build-time (Vite inlines them), so a runtime service variable\n' +
-      '   is not enough — a Docker build also needs a matching ARG (see Dockerfile),\n' +
-      '   and local development reads frontend/.env.local. See architecture/deployment.md.\n',
+    `\nLegacy Google map-tuner vars missing: ${missing.join(', ')}.\n` +
+      'The MapLibre map is unaffected; Phase 4 removes these vars and this warning.\n',
   );
 }
 

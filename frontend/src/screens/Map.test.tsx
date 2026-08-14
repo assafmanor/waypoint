@@ -160,7 +160,10 @@ vi.mock('../lib/map-config', () => ({
   mapPaneAvailable: () => false,
   mapsConfig: () => null,
   mapColorScheme: () => 'LIGHT',
-  mapTileUrls: () => ({ world: '/map/world.pmtiles' }),
+  mapTileUrls: () => ({
+    world: '/map/world.pmtiles',
+    detail: '/map/planet-20260813.pmtiles',
+  }),
 }));
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));

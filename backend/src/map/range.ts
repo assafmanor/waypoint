@@ -9,10 +9,26 @@
 import type { Response } from 'express';
 
 const SINGLE_RANGE = /^bytes=(\d*)-(\d*)$/;
+const CLOSED_RANGE = /^bytes=(\d+)-(\d+)$/;
 
 export interface ByteRange {
   start: number;
   end: number;
+}
+
+/** Resolve a closed range when the body's total length is not known yet.
+ *
+ * The live planet proxy cannot safely interpret `bytes=10-` by substituting an artificial end:
+ * upstream would then try to return most of a 128 GiB archive. The pmtiles client emits closed
+ * ranges, so every other form is refused rather than guessed. */
+export function resolveClosedRange(header: string | undefined): ByteRange | null {
+  if (!header) return null;
+  const match = CLOSED_RANGE.exec(header.trim());
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start) return null;
+  return { start, end };
 }
 
 /**

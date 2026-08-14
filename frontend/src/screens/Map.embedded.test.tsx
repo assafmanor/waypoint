@@ -272,7 +272,10 @@ vi.mock('../lib/map-config', () => ({
   // reader. What the screen hands the pane since ADR-0186 is the scheme and the archive URLs.
   mapsConfig: () => ({ apiKey: 'k', mapId: 'waypoint-day' }),
   mapColorScheme: () => 'LIGHT',
-  mapTileUrls: () => ({ world: '/map/world.pmtiles' }),
+  mapTileUrls: () => ({
+    world: '/map/world.pmtiles',
+    detail: '/map/planet-20260813.pmtiles',
+  }),
   mapPaneAvailable: ({ offline }: { offline: boolean }) => !offline,
 }));
 

@@ -252,13 +252,13 @@ export function MapDiagnostic({
       void Promise.all([
         probe(`${location.origin}/health`),
         probe(urls.world, range),
-        urls.trip ? probe(urls.trip, range) : Promise.resolve('none'),
+        probe(urls.detail, range),
         bounded(archiveReading(urls.world, now.camera)),
-        urls.trip ? bounded(archiveReading(urls.trip, now.camera)) : Promise.resolve('none'),
-      ]).then(([self, world, extract, worldHeld, tripHeld]) =>
+        bounded(archiveReading(urls.detail, now.camera)),
+      ]).then(([self, world, detail, worldHeld, detailHeld]) =>
         setReading(
           (line) =>
-            `${line} self:${self} world:${world}[${worldHeld}] extract:${extract}[${tripHeld}]`,
+            `${line} self:${self} world:${world}[${worldHeld}] detail:${detail}[${detailHeld}]`,
         ),
       );
       setReading(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveRange } from './range';
+import { resolveClosedRange, resolveRange } from './range';
 
 /* The `pmtiles` protocol addresses an archive by byte range, so getting this wrong does
    not error — it silently serves the wrong bytes and the renderer draws nothing. Every
@@ -46,5 +46,19 @@ describe('resolveRange', () => {
     expect(resolveRange('bytes=0-99,200-299', LEN)).toBeNull();
     expect(resolveRange('items=0-99', LEN)).toBeNull();
     expect(resolveRange('bytes=-', LEN)).toBeNull();
+  });
+});
+
+describe('resolveClosedRange', () => {
+  it('accepts the only range shape safe to forward to a planet-sized upstream', () => {
+    expect(resolveClosedRange('bytes=10-99')).toEqual({ start: 10, end: 99 });
+  });
+
+  it('refuses an open, suffix, backwards or multipart range', () => {
+    expect(resolveClosedRange(undefined)).toBeNull();
+    expect(resolveClosedRange('bytes=10-')).toBeNull();
+    expect(resolveClosedRange('bytes=-100')).toBeNull();
+    expect(resolveClosedRange('bytes=99-10')).toBeNull();
+    expect(resolveClosedRange('bytes=0-9,20-29')).toBeNull();
   });
 });

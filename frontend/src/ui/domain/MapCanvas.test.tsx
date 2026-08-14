@@ -131,10 +131,13 @@ import { setAccessToken } from '../../lib/api';
 const MAP_STYLE_SOURCE = 'protomaps';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
-const WORLD: MapTileUrls = { world: '/map/world.pmtiles' };
-const WITH_TRIP: MapTileUrls = {
+const WORLD: MapTileUrls = {
   world: '/map/world.pmtiles',
-  trip: '/trips/t1/map/extract.pmtiles',
+  detail: '/map/planet-20260813.pmtiles',
+};
+const WITH_TRIP: MapTileUrls = {
+  ...WORLD,
+  extract: '/trips/t1/map/extract.pmtiles',
 };
 
 /** The map is built behind three chained dynamic `import()`s, so the effect has not
@@ -441,8 +444,9 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
       await paint({ urls: WITH_TRIP });
       const mine = registered.filter((entry) => entry.url.includes('.pmtiles'));
       expect(mine.map((entry) => entry.url)).toEqual(
-        expect.arrayContaining([WITH_TRIP.world, WITH_TRIP.trip]),
+        expect.arrayContaining([WITH_TRIP.world, WITH_TRIP.detail]),
       );
+      expect(mine.map((entry) => entry.url)).not.toContain(WITH_TRIP.extract);
       expect(mine.every((entry) => entry.headers.get('Authorization') === 'Bearer tok-abc')).toBe(
         true,
       );
@@ -462,7 +466,9 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
 
     it('sends no header at all when there is no session yet', async () => {
       setAccessToken(null);
-      await paint({ urls: { world: '/map/nosession.pmtiles' } });
+      await paint({
+        urls: { world: '/map/world-nosession.pmtiles', detail: '/map/nosession.pmtiles' },
+      });
       const entry = registered.find((it) => it.url === '/map/nosession.pmtiles')!;
       expect(entry.headers.get('Authorization')).toBeNull();
     });

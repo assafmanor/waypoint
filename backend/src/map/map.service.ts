@@ -1,9 +1,8 @@
 // **The trip's offline map** (ADR-0186 §3/§4). Gathers what the trip covers, cuts one
 // archive for it, and keeps it in the byte sink `documents` already uses.
 //
-// Nothing here proxies tiles. Upstream is touched **once per area, ever** — the planet is
-// 127.88 GiB and the slice of it a trip needs is ~16–23 MB, so storing the slice is both
-// cheaper and faster than range-proxying the source per tile (§3's 2026-08-13 amendment).
+// This service owns offline extracts. The separate live proxy serves online detail anywhere
+// (ADR-0187); a committed trip area is still cut once into the artefact downloaded for the plane.
 import { Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import { MAP_WORLD_MAXZOOM, type LatLng } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -57,17 +56,37 @@ export class MapService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * **Every coordinate the trip holds.** Places carry their own; a booking's endpoints are
-   * `Place` rows too (`fromPlaceId`/`toPlaceId`), which is exactly why a layover needs no
-   * special case — the airport is already in this list (ADR-0186 §4).
+   * **Every coordinate the trip has COMMITTED to** (ADR-0187 §3). Places carry their own; a
+   * booking's endpoints are `Place` rows too (`fromPlaceId`/`toPlaceId`), which is exactly why
+   * a layover needs no special case — the airport is already in this list (ADR-0186 §4).
    *
-   * Queried as one `Place` sweep rather than joined out of bookings, because a place
-   * referenced only by a booking is still a row on this trip; the FK direction means the
-   * sweep is a superset and the clusterer does not care about provenance.
+   * **Referenced, not merely present, and that distinction is the whole of ADR-0187.** A
+   * `Place` row exists the moment it is picked, because it doubles as the dedup/enrichment
+   * cache (ADR-0112) — so the first version's plain `tripId` sweep meant that merely
+   * *researching* a place changed the coordinate set, minted a new `mapExtractKey`, and
+   * re-cut the entire archive: minutes of 503 on the research path, an extract silently grown
+   * to cover somewhere nobody saved, and a good archive binned for retention to collect. The
+   * invalidation was fired by an act that carries no commitment.
+   *
+   * The set is `lib/places.ts`'s `referencedPlaceIds` expressed as a relation filter, and it
+   * matches that function deliberately, **`notes` included in the schema and excluded here**:
+   * ADR-0112 owns what "in the trip" means and the client keys its own "already in trip" off
+   * exactly these five. Two definitions of one word is how they drift.
    */
   async coordinatesFor(tripId: string): Promise<LatLng[]> {
     const places = await this.prisma.place.findMany({
-      where: { tripId, lat: { not: null }, lng: { not: null } },
+      where: {
+        tripId,
+        lat: { not: null },
+        lng: { not: null },
+        OR: [
+          { events: { some: {} } },
+          { bookings: { some: {} } },
+          { bookingsFrom: { some: {} } },
+          { bookingsTo: { some: {} } },
+          { maybeItems: { some: {} } },
+        ],
+      },
       select: { lat: true, lng: true },
     });
     return places.flatMap((p) =>

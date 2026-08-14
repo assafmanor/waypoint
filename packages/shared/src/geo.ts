@@ -111,6 +111,20 @@ export const MAP_WORLD_MAXZOOM = 6;
  *  building footprints, enough to walk a neighbourhood (§4). z15+ is refused as a storage lever. */
 export const MAP_TRIP_MAXZOOM = 14;
 
+/**
+ * **The upstream planet build the live source reads** (ADR-0187 §1).
+ *
+ * In the URL, not only in a config value, and that is the load-bearing part: upstream publishes a
+ * DAILY build, so the same URL naming a different build would move byte offsets underneath
+ * directory pages a client has already cached — corruption that presents as garbage tiles with no
+ * error anywhere. A new build is a new URL, so it busts every cache by existing.
+ *
+ * Shared for the same reason the ceilings above are: the frontend builds the path and the backend
+ * refuses any other value, so the two agree by construction and a client can never name the
+ * upstream object it wants (which would make the proxy an open one).
+ */
+export const MAP_PLANET_BUILD = '20260813';
+
 export const MAP_AREA_LINK_RADIUS_M = 40_000;
 
 /** How much ground each area keeps around its own stops. You walk off the edge of

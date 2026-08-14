@@ -234,7 +234,10 @@ import { RELOAD_GUARD_KEY, stampReload } from '../../lib/guarded-reload';
 import { setAccessToken } from '../../lib/api';
 import { t } from '../../i18n/he';
 
-const URLS = { world: '/map/world.pmtiles' };
+const URLS = {
+  world: '/map/world.pmtiles',
+  detail: '/map/planet-20260813.pmtiles',
+};
 
 const pin = (partial: Partial<MapPin> & Pick<MapPin, 'placeId'>): MapPin => ({
   lat: 35.6,
@@ -1258,7 +1261,13 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
     setAccessToken('tok-diag');
 
     try {
-      paint({ urls: { world: '/map/world.pmtiles', trip: '/trips/t1/map/extract.pmtiles' } });
+      paint({
+        urls: {
+          world: '/map/world.pmtiles',
+          detail: '/map/planet-20260813.pmtiles',
+          extract: '/trips/t1/map/extract.pmtiles',
+        },
+      });
       act(() => canvas.unavailable?.(new Error('gone')));
       fireEvent.click(screen.getByText(t.map.diagnostic));
 
@@ -1267,7 +1276,7 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
       // Both, because either one failing is a different fix — and the extract is the one the
       // detail layers read.
       expect(archives().map((call) => call.url)).toEqual(
-        expect.arrayContaining(['/map/world.pmtiles', '/trips/t1/map/extract.pmtiles']),
+        expect.arrayContaining(['/map/world.pmtiles', '/map/planet-20260813.pmtiles']),
       );
       // Authenticated, like the real read, or the probe answers a question nobody asked.
       expect(archives().every((call) => call.auth === 'Bearer tok-diag')).toBe(true);
@@ -1277,13 +1286,13 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
       await vi.waitFor(() =>
         expect(document.querySelector('.map-diag-out')!.textContent).toContain('world:503'),
       );
-      expect(document.querySelector('.map-diag-out')!.textContent).toContain('extract:503');
+      expect(document.querySelector('.map-diag-out')!.textContent).toContain('detail:503');
       // **Each archive gets a status AND a reading of its contents**, because `206` alone read as
       // health twice: it says the bytes arrive, not that they hold a tile. `unregistered` is the
       // honest answer here — this suite stubs the canvas, so no archive was ever registered — and
       // asserting the PAIR is what pins the field to the line.
       expect(document.querySelector('.map-diag-out')!.textContent).toMatch(
-        /world:503\/\d+ms\[unregistered] extract:503\/\d+ms\[unregistered]/,
+        /world:503\/\d+ms\[unregistered] detail:503\/\d+ms\[unregistered]/,
       );
     } finally {
       globalThis.fetch = originalFetch;

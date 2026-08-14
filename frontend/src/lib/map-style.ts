@@ -173,10 +173,9 @@ export function mapBackground(scheme: MapColorScheme): string {
 /**
  * The style for one theme.
  *
- * `sources` is where the two reads meet: **the trip's own archive over the shared world
- * layer**, both through the `pmtiles://` protocol, so the same style works against a
- * remote read and a downloaded file with nothing in here knowing which it got
- * (ADR-0186 §3).
+ * `sources` is where the two reads meet: **one detailed archive over the shared world layer**,
+ * both through the `pmtiles://` protocol. Online detail is live; offline it is downloaded, with
+ * nothing in the style knowing which transport supplied it (ADR-0187).
  */
 export function mapStyle(scheme: MapColorScheme, urls: MapTileUrls): StyleSpecification {
   const flavor = scheme === MAP_COLOR_SCHEME.dark ? DARK : LIGHT;
@@ -209,34 +208,20 @@ export function mapStyle(scheme: MapColorScheme, urls: MapTileUrls): StyleSpecif
       attribution: MAP_ATTRIBUTION,
     }) as const;
 
-  // The archive the map is actually drawn from. The trip's own where it exists, and the world
-  // otherwise — which is a correct map at low zoom and, at the zoom this app OPENS at, very
-  // nearly an empty one. See `mapTileUrls`: that is why the extract is not optional in practice.
-  const detail = layers(urls.trip ? SOURCE : WORLD_SOURCE, flavor, { lang: 'he' });
-  const detailSource = urls.trip ? SOURCE : WORLD_SOURCE;
+  // Exactly one detailed source. Online it is the live proxy; Phase 3c swaps this URL to the local
+  // extract offline. The style does not know or care which transport supplied the same archive.
+  const detail = layers(SOURCE, flavor, { lang: 'he' });
+  const detailSource = SOURCE;
   const sources: Record<string, unknown> = {
-    [detailSource]: vector(
-      urls.trip ?? urls.world,
-      urls.trip ? MAP_TRIP_MAXZOOM : MAP_WORLD_MAXZOOM,
-    ),
+    [detailSource]: vector(urls.detail, MAP_TRIP_MAXZOOM),
   };
 
   // `background` carries no source and must appear exactly once, first.
   const background = detail.filter((layer) => layer.type === 'background');
   const over = detail.filter((layer) => layer.type !== 'background');
-  if (!urls.trip) {
-    return {
-      version: 8,
-      glyphs: GLYPHS,
-      sources,
-      layers: [...background, ...over],
-    } as StyleSpecification;
-  }
-
   // **THE WORLD GOES UNDERNEATH, AND ONLY ITS GROUND DOES** (§4's "nowhere is ever blank").
-  // A trip extract covers clusters, not the space between them, and it can also simply fail to
-  // build — in which case a single-source style renders NOTHING, which is a self-inflicted copy
-  // of the bug this migration exists to end. So the coarse archive stays in the style beneath it.
+  // A local extract covers clusters, not the space between them, and a live detail request can
+  // fail. In either case the coarse archive stays underneath so the ground is never blank.
   //
   // Fills only, deliberately: taking the whole generated set would draw every label and road
   // twice — the same city name from two archives, one overzoomed, a few pixels apart, which reads

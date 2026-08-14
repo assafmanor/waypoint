@@ -84,3 +84,9 @@ Slots into ADR-0186's Phase 3 rather than beside it, because it changes what Pha
 - **3a — the invalidation fix (§3).** Independent, small, shippable now.
 - **3b — the live source (§1/§2).** The proxy, its cache, the third `mapTileUrls` entry, and the connectivity-driven restyle. Measure the pan cost first.
 - **3c — download, retention, metering.** Unchanged from ADR-0186, and cleaner for landing after: an extract that is only ever the offline artefact is a much simpler thing to budget, evict and pin.
+
+## 2026-08-14 implementation amendment — 3a and 3b built
+
+3a now cuts extracts from places referenced by saved events, bookings or maybe-items; a search-only dedup row cannot change the extract signature. 3b serves the configured planet build through the guarded, build-id URL `GET /map/planet-20260813.pmtiles`, accepts only closed byte ranges, validates the upstream `206` and exact `Content-Range`, coalesces identical cold reads, and caches hot ranges in a bounded memory LRU plus an optional local-FS tier. The same shared build constant names the default upstream archive and the client URL, so changing one without the other is a compile-time diff rather than silent offset drift.
+
+The online style now always uses the live detail URL over the coarse world underlay. The extract URL remains available to the client as the 3c download artefact but is not an online render source. 3c owns the connectivity-driven live restyle once a local archive exists; until then this checkpoint deliberately has no false offline mode.

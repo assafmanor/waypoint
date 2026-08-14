@@ -12,19 +12,19 @@
 // delete along with the vars and the renderer; leaving them here rather than half-removing
 // them is what keeps this a reviewable phase.
 
+import { MAP_PLANET_BUILD } from '@waypoint/shared';
 import { documentTheme, THEME, type Theme } from './theme';
 import { apiAssetUrl } from './api-asset';
 
-/** **Where the two archives live** (ADR-0186 §3). Both are read through the `pmtiles://`
- *  protocol, so nothing downstream — not the style, not the canvas — knows whether it got a
- *  range read over the network or a local file. That is the single idea keeping offline from
- *  being a second system.
+/** The coarse fallback, the detailed render source, and the downloadable extract.
  *
- *  `trip` is absent until the backend has built that trip's extract; the world layer alone is
- *  a correct, coarser map rather than a blank one (§4). */
+ * Online `detail` is the build-pinned live proxy. Phase 3c replaces that URL with a local archive
+ * offline; the style and renderer keep reading the same shape. `extract` is intentionally not a
+ * render source while online (ADR-0187). */
 export interface MapTileUrls {
   world: string;
-  trip?: string;
+  detail: string;
+  extract?: string;
 }
 
 /**
@@ -34,30 +34,23 @@ export interface MapTileUrls {
  * Google call, applied to tiles for the same three reasons: any key stays server-side, we can
  * cache, and we can change source without shipping a client.
  *
- * **Both, and the trip's own is not optional in practice** (corrected 2026-08-14). Phase 2 first
- * shipped the world layer alone, on the reasoning that it is "coarse but never blank" and that
- * the extract's synchronous first cut would confound the swap. That was wrong about what coarse
- * means: the world layer is **z0–6**, the map opens at `MAP_ZOOM.PLACE`, and a z6 tile overzoomed
- * to z14 draws a single flat landmass — so the owner's phone showed a uniform brown rectangle
- * with pins on it. Measured against a real archive in `e2e/map-renders.spec.ts`, the same client
- * draws Bangkok's streets, river and labels correctly; the coarseness was the whole defect.
- *
- * The three risks that deferred it are answered rather than dismissed: the first cut is slow, and
- * the pane now says "loading is slower than usual" and clears itself when it lands; the extract
- * sits behind `MembershipGuard`, and a same-origin fetch carries cookies; and an extract that
- * fails no longer renders nothing, because `mapStyle` keeps the world beneath it (§4).
+ * The build id is part of the live URL because PMTiles caches directory pages by archive URL. A
+ * daily build moving byte offsets under one stable URL would silently map tile addresses to the
+ * wrong bytes; a new URL makes the change explicit and invalidates every layer of cache.
  */
 export function mapTileUrls(tripId?: string | null): MapTileUrls {
   return {
     world: apiAssetUrl(MAP_ARCHIVE_PATH.world),
-    ...(tripId ? { trip: apiAssetUrl(MAP_ARCHIVE_PATH.trip(tripId)) } : {}),
+    detail: apiAssetUrl(MAP_ARCHIVE_PATH.live),
+    ...(tripId ? { extract: apiAssetUrl(MAP_ARCHIVE_PATH.extract(tripId)) } : {}),
   };
 }
 
 /** The backend's own routes for the archives, named beside the reader (ADR-0095). */
 const MAP_ARCHIVE_PATH = {
   world: '/map/world.pmtiles',
-  trip: (tripId: string) => `/trips/${tripId}/map/extract.pmtiles`,
+  live: `/map/planet-${MAP_PLANET_BUILD}.pmtiles`,
+  extract: (tripId: string) => `/trips/${tripId}/map/extract.pmtiles`,
 } as const;
 
 /** What the pane needs to construct a map. Absent (`null`) is a first-class state. */

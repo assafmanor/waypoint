@@ -112,3 +112,42 @@ describe('MapService.worldIfReady', () => {
     expect(() => service().onModuleInit()).not.toThrow();
   });
 });
+
+// ── AN EXTRACT COVERS WHAT THE TRIP COMMITTED TO, NOT WHAT SOMEONE LOOKED AT (ADR-0187 §3) ──
+//
+// A `Place` row exists the moment it is picked, because it doubles as the dedup/enrichment cache
+// (ADR-0112). The first version swept every row on the trip, so merely RESEARCHING a place changed
+// the coordinate set, minted a new `mapExtractKey` and re-cut the whole archive — minutes of 503 on
+// the research path, an extract grown to cover somewhere nobody saved, and a good one binned.
+//
+// Asserted on the QUERY rather than on rows, because the filter is the behaviour: prisma is a fake
+// here, so what this can honestly check is that the sweep asks for referenced places at all. The
+// regression it catches is precisely the one that shipped — a `where` with no reference condition.
+describe('MapService.coordinatesFor (ADR-0187 §3)', () => {
+  const findMany = vi.fn().mockResolvedValue([]);
+  const withPrisma = () => new MapService({ place: { findMany } } as never);
+
+  beforeEach(() => findMany.mockClear());
+
+  it('asks only for places a saved entity references', async () => {
+    await withPrisma().coordinatesFor('t1');
+    const { where } = findMany.mock.calls[0]![0] as { where: Record<string, unknown> };
+    expect(where.tripId).toBe('t1');
+    // The five relations `referencedPlaceIds` counts, and no sixth: `notes` is a relation on
+    // `Place` and is deliberately not one of them (ADR-0112 owns what "in the trip" means).
+    expect(where.OR).toEqual([
+      { events: { some: {} } },
+      { bookings: { some: {} } },
+      { bookingsFrom: { some: {} } },
+      { bookingsTo: { some: {} } },
+      { maybeItems: { some: {} } },
+    ]);
+  });
+
+  it('still refuses a place with no coordinates', async () => {
+    await withPrisma().coordinatesFor('t1');
+    const { where } = findMany.mock.calls[0]![0] as { where: Record<string, unknown> };
+    expect(where.lat).toEqual({ not: null });
+    expect(where.lng).toEqual({ not: null });
+  });
+});

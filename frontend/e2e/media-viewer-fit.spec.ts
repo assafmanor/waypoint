@@ -127,25 +127,25 @@ async function measure(page: Page) {
     .toBe(true);
 
   // **A settled frame, not a decoded one.** A document's ratio arrives with its bytes, so its
-  // frame TRAVELS from the placeholder to the picture's box rather than snapping — which is the
-  // point of the transition and, caught mid-flight, measures as a 45px band that is not there a
-  // moment later. Two consecutive frames agreeing is what "settled" means here.
+  // frame TRAVELS from the placeholder to the picture's box rather than snapping. Adjacent frames
+  // are not a valid settled signal: an eased transition can move less than half a pixel before it
+  // accelerates, and a busy production run can sample twice before the transition starts. Wait for
+  // the image and frame to agree instead; a real letterbox regression still times out and fails.
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          new Promise<boolean>((resolve) => {
-            const body = document.querySelector('.doc-viewer-body') as HTMLElement;
-            const before = body.getBoundingClientRect().height;
-            requestAnimationFrame(() =>
-              requestAnimationFrame(() =>
-                resolve(Math.abs(body.getBoundingClientRect().height - before) < 0.5),
-              ),
-            );
-          }),
-      ),
+      page.evaluate(() => {
+        const body = document.querySelector('.doc-viewer-body') as HTMLElement;
+        const img = document.querySelector('.doc-viewer-img') as HTMLImageElement;
+        const frame = body.getBoundingClientRect();
+        const painted = img.getBoundingClientRect();
+        return Math.max(
+          Math.abs(frame.width - painted.width),
+          Math.abs(frame.height - painted.height),
+          Math.abs(frame.top - painted.top),
+        );
+      }),
     )
-    .toBe(true);
+    .toBeLessThanOrEqual(1);
 
   return page.evaluate(() => {
     const round = (r: DOMRect) => ({

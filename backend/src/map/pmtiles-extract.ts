@@ -13,13 +13,14 @@
 //   whole world, z0–6   →  42.7 MB,  4s,   5 range requests
 //   central Tokyo, z0–14 →  22.7 MB, 13s,  40 range requests
 //
-// That is why nothing here proxies tiles: upstream is touched once per area, not once
-// per tile (ADR-0186 §3's 2026-08-13 amendment).
+// The extract path still touches upstream once per committed area. ADR-0187 adds a separate live
+// range proxy for online browsing; it does not turn this offline artefact back into a tile path.
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { MAP_PLANET_BUILD } from '@waypoint/shared';
 import { MAP_TILES_SOURCE_URL, PMTILES_BIN } from '../common/env';
 import type { MapRegionGeoJson } from './map-region';
 
@@ -32,7 +33,7 @@ const DOWNLOAD_THREADS = 8;
 /** The default daily-build channel. Overridable by env because **Protomaps say the URLs
  *  may change** and ask that people not hotlink — the long-term answer is our own mirror
  *  of the source, and this is the seam that makes swapping to one a config change. */
-export const DEFAULT_TILES_SOURCE = 'https://build.protomaps.com/20260813.pmtiles';
+export const DEFAULT_TILES_SOURCE = `https://build.protomaps.com/${MAP_PLANET_BUILD}.pmtiles`;
 
 export interface ExtractSpec {
   /** Absolute path the archive is written to. */

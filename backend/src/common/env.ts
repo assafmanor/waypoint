@@ -49,6 +49,14 @@ export const MAP_TILES_SOURCE_URL = 'MAP_TILES_SOURCE_URL';
 /** Path to the `go-pmtiles` binary; the Dockerfile puts it on `PATH`, so this exists for
  *  a dev machine that keeps it somewhere else. */
 export const PMTILES_BIN = 'PMTILES_BIN';
+/** In-memory bound for the live planet proxy's range cache (ADR-0187 §1). Its hot entries are
+ *  the archive's own directory pages — the same bytes for every user, every tile, forever — so
+ *  a modest bound buys most of the win. */
+export const MAP_PLANET_CACHE_MAX_BYTES = 'MAP_PLANET_CACHE_MAX_BYTES';
+/** Optional persistent tier. Railway points this at the service volume; unset keeps the cache
+ * memory-only for local development. */
+export const MAP_PLANET_CACHE_DIR = 'MAP_PLANET_CACHE_DIR';
+export const DEFAULT_MAP_PLANET_CACHE_MAX_BYTES = 128 * 1024 * 1024;
 
 // Document blob read cache (ADR-0055). The cache holds ciphertext only and is never a
 // source of truth, so an unset FS dir (memory-only) or a lost dir on redeploy is fine —
