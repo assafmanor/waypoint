@@ -10,23 +10,6 @@ import { SERVER_ROUTE_PATTERN } from '../packages/shared/src/server-routes';
 // (ADR-0170). Deliberately import-free, so reading it here costs no app graph.
 import { APP_NAME, APP_TITLE } from './src/app-name';
 
-/** A production build with no Maps config produces a Map tab with **no map** —
- *  ADR-0121 §2's graceful absence, which is correct behaviour and deliberately
- *  silent in the UI. It is also indistinguishable from a misconfigured deploy, and
- *  that cost one: the vars were set on the service but the Dockerfile did not
- *  declare them as build args, so Vite inlined nothing. Say it where whoever built
- *  the image can see it. Build-only, so it never noises up dev or the test run. */
-function warnIfMapsUnconfigured() {
-  const missing = ['VITE_GOOGLE_MAPS_BROWSER_KEY', 'VITE_GOOGLE_MAPS_MAP_ID'].filter(
-    (name) => !process.env[name]?.trim(),
-  );
-  if (missing.length === 0) return;
-  console.warn(
-    `\nLegacy Google map-tuner vars missing: ${missing.join(', ')}.\n` +
-      'The MapLibre map is unaffected; Phase 4 removes these vars and this warning.\n',
-  );
-}
-
 /**
  * **What build is this?** — the question a staging tester cannot otherwise answer, and the
  * reason the answer is computed here rather than typed into an env var: a label somebody has
@@ -80,8 +63,7 @@ function appTitle() {
 }
 
 // The PWA — installable, RTL, offline-capable (ADR-0007).
-export default defineConfig(({ command }) => {
-  if (command === 'build') warnIfMapsUnconfigured();
+export default defineConfig(() => {
   return {
     // Consume @waypoint/shared from source: its built dist is CommonJS (the backend
     // needs CJS), and Vite can't statically detect named value exports through the
@@ -208,37 +190,11 @@ export default defineConfig(({ command }) => {
       // vitest — they import @playwright/test and drive a real browser. Keep them
       // out of the jsdom unit run so `pnpm test` doesn't try to execute them.
       exclude: [...configDefaults.exclude, 'e2e/**'],
-      /**
-       * **The unit suite does not inherit `frontend/.env`.**
-       *
-       * Vite loads that file for the test run too, so ten specs meant something
-       * different on a machine that had followed the quickstart than they did in CI
-       * (which has no `.env`) — and they failed there, quietly, for anyone with a
-       * working dev setup. Two distinct symptoms, one cause:
-       *
-       *  - `VITE_API_BASE_URL` turned every same-origin assertion into an absolute
-       *    URL. `Avatar.test.tsx`'s own comment already SAID "API_BASE_URL is empty
-       *    under test (same-origin)" — it was a stated assumption that nothing made
-       *    true, which is the whole reason it went unnoticed.
-       *  - `VITE_GOOGLE_MAPS_BROWSER_KEY`/`_MAP_ID` gave `Map.test.tsx` a rendered
-       *    map. That file exists to cover the **graceful-absence, list-only** path
-       *    (ADR-0121 §2, and `frontend/CLAUDE.md` says it must stay tested as such),
-       *    so it deliberately does not mock `lib/map-config` the way
-       *    `Map.embedded.test.tsx` does. With keys present it was testing the other
-       *    branch, and the branch it names in its own describe block went uncovered.
-       *
-       * Pinned here rather than in a `.env.test`: the point is that the values are a
-       * FACT OF THE SUITE, not a file a developer can shadow — the same reasoning as
-       * pinning the clock with `setSimulatedNow` instead of reading the real one. A
-       * spec that wants config supplies it by mocking `lib/map-config`, which is
-       * visible in the spec that needs it.
-       */
+      /** The unit suite does not inherit `frontend/.env`: same-origin URL assertions must not
+       * change meaning on a machine that followed the local quickstart. */
       env: {
         VITE_API_BASE_URL: '',
-        VITE_GOOGLE_MAPS_BROWSER_KEY: '',
-        VITE_GOOGLE_MAPS_MAP_ID: '',
-        VITE_GOOGLE_MAPS_MAP_ID_DARK: '',
-        // Same reasoning as the four above: a developer with this set locally would
+        // Same reason as the API URL above: a developer with this set locally would
         // otherwise flip `BuildBadge`'s default case in their run and not in CI.
         VITE_BUILD_BADGE: '',
       },

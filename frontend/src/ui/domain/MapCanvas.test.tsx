@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 //
 // **MapLibre needs a GPU and jsdom has none**, so `maplibre-gl` is stubbed to a plain object
-// that records what it was constructed with and lets a test fire its events — the same
-// posture `MapPane.test.tsx` takes with `@vis.gl/react-google-maps`, and for the same reason
-// (ADR-0121 §13): whether a canvas LOOKS right is a human pass, and saying so is the point.
+// that records what it was constructed with and lets a test fire its events. Whether a canvas
+// LOOKS right needs the production-preview real-archive pass (ADR-0121 §13).
 //
 // What is under test is therefore the part that is OURS, which for this component is its
 // LIFECYCLE — the one thing ADR-0186 §1 chose to hand-roll rather than take from a wrapper.
@@ -12,6 +11,11 @@
 // 404s is reported without being read as a dead canvas.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
+
+const archiveCache = vi.hoisted(() => ({
+  read: vi.fn<(url: string) => Promise<null>>(),
+}));
+archiveCache.read.mockResolvedValue(null);
 
 /** `addProtocol` is page-global, which `MapCanvas` is explicit about — so it is a spy
  *  rather than a no-op: "registered once, however many panes mount" is an assertion. */
@@ -47,6 +51,7 @@ class FakeMapLibreMap {
   /** Makes construction throw — the module-or-protocol failure, which is the one thing
    *  `MapCanvas` treats as "the canvas cannot exist" (as opposed to a tile that failed). */
   static failToBuild = false;
+  static onBuild: (() => void) | null = null;
   readonly options: Record<string, unknown>;
   removed = 0;
   styles: unknown[] = [];
@@ -64,6 +69,7 @@ class FakeMapLibreMap {
     this.options = options;
     this.workerUrlWasSet = setWorkerUrl.mock.calls.length > 0;
     FakeMapLibreMap.built.push(this);
+    FakeMapLibreMap.onBuild?.();
   }
   on(type: string, fn: Handler) {
     add(this.persistent, type, fn);
@@ -91,6 +97,7 @@ class FakeMapLibreMap {
  *  which is the difference between a tile read that is refused and one that is served
  *  (ADR-0020's global `JwtAuthGuard`; the 401 of 2026-08-14). */
 const registered: { url: string; headers: Headers }[] = [];
+const sourcesThatFailToRegister = new Set<string>();
 
 class FakeFetchSource {
   constructor(
@@ -98,6 +105,7 @@ class FakeFetchSource {
     public customHeaders: Headers,
     readonly credentials?: string,
   ) {
+    if (sourcesThatFailToRegister.has(url)) throw new Error(`cannot register ${url}`);
     registered.push({ url, headers: customHeaders });
   }
   setHeaders(headers: Headers) {
@@ -122,6 +130,9 @@ vi.mock('pmtiles', () => ({
     constructor(readonly source: unknown) {}
   },
   FetchSource: FakeFetchSource,
+}));
+vi.mock('../../lib/map-archive-cache', () => ({
+  readLocalMapArchive: archiveCache.read,
 }));
 
 import { MapCanvas, type MapCanvasProps, type MapTileUrls } from './MapCanvas';
@@ -180,6 +191,10 @@ afterEach(() => {
   cleanup();
   FakeMapLibreMap.built.length = 0;
   FakeMapLibreMap.failToBuild = false;
+  FakeMapLibreMap.onBuild = null;
+  sourcesThatFailToRegister.clear();
+  archiveCache.read.mockReset();
+  archiveCache.read.mockResolvedValue(null);
 });
 
 describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
@@ -221,6 +236,65 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
 
     expect(FakeMapLibreMap.built).toHaveLength(1);
     expect(first.styles).toEqual([mapStyle(MAP_COLOR_SCHEME.dark, offline)]);
+  });
+
+  it('does not report a live canvas unavailable when a concurrent archive switch fails', async () => {
+    const onUnavailable = vi.fn();
+    const onError = vi.fn();
+    const switched = {
+      world: WORLD.world,
+      detail: '/trips/t1/map/concurrent-switch.pmtiles',
+    };
+    sourcesThatFailToRegister.add(switched.detail);
+
+    FakeMapLibreMap.onBuild = () => {
+      FakeMapLibreMap.onBuild = null;
+      view.rerender(
+        <MapCanvas
+          {...props({
+            urls: switched,
+            onError,
+            onUnavailable,
+          })}
+        />,
+      );
+    };
+
+    const view = render(<MapCanvas {...props({ onError, onUnavailable })} />);
+    await settle();
+
+    expect(FakeMapLibreMap.built).toHaveLength(1);
+    expect(onUnavailable).not.toHaveBeenCalled();
+    expect(holder().hasAttribute('data-map-failed')).toBe(false);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.any(String) }));
+  });
+
+  it('does not let a slower stale archive switch overwrite the newest style', async () => {
+    const stale = { world: WORLD.world, detail: '/map/stale.pmtiles' };
+    const newest = { world: WORLD.world, detail: '/map/newest.pmtiles' };
+    let releaseStale!: () => void;
+    let markStaleStarted!: () => void;
+    const staleGate = new Promise<void>((resolve) => (releaseStale = resolve));
+    const staleStarted = new Promise<void>((resolve) => (markStaleStarted = resolve));
+    archiveCache.read.mockImplementation(async (url) => {
+      if (url === stale.detail) {
+        markStaleStarted();
+        await staleGate;
+      }
+      return null;
+    });
+
+    const view = render(<MapCanvas {...props()} />);
+    view.rerender(<MapCanvas {...props({ urls: stale })} />);
+    await act(async () => staleStarted);
+
+    view.rerender(<MapCanvas {...props({ urls: newest })} />);
+    await settle();
+    expect(built().styles.at(-1)).toEqual(mapStyle(MAP_COLOR_SCHEME.light, newest));
+
+    releaseStale();
+    await settle();
+    expect(built().styles.at(-1)).toEqual(mapStyle(MAP_COLOR_SCHEME.light, newest));
   });
 
   it('hands the live instance out, with the module, and takes both back on unmount', async () => {

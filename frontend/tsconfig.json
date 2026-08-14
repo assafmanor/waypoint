@@ -9,7 +9,7 @@
     "useDefineForClassFields": true,
     "noEmit": true,
     "declaration": false,
-    "types": ["vite/client", "vite-plugin-pwa/client", "google.maps"]
+    "types": ["vite/client", "vite-plugin-pwa/client"]
   },
   "include": ["src", "vite.config.ts"]
 }

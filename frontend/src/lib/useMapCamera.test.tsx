@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useMapCamera, type MapCamera } from './useMapCamera';
 import { mapFitPadding, type LatLng, type MapArrival, type MapBounds } from './map-camera';
-import type { CameraMap } from './map-camera-adapter';
+import type { CameraMap, CameraProjection } from './map-camera-adapter';
 import { MAP_ZOOM } from '../constants';
 
 const TOKYO = { lat: 35.68, lng: 139.76 };
@@ -107,7 +107,7 @@ class FakeMap {
           (180 / Math.PI);
         return { lat: () => lat, lng: () => lng };
       },
-    } as unknown as google.maps.Projection;
+    } as CameraProjection;
   }
   addListener(type: string, fn: () => void) {
     const set = this.handlers.get(type) ?? new Set();
@@ -960,7 +960,7 @@ describe('the one-finger zoom’s two camera verbs (ADR-0145 §5/§2)', () => {
     const worldUnderFinger = proj.fromPointToLatLng({
       x: proj.fromLatLngToPoint(TOKYO)!.x + offset.x / 2 ** 14,
       y: proj.fromLatLngToPoint(TOKYO)!.y + offset.y / 2 ** 14,
-    } as google.maps.Point)!;
+    })!;
     const before = { lat: worldUnderFinger.lat(), lng: worldUnderFinger.lng() };
 
     view.result.current.stepZoomIn(offset);

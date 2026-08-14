@@ -77,6 +77,17 @@ describe('useDragGhost (ADR-0116 sessions 117-118)', () => {
     expect(host().style.transform).toBe(`translate3d(300px, ${500 - DRAG_GHOST_LIFT_PX}px, 0)`);
   });
 
+  it('keeps the press-time grab when layout moves the source during the hold', () => {
+    const { ghost, host } = harness();
+    const moved = source(200, 437);
+    ghost.lift(
+      moved,
+      { clientX: 230, clientY: 420 },
+      { left: 200, top: 400, width: 340, height: 56 },
+    );
+    expect(host().style.transform).toBe(`translate3d(200px, ${400 - DRAG_GHOST_LIFT_PX}px, 0)`);
+  });
+
   // The lift is why translucency alone does not answer the report: the finger sits ON the
   // clone, so a seam label under it stays unreadable however transparent it is.
   it('lifts the clone by exactly DRAG_GHOST_LIFT_PX and nothing horizontal', () => {

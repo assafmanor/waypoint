@@ -28,6 +28,15 @@ import 'maplibre-gl/dist/maplibre-gl.css';
  *  home rather than two names for one thing (rule 8). */
 export type { MapTileUrls };
 
+const asMapError = (error: unknown): Error =>
+  error instanceof Error
+    ? error
+    : new Error(
+        typeof error === 'object' && error !== null && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : 'maplibre error',
+      );
+
 export interface MapCanvasProps {
   scheme: MapColorScheme;
   urls: MapTileUrls;
@@ -125,7 +134,9 @@ export function MapCanvas({
       if (!live || mapRef.current !== map || latestStyleRef.current.key !== next.key) return;
       map.setStyle(mapStyle(next.scheme, next.urls));
       appliedStyleKeyRef.current = next.key;
-    })();
+    })().catch((error) => {
+      if (live && mapRef.current === map) cbRef.current.onError?.(asMapError(error));
+    });
     return () => {
       live = false;
     };
@@ -168,10 +179,19 @@ export function MapCanvas({
 
         const latest = latestStyleRef.current;
         if (latest.key !== opening.styleKey) {
-          await ensurePmtilesArchives([latest.urls.world, latest.urls.detail]);
-          if (!live) return;
-          map.setStyle(mapStyle(latest.scheme, latest.urls));
-          appliedStyleKeyRef.current = latest.key;
+          try {
+            await ensurePmtilesArchives([latest.urls.world, latest.urls.detail]);
+            if (!live || mapRef.current !== map) return;
+            if (latestStyleRef.current.key === latest.key) {
+              map.setStyle(mapStyle(latest.scheme, latest.urls));
+              appliedStyleKeyRef.current = latest.key;
+            }
+          } catch (error) {
+            // The opening map already exists. A concurrent local/remote archive switch may
+            // fail while that map is still painting, so report the range/style failure without
+            // falsely replacing a live canvas with the terminal unavailable state.
+            if (live) cbRef.current.onError?.(asMapError(error));
+          }
         }
 
         // **Has any tile of our own ground actually arrived?** A `sourcedata` event carrying a
@@ -212,15 +232,7 @@ export function MapCanvas({
           // next tile request carry the current token.
           const latestUrls = latestStyleRef.current.urls;
           void ensurePmtilesArchives([latestUrls.world, latestUrls.detail]);
-          cbRef.current.onError?.(
-            raw instanceof Error
-              ? raw
-              : new Error(
-                  typeof raw === 'object' && raw !== null && 'message' in raw
-                    ? String((raw as { message: unknown }).message)
-                    : 'maplibre error',
-                ),
-          );
+          cbRef.current.onError?.(asMapError(raw));
         });
 
         cbRef.current.onMap(map, gl);

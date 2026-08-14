@@ -351,9 +351,7 @@ export interface MapDraftMarker {
 }
 
 export interface MapPaneProps {
-  /** Which face of the ground to paint. It replaced a whole `MapsConfig` — a browser key, a
-   *  Map ID and a colour scheme — because the renderer is bundled and the tiles are ours, so
-   *  the scheme is the only thing left that was ever a decision (ADR-0186 §8). */
+  /** Which face of the owned ground style to paint. */
   scheme: MapColorScheme;
   /** Where the archives are (ADR-0186 §3). Memoized by the caller like every other object
    *  prop here: a fresh identity per render is what §4's rules exist to prevent. */
@@ -432,9 +430,8 @@ export interface MapPaneProps {
  *  It is written as a **data attribute on the pane**, imperatively, rather than as
  *  React state or a prop — because CSS can then do the whole degradation and NO marker
  *  re-renders at all. That is the same arrangement ADR-0123 chose for the pin's size (a
- *  `clamp()` the browser resolves against the pane) and for the same reason: the markers
- *  live in a live `google.maps.Map` where a needless re-diff is the cheap failure and a
- *  re-instantiation is a billed one (§4).
+ *  `clamp()` the browser resolves against the pane) and for the same reason: a needless
+ *  marker re-diff is avoidable work and re-instantiating the map loses its camera and canvas.
  *
  *  Keyed on `zoom_changed` rather than `idle` so the tier flips DURING a pinch, which is
  *  when it is the answer to anything. A dataset write per zoom event is nothing. */

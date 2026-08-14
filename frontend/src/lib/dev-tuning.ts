@@ -108,10 +108,9 @@ function writeStored(): void {
  *  already rendered once is a different question than "did it ever load"). */
 export interface DevMapReading {
   zoom: number | null;
-  /** `@vis.gl/react-google-maps`'s own `APILoadingStatus`, as its string value — `null`
-   *  before the current attempt's `<APIProvider>` has mounted at all. */
+  /** The current renderer attempt phase, or `null` before the pane publishes one. */
   apiStatus: string | null;
-  /** `APIProvider`'s `onError` message, for the CURRENT attempt only — cleared on retry. */
+  /** The renderer's last error for the current attempt, cleared on retry. */
   apiError: string | null;
   /** Has `onTilesLoaded` fired at least once THIS attempt — the production watchdog's own
    *  success signal (`constants.ts`'s `MAP_LOAD_TIMEOUT_MS.TILES`). */

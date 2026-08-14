@@ -89,11 +89,16 @@ The key model is **decided** — [ADR-0108](../decisions/0108-maps-and-places-ba
 - [x] 👤 **Application restrictions** → **IP addresses**, set to the backend's egress IP(s):
   - **Production (Railway):** its egress IP — note Railway does not guarantee a static egress IP on every plan, so if you can't pin one, leave application restriction as **None** and rely on the key being **API-restricted + held server-side only + behind `MembershipGuard` + the proxy rate limits** (ADR-0108 §1/§5). Never expose this key to the browser regardless.
   - **Local dev:** an IP restriction will block calls from your dev machine (home/office IPs vary). Simplest is to leave this key IP-unrestricted (API-restricted only) for now, or mint a separate throwaway dev key; either way it stays in your local `.env`, never the repo.
-- [x] 👤 **Store it in `.env` (local) and Railway env vars only — never in the repo** (CLAUDE.md rule 7). Backend var `GOOGLE_MAPS_SERVER_KEY` (read via `requireEnv` in `backend/src/common/env.ts` once the Phase-1 proxy lands — not wired yet, so setting it now is harmless). **Not** a `VITE_` var — the backend holds it, the browser never sees it. Record _what exists_ (not the value) in the password manager.
+- [x] 👤 **Store it in `.env` (local) and Railway env vars only — never in the repo** (CLAUDE.md rule 7). Backend var `GOOGLE_MAPS_SERVER_KEY`, read by the Places proxy. **Not** a `VITE_` var — the backend holds it, the browser never sees it. Record _what exists_ (not the value) in the password manager.
 
-Setting `GOOGLE_MAPS_SERVER_KEY` today does nothing until the Phase-1 proxy code reads it — so `.env.example` gets a commented placeholder (below), but you can safely mint + store the key now so Phase 1 is unblocked the moment it starts.
+`GOOGLE_MAPS_SERVER_KEY` is unrelated to the map renderer. It remains required for Places search.
 
-#### Phase 6 (embedded map) — the remaining gate
+#### Retired Phase 6 Google renderer setup
+
+> Retired by ADR-0186 Phase 4 on 2026-08-14. Do not create, configure or deploy the browser Maps key, Map IDs, cloud styles or the three frontend build variables below. MapLibre is bundled and reads our PMTiles routes with no frontend map credential. The collapsed checklist remains only as migration history.
+
+<details>
+<summary>Historical Google Maps renderer checklist</summary>
 
 Phases 1–5 have shipped and need none of this; per ADR-0108 there is **no browser-side Google key at all until Phase 6**. The Phase-6 design is now done ([ADR-0121](../decisions/0121-embedded-map-phase-6-design.md)), so this section is the only thing between the build and a map anyone can see. **Routes is a later, paid enhancement** and stays off entirely until it is picked up (step 7).
 
@@ -167,6 +172,8 @@ Same project as everything else — confirm the Console's project picker shows *
 - [ ] ⏸️ 👤 Optional pre-build smoke test: a throwaway local HTML file loading the JS API with the key + `VITE_GOOGLE_MAPS_MAP_ID` and one `AdvancedMarkerElement`, served over `http://localhost:5173` so the referrer entry applies. It **bills one map load** (~$0.007, inside the free tier). Keep it out of the repo — the scratchpad, not the working tree.
 - What the failures look like, so nobody debugs the wrong step: **`ApiNotActivatedMapError`** → step 1; **`RefererNotAllowedMapError`** → step 5's referrer list (check the exact scheme/port); **`InvalidKeyMapError`** → wrong or truncated key; **markers silently absent while the map renders** → a missing or invalid `mapId` (step 3), the failure mode `mapId`-is-mandatory produces; **a greyed "development purposes only" watermark** → billing not linked to the project; **an unstyled but working map** → step 4's association, or its ~6-hour propagation.
 
+</details>
+
 **Later — Routes stays off until the paid work starts.**
 
 - [ ] ⏸️ 👤 Enable **Routes API**, add it to the existing `GOOGLE_MAPS_SERVER_KEY`'s API restrictions, and give it its own daily quota cap — **only** when the paid live-ETA work is picked up (Routes is proxied through the server key; ADR-0108 §4, ADR-0121 §14). Its Essentials tier caps at **10 intermediate waypoints** (ADR-0121 §1), which that work inherits.
@@ -175,9 +182,7 @@ Same project as everything else — confirm the Console's project picker shows *
 
 **Done 2026-07-23:** the near-term slice above is complete — Places API (New) enabled on the existing `waypoint` project, a billing budget alert + a per-day request quota cap set, and `GOOGLE_MAPS_SERVER_KEY` minted and stored in local `.env` + Railway. Phases 1–5 shipped on it.
 
-**Done 2026-07-26 — the Phase-6 gate is passed, with two boxes left.** Maps JavaScript API enabled, the Dynamic Maps daily quota capped and the budget alert confirmed against the new SKU, both Map IDs (`waypoint-day` + `waypoint-night`, JavaScript/vector) created, the browser key `waypoint-browser-maps-js` minted with Maps-JS-only API restriction and referrer locks, and the three `VITE_` build vars set locally + on Railway production. **The build is unblocked and the map is viewable.**
-
-Still open, and neither blocks the build: **(a)** the two cloud styles are authored as JSON ([`docs/design/map-styles/`](../design/map-styles/README.md)) but not yet imported and associated — until then the map renders with markers in Google's default look, not ours; **(b)** the three vars are not on Railway **staging**, so the tab is list-only there.
+**Retired 2026-08-14.** The browser Maps key, Map IDs, cloud styles and frontend build variables are no longer read by the app and may be removed from deployed service configuration. The backend Places key remains active.
 
 ## Secrets
 

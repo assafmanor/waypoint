@@ -1,7 +1,7 @@
 # 0187 — Detail is live, and an extract is only for the plane
 
 **Date:** 2026-08-14
-**Status:** Accepted (design). Amends [ADR-0186](0186-the-map-is-ours-and-it-works-on-a-plane.md) §3 and §4 — specifically its 2026-08-13 amendment's _"So there is no range-proxy"_, which this reverses for the **online** path only. §5 (metering), §6 (retention) and §7 (the style) are untouched.
+**Status:** Accepted (built). Amends [ADR-0186](0186-the-map-is-ours-and-it-works-on-a-plane.md) §3 and §4 — specifically its 2026-08-13 amendment's _"So there is no range-proxy"_, which this reverses for the **online** path only. §5 (metering), §6 (retention) and §7 (the style) are untouched.
 
 ## Context
 
@@ -84,7 +84,7 @@ Slots into ADR-0186's Phase 3 rather than beside it, because it changes what Pha
 - **3a — the invalidation fix (§3).** Independent, small, shippable now.
 - **3b — the live source (§1/§2).** The proxy, its cache, the third `mapTileUrls` entry, and the connectivity-driven restyle. Measure the pan cost first.
 - **3c — download, retention, metering.** Unchanged from ADR-0186, and cleaner for landing after: an extract that is only ever the offline artefact is a much simpler thing to budget, evict and pin.
-- **3d — session research cache.** Keep live-detail ranges for anywhere the person explores in a bounded memory LRU for the lifetime of the app session. It survives camera moves, theme changes and Map-tab remounts, but not an app/page restart. Persistent device storage stays journey-shaped: the world floor plus extracts around saved or referenced places.
+- **3d — no additional cache for now.** The existing MapLibre tile cache keeps nearby and recently viewed tiles while the canvas lives; the page-global PMTiles registry keeps archive headers and directories through Map-tab remounts; and immutable build-pinned range responses remain eligible for the browser HTTP cache. On the owner's staging device, revisiting an area and returning through another tab are immediate. Add a client range LRU only if a target-device measurement shows those layers do not hold.
 
 ## 2026-08-14 implementation amendment — 3a and 3b built
 
@@ -92,6 +92,6 @@ Slots into ADR-0186's Phase 3 rather than beside it, because it changes what Pha
 
 The online style now always uses the live detail URL over the coarse world underlay. The extract URL remains available to the client as the 3c download artefact but is not an online render source. 3c owns the connectivity-driven live restyle once a local archive exists; until then this checkpoint deliberately has no false offline mode.
 
-## 2026-08-14 roadmap amendment — 3c built, 3d accepted
+## 2026-08-14 roadmap amendment — 3c built, no custom 3d cache yet
 
-3c now stores the world archive and journey-shaped extracts on the device under the retention and metering rules above. Researching arbitrary ground stays live online. Phase 3d adds a bounded, memory-only cache for the PMTiles ranges fetched during that research session, so revisiting or restyling explored ground is immediate without turning every pan into permanent device storage. It is sequenced before Phase 4's Google deletion pass.
+3c now stores the world archive and journey-shaped extracts on the device under the retention and metering rules above. Researching arbitrary ground stays live online. No additional Phase 3d cache is built at this checkpoint: the owner verified the two required revisits as immediate on staging, and the existing renderer, PMTiles and HTTP caches already own those lifetimes. This is an observed sufficiency claim, not a cross-browser guarantee; reopen with a target-device trace if a revisit re-fetches enough data to become visible. Persistent storage remains limited to the world floor and extracts around committed places.

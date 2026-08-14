@@ -29,10 +29,18 @@ export interface DragGhost {
   ref: (el: HTMLElement | null) => void;
   /** The drag armed on `from`, with the finger at `at`. Clones `from` and remembers
    *  where inside it the finger landed, so the clone sits exactly where the original
-   *  was instead of jumping its own corner under the finger. */
-  lift: (from: HTMLElement, at: DragPoint) => void;
+   *  was instead of jumping its own corner under the finger. `pressBox` preserves that
+   *  offset if layout moves the source during the hold. */
+  lift: (from: HTMLElement, at: DragPoint, pressBox?: DragSourceBox) => void;
   /** Follow the finger. */
   track: (at: DragPoint) => void;
+}
+
+export interface DragSourceBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 /** Attributes stripped from the clone. Hit-test targets (`data-bld-id`,
@@ -84,8 +92,8 @@ export function useDragGhost(): DragGhost {
   }, []);
 
   const lift = useCallback(
-    (from: HTMLElement, point: DragPoint) => {
-      const box = from.getBoundingClientRect();
+    (from: HTMLElement, point: DragPoint, pressBox?: DragSourceBox) => {
+      const box = pressBox ?? from.getBoundingClientRect();
       grab.current = { x: point.clientX - box.left, y: point.clientY - box.top };
       size.current = { width: box.width, height: box.height };
       at.current = point;

@@ -233,11 +233,12 @@ unmetered automatic work is silent.
 The same bundle fixes the two owner-reported marker defects: search-result rings render before row
 selection, and location/draft/trip markers cannot stack over the open card or form.
 
-Still deliberately open as Phase 3d: a bounded memory-only session cache for arbitrary researched
-areas. The owner accepted the boundary: explored detail lasts through camera moves, theme changes
-and Map-tab remounts in the current app session, while persistent device storage remains limited to
-the world floor and extracts around saved/referenced places. Field report #35's original cause
-remains unknown.
+Phase 3d is deliberately not built yet. On the owner's staging device, revisiting explored ground
+inside the live canvas and after a Map-tab remount is already immediate. MapLibre keeps recent tile
+data while mounted, the page-global PMTiles registry keeps archive metadata across remounts, and the
+build-pinned HTTP responses are cacheable. A separate client LRU would duplicate those layers before
+a target-device trace demonstrates a gap. Persistent storage remains limited to the world floor and
+extracts around saved/referenced places. Field report #35's original cause remains unknown.
 
 ## 10. Two-theme terrain pass (session 270c)
 
@@ -252,10 +253,9 @@ The boundary is explicit: the current archive distinguishes those covers, water 
 but carries no elevation source. Mountains and volcanoes therefore have no hillshade or contours;
 that would be a separate archive-size and pipeline decision.
 
-## 11. Phase 3d, before Phase 4
+## 11. Phase 3d decision, before Phase 4
 
-Add a bounded memory LRU for live-detail PMTiles ranges fetched while researching arbitrary ground.
-It must survive panning, zooming, theme restyles and Map-tab remounts for the current app session,
-then clear on app/page restart. Do not persist every explored area: durable device storage remains the
-world floor plus journey-shaped extracts around saved/referenced places. Phase 4 remains the Google
-deletion pass after this cache and the production-preview/device gates are green.
+Do not add a fourth cache layer without evidence. The two owner-observed session cases are immediate
+with the caches already present, so Phase 4 may proceed. If a target device later shows a visible
+revisit delay, capture its range traffic first and add the smallest bounded memory cache at the layer
+that is actually missing. Never turn arbitrary exploration into persistent device storage.
