@@ -638,6 +638,8 @@ Verified in real Chrome on Chrome's Slow 3G, entering the tab for a fresh instan
 
 `MAP_LOAD_TIMEOUT_MS.TILES`'s comment now says what the number is for, since its whole justification changed. It is also a cheap number to move now, which it was not before.
 
+**Moved to 8s, 2026-08-15 (owner's call).** In use, 4s fired on ordinary loads — _"even in the normal case there are many times where this happens"_ — and a "slower than usual" that shows up in the usual case teaches people to ignore it. 8s is still under every measured success but the Slow-3G edge, which retires itself when the tiles land. Exactly the cheap move this section says the number is now open to.
+
 ### 4. What this does not claim
 
 It does not claim to be the last cause of #35. It is a fix for a defect that is certain from reading the code and reproducible on demand, **and it is simultaneously the experiment**: if the map still fails after it, that result rules out the merely-slow reading, at which point getting `DevMapTuner`'s `diag` reading off the owner's own phone is the next step — and that needs a channel, because `dev-tuning.ts` is deliberately tree-shaken out of production and shipping the constant-override layer to reach it is the wrong trade.

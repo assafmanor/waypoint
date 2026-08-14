@@ -221,16 +221,19 @@ export const LOCAL_READ_TIMEOUT_MS = {
  *
  *  That inverts the old asymmetry, so the number comes down hard. Session 256's successes:
  *  **~650ms** warm, **0.9–1.5s** cold, **~2.5s** Fast 3G, **8.15s** Slow 3G (bandwidth-bound,
- *  not CPU-bound — 4× CPU moved it ~500ms). 4s sits above every one of those but the Slow-3G
- *  edge, and that edge now resolves itself: the notice shows at 4s and disappears when the
- *  tiles land. Waiting 20s to say something we could say at 4s — and then saying the wrong
- *  thing — was the worst of both.
+ *  not CPU-bound — 4× CPU moved it ~500ms). Waiting 20s to say something we could say in
+ *  single-digit seconds — and then saying the wrong thing — was the worst of both.
+ *
+ *  **8s, raised from 4s (owner's call, 2026-08-15):** at 4s the notice was firing on ordinary
+ *  loads, and a "slower than usual" that shows up in the usual case is noise. 8s still sits
+ *  above every measured success except the Slow-3G edge, which resolves itself anyway — the
+ *  notice disappears when the tiles land.
  *
  *  **The cost of being wrong is now one line of muted text**, which is why this is a cheap
  *  number to move. A renderer/protocol construction failure still takes the hard `ErrorState`;
  *  only the first-tile wait routes through here. */
 export const MAP_LOAD_TIMEOUT_MS = {
-  TILES: 4_000,
+  TILES: 8_000,
 } as const;
 
 /** **How long before the map may reload the app again** (ADR-0121's 2026-08-15 amendment).
