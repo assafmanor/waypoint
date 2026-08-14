@@ -25,6 +25,38 @@ function luminance(hex: string): number {
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
 }
 
+function lab(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const x = (r! * 0.4124 + g! * 0.3576 + b! * 0.1805) / 0.95047;
+  const y = r! * 0.2126 + g! * 0.7152 + b! * 0.0722;
+  const z = (r! * 0.0193 + g! * 0.1192 + b! * 0.9505) / 1.08883;
+  const f = (value: number) => (value > 0.008856 ? value ** (1 / 3) : 7.787 * value + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+}
+
+const chroma = (hex: string): number => {
+  const [, a, b] = lab(hex);
+  return Math.hypot(a, b);
+};
+
+const delta = (left: string, right: string): number =>
+  Math.hypot(...lab(left).map((value, index) => value - lab(right)[index]!));
+
+function regionalLandcover(scheme: (typeof MAP_COLOR_SCHEME)[keyof typeof MAP_COLOR_SCHEME]) {
+  const layer = mapStyle(scheme, URLS).layers.find((candidate) => candidate.id === 'landcover');
+  const expression = (layer as { paint?: Record<string, unknown> } | undefined)?.paint?.[
+    'fill-color'
+  ];
+  expect(expression).toBeDefined();
+  return (expression as unknown[]).filter(
+    (value): value is string => typeof value === 'string' && value.startsWith('#'),
+  );
+}
+
 describe('mapStyle', () => {
   it('reads live detail over the world layer, both through the pmtiles protocol', () => {
     // §3's "one tile source, read remotely until it is local" — nothing in the style
@@ -122,14 +154,14 @@ describe('the two reads (ADR-0186 §3/§4)', () => {
 describe('the ground keeps ADR-0125 §8 ratios', () => {
   it('paints the pre-tile canvas the LAND colour, so there is no cool flash', () => {
     // §1 made exactly this point about `backgroundColor` following the land.
-    expect(mapBackground(MAP_COLOR_SCHEME.light)).toBe('#efebe1');
-    expect(mapBackground(MAP_COLOR_SCHEME.dark)).toBe('#26221a');
+    expect(mapBackground(MAP_COLOR_SCHEME.light)).toBe('#eee8dc');
+    expect(mapBackground(MAP_COLOR_SCHEME.dark)).toBe('#343027');
   });
 
   it('keeps land lighter than water in light, and warmer than it in both', () => {
     // §1's temperature contrast is the lever, and it is what "quiet, not dead" means.
     const land = mapBackground(MAP_COLOR_SCHEME.light);
-    expect(luminance(land)).toBeGreaterThan(luminance('#b9c8d4'));
+    expect(luminance(land)).toBeGreaterThan(luminance('#b7cad8'));
   });
 
   it('keeps the dark ground dark enough for a light pin to be the figure', () => {
@@ -139,6 +171,25 @@ describe('the ground keeps ADR-0125 §8 ratios', () => {
     const darkGround = luminance(mapBackground(MAP_COLOR_SCHEME.dark));
     const lightestPin = luminance('#d9c08a'); // --cat-services, the lightest of the five
     expect(lightestPin / darkGround).toBeGreaterThan(4);
+  });
+
+  it('applies the same measured vocabulary to regional landcover, including Iceland', () => {
+    for (const scheme of [MAP_COLOR_SCHEME.light, MAP_COLOR_SCHEME.dark]) {
+      const colors = regionalLandcover(scheme);
+      expect(colors).toHaveLength(7);
+      expect(Math.max(...colors.map(chroma))).toBeLessThan(14.5);
+
+      const distances = colors.flatMap((left, index) =>
+        colors.slice(index + 1).map((right) => delta(left, right)),
+      );
+      expect(Math.min(...distances)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('keeps every light regional terrain above the day luminance floor', () => {
+    expect(
+      Math.min(...regionalLandcover(MAP_COLOR_SCHEME.light).map((color) => lab(color)[0])),
+    ).toBeGreaterThan(78);
   });
 });
 

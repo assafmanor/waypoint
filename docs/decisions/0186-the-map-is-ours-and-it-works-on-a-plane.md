@@ -883,3 +883,23 @@ map marker remains inside the map's own stacking context and cannot paint over f
 
 None of this identifies field report #35's original cause. These were defects introduced by the
 migration; the renderer swap remains the experiment, not the cure.
+
+## Amendment (2026-08-14, session 270c) — the terrain vocabulary binds both zoom bands
+
+The first working device map was too dark and compressed between terrains. The approved
+[`map-basemap-ours-v2.html`](../../mockups/map-basemap-ours-v2.html) lifts the night field and
+widens the water, built, natural and road steps; light moves with dark so the two themes keep one
+hierarchy rather than becoming separate map designs. ADR-0125 §8 remains the acceptance rule:
+terrain stays below chroma 14, the day terrain floor stays above L* 78, and the category pins remain
+the loudest population.
+
+The owner's Iceland question found the non-obvious half: Protomaps draws regional z5–7 terrain from
+a nested `landcover` flavour, while the migration had overridden only the close-up top-level keys.
+That left grassland, barren ground, urban area, farmland, glacier, scrub and forest on Protomaps'
+compressed dark defaults. Both nested palettes are now owned here too, with a measured minimum
+pairwise separation of ΔE 4.7 dark and 4.8 light.
+
+This does not add topography. Water covers lakes, fjords, rivers and sea; glacier and the seven
+regional cover classes are distinct; peaks may be labelled. Mountains and volcanoes have no
+hillshade or contours in the present archive, so adding relief would require a second elevation
+dataset and a separate storage/cost decision rather than another colour edit.

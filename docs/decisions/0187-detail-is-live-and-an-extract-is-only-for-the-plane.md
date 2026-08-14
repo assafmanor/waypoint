@@ -84,9 +84,14 @@ Slots into ADR-0186's Phase 3 rather than beside it, because it changes what Pha
 - **3a — the invalidation fix (§3).** Independent, small, shippable now.
 - **3b — the live source (§1/§2).** The proxy, its cache, the third `mapTileUrls` entry, and the connectivity-driven restyle. Measure the pan cost first.
 - **3c — download, retention, metering.** Unchanged from ADR-0186, and cleaner for landing after: an extract that is only ever the offline artefact is a much simpler thing to budget, evict and pin.
+- **3d — session research cache.** Keep live-detail ranges for anywhere the person explores in a bounded memory LRU for the lifetime of the app session. It survives camera moves, theme changes and Map-tab remounts, but not an app/page restart. Persistent device storage stays journey-shaped: the world floor plus extracts around saved or referenced places.
 
 ## 2026-08-14 implementation amendment — 3a and 3b built
 
 3a now cuts extracts from places referenced by saved events, bookings or maybe-items; a search-only dedup row cannot change the extract signature. 3b serves the configured planet build through the guarded, build-id URL `GET /map/planet-20260813.pmtiles`, accepts only closed byte ranges, validates the upstream `206` and exact `Content-Range`, coalesces identical cold reads, and caches hot ranges in a bounded memory LRU plus an optional local-FS tier. The same shared build constant names the default upstream archive and the client URL, so changing one without the other is a compile-time diff rather than silent offset drift.
 
 The online style now always uses the live detail URL over the coarse world underlay. The extract URL remains available to the client as the 3c download artefact but is not an online render source. 3c owns the connectivity-driven live restyle once a local archive exists; until then this checkpoint deliberately has no false offline mode.
+
+## 2026-08-14 roadmap amendment — 3c built, 3d accepted
+
+3c now stores the world archive and journey-shaped extracts on the device under the retention and metering rules above. Researching arbitrary ground stays live online. Phase 3d adds a bounded, memory-only cache for the PMTiles ranges fetched during that research session, so revisiting or restyling explored ground is immediate without turning every pan into permanent device storage. It is sequenced before Phase 4's Google deletion pass.
