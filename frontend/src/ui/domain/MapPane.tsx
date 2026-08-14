@@ -505,6 +505,10 @@ function MapPaneInner({
    *  phone the failure arrives with a resume, so "how many" is the fact that says whether
    *  the reading was taken on the first one or the twentieth. */
   const resumesRef = useRef(0);
+  /** What `APIProvider.onError` last rejected with — see `handleMapError`. Survives the
+   *  rebuild that clears everything else, because the question it answers is about the
+   *  PAGE rather than about this attempt. */
+  const lastErrorRef = useRef<string | null>(null);
 
   /** Ask for a fresh map after a delay that grows with consecutive failures.
    *
@@ -627,6 +631,14 @@ function MapPaneInner({
   }, []);
   const handleMapError = useCallback((error: unknown) => {
     setMapFailed(true);
+    // **Kept for the diagnostic, not just for DEV.** The owner's sequence — the map dies
+    // silently, then a tab switch mounts a fresh pane which errors AT ONCE — means this
+    // fires on a page where the script had already loaded successfully once. So what
+    // `importLibrary` rejected WITH is the fact that separates a network/referrer failure
+    // from a poisoned loader, and it is the one thing no reading has ever carried.
+    lastErrorRef.current = String(
+      error instanceof Error ? `${error.name}: ${error.message}` : error,
+    ).slice(0, 120);
     if (import.meta.env.DEV) {
       publishMapReading({ apiStatus: APILoadingStatus.FAILED, apiError: String(error) });
     }
@@ -665,6 +677,7 @@ function MapPaneInner({
       resumes: resumesRef.current,
       elapsedMs: attemptStartRef.current == null ? 0 : performance.now() - attemptStartRef.current,
       painted: tilesPaintedRef.current,
+      lastError: lastErrorRef.current,
     }),
     [],
   );

@@ -26,6 +26,12 @@ export interface MapDiagnosticFacts {
   elapsedMs: number;
   /** Did tiles ever paint on this attempt? Separates "never started" from "started and died". */
   painted: boolean;
+  /** What `APIProvider.onError` last rejected with, if it ever did. **The discriminator
+   *  the first version of this readout was missing**: the owner's map dies silently and
+   *  then a FRESH pane errors at once, which means `importLibrary` rejected on a page
+   *  where the script had already loaded successfully — and only the message says whether
+   *  that was the network, the referrer restriction, or a loader left poisoned. */
+  lastError: string | null;
 }
 
 /** **Can this page make a NEW WebGL context right now?** The single most discriminating
@@ -101,6 +107,9 @@ export function MapDiagnostic({
           `t:${Math.round(facts.elapsedMs / 100) / 10}s`,
           `online:${navigator.onLine ? 'y' : 'n'}`,
           `vis:${document.visibilityState[0]}`,
+          // Last, because it is the longest and the only free-form field — and the one
+          // most likely to name the cause outright.
+          `err:${facts.lastError ?? 'none'}`,
         ].join(' '),
       );
       return true;
