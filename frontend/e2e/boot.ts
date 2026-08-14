@@ -185,6 +185,20 @@ export async function bootIntoTrip(
     documentAttachments: opts.documentAttachments ?? SNAPSHOT.documentAttachments,
     enrichments: opts.enrichments ?? SNAPSHOT.enrichments,
   };
+  // **The realtime socket, answered by nothing** (ADR-0019's gateway; `lib/ws.ts` opens it).
+  //
+  // There is no backend here, so this connection has always failed — and the two servers fail it
+  // DIFFERENTLY, which the `E2E_PREVIEW=1` leg is what surfaced. `vite preview` answers the
+  // upgrade with the SPA fallback at **200**, so the handshake fails loudly enough to reach
+  // `console.error` and `boot-cross-tabs`'s clean-console assertion; the dev server does not.
+  // Neither outcome says anything about the app.
+  //
+  // Intercepted rather than tolerated in the one spec that noticed: a socket that opens and stays
+  // quiet is what "no backend" should look like everywhere, and it keeps that assertion strict
+  // enough to still catch a console error we actually caused. Not connected upstream — no
+  // `connectToServer()` — so nothing reaches a real server.
+  await page.routeWebSocket(/\/trips\/.*\/stream/, () => {});
+
   await page.route(
     (u) => u.pathname.endsWith('/auth/refresh'),
     (r) => r.fulfill({ json: { accessToken: 'test-token' } }),
