@@ -23,7 +23,9 @@
 // security decision, so it is raised rather than taken here; authenticating the read fixes both
 // archives and widens nothing.
 import { accessTokenForHeader } from './api';
+import { readLocalMapArchive } from './map-archive-cache';
 import { loadMapLibre } from './maplibre';
+import type { RangeResponse, Source } from 'pmtiles';
 
 /** A camera, as numbers rather than as the readout's formatted string. */
 export interface ArchiveProbePoint {
@@ -37,7 +39,26 @@ export interface ArchiveProbePoint {
 let registry: import('pmtiles').Protocol | null = null;
 /** One `FetchSource` per archive URL, kept so its headers can be refreshed rather than the archive
  *  re-registered — re-adding would drop the header/directory caches that make range reads cheap. */
-const sources = new Map<string, import('pmtiles').FetchSource>();
+type ArchiveSource =
+  | { kind: 'remote'; source: import('pmtiles').FetchSource }
+  | { kind: 'local'; source: Source; downloadedAt: number };
+
+const sources = new Map<string, ArchiveSource>();
+
+class BlobSource implements Source {
+  constructor(
+    private readonly key: string,
+    private readonly blob: Blob,
+  ) {}
+
+  getKey(): string {
+    return this.key;
+  }
+
+  async getBytes(offset: number, length: number): Promise<RangeResponse> {
+    return { data: await this.blob.slice(offset, offset + length).arrayBuffer() };
+  }
+}
 
 /** The Bearer header, or none. Built fresh each time: the token rotates. */
 function authHeaders(): Headers {
@@ -66,15 +87,25 @@ export async function ensurePmtilesArchives(urls: readonly string[]): Promise<vo
   }
   const headers = authHeaders();
   for (const url of urls) {
+    const local = await readLocalMapArchive(url).catch(() => null);
     const known = sources.get(url);
-    if (known) {
-      known.setHeaders(headers);
+    if (local && known?.kind === 'local' && known.downloadedAt === local.meta.downloadedAt) {
+      continue;
+    }
+    if (!local && known?.kind === 'remote') {
+      known.source.setHeaders(headers);
+      continue;
+    }
+    if (local) {
+      const source = new BlobSource(url, local.blob);
+      sources.set(url, { kind: 'local', source, downloadedAt: local.meta.downloadedAt });
+      registry.add(new PMTiles(source));
       continue;
     }
     // `credentials: 'include'` alongside the header, because the refresh cookie is same-site and
     // a cross-origin API base would otherwise strip it — belt and braces, and free.
     const source = new FetchSource(url, headers, 'include');
-    sources.set(url, source);
+    sources.set(url, { kind: 'remote', source });
     registry.add(new PMTiles(source));
   }
 }

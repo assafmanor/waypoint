@@ -471,7 +471,7 @@ const TIER_Z: Record<PinTier, number> = {
   [PIN_TIER.ambient]: 200,
   [PIN_TIER.shelf]: 150,
   [PIN_TIER.behind]: 100,
-  [PIN_TIER.ghost]: 0,
+  [PIN_TIER.ghost]: 1,
 };
 const NEXT_STOP_Z = 500;
 const ORDER_SPREAD = 99;
@@ -481,7 +481,7 @@ const ORDER_SPREAD = 99;
  *  under a teardrop anyway (it is a different silhouette, not a competing one). Named
  *  here beside `TIER_Z` rather than in the pane, because this is the same one ordering
  *  question — it just happens to be about a population that is not on the ladder. */
-export const MAP_RESULT_Z = -100;
+export const MAP_RESULT_Z = 0;
 
 /** …**except the one you tapped** (owner, session 166 — _"the selected Google search result
  *  is not prominent enough to distinguish from other results"_). The rule above is about a

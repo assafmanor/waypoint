@@ -4,8 +4,7 @@
 // about three `VITE_GOOGLE_MAPS_*` vars resolving to "we can draw a map" or "we cannot",
 // because without a browser key and a Map ID there was no canvas. ADR-0186 bundles the
 // renderer and serves the tiles from our own backend, so **there is no build configuration
-// left to be missing**: a checkout draws a map by existing, and the only remaining absence is
-// being offline (§8, until Phase 3 makes even that false).
+// left to be missing**: a checkout draws a map by existing, online or offline.
 //
 // `MapsConfig` / `readMapsConfig` / `mapsConfig` below are therefore down to ONE reader —
 // `DevMapTuner`, which reports what a Google canvas was built from. They are Phase 4's to
@@ -125,7 +124,7 @@ export function readMapsConfig(env: MapsEnv, theme: MapTheme = MAP_THEME.light):
  *  Google-default rather than failing. */
 export const documentMapTheme = documentTheme;
 
-/** The live config for this build + document. `null` → the tab is list-only. */
+/** The live config for this build + document. */
 export function mapsConfig(): MapsConfig | null {
   return readMapsConfig(import.meta.env as unknown as MapsEnv, documentMapTheme());
 }
@@ -146,20 +145,10 @@ export function mapColorScheme(theme: MapTheme = documentMapTheme()): MapColorSc
 /**
  * Is there a rendered map on the Map tab at all?
  *
- * **Offline there is not — and that is now the ONLY reason there is not** (ADR-0186 §8). It
- * used to also require the three `VITE_GOOGLE_MAPS_*` vars, because without a key and a Map
- * ID there was no canvas to draw; the renderer is bundled now, so there is no build
- * configuration left to be missing and a checkout draws a map by existing.
- *
- * **The graceful absence itself is unchanged, only its trigger.** §2's rule still holds — no
- * pane, no toggle, no instance, today's list-only tab rather than an empty frame — and
- * `Map.test.tsx` still covers that path, now by being offline rather than by having no keys.
- *
- * It stays true only until Phase 3: once an extract can be downloaded, the map becomes the
- * part of this tab that works offline BEST (§8), and this function loses its last reason to
- * return false. Shared, because two callers must agree: the Map screen (which renders the
- * split) and the shell (which makes the body full-bleed for it).
+ * Phase 3 removes the last absence trigger: offline uses the downloaded extract (or the coarse
+ * world floor when no extract exists yet), so the map is the part of this tab that works offline
+ * best (ADR-0186 §8). Shared because the Map screen and shell must still agree on the split.
  */
-export function mapPaneAvailable(opts: { offline: boolean }): boolean {
-  return !opts.offline;
+export function mapPaneAvailable(_opts: { offline: boolean }): boolean {
+  return true;
 }

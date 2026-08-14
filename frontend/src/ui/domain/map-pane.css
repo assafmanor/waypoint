@@ -15,6 +15,10 @@
    costs no relayout — the pane resizes on snap, not per drag frame (§5). */
 .map-pane {
   position: absolute;
+  /* Marker z-indexes rank objects inside the map; they must never compete with the cards and
+     controls that are siblings of the pane. MapLibre puts z-index on its marker wrappers, so
+     without this stacking context the device dot's 1000 paints over an open form at 2. */
+  isolation: isolate;
   inset-inline: 0;
   top: 0;
   bottom: var(--sheet-h, 0px);

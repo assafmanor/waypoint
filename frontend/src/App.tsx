@@ -37,6 +37,7 @@ import {
   useSyncFailures,
 } from './lib/outbox';
 import { loadTripList } from './lib/cache';
+import { retainMapArchives } from './lib/map-archive-cache';
 import { resolveLanding } from './lib/active-trip';
 import { consumeIntent, hasIntent, saveIntent } from './lib/intent';
 import { ToastProvider } from './ui/Toast';
@@ -588,9 +589,8 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // still applies; `bodyKey={tab}` keeps the per-tab remount + fade.
   // The rendered Map tab owns its own layout instead of scrolling inside the body
   // (ADR-0121 §5): its split needs a fixed-height flex column, and the body's tail
-  // padding would push the sheet under the nav. Only when a map is actually there —
-  // offline (or without the build config) the tab is the ordinary scrolling list it
-  // has always been, so it keeps the ordinary body.
+  // padding would push the sheet under the nav. `mapPaneAvailable` remains the single
+  // capability seam; offline is no longer a reason to remove the map.
   const fullBleed = tab === 'map' && mapPaneAvailable({ offline: offlineNow });
   // THE CHROME RECLAIM (ADR-0132 §2). While a surface on the Map tab wants the room, the
   // header and the tab bar come off screen: on a layout viewport that RESIZES for the
@@ -608,8 +608,8 @@ function Shell({ otherTripCount }: { otherTripCount: number }) {
   // step down: the rendered Map opens with row 1 already lifted out. Derived from
   // `fullBleed` rather than from the tab, because that is the actual reason — a body
   // that owns its own layout never scrolls, so the scroll trigger cannot reach the
-  // one surface whose scarce axis is height. The list-only Map (offline, or with no
-  // build config) is an ordinary scrolling body and condenses the ordinary way.
+  // one surface whose scarce axis is height. A future unavailable-map fallback would
+  // remain an ordinary scrolling body and condense the ordinary way.
   const chromeCondensed = fullBleed;
 
   return (
@@ -720,6 +720,7 @@ function TripSettingsRoute() {
 
 function RootSurface() {
   const [trips, setTrips] = useState<Trip[] | null>(null);
+  const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
   useEffect(() => {
     let cancelled = false;
     // Offline-aware (sync-and-offline.md "Read"): falls back to the cached trip
@@ -732,7 +733,9 @@ function RootSurface() {
       cancelled = true;
     };
   }, []);
-  const { tripId: storedTripId, pickedThisSession } = useActiveTripId();
+  useEffect(() => {
+    if (trips) void retainMapArchives({ trips, currentTripId: storedTripId ?? undefined });
+  }, [storedTripId, trips]);
   const now = useClock();
 
   if (trips === null) return <BootScreen />;

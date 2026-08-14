@@ -108,8 +108,28 @@ export function MapCanvas({
   cbRef.current = { onMap, onFirstPaint, onIdle, onError, onUnavailable, onTileLoad };
   // Construction-time values, latched: MapLibre takes an opening camera and then owns it, so
   // re-reading these would fight whatever the user or the camera hook last did.
-  const openingRef = useRef({ centre, zoom, scheme, urls });
+  const styleKey = `${scheme}|${urls.world}|${urls.detail}`;
+  const latestStyleRef = useRef({ scheme, urls, key: styleKey });
+  latestStyleRef.current = { scheme, urls, key: styleKey };
+  const openingRef = useRef({ centre, zoom, scheme, urls, styleKey });
+  const appliedStyleKeyRef = useRef(styleKey);
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || appliedStyleKeyRef.current === styleKey) return;
+    let live = true;
+    const next = latestStyleRef.current;
+    void (async () => {
+      await ensurePmtilesArchives([next.urls.world, next.urls.detail]);
+      if (!live || mapRef.current !== map || latestStyleRef.current.key !== next.key) return;
+      map.setStyle(mapStyle(next.scheme, next.urls));
+      appliedStyleKeyRef.current = next.key;
+    })();
+    return () => {
+      live = false;
+    };
+  }, [styleKey]);
 
   useEffect(() => {
     let live = true;
@@ -145,6 +165,14 @@ export function MapCanvas({
           keyboard: false,
         });
         mapRef.current = map;
+
+        const latest = latestStyleRef.current;
+        if (latest.key !== opening.styleKey) {
+          await ensurePmtilesArchives([latest.urls.world, latest.urls.detail]);
+          if (!live) return;
+          map.setStyle(mapStyle(latest.scheme, latest.urls));
+          appliedStyleKeyRef.current = latest.key;
+        }
 
         // **Has any tile of our own ground actually arrived?** A `sourcedata` event carrying a
         // `tile` is one that loaded and parsed — which is the fact `load`/`idle` cannot give us
@@ -182,7 +210,8 @@ export function MapCanvas({
           // rotation would keep being refused with the map already painted — i.e. silently, since
           // the cue only guards the FIRST paint. Re-setting the headers costs nothing and makes the
           // next tile request carry the current token.
-          void ensurePmtilesArchives([opening.urls.world, opening.urls.detail]);
+          const latestUrls = latestStyleRef.current.urls;
+          void ensurePmtilesArchives([latestUrls.world, latestUrls.detail]);
           cbRef.current.onError?.(
             raw instanceof Error
               ? raw

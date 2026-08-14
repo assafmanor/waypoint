@@ -850,3 +850,36 @@ invalidation is fired by an act that carries no commitment, and extracts must be
 
 Amendment 269j's open item (a) — a 503 reported as a failure — survives this but shrinks: it becomes a state on the
 **download**, not on the render, because nobody is waiting on a cut to see a map any more.
+
+## Amendment (2026-08-14, session 270b) — Phase 3 storage policy is concrete
+
+Phase 3 now stores complete PMTiles responses in the browser Cache API, with enumerable sidecar
+metadata in the same cache. `lib/pmtiles.ts` keeps one logical archive URL and chooses a local Blob
+source when that URL is present, otherwise its authenticated remote source. The renderer therefore
+has no offline fork: connectivity changes the source of the same `pmtiles://` URL.
+
+The first device bounds are **512 MiB total** and **seven days after trip end**. The coarse world
+archive and the current trip are pinned; other extracts are LRU-evicted. Trip deletion, leaving or
+being removed clears that trip's extract immediately, and account settings exposes the aggregate,
+the world row and per-trip rows with individual and clear-all deletion. These archives remain cache,
+never authored data.
+
+Automatic download means only what can be established safely: `wifi` or `ethernet` with
+`saveData !== true`. Every unknown connection, including iOS, gets the one-time per-trip prompt.
+The automatic path has no banner; prompting and manual retries are the only visible download path.
+An ended trip never downloads. A trip with no **referenced** coordinate-bearing place neither asks
+for nor requests an extract, matching the backend's extract boundary rather than treating a search's
+dedup-cache `Place` row as commitment.
+
+A download response of 503 is `preparing`, carrying `Retry-After`; it is not folded into map failure
+and no timeout was widened. A silent automatic download follows `Retry-After` itself, while a manual
+download exposes the preparing state and retry action. Offline no longer removes the map: a saved
+extract supplies detail when present and the saved world archive is the floor when it is not.
+
+Two migration regressions found in the same device pass are independent of storage: unselected
+search-result rings had a negative marker z-index, and marker z-indexes were not isolated from the
+sheet/card stacking context. Search rings now sit below trip pins but above the canvas, while every
+map marker remains inside the map's own stacking context and cannot paint over forms.
+
+None of this identifies field report #35's original cause. These were defects introduced by the
+migration; the renderer swap remains the experiment, not the cure.

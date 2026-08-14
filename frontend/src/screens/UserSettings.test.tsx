@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Me } from '@waypoint/shared';
 
 const patchMe = vi.fn();
 const logout = vi.fn();
 const navigate = vi.fn();
 const goBack = vi.fn();
+const listMapArchives = vi.fn();
+const clearAllMapArchives = vi.fn();
+const removeMapArchive = vi.fn();
+const removeTripMapArchives = vi.fn();
+const readCachedTripList = vi.fn();
 let me: Me | null;
 
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me, logout, patchMe }) }));
@@ -17,6 +22,13 @@ vi.mock('../state/nav-state', () => ({
   useOverlay: () => {},
   SETTINGS_PICTURE_PATH: '/settings/picture',
 }));
+vi.mock('../lib/map-archive-cache', () => ({
+  listMapArchives,
+  clearAllMapArchives,
+  removeMapArchive,
+  removeTripMapArchives,
+}));
+vi.mock('../lib/cache', () => ({ readCachedTripList }));
 
 const { default: UserSettings } = await import('./UserSettings');
 const { t } = await import('../i18n/he');
@@ -37,9 +49,50 @@ const makeMe = (over: Partial<Me['user']> = {}): Me => ({
   memberships: [],
 });
 
+beforeEach(() => {
+  listMapArchives.mockResolvedValue([]);
+  clearAllMapArchives.mockResolvedValue(undefined);
+  removeMapArchive.mockResolvedValue(undefined);
+  removeTripMapArchives.mockResolvedValue(undefined);
+  readCachedTripList.mockResolvedValue([]);
+});
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe('UserSettings offline map storage', () => {
+  it('shows the retained byte total and lets the device owner clear it', async () => {
+    me = makeMe();
+    listMapArchives.mockResolvedValue([
+      { key: '/map/world.pmtiles', kind: 'world', sizeBytes: 40 * 1024 * 1024 },
+      {
+        key: '/trips/t-rome/map/extract.pmtiles',
+        kind: 'extract',
+        tripId: 't-rome',
+        sizeBytes: 4 * 1024 * 1024,
+      },
+    ]);
+    readCachedTripList.mockResolvedValue([{ id: 't-rome', name: 'רומא' }]);
+    render(<UserSettings />);
+
+    expect(await screen.findByText('44.0MB')).toBeTruthy();
+    expect(screen.getByText(t.shell.account.mapStorageWorld)).toBeTruthy();
+    expect(screen.getByText('רומא')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: t.shell.account.mapStorageDeleteTrip('רומא'),
+      }),
+    );
+    await waitFor(() => expect(removeTripMapArchives).toHaveBeenCalledWith('t-rome'));
+    expect(screen.queryByText('רומא')).toBeNull();
+    expect(screen.getAllByText('40.0MB')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: t.shell.account.mapStorageClear }));
+    await waitFor(() => expect(clearAllMapArchives).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('0B')).toBeTruthy();
+  });
 });
 
 describe('UserSettings', () => {

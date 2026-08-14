@@ -11,8 +11,7 @@
 //   • **One map instantiation per visit.** Dynamic Maps bills per
 //     `new google.maps.Map()`, so nothing here may re-create one — not the
 //     `רשימה / מפה` toggle (it resizes a live map), not a filter, not a sheet drag,
-//     not the per-second clock tick, and none at all while the map is absent
-//     (offline, or no build config). See ADR-0121 §4.
+//     not the per-second clock tick. See ADR-0121 §4.
 //   • **This screen re-renders every second** (`useClock`). So the pin models are
 //     memoized on their own CONTENT, not on `nowMs`: a tick must reconcile to a
 //     no-op marker diff.
@@ -73,6 +72,7 @@ import {
   mapsKnowledgeUrl,
   mapsPredictionUrl,
   nextDestination,
+  referencedPlaceIds,
 } from '../lib/places';
 import {
   PLACE_REF_KIND,
@@ -115,6 +115,7 @@ import {
   type MapBounds,
 } from '../lib/map-camera';
 import { mapColorScheme, mapPaneAvailable, mapsConfig, mapTileUrls } from '../lib/map-config';
+import { useMapArchives } from '../lib/useMapArchives';
 import { prefersReducedMotion } from '../lib/motion';
 import { observeResize } from '../lib/observe-resize';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
@@ -601,7 +602,25 @@ export function MapView() {
   // z0–6, which draws a flat landmass at `MAP_ZOOM.PLACE` (corrected 2026-08-14; see
   // `mapTileUrls`). Keyed on the id so switching trips re-reads, which is the one thing that
   // legitimately rebuilds the canvas.
-  const tileUrls = useMemo(() => mapTileUrls(trip?.id), [trip?.id]);
+  const remoteTileUrls = useMemo(() => mapTileUrls(trip?.id), [trip?.id]);
+  const tripEnded = useMemo(
+    () => !!trip?.endDate && Date.parse(`${trip.endDate}T23:59:59.999Z`) < nowMs,
+    [nowMs, trip?.endDate],
+  );
+  const savedPlaceIds = useMemo(
+    () => referencedPlaceIds(events, bookings, maybeItems),
+    [bookings, events, maybeItems],
+  );
+  const mapArchives = useMapArchives({
+    tripId: trip.id,
+    offline,
+    ended: tripEnded,
+    hasMappedPlaces: places.some(
+      (place) => savedPlaceIds.has(place.id) && placePoint(place) != null,
+    ),
+    urls: remoteTileUrls,
+  });
+  const tileUrls = mapArchives.urls;
   // Still read for `DevMapTuner`, which reports what a Google canvas was built from and is
   // Phase 4's to delete along with the vars themselves.
   const config = useMemo(() => mapsConfig(), []);
@@ -2957,6 +2976,46 @@ export function MapView() {
     </StatusBanner>
   );
 
+  const archiveNotice = (() => {
+    if (offline) return <StatusBanner tone="offline">{t.map.offlineMap.offline}</StatusBanner>;
+    if (!mapArchives.visible) return null;
+    if (mapArchives.status === 'prompt') {
+      return (
+        <StatusBanner
+          tone="neutral"
+          action={{ label: t.map.offlineMap.download, onClick: mapArchives.download }}
+          onDismiss={mapArchives.dismiss}
+        >
+          {t.map.offlineMap.prompt}
+        </StatusBanner>
+      );
+    }
+    if (mapArchives.status === 'downloading') {
+      return <StatusBanner tone="neutral">{t.map.offlineMap.downloading}</StatusBanner>;
+    }
+    if (mapArchives.status === 'preparing') {
+      return (
+        <StatusBanner
+          tone="neutral"
+          action={{ label: t.map.offlineMap.retry, onClick: mapArchives.download }}
+        >
+          {t.map.offlineMap.preparing}
+        </StatusBanner>
+      );
+    }
+    if (mapArchives.status === 'no-space' || mapArchives.status === 'failed') {
+      return (
+        <StatusBanner
+          tone="neutral"
+          action={{ label: t.map.offlineMap.retry, onClick: mapArchives.download }}
+        >
+          {mapArchives.status === 'no-space' ? t.map.offlineMap.noSpace : t.map.offlineMap.failed}
+        </StatusBanner>
+      );
+    }
+    return null;
+  })();
+
   // A tapped ghost, surfaced as the one row it is — reusing `.place` rather than
   // inventing an info window, and named with the day it belongs to (§6). The place card
   // below is this rule with the special case removed: **the row surfaces wherever the
@@ -3516,10 +3575,9 @@ export function MapView() {
     </>
   );
 
-  // The map is absent — **offline, which is now the only way** (ADR-0186 §8, until Phase 3
-  // removes even that): the tab is exactly the list it has always been, in the ordinary
-  // scrolling body. Not a greyed watermarked frame — that would be a third grammar for a fact
-  // this tab already states two ways (ADR-0121 §11).
+  // Keep the capability fallback independent of connectivity. Phase 3 means offline still
+  // has a map; this path is only for a renderer/configuration failure that makes the canvas
+  // genuinely unavailable, and preserves the useful list without inventing a broken frame.
   if (!hasMap) {
     return (
       <div className="map-screen" data-mode={mode} data-offline={offline || undefined}>
@@ -3607,6 +3665,7 @@ export function MapView() {
           card and the pre-prompt are absolutely positioned over the canvas, never
           wrappers around `<MapPane>`: wrapping it remounts it, and a remount is a billed
           map load (ADR-0121 §4). */}
+      {archiveNotice}
       <div className="map-split">
         <MapPane
           scheme={scheme}

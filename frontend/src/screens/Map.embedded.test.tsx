@@ -276,7 +276,22 @@ vi.mock('../lib/map-config', () => ({
     world: '/map/world.pmtiles',
     detail: '/map/planet-20260813.pmtiles',
   }),
-  mapPaneAvailable: ({ offline }: { offline: boolean }) => !offline,
+  mapPaneAvailable: () => true,
+}));
+vi.mock('../lib/useMapArchives', () => ({
+  useMapArchives: ({
+    urls,
+    offline,
+  }: {
+    urls: { world: string; detail: string };
+    offline: boolean;
+  }) => ({
+    urls: offline ? { ...urls, detail: urls.world } : urls,
+    checked: true,
+    status: 'ready',
+    download: vi.fn(),
+    dismiss: vi.fn(),
+  }),
 }));
 
 /** The pane, stubbed: it reports what it was told to draw and lets a test tap a pin.
@@ -4961,14 +4976,16 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     });
   });
 
-  it('offline the map is ABSENT: no pane, no toggle, no map instance (§11)', () => {
+  it('offline keeps the map and list available, using the saved world floor', () => {
     seed();
     isOffline = true;
     render(wrap(<MapView />));
-    expect(document.querySelector('[data-pane]')).toBeNull();
-    expect(screen.queryByRole('button', { name: t.map.view.map })).toBeNull();
-    expect(screenEl().className).not.toContain('is-split');
-    // The tab is the list it has always been, under the existing "last saved" banner.
+    expect(document.querySelector('[data-pane]')).toBeTruthy();
+    expect(screen.getByRole('button', { name: t.map.view.map })).toBeTruthy();
+    expect(screenEl().className).toContain('is-split');
+    const urls = paneProps.current.urls as { detail: string; world: string };
+    expect(urls.detail).toBe(urls.world);
+    expect(screen.getByText(t.map.offlineMap.offline)).toBeTruthy();
     expect(row('museum')).toBeTruthy();
     expect(screen.queryByRole('button', { name: new RegExp(t.map.near.chip) })).toBeNull();
   });

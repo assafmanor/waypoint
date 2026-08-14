@@ -190,6 +190,16 @@ export const t = {
       close: 'סגירת חיפוש',
       noResultsTitle: 'לא נמצאו מקומות',
     },
+    offlineMap: {
+      offline: 'אופליין · המפה מציגה את מה שנשמר במכשיר',
+      prompt: 'לשמור מפה אופליין לטיול הזה?',
+      download: 'הורדה',
+      downloading: 'מורידים את מפת הטיול לאופליין…',
+      preparing: 'מכינים את מפת הטיול · אפשר להמשיך להשתמש במפה',
+      retry: 'בדיקה שוב',
+      noSpace: 'אין מספיק מקום לשמור את מפת הטיול',
+      failed: 'הורדת המפה לא הצליחה',
+    },
     // Google's half of the search (ADR-0115, re-parented into the sheet by ADR-0131 §8
     // and available in BOTH modes). Its `arm`/`armBody`/`armAria` are deleted, not
     // orphaned: ADR-0131 §8a withdrew the gate, because the arm separated two intents on
@@ -1459,6 +1469,14 @@ export const t = {
       currencyLabel: 'מטבע',
       currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · הוא הצד השני של כל המרה בטיול.',
       currencyUnset: '-',
+      mapStorage: 'מפות אופליין',
+      mapStorageSize: 'כל המפות',
+      mapStorageClear: 'למחוק הכל',
+      mapStorageWorld: 'מפת העולם',
+      mapStorageUnknownTrip: 'טיול שכבר אינו זמין',
+      mapStorageDelete: 'מחיקה',
+      mapStorageDeleteTrip: (name: string) => `מחיקת ${name}`,
+      mapStorageHint: 'המפות הן מטמון במכשיר הזה · מחיקה לא מוחקת מקומות או פרטי טיול.',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
       emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',

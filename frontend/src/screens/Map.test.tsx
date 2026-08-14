@@ -165,6 +165,15 @@ vi.mock('../lib/map-config', () => ({
     detail: '/map/planet-20260813.pmtiles',
   }),
 }));
+vi.mock('../lib/useMapArchives', () => ({
+  useMapArchives: ({ urls }: { urls: { world: string; detail: string } }) => ({
+    urls,
+    checked: true,
+    status: 'ready',
+    download: vi.fn(),
+    dismiss: vi.fn(),
+  }),
+}));
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
 vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
 vi.mock('../lib/outbox', () => ({

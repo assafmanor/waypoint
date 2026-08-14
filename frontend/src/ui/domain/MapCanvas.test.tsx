@@ -49,6 +49,7 @@ class FakeMapLibreMap {
   static failToBuild = false;
   readonly options: Record<string, unknown>;
   removed = 0;
+  styles: unknown[] = [];
   private readonly persistent = new Map<string, Set<Handler>>();
   private readonly oneShot = new Map<string, Set<Handler>>();
 
@@ -74,6 +75,9 @@ class FakeMapLibreMap {
   }
   remove() {
     this.removed += 1;
+  }
+  setStyle(style: unknown) {
+    this.styles.push(style);
   }
   /** Fired the way MapLibre fires: a `once` handler is spent, an `on` handler is not. */
   fire(type: string, event?: unknown) {
@@ -202,6 +206,21 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     expect(FakeMapLibreMap.built).toHaveLength(1);
     expect(built()).toBe(first);
     expect(first.removed).toBe(0);
+  });
+
+  it('switches archive styles in place when online or offline tile URLs change', async () => {
+    const { rerender } = await paint();
+    const first = built();
+    const offline = {
+      world: WORLD.world,
+      detail: '/trips/t1/map/style-switch.pmtiles',
+    };
+
+    rerender(<MapCanvas {...props({ scheme: MAP_COLOR_SCHEME.dark, urls: offline })} />);
+    await settle();
+
+    expect(FakeMapLibreMap.built).toHaveLength(1);
+    expect(first.styles).toEqual([mapStyle(MAP_COLOR_SCHEME.dark, offline)]);
   });
 
   it('hands the live instance out, with the module, and takes both back on unmount', async () => {
@@ -442,7 +461,9 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     it('registers each archive with the Bearer token', async () => {
       setAccessToken('tok-abc');
       await paint({ urls: WITH_TRIP });
-      const mine = registered.filter((entry) => entry.url.includes('.pmtiles'));
+      const mine = registered.filter((entry) =>
+        [WITH_TRIP.world, WITH_TRIP.detail].includes(entry.url),
+      );
       expect(mine.map((entry) => entry.url)).toEqual(
         expect.arrayContaining([WITH_TRIP.world, WITH_TRIP.detail]),
       );

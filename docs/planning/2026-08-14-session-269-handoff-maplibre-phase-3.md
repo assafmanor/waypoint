@@ -220,3 +220,19 @@ pnpm typecheck && pnpm lint && pnpm build
 
 Two backend specs (`booking-notes-migration`, `sync.gateway`) fail on a clean tree too — verified
 against a stash, not this work.
+
+## 9. Phase 3 continuation (session 270b)
+
+Phase 3's device storage path is implemented on `staging`: local-or-remote PMTiles sources, a
+512 MiB budgeted LRU, seven-day ended-trip grace, current-trip and world pinning, deletion on trip
+loss, storage headroom checks, metering-aware automatic download, the one-time unknown-connection
+prompt, per-trip management rows, and an offline Map tab. A 503 is now the download's `preparing`
+state. Trips with no referenced mapped place do not request or suggest an extract; confidently
+unmetered automatic work is silent.
+
+The same bundle fixes the two owner-reported marker defects: search-result rings render before row
+selection, and location/draft/trip markers cannot stack over the open card or form.
+
+Still deliberately open: the proposed bounded memory-only session cache for arbitrary researched
+areas needs the owner's design approval; the dark terrain pass still requires the `design-mockups`
+workflow. Field report #35's original cause remains unknown.

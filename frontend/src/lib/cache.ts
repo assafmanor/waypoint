@@ -26,6 +26,7 @@ import { ACTIVE_TRIP_STORAGE_KEY, LOCAL_READ_PHASE, LOCAL_READ_TIMEOUT_MS } from
 import { fetchTrips } from './api';
 import { bestEffort } from './deadline';
 import { clearAllCachedDocuments } from './doc-cache';
+import { clearAllMapArchives, removeTripMapArchives } from './map-archive-cache';
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
 import { getNow } from './useClock';
 import { dropNotesForHostChange } from './notes';
@@ -369,6 +370,7 @@ export async function wipeLocalData(): Promise<void> {
     // ignore
   }
   await clearAllCachedDocuments();
+  await clearAllMapArchives().catch(() => {});
   await initOutboxCount().catch(() => {});
 }
 
@@ -380,6 +382,7 @@ export async function clearTripCache(tripId: string): Promise<void> {
     await db.snapshotMeta.delete(tripId);
     await db.tripList.delete(tripId);
   });
+  await removeTripMapArchives(tripId).catch(() => {});
 }
 
 // --- Trip-list cache (offline all-trips + boot resolution) -------------------

@@ -7,7 +7,7 @@
 // rejected with a reason in ADR-0133 §7 — a theme toggle, a language picker, units,
 // a user home zone, a calendar-sync toggle, account deletion — because each is
 // either fiction today or belongs to a surface that already owns it.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MAX_DISPLAY_NAME_LENGTH } from '@waypoint/shared';
 import { t } from '../i18n/he';
@@ -21,6 +21,22 @@ import { CurrencyPicker, currencyLabel } from '../ui/primitives/CurrencyPicker';
 import { Icon } from '../ui/Icon';
 import { NavArrow } from '../ui/NavArrow';
 import { StatusBanner } from '../ui/feedback/StatusBanner';
+import {
+  clearAllMapArchives,
+  listMapArchives,
+  removeMapArchive,
+  removeTripMapArchives,
+} from '../lib/map-archive-cache';
+import { formatBytes } from '../lib/bytes';
+import { readCachedTripList } from '../lib/cache';
+
+interface MapStorageRow {
+  id: string;
+  name: string;
+  sizeBytes: number;
+  keys: string[];
+  tripId?: string;
+}
 
 /** The three rungs, in ramp order. `system` first because it is the default and
  *  the one that keeps tracking; no icons, because the words are the whole
@@ -41,6 +57,52 @@ export default function UserSettings() {
   // not trip or account state, so nothing above this screen needs to hold it.
   const [themePick, setPick] = useState<ThemePick>(readThemePick);
   const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [mapStorage, setMapStorage] = useState<MapStorageRow[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void Promise.all([listMapArchives(), readCachedTripList()]).then(
+      ([entries, trips]) => {
+        if (!live) return;
+        const tripNames = new Map(trips.map((trip) => [trip.id, trip.name]));
+        const rows = new Map<string, MapStorageRow>();
+        for (const entry of entries) {
+          const id = entry.tripId ?? 'world';
+          const row = rows.get(id) ?? {
+            id,
+            name: entry.tripId
+              ? (tripNames.get(entry.tripId) ?? t.shell.account.mapStorageUnknownTrip)
+              : t.shell.account.mapStorageWorld,
+            sizeBytes: 0,
+            keys: [],
+            tripId: entry.tripId,
+          };
+          row.sizeBytes += entry.sizeBytes;
+          row.keys.push(entry.key);
+          rows.set(id, row);
+        }
+        setMapStorage([...rows.values()]);
+      },
+      () => {
+        if (live) setMapStorage([]);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const mapBytes = mapStorage?.reduce((sum, row) => sum + row.sizeBytes, 0) ?? 0;
+
+  const removeMapStorageRow = (row: MapStorageRow) => {
+    const removing = row.tripId
+      ? removeTripMapArchives(row.tripId)
+      : Promise.all(row.keys.map(removeMapArchive)).then(() => undefined);
+    void removing.then(
+      () => setMapStorage((current) => current?.filter((item) => item.id !== row.id) ?? []),
+      () => {},
+    );
+  };
 
   if (!me) return null;
 
@@ -176,6 +238,45 @@ export default function UserSettings() {
             onClose={() => setCurrencyOpen(false)}
           />
         )}
+
+        <div className="set-sec-title">{t.shell.account.mapStorage}</div>
+        <div className="set-card">
+          <div className="id-row">
+            <span className="lab">{t.shell.account.mapStorageSize}</span>
+            <span className="val mono" dir="auto">
+              {formatBytes(mapBytes)}
+            </span>
+            <button
+              type="button"
+              className="set-edit"
+              onClick={() => {
+                void clearAllMapArchives().then(
+                  () => setMapStorage([]),
+                  () => {},
+                );
+              }}
+            >
+              {t.shell.account.mapStorageClear}
+            </button>
+          </div>
+          {mapStorage?.map((row) => (
+            <div className="id-row" key={row.id}>
+              <span className="lab">{row.name}</span>
+              <span className="val mono" dir="auto">
+                {formatBytes(row.sizeBytes)}
+              </span>
+              <button
+                type="button"
+                className="set-edit"
+                aria-label={t.shell.account.mapStorageDeleteTrip(row.name)}
+                onClick={() => removeMapStorageRow(row)}
+              >
+                {t.shell.account.mapStorageDelete}
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="set-hint-block">{t.shell.account.mapStorageHint}</div>
 
         <div className="set-sec-title">{t.shell.account.accountSection}</div>
         <div className="set-card">

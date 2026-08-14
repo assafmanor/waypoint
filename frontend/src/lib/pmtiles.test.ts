@@ -29,6 +29,11 @@ const fake = vi.hoisted(() => ({
   constructed: [] as string[],
   /** The live `FetchSource` per URL, so a header refresh is observable. */
   sources: new Map<string, { headers: Headers; credentials?: string; refreshes: number }>(),
+  local: new Map<string, Blob>(),
+  registeredSources: new Map<
+    string,
+    { getBytes(offset: number, length: number): Promise<{ data: ArrayBuffer }> }
+  >(),
   /** What each archive should answer. */
   plan: new Map<string, { header?: Record<string, number> | Error; tiles?: Map<string, number> }>(),
   /** The `z/x/y` each archive was asked for. */
@@ -36,6 +41,12 @@ const fake = vi.hoisted(() => ({
 }));
 
 vi.mock('./api', () => ({ accessTokenForHeader: () => fake.token }));
+vi.mock('./map-archive-cache', () => ({
+  readLocalMapArchive: (url: string) => {
+    const blob = fake.local.get(url);
+    return Promise.resolve(blob ? { blob, meta: { key: url } } : null);
+  },
+}));
 vi.mock('./maplibre', () => ({
   loadMapLibre: () => Promise.resolve({ addProtocol: fake.addProtocol }),
 }));
@@ -51,6 +62,9 @@ vi.mock('pmtiles', () => {
     getKey() {
       return this.url;
     }
+    getBytes() {
+      return Promise.resolve({ data: new ArrayBuffer(0) });
+    }
     setHeaders(headers: Headers) {
       const live = fake.sources.get(this.url);
       if (live) {
@@ -61,7 +75,8 @@ vi.mock('pmtiles', () => {
   }
   class PMTiles {
     constructor(readonly source: FetchSource) {
-      fake.constructed.push(source.url);
+      fake.constructed.push(source.getKey());
+      fake.registeredSources.set(source.getKey(), source);
     }
     getHeader() {
       const planned = fake.plan.get(this.source.url)?.header;
@@ -106,6 +121,8 @@ beforeEach(() => {
   fake.protocols = 0;
   fake.constructed.length = 0;
   fake.sources.clear();
+  fake.local.clear();
+  fake.registeredSources.clear();
   fake.plan.clear();
   fake.asked.clear();
 });
@@ -142,6 +159,17 @@ describe('ensurePmtilesArchives', () => {
     const { ensurePmtilesArchives } = await freshModule();
     await ensurePmtilesArchives([WORLD]);
     expect(fake.sources.get(WORLD)?.headers.has('Authorization')).toBe(false);
+  });
+
+  it('registers cached archive bytes as the source without making remote range reads', async () => {
+    fake.local.set(WORLD, new Blob(['abcdef']));
+    const { ensurePmtilesArchives } = await freshModule();
+
+    await ensurePmtilesArchives([WORLD]);
+
+    expect(fake.sources.has(WORLD)).toBe(false);
+    const bytes = await fake.registeredSources.get(WORLD)?.getBytes(1, 3);
+    expect(new TextDecoder().decode(bytes?.data)).toBe('bcd');
   });
 
   // A rotating token has to reach an archive that is already registered, and re-adding it would
