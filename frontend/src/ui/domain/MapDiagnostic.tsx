@@ -90,6 +90,33 @@ function tileTraffic(sinceMs: number): string {
   }
 }
 
+/**
+ * **Who is answering this page's fetches?**
+ *
+ * Added last, and on the strongest evidence yet: the device reported `tiles:0/60 err:none`
+ * — sixty tile requests completed on the page, then none at all for a freshly built map,
+ * with no error. The map has not failed to DRAW tiles; it has stopped ASKING for them, or
+ * is asking and getting nothing back.
+ *
+ * A service worker is the one thing in the page that fits every observation at once: it is
+ * terminated when idle (which is "after a while in the background"), every fetch from a
+ * controlled page goes through it INCLUDING cross-origin ones, a dead or restarting worker
+ * leaves requests hanging with no error, it is ORIGIN-scoped so a new map inherits it, and
+ * only a new document re-attaches to a working controller. Desktop keeps workers alive far
+ * more aggressively, which is why nothing forced here has ever reproduced this.
+ *
+ * `waiting` is worth its own field because ADR-0185 deliberately leaves a new build parked
+ * rather than self-activating, so a waiting worker is now an ordinary state — and one
+ * nobody has checked against this failure.
+ */
+function serviceWorkerState(): string {
+  const container = navigator.serviceWorker;
+  if (!container) return 'sw:unsupported';
+  const controller = container.controller;
+  if (!controller) return 'sw:none';
+  return `sw:${controller.state}`;
+}
+
 /** The map's own canvas, as the DOM sees it — `none` when vis.gl never constructed one,
  *  which is what a loader stuck below `LOADED` looks like from out here (session 262). */
 function canvasState(pane: HTMLElement | null): string {
@@ -137,6 +164,7 @@ export function MapDiagnostic({
           `pane:${box ? `${Math.round(box.width)}x${Math.round(box.height)}` : 'none'}`,
           `painted:${facts.painted ? 'y' : 'n'}`,
           tileTraffic(performance.now() - facts.elapsedMs),
+          serviceWorkerState(),
           `fails:${facts.failures}`,
           `resumes:${facts.resumes}`,
           `t:${Math.round(facts.elapsedMs / 100) / 10}s`,
