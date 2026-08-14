@@ -96,6 +96,38 @@ test('every archive read carries the Bearer token', async ({ page }) => {
   expect(auth.every((header) => header === 'Bearer test-token')).toBe(true);
 });
 
+// ── THE HEBREW GROUND READS RIGHT-TO-LEFT (2026-08-14, ADR-0186 amendment 269j) ──
+//
+// The first working map drew every RTL label reversed — `רופגניס` for `סינגפור`, `דנליאת` for
+// `תאילנד` — because a GL renderer lays glyphs out in logical order and the bidi pass is a plugin.
+//
+// **Asserted as a NETWORK fact, and that is deliberate.** Whether the shaping is right is a pixel
+// question this suite cannot answer; whether the plugin ARRIVED is an asset-path question, and the
+// asset path is exactly what broke the tile worker one amendment ago. Both halves of that trap are
+// covered here: it must come from our own origin (not the unpkg URL every example gives — §3 allows
+// no vendor host on a user's fetch path, and Phase 3 has no network), and it must be JAVASCRIPT,
+// because `spa-fallback.filter.ts` answers a missing asset with `index.html` at **200** and a
+// worker fed HTML dies silently.
+test('the RTL text plugin loads, from our origin, as JavaScript', async ({ page }) => {
+  const plugin: { url: string; status: number; type: string }[] = [];
+  page.on('response', (response) => {
+    if (!/rtl-text/i.test(response.url())) return;
+    plugin.push({
+      url: response.url(),
+      status: response.status(),
+      type: response.headers()['content-type'] ?? '',
+    });
+  });
+
+  await openMap(page);
+  await expect.poll(() => plugin.length, { timeout: 15_000 }).toBeGreaterThan(0);
+  const [script] = plugin;
+  expect(script!.status).toBe(200);
+  expect(new URL(script!.url).origin).toBe(new URL(page.url()).origin);
+  // The 200-with-HTML trap: a content type is what tells a real script from the app shell.
+  expect(script!.type).toMatch(/javascript|ecmascript/i);
+});
+
 test('a ground that cannot be read is REPORTED, not left blank', async ({ page }) => {
   await openMap(page);
 

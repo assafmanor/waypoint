@@ -69,17 +69,44 @@ export type MapLibreModule = typeof import('maplibre-gl');
 // bug one layer down.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
+// ── HEBREW LABELS, IN THE ORDER A PERSON READS THEM ───────────────────────────────────
+//
+// **A GL renderer lays out glyphs in logical order and calls it done**, so without a bidi pass
+// every RTL label on the ground draws reversed. On the first working map (2026-08-14) that was
+// every label in the country:
+//
+//     רופגניס → סינגפור   ·   דנליאת → תאילנד   ·   קוקגנב → בנגקוק   ·   רמנאים → מיאנמר
+//
+// The reordering lives in a plugin because it is a chunk of ICU nobody wants in the base bundle,
+// and MapLibre imports it **into the tile worker** — which is why it is a URL rather than a
+// module, and why it is set here beside the worker's own.
+//
+// **Self-hosted, not a CDN.** Every MapLibre example points `setRTLTextPlugin` at unpkg; §3 does
+// not allow a vendor host on a user's fetch path, and Phase 3 needs this to work with no network
+// at all. `?url` is enough here — unlike the worker above, this script is a self-contained UMD
+// bundle with zero imports, so relocating the file breaks nothing. (The style's `glyphs` URL is
+// the same class of problem and is still on the backlog: it points at `protomaps.github.io`.)
+//
+// `lazy: false` — the app is Hebrew (ADR-0009), so RTL text is not a case to defer into: lazily
+// loading it means the first tiles lay out reversed and re-shape when the plugin lands.
+import rtlTextUrl from '@mapbox/mapbox-gl-rtl-text/mapbox-gl-rtl-text.min.js?url';
+
 let pending: Promise<MapLibreModule> | null = null;
 
 export function loadMapLibre(): Promise<MapLibreModule> {
   // Cleared on rejection so a transient chunk failure is retryable — the one property the
   // vis.gl global did not have, and the reason six fixes could not recover a poisoned page.
   pending ??= import('maplibre-gl')
-    .then((gl) => {
+    .then(async (gl) => {
       // Before any map exists, which is what makes this the right place: `config.WORKER_URL`
       // is read when the first worker is spawned, and every construction path in the app
       // awaits this function first.
       gl.setWorkerUrl(workerUrl);
+      // **Awaited, but never fatal.** A map with reversed labels is a worse map; a map that
+      // refuses to build is no map, and this file's whole subject is that the second failure
+      // mode is the one that hurts. So the wait is real (no reversed first frame) and the
+      // failure is not (the labels come out backwards and everything else works).
+      await gl.setRTLTextPlugin(rtlTextUrl, false).catch(() => {});
       return gl;
     })
     .catch((error: unknown) => {

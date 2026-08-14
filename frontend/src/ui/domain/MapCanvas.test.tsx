@@ -23,6 +23,11 @@ const addProtocol = vi.fn();
  *  on parse, no error reaches the map, and tiles are dispatched and never answered. That is
  *  ADR-0186's amendment 269i and the whole of the Phase-2 blank map. */
 const setWorkerUrl = vi.fn();
+/** **Bidi shaping for the Hebrew ground.** A GL renderer lays glyphs out in logical order, so
+ *  without this every RTL label draws reversed — `רופגניס` for `סינגפור`, on the first working map.
+ *  Resolves, because `loadMapLibre` awaits it: the wait is what keeps the first tiles from laying
+ *  out backwards and re-shaping a frame later. */
+const setRTLTextPlugin = vi.fn(() => Promise.resolve());
 const tileHandler = vi.fn();
 
 type Handler = (event?: unknown) => void;
@@ -98,7 +103,12 @@ class FakeFetchSource {
   }
 }
 
-vi.mock('maplibre-gl', () => ({ Map: FakeMapLibreMap, addProtocol, setWorkerUrl }));
+vi.mock('maplibre-gl', () => ({
+  Map: FakeMapLibreMap,
+  addProtocol,
+  setWorkerUrl,
+  setRTLTextPlugin,
+}));
 vi.mock('pmtiles', () => ({
   Protocol: class {
     tile = tileHandler;
@@ -492,6 +502,22 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     // And the ordering, which is the half that matters: a URL set after construction is a URL
     // that changed nothing.
     expect(built().workerUrlWasSet).toBe(true);
+  });
+
+  // **The Hebrew ground reads right-to-left, which a GL renderer does not do by itself.** Glyphs
+  // are laid out in logical order, so the first working map drew every label reversed: `רופגניס`
+  // for `סינגפור`, `דנליאת` for `תאילנד`. The reordering is a plugin MapLibre imports into the tile
+  // worker, which is why it is a URL and not a module — and self-hosted rather than the unpkg URL
+  // every example gives, because §3 allows no vendor host on a user's fetch path.
+  it('loads the RTL text plugin from our own origin, not lazily', async () => {
+    await paint();
+    expect(setRTLTextPlugin).toHaveBeenCalledTimes(1);
+    const [url, lazy] = setRTLTextPlugin.mock.calls[0] as unknown as [string, boolean];
+    expect(url).toBeTruthy();
+    expect(url).not.toMatch(/^https?:\/\//);
+    // Not lazy: the app is Hebrew, so deferring means the first tiles shape backwards and
+    // re-shape a frame later.
+    expect(lazy).toBe(false);
   });
 
   // The latest-ref idiom, asserted rather than assumed: the effect runs once, so a callback
