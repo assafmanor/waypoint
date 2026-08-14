@@ -1258,6 +1258,9 @@ describe('a load failure falls back to ErrorState, in the pane, with a bounded r
       expect(out).toContain('painted:');
       expect(out).toContain('fails:');
       expect(out).toContain('resumes:');
+      // Google's own verdict on the map it built, which splits "the loader is wedged" from
+      // "it has a camera and simply is not fetching" — two bugs with opposite fixes.
+      expect(out).toContain('sdk:');
     });
 
     it('says so when tiles never arrive, and does not retry by itself', async () => {

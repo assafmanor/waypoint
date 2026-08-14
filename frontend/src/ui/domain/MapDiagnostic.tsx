@@ -32,6 +32,15 @@ export interface MapDiagnosticFacts {
    *  where the script had already loaded successfully — and only the message says whether
    *  that was the network, the referrer restriction, or a loader left poisoned. */
   lastError: string | null;
+  /** **Google's own answer about the map it built** — the split the readout could not make.
+   *  `tiles:0` says nothing was requested, but not whether the SDK BELIEVES it is fine, and
+   *  those are two different bugs needing opposite fixes:
+   *
+   *    - `none`   — vis.gl never got an instance, so the loader is what is wedged.
+   *    - `nobox`  — an instance exists but has no bounds: it never completed a first render
+   *                 pass, and nothing downstream of that will ever ask for a tile.
+   *    - `z12@…`  — it has a camera and thinks it has rendered, and is simply not fetching. */
+  sdk: string;
 }
 
 /** **Can this page make a NEW WebGL context right now?** The single most discriminating
@@ -220,6 +229,7 @@ export function MapDiagnostic({
           `fails:${now.failures}`,
           `resumes:${now.resumes}`,
           `t:${Math.round(now.elapsedMs / 100) / 10}s`,
+          `sdk:${now.sdk}`,
           `online:${navigator.onLine ? 'y' : 'n'}`,
           `vis:${document.visibilityState[0]}`,
           // Last, because it is the longest and the only free-form field — and the one

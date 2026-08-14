@@ -377,6 +377,33 @@ function ContextLossRecovery({
   return null;
 }
 
+/** **Hands the live `google.maps.Map` out to the diagnostic**, which is rendered in one
+ *  place that sits inside `<APIProvider>` and one that does not (the `mapFailed` branch has
+ *  replaced the whole subtree), so it cannot call `useMap` itself. Same trick `PinDensity`
+ *  uses below: outside `<Map>`, inside the provider, reaching the instance by id.
+ *
+ *  Written during render on purpose — the latest-ref idiom this file already uses for
+ *  callbacks. The CAMERA is deliberately not read here: it is sampled at the tap, so a
+ *  broken map's reading is the state at the moment somebody asked. */
+function MapInstanceProbe({ into }: { into: RefObject<google.maps.Map | null> }) {
+  into.current = useMap(MAP_ID);
+  return null;
+}
+
+/** What Google thinks of the map it built. See `MapDiagnosticFacts.sdk` for why each of
+ *  these three answers points at a different bug. */
+function sdkCamera(map: google.maps.Map | null): string {
+  if (!map) return 'none';
+  try {
+    const zoom = map.getZoom();
+    const centre = map.getCenter();
+    if (!map.getBounds() || zoom == null || !centre) return 'nobox';
+    return `z${zoom}@${centre.lat().toFixed(2)},${centre.lng().toFixed(2)}`;
+  } catch (error) {
+    return `throw:${error instanceof Error ? error.name : 'unknown'}`;
+  }
+}
+
 /** No-op default for the ring callback, hoisted so it is a stable identity — an inline
  *  arrow here would be a fresh prop every render on a screen that ticks every second,
  *  which is the exact hazard §4 exists for. */
@@ -507,6 +534,8 @@ function MapPaneInner({
    *  retry that clears everything else, because the question it answers is about the
    *  PAGE rather than about this attempt. */
   const lastErrorRef = useRef<string | null>(null);
+  /** Filled by `MapInstanceProbe` inside the provider; read at a diagnostic tap. */
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
 
   /** **The one place a dead map is recorded.** Every detection site routes here, so the
    *  count the diagnostic reports and the cue the person sees can never disagree — which
@@ -656,6 +685,7 @@ function MapPaneInner({
       elapsedMs: attemptStartRef.current == null ? 0 : performance.now() - attemptStartRef.current,
       painted: tilesPaintedRef.current,
       lastError: lastErrorRef.current,
+      sdk: sdkCamera(mapInstanceRef.current),
     }),
     [],
   );
@@ -794,6 +824,7 @@ function MapPaneInner({
           )}
           {/* Outside `<Map>` so our chrome is never inside the canvas Google manages,
             but inside `<APIProvider>` so it can still reach the instance by id. */}
+          <MapInstanceProbe into={mapInstanceRef} />
           <PinDensity paneRef={paneRef} />
           {/* The device-pass panel's zoom readout (ADR-0146 §5). Deliberately `PinDensity`'s
             shape and position: stateless, null-rendering, one listener — so it cannot
