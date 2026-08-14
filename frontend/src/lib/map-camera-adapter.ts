@@ -30,12 +30,12 @@ export interface CameraWorldPoint {
 }
 
 /**
- * **World space, which is mercator × 256.**
+ * **World space: the renderer's own world, in px, at zoom 0.**
  *
- * That is Google's convention (one 256px tile at zoom 0), and `useMapCamera` does its own
- * power-of-two shifts in it. MapLibre's `project()` is SCREEN pixels and would be the
- * wrong space entirely; `MercatorCoordinate` is normalised [0,1] and is the true
- * equivalent, so the adapter scales it rather than approximating with screen coordinates.
+ * `useMapCamera` does its own power-of-two shifts in it, on the one fact `screenPx =
+ * worldUnits × 2^zoom`. MapLibre's `project()` is SCREEN pixels and would be the wrong space
+ * entirely; `MercatorCoordinate` is normalised [0,1] and is the true equivalent, so the
+ * adapter scales it rather than approximating with screen coordinates.
  */
 export interface CameraProjection {
   fromLatLngToPoint(at: { lat: number; lng: number }): CameraWorldPoint | null;
@@ -74,9 +74,21 @@ export interface CameraMap {
   resize(): void;
 }
 
-/** Google's world tile size at zoom 0. The one number that makes mercator and Google's
- *  world space the same coordinate system. */
-const WORLD_TILE_SIZE = 256;
+/**
+ * **MapLibre's world size at zoom 0** — `Transform.worldSize = tileSize × 2^zoom` with
+ * `tileSize = 512`, so this is the one number that ties world space to what is on screen.
+ *
+ * **It shipped as Google's 256 and that was a 2× error in every pixel↔coordinate
+ * conversion the app makes** (2026-08-14): a long press dropped its pin twice as far from
+ * the centre as the finger was, and the pan that lifts a selected place clear of its card
+ * overshot by the same factor, leaving the pin high instead of centred in the visible band.
+ * Neither throws — the port kept Google's convention, and the arithmetic above it is
+ * self-consistent at any scale, so both bugs read as "the camera is a bit off".
+ *
+ * The number belongs to whoever is DRAWING, not to whoever the code was ported from. A
+ * renderer with a different tile size changes this line and nothing else.
+ */
+const WORLD_TILE_SIZE = 512;
 
 const asLatLng = (lat: number, lng: number): CameraLatLng => ({ lat: () => lat, lng: () => lng });
 

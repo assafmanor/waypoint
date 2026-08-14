@@ -321,8 +321,10 @@ export function reduceDragZoom(
   });
 }
 
-/** A point in Google's own world-coordinate space (the 256×256 Mercator square at zoom 0),
- *  which is what `Projection.fromLatLngToPoint` speaks. */
+/** A point in the renderer's world-coordinate space — the Mercator square in px at zoom 0,
+ *  which is what `CameraProjection.fromLatLngToPoint` speaks. Its edge length is the
+ *  renderer's, not a constant of ours (`map-camera-adapter`'s `WORLD_TILE_SIZE`); everything
+ *  below needs only that `screenPx = worldUnits × 2^zoom` holds in it. */
 export interface WorldPoint {
   x: number;
   y: number;

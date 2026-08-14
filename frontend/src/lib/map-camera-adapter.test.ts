@@ -39,19 +39,44 @@ describe('cameraMapFor', () => {
     expect(centre.lng()).toBeCloseTo(139.7005, 6);
   });
 
-  it('projects into WORLD space (mercator × 256), not screen pixels', () => {
+  it('projects into WORLD space, not screen pixels', () => {
     // The whole reason this is not `map.project()`: the camera does its own power-of-two
-    // shifts in Google's world space, and screen pixels are a different coordinate system
-    // that would still typecheck and still produce plausible-looking numbers.
+    // shifts in world space, and screen pixels are a different coordinate system that would
+    // still typecheck and still produce plausible-looking numbers.
     const at = { lat: 35.6595, lng: 139.7005 };
     const point = cameraMapFor(fakeMapLibre()).getProjection()!.fromLatLngToPoint(at)!;
     const m = MercatorCoordinate.fromLngLat([at.lng, at.lat]);
-    expect(point.x).toBeCloseTo(m.x * 256, 6);
-    expect(point.y).toBeCloseTo(m.y * 256, 6);
-    // Sanity against the convention itself: the whole world is 256 wide at zoom 0, so
-    // Tokyo sits a little past three-quarters across it.
-    expect(point.x).toBeGreaterThan(192);
-    expect(point.x).toBeLessThan(256);
+    expect(point.x / point.y).toBeCloseTo(m.x / m.y, 9);
+  });
+
+  it('scales world space so that screenPx = worldUnits × 2^zoom on THIS renderer', () => {
+    // **The one assertion the shipped adapter did not make, and the 2× bug it let through**
+    // (2026-08-14). It scaled mercator by Google's 256 while MapLibre draws a 512px world at
+    // zoom 0, so every conversion the camera makes between a pixel and a coordinate was
+    // doubled: a long press dropped its pin twice as far from the centre as the finger, and
+    // the selected-place pan overshot the visible band by the same factor.
+    //
+    // Asserted against MapLibre's own `worldSize = 512 × 2^zoom` rather than against our
+    // constant — restating the constant is exactly what the old test did, and it passed.
+    const MAPLIBRE_WORLD_PX_AT_Z0 = 512;
+    const zoom = 14;
+    const offsetPx = 100;
+    const at = { lat: 35.6595, lng: 139.7005 };
+    const projection = cameraMapFor(fakeMapLibre()).getProjection()!;
+
+    const world = projection.fromLatLngToPoint(at)!;
+    const shifted = projection.fromPointToLatLng({
+      x: world.x + offsetPx * 2 ** -zoom,
+      y: world.y,
+    })!;
+
+    const m = MercatorCoordinate.fromLngLat([at.lng, at.lat]);
+    const expected = new MercatorCoordinate(
+      m.x + offsetPx / (MAPLIBRE_WORLD_PX_AT_Z0 * 2 ** zoom),
+      m.y,
+      0,
+    ).toLngLat();
+    expect(shifted.lng()).toBeCloseTo(expected.lng, 9);
   });
 
   it('round-trips a coordinate through the projection', () => {

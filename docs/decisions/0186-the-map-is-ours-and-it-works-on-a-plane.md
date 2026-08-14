@@ -935,3 +935,32 @@ the live map instance and the latest style key, with an out-of-order regression 
 
 None of these changes identifies field report #35's original cause. Every concrete failure fixed on
 2026-08-14 was introduced by this migration. The renderer swap remains the experiment, not the cure.
+
+## Amendment (2026-08-14, session 269i) — world space kept Google's scale, and every px↔coordinate conversion was doubled
+
+§2's whole argument is that `useMapCamera` is not about Google, so the port narrows what it asks
+for to seven methods and hands MapLibre a facade with that shape. That held. What did not is the
+one **number** the facade carries: the adapter scaled `MercatorCoordinate` (normalised [0,1]) by
+**256**, Google's world-px at zoom 0, while MapLibre draws a **512**px world at zoom 0
+(`Transform.worldSize = tileSize × 2^zoom`, `tileSize = 512`).
+
+Every conversion between a pixel and a coordinate was therefore **2× too large** — exactly, at
+every zoom. Two reports, one cause:
+
+- a long press dropped its pin twice as far from the canvas centre as the finger was;
+- the pan that lifts a selected place clear of its card overshot the visible band by the same
+  factor, so the pin sat high instead of centred in it.
+
+The anchored double-tap zoom (`zoomAboutPoint`) drifted for the same reason and was not reported.
+
+**Why nothing caught it.** The arithmetic above the seam — `worldPointAtOffset`,
+`offsetPxOfWorldPoint`, `zoomAboutPoint` — is scale-free and self-consistent at any world size, so
+a wrong scale produces a camera that moves _plausibly_ wrong rather than one that throws. And the
+adapter's own test asserted `point.x ≈ mercator.x * 256`: it restated the constant instead of
+checking the invariant the constant exists to satisfy, so it certified the defect. It now asserts
+`screenPx = worldUnits × 2^zoom` against **MapLibre's** `worldSize`, and fails on the old value.
+
+**The general form, which is the part worth keeping:** a ported constant that belongs to the
+_renderer_ is not covered by an adapter that speaks the old _dialect_. §2's "the dialect is the
+contract; the vendor behind it is not" is right about method shapes and silent about units — a unit
+has to come from whoever is drawing.
