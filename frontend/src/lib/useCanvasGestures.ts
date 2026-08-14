@@ -172,9 +172,20 @@ export function useCanvasGestures(
     };
 
     const onPointerDown = (e: PointerEvent) => {
-      // Only the primary finger: a second one landing mid-gesture is a pinch, which is the
-      // renderer's and must not be re-read as a new drag origin.
-      if (!e.isPrimary || e.button > 0) return;
+      // Only the primary finger: a second one landing mid-gesture is a pinch or a two-finger
+      // tap, both the renderer's, and must not be re-read as a new drag origin.
+      //
+      // **But it does cancel the long press**, which it did not before and which the gesture
+      // it belongs to made expensive. A second finger means this is not a one-finger press, so
+      // the timer the FIRST one armed is measuring a gesture that no longer exists — and both
+      // clocks are 500ms (`DRAG_HOLD_MS`, and MapLibre's own `MAX_TOUCH_TIME`), so a two-finger
+      // tap held a hair too long missed the vendor's zoom-out *and* dropped a pin. The worst
+      // outcome of the two, on the input most likely to be held too long: one being relearned.
+      if (!e.isPrimary) {
+        clearHold();
+        return;
+      }
+      if (e.button > 0) return;
       clearHold();
       pressTarget = e.target;
       const { clientX: x, clientY: y, timeStamp: t } = e;
@@ -272,10 +283,13 @@ export function useCanvasGestures(
 
 /** Everything the renderer listens on for the gestures we are taking. `dblclick` and
  *  `touchend` are in it because the double-tap is the one we replace: leaving either through
- *  would give a vendor step on top of ours. `MapCanvas` now also passes
- *  `doubleClickZoom: false`, which is the source-level half of the same guard — but only
- *  half, since MapLibre's `TapDragZoomHandler` reads the same taps and is enabled with the
- *  pinch rather than separately. This list is what keeps that one quiet. */
+ *  would give a vendor step on top of ours.
+ *
+ *  **This list is the ONLY guard, and switching the vendor handlers off at the source instead
+ *  is not available** — `MapCanvas` says why at length. Both of MapLibre's tap recognisers are
+ *  bundled with a gesture we want and do not implement: `TapZoomHandler` with the two-finger
+ *  tap zoom-out, `TapDragZoomHandler` with the pinch. Suppressing events is what lets us take
+ *  one gesture from a handler without losing its sibling. */
 const SUPPRESSED = [
   'touchstart',
   'touchmove',
