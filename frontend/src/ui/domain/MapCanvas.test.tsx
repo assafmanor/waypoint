@@ -16,6 +16,13 @@ import { act, cleanup, render } from '@testing-library/react';
 /** `addProtocol` is page-global, which `MapCanvas` is explicit about — so it is a spy
  *  rather than a no-op: "registered once, however many panes mount" is an assertion. */
 const addProtocol = vi.fn();
+/** **The worker URL has to be NAMED, and this is the spy that keeps it named.** MapLibre parses
+ *  every tile on a Web Worker whose URL it otherwise derives from its own `import.meta.url` — right
+ *  unbundled, and in a production bundle it resolves to a file the build never emits, whereupon our
+ *  SPA fallback answers with `index.html` at 200 and a module worker is started from HTML. It dies
+ *  on parse, no error reaches the map, and tiles are dispatched and never answered. That is
+ *  ADR-0186's amendment 269i and the whole of the Phase-2 blank map. */
+const setWorkerUrl = vi.fn();
 const tileHandler = vi.fn();
 
 type Handler = (event?: unknown) => void;
@@ -40,9 +47,16 @@ class FakeMapLibreMap {
   private readonly persistent = new Map<string, Set<Handler>>();
   private readonly oneShot = new Map<string, Set<Handler>>();
 
+  /** Whether the tile worker's URL had been named by the time this map was constructed.
+   *  Captured HERE rather than compared afterwards, because the order is the claim: MapLibre
+   *  reads `config.WORKER_URL` when the first worker spawns, so a call that lands after
+   *  construction is a call that changed nothing. */
+  readonly workerUrlWasSet: boolean;
+
   constructor(options: Record<string, unknown>) {
     if (FakeMapLibreMap.failToBuild) throw new Error('webgl unavailable');
     this.options = options;
+    this.workerUrlWasSet = setWorkerUrl.mock.calls.length > 0;
     FakeMapLibreMap.built.push(this);
   }
   on(type: string, fn: Handler) {
@@ -84,7 +98,7 @@ class FakeFetchSource {
   }
 }
 
-vi.mock('maplibre-gl', () => ({ Map: FakeMapLibreMap, addProtocol }));
+vi.mock('maplibre-gl', () => ({ Map: FakeMapLibreMap, addProtocol, setWorkerUrl }));
 vi.mock('pmtiles', () => ({
   Protocol: class {
     tile = tileHandler;
@@ -456,6 +470,28 @@ describe('MapCanvas — the lifecycle ADR-0186 §1 chose to own', () => {
     // torn down on purpose: a second pane mounting while the first unmounts would otherwise
     // pull the protocol out from under it.
     expect(addProtocol.mock.calls).toEqual([['pmtiles', tileHandler]]);
+  });
+
+  // **The blank map of 2026-08-14, and the only assertion in the repo that stands between it and
+  // a return** (ADR-0186 amendment 269i). Left to itself MapLibre finds its tile-parsing worker by
+  // rewriting its own `import.meta.url` to a sibling filename — correct unbundled, and in a
+  // production bundle a path the build never emits. Our SPA fallback then answers it with
+  // `index.html` at **200**, so a module worker starts from HTML and dies on parse: no error, no
+  // tiles, forever. Every reading said `tiles:0 err:none` with both archives serving real bytes.
+  //
+  // The URL must be set BEFORE any map exists, because `config.WORKER_URL` is read when the first
+  // worker spawns — so this asserts the order, not merely the call.
+  it('names the tile worker’s URL before it constructs a map', async () => {
+    await paint();
+    // Once per PAGE, like the protocol above: `loadMapLibre` caches its module promise, so the
+    // URL is named on the first load and every later map inherits it. Not cleared between tests
+    // for exactly that reason — the count across this file IS the claim.
+    expect(setWorkerUrl).toHaveBeenCalledTimes(1);
+    const [url] = setWorkerUrl.mock.calls[0] as [string];
+    expect(url).toBeTruthy();
+    // And the ordering, which is the half that matters: a URL set after construction is a URL
+    // that changed nothing.
+    expect(built().workerUrlWasSet).toBe(true);
   });
 
   // The latest-ref idiom, asserted rather than assumed: the effect runs once, so a callback

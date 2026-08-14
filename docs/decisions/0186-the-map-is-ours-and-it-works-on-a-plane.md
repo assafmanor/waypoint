@@ -629,6 +629,13 @@ thing that would answer what the deployed cutter actually writes.
 
 ## Amendment (2026-08-14, session 269h) — the world archive is fine and the TRIP EXTRACT is not
 
+> **Superseded in part by 269i below.** The extract was never wrong: the `MISS` was the camera
+> sitting outside the trip's areas because the owner had panned it there, and the archive answered
+> correctly for where it was asked. The reading below is kept because the two diagnostic fields it
+> added are what localised the real bug one amendment later — but the conclusion it draws about the
+> extract, and the fills-only underlay change it suggested, are both withdrawn. Nothing was changed
+> in the cutter or the style on the strength of it.
+
 The first reading in this chain that names a specific artefact as wrong:
 
 ```
@@ -683,3 +690,78 @@ is what has cost this workstream its sessions:
 
 Both branches are verified against a real byte-assembled archive through the unmocked library, not
 only against the mock.
+
+## Amendment (2026-08-14, session 269i) — FOUND IT: the tile worker's URL does not survive bundling
+
+**The Phase-2 blank map is a four-line vendor assumption that our build breaks and our dev server
+hides.** Reproduced and fixed, both directions, in a real browser.
+
+The reading that localised it — the owner panned the map onto the trip's own ground:
+
+```
+… tiles:0 painted:n style:n/2g err:none  sdk:z8.87@9.68,100.01
+world:206/96ms[z0-6/5461t/6:42.3k]   extract:206/106ms[z0-14/127t/8:9.7k]
+```
+
+**Both archives HIT.** Real tile bytes at the camera, read through the same registered `PMTiles`
+objects the renderer uses. So the archives, the region, the cutter, the auth, the style and the camera
+were all provably correct — and nothing rendered. That is what finally pointed below all of them.
+
+MapLibre parses every tile on a **Web Worker**, and it finds that worker by rewriting its own module
+URL:
+
+```js
+function getWorkerUrl() {
+  let here = import.meta.url;
+  if (!/^https?:/.test(here)) return '';
+  return new URL(`./maplibre-gl-worker.mjs`, here).href; // a SIBLING file
+}
+```
+
+Unbundled that is correct — `node_modules/maplibre-gl/dist/` holds the worker beside the entry.
+**Bundled it is wrong**: `import.meta.url` is our own hashed chunk (`/assets/Map-<hash>.js`), so the
+worker is fetched from `/assets/maplibre-gl-worker.mjs`, which the build never emits.
+
+**And the failure is silent, which is why it survived a session of correct diagnoses.** MapLibre's
+fallback `fetch`es that URL and blobs the response — and `spa-fallback.filter.ts` answers any unknown
+path with `index.html` at **200**. So the fetch succeeds, a module worker starts from HTML, and dies
+on parse. Nothing reaches `onError`, because a dead worker is not a tile error: tiles are dispatched
+and never answered. `tiles:0`, `painted:n`, `err:none`, and `style:n` (which is `Style.loaded()`
+reporting a tile manager that will never finish) — every field, exactly, forever, on any retry.
+
+**Why nothing in the repo could see it, and this is the part worth keeping.**
+`playwright.config.ts` runs e2e against `pnpm dev`, and `vite.config.ts`'s
+`optimizeDeps.exclude: ['maplibre-gl']` — added for this migration — makes dev serve the real
+`dist/maplibre-gl.mjs`, whose worker sibling exists. **The exclusion added to keep the renderer
+unbundled in dev is exactly what made dev disagree with production.** So the map drew Bangkok
+perfectly in every e2e run and drew nothing at all on a phone, and the only differing thing was the
+production bundle, which no test in this repo had ever rendered.
+
+**The fix names the worker as an asset** rather than leaving it to be guessed:
+`import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'`, handed to
+`setWorkerUrl()` inside `loadMapLibre()` before any map exists (`config.WORKER_URL` is read when the
+first worker spawns, so ordering is part of the fix and part of the test). **`?worker&url` rather
+than `?url`**, because the worker imports `maplibre-gl-shared.mjs` as its own sibling — a bare asset
+copy relocates the file and breaks that import in turn, which is the same bug one layer down. The
+build now emits a self-contained 470 kB IIFE worker and the Map chunk references it by hash.
+
+**Verified in both directions, which is the claim this file has not been able to make until now:**
+
+- `E2E_PREVIEW=1 MAP_TILES_E2E=1` against the **production bundle** and a real archive — **3/3 pass**
+  with the fix.
+- The same run with the one line removed — **2 fail**: the ground never paints inside 60s, and the
+  Bearer-token spec fails too, because with no worker **no tile is ever requested at all**. That is
+  the device's `tiles:0` reproduced on a desktop for the first time in seven sessions.
+- `MapCanvas.test.tsx` asserts the URL is named once per page and that the map was constructed
+  _after_ it; removing the line fails that test too.
+
+**`E2E_PREVIEW=1` is the structural repair, and it is the one this workstream has owed three times.**
+An asset path, a chunk boundary and a worker URL are all **build-time** facts, and a dev-server suite
+asserts none of them. That mode now runs the whole e2e suite against `pnpm build && pnpm preview`.
+Wiring it into CI is the remaining step; the owed image-building step from the previous amendments is
+unchanged and still separate.
+
+**What this does and does not claim about field report #35.** It is a complete explanation of the
+blank map from 2026-08-14 — Phase 2's own, introduced by this migration. It is **not** an explanation
+of the original #35, which was a Google renderer dying after backgrounding on a device; that cause
+remains unknown, and the swap remains the experiment.

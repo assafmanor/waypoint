@@ -27,14 +27,64 @@
 // later map inherited — see `MapCanvas`'s note on `addProtocol` for the same distinction.
 export type MapLibreModule = typeof import('maplibre-gl');
 
+// ── THE WORKER, WHICH THE BUNDLE BREAKS AND THE DEV SERVER HIDES ──────────────────────
+//
+// **This is field report #35's Phase-2 blank map, and the bug is four lines of the vendor's**
+// (2026-08-14, ADR-0186 amendment 269i). MapLibre parses every tile on a Web Worker, and it
+// finds that worker by rewriting its OWN module URL:
+//
+//     function getWorkerUrl() {
+//       let here = import.meta.url;
+//       if (!/^https?:/.test(here)) return '';
+//       return new URL(`./maplibre-gl-worker.mjs`, here).href;   // a SIBLING file
+//     }
+//
+// Unbundled that is right — `node_modules/maplibre-gl/dist/` holds the worker next to the
+// entry. **Bundled it is wrong**: `import.meta.url` becomes our own hashed chunk
+// (`/assets/Map-<hash>.js`), so the worker is fetched from `/assets/maplibre-gl-worker.mjs`,
+// which the build never emits.
+//
+// **And it fails SILENTLY, which is the whole reason this took seven sessions.** MapLibre's
+// fallback fetches that URL and blobs the response — and our SPA fallback answers any unknown
+// path with `index.html` at **200**, so the fetch succeeds and a module worker is started from
+// HTML. It dies on parse. Nothing reaches `onError`, because a dead worker is not a tile error:
+// tiles are dispatched and never answered, so on the device it read
+//
+//     tiles:0 painted:n style:n/2g err:none      with BOTH archives serving real bytes
+//     world:206[z0-6/5461t/6:42.3k]  extract:206[z0-14/127t/8:9.7k]
+//
+// which is what finally localised it: the archives, the region, the auth and the style were all
+// provably fine and nothing rendered.
+//
+// **Why no test could see it.** `playwright.config.ts` runs e2e against `pnpm dev`, and
+// `vite.config.ts`'s `optimizeDeps.exclude: ['maplibre-gl']` — added for this migration — makes
+// dev serve the real `dist/maplibre-gl.mjs`, whose worker sibling exists. So the one thing that
+// differs is the production bundle, and no test in the repo had ever rendered one. The
+// `INEFFECTIVE_DYNAMIC_IMPORT` warning in the build log is a note about this module and says
+// nothing about the worker.
+//
+// **The fix names the worker as an asset instead of leaving it to be guessed.** `?worker&url`
+// rather than `?url` because the worker imports `maplibre-gl-shared.mjs` as its own sibling — a
+// bare asset copy relocates the file and breaks that import in turn, which would be the same
+// bug one layer down.
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
 let pending: Promise<MapLibreModule> | null = null;
 
 export function loadMapLibre(): Promise<MapLibreModule> {
   // Cleared on rejection so a transient chunk failure is retryable — the one property the
   // vis.gl global did not have, and the reason six fixes could not recover a poisoned page.
-  pending ??= import('maplibre-gl').catch((error: unknown) => {
-    pending = null;
-    throw error;
-  });
+  pending ??= import('maplibre-gl')
+    .then((gl) => {
+      // Before any map exists, which is what makes this the right place: `config.WORKER_URL`
+      // is read when the first worker is spawned, and every construction path in the app
+      // awaits this function first.
+      gl.setWorkerUrl(workerUrl);
+      return gl;
+    })
+    .catch((error: unknown) => {
+      pending = null;
+      throw error;
+    });
   return pending;
 }
