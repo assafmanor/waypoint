@@ -38,7 +38,7 @@ import { TaskSheet, type TaskDraft } from './TaskSheet';
 import { TaskManageSheet } from './TaskManageSheet';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
-import { ListRow } from './domain';
+import { ListRow, RowOpenFoot } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { RevealList } from './primitives/RevealList';
 import { EmptyState } from './feedback';
@@ -54,6 +54,9 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
   // null = closed; 'create' = a new task; a Task = editing that one.
   const [sheet, setSheet] = useState<Task | 'create' | null>(null);
   const [manage, setManage] = useState<Task | null>(null);
+  // The id of the row opened IN PLACE, or null. One at a time, exactly as the notes screen
+  // holds it (ADR-0153 §4): a second open row would make the list a set of panels.
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const meId = me?.user.id ?? '';
   const clock: TaskClock = useMemo(
@@ -131,7 +134,9 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
       due={taskDue(task, clock)}
       assignee={assigneeName(task)}
       onTick={() => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
-      onOpen={() => setSheet(task)}
+      open={openId === task.id}
+      onToggle={() => setOpenId((current) => (current === task.id ? null : task.id))}
+      onEdit={() => setSheet(task)}
       onManage={() => setManage(task)}
     />
   );
@@ -240,20 +245,35 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
  *  `lead` slot, which exists for exactly this. Not nested: Chrome destroys the DOM at a
  *  nested `<button>`. Not trailing: two 44px targets adjacent is a mis-tap the row cannot
  *  recover from, and filing the primary verb beside the leftovers menu inverts the division
- *  this repo already writes down. */
+ *  this repo already writes down.
+ *
+ *  **The row's tap OPENS IT WHERE IT IS** (ADR-0189 §3), which is ADR-0153 §4's shipped
+ *  idiom rather than a surface of its own — no sheet, no scrim, and the list stays where it
+ *  was. Phase 1 pointed this tap at the editor, and the consequence was that `body` had no
+ *  reader anywhere in the app: the editor wrote it and nothing rendered it. Editing is still
+ *  one press away, from the foot and from the `⋯`.
+ *
+ *  Every row opens, whether or not it has a body — an open task with no details still shows
+ *  who owes it and the verb, which is the same answer the notes screen gives on a host's
+ *  section. The `⋯` mark on the meta line is the separate claim that there is more to READ. */
 function TaskLi({
   task,
   due,
   assignee,
   onTick,
-  onOpen,
+  open,
+  onToggle,
+  onEdit,
   onManage,
 }: {
   task: Task;
   due: ReturnType<typeof taskDue>;
   assignee?: string;
   onTick: () => void;
-  onOpen: () => void;
+  /** Expanded: the body is printed under the row and the foot is under that. */
+  open: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
   onManage: () => void;
 }) {
   const unsynced = useUnsynced(task.id);
@@ -273,40 +293,82 @@ function TaskLi({
       )}
       {due && assignee ? <span className="tsk-sep">·</span> : null}
       {assignee}
+      {/* "There is more", not a preview of it — one glyph at the end of the meta line, and
+          it costs the row 0px. Absent while the row is open, because the words it points at
+          are printed directly underneath by then. */}
+      {task.body && !open ? (
+        <>
+          {due || assignee ? <span className="tsk-sep">·</span> : null}
+          <span className="tsk-more-mark" aria-hidden="true">
+            <Icon name="more" />
+          </span>
+        </>
+      ) : null}
     </>
   );
 
+  const hasMeta = Boolean(due || assignee || task.body);
+
   return (
-    <ListRow
-      className={settled ? 'tsk-settled' : undefined}
-      lead={
-        <button
-          type="button"
-          className="tsk-tick"
-          aria-pressed={task.status === TASK_STATUS.DONE}
-          aria-label={t.tasks.tick(task.title)}
-          onClick={onTick}
-        >
-          <Icon name="check" />
-        </button>
-      }
-      onOpen={onOpen}
-      openLabel={task.title}
-      title={
+    <>
+      <ListRow
+        className={
+          [settled ? 'tsk-settled' : '', open ? 'is-open' : ''].filter(Boolean).join(' ') ||
+          undefined
+        }
+        lead={
+          <button
+            type="button"
+            className="tsk-tick"
+            aria-pressed={task.status === TASK_STATUS.DONE}
+            aria-label={t.tasks.tick(task.title)}
+            onClick={onTick}
+          >
+            <Icon name="check" />
+          </button>
+        }
+        onOpen={onToggle}
+        openLabel={task.title}
+        title={
+          <>
+            {task.important && (
+              <span className="tsk-star" aria-hidden="true">
+                <Icon name="star" />
+              </span>
+            )}
+            <span>{task.title}</span>
+          </>
+        }
+        meta={hasMeta ? meta : undefined}
+        sync={<EntitySyncBadge id={task.id} />}
+        unsynced={unsynced}
+        onManage={onManage}
+        manageLabel={t.tasks.manage.actions}
+      />
+      {/* The row's SIBLING, not a prop on it — `ListRow` is shared with bookings, documents
+          and members, and none of them has anything to expand. The list card holds them
+          together, exactly as the open note joins it there. */}
+      {open && (
         <>
-          {task.important && (
-            <span className="tsk-star" aria-hidden="true">
-              <Icon name="star" />
-            </span>
+          {/* `dir="auto"` because the app did not write these words (ADR-0118). Without it the
+              block inherits the page's RTL, and a body opening with a Latin or numeric run —
+              an address, a confirmation code, an opening hour — lays out right-to-left and
+              comes apart. Measured in the running app before it was added: the first glyph of
+              `2-14-5 Kabukicho, Shinjuku` painted at x=404 in a box spanning 53–449, and at
+              x=67 with it. This element holds the value and nothing else, which is exactly
+              the boundary the attribute belongs on. */}
+          {task.body && (
+            <div className="tsk-open-body" dir="auto">
+              {task.body}
+            </div>
           )}
-          <span>{task.title}</span>
+          <RowOpenFoot
+            lead={<span className="row-open-lead plain">{assignee ?? t.tasks.sheet.nobody}</span>}
+            editLabel={t.tasks.manage.edit}
+            onEdit={onEdit}
+          />
         </>
-      }
-      meta={due || assignee ? meta : undefined}
-      sync={<EntitySyncBadge id={task.id} />}
-      unsynced={unsynced}
-      onManage={onManage}
-      manageLabel={t.tasks.manage.actions}
-    />
+      )}
+    </>
   );
 }

@@ -32,7 +32,9 @@ import { DateField } from './primitives/DateField';
 import { TimeField } from './primitives/TimeField';
 import { ZoneChip } from './primitives/ZoneChip';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
+import { Avatar } from './primitives/Avatar';
 import { ToggleChip } from './primitives/ToggleChip';
+import { Icon } from './Icon';
 import { useFormErrors } from './primitives/useFormErrors';
 import { t } from '../i18n/he';
 import './tasks.css';
@@ -110,15 +112,40 @@ export function TaskSheet({
     });
   };
 
-  // Nobody first: an unassigned task is "the group's — one of us", which is the DEFAULT and
-  // a real state rather than a missing value (brief §6). Only trip members can be named, and
-  // the server refuses anyone else (`assertMemberInTrip`).
+  // Nobody first, and pre-selected: unassigned is a real state rather than a missing value
+  // (brief §6). The default is safe only because the word DESCRIBES the state instead of
+  // claiming one — a presumed `של כולנו` could be false, a presumed `לא משויך` cannot. Only
+  // trip members can be named, and the server refuses anyone else (`assertMemberInTrip`).
+  //
+  // **A PERSON where the glyph goes** (ADR-0189 §2). The row is `ChoiceGrid layout="pills"`
+  // unchanged — scroll, snap, edge mask, `useCenterSelected` centring and radiogroup ARIA all
+  // arrive from the primitive — and the only new thing in it is `Choice.lead`. Phase 1 spent
+  // the app's FILTER grammar on this axis, and a filter narrows what you see where this
+  // decides who owes the outcome. `Avatar` is the one renderer for a person (ADR-0133 §3), so
+  // nothing here draws a circle.
   const assigneeOptions: Choice<string>[] = [
-    { value: NOBODY, icon: '', label: t.tasks.sheet.nobody },
+    {
+      value: NOBODY,
+      icon: '',
+      // A person-shaped ABSENCE, not a differently-shaped chip beside the people: the same
+      // circle with the group glyph, dashed while unchosen. A different shape would say
+      // "this is a different kind of answer" about the same question's default one.
+      lead: (
+        <span className="tsk-who-any">
+          <Icon name="members" />
+        </span>
+      ),
+      label: t.tasks.sheet.nobody,
+    },
     ...members
       .map((m) => users.find((u: User) => u.id === m.userId))
       .filter((u): u is User => u !== undefined)
-      .map((u) => ({ value: u.id, icon: '', label: u.displayName })),
+      .map((u) => ({
+        value: u.id,
+        icon: '',
+        lead: <Avatar person={u} size="sm" />,
+        label: u.displayName,
+      })),
   ];
 
   return (
@@ -173,13 +200,18 @@ export function TaskSheet({
         </Field>
 
         <Field label={t.tasks.sheet.assigneeLabel}>
-          <ChoiceGrid
-            options={assigneeOptions}
-            value={assignee}
-            onChange={setAssignee}
-            layout="pills"
-            ariaLabel={t.tasks.sheet.assigneeLabel}
-          />
+          {/* The density wrapper is how a NEW host meets the 44px floor without moving the
+              three shipped surfaces that share `.choice-pill` — `choice-grid.css` records
+              that deferral in place, and `.category-pills` is the same pattern. */}
+          <div className="tsk-who">
+            <ChoiceGrid
+              options={assigneeOptions}
+              value={assignee}
+              onChange={setAssignee}
+              layout="pills"
+              ariaLabel={t.tasks.sheet.assigneeLabel}
+            />
+          </div>
         </Field>
 
         <Field label={t.tasks.sheet.bodyLabel} htmlFor={bodyId}>
@@ -194,10 +226,29 @@ export function TaskSheet({
 
         {/* One flag, not a three-tier enum, and it spends no colour — rule 4 has none left
             (brief §7). The prominence it buys is in the SORT, where `important` lifts a task
-            within its urgency band and never across it. */}
-        <ToggleChip on={important} tone="cta" onClick={() => setImportant(!important)}>
-          {t.tasks.sheet.importantLabel}
-        </ToggleChip>
+            within its urgency band and never across it.
+
+            **`EventForm`'s `יש הזמנה` row verbatim** (ADR-0136 §1, and ADR-0189 §1): the
+            `.field` wrapper, `tone="cta"`, and `size="touch"` — whose stated job in
+            `toggle-chip.css` is the ADR-0017 floor "for a chip that is its surface's primary
+            control rather than one of a strip". Phase 1 shipped this chip with none of the
+            three and it measured 29px. The report said "ugly"; the defect under it was a
+            touch target, and the repair was to use the idiom the app already had.
+
+            NO `field-label`: the button says `חשוב`, and a label above it saying the same
+            word is that word twice for 20px. */}
+        <div className="field">
+          <ToggleChip
+            on={important}
+            tone="cta"
+            size="touch"
+            className="tsk-flag"
+            onClick={() => setImportant(!important)}
+          >
+            <Icon name="star" />
+            {t.tasks.sheet.importantLabel}
+          </ToggleChip>
+        </div>
 
         <FormActions
           primary={{ label: t.tasks.sheet.save, onClick: save }}

@@ -1077,9 +1077,10 @@ export const t = {
       count: (n: number) => (n === 1 ? 'משימה אחת' : `${n} משימות`),
     },
     subject: {
-      /** An unassigned task is the group's — "one of us" — which is a real state and the
-       *  default, never a missing value (brief §6). */
-      group: 'של כולנו',
+      /** A real state and the default, never a missing value (brief §6). The word names the
+       *  state rather than claiming one — `של כולנו` belongs to phase 6's `everyone`, and
+       *  spending it here is what made a presumed default read as a false claim. */
+      group: 'לא משויך',
     },
     due: {
       // ADR-0171's shipped deadline word, reused rather than re-invented.
@@ -1123,18 +1124,19 @@ export const t = {
       timeLabel: 'שעת יעד',
       clearDue: 'ללא תאריך',
       assigneeLabel: 'מי אחראי',
-      nobody: 'של כולנו',
+      nobody: 'לא משויך',
       bodyLabel: 'פרטים · לא חובה',
       bodyPlaceholder: 'משהו שכדאי לדעת כדי לסגור את זה',
-      importantLabel: 'חשובה',
+      // Not inflected for `משימה`: this labels a mark, it does not describe the task.
+      importantLabel: 'חשוב',
       save: 'שמירה',
       cancel: 'ביטול',
     },
     manage: {
       actions: 'פעולות על המשימה',
       edit: 'עריכה',
-      flag: 'סימון כחשובה',
-      unflag: 'ביטול הסימון כחשובה',
+      flag: 'סימון כחשוב',
+      unflag: 'ביטול הסימון כחשוב',
       // Dismissing is not doing — it stopped mattering, which is the other outcome and not
       // the absence of one.
       dismiss: 'הסרה מהרשימה',

@@ -211,7 +211,7 @@ describe('HostNotes', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
-    expect(document.querySelector('.note-open-foot')).toBeTruthy();
+    expect(document.querySelector('.row-open-foot')).toBeTruthy();
     expect(screen.queryByLabelText(t.notes.sheet.bodyLabel)).toBeNull();
   });
 
@@ -221,7 +221,7 @@ describe('HostNotes', () => {
     tripNotes = [note({ id: 'n1', body: 'קוד הכספת 4417', documentId: 'd1' })];
     open('document', 'd1');
     fireEvent.click(screen.getByRole('button', { name: 'קוד הכספת 4417' }));
-    expect(document.querySelector('button.note-open-host')).toBeNull();
+    expect(document.querySelector('button.row-open-lead')).toBeNull();
   });
 
   // The row here prints title-or-body, so a note carrying both a body and a link showed

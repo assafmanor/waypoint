@@ -119,7 +119,7 @@ test.describe('a note opens where it is', () => {
     await tapNote(page, 'לבקש את השולחן בגג');
 
     await expect(page.locator('.wp-listrow.is-open')).toHaveCount(1);
-    const foot = page.locator('.note-open-foot');
+    const foot = page.locator('.row-open-foot');
     await expect(foot).toHaveCount(1);
 
     // **The card grows; the ROW does not** — and that is the design, not a rounding error.
@@ -167,9 +167,9 @@ test.describe('a note opens where it is', () => {
     await boot(page);
     await tapNote(page, 'לבקש את השולחן בגג');
     await tapNote(page, 'הצ׳ק-אין רק מ-15:00');
-    await expect(page.locator('.note-open-foot')).toHaveCount(1);
+    await expect(page.locator('.row-open-foot')).toHaveCount(1);
     await tapNote(page, 'הצ׳ק-אין רק מ-15:00');
-    await expect(page.locator('.note-open-foot')).toHaveCount(0);
+    await expect(page.locator('.row-open-foot')).toHaveCount(0);
   });
 });
 
@@ -213,7 +213,7 @@ test.describe('the way in to a note’s host', () => {
   test('a general note offers no way in at all', async ({ page }) => {
     await boot(page);
     await tapNote(page, LONG);
-    await expect(page.locator('.note-open-foot .note-open-host.plain')).toBeVisible();
-    await expect(page.locator('.note-open-foot button.note-open-host')).toHaveCount(0);
+    await expect(page.locator('.row-open-foot .row-open-lead.plain')).toBeVisible();
+    await expect(page.locator('.row-open-foot button.row-open-lead')).toHaveCount(0);
   });
 });

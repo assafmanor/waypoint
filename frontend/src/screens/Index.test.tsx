@@ -103,6 +103,15 @@ describe('Index landing (ADR-0098)', () => {
     expect(screen.getByText('1')).toBeTruthy(); // bookings count
   });
 
+  // The order is an owner decision (2026-08-15) and nothing else in the app enforces it, so
+  // a re-order during an unrelated edit would be silent. After the spine, the rule is
+  // whether a tile can be LATE.
+  it('orders the tiles bookings · tasks · documents · notes', () => {
+    render(wrap(<Index />));
+    const titles = [...document.querySelectorAll('.wp-idx-tile-t')].map((e) => e.textContent);
+    expect(titles).toEqual([t.index.bookingsTitle, t.tasks.title, t.docs.title, t.notes.title]);
+  });
+
   // The Index is trip-wide, and a remembered `?day=` rides along on its URL now (field
   // report #39) — so the guard is that the param changes NOTHING here: the same tiles, the
   // same counts, the same readiness. There is no date filter on this screen to remove, and

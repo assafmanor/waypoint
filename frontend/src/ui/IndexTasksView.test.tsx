@@ -318,13 +318,56 @@ describe('IndexTasksView', () => {
       expect(draft.dueAt).toBe('2026-08-18T20:59:00.000Z');
     });
 
-    it('opens an existing task on the values it was saved with', () => {
+    // The row's tap OPENS IT IN PLACE now (ADR-0189 §3), so the way to the editor is the
+    // foot's verb — not the row. That is the change, not an incidental re-route: phase 1
+    // pointed this tap at the editor and `body` ended up with no reader anywhere.
+    it('opens an existing task on the values it was saved with, from the open row', () => {
       tripTasks = [today];
       show();
       fireEvent.click(screen.getByRole('button', { name: today.title }));
+      fireEvent.click(screen.getByRole('button', { name: t.tasks.manage.edit }));
       expect((screen.getByLabelText(t.tasks.sheet.titleLabel) as HTMLInputElement).value).toBe(
         today.title,
       );
+    });
+  });
+
+  // `body` was WRITE-ONLY through all of phase 1 — the editor wrote it and nothing in the
+  // app rendered it (ADR-0189 §3). These two are the readers.
+  describe('reading a task', () => {
+    it('prints the body under the row when the row is opened, and not before', () => {
+      tripTasks = [{ ...today, body: 'מינימום ארבעה, ולא אחרי 17:00' }];
+      show();
+      expect(screen.queryByText('מינימום ארבעה, ולא אחרי 17:00')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: today.title }));
+      expect(screen.getByText('מינימום ארבעה, ולא אחרי 17:00')).toBeTruthy();
+    });
+
+    it('marks the row that has more to read, and only that row', () => {
+      tripTasks = [{ ...today, body: 'יש פרטים' }, later];
+      show();
+      expect(document.querySelectorAll('.tsk-more-mark')).toHaveLength(1);
+    });
+
+    it('opens a task with no body too — the foot carries who owes it and the verb', () => {
+      tripTasks = [today];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: today.title }));
+      expect(document.querySelector('.row-open-foot')).toBeTruthy();
+      expect(document.querySelector('.tsk-open-body')).toBeNull();
+    });
+
+    it('closes an open row when another one opens — one at a time', () => {
+      tripTasks = [
+        { ...today, body: 'א' },
+        { ...later, body: 'ב' },
+      ];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: today.title }));
+      fireEvent.click(screen.getByRole('button', { name: later.title }));
+      expect(document.querySelectorAll('.row-open-foot')).toHaveLength(1);
+      expect(screen.queryByText('א')).toBeNull();
+      expect(screen.getByText('ב')).toBeTruthy();
     });
   });
 
