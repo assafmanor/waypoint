@@ -1,7 +1,7 @@
 # Tasks (משימות) — design brief: what is settled, what the design session owes
 
 **Date:** 2026-08-15
-**Status:** PM session complete. §1–§14 are settled with owner sign-off in-session; §A–§F are the open design questions the design session owes.
+**Status:** PM session complete; **design session complete for §A, §B and §D** (2026-08-15, session 271 — [ADR-0188](../decisions/0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md), [`mockups/tasks-row-and-refusals-v1.html`](../../mockups/tasks-row-and-refusals-v1.html)). §1–§14 are settled with owner sign-off in-session, **with one amendment to §2** recorded in place below. **§C, §E and §F remain open** and are a stated hand-off rather than an unscheduled question.
 **Precedent this brief mirrors:** [`2026-08-01-notes-design-brief.md`](2026-08-01-notes-design-brief.md), which fed [ADR-0152](../decisions/0152-a-note-is-one-entity-with-an-optional-host.md) / [ADR-0153](../decisions/0153-the-notes-surface-the-mark-and-no-mode-gate.md).
 
 ## Why this brief exists
@@ -35,6 +35,8 @@ An earlier draft of this session proposed two nouns — משימה for an author
 **That borrow was withdrawn, and the reason it does not transfer is worth recording.** ADR-0152 split the vocabulary because of **volume**: Wikipedia and an LLM write endlessly and would drown the group's own notes at machine volume, so the boundary had to be legible in the noun. Readiness checks are **five, closed and finite**. There is no firehose, so there is no crowding, so nothing justifies a second noun.
 
 To the user, both kinds are tasks. Provenance is a quiet mark on the row, never a different word and never a separate section.
+
+**Amended 2026-08-15 (session 271, [ADR-0188](../decisions/0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md) §4) — "look the same" holds everywhere EXCEPT the one element that is a verb, and the collision is with this brief's own §4.** §A puts a **button** at the row's leading edge; §4 gives an automatic task's done-ness to the derivation. Both cannot be true at once: identical rows means a control that cannot be pressed sitting in the most prominent position on the row, which is not a behaviour but the definition of reading as a bug — and rendered side by side it is three inert circles out of five. So a manual task leads with the tick and an automatic one leads with **the derivation's own badge** (PlanHome's existing `CHECK_ICON`), with done-ness trailing as the `.chk-ok` that screen already renders. Everything else this section says survives: one noun, one list, one sort, one row shape, no separate section, no second word — and the two kinds measure 7px apart in title column and 215-vs-195px in title width, i.e. the same noun at the same scale. The provenance "mark" is therefore the leading element itself rather than an extra glyph beside the words.
 
 ## 3. An automatic task is DERIVED, never stored
 
@@ -203,6 +205,10 @@ Ordered so that **phases 1–3 are a shippable product** and the expensive part 
 ---
 
 # Part 2 — Open for the design session
+
+**§A, §B and §D are CLOSED** by [ADR-0188](../decisions/0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md) and [`mockups/tasks-row-and-refusals-v1.html`](../../mockups/tasks-row-and-refusals-v1.html) (2026-08-15, session 271). They are left below as written, because the ADR answers them by number and a reader needs the question. **§C, §E and §F are still open.**
+
+**One correction to §A's own premise, since it is quoted:** a task row is **not** "the first managed list row in the app with an interactive element that is not the `⋯`". `PlaceBadge` already is one — `ListRow` has shipped an `onShowOnMap` prop since ADR-0121 §8 — and the app solved it as a `role="button"` span **inside** the trigger (`PlaceBadge.tsx:112`), which is a third option §A does not list. The sibling conclusion survives; ADR-0160 §4's parser finding binds a real nested `<button>` only, and what actually rules out the span is ARIA plus having to swallow the row's tap on every press.
 
 ## A. The row, and the one constraint that is not negotiable
 
