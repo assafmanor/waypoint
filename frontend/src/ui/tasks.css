@@ -281,3 +281,35 @@
   flex: 0 0 auto;
   white-space: nowrap;
 }
+
+/* THE TRIP HOME BAND'S OVERFLOW ROW (ADR-0188 §6). **One more row in the same card**, not a
+   second control beside it — which is why it takes the card's own hairline as its top border
+   rather than a margin, and why it is full-width rather than a right-aligned link. The band
+   is capped at `TRIP_HOME_TASK_BAND_CAP`; this is where the rest are. */
+.tsk-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-block-start: 1px solid var(--line);
+  padding: 12px;
+  cursor: pointer;
+}
+.tsk-more:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.tsk-more:active {
+  transform: scale(var(--press-scale));
+}
+.tsk-more .nav-arrow {
+  width: 13px;
+  height: 13px;
+}

@@ -100,7 +100,9 @@ Where ADR-0188 §4/§5/§7 get built and where the brief's §B survives contact 
 
 `.chk-row` / `.chk-ic` / `.chk-t` / `.chk-m` / `.chk-cta` / `.chk-ppl` **retire** here. `.chk-ok` survives. This is a deletion, not an addition. **Watch 360px specifically** — the design's own first draft was fine at 390 and broke at 360.
 
-## Phase 3 — the Trip Home band
+## Phase 3 — the Trip Home band (**BUILT 2026-08-16**)
+
+**No ADR** — nothing here decided anything ADR-0188 §6 had not. [Session note](2026-08-16-tasks-phase-3-built.md) carries the two judgement calls it did contain: the band sits **above `גישה מהירה`** directly under the board (brief §11 is about prominence, and its one hard constraint — nothing on the collapsed board — is honoured), and a band row's tap goes to the **tasks screen** through ADR-0050's `focus` deep-link rather than a bare tab switch. Measured live: **226px** for three rows plus the overflow row, **61px** per row.
 
 `.checklist` + the same rows under a `sec-title`. **Manual tasks only** — an automatic task's deadline is departure, so mid-trip every unmet check would sit there permanently overdue. Capped at 3 with an overflow row into the screen; **absent entirely when nothing is due** (ADR-0045: no empty shell). Depends on nothing but phase 1.
 

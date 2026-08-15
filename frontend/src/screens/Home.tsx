@@ -4,7 +4,7 @@
 // glance are derived from the clock + events, never stored (ADR-0018). The
 // board + glance render via the D0 domain components (ui/domain, U-03); this
 // screen orchestrates the data and feeds them, layout lives in the components.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   canPrice,
@@ -38,6 +38,8 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
+import { tasksDueNow, tickedStatus, type TaskClock } from '../lib/tasks';
+import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
   liveZone,
@@ -51,7 +53,7 @@ import { placeLabelOf, shortRoute } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
 import { eventMidSpanWords, transitionLabel } from '../lib/transitions';
 import { clockShiftSentence, formatDuration } from '../lib/duration';
-import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
+import { TAB_PARAM, FOCUS_PARAM, INDEX_FOCUS, INDEX_TAB } from '../state/nav-state';
 import {
   countdownParts,
   dayProgress,
@@ -117,6 +119,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     clearChangeFeed,
     fxRates,
     refreshFx,
+    tasks,
+    users,
+    zoneCrossings,
+    taskVerbs,
   } = useTrip();
   const { me } = useAuth();
   const placeLabels = usePlaceLabels();
@@ -451,6 +457,18 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const quickTileCount = (nextCoded ? 1 : 0) + (wifi ? 1 : 0) + (nextDest ? 1 : 0) + 1; // documents is always present
   const quickCols = Math.min(QUICK_TILE_MAX_COLS, Math.max(2, quickTileCount));
 
+  // ── The tasks band (ADR-0188 §6) ────────────────────────────────────────
+  // Derived here and passed down, so the band component stays presentational like every
+  // other `ui/`-shaped one. `tasksDueNow` owns "manual only, due today or overdue" —
+  // including WHY an automatic check is excluded, which is not a detail a screen re-decides.
+  const taskClock: TaskClock = useMemo(
+    () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone }),
+    [nowMs, zoneCrossings, trip.timezone],
+  );
+  const dueTasks = useMemo(() => tasksDueNow(tasks, taskClock), [tasks, taskClock]);
+  const openTasks = () =>
+    navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
+
   // ── Day at a glance (derived) — a proportional time rail (lib/glance) ──
   const day07 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.START_HOUR), tz));
   const day23 = Date.parse(zonedIso(activeDate, hourLabel(DAY_WINDOW.END_HOUR), tz));
@@ -736,6 +754,22 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         now={nowMs}
         onDismiss={dismissChange}
         onDismissAll={clearChangeFeed}
+      />
+
+      {/* **THE TASKS BAND** (ADR-0188 §6, brief §11) — above quick-access on purpose: this
+          answers "what do I owe today", which belongs with the board's what-now/what-next
+          rather than beside a WiFi code. Absent entirely when nothing is due (ADR-0045), so
+          it costs no space on a day with nothing outstanding. */}
+      <TripHomeTaskBand
+        due={dueTasks}
+        users={users}
+        clock={taskClock}
+        onTick={(task) => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
+        // Both land on the tasks SCREEN, not the Index landing — through the same
+        // `focus` deep-link the quick tiles above already use (ADR-0050), so back
+        // resolves exactly as it does from every other tile.
+        onOpen={openTasks}
+        onSeeAll={openTasks}
       />
 
       <div className="sec-title">{t.quick.title}</div>

@@ -149,6 +149,17 @@ vi.mock('../state/trip-state', () => ({
     // wiring — the one thing here — is measured against the same Home as before.
     fxRates: null,
     refreshFx: async () => {},
+    // The Trip Home task band (ADR-0188 §6). Empty is the honest fixture here: the band is
+    // ABSENT with nothing due, so the lift wiring — the one thing this file measures — is
+    // read against the same Home as before.
+    tasks: [],
+    users: [],
+    zoneCrossings: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
   }),
 }));
 

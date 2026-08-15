@@ -76,7 +76,7 @@ export const IDEA_PARAM = 'idea';
  *  joins it for the errand return below, and needs no id — the point is only to MOUNT the
  *  screen, not to open anything on top of it. */
 export const FOCUS_PARAM = 'focus';
-export const INDEX_FOCUS = { DOCS: 'docs', BOOKINGS: 'bookings' } as const;
+export const INDEX_FOCUS = { DOCS: 'docs', BOOKINGS: 'bookings', TASKS: 'tasks' } as const;
 
 /** The same param pointed at the HOME tab (ADR-0190 §3). An automatic task's tap fires the
  *  one verb that resolves its check, and two of the five — book a flight, book a bed — open
@@ -118,6 +118,8 @@ export const HOME_TAB: TabId = 'home';
  *  tasks screen's empty-day verb navigates here (ADR-0190 §3), and a typo'd tab id is a
  *  silent no-op rather than a compile error. */
 export const DAYS_TAB: TabId = 'days';
+/** Named beside the other two — the Trip Home task band deep-links here (ADR-0188 §6). */
+export const INDEX_TAB: TabId = 'index';
 /** Where leaving a trip lands (ADR-0033 all-trips home). */
 const EXIT_TRIP_TO = '/trips';
 /** Top-level entry surfaces where a structural back has nowhere in-app to go, so
