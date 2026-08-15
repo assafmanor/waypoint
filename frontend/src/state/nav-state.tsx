@@ -78,6 +78,19 @@ export const IDEA_PARAM = 'idea';
 export const FOCUS_PARAM = 'focus';
 export const INDEX_FOCUS = { DOCS: 'docs', BOOKINGS: 'bookings' } as const;
 
+/** The same param pointed at the HOME tab (ADR-0190 §3). An automatic task's tap fires the
+ *  one verb that resolves its check, and two of the five — book a flight, book a bed — open
+ *  a seeded `BookingSheet` that lives on Plan Home. Tapping one from the tasks screen
+ *  therefore has to leave, and it leaves the way this app already deep-links: the same
+ *  `focus` key, a different destination tab.
+ *
+ *  The other three need nothing here, because Home is not where they live: an empty day is
+ *  the day tab, a passport is the Index's own documents screen, and an invite is trip
+ *  settings. "Navigate to where the thing is" is the rule; for three of five that is not
+ *  Home at all. */
+export const HOME_FOCUS = { ADD_FLIGHT: 'add-flight', ADD_LODGING: 'add-lodging' } as const;
+export type HomeFocus = (typeof HOME_FOCUS)[keyof typeof HOME_FOCUS];
+
 /** **Where a booking errand has to come back to** (session 172). The Index's bookings
  *  screen is view state inside `Index.tsx`, not a route (ADR-0098), so returning to the
  *  Index tab's URL renders the LANDING — and the host that would re-open the form is not
@@ -101,6 +114,10 @@ export function withBookingFormReturn(path: string): string {
 
 /** The anchor tab: back from any other tab returns here, then exits to /trips. */
 export const HOME_TAB: TabId = 'home';
+/** Named beside `HOME_TAB` rather than written as a bare `'days'` at a new call site — the
+ *  tasks screen's empty-day verb navigates here (ADR-0190 §3), and a typo'd tab id is a
+ *  silent no-op rather than a compile error. */
+export const DAYS_TAB: TabId = 'days';
 /** Where leaving a trip lands (ADR-0033 all-trips home). */
 const EXIT_TRIP_TO = '/trips';
 /** Top-level entry surfaces where a structural back has nowhere in-app to go, so

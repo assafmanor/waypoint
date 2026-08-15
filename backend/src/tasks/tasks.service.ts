@@ -52,6 +52,11 @@ export class TasksService {
               assigneeUserId: input.assigneeUserId,
               important: input.important ?? false,
               derivedKey: input.derivedKey,
+              // Set only when the create IS the settling act — dismissing a readiness check
+              // that had no row until this press (brief §4). `open` for every manual task.
+              status: input.status ?? TASK_STATUS.OPEN,
+              settledAt: input.status && input.status !== TASK_STATUS.OPEN ? new Date() : null,
+              settledBy: input.status && input.status !== TASK_STATUS.OPEN ? actorUserId : null,
               eventId: input.eventId,
               bookingId: input.bookingId,
               placeId: input.placeId,

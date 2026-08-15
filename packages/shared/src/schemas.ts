@@ -551,6 +551,13 @@ export const createTaskSchema = z
     /** Set only when the row overlays a readiness check (brief §4) — a human dismissing,
      *  assigning or flagging a derivation is what mints it. */
     derivedKey: taskDerivedKeySchema.optional(),
+    /** **Present so that the act which MINTS an overlay row can be the dismissal itself.**
+     *  A check nobody has touched has no row, and "a dismissal is a human decision and
+     *  cannot be derived" (brief §4) — so dismissing one is a create, not an update, and
+     *  without this it would have to be a create followed by a patch: two writes for one
+     *  press, with the second orphaned if the first fails. Defaults to `open` everywhere
+     *  else, which is every manual task. */
+    status: taskStatusSchema.optional(),
     eventId: entityIdSchema.optional(),
     bookingId: entityIdSchema.optional(),
     placeId: entityIdSchema.optional(),
