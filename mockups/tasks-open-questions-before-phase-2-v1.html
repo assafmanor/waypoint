@@ -9947,7 +9947,15 @@ button.wp-av:focus-visible {
         width: 18px;
         height: 18px;
         font-size: 9px;
-        vertical-align: -4px;
+        /* **`middle`, not a pixel offset** (owner, 2026-08-16: "the user icon is
+           below the name"). The first draft used `vertical-align: -4px`, which
+           pushes the box DOWN from the baseline by a fixed amount — so the
+           circle hung below the text instead of sitting on its centre, and the
+           negative block margin below then made it worse by shrinking the box
+           the offset was measured against. `middle` aligns the box's own centre
+           to the text's centre, which is the thing that was wanted, and it stays
+           right if the meta line's font-size ever changes. */
+        vertical-align: middle;
         margin-inline-end: 4px;
         display: inline-grid;
         /* **The render caught this and this rule's first draft claimed the
