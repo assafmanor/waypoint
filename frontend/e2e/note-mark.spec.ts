@@ -377,7 +377,7 @@ test.describe('the note mark on a document row (ADR-0152 §6)', () => {
     await page.setViewportSize(PHONE);
     await page.goto('/');
     await page.locator('nav.nav button', { hasText: 'אינדקס' }).click();
-    await page.locator('.wp-idx-tile').nth(1).click(); // the documents tile
+    await page.locator('.wp-idx-tile', { hasText: 'מסמכים' }).click();
     await expect(page.locator('.wp-listrow').first()).toBeVisible();
   }
 

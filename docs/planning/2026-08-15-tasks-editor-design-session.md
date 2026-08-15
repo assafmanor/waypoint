@@ -23,7 +23,7 @@ Owner report against shipped phase 1, verbatim: _"The creation form seems amateu
 
 ## What the render found that reading did not
 
-**The first draft of §3 was growing a second scroller, and the number is what exposed it.** It drew a bespoke `flex-wrap` grid of 60px avatar columns. At a realistic roster — five people plus the unassigned option — that measured **156px and wrapped to three lines**, against the shipped pill row's 21px. Redrawn as what it should always have been: **`ChoiceGrid layout="pills"` with a person where the glyph goes.** The scroll, the snap, the edge mask, `useCenterSelected`'s centring and the radiogroup ARIA all arrive from the primitive; `ChoiceGrid` grows exactly one optional field on `Choice` (an `AvatarPerson` instead of an `icon`). Result: **48px, one line, 661px of scroll width** at 360.
+**The first draft of §3 was growing a second scroller, and the number is what exposed it.** It drew a bespoke `flex-wrap` grid of 60px avatar columns. At a realistic roster — five people plus the unassigned option — that measured **156px and wrapped to three lines**, against the shipped pill row's 21px. Redrawn as what it should always have been: **`ChoiceGrid layout="pills"` with a person where the glyph goes.** The scroll, the snap, the edge mask, `useCenterSelected`'s centring and the radiogroup ARIA all arrive from the primitive; `ChoiceGrid` grows exactly one optional field on `Choice` (an `AvatarPerson` instead of an `icon`). Result: **48px, one line, 639px of scroll width** at 360 (661px while the unassigned option still read `מישהו מאיתנו`; the owner's shorter word took 22px off it).
 
 **A new host is not bound by the app's deferred 44px debt.** `choice-grid.css` records in place that `.choice-pill` is 36px "here AND on the shipped category selector", and that raising it moves three shipped surfaces, one with an arithmetic card height (ADR-0148 §1). A new surface scopes its own sizing — the pattern `.category-pills` already uses — and meets the floor for free: **46px measured, against the shipped pill's 28px.**
 
@@ -40,20 +40,29 @@ Owner report against shipped phase 1, verbatim: _"The creation form seems amateu
 | task row            | 60px                       | 60px — the details mark costs **0**                              |
 | reading the details | —                          | **+46.3px** in place, against **216.5px** for the rejected sheet |
 
-## Open, and owed before this is built
+## The owner's three answers, 2026-08-15 — all folded in, none left as a fork
 
-- **An ADR promoting the mockup**, or an in-place amendment to ADR-0188. Not written — the session ran out of budget after the render, and the mockup is Proposed until it exists.
-- **`חשוב`, not `חשובה`** (owner, 2026-08-15). Grammatically `משימה` is feminine, so the shipped string agreed with it; the owner's call is that the flag reads as a neutral label rather than an adjective. Carries to the `⋯` sheet's `סימון כחשובה` for the same reason.
-- **The word for the unassigned state is still a fork**, drawn live in the mockup's control so the three candidates can be read in place: `מישהו מאיתנו` (the brief's own words) · `של הקבוצה` · `לא משויכת`. Whichever wins, `של כולנו` must be freed for phase 6.
-- **The Index tile order** — see below.
+The mockup was rendered again after each; the only number that moved is the avatar row's scroll width, above.
+
+**1. `חשוב`, not `חשובה`.** Grammatically `משימה` is feminine, so the shipped string agreed with it; the call is that the flag is a neutral **label** rather than an adjective about the task, so it does not inflect. Carries to the `⋯` sheet's `סימון כחשוב` / `ביטול הסימון כחשוב`. The mockup's "before" frames keep `חשובה`, because they are the record of what shipped.
+
+**2. `לא משויך` wins the three-way fork — and the default comes back with it.** This reverses this session's own first recommendation, and the word is exactly what reverses it. The draft removed the default on the rule "no answer should be presumed"; that rule is right while the word is `של כולנו`, because that word is a **claim** about the task and a presumed claim can be false. `לא משויך` is a **description of the form's state**, and when nobody has been chosen nobody is in fact assigned — so the lit pill cannot be wrong. What is **saved** is identical either way (`assigneeUserId: undefined`); only what the reader is told changes. Also note the masculine form is the same call as §1: it names a state, it does not agree with `משימה`.
+
+The two losing candidates, recorded so they are not re-proposed: `מישהו מאיתנו` (the brief's own words — accurate to the behaviour, but it **promises** that somebody will take it, which the form does not know) and `של הקבוצה` (too near the `של כולנו` it replaces, so it repeats the phase-6 collision in different words).
+
+**3. The Index tile order: `הזמנות · משימות · מסמכים · פתקים`** — recommended, and **built** in this change with a spec pinning it.
+
+The rule below the spine is one line: **order by whether the tile can be LATE.** A task expires and a missed one costs the thing it was guarding (brief §11); a document does not change; a note never expires at all — ADR-0153 §1's own tile line is "what did someone just write", a browse rather than a need.
+
+**This session's earlier recommendation put `משימות` first, and that was wrong for a reason written in the app's own source.** `Index.tsx`'s comment on the tasks tile already says prominence for a time-bearing entity comes from the **Home bands** (phases 2–3) rather than from chrome. Leading the landing with tasks spends the lead position on prominence the bands are already paying for, and takes it from bookings — the trip's spine, the most-consulted tile on the ground, and the lead since ADR-0047/0049. So the spine keeps first and the rule orders the three below it.
+
+**What the reorder actually cost, because it was not the one line it looked like:** three e2e specs selected the documents tile as `.wp-idx-tile` **`.nth(1)`**, which the reorder silently repoints at tasks — a wrong screen, not a failed click. All three now select by name, so the next reorder cannot break them either.
+
+## Still open, and owed before this is built
+
+- **An ADR promoting the mockup**, or an in-place amendment to ADR-0188. Not written — the mockup stays Proposed until it exists, and it is now the only thing between this design and its build.
 - **The device pass** gains two: whether a 38px avatar in a pill reads as a person at arm's length, and whether a selection ring reads as "chosen" beside an avatar carrying a strong hue of its own.
 
-## The Index tile order — recommendation, not yet built
+## Shipped in this change, ahead of the ADR
 
-The owner asked for tasks above notes, then widened it: _"maybe we should think the order of all four"_. Recommended:
-
-**משימות · הזמנות · מסמכים · פתקים**
-
-The rule is one line and it is not a preference list: **order by whether the tile can be LATE.** A task expires — a missed one costs the thing it was guarding (brief §11). A booking happens whether or not you look. A document does not change. A note never expires at all; ADR-0153 §1's own tile line is "what did someone just write", which is a browse rather than a need. Monotone in that one property, and it also puts the only tile with a deadline where a thumb lands first.
-
-**What it costs, stated because it is more than the owner asked for:** it demotes bookings, which has led this landing since ADR-0047/0049. If that is wrong, the alternative is `הזמנות · משימות · מסמכים · פתקים` — same rule, with the trip's spine kept first — and it is one line either way.
+The two words are user-visible defects the owner has already ruled on, so they went into `he.ts` now rather than waiting for the editor rebuild: `importantLabel`, `manage.flag`, `manage.unflag`, `sheet.nobody` and `subject.group`. The rest of the mockup — the `.field` wrapper, `size="touch"`, the avatar pills and the open-in-place read — is the build, and waits for the ADR.

@@ -34,7 +34,9 @@ test.beforeEach(async ({ page }) => {
 
 test('Documents subview: one system back returns to the Index landing', async ({ page }) => {
   await page.locator('nav.nav button', { hasText: 'אינדקס' }).click();
-  await page.locator('.wp-idx-tile').nth(1).click(); // documents tile (landing peer 2)
+  // By NAME, not by position: the landing's tile order is an owner decision that has
+  // already moved once, and an index here breaks silently by opening the wrong screen.
+  await page.locator('.wp-idx-tile', { hasText: 'מסמכים' }).click();
   await expect(page.locator('.idx-screen')).toBeVisible();
 
   await systemBack(page);

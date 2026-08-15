@@ -110,9 +110,10 @@ export function TaskSheet({
     });
   };
 
-  // Nobody first: an unassigned task is "the group's — one of us", which is the DEFAULT and
-  // a real state rather than a missing value (brief §6). Only trip members can be named, and
-  // the server refuses anyone else (`assertMemberInTrip`).
+  // Nobody first, and pre-selected: unassigned is a real state rather than a missing value
+  // (brief §6). The default is safe only because the word DESCRIBES the state instead of
+  // claiming one — a presumed `של כולנו` could be false, a presumed `לא משויך` cannot. Only
+  // trip members can be named, and the server refuses anyone else (`assertMemberInTrip`).
   const assigneeOptions: Choice<string>[] = [
     { value: NOBODY, icon: '', label: t.tasks.sheet.nobody },
     ...members

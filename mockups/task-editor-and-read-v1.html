@@ -48,6 +48,25 @@
         draws the sheet alternative only to reject it.
 
      ─────────────────────────────────────────────────────────────────────────
+     OWNER'S CALLS, 2026-08-15, taken against this file's first draft and
+     folded into every frame below rather than left as forks:
+
+     A. **`חשוב`, not `חשובה`.** Grammatically `משימה` is feminine, so the
+        shipped string agreed with it. The call is that the flag is a neutral
+        LABEL rather than an adjective about the task, so it does not inflect.
+        Carries to the `⋯` sheet's `סימון כחשוב`. The "before" frames keep
+        `חשובה` because that is what shipped and they are the record of it.
+
+     B. **`לא משויך` wins the three-way fork, and it is SELECTED by default.**
+        Same rule as A — an unassigned state named, not inflected. And the
+        default comes back, which reverses this file's own first draft: see the
+        notes panel, because the word is exactly what changes the answer. A
+        presumed `של כולנו` is a CLAIM that can be false; a presumed
+        `לא משויך` is a statement of absence that cannot be. So the word
+        picker is gone from the controls — the fork is closed, and the two
+        losing candidates are recorded in the notes panel instead.
+
+     ─────────────────────────────────────────────────────────────────────────
      THIS FILE'S SECTIONS AGAINST THE ADR IT PROMOTES:
 
        §1 the form, before/after   → ADR §1
@@ -56,10 +75,8 @@
        §4 reading a task           → ADR §4
 
      ─────────────────────────────────────────────────────────────────────────
-     Interactive: theme (light · dark) · screen (360×640 · 390×844) · and §3's
-     word for the unassigned state, which swaps in every frame at once so the
-     three candidates can be read in place rather than compared in prose. The
-     tick, the pills and the chips all press.
+     Interactive: theme (light · dark) · screen (360×640 · 390×844). The tick,
+     the pills and the chips all press.
      Measurements at the foot are read from THIS page's rendered DOM.
 
      TWO ERRORS THIS FILE'S OWN RENDER CAUGHT IN ITS OWN FIRST DRAFT, kept
@@ -11548,11 +11565,6 @@ button.wp-av:focus-visible {
         <span class="lbl">מסך</span>
         <button type="button" data-w="360" aria-pressed="true">⁦360×640⁩</button>
         <button type="button" data-w="390">⁦390×844⁩</button>
-        <span class="sep"></span>
-        <span class="lbl">המילה ל«אף אחד»</span>
-        <button type="button" data-word="anyone" aria-pressed="true">מישהו מאיתנו</button>
-        <button type="button" data-word="group">של הקבוצה</button>
-        <button type="button" data-word="none">לא משויכת</button>
       </div>
 
       <!-- ══════════════════════════ §1 ══════════════════════════ -->
@@ -11560,8 +11572,8 @@ button.wp-av:focus-visible {
         <h2>§1 · הטופס · «נראה חובבני»</h2>
         <p class="note">
           שני הטפסים מוזנים מאותם נתונים, אז ההבדל הוא רק מה שהסעיף טוען. <b>מה משתנה:</b> «חשובה»
-          עוברת לשורת הבוליאני שהאפליקציה כבר מפעילה (§2), «מי אחראי» מפסיק להיראות כמו מסנן ומפסיק
-          לבוא עם ברירת מחדל (§3), והשדה שנפתח ראשון הוא היחיד שחובה למלא. <b>מה לא משתנה:</b> סדר
+          עוברת לשורת הבוליאני שהאפליקציה כבר מפעילה ונקראת «חשוב» (§2), «מי אחראי» מפסיק להיראות
+          כמו מסנן ומקבל את המילה הנכונה (§3), והשדה שנפתח ראשון הוא היחיד שחובה למלא. <b>מה לא משתנה:</b> סדר
           השדות, <code>Field</code> כמעטפת, ו<code>· לא חובה</code> על תוויות — זה הניב של
           <code>NoteSheet</code> ושל <code>BookingSheet</code>, וטופס אחד לא מחליף אותו לבדו.
         </p>
@@ -11570,14 +11582,16 @@ button.wp-av:focus-visible {
 
       <!-- ══════════════════════════ §2 ══════════════════════════ -->
       <section class="case">
-        <h2>§2 · «חשובה» · מתחת לרצפת המגע, לא רק מכוערת</h2>
+        <h2>§2 · «חשוב» · מתחת לרצפת המגע, לא רק מכוערת</h2>
         <p class="note">
           שלוש הגרסאות מודדות את אותו הדבר. <b>א</b> היא מה ששלב 1 בנה:
           <code>ToggleChip</code> ללא <code>.field</code>, ללא <code>size="touch"</code> וללא
           אייקון — יתומה בתחתית הטופס ו<b>מתחת ל-44px</b>. <b>ב</b> היא שורת
           <code>יש הזמנה</code> של <code>EventForm</code> אות באות (ADR-0136 §1), שזו בדיוק
           ההפעלה הנכונה של אותו פרימיטיב. <b>ג</b> מציבה כוכב בלבד ליד שדה הכותרת — נדחתה, והסיבה
-          בפאנל ההערות.
+          בפאנל ההערות. <b>המילה עצמה משתנה גם היא:</b> «חשוב», לא «חשובה» (החלטת הבעלים) — התווית
+          היא שם של סימון, לא תואר שמתאים את עצמו ל«משימה». מסגרת <b>א</b> שומרת על «חשובה» כי זה
+          מה שנבנה, והיא התיעוד של זה.
         </p>
         <div class="pair" id="s2"></div>
       </section>
@@ -11590,7 +11604,9 @@ button.wp-av:focus-visible {
           («אחד מאיתנו» · טיק אחד סוגר לכולם), <b>אדם אחד</b>, ו<b>כולם</b> (כל אחד משלים לעצמו,
           <code>completedBy[]</code> · שלב 6). שלב 1 נתן למצב הראשון את המילה
           <code>של כולנו</code> — וזאת המילה שהמצב השלישי צריך. הבעלים קרא אותה כמצב השלישי, וזה
-          הדיווח. הבורר למעלה מחליף בין שלוש המילים המועמדות בכל המסגרות בבת אחת.
+          הדיווח. <b>המילה שנבחרה: <code>לא משויך</code></b> (הבעלים), ואיתה חזרה גם
+          <b>ברירת המחדל</b> — כי המילה היא בדיוק מה שהופך תשובה מונחת מטעות שקטה לתיאור נכון של
+          מצב הטופס. ההנמקה המלאה, ושתי המילים שנדחו, בפאנל ההערות.
         </p>
         <div class="pair" id="s3"></div>
       </section>
@@ -11650,10 +11666,20 @@ button.wp-av:focus-visible {
             <code>--cta</code>, הראשי הנייטרלי, ולא מוציאה כלום מתקציב הצבע של כלל 4.
           </li>
           <li>
-            <b>ברירת מחדל ל«מי אחראי» — הוסרה, וזה לא סותר את §6.</b> «לא משויכת» נשארת המצב
-            <b>הנשמר</b> כשלא בחרו כלום — זה מה שהמסמך קורא לו «של הקבוצה» — אבל שום עיגול לא
-            נדלק מראש. ההבדל הוא בין תשובה שנבחרה לבין תשובה שהונחה, והיא השאלה היחידה בטופס הזה
-            שיש לה תשובה שגויה שקטה.
+            <b>ברירת המחדל ל«מי אחראי» חוזרת — והמילה היא מה שהפך את התשובה.</b> הטיוטה הראשונה של
+            הקובץ הזה הסירה אותה, בהנחה שכל ברירת מחדל כאן היא «תשובה שהונחה». זה נכון כשהמילה
+            <code>של כולנו</code>, כי היא <b>טענה</b> על המשימה, וטענה שהונחה יכולה להיות שקר.
+            <code>לא משויך</code> הוא <b>תיאור של מצב הטופס</b> ולא טענה עליו: כשאף אחד לא נבחר,
+            אף אחד באמת לא משויך, ולכן העיגול הדלוק לא יכול להיות שגוי. זו החלטת הבעלים, והיא גם
+            מה שמונע שדה שנראה כאילו לא ענו עליו כשענו — <b>נשמר</b> אותו דבר בשני המקרים
+            (<code>assigneeUserId: undefined</code>), אז מה שהשתנה הוא רק מה שהמשתמש קורא.
+          </li>
+          <li>
+            <b>שתי המילים שנדחו.</b> <code>מישהו מאיתנו</code> — המילים של המסמך עצמו, מדויקות
+            להתנהגות (טיק אחד סוגר לכולם) ו<b>מבטיחות</b> שמישהו כן ייקח, מה שהטופס לא יודע.
+            <code>של הקבוצה</code> — קרובה מדי ל<code>של כולנו</code> שהוחלפה, ולכן חוזרת על אותה
+            התנגשות מול שלב 6 במילים אחרות. שתיהן נקראו במקום מול <code>לא משויך</code> לפני
+            שהבורר הוסר.
           </li>
           <li>
             <b>גיליון פרטים למשימה — נדחה (§4ד).</b> ADR-0153 §4 כבר דחה אותו לפתקים ובנה את
@@ -11706,7 +11732,12 @@ button.wp-av:focus-visible {
         { id: 'u4', name: 'נועם', hue: 'cocoa' },
         { id: 'u5', name: 'רוני', hue: 'rose' },
       ];
-      const WORD = { anyone: 'מישהו מאיתנו', group: 'של הקבוצה', none: 'לא משויכת' };
+      // The owner's pick over `מישהו מאיתנו` and `של הקבוצה`. Not inflected for `משימה`,
+      // for the same reason `חשוב` is not: it names a state, it does not describe the task.
+      const NOBODY_WORD = 'לא משויך';
+      // What phase 1 shipped, and the whole subject of §3 — the "before" frames must keep it
+      // or the pair stops showing the collision it exists to show.
+      const NOBODY_SHIPPED = 'של כולנו';
 
       const TASK = {
         title: 'להזמין את המסעדה בשינג׳וקו לחמישה',
@@ -11714,8 +11745,6 @@ button.wp-av:focus-visible {
         who: 'דנה',
         body: 'הם לא לוקחים הזמנות בטלפון אחרי 17:00, ויש מינימום של ארבעה. אם אין מקום — יש סניף שני בשיבויה שלא צריך הזמנה.',
       };
-
-      const state = { word: 'anyone' };
 
       /* ═══════════════════════════════════════════════════════════════════════
          THE FORM. `Sheet` → `Modal variant="sheet"`'s real tree, element for
@@ -11732,25 +11761,25 @@ button.wp-av:focus-visible {
       const flagShipped = () =>
         `<button type="button" class="wp-chip cta on" id="flag-shipped">חשובה</button>`;
 
-      /** §2b — `EventForm`'s `יש הזמנה` row verbatim (ADR-0136 §1). */
+      /** §2b — `EventForm`'s `יש הזמנה` row verbatim (ADR-0136 §1), with the owner's word. */
       const flagProposed = (id) =>
         `<div class="field">
           <button type="button" class="wp-chip cta touch on tsk-flag"${id ? ` id="${id}"` : ''}>
-            ${ic('star')} חשובה
+            ${ic('star')} חשוב
           </button>
         </div>`;
 
       /** §2c — the rejected star-beside-the-title variant. */
       const flagStar = () =>
-        `<button type="button" class="wp-chip cta on tsk-flag" id="flag-star" aria-label="סימון כחשובה" style="padding-inline:10px">${ic('star')}</button>`;
+        `<button type="button" class="wp-chip cta on tsk-flag" id="flag-star" aria-label="סימון כחשוב" style="padding-inline:10px">${ic('star')}</button>`;
 
       /** `ChoiceGrid layout="pills"`'s real tree, element for element
        *  (`ChoiceGrid.tsx`: `.choice-grid.pills > button.choice-pill`). Both
        *  variants below are THIS function with a different leading mark, so the
        *  before and the after cannot drift apart. */
-      const pillRow = (selected, mark, cls) =>
+      const pillRow = (selected, mark, cls, word) =>
         `<div class="choice-grid pills${cls ? ' ' + cls : ''}" role="radiogroup" aria-label="מי אחראי">
-          ${[{ id: null, name: WORD[state.word] }, ...PEOPLE]
+          ${[{ id: null, name: word }, ...PEOPLE]
             .map(
               (p) =>
                 `<button type="button" role="radio" aria-checked="${selected === p.id}" class="choice-pill${
@@ -11760,11 +11789,12 @@ button.wp-av:focus-visible {
             .join('')}
         </div>`;
 
-      /** SHIPPED — a bare word, and the first option selected by default. */
-      const whoPills = (selected) => pillRow(selected, () => '');
+      /** SHIPPED — a bare word, phase 6's word, and the first option selected by default. */
+      const whoPills = (selected) => pillRow(selected, () => '', '', NOBODY_SHIPPED);
 
-      /** PROPOSED — the same row with a person as the leading mark, and nothing
-       *  selected until somebody chooses. */
+      /** PROPOSED — the same row with a person as the leading mark. `null` is the
+       *  unassigned option, and it IS the default: the word `לא משויך` describes
+       *  the form's actual state, so pre-selecting it presumes nothing. */
       const whoAvatars = (selected) =>
         pillRow(
           selected,
@@ -11775,6 +11805,7 @@ button.wp-av:focus-visible {
                   .trim()
                   .slice(0, 1)}</span>`,
           'tsk-who',
+          NOBODY_WORD,
         );
 
 
@@ -11790,7 +11821,7 @@ button.wp-av:focus-visible {
                 'עד מתי · לא חובה',
                 `<div class="tsk-when"><span class="df vt vt-date"><span class="df-face"><span class="df-empty">הוספת תאריך</span></span></span></div>`,
               )}
-              ${field('מי אחראי', shipped ? whoPills(null) : whoAvatars(undefined))}
+              ${field('מי אחראי', shipped ? whoPills(null) : whoAvatars(null))}
               ${field(
                 'פרטים · לא חובה',
                 `<textarea rows="3" placeholder="משהו שכדאי לדעת כדי לסגור את זה"></textarea>`,
@@ -11864,7 +11895,7 @@ button.wp-av:focus-visible {
           col(
             '<span class="tag before">מה ששלב 1 בנה</span>',
             `<div id="form-shipped">${form(true)}</div>`,
-            '«חשובה» יתומה מתחת לכפתורים · «מי אחראי» נראה כמו מסנן ובא עם תשובה.',
+            '«חשובה» יתומה מתחת לכפתורים · «מי אחראי» נראה כמו מסנן, והמילה שייכת לשלב 6.',
             true,
           ),
           col(
@@ -11901,15 +11932,15 @@ button.wp-av:focus-visible {
         /* ── §3 ── */
         document.querySelector('#s3').innerHTML = [
           col(
-            '<span class="tag before">גלולות + ברירת מחדל</span>',
+            '<span class="tag before">גלולות טקסט · «של כולנו»</span>',
             `<div class="task-sheet"><div id="who-shipped">${field('מי אחראי', whoPills(null))}</div></div>`,
-            'דקדוק הסינון של האפליקציה, על שאלה שאינה סינון · והתשובה הראשונה כבר נבחרה.',
+            'דקדוק הסינון של האפליקציה, על שאלה שאינה סינון · והמילה שייכת למצב אחר.',
             true,
           ),
           col(
-            '<span class="tag after">דמויות + ללא ברירת מחדל</span>',
-            `<div class="task-sheet"><div id="who-proposed">${field('מי אחראי', whoAvatars(undefined))}</div></div>`,
-            'Avatar הוא כבר הרנדרר היחיד לאדם · שום עיגול לא נדלק עד שבוחרים.',
+            '<span class="tag after">דמויות · «לא משויך» נבחר</span>',
+            `<div class="task-sheet"><div id="who-proposed">${field('מי אחראי', whoAvatars(null))}</div></div>`,
+            'Avatar הוא כבר הרנדרר היחיד לאדם · ברירת המחדל אומרת מה שהיא, ולא טוענת כלום.',
             true,
           ),
           col(
@@ -11997,11 +12028,6 @@ button.wp-av:focus-visible {
         document.documentElement.style.setProperty('--fw', b.dataset.w + 'px');
         measure();
       });
-      group('.controls button[data-word]', (b) => {
-        state.word = b.dataset.word;
-        paint();
-      });
-
       /* ══ Measurements — read off the rendered boxes, never typed in. ══ */
       function measure() {
         const box = (sel) => {
@@ -12025,7 +12051,7 @@ button.wp-av:focus-visible {
             shippedFlag && shippedFlag.h < FLOOR ? 'bad' : '',
           ],
           [
-            '§2ב · «חשובה» כשורת יש-הזמנה',
+            '§2ב · «חשוב» כשורת יש-הזמנה',
             proposedFlag ? proposedFlag.h + 'px' : '—',
             'אותה רצפה, מגיעה מ-size="touch"',
             proposedFlag && proposedFlag.h >= FLOOR ? 'good' : 'bad',

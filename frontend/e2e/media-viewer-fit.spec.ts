@@ -202,7 +202,7 @@ test.describe('the media viewer fits its image @390', () => {
     });
     await page.goto('/');
     await page.locator('nav.nav button', { hasText: 'אינדקס' }).click();
-    await page.locator('.wp-idx-tile').nth(1).click(); // the documents tile
+    await page.locator('.wp-idx-tile', { hasText: 'מסמכים' }).click();
     await page.locator('.wp-listrow').first().click();
     await expect(page.locator('.doc-viewer')).toBeVisible();
 

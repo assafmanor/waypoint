@@ -1,5 +1,5 @@
 // Index tab — a landing with four peer tiles (ADR-0098/0152, tasks brief §11): bookings,
-// documents, notes and tasks
+// tasks, documents and notes
 // (ADR-0047/0049) each push their own dedicated full screen instead of sharing
 // one long page. The sub-screens are LOCAL VIEW STATE here, not routes — Index
 // already renders inside the one TripProvider the trip Shell mounts, and a
@@ -191,6 +191,19 @@ export function Index() {
         subtitle={bookingsSubtitle}
         onOpen={openBookings}
       />
+      {/* Second, and the order below it is one rule: AFTER the spine, tiles run by whether
+          they can be LATE (owner, 2026-08-15). A task expires and a missed one costs the
+          thing it was guarding (brief §11); a document does not change; a note never expires
+          at all. Bookings keeps the lead it has held since ADR-0047/0049 — it is the trip's
+          spine and the most-consulted tile on the ground, and a task's prominence is already
+          paid for by the Home bands (phases 2–3) rather than owed by this landing. */}
+      <IndexTile
+        icon={<Icon name="check" />}
+        title={t.tasks.title}
+        count={preview.open}
+        subtitle={tasksSubtitle}
+        onOpen={() => setView('tasks')}
+      />
       <IndexTile
         icon={<Icon name="documents" />}
         title={t.docs.title}
@@ -198,24 +211,14 @@ export function Index() {
         subtitle={documentsSubtitle}
         onOpen={openDocuments}
       />
-      {/* The third tile ADR-0098 measured its landing at five for, discharging the
-          deferred content type and its `מחקר` naming debt — by not spending the word. */}
+      {/* The tile ADR-0098 measured its landing at five for, discharging the deferred
+          content type and its `מחקר` naming debt — by not spending the word. */}
       <IndexTile
         icon={<Icon name="clipboard" />}
         title={t.notes.title}
         count={notes.length}
         subtitle={notesSubtitle}
         onOpen={() => setView('notes')}
-      />
-      {/* The fourth tile (brief §11) — the landing ADR-0098 measured at five. No new tab:
-          rule 2 holds, and prominence for a time-bearing entity comes from the Home bands
-          (phases 2–3) rather than from chrome. */}
-      <IndexTile
-        icon={<Icon name="check" />}
-        title={t.tasks.title}
-        count={preview.open}
-        subtitle={tasksSubtitle}
-        onOpen={() => setView('tasks')}
       />
     </div>
   );
