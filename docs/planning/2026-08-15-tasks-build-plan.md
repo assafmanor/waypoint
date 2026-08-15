@@ -10,15 +10,15 @@
 
 ## Status
 
-| phase                    | branch                         | state                                                                                                                                                                  |
-| ------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — the spine**        | `feat/tasks-phase-1-the-spine` | **built** — [note](2026-08-15-tasks-phase-1-built.md)                                                                                                                  |
-| **1b — editor + read**   | `feat/tasks-phase-1-the-spine` | **built** — [ADR-0189](../decisions/0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md) · [note](2026-08-15-tasks-editor-built.md) |
-| **2 — automatic tasks**  | —                              | not started                                                                                                                                                            |
-| **3 — Trip Home band**   | —                              | not started                                                                                                                                                            |
-| **4 — hosts**            | —                              | not started                                                                                                                                                            |
-| **5 — the hero slot**    | —                              | not started                                                                                                                                                            |
-| **6 — `everyone` tasks** | —                              | not started                                                                                                                                                            |
+| phase                    | branch                               | state                                                                                                                                                                  |
+| ------------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — the spine**        | `feat/tasks-phase-1-the-spine`       | **built** — [note](2026-08-15-tasks-phase-1-built.md)                                                                                                                  |
+| **1b — editor + read**   | `feat/tasks-phase-1-the-spine`       | **built** — [ADR-0189](../decisions/0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md) · [note](2026-08-15-tasks-editor-built.md) |
+| **2 — automatic tasks**  | `feat/tasks-phase-2-automatic-tasks` | **built** — [ADR-0190](../decisions/0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md) · [note](2026-08-16-tasks-phase-2-built.md)  |
+| **3 — Trip Home band**   | —                                    | not started                                                                                                                                                            |
+| **4 — hosts**            | —                                    | not started                                                                                                                                                            |
+| **5 — the hero slot**    | —                                    | not started                                                                                                                                                            |
+| **6 — `everyone` tasks** | —                                    | not started                                                                                                                                                            |
 
 **Ship after phase 3.** Phases 1–3 are the product; 4–6 are the expensive half and can wait for real use.
 
@@ -90,7 +90,9 @@ The owner's three calls, all built:
 
 **Two things the build learned that phase 2 inherits:** `Choice.lead` is a `ReactNode` rather than an `AvatarPerson` (the unassigned option is a person-shaped absence with no person to pass), and the open-in-place foot is now **shared** — `RowOpenFoot` + `.row-open-*` in `ui/domain/`, so a third surface that opens a row adds a `lead` and no CSS.
 
-## Phase 2 — automatic tasks
+## Phase 2 — automatic tasks (**BUILT 2026-08-16**)
+
+**Six decisions it needed first**, drawn and measured before any code — [the questions](2026-08-16-tasks-phase-2-open-questions.md), [ADR-0190](../decisions/0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md), [the build](2026-08-16-tasks-phase-2-built.md). **The order is the one to know:** the checks sit INSIDE the urgency ladder — urgent (important or overdue) → checks → the rest — in ONE list, which is the owner's revision of both orders the mockup drew, and it is what finally makes brief §2's "one noun, one list" true on screen.
 
 `computeReadiness`'s five checks render as task rows, `derivedKey` wired, Plan Home converges. **`lib/readiness.ts` is untouched** — `status` is the derivation's answer _unless_ the row says `dismissed`. One predicate, one test.
 

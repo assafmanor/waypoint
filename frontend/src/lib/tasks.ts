@@ -9,6 +9,7 @@
 // the calendar day rolls for the traveller who is reading it. Nothing here holds a zone of
 // its own, and no surface may reach for `trip.timezone` instead.
 import { TASK_STATUS, type Task, type TaskStatus } from '@waypoint/shared';
+import { isManual, type AutomaticTask } from './automatic-tasks';
 import { currentZone, type ZoneCrossing } from './places';
 import { formatTime, relativeDayLabel, todayInTz } from './time';
 
@@ -82,8 +83,55 @@ export function sortTasks(tasks: Task[], clock: TaskClock): Task[] {
   });
 }
 
-/** Whether a task survives the facet, as a predicate for `revealRows` (ADR-0120) — never a
- *  bare `.filter()`, which is the one-off that made the Map jump for two releases. */
+/** One row on the tasks screen — a task somebody wrote, or a readiness check. Both render
+ *  as the same noun (brief §2) and they sort into ONE list, so the sort has to speak about
+ *  both. */
+export type TaskRow = { kind: 'task'; task: Task } | { kind: 'auto'; auto: AutomaticTask };
+
+export const taskRowKey = (row: TaskRow): string =>
+  row.kind === 'task' ? row.task.id : `auto:${row.auto.key}`;
+
+/** **Is this task urgent enough to outrank a readiness check?** (owner, 2026-08-16: the
+ *  checks go first "but also important above them", after "prioritized or due, overdue tasks
+ *  should be on top".) Two ways to earn it, and they are the two the feature already models:
+ *  the `important` flag, and a deadline that has passed. */
+const outranksChecks = (task: Task, clock: TaskClock): boolean =>
+  task.important || taskBand(task, clock) === TASK_BAND.OVERDUE;
+
+/** **The screen's one list** (ADR-0190 §2 as revised by the owner): what is urgent, then the
+ *  readiness checks, then everything else in urgency order.
+ *
+ *  The checks are NOT a band on the urgency ladder, and could not be — they carry no
+ *  deadline, so `taskBand` has nothing to say about them. They sit between the two halves of
+ *  the manual list instead: above the ordinary remainder because a trip that is not ready is
+ *  a real obligation, and below anything overdue or flagged because those are the things a
+ *  person has already said are urgent. One list and one card, which is what keeps brief §2's
+ *  "one noun" true on screen rather than only in the model. */
+export function orderTaskRows(
+  manual: Task[],
+  automatic: AutomaticTask[],
+  clock: TaskClock,
+): TaskRow[] {
+  const sorted = sortTasks(manual, clock);
+  const urgent = sorted.filter((task) => outranksChecks(task, clock));
+  const rest = sorted.filter((task) => !outranksChecks(task, clock));
+  return [
+    ...urgent.map((task): TaskRow => ({ kind: 'task', task })),
+    ...automatic.map((auto): TaskRow => ({ kind: 'auto', auto })),
+    ...rest.map((task): TaskRow => ({ kind: 'task', task })),
+  ];
+}
+
+/** Whether a row survives the facet, as a predicate for `revealRows` (ADR-0120) — never a
+ *  bare `.filter()`, which is the one-off that made the Map jump for two releases.
+ *
+ *  A check shows under `הכל` alone: the other two chips read a `Task` row and an untouched
+ *  check has none, so neither can answer about it (`isLive`, `lib/automatic-tasks.ts`). */
+export function taskRowMatchesFacet(row: TaskRow, facet: TaskFacet, meId: string): boolean {
+  if (row.kind === 'auto') return facet === TASK_FACET.ALL;
+  return taskMatchesFacet(row.task, facet, meId);
+}
+/** The manual half of the predicate above. */
 export function taskMatchesFacet(task: Task, facet: TaskFacet, meId: string): boolean {
   if (facet === TASK_FACET.SETTLED) return isSettled(task);
   // Settled tasks collapse out of both open facets (brief §13) — a done task IS finished,
@@ -139,7 +187,11 @@ export interface TaskPreview {
 }
 
 export function taskPreview(tasks: Task[], clock: TaskClock): TaskPreview {
-  const open = tasks.filter((task) => !isSettled(task));
+  // **Only tasks a person wrote** (ADR-0190 §1). A readiness check has no row until someone
+  // touches it, so counting derivations here would make a brand-new trip read
+  // "5 משימות פתוחות" before anyone had written one — and an automatic task has no `dueAt`,
+  // so it could never be the "next due" this line exists to name either.
+  const open = tasks.filter((task) => isManual(task) && !isSettled(task));
   const dated = sortTasks(
     open.filter((task) => task.dueAt),
     clock,

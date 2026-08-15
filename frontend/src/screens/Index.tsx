@@ -107,9 +107,11 @@ export function Index() {
     );
   }
   if (view === 'tasks') {
+    // The passport check's verb lands on this screen's own sibling rather than on Home
+    // (ADR-0190 §3), so the Index hands the way in.
     return (
       <div className="index">
-        <IndexTasksView onClose={backToLanding} />
+        <IndexTasksView onClose={backToLanding} onOpenDocuments={openDocuments} />
       </div>
     );
   }

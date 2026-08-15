@@ -15,23 +15,45 @@
 // the count-in-label toggle ADR-0061 established, and building both would be two ways to
 // see one set of rows.
 import { useMemo, useState } from 'react';
-import { TASK_STATUS, type Task } from '@waypoint/shared';
+import { useNavigate } from 'react-router-dom';
+import { TASK_STATUS, type Task, type User } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useAuth } from '../state/auth-state';
 import { useClock } from '../lib/useClock';
-import { useBackLayer, type BackResult } from '../state/nav-state';
+import {
+  useBackLayer,
+  DAYS_TAB,
+  FOCUS_PARAM,
+  HOME_FOCUS,
+  HOME_TAB,
+  TAB_PARAM,
+  type BackResult,
+} from '../state/nav-state';
+import { useAutomaticTasks } from '../lib/useAutomaticTasks';
+import {
+  AUTOMATIC_TASK_ACTION,
+  draftOverlay,
+  isLive,
+  isManual,
+  type AutomaticTask,
+} from '../lib/automatic-tasks';
+import { AutomaticTaskRow } from './AutomaticTaskRow';
+import { Avatar } from './primitives/Avatar';
 import { countVisible, revealRows } from '../lib/filter-reveal';
 import { ltrIsolate } from '../lib/bidi';
 import {
   countTasksByFacet,
   isSettled,
+  orderTaskRows,
   sortTasks,
   TASK_FACET,
   taskDue,
-  taskMatchesFacet,
+  taskRowKey,
+  taskRowMatchesFacet,
   tickedStatus,
   type TaskClock,
   type TaskFacet,
+  type TaskRow,
 } from '../lib/tasks';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { TaskSheet, type TaskDraft } from './TaskSheet';
@@ -45,10 +67,20 @@ import { EmptyState } from './feedback';
 import { t } from '../i18n/he';
 import './tasks.css';
 
-export function IndexTasksView({ onClose }: { onClose: () => void }) {
-  const { trip, tasks, users, zoneCrossings, taskVerbs } = useTrip();
+export function IndexTasksView({
+  onClose,
+  onOpenDocuments,
+}: {
+  onClose: () => void;
+  /** The passport check's verb. Its destination is this screen's own sibling rather than
+   *  Home, so the Index hands the way in rather than the tasks screen navigating (ADR-0190
+   *  §3). */
+  onOpenDocuments: () => void;
+}) {
+  const { trip, tasks, users, zoneCrossings, taskVerbs, setActiveDate } = useTrip();
   const { me } = useAuth();
   const now = useClock();
+  const navigate = useNavigate();
 
   const [facet, setFacet] = useState<TaskFacet>(TASK_FACET.ALL);
   // null = closed; 'create' = a new task; a Task = editing that one.
@@ -64,8 +96,17 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
     [now, zoneCrossings, trip.timezone],
   );
 
-  const ordered = useMemo(() => sortTasks(tasks, clock), [tasks, clock]);
+  // **Only what a person wrote goes through the facet axis and the sort.** A readiness check
+  // is not a `Task` until someone touches it, so it cannot satisfy `שלי` (no assignee) or
+  // `הושלמו` (no status) by construction — the checks ride above the list instead
+  // (ADR-0190 §1/§2).
+  const manualTasks = useMemo(() => tasks.filter(isManual), [tasks]);
+  const ordered = useMemo(() => sortTasks(manualTasks, clock), [manualTasks, clock]);
   const counts = useMemo(() => countTasksByFacet(ordered, meId), [ordered, meId]);
+
+  const { readiness, automatic, applyVerb } = useAutomaticTasks();
+  const firstEmptyDate = readiness.emptyDates[0];
+  const live = useMemo(() => automatic.filter(isLive), [automatic]);
 
   // A chip whose last task was settled (or unassigned out from under a still-selected
   // filter) falls back to "all" rather than filtering against an empty set — derived, not a
@@ -86,10 +127,14 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
   };
   useBackLayer(backOrResetFacet);
 
+  // **ONE list** (ADR-0190 §2, owner's revision): urgent manual tasks, then the readiness
+  // checks, then the rest in urgency order. Not a separate card above — the checks belong
+  // inside the ladder, and one card is what keeps brief §2's "one noun" true on screen.
+  const rows = useMemo(() => orderTaskRows(manualTasks, live, clock), [manualTasks, live, clock]);
   // Through `revealRows`, never a bare `.filter()` — a row is hidden in place so the list
   // animates instead of jumping, which is the one-off that cost the Map two releases
   // (ADR-0120). Hence `countVisible`, not `.length`.
-  const visible = revealRows(ordered, (task) => taskMatchesFacet(task, activeFacet, meId)).rows;
+  const visible = revealRows(rows, (row) => taskRowMatchesFacet(row, activeFacet, meId)).rows;
   const matchCount = countVisible(visible);
 
   const facetOptions: Choice<TaskFacet>[] = [
@@ -127,20 +172,63 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
 
   const assigneeName = (task: Task) =>
     task.assigneeUserId ? users.find((u) => u.id === task.assigneeUserId)?.displayName : undefined;
+  const assigneeOf = (task: Task) =>
+    task.assigneeUserId ? users.find((u) => u.id === task.assigneeUserId) : undefined;
 
-  const renderTask = (task: Task) => (
-    <TaskLi
-      task={task}
-      due={taskDue(task, clock)}
-      assignee={assigneeName(task)}
-      onTick={() => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
-      open={openId === task.id}
-      onToggle={() => setOpenId((current) => (current === task.id ? null : task.id))}
-      onEdit={() => setSheet(task)}
-      onManage={() => setManage(task)}
-    />
-  );
-  const taskKey = (task: Task) => task.id;
+  /** **Where each check's verb goes, and three of five do not go to Home** (ADR-0190 §3).
+   *  The rule is "navigate to where the thing lives": a seeded booking form lives on Plan
+   *  Home and needs the deep-link, but an empty day is the day tab, a passport is this
+   *  screen's own sibling, and an invite is trip settings. */
+  const runAction = (auto: AutomaticTask) => {
+    switch (auto.action) {
+      case AUTOMATIC_TASK_ACTION.ADD_FLIGHT:
+      case AUTOMATIC_TASK_ACTION.ADD_LODGING:
+        navigate(
+          `/?${TAB_PARAM}=${HOME_TAB}&${FOCUS_PARAM}=${
+            auto.action === AUTOMATIC_TASK_ACTION.ADD_FLIGHT
+              ? HOME_FOCUS.ADD_FLIGHT
+              : HOME_FOCUS.ADD_LODGING
+          }`,
+          { replace: true },
+        );
+        return;
+      case AUTOMATIC_TASK_ACTION.BUILD_DAY:
+        if (firstEmptyDate) setActiveDate(firstEmptyDate);
+        navigate(`/?${TAB_PARAM}=${DAYS_TAB}`, { replace: true });
+        return;
+      case AUTOMATIC_TASK_ACTION.UPLOAD_DOCS:
+        onOpenDocuments();
+        return;
+      case AUTOMATIC_TASK_ACTION.INVITE:
+        navigate(`/trip/${trip.id}/settings`, { replace: true });
+        return;
+    }
+  };
+
+  /** A check with no row yet is handed a Task-shaped value that has never been written —
+   *  opening a MENU must not write anything (brief §4: the row is minted by the verb). */
+  const manageAutomatic = (auto: AutomaticTask) =>
+    setManage(auto.task ?? draftOverlay(auto, trip.id));
+
+  const renderRow = (row: TaskRow) =>
+    row.kind === 'auto' ? (
+      <AutomaticTaskRow
+        auto={row.auto}
+        onAct={() => runAction(row.auto)}
+        onManage={() => manageAutomatic(row.auto)}
+      />
+    ) : (
+      <TaskLi
+        task={row.task}
+        due={taskDue(row.task, clock)}
+        assignee={assigneeOf(row.task)}
+        onTick={() => void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })}
+        open={openId === row.task.id}
+        onToggle={() => setOpenId((current) => (current === row.task.id ? null : row.task.id))}
+        onEdit={() => setSheet(row.task)}
+        onManage={() => setManage(row.task)}
+      />
+    );
 
   return (
     <div className="idx-screen">
@@ -154,7 +242,7 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
         }
       />
 
-      {tasks.length === 0 ? (
+      {manualTasks.length === 0 && live.length === 0 ? (
         // "Nothing yet" teaches what belongs here and offers the action; "nothing matches"
         // below offers none, because the right control is already on screen — the chip.
         <EmptyState
@@ -184,8 +272,8 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
             <RevealList
               className="listcard"
               rows={visible}
-              getKey={taskKey}
-              renderRow={renderTask}
+              getKey={taskRowKey}
+              renderRow={renderRow}
             />
           ) : (
             <EmptyState icon={<Icon name="check" />} title={t.tasks.filter.noResults} />
@@ -205,6 +293,20 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
         <TaskManageSheet
           task={manage}
           assigneeName={assigneeName(manage)}
+          // The automatic sheet's FIRST action is the verb the row's tap fires (ADR-0188
+          // §5) — a tap that does something non-obvious needs a named twin.
+          derivedAction={(() => {
+            const auto = automatic.find((a) => a.key === manage.derivedKey);
+            return auto
+              ? {
+                  label: auto.title,
+                  onSelect: () => {
+                    setManage(null);
+                    runAction(auto);
+                  },
+                }
+              : undefined;
+          })()}
           onEdit={() => {
             const task = manage;
             setManage(null);
@@ -213,17 +315,17 @@ export function IndexTasksView({ onClose }: { onClose: () => void }) {
           onToggleImportant={() => {
             const task = manage;
             setManage(null);
-            void taskVerbs.updateTask(task.id, { important: !task.important });
+            applyVerb(task, { important: !task.important });
           }}
           onDismiss={() => {
             const task = manage;
             setManage(null);
-            void taskVerbs.updateTask(task.id, { status: TASK_STATUS.DISMISSED });
+            applyVerb(task, { status: TASK_STATUS.DISMISSED });
           }}
           onReopen={() => {
             const task = manage;
             setManage(null);
-            void taskVerbs.updateTask(task.id, { status: TASK_STATUS.OPEN });
+            applyVerb(task, { status: TASK_STATUS.OPEN });
           }}
           onDelete={() => {
             const task = manage;
@@ -268,7 +370,8 @@ function TaskLi({
 }: {
   task: Task;
   due: ReturnType<typeof taskDue>;
-  assignee?: string;
+  /** The person, not their name — the row renders `Avatar` (ADR-0190 §6). */
+  assignee?: User;
   onTick: () => void;
   /** Expanded: the body is printed under the row and the foot is under that. */
   open: boolean;
@@ -291,14 +394,32 @@ function TaskLi({
           {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
         </span>
       )}
-      {due && assignee ? <span className="tsk-sep">·</span> : null}
-      {assignee}
+      {due ? <span className="tsk-sep">·</span> : null}
+      {/* **Who owes it, as a person** (ADR-0190 §6, from the owner's report that members are
+          prominent in the form and barely visible here). ADR-0188 §3 made this a bare name
+          to avoid "a second identity system per row" — a premise that expired when ADR-0189
+          put `Avatar` in the editor for this same field, so the row now REUSES the system
+          this feature already established rather than adding one. Measured: the title column
+          is unchanged at 201px and the row stays 61px, because the circle is sized to the
+          meta line and overhangs it rather than stretching it.
+          An UNASSIGNED task says so explicitly; today it said nothing at all, which is
+          indistinguishable from "assigned to someone whose name did not fit". */}
+      <span className="tsk-who">
+        {assignee ? (
+          <Avatar person={assignee} size="inherit" className="tsk-who-mini" />
+        ) : (
+          <span className="tsk-who-mini none" aria-hidden="true">
+            <Icon name="members" />
+          </span>
+        )}
+        {assignee ? assignee.displayName : t.tasks.sheet.nobody}
+      </span>
       {/* "There is more", not a preview of it — one glyph at the end of the meta line, and
           it costs the row 0px. Absent while the row is open, because the words it points at
           are printed directly underneath by then. */}
       {task.body && !open ? (
         <>
-          {due || assignee ? <span className="tsk-sep">·</span> : null}
+          <span className="tsk-sep">·</span>
           <span className="tsk-more-mark" aria-hidden="true">
             <Icon name="more" />
           </span>
@@ -307,7 +428,8 @@ function TaskLi({
     </>
   );
 
-  const hasMeta = Boolean(due || assignee || task.body);
+  // Always: every task has an owner-state to report, even when that state is "nobody yet".
+  const hasMeta = true;
 
   return (
     <>
@@ -363,7 +485,11 @@ function TaskLi({
             </div>
           )}
           <RowOpenFoot
-            lead={<span className="row-open-lead plain">{assignee ?? t.tasks.sheet.nobody}</span>}
+            lead={
+              <span className="row-open-lead plain">
+                {assignee ? assignee.displayName : t.tasks.sheet.nobody}
+              </span>
+            }
             editLabel={t.tasks.manage.edit}
             onEdit={onEdit}
           />

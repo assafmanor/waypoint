@@ -1316,91 +1316,22 @@
   border-radius: 14px;
   overflow: hidden;
 }
-.chk-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px 14px;
-  border-bottom: 1px solid var(--line);
-}
-.chk-row:last-child {
-  border-bottom: 0;
-}
-.chk-ic {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  flex: 0 0 auto;
-  background: var(--paper);
-}
-.chk-main {
-  flex: 1;
-  min-width: 0;
-}
-.chk-t {
-  font-weight: 700;
-  font-size: 14px;
-}
-.chk-m {
-  font-size: 11.5px;
-  color: var(--muted);
-  margin-top: 2px;
-}
+/* **`.chk-row` and its parts RETIRED (ADR-0188 §6/§7, built in ADR-0190).** The finding was
+   that this was `ListRow` written a second time — badge + title + meta + trailing control,
+   inside a `.checklist` card that is `.index .listcard` under another name — so Plan Home
+   and the tasks screen now render the SAME row from `ui/AutomaticTaskRow.tsx`. Gone with it:
+   `.chk-ic`, `.chk-main`, `.chk-t`, `.chk-m`, `.chk-cta` (the CTA button, because `ListRow`
+   has a tap where this was a `<div>` that needed one — ADR-0061 §1 survives without it), and
+   `.chk-ppl` (the per-traveller passport pips: the meta line already says "2 מתוך 5 העלו
+   דרכון" in words, and they only ever appeared on one row of five).
+
+   `.chk-ok` SURVIVES — it is the completed row's trailing state, now inside `ListRow`'s
+   trailing slot rather than as a sibling of a bespoke row. */
 .chk-ok {
   flex: 0 0 auto;
   font-size: 12px;
   font-weight: 700;
   color: var(--ok);
-}
-.chk-cta {
-  flex: 0 0 auto;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  border: 1px solid var(--plan);
-  color: var(--plan-deep);
-  background: var(--card);
-  border-radius: 8px;
-  padding: 6px 12px;
-  cursor: pointer;
-  transition: 0.12s;
-}
-.chk-cta:hover {
-  background: var(--plan);
-  color: var(--on-fill);
-}
-.chk-cta:focus-visible {
-  outline: 2.5px solid var(--plan);
-  outline-offset: 2px;
-}
-/* A missing hard commitment (flight/lodging) nudges in --miss, not plan violet
-   (ADR-0061 mockup) — a status hint, still advisory, never a blocker. */
-.chk-cta.warn {
-  border-color: var(--miss);
-  color: var(--miss-deep);
-}
-.chk-cta.warn:hover {
-  background: var(--miss);
-  color: var(--on-fill);
-}
-/* Per-traveller passport indicator on the documents row (ADR-0061). */
-.chk-ppl {
-  display: inline-flex;
-  gap: 3px;
-  margin-inline-start: 6px;
-  vertical-align: middle;
-}
-.chk-ppl i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--line);
-}
-.chk-ppl i.on {
-  background: var(--ok);
 }
 /* Show/hide-completed toggle in the checklist section title (ADR-0061). */
 .chk-toggle {

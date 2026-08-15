@@ -74,6 +74,13 @@ vi.mock('../state/trip-state', () => ({
     documents: [],
     users: [{ id: 'u1' }],
     setActiveDate: () => {},
+    // The checklist is task rows now (ADR-0190), so PlanHome reads the task channel.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => {},
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
   }),
 }));
 

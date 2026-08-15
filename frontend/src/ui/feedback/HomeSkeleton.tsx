@@ -88,34 +88,24 @@ function PlanHomeSkeleton() {
           </div>
         </div>
       </div>
+      {/* The checklist is `ListRow` since ADR-0190 — `.chk-row` and its parts retired with
+          the convergence — so the skeleton follows it. Same rule as the rest of this file:
+          the real classes, with `Skeleton` standing in for text, so the pre-draw cannot
+          drift out of shape independently of what it is pre-drawing. No trailing CTA block
+          either; that button was deleted with the row. */}
       <div className="checklist">
-        <div className="chk-row">
-          <div className="chk-ic">
-            <Skeleton shape="circle" width={18} height={18} />
+        {[46, 58, 38].map((titleWidth) => (
+          <div className="wp-listrow" key={titleWidth}>
+            <div className="wp-listrow-open">
+              <span className="wp-listrow-badge">
+                <Skeleton shape="circle" width={18} height={18} />
+              </span>
+              <span className="wp-listrow-main">
+                <Skeleton shape="line" height={13} width={`${titleWidth}%`} />
+              </span>
+            </div>
           </div>
-          <div className="chk-main">
-            <Skeleton shape="line" height={13} width="46%" />
-          </div>
-          <Skeleton shape="block" width={68} height={28} />
-        </div>
-        <div className="chk-row">
-          <div className="chk-ic">
-            <Skeleton shape="circle" width={18} height={18} />
-          </div>
-          <div className="chk-main">
-            <Skeleton shape="line" height={13} width="58%" />
-          </div>
-          <Skeleton shape="block" width={68} height={28} />
-        </div>
-        <div className="chk-row">
-          <div className="chk-ic">
-            <Skeleton shape="circle" width={18} height={18} />
-          </div>
-          <div className="chk-main">
-            <Skeleton shape="line" height={13} width="38%" />
-          </div>
-          <Skeleton shape="block" width={68} height={28} />
-        </div>
+        ))}
       </div>
     </>
   );

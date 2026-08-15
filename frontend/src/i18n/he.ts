@@ -1081,6 +1081,10 @@ export const t = {
        *  state rather than claiming one — `של כולנו` belongs to phase 6's `everyone`, and
        *  spending it here is what made a presumed default read as a false claim. */
       group: 'לא משויך',
+      /** An automatic task's subject line (ADR-0188 §5). It states, once and above the
+       *  verbs that remain, why `עריכה` and `מחיקה` are not among them — an absence with a
+       *  reason over it is a behaviour; an absence with none is a bug. */
+      derived: 'מתעדכנת מהנתונים של הטיול',
     },
     due: {
       // ADR-0171's shipped deadline word, reused rather than re-invented.

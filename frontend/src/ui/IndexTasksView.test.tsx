@@ -73,7 +73,22 @@ const deleted: string[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
-    trip: { id: 't1', name: 'טוקיו', timezone: 'Asia/Jerusalem' },
+    trip: {
+      id: 't1',
+      name: 'טוקיו',
+      timezone: 'Asia/Jerusalem',
+      // The readiness derivation reads these now (ADR-0190): the screen renders the five
+      // automatic checks above its manual list, so the trip has to be a real enough trip
+      // for `computeReadiness` to answer about.
+      destination: 'טוקיו',
+      startDate: '2026-08-15',
+      endDate: '2026-08-20',
+    },
+    events: [],
+    bookings: [],
+    places: [],
+    documents: [],
+    setActiveDate: () => {},
     tasks: tripTasks,
     users: [
       { id: 'u1', displayName: 'אסף' },
@@ -124,9 +139,17 @@ function wrap(node: ReactNode) {
   );
 }
 
-const show = (onClose = () => {}) => render(wrap(<IndexTasksView onClose={onClose} />));
+const openDocuments = vi.fn();
+const show = (onClose = () => {}) =>
+  render(wrap(<IndexTasksView onClose={onClose} onOpenDocuments={openDocuments} />));
 const visibleRows = () =>
   [...document.querySelectorAll('.wp-reveal:not(.hidden) .wp-listrow')] as HTMLElement[];
+const MANUAL_TITLES = ALL.map((x) => x.title);
+/** Four of `computeReadiness`'s five: the fixture's two travellers already satisfy `group`,
+ *  and a satisfied check is not "still missing" (`isLive`). */
+const LIVE_CHECKS = 4;
+/** The readiness checks on screen — rows with the derivation's badge and no tick. */
+const autoRows = () => visibleRows().filter((r) => !r.querySelector('.tsk-tick'));
 const titles = () =>
   visibleRows().map((r) => r.querySelector('.wp-listrow-title')?.textContent?.trim());
 
@@ -183,15 +206,20 @@ describe('IndexTasksView', () => {
   });
 
   describe('the order', () => {
-    it('runs overdue → today → later → undated, oldest first inside a band', () => {
+    // **Urgent first, then the readiness checks, then the rest** (ADR-0190 §2, owner's
+    // revision). `overdue` is both important AND overdue, so it leads; everything else is
+    // ordinary and falls below the checks in the same urgency ladder as before.
+    it('runs urgent → readiness checks → the rest in urgency order', () => {
       show();
-      expect(titles()).toEqual([
-        overdue.title,
-        today.title,
-        later.title,
-        undated.title,
-        mine.title,
-      ]);
+      const order = titles();
+      expect(order[0]).toBe(overdue.title);
+      const manualAfter = order.slice(1).filter((x) => MANUAL_TITLES.includes(x!));
+      expect(manualAfter).toEqual([today.title, later.title, undated.title, mine.title]);
+      // …and every check sits between the two halves.
+      const firstCheck = order.findIndex((x) => !MANUAL_TITLES.includes(x!));
+      const lastCheck = order.map((x) => !MANUAL_TITLES.includes(x!)).lastIndexOf(true);
+      expect(firstCheck).toBe(1);
+      expect(lastCheck).toBeLessThan(order.indexOf(today.title));
     });
 
     it('hides settled tasks from the default list', () => {
@@ -371,10 +399,83 @@ describe('IndexTasksView', () => {
     });
   });
 
-  it('teaches what belongs here when the trip has no tasks at all', () => {
+  // **The empty state now means "nothing at all to do", not "nobody has typed yet"**
+  // (ADR-0190 §1). A trip with no manual tasks still owes its readiness checks, so the
+  // screen has content from the moment the trip exists — and the way to add one is the
+  // ordinary `+` button rather than the empty state's CTA.
+  it('shows the readiness checks rather than an empty state on a trip with no tasks', () => {
     tripTasks = [];
     show();
-    expect(screen.getByText(t.tasks.empty.title)).toBeTruthy();
-    expect(screen.getByRole('button', { name: t.tasks.empty.action })).toBeTruthy();
+    expect(screen.queryByText(t.tasks.empty.title)).toBeNull();
+    expect(autoRows().length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: new RegExp(t.tasks.add) })).toBeTruthy();
+  });
+
+  describe('automatic tasks (ADR-0190)', () => {
+    // ONE card, not a separate one above — brief §2's "one noun, one list" on screen.
+    it('puts the checks in the same list card as the manual tasks', () => {
+      tripTasks = [today];
+      show();
+      expect(document.querySelectorAll('.listcard')).toHaveLength(1);
+      // FOUR, not five: the fixture has two travellers, so the `group` check is already
+      // satisfied and `isLive` drops it — the list is what is still MISSING.
+      expect(autoRows().length).toBe(LIVE_CHECKS);
+    });
+
+    it('leads an automatic row with the derivation’s badge and no tick', () => {
+      tripTasks = [];
+      show();
+      const row = autoRows()[0];
+      expect(row.querySelector('.tsk-tick')).toBeNull();
+      expect(row.querySelector('.wp-listrow-badge')).toBeTruthy();
+      // A task with no row has nothing in flight to badge (ADR-0188 §7).
+      expect(row.querySelector('.wp-listrow-sync')).toBeNull();
+    });
+
+    // The chips read a `Task` row, and an untouched check has none — so they sit it out
+    // rather than each growing a second meaning.
+    it('hides the checks under any facet but הכל', () => {
+      tripTasks = [mine];
+      show();
+      expect(autoRows().length).toBe(LIVE_CHECKS);
+      fireEvent.click(screen.getByRole('radio', { name: new RegExp(t.tasks.filter.mine) }));
+      expect(autoRows()).toHaveLength(0);
+    });
+
+    it('keeps the checks out of the facet counts, so they cannot inflate a chip', () => {
+      tripTasks = [today, later];
+      show();
+      const all = screen.getByRole('radio', { name: new RegExp(t.tasks.filter.all) });
+      expect(all.textContent).toContain('2');
+    });
+
+    // **Opening a MENU writes nothing** (brief §4: the row is minted by the verb). This is
+    // the distinction the first build got wrong — it created on `⋯`, so merely looking wrote.
+    it('writes nothing when the ⋯ is merely opened on an untouched check', () => {
+      tripTasks = [];
+      show();
+      fireEvent.click(autoRows()[0].querySelector('.wp-listrow-kebab') as HTMLElement);
+      expect(created).toHaveLength(0);
+      expect(screen.getByText(t.tasks.subject.derived)).toBeTruthy();
+    });
+
+    it('mints the overlay row when a verb is actually used on it', () => {
+      tripTasks = [];
+      show();
+      fireEvent.click(autoRows()[0].querySelector('.wp-listrow-kebab') as HTMLElement);
+      fireEvent.click(screen.getByRole('button', { name: t.tasks.manage.dismiss }));
+      expect(created).toHaveLength(1);
+      expect(created[0]).toMatchObject({ status: TASK_STATUS.DISMISSED });
+      expect((created[0] as { derivedKey?: string }).derivedKey).toBeTruthy();
+    });
+
+    it('offers no עריכה and no מחיקה on a check, and states why above them', () => {
+      tripTasks = [];
+      show();
+      fireEvent.click(autoRows()[0].querySelector('.wp-listrow-kebab') as HTMLElement);
+      expect(screen.getByText(t.tasks.subject.derived)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: t.tasks.manage.edit })).toBeNull();
+      expect(screen.queryByRole('button', { name: t.tasks.manage.delete })).toBeNull();
+    });
   });
 });

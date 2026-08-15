@@ -18,6 +18,7 @@ import { t } from '../i18n/he';
 export function TaskManageSheet({
   task,
   assigneeName,
+  derivedAction,
   onEdit,
   onToggleImportant,
   onDismiss,
@@ -28,6 +29,10 @@ export function TaskManageSheet({
   task: Task;
   /** The delegate's display name, or undefined for the group's task. */
   assigneeName?: string;
+  /** An automatic task's own verb — the SAME one the row's tap fires (ADR-0188 §5). A tap
+   *  that does something non-obvious needs a named twin, and that is what a menu is for, so
+   *  this is the sheet's FIRST action rather than a footnote under the others. */
+  derivedAction?: { label: string; onSelect: () => void };
   onEdit: () => void;
   onToggleImportant: () => void;
   onDismiss: () => void;
@@ -37,6 +42,13 @@ export function TaskManageSheet({
 }) {
   const [confirming, setConfirming] = useState(false);
   const settled = task.status !== TASK_STATUS.OPEN;
+  // **An automatic task refuses edit and delete, and the refusal is an ABSENCE** (ADR-0188
+  // §5). The question is asked here, so it is answered here — not marked on the row, which
+  // could say "this is different" but never "you may not delete this". No disabled item and
+  // no grey: a disabled control promises an enabling that will never come (ADR-0150 §8).
+  // The subject slot states the reason once, above the verbs that remain — an absence with a
+  // reason over it is a behaviour, an absence with none is a bug.
+  const derived = task.derivedKey !== undefined;
 
   if (confirming) {
     return (
@@ -57,10 +69,20 @@ export function TaskManageSheet({
       title={task.title}
       // The sheet always names its subject (ADR-0138 §3). A task's own words are its title,
       // so the subject line carries who owes it — the fact the menu's verbs act on.
-      subject={assigneeName ?? t.tasks.subject.group}
+      subject={derived ? t.tasks.subject.derived : (assigneeName ?? t.tasks.subject.group)}
       onClose={onClose}
       actions={[
-        { label: t.tasks.manage.edit, icon: CONTROL_ICON.edit, onSelect: onEdit },
+        ...(derived
+          ? derivedAction
+            ? [
+                {
+                  label: derivedAction.label,
+                  icon: CONTROL_ICON.edit,
+                  onSelect: derivedAction.onSelect,
+                },
+              ]
+            : []
+          : [{ label: t.tasks.manage.edit, icon: CONTROL_ICON.edit, onSelect: onEdit }]),
         {
           label: task.important ? t.tasks.manage.unflag : t.tasks.manage.flag,
           icon: CONTROL_ICON.star,
@@ -71,12 +93,18 @@ export function TaskManageSheet({
         settled
           ? { label: t.tasks.manage.reopen, icon: CONTROL_ICON.restore, onSelect: onReopen }
           : { label: t.tasks.manage.dismiss, icon: CONTROL_ICON.skip, onSelect: onDismiss },
-        {
-          label: t.tasks.manage.delete,
-          icon: CONTROL_ICON.trash,
-          danger: true,
-          onSelect: () => setConfirming(true),
-        },
+        // An automatic task has no destructive verb, so it has no danger group either —
+        // deleting the row would only make the derivation write a fresh one.
+        ...(derived
+          ? []
+          : [
+              {
+                label: t.tasks.manage.delete,
+                icon: CONTROL_ICON.trash,
+                danger: true,
+                onSelect: () => setConfirming(true),
+              },
+            ]),
       ]}
     />
   );

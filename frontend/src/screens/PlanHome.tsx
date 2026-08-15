@@ -8,9 +8,9 @@
 // lodging), seeds the day builder, or the settings invite — not a bare tab
 // switch. Completed checks collapse into a summary. Only rows we can honestly
 // derive appear; Gmail / Google-connection / WhatsApp stay out (ADR-0045/0004).
-import { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BOOKING_TYPE } from '@waypoint/shared';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { BOOKING_TYPE, TASK_STATUS } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { useClock } from '../lib/useClock';
@@ -18,10 +18,20 @@ import { useCountUp } from '../lib/useCountUp';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
 import { countdownParts, formatTripDates } from '../lib/time';
-import { computeReadiness, type CheckId, type ReadinessCheck } from '../lib/readiness';
+import { useAutomaticTasks } from '../lib/useAutomaticTasks';
+import {
+  AUTOMATIC_TASK_ACTION,
+  CHECK_ICON,
+  draftOverlay,
+  isLive,
+  type AutomaticTask,
+} from '../lib/automatic-tasks';
+import { AutomaticTaskRow } from '../ui/AutomaticTaskRow';
+import { TaskManageSheet } from '../ui/TaskManageSheet';
 import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
 import { usePlaceErrandReturn } from '../state/map-scope-state';
-import { HOME_TAB } from '../state/nav-state';
+import { DAYS_TAB, FOCUS_PARAM, HOME_FOCUS, HOME_TAB } from '../state/nav-state';
+import type { Task } from '@waypoint/shared';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
@@ -29,25 +39,8 @@ import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 import { Icon, type IconName } from '../ui/Icon';
 
-// `IconName`, not glyphs: the collapsed summary row renders these pills directly
-// beside its own `<Icon name="check" />`, so the emoji version was five emoji and
-// one SVG sharing a flex row — the sibling test in design-language.md.
-const CHECK_ICON: Record<CheckId, IconName> = {
-  flights: 'flight',
-  lodging: 'hotel',
-  itinerary: 'calendar',
-  documents: 'documents',
-  group: 'members',
-};
-
-interface ChecklistRow {
-  icon: IconName;
-  title: string;
-  meta: string;
-  /** Documents row: the per-traveller passport indicator (filled = uploaded). */
-  dots?: { have: number; total: number };
-  cta: { label: string; warn?: boolean; onClick: () => void };
-}
+// `CHECK_ICON` moved to `lib/automatic-tasks.ts` with the row copy when the tasks screen
+// became a second reader of both — the collapsed summary below still uses it, now imported.
 
 // Trip-local day number (1-based) for a calendar-date string — matches the
 // header's day-strip numbering. UTC-midnight diff, no timezone re-reading.
@@ -57,9 +50,12 @@ const dayNumberOf = (date: string, startDate: string) =>
   ) + 1;
 
 export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { trip, events, bookings, places, documents, users, setActiveDate } = useTrip();
+  const { trip, events, bookings, users, setActiveDate, taskVerbs } = useTrip();
   const now = useClock();
   const navigate = useNavigate();
+  const { readiness, automatic, applyVerb } = useAutomaticTasks();
+  // The `⋯` on an automatic row, shared with the tasks screen's sheet.
+  const [manage, setManage] = useState<Task | null>(null);
   // A create-form open seeded by a checklist CTA (null = closed). The row that
   // opened it decides the booking type (and, for a flight, the missing leg).
   const [sheetSeed, setSheetSeed] = useState<BookingSeed | null>(null);
@@ -75,6 +71,26 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+
+  /** **Arriving from the tasks screen's automatic row** (ADR-0190 §3). Two of the five
+   *  checks resolve into a seeded `BookingSheet`, which lives here — so the tap over there
+   *  deep-links with the same `focus` param the Index already answers to, and this opens the
+   *  sheet on arrival. Cleared after, so back/reload do not re-trigger it. */
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const focus = params.get(FOCUS_PARAM);
+    if (focus !== HOME_FOCUS.ADD_FLIGHT && focus !== HOME_FOCUS.ADD_LODGING) return;
+    setSheetSeed(
+      focus === HOME_FOCUS.ADD_LODGING
+        ? { type: BOOKING_TYPE.HOTEL }
+        : // No `missingLeg` across a URL: seed the outbound, which is the leg missing in
+          // the common case and the one the form can be corrected from either way.
+          { type: BOOKING_TYPE.FLIGHT, dest: trip.destination },
+    );
+    const next = new URLSearchParams(params);
+    next.delete(FOCUS_PARAM);
+    setParams(next, { replace: true });
+  }, [params, setParams, trip.destination]);
 
   /** The prep hero answers a tap with a beat and nothing else (ADR-0160 §H).
    *
@@ -129,98 +145,47 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   const days = daysUntilStart(trip, now);
   const countdown = days === null ? null : countdownParts(days);
-  const readiness = computeReadiness({
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-    destination: {
-      name: trip.destination,
-      googlePlaceId: trip.destinationGooglePlaceId,
-      timezone: trip.timezone,
-      countryCode: trip.destinationCountryCode,
-    },
-    events,
-    bookings,
-    places,
-    documents,
-    travelerIds: users.map((u) => u.id),
-  });
-  const incompleteChecks = readiness.checks.filter((c) => !c.done);
-  const completedChecks = readiness.checks.filter((c) => c.done);
+  // Still missing = not satisfied by the data and not waved off by a person. The completed
+  // half keeps its own collapse (ADR-0190 §4): the tasks screen's `הושלמו` chip is a
+  // different surface, so two toggles is not one mechanism twice — and this section's title
+  // is literally "what is missing", which it stops being if the done rows never leave.
+  const liveChecks = automatic.filter(isLive);
+  const completedAutomatic = automatic.filter((a) => a.done);
+  const completedChecks = completedAutomatic;
 
-  // Each check → its row copy + the one action that resolves it. Actionable CTAs
-  // open the thing itself (ADR-0061): flight/lodging → the seeded create form,
-  // empty-day → the day builder on the first empty day, group → the settings
-  // invite, documents → the passport upload sheet.
-  const rowFor = (check: ReadinessCheck): ChecklistRow => {
-    const c = t.planHome.checklist;
-    switch (check.id) {
-      case 'flights': {
-        // Seed the missing leg: outbound needs a flight TO the destination (seed
-        // its `dest`), a return needs one FROM it (seed its `origin`).
-        const seed: BookingSeed = !check.hasOutbound
-          ? { type: BOOKING_TYPE.FLIGHT, dest: trip.destination }
-          : { type: BOOKING_TYPE.FLIGHT, origin: trip.destination };
-        const meta = check.done
-          ? c.flightsDoneMeta
-          : !check.hasOutbound && !check.hasReturn
-            ? c.flightsMissingBothMeta
-            : check.hasOutbound
-              ? c.flightsMissingReturnMeta
-              : c.flightsMissingOutboundMeta;
-        return {
-          icon: CHECK_ICON.flights,
-          title: c.flightsTitle,
-          meta,
-          cta: { label: c.addFlight, warn: true, onClick: () => setSheetSeed(seed) },
-        };
-      }
-      case 'lodging':
-        return {
-          icon: CHECK_ICON.lodging,
-          title: c.lodgingTitle,
-          meta: check.done
-            ? c.lodgingDoneMeta
-            : c.lodgingMissingMeta(check.count ?? 0, check.total ?? 0),
-          cta: {
-            label: c.addLodging,
-            warn: true,
-            onClick: () => setSheetSeed({ type: BOOKING_TYPE.HOTEL }),
-          },
-        };
-      case 'itinerary': {
-        const nums = readiness.emptyDates.map((d) => dayNumberOf(d, trip.startDate)).join(', ');
-        return {
-          icon: CHECK_ICON.itinerary,
-          title: check.done ? c.itineraryDoneTitle : c.itineraryTitle(check.count ?? 0),
-          meta: check.done ? c.itineraryDoneMeta : c.itineraryMeta(nums),
-          cta: {
-            label: c.buildDay,
-            onClick: () => {
-              if (readiness.emptyDates[0]) setActiveDate(readiness.emptyDates[0]);
-              onNavigate('days');
-            },
-          },
-        };
-      }
-      case 'documents':
-        return {
-          icon: CHECK_ICON.documents,
-          title: c.documentsTitle,
-          meta: check.done
-            ? c.documentsDoneMeta
-            : c.documentsMissingMeta(check.count ?? 0, check.total ?? 0),
-          dots: { have: check.count ?? 0, total: check.total ?? 0 },
-          cta: { label: c.uploadDocs, onClick: () => setUploadingDoc(true) },
-        };
-      case 'group':
-        return {
-          icon: CHECK_ICON.group,
-          title: check.done ? c.groupTitle : c.groupMissingTitle,
-          meta: check.done ? c.groupDoneMeta(users.length) : c.groupMissingMeta,
-          cta: { label: c.invite, onClick: () => navigate(`/trip/${trip.id}/settings`) },
-        };
+  /** The one verb per check (ADR-0061 §1: the CTA does the thing). The COPY moved to
+   *  `lib/automatic-tasks.ts` when the tasks screen became a second reader of it; what stays
+   *  here is what only this screen can do — seed its own sheet, open its own upload. */
+  const runAction = (auto: AutomaticTask) => {
+    switch (auto.action) {
+      case AUTOMATIC_TASK_ACTION.ADD_FLIGHT:
+        // Seed the missing leg: outbound needs a flight TO the destination, a return one
+        // FROM it. `missingLeg` is derived beside the copy, so both hosts agree on it.
+        setSheetSeed(
+          auto.missingLeg === 'outbound'
+            ? { type: BOOKING_TYPE.FLIGHT, dest: trip.destination }
+            : { type: BOOKING_TYPE.FLIGHT, origin: trip.destination },
+        );
+        return;
+      case AUTOMATIC_TASK_ACTION.ADD_LODGING:
+        setSheetSeed({ type: BOOKING_TYPE.HOTEL });
+        return;
+      case AUTOMATIC_TASK_ACTION.BUILD_DAY:
+        if (readiness.emptyDates[0]) setActiveDate(readiness.emptyDates[0]);
+        onNavigate(DAYS_TAB);
+        return;
+      case AUTOMATIC_TASK_ACTION.UPLOAD_DOCS:
+        setUploadingDoc(true);
+        return;
+      case AUTOMATIC_TASK_ACTION.INVITE:
+        navigate(`/trip/${trip.id}/settings`);
+        return;
     }
   };
+
+  /** A check with no row yet is handed a draft; the verb is what writes it (brief §4). */
+  const manageAutomatic = (auto: AutomaticTask) =>
+    setManage(auto.task ?? draftOverlay(auto, trip.id));
 
   return (
     <>
@@ -261,9 +226,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
       <div className="sec-title">
         {t.planHome.checklist.title}
         <span className="sec-title-end">
-          {incompleteChecks.length === 0 && (
-            <span className="hint">{t.planHome.checklist.allDone}</span>
-          )}
+          {liveChecks.length === 0 && <span className="hint">{t.planHome.checklist.allDone}</span>}
           {completedChecks.length > 0 && (
             <CollapseToggle
               expanded={showCompleted}
@@ -276,37 +239,24 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         </span>
       </div>
 
-      {incompleteChecks.length > 0 && (
+      {/* **The convergence, and it is a DELETION** (ADR-0188 §6/§7). `.chk-row` was
+          `ListRow` written a second time — badge + title + meta + trailing control, inside a
+          `.checklist` card that is `.index .listcard` under another name — so this is the
+          same card holding the same row the tasks screen renders, and `.chk-row`/`-ic`/`-t`/
+          `-m`/`-cta`/`-ppl` are gone. `.chk-ok` survives as the completed row's trailing
+          state. The CTA BUTTON goes with them: `.chk-row` was a `<div>` and needed an
+          explicit button, `ListRow` already has a tap, so ADR-0061 §1's rule holds without
+          one — and keeping it left the title 101.8px against a manual row's 195px. */}
+      {liveChecks.length > 0 && (
         <div className="checklist">
-          {incompleteChecks.map((check) => {
-            const row = rowFor(check);
-            return (
-              <div className="chk-row" key={check.id}>
-                <div className="chk-ic">
-                  <Icon name={row.icon} />
-                </div>
-                <div className="chk-main">
-                  <div className="chk-t">{row.title}</div>
-                  <div className="chk-m">
-                    {row.meta}
-                    {row.dots && (
-                      <span className="chk-ppl" aria-hidden="true">
-                        {Array.from({ length: row.dots.total }).map((_, i) => (
-                          <i key={i} className={i < row.dots!.have ? 'on' : undefined} />
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  className={row.cta.warn ? 'chk-cta warn' : 'chk-cta'}
-                  onClick={row.cta.onClick}
-                >
-                  {row.cta.label}
-                </button>
-              </div>
-            );
-          })}
+          {liveChecks.map((auto) => (
+            <AutomaticTaskRow
+              key={auto.key}
+              auto={auto}
+              onAct={() => runAction(auto)}
+              onManage={() => manageAutomatic(auto)}
+            />
+          ))}
         </div>
       )}
 
@@ -320,32 +270,23 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               <span className="ok">
                 <Icon name="check" /> {t.planHome.checklist.completedSummary}
               </span>
-              {completedChecks.map((check) => (
-                <span className="pill" key={check.id}>
-                  <Icon name={CHECK_ICON[check.id]} />{' '}
-                  {t.planHome.checklist.summaryLabels[check.id]}
+              {completedChecks.map((auto) => (
+                <span className="pill" key={auto.key}>
+                  <Icon name={CHECK_ICON[auto.key]} />{' '}
+                  {t.planHome.checklist.summaryLabels[auto.key]}
                 </span>
               ))}
             </div>
           )}
           <Collapsible expanded={showCompleted} className="checklist">
-            {completedChecks.map((check) => {
-              const row = rowFor(check);
-              return (
-                <div className="chk-row" key={check.id}>
-                  <div className="chk-ic">
-                    <Icon name={row.icon} />
-                  </div>
-                  <div className="chk-main">
-                    <div className="chk-t">{row.title}</div>
-                    <div className="chk-m">{row.meta}</div>
-                  </div>
-                  <div className="chk-ok">
-                    <Icon name="check" /> {t.planHome.checklist.done}
-                  </div>
-                </div>
-              );
-            })}
+            {completedAutomatic.map((auto) => (
+              <AutomaticTaskRow
+                key={auto.key}
+                auto={auto}
+                onAct={() => runAction(auto)}
+                onManage={() => manageAutomatic(auto)}
+              />
+            ))}
           </Collapsible>
         </>
       )}
@@ -383,6 +324,41 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
       )}
       {uploadingDoc && (
         <DocumentUploadSheet tripId={trip.id} onClose={() => setUploadingDoc(false)} />
+      )}
+      {manage && (
+        <TaskManageSheet
+          task={manage}
+          derivedAction={(() => {
+            const auto = automatic.find((a) => a.key === manage.derivedKey);
+            return auto
+              ? {
+                  label: auto.title,
+                  onSelect: () => {
+                    setManage(null);
+                    runAction(auto);
+                  },
+                }
+              : undefined;
+          })()}
+          onEdit={() => setManage(null)}
+          onToggleImportant={() => {
+            const task = manage;
+            setManage(null);
+            applyVerb(task, { important: !task.important });
+          }}
+          onDismiss={() => {
+            const task = manage;
+            setManage(null);
+            applyVerb(task, { status: TASK_STATUS.DISMISSED });
+          }}
+          onReopen={() => {
+            const task = manage;
+            setManage(null);
+            applyVerb(task, { status: TASK_STATUS.OPEN });
+          }}
+          onDelete={() => setManage(null)}
+          onClose={() => setManage(null)}
+        />
       )}
     </>
   );

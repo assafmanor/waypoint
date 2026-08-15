@@ -22,7 +22,8 @@ describe('HomeSkeleton', () => {
   it('pre-draws the real prep hero + checklist rows for plan mode', () => {
     const { container } = render(<HomeSkeleton mode="plan" />);
     expect(container.querySelector('.prep')).toBeTruthy();
-    expect(container.querySelectorAll('.checklist .chk-row').length).toBe(3);
+    // `ListRow` since the checklist converged onto it (ADR-0190); `.chk-row` retired.
+    expect(container.querySelectorAll('.checklist .wp-listrow').length).toBe(3);
     expect(container.querySelector('.wp-board')).toBeNull();
   });
 });

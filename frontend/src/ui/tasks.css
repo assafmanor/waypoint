@@ -220,3 +220,56 @@
   height: 13px;
   vertical-align: -2px;
 }
+
+/* WHO OWES IT, on the row (ADR-0190 §6). The owner's report was that members are prominent
+   in the editor and barely visible here; ADR-0188 §3 had made this a bare name to avoid "a
+   second identity system per row", and that premise expired when ADR-0189 put `Avatar` into
+   the editor for the same field — the row now reuses the system this feature established.
+
+   `Avatar` does the drawing (ADR-0133 §3, `size="inherit"`); this only sizes the circle to
+   the LINE it sits on, which is the same move `.wp-listrow-badge` already makes. */
+.tsk-who {
+  white-space: nowrap;
+}
+.tsk-who-mini {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+  /* `middle`, not a pixel offset (owner, 2026-08-16: "the user icon is below the name") — a
+     fixed offset pushes the box DOWN from the baseline instead of centring it on the text,
+     and it stops being right the moment the meta line's font-size moves. */
+  vertical-align: middle;
+  margin-inline-end: 4px;
+  display: inline-grid;
+  /* An 18px circle inside an 11.5px line box STRETCHES the line: the row measured 61px →
+     68.5px, a tax paid on every row including ones with no assignee. Negative block margin
+     lets the circle overhang its own line instead. Measured back to 61px. */
+  margin-block: -7px;
+}
+/* Nobody yet, said explicitly. It reads as the editor's own unassigned option rather than as
+   an empty space, which is what the meta line showed before and was indistinguishable from
+   "assigned to someone whose name did not fit". */
+.tsk-who-mini.none {
+  border: 1px dashed var(--soft-line);
+  border-radius: 50%;
+  color: var(--muted);
+  place-items: center;
+}
+.tsk-who-mini.none .icon {
+  width: 11px;
+  height: 11px;
+}
+
+/* AN AUTOMATIC TASK'S ROW (ADR-0188 §4/§7). Almost nothing: it is `ListRow` with the
+   derivation's badge in the ordinary icon slot and `.chk-ok` — the one `.chk-*` that
+   survives the retirement — in the trailing slot. No tick, no CTA button, no sync column.
+
+   The card sits above the manual list and carries its own bottom margin so the two halves
+   read as two orders rather than one broken sort (ADR-0190 §2). */
+.tsk-auto-card {
+  margin-bottom: 10px;
+}
+.wp-listrow-right .chk-ok {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
