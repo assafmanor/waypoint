@@ -268,19 +268,14 @@
   height: 11px;
 }
 
-/* AN AUTOMATIC TASK'S ROW (ADR-0188 §4/§7). Almost nothing: it is `ListRow` with the
-   derivation's badge in the ordinary icon slot and `.chk-ok` — the one `.chk-*` that
-   survives the retirement — in the trailing slot. No tick, no CTA button, no sync column.
+/* AN AUTOMATIC TASK'S ROW (ADR-0188 §4 as amended 2026-08-16, §7). Nothing at all, and that
+   is the point: it is `ListRow` with the SAME tick a manual task carries in the lead slot,
+   the check's own glyph in the ordinary badge slot, and `.tsk-settled` when it is done — the
+   same struck title every settled task gets. No trailing "הושלם", no second completion
+   vocabulary, no sync column (a check with no row has no write to badge).
 
-   The card sits above the manual list and carries its own bottom margin so the two halves
-   read as two orders rather than one broken sort (ADR-0190 §2). */
-.tsk-auto-card {
-  margin-bottom: 10px;
-}
-.wp-listrow-right .chk-ok {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
+   `.tsk-auto` is kept as a hook with no rules of its own, so a later surface can find these
+   rows without the markup having to grow a data attribute for it. */
 
 /* THE TRIP HOME BAND'S OVERFLOW ROW (ADR-0188 §6). **One more row in the same card**, not a
    second control beside it — which is why it takes the card's own hairline as its top border

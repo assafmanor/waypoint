@@ -3,7 +3,14 @@
 // mostly about proving that a stored row cannot override done-ness in either direction.
 import { describe, it, expect } from 'vitest';
 import { TASK_STATUS, type Task } from '@waypoint/shared';
-import { automaticTasks, isLive, isManual, AUTOMATIC_TASK_ACTION } from './automatic-tasks';
+import {
+  automaticTasks,
+  isLive,
+  isManual,
+  resolvedReadinessPct,
+  tickedAutomaticStatus,
+  AUTOMATIC_TASK_ACTION,
+} from './automatic-tasks';
 import type { ReadinessCheck } from './readiness';
 
 const CTX = {
@@ -67,28 +74,36 @@ describe('automaticTasks', () => {
     expect(rows.every((r) => r.task === undefined)).toBe(true);
   });
 
-  // The two halves of the one sentence. A stored row may say "dismissed" and may not say
-  // anything at all about done-ness — in EITHER direction.
+  // **A HUMAN ANSWER WINS, AND UNTIL THERE IS ONE THE DERIVATION ANSWERS** (owner,
+  // 2026-08-16, reversing ADR-0188 §4's premise). These four cases are the whole rule, and
+  // they replace the old pair that asserted done-ness could never be written — which was
+  // the deliberate opposite, and is the trade the owner took in exchange for one control
+  // that behaves the same on every row.
   it('lets a human dismissal win', () => {
     const rows = automaticTasks(checks, [overlay({ status: TASK_STATUS.DISMISSED })], CTX);
     expect(rows.find(byKey('lodging'))!.dismissed).toBe(true);
   });
 
-  it('keeps done DERIVED when the row claims done on an unsatisfied check', () => {
+  it('lets a human TICK win on a check the data has not satisfied', () => {
     const rows = automaticTasks(checks, [overlay({ status: TASK_STATUS.DONE })], CTX);
-    // The data still says 3 of 7 nights are covered, so the check is not done — a stored
-    // `done` would go stale the moment the hotel was booked, which is why it is never read.
-    expect(rows.find(byKey('lodging'))!.done).toBe(false);
-    expect(rows.find(byKey('lodging'))!.dismissed).toBe(false);
+    // The data still says 3 of 7 nights are covered. The person said done, so it is done —
+    // and `resolvedReadinessPct` reads the same answer, so nothing on screen disagrees.
+    expect(rows.find(byKey('lodging'))!.done).toBe(true);
   });
 
-  it('keeps done DERIVED when the row is open on a satisfied check', () => {
+  it('lets a human UN-TICK win on a check the data HAS satisfied', () => {
     const rows = automaticTasks(
       checks,
       [overlay({ derivedKey: 'group', status: TASK_STATUS.OPEN })],
       CTX,
     );
+    expect(rows.find(byKey('group'))!.done).toBe(false);
+  });
+
+  it('hands the question back to the data when nobody has answered', () => {
+    const rows = automaticTasks(checks, [], CTX);
     expect(rows.find(byKey('group'))!.done).toBe(true);
+    expect(rows.find(byKey('lodging'))!.done).toBe(false);
   });
 
   it('names the missing flight leg so a host can seed the right direction', () => {
@@ -116,6 +131,36 @@ describe('isLive — what "still missing" means', () => {
     const rows = automaticTasks(checks, [overlay({ status: TASK_STATUS.DISMISSED })], CTX);
     const live = rows.filter(isLive).map((r) => r.key);
     expect(live).toEqual(['flights', 'itinerary', 'documents']);
+  });
+});
+
+describe('resolvedReadinessPct', () => {
+  // The prep hero and the list read ONE number. Without this they can disagree on screen —
+  // 60% above a list where every row is ticked — which is worse than either answer alone.
+  it('counts a hand-ticked check as done, so the hero cannot contradict the list', () => {
+    const derivedOnly = automaticTasks(checks, [], CTX);
+    expect(resolvedReadinessPct(derivedOnly)).toBe(20);
+    const ticked = automaticTasks(
+      checks,
+      [
+        overlay({ status: TASK_STATUS.DONE }),
+        overlay({ derivedKey: 'flights', status: TASK_STATUS.DONE }),
+      ],
+      CTX,
+    );
+    expect(resolvedReadinessPct(ticked)).toBe(60);
+  });
+
+  it('is 0 rather than NaN when there are no checks at all', () => {
+    expect(resolvedReadinessPct([])).toBe(0);
+  });
+});
+
+describe('tickedAutomaticStatus', () => {
+  it('toggles open ⇄ done and never reaches dismissed', () => {
+    const [notDone, done] = [{ done: false } as never, { done: true } as never];
+    expect(tickedAutomaticStatus(notDone)).toBe(TASK_STATUS.DONE);
+    expect(tickedAutomaticStatus(done)).toBe(TASK_STATUS.OPEN);
   });
 });
 

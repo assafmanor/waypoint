@@ -18,15 +18,17 @@
 // generalised here rather than copied there. What stays with each host is the ACTION —
 // `PlanHome` can seed its own booking sheet, the Index has to navigate — which is why this
 // returns an action *id* rather than a closure.
-import type { Task, TaskDerivedKey } from '@waypoint/shared';
+import type { Task, TaskDerivedKey, TaskStatus } from '@waypoint/shared';
 import { TASK_STATUS } from '@waypoint/shared';
 import type { CheckId, ReadinessCheck } from './readiness';
 import { MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
 import type { IconName } from '../ui/Icon';
 
-/** The five checks' glyphs. Moved here from `PlanHome`'s private const so the tasks screen
- *  renders the same badge without importing a screen. */
+/** The five checks' glyphs. **Not on the row** — an automatic task carries no badge, because
+ *  it would restate the title beside it (owner, 2026-08-16). This survives for Plan Home's
+ *  collapsed-completed summary, a compact horizontal pill strip where the glyph is what
+ *  distinguishes five short labels at a glance and there is no tick to compete with. */
 export const CHECK_ICON: Record<CheckId, IconName> = {
   flights: 'flight',
   lodging: 'hotel',
@@ -51,7 +53,6 @@ export type AutomaticTaskAction =
 /** One check, resolved against its overlay row. */
 export interface AutomaticTask {
   key: TaskDerivedKey;
-  icon: IconName;
   title: string;
   meta: string;
   /** The derivation's answer, which a stored value may not override. */
@@ -84,12 +85,11 @@ const dayNumberOf = (date: string, startDate: string) =>
 function copyFor(
   check: ReadinessCheck,
   ctx: AutomaticTaskContext,
-): Pick<AutomaticTask, 'icon' | 'title' | 'meta' | 'action' | 'missingLeg'> {
+): Pick<AutomaticTask, 'title' | 'meta' | 'action' | 'missingLeg'> {
   const c = t.planHome.checklist;
   switch (check.id) {
     case 'flights':
       return {
-        icon: CHECK_ICON.flights,
         title: c.flightsTitle,
         meta: check.done
           ? c.flightsDoneMeta
@@ -103,7 +103,6 @@ function copyFor(
       };
     case 'lodging':
       return {
-        icon: CHECK_ICON.lodging,
         title: c.lodgingTitle,
         meta: check.done
           ? c.lodgingDoneMeta
@@ -112,7 +111,6 @@ function copyFor(
       };
     case 'itinerary':
       return {
-        icon: CHECK_ICON.itinerary,
         title: check.done ? c.itineraryDoneTitle : c.itineraryTitle(check.count ?? 0),
         meta: check.done
           ? c.itineraryDoneMeta
@@ -123,7 +121,6 @@ function copyFor(
       };
     case 'documents':
       return {
-        icon: CHECK_ICON.documents,
         title: c.documentsTitle,
         // The per-traveller pips (`.chk-ppl`) retire with the rest of `.chk-*` and are NOT
         // replaced (ADR-0190 §5, owner's call): this line already says the same thing in
@@ -135,7 +132,6 @@ function copyFor(
       };
     case 'group':
       return {
-        icon: CHECK_ICON.group,
         title: check.done ? c.groupTitle : c.groupMissingTitle,
         meta: check.done ? c.groupDoneMeta(ctx.travelerCount) : c.groupMissingMeta,
         action: AUTOMATIC_TASK_ACTION.INVITE,
@@ -143,8 +139,32 @@ function copyFor(
   }
 }
 
-/** **The predicate the whole feature turns on.** Every check becomes a row; the stored row,
- *  when there is one, contributes exactly one fact — whether a human dismissed it. */
+/** **The predicate the whole feature turns on: A HUMAN ANSWER WINS, AND UNTIL THERE IS ONE
+ *  THE DERIVATION ANSWERS.**
+ *
+ *  **Amended 2026-08-16 by the owner, and it reverses ADR-0188 §4's premise.** That section
+ *  gave an automatic task the derivation's badge instead of a tick, because a derived row's
+ *  done-ness could not be pressed — "three inert circles out of five", which reads as a bug.
+ *  The owner's answer is the other way out of the same corner: _"you could complete/uncomplete
+ *  automatic tasks as well"_. Make the circle work and there is nothing inert to explain, and
+ *  a task is one noun with one control everywhere — which is what brief §2 wanted all along.
+ *
+ *  So the resolution is symmetrical and has no special cases:
+ *
+ *  | overlay row | what the row shows |
+ *  | --- | --- |
+ *  | none | the derivation's answer |
+ *  | `done` | done — a person said so, even if the data has not caught up |
+ *  | `open` | not done — a person un-ticked it, even if the data says otherwise |
+ *  | `dismissed` | settled, and out of the open list |
+ *
+ *  **What this costs, stated because brief §4 chose the opposite on purpose:** a stored
+ *  `done` CAN go stale. Tick "book a hotel" without booking one and the row says done while
+ *  no bed is covered. That was the whole argument for deriving it — and it is now a trade
+ *  the owner has taken knowingly, in exchange for one control that behaves the same on every
+ *  row. The staleness is bounded and visible: `resolvedReadinessPct` reads this same
+ *  resolution, so the prep hero's percentage and the list can never disagree with each other,
+ *  and un-ticking puts the derivation back in charge. */
 export function automaticTasks(
   checks: ReadinessCheck[],
   tasks: Task[],
@@ -157,14 +177,32 @@ export function automaticTasks(
     return {
       key: check.id,
       ...copyFor(check, ctx),
-      // Derived, never read off the row: a stored `done` would go stale the moment the
-      // hotel is booked, which is the whole reason §3 of the brief refuses to materialise.
-      done: check.done,
+      // A human answer, once given, wins in BOTH directions. `undefined` — nobody has
+      // touched this check — is what hands the question back to the data.
+      done: task ? task.status === TASK_STATUS.DONE : check.done,
       dismissed: task?.status === TASK_STATUS.DISMISSED,
       task,
     };
   });
 }
+
+/** **The readiness percentage, read off the same resolution the rows are.**
+ *
+ *  `computeReadiness` stays pure and derived (brief §3 is untouched — it is still the thing
+ *  that knows whether a bed is covered). What changed is that the PERCENTAGE is no longer
+ *  read straight off it: a check a person has ticked counts as done here too, because the
+ *  alternative is a prep hero saying 60% directly above a list where every row is ticked.
+ *  Two numbers about one thing, disagreeing on screen, is worse than either answer alone. */
+export function resolvedReadinessPct(automatic: AutomaticTask[]): number {
+  if (automatic.length === 0) return 0;
+  const done = automatic.filter((auto) => auto.done).length;
+  return Math.round((done / automatic.length) * 100);
+}
+
+/** The status a tick moves a check to — open ⇄ done, exactly as `tickedStatus` does for a
+ *  task somebody wrote. `dismissed` is not on this path: it stays the `⋯`'s rare escape. */
+export const tickedAutomaticStatus = (auto: AutomaticTask): TaskStatus =>
+  auto.done ? TASK_STATUS.OPEN : TASK_STATUS.DONE;
 
 /** **What "still missing" means for a derived check**, and it is the only thing either
  *  surface lists: not already satisfied by the data, and not waved off by a person.
