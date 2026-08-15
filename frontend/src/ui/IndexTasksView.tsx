@@ -404,7 +404,7 @@ function TaskLi({
           meta line and overhangs it rather than stretching it.
           An UNASSIGNED task says so explicitly; today it said nothing at all, which is
           indistinguishable from "assigned to someone whose name did not fit". */}
-      <span className="tsk-who">
+      <span className="tsk-assignee">
         {assignee ? (
           <Avatar person={assignee} size="inherit" className="tsk-who-mini" />
         ) : (
