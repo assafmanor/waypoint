@@ -178,6 +178,29 @@ export function taskDue(task: Task, clock: TaskClock): TaskDue | undefined {
   };
 }
 
+/** **What the Trip Home band carries** (ADR-0188 §6, brief §13): manual tasks that are due
+ *  today or already overdue, in the screen's own urgency order.
+ *
+ *  **Manual only, and that is the whole reason the band works.** An automatic task's
+ *  deadline is the DEPARTURE, so mid-trip the departure has passed and every unmet check
+ *  would sit here permanently overdue, in `--miss`, for the rest of the trip — flooding a
+ *  band that exists to say "these three things, today".
+ *
+ *  `taskBand` is reused rather than re-derived: it already measures "passed" against the
+ *  instant and "today" against the reader's calendar day, deliberately in two different
+ *  zones, and a second copy of that here would be the drift `frontend/CLAUDE.md` warns
+ *  about. */
+export function tasksDueNow(tasks: Task[], clock: TaskClock): Task[] {
+  return sortTasks(
+    tasks.filter((task) => {
+      if (!isManual(task) || isSettled(task)) return false;
+      const band = taskBand(task, clock);
+      return band === TASK_BAND.OVERDUE || band === TASK_BAND.TODAY;
+    }),
+    clock,
+  );
+}
+
 /** The Index tile's preview line (brief §13): **the next thing due**, with an overdue count
  *  when there is one. A raw open-count barely moves and answers nothing. */
 export interface TaskPreview {

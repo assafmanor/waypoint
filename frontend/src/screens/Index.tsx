@@ -61,6 +61,11 @@ export function Index() {
     if (focus === INDEX_FOCUS.DOCS) {
       setView('documents');
     }
+    // The Trip Home band's rows and its overflow row both land here (ADR-0188 §6) — the
+    // band is a band, so the list it is a window onto is where a task actually lives.
+    if (focus === INDEX_FOCUS.TASKS) {
+      setView('tasks');
+    }
     // …and MOUNTING the bookings screen is itself a destination (session 172): a booking
     // errand returns here so the screen can take the pending answer and re-open its form.
     // No id — the answer says which booking, and what was typed.

@@ -1093,6 +1093,17 @@ export const t = {
       // separator; an em dash is never used in UI copy.
       late: 'באיחור ·',
     },
+    /** The Trip Home band (ADR-0188 §6). It says `today` rather than `tasks` because the
+     *  band is not the collection — the section is the subset that is due, and the tile is
+     *  where the collection lives. Absent entirely when nothing is due, so there is no empty
+     *  string to write here. */
+    band: {
+      title: 'משימות להיום',
+      /** The section-title end, and it only appears when something is actually late. */
+      overdue: (n: number) => (n === 1 ? 'אחת באיחור' : `${n} באיחור`),
+      /** The overflow row into the tasks screen — one more row in the same card. */
+      more: (n: number) => (n === 1 ? 'עוד משימה אחת' : `עוד ${n} משימות`),
+    },
     // The tile's one changing line: what is due soonest, with an overdue count when there is
     // one (brief §13). A raw open-count barely moves and answers nothing.
     tile: {

@@ -1345,3 +1345,9 @@ export const CONTROL_ICON = {
    *  the glyph with a skipped event, which is the same idea one surface over. */
   skip: 'skip',
 } as const satisfies Record<string, IconName>;
+
+/** **How many tasks the Trip Home band shows before it stops** (ADR-0188 §6). Three, drawn
+ *  and measured at 242px — one section's worth of space, not a second screen's. The rest
+ *  arrive through the band's own overflow row, which is one more row in the same card rather
+ *  than a second control. Still owed to the device pass, and two characters to change. */
+export const TRIP_HOME_TASK_BAND_CAP = 3;
