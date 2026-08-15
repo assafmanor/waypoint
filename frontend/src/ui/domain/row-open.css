@@ -1,0 +1,89 @@
+/* The foot line under a row that opened in place (ADR-0153 §4, generalised in ADR-0189).
+   Moved here verbatim from `ui/notes.css` under neutral names when tasks became the second
+   host — `.note-open-*` at a task is the copy this rename exists to avoid. The note's URL
+   line stays in `notes.css`: a url is a note's own fact, not a shape two features share. */
+
+.row-open-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.listcard .row-open-foot {
+  padding: 0 14px 10px;
+  border-bottom: 1px solid var(--line);
+}
+/* Inside a host's section the foot hangs under its own note, so it takes the item's own
+   inset rather than the card's. */
+.note-item.is-open .row-open-foot {
+  margin-top: 4px;
+}
+.row-open-sp {
+  margin-inline-start: auto;
+}
+.row-open-lead,
+.row-open-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 11.5px;
+  background: none;
+  border: 0;
+  padding: 6px 2px;
+  cursor: pointer;
+  position: relative;
+}
+.row-open-lead {
+  font-weight: 600;
+  color: var(--cta);
+}
+.row-open-act {
+  font-weight: 700;
+  color: var(--cta);
+}
+/* A 44px target under an 11.5px control, without the line taking 44px of the block — the
+   trick `.map-rename` already uses (ADR-0017). */
+.row-open-lead::after,
+.row-open-act::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  transform: translateY(-50%);
+  height: 44px;
+}
+/* Nowhere to go: the same words, no caret, no target. "Absent, not broken" — the rule
+   this app runs for every affordance with no destination. A task's assignee is always
+   this variant; there is no screen for a person to open. */
+.row-open-lead.plain {
+  color: var(--muted);
+  font-weight: 400;
+  cursor: default;
+  padding-inline: 0;
+}
+.row-open-lead.plain::after {
+  content: none;
+}
+.row-open-lead .icon,
+.row-open-act .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+/* The open row and its foot are ONE object, so the hairline between them would cut a
+   sentence from its own byline.
+
+   **AND NO FILL.** A wash on the open row was drawn, rendered, and rejected on sight
+   (owner: _"the color for an expanded note is bad … why is it separated from the three
+   dots"_). Both halves of that are one cause: `.wp-listrow` is a flex CONTAINER whose
+   tappable half is `.wp-listrow-open` and whose `⋯` is that button's SIBLING (buttons do
+   not nest, ADR-0139 §3) — so the row's own fill sits under both, while the button's
+   `:hover` adds 4% to the tappable half ALONE. On a pointer that paints the row in two
+   tones with the seam exactly at the kebab. It cannot happen on a phone, which is why it
+   survived the mockup, and it was a bad idea regardless: the foot and the unclamped words
+   already say the row is open, and a state does not need a colour to be legible. */
+.wp-listrow.is-open {
+  border-bottom: 0;
+}

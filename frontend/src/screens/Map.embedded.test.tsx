@@ -781,7 +781,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(paneProps.current.arrival).toBe(before);
       // …and the tap still did its own job: the note opened where it is (ADR-0153 §4's
       // amendment, round two — no sheet, so nothing to look for over the map either).
-      expect(section.querySelector('.note-open-foot')).toBeTruthy();
+      expect(section.querySelector('.row-open-foot')).toBeTruthy();
     });
   });
 

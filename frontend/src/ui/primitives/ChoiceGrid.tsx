@@ -3,7 +3,7 @@
 // tappable icon/label cards with one selected — this folds that pattern into one
 // controlled primitive so it stops being copy-pasted markup. Neutral chrome only
 // (selected = --cta ring), never a semantic hue (design-language color budget).
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useCenterSelected } from '../../lib/useCenterSelected';
 import './choice-grid.css';
 
@@ -12,6 +12,18 @@ export interface Choice<T extends string> {
   /** Leading glyph (emoji or short symbol); decorative, hidden from a11y. An
    *  empty string omits the icon slot entirely (e.g. a plain "all" option). */
   icon: string;
+  /** `pills` only — a rendered mark at the LEADING edge, where `icon` is a trailing glyph.
+   *  Exists for an axis whose options are PEOPLE (the task editor's `מי אחראי`, ADR-0189):
+   *  the host passes `<Avatar>`, the app's one renderer for a person (ADR-0133 §3), and
+   *  the scroll, the snap, the edge mask, `useCenterSelected` and the radiogroup ARIA all
+   *  keep arriving from here instead of from a second grid.
+   *
+   *  A `ReactNode` rather than an `AvatarPerson`, which is what the design proposed: the
+   *  unassigned option is a **person-shaped absence** and there is no person to pass for
+   *  it, so a typed field would have forced it to be a differently-shaped chip beside the
+   *  people — saying "this is a different kind of answer" about the same question's
+   *  default one. Decorative: the label beside it is the option's accessible name. */
+  lead?: ReactNode;
   label: string;
   /** Trailing count badge, `pills` layout only (the Index category filter,
    *  ADR-0100 §2 — each chip carries label+icon+count). Decorative/aria-hidden
@@ -84,6 +96,7 @@ export function ChoiceGrid<T extends string>({
           >
             {pills ? (
               <>
+                {o.lead !== undefined && <span aria-hidden="true">{o.lead}</span>}
                 {!glyphOnly && <span>{o.label}</span>}
                 {o.icon !== '' && <span aria-hidden="true">{o.icon}</span>}
                 {o.count !== undefined && (

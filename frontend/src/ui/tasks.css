@@ -145,3 +145,78 @@
 .tsk-when-clear:hover {
   color: var(--ink);
 }
+
+/* THE ASSIGNEE ROW (ADR-0189 §2) — `ChoiceGrid layout="pills"` with a person where the
+   glyph goes. The density wrapper is the whole of the new host's CSS: `choice-grid.css`
+   records in place that `.choice-pill` is 36px against ADR-0017's 44px floor "here AND on
+   the shipped category selector", and that raising it moves three shipped surfaces, one
+   with an arithmetic card height (ADR-0148 §1). A NEW host is not bound by that deferral
+   and pays nothing to meet the floor — it scopes its own sizing exactly as `.category-pills`
+   already does. */
+.tsk-who .choice-pill {
+  /* 3 + 38 + 3 = 44 (ADR-0017). Logical padding: the avatar is the LEADING mark, so it is
+     the inline-start side that tightens. */
+  padding-block: 3px;
+  padding-inline: 3px 13px;
+  gap: 8px;
+  font-size: var(--text-secondary);
+}
+.tsk-who .wp-av {
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+}
+/* THE UNASSIGNED OPTION is a person-shaped absence, so it is the same circle with the group
+   glyph instead of a face — not a differently-shaped chip beside the people, which would say
+   "this is a different kind of answer" when it is the same question's default one. Dashed
+   while unchosen, for the reason `.wp-chip.provisional` already uses it (ADR-0110 §2). */
+.tsk-who-any {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  border: 1px dashed var(--soft-line);
+  color: var(--muted);
+  flex: none;
+}
+.tsk-who-any .icon {
+  width: 18px;
+  height: 18px;
+}
+.choice-pill.on .tsk-who-any {
+  border-style: solid;
+  border-color: currentColor;
+}
+
+/* The `important` flag's star in the editor. The control itself is `.field` + `ToggleChip
+   tone="cta" size="touch"` — `EventForm`'s `יש הזמנה` row verbatim (ADR-0136 §1) — so the
+   44px floor arrives from the primitive and nothing here sets a size. Rule 4 untouched:
+   `--cta` is the neutral primary and `important` spends no hue of its own. */
+.tsk-flag .icon {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* READING A TASK (ADR-0189 §3). The foot is shared (`ui/domain/row-open.css`); the body
+   block is the only thing a task needs beyond what notes already ships. `pre-wrap` because
+   the field is a `<textarea>` and someone who typed a list meant the line breaks. */
+.tsk-open-body {
+  padding: 2px 14px 8px;
+  font-size: 12.5px;
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+/* "There is more", at the end of the meta line. Its job is to SAY there is more, not to
+   print it — a preview would be the same sentence twice on every short task. */
+.tsk-more-mark {
+  color: var(--muted);
+  opacity: 0.75;
+}
+.tsk-more-mark .icon {
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}

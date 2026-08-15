@@ -327,7 +327,7 @@ describe('IndexNotesView (ADR-0153)', () => {
     const tap = (note: Note) =>
       fireEvent.click(screen.getByRole('button', { name: note.title ?? note.body ?? '' }));
     const openRow = () => document.querySelector('.wp-listrow.is-open');
-    const foot = () => document.querySelector('.note-open-foot');
+    const foot = () => document.querySelector('.row-open-foot');
 
     it('marks the row open and puts the foot under it — no sheet, no scrim', () => {
       show();
@@ -343,7 +343,7 @@ describe('IndexNotesView (ADR-0153)', () => {
       show();
       tap(bodyOnly);
       tap(titleAndBody);
-      expect(document.querySelectorAll('.note-open-foot')).toHaveLength(1);
+      expect(document.querySelectorAll('.row-open-foot')).toHaveLength(1);
       tap(titleAndBody);
       expect(foot()).toBeNull();
     });
@@ -361,7 +361,7 @@ describe('IndexNotesView (ADR-0153)', () => {
       tap(titleAndBody);
       const link = screen.getByRole('button', { name: t.notes.open.toHost(hotel.title) });
       expect(link.textContent).toContain(hotel.title);
-      expect(link.closest('.note-open-foot')).toBeTruthy();
+      expect(link.closest('.row-open-foot')).toBeTruthy();
     });
 
     // A general note has no host, so there is nothing to go to — the words stay, the
@@ -369,8 +369,8 @@ describe('IndexNotesView (ADR-0153)', () => {
     it('offers no way in for a general note', () => {
       show();
       tap(bodyOnly);
-      expect(foot()?.querySelector('button.note-open-host')).toBeNull();
-      expect(foot()?.querySelector('.note-open-host.plain')).toBeTruthy();
+      expect(foot()?.querySelector('button.row-open-lead')).toBeNull();
+      expect(foot()?.querySelector('.row-open-lead.plain')).toBeTruthy();
     });
 
     // A note's link was readable everywhere and openable nowhere. It opens from the foot,

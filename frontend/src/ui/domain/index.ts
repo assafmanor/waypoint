@@ -33,6 +33,8 @@ export { IndexTile } from './IndexTile';
 export type { IndexTileProps } from './IndexTile';
 
 export { ListRow, RowManageSheet, RowActionList } from './ListRow';
+// The foot under a row that opened in place — notes and tasks (ADR-0189).
+export { RowOpenFoot } from './RowOpenFoot';
 export { NoteMark } from './NoteMark';
 export { DocumentMark } from './DocumentMark';
 export type { ListRowProps, RowAction, BadgeTone } from './ListRow';

@@ -26,6 +26,7 @@ import type { NoteHostRef } from '../lib/notes';
 import { externalHref, prettyUrl } from '../lib/external-url';
 import { ltrIsolate } from '../lib/bidi';
 import { Icon } from './Icon';
+import { RowOpenFoot } from './domain';
 import { t } from '../i18n/he';
 import './notes.css';
 
@@ -73,25 +74,27 @@ export function NoteOpenFoot({
           </span>
         </a>
       )}
-      <div className="note-open-foot">
-        {host && onGoToHost ? (
-          <button
-            type="button"
-            className="note-open-host"
-            onClick={onGoToHost}
-            aria-label={t.notes.open.toHost(host.name)}
-          >
-            {host.name}
-            <Icon name="caret" dir="left" />
-          </button>
-        ) : (
-          <span className="note-open-host plain">{host ? host.name : t.notes.open.general}</span>
-        )}
-        <span className="note-open-sp" />
-        <button type="button" className="note-open-act" onClick={onEdit}>
-          <Icon name="edit" /> {t.notes.open.edit}
-        </button>
-      </div>
+      {/* The line itself is `RowOpenFoot` — shared with tasks since ADR-0189. What is note-
+          specific is only what the LEAD says, which is this component's whole remaining job. */}
+      <RowOpenFoot
+        lead={
+          host && onGoToHost ? (
+            <button
+              type="button"
+              className="row-open-lead"
+              onClick={onGoToHost}
+              aria-label={t.notes.open.toHost(host.name)}
+            >
+              {host.name}
+              <Icon name="caret" dir="left" />
+            </button>
+          ) : (
+            <span className="row-open-lead plain">{host ? host.name : t.notes.open.general}</span>
+          )
+        }
+        editLabel={t.notes.open.edit}
+        onEdit={onEdit}
+      />
     </>
   );
 }
