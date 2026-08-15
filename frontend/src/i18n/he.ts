@@ -1098,7 +1098,9 @@ export const t = {
      *  where the collection lives. Absent entirely when nothing is due, so there is no empty
      *  string to write here. */
     band: {
-      title: 'משימות להיום',
+      /** `קרובות`, not `להיום` — the window is a week (`TASK_BAND_LOOKAHEAD_DAYS`), and a
+       *  section titled "today" listing something due Friday is simply wrong. */
+      title: 'משימות קרובות',
       /** The section-title end, and it only appears when something is actually late. */
       overdue: (n: number) => (n === 1 ? 'אחת באיחור' : `${n} באיחור`),
       /** The overflow row into the tasks screen — one more row in the same card. */

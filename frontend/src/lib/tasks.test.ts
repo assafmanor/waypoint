@@ -9,9 +9,12 @@ import {
   taskDue,
   taskMatchesFacet,
   taskPreview,
+  taskRowMatchesFacet,
   tickedStatus,
   type TaskClock,
+  type TaskRow,
 } from './tasks';
+import type { AutomaticTask } from './automatic-tasks';
 
 // Fixtures carry fixed dates, so the clock is an argument rather than the system's
 // (`frontend/CLAUDE.md`). Everything here is pure, so there is nothing to reset.
@@ -135,8 +138,61 @@ describe('taskMatchesFacet', () => {
   });
 
   it('counts each chip', () => {
-    const counts = countTasksByFacet([mine, theirs, group, done, dismissed], 'me');
+    const counts = countTasksByFacet(
+      [mine, theirs, group, done, dismissed].map((t) => ({ kind: 'task', task: t }) as const),
+      'me',
+    );
     expect(counts).toEqual({ all: 3, mine: 1, settled: 2 });
+  });
+
+  // **A readiness check is a task all the way through** (owner, 2026-08-16, amending
+  // ADR-0190 §1): open while still missing, COMPLETED once the data satisfies it or a
+  // person waves it off.
+  describe('a check on the facet axis', () => {
+    const auto = (over: Partial<AutomaticTask> = {}): TaskRow => ({
+      kind: 'auto',
+      auto: {
+        key: 'lodging',
+        icon: 'hotel',
+        title: 'לינה',
+        meta: '',
+        done: false,
+        dismissed: false,
+        action: 'add-lodging',
+        ...over,
+      } as AutomaticTask,
+    });
+
+    it('shows a still-missing check under הכל and not under הושלמו', () => {
+      expect(taskRowMatchesFacet(auto(), TASK_FACET.ALL, 'me')).toBe(true);
+      expect(taskRowMatchesFacet(auto(), TASK_FACET.SETTLED, 'me')).toBe(false);
+    });
+
+    it('moves a SATISFIED check behind הושלמו — done-ness is the derivation’s', () => {
+      expect(taskRowMatchesFacet(auto({ done: true }), TASK_FACET.SETTLED, 'me')).toBe(true);
+      expect(taskRowMatchesFacet(auto({ done: true }), TASK_FACET.ALL, 'me')).toBe(false);
+    });
+
+    it('moves a DISMISSED check behind הושלמו too', () => {
+      expect(taskRowMatchesFacet(auto({ dismissed: true }), TASK_FACET.SETTLED, 'me')).toBe(true);
+      expect(taskRowMatchesFacet(auto({ dismissed: true }), TASK_FACET.ALL, 'me')).toBe(false);
+    });
+
+    // The one chip a check can still fail, and by construction: `שלי` reads an assignee,
+    // and an untouched check has no row to carry one. Delegate it and it appears.
+    it('reaches שלי only once somebody has been given it', () => {
+      expect(taskRowMatchesFacet(auto(), TASK_FACET.MINE, 'me')).toBe(false);
+      const delegated = auto({ task: task('t', { assigneeUserId: 'me', derivedKey: 'lodging' }) });
+      expect(taskRowMatchesFacet(delegated, TASK_FACET.MINE, 'me')).toBe(true);
+    });
+
+    it('counts checks into the chips alongside the tasks people wrote', () => {
+      const counts = countTasksByFacet(
+        [{ kind: 'task', task: mine } as const, auto(), auto({ key: 'flights', done: true })],
+        'me',
+      );
+      expect(counts).toEqual({ all: 2, mine: 1, settled: 1 });
+    });
   });
 });
 
@@ -178,6 +234,7 @@ describe('taskPreview', () => {
         task('overdue', { dueAt: '2026-08-10T09:00:00.000Z' }),
         task('undated'),
       ],
+      [],
       clock,
     );
     expect(preview.next?.id).toBe('overdue');
@@ -185,7 +242,37 @@ describe('taskPreview', () => {
   });
 
   it('has no next when nothing open carries a deadline', () => {
-    expect(taskPreview([task('u'), task('v')], clock).next).toBeUndefined();
+    expect(taskPreview([task('u'), task('v')], [], clock).next).toBeUndefined();
+  });
+
+  // **The checks count** (owner, 2026-08-16, amending ADR-0190 §1) — a trip nobody has
+  // prepared has things to do, and the tile is what says how many.
+  it('counts the still-missing checks, and not the satisfied ones', () => {
+    const check = (over: Partial<AutomaticTask>): AutomaticTask =>
+      ({
+        key: 'lodging',
+        icon: 'hotel',
+        title: '',
+        meta: '',
+        done: false,
+        dismissed: false,
+        action: 'add-lodging',
+        ...over,
+      }) as AutomaticTask;
+    const preview = taskPreview(
+      [task('a'), task('b')],
+      [check({}), check({ key: 'flights' }), check({ key: 'group', done: true })],
+      clock,
+    );
+    expect(preview.open).toBe(4);
+  });
+
+  // The line itself is unaffected: a check has no deadline to be "next" at, or to be late.
+  it('leaves `next` and `overdue` about the tasks a person wrote', () => {
+    const check = { key: 'lodging', done: false, dismissed: false } as AutomaticTask;
+    const preview = taskPreview([task('u')], [check], clock);
+    expect(preview.next).toBeUndefined();
+    expect(preview.overdue).toBe(0);
   });
 });
 

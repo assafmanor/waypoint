@@ -9,9 +9,10 @@
 // the calendar day rolls for the traveller who is reading it. Nothing here holds a zone of
 // its own, and no surface may reach for `trip.timezone` instead.
 import { TASK_STATUS, type Task, type TaskStatus } from '@waypoint/shared';
-import { isManual, type AutomaticTask } from './automatic-tasks';
+import { TASK_BAND_LOOKAHEAD_DAYS } from '../constants';
+import { isAutomaticSettled, isLive, isManual, type AutomaticTask } from './automatic-tasks';
 import { currentZone, type ZoneCrossing } from './places';
-import { formatTime, relativeDayLabel, todayInTz } from './time';
+import { addDays, formatTime, relativeDayLabel, todayInTz } from './time';
 
 /** The facet axis (brief §13). ONE axis, because `ChoiceGrid` is single-select — ownership
  *  and lifecycle share it, and `important` is carried by the sort rather than by a chip so
@@ -125,11 +126,20 @@ export function orderTaskRows(
 /** Whether a row survives the facet, as a predicate for `revealRows` (ADR-0120) — never a
  *  bare `.filter()`, which is the one-off that made the Map jump for two releases.
  *
- *  A check shows under `הכל` alone: the other two chips read a `Task` row and an untouched
- *  check has none, so neither can answer about it (`isLive`, `lib/automatic-tasks.ts`). */
+ *  **A readiness check is a task all the way through** (owner, 2026-08-16, amending ADR-0190
+ *  §1): it counts as open while it is still missing, and it counts as COMPLETED once the
+ *  data satisfies it or somebody waves it off. So `הכל` shows the live ones and `הושלמו`
+ *  shows the settled ones, exactly as they do for a task a person wrote.
+ *
+ *  `שלי` is the one chip a check can still fail, and by construction rather than by rule:
+ *  it asks `assigneeUserId === meId`, and an untouched check has no row to carry one.
+ *  Delegate a check and it appears there like anything else — which is the point of
+ *  `derivedKey` being an overlay rather than a second table. */
 export function taskRowMatchesFacet(row: TaskRow, facet: TaskFacet, meId: string): boolean {
-  if (row.kind === 'auto') return facet === TASK_FACET.ALL;
-  return taskMatchesFacet(row.task, facet, meId);
+  if (row.kind !== 'auto') return taskMatchesFacet(row.task, facet, meId);
+  if (facet === TASK_FACET.SETTLED) return isAutomaticSettled(row.auto);
+  if (facet === TASK_FACET.MINE) return row.auto.task?.assigneeUserId === meId;
+  return isLive(row.auto);
 }
 /** The manual half of the predicate above. */
 export function taskMatchesFacet(task: Task, facet: TaskFacet, meId: string): boolean {
@@ -141,12 +151,15 @@ export function taskMatchesFacet(task: Task, facet: TaskFacet, meId: string): bo
   return true;
 }
 
-/** How many tasks each chip would show, for the count in its label. */
-export function countTasksByFacet(tasks: Task[], meId: string): Record<TaskFacet, number> {
+/** How many rows each chip would show, for the count in its label. Takes the same rows the
+ *  list is built from, so a chip cannot promise a number the list does not deliver. */
+export function countTasksByFacet(rows: TaskRow[], meId: string): Record<TaskFacet, number> {
+  const count = (facet: TaskFacet) =>
+    rows.filter((row) => taskRowMatchesFacet(row, facet, meId)).length;
   return {
-    [TASK_FACET.ALL]: tasks.filter((x) => taskMatchesFacet(x, TASK_FACET.ALL, meId)).length,
-    [TASK_FACET.MINE]: tasks.filter((x) => taskMatchesFacet(x, TASK_FACET.MINE, meId)).length,
-    [TASK_FACET.SETTLED]: tasks.filter((x) => taskMatchesFacet(x, TASK_FACET.SETTLED, meId)).length,
+    [TASK_FACET.ALL]: count(TASK_FACET.ALL),
+    [TASK_FACET.MINE]: count(TASK_FACET.MINE),
+    [TASK_FACET.SETTLED]: count(TASK_FACET.SETTLED),
   };
 }
 
@@ -178,24 +191,31 @@ export function taskDue(task: Task, clock: TaskClock): TaskDue | undefined {
   };
 }
 
-/** **What the Trip Home band carries** (ADR-0188 §6, brief §13): manual tasks that are due
- *  today or already overdue, in the screen's own urgency order.
+/** **What the Home bands carry** (ADR-0188 §6, brief §13, amended by the owner 2026-08-16):
+ *  manual tasks that are overdue or fall due within the next `TASK_BAND_LOOKAHEAD_DAYS`, in
+ *  the screen's own urgency order.
  *
- *  **Manual only, and that is the whole reason the band works.** An automatic task's
- *  deadline is the DEPARTURE, so mid-trip the departure has passed and every unmet check
- *  would sit here permanently overdue, in `--miss`, for the rest of the trip — flooding a
- *  band that exists to say "these three things, today".
+ *  **The window is a week, not a day.** "Due today and overdue" is the right rule for a band
+ *  you read ON the day and the wrong one for anything that needs preparing — a task due
+ *  Friday is not actionable on Friday, it is actionable now. Overdue is always in, whatever
+ *  the window.
  *
- *  `taskBand` is reused rather than re-derived: it already measures "passed" against the
- *  instant and "today" against the reader's calendar day, deliberately in two different
- *  zones, and a second copy of that here would be the drift `frontend/CLAUDE.md` warns
- *  about. */
-export function tasksDueNow(tasks: Task[], clock: TaskClock): Task[] {
+ *  **Manual only, and that is the whole reason the band works.** An automatic task's deadline
+ *  is the DEPARTURE, so mid-trip the departure has passed and every unmet check would sit
+ *  here permanently overdue, in `--miss`, for the rest of the trip — flooding a band that
+ *  exists to say "these few things, soon". Plan Home shows the checks in its own converged
+ *  list instead, which is what ADR-0188 §6 designed.
+ *
+ *  The band boundary is measured against the reader's calendar day rather than a raw
+ *  `now + 7×24h`, so "within a week" does not shift by an hour every hour. */
+export function tasksDueSoon(tasks: Task[], clock: TaskClock): Task[] {
+  const readerZone = currentZone(clock.nowMs, clock.crossings, clock.primaryZone);
+  const lastDay = addDays(todayInTz(readerZone, new Date(clock.nowMs)), TASK_BAND_LOOKAHEAD_DAYS);
   return sortTasks(
     tasks.filter((task) => {
-      if (!isManual(task) || isSettled(task)) return false;
-      const band = taskBand(task, clock);
-      return band === TASK_BAND.OVERDUE || band === TASK_BAND.TODAY;
+      if (!isManual(task) || isSettled(task) || !task.dueAt) return false;
+      if (taskBand(task, clock) === TASK_BAND.OVERDUE) return true;
+      return todayInTz(dueZone(task.dueAt, clock), new Date(task.dueAt)) <= lastDay;
     }),
     clock,
   );
@@ -209,20 +229,28 @@ export interface TaskPreview {
   overdue: number;
 }
 
-export function taskPreview(tasks: Task[], clock: TaskClock): TaskPreview {
-  // **Only tasks a person wrote** (ADR-0190 §1). A readiness check has no row until someone
-  // touches it, so counting derivations here would make a brand-new trip read
-  // "5 משימות פתוחות" before anyone had written one — and an automatic task has no `dueAt`,
-  // so it could never be the "next due" this line exists to name either.
-  const open = tasks.filter((task) => isManual(task) && !isSettled(task));
+export function taskPreview(
+  tasks: Task[],
+  automatic: AutomaticTask[],
+  clock: TaskClock,
+): TaskPreview {
+  // **The checks count** (owner, 2026-08-16, amending ADR-0190 §1). That ADR excluded them so
+  // a brand-new trip would not announce "5 משימות פתוחות" before anyone had written one — and
+  // the owner's reading is that such a trip HAS five things to do, which is what the tile is
+  // for. A readiness check is an open task; the tile says how many are open.
+  //
+  // Only the COUNT changes. `next` names what is due soonest and a check has no `dueAt` to be
+  // due at, so it can never be that; `overdue` is a deadline that passed, which a check has
+  // none of either. Both stay about the tasks a person wrote, and both are still honest.
+  const openManual = tasks.filter((task) => isManual(task) && !isSettled(task));
   const dated = sortTasks(
-    open.filter((task) => task.dueAt),
+    openManual.filter((task) => task.dueAt),
     clock,
   );
   return {
     next: dated[0],
-    open: open.length,
-    overdue: open.filter((task) => taskBand(task, clock) === TASK_BAND.OVERDUE).length,
+    open: openManual.length + automatic.filter(isLive).length,
+    overdue: openManual.filter((task) => taskBand(task, clock) === TASK_BAND.OVERDUE).length,
   };
 }
 

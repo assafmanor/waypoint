@@ -1351,3 +1351,10 @@ export const CONTROL_ICON = {
  *  arrive through the band's own overflow row, which is one more row in the same card rather
  *  than a second control. Still owed to the device pass, and two characters to change. */
 export const TRIP_HOME_TASK_BAND_CAP = 3;
+
+/** **How far ahead the Home bands look** (owner, 2026-08-16: tasks should appear "up to 7
+ *  days — good time — before they're due"). ADR-0188 §6 and brief §13 said *due today and
+ *  overdue*, which is the right window for a band you read ON the day and the wrong one for
+ *  anything you have to prepare for: a task due Friday is not actionable on Friday, it is
+ *  actionable now. Overdue is always included regardless. */
+export const TASK_BAND_LOOKAHEAD_DAYS = 7;
