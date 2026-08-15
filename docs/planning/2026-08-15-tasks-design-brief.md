@@ -1,7 +1,7 @@
 # Tasks (משימות) — design brief: what is settled, what the design session owes
 
 **Date:** 2026-08-15
-**Status:** PM session in progress. §1–§11 are settled with owner sign-off in-session; §A–§F are the open design questions.
+**Status:** PM session complete. §1–§14 are settled with owner sign-off in-session; §A–§F are the open design questions the design session owes.
 **Precedent this brief mirrors:** [`2026-08-01-notes-design-brief.md`](2026-08-01-notes-design-brief.md), which fed [ADR-0152](../decisions/0152-a-note-is-one-entity-with-an-optional-host.md) / [ADR-0153](../decisions/0153-the-notes-surface-the-mark-and-no-mode-gate.md).
 
 ## Why this brief exists
@@ -166,6 +166,40 @@ Owner asked why not build one. There is no architectural objection — it is a P
 
 **It is not really a tasks feature.** The same pipe carries "your flight is in 2 hours" and "Dana changed tomorrow's plan", so it is costed and phased as its own epic that tasks happens to consume first. Until it exists, **a due task surfaces only when someone opens the app**, and no copy anywhere may imply otherwise.
 
+## 13. The surfaces — what appears where, and in what order
+
+Product decisions. **How each looks is the design session's** (§A–§F).
+
+**The Index tile's preview line is the next thing due**, with an overdue count when there is one. Bookings previews a "next", documents its type groups, notes its newest; a task collection's one line worth a glance is what is due soonest. A raw open-count barely moves and answers nothing.
+
+**The screen is FLAT, ordered by urgency, with no grouping.** ADR-0153 §2 settled the identical question for notes and its argument transfers whole: grouping by host rebuilds, worse, what every host row already does. Order is `overdue → due today → due later → undated`, and **`important` lifts within its band, never across it** — an important task due next week must not outrank an overdue one.
+
+**One facet axis, because `ChoiceGrid` is single-select.** Recommended: `הכל · שלי · הושלמו` — ownership and lifecycle on one axis, with `important` carried by the sort rather than by a chip. The design session confirms or replaces it; what it may not do is make two axes, which is the constraint ADR-0153 §2 already hit.
+
+**Completed and dismissed collapse** behind the count-in-label toggle (ADR-0061, generalized by ADR-0098). **This is deliberately the opposite of ADR-0153 §3's "no past-collapse", and the inversion is the feature's definition:** a done task _is_ finished, where a note on a past event is not.
+
+**Trip Home gets a band, not a list** — due today and overdue only, **absent entirely when nothing is due** (ADR-0045's real-data-only rule: no empty shell).
+
+**Plan Home gets the converged list** of §3. ADR-0061 §1's CTA-does-the-thing rule carries over unchanged for the automatic ones.
+
+**The hero slot is a READ, not a completion.** A task joins `איפה` / `פתק` / `הסדרה` as a fourth read. Completion is deliberately kept off it: the hero is a horizon, and settling a task there competes with `הסדרה`, which already means "did this happen". (Owner was offered the tickable version and declined it.)
+
+## 14. Phasing — prominence lands early, hosts land last
+
+Ordered so that **phases 1–3 are a shippable product** and the expensive part is last.
+
+| phase                    | ships                                                                                                                        | why it sits here                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — the spine**        | entity + sync + Index tile + screen + create/edit + due + assignee (nobody / one person) + `important` + done/dismiss/delete | A shared trip to-do list, useful standalone. **The migration includes the host FKs and `derivedKey` even though nothing reads them yet** — a nullable column is free, a second migration on a live synced entity is not.            |
+| **2 — automatic tasks**  | `computeReadiness`'s five checks render as task rows; `derivedKey` wired; Plan Home converges                                | Small: the derivation and Plan Home's renderer both already exist. This is where §B's two refusals must be answered.                                                                                                                |
+| **3 — Trip Home band**   | due today / overdue on the departure board                                                                                   | Prominence on the ground, and it depends on nothing but phase 1.                                                                                                                                                                    |
+| **4 — hosts**            | the five FKs wired: marks on host rows, inline composers, the way-in                                                         | **The underestimated one.** The notes brief flagged "five hosts × (create, read)" as the part that would be underestimated and was right; the shape here is identical. Also where the reuse audit's applier generalization happens. |
+| **5 — the hero slot**    | a hosted task in the lifted horizon + the ADR-0160 amendment                                                                 | Depends on 4 — a task reaches the hero **through** its host.                                                                                                                                                                        |
+| **6 — `everyone` tasks** | `assignedToAll` + `completedBy`                                                                                              | Cheap to build; wants §C drawn first.                                                                                                                                                                                               |
+| **— push**               | its own epic                                                                                                                 | Not a tasks phase. Tasks is its first consumer. See the backlog.                                                                                                                                                                    |
+
+**Hosts sit at 4 rather than 2 deliberately.** Attaching a task to a booking is the conceptually interesting part, but most real tasks ("book the restaurant", "get cash", "pack") carry no host at all, and it is the phase with five surfaces in it.
+
 ---
 
 # Part 2 — Open for the design session
@@ -223,4 +257,10 @@ Notes' mark is a clipboard glyph plus a count past 1, neutral `--muted`, and exp
 
 # Not design questions — settled above, do not spend session time on them
 
-The entity shape (§5), one noun (§2), derived-not-stored automatics (§3), `derivedKey` (§4), three assignment states with no arbitrary multi-select (§6), a single `important` flag (§7), nothing on the day rail (§8), no mode gate (§9), a derived due-time zone (§10), and no tab (§11).
+The entity shape (§5), one noun (§2), derived-not-stored automatics (§3), `derivedKey` (§4), three assignment states with no arbitrary multi-select (§6), a single `important` flag (§7), nothing on the day rail (§8), no mode gate (§9), a derived due-time zone (§10), no tab (§11), the flat urgency-ordered screen and the read-only hero slot (§13), and the phase order (§14).
+
+# Suggested shape of the design session
+
+Read this brief, the `design-mockups` skill, and ADR-0153 with its two mockups (`notes-screen-v1.html`, `notes-on-a-host-v1.html`) — that pair is the closest existing thing to what this session must produce, and it is the reason most of Part 1 did not need designing. **Do not preload the ADRs cited above**; Part 1 already carries what they decided.
+
+Answer §A and §B first. They are load-bearing on every other surface: §A decides the row, and every list in §13 is made of rows; §B decides whether §2's one-noun rule survives contact with a rendered screen, which is the single riskiest claim in this brief.
