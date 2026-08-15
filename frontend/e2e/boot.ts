@@ -46,17 +46,24 @@ const SNAPSHOT = {
   maybeItems: [],
   places: [],
   notes: [],
-  // The two fields below are required by `tripSnapshotSchema` (ADR-0166 §6, ADR-0173 §1),
-  // so the absence of either fails the zod parse in `fetchSnapshot` and the app never boots
-  // at all — which surfaces as every spec here timing out rather than as a readable error.
-  // `e2e/` is outside `tsconfig.json`'s `include`, so nothing but a run catches a missing
-  // field in this fixture. **This has now happened three times**: `enrichments` wrote the
-  // warning, `documentAttachments` walked into it anyway, and `preferredCurrency` showed the
-  // warning was read too narrowly — it counts for a new required field on any entity NESTED
-  // in the snapshot (`USER`, `TRIP`, `MEMBERSHIP` above), not only on the snapshot itself.
-  // Either way it belongs here in the same commit that adds it.
+  // The three fields below are required by `tripSnapshotSchema` (ADR-0166 §6, ADR-0173 §1,
+  // tasks brief §5), so the absence of any of them fails the zod parse in `fetchSnapshot` and
+  // the app never boots at all — which surfaces as every spec here timing out rather than as
+  // a readable error. `e2e/` is outside `tsconfig.json`'s `include`, so nothing but a run
+  // catches a missing field in this fixture. **This has now happened four times**:
+  // `enrichments` wrote the warning, `documentAttachments` walked into it anyway,
+  // `preferredCurrency` showed the warning was read too narrowly — it counts for a new
+  // required field on any entity NESTED in the snapshot (`USER`, `TRIP`, `MEMBERSHIP` above),
+  // not only on the snapshot itself — and `tasks` walked into it a second time, from a
+  // session that had already updated all five unit fixtures and did not think of this one.
+  //
+  // **So the guard below is now load-bearing rather than a nicety**: it turns the timeout
+  // into the sentence you are reading. Any new snapshot field belongs here in the same
+  // commit that adds it, and the run that proves it is `pnpm --filter @waypoint/frontend e2e`
+  // — the unit suite cannot see this file.
   enrichments: {},
   documentAttachments: [],
+  tasks: [],
   latestSeq: '0',
 };
 
