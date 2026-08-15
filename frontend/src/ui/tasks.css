@@ -1,0 +1,147 @@
+/* Tasks (tasks brief, ADR-0188) — ported from `mockups/tasks-row-and-refusals-v1.html`,
+   which is the build spec. Deliberately short: everything structural is a shipped
+   primitive (`ListRow` for the row, `.index .listcard` for the card, `Sheet` for the
+   menu), so if this file grows much past what is here, a primitive went unused.
+
+   The one new slot, `.wp-listrow-lead`, lives in `ui/domain/list-row.css` instead — it is
+   an extension of a shared component, not a task-specific rule. */
+
+/* THE COMPLETION CONTROL. A circle, because that is what a checklist is, and one verb
+   rather than a pair — `SettleControl` is a symmetric pair asked retrospectively of a slot
+   the group occupied, where a task is discharged (ADR-0188 §1). 44×44 hit area at a 26px
+   visible ink, laid out at 30px by the negative margin: the exact recipe
+   `.wp-listrow-kebab` already ships, so the row's height is unchanged by it.
+
+   COLOUR BUDGET: `--ok` only, and only once filled. `--ok`/`--miss` are the status
+   mini-palette (rule 4, ADR-0028) and "done" is a status. An open tick spends nothing, so
+   a list of open tasks carries no colour at all. */
+.tsk-tick {
+  width: 44px;
+  height: 44px;
+  margin: -7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--muted);
+  /* 12px, NOT `50%`, and the render is why (ADR-0188 §2). `border-radius` clips the hit
+     region as well as the paint, so a 44px box rounded to a circle answers only its
+     inscribed disc — measured at 83% of the square, with the four corners falling through
+     to `.wp-listrow-open` underneath. A corner tap therefore OPENED the task instead of
+     completing it, which is a wrong action rather than a dead one, and invisible in source.
+     `.wp-listrow-kebab` already ships the right answer: a rounded SQUARE hit box with the
+     visible ink drawn inside it. The circle a checklist needs is the `::before`. */
+  border-radius: 12px;
+}
+.tsk-tick::before {
+  content: '';
+  grid-area: 1 / 1;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  background: var(--card);
+}
+.tsk-tick .icon {
+  grid-area: 1 / 1;
+  width: 15px;
+  height: 15px;
+  opacity: 0;
+}
+.tsk-tick:hover::before {
+  border-color: var(--ok);
+}
+.tsk-tick:hover .icon {
+  opacity: 0.4;
+}
+.tsk-tick:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: -7px;
+}
+.app[data-mode='plan'] .tsk-tick:focus-visible {
+  outline-color: var(--plan);
+}
+.tsk-tick[aria-pressed='true'] {
+  color: var(--on-fill);
+}
+.tsk-tick[aria-pressed='true']::before {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.tsk-tick[aria-pressed='true'] .icon {
+  opacity: 1;
+}
+
+/* THE DEADLINE, in the meta line. `--amber-deep` is amber's paper variant and a due time IS
+   time and commitment, so this is inside rule 4 rather than an exception to it. Overdue is
+   a STATUS, so it takes `--miss-deep` (the ink variant — the fill fails AA as text). The
+   word `עד` is ADR-0171's shipped deadline phrasing, reused rather than re-invented. */
+.tsk-due {
+  font-weight: 700;
+  color: var(--amber-deep);
+}
+.tsk-due.late {
+  color: var(--miss-deep);
+}
+.tsk-due .icon {
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+}
+
+/* IMPORTANT is one flag and it spends NO colour (brief §7 — the palette has nothing left).
+   Shape and weight carry it: a star in the title line and the title at 800. That is also
+   what lets the flag become a scale later as a column rather than a redesign. */
+.tsk-star {
+  color: var(--ink);
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.tsk-star .icon {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+.wp-listrow-title:has(.tsk-star) {
+  font-weight: 800;
+}
+
+/* A SETTLED task, on the screen's collapsed tail. Struck and quiet — the same treatment a
+   skipped event's title already gets. */
+.tsk-settled .wp-listrow-title {
+  text-decoration: line-through;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* The `·` between the meta line's facts — the app's separator, never an em dash. */
+.tsk-sep {
+  color: var(--line);
+  margin: 0 2px;
+}
+
+/* THE EDITOR's two-part deadline (ADR-0177): a `DateField` wearing the token's chip, and
+   an optional time `ValueToken` beside it. One line, so an undated task is the resting
+   state rather than a cleared one. */
+.tsk-when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* The clear sits with the value it clears, and it is not a back action (ADR-0103's rule:
+   back navigates, it does not edit). */
+.tsk-when-clear {
+  border: 0;
+  background: none;
+  padding: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tsk-when-clear:hover {
+  color: var(--ink);
+}

@@ -38,6 +38,7 @@ import {
   toMembershipDto,
   toDocumentAttachmentDto,
   toNoteDto,
+  toTaskDto,
   toPlaceDto,
   toTripDto,
   toUserDto,
@@ -451,6 +452,7 @@ export class TripsService {
       maybeItems,
       places,
       notes,
+      tasks,
       documentAttachments,
     ] = await this.prisma.$transaction(
       [
@@ -480,6 +482,14 @@ export class TripsService {
         this.prisma.note.findMany({
           where: { tripId },
           orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        }),
+        // Oldest first, and deliberately NOT the screen's order: the tasks screen sorts by
+        // urgency (brief §13), which is a derivation over `dueAt` against a clock the server
+        // does not share with the reader. `createdAt` gives the client a stable base to sort
+        // from; `id` breaks ties, since one save can write several tasks in a millisecond.
+        this.prisma.task.findMany({
+          where: { tripId },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         }),
         // Oldest first, so a host's chips read in the order they were attached; `id`
         // breaks ties, since one save can write several links in the same millisecond.
@@ -521,6 +531,7 @@ export class TripsService {
       maybeItems: maybeItems.map(toMaybeItemDto),
       places: places.map(toPlaceDto),
       notes: notes.map(toNoteDto),
+      tasks: tasks.map(toTaskDto),
       documentAttachments: documentAttachments.map(toDocumentAttachmentDto),
       enrichments,
       fxRates,

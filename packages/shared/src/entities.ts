@@ -96,6 +96,7 @@ export const entityTypeSchema = z.enum([
   'trip',
   'membership',
   'note',
+  'task',
   'documentAttachment',
 ]);
 export type EntityType = z.infer<typeof entityTypeSchema>;
@@ -464,6 +465,91 @@ export const noteSchema = z.object({
 });
 export type Note = z.infer<typeof noteSchema>;
 
+/** **A task is an obligation with a deadline and optionally a doer; an event is a slot the
+ *  group occupies** (tasks brief §1). That line is what keeps a task off the day rail, out
+ *  of the ripple, and free of ADR-0011's hard/soft axis — it is already the flexible thing.
+ *
+ *  `open` → `done` (someone did it) or `dismissed` (it stopped mattering). Two settled
+ *  values rather than one boolean because they are different facts, and the screen collapses
+ *  them together while the row draws them apart. */
+export const taskStatusSchema = z.enum(['open', 'done', 'dismissed']);
+export type TaskStatus = z.infer<typeof taskStatusSchema>;
+
+/** **Which readiness check this row overlays** (tasks brief §4). The five ids
+ *  `computeReadiness` returns, promoted here because the column crosses the FE/BE boundary:
+ *  the server validates what it stores and the client resolves the row against the
+ *  derivation. `lib/readiness.ts`'s `CheckId` is this type, not a second copy of it.
+ *
+ *  A check nobody has touched has **no row at all** and renders as a pure derivation. The
+ *  moment someone dismisses, assigns or flags it, a `Task` carrying `derivedKey` is written
+ *  — same entity, same sync channel, same appliers. `status` stays the derivation's answer
+ *  unless the row says `dismissed`, so done-ness cannot go stale. */
+export const taskDerivedKeySchema = z.enum([
+  'flights',
+  'lodging',
+  'itinerary',
+  'documents',
+  'group',
+]);
+export type TaskDerivedKey = z.infer<typeof taskDerivedKeySchema>;
+
+/** **An alias, deliberately, rather than the same five strings written a second time.** A
+ *  task hangs off the same five hosts a note does and under the same "at most one" rule, so
+ *  the compiler holds them identical instead of a reviewer having to. The coupling is the
+ *  point: if the two sets are ever meant to differ, this line becomes a real list and the
+ *  divergence is visible at the moment it is introduced. (`ATTACHMENT_HOST_KEYS` is the
+ *  precedent for a genuinely different set — two members, for a stated reason.) */
+export const TASK_HOST_KEYS = NOTE_HOST_KEYS;
+export type TaskHostKey = NoteHostKey;
+
+/** **A task is one entity and what it is about is a field** — `Note`'s shape (ADR-0152 §1)
+ *  down to the host block, because this is that feature's sibling. No host = a general
+ *  task; exactly one host FK set = that entity's task.
+ *
+ *  Deliberate absences, each with its reason (brief §5): **no `category`** — the row's
+ *  leading element is its completion control, so there is no icon slot to fill and no
+ *  `EventCategory` chain to inherit; **no hard/soft**; **no priority enum**, because rule 4
+ *  has no colour left to spend and `important` upgrades to a scale later as a column rather
+ *  than a redesign.
+ *
+ *  **No `displayTimezone`.** A due instant's zone is DERIVED through ADR-0107's existing
+ *  resolver exactly as an event's is (brief §10) — nothing is stored per task, so the form's
+ *  zone chip states the resolved zone and offers no pin.
+ *
+ *  `dueAt` absent = no deadline, which is a legitimate task and not a half-filled one.
+ *  `dueHasTime` is not derivable from `dueAt`: a deadline of "Thursday" and one of
+ *  "Thursday 00:00" are the same instant and different obligations. */
+export const taskSchema = z.object({
+  id: idSchema,
+  tripId: idSchema,
+  title: z.string(),
+  body: z.string().optional(),
+  dueAt: z.string().optional(),
+  dueHasTime: z.boolean(),
+  /** Absent = the group's ("one of us"), which already covers the "either of these two"
+   *  case the brief's §6 refuses to model. Set = delegated. */
+  assigneeUserId: idSchema.optional(),
+  important: z.boolean(),
+  status: taskStatusSchema,
+  settledAt: z.string().optional(),
+  settledBy: idSchema.optional(),
+  derivedKey: taskDerivedKeySchema.optional(),
+  // The typed host union: AT MOST ONE is set, `onDelete: Cascade`, same discipline and
+  // same five columns as `Note` above (ADR-0152 §2). Nothing reads them until phase 4;
+  // they ship in the first migration because a nullable column is free today and a
+  // second migration on a live synced entity is not.
+  eventId: idSchema.optional(),
+  bookingId: idSchema.optional(),
+  placeId: idSchema.optional(),
+  maybeItemId: idSchema.optional(),
+  documentId: idSchema.optional(),
+  createdBy: idSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  updatedBy: idSchema,
+});
+export type Task = z.infer<typeof taskSchema>;
+
 /** Full current trip state + sync cursor — GET /trips/:tripId/snapshot (ADR-0019/0022). */
 export const tripSnapshotSchema = z.object({
   trip: tripSchema,
@@ -477,6 +563,7 @@ export const tripSnapshotSchema = z.object({
   maybeItems: z.array(maybeItemSchema),
   places: z.array(placeSchema),
   notes: z.array(noteSchema),
+  tasks: z.array(taskSchema),
   /** The document↔host links (ADR-0173 §1). A first-class syncable entity of its own, the
    *  cost ADR-0172's derivation deliberately avoided — but the storage genuinely differs
    *  here, so the sync substrate does too. Which DOCUMENT a link resolves to is answered

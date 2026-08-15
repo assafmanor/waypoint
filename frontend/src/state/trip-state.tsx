@@ -21,6 +21,7 @@ import {
   ENTITY_TYPE,
   EVENT_STATUS,
   NOTE_SOURCE,
+  TASK_STATUS,
   type Booking,
   type Change,
   type EntityType,
@@ -28,6 +29,7 @@ import {
   type CreateDocumentAttachmentInput,
   type CreateNoteInput,
   type CreatePlaceInput,
+  type CreateTaskInput,
   type DocumentSummary,
   type FxRates,
   type MaybeItem,
@@ -40,11 +42,13 @@ import {
   type TripEvent,
   type Place,
   type ResolvePlaceInput,
+  type Task,
   type TripSnapshot,
   type UpdateBookingInput,
   NOTE_HOST_KEYS,
   type UpdateNoteInput,
   type UpdatePlaceInput,
+  type UpdateTaskInput,
   type UpdateTripInput,
   type User,
 } from '@waypoint/shared';
@@ -53,11 +57,13 @@ import {
   createDocumentAttachment as apiCreateDocumentAttachment,
   createNote as apiCreateNote,
   createPlace as apiCreatePlace,
+  createTask as apiCreateTask,
   deleteMaybeItem as apiDeleteMaybeItem,
   deletePlace as apiDeletePlace,
   deleteBooking as apiDeleteBooking,
   deleteDocumentAttachment as apiDeleteDocumentAttachment,
   deleteNote as apiDeleteNote,
+  deleteTask as apiDeleteTask,
   deleteTrip as apiDeleteTrip,
   evictDocumentBlob,
   fetchChanges,
@@ -69,6 +75,7 @@ import {
   setMemberRole as apiSetMemberRole,
   updateBooking as apiUpdateBooking,
   updateNote as apiUpdateNote,
+  updateTask as apiUpdateTask,
   updatePlace as apiUpdatePlace,
   updateTrip as apiUpdateTrip,
   type RippleSuggestion,
@@ -471,6 +478,32 @@ export function applyControlChangeToList<T extends { id: string }>(list: T[], ch
   return existing ? list.map((x) => (x.id === change.entityId ? next : x)) : [...list, next];
 }
 
+/** **Only the keys the caller actually submitted**, with `null` read as cleared — the
+ *  optimistic half of `updateTaskSchema`'s sparse patch. `noteHostPatch` is the same idea
+ *  over a note's five host keys; a task's whole payload reads that way, so this is over the
+ *  whole payload. Spreading `input` raw instead would put an explicit `undefined` on every
+ *  field a settle did not send, which erases exactly what the sparse patch protects. */
+function taskPatch(input: UpdateTaskInput): Partial<Task> {
+  return Object.fromEntries(
+    Object.entries(input)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [k, v ?? undefined]),
+  ) as Partial<Task>;
+}
+
+/** Who settled and when, optimistically — the server stamps the real values and the echo
+ *  reconciles them, but the row has to read as settled the instant the tick is pressed, and
+ *  reopening has to leave no residue. Mirrors `TasksService`'s `settlement`. */
+function optimisticSettlement(
+  status: UpdateTaskInput['status'],
+  authorId: string,
+  stamp: () => string,
+): Partial<Task> {
+  if (status === undefined) return {};
+  if (status === TASK_STATUS.OPEN) return { settledAt: undefined, settledBy: undefined };
+  return { settledAt: stamp(), settledBy: authorId };
+}
+
 /** Admin-governed trip-settings writes (ADR-0039): optimistic, data-plane
  *  (broadcast + offline outbox), reconciled/rolled-back like the event verbs. */
 export interface SettingsVerbs {
@@ -501,6 +534,19 @@ export interface NoteVerbs {
   createNote: (input: CreateNoteInput, opts?: { queue?: boolean }) => Promise<Note | undefined>;
   updateNote: (noteId: string, input: UpdateNoteInput) => Promise<void>;
   deleteNote: (noteId: string) => Promise<void>;
+}
+
+/** Task write verbs (tasks brief, ADR-0188). The same three moves as the note verbs above,
+ *  over the `tasks` list.
+ *
+ *  **`updateTask` is sparse, which is the whole reason the tick can be one call.** Settling
+ *  a task sends `{ status }` and nothing else, and the row keeps its words, its deadline and
+ *  its host — see `updateTaskSchema`, which parts company with the note patch here and says
+ *  why. */
+export interface TaskVerbs {
+  createTask: (input: CreateTaskInput) => Promise<Task | undefined>;
+  updateTask: (taskId: string, input: UpdateTaskInput) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
 }
 
 /** Attachment write verbs (ADR-0173). Optimistic + reconcile/rollback and queued offline,
@@ -582,6 +628,10 @@ interface TripContextValue {
   /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
    *  notes alike — what a note is about is a field on the row, not a separate store. */
   notes: Note[];
+  /** The trip's tasks (tasks brief §5). One list for general and hosted tasks alike, and
+   *  **unsorted** — the screen's order is `overdue → due today → due later → undated`, which
+   *  is a derivation against a clock rather than a property of the list. */
+  tasks: Task[];
   /** **Which documents are attached to which host** (ADR-0173 §1). The links only — the
    *  DOCUMENTS are `documents` above, and resolving one against the other is what keeps an
    *  attachment from widening visibility (§6): a link whose document this reader cannot see
@@ -612,6 +662,7 @@ interface TripContextValue {
   settings: SettingsVerbs;
   indexVerbs: IndexVerbs;
   noteVerbs: NoteVerbs;
+  taskVerbs: TaskVerbs;
   attachmentVerbs: AttachmentVerbs;
   // Group change-feed (ADR-0081, U-09): a bounded, newest-first list of recent
   // SHARED peer edits, narrated (not re-applied) off the same WS `change` stream.
@@ -773,6 +824,7 @@ function TripReady({
   // Notes ride the snapshot as a reactive list (ADR-0152), so a peer's note and our own
   // optimistic write both reflect live through the one applier below.
   const [notes, setNotes] = useState<Note[]>(snapshot.notes);
+  const [tasks, setTasks] = useState<Task[]>(snapshot.tasks);
 
   // The document↔host links (ADR-0173), a reactive list beside the notes for the same
   // reason: a peer's attach and our own optimistic one both reflect live through the one
@@ -946,6 +998,7 @@ function TripReady({
       [ENTITY_TYPE.MAYBE_ITEM]: (change) =>
         dispatch({ type: TRIP_ACTION.REMOTE_MAYBE_CHANGE, change }),
       [ENTITY_TYPE.NOTE]: (change) => setNotes((prev) => applyControlChangeToList(prev, change)),
+      [ENTITY_TYPE.TASK]: (change) => setTasks((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: (change) =>
         setDocumentAttachments((prev) => applyControlChangeToList(prev, change)),
       [ENTITY_TYPE.DOCUMENT]: (change) => {
@@ -1039,6 +1092,7 @@ function TripReady({
           setPlaces(s.places);
           setDocuments(s.documents);
           setNotes(s.notes);
+          setTasks(s.tasks);
           setDocumentAttachments(s.documentAttachments);
           setEnrichments(s.enrichments);
           setFxRates(s.fxRates);
@@ -1650,6 +1704,90 @@ function TripReady({
     };
   }, [tripId, notes, toast, authorId]);
 
+  // Tasks (tasks brief, ADR-0188). The same three moves as the note verbs above, over the
+  // `tasks` list.
+  const taskVerbs = useMemo<TaskVerbs>(() => {
+    const stamp = () => new Date(getNow()).toISOString();
+    return {
+      createTask: async (input) => {
+        const id = input.id ?? generateId();
+        const withId = { ...input, id };
+        const optimistic = {
+          ...withId,
+          tripId,
+          dueHasTime: input.dueHasTime ?? false,
+          important: input.important ?? false,
+          status: TASK_STATUS.OPEN,
+          createdBy: authorId,
+          createdAt: stamp(),
+          updatedAt: stamp(),
+          updatedBy: authorId,
+        } as Task;
+        // Appended, not prepended: the screen sorts by urgency rather than by recency
+        // (brief §13), so where a fresh task lands is the sort's answer and not the list's.
+        const previous = tasks;
+        setTasks((prev) => [...prev, optimistic]);
+        try {
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.CREATE_TASK, input: withId },
+            () => apiCreateTask(tripId, withId),
+          );
+          if (canonical) setTasks((prev) => prev.map((x) => (x.id === id ? canonical : x)));
+          return canonical ?? optimistic;
+        } catch (err) {
+          setTasks(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      updateTask: async (taskId, input) => {
+        const previous = tasks;
+        setTasks((prev) =>
+          prev.map((x) =>
+            x.id === taskId
+              ? {
+                  ...x,
+                  // **Only the submitted keys**, which is the optimistic half of the sparse
+                  // patch the server applies: a tick sends `{ status }`, so a spread of the
+                  // whole input would be the one thing that erases the row's own words.
+                  ...taskPatch(input),
+                  ...optimisticSettlement(input.status, authorId, stamp),
+                  updatedAt: stamp(),
+                  updatedBy: authorId,
+                }
+              : x,
+          ),
+        );
+        try {
+          const canonical = await restOrQueue(
+            tripId,
+            { verb: OUTBOX_VERB.UPDATE_TASK, taskId, input },
+            () => apiUpdateTask(tripId, taskId, input),
+          );
+          if (canonical) setTasks((prev) => prev.map((x) => (x.id === taskId ? canonical : x)));
+        } catch (err) {
+          setTasks(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+      deleteTask: async (taskId) => {
+        const previous = tasks;
+        setTasks((prev) => prev.filter((x) => x.id !== taskId));
+        try {
+          await restOrQueue(tripId, { verb: OUTBOX_VERB.DELETE_TASK, taskId }, () =>
+            apiDeleteTask(tripId, taskId),
+          );
+        } catch (err) {
+          setTasks(previous);
+          toast(CONTROL_ICON.warn, t.toast.writeFailed);
+          throw err;
+        }
+      },
+    };
+  }, [tripId, tasks, toast, authorId]);
+
   // Attachments (ADR-0173). The same three moves as the note verbs above, over the
   // `documentAttachments` list — and only two verbs, because a link has no content to edit.
   const attachmentVerbs = useMemo<AttachmentVerbs>(
@@ -1687,6 +1825,7 @@ function TripReady({
       noteHosts,
       documents,
       notes,
+      tasks,
       documentAttachments,
       enrichments,
       fxRates,
@@ -1701,6 +1840,7 @@ function TripReady({
       settings,
       indexVerbs,
       noteVerbs,
+      taskVerbs,
       attachmentVerbs,
       changeFeed,
       dismissChange,
@@ -1721,6 +1861,7 @@ function TripReady({
       noteHosts,
       documents,
       notes,
+      tasks,
       documentAttachments,
       enrichments,
       fxRates,
@@ -1728,6 +1869,7 @@ function TripReady({
       settings,
       indexVerbs,
       noteVerbs,
+      taskVerbs,
       attachmentVerbs,
       changeFeed,
       dismissChange,

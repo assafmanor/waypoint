@@ -112,6 +112,7 @@ const SNAPSHOT: TripSnapshot = {
   maybeItems: [],
   places: [],
   notes: [],
+  tasks: [],
   documentAttachments: [],
   enrichments: {},
   fxRates: null,

@@ -6,6 +6,7 @@ import {
   ENTITY_TYPE,
   EVENT_STATUS,
   NOTE_SOURCE,
+  TASK_STATUS,
   type Change,
   type DeliveredEnrichmentFields,
   type DocumentAttachment,
@@ -14,6 +15,7 @@ import {
   type Membership,
   type Note,
   type Place,
+  type Task,
   type Trip,
   type FxRates,
   type TripEnrichments,
@@ -42,6 +44,8 @@ export interface SnapshotMeta {
   maybeItems: MaybeItem[];
   places: Place[];
   notes: Note[];
+  /** Tasks ride `snapshotMeta` for the same reason notes do — see `CACHE_CHANNELS`. */
+  tasks: Task[];
   /** The document↔host links (ADR-0173). Rides `snapshotMeta` for the same reason notes do:
    *  a trip's worth is a few dozen tiny rows, and a Dexie table of its own would cost a
    *  schema version bump plus edits to `wipeLocalData` and three transaction lists. */
@@ -85,6 +89,7 @@ export async function cacheSnapshot(tripId: string, snapshot: TripSnapshot): Pro
       maybeItems: snapshot.maybeItems,
       places: snapshot.places,
       notes: snapshot.notes,
+      tasks: snapshot.tasks,
       documentAttachments: snapshot.documentAttachments,
       enrichments: snapshot.enrichments,
       fxRates: snapshot.fxRates,
@@ -156,6 +161,8 @@ async function reconstructSnapshot(tripId: string): Promise<TripSnapshot | null>
     // A trip cached before notes shipped has no list; treat it as empty rather than
     // letting `undefined` reach a `.map()` on the first render after the upgrade.
     notes: meta.notes ?? [],
+    // Same fallback, same reason: a trip cached before tasks shipped has no list.
+    tasks: meta.tasks ?? [],
     // Same fallback, same reason: a trip cached before attachments shipped has no list.
     documentAttachments: meta.documentAttachments ?? [],
     // Same fallback, same reason: a trip cached before enrichment shipped has no map.
@@ -191,7 +198,7 @@ function applyToRow<T extends { id: string }>(
 type CacheRow = { id: string; tripId?: string };
 type CacheChannel =
   | { table: Table<CacheRow, string> }
-  | { metaList: 'maybeItems' | 'places' | 'members' | 'notes' | 'documentAttachments' }
+  | { metaList: 'maybeItems' | 'places' | 'members' | 'notes' | 'tasks' | 'documentAttachments' }
   | { metaTrip: true };
 
 const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
@@ -205,6 +212,9 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
   // a trip's notes are a few hundred small rows, and a dedicated Dexie table would cost a
   // schema version bump plus edits to `wipeLocalData` and three transaction lists.
   [ENTITY_TYPE.NOTE]: { metaList: 'notes' },
+  // Tasks ride it for the same reason notes do, and the count is smaller still — a trip's
+  // worth is a few dozen rows.
+  [ENTITY_TYPE.TASK]: { metaList: 'tasks' },
   // Attachments ride `snapshotMeta` for the same reason notes do (ADR-0173's reuse audit).
   [ENTITY_TYPE.DOCUMENT_ATTACHMENT]: { metaList: 'documentAttachments' },
   [ENTITY_TYPE.PLACE]: { metaList: 'places' },
@@ -217,7 +227,7 @@ const CACHE_CHANNELS: Record<EntityType, CacheChannel> = {
 /** Upsert/delete a change into one of `snapshotMeta`'s embedded lists. */
 async function applyChangeToMetaList(
   tripId: string,
-  listKey: 'maybeItems' | 'places' | 'members' | 'notes' | 'documentAttachments',
+  listKey: 'maybeItems' | 'places' | 'members' | 'notes' | 'tasks' | 'documentAttachments',
   change: EntityChange,
 ): Promise<void> {
   const meta = await db.snapshotMeta.get(tripId);
@@ -595,6 +605,41 @@ async function outboxOpToCacheChanges(tripId: string, op: OutboxOp): Promise<Ent
       return one({
         entityType: ENTITY_TYPE.NOTE,
         entityId: op.noteId,
+        action: CHANGE_ACTION.DELETE,
+      });
+    case OUTBOX_VERB.CREATE_TASK: {
+      if (!op.input.id) return [];
+      // The same four server defaults a queued note has to state for itself, for the same
+      // reason: a task read back from the cache before its flush must still satisfy
+      // `taskSchema` on a cold load, and one with no `createdAt` is unsortable. `status`
+      // and the two booleans are column defaults; the stamps come off the same clock the
+      // in-memory optimistic row uses, so the two views of one queued task agree.
+      const stamp = new Date(getNow()).toISOString();
+      return one({
+        entityType: ENTITY_TYPE.TASK,
+        entityId: op.input.id,
+        action: CHANGE_ACTION.CREATE,
+        after: {
+          dueHasTime: false,
+          important: false,
+          ...op.input,
+          status: TASK_STATUS.OPEN,
+          createdAt: stamp,
+          updatedAt: stamp,
+        },
+      });
+    }
+    case OUTBOX_VERB.UPDATE_TASK:
+      return one({
+        entityType: ENTITY_TYPE.TASK,
+        entityId: op.taskId,
+        action: CHANGE_ACTION.UPDATE,
+        after: op.input,
+      });
+    case OUTBOX_VERB.DELETE_TASK:
+      return one({
+        entityType: ENTITY_TYPE.TASK,
+        entityId: op.taskId,
         action: CHANGE_ACTION.DELETE,
       });
     case OUTBOX_VERB.UPDATE_TRIP:

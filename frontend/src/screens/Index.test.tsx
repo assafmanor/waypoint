@@ -59,6 +59,9 @@ vi.mock('../state/trip-state', () => ({
     // normal state for most places, and the fact is simply absent.
     enrichments: {},
     notes: [],
+    tasks: [],
+    // The tasks tile derives its preview against the trip's own crossings (brief §10).
+    zoneCrossings: [],
     users: [],
   }),
 }));

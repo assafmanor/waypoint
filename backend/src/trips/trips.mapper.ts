@@ -7,6 +7,7 @@ import type {
   MaybeItem,
   Note,
   Place,
+  Task,
   Trip,
   User,
 } from '@prisma/client';
@@ -20,6 +21,8 @@ import type {
   Note as SharedNote,
   NoteSource,
   Place as SharedPlace,
+  Task as SharedTask,
+  TaskDerivedKey,
   Trip as SharedTrip,
   TripEvent,
   User as SharedUser,
@@ -165,6 +168,34 @@ export const toNoteDto = (n: Note): SharedNote => ({
   createdAt: n.createdAt.toISOString(),
   updatedAt: n.updatedAt.toISOString(),
   updatedBy: n.updatedBy,
+});
+
+/** `derivedKey` and `status` are the two columns the database holds looser than the wire
+ *  does — a `String?` by design (a sixth readiness check must not be a migration) and a
+ *  Prisma enum whose member names are the shared union's values. Both are re-narrowed here,
+ *  which is the same cast `toNoteDto` makes for `source`. */
+export const toTaskDto = (t: Task): SharedTask => ({
+  id: t.id,
+  tripId: t.tripId,
+  title: t.title,
+  body: t.body ?? undefined,
+  dueAt: t.dueAt?.toISOString(),
+  dueHasTime: t.dueHasTime,
+  assigneeUserId: t.assigneeUserId ?? undefined,
+  important: t.important,
+  status: t.status,
+  settledAt: t.settledAt?.toISOString(),
+  settledBy: t.settledBy ?? undefined,
+  derivedKey: (t.derivedKey as TaskDerivedKey | null) ?? undefined,
+  eventId: t.eventId ?? undefined,
+  bookingId: t.bookingId ?? undefined,
+  placeId: t.placeId ?? undefined,
+  maybeItemId: t.maybeItemId ?? undefined,
+  documentId: t.documentId ?? undefined,
+  createdBy: t.createdBy,
+  createdAt: t.createdAt.toISOString(),
+  updatedAt: t.updatedAt.toISOString(),
+  updatedBy: t.updatedBy,
 });
 
 /** A link row → its wire DTO (ADR-0173 §1). No `updatedAt`/`updatedBy`: a link has no

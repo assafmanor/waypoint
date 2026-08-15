@@ -60,6 +60,7 @@ const CACHED: TripSnapshot = {
   maybeItems: [],
   places: [],
   notes: [],
+  tasks: [],
   documentAttachments: [],
   enrichments: {},
   fxRates: null,

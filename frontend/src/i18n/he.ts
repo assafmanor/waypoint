@@ -554,6 +554,9 @@ export const t = {
       createNote: 'כתיבת פתק',
       updateNote: 'עריכת פתק',
       deleteNote: 'מחיקת פתק',
+      createTask: 'הוספת משימה',
+      updateTask: 'עדכון משימה',
+      deleteTask: 'מחיקת משימה',
       createDocumentAttachment: 'צירוף מסמך',
       deleteDocumentAttachment: 'ביטול צירוף מסמך',
       // `satisfies Record<OutboxVerb, string>`, not `as Record<string, string>`: this map is
@@ -1059,6 +1062,88 @@ export const t = {
       saved: 'הפתק נשמר',
       savedQueued: 'הפתק יישלח כשהחיבור יחזור',
       deleted: 'הפתק נמחק',
+    },
+  },
+  // Tasks (tasks brief, ADR-0188). **One noun — משימה** — for a manual task and, from phase
+  // 2, for a derived readiness check too: ADR-0152 §3's two-noun rule does not transfer,
+  // because it was bought by machine VOLUME and readiness has five closed checks.
+  tasks: {
+    title: 'משימות',
+    one: 'משימה',
+    add: 'משימה חדשה',
+    /** The tick's accessible name — a bare ✓ says nothing about which row it closes. */
+    tick: (title: string) => `סימון «${title}» כהושלמה`,
+    head: {
+      count: (n: number) => (n === 1 ? 'משימה אחת' : `${n} משימות`),
+    },
+    subject: {
+      /** An unassigned task is the group's — "one of us" — which is a real state and the
+       *  default, never a missing value (brief §6). */
+      group: 'של כולנו',
+    },
+    due: {
+      // ADR-0171's shipped deadline word, reused rather than re-invented.
+      by: 'עד',
+      // Overdue is a STATUS, so it takes `--miss` and its own word. The `·` is the app's
+      // separator; an em dash is never used in UI copy.
+      late: 'באיחור ·',
+    },
+    // The tile's one changing line: what is due soonest, with an overdue count when there is
+    // one (brief §13). A raw open-count barely moves and answers nothing.
+    tile: {
+      next: (text: string) => `הבאה: ${text}`,
+      overdue: (n: number) => (n === 1 ? 'אחת באיחור' : `${n} באיחור`),
+      empty: 'אין משימות פתוחות',
+    },
+    filter: {
+      label: 'סינון משימות',
+      all: 'הכל',
+      mine: 'שלי',
+      // Done AND dismissed. One word for both, because what the reader wants is "the ones I
+      // am finished with" and the row itself says which kind it was.
+      settled: 'הושלמו',
+      noResults: 'אין משימות שמתאימות',
+    },
+    empty: {
+      title: 'עדיין אין משימות',
+      body: 'דברים שצריך לסגור לפני שממשיכים: להזמין, לאסוף, לשלם, לבדוק.',
+      action: 'משימה ראשונה',
+    },
+    // The editor. The title is the one required field — a task with no title is nothing —
+    // so it is the one refusal, and it marks the box that can cure it (ADR-0150).
+    sheet: {
+      createTitle: 'משימה חדשה',
+      editTitle: 'עריכת משימה',
+      titleLabel: 'מה צריך לעשות',
+      titlePlaceholder: 'להזמין את המסעדה',
+      needsTitle: 'צריך לכתוב מה המשימה',
+      dueLabel: 'עד מתי · לא חובה',
+      addDate: 'הוספת תאריך',
+      addTime: 'הוספת שעה',
+      timeLabel: 'שעת יעד',
+      clearDue: 'ללא תאריך',
+      assigneeLabel: 'מי אחראי',
+      nobody: 'של כולנו',
+      bodyLabel: 'פרטים · לא חובה',
+      bodyPlaceholder: 'משהו שכדאי לדעת כדי לסגור את זה',
+      importantLabel: 'חשובה',
+      save: 'שמירה',
+      cancel: 'ביטול',
+    },
+    manage: {
+      actions: 'פעולות על המשימה',
+      edit: 'עריכה',
+      flag: 'סימון כחשובה',
+      unflag: 'ביטול הסימון כחשובה',
+      // Dismissing is not doing — it stopped mattering, which is the other outcome and not
+      // the absence of one.
+      dismiss: 'הסרה מהרשימה',
+      reopen: 'החזרה לרשימה',
+      delete: 'מחיקה',
+      deleteTitle: 'למחוק את המשימה?',
+      deleteBody: 'המשימה תיעלם אצל כולם.',
+      confirmDelete: 'מחיקה',
+      cancel: 'ביטול',
     },
   },
   docs: {

@@ -12,6 +12,8 @@ import type {
   CreateDocumentAttachmentInput,
   CreateNoteInput,
   UpdateNoteInput,
+  CreateTaskInput,
+  UpdateTaskInput,
   CreatePlaceInput,
   DocumentType,
   EventStatus,
@@ -34,12 +36,14 @@ import {
   createDocumentAttachment,
   createNote,
   createPlace,
+  createTask,
   deleteBooking,
   deleteEvent,
   deleteMaybeItem,
   deleteDocumentAttachment,
   deleteNote,
   deletePlace,
+  deleteTask,
   deleteTrip,
   moveEvent,
   removeMember,
@@ -49,6 +53,7 @@ import {
   updateEvent,
   updateNote,
   updatePlace,
+  updateTask,
   updateTrip,
   uploadDocument,
 } from './api';
@@ -86,6 +91,9 @@ export const OUTBOX_VERB = {
   CREATE_NOTE: 'createNote',
   UPDATE_NOTE: 'updateNote',
   DELETE_NOTE: 'deleteNote',
+  CREATE_TASK: 'createTask',
+  UPDATE_TASK: 'updateTask',
+  DELETE_TASK: 'deleteTask',
   CREATE_DOCUMENT_ATTACHMENT: 'createDocumentAttachment',
   DELETE_DOCUMENT_ATTACHMENT: 'deleteDocumentAttachment',
 } as const;
@@ -136,6 +144,12 @@ export type OutboxOp =
   | { verb: typeof OUTBOX_VERB.CREATE_NOTE; input: CreateNoteInput }
   | { verb: typeof OUTBOX_VERB.UPDATE_NOTE; noteId: string; input: UpdateNoteInput }
   | { verb: typeof OUTBOX_VERB.DELETE_NOTE; noteId: string }
+  // Tasks (tasks brief, ADR-0188) — offline-capable like every other trip write, and the
+  // one whose offline story is load-bearing rather than incidental: ticking a task off is
+  // what somebody does standing in a queue with no signal.
+  | { verb: typeof OUTBOX_VERB.CREATE_TASK; input: CreateTaskInput }
+  | { verb: typeof OUTBOX_VERB.UPDATE_TASK; taskId: string; input: UpdateTaskInput }
+  | { verb: typeof OUTBOX_VERB.DELETE_TASK; taskId: string }
   // Document attachments (ADR-0173) — the same offline story as a note, and the case that
   // NEEDS it: an attachment written beside a fresh upload is queued behind a document that
   // is itself only queued (ADR-0056), and FIFO is what makes its `documentId` resolvable by
@@ -169,6 +183,7 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.CREATE_PLACE:
     case OUTBOX_VERB.UPLOAD_DOCUMENT:
     case OUTBOX_VERB.CREATE_NOTE:
+    case OUTBOX_VERB.CREATE_TASK:
     case OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT:
       return op.input.id ?? '';
     case OUTBOX_VERB.UPDATE:
@@ -190,6 +205,9 @@ export function outboxOpEntityId(op: OutboxOp): string {
     case OUTBOX_VERB.UPDATE_NOTE:
     case OUTBOX_VERB.DELETE_NOTE:
       return op.noteId;
+    case OUTBOX_VERB.UPDATE_TASK:
+    case OUTBOX_VERB.DELETE_TASK:
+      return op.taskId;
     case OUTBOX_VERB.DELETE_DOCUMENT_ATTACHMENT:
       return op.attachmentId;
     case OUTBOX_VERB.SET_MEMBER_ROLE:
@@ -716,6 +734,15 @@ async function runOp(tripId: string, op: OutboxOp): Promise<void> {
       return;
     case OUTBOX_VERB.DELETE_NOTE:
       await deleteNote(tripId, op.noteId);
+      return;
+    case OUTBOX_VERB.CREATE_TASK:
+      await createTask(tripId, op.input);
+      return;
+    case OUTBOX_VERB.UPDATE_TASK:
+      await updateTask(tripId, op.taskId, op.input);
+      return;
+    case OUTBOX_VERB.DELETE_TASK:
+      await deleteTask(tripId, op.taskId);
       return;
     case OUTBOX_VERB.CREATE_DOCUMENT_ATTACHMENT:
       // Idempotent twice over server-side (the client id, and the `(documentId, host)`
