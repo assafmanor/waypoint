@@ -38,7 +38,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { tasksDueNow, tickedStatus, type TaskClock } from '../lib/tasks';
+import { tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
@@ -465,7 +465,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone }),
     [nowMs, zoneCrossings, trip.timezone],
   );
-  const dueTasks = useMemo(() => tasksDueNow(tasks, taskClock), [tasks, taskClock]);
+  const dueTasks = useMemo(() => tasksDueSoon(tasks, taskClock), [tasks, taskClock]);
   const openTasks = () =>
     navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
 

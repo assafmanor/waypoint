@@ -96,17 +96,23 @@ export function IndexTasksView({
     [now, zoneCrossings, trip.timezone],
   );
 
-  // **Only what a person wrote goes through the facet axis and the sort.** A readiness check
-  // is not a `Task` until someone touches it, so it cannot satisfy `שלי` (no assignee) or
-  // `הושלמו` (no status) by construction — the checks ride above the list instead
-  // (ADR-0190 §1/§2).
   const manualTasks = useMemo(() => tasks.filter(isManual), [tasks]);
-  const ordered = useMemo(() => sortTasks(manualTasks, clock), [manualTasks, clock]);
-  const counts = useMemo(() => countTasksByFacet(ordered, meId), [ordered, meId]);
-
   const { readiness, automatic, applyVerb } = useAutomaticTasks();
   const firstEmptyDate = readiness.emptyDates[0];
-  const live = useMemo(() => automatic.filter(isLive), [automatic]);
+
+  // **ONE list, and ALL the checks go into it** (ADR-0190 §2, and §1 as amended by the owner
+  // on 2026-08-16). Order: urgent manual tasks, then the readiness checks, then the rest in
+  // urgency order. Every check is handed over, live or settled — the facet predicate is what
+  // decides which are shown, exactly as it does for a settled manual task, because a
+  // satisfied check now belongs behind `הושלמו` rather than nowhere.
+  const rows = useMemo(
+    () => orderTaskRows(manualTasks, automatic, clock),
+    [manualTasks, automatic, clock],
+  );
+
+  // Counted off the SAME rows the list is built from, so a chip cannot promise a number the
+  // list does not deliver.
+  const counts = useMemo(() => countTasksByFacet(rows, meId), [rows, meId]);
 
   // A chip whose last task was settled (or unassigned out from under a still-selected
   // filter) falls back to "all" rather than filtering against an empty set — derived, not a
@@ -127,10 +133,6 @@ export function IndexTasksView({
   };
   useBackLayer(backOrResetFacet);
 
-  // **ONE list** (ADR-0190 §2, owner's revision): urgent manual tasks, then the readiness
-  // checks, then the rest in urgency order. Not a separate card above — the checks belong
-  // inside the ladder, and one card is what keeps brief §2's "one noun" true on screen.
-  const rows = useMemo(() => orderTaskRows(manualTasks, live, clock), [manualTasks, live, clock]);
   // Through `revealRows`, never a bare `.filter()` — a row is hidden in place so the list
   // animates instead of jumping, which is the one-off that cost the Map two releases
   // (ADR-0120). Hence `countVisible`, not `.length`.
@@ -242,7 +244,7 @@ export function IndexTasksView({
         }
       />
 
-      {manualTasks.length === 0 && live.length === 0 ? (
+      {rows.length === 0 ? (
         // "Nothing yet" teaches what belongs here and offers the action; "nothing matches"
         // below offers none, because the right control is already on screen — the chip.
         <EmptyState

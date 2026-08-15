@@ -27,10 +27,26 @@ import {
   type AutomaticTask,
 } from '../lib/automatic-tasks';
 import { AutomaticTaskRow } from '../ui/AutomaticTaskRow';
+import { TaskBandRow } from '../ui/TaskBandRow';
+import {
+  orderTaskRows,
+  taskRowKey,
+  tasksDueSoon,
+  tickedStatus,
+  type TaskClock,
+} from '../lib/tasks';
 import { TaskManageSheet } from '../ui/TaskManageSheet';
 import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
 import { usePlaceErrandReturn } from '../state/map-scope-state';
-import { DAYS_TAB, FOCUS_PARAM, HOME_FOCUS, HOME_TAB } from '../state/nav-state';
+import {
+  DAYS_TAB,
+  FOCUS_PARAM,
+  HOME_FOCUS,
+  HOME_TAB,
+  INDEX_FOCUS,
+  INDEX_TAB,
+  TAB_PARAM,
+} from '../state/nav-state';
 import type { Task } from '@waypoint/shared';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
@@ -50,7 +66,8 @@ const dayNumberOf = (date: string, startDate: string) =>
   ) + 1;
 
 export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { trip, events, bookings, users, setActiveDate, taskVerbs } = useTrip();
+  const { trip, events, bookings, users, setActiveDate, taskVerbs, tasks, zoneCrossings } =
+    useTrip();
   const now = useClock();
   const navigate = useNavigate();
   const { readiness, automatic, applyVerb } = useAutomaticTasks();
@@ -150,6 +167,21 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   // different surface, so two toggles is not one mechanism twice — and this section's title
   // is literally "what is missing", which it stops being if the done rows never leave.
   const liveChecks = automatic.filter(isLive);
+  // **The CONVERGED list** (ADR-0188 §6: "Plan Home carries the converged list, automatic
+  // first and manual after"). Phase 2 built the automatic half only; the manual half arrives
+  // here (owner, 2026-08-16: tasks belong on Plan Home too, not only Trip Home).
+  //
+  // Ordered by the same `orderTaskRows` the tasks screen uses — urgent manual, then the
+  // checks, then the rest — so the two surfaces cannot disagree about what leads. Which
+  // manual tasks: the band's, i.e. overdue or due within the week, because Plan Home is
+  // where you prepare and a task due next month is not yet preparation.
+  const taskClock: TaskClock = {
+    nowMs: now.getTime(),
+    crossings: zoneCrossings,
+    primaryZone: trip.timezone,
+  };
+  const bandTasks = tasksDueSoon(tasks, taskClock);
+  const converged = orderTaskRows(bandTasks, liveChecks, taskClock);
   const completedAutomatic = automatic.filter((a) => a.done);
   const completedChecks = completedAutomatic;
 
@@ -182,6 +214,11 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         return;
     }
   };
+
+  /** A band row's tap reaches the tasks SCREEN, the same way Trip Home's does (ADR-0050's
+   *  deep-link), so a task is read where it lives rather than on a band that is a window. */
+  const openTasksScreen = () =>
+    navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
 
   /** A check with no row yet is handed a draft; the verb is what writes it (brief §4). */
   const manageAutomatic = (auto: AutomaticTask) =>
@@ -226,7 +263,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
       <div className="sec-title">
         {t.planHome.checklist.title}
         <span className="sec-title-end">
-          {liveChecks.length === 0 && <span className="hint">{t.planHome.checklist.allDone}</span>}
+          {converged.length === 0 && <span className="hint">{t.planHome.checklist.allDone}</span>}
           {completedChecks.length > 0 && (
             <CollapseToggle
               expanded={showCompleted}
@@ -247,16 +284,29 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           state. The CTA BUTTON goes with them: `.chk-row` was a `<div>` and needed an
           explicit button, `ListRow` already has a tap, so ADR-0061 §1's rule holds without
           one — and keeping it left the title 101.8px against a manual row's 195px. */}
-      {liveChecks.length > 0 && (
+      {converged.length > 0 && (
         <div className="checklist">
-          {liveChecks.map((auto) => (
-            <AutomaticTaskRow
-              key={auto.key}
-              auto={auto}
-              onAct={() => runAction(auto)}
-              onManage={() => manageAutomatic(auto)}
-            />
-          ))}
+          {converged.map((row) =>
+            row.kind === 'auto' ? (
+              <AutomaticTaskRow
+                key={taskRowKey(row)}
+                auto={row.auto}
+                onAct={() => runAction(row.auto)}
+                onManage={() => manageAutomatic(row.auto)}
+              />
+            ) : (
+              <TaskBandRow
+                key={taskRowKey(row)}
+                task={row.task}
+                users={users}
+                clock={taskClock}
+                onTick={() =>
+                  void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })
+                }
+                onOpen={openTasksScreen}
+              />
+            ),
+          )}
         </div>
       )}
 

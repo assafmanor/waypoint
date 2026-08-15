@@ -236,18 +236,30 @@ describe('IndexTasksView', () => {
       expect(titles()).toEqual([mine.title]);
     });
 
-    it('reveals done AND dismissed together under הושלמו', () => {
+    // **And a SATISFIED readiness check joins them** (owner, 2026-08-16, amending
+    // ADR-0190 §1): a check the data has closed is something you are finished with, which
+    // is exactly what this chip asks. The fixture's two travellers satisfy `group`.
+    it('reveals done, dismissed and satisfied checks together under הושלמו', () => {
       show();
       fireEvent.click(screen.getByRole('radio', { name: new RegExp(t.tasks.filter.settled) }));
-      expect(titles()).toEqual([done.title, dismissed.title]);
-      expect(visibleRows()[0].classList.contains('tsk-settled')).toBe(true);
+      expect(titles()).toContain(done.title);
+      expect(titles()).toContain(dismissed.title);
+      expect(autoRows()).toHaveLength(1);
+      expect(
+        visibleRows()
+          .find((r) => within(r).queryByText(done.title))!
+          .classList.contains('tsk-settled'),
+      ).toBe(true);
     });
 
     it('omits a chip with nothing behind it', () => {
       tripTasks = [later];
       show();
-      expect(screen.queryByRole('radio', { name: new RegExp(t.tasks.filter.settled) })).toBeNull();
+      // `שלי` has nothing: no manual task is delegated to me, and no check has been given
+      // to anyone. `הושלמו` DOES have something — the satisfied `group` check — which is
+      // the amendment, so it is the one chip that survives an empty manual list.
       expect(screen.queryByRole('radio', { name: new RegExp(t.tasks.filter.mine) })).toBeNull();
+      expect(screen.getByRole('radio', { name: new RegExp(t.tasks.filter.settled) })).toBeTruthy();
     });
   });
 
@@ -265,7 +277,10 @@ describe('IndexTasksView', () => {
       tripTasks = [done];
       show();
       fireEvent.click(screen.getByRole('radio', { name: new RegExp(t.tasks.filter.settled) }));
-      fireEvent.click(visibleRows()[0].querySelector('.tsk-tick')!);
+      // A satisfied check sits under this chip too now, and has no tick — find the row by
+      // its words rather than by position.
+      const row = visibleRows().find((r) => within(r).queryByText(done.title))!;
+      fireEvent.click(row.querySelector('.tsk-tick')!);
       expect(updated).toEqual([{ id: done.id, input: { status: TASK_STATUS.OPEN } }]);
     });
 
@@ -442,11 +457,13 @@ describe('IndexTasksView', () => {
       expect(autoRows()).toHaveLength(0);
     });
 
-    it('keeps the checks out of the facet counts, so they cannot inflate a chip', () => {
+    // **Reversed by the owner on 2026-08-16** (amending ADR-0190 §1): the checks are tasks,
+    // so they count. Two manual + four still-missing checks = six under `הכל`.
+    it('counts the still-missing checks into הכל alongside the tasks people wrote', () => {
       tripTasks = [today, later];
       show();
       const all = screen.getByRole('radio', { name: new RegExp(t.tasks.filter.all) });
-      expect(all.textContent).toContain('2');
+      expect(all.textContent).toContain(String(2 + LIVE_CHECKS));
     });
 
     // **Opening a MENU writes nothing** (brief §4: the row is minted by the verb). This is

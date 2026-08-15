@@ -43,6 +43,24 @@
 - One console warning in the dev run — a WebSocket reconnect from a hot reload, present before this change.
 - **e2e not run** — wants its own pass.
 
+## Corrected 2026-08-16, same day, by the owner
+
+Two things this note got wrong, both now built:
+
+**The window is a WEEK, not a day.** "Due today and overdue" is ADR-0188 §6's and brief §13's
+rule, and it is the right one for a band you read _on_ the day — but wrong for anything that
+needs preparing: a task due Friday is not actionable on Friday, it is actionable now.
+`tasksDueNow` became `tasksDueSoon` with `TASK_BAND_LOOKAHEAD_DAYS = 7`; overdue is always in
+regardless. The section title went with it — `משימות להיום` is simply false once the window is
+a week, so it reads `משימות קרובות`.
+
+**Plan Home was under-built in phase 2, and this note did not notice.** ADR-0188 §6 says
+_"Plan Home carries the converged list, automatic first and manual after"_ — phase 2 shipped
+the automatic half only, and phase 3 then put the manual half on Trip Home alone. Plan Home's
+"what is missing" card is now genuinely converged, ordered by the same `orderTaskRows` the
+tasks screen uses, so the two surfaces cannot disagree about what leads. The row is shared
+(`TaskBandRow`) rather than drawn twice.
+
 ## Owed next
 
 - **Phase 4 — hosts.** The expensive one: five hosts × (create, read), and it owes the brief's **§F** designed first (the mark on a host row, on lines ADR-0152 §6c already measured as full). It also carries the **host-cascade generalisation** — the family is already four with `dropAttachmentsForHostChange`, so generalise rather than copy, and **ask** if it is not a small extraction.

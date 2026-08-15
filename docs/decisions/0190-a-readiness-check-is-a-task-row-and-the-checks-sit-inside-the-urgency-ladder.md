@@ -19,6 +19,26 @@ What was never in question, and is built here unchanged: the automatic row leads
 
 ### 1. The tasks SCREEN carries the checks, and they sit out both other facets
 
+> **AMENDED 2026-08-16 by the owner, and the amendment is the interesting half.** The checks
+> now **count toward the Index tile** and **appear under `הושלמו`** once satisfied or
+> dismissed. What follows is the original reasoning, kept because the measurement is still
+> real; what changed is which way it cuts.
+>
+> The objection below was that a brand-new trip would announce _"5 משימות פתוחות"_ before
+> anyone had written one. The owner's reading is that such a trip **has five things to do**,
+> and the tile exists to say how many — so the number was never wrong, only surprising. Same
+> for `הושלמו`: a check the data has closed is something you are finished with, which is
+> exactly what that chip asks.
+>
+> **`שלי` is unchanged, and by construction rather than by rule** — it reads
+> `assigneeUserId`, and an untouched check has no row to carry one. Delegate a check and it
+> appears there like anything else, which is the point of `derivedKey` being an overlay
+> rather than a second table.
+>
+> One behaviour worth naming: `done` is **derived**, so a satisfied check can _leave_ the
+> settled facet on its own the moment a booking is deleted. A manual task never does that.
+> It is the honest consequence of not storing done-ness, not a wrinkle.
+
 Brief §3 says the checks render "on the tasks surface"; brief §13 and ADR-0188 §6 name only Plan Home. **Both surfaces carry them** — and the screen's two other chips do not.
 
 The reason is one fact with three consequences: **an untouched check has no `Task` row at all** (brief §4). So `שלי` (`assigneeUserId === meId`) can never match one, `הושלמו` (`status`) can never find one, and the Index tile's `preview.open` would count things nobody wrote. Rather than invent a second meaning for each chip, the checks appear under **`הכל` alone**, and `taskPreview` counts only tasks a person wrote (`isManual`).

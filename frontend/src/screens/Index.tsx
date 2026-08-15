@@ -14,6 +14,7 @@ import { splitBookings, scheduleLabel } from '../lib/index-bookings';
 import { groupDocuments } from '../lib/documents';
 import { noteTitleText, sortNotes } from '../lib/notes';
 import { taskDue, taskPreview, type TaskClock } from '../lib/tasks';
+import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import { BookingTitle } from '../ui/BookingTitle';
 import { IndexBookingsView } from '../ui/IndexBookingsView';
 import { IndexDocumentsView } from '../ui/IndexDocumentsView';
@@ -30,6 +31,7 @@ export function Index() {
   const { trip, bookings, places, events, documents, notes, tasks, users, zoneCrossings } =
     useTrip();
   const now = useClock();
+  const { automatic } = useAutomaticTasks();
   const [view, setView] = useState<IndexView>('landing');
   // Set alongside `view` by the ?booking= deep-link below, and handed to a
   // freshly-mounted IndexBookingsView so it opens that booking's detail. A
@@ -166,7 +168,9 @@ export function Index() {
     crossings: zoneCrossings,
     primaryZone: trip.timezone,
   };
-  const preview = taskPreview(tasks, clock);
+  // The readiness checks count toward the tile (owner, 2026-08-16, amending ADR-0190 §1):
+  // a trip nobody has prepared has five things to do, and the tile is what says so.
+  const preview = taskPreview(tasks, automatic, clock);
   const nextDue = preview.next ? taskDue(preview.next, clock) : undefined;
   const tasksSubtitle = preview.next ? (
     <>

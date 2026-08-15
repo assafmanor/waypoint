@@ -180,6 +180,17 @@ export function automaticTasks(
  *  missing, and Plan Home's own section title says so. */
 export const isLive = (auto: AutomaticTask): boolean => !auto.done && !auto.dismissed;
 
+/** **The other side of the same line, and a check reaches it two ways** (owner, 2026-08-16,
+ *  amending ADR-0190 §1). A check is finished when the DATA satisfies it — the flights are
+ *  booked, the group has joined — or when a person waved it off. Both are "I am done with
+ *  this", which is what the `הושלמו` chip asks, so both belong behind it.
+ *
+ *  Note which one is derived: `done` is the derivation's answer and can go back to false the
+ *  moment a booking is deleted, so a check can LEAVE the settled facet on its own. A manual
+ *  task never does that, and it is the honest behaviour rather than a wrinkle — the whole
+ *  point of not storing done-ness is that it cannot go stale. */
+export const isAutomaticSettled = (auto: AutomaticTask): boolean => auto.done || auto.dismissed;
+
 /** **The `⋯` sheet's subject for a check nobody has touched yet.** The sheet takes a `Task`
  *  and an untouched check has none — but opening a MENU must not write anything: brief §4 is
  *  explicit that the row is minted the moment someone *dismisses, assigns or flags*, which
