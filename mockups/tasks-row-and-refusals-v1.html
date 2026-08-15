@@ -10592,13 +10592,36 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
          drawn as inline `.modal-card` boxes using the real modal CSS. The
          SHAPE is real, the layer is not.
          ══════════════════════════════════════════════════════════════════════ */
-      .mkf-sheet {
-        margin: 0;
-        border-radius: 16px;
-        max-height: none;
+      /* §3's two menus are `RowManageSheet`, which is `Sheet` → `Modal`
+         `variant="sheet"` → a `createPortal` to `document.body`. A static page
+         cannot portal, so the overlay is rendered INLINE — but as the app's real
+         tree, `.modal-overlay[data-variant='sheet'] > .modal-card >
+         .modal-title`, because every rule that gives a sheet its geometry is
+         scoped to that ancestor.
+
+         THE FIRST DRAFT GOT THIS WRONG AND THE OWNER CAUGHT IT: it drew a bare
+         `.modal-card` with invented `.modal-head`/`.modal-body` children (which
+         exist in no stylesheet), so `padding: var(--space-4)` — which lives on
+         `.modal-overlay[data-variant='sheet'] .modal-card`, not on `.modal-card`
+         — never applied, and both menus rendered with zero padding. That is
+         `references/pitfalls.md`'s "real CSS over an invented tree is not the
+         app" exactly, and the same shape as `notes-screen-v1.html`'s own
+         correction about the missing `.index` ancestor.
+
+         So only the LAYER is undone here, never the geometry: position, scrim
+         and entrance animation. The padding, the max-width and the
+         rounded-top-only radius all arrive from the app. */
+      .mkf-inline {
+        position: static;
+        inset: auto;
+        z-index: auto;
+        display: block;
       }
-      .mkf-sheet .modal-body {
-        overflow: visible;
+      .mkf-inline::before {
+        display: none;
+      }
+      .mkf-inline .modal-card {
+        animation: none;
       }
       /* `App.css:36` sets `.app { height: 100vh/100dvh }`, which is right for a
          screen and wrong for a frame on a document — §5's two Homes each grew to
@@ -11509,11 +11532,13 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       const act = (icon, label, danger) =>
         `<button type="button" class="wp-row-action${danger ? ' danger' : ''}"><span class="wp-row-action-ic">${ic(icon)}</span>${label}</button>`;
 
-      const sheet = (title, subject, safe, danger) => `<div class="modal-card mkf-sheet">
-        <div class="modal-head">
+      /* `Modal.tsx`'s tree, element for element: the overlay carries the variant,
+         the card carries the dialog role, and the subject rides INSIDE
+         `.modal-title` because that is where `RowManageSheet` puts it. */
+      const sheet = (title, subject, safe, danger) =>
+        `<div class="modal-overlay mkf-inline" data-variant="sheet">
+        <div class="modal-card" role="dialog" aria-modal="true">
           <div class="modal-title">${title}<span class="wp-row-subject" dir="auto">${subject}</span></div>
-        </div>
-        <div class="modal-body">
           <div class="wp-row-actions">${safe.join('')}</div>
           ${danger.length ? `<div class="wp-row-actions wp-row-actions-danger">${danger.join('')}</div>` : ''}
         </div>
@@ -11908,6 +11933,16 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ['§3 · כרטיס מעורב, מילולית', h('#lit-card'), 'חמש שורות'],
           ['§3 · כרטיס מעורב, ההצעה', h('#prop-card'), 'אותן חמש שורות'],
           ['§4 · כרטיס כל המצבים', h('#states-card'), 'תשע שורות'],
+          [
+            '§3 · ריפוד הגיליון של התפריט',
+            `${r1(
+              (() => {
+                const c = document.querySelector('#s3m .modal-card');
+                return c ? parseFloat(getComputedStyle(c).paddingTop) : null;
+              })(),
+            )}`,
+            'מגיע מ-`[data-variant=sheet] .modal-card` · 0 כשהאב לא צויר',
+          ],
           ['§5 · הרצועה בבית הטיול', h('#trip-band'), 'מול אריח גישה מהירה: 76px'],
           ['§5 · הרשימה בבית התכנון', h('#plan-band'), 'מול הצ׳קליסט שהיא מחליפה'],
         ];
