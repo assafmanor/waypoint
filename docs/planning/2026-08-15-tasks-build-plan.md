@@ -10,14 +10,15 @@
 
 ## Status
 
-| phase                    | branch                         | state                                                 |
-| ------------------------ | ------------------------------ | ----------------------------------------------------- |
-| **1 — the spine**        | `feat/tasks-phase-1-the-spine` | **built** — [note](2026-08-15-tasks-phase-1-built.md) |
-| **2 — automatic tasks**  | —                              | not started                                           |
-| **3 — Trip Home band**   | —                              | not started                                           |
-| **4 — hosts**            | —                              | not started                                           |
-| **5 — the hero slot**    | —                              | not started                                           |
-| **6 — `everyone` tasks** | —                              | not started                                           |
+| phase                    | branch                         | state                                                                          |
+| ------------------------ | ------------------------------ | ------------------------------------------------------------------------------ |
+| **1 — the spine**        | `feat/tasks-phase-1-the-spine` | **built** — [note](2026-08-15-tasks-phase-1-built.md)                          |
+| **1b — editor + read**   | —                              | **designed, not built** — [mockup](../../mockups/task-editor-and-read-v1.html) |
+| **2 — automatic tasks**  | —                              | not started                                                                    |
+| **3 — Trip Home band**   | —                              | not started                                                                    |
+| **4 — hosts**            | —                              | not started                                                                    |
+| **5 — the hero slot**    | —                              | not started                                                                    |
+| **6 — `everyone` tasks** | —                              | not started                                                                    |
 
 **Ship after phase 3.** Phases 1–3 are the product; 4–6 are the expensive half and can wait for real use.
 
@@ -66,6 +67,27 @@ Entity + sync + Index tile + screen + create/edit + due + assignee (nobody / one
 - **The settled-collapse is the facet axis' third chip**, not a second control: `ChoiceGrid` already carries a count per chip, so `הושלמו · 2` **is** ADR-0061's count-in-label toggle.
 
 One guard was added and phases 4–6 should extend rather than copy it: **`assertMemberInTrip`** in `backend/src/common/trip-scope.util.ts`, a sibling of `assertEntityRefsInTrip` because a member resolves by the `(tripId, userId)` pair rather than by a row id.
+
+## Phase 1 follow-up — the editor and the read (NOT YET BUILT, and it comes before phase 2)
+
+The owner reviewed the shipped phase 1 and reported four things. Designed and rendered in [`mockups/task-editor-and-read-v1.html`](../../mockups/task-editor-and-read-v1.html) (**Proposed**) with the session note at [`2026-08-15-tasks-editor-design-session.md`](2026-08-15-tasks-editor-design-session.md). **A session picking this up starts there, not here.**
+
+Why it exists at all: **ADR-0188 designed the row, the two menus and both Home bands — it never designed the editor**, and phase 1 built one from `NoteSheet`'s shape without rendering it. Three of the four reports are that gap.
+
+What the mockup proposes, each measured at 360px:
+
+- **`חשובה` becomes `EventForm`'s `יש הזמנה` row verbatim** (ADR-0136 §1: `.field` + `ToggleChip tone="cta"` + **`size="touch"`** + a star). Phase 1's chip measures **29px against ADR-0017's 44px floor** — the report said "ugly", and the defect under it is a touch target.
+- **The assignee row is `ChoiceGrid layout="pills"` with a person where the glyph goes.** `Choice` grows one optional `AvatarPerson`; everything else — scroll, snap, edge mask, `useCenterSelected`, radiogroup ARIA — arrives from the primitive. **46px** per option against the shipped pill's 28px, and a new host is explicitly not bound by the deferred 44px debt `choice-grid.css` records in place. **Nothing is selected by default.**
+- **`של כולנו` must be freed for phase 6.** It is the _everyone-independently_ state's word and phase 1 spent it on _unassigned_. The fork is live in the mockup's control: `מישהו מאיתנו` (the brief's own words) · `של הקבוצה` · `לא משויכת`.
+- **Reading `body`: the row opens where it is**, ADR-0153 §4's shipped idiom, reusing `.note-open-foot` — the proposal is to **rename** that to a neutral `.row-open-foot`, never to copy it. **+46.3px** against **216.5px** for the detail sheet drawn beside it and rejected. The row's "there is more" mark costs **0px**.
+- **`body` is write-only today** — the editor writes it and nothing renders it. That is a defect, not a missing nicety.
+
+Also owed, and neither is designed yet:
+
+- **`חשוב`, not `חשובה`** (owner, 2026-08-15) — and the same word in the `⋯` sheet's `סימון כחשובה`.
+- **The Index tile order.** Recommended **משימות · הזמנות · מסמכים · פתקים**, on one rule: _order by whether the tile can be LATE_. A task expires; a booking happens anyway; a document does not change; a note never expires. It demotes bookings, which has led the landing since ADR-0047/0049 — the alternative that keeps the spine first is `הזמנות · משימות · מסמכים · פתקים`. One line either way, and unbuilt.
+
+**Still owed before any of it is built: the ADR** promoting the mockup, or an in-place amendment to ADR-0188. The design session ran out of budget after the render.
 
 ## Phase 2 — automatic tasks
 
