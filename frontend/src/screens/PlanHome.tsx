@@ -24,6 +24,8 @@ import {
   CHECK_ICON,
   draftOverlay,
   isLive,
+  resolvedReadinessPct,
+  tickedAutomaticStatus,
   type AutomaticTask,
 } from '../lib/automatic-tasks';
 import { AutomaticTaskRow } from '../ui/AutomaticTaskRow';
@@ -71,6 +73,10 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const now = useClock();
   const navigate = useNavigate();
   const { readiness, automatic, applyVerb } = useAutomaticTasks();
+  // **The percentage reads the same resolution the rows do** — otherwise the hero can say
+  // 60% directly above a list where every row is ticked. `computeReadiness` stays pure; what
+  // moved is only which number this hero prints.
+  const readinessPct = resolvedReadinessPct(automatic);
   // The `⋯` on an automatic row, shared with the tasks screen's sheet.
   const [manage, setManage] = useState<Task | null>(null);
   // A create-form open seeded by a checklist CTA (null = closed). The row that
@@ -220,6 +226,13 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const openTasksScreen = () =>
     navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
 
+  /** The tick — the same verb the tasks screen fires, and the act that mints the overlay
+   *  row when there is not one yet (brief §4). */
+  const tickAutomatic = (auto: AutomaticTask) =>
+    applyVerb(auto.task ?? draftOverlay(auto, trip.id), {
+      status: tickedAutomaticStatus(auto),
+    });
+
   /** A check with no row yet is handed a draft; the verb is what writes it (brief §4). */
   const manageAutomatic = (auto: AutomaticTask) =>
     setManage(auto.task ?? draftOverlay(auto, trip.id));
@@ -252,10 +265,10 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         <div className="prep-ready">
           <div className="prep-ready-top">
             <span>{t.planHome.prep.readiness}</span>
-            <b dir="auto">{readiness.pct}%</b>
+            <b dir="auto">{readinessPct}%</b>
           </div>
           <div className="prep-track">
-            <div className="prep-fill" style={{ width: `${readiness.pct}%` }} />
+            <div className="prep-fill" style={{ width: `${readinessPct}%` }} />
           </div>
         </div>
       </div>
@@ -280,8 +293,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           `ListRow` written a second time — badge + title + meta + trailing control, inside a
           `.checklist` card that is `.index .listcard` under another name — so this is the
           same card holding the same row the tasks screen renders, and `.chk-row`/`-ic`/`-t`/
-          `-m`/`-cta`/`-ppl` are gone. `.chk-ok` survives as the completed row's trailing
-          state. The CTA BUTTON goes with them: `.chk-row` was a `<div>` and needed an
+          `-m`/`-cta`/`-ppl` are gone, and so is `.chk-ok` — a completed check now shows the
+          same filled tick and struck title a completed task does (owner, 2026-08-16), so the
+          trailing "הושלם" was a second vocabulary for one state. The CTA BUTTON goes with them: `.chk-row` was a `<div>` and needed an
           explicit button, `ListRow` already has a tap, so ADR-0061 §1's rule holds without
           one — and keeping it left the title 101.8px against a manual row's 195px. */}
       {converged.length > 0 && (
@@ -291,6 +305,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               <AutomaticTaskRow
                 key={taskRowKey(row)}
                 auto={row.auto}
+                onTick={() => tickAutomatic(row.auto)}
                 onAct={() => runAction(row.auto)}
                 onManage={() => manageAutomatic(row.auto)}
               />
@@ -333,6 +348,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               <AutomaticTaskRow
                 key={auto.key}
                 auto={auto}
+                onTick={() => tickAutomatic(auto)}
                 onAct={() => runAction(auto)}
                 onManage={() => manageAutomatic(auto)}
               />

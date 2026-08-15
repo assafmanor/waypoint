@@ -35,6 +35,7 @@ import {
   draftOverlay,
   isLive,
   isManual,
+  tickedAutomaticStatus,
   type AutomaticTask,
 } from '../lib/automatic-tasks';
 import { AutomaticTaskRow } from './AutomaticTaskRow';
@@ -207,6 +208,14 @@ export function IndexTasksView({
     }
   };
 
+  /** **The tick, and it is the act that mints the overlay row** when there is not one yet
+   *  (brief §4: the row is written the moment a person says something about the check). The
+   *  same `applyVerb` the `⋯`'s own verbs go through, so create-or-patch is decided once. */
+  const tickAutomatic = (auto: AutomaticTask) =>
+    applyVerb(auto.task ?? draftOverlay(auto, trip.id), {
+      status: tickedAutomaticStatus(auto),
+    });
+
   /** A check with no row yet is handed a Task-shaped value that has never been written —
    *  opening a MENU must not write anything (brief §4: the row is minted by the verb). */
   const manageAutomatic = (auto: AutomaticTask) =>
@@ -216,6 +225,7 @@ export function IndexTasksView({
     row.kind === 'auto' ? (
       <AutomaticTaskRow
         auto={row.auto}
+        onTick={() => tickAutomatic(row.auto)}
         onAct={() => runAction(row.auto)}
         onManage={() => manageAutomatic(row.auto)}
       />

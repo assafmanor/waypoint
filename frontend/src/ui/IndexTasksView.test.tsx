@@ -148,8 +148,9 @@ const MANUAL_TITLES = ALL.map((x) => x.title);
 /** Four of `computeReadiness`'s five: the fixture's two travellers already satisfy `group`,
  *  and a satisfied check is not "still missing" (`isLive`). */
 const LIVE_CHECKS = 4;
-/** The readiness checks on screen — rows with the derivation's badge and no tick. */
-const autoRows = () => visibleRows().filter((r) => !r.querySelector('.tsk-tick'));
+/** The readiness checks on screen. Keyed on `.tsk-auto`, NOT on "has no tick" — since
+ *  2026-08-16 every row has a tick, which is the whole point of that change. */
+const autoRows = () => visibleRows().filter((r) => r.classList.contains('tsk-auto'));
 const titles = () =>
   visibleRows().map((r) => r.querySelector('.wp-listrow-title')?.textContent?.trim());
 
@@ -437,14 +438,42 @@ describe('IndexTasksView', () => {
       expect(autoRows().length).toBe(LIVE_CHECKS);
     });
 
-    it('leads an automatic row with the derivation’s badge and no tick', () => {
+    // **The tick is the SAME control a manual task carries** (owner, 2026-08-16, reversing
+    // ADR-0188 §4's leading element): one noun, one row shape, all the way down to the verb.
+    it('is STRUCTURALLY identical to a manual row — same tick, no badge', () => {
+      tripTasks = [today];
+      show();
+      const auto = autoRows()[0];
+      const manual = visibleRows().find((r) => !r.classList.contains('tsk-auto'))!;
+      expect(auto.querySelector('.wp-listrow-lead .tsk-tick')).toBeTruthy();
+      // **No badge** (owner, 2026-08-16): it restated the title beside it, and it was the
+      // last structural difference between the two kinds.
+      expect(auto.querySelector('.wp-listrow-badge')).toBeNull();
+      expect(manual.querySelector('.wp-listrow-badge')).toBeNull();
+      // A check with no row has nothing in flight to badge either (ADR-0188 §7).
+      expect(auto.querySelector('.wp-listrow-sync')).toBeNull();
+    });
+
+    it('completes a check by ticking it, minting the overlay row on the way', () => {
       tripTasks = [];
       show();
-      const row = autoRows()[0];
-      expect(row.querySelector('.tsk-tick')).toBeNull();
-      expect(row.querySelector('.wp-listrow-badge')).toBeTruthy();
-      // A task with no row has nothing in flight to badge (ADR-0188 §7).
-      expect(row.querySelector('.wp-listrow-sync')).toBeNull();
+      fireEvent.click(autoRows()[0].querySelector('.tsk-tick') as HTMLElement);
+      expect(created).toHaveLength(1);
+      expect(created[0]).toMatchObject({ status: TASK_STATUS.DONE });
+      expect((created[0] as { derivedKey?: string }).derivedKey).toBeTruthy();
+    });
+
+    // A human answer wins in BOTH directions — the point of "complete/uncomplete".
+    it('un-completes a satisfied check, and the row stops reading as done', () => {
+      tripTasks = [];
+      show();
+      fireEvent.click(screen.getByRole('radio', { name: new RegExp(t.tasks.filter.settled) }));
+      // `group` is satisfied by the fixture's two travellers and nobody has touched it.
+      const satisfied = autoRows()[0];
+      expect(satisfied.querySelector('.tsk-tick')!.getAttribute('aria-pressed')).toBe('true');
+      fireEvent.click(satisfied.querySelector('.tsk-tick')!);
+      expect(created).toHaveLength(1);
+      expect(created[0]).toMatchObject({ status: TASK_STATUS.OPEN });
     });
 
     // The chips read a `Task` row, and an untouched check has none — so they sit it out

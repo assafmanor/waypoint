@@ -1316,23 +1316,17 @@
   border-radius: 14px;
   overflow: hidden;
 }
-/* **`.chk-row` and its parts RETIRED (ADR-0188 §6/§7, built in ADR-0190).** The finding was
-   that this was `ListRow` written a second time — badge + title + meta + trailing control,
-   inside a `.checklist` card that is `.index .listcard` under another name — so Plan Home
-   and the tasks screen now render the SAME row from `ui/AutomaticTaskRow.tsx`. Gone with it:
-   `.chk-ic`, `.chk-main`, `.chk-t`, `.chk-m`, `.chk-cta` (the CTA button, because `ListRow`
-   has a tap where this was a `<div>` that needed one — ADR-0061 §1 survives without it), and
-   `.chk-ppl` (the per-traveller passport pips: the meta line already says "2 מתוך 5 העלו
-   דרכון" in words, and they only ever appeared on one row of five).
+/* **THE WHOLE `.chk-*` FAMILY IS RETIRED** (ADR-0188 §6/§7, built in ADR-0190; the last of
+   it 2026-08-16). The finding was that `.chk-row` was `ListRow` written a second time —
+   badge + title + meta + trailing control, inside a `.checklist` card that is
+   `.index .listcard` under another name — so Plan Home and the tasks screen now render the
+   SAME row from `ui/AutomaticTaskRow.tsx`.
 
-   `.chk-ok` SURVIVES — it is the completed row's trailing state, now inside `ListRow`'s
-   trailing slot rather than as a sibling of a bespoke row. */
-.chk-ok {
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ok);
-}
+   `.chk-ok` was the last survivor: the "✓ הושלם" a completed check trailed. It went when the
+   owner ruled that an automatic task's completion must look and behave exactly like a manual
+   one's — a filled tick at the leading edge and a struck title, not a different mark in a
+   different place. Two indications for one state was the defect; deleting one of them is the
+   fix. `.checklist` itself stays: it is the card both Homes hold their rows in. */
 /* Show/hide-completed toggle in the checklist section title (ADR-0061). */
 .chk-toggle {
   font: inherit;

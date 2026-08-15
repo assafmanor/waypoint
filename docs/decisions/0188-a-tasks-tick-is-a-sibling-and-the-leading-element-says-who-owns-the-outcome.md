@@ -55,6 +55,44 @@ Lead = the tick. Title line = the task's own words, with a **star** when `import
 
 ### 4. The LEADING ELEMENT says who owns the outcome — and this amends the brief's §2
 
+> **REVERSED 2026-08-16 by the owner, and it is this ADR's most load-bearing section, so the
+> reversal is recorded here rather than in a new ADR beside it.** Verbatim: _"Makes no sense
+> that the indication for a complete task is different for automatic and manual tasks. Both
+> should look (and behave! i.e. you could complete/uncomplete automatic tasks as well) the
+> same as manual tasks."_
+>
+> **The corner §4 argued from was real; the owner took the other way out of it.** §4's case is
+> that a derived row's done-ness cannot be pressed, so a tick there would be an inert control
+> in the row's most prominent position — "three inert circles out of five", which reads as a
+> bug. Both exits close that: give the row a different leading element (§4's answer), or
+> **make the circle work** (the owner's). The second is strictly better on the brief's own
+> terms — §2 wanted one noun with one row shape, and §4 had to carve an exception out of it.
+>
+> **So an automatic task carries the same tick, and it completes and un-completes** —
+> **and no badge** (owner, same day: _"we don't want both an icon and a done tick circle"_).
+> The badge went for a reason stronger than the crowding: it **restated the title**. The rows
+> read `טיסות` beside a plane and `לינה` beside a bed — the same sentence twice, six pixels
+> apart. A booking row's badge earns its slot because the row's words are a hotel's NAME and
+> the badge says what KIND it is; a check's words are already its kind. That also settles what
+> §1 found and this section walked back — _"a task has no icon slot to fill"_ — so the two
+> kinds now open identically.
+>
+> They are **not** pixel-identical, and the remainder is deliberate: a manual row reserves the
+> sync column and a check does not (§7). Measured at 360, the title column is **286px** on a
+> check against **259px** on a manual row, the difference sitting entirely at the trailing
+> edge. `.chk-ok` and its trailing `הושלם` are deleted, which retires the **last** of the
+> `.chk-*` family — two indications for one state was the defect.
+>
+> **What it costs, and brief §4 chose the opposite deliberately:** a stored `done` CAN now go
+> stale. Tick "book a hotel" without booking one and the row says done while no bed is
+> covered. The rule is symmetrical and has no special cases — **a human answer wins in both
+> directions; until there is one, the derivation answers** — so un-ticking hands the question
+> back to the data. And `resolvedReadinessPct` reads that same resolution, so the prep hero's
+> percentage and the list cannot disagree on screen; `computeReadiness` itself stays pure, so
+> brief §3 is untouched.
+>
+> The rest of §4 below survives: one noun, one list, one sort, and the measurements.
+
 **The brief's §2 holds everywhere except the one element that is a verb.** One noun, one list, one sort, one row shape, no separate section, no second word — all of it survives. What cannot survive is pixel-identity at the leading edge, because §4 of the brief gives an automatic task's done-ness to the derivation and §A puts a button there.
 
 So: **a manual task leads with a control; an automatic task leads with the derivation's own badge** — `ListRow`'s ordinary badge slot, carrying the check's glyph from PlanHome's existing `CHECK_ICON` map. Nothing new is drawn. Done-ness trails as `.chk-ok`, the exact element PlanHome's completed checklist row already renders.
