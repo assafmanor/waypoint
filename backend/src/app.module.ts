@@ -14,6 +14,7 @@ import { EventsModule } from './events/events.module';
 import { HealthController } from './health/health.controller';
 import { MaybeItemsModule } from './maybe-items/maybe-items.module';
 import { NotesModule } from './notes/notes.module';
+import { TasksModule } from './tasks/tasks.module';
 import { DocumentAttachmentsModule } from './document-attachments/document-attachments.module';
 import { PlacesModule } from './places/places.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -38,6 +39,7 @@ import { TripsModule } from './trips/trips.module';
     BookingsModule,
     MaybeItemsModule,
     NotesModule,
+    TasksModule,
     DocumentAttachmentsModule,
     PlacesModule,
     DocumentsModule,

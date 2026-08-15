@@ -56,6 +56,29 @@
   cursor: default;
 }
 
+/* THE LEAD SLOT (ADR-0188 §1) — one new slot, a sibling before the trigger, mirroring the
+   kebab rendered after it. That is the whole extension: nothing nests, and the row keeps
+   its flex axis.
+
+   `z-index: 1` is not decoration and §2 measures why. The control inside uses the same
+   negative-margin hit-area recipe as `.wp-listrow-kebab` (44px box, 30px of layout), so it
+   overhangs its slot by 7px — and unlike the kebab it is FIRST in DOM order, so without a
+   stacking context `.wp-listrow-open` paints over the overhang and takes those taps. The
+   kebab never needed this because it is last. Same recipe, opposite end. */
+.wp-listrow-lead {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding-inline-start: 14px;
+  position: relative;
+  z-index: 1;
+}
+/* A row with a lead does not also pay the badge's inset — the control IS the leading
+   element, so there is no icon slot to fill (tasks brief §5). */
+.wp-listrow:has(> .wp-listrow-lead) > .wp-listrow-open {
+  padding-inline-start: 10px;
+}
+
 .wp-listrow-badge {
   width: 36px;
   height: 36px;

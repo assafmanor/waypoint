@@ -17,6 +17,8 @@ import type {
   NoteHostKey,
   NoteSource,
   PlaceSearchKind,
+  TaskDerivedKey,
+  TaskStatus,
 } from './entities';
 
 export const AUTH_PROVIDER = { GOOGLE: 'google' } as const satisfies Record<string, AuthProvider>;
@@ -172,8 +174,28 @@ export const ENTITY_TYPE = {
   TRIP: 'trip',
   MEMBERSHIP: 'membership',
   NOTE: 'note',
+  TASK: 'task',
   DOCUMENT_ATTACHMENT: 'documentAttachment',
 } as const satisfies Record<string, EntityType>;
+
+/** A task's lifecycle (tasks brief §5). `dismissed` is a real outcome and not a soft
+ *  delete: it stopped mattering, which the row says by struck-through rather than by
+ *  disappearing. */
+export const TASK_STATUS = {
+  OPEN: 'open',
+  DONE: 'done',
+  DISMISSED: 'dismissed',
+} as const satisfies Record<string, TaskStatus>;
+
+/** The five readiness checks a task row can overlay (tasks brief §4) — the same ids
+ *  `computeReadiness` returns, named here because both layers branch on them. */
+export const TASK_DERIVED_KEY = {
+  FLIGHTS: 'flights',
+  LODGING: 'lodging',
+  ITINERARY: 'itinerary',
+  DOCUMENTS: 'documents',
+  GROUP: 'group',
+} as const satisfies Record<string, TaskDerivedKey>;
 
 /** Where a note came from (ADR-0152 §1). One value in v1 — §9 registers no strategy. */
 export const NOTE_SOURCE = {
@@ -199,6 +221,12 @@ export const NOTE_HOST_FIELD = {
   [ENTITY_TYPE.MAYBE_ITEM]: 'maybeItemId',
   [ENTITY_TYPE.DOCUMENT]: 'documentId',
 } as const satisfies Partial<Record<EntityType, NoteHostKey>>;
+
+/** **Which FK holds a task's host** — an alias of the note lookup above, for the reason
+ *  `TASK_HOST_KEYS` states: the two entities host off the same five FKs under the same
+ *  cascade rule, so the compiler holds them identical rather than a reviewer having to.
+ *  Nothing consults it until phase 4 wires the hosts. */
+export const TASK_HOST_FIELD = NOTE_HOST_FIELD;
 
 /** **Which FK holds an attachment's host, per host entity type** (ADR-0173 §1/§7) — the
  *  same lookup as `NOTE_HOST_FIELD` above and for the same reason: the host FKs are

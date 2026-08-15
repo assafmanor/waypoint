@@ -1,7 +1,8 @@
 # 0188 — A task's tick is a sibling, and the row's leading element says who owns the outcome
 
-**Status:** Proposed (design only — nothing here is built)
+**Status:** Accepted. **§1–§3 are built** (2026-08-15, tasks phase 1 — [session note](../planning/2026-08-15-tasks-phase-1-built.md)); **§4–§7 are still design**, and land with phases 2 and 3. Nothing the build found contradicted any of it, and the one number it was measured against — a 26px ring reading as pressable under a thumb — is still owed to the device pass (§8).
 **Date:** 2026-08-15
+**Build plan:** [`planning/2026-08-15-tasks-build-plan.md`](../planning/2026-08-15-tasks-build-plan.md) — the six phases, their status, and the decisions taken while building them.
 **Session note:** [`planning/2026-08-15-session-271-the-tasks-design-session.md`](../planning/2026-08-15-session-271-the-tasks-design-session.md)
 **Design reference:** [`mockups/tasks-row-and-refusals-v1.html`](../../mockups/tasks-row-and-refusals-v1.html) — §1 the three placements · §2 the hit-area probe · §3 the two readings of the brief's §2 and the two manage sheets · §4 the row's nine states · §5 the band on both Homes. Every number quoted below is read off that file's rendered DOM, in a run that loaded Assistant.
 **Prerequisite brief:** [`planning/2026-08-15-tasks-design-brief.md`](../planning/2026-08-15-tasks-design-brief.md), whose **§A, §B and §D** this ADR closes. Its **§C** (an `everyone` task partially complete), **§E** (the hero slot) and **§F** (the mark on a host row) are deliberately **not** closed here — see §8.

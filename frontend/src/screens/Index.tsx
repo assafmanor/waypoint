@@ -1,4 +1,5 @@
-// Index tab — a landing with three peer tiles (ADR-0098/0152): bookings, documents and notes
+// Index tab — a landing with four peer tiles (ADR-0098/0152, tasks brief §11): bookings,
+// documents, notes and tasks
 // (ADR-0047/0049) each push their own dedicated full screen instead of sharing
 // one long page. The sub-screens are LOCAL VIEW STATE here, not routes — Index
 // already renders inside the one TripProvider the trip Shell mounts, and a
@@ -12,19 +13,22 @@ import { useClock } from '../lib/useClock';
 import { splitBookings, scheduleLabel } from '../lib/index-bookings';
 import { groupDocuments } from '../lib/documents';
 import { noteTitleText, sortNotes } from '../lib/notes';
+import { taskDue, taskPreview, type TaskClock } from '../lib/tasks';
 import { BookingTitle } from '../ui/BookingTitle';
 import { IndexBookingsView } from '../ui/IndexBookingsView';
 import { IndexDocumentsView } from '../ui/IndexDocumentsView';
 import { IndexNotesView } from '../ui/IndexNotesView';
+import { IndexTasksView } from '../ui/IndexTasksView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
 import { BOOKING_PARAM, DOCUMENT_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import { t } from '../i18n/he';
 
-type IndexView = 'landing' | 'bookings' | 'documents' | 'notes';
+type IndexView = 'landing' | 'bookings' | 'documents' | 'notes' | 'tasks';
 
 export function Index() {
-  const { trip, bookings, places, events, documents, notes, users } = useTrip();
+  const { trip, bookings, places, events, documents, notes, tasks, users, zoneCrossings } =
+    useTrip();
   const now = useClock();
   const [view, setView] = useState<IndexView>('landing');
   // Set alongside `view` by the ?booking= deep-link below, and handed to a
@@ -102,6 +106,13 @@ export function Index() {
       </div>
     );
   }
+  if (view === 'tasks') {
+    return (
+      <div className="index">
+        <IndexTasksView onClose={backToLanding} />
+      </div>
+    );
+  }
 
   const { upcoming, past } = splitBookings(bookings, events, trip.timezone, now.getTime());
   const next = upcoming[0];
@@ -139,6 +150,31 @@ export function Index() {
     ? t.notes.tile.latest(latestAuthor, noteTitleText(latestNote))
     : t.notes.tile.empty;
 
+  // **The next thing due, with an overdue count when there is one** (brief §13). A task
+  // collection has no "newest" worth a glance the way notes do and no type groups the way
+  // documents do — what it has is a deadline that is about to bite, which is also the only
+  // line here that moves on its own. Rejected: a raw open-count, which barely changes.
+  const clock: TaskClock = {
+    nowMs: now.getTime(),
+    crossings: zoneCrossings,
+    primaryZone: trip.timezone,
+  };
+  const preview = taskPreview(tasks, clock);
+  const nextDue = preview.next ? taskDue(preview.next, clock) : undefined;
+  const tasksSubtitle = preview.next ? (
+    <>
+      <Icon name="clock" />{' '}
+      {t.tasks.tile.next(
+        nextDue?.time
+          ? `${preview.next.title} · ${nextDue.day} ${nextDue.time}`
+          : preview.next.title,
+      )}
+      {preview.overdue > 0 && <> · {t.tasks.tile.overdue(preview.overdue)}</>}
+    </>
+  ) : (
+    t.tasks.tile.empty
+  );
+
   return (
     <div className="index">
       {/* Offline status is a page-level fact — shown once, on the landing. */}
@@ -170,6 +206,16 @@ export function Index() {
         count={notes.length}
         subtitle={notesSubtitle}
         onOpen={() => setView('notes')}
+      />
+      {/* The fourth tile (brief §11) — the landing ADR-0098 measured at five. No new tab:
+          rule 2 holds, and prominence for a time-bearing entity comes from the Home bands
+          (phases 2–3) rather than from chrome. */}
+      <IndexTile
+        icon={<Icon name="check" />}
+        title={t.tasks.title}
+        count={preview.open}
+        subtitle={tasksSubtitle}
+        onOpen={() => setView('tasks')}
       />
     </div>
   );

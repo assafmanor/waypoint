@@ -33,6 +33,12 @@ enum EventStatus {
   skipped
 }
 
+enum TaskStatus {
+  open
+  done
+  dismissed
+}
+
 enum EventSource {
   manual
   gmail
@@ -130,6 +136,7 @@ model User {
   calendarEventLinks  CalendarEventLink[]
   tripBlocks          TripBlock[]
   notes               Note[]
+  tasks               Task[]
   documentAttachments DocumentAttachment[]
 }
 
@@ -196,6 +203,7 @@ model Trip {
   invite      Invite?
   blocks      TripBlock[]
   notes       Note[]
+  tasks       Task[]
 
   documentAttachments DocumentAttachment[]
 
@@ -282,6 +290,7 @@ model Event {
   trip                Trip                 @relation(fields: [tripId], references: [id], onDelete: Cascade)
   booking             Booking?             @relation(fields: [bookingId], references: [id], onDelete: SetNull)
   notes               Note[]
+  tasks               Task[]
   place               Place?               @relation("EventPlace", fields: [placeId], references: [id], onDelete: SetNull)
   calendarLinks       CalendarEventLink[]
   documentAttachments DocumentAttachment[]
@@ -315,6 +324,7 @@ model Booking {
   fromPlace Place? @relation("BookingFromPlace", fields: [fromPlaceId], references: [id], onDelete: SetNull)
   toPlace   Place? @relation("BookingToPlace", fields: [toPlaceId], references: [id], onDelete: SetNull)
   notes     Note[]
+  tasks     Task[]
 
   documentAttachments DocumentAttachment[]
 
@@ -362,6 +372,7 @@ model Place {
   bookingsTo   Booking[]   @relation("BookingToPlace")
   maybeItems   MaybeItem[] @relation("MaybeItemPlace")
   notes        Note[]
+  tasks        Task[]
 
   @@unique([tripId, googlePlaceId])
   @@index([tripId])
@@ -398,6 +409,7 @@ model Document {
 
   trip  Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
   notes Note[]
+  tasks Task[]
 
   attachments DocumentAttachment[]
 
@@ -466,6 +478,7 @@ model MaybeItem {
   user  User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   place Place? @relation("MaybeItemPlace", fields: [placeId], references: [id], onDelete: SetNull)
   notes Note[]
+  tasks Task[]
 
   @@index([tripId])
 }
@@ -514,6 +527,61 @@ model Note {
 
   // The five host indexes are what make "this row's notes" a lookup rather than a scan —
   // the mark on every row of a day asks that question once per host.
+  @@index([tripId])
+  @@index([eventId])
+  @@index([bookingId])
+  @@index([placeId])
+  @@index([maybeItemId])
+  @@index([documentId])
+}
+
+// A task is an obligation with a deadline and optionally a doer (tasks brief §1). Notes'
+// sibling structurally — same host block, same cascade discipline (ADR-0152 §2).
+model Task {
+  id             String     @id @default(cuid())
+  tripId         String
+  title          String
+  body           String?
+  // The deadline as a UTC instant. `dueHasTime` is not derivable from it: a deadline of
+  // "Thursday" and one of "Thursday 00:00" are the same instant and different obligations.
+  // No `displayTimezone` — the due zone is DERIVED exactly as an event's is (brief §10),
+  // so there is a zone to state and nothing to pin.
+  dueAt          DateTime?
+  dueHasTime     Boolean    @default(false)
+  // Null = the group's ("one of us"). A plain column rather than a User relation, like
+  // `Event.updatedBy`: the trip's roster is what resolves a name, and a FK here would owe
+  // a cascade answer for a case (the assignee's account is deleted) nobody has asked.
+  assigneeUserId String?
+  important      Boolean    @default(false)
+  status         TaskStatus @default(open)
+  settledAt      DateTime?
+  settledBy      String?
+  // Which readiness check this row overlays (brief §4). A String and NOT a Prisma enum on
+  // purpose: the five ids belong to `computeReadiness`, so a sixth check must be a code
+  // change and never a migration. The closed set is enforced by the shared zod schema at
+  // both edges (ADR-0023), the same way the host union below is.
+  derivedKey     String?
+  // At most one is set — the same closed union `Note` carries, enforced the same way.
+  // Nothing reads these until phase 4; they are here in the first migration because a
+  // nullable column is free today and a second migration on a live synced entity is not.
+  eventId        String?
+  bookingId      String?
+  placeId        String?
+  maybeItemId    String?
+  documentId     String?
+  createdBy      String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  updatedBy      String
+
+  trip      Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  event     Event?     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  booking   Booking?   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  place     Place?     @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  maybeItem MaybeItem? @relation(fields: [maybeItemId], references: [id], onDelete: Cascade)
+  document  Document?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
   @@index([tripId])
   @@index([eventId])
   @@index([bookingId])

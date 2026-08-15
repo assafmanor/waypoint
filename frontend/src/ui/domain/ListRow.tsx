@@ -21,9 +21,23 @@ import './list-row.css';
 export type BadgeTone = 'stay' | 'trans';
 
 export interface ListRowProps {
-  /** Leading badge content — an emoji/icon (content, not a UI control). */
-  icon: ReactNode;
+  /** Leading badge content — an emoji/icon (content, not a UI control). **Optional since
+   *  ADR-0188:** a row with a `lead` has no badge, because the control IS its leading
+   *  element and a task has no icon slot to fill. */
+  icon?: ReactNode;
   badgeTone?: BadgeTone;
+  /** **A control at the row's leading edge, as a SIBLING of the trigger** (ADR-0188 §1) —
+   *  the kebab's twin at the other end, and rendered before it for the same reason the
+   *  kebab is rendered after: buttons do not nest. Chrome closes `.wp-listrow-open` at a
+   *  nested `<button>` and reparents everything after it (ADR-0160 §4, reproduced live),
+   *  and a `role="button"` span inside would have to swallow the row's own tap on every
+   *  press — affordable for `PlaceBadge`'s occasional verb, not for the one pressed on
+   *  every row of a to-do list.
+   *
+   *  A task's tick is the only consumer. Anything put here owes ADR-0188 §2's hit box: a
+   *  rounded SQUARE, never a circle, because `border-radius` clips the hit region as well
+   *  as the paint and the four corners fall through to the trigger underneath. */
+  lead?: ReactNode;
   /** Opens the row's primary target (a detail view / viewer).
    *
    *  Receives the click, because `onClick={onOpen}` has always passed it and a caller
@@ -67,6 +81,7 @@ export interface ListRowProps {
 export function ListRow({
   icon,
   badgeTone,
+  lead,
   onOpen,
   openLabel,
   disabled,
@@ -86,6 +101,7 @@ export function ListRow({
         'wp-listrow' + (unsynced ? ' is-unsynced' : '') + (className ? ` ${className}` : '')
       }
     >
+      {lead != null && <div className="wp-listrow-lead">{lead}</div>}
       <button
         type="button"
         className="wp-listrow-open"
@@ -93,12 +109,14 @@ export function ListRow({
         disabled={disabled}
         aria-label={openLabel}
       >
-        <PlaceBadge
-          className={'wp-listrow-badge' + (badgeTone ? ` ${badgeTone}` : '')}
-          onShowOnMap={onShowOnMap}
-        >
-          {icon}
-        </PlaceBadge>
+        {icon != null && (
+          <PlaceBadge
+            className={'wp-listrow-badge' + (badgeTone ? ` ${badgeTone}` : '')}
+            onShowOnMap={onShowOnMap}
+          >
+            {icon}
+          </PlaceBadge>
+        )}
         <span className="wp-listrow-main">
           <span className="wp-listrow-title">{title}</span>
           {meta != null && <span className="wp-listrow-meta">{meta}</span>}

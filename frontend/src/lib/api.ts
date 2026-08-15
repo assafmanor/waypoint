@@ -18,6 +18,7 @@ import {
   placeResultSchema,
   placeSchema,
   removedMemberSchema,
+  taskSchema,
   tripDocumentSchema,
   tripEventSchema,
   tripSchema,
@@ -31,8 +32,10 @@ import {
   type CreateEventInput,
   type CreateMaybeItemInput,
   type CreateNoteInput,
+  type CreateTaskInput,
   type UpdateMaybeItemInput,
   type UpdateNoteInput,
+  type UpdateTaskInput,
   type CreatePlaceInput,
   type CreateTripInput,
   type DeliveredEnrichmentFields,
@@ -57,6 +60,7 @@ import {
   type PlacePrediction,
   type ResolvePlaceInput,
   type RemovedMember,
+  type Task,
   type Trip,
   type TripEvent,
   type TripSnapshot,
@@ -371,6 +375,8 @@ const restoreMaybeItemUrl = (tripId: string, maybeItemId: string) =>
   `${maybeItemUrl(tripId, maybeItemId)}/restore`;
 const notesUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/notes`;
 const noteUrl = (tripId: string, noteId: string) => `${notesUrl(tripId)}/${noteId}`;
+const tasksUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/tasks`;
+const taskUrl = (tripId: string, taskId: string) => `${tasksUrl(tripId)}/${taskId}`;
 const attachmentsUrl = (tripId: string) => `${API_BASE_URL}/trips/${tripId}/document-attachments`;
 const attachmentUrl = (tripId: string, attachmentId: string) =>
   `${attachmentsUrl(tripId)}/${attachmentId}`;
@@ -575,6 +581,37 @@ export async function updateNote(
 
 export async function deleteNote(tripId: string, noteId: string): Promise<void> {
   const res = await apiFetch(noteUrl(tripId, noteId), { method: HTTP_METHOD.DELETE });
+  if (!res.ok) return throwApiError(res);
+}
+
+export async function createTask(tripId: string, input: CreateTaskInput): Promise<Task> {
+  const res = await apiFetch(tasksUrl(tripId), {
+    method: HTTP_METHOD.POST,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return taskSchema.parse(await readJson(res));
+}
+
+/** Edit a task or settle it. **Sparse** — the tick sends `{ status }` alone and everything
+ *  it did not send survives (`updateTaskSchema`). */
+export async function updateTask(
+  tripId: string,
+  taskId: string,
+  input: UpdateTaskInput,
+): Promise<Task> {
+  const res = await apiFetch(taskUrl(tripId, taskId), {
+    method: HTTP_METHOD.PATCH,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) return throwApiError(res);
+  return taskSchema.parse(await readJson(res));
+}
+
+export async function deleteTask(tripId: string, taskId: string): Promise<void> {
+  const res = await apiFetch(taskUrl(tripId, taskId), { method: HTTP_METHOD.DELETE });
   if (!res.ok) return throwApiError(res);
 }
 

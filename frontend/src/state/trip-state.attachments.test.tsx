@@ -93,6 +93,7 @@ const SNAPSHOT: TripSnapshot = {
   maybeItems: [],
   places: [],
   notes: [],
+  tasks: [],
   documentAttachments: [
     link('a1', { bookingId: 'b1' }),
     link('a2', { eventId: 'e1' }),

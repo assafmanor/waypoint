@@ -113,3 +113,26 @@ export async function assertEntityRefsInTrip(
     if (!(await find())) throw new BadRequestException(`Unknown ${label} for this trip: ${id}`);
   }
 }
+
+/**
+ * Reject an assignee who is not a member of this trip (tasks brief §6). The same
+ * class of reference as the three guards above — a client-supplied id written onto a
+ * trip's row — and a foreign one would be a task delegated to somebody who can never
+ * see it, which reads on the row as a name nobody recognises.
+ *
+ * **A sibling rather than a sixth line in the table above**, per this file's own rule:
+ * that lookup keys on the referenced row's `id`, and a member is resolved by the
+ * `(tripId, userId)` pair on `Membership` instead. Same shape, different key.
+ */
+export async function assertMemberInTrip(
+  prisma: PrismaService,
+  tripId: string,
+  userId: string | null | undefined,
+): Promise<void> {
+  if (!userId) return;
+  const membership = await prisma.membership.findFirst({
+    where: { tripId, userId },
+    select: { id: true },
+  });
+  if (!membership) throw new BadRequestException(`Unknown member for this trip: ${userId}`);
+}

@@ -53,6 +53,7 @@ function snapshot(overrides: Partial<TripSnapshot> = {}): TripSnapshot {
     maybeItems: MAYBE_ITEMS,
     places: [],
     notes: [],
+    tasks: [],
     documentAttachments: [],
     enrichments: {},
     fxRates: null,

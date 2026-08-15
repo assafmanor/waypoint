@@ -97,6 +97,12 @@ export const MINUTES_PER_DAY = MINUTES_PER_HOUR * 24;
 
 export const DAYS_PER_WEEK = 7;
 
+/** **The wall-clock a date-only deadline resolves to** (tasks brief §5). "By Thursday" is
+ *  discharged any time on Thursday, so the instant is the day's END — storing 00:00 would
+ *  make a task due today read as overdue one minute past midnight. `Task.dueHasTime` is
+ *  what records that this hour was never typed, so no surface prints it. */
+export const DAY_DEADLINE_HHMM = '23:59';
+
 /** Average Gregorian month/year — good enough for rounding far-out countdowns
  *  and the upper rungs of the duration ladder (ADR-0114), where a ±1-day error
  *  is invisible anyway. */
@@ -1332,4 +1338,10 @@ export const CONTROL_ICON = {
   removeMember: 'userMinus',
   close: 'close',
   clock: 'clock',
+  /** A task's `important` flag (tasks brief §7) — shape and weight, never a hue, because
+   *  rule 4 has no colour left to spend on priority. */
+  star: 'star',
+  /** Dismissing a task: it stopped mattering, which is not the same as doing it. Shares
+   *  the glyph with a skipped event, which is the same idea one surface over. */
+  skip: 'skip',
 } as const satisfies Record<string, IconName>;

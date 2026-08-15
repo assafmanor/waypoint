@@ -13,7 +13,11 @@ import {
   eventStatusSchema,
   membershipRoleSchema,
   placeSearchKindSchema,
+  TASK_HOST_KEYS,
+  taskDerivedKeySchema,
+  taskStatusSchema,
   type NoteHostKey,
+  type TaskHostKey,
 } from './entities';
 import { currencyCodeSchema } from './currency';
 import { geoBoundsSchema } from './geo';
@@ -522,6 +526,78 @@ export const updateNoteSchema = z
     path: ['eventId'],
   });
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
+
+// --- Tasks (tasks brief §5, ADR-0188) -------------------------------------------------
+// Notes' sibling, so the host rule below is the same rule, enforced the same way at both
+// edges (ADR-0023). What differs is the ONE refusal: a note needs a body or a url, and a
+// task needs a title — "a task with no title is nothing".
+
+const taskHostCount = (data: Partial<Record<TaskHostKey, unknown>>): number =>
+  TASK_HOST_KEYS.filter((key) => data[key] != null).length;
+
+const hasTitle = (data: { title?: string | null }): boolean => !!data.title?.trim();
+
+export const createTaskSchema = z
+  .object({
+    id: entityIdSchema.optional(),
+    title: z.string(),
+    body: z.string().optional(),
+    /** An ISO instant. Resolved from the typed wall-clock through `authoringZone` at the
+     *  form, never from whatever zone the call site happened to hold (ADR-0107 §2). */
+    dueAt: z.string().optional(),
+    dueHasTime: z.boolean().optional(),
+    assigneeUserId: entityIdSchema.optional(),
+    important: z.boolean().optional(),
+    /** Set only when the row overlays a readiness check (brief §4) — a human dismissing,
+     *  assigning or flagging a derivation is what mints it. */
+    derivedKey: taskDerivedKeySchema.optional(),
+    eventId: entityIdSchema.optional(),
+    bookingId: entityIdSchema.optional(),
+    placeId: entityIdSchema.optional(),
+    maybeItemId: entityIdSchema.optional(),
+    documentId: entityIdSchema.optional(),
+  })
+  .refine(hasTitle, { message: 'a task needs a title', path: ['title'] })
+  .refine((data) => taskHostCount(data) <= 1, {
+    message: 'a task has at most one host',
+    path: ['eventId'],
+  });
+export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+
+/** `PATCH /trips/:tripId/tasks/:taskId` — **sparse throughout, and clearing a field is an
+ *  explicit `null`.** This is the one place tasks deliberately part company with
+ *  `updateNoteSchema`, whose absent-means-cleared rule is bought by a note having exactly
+ *  one edit surface. A task has two: the editor, which holds every field, and **the tick**,
+ *  which settles a task without opening anything and so sends `status` alone. Under the
+ *  note's rule that tick would erase the task's own words and its deadline.
+ *
+ *  So an absent field means untouched, a `null` means cleared, and the refusal below reads
+ *  the SUBMITTED fields — `title` is optional here and refused only when it is actually
+ *  sent, or a tick would be told the task needs a title it already has. */
+export const updateTaskSchema = z
+  .object({
+    title: z.string().optional(),
+    body: z.string().nullish(),
+    dueAt: z.string().nullish(),
+    dueHasTime: z.boolean().optional(),
+    assigneeUserId: entityIdSchema.nullish(),
+    important: z.boolean().optional(),
+    status: taskStatusSchema.optional(),
+    eventId: entityIdSchema.nullish(),
+    bookingId: entityIdSchema.nullish(),
+    placeId: entityIdSchema.nullish(),
+    maybeItemId: entityIdSchema.nullish(),
+    documentId: entityIdSchema.nullish(),
+  })
+  .refine((data) => data.title === undefined || hasTitle(data), {
+    message: 'a task needs a title',
+    path: ['title'],
+  })
+  .refine((data) => taskHostCount(data) <= 1, {
+    message: 'a task has at most one host',
+    path: ['eventId'],
+  });
+export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 
 // --- Document attachments (ADR-0173) --------------------------------------------------
 // The link between an existing document and a booking or an event. There is no update
