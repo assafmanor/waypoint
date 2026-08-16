@@ -49,10 +49,18 @@
    lines and a meta — and four times that when it opens: the badge and the `⋯` floated at
    mid-height, pointing at nothing, which is visible in the owner's screenshot.
 
-   A note's own class rather than a rule in `list-row.css`: the other three lists cannot
-   grow, so changing the shared default would move their `⋯` to fix a screen they are not
-   on. Every note row takes it, not only the tall ones, or the badge would sit at a
-   different height on consecutive rows.
+   A note's own class rather than a rule in `list-row.css`: bookings, documents and members
+   are fixed at two lines, so changing the shared default would move their `⋯` to fix a
+   screen they are not on. Every note row takes it, not only the tall ones, or the badge
+   would sit at a different height on consecutive rows.
+
+   **The tasks screen is the one row that could now want this too, and deliberately does not
+   have it** (ADR-0191 §8, merged 2026-08-16): a task's meta became two lines — deadline,
+   then host chip and assignee — so its row reaches 95px at 360 and its tick and `⋯` centre
+   26.5px below the title line they act on, which is this rule's own defect one surface over.
+   Not extended here on purpose: that surface shipped hours ago with its own device pass, and
+   whether a TICK should top-align the way a badge does is a question about a control, not a
+   mechanical repeat of this. On the backlog with the measurement.
 
    The trailing group's inset is derived, not guessed: the kebab's ink is 30px inside a
    44px box with `margin: -7px`, so its centre lands at `padding + 15`, and the badge's
