@@ -121,7 +121,7 @@ describe('HostTasks', () => {
   // The four differences the alignment report was made of, and the two a unit can see.
   it('names its noun in the header, as the notes section does', () => {
     show();
-    expect(document.querySelector('.tsk-sec .note-sec-h .t svg')).toBeTruthy();
+    expect(document.querySelector('.tsk-sec .sec-h .t svg')).toBeTruthy();
   });
 
   // **The section says only what there is to say** (owner: "tasks should be more minimal").

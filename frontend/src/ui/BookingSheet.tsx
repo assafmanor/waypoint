@@ -1476,19 +1476,15 @@ export function BookingSheet({
                   staging={taskStaging}
                   quiet
                 />
-                {booking && (
-                  <HostNotes
-                    host={{ kind: 'booking', id: booking.id, name: booking.title }}
-                    canAdd={false}
-                  />
-                )}
-                <Field
-                  label={booking ? t.notes.composer.labelMore : t.notes.composer.label}
-                  htmlFor="bs-notes"
-                  hint={t.notes.composer.hint}
-                >
-                  <NoteComposer state={composer} id="bs-notes" />
-                </Field>
+                {/* **ONE section, whose last row is the composer** (ADR-0192 §2) — the same
+                    collapse `EventForm` takes, and for the same reason: this was a section
+                    plus a `Field`, so an edit headed `פתקים` twice. */}
+                <HostNotes
+                  host={{ kind: 'booking', id: booking?.id, name: booking?.title ?? title.value }}
+                  canAdd={false}
+                  composeHint={t.notes.composer.hint}
+                  compose={<NoteComposer state={composer} id="bs-notes" />}
+                />
               </>
             )}
           </FormStepPanel>

@@ -1015,10 +1015,12 @@ export const t = {
     // The composer on a host's form (ADR-0152 §6b). No title field, no category, no second
     // save — one box, and a blank one writes nothing.
     composer: {
+      // **Still used by `DocumentUploadSheet` and `MapPlaceForm`**, which keep the composer in
+      // a `Field` of its own. The event and booking forms do not: ADR-0192 §2 folded their
+      // composer into the notes SECTION, so it is named by the section header and needs no
+      // label at all. `labelMore` ('פתק חדש · לא חובה') retired with the same change — it
+      // existed only because those forms rendered the word `פתקים` twice in a row.
       label: 'פתקים · לא חובה',
-      // On a form that ALSO lists the host's existing notes (editing an event), two headings
-      // reading `פתקים` one under the other is one heading twice — this box is the new one.
-      labelMore: 'פתק חדש · לא חובה',
       placeholder: 'משהו שכדאי לזכור על זה',
       another: 'פתק נוסף',
       add: 'פתק נוסף',
@@ -2297,7 +2299,17 @@ export const t = {
     // category pill, so the app is visibly understanding rather than quietly deciding.
     // Two tails because the two operations differ: a create can be completed later, a
     // conversion moves two fields off the event being edited (§3).
-    bookedDerived: (type: string) => `האירוע יירשם גם כהזמנה · ${type}, ואפשר להשלים אותה אחר כך`,
+    //
+    //
+    // **The CREATE one names the kind it is setting; the convert one does not** (ADR-0192 §3).
+    // `סוג` moved up into the time band, so it now sits ABOVE this row and can be re-derived
+    // off screen — a clause pays for that rather than a second control. It is on the create
+    // alone because the re-derivation only runs while the kind is UNTOUCHED, and ADR-0136 §4
+    // counts an existing event as touched: on an edit this toggle never moves the kind, so
+    // saying `יסומן …` there would announce a change that is not going to happen. A spec
+    // caught that, which is the whole reason it is written down here.
+    bookedDerived: (type: string, kind: string) =>
+      `האירוע יירשם גם כהזמנה · ${type}, ויסומן ${kind}. אפשר להשלים אותה אחר כך`,
     bookedDerivedConvert: (type: string) =>
       `האירוע הזה יירשם גם כהזמנה · ${type}, והמיקום והקטגוריה יעברו אליה`,
     // Already linked: no control at all, a statement with a way in (§3) — the code, room

@@ -33,6 +33,7 @@ import { DocumentPickerSheet } from './DocumentPickerSheet';
 import { DocumentUploadSheet } from './DocumentUploadSheet';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
+import './section-head.css';
 import './attach.css';
 
 /** A document this form has picked but not yet written — the attachment half of
@@ -227,7 +228,7 @@ export function DocumentAttachField({
 
   return (
     <div className="doc-sec">
-      <div className="doc-sec-h">
+      <div className="sec-h">
         <span className="t">
           <Icon name="documents" /> {t.docs.attach.title}
         </span>

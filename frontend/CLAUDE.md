@@ -120,6 +120,37 @@ one.
   `switch` or a set of per-call-site ternaries — the compiler then flags a
   missing case when the enum grows.
 
+## Where a new field goes in a form (ADR-0192)
+
+**A form has five bands, and a new field joins the one that answers its question — never the
+end of the form.** This rule exists because the absence of it was a reported defect: _"every
+time we add a new field or section to the event form we just append them to the end, now it
+looks very messy."_ Appending is not laziness, it is what happens when nothing says otherwise.
+
+    1 · מה      what it is        category · icon + title
+    2 · איפה    where             place, or the two route ends
+    3 · מתי     when + commitment the when, its conflict warning, hard/soft
+    4 · הזמנה   the booking       `יש הזמנה` and everything it opens
+    5 · מצורף   attached content  documents → tasks → notes
+
+`EventForm` renders exactly this and `BookingSheet`'s steps run the same sequence
+(`type → what/where → when → more`), so the two authoring forms cannot teach different orders.
+**`EventForm.test.tsx` asserts the sequence**, so a field that lands in the wrong band fails a
+spec rather than being noticed in a screenshot six weeks later.
+
+Two orderings inside it are load-bearing and are not preferences:
+
+- **Where comes before when.** The place DERIVES the zone the times are read in
+  (`EventForm.tsx`'s `tz`). Type `19:00`, then pick a place in Tokyo, and the same wall clock
+  is stored as a different instant — so asking where first is what stops a form silently
+  changing what was already typed.
+- **Band 5's internal order is ADR-0174 §3's** — a document is a thing you need, a note is
+  something about it, a task is a thing to do between them. The read surfaces use the same
+  sequence, and the app must not teach one order for authoring and another for reading.
+
+**If a field fits no band, that is a decision and wants an ADR** — not an append. And the
+band's own end is still an end: within a band, put the field where it reads, not last.
+
 ## Constants & copy
 
 No hardcoded UI copy or magic numbers/strings in logic (root `CLAUDE.md`'s "No

@@ -576,15 +576,23 @@ describe('BookingSheet — notes written on the way', () => {
       );
     });
 
-    // A create has no host yet, so there is nothing to list — and the heading would
-    // otherwise read `פתקים` twice, once empty.
-    it('shows no section at all on a create', () => {
+    // **ONE section on a create too** (ADR-0192 §2). This used to assert the opposite — no
+    // section at all — because the composer sat in a `Field` of its own and rendering the
+    // section beside it would have headed `פתקים` twice. The composer is a ROW of the section
+    // now, so there is one heading, and the create differs from the edit only in having no
+    // rows above the box. What must not come back is the empty-state line: with a composer
+    // present, `אין פתקים על זה` states the obvious directly above the invitation.
+    it('shows one notes section on a create — the composer, and no rows', () => {
       tripNotes = [hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' })];
       openHotel();
       nameIt();
       toLastStep();
-      expect(document.querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
+      const section = document.querySelector('.note-sec:not(.tsk-sec)');
+      expect(section).toBeTruthy();
       expect(composer()).toBeTruthy();
+      // Another booking's note is not this create's.
+      expect(section!.querySelectorAll('.note-item')).toHaveLength(0);
+      expect(section!.textContent).not.toContain(t.notes.section.empty);
     });
   });
 });

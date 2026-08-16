@@ -11,7 +11,7 @@
 // The host is passed as a fact, never picked (ADR-0153 §5). Which FK the note is written to
 // comes from `NOTE_HOST_FIELD` through `noteHostInput`, so a sixth hostable entity adds a
 // line in `@waypoint/shared` and nothing here.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ENTITY_TYPE, type Note } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
@@ -89,34 +89,49 @@ export function useAnchorName(
 export function HostNotes({
   host,
   canAdd = true,
+  compose,
+  composeHint,
 }: {
-  host: NoteHostRef;
+  /** **`id` is absent on a CREATE**, where the host does not exist yet — the section then has
+   *  no rows to show and is purely the composer's home. Exactly `HostTasks`' and
+   *  `DocumentAttachField`'s shape, so the three content sections on a form take their host
+   *  the same way rather than each inventing a way to say "not saved yet" (ADR-0192 §2). */
+  host: Omit<NoteHostRef, 'id'> & { id?: string };
   /** Off where the surface already carries a way to write one: the host's own FORM has a
    *  composer that rides its save (ADR-0152 §6b), so a `＋ פתק` beside it would be a second
    *  add path — and the one that opens another sheet, which that section is there to avoid. */
   canAdd?: boolean;
+  /** The form's composer, rendered as this section's last row (ADR-0192 §2). */
+  compose?: ReactNode;
+  composeHint?: string;
 }) {
   const { notes, users, noteVerbs } = useTrip();
   const now = useClock();
   const [editing, setEditing] = useState<Note | 'create' | null>(null);
+  const hostId = host.id;
   // The host as the index knows it — so the editor can state the category this note inherits.
-  const resolved = useResolvedHost(host);
+  const resolved = useResolvedHost({ ...host, id: hostId ?? '' });
   // Read the whole context, write to its anchor (ADR-0172 §1/§2). On a place those differ:
   // it shows its single context's notes and a new one lands on that context's booking, which
   // is what keeps the note with the original context if the place is ever reused (§4).
-  const context = useHostContext(host.kind, host.id);
-  const hostNotes = useMemo(() => notesForContext(notes, context), [notes, context]);
+  const context = useHostContext(host.kind, hostId ?? '');
+  // No host, no rows: an unsaved event has nothing to have been said about it yet, and the
+  // context lookup for an empty id would answer with whatever a blank key happens to hit.
+  const hostNotes = useMemo(
+    () => (hostId ? notesForContext(notes, context) : []),
+    [notes, context, hostId],
+  );
   // **A place says where an inherited note came from** (ADR-0172 §9's amendment). Only a
   // place can be showing rows it does not host — §3's inheritance is one-way — so the whole
   // question is "is this note hosted by the surface I am on", and everywhere else the answer
   // is always yes and nothing is marked.
-  const anchorName = useAnchorName(context, host);
+  const anchorName = useAnchorName(context, { kind: host.kind, id: hostId ?? '' });
   const inheritedFrom = useMemo(
     () =>
       anchorName
-        ? (note: Note) => (isHostedBy(note, host.kind, host.id) ? undefined : anchorName)
+        ? (note: Note) => (isHostedBy(note, host.kind, hostId ?? '') ? undefined : anchorName)
         : undefined,
-    [anchorName, host.kind, host.id],
+    [anchorName, host.kind, hostId],
   );
 
   return (
@@ -128,8 +143,13 @@ export function HostNotes({
         inheritedFrom={inheritedFrom}
         onAdd={canAdd ? () => setEditing('create') : undefined}
         onEdit={setEditing}
+        compose={compose}
+        composeHint={composeHint}
       />
-      {editing && (
+      {/* Unreachable without a host: `canAdd` is off on every form, and a row can only be
+          edited if a row was rendered, which needs an id. Guarded anyway so the type is
+          honest rather than asserted. */}
+      {editing && hostId && (
         <NoteSheet
           note={editing === 'create' ? undefined : editing}
           host={resolved}

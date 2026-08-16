@@ -20,6 +20,7 @@ import { ltrIsolate } from '../lib/bidi';
 import { Avatar } from './primitives/Avatar';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
+import './section-head.css';
 import './notes.css';
 import './tasks.css';
 
@@ -60,7 +61,7 @@ export function TaskSection({
     // notes; four shipped specs caught it, and the Map card's positional grid did not, which
     // is why its two sections painted over each other until 2026-08-16.
     <div className={'note-sec tsk-sec' + (quiet ? ' tsk-sec-quiet' : '')}>
-      <div className="note-sec-h">
+      <div className="sec-h">
         {/* The glyph the mark uses, for the same reason the notes header carries the
             clipboard: a section header names its noun. Its absence here was one of the four
             differences the alignment report was actually made of. */}

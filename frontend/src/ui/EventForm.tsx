@@ -363,6 +363,10 @@ export function EventForm({
     override,
   });
   const askBookingType = category === EVENT_CATEGORY.TRANSPORT;
+  /** The kind in the statement's own words — `t.eventForm.kindSoft`/`kindHard` are the toggle's
+   *  labels, so the sentence and the control it describes cannot drift apart (ADR-0192 §3). */
+  const kindWord = (value: TripEvent['kind']) =>
+    value === EVENT_KIND.HARD ? t.eventForm.kindHard : t.eventForm.kindSoft;
 
   // While untouched the kind follows the booking type's own default (`defaultKindForBookingType`) —
   // hard for a flight, train, hotel or activity; SOFT for a restaurant, which is exactly why
@@ -724,42 +728,14 @@ export function EventForm({
             </div>
           </Field>
 
-          <WhenField
-            variant="day"
-            dateId="ef-date"
-            date={date}
-            start={start}
-            end={end}
-            onChange={(next) => {
-              setDate(next.date);
-              setStart(next.start);
-              setEnd(next.end);
-            }}
-            zone={{
-              value: tz,
-              // A placed event's zone follows its place — correcting it there is
-              // the honest edit, so the chip is read-only once a place is picked
-              // (ADR-0107 §3: place wins). The override exists for the PLACELESS
-              // case, where only the segment/primary fallback would decide.
-              onChange: placeTimezone(places, showPlace ? placeId : undefined)
-                ? undefined
-                : setOverride,
-              pinned: override != null,
-              suggested: suggestedZones,
-            }}
-            minDate={trip.startDate}
-            maxDate={trip.endDate}
-            marks={{ date: errors.field('date'), time: errors.field('time') }}
-          />
-
-          {conflicts.length > 0 && (
-            <p className="form-conflict">
-              <Icon name="warn" /> {t.event.conflictWarn.before}
-              <TitleLabel title={conflicts[0].title} />{' '}
-              {t.event.conflictWarn.after(formatTime(conflicts[0].startsAt!, tz))}
-            </p>
-          )}
-
+          {/* ── PLACE, THEN TIME (ADR-0192 §3) ──────────────────────────────────────
+              The place moved ABOVE the when, and it is not tidiness: the place is what
+              DERIVES the zone the times are read in (`tz`, above). Typing 19:00 and then
+              picking a place in Tokyo re-interprets that same wall clock and stores a
+              different instant — so asking where before when is the order that stops the form
+              silently changing what you already typed. It is also the order `BookingSheet`'s
+              steps have always run (type → what/where → when → more), which this ends a
+              disagreement with. */}
           {/* A booked transport event is authored as a ROUTE, not a place (ADR-0154 §3) —
               the same `RouteField` the booking sheet uses, so the two forms cannot disagree
               about what a journey looks like. Neither end is required: ADR-0136's "requires
@@ -818,6 +794,74 @@ export function EventForm({
                 />
               </Field>
             ))}
+
+          {/* ── WHEN, AND WHAT KIND OF COMMITMENT IT IS (ADR-0192 §3) ───────────────
+              `סוג` moved up out of the booking row's tail to sit with the time it qualifies:
+              hard/soft is a claim ABOUT the time (ADR-0011 — a hard event is never
+              auto-moved), and rule 4's amber is time-and-commitment, one budget. It read as an
+              afterthought of `יש הזמנה` only because that is where it was appended.
+
+              The cost, named rather than discovered: toggling `יש הזמנה` below re-derives this
+              control (ADR-0136 §4) while it is untouched, and it now sits above that toggle,
+              so the change can happen off screen. Paid for in the derived sentence under the
+              toggle, which states the kind it is setting — a clause, not a second control. */}
+          <WhenField
+            variant="day"
+            dateId="ef-date"
+            date={date}
+            start={start}
+            end={end}
+            onChange={(next) => {
+              setDate(next.date);
+              setStart(next.start);
+              setEnd(next.end);
+            }}
+            zone={{
+              value: tz,
+              // A placed event's zone follows its place — correcting it there is
+              // the honest edit, so the chip is read-only once a place is picked
+              // (ADR-0107 §3: place wins). The override exists for the PLACELESS
+              // case, where only the segment/primary fallback would decide.
+              onChange: placeTimezone(places, showPlace ? placeId : undefined)
+                ? undefined
+                : setOverride,
+              pinned: override != null,
+              suggested: suggestedZones,
+            }}
+            minDate={trip.startDate}
+            maxDate={trip.endDate}
+            marks={{ date: errors.field('date'), time: errors.field('time') }}
+          />
+
+          {conflicts.length > 0 && (
+            <p className="form-conflict">
+              <Icon name="warn" /> {t.event.conflictWarn.before}
+              <TitleLabel title={conflicts[0].title} />{' '}
+              {t.event.conflictWarn.after(formatTime(conflicts[0].startsAt!, tz))}
+            </p>
+          )}
+
+          <Field label={t.eventForm.kindLabel}>
+            <div className="kind-toggle">
+              {/* Touching either end stops the booking type deriving it (ADR-0136 §4): the
+                  kind is a claim about commitment, and once a human has made it the row must
+                  not keep moving it. */}
+              <button
+                type="button"
+                className={'soft' + (kind.value === EVENT_KIND.SOFT ? ' on' : '')}
+                onClick={() => kind.set(EVENT_KIND.SOFT)}
+              >
+                {t.eventForm.kindSoft}
+              </button>
+              <button
+                type="button"
+                className={'hard' + (kind.value === EVENT_KIND.HARD ? ' on' : '')}
+                onClick={() => kind.set(EVENT_KIND.HARD)}
+              >
+                <Icon name="lock" /> {t.eventForm.kindHard}
+              </button>
+            </div>
+          </Field>
 
           {/* ── `יש הזמנה` (ADR-0136 §1) ─────────────────────────────────────
               You are always creating an event; this says it is ALSO booked, which is exactly
@@ -883,7 +927,10 @@ export function EventForm({
                   <span>
                     {event
                       ? t.eventForm.bookedDerivedConvert(t.index.bookingType[derivedType])
-                      : t.eventForm.bookedDerived(t.index.bookingType[derivedType])}
+                      : t.eventForm.bookedDerived(
+                          t.index.bookingType[derivedType],
+                          kindWord(kind.value),
+                        )}
                   </span>
                 </p>
               </Collapsible>
@@ -909,28 +956,6 @@ export function EventForm({
               </button>
             </div>
           )}
-
-          <Field label={t.eventForm.kindLabel}>
-            <div className="kind-toggle">
-              {/* Touching either end stops the booking type deriving it (ADR-0136 §4): the
-                  kind is a claim about commitment, and once a human has made it the row must
-                  not keep moving it. */}
-              <button
-                type="button"
-                className={'soft' + (kind.value === EVENT_KIND.SOFT ? ' on' : '')}
-                onClick={() => kind.set(EVENT_KIND.SOFT)}
-              >
-                {t.eventForm.kindSoft}
-              </button>
-              <button
-                type="button"
-                className={'hard' + (kind.value === EVENT_KIND.HARD ? ' on' : '')}
-                onClick={() => kind.set(EVENT_KIND.HARD)}
-              >
-                <Icon name="lock" /> {t.eventForm.kindHard}
-              </button>
-            </div>
-          </Field>
 
           {/* **The note is written on the way** (ADR-0152 §6b) — one box, and a blank one
               writes nothing, so an event that needs no note costs no press.
@@ -982,16 +1007,19 @@ export function EventForm({
             staging={taskStaging}
             quiet
           />
-          {event && (
-            <HostNotes host={{ kind: 'event', id: event.id, name: event.title }} canAdd={false} />
-          )}
-          <Field
-            label={event ? t.notes.composer.labelMore : t.notes.composer.label}
-            htmlFor={noteId}
-            hint={t.notes.composer.hint}
-          >
-            <NoteComposer state={composer} id={noteId} />
-          </Field>
+          {/* **ONE section, whose last row is the composer** (ADR-0192 §2). This was a
+              `HostNotes` for the existing notes and a separate `Field` around the composer,
+              so an EDIT showed the word `פתקים` twice in a row — and `t.notes.composer`'s
+              `labelMore` existed only to paper over that. Both are gone: the section names
+              itself once, the box is inside it, and the hint is the section's own caption.
+              It renders on a CREATE too, where it is the composer and nothing else, which is
+              how `HostTasks` and `DocumentAttachField` beside it already behave. */}
+          <HostNotes
+            host={{ kind: 'event', id: event?.id, name: event?.title ?? finalTitle }}
+            canAdd={false}
+            composeHint={t.notes.composer.hint}
+            compose={<NoteComposer state={composer} id={noteId} />}
+          />
 
           {/* Only what has no field to point at still reads down here. */}
           <FormError>{errors.formError}</FormError>

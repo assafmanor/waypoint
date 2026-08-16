@@ -287,38 +287,6 @@
   --sec-lead: 26px;
   --sec-tick: 20px;
 }
-.note-sec-h {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-.note-sec-h .t {
-  font-family: var(--font-head);
-  font-size: 12.5px;
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.note-sec-h .add {
-  margin-inline-start: auto;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--cta);
-  background: none;
-  border: 0;
-  padding: 4px 6px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-.note-sec-h .add .icon {
-  width: 13px;
-  height: 13px;
-}
 /* **ONE ROW SHAPE FOR BOTH SECTIONS ON A SURFACE** (ADR-0191 §5, reversed 2026-08-16 on an
    owner report: "notes and tasks look totally different and have a different allignment").
    Phase 4 gave tasks a `ListRow`, whose lead column pushed the task's text 40px past the
