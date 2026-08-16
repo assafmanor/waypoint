@@ -1368,3 +1368,9 @@ export const HERO_TASK_CAP = 3;
  *  anything you have to prepare for: a task due Friday is not actionable on Friday, it is
  *  actionable now. Overdue is always included regardless. */
 export const TASK_BAND_LOOKAHEAD_DAYS = 7;
+
+/** **How many rows the LIFTED PLAN HERO shows** (ADR-0193 §4, amended 2026-08-16 on the
+ *  owner's call). Five, not `HERO_TASK_CAP`'s three: the trip hero's cap is per STOP — three
+ *  is "what do I still owe here" — while this one is the whole run-up to a departure, so it
+ *  can afford a list. The remainder is stated (`ועוד N`), never dropped silently. */
+export const PLAN_LIFT_TASK_CAP = 5;

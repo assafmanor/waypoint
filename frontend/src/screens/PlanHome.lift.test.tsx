@@ -29,6 +29,7 @@ import {
 import { setSimulatedNow } from '../lib/useClock';
 import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
+import { PLAN_LIFT_TASK_CAP } from '../constants';
 import { PlanHome } from './PlanHome';
 
 // Pinned: the hero renders a COUNTDOWN and every band is a comparison against the clock,
@@ -196,34 +197,52 @@ describe('PlanHome — the hero lifts', () => {
     expect(document.querySelector('.prep-lifted')).toBeTruthy();
   });
 
-  // The bands are cut against the DEPARTURE (2026-08-10), which is the whole reason this
-  // hero is worth lifting rather than being a second tasks screen. A task due the 12th is
-  // mid-trip; one due the 8th is not.
-  it('bands the run-up against the departure, not against a week', () => {
+  // **ONE list, in the tasks screen's own order** (owner, 2026-08-16) — the five date-keyed
+  // bands are gone, so what has to hold is that the lift and the screen behind it cannot
+  // disagree about what leads. `orderTaskRows` is the single source of that order, and this
+  // asserts the lift is actually reading it: urgent first, then the live checks, then the
+  // rest. An undated flagged task outranking a dated one is the case that proves it is the
+  // ladder and not a date sort.
+  it('shows one list in the tasks screen order, with no band headings', () => {
     tasks = [
-      task('before', { title: 'לפני', dueAt: '2026-08-08T12:00:00Z' }),
-      task('during', { title: 'בטיול', dueAt: '2026-08-12T12:00:00Z' }),
-      task('undated', { title: 'ללא' }),
+      task('plain', { title: 'רגילה', dueAt: '2026-08-20T12:00:00Z' }),
+      task('flagged', { title: 'חשובה', important: true }),
     ];
     show();
     fireEvent.click(prep());
     const card = document.querySelector('.prep-lifted') as HTMLElement;
-    const labels = [...card.querySelectorAll('.hero-lbl')].map((n) => n.textContent);
-    expect(labels).toContain(t.planHome.lift.beforeDeparture);
-    expect(labels).toContain(t.planHome.lift.duringTrip);
-    expect(labels).toContain(t.planHome.lift.undated);
+    // No headings at all — the bands were the only consumer of `.hero-lbl` here.
+    expect(card.querySelectorAll('.hero-lbl')).toHaveLength(0);
+    const names = [...card.querySelectorAll('.hero-task-nm')].map((n) => n.textContent);
+    // **The ladder, as a relation that can actually fail:** the flagged task leads, and a
+    // live readiness CHECK sits behind it. That is the half the retired date-bands were
+    // bending — they put `ללא תאריך` last regardless of `important`, so a flagged undated
+    // task fell below every check. Asserted as a relation rather than a full list because
+    // the fixture's live checks fill `PLAN_LIFT_TASK_CAP` on their own, which is the next
+    // test's subject.
+    expect(names[0]).toBe('חשובה');
+    const checkTitles = [...card.querySelectorAll('.hero-task')]
+      .filter((r) => !r.querySelector('.hero-task-due .icon') && r.querySelector('.hero-task-due'))
+      .map((r) => r.querySelector('.hero-task-nm')?.textContent);
+    expect(checkTitles.length).toBeGreaterThan(0);
+    expect(names.indexOf(checkTitles[0]!)).toBeGreaterThan(0);
   });
 
-  // A band with nothing in it is not drawn — an empty `לפני היציאה` label is a heading over
-  // a hole, which is ADR-0045's rule inside a card.
-  it('draws no band for a group that is empty', () => {
-    tasks = [task('undated', { title: 'ללא' })];
+  // The cap, and the half of it that matters: the remainder is STATED. A silently truncated
+  // list reads as "this is everything", which is the one thing a summary must not do.
+  it('caps the list and says how many it is not showing', () => {
+    tasks = Array.from({ length: 9 }, (_, i) =>
+      task(`t${i}`, { title: `משימה ${i}`, dueAt: `2026-08-2${i}T12:00:00Z` }),
+    );
     show();
     fireEvent.click(prep());
     const card = document.querySelector('.prep-lifted') as HTMLElement;
-    const labels = [...card.querySelectorAll('.hero-lbl')].map((n) => n.textContent);
-    expect(labels).not.toContain(t.planHome.lift.duringTrip);
-    expect(labels).toContain(t.planHome.lift.undated);
+    const shown = card.querySelectorAll('.hero-task').length;
+    expect(shown).toBe(PLAN_LIFT_TASK_CAP);
+    // …and the overflow line is present, naming a non-zero remainder.
+    const more = card.querySelector('.hero-task-more');
+    expect(more).toBeTruthy();
+    expect(more!.textContent).toMatch(/\d/);
   });
 
   // A check has no `dueAt` and never can (ADR-0190 §2 turns on exactly that), so its second

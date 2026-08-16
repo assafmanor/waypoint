@@ -1,6 +1,6 @@
 # 0193 — "What is missing" counts everything open, and the plan hero lifts
 
-**Status:** Accepted and **BUILT** (2026-08-16), with §5 corrected by the running app — read "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
+**Status:** Accepted and **BUILT** (2026-08-16), then **§3 and §4 amended the same day** on the owner's report against the built screen — read the banners at the head of each before either. §5 was separately corrected by the running app; see "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
 **Date:** 2026-08-16
 **Design reference:** [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html) — §1 the sentence that lies · §2 the hero's second number · §3 the inline list and its collapse · §4 what the lift opens onto · §5 the skin. **Promoted by this ADR.**
 
@@ -49,7 +49,33 @@ Giving the second number **its own noun** is what does the work. Once a line say
 
 **It is a readout, never a control.** The same rule that turned `.wp-board-also-toggle` into `.wp-board-also-read` in ADR-0160 §4, and here it is forced by the same mechanism: §4 makes the hero a `<button>`, and Chrome reparents everything after a nested `<button>` inside one. The mockup counts interactive descendants of `.prep` and the number is **0**.
 
-### 3. Urgent and the checks inline, the rest behind one row in the same card
+### 3. Urgent and the checks inline, the rest behind one toggle in the section head
+
+> **AMENDED 2026-08-16, same day, on the owner's report against the built screen.** The
+> collapse was shipped as a full-width row at the foot of the `.checklist` card (`.chk-more`)
+> and was reported as _"really ugly (what's this font? Sizing?)"_ with the instruction that it
+> _"should replace the 'you're ready 🎉' in placing and look like the הצג/כווץ שהושלמו"_. It
+> now sits in `.sec-title-end`, in `allDone`'s own slot, wearing `.chk-toggle` — the class the
+> completed toggle already wears. The two can never collide: far tasks existing is exactly
+> what makes `allDone` false. Measured at 360px with both toggles present, the head is
+> **24px** and does not wrap.
+>
+> **The ugliness had a cause worth recording, because it is a trap for every future caller of
+> `CollapseToggle`.** `.wp-collapse-toggle` sets the `font` **shorthand** to `inherit`, which
+> resets `font-size` and `font-weight` at equal specificity — and `tasks.css` loads _before_
+> `collapsible.css`, so the primitive won and the row rendered at the inherited **16px / 400 /
+> `--ink`** instead of 13px / 700 / `--cta`. `.chk-toggle` escapes it only by re-declaring
+> `font: inherit` inside its own rule before setting its size. A caller that does not know to
+> do that gets a silently wrong control. `.chk-more` is deleted; `.tsk-more` (Trip Home's
+> overflow row, a plain `<button>`) keeps the geometry.
+>
+> **And the Hebrew on both toggles is reworked**, since the owner called it bad on the one it
+> was asked to match. `הצג` ⇄ `כווץ` was not a pair — one names the content, the other the
+> mechanism — so both directions are `הצג`/`הסתר` now, the pair `Collapsible`'s own docstring
+> already uses. `(3)` in brackets is a UI convention rather than Hebrew, so the count reads
+> inline where Hebrew puts it: `הצג 3 שהושלמו`, and `הצג אחת שהושלמה` at one. The far group
+> stops being `רחוקות` — it stopped being about distance the moment §4 dropped its date bands,
+> and an undated task was never "far", merely not urgent — so it is `הצג עוד N`.
 
 The order is not invented here: it is `orderTaskRows` exactly as the tasks screen already runs it (ADR-0190 §2) — urgent (`important` or overdue) → the live checks → the rest. What changes is that "the rest" now contains the far and undated tasks, and they sit behind **one row at the foot of the same `.checklist` card**, not a second control beside it.
 
@@ -57,7 +83,28 @@ That row is `CollapseToggle` at a second density (`.chk-toggle` is the first), r
 
 **`.tsk-more` points at that rule when this ships.** Trip Home's overflow row is the same row in a different card, and it currently has no geometry at all.
 
-### 4. The lift opens onto the run-up, banded against the DEPARTURE
+### 4. The lift opens onto the run-up — ONE list, in the tasks screen's order
+
+> **AMENDED 2026-08-16, same day.** The five date-keyed bands below are **retired**. The owner:
+> _"in the lifted no need to show the during the trip section"_, _"limit the tasks to the top 5
+> and show and X more"_, _"no need to separate with and without date, just sort by the same
+> priority order as in the tasks screen"_.
+>
+> So the card shows `orderTaskRows` — urgent → the live checks → the rest, which is ADR-0190
+> §2 and already existed — capped at `PLAN_LIFT_TASK_CAP` (**5**) with the remainder stated as
+> `ועוד N`. `planRunUp` and its `PlanRunUp` type are **deleted** rather than left unused, and
+> the four band labels leave `i18n/he.ts` with them; `t.planHome.lift` keeps only `title`, the
+> accessible name a `Modal` requires. The card now carries no headings at all.
+>
+> **What the original section argued, and why the owner is right anyway.** Cutting the bands
+> against the departure is a true statement no other surface can make, and it cost more than it
+> paid: a task with no date is not a different KIND of thing from one with a date, and the
+> bands put `ללא תאריך` last regardless of `important` — so a flagged undated task fell below
+> every check, which is the ladder ADR-0190 §2 set being quietly bent by a second ordering.
+> One order for both surfaces is the rule; the bands were the exception.
+>
+> The cap is **5** and not `HERO_TASK_CAP`'s 3, because that cap is per STOP on the trip hero
+> ("what do I still owe here") while this is the whole run-up to a departure.
 
 The prep hero becomes liftable, through the shipped path and nothing new: `Modal` variant `lift`, `useLiftFlight` off the measured collapsed box, the `Board`/`HeroLift` split where the screen owns every derivation and the card is presentational. `.prep` takes `.wp-board.is-tappable`'s five declarations.
 
@@ -138,7 +185,8 @@ Four things, and two of them are corrections to this ADR rather than notes on it
 1. **§5's gradient stops were percentages, and that made legibility a function of list length.** A `%` stop stretches the ramp with the card, so a row's ground depends on how much content is above it. The mockup's six-row card put the top band label at 4.8:1; the real 828px card with eleven rows put the same label at **4.28:1** and the overdue deadline at **2.93:1**. Now in px — corrected in §5, with the worst case inverted: it is the **shortest** card, not the longest.
 2. **The overdue ink had to be lightened again.** `#f0a09b` is the board's, and this ramp is brighter than the board everywhere. `#ffc4be`, measured.
 3. **A readiness check rendered a CLOCK beside its meta line.** The first build mapped a check's `meta` onto `HeroLiftTask.due` because they occupy the same line — and `due` draws a clock, so every check read as though `חסרות טיסת הלוך וטיסת חזור` were a deadline. A check has no `dueAt` and never can, which is the very thing ADR-0190 §2 turns on, so the glyph asserted what the model forbids. `HeroLiftTask` gained a `meta` field; a spec now pins the absence of that icon.
-4. **The three things that held exactly as designed**, checked in the real DOM rather than assumed: `.prep` is a `<button>` with **0** interactive descendants (ADR-0160 §4), the collapse row measures **44px**, and the lifted card is **828px** capped by `--lift-max-h` with its body scrolling inside — content-sized within the cap, as ADR-0148 §1 requires.
+4. **A board ink leaked into the violet card, and listing rungs is how the next one is missed.** `.hero-task-more` — the `ועוד N` line — kept `--on-dark-faint` and measured **3.89:1** on the ramp. It surfaced only when §4's amendment made that line load-bearing and deleted the band labels that had carried the override. The repair is not the one rule: `hero-lift.spec.ts` now **sweeps every text-bearing node in the lifted card**, composites its ink over the gradient at that node's own height, and asserts the AA floor — verified to fail (3.89 against 4.5) by putting the leak back.
+5. **The three things that held exactly as designed**, checked in the real DOM rather than assumed: `.prep` is a `<button>` with **0** interactive descendants (ADR-0160 §4), the collapse row measures **44px**, and the lifted card is **828px** capped by `--lift-max-h` with its body scrolling inside — content-sized within the cap, as ADR-0148 §1 requires.
 
 ## Alternatives considered
 
