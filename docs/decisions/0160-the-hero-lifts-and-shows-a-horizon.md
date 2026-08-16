@@ -553,6 +553,28 @@ over before the block arrives, which is the class §8 already tabulates and the 
 scroller exists. So: the block adds **87px across two points**, and the three-row option adds **40px**
 more, which at 390×844 turns a card fitting by 17px into one over by 23px.
 
+**Amended 2026-08-16 — THREE, not one, and the label goes plural** (owner: _"it is limited to showing
+only one task. It should be 3 (make sure sizing is good)"_, and _"lifted hero writes משימה and not
+משימות"_). The cap is `HERO_TASK_CAP` in `constants.ts`, deliberately the same 3 as
+`TRIP_HOME_TASK_BAND_CAP` so the two task surfaces cap alike and neither has to be re-argued; `ועוד N`
+is unchanged and now counts from the cap.
+
+**What was wrong was not the number, it was whose rule it borrowed.** §U5 above took `פתק`'s "show
+one, say how many more" and the block sat next to a note, so it looked right. A note is **prose you
+read** — a second one is a second thing to read, and one is a fair sample. A task is an **obligation
+you still owe**, and on the stop you are standing at, "what do I still owe here" has no useful
+one-item answer. That is the argument; the height was never the objection, since §U5's own fit
+paragraph shows the card is over budget with no tasks at all and the one scroller is what answers it.
+
+**Measured in the running app** at the pinned clock, three tasks plus the overflow line: the block is
+**127.5px** (against ~48px for one), rows separated by `space-2`, and the card **622px at 360×640**
+with **66px** inside the scroller — and **688.5px at 390×844 with zero overflow**. So the cost lands
+where §8 says it should: inside the scroll region, not past the card.
+
+**And the render found a copy defect the cap merely made visible:** `ועוד 1 משימות`. Hebrew inflects
+at one, `t.tasks.mark` already does it, and `moreNotes` had the same bug — the note block still shows
+one, so `ועוד 1 פתקים` was its _common_ string and nobody had seen it. Both read `ועוד … אחד/אחת` now.
+
 ### U6. Where it deliberately does not go
 
 - **A settled host shows none.** ADR-0191 §6: a done or skipped event has no future, so its tasks

@@ -87,6 +87,7 @@ import {
   DAY_WINDOW,
   CONTROL_ICON,
   DEFAULT_STAY_ICON,
+  HERO_TASK_CAP,
   MINUTES_PER_DAY,
   MS_PER_DAY,
   QUICK_TILE_MAX_COLS,
@@ -341,32 +342,28 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     wasLifted.current = lifted;
   }, [lifted]);
 
-  /** The hero's one task, made view-ready (ADR-0160 §U) — the deadline phrased in ITS OWN
+  /** One of the hero's tasks, made view-ready (ADR-0160 §U) — the deadline phrased in ITS OWN
    *  zone through the same `taskDue` the section and the screen use, so a task cannot read
-   *  one way here and another one tab over. Spread into the point, so a stop with no task
-   *  contributes no key at all rather than an explicit `undefined`. */
-  const heroTask = (task: Task | undefined): { task?: HeroLiftTask } => {
-    if (!task) return {};
+   *  one way here and another one tab over. */
+  const heroTask = (task: Task): HeroLiftTask => {
     const due = taskDue(task, taskClock);
     const assignee = task.assigneeUserId
       ? users.find((u) => u.id === task.assigneeUserId)
       : undefined;
     return {
-      task: {
-        title: task.title,
-        important: task.important,
-        due: due && {
-          // The numeric run is its own LTR island; the Hebrew around it must not be dragged
-          // with it (ADR-0118) — `TaskSection`'s own split, reused rather than rebuilt.
-          text: `${due.late ? t.tasks.due.late : t.tasks.due.by} ${
-            due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day
-          }`,
-          late: due.late,
-        },
-        assignee: assignee && {
-          person: assignee,
-          name: `${t.tasks.sheet.assigneeLabel}: ${assignee.displayName}`,
-        },
+      title: task.title,
+      important: task.important,
+      due: due && {
+        // The numeric run is its own LTR island; the Hebrew around it must not be dragged
+        // with it (ADR-0118) — `TaskSection`'s own split, reused rather than rebuilt.
+        text: `${due.late ? t.tasks.due.late : t.tasks.due.by} ${
+          due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day
+        }`,
+        late: due.late,
+      },
+      assignee: assignee && {
+        person: assignee,
+        name: `${t.tasks.sheet.assigneeLabel}: ${assignee.displayName}`,
       },
     };
   };
@@ -423,11 +420,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         title: doc.title,
         onOpen: () => setViewingDoc(doc),
       })),
-      // **ONE task, and how many it is not showing** (ADR-0160 §U5) — `פתק`'s rule, and the
-      // list arrives already in the screen's own urgency order, so "the one" is the same one
-      // the tasks screen puts on top.
-      ...heroTask(p.tasks[0]),
-      taskMore: Math.max(0, p.tasks.length - 1),
+      // **UP TO `HERO_TASK_CAP`, and how many are left over** (ADR-0160 §U5 as amended
+      // 2026-08-16). The list arrives already in the screen's own urgency order, so the ones
+      // shown are the ones the tasks screen puts on top — the cap slices, it does not re-rank.
+      tasks: p.tasks.slice(0, HERO_TASK_CAP).map(heroTask),
+      taskMore: Math.max(0, p.tasks.length - HERO_TASK_CAP),
       settled: p.settled,
       // The Map's focus channel is absent when its provider is not mounted, so the
       // way-in is absent too rather than a control that cannot work (ADR-0150 §8).
