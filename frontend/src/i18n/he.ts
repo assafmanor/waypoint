@@ -1890,15 +1890,6 @@ export const t = {
        *  `עוד` says the only true thing about it, which is that there is more. */
       showFar: (n: number) => (n === 1 ? 'הצג עוד אחת' : `הצג עוד ${n}`),
       hideFar: 'הסתר',
-      completedSummary: 'הושלמו',
-      // Short labels for the collapsed-summary pills (one per completed check).
-      summaryLabels: {
-        flights: 'טיסות',
-        lodging: 'לינה',
-        itinerary: 'ימים',
-        documents: 'מסמכים',
-        group: 'הקבוצה',
-      },
       // Flights = round-trip aware (ADR-0061): the meta names the missing leg, and
       // the CTA opens the flight form seeded with that direction.
       flightsTitle: 'טיסות',

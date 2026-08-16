@@ -20,22 +20,9 @@
 // returns an action *id* rather than a closure.
 import type { Task, TaskDerivedKey, TaskStatus } from '@waypoint/shared';
 import { TASK_STATUS } from '@waypoint/shared';
-import type { CheckId, ReadinessCheck } from './readiness';
+import type { ReadinessCheck } from './readiness';
 import { MS_PER_DAY } from '../constants';
 import { t } from '../i18n/he';
-import type { IconName } from '../ui/Icon';
-
-/** The five checks' glyphs. **Not on the row** — an automatic task carries no badge, because
- *  it would restate the title beside it (owner, 2026-08-16). This survives for Plan Home's
- *  collapsed-completed summary, a compact horizontal pill strip where the glyph is what
- *  distinguishes five short labels at a glance and there is no tick to compete with. */
-export const CHECK_ICON: Record<CheckId, IconName> = {
-  flights: 'flight',
-  lodging: 'hotel',
-  itinerary: 'calendar',
-  documents: 'documents',
-  group: 'members',
-};
 
 /** **The one verb that resolves each check** (ADR-0061 §1: the CTA does the thing). An id
  *  rather than a callback, because the two hosts reach the same destination differently —

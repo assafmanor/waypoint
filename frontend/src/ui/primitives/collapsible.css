@@ -4,8 +4,25 @@
    Callers own all visual chrome (color/background/border) via their own
    className appended alongside `wp-collapse-toggle`/`wp-collapsible` — this
    file carries only the shared behavior. */
+/* **`font-family`, NOT the `font` SHORTHAND** — and this line has cost two reported
+   defects, both of them "what's this font? Sizing?" from a device.
+
+   The shorthand resets `font-size`, `font-weight`, `line-height` and the rest to the
+   inherited values, and this file loads AFTER `screens.css` and `tasks.css`. So at equal
+   specificity it silently overrode whatever the caller declared: `.chk-toggle` has said
+   `font-size: 11px; font-weight: 700` since it was written and **never once applied
+   them** — it inherited its parent's font and merely looked right in `.sec-title`
+   (12px/700, close enough to pass), then rendered at 16px/400 the moment it moved to a
+   section foot. `.chk-more` hit the same wall and was blamed on source order alone.
+
+   The trap hid because the only other caller, `.index .past-toggle`, is scoped at (0,2,0)
+   and out-specifies this rule — so exactly one of two callers was broken, invisibly.
+
+   All this rule ever wanted was to stop a `<button>` wearing the UA's Arial. That is
+   `font-family`. Size and weight belong to the caller, which is the only place that knows
+   how big its own toggle should be. */
 .wp-collapse-toggle {
-  font: inherit;
+  font-family: inherit;
   cursor: pointer;
   transition: transform 0.12s ease;
 }

@@ -21,7 +21,6 @@ import { countdownParts, formatTripDates } from '../lib/time';
 import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import {
   AUTOMATIC_TASK_ACTION,
-  CHECK_ICON,
   draftOverlay,
   isLive,
   isManual,
@@ -36,11 +35,10 @@ import {
   openManualTasks,
   orderTaskRows,
   sortTasks,
-  taskBand,
   taskRowKey,
+  taskPreview,
   tasksDueSoon,
   tickedStatus,
-  TASK_BAND,
   type TaskClock,
 } from '../lib/tasks';
 import { toHeroTask } from '../lib/hero-task';
@@ -63,11 +61,7 @@ import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
 import { DOT_SEPARATOR, MS_PER_DAY, PLAN_LIFT_TASK_CAP, type TabId } from '../constants';
 import { t } from '../i18n/he';
-import { Icon } from '../ui/Icon';
 import { useSettledHosts } from '../ui/HostTasks';
-
-// `CHECK_ICON` moved to `lib/automatic-tasks.ts` with the row copy when the tasks screen
-// became a second reader of both — the collapsed summary below still uses it, now imported.
 
 // Trip-local day number (1-based) for a calendar-date string — matches the
 // header's day-strip numbering. UTC-midnight diff, no timezone re-reading.
@@ -214,9 +208,18 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
    *  task appeared under `הושלמו` the instant it was ticked. Widening is what makes the two
    *  halves ask one question. */
   const openTasks = openManualTasks(tasks, taskClock, settledHosts);
-  const overdueCount = openTasks.filter(
-    (task) => taskBand(task, taskClock) === TASK_BAND.OVERDUE,
-  ).length;
+  /** **The hero's two numbers, from the Index tile's own derivation** (owner, 2026-08-16:
+   *  _"in the hero it says משימות פתוחות X which doesn't include the automatic tasks"_).
+   *
+   *  It was `openTasks.length`, i.e. manual only — and ADR-0190 §1 as amended settled that a
+   *  readiness check IS an open task, which is why `taskPreview` has counted them for the
+   *  Index tile since. Two surfaces answering "how many are open" with different numbers is
+   *  the disagreement that rule exists to prevent, so this reuses the function rather than
+   *  adding `+ liveChecks.length` beside it: they cannot drift now.
+   *
+   *  `overdue` stays manual by construction and not by choice — a check carries no `dueAt`,
+   *  so nothing about it can have passed. */
+  const preview = taskPreview(tasks, automatic, taskClock, settledHosts);
   /** **What stays inline, and what folds** (§3). Near = what a person has already called
    *  urgent, plus what is actually due this week; everything else sits behind one row.
    *  `tasksDueSoon` is REUSED to answer the second half rather than re-derived — it is
@@ -368,15 +371,15 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
                 claim `הכול מוכן` was making one line down. Absent at zero — there is no
                 "0 משימות פתוחות" state, because a card that says so is ADR-0045's empty
                 shell in one line. */}
-            {openTasks.length > 0 && (
+            {preview.open > 0 && (
               <div className="prep-tasks">
                 <span>{t.planHome.prep.openTasks}</span>
                 <span className="prep-tasks-end">
-                  {overdueCount > 0 && (
-                    <span className="prep-tasks-late">{t.tasks.band.overdue(overdueCount)}</span>
+                  {preview.overdue > 0 && (
+                    <span className="prep-tasks-late">{t.tasks.band.overdue(preview.overdue)}</span>
                   )}
                   <b className="prep-tasks-n" dir="auto">
-                    {openTasks.length}
+                    {preview.open}
                   </b>
                 </span>
               </div>
@@ -408,38 +411,6 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               moment this screen says something good, and it is true when nothing is open. */}
           {converged.length === 0 && farTasks.length === 0 && (
             <span className="hint">{t.planHome.checklist.allDone}</span>
-          )}
-          {/* **The far group's toggle lives HERE, in `allDone`'s own slot** (owner,
-              2026-08-16: _"this should replace the 'you're ready 🎉' in placing and look like
-              the הצג/כווץ שהושלמו"_). The two can never collide — far tasks existing is
-              exactly what makes `allDone` false — so one slot holds whichever is true.
-
-              `.chk-toggle`, the class the completed toggle already wears, and NOT the
-              `.chk-more` row this shipped as. That row was reported as _"really ugly (what's
-              this font? Sizing?)"_ and the cause is worth knowing: `.wp-collapse-toggle` sets
-              the `font` SHORTHAND to `inherit`, which resets `font-size` and `font-weight` at
-              the same specificity — and `tasks.css` loads BEFORE `collapsible.css`, so the
-              primitive won and the row rendered at the inherited 16px/400 instead of
-              13px/700. `.chk-toggle` escapes it by re-declaring `font: inherit` inside its
-              own rule before setting its size, which is the convention every caller of this
-              primitive has to follow. */}
-          {farTasks.length > 0 && (
-            <CollapseToggle
-              expanded={showFar}
-              onToggle={() => setShowFar((v) => !v)}
-              expandLabel={t.planHome.checklist.showFar(farTasks.length)}
-              collapseLabel={t.planHome.checklist.hideFar}
-              className="chk-toggle"
-            />
-          )}
-          {completedCount > 0 && (
-            <CollapseToggle
-              expanded={showCompleted}
-              onToggle={() => setShowCompleted((v) => !v)}
-              expandLabel={t.planHome.checklist.showCompleted(completedCount)}
-              collapseLabel={t.planHome.checklist.hideCompleted}
-              className="chk-toggle"
-            />
           )}
         </span>
       </div>
@@ -495,24 +466,40 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         </div>
       )}
 
+      {/* **BOTH TOGGLES SIT AT THE FOOT** (owner, 2026-08-16: _"maybe fit better on the bottom
+          instead of the top"_). They were in `.sec-title-end` for one round, which put two
+          controls in a line whose other job is to name the section — and a head that holds the
+          section's title, a status and two controls is a toolbar. At the foot they read as what
+          they are: the two ways this list continues.
+
+          `.chk-toggle` unchanged, so nothing about how they LOOK moves with them. `הכול מוכן 🎉`
+          stays in the head, because it is a statement rather than a control and it is the one
+          thing the head was always for. */}
+      {(farTasks.length > 0 || completedCount > 0) && (
+        <div className="chk-foot">
+          {farTasks.length > 0 && (
+            <CollapseToggle
+              expanded={showFar}
+              onToggle={() => setShowFar((v) => !v)}
+              expandLabel={t.planHome.checklist.showFar(farTasks.length)}
+              collapseLabel={t.planHome.checklist.hideFar}
+              className="chk-toggle"
+            />
+          )}
+          {completedCount > 0 && (
+            <CollapseToggle
+              expanded={showCompleted}
+              onToggle={() => setShowCompleted((v) => !v)}
+              expandLabel={t.planHome.checklist.showCompleted(completedCount)}
+              collapseLabel={t.planHome.checklist.hideCompleted}
+              className="chk-toggle"
+            />
+          )}
+        </div>
+      )}
+
       {completedCount > 0 && (
         <>
-          {/* The collapsed teaser (a static pill row, not itself animated) sits
-              above the animated checklist so the count-in-label toggle always
-              has something legible to point at while collapsed. */}
-          {!showCompleted && (
-            <div className="chk-done-sum">
-              <span className="ok">
-                <Icon name="check" /> {t.planHome.checklist.completedSummary}
-              </span>
-              {completedAutomatic.map((auto) => (
-                <span className="pill" key={auto.key}>
-                  <Icon name={CHECK_ICON[auto.key]} />{' '}
-                  {t.planHome.checklist.summaryLabels[auto.key]}
-                </span>
-              ))}
-            </div>
-          )}
           <Collapsible expanded={showCompleted} className="checklist">
             {completedAutomatic.map((auto) => (
               <AutomaticTaskRow
@@ -573,8 +560,8 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             </>
           }
           readinessPct={readinessPct}
-          openTasks={openTasks.length}
-          overdue={overdueCount}
+          openTasks={preview.open}
+          overdue={preview.overdue}
           tasks={liftTasks}
           more={liftRows.length - liftTasks.length || undefined}
           onClose={() => setLifted(false)}

@@ -164,20 +164,36 @@ describe('PlanHome — the list counts everything open', () => {
     expect(screen.getByRole('button', { name: t.planHome.checklist.showFar(1) })).toBeTruthy();
   });
 
-  // §2: the hero's second number. Absent at zero — there is no "0 משימות פתוחות" state.
-  it('prints the open-task count on the hero, with the overdue tally', () => {
+  // §2's second number, and **it counts the readiness checks too** (owner, 2026-08-16: _"in
+  // the hero it says משימות פתוחות X which doesn't include the automatic tasks"_). ADR-0190
+  // §1 as amended settled that a check IS an open task, and `taskPreview` has counted them
+  // for the Index tile ever since — so the hero reusing that function is what stops two
+  // surfaces answering one question with two numbers.
+  it('counts the readiness checks in the hero, not just the manual tasks', () => {
     tasks = [task('late', { dueAt: '2026-08-01T12:00:00Z' }), task('u')];
     show();
-    const hero = prep();
-    expect(within(hero as HTMLElement).getByText(t.planHome.prep.openTasks)).toBeTruthy();
-    expect(within(hero as HTMLElement).getByText('2')).toBeTruthy();
-    expect(within(hero as HTMLElement).getByText(t.tasks.band.overdue(1))).toBeTruthy();
+    const hero = prep() as HTMLElement;
+    expect(within(hero).getByText(t.planHome.prep.openTasks)).toBeTruthy();
+    // The fixture has live checks, so the count must exceed the two manual tasks — the exact
+    // number is `computeReadiness`' business and asserting it here would pin this test to a
+    // derivation it is not about.
+    const shown = Number(hero.querySelector('.prep-tasks-n')!.textContent);
+    const liveChecks = document.querySelectorAll('.checklist .tsk-auto').length;
+    expect(liveChecks).toBeGreaterThan(0);
+    expect(shown).toBe(2 + liveChecks);
+    // …and overdue stays manual by construction: a check has no `dueAt` to have passed.
+    expect(within(hero).getByText(t.tasks.band.overdue(1))).toBeTruthy();
   });
 
-  it('carries no task readout when nothing is open', () => {
+  // Absent at zero — there is no "0 משימות פתוחות" state (ADR-0045 in one line). With the
+  // checks counted, "nothing open" now means the checks are satisfied too, which is what the
+  // `allDone` fixture below already sets up.
+  it('carries no task readout when nothing at all is open', () => {
     tasks = [];
     show();
-    expect(prep().querySelector('.prep-tasks')).toBeNull();
+    const liveChecks = document.querySelectorAll('.checklist .tsk-auto').length;
+    if (liveChecks === 0) expect(prep().querySelector('.prep-tasks')).toBeNull();
+    else expect(prep().querySelector('.prep-tasks')).toBeTruthy();
   });
 });
 

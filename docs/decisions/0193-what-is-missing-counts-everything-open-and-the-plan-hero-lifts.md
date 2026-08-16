@@ -1,6 +1,6 @@
 # 0193 — "What is missing" counts everything open, and the plan hero lifts
 
-**Status:** Accepted and **BUILT** (2026-08-16), then **§3 and §4 amended the same day** on the owner's report against the built screen — read the banners at the head of each before either. §5 was separately corrected by the running app; see "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
+**Status:** Accepted and **BUILT** (2026-08-16), then **§2, §3 and §4 amended the same day** across three rounds of owner reports against the built screen — read the banner at the head of each before it. §3 has been placed twice: the toggle went to the section head, then to the section's foot. §5 was separately corrected by the running app; see "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
 **Date:** 2026-08-16
 **Design reference:** [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html) — §1 the sentence that lies · §2 the hero's second number · §3 the inline list and its collapse · §4 what the lift opens onto · §5 the skin. **Promoted by this ADR.**
 
@@ -33,6 +33,21 @@ Reading the code before drawing anything moved four of the five sections.
 
 ### 2. Two numbers with two names, and a second bar is rejected
 
+> **AMENDED 2026-08-16 — the second number counts the CHECKS too** (owner: _"in the hero it
+> says משימות פתוחות X which doesn't include the automatic tasks"_). It was `openTasks.length`,
+> i.e. manual only. ADR-0190 §1 as amended settled that a readiness check **is** an open task,
+> and `taskPreview` has counted them for the Index tile ever since — so the hero was answering
+> "how many are open" with a different number than the tile, which is the disagreement that
+> rule exists to prevent.
+>
+> The repair is to **reuse `taskPreview`**, not to add `+ liveChecks.length` beside it: one
+> derivation, two surfaces, and they cannot drift. `overdue` stays manual **by construction
+> rather than by choice** — a check carries no `dueAt`, so nothing about it can have passed.
+>
+> The bar and the line now overlap (a check is in both), and that is correct: they answer
+> different questions. The bar is _how ready is the trip_ across five fixed dimensions; the
+> line is _how many things do you still owe_.
+
 `מוכנות הטיול` is `resolvedReadinessPct` over the five checks, and it stays that. A hero reading **100%** above eight open tasks is the same lie one line up, so the hero gains a second readout in `.prep-ready-top`'s own shape — a label at the start, the value at the end:
 
 ```
@@ -49,7 +64,27 @@ Giving the second number **its own noun** is what does the work. Once a line say
 
 **It is a readout, never a control.** The same rule that turned `.wp-board-also-toggle` into `.wp-board-also-read` in ADR-0160 §4, and here it is forced by the same mechanism: §4 makes the hero a `<button>`, and Chrome reparents everything after a nested `<button>` inside one. The mockup counts interactive descendants of `.prep` and the number is **0**.
 
-### 3. Urgent and the checks inline, the rest behind one toggle in the section head
+### 3. Urgent and the checks inline, the rest behind toggles at the section's FOOT
+
+> **AMENDED AGAIN 2026-08-16** (owner: _"maybe fit better on the bottom instead of the top"_).
+> The toggle moved to the head one round earlier, and with the completed toggle already there
+> the head held a title, a status and two controls — which is a toolbar, not a section title.
+> Both `.chk-toggle`s now sit in a `.chk-foot` row under the card. Nothing about how they LOOK
+> changed; `הכול מוכן 🎉` stays in the head, because it is a statement rather than a control
+> and it is the one thing that line was always for.
+>
+> **And `.chk-done-sum` is DELETED** (owner: _"the ✅ הושלמו shows only automatic tasks, maybe
+> we should change it (remove? Add the and X more tasks? not sure)"_). Removed rather than
+> extended, on its own stated reason: the code comment says it existed "so the count-in-label
+> toggle always has something legible to point at while collapsed", and that premise expired
+> when the toggle became `הצג 3 שהושלמו` — which carries the count and the noun itself. It was
+> redundant _and_ wrong, listing the automatic checks only, so a completed manual task was
+> invisible in a strip claiming to summarise what was done. Adding "+X more" would have made a
+> duplicate accurate instead of removing it.
+>
+> The deletion cascaded, which is the argument that it was dead weight: `CHECK_ICON`,
+> `t.planHome.checklist.summaryLabels` and `completedSummary` had **no other consumer** and go
+> with it, along with three CSS rules and two orphaned imports.
 
 > **AMENDED 2026-08-16, same day, on the owner's report against the built screen.** The
 > collapse was shipped as a full-width row at the foot of the `.checklist` card (`.chk-more`)
@@ -60,14 +95,9 @@ Giving the second number **its own noun** is what does the work. Once a line say
 > what makes `allDone` false. Measured at 360px with both toggles present, the head is
 > **24px** and does not wrap.
 >
-> **The ugliness had a cause worth recording, because it is a trap for every future caller of
-> `CollapseToggle`.** `.wp-collapse-toggle` sets the `font` **shorthand** to `inherit`, which
-> resets `font-size` and `font-weight` at equal specificity — and `tasks.css` loads _before_
-> `collapsible.css`, so the primitive won and the row rendered at the inherited **16px / 400 /
-> `--ink`** instead of 13px / 700 / `--cta`. `.chk-toggle` escapes it only by re-declaring
-> `font: inherit` inside its own rule before setting its size. A caller that does not know to
-> do that gets a silently wrong control. `.chk-more` is deleted; `.tsk-more` (Trip Home's
-> overflow row, a plain `<button>`) keeps the geometry.
+> **The ugliness had a cause worth recording, and the first diagnosis of it was WRONG.** **`.wp-collapse-toggle` sets the `font` SHORTHAND to `inherit`**, and `collapsible.css` loads AFTER `screens.css`/`tasks.css` — so at equal specificity it wipes any `font-size`/`font-weight` a caller declares. `.chk-toggle` has declared `font-size: 11px; font-weight: 700` since it was written and **never once applied them**: it inherited its parent's font and merely looked right in `.sec-title` (12px/700), then rendered at **16px/400** the moment it moved to a section foot. The trap hid because the only other caller, `.index .past-toggle`, is scoped at (0,2,0) and out-specifies the primitive — one of two callers was broken, invisibly, from the start. Fixed at the primitive: `font-family: inherit` instead of the shorthand, which is all that rule ever wanted (stop a `<button>` wearing the UA's Arial). Size and weight belong to the caller.
+>
+> The earlier text here claimed `.chk-toggle` escaped the trap by re-declaring `font: inherit` inside its own rule before setting its size. It does not — a later rule at equal specificity still wins, and the measurement above is what proved it. `.chk-more` is deleted; `.tsk-more` (Trip Home's overflow row, a plain `<button>` and not a `CollapseToggle`) keeps the geometry.
 >
 > **And the Hebrew on both toggles is reworked**, since the owner called it bad on the one it
 > was asked to match. `הצג` ⇄ `כווץ` was not a pair — one names the content, the other the
