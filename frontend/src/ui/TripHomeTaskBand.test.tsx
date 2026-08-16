@@ -104,19 +104,49 @@ describe('TripHomeTaskBand', () => {
     expect(onSeeAll).toHaveBeenCalledTimes(1);
   });
 
-  // The row's assignee wrapper is `.tsk-assignee`; `.tsk-who` is the EDITOR's density
-  // wrapper and carries a 38px avatar rule (see `tasks-avatar-size.test.ts`).
-  it('uses the row’s assignee class, never the editor’s', () => {
+  // **THE ASSIGNEE IS A FACE ON THE TITLE ROW** (ADR-0190 §6's amendment, which reached
+  // `IndexTasksView` in that round and this row only on 2026-08-16 — owner: the assignee on
+  // Plan Home _"should look like it is in the task screen"_).
+  //
+  // These two tests replace ones that pinned the PRE-amendment shape (an avatar plus a name
+  // in the meta line, behind a `·`). What that cost is the thing that was reported: the meta
+  // carried a deadline AND a name, so it wrapped and the assignee landed on a third line —
+  // the same task rendering 22px taller than itself one tab over.
+  it('puts the face on the title row, not in the meta line', () => {
     show([task('a', { assigneeUserId: 'u1' })]);
-    expect(document.querySelector('.tsk-assignee')).toBeTruthy();
+    const title = document.querySelector('.wp-listrow-title')!;
+    expect(title.querySelector('.tsk-who-row')).toBeTruthy();
+    // `.tsk-assignee` was the meta-line wrapper and `.tsk-who` is the EDITOR's density
+    // wrapper, which carries a 38px avatar rule (`tasks-avatar-size.test.ts`). Neither
+    // belongs on this row.
+    expect(document.querySelector('.tsk-assignee')).toBeNull();
     expect(document.querySelector('.tsk-who')).toBeNull();
   });
 
-  it('says who owes it, and says so even when nobody does', () => {
+  // `Avatar`'s non-interactive form is `aria-hidden`, so dropping the visible name would
+  // leave the row saying nothing at all about who owes it unless the name is said elsewhere.
+  it('still announces who owes it, though the name is no longer drawn', () => {
     show([task('mine', { assigneeUserId: 'u1' })]);
-    expect(screen.getByText('אסף')).toBeTruthy();
-    cleanup();
+    expect(screen.queryByText('אסף')).toBeNull();
+    expect(screen.getByText(`${t.tasks.sheet.assigneeLabel}: אסף`)).toBeTruthy();
+  });
+
+  // **The empty slot is the statement** (§6's own reasoning): in a fixed position at the end
+  // of the title row, absence is unambiguous — there is a place for a face and no face in it
+  // — so `לא משויך` stops being needed to tell "nobody" from "a name that did not fit".
+  it('draws nothing at all when nobody owes it', () => {
     show([task('nobody')]);
-    expect(screen.getByText(t.tasks.sheet.nobody)).toBeTruthy();
+    expect(document.querySelector('.tsk-who-row')).toBeNull();
+    expect(screen.queryByText(t.tasks.sheet.nobody)).toBeNull();
+  });
+
+  // The point of the move, as a shape rather than a class: the meta line holds the deadline
+  // and nothing else, which is what stops it wrapping to a third line.
+  it('leaves the deadline alone on the meta line', () => {
+    show([task('a', { assigneeUserId: 'u1', dueAt: '2026-08-15T09:00:00.000Z' })]);
+    const meta = document.querySelector('.wp-listrow-meta')!;
+    expect(meta.querySelector('.tsk-due')).toBeTruthy();
+    expect(meta.querySelector('.tsk-sep')).toBeNull();
+    expect(meta.querySelector('.wp-avatar')).toBeNull();
   });
 });

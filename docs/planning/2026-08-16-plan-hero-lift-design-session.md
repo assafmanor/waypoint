@@ -104,3 +104,31 @@ Two unit tests failed in a way that had nothing to do with the code: my `python`
 3. **The hero's `משימות פתוחות` counts the readiness checks.** It was manual-only, while ADR-0190 §1 as amended had already settled that a check _is_ an open task and `taskPreview` had been counting them for the Index tile ever since. Two surfaces, one question, two numbers. Fixed by **reusing `taskPreview`** rather than writing `+ liveChecks.length` beside it, so they cannot drift — the same reflex that put `toHeroTask` in `lib/` when the plan hero became a second host. `overdue` stays manual by construction: a check has no `dueAt` to have passed.
 
 The bar and the line now overlap — a live check is counted in both — and that is correct rather than a wrinkle. They answer different questions: the bar is _how ready is the trip_ across five fixed dimensions, the line is _how many things do you still owe_.
+
+## Fourth round — a reported "stripe", and the split that caused it
+
+Three reports, and the clarification is what decided the diagnosis: _"when there are no items there's just a stripe. It should show something nice as in you're ready or something."_
+
+**The stripe is not an ugly empty state. It is a card with nothing in it.** `.checklist` is a 1px-bordered box, and holding only a collapsed `Collapsible` it measures **2px** under the section title — with **0 of 2** open tasks visible, because both were due in 16 days and the near/far split classed both as "far". The trip had two open tasks and showed neither.
+
+So the second report — _"we said limit to 5 and there's two!"_ — reads as a complaint and **is the design**. The fold is a cap now, and the argument is structural rather than a preference: **the first N of a list is never zero, where a predicate can empty it at any length.** It also deletes machinery (`soonIds`, `isNear`, `nearTasks`, `farTasks`, the `tasksDueSoon` import) and finally puts the inline list and the lifted hero on one rule off one derivation — they had been running two.
+
+**The empty state already existed and this section had never used it.** `ui/feedback/EmptyState` is the app's one empty shell (ADR-0078); `הכול מוכן 🎉` was an 11px hint in the title row — 15px of section against 136px of block, which is precisely why the person looking at it asked for an empty state. Rendered **inside** the card, which is not a styling choice: it is what leaves the card no state in which it has nothing in it, closing the stripe from the other side as well as the first.
+
+**And the two controls were never peers.** `עוד N` continues the list you are reading; `N שהושלמו` opens a different one. Two matching pills asserted a peerage that does not exist, which is what "look bad" was picking up. The continuation is the card's last row; the completed half is a quiet link below.
+
+### What the measurement found that nobody reported
+
+**The shipped pills are 22px painted and 22px tappable** — half ADR-0017's 44px floor, and they had been since they were written. Nobody had reported it, and it rules out the "just keep the pills" option that would otherwise have been the cheapest. The replacement row is a real 44px; the quiet link clears the floor through an `::after` overlay (`ValueToken`'s idiom) rather than by growing the line, which is the difference between meeting a floor and paying for it in layout.
+
+The chosen layout costs **+51px** of section against the pills. Stated because it is a real cost and the alternative was cheaper and wrong.
+
+### One more, from the same screenshots: the assignee was half-migrated
+
+ADR-0190 §6's amendment moved the assignee to the **title row as the face alone**, and it reached `IndexTasksView` and stopped there. `TaskBandRow` — the row **both** Home surfaces draw — kept the pre-amendment shape, an avatar plus a name in the meta line behind a `·`.
+
+That is not merely an inconsistency: the meta line then carried a deadline _and_ a name, so it wrapped and the assignee landed on a **third line**. The same task rendered taller on Home than on the screen its row links to, which is what the owner was looking at when they said it _"should look like it is in the task screen"_.
+
+Two things worth keeping: it needed **no new CSS**, because `.tsk-who-row` is scoped to `.wp-listrow-title` rather than to that screen — the same markup simply worked, which is the payoff for scoping a rule to a shape instead of a host. And measured after the move, the face sits on the title line **0px** from the line end and the row grows **1px**, against a whole extra line before.
+
+The general shape of the mistake is worth naming, because this session produced it twice (here and in `.chk-toggle`'s font): **an amendment applied to one call site of a shared component is not applied.** Nothing failed; both surfaces rendered; only a screenshot of the two side by side showed it.

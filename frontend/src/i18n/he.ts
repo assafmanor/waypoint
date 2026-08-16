@@ -1864,7 +1864,17 @@ export const t = {
     },
     checklist: {
       title: 'מה חסר להשלמה',
-      allDone: 'הכול מוכן 🎉',
+      /** **The empty state's two lines** (ADR-0193 §6). This was `הכול מוכן 🎉`, an 11px
+       *  `.hint` in the section title — 15px of section against 136px of block, which is why
+       *  the owner asked for an empty state while looking at one. Promoted into
+       *  `EmptyState`, whose icon slot takes an `Icon`, so the emoji retires: emoji are
+       *  CONTENT and icons are UI (design-language, ADR-0138).
+       *
+       *  `אפשר לנשום` and not `הכול מוכן` (owner's pick): the readiness bar directly above
+       *  already says 100%, so repeating it here would be the same fact twice on one screen.
+       *  What the bar cannot say is what it means for the reader. */
+      emptyTitle: 'אפשר לנשום',
+      emptyBody: 'אין מה להשלים לפני היציאה',
       done: 'הושלם',
       // Completed checks collapse into a one-line summary with a show/hide toggle
       // (ADR-0061), so the list stays about what's still missing.
@@ -1884,12 +1894,12 @@ export const t = {
        *  `הצג 3 שהושלמו`. */
       showCompleted: (n: number) => (n === 1 ? 'הצג אחת שהושלמה' : `הצג ${n} שהושלמו`),
       hideCompleted: 'הסתר שהושלמו',
-      /** **The rest of what is open** (ADR-0193 §3, re-placed 2026-08-16). Not `רחוקות`:
-       *  the group stopped being about distance the moment the lift dropped its date bands,
-       *  and an undated task was never "far" in the first place — it is simply not urgent.
-       *  `עוד` says the only true thing about it, which is that there is more. */
-      showFar: (n: number) => (n === 1 ? 'הצג עוד אחת' : `הצג עוד ${n}`),
-      hideFar: 'הסתר',
+      /** **The remainder, past the cap** (ADR-0193 §3, amended 2026-08-16). Not `רחוקות`
+       *  and no longer a group with a meaning: it is simply what did not fit in the first
+       *  `PLAN_TASK_CAP` rows, so the word is the one Trip Home's overflow row already uses.
+       *  `הסתר` on the way back, because the row's caret says which way it goes. */
+      showRest: (n: number) => (n === 1 ? 'עוד משימה אחת' : `עוד ${n} משימות`),
+      hideRest: 'הסתר',
       // Flights = round-trip aware (ADR-0061): the meta names the missing leg, and
       // the CTA opens the flight form seeded with that direction.
       flightsTitle: 'טיסות',

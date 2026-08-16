@@ -92,6 +92,22 @@ The per-traveller passport pips retire with the rest of `.chk-*`. The meta line 
 
 ### 6. The row shows WHO OWES IT as a person — and this amends ADR-0188 §3
 
+> **COMPLETED 2026-08-16, and it had been half-applied for a day.** §6's later amendment moved
+> the assignee to the **title row as the face alone** (owner, against Microsoft To Do), and
+> that landed in `IndexTasksView` only. `TaskBandRow` — the row BOTH Home surfaces draw — kept
+> the pre-amendment shape: an avatar plus a name in the meta line, behind a `·`. Reported by
+> the owner against Plan Home: the assignee _"should look like it is in the task screen (the
+> assignee on the same line as the task sticked to the left"_.
+>
+> The cost was not only inconsistency. The meta line carried a deadline **and** a name, so it
+> wrapped and the assignee landed on a **third line** — the same task rendering taller on Home
+> than on the screen it links to. Measured after the move: the face sits on the title line,
+> **0px** from the line end, and the row grows **1px** rather than a whole line.
+>
+> It needed no new CSS: `.tsk-who-row`'s rule is scoped to `.wp-listrow-title`, not to that
+> screen, which is why the same markup simply worked. And `לא משויך` goes with the name, on
+> §6's own reasoning — in a fixed slot at the end of the title row, absence is unambiguous.
+
 **Owner, from a device:** _"See how the members are prominent in the creation form but you can barely see it in the main tasks view."_
 
 ADR-0188 §3 decided that deliberately: _"The assignee is a name in the meta line, not an avatar"_, because an avatar would be **"a second identity system per row"** (ADR-0153 §4's rule, borrowed).

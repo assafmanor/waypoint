@@ -55,33 +55,47 @@ export function TaskBandRow({
               <Icon name="star" />
             </span>
           )}
-          <span>{task.title}</span>
+          <span className="tsk-title-txt">{task.title}</span>
+          {/* **WHO OWES IT, ON THE TITLE ROW AND AS THE FACE ALONE** — ADR-0190 §6's
+              amendment reaching the band row, which it never did (owner, 2026-08-16: the
+              assignee here _"should look like it is in the task screen"_).
+
+              This row had kept the PRE-amendment shape: an avatar plus a name in the meta
+              line, behind a `·`. Two costs, and the second is what was reported — the meta
+              line carried the deadline AND a name, so on Plan Home it wrapped and the
+              assignee landed on a THIRD line, making one task 22px taller than the same task
+              one tab over. Same task, two shapes, on two surfaces that share a component.
+
+              Nothing here is invented: it is `IndexTasksView`'s title row verbatim, down to
+              `.tsk-who-row`'s `margin-inline-start: auto` — which is why the class is scoped
+              to `.wp-listrow-title` rather than to that screen, and why this needed no new
+              CSS at all.
+
+              **The name goes, and the empty slot is the statement** (§6's own reasoning): in
+              a fixed slot at the end of the title row, absence is unambiguous — there is a
+              place for a face and no face in it — so `לא משויך` stops being needed to
+              distinguish "nobody" from "a name that did not fit". */}
+          {assignee && (
+            <>
+              {/* `Avatar`'s non-interactive form is `aria-hidden`, so without this the row
+                  would say nothing at all about who owes it. */}
+              <Avatar person={assignee} size="inherit" className="tsk-who-row" />
+              <span className="visually-hidden">
+                {t.tasks.sheet.assigneeLabel}: {assignee.displayName}
+              </span>
+            </>
+          )}
         </>
       }
       meta={
-        <>
-          {due && (
-            <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
-              <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
-              {/* The numeric run is its own LTR island — `ltrIsolate`, never `dir="ltr"` on
-                  a non-input (ADR-0118). */}
-              {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
-            </span>
-          )}
-          <span className="tsk-sep">·</span>
-          {/* `.tsk-assignee`, NOT `.tsk-who` — that name is the editor's density wrapper, and
-              sharing it shipped a 38px circle into an 11.5px line once already. */}
-          <span className="tsk-assignee">
-            {assignee ? (
-              <Avatar person={assignee} size="inherit" className="tsk-who-mini" />
-            ) : (
-              <span className="tsk-who-mini none" aria-hidden="true">
-                <Icon name="members" />
-              </span>
-            )}
-            {assignee ? assignee.displayName : t.tasks.sheet.nobody}
+        due && (
+          <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+            <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
+            {/* The numeric run is its own LTR island — `ltrIsolate`, never `dir="ltr"` on
+                a non-input (ADR-0118). */}
+            {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
           </span>
-        </>
+        )
       }
     />
   );

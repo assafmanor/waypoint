@@ -1433,24 +1433,54 @@
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
-/* **THE TOGGLES' OWN ROW, AT THE FOOT OF THE SECTION** (ADR-0193 §3, re-placed
-   2026-08-16). Both `.chk-toggle`s live here — the far group's and the completed
-   half's — after one round in `.sec-title-end` put two controls in a line whose
-   other job is to name the section.
+/* **THE EMPTY STATE LIVES INSIDE THE CARD** (ADR-0193 §6). `EmptyState` owns a centred
+   column and no frame, because its usual host is a whole screen region; here the section
+   already has a frame — the same `.checklist` the rows sit in — so it goes inside and the
+   section keeps ONE silhouette in every state.
 
-   This replaces `.chk-done-sum`, the collapsed-completed pill teaser, which is
-   DELETED. Its own comment gave its reason — "so the count-in-label toggle always
-   has something legible to point at while collapsed" — and that premise expired
-   when the toggle became `הצג 3 שהושלמו`, carrying the count and the noun itself.
-   It was also wrong: it listed the automatic checks only, so a completed manual
-   task was invisible in a strip claiming to summarise what was done (owner,
-   2026-08-16). Removing it took `CHECK_ICON`, `summaryLabels` and
-   `completedSummary` with it — they had no other consumer. */
-.chk-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+   That is also what makes the reported stripe unreachable rather than merely fixed: the
+   card now holds rows or an empty state, and there is no third case in which it can be
+   rendered with nothing in it. */
+.checklist > .fb-empty {
+  padding-block: var(--space-5);
+}
+/* `--ok`, not `.fb-empty-icon`'s default `--muted`, and it is inside rule 4 rather than an
+   exception to it: this is a STATUS (`--ok`/`--miss` is the status mini-palette). The app's
+   two kinds of empty state mean opposite things — "nothing here yet" and "you are done" —
+   and only one of them is good news. */
+.checklist > .fb-empty .fb-empty-icon {
+  color: var(--ok);
+}
+
+/* **THE COMPLETED HALF IS A DIFFERENT LIST, SO IT IS NOT A ROW OF THIS CARD** (ADR-0193 §3,
+   amended 2026-08-16). It was one of two matching `.chk-toggle` pills in a `.chk-foot` row,
+   which is the grammar of two peers — and they are not peers: `עוד N` continues the list you
+   are reading (it is the card's last ROW now), this opens something else. Footnote weight,
+   centred, below.
+
+   The 44px target is an `::after` OVERLAY rather than padding — `ValueToken`'s shipped
+   idiom (`frontend/CLAUDE.md`), so clearing ADR-0017's floor does not grow the line. Worth
+   knowing what it replaces: the pills measured **22px** painted and 22px tappable, i.e. half
+   the floor, and had since they were written. */
+.chk-done-link {
+  display: block;
+  position: relative;
+  margin: var(--space-3) auto 0;
+  padding: 6px 10px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chk-done-link::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  transform: translateY(-50%);
+  height: 44px;
 }
 
 /* overview stats — three quiet paper tiles; counts in mono */

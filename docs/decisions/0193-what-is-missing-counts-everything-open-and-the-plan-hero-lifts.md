@@ -2,7 +2,7 @@
 
 **Status:** Accepted and **BUILT** (2026-08-16), then **§2, §3 and §4 amended the same day** across three rounds of owner reports against the built screen — read the banner at the head of each before it. §3 has been placed twice: the toggle went to the section head, then to the section's foot. §5 was separately corrected by the running app; see "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
 **Date:** 2026-08-16
-**Design reference:** [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html) — §1 the sentence that lies · §2 the hero's second number · §3 the inline list and its collapse · §4 what the lift opens onto · §5 the skin. **Promoted by this ADR.**
+**Design references:** [`mockups/what-is-missing-when-there-is-nothing-missing-v1.html`](../../mockups/what-is-missing-when-there-is-nothing-missing-v1.html) — §3's cap, §6's empty state and the two controls (2026-08-16, third round) · [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html) — §1 the sentence that lies · §2 the hero's second number · §3 the inline list and its collapse · §4 what the lift opens onto · §5 the skin. **Promoted by this ADR.**
 
 **Amends:** [0160 §H](0160-the-hero-lifts-and-shows-a-horizon.md) — the plan hero **does** lift now, on §H's own stated revisit condition rather than against it (§4 below).
 **Builds on:** [0188](0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md) §6 (Plan Home carries the converged list), [0190](0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md) §2 (urgent → checks → the rest), [0061](0061-plan-home-readiness-rework.md) (the five derived checks), [0158](0158-dark-mode-ships-and-the-ink-a-surface-carries-is-a-token.md) §4/§15 (a surface's ink is a token; an inverted surface is the limit), [0028](0028-plan-violet-color-budget-dark-ready.md) (plan violet is mode identity), [0017](0017-mobile-first-device-targets.md) (44px), [0045](0045-trip-home-real-data-only.md) (no reassuring empty card), [0148](0148-the-place-form-has-the-room-it-needs.md) §1 (the bounded card with one scroller).
@@ -26,6 +26,11 @@ Reading the code before drawing anything moved four of the five sections.
 ## Decision
 
 ### 1. The list counts everything open, and the sentence survives
+
+> **AMENDED 2026-08-16 — the sentence became a BLOCK.** `הכול מוכן 🎉` survived as an 11px
+> hint in the section title, which is where §6 found it and why it never read as an empty
+> state. The decision below is unchanged in substance — the moment is kept, not deleted — but
+> the words and the shape are §6's now.
 
 `tasksDueSoon` stays as it is and stays Trip Home's. Plan Home reads **every open manual task** instead — no date window, matching what its own completed half has always done.
 
@@ -64,7 +69,33 @@ Giving the second number **its own noun** is what does the work. Once a line say
 
 **It is a readout, never a control.** The same rule that turned `.wp-board-also-toggle` into `.wp-board-also-read` in ADR-0160 §4, and here it is forced by the same mechanism: §4 makes the hero a `<button>`, and Chrome reparents everything after a nested `<button>` inside one. The mockup counts interactive descendants of `.prep` and the number is **0**.
 
-### 3. Urgent and the checks inline, the rest behind toggles at the section's FOOT
+### 3. A CAP, not a split — and the two controls are not the same kind of thing
+
+> **AMENDED A THIRD TIME 2026-08-16, on a reported stripe** (owner: _"when there are no items
+> there's just a stripe. It should show something nice as in you're ready or something"_ ·
+> _"we said limit to 5 and there's two!"_ · _"the completed and the X more also look bad"_).
+> Promoted from [`mockups/what-is-missing-when-there-is-nothing-missing-v1.html`](../../mockups/what-is-missing-when-there-is-nothing-missing-v1.html).
+>
+> **The stripe was a card with nothing in it, and the near/far split was why.** `.checklist`
+> is a 1px-bordered box; holding only a collapsed `Collapsible` it painted as a **2px line**
+> under the section title. On the reported trip both open tasks were due in **16 days**, so
+> the split classed both as "far" and folded both — two open tasks, neither on screen.
+>
+> So the fold is a **cap** now: `orderTaskRows`, the first `PLAN_TASK_CAP` (**5**), remainder
+> behind one row. The difference is structural rather than a tuning — **the first N of a list
+> is never zero, where a predicate can empty it at any length** — and it is a deletion:
+> `soonIds`, `isNear`, `nearTasks`, `farTasks` and the `tasksDueSoon` import all leave
+> `PlanHome`, and the inline list and the lift finally run the same rule off the same
+> derivation. Measured: 2px → **157.3px** with both rows visible.
+>
+> **And the two controls stop being peers.** `עוד N` **continues** the list you are reading,
+> so it is the card's last ROW — `.tsk-more`, the row Trip Home's band already ends in.
+> `N שהושלמו` opens a **different** list, so it is a quiet centred link below the card. Two
+> matching pills said they were the same kind of thing; they never were. The pills also
+> measured **22px painted and 22px tappable** against ADR-0017's 44px floor, and had since
+> they were written — the row is a real 44px and the link clears the floor through an
+> `::after` overlay (`ValueToken`'s idiom, so it does not grow the line). Cost: **+51px** of
+> section, measured, and taken knowingly.
 
 > **AMENDED AGAIN 2026-08-16** (owner: _"maybe fit better on the bottom instead of the top"_).
 > The toggle moved to the head one round earlier, and with the completed toggle already there
@@ -207,6 +238,32 @@ Measured **in the running app**, light mode, on a real 828px card (dark clears e
 - `BEAT.REBUFF` on `.prep` (ADR-0160 §H) is **retired** — the press now opens something, so the rebuff has no condition left on that surface. **The beat itself stays**: counted at build time, the Trip board is still a claimant (`Home.tsx` passes it whenever `liftable` is false), which is the surface §9 wrote it for in the first place.
 - The lifted plan hero is a `Modal`, so back / Escape / backdrop / the Android gesture all reach one handler (ADR-0103, ADR-0090). Nothing here is exempt.
 - The mockup's contrast harness composites alpha and reads gradient stops. Both were added because the naive version was **wrong in this file three times** — reporting 1:1 for a tinted pill, 3.36:1 for a card measured against the page behind it, and 1.06:1 for ink on a gradient with no `background-color`. Any future file measuring a ratio should copy that function rather than the idea of it.
+
+### 6. When nothing is missing, the section says so as a BLOCK
+
+Owner: _"when everything done it should show some empty state (let's design this)"_.
+
+`ui/feedback/EmptyState` is the app's one empty shell (ADR-0078) and this section had never
+used it — `הכול מוכן 🎉` was an 11px `.hint` in the title row, **15px of section against 136px
+of block**, which is exactly why the person looking at it asked for an empty state.
+
+It renders **inside** the `.checklist` card rather than beside it, and that placement does two
+jobs: the section keeps one silhouette in every state, and **the card can no longer be
+rendered with nothing in it** — rows or an empty state, no third case. That is what makes §3's
+stripe unreachable rather than merely fixed.
+
+**The copy is `אפשר לנשום` / `אין מה להשלים לפני היציאה`** (owner's pick over `הכול מוכן ליציאה`).
+The readiness bar directly above already reads 100%, so restating it here would be the same
+fact twice on one screen; what the bar cannot say is what it means for the reader. The emoji
+retires with the hint — `EmptyState`'s slot takes an `Icon`, and emoji are content while icons
+are UI (ADR-0138).
+
+**The mark is `--ok`, not `.fb-empty-icon`'s default `--muted`**, and that is inside rule 4
+rather than an exception to it: this is a STATUS. The app's two kinds of empty state mean
+opposite things — "nothing here yet" and "you are done" — and only one of them is good news.
+
+**No `action`.** Every other empty state in the app hands back a next step (ADR-0078's
+"the app never dead-ends"); the whole point of this one is that there is nothing to do.
 
 ## What the running app changed
 
