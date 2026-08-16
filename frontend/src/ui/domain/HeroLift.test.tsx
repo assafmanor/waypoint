@@ -114,6 +114,23 @@ describe('HeroLift', () => {
     expect(block.querySelectorAll('button, a, [role="button"], input')).toHaveLength(0);
   });
 
+  // **The box is EMPTY** (ADR-0160 §U amended 2026-08-16, owner: the ticked box _"reads as
+  // 'task complete' and is misleading"_). The hero only ever names an OPEN task, so the ✓
+  // said the opposite of the block's purpose. Asserted on the path data rather than on a
+  // class, because the defect this replaces was a glyph choice and nothing else about the
+  // DOM changes when it is wrong — the same reason `.tsk-tick-sec` shipped unpainted with a
+  // green suite. The tick segment is `checkbox`'s second sub-path; `checkbox-empty` is
+  // literally that string minus this one, which is what keeps them one family.
+  const TICK_SEGMENT = 'M8.5 12l2.5 2.5 4.5-5';
+  it('marks the task with an EMPTY box, never a ticked one', () => {
+    const container = show({ now: [withTask({})] });
+    const glyph = container.querySelector('.hero-task-ic path')!;
+    expect(glyph).toBeTruthy();
+    // The box itself is still there — this must fail if the glyph goes missing entirely.
+    expect(glyph.getAttribute('d')).toContain('M5.5 4.5h13');
+    expect(glyph.getAttribute('d')).not.toContain(TICK_SEGMENT);
+  });
+
   it('draws the deadline, and marks a passed one', () => {
     const container = show({
       now: [withTask({ due: { text: 'באיחור · אתמול 18:00', late: true } })],

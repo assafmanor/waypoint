@@ -31,6 +31,11 @@ export type IconName =
   // means the completion control and nothing else, so a bare ✓ on a booking row would read
   // "this is done" rather than "there is a task here".
   | 'checkbox'
+  // The SAME box with nothing in it — for a surface that names ONE open task rather than
+  // counting a host's (ADR-0160 §U, amended 2026-08-16). A ✓ inside the box is fine on a
+  // mark that means "there are tasks here"; beside a single title it is read as that task's
+  // own state, which is the opposite of what the hero is there to say.
+  | 'checkbox-empty'
   // ── The emoji sweep (ADR-0138). Every shape below replaces an emoji that was
   // drawing a CONTROL. Grouped by what they replace, not alphabetically, so the
   // sweep's boundary stays legible from the type alone.
@@ -201,6 +206,10 @@ const PATHS: Record<IconName, string> = {
   more: 'M6 12h.02 M12 12h.02 M18 12h.02',
   checkbox:
     'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z M8.5 12l2.5 2.5 4.5-5',
+  // The box alone — literally `checkbox` minus its ✓ segment, so the two cannot drift into
+  // being two different boxes.
+  'checkbox-empty':
+    'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z',
   // ── The three section markers the first sweep left behind, because `GLYPH` had
   // them filed as content. They are not: each sits on a TILE you tap, and the
   // Home quick-action row proved it by ending up with three emoji beside one SVG

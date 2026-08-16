@@ -14,11 +14,29 @@
 
    COLOUR BUDGET: `--ok` only, and only once filled. `--ok`/`--miss` are the status
    mini-palette (rule 4, ADR-0028) and "done" is a status. An open tick spends nothing, so
-   a list of open tasks carries no colour at all. */
-.tsk-tick {
+   a list of open tasks carries no colour at all.
+
+   **TWO DENSITIES, ONE CONTROL** (`.tsk-tick` the screen's, `.tsk-tick-sec` a host
+   section's). They differ in exactly two numbers — the ink's diameter and the negative
+   margin that keeps the 44px target from growing the row it sits in — so they share every
+   rule below and set `--tick-ink` / `--tick-inset` rather than each spelling a tick out.
+   Anything else is how two ticks start disagreeing about what "done" looks like, which is
+   ADR-0139's whole build log one control over.
+
+   **`.tsk-tick-sec` had NO RULE AT ALL until 2026-08-16** — the one class ADR-0191 §5's
+   row reversal renamed without moving its paint. A `<button>` with no CSS renders platform
+   chrome, so a host section's tick shipped as a white rounded square with a bare ✓ in it,
+   in both themes, on every event card, booking sheet, document sheet and place card
+   (owner, from a device: _"what's this tick?? Why is it white?"_). Nothing could fail:
+   `HostTasks.test.tsx` asserts the element and its `aria-pressed`, and jsdom has no
+   stylesheet to contradict. The lesson is the same one `tsk-sec-quiet` is still carrying
+   below — a class name in a `className` string is a claim that a rule exists, and only a
+   render checks it. */
+.tsk-tick,
+.tsk-tick-sec {
   width: 44px;
   height: 44px;
-  margin: -7px;
+  margin: var(--tick-inset);
   padding: 0;
   border: 0;
   background: none;
@@ -35,42 +53,71 @@
      visible ink drawn inside it. The circle a checklist needs is the `::before`. */
   border-radius: 12px;
 }
-.tsk-tick::before {
+/* The screen's row: 26px of ink laid out at 30px, which is what the header measured. */
+.tsk-tick {
+  --tick-ink: 26px;
+  --tick-inset: -7px;
+}
+/* A host section's row. The ink is `--sec-tick`, which `.note-sec` has declared since
+   ADR-0191 §5 — *"the tick's PAINT; its touch target is an `::after` that reaches 44px
+   regardless"*. The mechanism is the negative margin rather than an `::after`, because that
+   is the recipe `.tsk-tick` and `.wp-listrow-kebab` already ship and a second way to hold a
+   44px target inside a small box is a second thing to get wrong. The inset lays the control
+   out at its ink exactly, so it fits `--sec-lead`'s 26px column and adds nothing to a row's
+   height; the target still overhangs, which is the point. */
+.tsk-tick-sec {
+  --tick-ink: var(--sec-tick, 20px);
+  --tick-inset: calc((var(--tick-ink) - 44px) / 2);
+}
+.tsk-tick::before,
+.tsk-tick-sec::before {
   content: '';
   grid-area: 1 / 1;
-  width: 26px;
-  height: 26px;
+  width: var(--tick-ink);
+  height: var(--tick-ink);
   border-radius: 50%;
   border: 1.5px solid var(--line);
   background: var(--card);
 }
-.tsk-tick .icon {
+.tsk-tick .icon,
+.tsk-tick-sec .icon {
   grid-area: 1 / 1;
-  width: 15px;
-  height: 15px;
+  /* Proportional to the ink, so the ✓ inside a 20px circle is not the one drawn for a 26px
+     one — at a fixed 15px it fills the smaller circle edge to edge. */
+  width: calc(var(--tick-ink) * 0.58);
+  height: calc(var(--tick-ink) * 0.58);
   opacity: 0;
 }
-.tsk-tick:hover::before {
+.tsk-tick:hover::before,
+.tsk-tick-sec:hover::before {
   border-color: var(--ok);
 }
-.tsk-tick:hover .icon {
+.tsk-tick:hover .icon,
+.tsk-tick-sec:hover .icon {
   opacity: 0.4;
 }
-.tsk-tick:focus-visible {
+.tsk-tick:focus-visible,
+.tsk-tick-sec:focus-visible {
   outline: 2.5px solid var(--teal);
-  outline-offset: -7px;
+  /* Inward by however much the 44px box overhangs its ink, so the ring lands ON the circle
+     in both densities instead of floating in the overhang at the smaller one. */
+  outline-offset: calc((var(--tick-ink) - 44px) / 2 + 1px);
 }
-.app[data-mode='plan'] .tsk-tick:focus-visible {
+.app[data-mode='plan'] .tsk-tick:focus-visible,
+.app[data-mode='plan'] .tsk-tick-sec:focus-visible {
   outline-color: var(--plan);
 }
-.tsk-tick[aria-pressed='true'] {
+.tsk-tick[aria-pressed='true'],
+.tsk-tick-sec[aria-pressed='true'] {
   color: var(--on-fill);
 }
-.tsk-tick[aria-pressed='true']::before {
+.tsk-tick[aria-pressed='true']::before,
+.tsk-tick-sec[aria-pressed='true']::before {
   background: var(--ok);
   border-color: var(--ok);
 }
-.tsk-tick[aria-pressed='true'] .icon {
+.tsk-tick[aria-pressed='true'] .icon,
+.tsk-tick-sec[aria-pressed='true'] .icon {
   opacity: 1;
 }
 

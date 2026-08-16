@@ -308,12 +308,22 @@ function Tasks({ point }: { point: HeroLiftPoint }) {
     <div className="hero-part">
       <span className="hero-lbl">{t.hero.task}</span>
       <div className="hero-task">
-        {/* The glyph the tick, the mark and the section header all use — non-interactive at
-            two of those three already, which is what makes this the same role rather than a
-            new one. The risk that a checkbox reads as pressable on a read-only surface is
-            named in §U3 and belongs to the device pass, not to a second glyph here. */}
+        {/* **AN EMPTY BOX, NOT A TICKED ONE** (§U amended 2026-08-16, owner: _"the lifted
+            hero shows a tick icon for tasks, this reads as 'task complete' and is
+            misleading"_). §U shipped the `checkbox` the mark and the section header carry,
+            on the argument that it is the same role at a third surface. It is not: those two
+            name a NOUN — "there are tasks here", "this section is tasks" — and this one sits
+            beside a single task's title, where the glyph is read as that task's own state.
+            The hero only ever shows an OPEN task, so a ✓ said the exact opposite of the
+            block's whole purpose. Same box, minus the ✓, so the two glyphs stay one family.
+
+            The cost, taken knowingly: §U3's open question is whether a checkbox reads as
+            pressable on a read-only surface, and an EMPTY box reads more pressable than a
+            ticked one, not less. It stays on the device pass with that noted — "not done" is
+            the fact the block exists to carry, and being wrong about it is worse than
+            inviting a tap that does nothing. */}
         <span className="hero-task-ic" aria-hidden="true">
-          <Icon name="checkbox" />
+          <Icon name="checkbox-empty" />
         </span>
         <span className="hero-task-main">
           <span className="hero-task-hd">
