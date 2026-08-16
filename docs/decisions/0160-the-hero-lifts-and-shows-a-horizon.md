@@ -492,6 +492,25 @@ screenshot cannot settle it. **It joins the device pass** beside the tasks featu
 feel questions. If it proves real, the bare `✓` (drawn, mockup §3ב) is the answer and it is a
 one-word change.
 
+**Amended 2026-08-16 — the box is EMPTY, and the "same role" argument above was wrong.** The device
+pass answered a different question first (owner: _"the lifted hero shows a tick icon for tasks, this
+reads as 'task complete' and is misleading"_). The section header and the host mark name a **noun** —
+"this section is tasks", "there are tasks here" — and a ✓ inside the box is part of the pictogram
+there. Beside a **single task's title** the same glyph is read as that task's **state**, and this
+block only ever shows an **open** task, so it was asserting the opposite of the one fact it exists to
+carry. `checkbox-empty` is `checkbox`'s own path minus its ✓ segment, so the two stay one family and
+cannot drift into being two different boxes; the other two surfaces keep the ticked form, because the
+argument above is still right where the glyph names a noun.
+
+**The risk above gets worse, not better, and is taken anyway.** An empty box reads _more_ pressable
+than a ticked one — an unticked checkbox is exactly what a person taps. It stays on the device pass
+with that written down: being wrong about whether the task is done is a worse failure than inviting a
+tap that does nothing, and the block still renders zero interactive descendants (pinned by a spec).
+If the device pass calls it, the bare `✓` fallback is gone as an option — it is the very mark that
+caused this — and the answer is a glyph that is neither, or the label carrying it alone.
+
+The mockup is **not** retrofitted (ADR-0097): [`a-task-in-the-hero-horizon-v1.html`](../../mockups/a-task-in-the-hero-horizon-v1.html) still draws the ticked box, which is what was decided then, and the catalog records the drift.
+
 ### U4. What the line says, and the one thing that is a defect rather than a choice
 
 - **`important`** — the star, in the board's ink. No colour, which is brief §7's rule (the palette
