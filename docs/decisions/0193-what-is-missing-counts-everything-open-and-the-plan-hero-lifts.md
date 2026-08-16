@@ -1,6 +1,6 @@
 # 0193 — "What is missing" counts everything open, and the plan hero lifts
 
-**Status:** Accepted — **design only, nothing built.** Every number below is measured off the mockup's rendered DOM; the pixel figures are webfont-dependent and re-measured in the running app before they are quoted anywhere else.
+**Status:** Accepted and **BUILT** (2026-08-16), with §5 corrected by the running app — read "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
 **Date:** 2026-08-16
 **Design reference:** [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html) — §1 the sentence that lies · §2 the hero's second number · §3 the inline list and its collapse · §4 what the lift opens onto · §5 the skin. **Promoted by this ADR.**
 
@@ -84,8 +84,12 @@ Owner's call in two steps, and the second is what shaped this section: _"Definit
 **There is no seam.** The first drawing resolved the darkening inside 44px at the top of the body, which put a visible edge exactly where the card has to read as one object — a band, not a gradient. So the ramp is not the body's, it is the **card's**: one `linear-gradient` over the whole lifted surface, head and body both transparent.
 
 ```
---plan-surface-2  0%   → --plan-surface  16%  → --plan-surface-3  100%
+--plan-surface-2  0   → --plan-surface  110px  → --plan-surface-3  330px
 ```
+
+**The stops are in PIXELS, and that is a correction the mockup could not have made** — it shipped `16%`/`100%` and the running app is what caught it. A percentage stretches the ramp with the card, so where any row sits on it depends on how much content there is, and so does its contrast. The mockup's six-row card measured the top band label at 4.8:1; the real 828px card with eleven rows measured the same label at **4.28:1** and the overdue deadline at **2.93:1**, both having moved up into brighter violet. A design whose legibility is a function of list length is not a design. In px the ground under a row is fixed, the darkening resolves above the first band in every case, and a longer list simply gets more of the deep end.
+
+Note which card is the worst case afterwards, because it inverts: with px stops the **shortest** card is the dangerous one, since its rows sit nearest the bright top.
 
 It opens on `.prep`'s own two stops in `.prep`'s own order, which is what keeps the top of the lifted card the violet the collapsed hero already was — the FLIP has nothing to cross-fade — and then falls away across the remaining ~84%.
 
@@ -97,13 +101,17 @@ What does survive is white-alpha, because it composites _toward_ the ground inst
 
 **The rungs' alphas are set from the measurement, not from taste.** The binding case is the **first** band label — highest in the ramp, therefore on the brightest ground any row sits on. Because the ground varies down the card, every rung has two numbers:
 
-| ink                             | top of the ramp (light) | bottom (light) | dark   |
-| ------------------------------- | ----------------------- | -------------- | ------ |
-| `--on-plan-faint` — band labels | **4.8:1**               | **8.54:1**     | 11.08+ |
-| `--on-plan-dim` — deadlines     | **6.45:1**              | —              | 11.44  |
-| `--on-plan` — task titles       | **6.25:1**              | —              | 13.57  |
+Measured **in the running app**, light mode, on a real 828px card (dark clears everything by roughly 2x):
 
-`--on-plan-faint` is `0.80`, not the `0.76` first drawn: at `0.76` the top label measured **exactly 4.5:1**, and a rung sitting on the floor is one that fails the first time anyone nudges a stop position.
+| ink                             | worst row  | best row |
+| ------------------------------- | ---------- | -------- |
+| `--on-plan-faint` — band labels | **5.65:1** | 9.36:1   |
+| `--on-plan` — task titles       | **7.85:1** | —        |
+| `--on-plan-dim` — deadlines     | **4.59:1** | 9.15:1   |
+
+`--on-plan-faint` is `0.80`, not the `0.76` first drawn: at `0.76` the top band label measured **exactly 4.5:1**, and a rung sitting on the floor is one that fails the first time anyone nudges a stop position.
+
+**The overdue deadline needed its own value too, and the board's does not travel.** `#f0a09b` is `.wp-settle.board`'s ink at 7.82:1 on `--board`; on this ramp's upper half it measures **3.75:1** at the shortest card the lift can draw. Lightened to `#ffc4be` — the same move `--on-plan-*` makes against `--on-dark-*`, for the same reason — and measured at **5.75:1** on that worst row.
 
 **The dark-mode trap, for the third time in this area.** The same two `--on-dark-*` rungs on the _undarkened_ `--plan-surface` measure **4.04** and **5.63** in dark mode — they pass. A dark screenshot of the naive violet card looks entirely healthy, and only the light one is broken (ADR-0160 §U's deadline inks, ADR-0158 §15). This is why the mockup computes ratios from resolved, composited colours rather than from screenshots.
 
@@ -119,9 +127,18 @@ What does survive is white-alpha, because it composites _toward_ the ground inst
 - `--plan-surface-3` and the four `--on-plan-*` rungs join `tokens.css` in `:root` **and** in the `[data-theme='dark']` block **after** it, never inside it (`frontend/CLAUDE.md`'s rule, which silently un-set the entire type scale once).
 - **`.prep`'s six white-alpha literals in `screens.css` should be converted to the `--on-plan-*` rungs in the same change.** Not a drive-by: the ramp is being introduced precisely because that surface's ink was never named, and leaving the literals beside the tokens is how a seventh gets written. The values are chosen to preserve what `.prep` renders today, so this is a no-op refactor — check it as one.
 - The prep hero becomes a `<button>` and therefore inherits ADR-0160 §4's constraint permanently: **no interactive descendant, ever**. It has none today; a build-time guard in the shape of §4's existing detached-tree test is owed, because no snapshot can see this failure.
-- `BEAT.REBUFF` on `.prep` (ADR-0160 §H) is **retired** — the press now opens something, so the rebuff has no condition left on that surface. Check `lib/one-shot.ts` for remaining claimants before deleting the beat itself.
+- `BEAT.REBUFF` on `.prep` (ADR-0160 §H) is **retired** — the press now opens something, so the rebuff has no condition left on that surface. **The beat itself stays**: counted at build time, the Trip board is still a claimant (`Home.tsx` passes it whenever `liftable` is false), which is the surface §9 wrote it for in the first place.
 - The lifted plan hero is a `Modal`, so back / Escape / backdrop / the Android gesture all reach one handler (ADR-0103, ADR-0090). Nothing here is exempt.
 - The mockup's contrast harness composites alpha and reads gradient stops. Both were added because the naive version was **wrong in this file three times** — reporting 1:1 for a tinted pill, 3.36:1 for a card measured against the page behind it, and 1.06:1 for ink on a gradient with no `background-color`. Any future file measuring a ratio should copy that function rather than the idea of it.
+
+## What the running app changed
+
+Four things, and two of them are corrections to this ADR rather than notes on it. All four were invisible to the unit suite (jsdom has no stylesheet and reports every rect as zero) and to the mockup (which chooses its own fixture).
+
+1. **§5's gradient stops were percentages, and that made legibility a function of list length.** A `%` stop stretches the ramp with the card, so a row's ground depends on how much content is above it. The mockup's six-row card put the top band label at 4.8:1; the real 828px card with eleven rows put the same label at **4.28:1** and the overdue deadline at **2.93:1**. Now in px — corrected in §5, with the worst case inverted: it is the **shortest** card, not the longest.
+2. **The overdue ink had to be lightened again.** `#f0a09b` is the board's, and this ramp is brighter than the board everywhere. `#ffc4be`, measured.
+3. **A readiness check rendered a CLOCK beside its meta line.** The first build mapped a check's `meta` onto `HeroLiftTask.due` because they occupy the same line — and `due` draws a clock, so every check read as though `חסרות טיסת הלוך וטיסת חזור` were a deadline. A check has no `dueAt` and never can, which is the very thing ADR-0190 §2 turns on, so the glyph asserted what the model forbids. `HeroLiftTask` gained a `meta` field; a spec now pins the absence of that icon.
+4. **The three things that held exactly as designed**, checked in the real DOM rather than assumed: `.prep` is a `<button>` with **0** interactive descendants (ADR-0160 §4), the collapse row measures **44px**, and the lifted card is **828px** capped by `--lift-max-h` with its body scrolling inside — content-sized within the cap, as ADR-0148 §1 requires.
 
 ## Alternatives considered
 

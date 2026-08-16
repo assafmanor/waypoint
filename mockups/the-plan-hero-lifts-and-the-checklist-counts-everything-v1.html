@@ -10161,6 +10161,23 @@ button.wp-av:focus-visible {
          ramp.
          ב׳ — violet all the way through, which needs the `.prep` white-alpha
          ramp to reach the horizon rows too. */
+      /* **THE CORNER SHEEN TRAVELS** — the lifted card carries `.prep` as well as
+         `.prep-lifted`, so `.prep::before`'s white top-right glow is the same glow one
+         elevation up. That is part of being the same object, and ADR-0160 §D learned it on
+         the trip hero from a device: dropping the board's variant class made the promoted
+         card glow amber over a board glowing teal, visible in the gap between the two boxes
+         mid-flight.
+
+         What has to be corrected is that it SCALES. The gradient is
+         `radial-gradient(90% 60% at 85% 0%, …)` over `inset: 0`, and percentages resolve
+         against the pseudo-element's own box — a top-corner sheen at 150px, a smear across
+         two bands at 540px. So the gradient is untouched and its BOX is pinned to the
+         collapsed hero's height. It therefore lands entirely inside the head and never
+         reaches a band label, which is also why the ratios below are unaffected by it. */
+      .prep.prep-lifted::before {
+        bottom: auto;
+        height: 190px;
+      }
       .prep-lifted {
         padding: 0;
         display: flex;
@@ -10276,12 +10293,26 @@ button.wp-av:focus-visible {
          contrast failure (every ink reported ~1.05:1, i.e. white on the white
          PAGE) rather than as a missing gradient, because the measurement is
          downstream of it. */
-      .prep-lifted[data-skin='b'] {
+      .prep.prep-lifted[data-skin='b'] {
+        /* **PIXELS, NOT PERCENTAGES — and this file shipped the percentages first,
+           so the correction is recorded rather than quietly applied.** With
+           `16%`/`100%` the ramp stretches with the card, so where any row sits on
+           it depends on how much content there is, and its contrast with it. This
+           file's own 6-row card measured the top band label at 4.8:1; the RUNNING
+           app, with eleven rows and an 828px card, measured the same label at
+           **4.28:1** and the overdue deadline at **2.93:1** — both had moved up
+           into brighter violet. A drawing cannot catch that, because the drawing
+           chooses its own fixture length.
+
+           In px the ground under a row is fixed: the darkening resolves by 330px,
+           above the first band in every case, and a longer list gets more of the
+           deep end rather than a brighter top. Re-measured live at 5.65:1 and
+           4.59:1 on the real card, in the real app. */
         background-image: linear-gradient(
           180deg,
-          var(--plan-surface-2) 0%,
-          var(--plan-surface) 16%,
-          var(--plan-surface-3) 100%
+          var(--plan-surface-2) 0,
+          var(--plan-surface) 110px,
+          var(--plan-surface-3) 330px
         );
       }
       [data-skin='b'] .prep-lift-head,
@@ -10300,6 +10331,15 @@ button.wp-av:focus-visible {
       [data-skin='b'] .prep-lift-body .hero-task-ic {
         color: var(--on-plan-faint);
       }
+      /* The BOARD's overdue ink (`#f0a09b`, 7.82:1 there) does not travel to this ramp
+         either: on the shortest card the lift can draw — one band, one overdue task, so its
+         rows sit nearest the bright top — it measures 3.75:1. Note which card is the worst
+         case now that the stops are in px: the SHORT one, not the long one, which is the
+         opposite of the intuition. Lightened for this surface exactly as `--on-plan-*` is
+         against `--on-dark-*`, and measured 5.75:1 at that worst row in the running app. */
+      [data-skin='b'] .prep-lift-body .hero-task-due.late {
+        color: #ffc4be;
+      }
 
       /* א׳ · REJECTED, kept drawn — the body on the board's own ground, token
          for token (`linear-gradient(180deg, var(--board-2), var(--board))`).
@@ -10308,7 +10348,7 @@ button.wp-av:focus-visible {
          stops being one object halfway down, and plan violet — the app's one
          always-violet surface (ADR-0028's mode identity) — becomes a hat on a
          trip-coloured card. */
-      .prep-lifted[data-skin='a'] .prep-lift-body {
+      .prep.prep-lifted[data-skin='a'] .prep-lift-body {
         /* The colour as well as the ramp, for the measurement reason above —
            without it this frame's ratios were read against the light PAGE and
            א׳ reported 3.36:1, which would have rejected the rejected option for
@@ -11201,7 +11241,7 @@ button.wp-av:focus-visible {
         const open = tasks().length;
         const late = tasks().filter((k) => k.inDays != null && k.inDays < 0).length;
         return `
-        <div class="prep-lifted" data-skin="${skin}">
+        <div class="prep prep-lifted" data-skin="${skin}">
           <div class="prep-lift-head">
             <div class="prep-lift-top">
               <div>

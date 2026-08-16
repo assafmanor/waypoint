@@ -1,6 +1,6 @@
 # 2026-08-16 — Plan Home stops saying "all done", and the prep hero lifts
 
-**Type:** product + design session. **Output:** [ADR-0193](../decisions/0193-what-is-missing-counts-everything-open-and-the-plan-hero-lifts.md), [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html), an in-place supersede banner on [ADR-0160](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) §H. **Nothing built.**
+**Type:** product + design session. **Output:** [ADR-0193](../decisions/0193-what-is-missing-counts-everything-open-and-the-plan-hero-lifts.md), [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html), an in-place supersede banner on [ADR-0160](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) §H. **Designed and then BUILT in the same session**, on the owner's "alright let's do it" — see "Built the same day" below for the four things the running app corrected.
 
 ## The report
 
@@ -51,10 +51,20 @@ So the ink question was decided by the _shape_ of the gradient, not by the colou
 - **The overdue pill could not be red ink.** On the head's bright violet a tinted chip with `#f0a09b` (7.82:1 on the board, borrowed) measures **1.94:1**. `tokens.css` already prescribes the way out — `--miss` is a **fill**, `--miss-deep` is the ink — so the pill inverts to solid `--miss` with white ink: **5.74 / 13.87**.
 - **Dark mode passes the probe.** `--on-dark-faint`/`-dim` on the _undarkened_ `--plan-surface` measure 4.04 / 5.63 in dark and 1.45 / 2.02 in light. A dark screenshot of the naive violet card is entirely healthy-looking. That is the **third** time this exact pattern has decided a question in this area (ADR-0160 §U's deadline inks, ADR-0158 §15).
 
+## Built the same day, and what the running app corrected
+
+The owner said "alright let's do it" and the build landed in the same PR. Four findings, all from driving the real app on the seeded Iceland trip (26 days out, six tasks spanning every band) — none was reachable from the drawing or from jsdom.
+
+1. **§5's gradient stops were percentages, which makes legibility a function of list length.** A `%` stop stretches the ramp with the card, so where a row sits on it — and its contrast — depends on how much is above it. The mockup's six-row card measured the top band label at 4.8:1; the real 828px card with eleven rows measured the same label at **4.28:1** and the overdue deadline at **2.93:1**. Now in px. **The worst case inverts with the fix**: with fixed stops the _shortest_ card is the dangerous one, since its rows sit nearest the bright top. This is the same class of error as the corner sheen below — a value that silently depends on content.
+2. **The corner sheen.** The first build deleted `.prep::before` on the lifted card, reasoning that a `90% 60%` radial over a 540px box is a smear rather than a highlight. True, and the wrong repair — the glow is part of being the same object, which ADR-0160 §D learned on the trip hero from a device (the promoted card glowed amber over a board glowing teal, visible in the gap mid-flight). Kept, with its painting box pinned to the collapsed hero's height so the gradient renders at the geometry it was tuned at. **Caught by the owner asking**, not by the build.
+3. **The overdue ink needed lightening a second time.** `#f0a09b` is the board's, and this ramp is brighter than the board everywhere → `#ffc4be`.
+4. **A readiness check rendered a CLOCK beside its meta line.** The build mapped a check's `meta` onto `HeroLiftTask.due` because the two share a line — and `due` draws a clock, so every check read as though `חסרות טיסת הלוך וטיסת חזור` were a deadline. A check has no `dueAt` and never can, which is precisely what ADR-0190 §2 turns on, so the glyph asserted what the model forbids. `HeroLiftTask` gained `meta`; a spec pins the icon's absence.
+
+Verified in the real DOM rather than assumed: `.prep` is a `<button>` with **0** interactive descendants (ADR-0160 §4's constraint, which this hero acquired permanently), the collapse row is **44px** (the floor `.tsk-more` never had), and the card is **828px** capped by `--lift-max-h` with its body scrolling inside.
+
 ## Deliberately not decided here
 
-- **Nothing is built.** This is design; the build is its own phase and gets its own PR.
+- **A real phone.** Everything above was measured in a 390×844 desktop viewport with the real webfonts. The numbers are honest and the device pass is still owed.
 - **The lift's motion character** is inherited wholesale from ADR-0160 (measured FLIP off the collapsed box, the swing, the landing beat). Nothing about it is re-opened, and the mockup draws every hero **at rest** for the same reason `hero-horizon-v1` did.
 - **`BEAT.REBUFF`'s fate.** §H put it back for `.prep` and this retires that consumer. Whether the beat itself leaves `lib/one-shot.ts` depends on remaining claimants and is a build-time check, recorded in ADR-0193's Consequences rather than guessed here.
-- **The `.tsk-more` repair** is named and drawn but belongs to the build; it is on the backlog beside the rest.
-- **Every pixel number is webfont-dependent and none has been seen on a device.** The one to re-check first is the lifted card at **543.8px** against a 640px screen.
+- **`BEAT.REBUFF`'s fate.** §H put it back for `.prep` and this retires that consumer. Whether the beat leaves `lib/one-shot.ts` depends on remaining claimants — the Trip board still holds one, so it stays.

@@ -139,6 +139,17 @@ export interface HeroLiftTask {
   important?: boolean;
   /** `עד היום 20:00` / `באיחור · אתמול 18:00`, already built with its numeric run isolated. */
   due?: { text: string; late: boolean };
+  /** A secondary line that is NOT a deadline — the readiness checks' own `meta`
+   *  (`חסרות טיסת הלוך וטיסת חזור`, `0 מתוך 11 לילות מכוסים`) in the lifted plan hero.
+   *
+   *  **Its own field rather than `due`, and the running app is why.** The first build mapped
+   *  a check's meta onto `due` because the two occupy the same line — and `due` renders a
+   *  CLOCK, so every check read as though it had a deadline of "חסרות טיסת הלוך". A check
+   *  has no `dueAt` and never can (ADR-0190 §2 turns on exactly that), so the glyph was
+   *  asserting the one thing the type forbids. Invisible in jsdom, obvious in a screenshot.
+   *
+   *  Mutually exclusive with `due` in practice: a task has a deadline, a check has a meta. */
+  meta?: string;
   /** The face at the end of the title line (ADR-0190 §6 as amended). `name` is rendered into a
    *  visually-hidden span, because `Avatar`'s non-interactive form is `aria-hidden` and the row
    *  would otherwise say nothing at all about who owes this. */
@@ -309,6 +320,23 @@ function Tasks({ point }: { point: HeroLiftPoint }) {
   return (
     <div className="hero-part">
       <span className="hero-lbl">{t.hero.task}</span>
+      <HeroTaskRows tasks={tasks} more={point.taskMore} />
+    </div>
+  );
+}
+
+/** **The task rows themselves, without the `משימה` label around them** — exported because
+ *  the lifted PLAN hero (ADR-0193 §4) renders the same rows under its own band labels
+ *  (`דחוף`, `לפני היציאה`, …) rather than under one.
+ *
+ *  Split out rather than copied, and the split is at the label for a reason: everything
+ *  below it is what a task LOOKS like on a lifted card, which is a settled question
+ *  (§U), while the label is what the surrounding surface is saying about the group, which
+ *  is the only thing the two heroes disagree on. A second copy would have been four rules
+ *  and a star and an avatar, drifting quietly. */
+export function HeroTaskRows({ tasks, more }: { tasks: HeroLiftTask[]; more?: number }) {
+  return (
+    <>
       {tasks.map((task, i) => (
         <div className="hero-task" key={i}>
           {/* **AN EMPTY BOX, NOT A TICKED ONE** (§U amended 2026-08-16, owner: _"the lifted
@@ -348,15 +376,15 @@ function Tasks({ point }: { point: HeroLiftPoint }) {
                 <Icon name="clock" /> {task.due.text}
               </span>
             )}
+            {/* Same line, same ink, NO clock — see `meta` on the type. */}
+            {task.meta && <span className="hero-task-due">{task.meta}</span>}
           </span>
         </div>
       ))}
       {/* Whatever the cap left behind — the block shows up to `HERO_TASK_CAP` and must not
           imply it is all, which is `Note`'s rule one block over and survives the amendment. */}
-      {!!point.taskMore && (
-        <span className="hero-task-more">{t.hero.moreTasks(point.taskMore)}</span>
-      )}
-    </div>
+      {!!more && <span className="hero-task-more">{t.hero.moreTasks(more)}</span>}
+    </>
   );
 }
 

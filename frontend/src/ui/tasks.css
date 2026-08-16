@@ -410,3 +410,49 @@
 .note-item.tsk-row.tsk-hostdone .tsk-star {
   color: var(--muted);
 }
+
+/* ── THE LAST ROW OF A LIST CARD (ADR-0193 §3) ────────────────────────────────
+   One more row in the same `.checklist`, not a second control beside it — which
+   is the rule `TripHomeTaskBand` stated for its own overflow row and then never
+   got, because **`.tsk-more` had no CSS rule in this repo at all**. Nothing here
+   defined it, `App.css` has no global `button` reset, and it rendered as a bare
+   19px UA button inside a paper card, under ADR-0017's 44px floor. Found while
+   looking for geometry to reuse; it points at this rule now.
+
+   Two hosts, two verbs, one shape: Plan Home's expands the far-and-undated group
+   in place (`aria-expanded`, so the caret turns), Trip Home's navigates to the
+   tasks screen and renders a `NavArrow` instead. A shared row with a per-host
+   trailing glyph, rather than two rows that drift. */
+.chk-more,
+.tsk-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-secondary);
+  font-weight: 700;
+  color: var(--cta);
+  text-align: start;
+  cursor: pointer;
+}
+/* Trip Home's row carries a `NavArrow` because its verb LEAVES (it deep-links to the
+   tasks screen); Plan Home's carries none, because `CollapseToggle` swaps the whole
+   label between `עוד N משימות רחוקות` and `כיווץ הרחוקות` and a glyph beside a sentence
+   that already says which way it goes is a second answer to one question. */
+.tsk-more .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+/* The revealed rows live INSIDE the card, so the collapsible must not draw a
+   second border where the card already owns one. */
+.checklist > .wp-collapsible {
+  border-top: 0;
+}
