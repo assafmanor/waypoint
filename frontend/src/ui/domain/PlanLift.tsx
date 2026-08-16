@@ -18,14 +18,13 @@
 //   · `useLiftFlight` off the MEASURED collapsed box — never a constant, which is the
 //     mistake this repo has made three times (ADR-0142's 118px, ADR-0143's 58px, the trip
 //     handoff's target).
-//   · `HeroTaskRows` — the same rows the trip hero draws, under this hero's own band
-//     labels. Zero new row CSS.
+//   · `HeroTaskRows` — the same rows the trip hero draws. Zero new row CSS.
 //
 // Presentational, like `HeroLift` beside it: every task arrives already formatted (through
 // `lib/hero-task.ts`, shared with Home for exactly this reason) and this file resolves no
 // zone, reads no state and formats no time.
 //
-// **A READ.** No tick, no menu, nothing pressable in the bands at all. That is what §U
+// **A READ.** No tick, no menu, nothing pressable in the list at all. That is what §U
 // settled for the trip hero — the owner was offered the tickable version and declined —
 // and it also pays ADR-0160 §4's constraint for free: the card is opened from a
 // `<button>`, and §4's finding is that Chrome tears a `<button>` apart at a nested one.
@@ -37,15 +36,6 @@ import { HeroTaskRows, type HeroLiftTask } from './HeroLift';
 import { t } from '../../i18n/he';
 import './plan-lift.css';
 
-/** One band of the run-up. `label` rather than a key union, because the checks' band
- *  reuses `t.planHome.checklist.title` — the section behind the lift already owns that
- *  word, and inventing a second one here is how one thing gets two names. */
-export interface PlanLiftBand {
-  key: string;
-  label: string;
-  tasks: HeroLiftTask[];
-}
-
 export interface PlanLiftProps {
   /** The countdown, pre-split exactly as the collapsed hero renders it, so the head of the
    *  lifted card and the card it flew out of print the same words. */
@@ -56,7 +46,19 @@ export interface PlanLiftProps {
   readinessPct: number;
   openTasks: number;
   overdue: number;
-  bands: PlanLiftBand[];
+  /** The run-up, in ONE list and in the tasks screen's own order (owner, 2026-08-16).
+   *
+   *  **This replaces five date-keyed bands, and the deletion is the decision.** The first
+   *  build split the remainder into `לפני היציאה` / `בזמן הטיול` / `ללא תאריך` on the
+   *  argument that cutting against the departure is the one thing this hero can say that no
+   *  other surface can. The owner's call is that it is not worth a heading apiece: a task
+   *  without a date is not a different KIND of thing from one with a date, and the screen
+   *  behind the lift already answers "what first" with `orderTaskRows`. Two surfaces, one
+   *  order — which is the rule ADR-0190 §2 set and the bands were quietly bending. */
+  tasks: HeroLiftTask[];
+  /** Whatever `PLAN_LIFT_TASK_CAP` left behind. The card shows a bounded list and must not
+   *  imply it is all — `HeroTaskRows`' own rule, and `פתק`'s before it. */
+  more?: number;
   /** The collapsed hero this was lifted out of — the box the flight starts from and
    *  descends back to (ADR-0160 §5). Absent → no flight, and the card is simply there,
    *  which is the correct static state under reduced motion anyway. */
@@ -65,7 +67,7 @@ export interface PlanLiftProps {
 }
 
 export function PlanLift(props: PlanLiftProps) {
-  const { countdown, underway, dates, readinessPct, openTasks, overdue, bands } = props;
+  const { countdown, underway, dates, readinessPct, openTasks, overdue, tasks, more } = props;
 
   return (
     <Modal variant="lift" ariaLabel={t.planHome.lift.title} onClose={props.onClose}>
@@ -134,12 +136,9 @@ export function PlanLift(props: PlanLiftProps) {
               third consumer, reached for the same reason it was there: a card that is as
               tall as its content still has to stop at the screen. */}
           <div className="prep-lift-body">
-            {bands.map((band) => (
-              <div className="hero-part prep-band" key={band.key}>
-                <span className="hero-lbl">{band.label}</span>
-                <HeroTaskRows tasks={band.tasks} />
-              </div>
-            ))}
+            <div className="hero-part">
+              <HeroTaskRows tasks={tasks} more={more} />
+            </div>
           </div>
         </Lifted>
       )}

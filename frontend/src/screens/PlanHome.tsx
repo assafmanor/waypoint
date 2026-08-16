@@ -17,7 +17,7 @@ import { useClock } from '../lib/useClock';
 import { useCountUp } from '../lib/useCountUp';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
-import { countdownParts, formatTripDates, zonedIso } from '../lib/time';
+import { countdownParts, formatTripDates } from '../lib/time';
 import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import {
   AUTOMATIC_TASK_ACTION,
@@ -35,7 +35,6 @@ import {
   isSettled,
   openManualTasks,
   orderTaskRows,
-  planRunUp,
   sortTasks,
   taskBand,
   taskRowKey,
@@ -45,7 +44,7 @@ import {
   type TaskClock,
 } from '../lib/tasks';
 import { toHeroTask } from '../lib/hero-task';
-import { PlanLift, type PlanLiftBand } from '../ui/domain/PlanLift';
+import { PlanLift } from '../ui/domain/PlanLift';
 import { TaskManageSheet } from '../ui/TaskManageSheet';
 import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
 import { usePlaceErrandReturn } from '../state/map-scope-state';
@@ -62,7 +61,7 @@ import type { Task } from '@waypoint/shared';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
-import { DAY_DEADLINE_HHMM, DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
+import { DOT_SEPARATOR, MS_PER_DAY, PLAN_LIFT_TASK_CAP, type TabId } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from '../ui/Icon';
 import { useSettledHosts } from '../ui/HostTasks';
@@ -243,43 +242,32 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   );
   const completedCount = completedAutomatic.length + completedManual.length;
 
-  /** **The run-up the lift opens onto** (ADR-0193 §4), banded against the departure.
+  /** **The run-up the lift opens onto** (ADR-0193 §4, amended 2026-08-16 on the owner's call).
    *
-   *  The departure is the END of the departure day (`DAY_DEADLINE_HHMM`, the same instant a
-   *  date-only deadline resolves to), in the trip's own zone — so a task due ON the day you
-   *  fly reads as `לפני היציאה` rather than falling into `בזמן הטיול` by a few hours.
+   *  **ONE list, in the tasks screen's own order** — `orderTaskRows`, which already
+   *  interleaves urgent → the live checks → the rest (ADR-0190 §2). The first build split the
+   *  remainder into `לפני היציאה` / `בזמן הטיול` / `ללא תאריך` and derived it with a
+   *  `planRunUp` of its own; that derivation is DELETED rather than left unused. A task with
+   *  no date is not a different KIND of thing from one with a date, and two surfaces
+   *  disagreeing about what leads is the thing §2 of that ADR exists to prevent.
    *
-   *  The checks keep their ladder position between `דחוף` and the rest, which is
-   *  `orderTaskRows`' order (ADR-0190 §2) expressed as bands; the label is the section's own
-   *  `checklist.title` rather than a second word for one thing. */
-  const departureMs = Date.parse(zonedIso(trip.startDate, DAY_DEADLINE_HHMM, trip.timezone));
-  const runUp = planRunUp(openTasks, taskClock, departureMs);
-  const heroTasks = (list: Task[]) => list.map((task) => toHeroTask(task, taskClock, users));
-  const liftBands: PlanLiftBand[] = [
-    { key: 'urgent', label: t.planHome.lift.urgent, tasks: heroTasks(runUp.urgent) },
-    {
-      key: 'checks',
-      label: t.planHome.checklist.title,
-      // A check is a task all the way through (ADR-0190 §1 as amended), so it renders as one
-      // here too. Its second line goes in `meta`, NOT in `due`: a check has no `dueAt` and
-      // never can, and `due` draws a clock — which made every check read as though
-      // `חסרות טיסת הלוך` were a deadline. Caught in the running app, not by a spec.
-      tasks: liveChecks.map((auto) => ({ title: auto.title, meta: auto.meta })),
-    },
-    {
-      key: 'before',
-      label: t.planHome.lift.beforeDeparture,
-      tasks: heroTasks(runUp.beforeDeparture),
-    },
-    { key: 'during', label: t.planHome.lift.duringTrip, tasks: heroTasks(runUp.duringTrip) },
-    { key: 'undated', label: t.planHome.lift.undated, tasks: heroTasks(runUp.undated) },
-  ].filter((band) => band.tasks.length > 0);
+   *  Capped at `PLAN_LIFT_TASK_CAP` with the remainder stated, never dropped silently. */
+  const liftRows = orderTaskRows(openTasks, liveChecks, taskClock);
+  const liftTasks = liftRows.slice(0, PLAN_LIFT_TASK_CAP).map((row) =>
+    row.kind === 'task'
+      ? toHeroTask(row.task, taskClock, users)
+      : // A check is a task all the way through (ADR-0190 §1 as amended), so it renders as
+        // one here too. Its second line goes in `meta`, NOT in `due`: a check has no `dueAt`
+        // and never can, and `due` draws a clock — which made every check read as though
+        // `חסרות טיסת הלוך` were a deadline. Caught in the running app, not by a spec.
+        { title: row.auto.title, meta: row.auto.meta },
+  );
 
   /** **A press that produces nothing reads as a dead surface** (ADR-0160 §9's own rule, and
    *  the reason §H put a rebuff here). So the hero is a control only while it has something
-   *  to open — which on this screen is "is there any run-up at all". The rebuff is gone with
-   *  the condition it answered: there is no state now where the card is pressable and empty. */
-  const liftable = liftBands.length > 0;
+   *  to open. The rebuff is gone with the condition it answered: there is no state now where
+   *  the card is pressable and empty. */
+  const liftable = liftRows.length > 0;
 
   /** The one verb per check (ADR-0061 §1: the CTA does the thing). The COPY moved to
    *  `lib/automatic-tasks.ts` when the tasks screen became a second reader of it; what stays
@@ -421,6 +409,29 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           {converged.length === 0 && farTasks.length === 0 && (
             <span className="hint">{t.planHome.checklist.allDone}</span>
           )}
+          {/* **The far group's toggle lives HERE, in `allDone`'s own slot** (owner,
+              2026-08-16: _"this should replace the 'you're ready 🎉' in placing and look like
+              the הצג/כווץ שהושלמו"_). The two can never collide — far tasks existing is
+              exactly what makes `allDone` false — so one slot holds whichever is true.
+
+              `.chk-toggle`, the class the completed toggle already wears, and NOT the
+              `.chk-more` row this shipped as. That row was reported as _"really ugly (what's
+              this font? Sizing?)"_ and the cause is worth knowing: `.wp-collapse-toggle` sets
+              the `font` SHORTHAND to `inherit`, which resets `font-size` and `font-weight` at
+              the same specificity — and `tasks.css` loads BEFORE `collapsible.css`, so the
+              primitive won and the row rendered at the inherited 16px/400 instead of
+              13px/700. `.chk-toggle` escapes it by re-declaring `font: inherit` inside its
+              own rule before setting its size, which is the convention every caller of this
+              primitive has to follow. */}
+          {farTasks.length > 0 && (
+            <CollapseToggle
+              expanded={showFar}
+              onToggle={() => setShowFar((v) => !v)}
+              expandLabel={t.planHome.checklist.showFar(farTasks.length)}
+              collapseLabel={t.planHome.checklist.hideFar}
+              className="chk-toggle"
+            />
+          )}
           {completedCount > 0 && (
             <CollapseToggle
               expanded={showCompleted}
@@ -466,37 +477,21 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               />
             ),
           )}
-          {/* **The far and undated group** (ADR-0193 §3) — one more row at the foot of the
-              SAME card, not a second control beside it, which is the rule `TripHomeTaskBand`
-              stated for its own overflow row and never got (`.tsk-more` had no CSS rule at
-              all until this change). `CollapseToggle` at a second density, over the same
-              `Collapsible` the completed half already animates through: two collapses on one
-              screen is one mechanism used twice, not two mechanisms. */}
-          {farTasks.length > 0 && (
-            <>
-              <CollapseToggle
-                expanded={showFar}
-                onToggle={() => setShowFar((v) => !v)}
-                expandLabel={t.planHome.checklist.showFar(farTasks.length)}
-                collapseLabel={t.planHome.checklist.hideFar}
-                className="chk-more"
+          {/* The far group's rows. The TOGGLE is in the section head (see above) — this is
+              only the drawer it opens, and it stays inside the same card so the list reads as
+              one list that happens to be partly folded. */}
+          <Collapsible expanded={showFar}>
+            {farTasks.map((task) => (
+              <TaskBandRow
+                key={task.id}
+                task={task}
+                users={users}
+                clock={taskClock}
+                onTick={() => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
+                onOpen={openTasksScreen}
               />
-              <Collapsible expanded={showFar}>
-                {farTasks.map((task) => (
-                  <TaskBandRow
-                    key={task.id}
-                    task={task}
-                    users={users}
-                    clock={taskClock}
-                    onTick={() =>
-                      void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })
-                    }
-                    onOpen={openTasksScreen}
-                  />
-                ))}
-              </Collapsible>
-            </>
-          )}
+            ))}
+          </Collapsible>
         </div>
       )}
 
@@ -580,7 +575,8 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           readinessPct={readinessPct}
           openTasks={openTasks.length}
           overdue={overdueCount}
-          bands={liftBands}
+          tasks={liftTasks}
+          more={liftRows.length - liftTasks.length || undefined}
           onClose={() => setLifted(false)}
         />
       )}

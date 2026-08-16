@@ -268,41 +268,6 @@ export function openManualTasks(
   );
 }
 
-/** **The run-up, banded against the DEPARTURE** (ADR-0193 §4) — what the lifted plan hero
- *  opens onto.
- *
- *  The first two groups are `orderTaskRows`' own first two, so the lift and the screen
- *  underneath it cannot teach a different order. What is new is only the split of the
- *  REMAINDER, and it is deliberately not by a week: the countdown pinned directly above
- *  these bands is the line they are cut on, which is the one statement this hero can make
- *  that no other surface can. A week-shaped window here would be `tasksDueSoon`'s rule
- *  arriving on the screen it was just removed from.
- *
- *  Takes the departure as an INSTANT rather than reading `trip.startDate`, for this file's
- *  standing reason: everything here is clock-injected, so a fixture-driven test means the
- *  same thing every day it runs. */
-export interface PlanRunUp {
-  /** `important` or overdue — `outranksChecks`, unchanged. */
-  urgent: Task[];
-  /** Dated, and due on or before the departure. */
-  beforeDeparture: Task[];
-  /** Dated, and due after it — a task about something mid-trip. */
-  duringTrip: Task[];
-  undated: Task[];
-}
-
-export function planRunUp(open: Task[], clock: TaskClock, departureMs: number): PlanRunUp {
-  const rest = open.filter((task) => !outranksChecks(task, clock));
-  return {
-    urgent: open.filter((task) => outranksChecks(task, clock)),
-    beforeDeparture: rest.filter(
-      (task) => task.dueAt != null && Date.parse(task.dueAt) <= departureMs,
-    ),
-    duringTrip: rest.filter((task) => task.dueAt != null && Date.parse(task.dueAt) > departureMs),
-    undated: rest.filter((task) => task.dueAt == null),
-  };
-}
-
 /** The Index tile's preview line (brief §13): **the next thing due**, with an overdue count
  *  when there is one. A raw open-count barely moves and answers nothing. */
 export interface TaskPreview {

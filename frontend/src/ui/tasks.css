@@ -411,19 +411,21 @@
   color: var(--muted);
 }
 
-/* ── THE LAST ROW OF A LIST CARD (ADR-0193 §3) ────────────────────────────────
-   One more row in the same `.checklist`, not a second control beside it — which
-   is the rule `TripHomeTaskBand` stated for its own overflow row and then never
-   got, because **`.tsk-more` had no CSS rule in this repo at all**. Nothing here
-   defined it, `App.css` has no global `button` reset, and it rendered as a bare
-   19px UA button inside a paper card, under ADR-0017's 44px floor. Found while
-   looking for geometry to reuse; it points at this rule now.
+/* ── TRIP HOME's OVERFLOW ROW (ADR-0193 §3) ───────────────────────────────────
+   One more row in the same `.checklist`, not a second control beside it — which is
+   the rule `TripHomeTaskBand` stated for its own overflow row and then never got,
+   because **`.tsk-more` had no CSS rule in this repo at all**. Nothing defined it,
+   `App.css` has no global `button` reset, and it rendered as a bare 19px UA button
+   inside a paper card, under ADR-0017's 44px floor.
 
-   Two hosts, two verbs, one shape: Plan Home's expands the far-and-undated group
-   in place (`aria-expanded`, so the caret turns), Trip Home's navigates to the
-   tasks screen and renders a `NavArrow` instead. A shared row with a per-host
-   trailing glyph, rather than two rows that drift. */
-.chk-more,
+   Plan Home briefly shared this rule as `.chk-more` and no longer does: its toggle
+   moved into the section head as a `.chk-toggle` (owner, 2026-08-16). Worth knowing
+   why that row looked wrong there and not here — `.wp-collapse-toggle` sets the
+   `font` SHORTHAND to `inherit`, which resets `font-size`/`font-weight` at equal
+   specificity, and `tasks.css` loads BEFORE `collapsible.css`, so the primitive won.
+   This rule is safe because `.tsk-more` is a plain `<button>`, not a
+   `CollapseToggle`. A caller of that primitive must re-declare `font: inherit`
+   inside its own rule first, the way `.chk-toggle` does. */
 .tsk-more {
   display: flex;
   align-items: center;
@@ -442,17 +444,15 @@
   text-align: start;
   cursor: pointer;
 }
-/* Trip Home's row carries a `NavArrow` because its verb LEAVES (it deep-links to the
-   tasks screen); Plan Home's carries none, because `CollapseToggle` swaps the whole
-   label between `עוד N משימות רחוקות` and `כיווץ הרחוקות` and a glyph beside a sentence
-   that already says which way it goes is a second answer to one question. */
+/* Trip Home's row carries a `NavArrow` because its verb LEAVES — it deep-links to the
+   tasks screen. */
 .tsk-more .icon {
   width: 15px;
   height: 15px;
   flex: none;
 }
-/* The revealed rows live INSIDE the card, so the collapsible must not draw a
-   second border where the card already owns one. */
+/* The far group's rows are revealed INSIDE the card, so the collapsible must not draw
+   a second border where the card already owns one. */
 .checklist > .wp-collapsible {
   border-top: 0;
 }

@@ -1868,14 +1868,28 @@ export const t = {
       done: 'הושלם',
       // Completed checks collapse into a one-line summary with a show/hide toggle
       // (ADR-0061), so the list stays about what's still missing.
-      showCompleted: (n: number) => `הצג שהושלמו (${n})`,
-      hideCompleted: 'כווץ שהושלמו',
-      /** **The far-and-undated group** (ADR-0193 §3) — everything open that is not urgent,
-       *  not a live check and not due this week, behind one row at the foot of the same
-       *  card. `רחוקות` and not `אחרות`: the group is defined by its distance from now,
-       *  and an undated task is the furthest thing there is. */
-      showFar: (n: number) => (n === 1 ? 'עוד משימה אחת רחוקה' : `עוד ${n} משימות רחוקות`),
-      hideFar: 'כיווץ הרחוקות',
+      /** **Both toggles read as one pair** (owner, 2026-08-16: the Hebrew _"is bad"_ and
+       *  wants improving on both). Three things were wrong and they were shared:
+       *
+       *  `הצג` ⇄ `כווץ` is not a pair — one is "show", the other "collapse", so the control
+       *  described its own mechanism on the way back and its content on the way out. Both
+       *  directions are `הצג`/`הסתר` now, which is the pair `Collapsible`'s own docstring
+       *  already uses for the Index's past bookings.
+       *
+       *  `(3)` in brackets is a UI convention, not Hebrew. The count reads inline, before
+       *  the noun, which is where Hebrew puts it when speaking.
+       *
+       *  And `שהושלמו` cannot carry a bracketed number as a bare noun — `הצג שהושלמו (3)`
+       *  is "show that-were-completed (3)". With the count inline it becomes a real phrase:
+       *  `הצג 3 שהושלמו`. */
+      showCompleted: (n: number) => (n === 1 ? 'הצג אחת שהושלמה' : `הצג ${n} שהושלמו`),
+      hideCompleted: 'הסתר שהושלמו',
+      /** **The rest of what is open** (ADR-0193 §3, re-placed 2026-08-16). Not `רחוקות`:
+       *  the group stopped being about distance the moment the lift dropped its date bands,
+       *  and an undated task was never "far" in the first place — it is simply not urgent.
+       *  `עוד` says the only true thing about it, which is that there is more. */
+      showFar: (n: number) => (n === 1 ? 'הצג עוד אחת' : `הצג עוד ${n}`),
+      hideFar: 'הסתר',
       completedSummary: 'הושלמו',
       // Short labels for the collapsed-summary pills (one per completed check).
       summaryLabels: {
@@ -1914,20 +1928,14 @@ export const t = {
       groupMissingMeta: 'הזמינו את החבורה עם לינק',
       invite: 'הזמינו',
     },
-    /** **The lifted prep hero** (ADR-0193 §4). Five bands, and the middle three are cut
-     *  against the DEPARTURE rather than against a week — which is the one thing this
-     *  hero can say that no other surface can, since the countdown pinned directly above
-     *  them is the line they are cut on. A week-shaped window here would be Trip Home's
-     *  rule arriving on the screen ADR-0193 §1 has just established it is wrong for.
-     *
-     *  `מה חסר להשלמה` is not restated: the checks' band reuses `checklist.title`, so the
-     *  lift and the section behind it cannot end up calling one thing two names. */
+    /** **The lifted prep hero** (ADR-0193 §4). One word, because after the owner's
+     *  2026-08-16 call the card carries no headings at all: it is one list in the tasks
+     *  screen's own order (`orderTaskRows`), so the five band labels that used to live
+     *  here — `דחוף`, `לפני היציאה`, `בזמן הטיול`, `ללא תאריך` and a reuse of
+     *  `checklist.title` — are deleted rather than left unused. `title` survives as the
+     *  card's accessible name, which a `Modal` requires. */
     lift: {
       title: 'ההכנות לטיול',
-      urgent: 'דחוף',
-      beforeDeparture: 'לפני היציאה',
-      duringTrip: 'בזמן הטיול',
-      undated: 'ללא תאריך',
     },
     stats: {
       title: 'מבט על',

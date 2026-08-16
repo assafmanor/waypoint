@@ -119,19 +119,10 @@
   overscroll-behavior: contain;
   padding: 0 18px 16px;
 }
-/* A hairline between bands, so five labels read as five groups rather than as one list
-   with headings sprinkled through it. `.wp-board-divider`'s own weight, on this ground. */
-.prep-band + .prep-band {
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
-  margin-top: 13px;
-}
-/* The band label and the rows under it are `hero-lift.css`'s, which inks them from
+/* The rows are `hero-lift.css`'s, which inks them from
    `--on-dark-*` for the board. On violet that ramp does not survive (see the note on the
    card above), so the three rungs are re-pointed at this surface's own ink — the same four
    names, one prefix apart, which is why `--on-plan-*` was given the shape it has. */
-.prep-lift-body .hero-lbl {
-  color: var(--on-plan-faint);
-}
 .prep-lift-body .hero-task-hd {
   color: var(--on-plan);
 }
@@ -141,6 +132,14 @@
 }
 .prep-lift-body .hero-task-due {
   color: var(--on-plan-dim);
+}
+/* The `ועוד N` line, which is `--on-dark-faint` by default and measured **3.89:1** on this
+   ramp — found by sweeping every ink in the card rather than by reading, after the band
+   labels (the other `--on-dark-faint` consumer) were deleted and took the override with
+   them. `hero-lift.spec.ts` now sweeps the whole body for AA, so the next rung that leaks in
+   fails a test instead of shipping. */
+.prep-lift-body .hero-task-more {
+  color: var(--on-plan-faint);
 }
 /* Overdue keeps its own hue rather than the ramp, because it is a STATUS (rule 4). The paper
    ink (`--miss-deep`) measures ~2.4:1 on any of these grounds, so it is out — and so is the

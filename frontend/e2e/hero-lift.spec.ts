@@ -409,6 +409,76 @@ test.describe('the lifted hero (ADR-0160)', () => {
     }));
     expect(bounded.cardH).toBeLessThanOrEqual(bounded.viewportH);
 
+    // **EVERY INK IN THE CARD CLEARS AA, swept rather than listed** (ADR-0193 §5). The lifted
+    // plan hero is a violet RAMP, so a rung tuned for the board does not survive it — and the
+    // rungs are easy to leak in by omission rather than by choice: `.hero-task-more` shipped
+    // at `--on-dark-faint` and measured 3.89:1, because the band labels that had carried the
+    // override were deleted and took it with them. Listing rungs is how the next one is
+    // missed, so this walks every text-bearing node, composites the ink over the gradient AT
+    // THAT NODE'S OWN HEIGHT (the ground is position-dependent by design) and asserts the
+    // floor. jsdom can compute none of this.
+    const contrast = await lifted.evaluate((card) => {
+      const rgb = (s: string) => (s.match(/[\d.]+/g) ?? ['0', '0', '0']).slice(0, 3).map(Number);
+      const lum = (c: number[]) =>
+        c
+          .map((v) => v / 255)
+          .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+          .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const over = (f: number[], b: number[], a: number) => f.map((v, i) => v * a + b[i] * (1 - a));
+      const box = card.getBoundingClientRect();
+      const stops = [
+        ...getComputedStyle(card).backgroundImage.matchAll(
+          /(rgba?\([^)]+\))(?:\s+([\d.]+)(px|%))?/g,
+        ),
+      ].map((m) => ({ c: rgb(m[1]), v: m[2] == null ? null : Number(m[2]), unit: m[3] }));
+      if (stops[0].v == null) {
+        stops[0].v = 0;
+        stops[0].unit = 'px';
+      }
+      const last = stops[stops.length - 1];
+      if (last.v == null) {
+        last.v = 100;
+        last.unit = '%';
+      }
+      const P = stops.map((s) => (s.unit === '%' ? (s.v! / 100) * box.height : s.v!));
+      const groundAt = (y: number) => {
+        for (let i = 1; i < stops.length; i++) {
+          if (y > P[i]) continue;
+          const t = P[i] === P[i - 1] ? 0 : (y - P[i - 1]) / (P[i] - P[i - 1]);
+          return stops[i - 1].c.map((v, k) => v + (stops[i].c[k] - v) * t);
+        }
+        return stops[stops.length - 1].c;
+      };
+      const worst: { text: string; ratio: number }[] = [];
+      card.querySelectorAll('*').forEach((el) => {
+        // Only nodes that render text OF THEIR OWN — a wrapper inherits its children's ink
+        // and would be measured at whatever box it happens to span.
+        const own = [...el.childNodes].some(
+          (n) => n.nodeType === 3 && (n.textContent ?? '').trim().length > 0,
+        );
+        if (!own) return;
+        const r = el.getBoundingClientRect();
+        if (r.height === 0) return;
+        const g = groundAt(r.top + r.height / 2 - box.top);
+        const m = getComputedStyle(el).color.match(/[\d.]+/g) ?? ['0', '0', '0'];
+        const a = m.length > 3 ? Number(m[3]) : 1;
+        const fg =
+          a === 1 ? rgb(getComputedStyle(el).color) : over(rgb(getComputedStyle(el).color), g, a);
+        const L1 = lum(fg);
+        const L2 = lum(g);
+        const ratio =
+          Math.round(((Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)) * 100) / 100;
+        worst.push({ text: (el.textContent ?? '').trim().slice(0, 30), ratio });
+      });
+      return worst.sort((a, b) => a.ratio - b.ratio);
+    });
+    expect(contrast.length).toBeGreaterThan(3);
+    expect(
+      contrast[0],
+      `worst ink in the lifted plan hero: ${JSON.stringify(contrast[0])}`,
+    ).toHaveProperty('ratio');
+    expect(contrast[0].ratio).toBeGreaterThanOrEqual(4.5);
+
     // It is a `Modal`, so back peels it — the contract ADR-0103/0090 give it no exemption from.
     await page.goBack();
     await expect(page.locator('.prep-lifted')).toHaveCount(0);
