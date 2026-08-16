@@ -28,6 +28,15 @@ const createNote = vi.fn(() => Promise.resolve(undefined));
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     notes: tripNotes,
     noteHosts: new Map(),
     users: [

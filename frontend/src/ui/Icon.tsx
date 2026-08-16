@@ -26,6 +26,11 @@ export type IconName =
   | 'cloud-check'
   | 'cloud-up'
   | 'cloud-bang'
+  // A task's MARK on a host row (ADR-0191 §1) — a checkbox rather than the bare `check`
+  // the tick uses, because since the automatic row lost its badge a `check` on a task row
+  // means the completion control and nothing else, so a bare ✓ on a booking row would read
+  // "this is done" rather than "there is a task here".
+  | 'checkbox'
   // ── The emoji sweep (ADR-0138). Every shape below replaces an emoji that was
   // drawing a CONTROL. Grouped by what they replace, not alphabetically, so the
   // sweep's boundary stays legible from the type alone.
@@ -194,6 +199,8 @@ const PATHS: Record<IconName, string> = {
   // The kebab itself. Three dots, drawn as zero-length capped segments so the
   // round linecap IS the dot. Replaces ⋯.
   more: 'M6 12h.02 M12 12h.02 M18 12h.02',
+  checkbox:
+    'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z M8.5 12l2.5 2.5 4.5-5',
   // ── The three section markers the first sweep left behind, because `GLYPH` had
   // them filed as content. They are not: each sits on a TILE you tap, and the
   // Home quick-action row proved it by ending up with three emoji beside one SVG

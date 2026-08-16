@@ -91,6 +91,7 @@ import {
 } from '../lib/cache';
 import { generateId } from '../lib/id';
 import { buildNoteHosts, dropNotesForHostChange, type NoteHostRef } from '../lib/notes';
+import { dropTasksForHostChange } from '../lib/tasks';
 import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
 import { PlaceLabelsProvider } from './place-labels';
@@ -1034,6 +1035,7 @@ function TripReady({
       // list — belongs to no single host's channel and would otherwise be five branches.
       // A no-op unless this is a host delete that actually hosted something.
       setNotes((prev) => dropNotesForHostChange(prev, change));
+      setTasks((prev) => dropTasksForHostChange(prev, change));
       // The third member of that family (ADR-0173 §7), here for the same reason and in the
       // same position: a deleted booking, event or DOCUMENT takes its links, and Postgres
       // says nothing about it.

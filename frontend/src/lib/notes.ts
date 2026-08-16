@@ -26,12 +26,36 @@ const EVENT_CATEGORIES = eventCategorySchema.options;
 
 /** The `Change` fields these derivations read — the same subset `EntityChange` names in
  *  `lib/cache.ts`, so a live WS echo and an offline optimistic write both fit. */
-type HostChange = { entityType: EntityType; entityId: string; action: string };
+export type HostChange = { entityType: EntityType; entityId: string; action: string };
 
-/** Is this note hosted by that entity? */
-export function isHostedBy(note: Note, entityType: EntityType, entityId: string): boolean {
+/** **A row carrying the five host FKs** — a `Note` or a `Task`, which hold the same five
+ *  under the same "at most one" rule (`TASK_HOST_KEYS` is an ALIAS of `NOTE_HOST_KEYS`, not
+ *  a copy). Typed structurally so the two helpers below serve both, which is what stopped
+ *  phase 4 adding a second copy of each beside them. */
+export type HostedRow = Partial<Record<NoteHostKey, string | undefined>>;
+
+/** Is this row hosted by that entity? */
+export function isHostedBy(row: HostedRow, entityType: EntityType, entityId: string): boolean {
   const field = NOTE_HOST_FIELD[entityType as keyof typeof NOTE_HOST_FIELD];
-  return field ? note[field] === entityId : false;
+  return field ? row[field] === entityId : false;
+}
+
+/** **The host cascade, for any row that carries the five FKs** (ADR-0152 §2, generalised in
+ *  phase 4). See `dropNotesForHostChange` below for why this exists at all.
+ *
+ *  **Where the generalisation stops, and why** (root rule 8's "ask before the bigger
+ *  refactor"): this covers `dropNotesForHostChange` and `dropTasksForHostChange`, which are
+ *  the same table and the same operation. It deliberately does NOT absorb
+ *  `dropAttachmentsForHostChange` — that reads a different, two-member table AND carries an
+ *  extra case (a deleted DOCUMENT drops its own links, not just links pointing at it) — nor
+ *  `clearPlaceRefsForChange`, which CLEARS a field rather than dropping a row and is already
+ *  generic over its own shape. Folding either in would mean a flag argument that exists to
+ *  say "behave differently", which is the copy in a different costume. */
+export function dropHostedForHostChange<T extends HostedRow>(rows: T[], change: HostChange): T[] {
+  if (change.action !== CHANGE_ACTION.DELETE) return rows;
+  if (!(change.entityType in NOTE_HOST_FIELD)) return rows;
+  const kept = rows.filter((row) => !isHostedBy(row, change.entityType, change.entityId));
+  return kept.length === rows.length ? rows : kept;
 }
 
 /**
@@ -50,10 +74,7 @@ export function isHostedBy(note: Note, entityType: EntityType, entityId: string)
  * change that is not a host delete) cannot cause a re-render.
  */
 export function dropNotesForHostChange(notes: Note[], change: HostChange): Note[] {
-  if (change.action !== CHANGE_ACTION.DELETE) return notes;
-  if (!(change.entityType in NOTE_HOST_FIELD)) return notes;
-  const kept = notes.filter((note) => !isHostedBy(note, change.entityType, change.entityId));
-  return kept.length === notes.length ? notes : kept;
+  return dropHostedForHostChange(notes, change);
 }
 
 // --- Reading a note: its host, its category, its glyph, its order -------------------------
@@ -286,9 +307,13 @@ export function notesForContext(notes: Note[], context: HostContext): Note[] {
 
 /** The context's count, from the per-host tally a list screen already keeps. Summed rather
  *  than re-filtered because the caller asks per row. */
-export function noteCountForContext(counts: Map<string, number>, context: HostContext): number {
+export function hostCountForContext(counts: Map<string, number>, context: HostContext): number {
   return context.members.reduce((total, m) => total + noteCountFor(counts, m.kind, m.id), 0);
 }
+
+/** The same sum, under its original name. It is generic over the TALLY — tasks pass their own
+ *  map through it — so the neutral name above is the one new callers should use. */
+export const noteCountForContext = hostCountForContext;
 
 /** The host half of a `createNote` input — `{ bookingId: id }`, `{ documentId: id }`, … —
  *  looked up rather than spelled at the call site, which is what keeps a surface from

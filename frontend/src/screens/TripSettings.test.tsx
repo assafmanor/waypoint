@@ -27,6 +27,14 @@ const TRIP = {
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     trip: TRIP,
     members: [{ id: 'm1', tripId: 't1', userId: 'u1', role: 'admin' }],
     users: [{ id: 'u1', displayName: 'אסף', avatarHue: 'denim', avatarChoice: 'initials' }],

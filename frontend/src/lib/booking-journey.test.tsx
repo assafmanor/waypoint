@@ -19,7 +19,20 @@ import {
 let tripBookings: Booking[] = [];
 let tripEvents: TripEvent[] = [];
 vi.mock('../state/trip-state', () => ({
-  useTrip: () => ({ bookings: tripBookings, events: tripEvents }),
+  useTrip: () => ({
+    trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },
+    zoneCrossings: [],
+    users: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
+    bookings: tripBookings,
+    events: tripEvents,
+  }),
 }));
 
 import { useRoundTripPartner, type RoundTripPartner } from './booking-journey';

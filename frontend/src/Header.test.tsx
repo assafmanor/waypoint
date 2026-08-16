@@ -47,6 +47,14 @@ const setOverride = vi.fn();
 
 vi.mock('./state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     trip: TRIP,
     users,
     events: [],

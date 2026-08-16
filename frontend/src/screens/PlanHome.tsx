@@ -8,7 +8,7 @@
 // lodging), seeds the day builder, or the settings invite — not a bare tab
 // switch. Completed checks collapse into a summary. Only rows we can honestly
 // derive appear; Gmail / Google-connection / WhatsApp stay out (ADR-0045/0004).
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BOOKING_TYPE, TASK_STATUS } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
@@ -24,6 +24,7 @@ import {
   CHECK_ICON,
   draftOverlay,
   isLive,
+  isManual,
   resolvedReadinessPct,
   tickedAutomaticStatus,
   type AutomaticTask,
@@ -31,7 +32,9 @@ import {
 import { AutomaticTaskRow } from '../ui/AutomaticTaskRow';
 import { TaskBandRow } from '../ui/TaskBandRow';
 import {
+  isSettled,
   orderTaskRows,
+  sortTasks,
   taskRowKey,
   tasksDueSoon,
   tickedStatus,
@@ -55,7 +58,7 @@ import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
 import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
-import { Icon, type IconName } from '../ui/Icon';
+import { Icon } from '../ui/Icon';
 
 // `CHECK_ICON` moved to `lib/automatic-tasks.ts` with the row copy when the tasks screen
 // became a second reader of both — the collapsed summary below still uses it, now imported.
@@ -188,8 +191,20 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   };
   const bandTasks = tasksDueSoon(tasks, taskClock);
   const converged = orderTaskRows(bandTasks, liveChecks, taskClock);
+  // **The completed half is the same noun the open half is** (phase 3r). It was
+  // `automatic.filter(done)` alone, so a completed MANUAL task could never appear and the
+  // toggle's count answered about half the feature — the one-noun failure ADR-0188 §4 and
+  // ADR-0190 §1 have each already corrected on other surfaces.
   const completedAutomatic = automatic.filter((a) => a.done);
-  const completedChecks = completedAutomatic;
+  const completedManual = useMemo(
+    () =>
+      sortTasks(
+        tasks.filter((task) => isManual(task) && isSettled(task)),
+        taskClock,
+      ),
+    [tasks, taskClock],
+  );
+  const completedCount = completedAutomatic.length + completedManual.length;
 
   /** The one verb per check (ADR-0061 §1: the CTA does the thing). The COPY moved to
    *  `lib/automatic-tasks.ts` when the tasks screen became a second reader of it; what stays
@@ -277,11 +292,11 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         {t.planHome.checklist.title}
         <span className="sec-title-end">
           {converged.length === 0 && <span className="hint">{t.planHome.checklist.allDone}</span>}
-          {completedChecks.length > 0 && (
+          {completedCount > 0 && (
             <CollapseToggle
               expanded={showCompleted}
               onToggle={() => setShowCompleted((v) => !v)}
-              expandLabel={t.planHome.checklist.showCompleted(completedChecks.length)}
+              expandLabel={t.planHome.checklist.showCompleted(completedCount)}
               collapseLabel={t.planHome.checklist.hideCompleted}
               className="chk-toggle"
             />
@@ -325,7 +340,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         </div>
       )}
 
-      {completedChecks.length > 0 && (
+      {completedCount > 0 && (
         <>
           {/* The collapsed teaser (a static pill row, not itself animated) sits
               above the animated checklist so the count-in-label toggle always
@@ -335,7 +350,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
               <span className="ok">
                 <Icon name="check" /> {t.planHome.checklist.completedSummary}
               </span>
-              {completedChecks.map((auto) => (
+              {completedAutomatic.map((auto) => (
                 <span className="pill" key={auto.key}>
                   <Icon name={CHECK_ICON[auto.key]} />{' '}
                   {t.planHome.checklist.summaryLabels[auto.key]}
@@ -351,6 +366,17 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
                 onTick={() => tickAutomatic(auto)}
                 onAct={() => runAction(auto)}
                 onManage={() => manageAutomatic(auto)}
+              />
+            ))}
+            {/* …and the manual half, which this section could never show before (3r). */}
+            {completedManual.map((task) => (
+              <TaskBandRow
+                key={task.id}
+                task={task}
+                users={users}
+                clock={taskClock}
+                onTick={() => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
+                onOpen={openTasksScreen}
               />
             ))}
           </Collapsible>

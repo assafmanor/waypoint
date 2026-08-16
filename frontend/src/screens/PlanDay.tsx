@@ -147,13 +147,21 @@ import { ZoneShiftPill } from '../ui/ZoneShiftPill';
 import { Sheet } from '../ui/Sheet';
 import { FormStepPanel, useFormSteps } from '../ui/primitives/FormSteps';
 import { TitleLabel } from '../ui/TitleLabel';
-import { DocumentMark, NoteMark, RowActionList, SettleControl, type RowAction } from '../ui/domain';
+import {
+  DocumentMark,
+  NoteMark,
+  RowActionList,
+  SettleControl,
+  type RowAction,
+  TaskMark,
+} from '../ui/domain';
 import { DaySlotPicker, type DaySlotOption } from '../ui/domain/DaySlotPicker';
 import { dayPositions, POSITION_AT, type DayPosition } from '../lib/day-positions';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
 import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
-import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { noteCountFor, hostCountForContext, noteCountsByHost } from '../lib/notes';
+import { openTaskCountsByHost } from '../lib/tasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
@@ -249,6 +257,7 @@ export function PlanDay() {
     activeDate,
     setActiveDate,
     zoneEvidence,
+    tasks,
   } = useTrip();
   const verbs = useVerbs();
   const placeLabels = usePlaceLabels();
@@ -290,6 +299,8 @@ export function PlanDay() {
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
   // Built once per note-list change rather than filtered per tile (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
+  const taskCounts = useMemo(() => openTaskCountsByHost(tasks), [tasks]);
   // Its twin for attachments (ADR-0174 §1) — `attachmentCountsByHost` shipped with
   // ADR-0173 and had no call site at all until this row.
   const docCounts = useMemo(
@@ -914,6 +925,7 @@ export function PlanDay() {
     placeLabels,
     showPlaceOnMap,
     noteCounts,
+    taskCounts,
     docCounts,
     hostContexts,
     verbs,
@@ -1503,6 +1515,7 @@ interface BuilderCtx {
    *  lookups built once per list change, and both are read through the row's CONTEXT — a
    *  booked event's notes and attachments may sit on its booking. */
   noteCounts: Map<string, number>;
+  taskCounts: Map<string, number>;
   docCounts: Map<string, number>;
   hostContexts: HostContextIndex;
   verbs: ReturnType<typeof useVerbs>;
@@ -1785,12 +1798,16 @@ function BuilderNode({
         zones={zones}
         duration={eventDurationLabel(e, booking, zones)}
         readOnly={ctx.readOnly}
-        notes={noteCountForContext(
+        notes={hostCountForContext(
           ctx.noteCounts,
           resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
         )}
         documents={attachmentCountForContext(
           ctx.docCounts,
+          resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
+        )}
+        tasks={hostCountForContext(
+          ctx.taskCounts,
           resolveHostContext(ctx.hostContexts, { kind: 'event', id: e.id }),
         )}
         onOpen={() => ctx.onOpen(e)}
@@ -1843,6 +1860,7 @@ export function BuilderRow({
   readOnly,
   notes,
   documents,
+  tasks,
   onOpen,
   onEdit,
   onDelete,
@@ -1876,6 +1894,8 @@ export function BuilderRow({
    *  rather than one per session. */
   notes?: number;
   documents?: number;
+  /** OPEN tasks on this row's context — the third mark (ADR-0191). */
+  tasks?: number;
   /** **Open the row's READ** (ADR-0174 §4) — a booked event routes to `BookingDetail`,
    *  which is already its read because a linked pair is one context (ADR-0172 §1); an
    *  unbooked one gets `EventDetail`. Present on a read-only archive too. */
@@ -2013,6 +2033,7 @@ export function BuilderRow({
         <span className="bld-m">
           <NoteMark count={notes} />
           <DocumentMark count={documents} />
+          <TaskMark count={tasks} />
         </span>
       )}
     </>

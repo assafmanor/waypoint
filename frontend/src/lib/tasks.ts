@@ -8,9 +8,16 @@
 // uses, with the due instant in place of `now` — so a deadline stays consistent with how
 // the calendar day rolls for the traveller who is reading it. Nothing here holds a zone of
 // its own, and no surface may reach for `trip.timezone` instead.
-import { TASK_STATUS, type Task, type TaskStatus } from '@waypoint/shared';
+import {
+  TASK_HOST_FIELD,
+  TASK_STATUS,
+  type Task,
+  type TaskHostKey,
+  type TaskStatus,
+} from '@waypoint/shared';
 import { TASK_BAND_LOOKAHEAD_DAYS } from '../constants';
 import { isAutomaticSettled, isLive, isManual, type AutomaticTask } from './automatic-tasks';
+import { dropHostedForHostChange, isHostedBy, type HostChange, type NoteHostKind } from './notes';
 import { currentZone, type ZoneCrossing } from './places';
 import { addDays, formatTime, relativeDayLabel, todayInTz } from './time';
 
@@ -259,3 +266,62 @@ export function taskPreview(
  *  which is also why the control is one verb and not `SettleControl`'s symmetric pair. */
 export const tickedStatus = (task: Task): TaskStatus =>
   task.status === TASK_STATUS.DONE ? TASK_STATUS.OPEN : TASK_STATUS.DONE;
+
+// ── A task's HOST (tasks brief §5, phase 4) ────────────────────────────────────────────
+// The five FKs the entity has carried since phase 1 and nothing read until now. Every helper
+// here is the note equivalent reused rather than re-implemented: `TASK_HOST_FIELD` is an
+// alias of `NOTE_HOST_FIELD`, `isHostedBy` was widened to any row carrying those five, and
+// the cascade is `dropHostedForHostChange`. What is task-specific is only what the SECTION
+// and the MARK need to say, which is below.
+
+/** This host's tasks, in the screen's own urgency order — so a booking's list and the tasks
+ *  screen cannot disagree about what leads. Settled ones are included: the section is where
+ *  you see what was done about this booking, and the row draws them struck. */
+export function tasksForHost(tasks: Task[], kind: NoteHostKind, id: string, clock: TaskClock) {
+  return sortTasks(
+    tasks.filter((task) => isManual(task) && isHostedBy(task, kind, id)),
+    clock,
+  );
+}
+
+/** The host half of a `createTask` input — `{ bookingId: id }` — looked up rather than
+ *  spelled at the call site, which is what keeps a surface from attaching a task to the
+ *  wrong field and makes a sixth host free. */
+export function taskHostInput(
+  kind: NoteHostKind,
+  id: string,
+): Partial<Record<TaskHostKey, string>> {
+  return { [TASK_HOST_FIELD[kind]]: id };
+}
+
+/** **How many OPEN tasks each host carries** — the mark's count (ADR-0191 §2).
+ *
+ *  Open only, and that is the one place a task's mark parts company with a note's. A note
+ *  and a document have no lifecycle, so every one of them counts forever; a task does, and a
+ *  row still marked after the task closed is a nag with nothing behind it. The trace is not
+ *  lost — it is on the task, which stays under `הושלמו`.
+ *
+ *  Built once per task-list change rather than filtered per row: a day of twelve events asks
+ *  this twelve times. */
+export function openTaskCountsByHost(tasks: Task[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const task of tasks) {
+    if (!isManual(task) || isSettled(task)) continue;
+    for (const [kind, field] of Object.entries(TASK_HOST_FIELD) as [NoteHostKind, TaskHostKey][]) {
+      const id = task[field];
+      if (!id) continue;
+      counts.set(`${kind}:${id}`, (counts.get(`${kind}:${id}`) ?? 0) + 1);
+      break;
+    }
+  }
+  return counts;
+}
+
+/** This host's open-task count, or 0. The key shape is this file's business. */
+export const taskCountFor = (counts: Map<string, number>, kind: NoteHostKind, id: string): number =>
+  counts.get(`${kind}:${id}`) ?? 0;
+
+/** The host cascade for tasks — the generalised applier, not a fifth copy of it. */
+export function dropTasksForHostChange(tasks: Task[], change: HostChange): Task[] {
+  return dropHostedForHostChange(tasks, change);
+}

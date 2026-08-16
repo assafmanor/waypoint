@@ -10,7 +10,21 @@ const PLACES = [
   { id: 'p-tlv', tripId: 't1', name: 'נתב״ג' },
   { id: 'p-nrt', tripId: 't1', name: 'נריטה' },
 ];
-vi.mock('../../state/trip-state', () => ({ useTrip: () => ({ places: PLACES }) }));
+vi.mock('../../state/trip-state', () => ({
+  useTrip: () => ({
+    trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },
+    zoneCrossings: [],
+    users: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
+    places: PLACES,
+  }),
+}));
 
 import { RouteField } from './RouteField';
 import { t } from '../../i18n/he';

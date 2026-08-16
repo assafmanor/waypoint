@@ -9,6 +9,7 @@ import { Sheet } from './Sheet';
 import { DocumentTypePills } from './DocumentTypePills';
 import { RowManageSheet } from './domain';
 import { HostNotes, useHostNoteCount } from './HostNotes';
+import { HostTasks } from './HostTasks';
 import { Icon } from './Icon';
 import { Field } from './primitives/Field';
 import { FormActions } from './primitives/FormActions';
@@ -84,6 +85,7 @@ export function DocumentManageSheet({
             surface is the viewer, whose body is a pinch-zoom image in a card that clips —
             so the notes would compete with the bytes you opened it to read, and the room
             for the section is here, where the document is already described in words. */}
+        <HostTasks host={{ kind: 'document', id: doc.id, name: doc.title }} />
         <HostNotes host={{ kind: 'document', id: doc.id, name: doc.title }} />
       </RowManageSheet>
     );

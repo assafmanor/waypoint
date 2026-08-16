@@ -32,6 +32,7 @@ import { clearAllMapArchives, removeTripMapArchives } from './map-archive-cache'
 import { initOutboxCount, OUTBOX_VERB, type OutboxOp } from './outbox';
 import { getNow } from './useClock';
 import { dropNotesForHostChange } from './notes';
+import { dropTasksForHostChange } from './tasks';
 import { dropAttachmentsForHostChange } from './attachments';
 import { clearPlaceRefsForChange, deletedPlaceId } from './place-refs';
 
@@ -255,6 +256,16 @@ async function dropCachedNotesForHost(tripId: string, change: EntityChange): Pro
   if (next !== meta.notes) await db.snapshotMeta.put({ ...meta, notes: next });
 }
 
+/** The same rule for tasks (ADR-0191). A separate function rather than a branch inside the
+ *  one above, because the two write different `snapshotMeta` fields — the shared half is
+ *  `dropHostedForHostChange`, which both derivations call. */
+async function dropCachedTasksForHost(tripId: string, change: EntityChange): Promise<void> {
+  const meta = await db.snapshotMeta.get(tripId);
+  if (!meta?.tasks?.length) return;
+  const next = dropTasksForHostChange(meta.tasks, change);
+  if (next !== meta.tasks) await db.snapshotMeta.put({ ...meta, tasks: next });
+}
+
 /** The attachment cascade's cache half (`lib/attachments.ts`'s `dropAttachmentsForHostChange`,
  *  ADR-0173 §7) — the same shape as the note cascade above, and the same "only write when
  *  something actually went" discipline, since the shared derivation returns the identical
@@ -297,6 +308,7 @@ export async function applyChangeToCache(tripId: string, change: EntityChange): 
   // in the cache with nothing to remove them: the database cascade writes no `Change` rows
   // of its own. A no-op for every change that is not a host delete.
   await dropCachedNotesForHost(tripId, change);
+  await dropCachedTasksForHost(tripId, change);
   // The third member of the same family (ADR-0173 §7), here for exactly the reason above: a
   // deleted booking's or document's links belong to neither of their channels, and the
   // database cascade that removes them writes no `Change` of its own.

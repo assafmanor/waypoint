@@ -21,6 +21,15 @@ let documentAttachments: DocumentAttachment[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    users: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     trip: { id: 't1' },
     documents,
     documentAttachments,
