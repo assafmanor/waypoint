@@ -1073,6 +1073,15 @@ export const t = {
     add: 'משימה חדשה',
     /** The tick's accessible name — a bare ✓ says nothing about which row it closes. */
     tick: (title: string) => `סימון «${title}» כהושלמה`,
+    /** The mark on a host's row (ADR-0191). Named for a screen reader the way `NoteMark`
+     *  and `DocumentMark` are, so it is not a mystery glyph. It counts OPEN tasks. */
+    mark: (n: number) => (n === 1 ? 'משימה פתוחה אחת' : `${n} משימות פתוחות`),
+    /** A host's own tasks section (ADR-0191 §5) — `NoteSection`'s shape, its own words. */
+    section: {
+      title: 'משימות',
+      add: 'משימה',
+      empty: 'אין משימות',
+    },
     head: {
       count: (n: number) => (n === 1 ? 'משימה אחת' : `${n} משימות`),
     },

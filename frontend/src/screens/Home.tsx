@@ -38,7 +38,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
+import { orderTaskRows, tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
@@ -465,7 +465,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone }),
     [nowMs, zoneCrossings, trip.timezone],
   );
-  const dueTasks = useMemo(() => tasksDueSoon(tasks, taskClock), [tasks, taskClock]);
+  // **Ordered the way the Index orders** (phase 3r): urgent first, then the rest. The band
+  // carries no readiness checks (an automatic task's deadline is departure, so mid-trip they
+  // would all read overdue), so `orderTaskRows` is handed an empty second half — the point is
+  // that ONE function decides what leads, rather than the band keeping a second answer.
+  const dueTasks = useMemo(() => {
+    const due = tasksDueSoon(tasks, taskClock);
+    return orderTaskRows(due, [], taskClock).flatMap((row) =>
+      row.kind === 'task' ? [row.task] : [],
+    );
+  }, [tasks, taskClock]);
   const openTasks = () =>
     navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
 

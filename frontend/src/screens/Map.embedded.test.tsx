@@ -108,6 +108,14 @@ const updatePlace = indexVerbs.updatePlace;
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
@@ -770,7 +778,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       render(wrap(<MapView />));
       fireEvent.click(row('lunch')!);
 
-      const section = row('lunch')!.querySelector('.note-sec') as HTMLElement;
+      const section = row('lunch')!.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section).toBeTruthy();
       // Selecting sends the camera a FRESH arrival object every time (a frame is spent once,
       // so the same row may be tapped twice) — which is exactly what a re-select triggered by
@@ -4317,7 +4325,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
     it('swaps the card into the research card, and takes the itinerary blocks off', () => {
       seedKnown();
       // Collapsed: the group's own material is what is on screen.
-      expect(knowRow().querySelector('.note-sec')).toBeTruthy();
+      expect(knowRow().querySelector('.note-sec:not(.tsk-sec)')).toBeTruthy();
       expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeTruthy();
       expect(knowRow().querySelector('.map-hero')).toBeNull();
 
@@ -4329,7 +4337,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       expect(knowRow().querySelector('.map-sum')?.className).toContain('is-open');
       expect(screen.getByRole('button', { name: t.map.know.back })).toBeTruthy();
       // **Not on screen at the same time** — that is the whole difference from growth.
-      expect(knowRow().querySelector('.note-sec')).toBeNull();
+      expect(knowRow().querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
       expect(knowRow().querySelector('.map-refs')).toBeNull();
       expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeNull();
       // The one Google exit stays, beside the way back (§11.1's `.backrow`).
@@ -4342,7 +4350,7 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       fireEvent.click(screen.getByRole('button', { name: t.map.know.back }));
 
       expect(knowRow().querySelector('.map-hero')).toBeNull();
-      expect(knowRow().querySelector('.note-sec')).toBeTruthy();
+      expect(knowRow().querySelector('.note-sec:not(.tsk-sec)')).toBeTruthy();
       expect(knowRow().className).toContain('selected');
     });
 

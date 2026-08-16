@@ -308,3 +308,39 @@
   width: 13px;
   height: 13px;
 }
+
+/* THE MARK ON A HOST'S ROW (tasks brief §F, ADR-0191). `.note-mark`'s exact box, which is
+   itself `.doc-mark`'s: same 13px icon, same `--muted`, same 11px tabular numerals, same
+   `flex: 0 0 auto`. Copying those rather than re-deciding them is `DocumentMark`'s own stated
+   reason — one shape everywhere, and a second set of numbers on that line would read as two
+   systems. Neutral by the same rule they are: a task is not time, not place, not plan mode.
+
+   The glyph is a CHECKBOX and not the bare `check` the tick draws — measured identical in
+   cost (0px of row height, 0px of baseline offset), so reading decided it: a bare ✓ beside
+   two neutral marks reads "this is done". */
+.tsk-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  vertical-align: -2px;
+}
+.tsk-mark .icon {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+/* A HOST'S TASKS SECTION (ADR-0191 §5) — `.note-sec`'s geometry, reused by class rather than
+   re-declared, with only what differs: the rows inside are `ListRow`s, because a task needs a
+   lead slot for its tick and `.note-item` has none. */
+.tsk-sec-list .wp-listrow {
+  padding-inline: 0;
+}
+.tsk-sec-list .wp-listrow:last-child {
+  border-bottom: 0;
+}

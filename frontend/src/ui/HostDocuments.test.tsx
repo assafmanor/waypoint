@@ -22,6 +22,15 @@ let tripAttachments: DocumentAttachment[] = [];
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    users: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     // Built from this file's own fixtures, so the pairing is real rather than stubbed —
     // which is the whole point of the booked-event case below.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),

@@ -23,7 +23,8 @@ import {
   visibleRows,
 } from '../lib/index-bookings';
 import { countVisible } from '../lib/filter-reveal';
-import { noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { hostCountForContext, noteCountsByHost } from '../lib/notes';
+import { openTaskCountsByHost } from '../lib/tasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
@@ -37,7 +38,7 @@ import { BookingTitle } from './BookingTitle';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
 import { HardLock } from './HardLock';
-import { DocumentMark, ListRow, NoteMark, type BadgeTone } from './domain';
+import { DocumentMark, ListRow, NoteMark, type BadgeTone, TaskMark } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { Collapsible, CollapseToggle } from './primitives/Collapsible';
 import { RevealList } from './primitives/RevealList';
@@ -54,7 +55,8 @@ export function IndexBookingsView({
    *  that booking's detail on top of this screen once mounted. */
   initialBookingId?: string;
 }) {
-  const { trip, bookings, places, events, notes, documentAttachments, hostContexts } = useTrip();
+  const { trip, bookings, places, events, notes, documentAttachments, hostContexts, tasks } =
+    useTrip();
   const { mode } = useMode();
   // This screen is the Index's topmost overlay (ADR-0098 §5), so it closes before
   // the tab changes — the same ordering `BookingDetail` needs, one level out.
@@ -62,6 +64,8 @@ export function IndexBookingsView({
   const now = useClock();
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
+  const taskCounts = useMemo(() => openTaskCountsByHost(tasks), [tasks]);
   // Its twin for attachments (ADR-0174 §1) — the count `lib/attachments.ts` shipped with
   // ADR-0173 and that nothing rendered.
   const docCounts = useMemo(
@@ -187,12 +191,16 @@ export function IndexBookingsView({
       now={now}
       onOpen={openDetail}
       onManage={setManage}
-      notes={noteCountForContext(
+      notes={hostCountForContext(
         noteCounts,
         resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
       )}
       documents={attachmentCountForContext(
         docCounts,
+        resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
+      )}
+      tasks={hostCountForContext(
+        taskCounts,
         resolveHostContext(hostContexts, { kind: 'booking', id: row.booking.id }),
       )}
       showPlaceOnMap={showPlaceOnMap}
@@ -366,6 +374,7 @@ function BookingLi({
   onManage,
   notes,
   documents,
+  tasks,
   showPlaceOnMap,
   onLeaveForMap,
 }: {
@@ -381,6 +390,8 @@ function BookingLi({
    *  a note is something someone wrote and a document is a file you may have to show at a
    *  border, and one silhouette cannot say which a tap will get you. */
   documents: number;
+  /** OPEN tasks on this row's context — the third mark (ADR-0191). */
+  tasks: number;
   showPlaceOnMap: ShowPlaceOnMap;
   /** Close this screen before the tab changes underneath it. */
   onLeaveForMap: () => void;
@@ -431,6 +442,7 @@ function BookingLi({
               their DAY to the ellipsis. The title line has the slack. */}
           <NoteMark count={notes} />
           <DocumentMark count={documents} />
+          <TaskMark count={tasks} />
         </>
       }
       meta={

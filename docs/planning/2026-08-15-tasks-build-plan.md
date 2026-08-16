@@ -10,15 +10,16 @@
 
 ## Status
 
-| phase                    | branch                               | state                                                                                                                                                                  |
-| ------------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — the spine**        | `feat/tasks-phase-1-the-spine`       | **built** — [note](2026-08-15-tasks-phase-1-built.md)                                                                                                                  |
-| **1b — editor + read**   | `feat/tasks-phase-1-the-spine`       | **built** — [ADR-0189](../decisions/0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md) · [note](2026-08-15-tasks-editor-built.md) |
-| **2 — automatic tasks**  | `feat/tasks-phase-2-automatic-tasks` | **built** — [ADR-0190](../decisions/0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md) · [note](2026-08-16-tasks-phase-2-built.md)  |
-| **3 — Trip Home band**   | —                                    | not started                                                                                                                                                            |
-| **4 — hosts**            | —                                    | not started                                                                                                                                                            |
-| **5 — the hero slot**    | —                                    | not started                                                                                                                                                            |
-| **6 — `everyone` tasks** | —                                    | not started                                                                                                                                                            |
+| phase                       | branch                               | state                                                                                                                                                                  |
+| --------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — the spine**           | `feat/tasks-phase-1-the-spine`       | **built** — [note](2026-08-15-tasks-phase-1-built.md)                                                                                                                  |
+| **1b — editor + read**      | `feat/tasks-phase-1-the-spine`       | **built** — [ADR-0189](../decisions/0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md) · [note](2026-08-15-tasks-editor-built.md) |
+| **2 — automatic tasks**     | `feat/tasks-phase-2-automatic-tasks` | **built** — [ADR-0190](../decisions/0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md) · [note](2026-08-16-tasks-phase-2-built.md)  |
+| **3 — Trip Home band**      | `feat/tasks-phase-3-home-band`       | **built** — no ADR · [note](2026-08-16-tasks-phase-3-built.md)                                                                                                         |
+| **3r — the Homes catch up** | `feat/tasks-phase-4-hosts`           | **built** — no ADR · [note](2026-08-16-tasks-phase-4-built.md), shipped on phase 4's PR                                                                                |
+| **4 — hosts**               | `feat/tasks-phase-4-hosts`           | **built** — [ADR-0191](../decisions/0191-a-task-marks-its-host-and-lives-in-a-section-the-host-already-has.md) · [note](2026-08-16-tasks-phase-4-built.md)             |
+| **5 — the hero slot**       | —                                    | not started                                                                                                                                                            |
+| **6 — `everyone` tasks**    | —                                    | not started                                                                                                                                                            |
 
 **Ship after phase 3.** Phases 1–3 are the product; 4–6 are the expensive half and can wait for real use.
 
@@ -106,7 +107,9 @@ Where ADR-0188 §4/§5/§7 get built and where the brief's §B survives contact 
 
 `.checklist` + the same rows under a `sec-title`. **Manual tasks only** — an automatic task's deadline is departure, so mid-trip every unmet check would sit there permanently overdue. Capped at 3 with an overflow row into the screen; **absent entirely when nothing is due** (ADR-0045: no empty shell). Depends on nothing but phase 1.
 
-## Phase 3r — the Homes catch up with the screen
+## Phase 3r — the Homes catch up with the screen (**BUILT 2026-08-16**)
+
+**No ADR** — it decided nothing; each of the three was already decided on the screen, and these were the surfaces that had not followed. Shipped with phase 4 on one PR. [Session note](2026-08-16-tasks-phase-4-built.md). The band now runs `orderTaskRows` and Plan Home's collapse counts manual completed tasks too — verified live, where the band's order **reversed** (an important task due in three days moved above one due today, matching the Index) and the collapse read `הצג שהושלמו (2)` with both rows manual.
 
 **Three gaps the owner found on a device (2026-08-16), grouped as one phase because they are
 one cause: the Homes were built before the screen's rules settled, and never re-read them.**
@@ -133,9 +136,9 @@ resolution the open half is.
 applied _after_ the order, so changing the order changes **which three rows show** — that is
 the point, and it should be measured rather than assumed.
 
-## Phase 4 — hosts
+## Phase 4 — hosts (**BUILT 2026-08-16**)
 
-**§F is drawn and measured** ([`mockups/a-third-mark-on-a-host-row-v1.html`](../../mockups/a-third-mark-on-a-host-row-v1.html)), with a **recommended answer per host and per question** in its last panel, awaiting the owner's sign-off. The load-bearing one, because it is what makes this phase cheap:
+**§F is drawn, measured, signed off and built** — [ADR-0191](../decisions/0191-a-task-marks-its-host-and-lives-in-a-section-the-host-already-has.md) promotes [`mockups/a-third-mark-on-a-host-row-v1.html`](../../mockups/a-third-mark-on-a-host-row-v1.html); [session note](2026-08-16-tasks-phase-4-built.md). The owner took every recommendation below. Two things the running app added to the drawing: the three-mark line measures **0.6px** of baseline spread on a shipped 60px booking row (so the third mark is free on that shape), and sharing `.note-sec` as a root class made `querySelector('.note-sec')` start finding the **tasks** section — four shipped specs caught it, and the root is `.note-sec.tsk-sec`. The rule-8 obligation was taken as a small extraction and it generalises **two** of the four appliers, not three; where it stops and why is ADR-0191 §5. The load-bearing recommendation, because it is what made this phase cheap:
 
 **Every host already has a home for a section — notes put one there — and tasks go to the same home. No new surface.**
 

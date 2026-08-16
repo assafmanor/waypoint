@@ -24,6 +24,7 @@ import { RowManageSheet, type RowAction } from './ListRow';
 import { PlaceBadge } from './PlaceBadge';
 import { SettleControl } from './SettleControl';
 import { NoteMark } from './NoteMark';
+import { TaskMark } from './TaskMark';
 import { DocumentMark } from './DocumentMark';
 import { t } from '../../i18n/he';
 import './event-card.css';
@@ -85,6 +86,8 @@ export interface EventCardProps {
    *  since a linked pair is one context. Same rule as `notes`: a count only past 1, and the
    *  mark is a read-only indicator whose reach is this card's own expansion. */
   documents?: number;
+  /** How many OPEN tasks this event (and its context) carries — the third mark (ADR-0191). */
+  tasks?: number;
   /** **Where an event's attached documents are READ** (ADR-0174 §3) — the connected
    *  `<HostDocuments>`, rendered inside the card this row expands, ABOVE the notes.
    *
@@ -103,6 +106,8 @@ export interface EventCardProps {
    *  content read from inside a menu is content nobody finds. What put it there was
    *  `.wp-event-actions`'s fixed `max-height: 220px`, which clips three notes — so the cap
    *  moved instead (`event-card.css`), which is the change that actually had to happen. */
+  /** The event's tasks, connected by the screen (ADR-0191 §5). */
+  tasksSlot?: ReactNode;
   notesSlot?: ReactNode;
   // Verbs (callbacks; presence + phase gate which buttons show, faithfully).
   // `onNavigate` (directions) and `onShowOnMap` (view the place) are the two
@@ -171,7 +176,9 @@ export function EventCard(props: EventCardProps) {
     nestedCount,
     notes,
     documents,
+    tasks,
     documentsSlot,
+    tasksSlot,
     notesSlot,
     onNavigate,
     onShowOnMap,
@@ -272,6 +279,7 @@ export function EventCard(props: EventCardProps) {
         {sync}
         <NoteMark count={notes} />
         <DocumentMark count={documents} />
+        <TaskMark count={tasks} />
       </span>
       {conflict && (
         <span className="wp-event-conflict-flag">
@@ -509,6 +517,8 @@ export function EventCard(props: EventCardProps) {
               strip is in the DOM at every height, so a day of twelve events would otherwise
               hold twelve connected sections nobody is looking at. */}
           {isOpen && documentsSlot}
+          {/* Documents → TASKS → notes (ADR-0191 §5), the order every host surface uses. */}
+          {isOpen && tasksSlot}
           {isOpen && notesSlot}
         </div>
       </div>

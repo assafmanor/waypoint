@@ -17,6 +17,7 @@ import type { MaybeItem } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { RowManageSheet, type RowAction } from './domain';
 import { HostNotes } from './HostNotes';
+import { HostTasks } from './HostTasks';
 import { CONTROL_ICON } from '../constants';
 import { t } from '../i18n/he';
 
@@ -73,6 +74,7 @@ export function MaybeManageSheet({
       onClose={onClose}
     >
       {why && <div className="idea-why">{why}</div>}
+      <HostTasks host={{ kind: 'maybeItem', id: item.id, name: item.title }} />
       <HostNotes
         host={{ kind: 'maybeItem', id: item.id, name: item.title, category: item.category }}
       />

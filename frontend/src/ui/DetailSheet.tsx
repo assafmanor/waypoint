@@ -22,6 +22,7 @@ import type { NoteHostRef } from '../lib/notes';
 import { Sheet } from './Sheet';
 import { HostDocuments } from './HostDocuments';
 import { HostNotes } from './HostNotes';
+import { HostTasks } from './HostTasks';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 
@@ -90,6 +91,9 @@ export function DetailSheet({
             shorter, fixed-length list goes first. Both are absent — not empty — when the host
             carries nothing, which is most of them. */}
         <HostDocuments host={{ kind: host.kind, id: host.id }} />
+        {/* Documents → TASKS → notes (ADR-0191 §5): ADR-0174 §3's order kept, with a task
+            between the two because it is a thing to DO rather than a thing to know. */}
+        <HostTasks host={host} />
         <HostNotes host={host} />
       </div>
     </Sheet>

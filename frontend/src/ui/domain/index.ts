@@ -37,6 +37,8 @@ export { ListRow, RowManageSheet, RowActionList } from './ListRow';
 export { RowOpenFoot } from './RowOpenFoot';
 export { NoteMark } from './NoteMark';
 export { DocumentMark } from './DocumentMark';
+// The third mark a host row can carry (ADR-0191): something still to be done about it.
+export { TaskMark } from './TaskMark';
 export type { ListRowProps, RowAction, BadgeTone } from './ListRow';
 
 export { ChangeFeed } from './ChangeFeed';

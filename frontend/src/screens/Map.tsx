@@ -86,7 +86,8 @@ import { placeCredit, placeSummary, type PlaceSummary } from '../lib/place-summa
 import { MediaViewer } from '../ui/MediaViewer';
 import { apiAssetUrl } from '../lib/api-asset';
 import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';
-import { noteCountFor, noteCountForContext, noteCountsByHost } from '../lib/notes';
+import { noteCountFor, hostCountForContext, noteCountsByHost } from '../lib/notes';
+import { openTaskCountsByHost } from '../lib/tasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { useCenterSelected } from '../lib/useCenterSelected';
@@ -173,8 +174,10 @@ import { BookingDetail } from '../ui/BookingDetail';
 import { BookingSheet, type BookingSheetDraft } from '../ui/BookingSheet';
 import { EventForm, type EventFormDraft } from '../ui/EventForm';
 import { HostNotes } from '../ui/HostNotes';
+import { HostTasks } from '../ui/HostTasks';
 import { HostDocuments } from '../ui/HostDocuments';
 import { NoteMark } from '../ui/domain/NoteMark';
+import { TaskMark } from '../ui/domain/TaskMark';
 import { DocumentMark } from '../ui/domain/DocumentMark';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
 import { KNOWLEDGE_DENSITY, PlaceKnowledge } from '../ui/domain/PlaceKnowledge';
@@ -269,6 +272,7 @@ export function MapView() {
     // What the world knows about these places (ADR-0166 §6) — server-owned, and a missing key
     // is the normal "we know nothing" state rather than a loading one.
     enrichments,
+    tasks,
   } = useTrip();
   const { mode } = useMode();
   const offline = useIsOffline() || usingCachedSnapshot;
@@ -2512,6 +2516,8 @@ export function MapView() {
   // Built once per note-list change rather than filtered per row: this list can be the whole
   // trip's places, and the mark is on every row that has one (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
+  // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
+  const taskCounts = useMemo(() => openTaskCountsByHost(tasks), [tasks]);
   // Its twin for attachments (ADR-0174 §1), built once per link-list change.
   const docCounts = useMemo(
     () => attachmentCountsByHost(documentAttachments),
@@ -2582,7 +2588,7 @@ export function MapView() {
           distanceStale={staleDistances}
           selected={selected}
           rowRef={opts.slideRef}
-          notes={noteCountForContext(
+          notes={hostCountForContext(
             noteCounts,
             resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
           )}
@@ -2594,9 +2600,18 @@ export function MapView() {
             docCounts,
             resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
           )}
+          tasks={hostCountForContext(
+            taskCounts,
+            resolveHostContext(hostContexts, { kind: 'place', id: usage.placeId }),
+          )}
           // Connected here rather than inside the row, which stays presentational — and gated
           // on `selected` for the same reason the refs are: the list can hold dozens of rows,
           // and a note section per unselected row is a section nobody is looking at.
+          tasksSlot={
+            revealed ? (
+              <HostTasks host={{ kind: 'place', id: place.id, name: place.name }} />
+            ) : undefined
+          }
           notesSlot={
             revealed ? (
               <HostNotes host={{ kind: 'place', id: place.id, name: place.name }} />
@@ -3795,7 +3810,9 @@ function PlaceRow({
   selected,
   notes,
   documents,
+  tasks,
   documentsSlot,
+  tasksSlot,
   notesSlot,
   summary,
   expanded,
@@ -3893,6 +3910,8 @@ function PlaceRow({
    *  can never host an attachment of its own (ADR-0173 §4). The mark reads exactly what the
    *  section below it lists, because both resolve through the same context. */
   documents?: number;
+  /** OPEN tasks on this row's context — the third mark (ADR-0191). */
+  tasks?: number;
   /** **Where a place's inherited documents are read** — the connected `<HostDocuments>`,
    *  present only while selected, above the notes. */
   documentsSlot?: ReactNode;
@@ -3901,6 +3920,8 @@ function PlaceRow({
    *  of its own — the pin's long-press menu holds verbs, not content (ADR-0157 §2) — and this
    *  same row IS its card at the `map` stop (ADR-0153 §8's amendment). One node, two surfaces,
    *  because `renderRow` is shared. */
+  /** The host's tasks, connected by the screen (ADR-0191 §5). */
+  tasksSlot?: ReactNode;
   notesSlot?: ReactNode;
   /** The way in to each reference, present only while selected. */
   refs?: RefEntry[];
@@ -4151,6 +4172,9 @@ function PlaceRow({
               context, not one of this row's claims (ADR-0028 has no colour to lend it). */}
           <NoteMark count={notes} />
           <DocumentMark count={documents} />
+          {/* LAST of the three, for the same reason the note mark was last of two: this line
+              drops its tail first, and a semantic tag must never be what goes. */}
+          <TaskMark count={tasks} />
         </span>
       </span>
       <span className="map-right">
@@ -4245,6 +4269,7 @@ function PlaceRow({
           one arrangement no surface here uses. A full-width line in a row that has wrapped
           one of those since it shipped (`.map-refs`), so it needs one declaration. */}
       {!expanded && documentsSlot}
+      {!expanded && tasksSlot}
       {!expanded && notesSlot}
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is
           also why the meta line's own 11.5px tags are not the link. */}

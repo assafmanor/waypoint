@@ -35,6 +35,15 @@ const updateNote = vi.fn(() => Promise.resolve());
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    trip: { id: 't1', timezone: 'Asia/Jerusalem', startDate: '2026-08-15', endDate: '2026-08-20' },
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),

@@ -76,6 +76,14 @@ const setActiveDate = vi.fn();
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex(tripEvents, tripBookings),
@@ -336,7 +344,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
   // scopes, because they are genuinely different renders on this tab.
   describe('a place carries notes (ADR-0153 §8)', () => {
     const markOf = (name: string) => row(name)?.querySelector('.note-mark') ?? null;
-    const sectionOf = (name: string) => row(name)?.querySelector('.note-sec') ?? null;
+    const sectionOf = (name: string) => row(name)?.querySelector('.note-sec:not(.tsk-sec)') ?? null;
 
     for (const allDays of [false, true]) {
       const label = allDays ? 'all-days' : 'day';
@@ -356,7 +364,7 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
         tripNotes = [note('n1', 'food', 'הכניסה מאחור')];
         render(wrap(<MapView />));
         if (allDays) tapAllDays();
-        expect(document.querySelector('.note-sec')).toBeNull();
+        expect(document.querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
 
         fireEvent.click(row('food')!);
         expect(sectionOf('food')).toBeTruthy();

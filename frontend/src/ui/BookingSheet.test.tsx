@@ -94,6 +94,14 @@ const trip = {
 
 vi.mock('../state/trip-state', () => ({
   useTrip: () => ({
+    zoneCrossings: [],
+    // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
+    tasks: [],
+    taskVerbs: {
+      createTask: async () => undefined,
+      updateTask: async () => {},
+      deleteTask: async () => {},
+    },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.
     hostContexts: buildHostContextIndex([], tripBookings),
@@ -517,7 +525,7 @@ describe('BookingSheet — notes written on the way', () => {
       tripNotes = [hostedNote('n1', 'קוד הכספת 4417', { bookingId: 'bk-h' })];
       editHotel();
 
-      const section = document.querySelector('.note-sec') as HTMLElement;
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section).not.toBeNull();
       expect(section.textContent).toContain('קוד הכספת 4417');
       // ONE way to add, and it is the box below — the section's own `＋ פתק` would open a
@@ -537,7 +545,7 @@ describe('BookingSheet — notes written on the way', () => {
       ];
       editHotel();
 
-      const section = document.querySelector('.note-sec') as HTMLElement;
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section.textContent).toContain('קוד הכספת 4417');
       for (const other of ['של הזמנה אחרת', 'של האירוע', 'פתק כללי'])
         expect(section.textContent).not.toContain(other);
@@ -575,7 +583,7 @@ describe('BookingSheet — notes written on the way', () => {
       openHotel();
       nameIt();
       toLastStep();
-      expect(document.querySelector('.note-sec')).toBeNull();
+      expect(document.querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
       expect(composer()).toBeTruthy();
     });
   });

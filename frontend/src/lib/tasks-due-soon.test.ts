@@ -5,7 +5,7 @@
 // test reading the system clock would mean something different every day it ran.
 import { describe, it, expect } from 'vitest';
 import { TASK_STATUS, type Task } from '@waypoint/shared';
-import { tasksDueSoon, type TaskClock } from './tasks';
+import { orderTaskRows, tasksDueSoon, type TaskClock } from './tasks';
 
 // 2026-08-15 12:00 Jerusalem.
 const CLOCK: TaskClock = {
@@ -86,5 +86,26 @@ describe('tasksDueSoon', () => {
 
   it('is empty when nothing is due, so the host can render nothing at all', () => {
     expect(tasksDueSoon([dueFar, undated], CLOCK)).toEqual([]);
+  });
+});
+
+// **Phase 3r — the band orders the way the Index does.** It ran `sortTasks` alone, where
+// `important` lifts only WITHIN its band, so an important task due in three days sat below
+// everything due today here and at the TOP of the Index. Same tasks, two orders.
+describe('the band and the Index agree on what leads (3r)', () => {
+  it('lifts an important task above one due sooner, exactly as orderTaskRows does', () => {
+    const importantLater = task('important-later', {
+      dueAt: '2026-08-18T09:00:00.000Z',
+      important: true,
+    });
+    const plainToday = task('plain-today', { dueAt: '2026-08-15T15:00:00.000Z' });
+    const due = tasksDueSoon([plainToday, importantLater], CLOCK);
+    // `tasksDueSoon` is still the urgency ladder — this is the input, not the answer.
+    expect(ids(due)).toEqual(['plain-today', 'important-later']);
+    // …and the Index's own order is what the band now applies on top of it.
+    const ordered = orderTaskRows(due, [], CLOCK).flatMap((r) =>
+      r.kind === 'task' ? [r.task.id] : [],
+    );
+    expect(ordered).toEqual(['important-later', 'plain-today']);
   });
 });

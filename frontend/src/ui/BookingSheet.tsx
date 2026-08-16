@@ -50,6 +50,7 @@ import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes, useHostNoteCount } from './HostNotes';
+import { HostTasks } from './HostTasks';
 import { ChoiceDisclosure } from './primitives/ChoiceDisclosure';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { FormError } from './primitives/FormError';
@@ -1457,6 +1458,9 @@ export function BookingSheet({
                   host={booking ? { kind: 'booking', id: booking.id } : undefined}
                 />
 
+                {booking && (
+                  <HostTasks host={{ kind: 'booking', id: booking.id, name: booking.title }} />
+                )}
                 {booking && (
                   <HostNotes
                     host={{ kind: 'booking', id: booking.id, name: booking.title }}
