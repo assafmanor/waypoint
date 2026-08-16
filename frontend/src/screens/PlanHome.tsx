@@ -36,6 +36,7 @@ import {
   orderTaskRows,
   sortTasks,
   taskRowKey,
+  type TaskRow,
   taskPreview,
   tasksDueSoon,
   tickedStatus,
@@ -58,8 +59,10 @@ import {
 import type { Task } from '@waypoint/shared';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
-import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
-import { DOT_SEPARATOR, MS_PER_DAY, PLAN_LIFT_TASK_CAP, type TabId } from '../constants';
+import { EmptyState } from '../ui/feedback';
+import { Icon } from '../ui/Icon';
+import { Collapsible } from '../ui/primitives/Collapsible';
+import { DOT_SEPARATOR, MS_PER_DAY, PLAN_TASK_CAP, type TabId } from '../constants';
 import { t } from '../i18n/he';
 import { useSettledHosts } from '../ui/HostTasks';
 
@@ -220,16 +223,23 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
    *  `overdue` stays manual by construction and not by choice — a check carries no `dueAt`,
    *  so nothing about it can have passed. */
   const preview = taskPreview(tasks, automatic, taskClock, settledHosts);
-  /** **What stays inline, and what folds** (§3). Near = what a person has already called
-   *  urgent, plus what is actually due this week; everything else sits behind one row.
-   *  `tasksDueSoon` is REUSED to answer the second half rather than re-derived — it is
-   *  still the right predicate, it was only ever the wrong list. */
-  const soonIds = new Set(tasksDueSoon(tasks, taskClock, settledHosts).map((task) => task.id));
-  const isNear = (task: Task) => task.important || soonIds.has(task.id);
-  const nearTasks = openTasks.filter(isNear);
-  const farTasks = openTasks.filter((task) => !isNear(task));
-  const converged = orderTaskRows(nearTasks, liveChecks, taskClock);
-  const [showFar, setShowFar] = useState(false);
+  /** **What stays inline, and what folds — a CAP, not a split** (ADR-0193 §3, amended
+   *  2026-08-16 on the owner's report of a bare stripe where the list should be).
+   *
+   *  It was a semantic split: "near" meant `important` or inside `tasksDueSoon`'s 7-day
+   *  window, and everything else folded. On the reported trip both open tasks were due in
+   *  **16 days**, so both were far, so the inline list was EMPTY — and `.checklist` is a
+   *  card with a 1px border, which rendered as a **2px stripe** under the section title. Two
+   *  open tasks and neither of them on screen.
+   *
+   *  The cap cannot do that, and the difference is structural rather than a tuning: the
+   *  first N of a list is never zero, while a predicate can empty it at any length. It also
+   *  makes this list and the lifted hero the same rule — `orderTaskRows`, first N, remainder
+   *  stated — which they were quietly not. */
+  const allRows = orderTaskRows(openTasks, liveChecks, taskClock);
+  const shownRows = allRows.slice(0, PLAN_TASK_CAP);
+  const restRows = allRows.slice(PLAN_TASK_CAP);
+  const [showRest, setShowRest] = useState(false);
   // **The completed half is the same noun the open half is** (phase 3r). It was
   // `automatic.filter(done)` alone, so a completed MANUAL task could never appear and the
   // toggle's count answered about half the feature — the one-noun failure ADR-0188 §4 and
@@ -254,9 +264,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
    *  no date is not a different KIND of thing from one with a date, and two surfaces
    *  disagreeing about what leads is the thing §2 of that ADR exists to prevent.
    *
-   *  Capped at `PLAN_LIFT_TASK_CAP` with the remainder stated, never dropped silently. */
-  const liftRows = orderTaskRows(openTasks, liveChecks, taskClock);
-  const liftTasks = liftRows.slice(0, PLAN_LIFT_TASK_CAP).map((row) =>
+   *  Capped at `PLAN_TASK_CAP` with the remainder stated, never dropped silently — the
+   *  same cap the inline list uses, since it is the same question about the same list. */
+  const liftTasks = shownRows.map((row) =>
     row.kind === 'task'
       ? toHeroTask(row.task, taskClock, users)
       : // A check is a task all the way through (ADR-0190 §1 as amended), so it renders as
@@ -270,7 +280,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
    *  the reason §H put a rebuff here). So the hero is a control only while it has something
    *  to open. The rebuff is gone with the condition it answered: there is no state now where
    *  the card is pressable and empty. */
-  const liftable = liftRows.length > 0;
+  const liftable = allRows.length > 0;
 
   /** The one verb per check (ADR-0061 §1: the CTA does the thing). The COPY moved to
    *  `lib/automatic-tasks.ts` when the tasks screen became a second reader of it; what stays
@@ -313,6 +323,29 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     applyVerb(auto.task ?? draftOverlay(auto, trip.id), {
       status: tickedAutomaticStatus(auto),
     });
+
+  /** One row of the converged list, either kind. Extracted because the list is now drawn in
+   *  TWO places — the capped head and the folded remainder — and a second copy is how the
+   *  two halves of one list start rendering differently. */
+  const taskRow = (row: TaskRow) =>
+    row.kind === 'auto' ? (
+      <AutomaticTaskRow
+        key={taskRowKey(row)}
+        auto={row.auto}
+        onTick={() => tickAutomatic(row.auto)}
+        onAct={() => runAction(row.auto)}
+        onManage={() => manageAutomatic(row.auto)}
+      />
+    ) : (
+      <TaskBandRow
+        key={taskRowKey(row)}
+        task={row.task}
+        users={users}
+        clock={taskClock}
+        onTick={() => void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })}
+        onOpen={openTasksScreen}
+      />
+    );
 
   /** A check with no row yet is handed a draft; the verb is what writes it (brief §4). */
   const manageAutomatic = (auto: AutomaticTask) =>
@@ -401,101 +434,75 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         );
       })()}
 
-      <div className="sec-title">
-        {t.planHome.checklist.title}
-        <span className="sec-title-end">
-          {/* **The reported sentence, re-gated** (ADR-0193 §1). It used to read
-              `converged.length === 0`, i.e. "no live check and nothing due within a week" —
-              a condition a well-prepared trip with a to-do list satisfies constantly, which
-              is how it came to sit above open tasks. It is NOT deleted: it is the only
-              moment this screen says something good, and it is true when nothing is open. */}
-          {converged.length === 0 && farTasks.length === 0 && (
-            <span className="hint">{t.planHome.checklist.allDone}</span>
-          )}
-        </span>
+      <div className="sec-title">{t.planHome.checklist.title}</div>
+
+      {/* **THE CARD IS NEVER RENDERED WITHOUT CONTENT** (ADR-0193 §3/§6, amended 2026-08-16).
+          It used to be, and that was the reported defect: `.checklist` is a card with a 1px
+          border, so a card holding only a COLLAPSED drawer painted as a **2px stripe** under
+          the section title while two tasks sat folded inside it. Rows or an empty state —
+          there is no third state now, which is what makes the stripe unreachable rather than
+          merely fixed. */}
+      <div className="checklist">
+        {allRows.length === 0 ? (
+          /* **The app's ONE empty shell** (ADR-0078), which this section had never used —
+             `הכול מוכן 🎉` was an 11px `.hint` in the title row, 15px of section against
+             136px of block, which is why it did not read as an empty state to the person who
+             asked for one. Inside the card rather than beside it, so the section keeps one
+             silhouette in every state.
+
+             No `action`: every other empty state in the app hands back a next step, and the
+             whole point of this one is that there is nothing to do. */
+          <EmptyState
+            icon={<Icon name="check" />}
+            title={t.planHome.checklist.emptyTitle}
+            body={t.planHome.checklist.emptyBody}
+          />
+        ) : (
+          <>
+            {shownRows.map(taskRow)}
+            {/* **The continuation is the card's LAST ROW**, not a control beside the card
+                (owner, 2026-08-16). `.tsk-more` is the shipped row Trip Home's band already
+                ends in — a continuation belongs to the list it continues, and at 44px it is
+                the first version of this control to clear ADR-0017's floor: the two pills it
+                replaces measured **22px**. Trip Home's own row NAVIGATES, so it carries a
+                `NavArrow`; this one expands in place, so it carries a caret that turns. */}
+            {restRows.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  className="tsk-more chk-more-row"
+                  aria-expanded={showRest}
+                  onClick={() => setShowRest((v) => !v)}
+                >
+                  {showRest
+                    ? t.planHome.checklist.hideRest
+                    : t.planHome.checklist.showRest(restRows.length)}
+                  <Icon name="caret" />
+                </button>
+                <Collapsible expanded={showRest}>{restRows.map(taskRow)}</Collapsible>
+              </>
+            )}
+          </>
+        )}
       </div>
 
-      {/* **The convergence, and it is a DELETION** (ADR-0188 §6/§7). `.chk-row` was
-          `ListRow` written a second time — badge + title + meta + trailing control, inside a
-          `.checklist` card that is `.index .listcard` under another name — so this is the
-          same card holding the same row the tasks screen renders, and `.chk-row`/`-ic`/`-t`/
-          `-m`/`-cta`/`-ppl` are gone, and so is `.chk-ok` — a completed check now shows the
-          same filled tick and struck title a completed task does (owner, 2026-08-16), so the
-          trailing "הושלם" was a second vocabulary for one state. The CTA BUTTON goes with them: `.chk-row` was a `<div>` and needed an
-          explicit button, `ListRow` already has a tap, so ADR-0061 §1's rule holds without
-          one — and keeping it left the title 101.8px against a manual row's 195px. */}
-      {(converged.length > 0 || farTasks.length > 0) && (
-        <div className="checklist">
-          {converged.map((row) =>
-            row.kind === 'auto' ? (
-              <AutomaticTaskRow
-                key={taskRowKey(row)}
-                auto={row.auto}
-                onTick={() => tickAutomatic(row.auto)}
-                onAct={() => runAction(row.auto)}
-                onManage={() => manageAutomatic(row.auto)}
-              />
-            ) : (
-              <TaskBandRow
-                key={taskRowKey(row)}
-                task={row.task}
-                users={users}
-                clock={taskClock}
-                onTick={() =>
-                  void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })
-                }
-                onOpen={openTasksScreen}
-              />
-            ),
-          )}
-          {/* The far group's rows. The TOGGLE is in the section head (see above) — this is
-              only the drawer it opens, and it stays inside the same card so the list reads as
-              one list that happens to be partly folded. */}
-          <Collapsible expanded={showFar}>
-            {farTasks.map((task) => (
-              <TaskBandRow
-                key={task.id}
-                task={task}
-                users={users}
-                clock={taskClock}
-                onTick={() => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
-                onOpen={openTasksScreen}
-              />
-            ))}
-          </Collapsible>
-        </div>
-      )}
-
-      {/* **BOTH TOGGLES SIT AT THE FOOT** (owner, 2026-08-16: _"maybe fit better on the bottom
-          instead of the top"_). They were in `.sec-title-end` for one round, which put two
-          controls in a line whose other job is to name the section — and a head that holds the
-          section's title, a status and two controls is a toolbar. At the foot they read as what
-          they are: the two ways this list continues.
-
-          `.chk-toggle` unchanged, so nothing about how they LOOK moves with them. `הכול מוכן 🎉`
-          stays in the head, because it is a statement rather than a control and it is the one
-          thing the head was always for. */}
-      {(farTasks.length > 0 || completedCount > 0) && (
-        <div className="chk-foot">
-          {farTasks.length > 0 && (
-            <CollapseToggle
-              expanded={showFar}
-              onToggle={() => setShowFar((v) => !v)}
-              expandLabel={t.planHome.checklist.showFar(farTasks.length)}
-              collapseLabel={t.planHome.checklist.hideFar}
-              className="chk-toggle"
-            />
-          )}
-          {completedCount > 0 && (
-            <CollapseToggle
-              expanded={showCompleted}
-              onToggle={() => setShowCompleted((v) => !v)}
-              expandLabel={t.planHome.checklist.showCompleted(completedCount)}
-              collapseLabel={t.planHome.checklist.hideCompleted}
-              className="chk-toggle"
-            />
-          )}
-        </div>
+      {/* **The completed half is a DIFFERENT list, so it is not a peer of the row above**
+          (owner, 2026-08-16: the two matched pills _"look bad"_). `עוד N` continues what you
+          are reading; this opens something else. A quiet centred link says that, where two
+          identical pills said the opposite. Footnote weight, with a 44px target through an
+          `::after` overlay — `ValueToken`'s idiom, so clearing the floor does not grow the
+          line. */}
+      {completedCount > 0 && (
+        <button
+          type="button"
+          className="chk-done-link"
+          aria-expanded={showCompleted}
+          onClick={() => setShowCompleted((v) => !v)}
+        >
+          {showCompleted
+            ? t.planHome.checklist.hideCompleted
+            : t.planHome.checklist.showCompleted(completedCount)}
+        </button>
       )}
 
       {completedCount > 0 && (
@@ -563,7 +570,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           openTasks={preview.open}
           overdue={preview.overdue}
           tasks={liftTasks}
-          more={liftRows.length - liftTasks.length || undefined}
+          more={restRows.length || undefined}
           onClose={() => setLifted(false)}
         />
       )}

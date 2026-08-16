@@ -445,11 +445,18 @@
   cursor: pointer;
 }
 /* Trip Home's row carries a `NavArrow` because its verb LEAVES — it deep-links to the
-   tasks screen. */
+   tasks screen. Plan Home's carries a caret, because its verb EXPANDS IN PLACE, and the
+   caret turns to say which way it now goes. */
 .tsk-more .icon {
   width: 15px;
   height: 15px;
   flex: none;
+}
+.chk-more-row .icon {
+  transition: transform var(--t-quick) ease;
+}
+.chk-more-row[aria-expanded='true'] .icon {
+  transform: rotate(180deg);
 }
 /* The far group's rows are revealed INSIDE the card, so the collapsible must not draw
    a second border where the card already owns one. */

@@ -1369,8 +1369,12 @@ export const HERO_TASK_CAP = 3;
  *  actionable now. Overdue is always included regardless. */
 export const TASK_BAND_LOOKAHEAD_DAYS = 7;
 
-/** **How many rows the LIFTED PLAN HERO shows** (ADR-0193 §4, amended 2026-08-16 on the
- *  owner's call). Five, not `HERO_TASK_CAP`'s three: the trip hero's cap is per STOP — three
- *  is "what do I still owe here" — while this one is the whole run-up to a departure, so it
- *  can afford a list. The remainder is stated (`ועוד N`), never dropped silently. */
-export const PLAN_LIFT_TASK_CAP = 5;
+/** **How many rows Plan Home shows before folding** — the inline list AND the lifted hero
+ *  (ADR-0193 §3/§4, amended 2026-08-16). Five, not `HERO_TASK_CAP`'s three: the trip hero's
+ *  cap is per STOP — three is "what do I still owe here" — while this is the whole run-up to
+ *  a departure, so it can afford a list. The remainder is always stated, never dropped.
+ *
+ *  ONE constant for both, because it is one question about one list. The inline list reached
+ *  it late: it used to fold by a semantic near/far rule, which could leave zero rows visible
+ *  and did — see `PlanHome`. */
+export const PLAN_TASK_CAP = 5;

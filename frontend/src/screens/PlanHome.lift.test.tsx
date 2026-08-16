@@ -29,7 +29,7 @@ import {
 import { setSimulatedNow } from '../lib/useClock';
 import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
-import { PLAN_LIFT_TASK_CAP } from '../constants';
+import { PLAN_TASK_CAP } from '../constants';
 import { PlanHome } from './PlanHome';
 
 // Pinned: the hero renders a COUNTDOWN and every band is a comparison against the clock,
@@ -114,54 +114,60 @@ describe('PlanHome — the list counts everything open', () => {
     cleanup();
   });
 
-  // THE REPORTED DEFECT. The trip is fully prepared on every derived check the fixture can
-  // satisfy… except it is not, because four tasks are open. Under the old gate
-  // (`converged.length === 0`) the head printed `הכול מוכן 🎉` here, since none of these
-  // four is dated inside a week.
-  it('does not say הכול מוכן while undated and far-off tasks are open', () => {
+  // **THE STRIPE** (owner, 2026-08-16: _"when there are no items there's just a stripe"_).
+  // The card is `.checklist`, a 1px-bordered box — so a card holding only a COLLAPSED drawer
+  // painted as a 2px line under the section title while two open tasks sat folded inside it.
+  // Both were due in 16 days, which the retired near/far split classed as "far".
+  //
+  // The guard is not "the stripe is gone" but the invariant that makes it unreachable: **if
+  // anything is open, a row is on screen.** A cap cannot break it — the first N of a list is
+  // never zero — where a predicate could, and did.
+  it('always shows a row when anything is open, whatever its deadline', () => {
     tasks = [
-      task('a'),
-      task('b'),
-      task('c', { dueAt: '2026-09-20T12:00:00Z' }),
-      task('d', { dueAt: '2026-09-25T12:00:00Z' }),
+      task('a', { title: 'לקנות נעלי טיולים', dueAt: '2026-08-27T12:00:00Z' }),
+      task('b', { title: 'לקנות מעיל', dueAt: '2026-08-27T12:00:00Z' }),
     ];
     show();
-    expect(screen.queryByText(t.planHome.checklist.allDone)).toBeNull();
+    expect(document.querySelectorAll('.checklist .wp-listrow').length).toBeGreaterThan(0);
+    expect(screen.getByText('לקנות נעלי טיולים')).toBeTruthy();
+    expect(screen.getByText('לקנות מעיל')).toBeTruthy();
+    // …and nothing claims the trip is done while they are open.
+    expect(screen.queryByText(t.planHome.checklist.emptyTitle)).toBeNull();
   });
 
-  // …and the other half of the same decision: the sentence is not deleted. It is the only
-  // moment this screen says something good, and it is true when nothing is open.
-  it('still says הכול מוכן when genuinely nothing is open', () => {
+  // The empty state itself — a block, not the 11px hint it used to be, and inside the card
+  // so the section keeps one silhouette. Only reachable when the checks are satisfied too.
+  it('shows the empty state as a block when genuinely nothing is open', () => {
     tasks = [task('a', { status: TASK_STATUS.DONE })];
     show();
-    // The fixture's live readiness checks are what would otherwise keep the list non-empty,
-    // so assert against the real condition: no rows, and the sentence present.
     const rows = document.querySelectorAll('.checklist .wp-listrow');
-    if (rows.length === 0) expect(screen.getByText(t.planHome.checklist.allDone)).toBeTruthy();
+    if (rows.length === 0) {
+      expect(screen.getByText(t.planHome.checklist.emptyTitle)).toBeTruthy();
+      expect(document.querySelector('.checklist .fb-empty')).toBeTruthy();
+    }
   });
 
-  // The asymmetry that made widening the only consistent repair: `completedManual` has never
-  // had a date window, so before this change an undated task was invisible while open and
-  // appeared under `הושלמו` the instant it was ticked.
-  it('shows an undated open task rather than only showing it once completed', () => {
+  // An undated task is a row like any other now — no window, no fold of its own. Before the
+  // widening it was invisible while open and appeared under `הושלמו` the moment it was ticked.
+  it('shows an undated open task as an ordinary row', () => {
     tasks = [task('u', { title: 'לקנות מתאם חשמל' })];
     show();
-    fireEvent.click(screen.getByRole('button', { name: t.planHome.checklist.showFar(1) }));
     expect(screen.getByText('לקנות מתאם חשמל')).toBeTruthy();
   });
 
-  // §3: urgent stays inline, the rest folds. An `important` task is urgent whatever its
-  // deadline, which is `outranksChecks`' own rule reused rather than restated.
-  it('keeps an important task inline and folds the far ones', () => {
-    tasks = [
-      task('imp', { title: 'חשובה', important: true }),
-      task('far', { title: 'רחוקה', dueAt: '2026-09-20T12:00:00Z' }),
-    ];
+  // The fold is a CAP: it appears only past `PLAN_TASK_CAP`, and it names its remainder.
+  it('folds only past the cap, and says how many it folded', () => {
+    tasks = Array.from({ length: 9 }, (_, i) =>
+      task(`t${i}`, { title: `משימה ${i}`, dueAt: `2026-08-2${i}T12:00:00Z` }),
+    );
     show();
-    // The important one is in the card without expanding anything…
-    expect(screen.getByText('חשובה')).toBeTruthy();
-    // …and the far one is behind the collapse row, which names how many it holds.
-    expect(screen.getByRole('button', { name: t.planHome.checklist.showFar(1) })).toBeTruthy();
+    const shown = document.querySelectorAll('.checklist .wp-listrow').length;
+    const more = document.querySelector('.chk-more-row');
+    expect(more).toBeTruthy();
+    // The drawer renders its rows collapsed, so count what is ABOVE the fold instead.
+    expect(shown).toBeGreaterThanOrEqual(PLAN_TASK_CAP);
+    fireEvent.click(more!);
+    expect(document.querySelector('.chk-more-row')!.getAttribute('aria-expanded')).toBe('true');
   });
 
   // §2's second number, and **it counts the readiness checks too** (owner, 2026-08-16: _"in
@@ -234,7 +240,7 @@ describe('PlanHome — the hero lifts', () => {
     // live readiness CHECK sits behind it. That is the half the retired date-bands were
     // bending — they put `ללא תאריך` last regardless of `important`, so a flagged undated
     // task fell below every check. Asserted as a relation rather than a full list because
-    // the fixture's live checks fill `PLAN_LIFT_TASK_CAP` on their own, which is the next
+    // the fixture's live checks fill `PLAN_TASK_CAP` on their own, which is the next
     // test's subject.
     expect(names[0]).toBe('חשובה');
     const checkTitles = [...card.querySelectorAll('.hero-task')]
@@ -254,7 +260,7 @@ describe('PlanHome — the hero lifts', () => {
     fireEvent.click(prep());
     const card = document.querySelector('.prep-lifted') as HTMLElement;
     const shown = card.querySelectorAll('.hero-task').length;
-    expect(shown).toBe(PLAN_LIFT_TASK_CAP);
+    expect(shown).toBe(PLAN_TASK_CAP);
     // …and the overflow line is present, naming a non-zero remainder.
     const more = card.querySelector('.hero-task-more');
     expect(more).toBeTruthy();

@@ -56,7 +56,7 @@ export interface PlanLiftProps {
    *  behind the lift already answers "what first" with `orderTaskRows`. Two surfaces, one
    *  order — which is the rule ADR-0190 §2 set and the bands were quietly bending. */
   tasks: HeroLiftTask[];
-  /** Whatever `PLAN_LIFT_TASK_CAP` left behind. The card shows a bounded list and must not
+  /** Whatever `PLAN_TASK_CAP` left behind. The card shows a bounded list and must not
    *  imply it is all — `HeroTaskRows`' own rule, and `פתק`'s before it. */
   more?: number;
   /** The collapsed hero this was lifted out of — the box the flight starts from and
