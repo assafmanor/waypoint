@@ -1,6 +1,6 @@
 # 0160 — The hero **lifts**, and what it lifts is a **horizon**
 
-**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Built 2026-08-03 — phases 1-4 — and AMENDED TWICE from a device the same day, so read both amendments at the end before §5, §7, §9 or §10.** Round one withdrew the rebuff, centred the landing and fixed a class collision that laid the horizon out in a row; round two built the motion (the measured two-pass FLIP, the swing, the landing beat) and records four things only a real browser could say — chiefly that the lifted hero was inheriting the app's one cinematic moment. **Phase 5 no longer exists**: it was the rebuff, retired by amendment §A before it was built. See the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md). **§H (2026-08-03) answers Plan mode:** its hero does **not** lift — its depth is the checklist directly beneath it — but a tap is answered by §9's rebuff, which comes back for the surface that actually has the condition §9 described. **§I (2026-08-03) closes the build:** `in-transit` lifts, and every phase of this ADR is now built. The one item deliberately NOT built is §10's "seat", which is a datum the app does not store — see §I.
+**Status:** Accepted (owner sign-off 2026-08-03, across two mockups read in session). **Built 2026-08-03 — phases 1-4 — and AMENDED TWICE from a device the same day, so read both amendments at the end before §5, §7, §9 or §10.** Round one withdrew the rebuff, centred the landing and fixed a class collision that laid the horizon out in a row; round two built the motion (the measured two-pass FLIP, the swing, the landing beat) and records four things only a real browser could say — chiefly that the lifted hero was inheriting the app's one cinematic moment. **Phase 5 no longer exists**: it was the rebuff, retired by amendment §A before it was built. See the [build plan](../planning/2026-08-03-session-210-the-hero-lift-build-plan.md). **§H (2026-08-03) answers Plan mode:** its hero does **not** lift — its depth is the checklist directly beneath it — but a tap is answered by §9's rebuff, which comes back for the surface that actually has the condition §9 described. **§I (2026-08-03) closes the build:** `in-transit` lifts, and every phase of this ADR is now built. The one item deliberately NOT built is §10's "seat", which is a datum the app does not store — see §I. **§U (2026-08-16) amends §3 and §13 for the SECOND time and corrects §13 for the first:** a hosted **task** joins the horizon as a read, `§3`'s "only three things" is now four things and a rule for the fifth, and §13's own "no note on the **next** event" turns out to have been false in the shipped app since the first build. **Read §U before adding anything to a point.**
 **Date:** 2026-08-03
 **Design reference:** [`mockups/hero-lift-v1.html`](../../mockups/hero-lift-v1.html) (the motion) + [`mockups/hero-horizon-v1.html`](../../mockups/hero-horizon-v1.html) (the content). Every measurement below is read from those files' live DOM, at 390×844 and 360×640, in both themes.
 
@@ -406,3 +406,219 @@ assertion against the settled card** — the hero's box against `.modal-card`'s,
 `in-transit` states at 360×640 — and a `min-height: 0` / definite-height fix if it reproduces. It
 is a backlog line rather than part of this change: the document chip's own cost is +42px, and 0px
 when nothing is attached, so it neither causes the overflow nor depends on it.
+
+## Amendment (2026-08-16, session 274) — §U. A hosted **task** joins the horizon, and §3 is renumbered honestly
+
+The tasks brief's **§E**, the last of its three open design questions, and phase 5 of the tasks
+build plan cannot start without it. Brief §11 named this amendment by name rather than leaving it
+to be noticed: _"The hero placement amends ADR-0160 in place. Its §3 admits exactly three
+affordances and its §13 says 'no note on the next event … deliberately unbuilt and named so it
+cannot arrive quietly'. A fourth arriving is a decision that must be written into that ADR, not
+slipped past it."_
+
+Designed in [`mockups/a-task-in-the-hero-horizon-v1.html`](../../mockups/a-task-in-the-hero-horizon-v1.html),
+owner sign-off on all three open forks in session. **Half of §E was already closed and was not
+reopened:** brief §13 made the slot a **read**, not a completion — _"settling a task there competes
+with `הסדרה`, which already means 'did this happen'"_ — and the owner had been offered the tickable
+version and declined it. So what this amendment decides is only what it looks like.
+
+### U0. §3 does not admit three things, and has not since §T
+
+§3's own words are _"only three things earn the interaction"_. **§T (2026-08-08) added a fourth — an
+attached document — and did not renumber §3.** So the sentence has been false for eight days, and
+the honest version of this amendment is not "a fourth arrives" but "the second fourth arrives, and
+§3 needs a rule instead of a list".
+
+**The rule, stated so the sixth does not need its own ADR:** a point's depth is what the collapsed
+board cannot carry and what a person would otherwise open another tab to find. What decides whether
+it is a **block** or a **chip in `hero-acts`** is not importance and not size — it is whether it is a
+way **out** of the point. §O defined that row as _"every way out of a point, in ONE row"_: `במפה`,
+`ניווט`, `להזמנה` and §T's document all leave the hero for somewhere else. `פתק` and a task do not;
+they are content that is read where it sits. **So a task is a block, and §T's chip stays a chip.**
+
+The alternative was drawn (mockup §1) and refused on §H's own words rather than on taste: a chip
+that presses nowhere is _"announcing a control and then doing nothing when it is activated"_, and a
+chip that did press would be the completion §13 already declined.
+
+### U1. What the block is: `פתק`'s geometry, with the lead as the only difference
+
+`משימה`, a `hero-part` after `פתק` and before `הסדרה`. It shares `.hero-note`'s three declarations
+exactly (`display: flex`, `gap: 9px`, `align-items: flex-start`), a 15px `--on-dark-dim` glyph and
+`--text-secondary` — **measured at 0px of line-start delta** between the two blocks.
+
+That number is the whole reason it is stated here. **ADR-0191 §5 wrote down the opposite for the
+host surface, called it _"the decision rather than an accident"_, shipped, and was reversed on the
+owner's first look** — the task's text started **40px** past the note's on the same box, and the
+measurement had been available the whole time. Two content blocks inches apart on one surface are
+one species or they are a defect; this is that rule arriving on the hero before the build rather
+than after it.
+
+**The `important` star insets the title by 18px, and that is not a violation of the above.** The
+shipped section row does exactly the same thing (`.tsk-star` before `.tsk-title-txt` inside
+`.note-item-b`). What must match is where the _line_ starts; what the line then holds is the row's
+own business.
+
+### U2. The deadline gets its own line, and the render is what decided it
+
+The first drawing put star + title + deadline + face on one wrapping line. At 360px the long title
+took the line and `margin-inline-start: auto` put the **assignee's face alone on a line of its own**
+— a floating circle under the text.
+
+**That is §O's finding recurring inside the file §O was written in:** flex breaks lines by each
+item's _hypothetical_ size, so `min-width: 0` and `text-overflow: ellipsis` are unreachable code
+there. Two ways out were drawn and measured:
+
+|                                          | cost   | what it gives up                |
+| ---------------------------------------- | ------ | ------------------------------- |
+| one line, the title ellipsises           | 55px   | the title, which is the payload |
+| **the deadline on its own line** (taken) | 68.1px | 13.1px                          |
+
+**The taken one invents nothing: it is ADR-0191 §8's shipped answer for the identical crowding**,
+where a one-line meta was measured truncating a host chip to 24px of the 80px it needed. The title
+line is `nowrap` with `flex: 1 1 0` on the name — `.tsk-title-txt`'s own comment, for its own reason
+(a two-line title still has to start beside the star, which a content basis does not give).
+
+### U3. The mark is the **checkbox**, and the risk is named rather than designed away
+
+Owner's call from three drawn candidates. It is `Icon name="checkbox"` — the same glyph the tasks
+section header and the host mark already carry, **and already carry non-interactively**, which is
+what makes this the same role rather than a new one. `פתק` has both a label and a glyph; a task gets
+the same symmetry.
+
+**The recorded risk:** a checkbox on a read-only surface can read as pressable, and this is
+precisely a surface where the user has learnt elsewhere that a checkbox ticks. It is 15px, dim,
+with no ring, no fill and no target — but that is an argument, not a measurement, and a desktop
+screenshot cannot settle it. **It joins the device pass** beside the tasks feature's three other
+feel questions. If it proves real, the bare `✓` (drawn, mockup §3ב) is the answer and it is a
+one-word change.
+
+### U4. What the line says, and the one thing that is a defect rather than a choice
+
+- **`important`** — the star, in the board's ink. No colour, which is brief §7's rule (the palette
+  has nothing left) and the screen's own answer.
+- **The assignee** — a 19px face at the end of the title line, with the name in a `visually-hidden`
+  span because `Avatar`'s non-interactive form is `aria-hidden` (ADR-0190 §6 as amended). Owner's
+  call, and it **measures free**: 0px, because it rides the title line's own height. The argument
+  against is recorded — ADR-0153 §4 dropped the note's author face to avoid a second identity
+  system per row — and the reason it does not carry is that a note's author has no role in the
+  note while a task's owner is half of what the task says.
+- **The deadline — and here the shipped ink is a defect, not a preference.** `.tsk-due` is
+  `var(--amber-deep)` and `.tsk-due.late` is `var(--miss-deep)`: paper inks, tuned for `--card`.
+  Measured on the board's own tokens:
+
+  | ink                        | light    | dark  |
+  | -------------------------- | -------- | ----- |
+  | `--amber-deep`             | **2.93** | 6.31  |
+  | `--miss-deep`              | **2.44** | 6.15  |
+  | `#f0c785` (board amber)    | 10.13    | 10.82 |
+  | `#f0a09b` (board `--miss`) | 7.82     | 8.36  |
+
+  The first is under WCAG AA's 4.5 for 11px text; the second is under even 3.0. **In dark the same
+  tokens are lifted and both are fine, which is why looking at it was not enough** — the dark
+  screenshot read healthy and the light one read as merely dim. This is ADR-0158 §15's "an inverted
+  surface is the limit" arriving exactly as it did for `SettleControl` in §11 of this ADR, and the
+  fix invents nothing: both replacements are already shipped values, in `.hero-clockshift` and in
+  `.wp-settle.board .wp-settle-btn.skip`.
+
+  Amber for a deadline is **inside** rule 4's budget rather than an exception to it: a deadline is
+  time. `--miss` for a passed one is the same `--ok`/`--miss` §11 already licensed on this ground.
+
+### U5. One task, and it says how many it is not showing
+
+`ועוד N משימות`, exactly `פתק`'s rule and for `HeroLift`'s own stated reason — the hero shows one
+and must not imply it is all. Owner's call against the drawn three-row alternative.
+
+**The fit argument is the modest one, because the measurement made the loud one unavailable.** The
+crowded two-point hero is **722px against 622px of room** at 360×640 **with no tasks at all** — 100px
+over before the block arrives, which is the class §8 already tabulates and the reason the one
+scroller exists. So: the block adds **87px across two points**, and the three-row option adds **40px**
+more, which at 390×844 turns a card fitting by 17px into one over by 23px.
+
+### U6. Where it deliberately does not go
+
+- **A settled host shows none.** ADR-0191 §6: a done or skipped event has no future, so its tasks
+  are not open obligations — they already leave the mark, both Home bands and the Index tile through
+  `isOnSettledHost`, and the hero reads **the same set** rather than deriving its own. Worth 68px of
+  card, and the point still carries `הסדרה`, which is what already says the thing is over.
+- **Nothing on `אחר כך`**, and this needs no code: `HeroThen` carries a title and an instant and
+  **no id**, so nothing can be resolved from it. §12 designed that as the enforcement and §T
+  confirmed it holds; a task is the second thing to bounce off it.
+- **No host chip.** The tasks screen says what a row is linked to via `.note-host` (ADR-0191 §8)
+  because that list is flat and the host is off-screen. Here **the host IS the point**, three lines
+  above. A chip would print the same sentence twice — the defect ADR-0188 §1 removed once already,
+  when the automatic row's badge was restating its own title.
+- **Nothing interactive at all**, which is what pays the brief's §A constraint at zero cost. §4's
+  parser finding binds a real nested `<button>`; a block with no control cannot reach it, and there
+  is no touch target to hold against ADR-0017's 44px floor.
+
+`canLift` counts a task, on §T's own reasoning for the document: a point whose only depth is a task
+would otherwise answer "nothing to lift" and take §Q's rebuff — the board refusing to open onto the
+one thing it has to show.
+
+### U7. §13's second bullet was false, and had been since the first build
+
+> _"No note on the **next** event. … Deliberately unbuilt and named so it cannot arrive quietly."_
+
+`HeroLift.tsx` has rendered `<Note point={next} />` since commit `9b284e57` (phase 1, #449). **It
+arrived quietly on day one, no amendment recorded it, and §T then built on top of it** — its
+sentence _"`הבא בתור` gains the chip for free, because `HeroLift` already renders `<Where point={next} />`"_
+is the same observation about the sibling element, made without noticing what it implied about the
+bullet two sections down.
+
+**The bullet is withdrawn.** The reasoning it rested on — that a note on `next` turns the typical
+case into the heavy one — is answerable now instead of arguable: the note on `next` is in every
+number §8's fit table has been re-measured with since, including §T's. A task on `next` is allowed
+on the same footing.
+
+What this leaves standing in §13 is everything else, and one line is worth restating because it is
+the only remaining "deliberately unbuilt": **no authoring of any kind** on this surface.
+
+### U8. A booked event's task is read through the host CONTEXT, not the event
+
+`heroHorizon` resolves notes and documents through **one** `resolveHostContext(…)`, precisely so the
+two cannot disagree about a booked event (§T: _"two calls is how the note list and the document list
+start disagreeing"_). A task carries the same five FKs, and a task about a flight is written on the
+**booking**. Asking `tasksForHost` for the event alone would have made exactly those tasks invisible
+on the one surface built for standing at a gate.
+
+So tasks join that one resolution, through the generic `inContext(context, row, isHostedBy)` that
+`notesForContext` already runs on. **§I's trap is ours for the third time**, and it is now three
+content types reading one context rather than three functions that happen to agree.
+
+### U9. A glyph sits on a BASELINE, and a baseline is not a centre
+
+Reported from a device against the built slot, in three words: _"tick alignment is bad"_.
+
+Both content blocks put a 15px `.icon` inside a block-level span. An `.icon` is an **inline**
+box, so it sits on the line's baseline rather than in the middle of it — and `.hero-note-ic`'s
+`margin-top: 1px` was a nudge that made it approximately right rather than right. Measured in
+the running app: **the clipboard hung 1.4px below its note's text, and the checkbox 2.4px below
+its own title line** — so the tick read as out of line with the star six pixels to its left,
+which is exactly what was reported.
+
+**The fix is one shared rule, and it fixes the note as well as the task.** The glyph column is
+`display: flex; align-items: center` with its height set to the text's own line box
+(`--hero-block-line`, `calc(var(--text-secondary) * 1.55)`), which the text then also uses as
+its `line-height` — one source, so a change to the type ramp cannot re-open this. All three
+offsets measure **0.0px**.
+
+**Repairing only the task would have been the worse bug.** The note's 1.4px was invisible while
+nothing sat beside it; leaving it while centring the task would have made the two blocks
+disagree by 1.4px — the exact defect §U1 exists to prevent, arriving by way of its own repair.
+
+Guarded in `frontend/e2e/hero-lift.spec.ts` rather than the unit suite, for the usual reason:
+the markup was correct and only the optical result was wrong, and jsdom answers zero for every
+rect. The assertion names the reported comparison directly — the tick against the star.
+
+## Consequences of §U
+
+- **`.hero-note-more` is generalised rather than copied.** Two consumers on day one is rule 8's own
+  threshold, so the shipped selector gains a second name instead of the stylesheet gaining an
+  identical block.
+- **Two new strings only** (`משימה`, `ועוד N משימות`). The deadline's words are `t.tasks.due`'s,
+  reused — ADR-0171's `עד` and the tasks feature's `באיחור ·`.
+- **The checkbox-reads-as-pressable question is open and belongs to a device**, beside the tasks
+  feature's other three feel questions. The fallback is drawn and is one word.
+- **`HeroPoint` grows a fourth content array**, which is the point at which "what is depth" stopped
+  being a list and became U0's rule. A fifth content type should be argued against that rule in
+  place, not added beside these four.

@@ -15,6 +15,7 @@ import {
   isJourney,
   windowBoundOf,
   type DocumentSummary,
+  type Task,
   type TripEvent,
 } from '@waypoint/shared';
 import { ltrIsolate } from '../lib/bidi';
@@ -38,7 +39,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { orderTaskRows, tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
+import { orderTaskRows, taskDue, tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
@@ -77,7 +78,7 @@ import {
 import { deriveHeroBooking } from '../lib/hero-booking';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
-import { HeroLift, type HeroLiftPoint } from '../ui/domain/HeroLift';
+import { HeroLift, type HeroLiftPoint, type HeroLiftTask } from '../ui/domain/HeroLift';
 import { ConverterSheet } from '../ui/domain/ConverterSheet';
 import { currencyForDeviceRegion } from '../lib/currency';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
@@ -273,6 +274,16 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   const nextCode = nextBooking?.confirmationCode
     ? `${CODE_PREFIX}${nextBooking.confirmationCode}`
     : undefined;
+  // ── What a task derivation is read against ─────────────────────────────────
+  // Declared here rather than beside the band below, because the lifted hero reads tasks too
+  // (ADR-0160 §U) and both must be the SAME clock and the SAME settled-host set — a hero that
+  // still offers a task the band has already dropped is two answers to one question.
+  const taskClock: TaskClock = useMemo(
+    () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone }),
+    [nowMs, zoneCrossings, trip.timezone],
+  );
+  const settledHosts = useSettledHosts();
+
   // ── THE LIFTED HERO (ADR-0160) ─────────────────────────────────────────────
   // The horizon is DERIVED from what the board is already showing, never
   // re-derived from the clock: `nowAll` and the board's own `shownNext` go in, so
@@ -297,6 +308,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     // disagree about what a point carries.
     attachments: documentAttachments,
     documents,
+    // The same three the band and the Index tile read (ADR-0160 §U8) — passed, never rebuilt.
+    tasks,
+    taskClock,
+    settledHosts,
     hostContexts,
   });
   const liftable = canLift(horizon);
@@ -325,6 +340,36 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     }
     wasLifted.current = lifted;
   }, [lifted]);
+
+  /** The hero's one task, made view-ready (ADR-0160 §U) — the deadline phrased in ITS OWN
+   *  zone through the same `taskDue` the section and the screen use, so a task cannot read
+   *  one way here and another one tab over. Spread into the point, so a stop with no task
+   *  contributes no key at all rather than an explicit `undefined`. */
+  const heroTask = (task: Task | undefined): { task?: HeroLiftTask } => {
+    if (!task) return {};
+    const due = taskDue(task, taskClock);
+    const assignee = task.assigneeUserId
+      ? users.find((u) => u.id === task.assigneeUserId)
+      : undefined;
+    return {
+      task: {
+        title: task.title,
+        important: task.important,
+        due: due && {
+          // The numeric run is its own LTR island; the Hebrew around it must not be dragged
+          // with it (ADR-0118) — `TaskSection`'s own split, reused rather than rebuilt.
+          text: `${due.late ? t.tasks.due.late : t.tasks.due.by} ${
+            due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day
+          }`,
+          late: due.late,
+        },
+        assignee: assignee && {
+          person: assignee,
+          name: `${t.tasks.sheet.assigneeLabel}: ${assignee.displayName}`,
+        },
+      },
+    };
+  };
 
   /** A horizon point, made view-ready: titles become nodes, times are formatted in
    *  the point's OWN zone (ADR-0107 §2-3), and the hand-offs become callbacks the
@@ -378,6 +423,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         title: doc.title,
         onOpen: () => setViewingDoc(doc),
       })),
+      // **ONE task, and how many it is not showing** (ADR-0160 §U5) — `פתק`'s rule, and the
+      // list arrives already in the screen's own urgency order, so "the one" is the same one
+      // the tasks screen puts on top.
+      ...heroTask(p.tasks[0]),
+      taskMore: Math.max(0, p.tasks.length - 1),
       settled: p.settled,
       // The Map's focus channel is absent when its provider is not mounted, so the
       // way-in is absent too rather than a control that cannot work (ADR-0150 §8).
@@ -462,15 +512,10 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // Derived here and passed down, so the band component stays presentational like every
   // other `ui/`-shaped one. `tasksDueNow` owns "manual only, due today or overdue" —
   // including WHY an automatic check is excluded, which is not a detail a screen re-decides.
-  const taskClock: TaskClock = useMemo(
-    () => ({ nowMs, crossings: zoneCrossings, primaryZone: trip.timezone }),
-    [nowMs, zoneCrossings, trip.timezone],
-  );
   // **Ordered the way the Index orders** (phase 3r): urgent first, then the rest. The band
   // carries no readiness checks (an automatic task's deadline is departure, so mid-trip they
   // would all read overdue), so `orderTaskRows` is handed an empty second half — the point is
   // that ONE function decides what leads, rather than the band keeping a second answer.
-  const settledHosts = useSettledHosts();
   const dueTasks = useMemo(() => {
     const due = tasksDueSoon(tasks, taskClock, settledHosts);
     return orderTaskRows(due, [], taskClock).flatMap((row) =>

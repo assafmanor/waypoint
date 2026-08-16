@@ -20,6 +20,7 @@
 import { useRef, type ReactNode } from 'react';
 import { useLiftFlight } from '../../lib/useLiftFlight';
 import { Modal } from '../primitives/Modal';
+import { Avatar, type AvatarPerson } from '../primitives/Avatar';
 import { Icon } from '../Icon';
 import { ZoneShiftPill } from '../ZoneShiftPill';
 import { SettleControl, type SettleOutcome } from './SettleControl';
@@ -103,6 +104,15 @@ export interface HeroLiftPoint {
    *  surface that never showed one — so the reach is a chip in this point's OWN action row,
    *  which already reads "every way out of a point, in ONE row". */
   documents?: { key: string; title: string; onOpen: () => void }[];
+  /** **The task this stop is carrying** (ADR-0160 §U) — ONE, with `taskMore` saying how many
+   *  others there are, which is `פתק`'s rule and for the same reason.
+   *
+   *  A READ: no tick, no menu, nothing pressable at all. That is what brief §13 settled (the
+   *  owner was offered the tickable version and declined), and it also pays §A's hard
+   *  constraint at zero cost — §4's parser finding binds a real nested `<button>`, and a block
+   *  with no control cannot reach it. */
+  task?: HeroLiftTask;
+  taskMore?: number;
   settled?: SettleOutcome;
   /** The way to the pin, and the hand-off out to Maps (ADR-0121's amendment §4 —
    *  the affordance that was too loud on the COLLAPSED board and is affordable
@@ -114,6 +124,23 @@ export interface HeroLiftPoint {
   onDone?: () => void;
   onSkip?: () => void;
   onUndo?: () => void;
+}
+
+/** **A task on a point** (ADR-0160 §U), view-ready — the deadline already phrased in its own
+ *  zone and the assignee already resolved, exactly as every other datum on this card arrives.
+ *
+ *  No id and no callbacks, and that is the type carrying the decision rather than a comment
+ *  asking for it: there is nothing here to resolve something from and nothing to fire, so the
+ *  read cannot quietly become a completion. `HeroThen` encodes §12's condition the same way. */
+export interface HeroLiftTask {
+  title: string;
+  important?: boolean;
+  /** `עד היום 20:00` / `באיחור · אתמול 18:00`, already built with its numeric run isolated. */
+  due?: { text: string; late: boolean };
+  /** The face at the end of the title line (ADR-0190 §6 as amended). `name` is rendered into a
+   *  visually-hidden span, because `Avatar`'s non-interactive form is `aria-hidden` and the row
+   *  would otherwise say nothing at all about who owes this. */
+  assignee?: { person: AvatarPerson; name: string };
 }
 
 /** `אחר כך` — one line, and ADR-0160 §12's condition is the SHAPE: a title and a
@@ -263,6 +290,61 @@ function Note({ point }: { point: HeroLiftPoint }) {
   );
 }
 
+/** `משימה` — a READ beside `פתק`, in `Note`'s own geometry (ADR-0160 §U1).
+ *
+ *  **The lead is the only difference between the two blocks, and that is the decision.**
+ *  ADR-0191 §5 wrote the opposite down for the host surface, called it "the decision rather
+ *  than an accident", shipped, and was reversed on the owner's first look at a 40px indent
+ *  the measurement could have given anyone. Here it is 0px before the build, not after.
+ *
+ *  **The deadline gets its own line** — ADR-0191 §8's shipped answer to the identical
+ *  crowding, and the render is what chose it: on one wrapping line the assignee's face
+ *  landed alone underneath at 360px, which is §O's finding recurring in this very file (flex
+ *  breaks lines by HYPOTHETICAL size, so `min-width: 0` and the ellipsis never run). */
+function Tasks({ point }: { point: HeroLiftPoint }) {
+  const task = point.task;
+  if (!task) return null;
+  return (
+    <div className="hero-part">
+      <span className="hero-lbl">{t.hero.task}</span>
+      <div className="hero-task">
+        {/* The glyph the tick, the mark and the section header all use — non-interactive at
+            two of those three already, which is what makes this the same role rather than a
+            new one. The risk that a checkbox reads as pressable on a read-only surface is
+            named in §U3 and belongs to the device pass, not to a second glyph here. */}
+        <span className="hero-task-ic" aria-hidden="true">
+          <Icon name="checkbox" />
+        </span>
+        <span className="hero-task-main">
+          <span className="hero-task-hd">
+            {task.important && (
+              <span className="hero-task-star" aria-hidden="true">
+                <Icon name="star" />
+              </span>
+            )}
+            <span className="hero-task-nm">{task.title}</span>
+            {task.assignee && (
+              <>
+                <Avatar person={task.assignee.person} size="inherit" />
+                <span className="visually-hidden">{task.assignee.name}</span>
+              </>
+            )}
+          </span>
+          {task.due && (
+            <span className={task.due.late ? 'hero-task-due late' : 'hero-task-due'}>
+              <Icon name="clock" /> {task.due.text}
+            </span>
+          )}
+        </span>
+      </div>
+      {/* The hero shows ONE and must not imply it is all — `Note`'s rule, one block over. */}
+      {!!point.taskMore && (
+        <span className="hero-task-more">{t.hero.moreTasks(point.taskMore)}</span>
+      )}
+    </div>
+  );
+}
+
 function Settle({ point }: { point: HeroLiftPoint }) {
   if (!point.onDone || !point.onSkip) return null;
   return (
@@ -375,6 +457,7 @@ function Point({ point, lead }: { point: HeroLiftPoint; lead?: boolean }) {
       )}
       <Where point={point} />
       <Note point={point} />
+      <Tasks point={point} />
       <Settle point={point} />
     </div>
   );
@@ -496,6 +579,7 @@ export function HeroLift(props: HeroLiftProps) {
                     collapsed board already shows above. */}
                 <Where point={next} />
                 <Note point={next} />
+                <Tasks point={next} />
               </>
             )}
 

@@ -18,6 +18,7 @@ import {
 } from '@waypoint/shared';
 import { TASK_BAND_LOOKAHEAD_DAYS } from '../constants';
 import { isAutomaticSettled, isLive, isManual, type AutomaticTask } from './automatic-tasks';
+import { inContext, type HostContext } from './host-context';
 import { dropHostedForHostChange, isHostedBy, type HostChange, type NoteHostKind } from './notes';
 import { currentZone, type ZoneCrossing } from './places';
 import { addDays, formatTime, relativeDayLabel, todayInTz } from './time';
@@ -293,6 +294,21 @@ export const tickedStatus = (task: Task): TaskStatus =>
 export function tasksForHost(tasks: Task[], kind: NoteHostKind, id: string, clock: TaskClock) {
   return sortTasks(
     tasks.filter((task) => isManual(task) && isHostedBy(task, kind, id)),
+    clock,
+  );
+}
+
+/** The same list for a whole host CONTEXT rather than one host — the shape `notesForContext`
+ *  already has, over the same generic `inContext`.
+ *
+ *  **A booked event is why this exists** (ADR-0160 §U8). A task about a flight is written on
+ *  the BOOKING, and a booked event is materialized server-side with no client id at save time
+ *  (ADR-0172 §7) — so a surface that resolves one host reads an empty list where the app holds
+ *  a task. The lifted hero already resolves ONE context and reads notes and documents from it;
+ *  tasks are the third content type through it, not a third function that happens to agree. */
+export function tasksForContext(tasks: Task[], context: HostContext, clock: TaskClock): Task[] {
+  return sortTasks(
+    tasks.filter((task) => isManual(task) && inContext(context, task, isHostedBy)),
     clock,
   );
 }
