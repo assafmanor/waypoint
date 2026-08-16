@@ -145,6 +145,9 @@ export async function bootIntoTrip(
     places?: unknown[];
     /** Trip notes, so a host row can carry the mark (ADR-0152 §6c). */
     notes?: unknown[];
+    /** Trip tasks, so a point can carry the hero's fourth content block (ADR-0160 §U) and a
+     *  host row its mark (ADR-0191 §2). */
+    tasks?: unknown[];
     /** Trip documents, so the Index's documents rows exist to be measured. */
     documents?: unknown[];
     /** **The attachment links** (ADR-0173 §1), so a host row can carry the DOCUMENT mark and
@@ -188,6 +191,7 @@ export async function bootIntoTrip(
     maybeItems: opts.maybeItems ?? SNAPSHOT.maybeItems,
     places: opts.places ?? SNAPSHOT.places,
     notes: opts.notes ?? SNAPSHOT.notes,
+    tasks: opts.tasks ?? SNAPSHOT.tasks,
     documents: opts.documents ?? SNAPSHOT.documents,
     documentAttachments: opts.documentAttachments ?? SNAPSHOT.documentAttachments,
     enrichments: opts.enrichments ?? SNAPSHOT.enrichments,

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { EVENT_STATUS } from '@waypoint/shared';
 import { DayRail } from './Board';
-import { HeroLift, type HeroLiftPoint } from './HeroLift';
+import { HeroLift, type HeroLiftPoint, type HeroLiftTask } from './HeroLift';
 import { t } from '../../i18n/he';
 import { wrapNav } from '../../test/nav-harness';
 
@@ -74,6 +74,89 @@ describe('HeroLift', () => {
   it('the note count is silent when there is only one note', () => {
     show({ now: [point({ note: 'יש תור', noteMore: 0 })] });
     expect(screen.queryByText(t.hero.moreNotes(0))).toBeNull();
+  });
+
+  // ── משימה (ADR-0160 §U) ───────────────────────────────────────────────────
+  const withTask = (over: Partial<HeroLiftTask> = {}) =>
+    point({
+      task: { title: 'להזמין מקומות לסושי', ...over },
+      taskMore: 0,
+    });
+
+  it('shows one task, and says how many it is NOT showing', () => {
+    show({ now: [point({ task: { title: 'לקנות JR Pass' }, taskMore: 2 })] });
+    expect(screen.getByText(t.hero.task)).toBeTruthy();
+    expect(screen.getByText('לקנות JR Pass')).toBeTruthy();
+    expect(screen.getByText(t.hero.moreTasks(2))).toBeTruthy();
+  });
+
+  it('is silent about משימה when the point carries none', () => {
+    show({ now: [point()] });
+    expect(screen.queryByText(t.hero.task)).toBeNull();
+  });
+
+  it('the task count is silent when there is only one', () => {
+    show({ now: [withTask()] });
+    expect(screen.queryByText(t.hero.moreTasks(0))).toBeNull();
+  });
+
+  // **THE SLOT IS A READ** (brief §13 — the owner was offered the tickable version and
+  // declined). This is also what pays brief §A's constraint: ADR-0160 §4's parser finding
+  // binds a real nested `<button>`, and the collapsed board's tap area is one — so a control
+  // arriving here is a defect with a rendering consequence, not a preference. A test rather
+  // than a comment, because the next person to add a tick will not read the comment.
+  it('renders NOTHING interactive in the task block', () => {
+    const container = show({
+      now: [withTask({ important: true, due: { text: 'עד היום 20:00', late: false } })],
+    });
+    const block = container.querySelector('.hero-task')!;
+    expect(block).toBeTruthy();
+    expect(block.querySelectorAll('button, a, [role="button"], input')).toHaveLength(0);
+  });
+
+  it('draws the deadline, and marks a passed one', () => {
+    const container = show({
+      now: [withTask({ due: { text: 'באיחור · אתמול 18:00', late: true } })],
+    });
+    expect(container.querySelector('.hero-task-due.late')).toBeTruthy();
+    expect(screen.getByText(/באיחור/)).toBeTruthy();
+  });
+
+  it('the deadline is unmarked when it has not passed', () => {
+    const container = show({ now: [withTask({ due: { text: 'עד מחר 09:00', late: false } })] });
+    expect(container.querySelector('.hero-task-due')).toBeTruthy();
+    expect(container.querySelector('.hero-task-due.late')).toBeNull();
+  });
+
+  // The face is `aria-hidden` (`Avatar`'s non-interactive form), so the row would say nothing
+  // at all about who owes this without the visually-hidden name beside it — ADR-0190 §6.
+  it('says who owes the task in text, since the face itself is aria-hidden', () => {
+    const container = show({
+      now: [
+        withTask({
+          assignee: {
+            person: { displayName: 'דנה', avatarHue: 'plum' },
+            name: 'אחראי/ת: דנה',
+          },
+        }),
+      ],
+    });
+    expect(container.querySelector('.hero-task-hd .wp-av')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+    expect(screen.getByText('אחראי/ת: דנה')).toBeTruthy();
+  });
+
+  // `הבא בתור` gets the block too, and ADR-0160 §13's "no note on the next event" is the
+  // reason this is asserted rather than assumed: that bullet forbade the sibling case and the
+  // app had been doing it since the first build. §U7 withdraws it; this pins what replaced it.
+  it('gives הבא בתור the same block', () => {
+    show({
+      now: [point()],
+      next: point({ key: 'next', title: <span>צ׳ק-אין</span>, task: { title: 'לבקש חדר גבוה' } }),
+      nextTime: '22:30',
+    });
+    expect(screen.getByText('לבקש חדר גבוה')).toBeTruthy();
   });
 
   it('the map way-in is a button and ניווט is a real link', () => {

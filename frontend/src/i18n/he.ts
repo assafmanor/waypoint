@@ -1705,6 +1705,10 @@ export const t = {
     // The hero shows ONE note and says how many it is not showing, so a group that
     // wrote three does not read as a group that wrote one.
     moreNotes: (n: number) => `ועוד ${n} פתקים`,
+    // The fourth content type (ADR-0160 §U). Singular, because the hero shows ONE — and it
+    // says how many it is not showing on the same rule the note beside it follows.
+    task: 'משימה',
+    moreTasks: (n: number) => `ועוד ${n} משימות`,
   },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture

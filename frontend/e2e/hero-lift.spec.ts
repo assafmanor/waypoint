@@ -410,4 +410,96 @@ test.describe('the lifted hero (ADR-0160)', () => {
     // The content is there, which is the part that must never depend on the motion.
     await expect(page.locator(HERO)).toContainText('Mercato di Porta Nolana');
   });
+
+  // ── משימה, the fourth content block (ADR-0160 §U) ─────────────────────────
+  //
+  // Two claims, and neither is checkable in jsdom: where the two blocks' text lines START,
+  // and what colour the deadline actually paints. The first is the exact number ADR-0191 §5
+  // got wrong on a device (40px, on a rule it had written down as deliberate); the second is
+  // a token that measures 2.44:1 on this ground in light mode and looked fine in dark.
+  const noteAndTask = {
+    notes: [
+      {
+        id: 'nt-1',
+        tripId: TRIP_ID,
+        body: 'שמרו מקום ליד החלון',
+        eventId: 'ev-lunch',
+        source: 'member',
+        createdBy: 'u1',
+        ...stamps,
+      },
+    ],
+    tasks: [
+      {
+        id: 'tk-1',
+        tripId: TRIP_ID,
+        title: 'להזמין מקומות מראש',
+        eventId: 'ev-lunch',
+        // Before `NOW()`, so this one is late and takes the `--miss` ink.
+        dueAt: `${today()}T13:00:00.000Z`,
+        dueHasTime: true,
+        important: true,
+        status: 'open',
+        createdBy: 'u1',
+        ...stamps,
+      },
+    ],
+  };
+
+  test('the task block starts where the note block starts', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      ...noteAndTask,
+    });
+    await page.goto('/');
+    await page.locator(BOARD).click();
+    await expect(page.locator('.hero-task')).toBeVisible();
+    // **Wait for the flight to LAND before reading any x.** §5's swing is a `rotateX`, and a
+    // 3D rotation under perspective projects x as a function of y — so mid-flight two blocks
+    // at different heights sit at different horizontal offsets and this assertion measures the
+    // animation rather than the layout. Measured at 1.24px of false drift before this wait.
+    await page.waitForFunction(
+      () => document.querySelector('.hero-lifted')?.getAnimations().length === 0,
+    );
+
+    // The START edge in this RTL app is the RIGHT edge. Comparing `x` would compare where
+    // the two lines happen to END, which is a function of their content.
+    const edges = await page.evaluate(() => {
+      const right = (sel) => document.querySelector(sel)!.getBoundingClientRect().right;
+      return { note: right('.hero-note-tx'), task: right('.hero-task-hd') };
+    });
+    expect(Math.abs(edges.note - edges.task)).toBeLessThan(0.5);
+  });
+
+  // Asserted as an EQUALITY against the board's own control rather than as a colour literal —
+  // §P's precedent. What must stay true is that the deadline paints in the ink this surface
+  // already uses for the same meaning, not what that ink currently is.
+  test('a passed deadline takes the board’s --miss ink, not the paper one', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      ...noteAndTask,
+    });
+    await page.goto('/');
+    await page.locator(BOARD).click();
+    await expect(page.locator('.hero-task-due.late')).toBeVisible();
+
+    const inks = await page.evaluate(() => {
+      const colour = (sel) => getComputedStyle(document.querySelector(sel)!).color;
+      return {
+        due: colour('.hero-task-due.late'),
+        boardMiss: colour('.wp-settle.board .wp-settle-btn.skip'),
+        paperMiss: getComputedStyle(document.documentElement).getPropertyValue('--miss-deep'),
+      };
+    });
+    expect(inks.due).toBe(inks.boardMiss);
+    expect(inks.due).not.toBe(inks.paperMiss.trim());
+  });
 });
