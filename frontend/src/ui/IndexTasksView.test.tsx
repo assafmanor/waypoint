@@ -151,8 +151,11 @@ const LIVE_CHECKS = 4;
 /** The readiness checks on screen. Keyed on `.tsk-auto`, NOT on "has no tick" — since
  *  2026-08-16 every row has a tick, which is the whole point of that change. */
 const autoRows = () => visibleRows().filter((r) => r.classList.contains('tsk-auto'));
+// `.tsk-title-txt`, not the whole title row — the assignee's face lives at that row's
+// trailing edge now (ADR-0190 §6 as amended), and an `Avatar` renders its initial as text, so
+// reading the row would append a stray letter to every title.
 const titles = () =>
-  visibleRows().map((r) => r.querySelector('.wp-listrow-title')?.textContent?.trim());
+  visibleRows().map((r) => r.querySelector('.tsk-title-txt')?.textContent?.trim());
 
 describe('IndexTasksView', () => {
   afterEach(() => {
@@ -188,12 +191,28 @@ describe('IndexTasksView', () => {
       expect(row.querySelector('.tsk-due')).toBeNull();
     });
 
-    it('names the assignee, and says nothing where the task is the group’s', () => {
+    // **The FACE, on the title row, and nothing where nobody owns it** (ADR-0190 §6 amended
+    // 2026-08-16 on the owner's comparison with Microsoft To Do). §6's own argument for
+    // spelling out `לא משויך` was that silence in a text line is indistinguishable from a
+    // name that did not fit; in a fixed slot an empty one is unambiguous, which is what let
+    // the word go. So this asserts the SLOT rather than the words.
+    it('shows the assignee as a face on the title row, and nothing where the task is the group’s', () => {
       show();
       const delegated = visibleRows().find((r) => within(r).queryByText(today.title))!;
-      expect(delegated.textContent).toContain('דנה');
+      const face = delegated.querySelector('.wp-listrow-title .tsk-who-row');
+      expect(face).toBeTruthy();
+      // The face itself is `aria-hidden` (`Avatar`'s non-interactive form), so the row says
+      // the name in a visually-hidden span — otherwise moving to a face-only would have made
+      // the assignee unreadable rather than compact.
+      expect(delegated.querySelector('.wp-listrow-title .visually-hidden')?.textContent).toContain(
+        'דנה',
+      );
+      // …and the name is no longer duplicated into the meta line it used to live in.
+      expect(delegated.querySelector('.wp-listrow-meta')?.textContent ?? '').not.toContain('דנה');
+      expect(titles()).toContain(today.title); // and the visible title is unchanged
+
       const group = visibleRows().find((r) => within(r).queryByText(later.title))!;
-      expect(group.querySelector('.wp-listrow-meta')?.textContent).not.toContain('דנה');
+      expect(group.querySelector('.tsk-who-row')).toBeNull();
     });
 
     // `important` spends no colour — shape and weight only (brief §7).

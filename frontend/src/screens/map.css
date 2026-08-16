@@ -1544,6 +1544,27 @@
   padding-top: 8px;
   border-top: 1px solid var(--line);
 }
+/* **The wrapper the two sections moved into needs the SAME declaration**, and forgetting it
+   is what put them beside the identity instead of under it (owner, 2026-08-16: _"is it a bug
+   that the tasks and notes are on the left?"_ — yes). The rule directly above already states
+   the cause in as many words: `.place` is a wrapping flex ROW, so anything dropped into it
+   joins the row rather than starting a line. Moving the sections one level down into
+   `.map-cardwrote` moved the flex ITEM, and the declaration stayed on the children.
+
+   The separator moves here too, so the pair reads as one block with one top edge rather than
+   two sections each drawing their own. */
+.place > .map-cardwrote {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.place > .map-cardwrote > .note-sec {
+  margin-top: 0;
+}
+.place > .map-cardwrote > .note-sec + .note-sec {
+  margin-top: var(--space-3);
+}
 /* **מסמכים ON A PLACE** (ADR-0173 §4's follow-up, built by ADR-0174 §3) — the same
    full-width line, one block up, and it needs its own declaration for the same reason:
    `.place` is a wrapping flex ROW, so a section dropped into it joins the row instead of

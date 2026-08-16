@@ -12,7 +12,7 @@
 // card, `BookingSheet`/`DetailSheet`, the Map place card, `DocumentManageSheet`,
 // `MaybeManageSheet`. No host grows a new surface.
 import { useMemo, useState } from 'react';
-import type { Task } from '@waypoint/shared';
+import { TASK_STATUS, type CreateTaskInput, type Task, type TaskHostKey } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
 import {
@@ -58,36 +58,107 @@ function useTaskClock(now: Date): TaskClock {
   );
 }
 
+/** **Tasks typed on a CREATE form, held until the host exists** (ADR-0191 §7).
+ *
+ *  A create has no id, so there is no FK to write a task to — which is a reason to STAGE, not
+ *  a reason to have no way in. Notes and documents both already answer it this way
+ *  (`useNoteComposer().pending()`, `DocumentAttachField`'s staged picks), so this is the third
+ *  consumer of an established pattern rather than a new mechanism, and the ordering rule that
+ *  makes it correct is theirs too: the write goes out AFTER the host's own, inside the same
+ *  change group, because the outbox is FIFO and a task queued first would reach a server that
+ *  cannot see its host. */
+export function useTaskStaging() {
+  const [drafts, setDrafts] = useState<TaskDraft[]>([]);
+  return {
+    drafts,
+    add: (draft: TaskDraft) => setDrafts((current) => [...current, draft]),
+    replace: (index: number, draft: TaskDraft) =>
+      setDrafts((current) => current.map((d, i) => (i === index ? draft : d))),
+    /** What the host form writes once its entity exists. */
+    pending: () => drafts,
+  };
+}
+export type TaskStaging = ReturnType<typeof useTaskStaging>;
+
+/** The staged tasks, written onto the host the form just created. Mirrors
+ *  `writeStagedAttachments`, and is called from inside the host's own change group. */
+export async function writeStagedTasks(
+  staging: TaskStaging,
+  createTask: (input: CreateTaskInput) => Promise<unknown>,
+  where: Partial<Record<TaskHostKey, string>>,
+): Promise<void> {
+  for (const draft of staging.pending()) await createTask({ ...draft, ...where });
+}
+
+/** The staged draft a `number` sheet refers to, back as a `Task` the editor can read. */
+const stagedTaskFor = (index: number | 'create', rows: Task[]): Task | undefined =>
+  typeof index === 'number' ? rows[index] : undefined;
+
 export function HostTasks({
   host,
   quiet,
+  staging,
 }: {
-  host: { kind: NoteHostKind; id: string; name: string };
+  /** `id` is absent on a CREATE, where there is nothing to hang an FK on yet — the section
+   *  then reads and writes `staging` instead of trip state. */
+  host: { kind: NoteHostKind; id?: string; name: string };
   /** **A host FORM's copy of this section** (ADR-0191 §7, owner's call: the form is _"not
    *  necessarily the main add point"_). Same section and the same editor behind it — the way
    *  in is just stated quietly, because the surfaces you normally attach a task from are the
    *  reads (the expanded card, the detail sheet, the manage sheet), and a form's business is
    *  the entity's own fields. */
   quiet?: boolean;
+  /** Required when `host.id` is absent; ignored when it is not. */
+  staging?: TaskStaging;
 }) {
   const { tasks, users, taskVerbs } = useTrip();
   const now = useClock();
   const clock = useTaskClock(now);
   const settledHosts = useSettledHosts();
-  // null = closed; 'create' = a new task on this host; a Task = editing that one.
-  const [sheet, setSheet] = useState<Task | 'create' | null>(null);
+  // null = closed; 'create' = a new task on this host; a Task = editing that one; a number =
+  // editing the Nth STAGED draft, which has no id to be identified by yet.
+  const [sheet, setSheet] = useState<Task | 'create' | number | null>(null);
 
+  const hostId = host.id;
+  const saved = useMemo(
+    () => (hostId ? tasksForHost(tasks, host.kind, hostId, clock) : []),
+    [tasks, host.kind, hostId, clock],
+  );
+
+  // A staged draft is rendered as a task so the section looks the same before and after the
+  // host exists. `id: ''` marks it unwritten, which is the convention `draftOverlay` already
+  // uses for a readiness check with no row.
   const rows = useMemo(
-    () => tasksForHost(tasks, host.kind, host.id, clock),
-    [tasks, host.kind, host.id, clock],
+    () =>
+      hostId
+        ? saved
+        : (staging?.drafts ?? []).map((draft, i): Task => ({
+            id: `staged:${i}`,
+            tripId: '',
+            title: draft.title,
+            dueAt: draft.dueAt,
+            dueHasTime: draft.dueHasTime ?? false,
+            important: draft.important ?? false,
+            assigneeUserId: draft.assigneeUserId,
+            status: TASK_STATUS.OPEN,
+            createdBy: '',
+            createdAt: '',
+            updatedAt: '',
+            updatedBy: '',
+          })),
+    [hostId, saved, staging?.drafts],
   );
 
   const save = (draft: TaskDraft) => {
-    const editing = sheet !== 'create' && sheet !== null ? sheet : null;
+    const editing = typeof sheet === 'object' && sheet !== null ? sheet : null;
+    const stagedIndex = typeof sheet === 'number' ? sheet : null;
     setSheet(null);
     if (editing) void taskVerbs.updateTask(editing.id, draft);
+    else if (stagedIndex != null) staging?.replace(stagedIndex, draft);
+    // No host id yet: hold it until the form's save has one (`writeStagedTasks`).
+    else if (!hostId) staging?.add(draft);
     // The host rides the create, from the lookup rather than spelled here.
-    else void taskVerbs.createTask({ ...draft, ...taskHostInput(host.kind, host.id) });
+    else void taskVerbs.createTask({ ...draft, ...taskHostInput(host.kind, hostId) });
   };
 
   return (
@@ -96,15 +167,19 @@ export function HostTasks({
         tasks={rows}
         users={users}
         clock={clock}
-        hostSettled={settledHosts.has(`${host.kind}:${host.id}`)}
+        hostSettled={hostId ? settledHosts.has(`${host.kind}:${hostId}`) : false}
         quiet={quiet}
         onAdd={() => setSheet('create')}
-        onTick={(task) => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
-        onOpen={(task) => setSheet(task)}
+        // A staged task has nothing to tick: it does not exist yet, and completing something
+        // you have not saved is a state with nowhere to live.
+        onTick={(task) =>
+          hostId ? void taskVerbs.updateTask(task.id, { status: tickedStatus(task) }) : undefined
+        }
+        onOpen={(task) => setSheet(hostId ? task : Number(task.id.split(':')[1]))}
       />
-      {sheet && (
+      {sheet !== null && (
         <TaskSheet
-          task={sheet === 'create' ? undefined : sheet}
+          task={typeof sheet === 'object' ? sheet : stagedTaskFor(sheet, rows)}
           onSave={save}
           onClose={() => setSheet(null)}
         />

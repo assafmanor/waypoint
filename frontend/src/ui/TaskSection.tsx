@@ -110,7 +110,22 @@ export function TaskSection({
                         <Icon name="star" />
                       </span>
                     )}
-                    {task.title}
+                    <span className="tsk-title-txt">{task.title}</span>
+                    {/* The face alone, at the end of the title row — the screen's rule
+                        (ADR-0190 §6 as amended), so a task reads the same way wherever it is
+                        rendered. Absent when nobody owns it: the slot says that by being
+                        empty, which is what let the name go. */}
+                    {assignee && (
+                      <>
+                        {/* The face is `aria-hidden` (`Avatar`’s non-interactive form), so the name
+                            it replaced would have left the row silent. Said here instead, where a
+                            reader gets it and the line does not grow. */}
+                        <Avatar person={assignee} size="inherit" className="tsk-who-row" />
+                        <span className="visually-hidden">
+                          {t.tasks.sheet.assigneeLabel}: {assignee.displayName}
+                        </span>
+                      </>
+                    )}
                   </button>
                   {/* **THE SECTION SAYS ONLY WHAT THERE IS TO SAY** (owner, 2026-08-16:
                       _"tasks should be more minimal"_, from the Map place card). The SCREEN
@@ -123,26 +138,16 @@ export function TaskSection({
                       So the meta is absent entirely when there is neither a deadline nor an
                       assignee — which is also what makes the row the same height as the note
                       beside it in the common case. */}
-                  {(due || assignee) && (
+                  {/* The section says only what there is to say (owner: _"tasks should be
+                      more minimal"_). With the owner on the title row this line is the
+                      deadline or nothing at all. */}
+                  {due && (
                     <span className="note-item-m">
-                      {due && (
-                        <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
-                          <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
-                          {/* The numeric run is its own LTR island (ADR-0118). */}
-                          {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
-                        </span>
-                      )}
-                      {/* Emitted only BETWEEN two things: unconditional, an undated task's
-                          meta line opened with an orphan `·`. */}
-                      {due && assignee && <span className="tsk-sep"> · </span>}
-                      {/* `.tsk-assignee`, never `.tsk-who` — that is the editor's density
-                          wrapper and sharing it shipped a 38px circle into an 11.5px line. */}
-                      {assignee && (
-                        <span className="tsk-assignee">
-                          <Avatar person={assignee} size="inherit" className="tsk-who-mini" />
-                          {assignee.displayName}
-                        </span>
-                      )}
+                      <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+                        <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
+                        {/* The numeric run is its own LTR island (ADR-0118). */}
+                        {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+                      </span>
                     </span>
                   )}
                 </span>

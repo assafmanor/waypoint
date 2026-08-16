@@ -2422,6 +2422,29 @@ export function MapView() {
   // event's half is not lost with its row — its clock is on the entry's own meta line
   // and its outcome is the settle pair beside it (ADR-0139 §1), which is everything
   // that second row could do except leave the tab.
+  /** **Is this place already on the itinerary FOR THE DAY IN SCOPE?** (owner, 2026-08-16:
+   *  _"שיבוץ ליום should be hidden if already linked to an event/booking to save space"_,
+   *  narrowed the same day to _"only when in day scope"_.)
+   *
+   *  The narrowing is what makes the rule safe, and the first attempt showed why it was
+   *  needed: unscoped, this hides the verb almost always, because the Map's list is BUILT
+   *  from places that events and bookings already use — ten shipped specs encoding
+   *  ADR-0135 §1 failed on it. Day-scoped it says something much narrower and true: this
+   *  place already has a slot on the day you are looking at, so a second `שיבוץ ליום` here
+   *  offers to give it another one, on the card whose space ADR-0182 §9 says is scarce.
+   *
+   *  **In all-days scope the verb always stands**, because "already scheduled" has no
+   *  meaning without a day to be scheduled on — a place visited on Tuesday is a perfectly
+   *  good thing to schedule for Thursday.
+   *
+   *  An IDEA never counts: a place on the shelf is precisely one with no day yet, which is
+   *  the one state this verb exists to answer. */
+  const placeIsScheduledInScope = (placeId: string) =>
+    listCtx.onDate != null &&
+    placeRefs(placeId, { events, bookings, maybeItems }, { onDate: listCtx.onDate }).some(
+      (ref) => ref.kind !== PLACE_REF_KIND.idea,
+    );
+
   const refEntriesFor = (usage: PlaceUsage, opts: { forceDay?: boolean } = {}): RefEntry[] => {
     const { onDate } = metaCtx(opts);
     const goToDay = (date: string) => {
@@ -2655,7 +2678,9 @@ export function MapView() {
             // Absent under a place errand (ADR-0134 §3 / ADR-0135 §7): the tab is answering
             // one question, so the verb changes rather than accumulating — exactly as `נווט`
             // gives its slot to `בחירה` on the same row.
-            selected && !pendingErrand ? () => openScheduleForm(usage.placeId) : undefined
+            selected && !pendingErrand && !placeIsScheduledInScope(usage.placeId)
+              ? () => openScheduleForm(usage.placeId)
+              : undefined
           }
           onEnrich={() =>
             setRowErrand({
