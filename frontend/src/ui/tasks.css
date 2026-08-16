@@ -98,6 +98,10 @@
   color: var(--ink);
   flex: 0 0 auto;
   display: inline-flex;
+  /* The title row is `align-items: center`, which on a TWO-LINE title centres the star
+     against both lines and reads as "under the first word". It belongs on the line it marks. */
+  align-self: flex-start;
+  margin-top: 2px;
 }
 .tsk-star .icon {
   width: 13px;
@@ -268,191 +272,81 @@
   line-height: 1.35;
 }
 
-/* **THE SCREEN'S META IS TWO LINES BY DESIGN** (ADR-0191 §8, owner's own proposal). The
-   deadline is line one; what the task is about and who owes it are line two, and the host
-   chip is the element that truncates there.
+/* **WHO OWES IT: THE FACE ALONE, AT THE END OF THE TITLE ROW** (ADR-0190 §6, amended
+   2026-08-16 — owner, against Microsoft To Do: _"I actually prefer the way they handled
+   showing the assignee (title row, only avatar)"_).
 
-   It replaced an ACCIDENTAL wrap. Once the chip joined a line already carrying a deadline
-   and an assignee the line broke on its own — but wherever the strings happened to run out,
-   so the shape moved with the content. Both single-line repairs were measured and both lose
-   what they cut: `nowrap` with the chip first gives `לא…`, with the chip last gives `ביק…`.
-   Splitting costs 1px against the accidental wrap and buys the chip 16px, which is the
-   difference between a host name reading whole and reading as three letters. */
+   §6 put a NAME in the meta line and argued that an unassigned task must say so, because
+   saying nothing there was indistinguishable from "assigned to someone whose name did not
+   fit". **In a fixed slot that premise expires**: there is a place for a face at the end of
+   every title row, so an empty one is unambiguous — which is what let the word go.
+
+   It also paid for itself. The meta line lost its longest element, so the deadline and the
+   host chip fit ONE line again and the deliberate two-row split added hours earlier retires
+   with the problem that forced it.
+
+   Sized to the title's own line box (13.5px × 1.4 ≈ 19px) so it needs no negative margin —
+   the trick that had `.tsk-who-mini` painting through the line above it when the meta
+   wrapped. `margin-inline-start: auto` is what puts it at the trailing edge; the title text
+   keeps everything else. */
+/* `flex: 1` and not just `min-width: 0` — `.wp-listrow-title` is a WRAPPING flex line, so a
+   bare `min-width: 0` let the text shrink to nothing and wrap whole to the next row, leaving
+   the star alone on the first. It takes the remaining width instead, and the face's
+   `margin-inline-start: auto` still pins to the trailing edge because the text stops there. */
+.tsk-title-txt {
+  /* `100%` of the basis is wrong here and `auto` is not enough: the title is a WRAPPING flex
+     line, so a two-line title still needs to start beside the star rather than under it.
+     `flex: 1` with a zero basis lets it take exactly the width the star leaves. */
+  flex: 1 1 0;
+  min-width: 0;
+}
+.wp-listrow-title .tsk-who-row,
+.note-item-b .tsk-who-row {
+  width: 19px;
+  height: 19px;
+  font-size: 9px;
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+/* The row's title is already a wrapping flex line; the section's is a plain button, so it
+   needs the same shape stated before `auto` can push anything to its end. */
+.note-item.tsk-row .note-item-b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* A settled task's face goes quiet with the rest of the row rather than staying the one
+   full-colour thing on a struck line. */
+.tsk-settled .tsk-who-row,
+.tsk-hostdone .tsk-who-row {
+  opacity: 0.55;
+}
+
+/* **THE DEADLINE OWNS ITS OWN LINE** (ADR-0191 §8, the owner's proposal — and moving the
+   assignee to the title row did NOT retire it, it made it pay better). Measured at 360 after
+   the assignee left: on one line the chip still truncates to **24px of the 80px it needs**,
+   because a deadline and a host name do not fit a 190px meta together. On its own line the
+   chip now has the whole width to itself rather than sharing it with a name, so it reads
+   whole where the single-line version gives `זמן חו…`.
+
+   An undated task keeps ONE line: the second exists only when there is a deadline for the
+   first, so the split costs nothing where there is nothing to split. */
+.wp-listrow-meta > .tsk-due {
+  display: block;
+}
 .tsk-meta-about {
   display: flex;
   align-items: center;
   gap: 5px;
   min-width: 0;
-  /* The chip is the only thing here that may shrink; the person and the more-mark are facts
-     of fixed length, and an ellipsised name says less than no name at all. */
-  overflow: hidden;
+  max-width: 100%;
 }
 .tsk-meta-about .note-host {
   min-width: 0;
   flex: 0 1 auto;
 }
-.tsk-meta-about .tsk-assignee,
 .tsk-meta-about .tsk-more-mark {
   flex: 0 0 auto;
-}
-/* An undated task keeps ONE meta line: the second only exists when there is a deadline to
-   put on the first, so the split costs nothing where there is nothing to split. */
-.wp-listrow-meta > .tsk-due {
-  display: block;
-}
-/* Nobody yet, said explicitly. It reads as the editor's own unassigned option rather than as
-   an empty space, which is what the meta line showed before and was indistinguishable from
-   "assigned to someone whose name did not fit". */
-.tsk-who-mini.none {
-  border: 1px dashed var(--soft-line);
-  border-radius: 50%;
-  color: var(--muted);
-  place-items: center;
-}
-.tsk-who-mini.none .icon {
-  width: 9px;
-  height: 9px;
-}
-
-/* AN AUTOMATIC TASK'S ROW (ADR-0188 §4 as amended 2026-08-16, §7). Nothing at all, and that
-   is the point: it is `ListRow` with the SAME tick a manual task carries in the lead slot,
-   the check's own glyph in the ordinary badge slot, and `.tsk-settled` when it is done — the
-   same struck title every settled task gets. No trailing "הושלם", no second completion
-   vocabulary, no sync column (a check with no row has no write to badge).
-
-   `.tsk-auto` is kept as a hook with no rules of its own, so a later surface can find these
-   rows without the markup having to grow a data attribute for it. */
-
-/* THE TRIP HOME BAND'S OVERFLOW ROW (ADR-0188 §6). **One more row in the same card**, not a
-   second control beside it — which is why it takes the card's own hairline as its top border
-   rather than a margin, and why it is full-width rather than a right-aligned link. The band
-   is capped at `TRIP_HOME_TASK_BAND_CAP`; this is where the rest are. */
-.tsk-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  border-block-start: 1px solid var(--line);
-  padding: 12px;
-  cursor: pointer;
-}
-.tsk-more:hover {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-}
-.tsk-more:active {
-  transform: scale(var(--press-scale));
-}
-.tsk-more .nav-arrow {
-  width: 13px;
-  height: 13px;
-}
-
-/* THE MARK ON A HOST'S ROW (tasks brief §F, ADR-0191). `.note-mark`'s exact box, which is
-   itself `.doc-mark`'s: same 13px icon, same `--muted`, same 11px tabular numerals, same
-   `flex: 0 0 auto`. Copying those rather than re-deciding them is `DocumentMark`'s own stated
-   reason — one shape everywhere, and a second set of numbers on that line would read as two
-   systems. Neutral by the same rule they are: a task is not time, not place, not plan mode.
-
-   The glyph is a CHECKBOX and not the bare `check` the tick draws — measured identical in
-   cost (0px of row height, 0px of baseline offset), so reading decided it: a bare ✓ beside
-   two neutral marks reads "this is done". */
-.tsk-mark {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  flex: 0 0 auto;
-  vertical-align: -2px;
-}
-.tsk-mark .icon {
-  width: 13px;
-  height: 13px;
-  flex: 0 0 auto;
-}
-
-/* A HOST'S TASKS SECTION (ADR-0191 §5, **reversed 2026-08-16**) — the row is `.note-item`,
-   the same one the notes section beside it uses, plus `.tsk-row` for what differs. The
-   original §5 gave it a `ListRow` and wrote the cost down ("two sections on one surface are
-   not the same row shape"); measured in the running app that cost was a 40px indent, a
-   different title weight and a different meta grammar, and the owner rejected it on sight.
-
-   Only the LEAD differs now, which is the whole claim: a note's is a rule, a task's is a tick. */
-
-/* **THE SECTION ON A HOST FORM** (ADR-0191 §7, owner: the form is _"not necessarily the main
-   add point"_). Same section, same editor, stated quietly — the header reads as one of the
-   form's field labels rather than as a heading, and the `＋` spends no `--cta`. That is the
-   whole of the difference: quieting a way in is a matter of ink, and giving the form a
-   DIFFERENT way in would be the second add path `NoteSection`'s own rule forbids. */
-.tsk-sec-quiet > .note-sec-h .t {
-  font-family: inherit;
-  font-size: var(--text-secondary);
-  font-weight: 700;
-}
-.tsk-sec-quiet > .note-sec-h .add {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-/* THE TICK AT SECTION DENSITY. **Not `.tsk-tick`** — that is the screen's 44px box, and
-   dropping one into a 13px row is exactly what made this section look broken. Same control,
-   second density, and it clears ADR-0017's floor the way `ValueToken` does (ADR-0177): an
-   `::after` that reaches 44px without the line growing to hold it.
-
-   Rounded SQUARE, never a circle — ADR-0188 §2's rule survives the density change, because
-   `border-radius` clips the hit region as well as the paint and the corners would fall
-   through to the body button underneath. */
-.tsk-tick-sec {
-  position: relative;
-  width: var(--sec-tick);
-  height: var(--sec-tick);
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1.5px solid var(--line);
-  border-radius: 6px;
-  background: var(--card);
-  /* Transparent rather than absent, so the checkmark occupies its space at every state and
-     the box does not resize when one is ticked. */
-  color: transparent;
-  cursor: pointer;
-}
-.tsk-tick-sec::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  inset-inline-start: 50%;
-  width: 44px;
-  height: 44px;
-  transform: translate(50%, -50%);
-  border-radius: 10px;
-}
-.tsk-tick-sec .icon {
-  width: calc(var(--sec-tick) - 8px);
-  height: calc(var(--sec-tick) - 8px);
-}
-.tsk-tick-sec[aria-pressed='true'] {
-  border-color: var(--ok);
-  color: var(--ok);
-}
-.tsk-tick-sec:focus-visible {
-  outline: 2px solid var(--cta);
-  outline-offset: 2px;
-}
-.app[data-mode='plan'] .tsk-tick-sec:focus-visible {
-  outline-color: var(--plan);
 }
 
 /* A SETTLED TASK, and **a task whose HOST is settled** (ADR-0191 §6) — one style, because they

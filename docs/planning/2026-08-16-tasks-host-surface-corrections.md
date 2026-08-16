@@ -87,3 +87,21 @@ What survives is narrower and is all §7 now rests on: **a note _is_ its body**,
 `pnpm typecheck`, `pnpm lint`, `pnpm build`, and **3898 tests** green. Six shipped specs needed updating; one of them caught a real bug of mine — `useSettledHosts()` landed below `Index.tsx`'s four early returns, which is a conditional hook, and seven specs failed on it.
 
 Every number above was read off the running app at 360px, not off the mockup and not off the code.
+
+---
+
+## A second round, same day (branch `fix/tasks-the-assignee-moves-to-the-title-row`)
+
+Four more, after #619 merged.
+
+**`שיבוץ ליום` came back, narrowed to day scope.** Reverted from the first round because ten specs failed; the owner's narrowing — _"only when in day scope"_ — is what makes it safe, and it is a genuinely different claim: _this place already has a slot on the day you are looking at_, rather than _this place is on the itinerary somewhere_. **And narrowing it exposed a coverage hole:** `Map.test.tsx`'s `allDaysOn()` is a READ returning a boolean, and three call sites used it where `tapAllDays()` was meant — including a block whose comment says "both day scopes on purpose". Those variants had been running one scope twice. It surfaced only because this is the first behaviour on that card that differs _between_ the scopes.
+
+**The assignee moved to the title row, as a face.** The owner compared against Microsoft To Do. ADR-0190 §6's argument for spelling out `לא משויך` was that silence in a text line is indistinguishable from a name that did not fit — in a fixed slot, an empty one is unambiguous. The face is `Avatar`'s non-interactive form and therefore `aria-hidden`, so the row carries the name in a visually-hidden span: compact, not unreadable.
+
+**It did NOT let the meta collapse to one line, and measuring is what said so.** With the assignee gone, a single line still crushes the host chip to **24px of the 80px it needs**. The owner's two-line design stands and now pays better — the chip has line two to itself. Dated row **77px** (was 79 with three elements), undated **62px**.
+
+**Tasks on a CREATE form, staged.** _"Why did you add a quiet task section only for event/booking edit? Why not on creation?"_ — because a create has no id, which is a reason to stage rather than to omit. `useTaskStaging` + `writeStagedTasks` are the third consumer of a pattern those forms already run twice.
+
+**And a plain layout bug of mine the owner caught first:** _"is it a bug that the tasks and notes are on the left?"_ Yes. `map.css` states in place that `.place` is a wrapping flex ROW and that a section dropped into it joins the row rather than starting a line — which is why `.place > .note-sec` carries `flex-basis: 100%`. Moving both sections into `.map-cardwrote` moved the flex ITEM and left the declaration on the children. **The comment that explains the bug was two lines above the code that caused it.**
+
+Two smaller ones found while verifying: `.tsk-title-txt` needed `flex: 1 1 0` rather than `min-width: 0` (a wrapping flex line let it shrink to nothing and wrap whole, stranding the star on a line of its own), and `.tsk-star` needed `align-self: flex-start` (the row centres its items, so on a two-line title the star sat between the lines).

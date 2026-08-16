@@ -287,6 +287,10 @@ for (const width of WIDTHS) {
     test('gives all three footer controls their floor, and drops only the destructive one', async ({
       page,
     }) => {
+      // **All-days**, because `שיבוץ ליום` is absent for a place already slotted on the day in
+      // scope (ADR-0191 §7a) — and this spec is about what three controls do to the footer,
+      // so it needs all three on screen rather than two.
+      await page.getByRole('button', { name: /כל הימים/ }).click();
       await selectKnown(page);
       const m = await measure(page);
       expect(m.footItems).toHaveLength(3);

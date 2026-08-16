@@ -404,18 +404,13 @@ function TaskLi({
   const unsynced = useUnsynced(task.id);
   const settled = isSettled(task);
 
-  // **TWO LINES, BY DESIGN** (owner, 2026-08-16 — ADR-0191 §8). The deadline owns the first;
-  // what the task is about and who owes it share the second, where the host chip is the
-  // truncatable element.
-  //
-  // It replaced an ACCIDENTAL wrap, and that is the argument. Once the chip joined a line that
-  // already carried a deadline and an assignee, the line broke — but wherever the strings
-  // happened to run out, so the shape moved with the content. Both single-line repairs were
-  // measured and both lose the thing they truncate: `nowrap` with the chip first cuts the
-  // assignee to `לא…`, and with the chip last cuts the host to `ביק…`, which is the whole
-  // point of the chip. Splitting deliberately costs **1px** against the accidental wrap
-  // (79 vs 78) and gives the chip **89px instead of 73**, so a host name that used to
-  // ellipsise now reads whole. An undated task still has one line, at 62px.
+  // **ONE LINE AGAIN** (ADR-0191 §8, revised 2026-08-16). This was briefly split in two —
+  // deadline on the first, host chip and assignee on the second — because three elements did
+  // not fit and the wrap that resulted landed wherever the strings ran out. **Moving the
+  // assignee onto the title row removed the longest of the three**, so the deadline and the
+  // chip fit together and the split retires with the problem that forced it. The
+  // `.tsk-meta-about` group survives because it is what lets the chip be the one element
+  // allowed to shrink.
   const metaAbout = (
     <span className="tsk-meta-about">
       {/* **WHAT THIS TASK IS LINKED TO** (owner: "linked tasks don't show their host, and I
@@ -433,23 +428,6 @@ function TaskLi({
           <span className="note-host-n">{host.name}</span>
         </span>
       )}
-      {/* **Who owes it, as a person** (ADR-0190 §6, from the owner's report that members are
-          prominent in the form and barely visible here). ADR-0188 §3 made this a bare name
-          to avoid "a second identity system per row" — a premise that expired when ADR-0189
-          put `Avatar` in the editor for this same field, so the row now REUSES the system
-          this feature already established rather than adding one.
-          An UNASSIGNED task says so explicitly; today it said nothing at all, which is
-          indistinguishable from "assigned to someone whose name did not fit". */}
-      <span className="tsk-assignee">
-        {assignee ? (
-          <Avatar person={assignee} size="inherit" className="tsk-who-mini" />
-        ) : (
-          <span className="tsk-who-mini none" aria-hidden="true">
-            <Icon name="members" />
-          </span>
-        )}
-        {assignee ? assignee.displayName : t.tasks.sheet.nobody}
-      </span>
       {/* "There is more", not a preview of it — one glyph at the end of the line, and it
           costs the row 0px. Absent while the row is open, because the words it points at are
           printed directly underneath by then. */}
@@ -477,8 +455,10 @@ function TaskLi({
     </>
   );
 
-  // Always: every task has an owner-state to report, even when that state is "nobody yet".
-  const hasMeta = true;
+  // **Not "always" any more.** It was, because the owner-state was reported here and every
+  // task has one — that moved to the title row, so a task with no deadline, no host and no
+  // body now genuinely has nothing to say on a second line, and says nothing.
+  const hasMeta = Boolean(due || host || (task.body && !open));
 
   return (
     <>
@@ -507,7 +487,30 @@ function TaskLi({
                 <Icon name="star" />
               </span>
             )}
-            <span>{task.title}</span>
+            <span className="tsk-title-txt">{task.title}</span>
+            {/* **WHO OWES IT, on the TITLE row and as the face alone** (ADR-0190 §6 amended
+                2026-08-16 — owner, against Microsoft To Do: _"I actually prefer the way they
+                handled showing the assignee (title row, only avatar)"_).
+
+                §6 put a name in the meta line and argued that an unassigned task must SAY so,
+                because saying nothing was indistinguishable from "assigned to someone whose
+                name did not fit". **That premise expired here**: in a fixed slot at the end of
+                the title row, absence is unambiguous — there is a place for a face and no face
+                in it. What the name was buying is bought by the slot instead.
+
+                And it pays for itself twice: the meta line loses its longest element, so the
+                deadline and the host chip fit one line again. */}
+            {assignee && (
+              <>
+                {/* The face is `aria-hidden` (`Avatar`’s non-interactive form), so the name
+                    it replaced would have left the row silent. Said here instead, where a
+                    reader gets it and the line does not grow. */}
+                <Avatar person={assignee} size="inherit" className="tsk-who-row" />
+                <span className="visually-hidden">
+                  {t.tasks.sheet.assigneeLabel}: {assignee.displayName}
+                </span>
+              </>
+            )}
           </>
         }
         meta={hasMeta ? meta : undefined}

@@ -50,7 +50,7 @@ import { PlacePicker } from './primitives/PlacePicker';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes, useHostNoteCount } from './HostNotes';
-import { HostTasks } from './HostTasks';
+import { HostTasks, useTaskStaging, writeStagedTasks } from './HostTasks';
 import { ChoiceDisclosure } from './primitives/ChoiceDisclosure';
 import { FormStepActions, FormStepPanel, useFormSteps } from './primitives/FormSteps';
 import { FormError } from './primitives/FormError';
@@ -155,7 +155,7 @@ export function BookingSheet({
   focus?: 'when';
   onClose: () => void;
 }) {
-  const { trip, events, places, indexVerbs, noteVerbs, attachmentVerbs } = useTrip();
+  const { trip, events, places, indexVerbs, noteVerbs, attachmentVerbs, taskVerbs } = useTrip();
   const startErrand = useStartPlaceErrand();
   const isCreate = !booking;
 
@@ -222,6 +222,8 @@ export function BookingSheet({
   );
   const [room, setRoom] = useState(draft ? draft.room : initial.room);
   const composer = useNoteComposer();
+  // Tasks typed before the booking exists, held until it does (ADR-0191 §7).
+  const taskStaging = useTaskStaging();
   const attach = useDocumentAttach();
   const [wifiNetwork, setWifiNetwork] = useState(draft ? draft.wifiNetwork : initial.wifiNetwork);
   const [wifiPassword, setWifiPassword] = useState(
@@ -896,6 +898,9 @@ export function BookingSheet({
           await writeStagedAttachments(attach, attachmentVerbs.attachDocument, {
             bookingId: hostId,
           });
+          // **And the tasks** (ADR-0191 §7a), reading `hostId` for the same reason: the
+          // outbound leg owns the row, and the ordering above is theirs too.
+          await writeStagedTasks(taskStaging, taskVerbs.createTask, { bookingId: hostId });
         }
       });
       onClose();
@@ -1458,9 +1463,19 @@ export function BookingSheet({
                   host={booking ? { kind: 'booking', id: booking.id } : undefined}
                 />
 
-                {booking && (
-                  <HostTasks host={{ kind: 'booking', id: booking.id, name: booking.title }} />
-                )}
+                {/* **On a CREATE too** (owner: _"why not on creation?"_) — staged until the
+                    booking has an id, exactly as the notes composer and the document picker
+                    on this form already are. `quiet`, because a form is not the main add
+                    point. */}
+                <HostTasks
+                  host={
+                    booking
+                      ? { kind: 'booking', id: booking.id, name: booking.title }
+                      : { kind: 'booking', name: title.value }
+                  }
+                  staging={taskStaging}
+                  quiet
+                />
                 {booking && (
                   <HostNotes
                     host={{ kind: 'booking', id: booking.id, name: booking.title }}

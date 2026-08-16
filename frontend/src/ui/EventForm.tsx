@@ -66,7 +66,7 @@ import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes } from './HostNotes';
-import { HostTasks } from './HostTasks';
+import { HostTasks, useTaskStaging, writeStagedTasks } from './HostTasks';
 import { RouteField } from './domain';
 
 /** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
@@ -140,8 +140,17 @@ export function EventForm({
   draft?: EventFormDraft | null;
   onClose: () => void;
 }) {
-  const { trip, activeDate, events, places, bookings, zoneEvidence, noteVerbs, attachmentVerbs } =
-    useTrip();
+  const {
+    trip,
+    activeDate,
+    events,
+    places,
+    bookings,
+    zoneEvidence,
+    noteVerbs,
+    attachmentVerbs,
+    taskVerbs,
+  } = useTrip();
   const { me } = useAuth();
   const verbs = useVerbs();
   const startErrand = useStartPlaceErrand();
@@ -274,6 +283,8 @@ export function EventForm({
   const errors = useFormErrors<'title' | 'date' | 'time'>();
   const noteId = useId();
   const composer = useNoteComposer();
+  // Tasks typed before the event exists, held until it does (ADR-0191 §7).
+  const taskStaging = useTaskStaging();
   const attach = useDocumentAttach();
 
   // ── `יש הזמנה` (ADR-0136) ──────────────────────────────────────────────────
@@ -485,7 +496,8 @@ export function EventForm({
   ): Promise<void> => {
     const bodies = composer.pending();
     const links = attach.pending();
-    if (bodies.length === 0 && links.length === 0) return;
+    const staged = taskStaging.pending();
+    if (bodies.length === 0 && links.length === 0 && staged.length === 0) return;
     await withChangeGroup(async () => {
       const created = await host;
       if (created == null) return; // the write rolled back and has already said so
@@ -495,6 +507,9 @@ export function EventForm({
       // ride here rather than beside them because the ordering rule above is theirs too, and
       // because a form's two content types must land on the same row of a context.
       await writeStagedAttachments(attach, attachmentVerbs.attachDocument, where);
+      // **And the tasks, on the same host and in the same group** (ADR-0191 §7) — the third
+      // consumer of the ordering rule this function was written for, not a new one.
+      await writeStagedTasks(taskStaging, taskVerbs.createTask, where);
     });
   };
 
@@ -953,7 +968,20 @@ export function EventForm({
               `quiet` because a host form is **not the main add point** (owner's call): the
               read surfaces are where you normally attach a task, and the form's control is
               there for the one thought that arrives while you are typing the event. */}
-          {event && <HostTasks host={{ kind: 'event', id: event.id, name: event.title }} quiet />}
+          {/* **On a CREATE too** (owner, 2026-08-16: _"why not on creation?"_). There is no id
+              to hang the FK on yet, which is a reason to STAGE rather than to have no way in —
+              the same answer the notes composer and the document picker beside it already
+              give, so the write rides `writeNotesBehind`'s ordering rather than inventing its
+              own. */}
+          <HostTasks
+            host={
+              event
+                ? { kind: 'event', id: event.id, name: event.title }
+                : { kind: 'event', name: title }
+            }
+            staging={taskStaging}
+            quiet
+          />
           {event && (
             <HostNotes host={{ kind: 'event', id: event.id, name: event.title }} canAdd={false} />
           )}

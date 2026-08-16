@@ -806,7 +806,12 @@ describe('the embedded map’s shell (ADR-0121)', () => {
       it(`selecting a row reveals the footer and opens the form over the map, in ${label} scope`, () => {
         seed();
         render(wrap(<MapView />));
-        if (allDays) fireEvent.click(listButton(t.map.allDays));
+        // **All-days for both variants now.** A place already slotted on the day in scope no
+        // longer offers `שיבוץ ליום` (ADR-0191 §7's amendment), and every place in this seed
+        // has an event on the active date — so day scope has no subject for a spec that is
+        // about the block HAVING the action. The hide itself is covered by its own spec below.
+        fireEvent.click(listButton(t.map.allDays));
+        if (allDays) void 0;
         expect(document.querySelector('.map-refs-foot')).toBeNull();
 
         fireEvent.click(row('lunch')!);
@@ -837,9 +842,27 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
     // §7 / ADR-0134 §3: under an errand the tab is answering ONE question, so the verb
     // CHANGES rather than accumulating — exactly as `נווט` gives its slot to `בחירה`.
+    // **ADR-0191 §7's amendment**, and the reason it is narrowed to day scope: unscoped, this
+    // would hide the verb almost always, because this list is BUILT from places that events
+    // and bookings already use.
+    it('is absent for a place already slotted on the day in scope, and stands in all-days', () => {
+      seed();
+      render(wrap(<MapView />));
+      // Day scope: `lunch` has an event on the active date, so it is already placed.
+      fireEvent.click(row('lunch')!);
+      expect(scheduleBtn()).toBeNull();
+
+      // All-days: "already scheduled" has no meaning without a day to be scheduled on, and a
+      // place visited today is a fine thing to schedule for another day.
+      fireEvent.click(listButton(t.map.allDays));
+      expect(scheduleBtn()).toBeTruthy();
+    });
+
     it('is ABSENT while a place errand is live, and returns when the errand ends', () => {
       seed();
       render(wrap(<MapView />));
+      // All-days, for the reason above: day-scoped, `lunch` is already slotted today.
+      fireEvent.click(listButton(t.map.allDays));
       fireEvent.click(row('lunch')!);
       expect(scheduleBtn()).toBeTruthy();
 
@@ -4324,6 +4347,10 @@ describe('the embedded map’s shell (ADR-0121)', () => {
 
     it('swaps the card into the research card, and takes the itinerary blocks off', () => {
       seedKnown();
+      // All-days, so the schedule verb is on screen to be taken OFF: day-scoped it is already
+      // absent for a place slotted on that day (ADR-0191 §7's amendment), which would make
+      // the assertion below pass for the wrong reason.
+      fireEvent.click(listButton(t.map.allDays));
       // Collapsed: the group's own material is what is on screen.
       expect(knowRow().querySelector('.note-sec:not(.tsk-sec)')).toBeTruthy();
       expect(screen.queryByRole('button', { name: t.map.scheduleToDay })).toBeTruthy();

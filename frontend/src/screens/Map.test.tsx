@@ -451,11 +451,18 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       it(`appears only on the SELECTED row, in ${label} scope`, () => {
         seed();
         render(wrap(<MapView />));
-        if (allDays) allDaysOn();
+        // `tapAllDays()`, not `allDaysOn()` — the latter READS the toggle and returns a
+        // boolean, so `if (allDays) allDaysOn()` did nothing and this block's "both day
+        // scopes on purpose" was one scope twice. Found while adding the day-scoped rule
+        // below, which is the first behaviour here that differs BETWEEN the scopes.
+        if (allDays) tapAllDays();
         // Nothing selected: no block, so no footer.
         expect(foot()).toBeNull();
 
-        fireEvent.click(row('food')!);
+        // `idea`, not `food`: `food` has an event on the ACTIVE date, and a place already
+        // slotted on the day in scope no longer offers to be slotted again (ADR-0191 §7's
+        // amendment). `idea` is on the shelf, which is the state this verb exists for.
+        fireEvent.click(row('idea')!);
         expect(foot()).toBeTruthy();
         expect(scheduleBtn()).toBeTruthy();
       });
@@ -463,14 +470,14 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
       it(`opens the form pre-filled with the place, in ${label} scope`, () => {
         seed();
         render(wrap(<MapView />));
-        if (allDays) allDaysOn();
-        fireEvent.click(row('food')!);
+        if (allDays) tapAllDays();
+        fireEvent.click(row('idea')!);
         fireEvent.click(scheduleBtn()!);
 
         // The form is a Modal over the map, on the map's own tab (§3) — no navigation.
         expect(dialog()).toBeTruthy();
         // Pre-filled: the place field shows the place you were standing on.
-        expect(document.querySelector('.pp-trigger.filled')?.textContent).toContain('food');
+        expect(document.querySelector('.pp-trigger.filled')?.textContent).toContain('idea');
       });
     }
 
@@ -480,7 +487,10 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
     describe('the originating idea (§5)', () => {
       const openOn = (name: string) => {
         render(wrap(<MapView />));
-        allDaysOn();
+        // `tapAllDays()`, not `allDaysOn()` — the third call site that used the READ where
+        // the action was meant. It matters here now: day-scoped, a place already slotted on
+        // the day in scope has no `שיבוץ ליום` to click.
+        tapAllDays();
         fireEvent.click(row(name)!);
         fireEvent.click(scheduleBtn()!);
       };
