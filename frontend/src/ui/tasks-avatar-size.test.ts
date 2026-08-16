@@ -40,13 +40,22 @@ describe('the row avatar cannot inherit the editor’s 38px', () => {
     expect(selectors).not.toContain('.tsk-who');
   });
 
-  it('sizes the row’s avatar at 18px and the editor’s at 38px', () => {
+  // **15px since 2026-08-16**, and the number is load-bearing rather than cosmetic: at 18px
+  // the circle did not fit an 11.5px meta line, so it overhung by 7px — which paints through
+  // the line ABOVE it the moment the meta wraps ("the assignee got over the due"). A circle
+  // that fits its line box needs no overhang and cannot collide.
+  it('sizes the row’s avatar to FIT its line box, and the editor’s at 38px', () => {
+    // Reads the COMMENT-STRIPPED source for the reason this file's header already gives:
+    // the prose above these rules names the very declarations under test, so parsing it in
+    // makes an assertion read its own documentation and pass (or fail) on it.
     const block = (selector: string) => {
-      const i = css.indexOf(`${selector} {`);
+      const i = bare.indexOf(`${selector} {`);
       expect(i, `${selector} missing`).toBeGreaterThan(-1);
-      return css.slice(i, css.indexOf('}', i));
+      return bare.slice(i, bare.indexOf('}', i));
     };
-    expect(block('.tsk-who-mini')).toContain('width: 18px');
+    expect(block('.tsk-who-mini')).toContain('width: 15px');
+    // The overhang is what made a wrapped meta line collide — it must not come back.
+    expect(block('.tsk-who-mini')).not.toContain('margin-block');
     expect(block('.tsk-who .choice-grid .wp-av')).toContain('width: 38px');
   });
 });

@@ -32,6 +32,7 @@ vi.mock('../state/trip-state', () => ({
     zoneCrossings: [],
     // Tasks ride the same snapshot since phase 1; the mark and the sections read them.
     tasks: [],
+    events: [],
     taskVerbs: {
       createTask: async () => undefined,
       updateTask: async () => {},

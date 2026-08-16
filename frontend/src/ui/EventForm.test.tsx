@@ -45,6 +45,8 @@ const tripState = {
   // …and read on the way back: editing an existing event renders `HostNotes`, which reads
   // the trip's notes and members straight from here.
   notes: [] as unknown[],
+  tasks: [],
+  taskVerbs: { createTask: async () => {}, updateTask: async () => {}, deleteTask: async () => {} },
   users: [] as unknown[],
   // Documents attached on the way (ADR-0173 §5): the slot reads the trip's documents and
   // links, and the form queues its staged links BEHIND their host like the notes above.
@@ -1421,7 +1423,9 @@ describe('EventForm (folded into Modal, U-01)', () => {
       ];
       render(wrapNav(<EventForm event={existing} onClose={() => {}} />));
 
-      const section = document.querySelector('.note-sec') as HTMLElement;
+      // `:not(.tsk-sec)` — the tasks section shares this geometry and reads above it
+      // (ADR-0191 §5), so a bare `.note-sec` now finds the tasks one first.
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section.textContent).toContain('הכניסה מאחור');
       // ONE way to add, and it is the box — the section's `＋ פתק` would open a second
       // sheet over a form that is already asking for a save.

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // A host's tasks section (ADR-0191 §5) — the surface, the add path, and the one thing the
-// drawing settled: these rows are `ListRow`s, not `.note-item`s.
+// owner then reversed: these rows are `.note-item`s, the same shape the notes section uses.
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -37,6 +37,7 @@ vi.mock('../state/trip-state', () => ({
       endDate: '2026-08-20',
     },
     tasks: tripTasks,
+    events: [],
     users: [{ id: 'u1', displayName: 'אסף' }],
     members: [{ userId: 'u1' }],
     zoneCrossings: [],
@@ -102,15 +103,43 @@ describe('HostTasks', () => {
     expect(screen.getByRole('button', { name: new RegExp(t.tasks.section.add) })).toBeTruthy();
   });
 
-  // **The finding the drawing produced** (ADR-0191 §5): `.note-item` has no lead slot,
-  // because a note has no completion control.
-  it('renders its rows as ListRows with a tick, not as note items', () => {
+  // **ADR-0191 §5, REVERSED** (owner, 2026-08-16). Phase 4 gave this a `ListRow` and wrote
+  // the cost down; the cost was a 40px indent against the notes section beside it. The row is
+  // the same `.note-item` now, and only the LEAD differs — which is the whole claim, so it is
+  // what this asserts.
+  it('renders its rows as note items with a tick in the shared lead, not as ListRows', () => {
     tripTasks = [task('a', { bookingId: 'bk-1' })];
     show();
-    const row = document.querySelector('.tsk-sec-list .wp-listrow');
+    const row = document.querySelector('.tsk-sec-list .note-item.tsk-row');
     expect(row).toBeTruthy();
-    expect(row!.querySelector('.wp-listrow-lead .tsk-tick')).toBeTruthy();
-    expect(document.querySelector('.tsk-sec-list .note-item')).toBeNull();
+    expect(row!.querySelector('.note-item-lead .tsk-tick-sec')).toBeTruthy();
+    expect(document.querySelector('.tsk-sec-list .wp-listrow')).toBeNull();
+    // The screen's 44px box must not come back with it: that is what broke the row.
+    expect(document.querySelector('.tsk-sec-list .tsk-tick')).toBeNull();
+  });
+
+  // The four differences the alignment report was made of, and the two a unit can see.
+  it('names its noun in the header, as the notes section does', () => {
+    show();
+    expect(document.querySelector('.tsk-sec .note-sec-h .t svg')).toBeTruthy();
+  });
+
+  // **The section says only what there is to say** (owner: "tasks should be more minimal").
+  // An undated unassigned task rendered a whole meta line reading `לא משויך`, which on a Map
+  // place card beside a note section is a line that says nothing — and its separator was
+  // unconditional, so it opened with an orphan `·` too.
+  it('renders no meta line at all when there is neither a deadline nor an assignee', () => {
+    tripTasks = [task('a', { bookingId: 'bk-1' })];
+    show();
+    expect(document.querySelector('.tsk-sec-list .note-item .note-item-m')).toBeNull();
+  });
+
+  it('opens the meta with the deadline, never with a separator', () => {
+    tripTasks = [task('a', { bookingId: 'bk-1', dueAt: '2026-08-20T12:00:00.000Z' })];
+    show();
+    const meta = document.querySelector('.tsk-sec-list .note-item-m')!;
+    expect(meta.querySelector('.tsk-sep')).toBeNull();
+    expect(meta.textContent!.trimStart().startsWith('·')).toBe(false);
   });
 
   // A selector must still be able to mean "the NOTES section" — four shipped specs caught
@@ -135,7 +164,7 @@ describe('HostTasks', () => {
   it('ticks a task from the section without leaving it', () => {
     tripTasks = [task('a', { bookingId: 'bk-1' })];
     show();
-    fireEvent.click(document.querySelector('.tsk-tick') as HTMLElement);
+    fireEvent.click(document.querySelector('.tsk-tick-sec') as HTMLElement);
     expect(updated).toEqual([{ id: 'a', input: { status: TASK_STATUS.DONE } }]);
   });
 
@@ -143,6 +172,6 @@ describe('HostTasks', () => {
     tripTasks = [task('a', { bookingId: 'bk-1', status: TASK_STATUS.DONE, title: 'נעשה' })];
     show();
     expect(screen.getByText('נעשה')).toBeTruthy();
-    expect(document.querySelector('.wp-listrow.tsk-settled')).toBeTruthy();
+    expect(document.querySelector('.note-item.tsk-row.tsk-settled')).toBeTruthy();
   });
 });

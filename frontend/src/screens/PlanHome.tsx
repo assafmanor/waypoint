@@ -59,6 +59,7 @@ import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
 import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from '../ui/Icon';
+import { useSettledHosts } from '../ui/HostTasks';
 
 // `CHECK_ICON` moved to `lib/automatic-tasks.ts` with the row copy when the tasks screen
 // became a second reader of both — the collapsed summary below still uses it, now imported.
@@ -189,7 +190,8 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     crossings: zoneCrossings,
     primaryZone: trip.timezone,
   };
-  const bandTasks = tasksDueSoon(tasks, taskClock);
+  const settledHosts = useSettledHosts();
+  const bandTasks = tasksDueSoon(tasks, taskClock, settledHosts);
   const converged = orderTaskRows(bandTasks, liveChecks, taskClock);
   // **The completed half is the same noun the open half is** (phase 3r). It was
   // `automatic.filter(done)` alone, so a completed MANUAL task could never appear and the

@@ -9,6 +9,7 @@
 // the calendar day rolls for the traveller who is reading it. Nothing here holds a zone of
 // its own, and no surface may reach for `trip.timezone` instead.
 import {
+  EVENT_STATUS,
   TASK_HOST_FIELD,
   TASK_STATUS,
   type Task,
@@ -215,12 +216,19 @@ export function taskDue(task: Task, clock: TaskClock): TaskDue | undefined {
  *
  *  The band boundary is measured against the reader's calendar day rather than a raw
  *  `now + 7×24h`, so "within a week" does not shift by an hour every hour. */
-export function tasksDueSoon(tasks: Task[], clock: TaskClock): Task[] {
+export function tasksDueSoon(
+  tasks: Task[],
+  clock: TaskClock,
+  settledHosts: Set<string> = new Set(),
+): Task[] {
   const readerZone = currentZone(clock.nowMs, clock.crossings, clock.primaryZone);
   const lastDay = addDays(todayInTz(readerZone, new Date(clock.nowMs)), TASK_BAND_LOOKAHEAD_DAYS);
   return sortTasks(
     tasks.filter((task) => {
       if (!isManual(task) || isSettled(task) || !task.dueAt) return false;
+      // A done event's task is not "due in 3 days" — the thing it was about is over
+      // (ADR-0191 §6). This is the surface the owner reported it from.
+      if (isOnSettledHost(task, settledHosts)) return false;
       if (taskBand(task, clock) === TASK_BAND.OVERDUE) return true;
       return todayInTz(dueZone(task.dueAt, clock), new Date(task.dueAt)) <= lastDay;
     }),
@@ -240,6 +248,7 @@ export function taskPreview(
   tasks: Task[],
   automatic: AutomaticTask[],
   clock: TaskClock,
+  settledHosts: Set<string> = new Set(),
 ): TaskPreview {
   // **The checks count** (owner, 2026-08-16, amending ADR-0190 §1). That ADR excluded them so
   // a brand-new trip would not announce "5 משימות פתוחות" before anyone had written one — and
@@ -249,7 +258,11 @@ export function taskPreview(
   // Only the COUNT changes. `next` names what is due soonest and a check has no `dueAt` to be
   // due at, so it can never be that; `overdue` is a deadline that passed, which a check has
   // none of either. Both stay about the tasks a person wrote, and both are still honest.
-  const openManual = tasks.filter((task) => isManual(task) && !isSettled(task));
+  // A closed host's tasks leave the count with the band (ADR-0191 §6): the tile says how many
+  // things are open, and a task about a finished event is not one of them.
+  const openManual = tasks.filter(
+    (task) => isManual(task) && !isSettled(task) && !isOnSettledHost(task, settledHosts),
+  );
   const dated = sortTasks(
     openManual.filter((task) => task.dueAt),
     clock,
@@ -294,6 +307,37 @@ export function taskHostInput(
   return { [TASK_HOST_FIELD[kind]]: id };
 }
 
+/** **The hosts that are CLOSED, keyed the way every host derivation here is keyed**
+ *  (ADR-0191 §6, owner 2026-08-16: _"events marked as done/skipped shouldnt show tasks"_).
+ *
+ *  A settled host has no future, so its open tasks are not open obligations: they stop
+ *  counting on the mark, drop out of both Home bands and leave the Index tile, and read
+ *  struck in the host's own section. **Nothing is written** — this is a reading of the host,
+ *  so un-skipping an event brings its tasks back exactly as they were.
+ *
+ *  Only events can be settled today, and the set is the shape rather than the answer: a
+ *  second settleable host is one more loop here and no change at any call site. */
+export function settledHostKeys(events: { id: string; status?: string }[]): Set<string> {
+  const keys = new Set<string>();
+  for (const event of events) {
+    if (event.status === EVENT_STATUS.DONE || event.status === EVENT_STATUS.SKIPPED) {
+      keys.add(`event:${event.id}`);
+    }
+  }
+  return keys;
+}
+
+/** Whether this task hangs on a host that is closed. Empty set = nothing is closed, which is
+ *  the common case and costs one `size` check. */
+export function isOnSettledHost(task: Task, settledHosts: Set<string>): boolean {
+  if (settledHosts.size === 0) return false;
+  for (const [kind, field] of Object.entries(TASK_HOST_FIELD) as [NoteHostKind, TaskHostKey][]) {
+    const id = task[field];
+    if (id) return settledHosts.has(`${kind}:${id}`);
+  }
+  return false;
+}
+
 /** **How many OPEN tasks each host carries** — the mark's count (ADR-0191 §2).
  *
  *  Open only, and that is the one place a task's mark parts company with a note's. A note
@@ -303,10 +347,16 @@ export function taskHostInput(
  *
  *  Built once per task-list change rather than filtered per row: a day of twelve events asks
  *  this twelve times. */
-export function openTaskCountsByHost(tasks: Task[]): Map<string, number> {
+export function openTaskCountsByHost(
+  tasks: Task[],
+  settledHosts: Set<string> = new Set(),
+): Map<string, number> {
   const counts = new Map<string, number>();
   for (const task of tasks) {
     if (!isManual(task) || isSettled(task)) continue;
+    // A closed host's obligations stop being open (ADR-0191 §6) — so its row loses the mark
+    // rather than carrying a count nobody can act on.
+    if (isOnSettledHost(task, settledHosts)) continue;
     for (const [kind, field] of Object.entries(TASK_HOST_FIELD) as [NoteHostKind, TaskHostKey][]) {
       const id = task[field];
       if (!id) continue;

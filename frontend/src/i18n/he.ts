@@ -1142,7 +1142,12 @@ export const t = {
       createTitle: 'משימה חדשה',
       editTitle: 'עריכת משימה',
       titleLabel: 'מה צריך לעשות',
-      titlePlaceholder: 'להזמין את המסעדה',
+      // Says what goes in the box, not what someone else wrote — the rule the NOTES form
+      // already settled (owner, 2026-08-02: "a sample note reads as content on a blank
+      // form"), which this form shipped without following. `להזמין את המסעדה` read as a
+      // task already typed. `אחד` earns its place: it is the model's own bound, since a task
+      // holding a checklist is a separate feature nobody has built.
+      titlePlaceholder: 'משהו אחד שצריך לעשות',
       needsTitle: 'צריך לכתוב מה המשימה',
       dueLabel: 'עד מתי · לא חובה',
       addDate: 'הוספת תאריך',

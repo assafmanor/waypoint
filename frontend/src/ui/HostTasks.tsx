@@ -15,10 +15,24 @@ import { useMemo, useState } from 'react';
 import type { Task } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import { tasksForHost, taskHostInput, tickedStatus, type TaskClock } from '../lib/tasks';
+import {
+  settledHostKeys,
+  tasksForHost,
+  taskHostInput,
+  tickedStatus,
+  type TaskClock,
+} from '../lib/tasks';
 import type { NoteHostKind } from '../lib/notes';
 import { TaskSection } from './TaskSection';
 import { TaskSheet, type TaskDraft } from './TaskSheet';
+
+/** **Which hosts are closed** (ADR-0191 §6), built once from trip state so no screen assembles
+ *  it itself — the same reason `useTaskClock` exists below. Memoized on the events array,
+ *  because the mark, both Home bands and the Index tile all ask for it every render. */
+export function useSettledHosts(): Set<string> {
+  const { events } = useTrip();
+  return useMemo(() => settledHostKeys(events), [events]);
+}
 
 /** **How many OPEN tasks this one host carries**, from trip state — for the surfaces that
  *  ask about a single host rather than a listful (a delete confirm owes the reader the count
@@ -44,10 +58,22 @@ function useTaskClock(now: Date): TaskClock {
   );
 }
 
-export function HostTasks({ host }: { host: { kind: NoteHostKind; id: string; name: string } }) {
+export function HostTasks({
+  host,
+  quiet,
+}: {
+  host: { kind: NoteHostKind; id: string; name: string };
+  /** **A host FORM's copy of this section** (ADR-0191 §7, owner's call: the form is _"not
+   *  necessarily the main add point"_). Same section and the same editor behind it — the way
+   *  in is just stated quietly, because the surfaces you normally attach a task from are the
+   *  reads (the expanded card, the detail sheet, the manage sheet), and a form's business is
+   *  the entity's own fields. */
+  quiet?: boolean;
+}) {
   const { tasks, users, taskVerbs } = useTrip();
   const now = useClock();
   const clock = useTaskClock(now);
+  const settledHosts = useSettledHosts();
   // null = closed; 'create' = a new task on this host; a Task = editing that one.
   const [sheet, setSheet] = useState<Task | 'create' | null>(null);
 
@@ -70,6 +96,8 @@ export function HostTasks({ host }: { host: { kind: NoteHostKind; id: string; na
         tasks={rows}
         users={users}
         clock={clock}
+        hostSettled={settledHosts.has(`${host.kind}:${host.id}`)}
+        quiet={quiet}
         onAdd={() => setSheet('create')}
         onTick={(task) => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
         onOpen={(task) => setSheet(task)}

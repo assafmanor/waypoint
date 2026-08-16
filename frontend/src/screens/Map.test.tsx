@@ -424,8 +424,12 @@ describe('MapView (Phase 3, ADR-0109/0110)', () => {
 
       const kids = [...row('food')!.children].map((el) => el.className);
       const at = (cls: string) => kids.findIndex((c) => c.split(' ').includes(cls));
-      expect(at('note-sec')).toBeGreaterThan(at('map-main'));
-      expect(at('note-sec')).toBeLessThan(at('map-refs'));
+      // **The section lives inside `.map-cardwrote` since ADR-0191 §7** — the card's one
+      // flexible track now holds BOTH sections, because tasks as a second pinned row put the
+      // card at 411px against its own 420px cap. The ORDER this spec is about is unchanged.
+      expect(at('map-cardwrote')).toBeGreaterThan(at('map-main'));
+      expect(at('map-cardwrote')).toBeLessThan(at('map-refs'));
+      expect(row('food')!.querySelector('.map-cardwrote .note-sec')).toBeTruthy();
       expect(at('map-refs-foot')).toBe(kids.length - 1);
     });
   });

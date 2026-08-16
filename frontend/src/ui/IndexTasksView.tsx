@@ -56,6 +56,11 @@ import {
   type TaskFacet,
   type TaskRow,
 } from '../lib/tasks';
+// The host chip and its icon table are the NOTES screen's, reused whole (ADR-0191 §8):
+// `noteHost` reads only the five FKs both entities carry, so it was widened to `HostedRow`
+// rather than copied — the same extraction `isHostedBy` already took in phase 4.
+import { noteHost, type NoteHostRef } from '../lib/notes';
+import { NOTE_HOST_ICON } from '../constants';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
 import { TaskSheet, type TaskDraft } from './TaskSheet';
 import { TaskManageSheet } from './TaskManageSheet';
@@ -78,7 +83,7 @@ export function IndexTasksView({
    *  §3). */
   onOpenDocuments: () => void;
 }) {
-  const { trip, tasks, users, zoneCrossings, taskVerbs, setActiveDate } = useTrip();
+  const { trip, tasks, users, zoneCrossings, taskVerbs, setActiveDate, noteHosts } = useTrip();
   const { me } = useAuth();
   const now = useClock();
   const navigate = useNavigate();
@@ -232,6 +237,7 @@ export function IndexTasksView({
     ) : (
       <TaskLi
         task={row.task}
+        host={noteHost(row.task, noteHosts)}
         due={taskDue(row.task, clock)}
         assignee={assigneeOf(row.task)}
         onTick={() => void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })}
@@ -372,6 +378,7 @@ export function IndexTasksView({
  *  section. The `⋯` mark on the meta line is the separate claim that there is more to READ. */
 function TaskLi({
   task,
+  host,
   due,
   assignee,
   onTick,
@@ -381,6 +388,9 @@ function TaskLi({
   onManage,
 }: {
   task: Task;
+  /** **What this task is linked to** (ADR-0191 §8) — absent when it is a general task, which
+   *  is the whole signal, exactly as it is on the notes screen. */
+  host?: NoteHostRef;
   due: ReturnType<typeof taskDue>;
   /** The person, not their name — the row renders `Avatar` (ADR-0190 §6). */
   assignee?: User;
@@ -394,26 +404,40 @@ function TaskLi({
   const unsynced = useUnsynced(task.id);
   const settled = isSettled(task);
 
-  const meta = (
-    <>
-      {due && (
-        <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
-          <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
-          {/* The numeric run is its own LTR island inside RTL copy — `ltrIsolate`, never
-              `dir="ltr"` on a non-input (ADR-0118). The Hebrew word beside it is exactly
-              what makes the isolate necessary: `dir="auto"` would resolve the whole element
-              from that strong character and flip the clock. */}
-          {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+  // **TWO LINES, BY DESIGN** (owner, 2026-08-16 — ADR-0191 §8). The deadline owns the first;
+  // what the task is about and who owes it share the second, where the host chip is the
+  // truncatable element.
+  //
+  // It replaced an ACCIDENTAL wrap, and that is the argument. Once the chip joined a line that
+  // already carried a deadline and an assignee, the line broke — but wherever the strings
+  // happened to run out, so the shape moved with the content. Both single-line repairs were
+  // measured and both lose the thing they truncate: `nowrap` with the chip first cuts the
+  // assignee to `לא…`, and with the chip last cuts the host to `ביק…`, which is the whole
+  // point of the chip. Splitting deliberately costs **1px** against the accidental wrap
+  // (79 vs 78) and gives the chip **89px instead of 73**, so a host name that used to
+  // ellipsise now reads whole. An undated task still has one line, at 62px.
+  const metaAbout = (
+    <span className="tsk-meta-about">
+      {/* **WHAT THIS TASK IS LINKED TO** (owner: "linked tasks don't show their host, and I
+          think that it must have some indication of what it's linked to"). `.note-host` is
+          the notes screen's own chip, reused rather than redrawn — the notes row has carried
+          it since ADR-0153 §4 and this screen never picked it up.
+
+          **A task row has no badge**, because ADR-0188 §1 gives a row with a `lead` no icon
+          slot: the tick IS its leading element. So where a note says its host twice — the
+          category glyph on the badge AND this chip — a task says it once, and this is the
+          only place it can be said. */}
+      {host && (
+        <span className="note-host">
+          <Icon name={NOTE_HOST_ICON[host.kind]} />
+          <span className="note-host-n">{host.name}</span>
         </span>
       )}
-      {due ? <span className="tsk-sep">·</span> : null}
       {/* **Who owes it, as a person** (ADR-0190 §6, from the owner's report that members are
           prominent in the form and barely visible here). ADR-0188 §3 made this a bare name
           to avoid "a second identity system per row" — a premise that expired when ADR-0189
           put `Avatar` in the editor for this same field, so the row now REUSES the system
-          this feature already established rather than adding one. Measured: the title column
-          is unchanged at 201px and the row stays 61px, because the circle is sized to the
-          meta line and overhangs it rather than stretching it.
+          this feature already established rather than adding one.
           An UNASSIGNED task says so explicitly; today it said nothing at all, which is
           indistinguishable from "assigned to someone whose name did not fit". */}
       <span className="tsk-assignee">
@@ -426,17 +450,30 @@ function TaskLi({
         )}
         {assignee ? assignee.displayName : t.tasks.sheet.nobody}
       </span>
-      {/* "There is more", not a preview of it — one glyph at the end of the meta line, and
-          it costs the row 0px. Absent while the row is open, because the words it points at
-          are printed directly underneath by then. */}
+      {/* "There is more", not a preview of it — one glyph at the end of the line, and it
+          costs the row 0px. Absent while the row is open, because the words it points at are
+          printed directly underneath by then. */}
       {task.body && !open ? (
-        <>
-          <span className="tsk-sep">·</span>
-          <span className="tsk-more-mark" aria-hidden="true">
-            <Icon name="more" />
-          </span>
-        </>
+        <span className="tsk-more-mark" aria-hidden="true">
+          <Icon name="more" />
+        </span>
       ) : null}
+    </span>
+  );
+
+  const meta = (
+    <>
+      {due && (
+        <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+          <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
+          {/* The numeric run is its own LTR island inside RTL copy — `ltrIsolate`, never
+              `dir="ltr"` on a non-input (ADR-0118). The Hebrew word beside it is exactly
+              what makes the isolate necessary: `dir="auto"` would resolve the whole element
+              from that strong character and flip the clock. */}
+          {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+        </span>
+      )}
+      {metaAbout}
     </>
   );
 

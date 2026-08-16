@@ -94,6 +94,7 @@ import {
 } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from '../ui/Icon';
+import { useSettledHosts } from '../ui/HostTasks';
 
 /** The start transition label key for a bracketed upcoming event (ADR-0063),
  *  by mode — a flight's take-off, a train's departure (via eventTransitionKeys). */
@@ -469,12 +470,13 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
   // carries no readiness checks (an automatic task's deadline is departure, so mid-trip they
   // would all read overdue), so `orderTaskRows` is handed an empty second half — the point is
   // that ONE function decides what leads, rather than the band keeping a second answer.
+  const settledHosts = useSettledHosts();
   const dueTasks = useMemo(() => {
-    const due = tasksDueSoon(tasks, taskClock);
+    const due = tasksDueSoon(tasks, taskClock, settledHosts);
     return orderTaskRows(due, [], taskClock).flatMap((row) =>
       row.kind === 'task' ? [row.task] : [],
     );
-  }, [tasks, taskClock]);
+  }, [tasks, taskClock, settledHosts]);
   const openTasks = () =>
     navigate(`/?${TAB_PARAM}=${INDEX_TAB}&${FOCUS_PARAM}=${INDEX_FOCUS.TASKS}`);
 

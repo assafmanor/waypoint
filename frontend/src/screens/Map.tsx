@@ -88,6 +88,7 @@ import { apiAssetUrl } from '../lib/api-asset';
 import { useCandidateEnrichment } from '../lib/useCandidateEnrichment';
 import { noteCountFor, hostCountForContext, noteCountsByHost } from '../lib/notes';
 import { openTaskCountsByHost } from '../lib/tasks';
+import { useSettledHosts } from '../ui/HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { useCenterSelected } from '../lib/useCenterSelected';
@@ -2517,7 +2518,11 @@ export function MapView() {
   // trip's places, and the mark is on every row that has one (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
-  const taskCounts = useMemo(() => openTaskCountsByHost(tasks), [tasks]);
+  const settledHosts = useSettledHosts();
+  const taskCounts = useMemo(
+    () => openTaskCountsByHost(tasks, settledHosts),
+    [tasks, settledHosts],
+  );
   // Its twin for attachments (ADR-0174 §1), built once per link-list change.
   const docCounts = useMemo(
     () => attachmentCountsByHost(documentAttachments),
@@ -4269,8 +4274,27 @@ function PlaceRow({
           one arrangement no surface here uses. A full-width line in a row that has wrapped
           one of those since it shipped (`.map-refs`), so it needs one declaration. */}
       {!expanded && documentsSlot}
-      {!expanded && tasksSlot}
-      {!expanded && notesSlot}
+      {/* **ONE SCROLLING REGION FOR BOTH SECTIONS** (ADR-0191 §7, owner 2026-08-16: _"place
+          tasks take up a lot of space where a map should be visible … what happens when
+          there's notes, events, and multiple tasks?"_).
+
+          Measured, and the worry was exact: with the tasks section PINNED on its own grid row
+          the card read **411px against its own 420px cap** on a place carrying one task, one
+          note, one reference and neither a summary nor a document. That is ADR-0182 §9's
+          documented failure with nine pixels of slack — once the pinned rows alone exceed the
+          cap the `1fr` track is already at 0, and `שיבוץ ליום` goes under the fold.
+
+          So the flexible track is this wrapper rather than the note list: what the group
+          wrote about this place, tasks and notes together, shrinking and scrolling as one.
+          **The cost is that the notes HEADER no longer pins** (ADR-0167 §9.5 pinned it when it
+          was the only section) — with two sections there is no arrangement that pins both, and
+          losing the way in to the place is worse than losing a sticky header. */}
+      {!expanded && (tasksSlot || notesSlot) && (
+        <div className="map-cardwrote">
+          {tasksSlot}
+          {notesSlot}
+        </div>
+      )}
       {/* Full-width and ≥40px, so it is a real touch target (ADR-0017) — which is
           also why the meta line's own 11.5px tags are not the link. */}
       {!expanded && refs && refs.length > 0 && (

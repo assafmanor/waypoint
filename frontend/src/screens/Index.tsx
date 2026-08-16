@@ -22,6 +22,7 @@ import { IndexNotesView } from '../ui/IndexNotesView';
 import { IndexTasksView } from '../ui/IndexTasksView';
 import { IndexTile } from '../ui/domain';
 import { Icon } from '../ui/Icon';
+import { useSettledHosts } from '../ui/HostTasks';
 import { BOOKING_PARAM, DOCUMENT_PARAM, FOCUS_PARAM, INDEX_FOCUS } from '../state/nav-state';
 import { t } from '../i18n/he';
 
@@ -81,6 +82,11 @@ export function Index() {
     next.delete(FOCUS_PARAM);
     setParams(next, { replace: true });
   }, [params, setParams]);
+
+  // Above the early returns below: this is a HOOK, and the four `view` branches would make
+  // it conditional — which React reports as "rendered fewer hooks than expected", and seven
+  // shipped specs did.
+  const settledHosts = useSettledHosts();
 
   const openBookings = () => {
     setPendingBookingId(undefined);
@@ -170,7 +176,7 @@ export function Index() {
   };
   // The readiness checks count toward the tile (owner, 2026-08-16, amending ADR-0190 §1):
   // a trip nobody has prepared has five things to do, and the tile is what says so.
-  const preview = taskPreview(tasks, automatic, clock);
+  const preview = taskPreview(tasks, automatic, clock, settledHosts);
   const nextDue = preview.next ? taskDue(preview.next, clock) : undefined;
   const tasksSubtitle = preview.next ? (
     <>

@@ -682,11 +682,16 @@
 .map-placecard:is(:has(.note-sec), :has(.map-hero)) > .place:not(.result) {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  /* identity · what the world knows · DOCUMENTS · notes head · NOTES(1fr) · refs · foot. The
-     summary's row and the documents' row are both `auto` and collapse to 0 when there is
-     nothing to show, which is the common case for both — so the card is byte-identical to
-     before on those places (the row gap is 0). */
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  /* identity · what the world knows · DOCUMENTS · WHAT THE GROUP WROTE(1fr) · refs · foot.
+     The summary's and the documents' rows are both `auto` and collapse to 0 when there is
+     nothing to show, which is the common case for both.
+
+     **The flexible track holds BOTH sections since 2026-08-16** (ADR-0191 §7). It was the note
+     list alone, with that header pinned above it; tasks arriving as a second section broke
+     that twice over — every rule here is POSITIONAL, so `> .note-sec` matched both and stacked
+     two headers on one row, and pinning tasks instead put the card at 411px against its own
+     420px cap with one task and one note on it. One scroller answers both. */
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0 11px;
   /* AMENDED 2026-08-11 (ADR-0182 §9): `hidden` here, which is what the shortfall used to
@@ -761,44 +766,58 @@
   grid-row: 5;
   grid-column: 1 / -1;
 }
-/* `contents` so the section's header can pin while its list scrolls — they have to be siblings
-   in the grid for one to be the flexible track. The separator moves to the header, which is
-   now the section's top edge. */
-.map-placecard:has(.note-sec) > .place > .note-sec {
-  display: contents;
-}
-.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-h {
+/* **WHAT THE GROUP WROTE — the card's ONE flexible track, holding BOTH sections**
+   (ADR-0191 §7). It used to be the note list alone, with that section's header pinned above it
+   (ADR-0167 §9.5). Tasks made that arrangement impossible: as a fifth PINNED row the card
+   measured 411px against its own 420px cap on a place carrying one task, one note and one
+   reference — ADR-0182 §9's cut-off with nine pixels to spare.
+
+   `min-height: 0` is what lets a grid row shrink below its content at all; without it the
+   track sizes to the sections and the card overflows. `align-self: stretch` is load-bearing
+   beside it: `align-items: center` leaves an item at its CONTENT height inside a 0px track, so
+   the list overflowed the card while the track itself measured 0 — invisible to track sizing,
+   and measured.
+
+   **The headers scroll with their sections now**, which is the stated cost: with two sections
+   there is no arrangement that pins both, and losing `שיבוץ ליום` under the fold is worse than
+   losing a sticky header. */
+.map-placecard:has(.note-sec) > .place > .map-cardwrote {
   grid-row: 4;
   grid-column: 1 / -1;
+  align-self: stretch;
+  min-height: 0;
+  overflow-y: auto;
+  /* `-y` for the reason spelled out on `.map-sum`: this region is a scrollport on both axes,
+     so an unqualified `contain` swallowed the track's horizontal swipe. */
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--line);
+}
+.map-placecard:has(.note-sec) > .place > .map-cardwrote::-webkit-scrollbar {
+  width: 0;
+}
+/* Inside the shared scroller the sections are ordinary blocks again — no `display: contents`,
+   no per-section grid rows. That split existed only to make ONE section's list the track, and
+   applying it to both is what stacked two headers on one row (owner, 2026-08-16). */
+.map-placecard:has(.note-sec) .map-cardwrote > .note-sec {
+  margin-top: 0;
+}
+.map-placecard:has(.note-sec) .map-cardwrote > .note-sec + .note-sec {
+  margin-top: var(--space-3);
 }
 /* THE ONE SCROLLING REGION. `min-height: 0` is what lets a grid row shrink below its content at
    all — without it the track sizes to the notes and the card overflows, the same trap the form
    card's middle documents. `align-self: stretch` is load-bearing beside it: `align-items:
    center` leaves an item at its CONTENT height inside a 0px track, so the list overflowed the
    card while the track itself measured 0 — invisible to the track sizing, and measured. */
-.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list {
-  grid-row: 5;
-  grid-column: 1 / -1;
-  align-self: stretch;
-  min-height: 0;
-  overflow-y: auto;
-  /* `-y` for the reason spelled out on `.map-sum` above: this region is a scrollport on both
-     axes, so an unqualified `contain` swallowed the track's horizontal swipe. */
-  overscroll-behavior-y: contain;
-  scrollbar-width: none;
-}
-.map-placecard:has(.note-sec) > .place > .note-sec > .note-sec-list::-webkit-scrollbar {
-  width: 0;
-}
 .map-placecard:has(.note-sec) > .place > .map-refs {
-  grid-row: 6;
+  grid-row: 5;
   grid-column: 1 / -1;
 }
 .map-placecard:has(.note-sec) > .place > .map-refs-foot {
-  grid-row: 7;
+  grid-row: 6;
   grid-column: 1 / -1;
 }
 

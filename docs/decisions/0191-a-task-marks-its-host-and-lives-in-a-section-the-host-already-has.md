@@ -1,12 +1,12 @@
 # 0191 — A task marks its host, and lives in a section the host already has
 
-**Status:** Accepted, and **built** (2026-08-16, tasks phase 4 + phase 3r — [session note](../planning/2026-08-16-tasks-phase-4-built.md)). Every number below is measured, first off the mockup's rendered DOM and then off the **running app**.
+**Status:** Accepted, **built**, and **amended 2026-08-16** — §5's row shape is reversed and §6–§8 added, on five owner reports from a device ([session note](../planning/2026-08-16-tasks-host-surface-corrections.md), [mockup](../../mockups/a-task-row-that-matches-its-neighbour-v1.html)). Originally accepted and built (2026-08-16, tasks phase 4 + phase 3r — [session note](../planning/2026-08-16-tasks-phase-4-built.md)). Every number below is measured, first off the mockup's rendered DOM and then off the **running app**.
 **Date:** 2026-08-16
 **Design reference:** [`mockups/a-third-mark-on-a-host-row-v1.html`](../../mockups/a-third-mark-on-a-host-row-v1.html) — §1 the glyph · §2 what it counts · §3 what three marks cost · §4 the four host row shapes · §5 seeing and adding a host's tasks. **Promoted by this ADR.**
 **Closes:** the tasks brief's **§F**, the last of its six open design questions.
 **Build plan:** [`planning/2026-08-15-tasks-build-plan.md`](../planning/2026-08-15-tasks-build-plan.md) — phase 4.
 
-**Builds on:** [0152](0152-a-note-is-one-entity-and-its-host-is-a-field.md) §2/§6 (the host FK model and "a section of the surface the host already has"), [0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §5/§6/§8 (the mark, and the host passed as a fact never picked), [0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §1/§3 (the second mark, and the section order this extends), [0188](0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md), [0189](0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md), [0190](0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md)
+**Builds on:** [0152](0152-a-note-is-one-entity-with-an-optional-host.md) §2/§6 (the host FK model and "a section of the surface the host already has"), [0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §5/§6/§8 (the mark, and the host passed as a fact never picked), [0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §1/§3 (the second mark, and the section order this extends), [0188](0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md), [0189](0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md), [0190](0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md)
 
 ## Context
 
@@ -58,7 +58,17 @@ Both are "works, at a price", not "does not work". Measured on the two line-shap
 
 **Order: documents → TASKS → notes.** ADR-0174 §3's rule is kept ("a document is a thing you need and a note is something about it"), with a task between the two because it is a thing to **do** — nearer the need than the knowledge.
 
-**And a finding the drawing produced that the prose had missed: the rows are `ListRow`s, not `.note-item`s.** `.note-item` has no lead slot, because a note has no completion control; a 44px `.tsk-tick` dropped into one renders an oversized circle floating beside the words. Using the tasks screen's own row instead brings the tick, the star, the deadline and the assignee already built. **The cost is that two sections on one surface are not the same row shape**, and that is the decision rather than an accident.
+~~**And a finding the drawing produced that the prose had missed: the rows are `ListRow`s, not `.note-item`s.**~~ **REVERSED 2026-08-16**, on the owner's first sight of it: _"notes and tasks look totally different and have a different allignment"_. The original text is below, struck, because the reasoning was sound and the conclusion was wrong — `.note-item` genuinely had no lead slot, and the mistake was accepting a second row shape rather than **giving it one**.
+
+> ~~`.note-item` has no lead slot, because a note has no completion control; a 44px `.tsk-tick` dropped into one renders an oversized circle floating beside the words. Using the tasks screen's own row instead brings the tick, the star, the deadline and the assignee already built. The cost is that two sections on one surface are not the same row shape, and that is the decision rather than an accident.~~
+
+**What that cost actually was, measured in the running app** — and this is why it should never have been accepted on a drawing: both rows span 31→330, but the task's text started at **x=276** against the note's **x=316**, a **40px** indent from the `ListRow` lead column, with the title at **700/13.5px** against **400/13px**, a section header icon on one and not the other, and `·` spaced in one meta line and not the other. Four differences, one of them structural.
+
+**The row now IS `.note-item`**, which gains a shared leading cell: a note's leading element is the 2px rule it always had, a task's is its tick, and both texts start at `--sec-lead`. Measured after: **0px** of text-edge delta, the task row falling **61px → 35px** onto the note row's own height, and **the notes paying nothing**. The tick is the same control at a second density, clearing ADR-0017's floor through [ADR-0177](0177-a-when-reads-as-a-sentence.md)'s `::after` reach — **44px** of touch against a 20px paint — rather than the screen's 44px box, which is precisely what made a `.note-item` look broken.
+
+**What is shared is the GEOMETRY, not a component.** Each section keeps its own body: a note's is text plus author and elapsed time, a task's is a title plus a deadline and an owner. A shared row component would have been mostly a passthrough, and the thing that was actually diverging was the CSS.
+
+**And the section says only what there is to say** (owner: _"tasks should be more minimal"_, from the Map place card). A task with neither a deadline nor an assignee renders **no meta line at all** — it was printing a whole line reading `לא משויך`, which beside a note section is a line that says nothing. The tasks SCREEN keeps the full owner-state, because that is a list you scan for what to do next and "nobody yet" is an answer there; a host's section is not that list. Measured on the place card: a bare task row is **20px** against a note row's 35px.
 
 **Settled tasks stay in the section**, struck. This surface is where you see what was _done_ about this booking; the screen is where the settled collapse lives.
 
@@ -67,6 +77,36 @@ Both are "works, at a price", not "does not work". Measured on the two line-shap
 Root rule 8's flagged obligation. `isHostedBy` is widened to any row carrying the five FKs, and `dropHostedForHostChange` is the one applier notes and tasks both call.
 
 **It deliberately does not absorb the other two**, and the reason is that they are not the same operation: `dropAttachmentsForHostChange` reads a different two-member table **and** carries an extra case (a deleted document drops its own links, not only links pointing at it), and `clearPlaceRefsForChange` **clears a field** rather than dropping a row and is already generic over its own shape. Folding either in would mean a flag argument whose job is to say "behave differently" — the copy in a different costume. This is rule 8's "small extraction" taken and its "ask before the bigger refactor" honoured.
+
+### 6. A settled host's tasks stop counting, and stay readable
+
+**Added 2026-08-16** (owner: _"events marked as done/skipped shouldnt show tasks"_). The report was wider than it read: a `done` event did not merely keep its `tsk-mark` — its open task was sitting in the Trip Home `משימות קרובות` band, so a closed host was generating live obligations on the landing screen.
+
+**A settled host has no future, so its open tasks are not open obligations.** The mark drops them, both Home bands drop them, the Index tile stops counting them, and the host's own section still lists them **struck**. That is exactly what a settled _task_ already does, which is the argument: no new vocabulary is spent.
+
+**Nothing is written.** `settledHostKeys` is a derivation over the events array and `isOnSettledHost` reads it, so un-skipping an event brings its tasks back precisely as they were. Rejected: **auto-settling the tasks with the host** — the cleanest read, but it writes to entities the user never touched, and `skipped` plainly does not mean `done`. Rejected: **hiding them entirely** — a task you wrote about that event becomes unreachable from the surface you wrote it on.
+
+Only events can be settled today. The set is the _shape_ rather than the answer: a second settleable host is one more loop in `settledHostKeys` and no change at any call site.
+
+### 7. Where a task is ADDED, and what the Map card had to give up for it
+
+**Two problems wore one coat** in the owner's report (_"I'm not sure where tasks are added … perhaps we need a different path for tasks"_), and only one of them was a design question.
+
+**The gap:** `EventForm` mounted `HostNotes` and a composer and had **nothing for tasks at all** — not a read, not a way in. That was never decided; it was missed. It has the section now.
+
+**The decision: `＋ משימה` opens the real editor, and a host FORM states it quietly.** Rejected: a `NoteComposer`-shaped title-only box. **The argument this ADR first gave for that was wrong and the owner corrected it** — it claimed "a note has no life outside its host and a task has its own screen and tile", and notes have an Index tile and a screen too (`IndexNotesView`). What survives is narrower and is the whole of it: **a note _is_ its body**, so a free-text composer omits nothing from it, while a task's **deadline** is what puts it on the Home band, makes it overdue and makes it the tile's "next" — so a title-only composer systematically produces the weak kind, and notes have no equivalent weak kind. The form's control is quieter because the form is **not the main add point** (owner's call): the read surfaces are, and the form's is there for the task that occurs to you while you are typing the event.
+
+**And the Map place card had to give something up.** With the tasks section as a fifth PINNED grid row the card measured **411px against its own 420px cap** — on a place carrying one task, one note, one reference and neither a summary nor a document. That is [ADR-0182](0182-a-day-is-a-sequence-you-can-step-through.md) §9's documented cut-off with nine pixels of slack. So the card's flexible track is now **one scroller holding both sections** (`.map-cardwrote`) rather than the note list alone. **The cost is that the notes header no longer pins** ([ADR-0167](0167-the-badge-is-the-thumbnails-frame.md) §9.5 pinned it when it was the only section): with two sections nothing can pin both, and losing `שיבוץ ליום` under the fold is worse than losing a sticky header. Measured after, with three tasks and two notes: card at its cap, the shared region scrolling 160 of 260px, and the way-in block **on screen**.
+
+**Before that, the same positional grid produced a plain defect** (owner: _"what's happening with place tasks/notes going over each other!"_). Every rule on that card is keyed by `grid-row`, and phase 4 gave the tasks section `.note-sec` for its geometry — so `> .note-sec` matched **both** sections and stacked two headers on one row and two lists on another. `.tsk-sec` existed for exactly this disambiguation and these rules never picked it up. **Four unit specs caught the same collision inside components and none of them could see this one**, because a positional stylesheet is not a DOM query.
+
+### 8. A linked task says what it is linked to
+
+**Added 2026-08-16** (owner: _"in the tasks page, linked tasks don't show their host, and I think that it must have some indication of what it's linked to"_). **This designs nothing.** The notes screen has carried `.note-host` — an `Icon` from `NOTE_HOST_ICON` plus the host's name — since ADR-0153 §4, along with `noteGlyph` on the leading badge and `useNoteHostWayIn` for whether the host can be reached. The tasks screen picked up none of it. `noteHost()` read only the five FKs, so it widened from `Note` to `HostedRow` in one word — the same extraction `isHostedBy` and `dropHostedForHostChange` already took in §5.
+
+**One real constraint: a task row has no badge slot.** ADR-0188 §1 gives a row with a `lead` no icon, because the tick _is_ its leading element. So where a note says its host **twice** (the category glyph and the chip), a task says it **once**, and the meta line is the only place it can be said.
+
+**That line then held three things and broke.** The wrap was accidental — it landed wherever the strings ran out, so the row's shape moved with its content. Both single-line repairs were measured and both lose what they cut: `nowrap` with the chip first gives `לא…`, with the chip last gives `ביק…`, which is the point of the chip. **So the split is deliberate** (owner's own proposal): the **deadline owns line one**, and the host chip and the assignee share line two. It costs **1px** against the accidental wrap (79 against 78) and gives the chip **89px instead of 73**, so a host name that used to ellipsise reads whole — and an undated task keeps one line, at 62px. Rejected: **grouping the screen by host**, which `IndexTasksView` already argues against in place for notes ("grouping rebuilds, worse, what every host row already does"). Rejected: **a leading badge for a task**, which would re-open ADR-0188 §1 to buy a second statement of the same fact.
 
 ## Consequences
 

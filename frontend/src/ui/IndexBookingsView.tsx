@@ -25,6 +25,7 @@ import {
 import { countVisible } from '../lib/filter-reveal';
 import { hostCountForContext, noteCountsByHost } from '../lib/notes';
 import { openTaskCountsByHost } from '../lib/tasks';
+import { useSettledHosts } from './HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext } from '../lib/host-context';
 import { bookingDurationUnit, formatBookingDuration } from '../lib/booking-timing';
@@ -65,7 +66,11 @@ export function IndexBookingsView({
   // Built once per note-list change rather than filtered per row (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
-  const taskCounts = useMemo(() => openTaskCountsByHost(tasks), [tasks]);
+  const settledHosts = useSettledHosts();
+  const taskCounts = useMemo(
+    () => openTaskCountsByHost(tasks, settledHosts),
+    [tasks, settledHosts],
+  );
   // Its twin for attachments (ADR-0174 §1) — the count `lib/attachments.ts` shipped with
   // ADR-0173 and that nothing rendered.
   const docCounts = useMemo(
