@@ -1,0 +1,156 @@
+/* The lifted PLAN hero (ADR-0193 §4/§5) — `hero-lift.css`'s skeleton on plan's own
+   ground. Short on purpose: the horizon's ROWS are `.hero-task*`, which already ship,
+   so nothing here describes what a task looks like. If this file grows past the card's
+   own box and its ramp, a rule was copied instead of reused. */
+
+/* ── ONE RAMP, NO SEAM (ADR-0193 §5) ─────────────────────────────────────────────
+   The owner's call in two parts: violet all the way ("definitely all violet"), and
+   then, against the first drawing, "much much much more gradual, and like violet to
+   dark violet". The first drawing resolved the darkening in 44px at the top of the
+   BODY, which is an EDGE — and an edge at the head/body join is the one place a card
+   claiming to be one object cannot have one.
+
+   So the ramp belongs to the CARD, not to either half, and both halves are transparent
+   over it. It opens on `.prep`'s own two stops in `.prep`'s own order, which is what
+   keeps the top of the lifted card the violet the collapsed hero already was — the FLIP
+   has nothing to cross-fade — and then falls away to `--plan-surface-3` over the rest.
+
+   THE COST, NAMED BECAUSE IT DECIDED THE INK: the ground is now position-dependent, so
+   the top of the list sits on a much brighter violet than the bottom. That is why these
+   rows are inked in `--on-plan-*` and not the board's `--on-dark-*` — a cool blue-grey
+   measures 1.45:1 at the top of this ramp however deep its bottom gets, where white-alpha
+   composites toward the ground instead of against it. A FLAT deep ground would not have
+   needed that, which is the trap: the shape of the gradient chose the ink, not its colour.
+
+   Overriding `background`, not adding to it: `.prep` is on this element (it is the same
+   object), and its own two-stop gradient is what this replaces. */
+.prep.prep-lifted {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* `--lift-max-h` from `modal.css`'s lift variant, inherited — never `100%`, whose
+     percentage resolves against a parent that has only a `max-height` and computes to
+     `none`, letting the card grow straight past the cap (ADR-0160 §T). */
+  max-height: var(--lift-max-h);
+  /* **THE STOPS ARE IN PIXELS, AND THE FIRST BUILD'S PERCENTAGES WERE A DEFECT THE
+     MOCKUP COULD NOT SEE.** With `16%`/`100%` the ramp stretches with the card, so where
+     any given row sits on it depends on how much content there is — and contrast with it.
+     Measured in the running app: the mockup's 6-row card put the first band label at
+     4.8:1, and a real 828px card with eleven rows put the SAME label at **4.28:1** and the
+     overdue deadline at **2.93:1**, because both had moved up into brighter violet. A
+     design whose legibility is a function of list length is not a design.
+
+     In px the ground under a row is fixed: the head keeps the collapsed hero's own two
+     stops across its own height, the darkening resolves by 330px — above the first band in
+     every case — and a longer list simply gets more of the deep end. Re-measured live at
+     6.9:1 and 4.7:1. Same lesson as `::before` below, one property up: a percentage on this
+     card is a value that silently depends on content. */
+  background: linear-gradient(
+    180deg,
+    var(--plan-surface-2) 0,
+    var(--plan-surface) 110px,
+    var(--plan-surface-3) 330px
+  );
+  box-shadow: var(--elevation-floating);
+}
+/* **THE CORNER SHEEN SURVIVES THE LIFT, AND IT MUST** — it is part of being the same
+   object, which is the whole claim the promotion rests on. ADR-0160 §D learned this on the
+   other hero from a device: the lifted card had dropped `.wp-board`'s `transit` class, so
+   mid-flight it glowed amber over a board glowing teal, and the mismatch is visible in the
+   gap between the two boxes. Dropping the glow entirely is the same error with the volume
+   turned up.
+
+   What DOES have to be corrected is that it scales. `.prep::before` is
+   `radial-gradient(90% 60% at 85% 0%, …)` over `inset: 0`, and percentages resolve against
+   the pseudo-element's own box — so on a ~150px collapsed hero that is a top-corner sheen,
+   and on a ~540px lifted card the same declaration paints ~320px down and reads as a smear
+   across the first two bands.
+
+   So the gradient is untouched and its BOX is pinned to the height the collapsed hero has.
+   The sheen then renders at exactly the geometry it was tuned at, and a future retune of
+   `.prep::before` moves both surfaces together — which restating the gradient here would
+   have quietly broken. */
+.prep.prep-lifted::before {
+  bottom: auto;
+  height: var(--prep-collapsed-h);
+}
+
+.prep-lift-head {
+  flex: 0 0 auto;
+  padding: 16px 18px 14px;
+}
+/* The countdown is the same numeral one elevation up, but the lifted card owes its space
+   to the list rather than to the hero it grew out of — 34px of `Secular One` against a
+   pinned head is a third of the card before a task appears. */
+.prep-lift-head .prep-count {
+  font-size: 26px;
+}
+.prep-lift-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+/* A real 44×44 target (ADR-0017) with a visually smaller mark, and negative margin so the
+   target does not push the countdown off its row — `.hero-x`'s own recipe. */
+.prep-lift-x {
+  width: 44px;
+  height: 44px;
+  margin: -10px -12px -10px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.prep-lift-x .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.prep-lift-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* The lifted card is the top layer; a scroll that reaches its end must not become a
+     scroll of Plan Home behind it. */
+  overscroll-behavior: contain;
+  padding: 0 18px 16px;
+}
+/* A hairline between bands, so five labels read as five groups rather than as one list
+   with headings sprinkled through it. `.wp-board-divider`'s own weight, on this ground. */
+.prep-band + .prep-band {
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  margin-top: 13px;
+}
+/* The band label and the rows under it are `hero-lift.css`'s, which inks them from
+   `--on-dark-*` for the board. On violet that ramp does not survive (see the note on the
+   card above), so the three rungs are re-pointed at this surface's own ink — the same four
+   names, one prefix apart, which is why `--on-plan-*` was given the shape it has. */
+.prep-lift-body .hero-lbl {
+  color: var(--on-plan-faint);
+}
+.prep-lift-body .hero-task-hd {
+  color: var(--on-plan);
+}
+.prep-lift-body .hero-task-ic,
+.prep-lift-body .hero-task-star {
+  color: var(--on-plan-faint);
+}
+.prep-lift-body .hero-task-due {
+  color: var(--on-plan-dim);
+}
+/* Overdue keeps its own hue rather than the ramp, because it is a STATUS (rule 4). The paper
+   ink (`--miss-deep`) measures ~2.4:1 on any of these grounds, so it is out — and so is the
+   BOARD's answer, which is the part worth recording: `#f0a09b` is `.wp-settle.board`'s ink
+   at 7.82:1 on `--board`, and this ramp's upper half is far brighter than that, where it
+   measures **3.75:1** on the shortest card the lift can draw (one band, one overdue task —
+   its rows sit nearest the bright top, so the SHORT card is the worst case here, not the
+   long one). Lightened for this surface exactly as `--on-plan-*` is lightened against
+   `--on-dark-*`, and for the same reason: a violet ground is brighter than a navy one.
+   Measured 5.1:1 at the worst row and 7.8:1 further down. */
+.prep-lift-body .hero-task-due.late {
+  color: #ffc4be;
+}

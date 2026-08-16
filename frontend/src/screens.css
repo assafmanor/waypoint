@@ -1221,13 +1221,49 @@
 
 /* prep hero — the single expressive surface on this screen */
 .prep {
+  /* The collapsed hero's own height, as a number the LIFTED card can read (ADR-0193 §5).
+     It is not used to lay this card out — `.prep` is content-sized and stays so — only to
+     pin `::before`'s painting box when the same element is 3× taller, so the corner sheen
+     renders at the geometry it was tuned at instead of scaling into a smear. Measured on
+     the shipped hero with its task readout present; ±20px is invisible in a radial falloff,
+     which is why this is a round number rather than a measurement at runtime. */
+  --prep-collapsed-h: 190px;
   background: linear-gradient(180deg, var(--plan-surface-2), var(--plan-surface));
   border-radius: 22px;
   padding: 18px 18px 16px;
-  color: #f2effc; /* fixed: light ink on the always-violet plan hero */
+  /* --on-plan (ADR-0193 §5). Was `#f2effc`, one of six white-alpha-ish literals
+     this surface carried; they are tokens now, for the reason ADR-0158 §3 gives
+     for every other surface's ink. Converted as a no-op — the rungs were chosen
+     to preserve what this hero already rendered. */
+  color: var(--on-plan);
   box-shadow: 0 20px 34px -20px rgba(46, 33, 104, 0.7);
   position: relative;
   overflow: hidden;
+}
+/* **THE HERO IS A TAP TARGET** (ADR-0193 §4) — `.wp-board.is-tappable`'s rule, one
+   surface over, because both are "a whole card that lifts". The press step is the
+   large one (ADR-0140 §2's line every large surface owes).
+
+   IT CARRIES ADR-0160 §4's CONSTRAINT WITH IT, PERMANENTLY: a liftable card is a
+   `<button>`, and Chrome closes it at a nested `<button>` and reparents everything
+   after — measured live at 1 of 4 children left inside. `.prep` has no interactive
+   child today and must never grow one; `PlanHome.lift.test.tsx` fails the build
+   if it does, because no snapshot can see this. */
+.prep.is-tappable {
+  display: block;
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  border: 0;
+  cursor: pointer;
+  --press-scale: var(--press-scale-lg);
+}
+/* While the hero is lifted it is the SAME OBJECT one elevation up, so it must not be
+   on screen at once — `visibility`, never `display`, because the descent measures this
+   box and collapsing it would take Plan Home's layout with it. `.wp-board.is-lifted`'s
+   reasoning verbatim; the board learned it from a device report. */
+.prep.is-lifted {
+  visibility: hidden;
 }
 /* **A tap on the prep hero is answered, and answered with nothing more than a beat**
    (ADR-0160 §9's rebuff, §H). Plan's hero does not lift and should not: its depth IS the
@@ -1252,7 +1288,7 @@
   box-shadow: 0 14px 26px -20px rgba(46, 33, 104, 0.5);
 }
 .prep-k {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--on-plan-faint);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -1262,17 +1298,17 @@
   font-size: 34px;
   line-height: 1;
   margin-top: 4px;
-  color: var(--on-dark-strong);
+  color: var(--on-plan-strong);
 }
 .prep-count-u {
   font-family: var(--font-body);
   font-size: 15px;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--on-plan-dim);
 }
 /* mixed Hebrew/numeric line ("5–14 ביולי · 10 ימים") — body font, never mono */
 .prep-dates {
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--on-plan-dim);
   font-size: 12.5px;
   font-weight: 600;
   margin-top: 5px;
@@ -1289,24 +1325,73 @@
   justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--on-plan);
   margin-bottom: 6px;
 }
 .prep-ready-top b {
   font-family: var(--font-mono);
-  color: var(--on-dark-strong);
+  color: var(--on-plan-strong);
 }
 .prep-track {
   height: 7px;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--on-plan-track);
   border-radius: 6px;
   overflow: hidden;
 }
 .prep-fill {
   height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), #fff); /* fixed: on the plan hero */
+  background: linear-gradient(90deg, var(--on-plan-dim), var(--on-plan-strong));
   border-radius: 6px;
   transition: width 0.4s ease;
+}
+
+/* ── THE SECOND NUMBER, AND IT HAS ITS OWN NOUN (ADR-0193 §2) ──────────────────
+   `מוכנות הטיול` is the five derived checks and nothing else, so 100% above eight
+   open tasks was the same lie the `הכול מוכן` sentence told one line down. The fix
+   is not to fold tasks into the percentage — that denominator GROWS every time
+   somebody writes one, so recording work would read as losing ground — it is to
+   name the second measurement. Once a line says `משימות פתוחות` in as many words,
+   the bar above stops implying it covers them.
+
+   `.prep-ready-top`'s own shape (label at the start, value at the end) rather than
+   a new one, because it is the same kind of statement about the same card.
+
+   A READOUT, NEVER A CONTROL, and here that is structural rather than tasteful:
+   §4 makes this hero a `<button>`, and a nested one tears the card apart. Same
+   reason `.wp-board-also-toggle` became `.wp-board-also-read` (ADR-0160 §4). */
+.prep-tasks {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-plan);
+}
+.prep-tasks-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.prep-tasks-n {
+  font-family: var(--font-mono);
+  color: var(--on-plan-strong);
+}
+/* Overdue is a STATUS, so it takes --miss (rule 4) — but as a FILL, which is the
+   job `tokens.css` gives that token in as many words ("dots, dashed borders, the
+   settle mark"); --miss-deep is the ink. On this ground the distinction is not
+   academic: a tinted chip with red ink measures 1.94:1 on the bright violet, and
+   `#f0a09b` (7.82:1 on the BOARD) does not travel here either. Only a near-white
+   ink clears AA at all, so the pill inverts — 5.74:1 light, 13.87:1 dark. */
+.prep-tasks-late {
+  font-weight: 700;
+  color: #fff;
+  background: var(--miss);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 /* completeness checklist — paper card, violet CTAs (plan action) */

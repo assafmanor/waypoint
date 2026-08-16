@@ -1851,6 +1851,16 @@ export const t = {
       // override peeking at Plan mid-trip): no countdown to show.
       underway: 'הטיול בעיצומו',
       readiness: 'מוכנות הטיול',
+      /** **The second number, and the whole point is that it has its own noun**
+       *  (ADR-0193 §2). `readiness` above is the five derived checks and nothing else,
+       *  so 100% above eight open tasks told the same lie the `allDone` hint told. It is
+       *  NOT folded into the percentage: that denominator grows every time somebody
+       *  writes a task, so recording work would read as losing ground. Naming the second
+       *  measurement is what stops the first from implying it covers it.
+       *
+       *  The overdue count reuses `t.tasks.band.overdue` rather than restating it — one
+       *  phrasing for one fact, on whichever surface says it. */
+      openTasks: 'משימות פתוחות',
     },
     checklist: {
       title: 'מה חסר להשלמה',
@@ -1860,6 +1870,12 @@ export const t = {
       // (ADR-0061), so the list stays about what's still missing.
       showCompleted: (n: number) => `הצג שהושלמו (${n})`,
       hideCompleted: 'כווץ שהושלמו',
+      /** **The far-and-undated group** (ADR-0193 §3) — everything open that is not urgent,
+       *  not a live check and not due this week, behind one row at the foot of the same
+       *  card. `רחוקות` and not `אחרות`: the group is defined by its distance from now,
+       *  and an undated task is the furthest thing there is. */
+      showFar: (n: number) => (n === 1 ? 'עוד משימה אחת רחוקה' : `עוד ${n} משימות רחוקות`),
+      hideFar: 'כיווץ הרחוקות',
       completedSummary: 'הושלמו',
       // Short labels for the collapsed-summary pills (one per completed check).
       summaryLabels: {
@@ -1897,6 +1913,21 @@ export const t = {
       groupMissingTitle: 'עדיין רק אתה',
       groupMissingMeta: 'הזמינו את החבורה עם לינק',
       invite: 'הזמינו',
+    },
+    /** **The lifted prep hero** (ADR-0193 §4). Five bands, and the middle three are cut
+     *  against the DEPARTURE rather than against a week — which is the one thing this
+     *  hero can say that no other surface can, since the countdown pinned directly above
+     *  them is the line they are cut on. A week-shaped window here would be Trip Home's
+     *  rule arriving on the screen ADR-0193 §1 has just established it is wrong for.
+     *
+     *  `מה חסר להשלמה` is not restated: the checks' band reuses `checklist.title`, so the
+     *  lift and the section behind it cannot end up calling one thing two names. */
+    lift: {
+      title: 'ההכנות לטיול',
+      urgent: 'דחוף',
+      beforeDeparture: 'לפני היציאה',
+      duringTrip: 'בזמן הטיול',
+      undated: 'ללא תאריך',
     },
     stats: {
       title: 'מבט על',

@@ -316,48 +316,103 @@ test.describe('the lifted hero (ADR-0160)', () => {
     expect(radius).toBeGreaterThan(8);
   });
 
-  // **Plan's hero is the other half of the same decision** (ADR-0160 §H): it does not lift,
-  // because its depth is the checklist rendered directly beneath it — but a tap that
-  // produces nothing at all reads as a dead surface, so it answers with the rebuff.
+  // **PLAN'S HERO LIFTS TOO NOW** (ADR-0193 §4), and this test replaces the one that
+  // asserted the opposite. ADR-0160 §H had this hero answer a tap with a rebuff because it
+  // opened nothing — its depth was the checklist rendered directly beneath it. §H also wrote
+  // its own revisit condition ("when Plan's hero summarises something it does not show
+  // inline"), and ADR-0193 §3 creates it by folding the far and undated tasks behind one
+  // row. So the rebuff is retired from this surface and the press opens the run-up.
   //
-  // This is in a browser for the reason the board taught in phase 4: a beat can be written
-  // correctly, applied correctly, and still never run because some other rule owns the
-  // `animation` property. Only a real engine can say the keyframes fired.
-  test('Plan mode: the prep hero rebuffs instead of lifting', async ({ page }) => {
-    await boot(page);
+  // In a browser for the reason §4 is in a browser at all: **the no-nested-control rule is
+  // a claim about Chrome's PARSER**, and jsdom does not reproduce it. A `<button>` inside a
+  // `<button>` is not merely invalid markup — Chrome closes the outer element at the nested
+  // one and reparents every following sibling out of it, so the readiness bar and the task
+  // readout would silently leave the hero while still existing on the page. A unit test
+  // asserting "the pieces render" passes through that defect; only this can catch it.
+  test('Plan mode: the prep hero lifts, and the parser leaves it intact', async ({ page }) => {
+    // A task in the fixture on purpose, and not for the rows: it is what makes the hero
+    // render its `.prep-tasks` readout, so the parser guard below has the FULL set of
+    // children to prove it still owns. With no task the readout is correctly absent
+    // (ADR-0045 — there is no "0 משימות פתוחות" state), and the guard would be weaker
+    // against exactly the reparenting it exists to catch.
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      tasks: [
+        {
+          id: 'tk-plan',
+          tripId: TRIP_ID,
+          title: 'לקנות מתאם חשמל',
+          status: 'open',
+          dueHasTime: false,
+          important: false,
+          createdBy: 'u1',
+          ...stamps,
+        },
+      ],
+    });
+    await page.goto('/');
     await page.getByRole('button', { name: 'תכנון', exact: true }).click();
     await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
-    // Wait for `.prep-dates`, not for `.prep`. `PlanHome` is lazy-loaded and
-    // `HomeSkeleton` renders its own placeholder `.prep` in the meantime — which has no
-    // handler, so a spec that clicks the first `.prep` it sees clicks the skeleton and
-    // reports the beat as broken. It cost a round of diagnosis; the real hero is the one
-    // with the trip's dates in it.
-    const hero = page.locator('.prep:has(.prep-dates)');
+    // `.prep-dates`, not `.prep`. `PlanHome` is lazy-loaded and `HomeSkeleton` renders its
+    // own placeholder `.prep` in the meantime — which has no handler, so a spec that clicks
+    // the first `.prep` it sees clicks the skeleton. It cost a round of diagnosis once; the
+    // real hero is the one with the trip's dates in it.
+    // `.prep.is-tappable`, and the reason is the promotion itself: once lifted, the card is
+    // ALSO a `.prep` with a `.prep-dates` in it — being the same object is the whole claim —
+    // so a locator keyed on those two matches both elevations and trips strict mode. The
+    // collapsed one is the one that is a control.
+    const hero = page.locator('.prep.is-tappable');
     await expect(hero).toBeVisible();
+    // Still guard against the lazy-loaded skeleton, which renders its own placeholder
+    // `.prep` with no handler — a spec that clicks the first `.prep` it sees clicks that one.
+    await expect(hero.locator('.prep-dates')).toBeVisible();
 
-    // Not a control: it opens nothing, so it announces nothing.
-    expect(await hero.evaluate((el) => el.tagName)).toBe('DIV');
+    // A control, because it now opens something.
+    expect(await hero.evaluate((el) => el.tagName)).toBe('BUTTON');
 
-    const beat = await page.evaluate(async () => {
-      const el = document.querySelector('.prep:has(.prep-dates)') as HTMLElement;
-      el.click();
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const running = el.getAnimations();
-      return {
-        names: running.map((a) => a.animationName),
-        duration: running[0]?.effect?.getTiming().duration,
-        easing: running[0]?.effect?.getTiming().easing,
-        className: el.className,
-      };
-    });
-    // `wp-rebuff`, not the retired `prep-rebuff`: the beat is one shared rule now that the
-    // Trip board plays it too (ADR-0160 §Q, `styles/beats.css`).
-    expect(beat.names).toContain('wp-rebuff');
-    expect(beat.duration).toBe(240);
-    // `linear`, because in a beat the keyframe offsets ARE the timing (ADR-0140 §7).
-    expect(beat.easing).toBe('linear');
-    // …and nothing lifted.
-    await expect(page.locator(HERO)).toHaveCount(0);
+    // THE PARSER GUARD (ADR-0160 §4). Both halves matter and the second is the one a
+    // reasonable person forgets: the pieces DO still exist after a reparent — they are just
+    // not inside the hero any more.
+    const parsed = await hero.evaluate((el) => ({
+      controls: el.querySelectorAll('button, a, input, select, textarea').length,
+      ownsReadiness: !!el.querySelector('.prep-ready'),
+      ownsDates: !!el.querySelector('.prep-dates'),
+      ownsTasks: !!el.querySelector('.prep-tasks'),
+    }));
+    expect(parsed.controls).toBe(0);
+    expect(parsed.ownsReadiness).toBe(true);
+    expect(parsed.ownsDates).toBe(true);
+    expect(parsed.ownsTasks).toBe(true);
+
+    // …and the press opens the run-up, with the collapsed hero hidden behind it — the same
+    // one-object-at-a-time rule the board's own first test asserts.
+    await hero.click();
+    const lifted = page.locator('.prep-lifted');
+    await expect(lifted).toBeVisible();
+    expect(await hero.evaluate((el) => getComputedStyle(el).visibility)).toBe('hidden');
+
+    // The bands are a READ: nothing in them is pressable (ADR-0160 §U, ADR-0193 §4).
+    expect(
+      await lifted.evaluate(
+        (el) => el.querySelector('.prep-lift-body')!.querySelectorAll('button, a, input').length,
+      ),
+    ).toBe(0);
+
+    // A bounded card (ADR-0148 §1): it stops at the screen and its body absorbs the rest.
+    const bounded = await lifted.evaluate((el) => ({
+      cardH: el.getBoundingClientRect().height,
+      viewportH: window.innerHeight,
+    }));
+    expect(bounded.cardH).toBeLessThanOrEqual(bounded.viewportH);
+
+    // It is a `Modal`, so back peels it — the contract ADR-0103/0090 give it no exemption from.
+    await page.goBack();
+    await expect(page.locator('.prep-lifted')).toHaveCount(0);
+    await expect(hero).toBeVisible();
   });
 
   // **The same answer on the Trip board** (ADR-0160 §Q, reversing §A's silence): with nothing

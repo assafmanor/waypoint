@@ -237,6 +237,72 @@ export function tasksDueSoon(
   );
 }
 
+/** **Everything a person still owes, with no date window at all** (ADR-0193 §1).
+ *
+ *  `tasksDueSoon` above stays exactly as it is and stays **Trip Home's**. This is Plan
+ *  Home's, and the difference is the whole of the reported defect: that predicate needs a
+ *  `dueAt` and admits only overdue-or-within-`TASK_BAND_LOOKAHEAD_DAYS`, so an **undated**
+ *  task and anything a week out were invisible on the one screen whose countdown routinely
+ *  reads in weeks. The seven days were argued for a band you read ON the day; Plan Home is
+ *  not that band.
+ *
+ *  **The clinching argument is internal consistency, not the window's size.** Plan Home's
+ *  COMPLETED half (`isManual && isSettled`) has never had a date window — so an undated task
+ *  was invisible while open and appeared under `הושלמו` the instant it was ticked, i.e. the
+ *  section announced the completion of something it had never once shown. Widening is what
+ *  makes the two halves ask the same question; a bigger number would not have.
+ *
+ *  Same three exclusions as everywhere else: automatic checks are not this list's business
+ *  (they arrive as `AutomaticTask`s), a settled task is finished, and a task hanging on a
+ *  settled host is not an open obligation (ADR-0191 §6). */
+export function openManualTasks(
+  tasks: Task[],
+  clock: TaskClock,
+  settledHosts: Set<string> = new Set(),
+): Task[] {
+  return sortTasks(
+    tasks.filter(
+      (task) => isManual(task) && !isSettled(task) && !isOnSettledHost(task, settledHosts),
+    ),
+    clock,
+  );
+}
+
+/** **The run-up, banded against the DEPARTURE** (ADR-0193 §4) — what the lifted plan hero
+ *  opens onto.
+ *
+ *  The first two groups are `orderTaskRows`' own first two, so the lift and the screen
+ *  underneath it cannot teach a different order. What is new is only the split of the
+ *  REMAINDER, and it is deliberately not by a week: the countdown pinned directly above
+ *  these bands is the line they are cut on, which is the one statement this hero can make
+ *  that no other surface can. A week-shaped window here would be `tasksDueSoon`'s rule
+ *  arriving on the screen it was just removed from.
+ *
+ *  Takes the departure as an INSTANT rather than reading `trip.startDate`, for this file's
+ *  standing reason: everything here is clock-injected, so a fixture-driven test means the
+ *  same thing every day it runs. */
+export interface PlanRunUp {
+  /** `important` or overdue — `outranksChecks`, unchanged. */
+  urgent: Task[];
+  /** Dated, and due on or before the departure. */
+  beforeDeparture: Task[];
+  /** Dated, and due after it — a task about something mid-trip. */
+  duringTrip: Task[];
+  undated: Task[];
+}
+
+export function planRunUp(open: Task[], clock: TaskClock, departureMs: number): PlanRunUp {
+  const rest = open.filter((task) => !outranksChecks(task, clock));
+  return {
+    urgent: open.filter((task) => outranksChecks(task, clock)),
+    beforeDeparture: rest.filter(
+      (task) => task.dueAt != null && Date.parse(task.dueAt) <= departureMs,
+    ),
+    duringTrip: rest.filter((task) => task.dueAt != null && Date.parse(task.dueAt) > departureMs),
+    undated: rest.filter((task) => task.dueAt == null),
+  };
+}
+
 /** The Index tile's preview line (brief §13): **the next thing due**, with an overdue count
  *  when there is one. A raw open-count barely moves and answers nothing. */
 export interface TaskPreview {

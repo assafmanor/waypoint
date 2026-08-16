@@ -17,7 +17,7 @@ import { useClock } from '../lib/useClock';
 import { useCountUp } from '../lib/useCountUp';
 import { daysUntilStart, tripPhase } from '../lib/mode';
 import { dayPhrase } from '../lib/hebrew';
-import { countdownParts, formatTripDates } from '../lib/time';
+import { countdownParts, formatTripDates, zonedIso } from '../lib/time';
 import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import {
   AUTOMATIC_TASK_ACTION,
@@ -33,13 +33,19 @@ import { AutomaticTaskRow } from '../ui/AutomaticTaskRow';
 import { TaskBandRow } from '../ui/TaskBandRow';
 import {
   isSettled,
+  openManualTasks,
   orderTaskRows,
+  planRunUp,
   sortTasks,
+  taskBand,
   taskRowKey,
   tasksDueSoon,
   tickedStatus,
+  TASK_BAND,
   type TaskClock,
 } from '../lib/tasks';
+import { toHeroTask } from '../lib/hero-task';
+import { PlanLift, type PlanLiftBand } from '../ui/domain/PlanLift';
 import { TaskManageSheet } from '../ui/TaskManageSheet';
 import { BookingSheet, type BookingSeed, type BookingSheetDraft } from '../ui/BookingSheet';
 import { usePlaceErrandReturn } from '../state/map-scope-state';
@@ -56,7 +62,7 @@ import type { Task } from '@waypoint/shared';
 import { DocumentUploadSheet } from '../ui/DocumentUploadSheet';
 import { StatTile } from '../ui/domain';
 import { CollapseToggle, Collapsible } from '../ui/primitives/Collapsible';
-import { DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
+import { DAY_DEADLINE_HHMM, DOT_SEPARATOR, MS_PER_DAY, type TabId } from '../constants';
 import { t } from '../i18n/he';
 import { Icon } from '../ui/Icon';
 import { useSettledHosts } from '../ui/HostTasks';
@@ -119,19 +125,30 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     setParams(next, { replace: true });
   }, [params, setParams, trip.destination]);
 
-  /** The prep hero answers a tap with a beat and nothing else (ADR-0160 §H).
+  /** **THE HERO LIFTS NOW** (ADR-0193 §4), and this replaces ADR-0160 §H's rebuff rather
+   *  than sitting beside it. §H made this a `<div>` with a beat because the hero opened
+   *  nothing — "announcing a control to a screen reader and then doing nothing when it is
+   *  activated" is ADR-0150 §8 from the other side. That argument was right and its premise
+   *  has expired: §3 folds the far and undated tasks behind one row, so the hero now
+   *  summarises what the screen keeps folded, which is the condition §H itself named for
+   *  revisiting. A press has something to open, so it is a `<button>`.
    *
-   *  **Not a `<button>`, deliberately.** Trip's board is one because it opens the lifted
-   *  horizon; this hero opens nothing, because what it summarises — the readiness percent —
-   *  is the checklist rendered immediately below it. Announcing a control to a screen reader
-   *  and then doing nothing when it is activated is the shape ADR-0150 §8 argues against
-   *  from the other direction: the affordance has to match what a press can achieve. So
-   *  there is no role and no tab stop, and the beat is for the finger that already touched
-   *  it. */
-  const prepRef = useRef<HTMLDivElement>(null);
-  const rebuff = () => {
-    if (prepRef.current) playBeat(prepRef.current, BEAT.REBUFF);
-  };
+   *  The ref survives the change with a second job: it is the box the flight measures
+   *  (ADR-0160 §5) — held rather than measured at press time, because `--press-scale-lg` is
+   *  still applied under the finger and `getBoundingClientRect` includes transforms. */
+  const prepRef = useRef<HTMLButtonElement>(null);
+  const [lifted, setLifted] = useState(false);
+  const wasLifted = useRef(false);
+  /** The landing beat (ADR-0160 §7), played AFTER the render that reveals the hero — not in
+   *  the close handler, which is where it is tempting to put it and would not survive:
+   *  React owns `className` on that node, so a class added imperatively before its next
+   *  reconcile is overwritten by it. */
+  useEffect(() => {
+    if (wasLifted.current && !lifted && prepRef.current) {
+      playBeat(prepRef.current, BEAT.LANDING, '--t-quick');
+    }
+    wasLifted.current = lifted;
+  }, [lifted]);
 
   const total = dayNumberOf(trip.endDate, trip.startDate);
   // Called unconditionally, above the past/upcoming branch below, because both
@@ -191,8 +208,26 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     primaryZone: trip.timezone,
   };
   const settledHosts = useSettledHosts();
-  const bandTasks = tasksDueSoon(tasks, taskClock, settledHosts);
-  const converged = orderTaskRows(bandTasks, liveChecks, taskClock);
+  /** **Everything open, with no date window** (ADR-0193 §1). `tasksDueSoon` used to be this
+   *  list and it is Trip Home's rule: dated, and overdue or inside a week. On the screen
+   *  whose countdown reads `בעוד 47 ימים` that made an undated task and anything a week out
+   *  invisible — while `completedManual` below has never had a window at all, so the same
+   *  task appeared under `הושלמו` the instant it was ticked. Widening is what makes the two
+   *  halves ask one question. */
+  const openTasks = openManualTasks(tasks, taskClock, settledHosts);
+  const overdueCount = openTasks.filter(
+    (task) => taskBand(task, taskClock) === TASK_BAND.OVERDUE,
+  ).length;
+  /** **What stays inline, and what folds** (§3). Near = what a person has already called
+   *  urgent, plus what is actually due this week; everything else sits behind one row.
+   *  `tasksDueSoon` is REUSED to answer the second half rather than re-derived — it is
+   *  still the right predicate, it was only ever the wrong list. */
+  const soonIds = new Set(tasksDueSoon(tasks, taskClock, settledHosts).map((task) => task.id));
+  const isNear = (task: Task) => task.important || soonIds.has(task.id);
+  const nearTasks = openTasks.filter(isNear);
+  const farTasks = openTasks.filter((task) => !isNear(task));
+  const converged = orderTaskRows(nearTasks, liveChecks, taskClock);
+  const [showFar, setShowFar] = useState(false);
   // **The completed half is the same noun the open half is** (phase 3r). It was
   // `automatic.filter(done)` alone, so a completed MANUAL task could never appear and the
   // toggle's count answered about half the feature — the one-noun failure ADR-0188 §4 and
@@ -207,6 +242,44 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
     [tasks, taskClock],
   );
   const completedCount = completedAutomatic.length + completedManual.length;
+
+  /** **The run-up the lift opens onto** (ADR-0193 §4), banded against the departure.
+   *
+   *  The departure is the END of the departure day (`DAY_DEADLINE_HHMM`, the same instant a
+   *  date-only deadline resolves to), in the trip's own zone — so a task due ON the day you
+   *  fly reads as `לפני היציאה` rather than falling into `בזמן הטיול` by a few hours.
+   *
+   *  The checks keep their ladder position between `דחוף` and the rest, which is
+   *  `orderTaskRows`' order (ADR-0190 §2) expressed as bands; the label is the section's own
+   *  `checklist.title` rather than a second word for one thing. */
+  const departureMs = Date.parse(zonedIso(trip.startDate, DAY_DEADLINE_HHMM, trip.timezone));
+  const runUp = planRunUp(openTasks, taskClock, departureMs);
+  const heroTasks = (list: Task[]) => list.map((task) => toHeroTask(task, taskClock, users));
+  const liftBands: PlanLiftBand[] = [
+    { key: 'urgent', label: t.planHome.lift.urgent, tasks: heroTasks(runUp.urgent) },
+    {
+      key: 'checks',
+      label: t.planHome.checklist.title,
+      // A check is a task all the way through (ADR-0190 §1 as amended), so it renders as one
+      // here too. Its second line goes in `meta`, NOT in `due`: a check has no `dueAt` and
+      // never can, and `due` draws a clock — which made every check read as though
+      // `חסרות טיסת הלוך` were a deadline. Caught in the running app, not by a spec.
+      tasks: liveChecks.map((auto) => ({ title: auto.title, meta: auto.meta })),
+    },
+    {
+      key: 'before',
+      label: t.planHome.lift.beforeDeparture,
+      tasks: heroTasks(runUp.beforeDeparture),
+    },
+    { key: 'during', label: t.planHome.lift.duringTrip, tasks: heroTasks(runUp.duringTrip) },
+    { key: 'undated', label: t.planHome.lift.undated, tasks: heroTasks(runUp.undated) },
+  ].filter((band) => band.tasks.length > 0);
+
+  /** **A press that produces nothing reads as a dead surface** (ADR-0160 §9's own rule, and
+   *  the reason §H put a rebuff here). So the hero is a control only while it has something
+   *  to open — which on this screen is "is there any run-up at all". The rebuff is gone with
+   *  the condition it answered: there is no state now where the card is pressable and empty. */
+  const liftable = liftBands.length > 0;
 
   /** The one verb per check (ADR-0061 §1: the CTA does the thing). The COPY moved to
    *  `lib/automatic-tasks.ts` when the tasks screen became a second reader of it; what stays
@@ -256,44 +329,98 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   return (
     <>
-      <div className="prep" ref={prepRef} onClick={rebuff}>
-        {/* No "היציאה" label once the trip is underway — the countdown line
-            reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly).
-            The "בעוד" connective rides with the count (ADR-0085), so a near date
-            reads "היציאה · מחר" and a far one "היציאה · בעוד 3 ימים". */}
-        {countdown && <div className="prep-k">{t.planHome.prep.departIn}</div>}
-        {countdown ? (
-          <div className="prep-count">
-            {countdown.prefix && <span className="prep-count-u">{countdown.prefix}</span>}{' '}
-            {countdown.value && (
-              <span className="prep-count-n" dir="auto">
-                {countdown.value}
-              </span>
-            )}{' '}
-            <span className="prep-count-u">{countdown.unit}</span>
-          </div>
+      {/* **The hero, and whether it is a CONTROL is the caller's call** (ADR-0193 §4) —
+          `Board`'s own shape, one screen over: a `<button>` when there is a run-up to open,
+          the `<div>` it has always been when there is not. A pressable card with nothing
+          behind it is the dead tap ADR-0160 §9 exists to prevent, and announcing a control
+          that does nothing on activation is ADR-0150 §8 from the other side. The rebuff §H
+          added is gone with the condition it answered.
+
+          **NOTHING INTERACTIVE MAY EVER GO INSIDE THIS ELEMENT.** Chrome closes a
+          `<button>` at a nested one and reparents everything after it (ADR-0160 §4,
+          reproduced live at 1 of 4 children left) — which is also why the second readout
+          below is a readout. `PlanHome.lift.test.tsx` fails the build if a control
+          appears in here, because no snapshot can see that. */}
+      {(() => {
+        const inner = (
+          <>
+            {/* No "היציאה" label once the trip is underway — the countdown line
+                reads "הטיול בעיצומו" on its own (would otherwise concatenate oddly).
+                The "בעוד" connective rides with the count (ADR-0085), so a near date
+                reads "היציאה · מחר" and a far one "היציאה · בעוד 3 ימים". */}
+            {countdown && <div className="prep-k">{t.planHome.prep.departIn}</div>}
+            {countdown ? (
+              <div className="prep-count">
+                {countdown.prefix && <span className="prep-count-u">{countdown.prefix}</span>}{' '}
+                {countdown.value && (
+                  <span className="prep-count-n" dir="auto">
+                    {countdown.value}
+                  </span>
+                )}{' '}
+                <span className="prep-count-u">{countdown.unit}</span>
+              </div>
+            ) : (
+              <div className="prep-count">{t.planHome.prep.underway}</div>
+            )}
+            <div className="prep-dates">
+              {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
+              <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
+            </div>
+            <div className="prep-ready">
+              <div className="prep-ready-top">
+                <span>{t.planHome.prep.readiness}</span>
+                <b dir="auto">{readinessPct}%</b>
+              </div>
+              <div className="prep-track">
+                <div className="prep-fill" style={{ width: `${readinessPct}%` }} />
+              </div>
+            </div>
+            {/* **The second number, with its own noun** (§2). The bar above is the five
+                derived checks and nothing else, so 100% over eight open tasks was the same
+                claim `הכול מוכן` was making one line down. Absent at zero — there is no
+                "0 משימות פתוחות" state, because a card that says so is ADR-0045's empty
+                shell in one line. */}
+            {openTasks.length > 0 && (
+              <div className="prep-tasks">
+                <span>{t.planHome.prep.openTasks}</span>
+                <span className="prep-tasks-end">
+                  {overdueCount > 0 && (
+                    <span className="prep-tasks-late">{t.tasks.band.overdue(overdueCount)}</span>
+                  )}
+                  <b className="prep-tasks-n" dir="auto">
+                    {openTasks.length}
+                  </b>
+                </span>
+              </div>
+            )}
+          </>
+        );
+        return liftable ? (
+          <button
+            type="button"
+            className={'prep is-tappable' + (lifted ? ' is-lifted' : '')}
+            ref={prepRef}
+            onClick={() => setLifted(true)}
+            aria-label={t.planHome.lift.title}
+          >
+            {inner}
+          </button>
         ) : (
-          <div className="prep-count">{t.planHome.prep.underway}</div>
-        )}
-        <div className="prep-dates">
-          {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
-          <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
-        </div>
-        <div className="prep-ready">
-          <div className="prep-ready-top">
-            <span>{t.planHome.prep.readiness}</span>
-            <b dir="auto">{readinessPct}%</b>
-          </div>
-          <div className="prep-track">
-            <div className="prep-fill" style={{ width: `${readinessPct}%` }} />
-          </div>
-        </div>
-      </div>
+          <div className="prep">{inner}</div>
+        );
+      })()}
 
       <div className="sec-title">
         {t.planHome.checklist.title}
         <span className="sec-title-end">
-          {converged.length === 0 && <span className="hint">{t.planHome.checklist.allDone}</span>}
+          {/* **The reported sentence, re-gated** (ADR-0193 §1). It used to read
+              `converged.length === 0`, i.e. "no live check and nothing due within a week" —
+              a condition a well-prepared trip with a to-do list satisfies constantly, which
+              is how it came to sit above open tasks. It is NOT deleted: it is the only
+              moment this screen says something good, and it is true when nothing is open. */}
+          {converged.length === 0 && farTasks.length === 0 && (
+            <span className="hint">{t.planHome.checklist.allDone}</span>
+          )}
           {completedCount > 0 && (
             <CollapseToggle
               expanded={showCompleted}
@@ -315,7 +442,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           trailing "הושלם" was a second vocabulary for one state. The CTA BUTTON goes with them: `.chk-row` was a `<div>` and needed an
           explicit button, `ListRow` already has a tap, so ADR-0061 §1's rule holds without
           one — and keeping it left the title 101.8px against a manual row's 195px. */}
-      {converged.length > 0 && (
+      {(converged.length > 0 || farTasks.length > 0) && (
         <div className="checklist">
           {converged.map((row) =>
             row.kind === 'auto' ? (
@@ -338,6 +465,37 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
                 onOpen={openTasksScreen}
               />
             ),
+          )}
+          {/* **The far and undated group** (ADR-0193 §3) — one more row at the foot of the
+              SAME card, not a second control beside it, which is the rule `TripHomeTaskBand`
+              stated for its own overflow row and never got (`.tsk-more` had no CSS rule at
+              all until this change). `CollapseToggle` at a second density, over the same
+              `Collapsible` the completed half already animates through: two collapses on one
+              screen is one mechanism used twice, not two mechanisms. */}
+          {farTasks.length > 0 && (
+            <>
+              <CollapseToggle
+                expanded={showFar}
+                onToggle={() => setShowFar((v) => !v)}
+                expandLabel={t.planHome.checklist.showFar(farTasks.length)}
+                collapseLabel={t.planHome.checklist.hideFar}
+                className="chk-more"
+              />
+              <Collapsible expanded={showFar}>
+                {farTasks.map((task) => (
+                  <TaskBandRow
+                    key={task.id}
+                    task={task}
+                    users={users}
+                    clock={taskClock}
+                    onTick={() =>
+                      void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })
+                    }
+                    onOpen={openTasksScreen}
+                  />
+                ))}
+              </Collapsible>
+            </>
           )}
         </div>
       )}
@@ -404,6 +562,28 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           label={t.planHome.stats.emptyDays}
         />
       </div>
+
+      {/* **The lift** (ADR-0193 §4). `origin` is the collapsed hero's own box, measured by
+          the flight rather than written as a constant — the mistake this repo has made
+          three times (ADR-0142's 118px, ADR-0143's 58px, the trip handoff's target). */}
+      {lifted && (
+        <PlanLift
+          origin={prepRef.current}
+          countdown={countdown}
+          underway={t.planHome.prep.underway}
+          dates={
+            <>
+              {formatTripDates(trip.startDate, trip.endDate, { style: 'prose' })}{' '}
+              <span className="dot">{DOT_SEPARATOR}</span> {dayPhrase(total)}
+            </>
+          }
+          readinessPct={readinessPct}
+          openTasks={openTasks.length}
+          overdue={overdueCount}
+          bands={liftBands}
+          onClose={() => setLifted(false)}
+        />
+      )}
 
       {(sheetSeed || bookingDraft) && (
         <BookingSheet

@@ -39,7 +39,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { orderTaskRows, taskDue, tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
+import { orderTaskRows, tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
@@ -79,6 +79,7 @@ import { deriveHeroBooking } from '../lib/hero-booking';
 import { canLift, heroHorizon, type HeroPoint } from '../lib/hero-horizon';
 import { BEAT, playBeat } from '../lib/one-shot';
 import { HeroLift, type HeroLiftPoint, type HeroLiftTask } from '../ui/domain/HeroLift';
+import { toHeroTask } from '../lib/hero-task';
 import { ConverterSheet } from '../ui/domain/ConverterSheet';
 import { currencyForDeviceRegion } from '../lib/currency';
 import { useShowPlaceOnMap } from '../state/map-scope-state';
@@ -344,29 +345,11 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
 
   /** One of the hero's tasks, made view-ready (ADR-0160 §U) — the deadline phrased in ITS OWN
    *  zone through the same `taskDue` the section and the screen use, so a task cannot read
-   *  one way here and another one tab over. */
-  const heroTask = (task: Task): HeroLiftTask => {
-    const due = taskDue(task, taskClock);
-    const assignee = task.assigneeUserId
-      ? users.find((u) => u.id === task.assigneeUserId)
-      : undefined;
-    return {
-      title: task.title,
-      important: task.important,
-      due: due && {
-        // The numeric run is its own LTR island; the Hebrew around it must not be dragged
-        // with it (ADR-0118) — `TaskSection`'s own split, reused rather than rebuilt.
-        text: `${due.late ? t.tasks.due.late : t.tasks.due.by} ${
-          due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day
-        }`,
-        late: due.late,
-      },
-      assignee: assignee && {
-        person: assignee,
-        name: `${t.tasks.sheet.assigneeLabel}: ${assignee.displayName}`,
-      },
-    };
-  };
+   *  one way here and another one tab over.
+   *
+   *  **Lives in `lib/hero-task.ts` since ADR-0193 §4**, because the lifted PLAN hero renders
+   *  the same row and two formatters for one row is what drifts. */
+  const heroTask = (task: Task): HeroLiftTask => toHeroTask(task, taskClock, users);
 
   /** A horizon point, made view-ready: titles become nodes, times are formatted in
    *  the point's OWN zone (ADR-0107 §2-3), and the hand-offs become callbacks the

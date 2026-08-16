@@ -88,6 +88,32 @@
   --on-dark-dim: #93a2c4; /* secondary, labels, meta */
   --on-dark-faint: #7688ac; /* tertiary — rail ends, footnotes */
 
+  /* ── The ink on PLAN's violet, which that surface always had (ADR-0193 §5) ──
+     Not a new family — a NAME for one. `.prep` has inked itself in white-alpha
+     since it was drawn, as six literals scattered through `screens.css`; §3
+     above says the ink a surface carries is a token, and this is the one
+     surface that never got it. Same four rungs as --on-dark-* so a component
+     moving between the two grounds swaps a prefix, not a vocabulary.
+
+     WHY WHITE-ALPHA AND NOT --on-dark-*, which is the question this answers:
+     the lifted plan hero is a GRADUAL ramp from --plan-surface down to
+     --plan-surface-3, so its top is bright violet — where --on-dark-faint is
+     1.45:1 and --on-dark-dim 2.02:1. A cool blue-grey cannot survive the upper
+     half of that ramp however deep its bottom gets. White-alpha can, because
+     it composites TOWARD the ground rather than against it, which is why this
+     surface was written that way in the first place.
+
+     Theme-independent, like --on-dark-* and for the same reason: both grounds
+     this ramp paints on are dark violet. The alphas are set from measured
+     ratios at the BRIGHTEST point any row sits on, not from taste — --faint is
+     0.80 because 0.76 measured exactly 4.5:1 there, and a rung on the floor is
+     one that fails the next time a stop moves. */
+  --on-plan-strong: #ffffff; /* the countdown numeral */
+  --on-plan: rgba(255, 255, 255, 0.94); /* titles, body */
+  --on-plan-dim: rgba(255, 255, 255, 0.84); /* deadlines, dates, secondary */
+  --on-plan-faint: rgba(255, 255, 255, 0.8); /* band labels, kickers */
+  --on-plan-track: rgba(255, 255, 255, 0.18); /* the readiness track's groove */
+
   /* ── The chrome's contract (ADR-0158 §5) ───────────────────────────────────
      53 colour declarations on the trip chrome assume it is DARK, and only four
      said so. None is wrong — each is correct *given a dark chrome* — but the
@@ -159,6 +185,14 @@
      gradient they replace, so light mode does not move. */
   --plan-surface: #6e59d6;
   --plan-surface-2: #5747b4;
+  /* The DEEP end of the plan ramp (ADR-0193 §5) — third in this family, and it
+     obeys the same rule the other two exist for: a surface must not brighten on
+     dark, so the dark value below is deeper rather than lifted the way an
+     accent (--plan-deep) is. A dark VIOLET, not a near-black: the lifted plan
+     hero fades into it over the whole card, and mode identity (ADR-0028) has to
+     survive at the bottom. Its value is derived from --on-plan-faint clearing
+     4.5:1 at the ramp's brightest row, not picked. */
+  --plan-surface-3: #2b2069;
   /* Status mini-palette (distinct from the semantic trio) */
   --ok: #3c9a6b;
   --miss: #c2584e;
@@ -505,6 +539,7 @@ textarea {
      with white on it. */
   --plan-surface: #2a2158;
   --plan-surface-2: #332866;
+  --plan-surface-3: #1a1442;
 
   /* The chrome, restated — and it has to be, now that light's is light. §5 read
      the chrome as theme-fixed and phase 6 refuted that: once light mode got its

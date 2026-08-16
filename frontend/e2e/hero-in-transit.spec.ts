@@ -262,7 +262,19 @@ test('the lifted card wears the same glow as the board it came from', async ({ p
     places: PLACES,
   });
   await page.goto('/');
-  await page.locator('.wp-board').first().waitFor();
+  // **Wait for `.wp-board.transit`, not for `.wp-board`** — this spec waited for the latter
+  // and read the former, and the gap between them is a real race rather than a formality:
+  // `HomeSkeleton` renders its own placeholder `<div className="wp-board">` while the trip
+  // state resolves, so `.first()` can settle on the SKELETON, which carries no `transit`
+  // class and never will. `querySelector('.wp-board.transit')` is then null and
+  // `getComputedStyle` throws on it.
+  //
+  // It surfaced intermittently under a full 12-worker run and never in isolation, which is
+  // the signature of exactly this: the skeleton's window is short and load widens it. The
+  // identical trap is already documented one file over for `.prep` (`hero-lift.spec.ts`),
+  // where it cost a round of diagnosis — the lesson had simply never been applied to the
+  // board. Wait for the thing you are about to measure.
+  await page.locator('.wp-board.transit').waitFor();
   const glow = (sel: string) =>
     page.evaluate(
       (s) => getComputedStyle(document.querySelector(s)!, '::before').backgroundImage,
