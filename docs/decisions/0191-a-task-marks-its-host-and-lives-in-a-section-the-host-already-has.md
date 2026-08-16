@@ -6,7 +6,7 @@
 **Closes:** the tasks brief's **§F**, the last of its six open design questions.
 **Build plan:** [`planning/2026-08-15-tasks-build-plan.md`](../planning/2026-08-15-tasks-build-plan.md) — phase 4.
 
-**Builds on:** [0152](0152-a-note-is-one-entity-and-its-host-is-a-field.md) §2/§6 (the host FK model and "a section of the surface the host already has"), [0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §5/§6/§8 (the mark, and the host passed as a fact never picked), [0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §1/§3 (the second mark, and the section order this extends), [0188](0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md), [0189](0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md), [0190](0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md)
+**Builds on:** [0152](0152-a-note-is-one-entity-with-an-optional-host.md) §2/§6 (the host FK model and "a section of the surface the host already has"), [0153](0153-the-notes-surface-the-mark-and-no-mode-gate.md) §5/§6/§8 (the mark, and the host passed as a fact never picked), [0174](0174-an-attachment-is-marked-and-opened-and-an-event-has-a-read.md) §1/§3 (the second mark, and the section order this extends), [0188](0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md), [0189](0189-the-editor-uses-the-idiom-the-app-already-had-and-a-task-is-read-where-it-sits.md), [0190](0190-a-readiness-check-is-a-task-row-and-the-checks-sit-inside-the-urgency-ladder.md)
 
 ## Context
 
