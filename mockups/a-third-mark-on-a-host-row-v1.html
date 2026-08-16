@@ -13770,20 +13770,34 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
 
       <!-- ══════════════════════════ §5 ══════════════════════════ -->
       <section class="case">
-        <h2>§5 · איך בכלל מוסיפים משימה למארח · השאלה ש-§F לא שואלת</h2>
+        <h2>§5 · לראות ולהוסיף משימות על הזמנה או אירוע · הצד שחסר לגמרי</h2>
         <p class="note">
-          <b>§F מדבר על ה<i>קריאה</i> בלבד — הסימן.</b> אבל שלב 4 הוא «חמישה מארחים כפול
-          (יצירה, קריאה)», והחצי השני לא מעוצב בשום מקום: <b>איפה בכלל אומרים «המשימה הזאת
-          שייכת להזמנה הזאת»?</b> (הערת הבעלים, 2026-08-16.) לפתקים יש כבר תשובה —
-          <b>מלחין בתוך טופס המארח</b> (ADR-0152 §6b): קלט אחד שלא זז, והפתקים שנשמרו מעליו
-          כצ׳יפים. שלוש הקריאות למטה, ואף אחת מהן לא נבחרה.
+          <b>הבעלים, 2026-08-16:</b> «אני רוצה להיות מסוגל להוסיף (ולראות!) משימות לאירועים,
+          הזמנות…». §F מדבר על ה<b>סימן</b> בלבד — הנקודה על השורה שאומרת «יש כאן משהו». הוא לא
+          שואל <b>איפה הגוף יושב</b>, וזה החצי שחסר: שלב 4 הוא «חמישה מארחים כפול (יצירה,
+          קריאה)».
         </p>
         <p class="note">
-          <b>מה שכן ידוע ומצמצם את השאלה:</b> הטופס של המשימה כבר קיים ועובד
-          (<code>TaskSheet</code>, ADR-0189) ו<b>אין בו בורר מארח</b> — משימה שנכתבת במסך
-          המשימות היא תמיד כללית, «בדיוק כפי ש-ADR-0153 §5 הכריע לפתקים». אז השאלה היא לא
-          «איך בונים בורר» אלא <b>מאיזה כיוון מגיעים</b>: מהמארח אל המשימה, או מהמשימה אל
-          המארח.
+          <b>לפתקים יש כבר תשובה מלאה, והיא הדגם:</b> <code>NoteSection</code> —
+          <b>סקשן על המשטח שלמארח כבר יש</b> (גיליון פרטים, כרטיס מקום, תפריט ניהול), עם כותרת,
+          רשימת הפתקים עצמם, ו-<code>＋ פתק</code> לצידה. «אף פעם לא מסך חדש ואף פעם לא משטח
+          שישי» (ADR-0152 §6). <code>HostNotes</code> מחבר את הסקשן לעורך, והמארח נמסר
+          <b>כעובדה, לא נבחר</b> (ADR-0153 §5) — שזה בדיוק מה שהופך את זה לזול: מארח שישי הוא
+          שורה ב-<code>@waypoint/shared</code> ולא רכיב.
+        </p>
+        <p class="note">
+          <b>ומשהו שהציור גילה:</b> משימה בסקשן של מארח היא <code>ListRow</code>, לא
+          <code>.note-item</code>. ל-<code>.note-item</code> אין חריץ מוביל, כי לפתק אין פקד
+          השלמה — להפיל לתוכו <code>.tsk-tick</code> של 44px נותן עיגול ענק שמרחף ליד המילים.
+          אז סקשן המשימות מחזיק את אותה שורה שמסך המשימות מחזיק, ואיתה מגיעים בחינם הטיק,
+          הכוכב, מועד היעד והמוקצה — <b>במחיר ששני הסקשנים על משטח אחד אינם אותה צורת שורה.</b>
+          זה נאמר ולא מוחלק, כי זו ההכרעה של §5.
+        </p>
+        <p class="note">
+          <b>שלוש הקריאות למטה הן על אותו משטח בדיוק</b>, כדי שההבדל יהיה מה שנשאל ולא איפה זה
+          יושב. <b>א</b> משכפלת את הדגם של הפתקים אות באות. <b>ב</b> מאחדת: סקשן אחד «מה יש
+          כאן» עם פתקים ומשימות יחד. <b>ג</b> מוותרת על הסקשן ונשענת על שורת המשימה במסך
+          המשימות עם צ׳יפ המארח — כלומר קוראים מהמשימה אל המארח ולא הפוך.
         </p>
         <div class="pair" id="s5"></div>
       </section>
@@ -13874,7 +13888,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         n ? `<span class="doc-mark" role="img" aria-label="${n} מסמכים">${ic(P.documents)}${n > 1 ? n : ''}</span>` : '';
 
       /** `variant`: 'bare' (§1א) · 'ring' (§1ב) · 'new' (§1ג). */
-      const taskMark = (n, variant = 'ring', settled = false) => {
+      const taskMark = (n, variant = 'bare', settled = false) => {
         if (!n) return '';
         const inner =
           variant === 'ring'
@@ -13996,19 +14010,19 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         document.querySelector('#s2').innerHTML = [
           col(
             '<span class="tag neutral">משימה אחת פתוחה</span>',
-            card(bookingRow(noteMark(N) + taskMark(1, 'ring'), 'c-open')),
+            card(bookingRow(noteMark(N) + taskMark(1), 'c-open')),
             'שתי הקריאות מסכימות כאן. ההבדל מתחיל אחרי שסוגרים אותה.',
           ),
           col(
             `<span class="tag ${openOnly ? 'before' : 'after'}">אחרי שנסגרה · ${openOnly ? 'פתוחות בלבד' : 'הכל'}</span>`,
-            card(bookingRow(noteMark(N) + (openOnly ? '' : taskMark(1, 'ring')), 'c-after')),
+            card(bookingRow(noteMark(N) + (openOnly ? '' : taskMark(1)), 'c-after')),
             openOnly
               ? 'הסימן נעלם. השורה מפסיקה לנדנד — ומאבדת את העקבה שהייתה שם משימה.'
               : 'הסימן נשאר. העקבה נשמרת — והשורה מסומנת בלי שיש מה לעשות בה.',
           ),
           col(
             '<span class="tag neutral">קריאה שלישית · נשאר, מעומעם</span>',
-            card(bookingRow(noteMark(N) + taskMark(1, 'ring', true), 'c-dim')),
+            card(bookingRow(noteMark(N) + taskMark(1, 'bare', true), 'c-dim')),
             'שומר את העקבה ומוריד את הנדנוד · ומבקש מהקורא להבחין בין שתי עוצמות של אפור.',
           ),
         ].join('');
@@ -14023,14 +14037,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ),
           col(
             '<span class="tag after">שלושה סימנים</span>',
-            card(bookingRow(noteMark(N) + docMark(D) + taskMark(T, 'ring'), 'cost-three')) +
-              eventRow(noteMark(N) + docMark(D) + taskMark(T, 'ring'), 'cost-three-ev'),
+            card(bookingRow(noteMark(N) + docMark(D) + taskMark(T), 'cost-three')) +
+              eventRow(noteMark(N) + docMark(D) + taskMark(T), 'cost-three-ev'),
             'אותן שורות, סימן אחד יותר. ההפרש בטבלה.',
           ),
         ].join('');
 
         /* ── §4 ── the four real shapes ── */
-        const M3 = noteMark(N) + docMark(D) + taskMark(T, 'ring');
+        const M3 = noteMark(N) + docMark(D) + taskMark(T);
         document.querySelector('#s4').innerHTML = [
           col(
             '<span class="tag neutral">אירוע · השורה המוקשחת</span>',
@@ -14044,7 +14058,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ),
           col(
             '<span class="tag before">רעיון בסל · הסימן בפינה</span>',
-            maybeCard(noteMark(N) + taskMark(T, 'ring'), 'host-maybe'),
+            maybeCard(noteMark(N) + taskMark(T), 'host-maybe'),
             'לא שורת מטא אלא פינה, מול ה-✕. שתי הפינות תפוסות — שאלה אחרת לגמרי.',
           ),
           col(
@@ -14054,27 +14068,69 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           ),
         ].join('');
 
-        /* ── §5 ── how a task reaches a host at all ── */
+        /* ── §5 ── seeing and adding a host's tasks ── */
+        /** `NoteSection`'s real tree (`ui/NoteSection.tsx`): `.note-sec` › `.note-sec-h`
+         *  (a `.t` title and an `.add` control) › `.note-sec-list` of `.note-item`s. */
+        const section = (title, addLabel, items) =>
+          `<div class="note-sec">
+            <div class="note-sec-h">
+              <span class="t">${title}</span>
+              <button type="button" class="add">${ic(P.check)} ${addLabel}</button>
+            </div>
+            <div class="note-sec-list">${items}</div>
+          </div>`;
+        /** **A task in a host's section is a `ListRow`, not a `.note-item`** — and the
+         *  drawing is what made that obvious. `.note-item` has no lead slot, because a note
+         *  has no completion control to put in one; dropping a 44px `.tsk-tick` into it
+         *  renders an oversized circle floating beside the words. So the tasks section holds
+         *  the same row the tasks screen does, which also means the tick, the star, the
+         *  deadline and the assignee all arrive already built. The cost is that the two
+         *  sections on one surface are not the same row shape — named here rather than
+         *  smoothed over, because it is the thing §5 has to decide. */
+        const taskItem = (title, meta, done) =>
+          `<div class="wp-listrow${done ? ' tsk-settled' : ''}">
+            <div class="wp-listrow-lead">
+              <button type="button" class="tsk-tick" aria-pressed="${done}">${ic(P.check)}</button>
+            </div>
+            <button type="button" class="wp-listrow-open">
+              <span class="wp-listrow-main">
+                <span class="wp-listrow-title"><span>${title}</span></span>
+                <span class="wp-listrow-meta">${meta}</span>
+              </span>
+            </button>
+            <div class="wp-listrow-right">
+              <button type="button" class="wp-listrow-kebab">${ic('M6 12h.02 M12 12h.02 M18 12h.02')}</button>
+            </div>
+          </div>`;
+        const noteItem = (title, meta) =>
+          `<div class="note-item"><span class="note-item-b">${title}</span><span class="note-item-m">${meta}</span></div>`;
+
+        const HOST_HEAD =
+          `<div class="modal-title">Shinjuku Granbell Hotel<span class="wp-row-subject">צ׳ק-אין ⁦16:30⁩</span></div>`;
         document.querySelector('#s5').innerHTML = [
           col(
-            '<span class="tag neutral">א · מלחין בטופס המארח</span>',
-            `<div class="task-sheet"><div class="field"><span class="field-label">משימות</span>
-               <div class="listcard">${bookingRow(taskMark(1, 'ring'))}</div>
-               <input placeholder="משימה על ההזמנה הזאת" /></div></div>`,
-            'הניב שהפתקים כבר מפעילים (ADR-0152 §6b) · קלט אחד שלא זז, והשמורות מעליו.',
+            '<span class="tag after">א · סקשן משלו · הדגם של הפתקים אות באות</span>',
+            `<div class="task-sheet">${HOST_HEAD}
+               ${section('פתקים', 'פתק', noteItem('שאלנו על חניה', 'אסף · אתמול'))}
+               ${section('משימות', 'משימה', taskItem('לאשר את השעה בטלפון', 'עד מחר · דנה', false) + taskItem('לשלוח מספר טיסה', 'הושלמה', true))}
+             </div>`,
+            'שני סקשנים, כל אחד עם הפועל שלו · הזול ביותר: HostNotes כבר עושה בדיוק את זה. שימו לב שהשורות לא זהות — משימה היא ListRow עם טיק, פתק הוא note-item בלי.',
           ),
           col(
-            '<span class="tag neutral">ב · «＋ משימה» שפותח את TaskSheet מזורע</span>',
-            `<div class="task-sheet"><div class="field"><span class="field-label">משימות</span>
-               <div class="listcard">${bookingRow(taskMark(1, 'ring'))}</div>
-               <button type="button" class="addbtn">${ic(P.check)} משימה על ההזמנה</button></div></div>`,
-            'הטופס המלא — עם תאריך יעד, מוקצה ו«חשוב» · מחיר: גיליון מעל גיליון.',
+            '<span class="tag neutral">ב · סקשן אחד מאוחד</span>',
+            `<div class="task-sheet">${HOST_HEAD}
+               ${section('מה יש כאן', 'הוספה', taskItem('לאשר את השעה בטלפון', 'עד מחר · דנה', false) + noteItem('שאלנו על חניה', 'אסף · אתמול'))}
+             </div>`,
+            'פחות כותרות · ופועל אחד שצריך לשאול «פתק או משימה?» אחרי הלחיצה.',
           ),
           col(
-            '<span class="tag neutral">ג · מהמשימה אל המארח</span>',
-            `<div class="task-sheet"><div class="field"><span class="field-label">שייך ל · לא חובה</span>
-               <div class="choice-grid pills"><button type="button" class="choice-pill on"><span>כללי</span></button><button type="button" class="choice-pill"><span>הזמנה</span></button><button type="button" class="choice-pill"><span>אירוע</span></button></div></div></div>`,
-            'בורר בתוך TaskSheet · הכיוון ההפוך, וזה בדיוק מה ש-ADR-0153 §5 דחה לפתקים.',
+            '<span class="tag before">ג · בלי סקשן · צ׳יפ מארח במסך המשימות</span>',
+            `<div class="task-sheet">${HOST_HEAD}
+               ${section('פתקים', 'פתק', noteItem('שאלנו על חניה', 'אסף · אתמול'))}
+             </div>
+             <div style="height:10px"></div>
+             ${card(bookingRow(''))}`,
+            'המארח לא משתנה בכלל · ומשימה על הזמנה נראית רק במסך המשימות. הסימן על השורה אז מצביע לשום מקום.',
           ),
         ].join('');
 
