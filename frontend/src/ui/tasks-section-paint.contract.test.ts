@@ -27,9 +27,13 @@ import { join } from 'node:path';
 // the filesystem relative to the project root instead (the same note `tasks-avatar-size` has).
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 const source = read('src/ui/TaskSection.tsx');
-// The two sheets `TaskSection` imports, and only those: a class it paints from a third sheet
-// would be a dependency the component does not declare.
-const sheets = ['src/ui/notes.css', 'src/ui/tasks.css'].map(read).join('\n');
+// The sheets `TaskSection` imports, and only those: a class it paints from a sheet it does
+// not import would be a dependency the component has not declared. `section-head.css` joined
+// them in ADR-0192 §1, when the header shape the notes, tasks and documents sections had each
+// been spelling separately became one file all three import.
+const sheets = ['src/ui/section-head.css', 'src/ui/notes.css', 'src/ui/tasks.css']
+  .map(read)
+  .join('\n');
 
 /** Comments stripped FIRST, from both sides. This file's own subject is class names, and so
  *  is the prose in those sheets — parsing either in would let documentation satisfy the

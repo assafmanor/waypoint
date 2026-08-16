@@ -1,0 +1,57 @@
+/* **ONE SECTION HEADER for the content a host carries** — documents, tasks, notes.
+   Extracted 2026-08-16 (ADR-0192 §1) from `.note-sec-h` (`notes.css`) and `.doc-sec-h`
+   (`attach.css`), which were the same declarations written twice.
+
+   It is here rather than in either of those sheets because all three components load it and
+   none of them owns it: `NoteSection`, `TaskSection` and `DocumentAttachField` each import
+   this file directly, so a fourth content type is one import and one `className`, not a third
+   copy of nine rules. That is rule 8's "shape it so the next need is a one-line addition"
+   rather than its "generalise the one-off", because the one-off had already been copied once.
+
+   **The copies had drifted, which is the argument for doing this now rather than later.**
+   `.doc-sec-h .t .icon` sized the glyph to 13px and `.note-sec-h .t .icon` did not exist at
+   all, so the documents header's mark and the tasks/notes header's mark were different sizes
+   on the same form — invisible in review, because nobody renders those two sections side by
+   side except the form this ADR is about. The 13px wins: it is the one that was deliberate. */
+
+.sec-h {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.sec-h .t {
+  font-family: var(--font-head);
+  font-size: 12.5px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sec-h .t .icon {
+  width: 13px;
+  height: 13px;
+}
+/* The trailing way in (`＋ פתק`, `＋ משימה`). Absent on the documents header, which carries
+   its entrances below the chips instead — so this rule simply never matches there, and the
+   extraction takes the WHOLE header rather than the intersection of the two copies. Leaving
+   `.add` behind is exactly what broke the first draft of ADR-0192's mockup: `＋ משימה` fell
+   back to a native <button>, which no test could see. */
+.sec-h .add {
+  margin-inline-start: auto;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--cta);
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.sec-h .add .icon {
+  width: 13px;
+  height: 13px;
+}

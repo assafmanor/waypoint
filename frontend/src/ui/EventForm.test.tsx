@@ -554,12 +554,18 @@ describe('EventForm (folded into Modal, U-01)', () => {
         pickCategory('transport');
         fireEvent.click(bookedChip());
         const derived = () => document.querySelector('.ef-derived')!.textContent!;
-        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.flight));
+        // A flight's default kind is HARD (`defaultKindForBookingType`), which the statement
+        // now says too — see ADR-0192 §3 for why it carries the kind at all.
+        expect(derived()).toContain(
+          t.eventForm.bookedDerived(t.index.bookingType.flight, t.eventForm.kindHard),
+        );
 
         fireEvent.click(
           within(typeGroup()!).getByRole('radio', { name: t.index.bookingType.transit }),
         );
-        expect(derived()).toContain(t.eventForm.bookedDerived(t.index.bookingType.transit));
+        expect(derived()).toContain(
+          t.eventForm.bookedDerived(t.index.bookingType.transit, t.eventForm.kindHard),
+        );
       });
 
       it('forgets an explicit type when the category changes, since that is a new question', () => {
@@ -1407,6 +1413,49 @@ describe('EventForm (folded into Modal, U-01)', () => {
       updatedBy: 'u1',
     } as unknown as Parameters<typeof EventForm>[0]['event'];
 
+    // ── THE FIVE BANDS (ADR-0192 §3) ────────────────────────────────────────────
+    // **This is the test the ADR exists for.** The reported defect was not any one field's
+    // position, it was that there was no rule — so every new field landed at the end and the
+    // form drifted. A rule nothing checks drifts again; this reads the rendered order and
+    // fails when a block moves out of its band, which is also what makes the instruction in
+    // `frontend/CLAUDE.md` enforceable rather than advisory.
+    //
+    // Asserted as a SEQUENCE of what is present, not as fixed indices: a band may grow a
+    // field (that is the point of having bands) without this needing an edit, and a field
+    // hidden by a condition — a booking-linked event authors no place or category — simply
+    // drops out of the list rather than shifting everything after it.
+    it('renders its fields in band order: what → where → when → booking → attached', () => {
+      render(wrapNav(<EventForm onClose={() => {}} />));
+      const form = document.querySelector('.modal-form') as HTMLElement;
+      // One selector per band member, in the order the bands run.
+      const bands: [string, string][] = [
+        ['what', '.category-pills'],
+        ['what', '.title-row'],
+        ['where', '.place-picker'],
+        ['when', '.wf'],
+        ['when', '.kind-toggle'],
+        ['booking', '.wp-chip.cta'],
+        ['attached', '.doc-sec'],
+        ['attached', '.tsk-sec'],
+        ['attached', '.note-sec:not(.tsk-sec)'],
+      ];
+      const found = bands.map(([band, sel]) => {
+        const el = form.querySelector(sel);
+        expect(el, `${band}: ${sel} is not in the form`).toBeTruthy();
+        return { band, sel, el: el as HTMLElement };
+      });
+      for (let i = 1; i < found.length; i++) {
+        const prev = found[i - 1];
+        const cur = found[i];
+        const followsPrev =
+          prev.el.compareDocumentPosition(cur.el) & Node.DOCUMENT_POSITION_FOLLOWING;
+        expect(
+          followsPrev,
+          `${cur.band} (${cur.sel}) must read after ${prev.band} (${prev.sel})`,
+        ).toBeTruthy();
+      }
+    });
+
     it('lists the existing notes above the box when editing, with one way to add', () => {
       tripState.notes = [
         {
@@ -1430,8 +1479,29 @@ describe('EventForm (folded into Modal, U-01)', () => {
       // ONE way to add, and it is the box — the section's `＋ פתק` would open a second
       // sheet over a form that is already asking for a save.
       expect(section.querySelector('.add')).toBeNull();
+      // **The box is INSIDE the section now** (ADR-0192 §2), not a `Field` after it — which
+      // is what retires the second `פתקים` heading and the `labelMore` string that dodged it.
       const box = document.querySelector('.note-compose-in') as HTMLElement;
-      expect(section.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(section.contains(box)).toBe(true);
+      // …and it is the LAST row, after the notes it is adding to.
+      const row = section.querySelector('.note-item') as HTMLElement;
+      expect(row.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    // **ONE heading, on both create and edit** (ADR-0192 §2). The defect this pins is not a
+    // pixel: the form used to render the section AND a captioned `Field`, so an edit said
+    // `פתקים` and then `פתק חדש · לא חובה` one under the other. Counting the sections is what
+    // a reader would have had to do by eye.
+    it('heads the notes once, and holds the composer inside that one section', () => {
+      for (const props of [{}, { event: existing }]) {
+        cleanup();
+        render(wrapNav(<EventForm {...props} onClose={() => {}} />));
+        const sections = document.querySelectorAll('.note-sec:not(.tsk-sec)');
+        expect(sections).toHaveLength(1);
+        expect(sections[0].querySelectorAll('.note-compose-in')).toHaveLength(1);
+        // The composer is the empty state; the "there are none" line must not sit above it.
+        expect(sections[0].textContent).not.toContain(t.notes.section.empty);
+      }
     });
 
     it('writes a note typed while editing onto the event being edited', async () => {

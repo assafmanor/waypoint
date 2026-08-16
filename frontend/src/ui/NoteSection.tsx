@@ -13,12 +13,13 @@
 // read is the verb. And the foot carries no way in to the host, because this surface IS the
 // host. (The notes SCREEN is the other case: its rows clamp to two lines, so opening there
 // lifts the clamp as well.)
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Note, User } from '@waypoint/shared';
 import { noteTitleText, noteWhen } from '../lib/notes';
 import { NoteOpenFoot } from './NoteOpenFoot';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
+import './section-head.css';
 import './notes.css';
 
 export function NoteSection({
@@ -28,6 +29,8 @@ export function NoteSection({
   onAdd,
   onEdit,
   inheritedFrom,
+  compose,
+  composeHint,
 }: {
   /** This host's notes, already filtered and in the order they should read. */
   notes: Note[];
@@ -45,6 +48,22 @@ export function NoteSection({
   /** The one verb an open note offers here. Reached by tapping the note and then `עריכה`,
    *  so nobody lands in a form by reaching for a sentence. */
   onEdit: (note: Note) => void;
+  /** **The composer, as this section's LAST ROW** (ADR-0192 §2) — on a host's own form, where
+   *  a note is written on the way (ADR-0152 §6b) rather than through `onAdd`'s editor.
+   *
+   *  It is a slot rather than a second component because the alternative is what shipped: the
+   *  form rendered this section for the existing notes and then a separate `Field` around the
+   *  composer, so on an EDIT the word `פתקים` appeared twice in a row — which is the only
+   *  reason `t.notes.composer.labelMore` ever existed, and it retires with this.
+   *
+   *  It also answers the empty state. A section with a composer is never empty in the sense
+   *  `אין פתקים על זה` means: the box below IS the invitation, so saying "there are none"
+   *  above it states the obvious and costs a line. Same argument `DocumentAttachField` already
+   *  makes for its single control (ADR-0174 §5). */
+  compose?: ReactNode;
+  /** What the composer inherits, said once under it. A plain caption, not a `Field` hint —
+   *  the `Field` is gone. */
+  composeHint?: string;
 }) {
   // Which note is open, if any. Local: it is the state of this rendering, and no host has
   // any reason to know or to persist it.
@@ -52,7 +71,7 @@ export function NoteSection({
 
   return (
     <div className="note-sec">
-      <div className="note-sec-h">
+      <div className="sec-h">
         <span className="t">
           <Icon name="clipboard" /> {t.notes.section.title}
         </span>
@@ -68,7 +87,10 @@ export function NoteSection({
           block and costs nothing. */}
       <div className="note-sec-list">
         {notes.length === 0 ? (
-          <p className="note-item-m">{t.notes.section.empty}</p>
+          // The composer is the empty state where there is one — see `compose`.
+          compose ? null : (
+            <p className="note-item-m">{t.notes.section.empty}</p>
+          )
         ) : (
           notes.map((note) => (
             <div className={'note-item' + (openId === note.id ? ' is-open' : '')} key={note.id}>
@@ -116,6 +138,8 @@ export function NoteSection({
             </div>
           ))
         )}
+        {compose}
+        {compose && composeHint && <p className="note-item-m">{composeHint}</p>}
       </div>
     </div>
   );
