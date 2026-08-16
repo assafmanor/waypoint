@@ -62,6 +62,15 @@ The owner said "alright let's do it" and the build landed in the same PR. Four f
 
 Verified in the real DOM rather than assumed: `.prep` is a `<button>` with **0** interactive descendants (ADR-0160 §4's constraint, which this hero acquired permanently), the collapse row is **44px** (the floor `.tsk-more` never had), and the card is **828px** capped by `--lift-max-h` with its body scrolling inside.
 
+## The e2e, and a latent flake it surfaced
+
+**The build was reported green before the e2e suite had been run at all** — the unit suite was, and "green" was claimed off it. `hero-lift.spec.ts` had a Plan-mode test asserting the retired behaviour verbatim (`expect(tagName).toBe('DIV')`, the rebuff fires, nothing lifts), so it failed immediately. It is replaced rather than repaired, because its subject is now the two things that must **not** be true. The replacement earns its place in a browser: **ADR-0160 §4's no-nested-control rule is a claim about Chrome's parser**, which jsdom does not reproduce — a nested `<button>` makes Chrome close the outer element and reparent every following sibling, so the pieces still exist and a "the pieces render" assertion sails straight through. The test asserts both halves: zero controls, and the hero still _owns_ its readiness bar, dates and task readout.
+
+Two smaller things it taught:
+
+- **The locator had to become `.prep.is-tappable`.** Once lifted, the card is _also_ a `.prep` containing `.prep-dates` — being the same object is the entire claim — so a locator keyed on those two matches both elevations and trips strict mode. The success of the design is what broke the selector.
+- **A pre-existing race in `hero-in-transit.spec.ts`, surfaced by timing.** It waited for `.wp-board` and then read `.wp-board.transit`; `HomeSkeleton` renders its own placeholder `<div className="wp-board">`, so `.first()` could settle on the skeleton, which carries no `transit` class. Intermittent under a full 12-worker run, never in isolation. **This is the identical trap `hero-lift.spec.ts` already documented for `.prep`** — the lesson had simply never been applied to the board. Worth knowing how it was confirmed rather than guessed: the pre-change source was checked out and the suite re-run, it passed once, and that single pass was nearly taken as proof the failure was mine; a second run of the _current_ code then passed too, which is what identified it as flaky rather than deterministic. One run is not a result either way.
+
 ## Deliberately not decided here
 
 - **A real phone.** Everything above was measured in a 390×844 desktop viewport with the real webfonts. The numbers are honest and the device pass is still owed.
