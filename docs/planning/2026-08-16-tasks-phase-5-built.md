@@ -112,6 +112,30 @@ Driven headless against the real backend (`DEV_AUTH=1`, `trip-japan-26`, the now
 
 `e2e/boot.ts` gained a `tasks` option, following the `notes` one beside it.
 
+## One owner report on the built slot, fixed in the same PR
+
+_"Tick alignment is bad"_, from a device, with a zoomed screenshot. It is right and it was two
+defects rather than one — [ADR-0160 §U9](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md)
+carries the decision.
+
+An `.icon` inside a block-level span is an **inline** box, so it sits on the line's **baseline**
+rather than in the middle of it. Measured in the running app: the checkbox hung **2.4px** below
+its own title line and the note's clipboard **1.4px** below its text. `.hero-note-ic`'s shipped
+`margin-top: 1px` was a nudge that made it approximately right, and copying that nudge as `2px`
+for the task made it worse.
+
+**The repair is one shared rule and it fixes the note too.** The glyph column becomes a flex box
+whose height is the text's own line box (`--hero-block-line`), which the text then uses as its
+`line-height` — one source. All three offsets now measure 0.0px.
+
+**Fixing only the reported half would have been the worse outcome.** The note's 1.4px was
+invisible while nothing sat beside it; centring the task alone would have left the two blocks
+disagreeing by 1.4px, which is the "two species on one surface" defect the whole slot was
+designed to avoid. `frontend/CLAUDE.md`'s own rule — count the call sites before claiming what a
+change does — and the answer here was two, not one.
+
+Guarded in the e2e, naming the comparison the report actually made: the tick against the star.
+
 ## One thing found and NOT fixed here
 
 **`createTaskSchema`'s `assigneeUserId` rejects the seeded dev user.** The id regex is

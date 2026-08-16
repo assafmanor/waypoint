@@ -215,23 +215,43 @@
   flex: none;
 }
 
-.hero-note {
+/* ── A content block: a glyph column and what it labels ───────────────────────
+   `פתק` and `משימה` are the same shape with a different lead (ADR-0160 §U1), so the shared
+   half is written once.
+
+   **The line height is a variable because the GLYPH reads it.** An `.icon` inside a block
+   is an inline box sitting on a BASELINE, and a baseline is not a centre — so both glyphs
+   hung below the first line of their own text, which was reported from a device as the
+   tick being out of line with its star. Measured before the fix: the clipboard 1.4px low,
+   the checkbox 2.4px. A `margin-top` nudge is what put them there; the fix is to give the
+   column the text's own line box and centre in it, which is self-correcting if the ramp
+   ever changes. Both blocks take it, because fixing one alone would have made the two
+   disagree by 1.4px — the exact defect §U1 exists to prevent. */
+.hero-note,
+.hero-task {
+  --hero-block-line: calc(var(--text-secondary) * 1.55);
   display: flex;
   gap: 9px;
   align-items: flex-start;
 }
-.hero-note-ic {
+.hero-note-ic,
+.hero-task-ic {
   flex: none;
+  display: flex;
+  align-items: center;
+  /* The FIRST line's box, not the block's — a note wraps, and the glyph belongs to the
+     line it introduces. */
+  height: var(--hero-block-line);
   color: var(--on-dark-dim);
-  margin-top: 1px;
 }
-.hero-note-ic .icon {
+.hero-note-ic .icon,
+.hero-task-ic .icon {
   width: 15px;
   height: 15px;
 }
 .hero-note-tx {
   font-size: var(--text-secondary);
-  line-height: 1.55;
+  line-height: var(--hero-block-line);
   color: var(--on-dark);
 }
 /* GENERALISED rather than copied when the task block arrived (ADR-0160 §U): one rule, two
@@ -256,20 +276,6 @@
 
    Nothing here is pressable. Brief §13 settled that (the owner was offered the tickable
    version and declined), and it is also what pays §A's constraint at zero cost. */
-.hero-task {
-  display: flex;
-  gap: 9px;
-  align-items: flex-start;
-}
-.hero-task-ic {
-  flex: none;
-  color: var(--on-dark-dim);
-  margin-top: 2px;
-}
-.hero-task-ic .icon {
-  width: 15px;
-  height: 15px;
-}
 .hero-task-main {
   min-width: 0;
   flex: 1 1 auto;
@@ -284,7 +290,8 @@
   align-items: center;
   gap: 6px;
   font-size: var(--text-secondary);
-  line-height: 1.55;
+  /* The same line box the glyph column is sized to, so the two cannot drift apart. */
+  line-height: var(--hero-block-line);
   color: var(--on-dark);
 }
 .hero-task-nm {

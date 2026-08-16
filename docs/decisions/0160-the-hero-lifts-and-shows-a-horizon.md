@@ -585,6 +585,31 @@ So tasks join that one resolution, through the generic `inContext(context, row, 
 `notesForContext` already runs on. **§I's trap is ours for the third time**, and it is now three
 content types reading one context rather than three functions that happen to agree.
 
+### U9. A glyph sits on a BASELINE, and a baseline is not a centre
+
+Reported from a device against the built slot, in three words: _"tick alignment is bad"_.
+
+Both content blocks put a 15px `.icon` inside a block-level span. An `.icon` is an **inline**
+box, so it sits on the line's baseline rather than in the middle of it — and `.hero-note-ic`'s
+`margin-top: 1px` was a nudge that made it approximately right rather than right. Measured in
+the running app: **the clipboard hung 1.4px below its note's text, and the checkbox 2.4px below
+its own title line** — so the tick read as out of line with the star six pixels to its left,
+which is exactly what was reported.
+
+**The fix is one shared rule, and it fixes the note as well as the task.** The glyph column is
+`display: flex; align-items: center` with its height set to the text's own line box
+(`--hero-block-line`, `calc(var(--text-secondary) * 1.55)`), which the text then also uses as
+its `line-height` — one source, so a change to the type ramp cannot re-open this. All three
+offsets measure **0.0px**.
+
+**Repairing only the task would have been the worse bug.** The note's 1.4px was invisible while
+nothing sat beside it; leaving it while centring the task would have made the two blocks
+disagree by 1.4px — the exact defect §U1 exists to prevent, arriving by way of its own repair.
+
+Guarded in `frontend/e2e/hero-lift.spec.ts` rather than the unit suite, for the usual reason:
+the markup was correct and only the optical result was wrong, and jsdom answers zero for every
+rect. The assertion names the reported comparison directly — the tick against the star.
+
 ## Consequences of §U
 
 - **`.hero-note-more` is generalised rather than copied.** Two consumers on day one is rule 8's own

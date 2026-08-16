@@ -475,6 +475,42 @@ test.describe('the lifted hero (ADR-0160)', () => {
     expect(Math.abs(edges.note - edges.task)).toBeLessThan(0.5);
   });
 
+  // **Reported from a device: "tick alignment is bad".** An `.icon` inside a block is an
+  // inline box on a BASELINE, and a baseline is not a centre — so both glyphs hung below the
+  // first line of their own text (the clipboard by 1.4px, the checkbox by 2.4px, measured).
+  // Invisible to the unit suite, which answers zero for every rect, and invisible in review,
+  // because the markup is right and only the optical result is wrong.
+  test('both content glyphs sit ON their line, not below it', async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await bootIntoTrip(page, {
+      events: [lunch],
+      places: [market],
+      now: NOW(),
+      dates: shortLiveTripDates(),
+      ...noteAndTask,
+    });
+    await page.goto('/');
+    await page.locator(BOARD).click();
+    await expect(page.locator('.hero-task')).toBeVisible();
+    await page.waitForFunction(
+      () => document.querySelector('.hero-lifted')?.getAnimations().length === 0,
+    );
+
+    const sag = await page.evaluate(() => {
+      const mid = (sel) => {
+        const r = document.querySelector(sel)!.getBoundingClientRect();
+        return (r.top + r.bottom) / 2;
+      };
+      return {
+        note: mid('.hero-note-ic .icon') - mid('.hero-note-tx'),
+        task: mid('.hero-task-ic .icon') - mid('.hero-task-hd'),
+        // The one the report was actually about: the tick against the star beside it.
+        tickVsStar: mid('.hero-task-ic .icon') - mid('.hero-task-star .icon'),
+      };
+    });
+    for (const v of Object.values(sag)) expect(Math.abs(v)).toBeLessThan(0.5);
+  });
+
   // Asserted as an EQUALITY against the board's own control rather than as a colour literal —
   // §P's precedent. What must stay true is that the deadline paints in the ink this surface
   // already uses for the same meaning, not what that ink currently is.
