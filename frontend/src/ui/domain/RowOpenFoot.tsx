@@ -4,8 +4,9 @@
 //
 // It is a component rather than markup each host repeats because there are now TWO hosts —
 // notes and tasks — and the shape is identical at both: a lead, a spacer, an edit. What
-// differs is only what the lead SAYS (a note's host, with a way in; a task's assignee, with
-// nowhere to go), so that is the prop. The alternative was a second `.tsk-open-foot` copied
+// differs is only what the lead SAYS — a note's host, with a way in; **nothing at all for a
+// task**, whose assignee is a face on the title row — so that is the prop. The alternative
+// was a second `.tsk-open-foot` copied
 // beside `.note-open-foot`, which is the parallel-copy pile ADRs 0078/0079/0094/0095 exist
 // to undo — and the classes were renamed to neutral `.row-open-*` in the same change, since
 // a task using a class called `note-open-foot` is that copy under a borrowed name.
@@ -20,8 +21,13 @@ export function RowOpenFoot({
 }: {
   /** The leading half: who or where. A host button, or a plain `<span className="row-open-lead
    *  plain">` when there is nowhere to go — "absent, not broken", the rule this app runs for
-   *  every affordance with no destination. */
-  lead: ReactNode;
+   *  every affordance with no destination.
+   *
+   *  **Optional, because a row can have nothing to add down here** (owner, 2026-08-16): a
+   *  task's assignee is a face at the end of its title row, and saying the name again three
+   *  lines under it is the same fact twice. The spacer keeps the verb at the trailing edge
+   *  either way. */
+  lead?: ReactNode;
   editLabel: string;
   onEdit: () => void;
 }) {

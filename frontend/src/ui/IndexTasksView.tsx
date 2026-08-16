@@ -62,7 +62,7 @@ import {
 import { noteHost, type NoteHostRef } from '../lib/notes';
 import { NOTE_HOST_ICON } from '../constants';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
-import { TaskSheet, type TaskDraft } from './TaskSheet';
+import { TaskSheet, createTaskInput, type TaskDraft } from './TaskSheet';
 import { TaskManageSheet } from './TaskManageSheet';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
@@ -172,10 +172,12 @@ export function IndexTasksView({
   const saveTask = (draft: TaskDraft) => {
     const editing = sheet !== 'create' && sheet !== null ? sheet : null;
     setSheet(null);
+    // The draft goes to the PATCH as it stands: its nulls are what clear a field the editor
+    // was opened on and emptied.
     if (editing) void taskVerbs.updateTask(editing.id, draft);
     // A task written HERE is always general — there is no host picker in phase 1, exactly
     // as ADR-0153 §5 settled it for notes.
-    else void taskVerbs.createTask(draft);
+    else void taskVerbs.createTask(createTaskInput(draft));
   };
 
   const assigneeName = (task: Task) =>
@@ -373,9 +375,9 @@ export function IndexTasksView({
  *  reader anywhere in the app: the editor wrote it and nothing rendered it. Editing is still
  *  one press away, from the foot and from the `⋯`.
  *
- *  Every row opens, whether or not it has a body — an open task with no details still shows
- *  who owes it and the verb, which is the same answer the notes screen gives on a host's
- *  section. The `⋯` mark on the meta line is the separate claim that there is more to READ. */
+ *  Every row opens, whether or not it has a body — an open task with no details still offers
+ *  the verb, which is the same answer the notes screen gives on a host's section. The `⋯` mark
+ *  on the meta line is the separate claim that there is more to READ. */
 function TaskLi({
   task,
   host,
@@ -404,13 +406,12 @@ function TaskLi({
   const unsynced = useUnsynced(task.id);
   const settled = isSettled(task);
 
-  // **ONE LINE AGAIN** (ADR-0191 §8, revised 2026-08-16). This was briefly split in two —
-  // deadline on the first, host chip and assignee on the second — because three elements did
-  // not fit and the wrap that resulted landed wherever the strings ran out. **Moving the
-  // assignee onto the title row removed the longest of the three**, so the deadline and the
-  // chip fit together and the split retires with the problem that forced it. The
-  // `.tsk-meta-about` group survives because it is what lets the chip be the one element
-  // allowed to shrink.
+  // **TWO LINES: the deadline owns the first, the chip the second** (ADR-0191 §8, the owner's
+  // proposal). Moving the assignee to the title row removed the longest of three elements and
+  // did NOT retire the split — measured at 360 with the name gone, one line still truncates
+  // the chip to 24px of the 80px it needs. `tasks.css` is where the split is drawn
+  // (`.wp-listrow-meta > .tsk-due { display: block }`); the `.tsk-meta-about` group is what
+  // lets the chip be the one element allowed to shrink.
   const metaAbout = (
     <span className="tsk-meta-about">
       {/* **WHAT THIS TASK IS LINKED TO** (owner: "linked tasks don't show their host, and I
@@ -536,15 +537,14 @@ function TaskLi({
               {task.body}
             </div>
           )}
-          <RowOpenFoot
-            lead={
-              <span className="row-open-lead plain">
-                {assignee ? assignee.displayName : t.tasks.sheet.nobody}
-              </span>
-            }
-            editLabel={t.tasks.manage.edit}
-            onEdit={onEdit}
-          />
+          {/* **NO LEAD** (owner, 2026-08-16: _"no need to show the assignee name in the
+              expanded task, we already have the assignee avatar"_). ADR-0189 §4 gave the foot
+              the assignee because that was the row's only statement of it — the face was still
+              a name in the meta line then. Once the face moved to the title row it became the
+              same fact twice, three lines apart, and the second copy is the one to drop: the
+              face is on screen while the row is open, and an unassigned task's empty slot is
+              already unambiguous (ADR-0191 §8). What is left is the verb, where it always was. */}
+          <RowOpenFoot editLabel={t.tasks.manage.edit} onEdit={onEdit} />
         </>
       )}
     </>

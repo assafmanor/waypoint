@@ -60,7 +60,7 @@ vi.mock('../lib/useClock', () => ({ useClock: () => NOW }));
 import { ToastProvider } from './Toast';
 import { NavProvider } from '../state/nav-state';
 import { ModeProvider } from '../state/mode-state';
-import { HostTasks } from './HostTasks';
+import { HostTasks, useTaskStaging } from './HostTasks';
 import { t } from '../i18n/he';
 
 const wrap = (node: ReactNode) => (
@@ -174,4 +174,31 @@ describe('HostTasks', () => {
     expect(screen.getByText('נעשה')).toBeTruthy();
     expect(document.querySelector('.note-item.tsk-row.tsk-settled')).toBeTruthy();
   });
+
+  // A staged draft is rendered as a `Task` so the section looks the same before and after the
+  // host exists — and that mapping is also what the editor re-opens on. It dropped `body`
+  // entirely, so a staged task's words were lost the moment it was edited: typed once,
+  // invisible on the row (a staged task has no open-in-place), and gone on the second save.
+  it('keeps a staged task’s body when it is re-opened for editing', () => {
+    render(wrap(<StagingHost />));
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(t.tasks.section.add) }));
+    fireEvent.change(screen.getByLabelText(t.tasks.sheet.titleLabel), {
+      target: { value: 'לאשר את השעה' },
+    });
+    fireEvent.change(screen.getByLabelText(t.tasks.sheet.bodyLabel), {
+      target: { value: 'שתיים אחרי הצהריים' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: t.tasks.sheet.save }));
+    fireEvent.click(screen.getByRole('button', { name: 'לאשר את השעה' }));
+    expect((screen.getByLabelText(t.tasks.sheet.bodyLabel) as HTMLTextAreaElement).value).toBe(
+      'שתיים אחרי הצהריים',
+    );
+  });
 });
+
+/** A host FORM's copy of the section: no id to hang an FK on, so the tasks are staged
+ *  (ADR-0191 §7) — the shape `EventForm` and `BookingSheet` both run. */
+function StagingHost() {
+  const staging = useTaskStaging();
+  return <HostTasks host={{ kind: 'booking', name: 'Granbell' }} staging={staging} />;
+}
