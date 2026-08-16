@@ -1321,7 +1321,18 @@ describe('EventForm (folded into Modal, U-01)', () => {
   // a note that overtook its host would flush first and the server would refuse a host it
   // cannot see — the same defect the document upload had to be built around.
   describe('the composer', () => {
-    const composer = () => document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+    /** **The box is revealed by `＋ פתק` now** (ADR-0192 §2's reversal) — so every test that
+     *  types a note presses it first, exactly as a person does. `openBox` is idempotent on an
+     *  already-open box: `openNew` commits what is there and opens a fresh one, which is also
+     *  how a second note is started. */
+    const openBox = () => {
+      const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
+      fireEvent.click(section.querySelector('.add') as HTMLElement);
+    };
+    const composer = () => {
+      if (!document.querySelector('.note-compose-in')) openBox();
+      return document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+    };
     const save = () => fireEvent.click(screen.getByText(t.common.save));
     const nameIt = (title = 'ארוחת ערב') =>
       fireEvent.input(screen.getByPlaceholderText(t.eventForm.titlePlaceholder), {
@@ -1476,16 +1487,24 @@ describe('EventForm (folded into Modal, U-01)', () => {
       // (ADR-0191 §5), so a bare `.note-sec` now finds the tasks one first.
       const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section.textContent).toContain('הכניסה מאחור');
-      // ONE way to add, and it is the box — the section's `＋ פתק` would open a second
-      // sheet over a form that is already asking for a save.
-      expect(section.querySelector('.add')).toBeNull();
-      // **The box is INSIDE the section now** (ADR-0192 §2), not a `Field` after it — which
-      // is what retires the second `פתקים` heading and the `labelMore` string that dodged it.
+      // **ONE way to add, and it is the header's `＋ פתק`** (ADR-0192 §2's 2026-08-16
+      // reversal). It used to be the box, permanently open with no header control — which is
+      // what made the section look nothing like the tasks section beside it. The box is not
+      // on screen until that control is pressed.
+      expect(document.querySelector('.note-compose-in')).toBeNull();
+      const add = section.querySelector('.add') as HTMLElement;
+      expect(add.textContent).toContain(t.notes.section.add);
+      fireEvent.click(add);
+
+      // **The box is INSIDE the section** (ADR-0192 §2), not a `Field` after it — which is
+      // what retires the second `פתקים` heading and the `labelMore` string that dodged it.
       const box = document.querySelector('.note-compose-in') as HTMLElement;
       expect(section.contains(box)).toBe(true);
       // …and it is the LAST row, after the notes it is adding to.
       const row = section.querySelector('.note-item') as HTMLElement;
       expect(row.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // It opens the box, never `NoteSheet` — a form over a form is what the owner refused.
+      expect(screen.queryByText(t.notes.sheet.createTitle)).toBeNull();
     });
 
     // **ONE heading, on both create and edit** (ADR-0192 §2). The defect this pins is not a
@@ -1498,8 +1517,12 @@ describe('EventForm (folded into Modal, U-01)', () => {
         render(wrapNav(<EventForm {...props} onClose={() => {}} />));
         const sections = document.querySelectorAll('.note-sec:not(.tsk-sec)');
         expect(sections).toHaveLength(1);
+        // Closed, the section reads exactly like the tasks section: a header and its empty
+        // line. Opened, the box replaces that line rather than sitting under it.
+        expect(sections[0].querySelectorAll('.note-compose-in')).toHaveLength(0);
+        expect(sections[0].textContent).toContain(t.notes.section.empty);
+        fireEvent.click(sections[0].querySelector('.add') as HTMLElement);
         expect(sections[0].querySelectorAll('.note-compose-in')).toHaveLength(1);
-        // The composer is the empty state; the "there are none" line must not sit above it.
         expect(sections[0].textContent).not.toContain(t.notes.section.empty);
       }
     });

@@ -30,14 +30,18 @@ export function NoteSection({
   onEdit,
   inheritedFrom,
   compose,
+  composeActive,
   composeHint,
 }: {
   /** This host's notes, already filtered and in the order they should read. */
   notes: Note[];
   users: User[];
   now: Date;
-  /** Absent when the surface has its own way in — the host FORM carries a composer that
-   *  rides its save (ADR-0152 §6b), and two add paths on one screen is one too many. */
+  /** The section's one way in. On a read surface it opens `NoteSheet`; on a host FORM it
+   *  reveals the inline box below (`compose`) — same control, same words, and in both cases
+   *  the ONLY add path on the surface (ADR-0192 §2's 2026-08-16 reversal). It used to be
+   *  absent on a form, which is what left the box permanently open and the header without the
+   *  `＋ פתק` the tasks section beside it has. */
   onAdd?: () => void;
   /** **Where a note this surface did not author came from** (ADR-0172 §9's amendment) —
    *  answered per note, so only the INHERITED ones are marked and the surface's own stay
@@ -49,7 +53,8 @@ export function NoteSection({
    *  so nobody lands in a form by reaching for a sentence. */
   onEdit: (note: Note) => void;
   /** **The composer, as this section's LAST ROW** (ADR-0192 §2) — on a host's own form, where
-   *  a note is written on the way (ADR-0152 §6b) rather than through `onAdd`'s editor.
+   *  a note is written on the way (ADR-0152 §6b) rather than through `NoteSheet`. `onAdd` is
+   *  what reveals it there, so the two props are partners on a form rather than alternatives.
    *
    *  It is a slot rather than a second component because the alternative is what shipped: the
    *  form rendered this section for the existing notes and then a separate `Field` around the
@@ -61,6 +66,14 @@ export function NoteSection({
    *  above it states the obvious and costs a line. Same argument `DocumentAttachField` already
    *  makes for its single control (ADR-0174 §5). */
   compose?: ReactNode;
+  /** **Whether that box is actually showing anything right now** — open, or holding notes
+   *  typed but not yet saved. It decides the empty line rather than `compose` doing it,
+   *  because `compose` is a node that is truthy even on the render where it draws nothing.
+   *
+   *  With the box closed the section reads exactly like the tasks section beside it: a header,
+   *  `＋ פתק`, and `אין פתקים על זה`. With it open that line would sit above the box inviting
+   *  you to write the note it says you do not have. */
+  composeActive?: boolean;
   /** What the composer inherits, said once under it. A plain caption, not a `Field` hint —
    *  the `Field` is gone. */
   composeHint?: string;
@@ -87,8 +100,8 @@ export function NoteSection({
           block and costs nothing. */}
       <div className="note-sec-list">
         {notes.length === 0 ? (
-          // The composer is the empty state where there is one — see `compose`.
-          compose ? null : (
+          // The open box is the empty state where there is one — see `composeActive`.
+          composeActive ? null : (
             <p className="note-item-m">{t.notes.section.empty}</p>
           )
         ) : (
@@ -139,7 +152,7 @@ export function NoteSection({
           ))
         )}
         {compose}
-        {compose && composeHint && <p className="note-item-m">{composeHint}</p>}
+        {composeActive && composeHint && <p className="note-item-m">{composeHint}</p>}
       </div>
     </div>
   );

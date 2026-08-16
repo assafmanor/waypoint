@@ -89,7 +89,9 @@ export function useAnchorName(
 export function HostNotes({
   host,
   canAdd = true,
+  onAdd,
   compose,
+  composeActive,
   composeHint,
 }: {
   /** **`id` is absent on a CREATE**, where the host does not exist yet — the section then has
@@ -97,12 +99,18 @@ export function HostNotes({
    *  `DocumentAttachField`'s shape, so the three content sections on a form take their host
    *  the same way rather than each inventing a way to say "not saved yet" (ADR-0192 §2). */
   host: Omit<NoteHostRef, 'id'> & { id?: string };
-  /** Off where the surface already carries a way to write one: the host's own FORM has a
-   *  composer that rides its save (ADR-0152 §6b), so a `＋ פתק` beside it would be a second
-   *  add path — and the one that opens another sheet, which that section is there to avoid. */
+  /** Whether the header carries a way in at all. */
   canAdd?: boolean;
+  /** **What `＋ פתק` does, when it is not `NoteSheet`.** A host FORM passes the composer's
+   *  `openNew` here, so the control reveals the inline box below instead of opening a second
+   *  form over a form (ADR-0192 §2's 2026-08-16 reversal — owner: _"clicking the + פתק should
+   *  open a new inline task, not the entire form"_). Absent on a read surface, which has no
+   *  inline box and whose way in IS the editor. */
+  onAdd?: () => void;
   /** The form's composer, rendered as this section's last row (ADR-0192 §2). */
   compose?: ReactNode;
+  /** Whether that box is open or holding unsaved notes — decides the empty line. */
+  composeActive?: boolean;
   composeHint?: string;
 }) {
   const { notes, users, noteVerbs } = useTrip();
@@ -141,14 +149,15 @@ export function HostNotes({
         users={users}
         now={now}
         inheritedFrom={inheritedFrom}
-        onAdd={canAdd ? () => setEditing('create') : undefined}
+        onAdd={canAdd ? (onAdd ?? (() => setEditing('create'))) : undefined}
         onEdit={setEditing}
         compose={compose}
+        composeActive={composeActive}
         composeHint={composeHint}
       />
-      {/* Unreachable without a host: `canAdd` is off on every form, and a row can only be
-          edited if a row was rendered, which needs an id. Guarded anyway so the type is
-          honest rather than asserted. */}
+      {/* Unreachable without a host: a form supplies its own `onAdd`, so nothing here opens
+          `create`, and a row can only be edited if a row was rendered — which needs an id.
+          Guarded anyway so the type is honest rather than asserted. */}
       {editing && hostId && (
         <NoteSheet
           note={editing === 'create' ? undefined : editing}

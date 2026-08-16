@@ -160,7 +160,7 @@ export function MapPlaceForm({
   // **A note is written on the way** (ADR-0152 §6b) — the same composer every other host form
   // carries, so a place is the fifth host and not a fifth way of writing a note. Local state,
   // read once at confirm: this file stays presentational and the host does the writing.
-  const composer = useNoteComposer();
+  const composer = useNoteComposer({ standalone: true });
   const noteId = useId();
 
   const report = (next: Partial<MapPlaceFormValue>) =>
