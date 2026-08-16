@@ -464,7 +464,9 @@ test.describe('the research card @390', () => {
         lineClamp: getComputedStyle(prose).webkitLineClamp,
         credit: (row.querySelector('.map-credit') as HTMLElement | null)?.textContent ?? null,
         // **The itinerary blocks are not on screen at the same time.**
-        hasNotes: !!row.querySelector('.note-sec'),
+        // `:not(.tsk-sec)` because tasks share this section's geometry and read above it
+        // (ADR-0191 §5) — a bare `.note-sec` now means "notes or tasks".
+        hasNotes: !!row.querySelector('.note-sec:not(.tsk-sec)'),
         hasRefs: !!row.querySelector('.map-refs'),
         back: !!row.querySelector('.map-backrow'),
       };
@@ -540,7 +542,7 @@ test.describe('the research card @390', () => {
     await page.getByRole('button', { name: 'עוד', exact: true }).click();
     await page.getByRole('button', { name: 'חזרה לפרטי המקום', exact: true }).click();
     await expect(page.locator('.map-hero')).toHaveCount(0);
-    await expect(page.locator('.map-list .place.selected .note-sec')).toBeVisible();
+    await expect(page.locator('.map-list .place.selected .note-sec:not(.tsk-sec)')).toBeVisible();
   });
 
   // §11.1 keeps the full-screen preview as the level below, reached from the hero — the app's own

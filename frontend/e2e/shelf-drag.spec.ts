@@ -283,7 +283,7 @@ test.describe('a plain tap on an idea (ADR-0116 §5a)', () => {
     // The sheet is the idea's, not the schedule form's: it names the idea and offers the
     // verb the tap used to perform.
     await expect(sheet.getByText('מגדל אייפל')).toBeVisible();
-    await expect(sheet.locator('.note-sec')).toBeVisible();
+    await expect(sheet.locator('.note-sec:not(.tsk-sec)')).toBeVisible();
     await expect(sheet.locator('.wp-row-action').first()).toContainText('שיבוץ ליום');
 
     // And one press deeper is the day's own positions (ADR-0161 §4) — not the clock the
