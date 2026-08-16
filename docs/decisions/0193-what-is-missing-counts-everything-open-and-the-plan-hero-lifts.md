@@ -95,14 +95,9 @@ Giving the second number **its own noun** is what does the work. Once a line say
 > what makes `allDone` false. Measured at 360px with both toggles present, the head is
 > **24px** and does not wrap.
 >
-> **The ugliness had a cause worth recording, because it is a trap for every future caller of
-> `CollapseToggle`.** `.wp-collapse-toggle` sets the `font` **shorthand** to `inherit`, which
-> resets `font-size` and `font-weight` at equal specificity — and `tasks.css` loads _before_
-> `collapsible.css`, so the primitive won and the row rendered at the inherited **16px / 400 /
-> `--ink`** instead of 13px / 700 / `--cta`. `.chk-toggle` escapes it only by re-declaring
-> `font: inherit` inside its own rule before setting its size. A caller that does not know to
-> do that gets a silently wrong control. `.chk-more` is deleted; `.tsk-more` (Trip Home's
-> overflow row, a plain `<button>`) keeps the geometry.
+> **The ugliness had a cause worth recording, and the first diagnosis of it was WRONG.** **`.wp-collapse-toggle` sets the `font` SHORTHAND to `inherit`**, and `collapsible.css` loads AFTER `screens.css`/`tasks.css` — so at equal specificity it wipes any `font-size`/`font-weight` a caller declares. `.chk-toggle` has declared `font-size: 11px; font-weight: 700` since it was written and **never once applied them**: it inherited its parent's font and merely looked right in `.sec-title` (12px/700), then rendered at **16px/400** the moment it moved to a section foot. The trap hid because the only other caller, `.index .past-toggle`, is scoped at (0,2,0) and out-specifies the primitive — one of two callers was broken, invisibly, from the start. Fixed at the primitive: `font-family: inherit` instead of the shorthand, which is all that rule ever wanted (stop a `<button>` wearing the UA's Arial). Size and weight belong to the caller.
+>
+> The earlier text here claimed `.chk-toggle` escaped the trap by re-declaring `font: inherit` inside its own rule before setting its size. It does not — a later rule at equal specificity still wins, and the measurement above is what proved it. `.chk-more` is deleted; `.tsk-more` (Trip Home's overflow row, a plain `<button>` and not a `CollapseToggle`) keeps the geometry.
 >
 > **And the Hebrew on both toggles is reworked**, since the owner called it bad on the one it
 > was asked to match. `הצג` ⇄ `כווץ` was not a pair — one names the content, the other the

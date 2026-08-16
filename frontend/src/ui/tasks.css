@@ -419,13 +419,13 @@
    inside a paper card, under ADR-0017's 44px floor.
 
    Plan Home briefly shared this rule as `.chk-more` and no longer does: its toggle
-   moved into the section head as a `.chk-toggle` (owner, 2026-08-16). Worth knowing
-   why that row looked wrong there and not here — `.wp-collapse-toggle` sets the
+   is a `.chk-toggle` at the section's foot (owner, 2026-08-16). Worth knowing why
+   that row looked wrong there and not here — `.wp-collapse-toggle` used to set the
    `font` SHORTHAND to `inherit`, which resets `font-size`/`font-weight` at equal
-   specificity, and `tasks.css` loads BEFORE `collapsible.css`, so the primitive won.
-   This rule is safe because `.tsk-more` is a plain `<button>`, not a
-   `CollapseToggle`. A caller of that primitive must re-declare `font: inherit`
-   inside its own rule first, the way `.chk-toggle` does. */
+   specificity, and `collapsible.css` loads after this file, so the primitive won
+   whatever a caller said. That is fixed at the primitive now (`font-family`, not the
+   shorthand). This rule was never affected: `.tsk-more` is a plain `<button>`, not a
+   `CollapseToggle`, so nothing else was ever competing for its font. */
 .tsk-more {
   display: flex;
   align-items: center;

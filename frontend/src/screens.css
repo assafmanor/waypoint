@@ -1413,8 +1413,12 @@
    different place. Two indications for one state was the defect; deleting one of them is the
    fix. `.checklist` itself stays: it is the card both Homes hold their rows in. */
 /* Show/hide-completed toggle in the checklist section title (ADR-0061). */
+/* `font-size`/`font-weight` here are load-bearing again, and were not before: the
+   `.wp-collapse-toggle` shorthand used to override them, so this toggle rendered at
+   whatever its parent's font was. It now applies its own — 11px/700, the same size
+   `.index .past-toggle` uses, which is what makes the app's two collapse toggles one
+   control rather than two that happen to be round. */
 .chk-toggle {
-  font: inherit;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
