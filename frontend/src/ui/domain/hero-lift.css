@@ -234,6 +234,14 @@
   gap: 9px;
   align-items: flex-start;
 }
+/* **UP TO THREE OF THEM NOW** (ADR-0160 §U5, amended 2026-08-16). The stack is a sibling gap
+   rather than a wrapper, so one task renders exactly the box it did before this change and
+   the block's cost stays linear in what is actually there. `space-2` and not the 9px above:
+   that gap separates a glyph from its own words, and rows of different tasks need more air
+   than the parts of one row. */
+.hero-task + .hero-task {
+  margin-top: var(--space-2);
+}
 .hero-note-ic,
 .hero-task-ic {
   flex: none;

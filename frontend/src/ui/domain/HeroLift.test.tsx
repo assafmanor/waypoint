@@ -79,15 +79,35 @@ describe('HeroLift', () => {
   // ── משימה (ADR-0160 §U) ───────────────────────────────────────────────────
   const withTask = (over: Partial<HeroLiftTask> = {}) =>
     point({
-      task: { title: 'להזמין מקומות לסושי', ...over },
+      tasks: [{ title: 'להזמין מקומות לסושי', ...over }],
       taskMore: 0,
     });
 
-  it('shows one task, and says how many it is NOT showing', () => {
-    show({ now: [point({ task: { title: 'לקנות JR Pass' }, taskMore: 2 })] });
+  it('shows the tasks it was given, and says how many it is NOT showing', () => {
+    show({ now: [point({ tasks: [{ title: 'לקנות JR Pass' }], taskMore: 2 })] });
     expect(screen.getByText(t.hero.task)).toBeTruthy();
     expect(screen.getByText('לקנות JR Pass')).toBeTruthy();
     expect(screen.getByText(t.hero.moreTasks(2))).toBeTruthy();
+  });
+
+  // **Three rows, not one** (ADR-0160 §U5 as amended 2026-08-16, owner: _"it is limited to
+  // showing only one task. It should be 3"_). The cap itself lives in `constants.ts` and is
+  // applied by `Home`; what this block owes is that it RENDERS every task handed to it —
+  // the shipped defect was that it took one and silently dropped the rest.
+  it('renders every task it is handed, each with its own row', () => {
+    show({
+      now: [
+        point({
+          tasks: [{ title: 'לקנות JR Pass' }, { title: 'להזמין סושי' }, { title: 'לאשר שעה' }],
+          taskMore: 1,
+        }),
+      ],
+    });
+    expect(document.querySelectorAll('.hero-task')).toHaveLength(3);
+    for (const title of ['לקנות JR Pass', 'להזמין סושי', 'לאשר שעה']) {
+      expect(screen.getByText(title)).toBeTruthy();
+    }
+    expect(screen.getByText(t.hero.moreTasks(1))).toBeTruthy();
   });
 
   it('is silent about משימה when the point carries none', () => {
@@ -170,7 +190,11 @@ describe('HeroLift', () => {
   it('gives הבא בתור the same block', () => {
     show({
       now: [point()],
-      next: point({ key: 'next', title: <span>צ׳ק-אין</span>, task: { title: 'לבקש חדר גבוה' } }),
+      next: point({
+        key: 'next',
+        title: <span>צ׳ק-אין</span>,
+        tasks: [{ title: 'לבקש חדר גבוה' }],
+      }),
       nextTime: '22:30',
     });
     expect(screen.getByText('לבקש חדר גבוה')).toBeTruthy();

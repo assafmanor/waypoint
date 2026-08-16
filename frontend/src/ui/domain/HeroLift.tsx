@@ -104,14 +104,16 @@ export interface HeroLiftPoint {
    *  surface that never showed one — so the reach is a chip in this point's OWN action row,
    *  which already reads "every way out of a point, in ONE row". */
   documents?: { key: string; title: string; onOpen: () => void }[];
-  /** **The task this stop is carrying** (ADR-0160 §U) — ONE, with `taskMore` saying how many
-   *  others there are, which is `פתק`'s rule and for the same reason.
+  /** **The tasks this stop is carrying** (ADR-0160 §U, amended 2026-08-16) — up to
+   *  `HERO_TASK_CAP`, with `taskMore` saying how many are left over. §U5 shipped exactly ONE
+   *  on `פתק`'s rule; the owner's call is that the rule came from the wrong neighbour, since a
+   *  note is prose you read and a task is an obligation you still owe.
    *
    *  A READ: no tick, no menu, nothing pressable at all. That is what brief §13 settled (the
    *  owner was offered the tickable version and declined), and it also pays §A's hard
    *  constraint at zero cost — §4's parser finding binds a real nested `<button>`, and a block
-   *  with no control cannot reach it. */
-  task?: HeroLiftTask;
+   *  with no control cannot reach it. Three rows do not change that: they are three reads. */
+  tasks?: HeroLiftTask[];
   taskMore?: number;
   settled?: SettleOutcome;
   /** The way to the pin, and the hand-off out to Maps (ADR-0121's amendment §4 —
@@ -302,52 +304,55 @@ function Note({ point }: { point: HeroLiftPoint }) {
  *  landed alone underneath at 360px, which is §O's finding recurring in this very file (flex
  *  breaks lines by HYPOTHETICAL size, so `min-width: 0` and the ellipsis never run). */
 function Tasks({ point }: { point: HeroLiftPoint }) {
-  const task = point.task;
-  if (!task) return null;
+  const tasks = point.tasks ?? [];
+  if (tasks.length === 0) return null;
   return (
     <div className="hero-part">
       <span className="hero-lbl">{t.hero.task}</span>
-      <div className="hero-task">
-        {/* **AN EMPTY BOX, NOT A TICKED ONE** (§U amended 2026-08-16, owner: _"the lifted
-            hero shows a tick icon for tasks, this reads as 'task complete' and is
-            misleading"_). §U shipped the `checkbox` the mark and the section header carry,
-            on the argument that it is the same role at a third surface. It is not: those two
-            name a NOUN — "there are tasks here", "this section is tasks" — and this one sits
-            beside a single task's title, where the glyph is read as that task's own state.
-            The hero only ever shows an OPEN task, so a ✓ said the exact opposite of the
-            block's whole purpose. Same box, minus the ✓, so the two glyphs stay one family.
+      {tasks.map((task, i) => (
+        <div className="hero-task" key={i}>
+          {/* **AN EMPTY BOX, NOT A TICKED ONE** (§U amended 2026-08-16, owner: _"the lifted
+              hero shows a tick icon for tasks, this reads as 'task complete' and is
+              misleading"_). §U shipped the `checkbox` the mark and the section header carry,
+              on the argument that it is the same role at a third surface. It is not: those
+              two name a NOUN — "there are tasks here", "this section is tasks" — and this one
+              sits beside a task's own title, where the glyph is read as that task's state.
+              The hero only ever shows OPEN tasks, so a ✓ said the exact opposite of the
+              block's whole purpose. Same box, minus the ✓, so the two glyphs stay one family.
 
-            The cost, taken knowingly: §U3's open question is whether a checkbox reads as
-            pressable on a read-only surface, and an EMPTY box reads more pressable than a
-            ticked one, not less. It stays on the device pass with that noted — "not done" is
-            the fact the block exists to carry, and being wrong about it is worse than
-            inviting a tap that does nothing. */}
-        <span className="hero-task-ic" aria-hidden="true">
-          <Icon name="checkbox-empty" />
-        </span>
-        <span className="hero-task-main">
-          <span className="hero-task-hd">
-            {task.important && (
-              <span className="hero-task-star" aria-hidden="true">
-                <Icon name="star" />
+              The cost, taken knowingly: §U3's open question is whether a checkbox reads as
+              pressable on a read-only surface, and an EMPTY box reads more pressable than a
+              ticked one, not less. It stays on the device pass with that noted — "not done"
+              is the fact the block exists to carry, and being wrong about it is worse than
+              inviting a tap that does nothing. */}
+          <span className="hero-task-ic" aria-hidden="true">
+            <Icon name="checkbox-empty" />
+          </span>
+          <span className="hero-task-main">
+            <span className="hero-task-hd">
+              {task.important && (
+                <span className="hero-task-star" aria-hidden="true">
+                  <Icon name="star" />
+                </span>
+              )}
+              <span className="hero-task-nm">{task.title}</span>
+              {task.assignee && (
+                <>
+                  <Avatar person={task.assignee.person} size="inherit" />
+                  <span className="visually-hidden">{task.assignee.name}</span>
+                </>
+              )}
+            </span>
+            {task.due && (
+              <span className={task.due.late ? 'hero-task-due late' : 'hero-task-due'}>
+                <Icon name="clock" /> {task.due.text}
               </span>
             )}
-            <span className="hero-task-nm">{task.title}</span>
-            {task.assignee && (
-              <>
-                <Avatar person={task.assignee.person} size="inherit" />
-                <span className="visually-hidden">{task.assignee.name}</span>
-              </>
-            )}
           </span>
-          {task.due && (
-            <span className={task.due.late ? 'hero-task-due late' : 'hero-task-due'}>
-              <Icon name="clock" /> {task.due.text}
-            </span>
-          )}
-        </span>
-      </div>
-      {/* The hero shows ONE and must not imply it is all — `Note`'s rule, one block over. */}
+        </div>
+      ))}
+      {/* Whatever the cap left behind — the block shows up to `HERO_TASK_CAP` and must not
+          imply it is all, which is `Note`'s rule one block over and survives the amendment. */}
       {!!point.taskMore && (
         <span className="hero-task-more">{t.hero.moreTasks(point.taskMore)}</span>
       )}

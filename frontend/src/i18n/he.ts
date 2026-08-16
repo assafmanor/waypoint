@@ -1704,11 +1704,18 @@ export const t = {
     toBooking: 'להזמנה',
     // The hero shows ONE note and says how many it is not showing, so a group that
     // wrote three does not read as a group that wrote one.
-    moreNotes: (n: number) => `ועוד ${n} פתקים`,
-    // The fourth content type (ADR-0160 §U). Singular, because the hero shows ONE — and it
-    // says how many it is not showing on the same rule the note beside it follows.
-    task: 'משימה',
-    moreTasks: (n: number) => `ועוד ${n} משימות`,
+    //
+    // **`1` is its own word in Hebrew** and both of these read it constantly: the note block
+    // still shows one, so two notes is the common case and `ועוד 1 פתקים` was the common
+    // string. It went unnoticed until the task cap rose to three and made the remainder-of-one
+    // visible in a screenshot. `t.tasks.mark` already inflects this way — same fix, same shape.
+    moreNotes: (n: number) => (n === 1 ? 'ועוד פתק אחד' : `ועוד ${n} פתקים`),
+    // The fourth content type (ADR-0160 §U). **Plural since 2026-08-16** (owner: _"lifted hero
+    // writes משימה and not משימות"_), because the block stopped being one row: it shows up to
+    // `HERO_TASK_CAP` and this is the section's NOUN, exactly as `פתקים` is on a host surface —
+    // a label naming a list does not inflect to the length of the list it happens to have.
+    task: 'משימות',
+    moreTasks: (n: number) => (n === 1 ? 'ועוד משימה אחת' : `ועוד ${n} משימות`),
   },
   // Real, offline-safe shortcuts only (ADR-0045): next confirmation code, WiFi,
   // documents. Empty tiles are an "add" affordance; documents stays a fixture

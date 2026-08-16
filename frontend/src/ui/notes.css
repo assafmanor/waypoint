@@ -340,6 +340,20 @@
   justify-content: center;
   min-height: 20px;
 }
+/* **A TICK NEEDS AIR WHERE A QUOTE-RULE WANTS NONE** (owner, 2026-08-16: _"no space between
+   the tick and title"_ — measured in the running app at **3px**, which is what a 20px circle
+   centred in a 26px column leaves). The two leading elements legitimately want opposite
+   placement inside the one cell: a note's rule is a quote bar and belongs AGAINST its text
+   (`margin-inline-start: auto`, unchanged), a task's tick is a control and must not touch it.
+
+   So the tick moves to the cell's start rather than the column widening — which is what keeps
+   ADR-0191 §5's actual invariant intact. That invariant is that both TEXTS start at the same
+   x, and it is `--sec-lead` that guarantees it; growing `--sec-lead` would honour it too but
+   would spend 6px of every note's width to fix a task's spacing. This spends none and takes
+   the gap to 6px. */
+.tsk-row .note-item-lead {
+  justify-content: flex-start;
+}
 /* A note's leading element is the rule it always had, now living in the shared cell rather
    than on the row's own border. `auto` on the start side keeps it against the text, exactly
    where `border-inline-start` put it. */

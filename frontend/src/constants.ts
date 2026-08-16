@@ -1352,6 +1352,16 @@ export const CONTROL_ICON = {
  *  than a second control. Still owed to the device pass, and two characters to change. */
 export const TRIP_HOME_TASK_BAND_CAP = 3;
 
+/** **How many tasks the LIFTED HERO shows on one stop** (ADR-0160 §U5, amended 2026-08-16 on
+ *  the owner's call: _"it is limited to showing only one task. It should be 3"_). §U5 chose
+ *  ONE on `פתק`'s rule — the hero shows one note and says how many it is not showing — and the
+ *  amendment's point is that the rule was borrowed from the wrong neighbour: a note is prose
+ *  you read, so a second one is a second thing to read, while a task is an OBLIGATION, and
+ *  three of them on the stop you are standing at is the answer to "what do I still owe here".
+ *  Deliberately the same number as the Trip Home band above, so the two task surfaces cap
+ *  alike and neither has to be re-argued; the overflow line (`ועוד N`) is unchanged. */
+export const HERO_TASK_CAP = 3;
+
 /** **How far ahead the Home bands look** (owner, 2026-08-16: tasks should appear "up to 7
  *  days — good time — before they're due"). ADR-0188 §6 and brief §13 said *due today and
  *  overdue*, which is the right window for a band you read ON the day and the wrong one for
