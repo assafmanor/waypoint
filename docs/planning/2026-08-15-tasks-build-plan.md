@@ -135,6 +135,22 @@ the point, and it should be measured rather than assumed.
 
 ## Phase 4 — hosts
 
+**§F is drawn and measured** ([`mockups/a-third-mark-on-a-host-row-v1.html`](../../mockups/a-third-mark-on-a-host-row-v1.html)), with a **recommended answer per host and per question** in its last panel, awaiting the owner's sign-off. The load-bearing one, because it is what makes this phase cheap:
+
+**Every host already has a home for a section — notes put one there — and tasks go to the same home. No new surface.**
+
+| host       | where its notes live today                                     | tasks          |
+| ---------- | -------------------------------------------------------------- | -------------- |
+| event      | `notesSlot` on the expanded card · `EventForm` · `EventDetail` | the same three |
+| booking    | `BookingSheet` · `BookingDetail` → `DetailSheet`               | the same two   |
+| place      | `notesSlot` on the Map place card                              | the same one   |
+| document   | `DocumentManageSheet`                                          | the same one   |
+| maybe-item | `MaybeManageSheet`                                             | the same one   |
+
+Recommended, with the reasons in the mockup: a **new checkbox glyph** (✓ and checkbox measure identically, so reading decides — and since the automatic row lost its badge, `check` on a task row means the tick and nothing else); the mark counts **open tasks only** (unlike notes and documents, a task has a lifecycle, and the trace survives on the task itself); **all five hosts**, with two costs named rather than smoothed — `MaybeCard`'s mark is a corner and both corners are taken, and the Map row's mark joins a drop queue the code already defines; **a section of its own** per host, `HostNotes`' shape verbatim, ordered **documents → tasks → notes** (ADR-0174 §3's rule kept, with a task between the two because it is a thing to _do_).
+
+**And one finding that shapes the build:** a task in a host's section is a `ListRow`, not a `.note-item` — the latter has no lead slot, because a note has no completion control. So the tasks section reuses the tasks screen's row and inherits the tick, star, deadline and assignee; the cost is that two sections on one surface are not the same row shape.
+
 The five FKs wired: marks on host rows, inline composers, the way in. **The underestimated one** — five hosts × (create, read). Two rule-8 obligations land here: generalise the three host-cascade appliers (see correction 1 — ask if it is not a small extraction), and reuse `lib/note-host-target.ts` by **widening its name**, never copying its table. **Owes the brief's §F designed first** — the mark on a host row, on lines ADR-0152 §6c already measured as full, including whether a task and a note can mark the same row.
 
 ## Phase 5 — the hero slot
