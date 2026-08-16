@@ -393,6 +393,49 @@ describe('IndexTasksView', () => {
         today.title,
       );
     });
+
+    // **EMPTYING A BOX CLEARS THE FIELD** (owner, 2026-08-16: _"removing the task description
+    // and saving doesn't actually persist it"_). `updateTaskSchema` is sparse — absent means
+    // untouched, so the tick can send `{ status }` alone — and the editor was sending
+    // `undefined` for a box it had just emptied, which is the same word for "left alone".
+    // Three fields shared the defect; a `null` is what the whole path already knew how to
+    // apply, at the server, in the optimistic patch and in the Dexie mirror.
+    it('clears an emptied body, deadline and assignee with an explicit null', () => {
+      tripTasks = [{ ...today, body: 'ליד התחנה' }];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: today.title }));
+      fireEvent.click(screen.getByRole('button', { name: t.tasks.manage.edit }));
+      fireEvent.change(screen.getByLabelText(t.tasks.sheet.bodyLabel), { target: { value: '  ' } });
+      fireEvent.click(screen.getByRole('button', { name: t.tasks.sheet.clearDue }));
+      fireEvent.click(screen.getByRole('radio', { name: t.tasks.sheet.nobody }));
+      fireEvent.click(screen.getByRole('button', { name: t.tasks.sheet.save }));
+      expect(updated).toEqual([
+        {
+          id: today.id,
+          input: {
+            title: today.title,
+            body: null,
+            dueAt: null,
+            dueHasTime: false,
+            assigneeUserId: null,
+            important: false,
+          },
+        },
+      ]);
+    });
+
+    // The other half of the same contract: a create has nothing to clear, and
+    // `createTaskSchema` takes no nulls — so an untouched box is simply not sent.
+    it('sends no nulls on a create — an empty box there is an absence, not a clearing', () => {
+      tripTasks = [later];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: t.tasks.add }));
+      fireEvent.change(screen.getByLabelText(t.tasks.sheet.titleLabel), {
+        target: { value: 'לארוז' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: t.tasks.sheet.save }));
+      expect(Object.values(created[0] as Record<string, unknown>)).not.toContain(null);
+    });
   });
 
   // `body` was WRITE-ONLY through all of phase 1 — the editor wrote it and nothing in the
@@ -412,12 +455,34 @@ describe('IndexTasksView', () => {
       expect(document.querySelectorAll('.tsk-more-mark')).toHaveLength(1);
     });
 
-    it('opens a task with no body too — the foot carries who owes it and the verb', () => {
+    it('opens a task with no body too — the foot carries the verb', () => {
       tripTasks = [today];
       show();
       fireEvent.click(screen.getByRole('button', { name: today.title }));
       expect(document.querySelector('.row-open-foot')).toBeTruthy();
       expect(document.querySelector('.tsk-open-body')).toBeNull();
+    });
+
+    // **The foot says the verb and nothing else** (owner, 2026-08-16: _"no need to show the
+    // assignee name in the expanded task, we already have the assignee avatar"_). The name was
+    // right when it was the row's only statement of who owes it; since the face moved to the
+    // title row it is the same fact twice, three lines apart.
+    it('says no assignee name under an open row — the face on the title row is the statement', () => {
+      tripTasks = [today];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: today.title }));
+      const foot = document.querySelector('.row-open-foot')!;
+      expect(foot.querySelector('.row-open-lead')).toBeNull();
+      expect(foot.textContent).not.toContain('דנה');
+      expect(foot.textContent).toContain(t.tasks.manage.edit);
+      // And nothing where the task is the group's either: the empty slot is the statement.
+      cleanup();
+      tripTasks = [undated];
+      show();
+      fireEvent.click(screen.getByRole('button', { name: undated.title }));
+      expect(document.querySelector('.row-open-foot')!.textContent).not.toContain(
+        t.tasks.sheet.nobody,
+      );
     });
 
     it('closes an open row when another one opens — one at a time', () => {

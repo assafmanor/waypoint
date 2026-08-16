@@ -24,7 +24,7 @@ import {
 } from '../lib/tasks';
 import type { NoteHostKind } from '../lib/notes';
 import { TaskSection } from './TaskSection';
-import { TaskSheet, type TaskDraft } from './TaskSheet';
+import { TaskSheet, createTaskInput, type TaskDraft } from './TaskSheet';
 
 /** **Which hosts are closed** (ADR-0191 §6), built once from trip state so no screen assembles
  *  it itself — the same reason `useTaskClock` exists below. Memoized on the events array,
@@ -87,7 +87,7 @@ export async function writeStagedTasks(
   createTask: (input: CreateTaskInput) => Promise<unknown>,
   where: Partial<Record<TaskHostKey, string>>,
 ): Promise<void> {
-  for (const draft of staging.pending()) await createTask({ ...draft, ...where });
+  for (const draft of staging.pending()) await createTask({ ...createTaskInput(draft), ...where });
 }
 
 /** The staged draft a `number` sheet refers to, back as a `Task` the editor can read. */
@@ -136,10 +136,14 @@ export function HostTasks({
             id: `staged:${i}`,
             tripId: '',
             title: draft.title,
-            dueAt: draft.dueAt,
-            dueHasTime: draft.dueHasTime ?? false,
-            important: draft.important ?? false,
-            assigneeUserId: draft.assigneeUserId,
+            // A draft says `null` for what it cleared and an entity says absent, so every
+            // clearable field is coerced here. `body` was simply missing before, which is why
+            // re-opening a staged task's editor lost the words typed into it.
+            body: draft.body ?? undefined,
+            dueAt: draft.dueAt ?? undefined,
+            dueHasTime: draft.dueHasTime,
+            important: draft.important,
+            assigneeUserId: draft.assigneeUserId ?? undefined,
             status: TASK_STATUS.OPEN,
             createdBy: '',
             createdAt: '',
@@ -158,7 +162,8 @@ export function HostTasks({
     // No host id yet: hold it until the form's save has one (`writeStagedTasks`).
     else if (!hostId) staging?.add(draft);
     // The host rides the create, from the lookup rather than spelled here.
-    else void taskVerbs.createTask({ ...draft, ...taskHostInput(host.kind, hostId) });
+    else
+      void taskVerbs.createTask({ ...createTaskInput(draft), ...taskHostInput(host.kind, hostId) });
   };
 
   return (

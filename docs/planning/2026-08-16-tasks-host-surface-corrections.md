@@ -105,3 +105,25 @@ Four more, after #619 merged.
 **And a plain layout bug of mine the owner caught first:** _"is it a bug that the tasks and notes are on the left?"_ Yes. `map.css` states in place that `.place` is a wrapping flex ROW and that a section dropped into it joins the row rather than starting a line — which is why `.place > .note-sec` carries `flex-basis: 100%`. Moving both sections into `.map-cardwrote` moved the flex ITEM and left the declaration on the children. **The comment that explains the bug was two lines above the code that caused it.**
 
 Two smaller ones found while verifying: `.tsk-title-txt` needed `flex: 1 1 0` rather than `min-width: 0` (a wrapping flex line let it shrink to nothing and wrap whole, stranding the star on a line of its own), and `.tsk-star` needed `align-self: flex-start` (the row centres its items, so on a two-line title the star sat between the lines).
+
+---
+
+## A third round, same day (branch `claude/tasks-view-fixes-bdf054`)
+
+Two reports, and they are not the same kind of thing: one is the tail of the assignee move, the other is a **write that silently did nothing**.
+
+**The open row's foot stops saying the assignee.** _"No need to show the assignee name in the expanded task, we already have the assignee avatar."_ ADR-0189 §4 gave the foot the name because the foot was then the only place it could be read in full — the row itself carried a name in the meta line and the face did not exist yet. Once the face moved to the title row (the round above) the foot's copy became the same fact twice, three lines apart, and the face is on screen the whole time the row is open. `RowOpenFoot.lead` is optional now; a note keeps its lead, because a note's host is stated nowhere else on an open row. Amended in ADR-0189 §4 rather than written up as a decision of its own — it is the second half of an amendment already taken.
+
+**Emptying the description and saving did nothing at all**, and so did clearing a deadline or an assignee. This is worth the space because the mechanism was **built, documented and tested — on one side only.**
+
+`updateTaskSchema` parts company with `updateNoteSchema` deliberately: absent means untouched, `null` means cleared, because a task has two edit surfaces and the tick's `{ status }` must not erase the task's words. The schema says so, the service says so in a comment, `taskPatch` says so, `coerceClearedFields` says so, and a backend spec pins `dueAt: null`. **The editor — the only caller that submits the whole payload, and therefore the only one that can ever mean "cleared" — sent `undefined`**, which that contract correctly reads as "left alone". `body.trim() || undefined` is where it hid, and it looks exactly like the create-shaped code it was copied from.
+
+The repair is one word per field, and the type is what keeps it repaired: `TaskDraft` now says `string | null` for the three clearable fields, so a call site cannot go back to sending an absence without the compiler noticing, and `createTaskInput` drops the nulls for a create — which has nothing to clear, and whose schema takes none.
+
+**The lesson worth keeping, and it is this note's second one about a cost that was named rather than checked:** a sparse patch is a contract with two sides. Everything written down here was the **reader's** side. Nothing anywhere stated what the writer owed, so the writer owed nothing and no test could tell.
+
+**A third defect fell out of the same type change.** `HostTasks` renders a staged draft as a `Task` so a create form's section looks the same before and after its host exists — and that mapping never carried `body`. A staged task has no open-in-place, so the words were invisible on the row and gone the moment the draft was re-opened for editing: typed once, silently dropped twice. It has a spec now, which fails without the line.
+
+**And a comment that contradicted the CSS three files over.** `IndexTasksView`'s meta block claimed the two-line split had retired ("ONE LINE AGAIN") while `tasks.css` still draws `.wp-listrow-meta > .tsk-due { display: block }` and states in place why — the chip truncates to 24px of 80 on one line. The CSS is right and shipped; the comment was left over from a direction the round above measured and abandoned.
+
+**Verified:** `pnpm typecheck`, `pnpm lint` (no new warnings; the three pre-existing ones are unchanged), `pnpm build`, and **3908 tests** green — three new, and each was run against the unfixed code first to confirm it fails there.

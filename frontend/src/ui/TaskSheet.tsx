@@ -20,7 +20,7 @@
 // read-only, because `Task` has no `displayTimezone` column and §10 says nothing is stored
 // per task. There is a zone to state and nothing to correct.
 import { useId, useState } from 'react';
-import type { Task, User } from '@waypoint/shared';
+import type { CreateTaskInput, Task, User } from '@waypoint/shared';
 import { authoringZone } from '../lib/places';
 import { useTrip } from '../state/trip-state';
 import { isoToTimeInput, todayInTz, zonedIso } from '../lib/time';
@@ -39,15 +39,39 @@ import { useFormErrors } from './primitives/useFormErrors';
 import { t } from '../i18n/he';
 import './tasks.css';
 
-/** What the sheet hands back — the intersection of what both write verbs take. `dueAt` is
- *  already an instant: the form owns the zone resolution, so nothing downstream has to. */
+/** What the sheet hands back. `dueAt` is already an instant: the form owns the zone
+ *  resolution, so nothing downstream has to.
+ *
+ *  **A CLEARED FIELD IS `null`, NEVER ABSENT** (owner, 2026-08-16: _"removing the task
+ *  description and saving doesn't actually persist it"_). `updateTaskSchema` is sparse —
+ *  absent means untouched, `null` means cleared — precisely so the tick can send `{ status }`
+ *  without erasing the task's words. The editor is the caller on the other side of that
+ *  contract and never held up its end: it sent `body.trim() || undefined`, which the patch
+ *  correctly read as "left alone". The same silence emptied a deadline and an assignee.
+ *
+ *  So the draft states every field it owns, and a create — which has nothing to clear —
+ *  drops the nulls through `createTaskInput`. */
 export interface TaskDraft {
   title: string;
-  body?: string;
-  dueAt?: string;
+  body: string | null;
+  dueAt: string | null;
   dueHasTime: boolean;
-  assigneeUserId?: string;
+  assigneeUserId: string | null;
   important: boolean;
+}
+
+/** The draft as a CREATE. `createTaskSchema` takes no nulls and needs none — there is no
+ *  stored value to clear on a task that does not exist yet — so an emptied field is simply
+ *  not sent. */
+export function createTaskInput(draft: TaskDraft): CreateTaskInput {
+  return {
+    title: draft.title,
+    ...(draft.body !== null && { body: draft.body }),
+    ...(draft.dueAt !== null && { dueAt: draft.dueAt }),
+    dueHasTime: draft.dueHasTime,
+    ...(draft.assigneeUserId !== null && { assigneeUserId: draft.assigneeUserId }),
+    important: draft.important,
+  };
 }
 
 /** The one field that can be refused. */
@@ -100,14 +124,16 @@ export function TaskSheet({
     }
     onSave({
       title: trimmed,
-      body: body.trim() || undefined,
+      // `null`, not `undefined`, and that is the whole of the fix above: an emptied box is a
+      // decision to clear, and the sparse patch cannot tell it from an untouched field.
+      body: body.trim() || null,
       // **A date-only deadline is the END of that day, not its start.** "By Thursday" is
       // discharged any time on Thursday, and storing 00:00 would make a task due today
       // overdue at one minute past midnight. `dueHasTime` is what records that the hour was
       // never typed, so nothing downstream mistakes the instant for one the user chose.
-      dueAt: date ? zonedIso(date, time || DAY_DEADLINE_HHMM, zone) : undefined,
+      dueAt: date ? zonedIso(date, time || DAY_DEADLINE_HHMM, zone) : null,
       dueHasTime: Boolean(date && time),
-      assigneeUserId: assignee === NOBODY ? undefined : assignee,
+      assigneeUserId: assignee === NOBODY ? null : assignee,
       important,
     });
   };

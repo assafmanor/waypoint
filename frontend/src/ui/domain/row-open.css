@@ -54,8 +54,9 @@
   height: 44px;
 }
 /* Nowhere to go: the same words, no caret, no target. "Absent, not broken" — the rule
-   this app runs for every affordance with no destination. A task's assignee is always
-   this variant; there is no screen for a person to open. */
+   this app runs for every affordance with no destination. A general note is this variant.
+   A TASK has no lead at all since 2026-08-16 — its assignee is a face on the title row, so
+   the foot has nothing left to say and says nothing rather than saying it twice. */
 .row-open-lead.plain {
   color: var(--muted);
   font-weight: 400;
