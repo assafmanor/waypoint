@@ -216,12 +216,35 @@ describe('taskDue', () => {
     expect(taskDue(task('c', { dueAt: '2026-08-14T09:00:00.000Z' }), clock)?.late).toBe(true);
   });
 
-  // The zone is derived, never stored (brief §10) — the same instant reads as a different
-  // wall-clock depending on the segment it falls in.
+  // With NO pin the zone is derived — the same instant reads as a different wall-clock
+  // depending on the segment it falls in (brief §10, still true for every unpinned task).
   it('renders the time in the zone the deadline falls in', () => {
     const due = { dueAt: '2026-08-16T15:00:00.000Z', dueHasTime: true };
     expect(taskDue(task('d', due), clock)?.time).toBe('18:00');
     expect(taskDue(task('d', due), { ...clock, primaryZone: TYO })?.time).toBe('00:00');
+  });
+
+  // **A PINNED zone wins over the derivation** (2026-08-17, reversing brief §10 now that the
+  // form can choose one). This is the whole point of storing it: without the pin the same
+  // task renders at a wall-clock nobody typed the moment the reader's segment differs — and
+  // the two assertions below are that difference, held against one instant.
+  it('honours a pinned zone over the one the deadline falls in', () => {
+    const due = { dueAt: '2026-08-16T15:00:00.000Z', dueHasTime: true };
+    // Derived would say 18:00 here…
+    expect(taskDue(task('e', due), clock)?.time).toBe('18:00');
+    // …and the pin says the hour it was typed at, from wherever it is read.
+    const pinned = task('e', { ...due, displayTimezone: TYO });
+    expect(taskDue(pinned, clock)?.time).toBe('00:00');
+    expect(taskDue(pinned, { ...clock, primaryZone: TYO })?.time).toBe('00:00');
+  });
+
+  // The relative DAY follows the pinned zone too, not just the clock face — a deadline
+  // pinned to Tokyo can be "tomorrow" while the reader's own day is still today.
+  it('reads the day in the pinned zone as well as the time', () => {
+    const due = { dueAt: '2026-08-15T20:00:00.000Z', dueHasTime: true };
+    const here = taskDue(task('f', due), clock);
+    const there = taskDue(task('f', { ...due, displayTimezone: TYO }), clock);
+    expect(here?.day).not.toBe(there?.day);
   });
 });
 

@@ -32,25 +32,27 @@
      percentage resolves against a parent that has only a `max-height` and computes to
      `none`, letting the card grow straight past the cap (ADR-0160 §T). */
   max-height: var(--lift-max-h);
-  /* **THE STOPS ARE IN PIXELS, AND THE FIRST BUILD'S PERCENTAGES WERE A DEFECT THE
-     MOCKUP COULD NOT SEE.** With `16%`/`100%` the ramp stretches with the card, so where
-     any given row sits on it depends on how much content there is — and contrast with it.
-     Measured in the running app: the mockup's 6-row card put the first band label at
-     4.8:1, and a real 828px card with eleven rows put the SAME label at **4.28:1** and the
-     overdue deadline at **2.93:1**, because both had moved up into brighter violet. A
-     design whose legibility is a function of list length is not a design.
-
-     In px the ground under a row is fixed: the head keeps the collapsed hero's own two
-     stops across its own height, the darkening resolves by 330px — above the first band in
-     every case — and a longer list simply gets more of the deep end. Re-measured live at
-     6.9:1 and 4.7:1. Same lesson as `::before` below, one property up: a percentage on this
-     card is a value that silently depends on content. */
-  background: linear-gradient(
-    180deg,
-    var(--plan-surface-2) 0,
-    var(--plan-surface) 110px,
-    var(--plan-surface-3) 330px
-  );
+  /* **TWO STOPS, AND THE RAMP FOLLOWS THE THEME** (ADR-0193 §5, amended 2026-08-17 —
+     owner: in light theme _"the gradient should become lighter instead of darker to fit the
+     theme better"_).
+     
+     `.prep` itself already does this and the lifted card was the one surface that did not:
+     light goes `--plan-surface-2` → `--plan-surface` (lighter downward), dark goes
+     `#332866` → `#2a2158` (darker). The lifted card darkened in BOTH, which is why it read
+     as a dark-mode artefact sitting in a light theme. Now it ramps `-2` → `-3`, and `-3` is
+     the token that follows the theme.
+     
+     **The middle stop is gone, and so are the px positions.** Both existed for a ramp that
+     crossed from bright violet to near-black: the px stops kept a row's ground independent
+     of how long the list was, because a percentage ramp put the top rows on the bright end
+     when the card was short. That whole hazard is gone — light now spans L 0.098→0.107 and
+     dark 0.031→0.013, so EVERY point on either ramp is inside the band white-alpha ink
+     survives, and where a row sits no longer changes whether it is legible. Measured worst
+     ink in light: **4.75:1**.
+     
+     Keep that reasoning if the ramp is ever widened again: percentages are safe only while
+     both ends are. */
+  background: linear-gradient(180deg, var(--plan-surface-2) 0%, var(--plan-surface-3) 100%);
   box-shadow: var(--elevation-floating);
 }
 /* **THE CORNER SHEEN SURVIVES THE LIFT, AND IT MUST** — it is part of being the same
@@ -141,15 +143,17 @@
 .prep-lift-body .hero-task-more {
   color: var(--on-plan-faint);
 }
-/* Overdue keeps its own hue rather than the ramp, because it is a STATUS (rule 4). The paper
-   ink (`--miss-deep`) measures ~2.4:1 on any of these grounds, so it is out — and so is the
-   BOARD's answer, which is the part worth recording: `#f0a09b` is `.wp-settle.board`'s ink
-   at 7.82:1 on `--board`, and this ramp's upper half is far brighter than that, where it
-   measures **3.75:1** on the shortest card the lift can draw (one band, one overdue task —
-   its rows sit nearest the bright top, so the SHORT card is the worst case here, not the
-   long one). Lightened for this surface exactly as `--on-plan-*` is lightened against
-   `--on-dark-*`, and for the same reason: a violet ground is brighter than a navy one.
-   Measured 5.1:1 at the worst row and 7.8:1 further down. */
+/* Overdue keeps its own hue rather than the ramp, because it is a STATUS (rule 4). Neither
+   the paper ink (`--miss-deep`, ~2.4:1 on any of these grounds) nor the BOARD's answer
+   travels here — `#f0a09b` is `.wp-settle.board`'s ink at 7.82:1 on `--board`, and every
+   violet ground in this card is far brighter than navy.
+
+   **Retuned 2026-08-17 with the ramp** (§5's amendment). `#ffc4be` was set against the old
+   dark-ward ramp; on the light-theme ramp's far end it measures **4.21:1** and fails. This
+   is the lightest salmon that still reads as one — measured **4.89:1** at the overdue row
+   and 4.65 at the ramp's worst point, against a 4.5 floor. Any lighter and it is white with
+   a pink cast, which stops saying "late" at all; that is the ceiling this value sits under
+   rather than a preference. */
 .prep-lift-body .hero-task-due.late {
-  color: #ffc4be;
+  color: #ffd2cd;
 }

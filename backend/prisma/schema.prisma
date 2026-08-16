@@ -544,10 +544,14 @@ model Task {
   body           String?
   // The deadline as a UTC instant. `dueHasTime` is not derivable from it: a deadline of
   // "Thursday" and one of "Thursday 00:00" are the same instant and different obligations.
-  // No `displayTimezone` — the due zone is DERIVED exactly as an event's is (brief §10),
-  // so there is a zone to state and nothing to pin.
   dueAt          DateTime?
   dueHasTime     Boolean    @default(false)
+  // The zone the deadline was TYPED in (2026-08-17, reversing brief §10's "nothing is
+  // stored per task"). Null = derived through ADR-0107's resolver, which is every task
+  // written before this. Deriving is right until somebody can CHOOSE, and then a resolver
+  // that answers "the zone you will be in when this falls due" renders a wall-clock nobody
+  // typed — which is exactly what `Event.displayTimezone` exists to prevent.
+  displayTimezone String?
   // Null = the group's ("one of us"). A plain column rather than a User relation, like
   // `Event.updatedBy`: the trip's roster is what resolves a name, and a FK here would owe
   // a cascade answer for a case (the assignee's account is deleted) nobody has asked.

@@ -51,11 +51,22 @@ export interface TaskClock {
   primaryZone: string;
 }
 
-/** The zone a deadline means (brief §10) — ADR-0107's resolver with `dueAt` in place of
- *  `now`, so a task due after a zone crossing reads in the zone you will be in when it
- *  falls due rather than the one you are in while looking at it. */
-export function dueZone(dueAt: string, clock: TaskClock): string {
-  return currentZone(Date.parse(dueAt), clock.crossings, clock.primaryZone);
+/** **The zone a deadline means** — the PINNED one when there is one, else ADR-0107's
+ *  resolver with `dueAt` in place of `now` (brief §10, amended 2026-08-17).
+ *
+ *  Deriving it was right while nobody could choose it: a deadline read in the zone you will
+ *  be standing in when it falls due, which is what a traveller means by "Thursday 18:00".
+ *  Once the form can PIN a zone that stops being true — type 09:00 with Tokyo picked and the
+ *  resolver renders 03:00 somewhere else, a wall-clock nobody typed. So a pin wins, and its
+ *  absence still derives, which is every task written before this.
+ *
+ *  **This function is the whole audit.** Both surfaces that ask what zone a deadline means
+ *  come through here — `taskDue` (what a row prints) and `tasksDueSoon` (the band's window)
+ *  — so pinning is honoured everywhere by changing one derivation rather than each caller.
+ *  Counted before the change, not assumed. */
+export function dueZone(task: Pick<Task, 'dueAt' | 'displayTimezone'>, clock: TaskClock): string {
+  if (task.displayTimezone) return task.displayTimezone;
+  return currentZone(Date.parse(task.dueAt!), clock.crossings, clock.primaryZone);
 }
 
 /** Which band a task is in. **Overdue is measured against the instant, "today" against the
@@ -188,7 +199,7 @@ export interface TaskDue {
 
 export function taskDue(task: Task, clock: TaskClock): TaskDue | undefined {
   if (!task.dueAt) return undefined;
-  const zone = dueZone(task.dueAt, clock);
+  const zone = dueZone(task, clock);
   const readerZone = currentZone(clock.nowMs, clock.crossings, clock.primaryZone);
   return {
     day: relativeDayLabel(
@@ -231,7 +242,7 @@ export function tasksDueSoon(
       // (ADR-0191 §6). This is the surface the owner reported it from.
       if (isOnSettledHost(task, settledHosts)) return false;
       if (taskBand(task, clock) === TASK_BAND.OVERDUE) return true;
-      return todayInTz(dueZone(task.dueAt, clock), new Date(task.dueAt)) <= lastDay;
+      return todayInTz(dueZone(task, clock), new Date(task.dueAt)) <= lastDay;
     }),
     clock,
   );

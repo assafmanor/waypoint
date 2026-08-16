@@ -512,9 +512,18 @@ export type TaskHostKey = NoteHostKey;
  *  has no colour left to spend and `important` upgrades to a scale later as a column rather
  *  than a redesign.
  *
- *  **No `displayTimezone`.** A due instant's zone is DERIVED through ADR-0107's existing
- *  resolver exactly as an event's is (brief §10) — nothing is stored per task, so the form's
- *  zone chip states the resolved zone and offers no pin.
+ *  **`displayTimezone` REVERSES brief §10** (owner, 2026-08-17: the zone should be
+ *  selectable in the task form _"the same way as in the event and booking forms"_). §10 had
+ *  the due zone derived through ADR-0107's resolver and nothing stored, so the chip stated a
+ *  zone and offered no pin.
+ *
+ *  Deriving it is right until somebody can CHOOSE it, and then it is the bug
+ *  `Event.displayTimezone` exists to prevent: type 09:00 with Tokyo picked, and a resolver
+ *  that answers "the zone you will be in when this falls due" renders it as 03:00 somewhere
+ *  else — a deadline showing a wall-clock nobody typed. A picked zone has to be stored or it
+ *  is not picked, only borrowed for the arithmetic.
+ *
+ *  Absent = derived, exactly as before, which is what keeps every existing task unchanged.
  *
  *  `dueAt` absent = no deadline, which is a legitimate task and not a half-filled one.
  *  `dueHasTime` is not derivable from `dueAt`: a deadline of "Thursday" and one of
@@ -526,6 +535,10 @@ export const taskSchema = z.object({
   body: z.string().optional(),
   dueAt: z.string().optional(),
   dueHasTime: z.boolean(),
+  /** The zone the deadline was TYPED in, when somebody pinned one. Absent → derived through
+   *  ADR-0107's resolver, which is every task written before this and every one where the
+   *  chip was left alone. `Event.displayTimezone`'s twin, down to the name. */
+  displayTimezone: z.string().optional(),
   /** Absent = the group's ("one of us"), which already covers the "either of these two"
    *  case the brief's §6 refuses to model. Set = delegated. */
   assigneeUserId: idSchema.optional(),

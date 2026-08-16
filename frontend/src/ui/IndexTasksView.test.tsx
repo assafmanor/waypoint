@@ -417,6 +417,11 @@ describe('IndexTasksView', () => {
             body: null,
             dueAt: null,
             dueHasTime: false,
+            // A cleared deadline clears the pinned zone with it (2026-08-17): a zone pinned
+            // to no date is a value nothing can read. Same explicit `null` as its
+            // neighbours, and for the same reason — the sparse patch cannot tell an
+            // untouched field from an emptied one.
+            displayTimezone: null,
             assigneeUserId: null,
             important: false,
           },

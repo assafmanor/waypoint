@@ -546,6 +546,8 @@ export const createTaskSchema = z
      *  form, never from whatever zone the call site happened to hold (ADR-0107 §2). */
     dueAt: z.string().optional(),
     dueHasTime: z.boolean().optional(),
+    /** The zone the deadline was typed in (2026-08-17). Absent → derived, as before. */
+    displayTimezone: timezoneSchema.optional(),
     assigneeUserId: entityIdSchema.optional(),
     important: z.boolean().optional(),
     /** Set only when the row overlays a readiness check (brief §4) — a human dismissing,
@@ -587,6 +589,10 @@ export const updateTaskSchema = z
     body: z.string().nullish(),
     dueAt: z.string().nullish(),
     dueHasTime: z.boolean().optional(),
+    /** `nullish` and not `optional`, for the reason the sparse patch already has one
+     *  `nullish` field: absent = untouched, **`null` = un-pin back to derived**. Without the
+     *  null a pinned zone could be set and never cleared. */
+    displayTimezone: timezoneSchema.nullish(),
     assigneeUserId: entityIdSchema.nullish(),
     important: z.boolean().optional(),
     status: taskStatusSchema.optional(),

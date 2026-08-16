@@ -38,7 +38,6 @@ import {
   taskRowKey,
   type TaskRow,
   taskPreview,
-  tasksDueSoon,
   tickedStatus,
   type TaskClock,
 } from '../lib/tasks';

@@ -185,14 +185,23 @@
      gradient they replace, so light mode does not move. */
   --plan-surface: #6e59d6;
   --plan-surface-2: #5747b4;
-  /* The DEEP end of the plan ramp (ADR-0193 §5) — third in this family, and it
-     obeys the same rule the other two exist for: a surface must not brighten on
-     dark, so the dark value below is deeper rather than lifted the way an
-     accent (--plan-deep) is. A dark VIOLET, not a near-black: the lifted plan
-     hero fades into it over the whole card, and mode identity (ADR-0028) has to
-     survive at the bottom. Its value is derived from --on-plan-faint clearing
-     4.5:1 at the ramp's brightest row, not picked. */
-  --plan-surface-3: #2b2069;
+  /* **The FAR end of the lifted plan hero's ramp** (ADR-0193 §5, amended 2026-08-17 on the
+     owner's report that the lifted card reads too heavy in light theme).
+     
+     It used to be "the deep end" in both themes, and that was the defect: `.prep` itself
+     already ramps WITH the theme — light goes #5747b4 → #6e59d6, i.e. *lighter* downward,
+     while dark goes #332866 → #2a2158, darker — and the lifted card was the one surface
+     darkening in both. So this token follows the theme too: a touch lighter than
+     --plan-surface-2 in light, deeper in dark.
+     
+     ADR-0158 §4's rule still holds and is worth checking rather than assuming: the dark
+     value is DARKER than the light one, so the surface does not brighten on dark.
+     
+     **The light value is a ceiling, not a taste.** The lifted card's ink is the white-alpha
+     --on-plan-* ramp, and white at 0.80 clears 4.5:1 only on a ground below L 0.112. This is
+     #5f4dbf (L 0.107). --plan-surface itself (L 0.153) is already past it — which is why the
+     card cannot simply ramp to the collapsed hero's own brightest violet. */
+  --plan-surface-3: #5f4dbf;
   /* Status mini-palette (distinct from the semantic trio) */
   --ok: #3c9a6b;
   --miss: #c2584e;
