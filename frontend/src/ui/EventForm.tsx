@@ -283,6 +283,9 @@ export function EventForm({
   const errors = useFormErrors<'title' | 'date' | 'time'>();
   const noteId = useId();
   const composer = useNoteComposer();
+  /** Whether the notes section's inline box is showing anything — open, or holding notes
+   *  typed and not yet saved. The section reads its empty line off this (ADR-0192 §2). */
+  const composerActive = composer.open || composer.drafts.length > 0;
   // Tasks typed before the event exists, held until it does (ADR-0191 §7).
   const taskStaging = useTaskStaging();
   const attach = useDocumentAttach();
@@ -1016,7 +1019,8 @@ export function EventForm({
               how `HostTasks` and `DocumentAttachField` beside it already behave. */}
           <HostNotes
             host={{ kind: 'event', id: event?.id, name: event?.title ?? finalTitle }}
-            canAdd={false}
+            onAdd={composer.openNew}
+            composeActive={composerActive}
             composeHint={t.notes.composer.hint}
             compose={<NoteComposer state={composer} id={noteId} />}
           />

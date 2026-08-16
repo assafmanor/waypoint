@@ -222,6 +222,9 @@ export function BookingSheet({
   );
   const [room, setRoom] = useState(draft ? draft.room : initial.room);
   const composer = useNoteComposer();
+  /** Whether the notes section's inline box is showing anything — open, or holding notes
+   *  typed and not yet saved. The section reads its empty line off this (ADR-0192 §2). */
+  const composerActive = composer.open || composer.drafts.length > 0;
   // Tasks typed before the booking exists, held until it does (ADR-0191 §7).
   const taskStaging = useTaskStaging();
   const attach = useDocumentAttach();
@@ -1481,7 +1484,8 @@ export function BookingSheet({
                     plus a `Field`, so an edit headed `פתקים` twice. */}
                 <HostNotes
                   host={{ kind: 'booking', id: booking?.id, name: booking?.title ?? title.value }}
-                  canAdd={false}
+                  onAdd={composer.openNew}
+                  composeActive={composerActive}
                   composeHint={t.notes.composer.hint}
                   compose={<NoteComposer state={composer} id="bs-notes" />}
                 />

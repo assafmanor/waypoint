@@ -1,6 +1,6 @@
 # 0192 — A form has bands, and its content sections have one look
 
-**Status:** Accepted and **built** (2026-08-16). Every number is measured — first off the mockup's rendered DOM, then in the **running app**.
+**Status:** Accepted, **built**, and **amended 2026-08-16** — §2's composer is revealed by `＋ פתק` rather than always open, on the owner's report against the built form. Read that amendment before §2. Every number is measured — first off the mockup's rendered DOM, then in the **running app**.
 **Date:** 2026-08-16
 **Design reference:** [`mockups/a-form-has-bands-and-one-content-section-v1.html`](../../mockups/a-form-has-bands-and-one-content-section-v1.html) — §1 the content band · §2 the five bands · §3 the cost of moving `סוג`. **Promoted by this ADR.**
 
@@ -38,6 +38,18 @@ Reading the code before drawing anything changed both:
 `t.notes.composer.labelMore` is **deleted**. `label` survives for `DocumentUploadSheet` and `MapPlaceForm`, which keep a captioned `Field` — see the Consequences.
 
 **A section with a composer has no empty-state line.** `אין פתקים על זה` directly above the box that invites you to write one states the obvious and costs a line; the composer _is_ the empty state. That is ADR-0174 §5's argument for the documents control, applied to its neighbour.
+
+**Amended 2026-08-16, hours after it shipped — the box is REVEALED by `＋ פתק`, not permanent.** Owner, on the built form: _"notes looks really bad, they should look and behave the same as tasks (+ פתק)"_, and then the half that decides the shape of the fix: _"clicking the `＋ פתק` should open a new inline task, not the entire form"_.
+
+What shipped had the section right and the control wrong. The tasks section is a header, a `＋ משימה` and `אין משימות`; the notes section was a header and a **permanently open textarea**, which is why it read as broken rather than as quiet. Three things follow, and they are one decision:
+
+- **The header carries `＋ פתק`, and it reveals the inline box** — never `NoteSheet`. That is what keeps §2's own reasoning below intact: a note is still written on the way, and the entry mechanism is still not a second form.
+- **The box has no `＋` of its own** on a host form. One control cannot sit in the header and again six pixels beneath it, so `openNew` commits what is in the box and opens a fresh one — the same press starts the first note and the next.
+- **Closed, the section reads `אין פתקים על זה`**, exactly as the tasks section reads `אין משימות`. §2's original "the composer is the empty state" was true only while the box was always on screen; with it revealed, that line is the empty state again and the box replaces it.
+
+**And the defect underneath the report was mine, not the design's.** §2 below records that the mockup's first draft dropped the composer's `Field` **shell** along with its label, stripping `field.css`'s border, padding and `min-height: 56px` — and the BUILD then did exactly the same thing at the call site. The textarea rendered as a bare line. The shell now lives **inside `NoteComposer`**, because a shell a host has to remember is a shell a host forgets.
+
+**`standalone` names the surfaces this does not reach.** `DocumentUploadSheet` and `MapPlaceForm` have no notes section and therefore no header control, so their box shows from the start and keeps its own `＋`. One flag rather than two, because the two behaviours are not independent: a surface that needs the box revealed for it also needs a way to start the next one. And the focus is bound to the false→true **transition**, not to `autoFocus` — a spec pins that the Map card must not raise the keyboard on arrival.
 
 **What this deliberately does NOT change is how a note is written.** The owner's word was "preferably to the tasks style", and the alignment is of the **chrome**, not the entry mechanism: the composer stays inline and ADR-0152 §6b stands. ADR-0191 §7 already stated the distinction — a task has a deadline and an assignee, so a title-only box produces systematically weak tasks and it needs the editor; **a note is its body**, and a free box omits nothing. Making a note cost a sheet would tax the common case (one note) to make two components match.
 

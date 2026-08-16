@@ -139,6 +139,19 @@ import { setSimulatedNow } from '../lib/useClock';
 import { t } from '../i18n/he';
 import { buildHostContextIndex } from '../lib/host-context';
 
+/** **The notes box is revealed by `＋ פתק`** (ADR-0192 §2's 2026-08-16 reversal), so a test
+ *  that types a note presses it first — the same gesture a person makes. Module scope because
+ *  the leg and round-trip blocks below write notes too, and a helper per describe is how two
+ *  of them end up pressing different things. */
+const openNoteBox = () => {
+  const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
+  fireEvent.click(section.querySelector('.add') as HTMLElement);
+};
+const composer = () => {
+  if (!document.querySelector('.note-compose-in')) openNoteBox();
+  return document.querySelector('.note-compose-in') as HTMLTextAreaElement;
+};
+
 // **The sheet is stepped now** (ADR-0155 §5): `שמירה` lives on the LAST step, and the
 // primary is `הבא` until then. These are the whole diff to this file — every assertion
 // below is the one it always made, taken on the step that owns the field.
@@ -412,7 +425,6 @@ describe('BookingSheet — notes written on the way', () => {
   // a note is committed, so a placeholder lookup would find nothing on the second one.
   // The composer rides the last step, with the fields shared across the whole form
   // (ADR-0155 §4) — so every test here names the booking, walks to the end, and writes.
-  const composer = () => document.querySelector('.note-compose-in') as HTMLTextAreaElement;
 
   it('writes no note when the composer was never touched', async () => {
     indexVerbs.createBooking.mockResolvedValue({ id: 'b-new' });
@@ -446,7 +458,10 @@ describe('BookingSheet — notes written on the way', () => {
     nameIt();
     toLastStep();
     fireEvent.change(composer(), { target: { value: 'הראשון' } });
-    fireEvent.click(screen.getByLabelText(t.notes.composer.add));
+    // **`＋ פתק` starts the next one** (ADR-0192 §2's reversal): the box has no `＋` of its own
+    // on a host form, so the header's control both reveals the first box and commits it to
+    // open a second. This used to press a button inside the box.
+    openNoteBox();
     fireEvent.change(composer(), { target: { value: 'השני' } });
     save();
 
@@ -476,7 +491,9 @@ describe('BookingSheet — notes written on the way', () => {
   it('writes nothing at all when the booking itself is refused', () => {
     openHotel();
     next();
-    expect(composer()).toBeNull();
+    // The whole notes SECTION is on the last step, so a refused form never reaches it — the
+    // section is absent, not merely closed, which is why this asks for it rather than the box.
+    expect(document.querySelector('.note-sec:not(.tsk-sec)')).toBeNull();
     expect(screen.queryByText(t.common.save)).toBeNull();
     expect(indexVerbs.createBooking).not.toHaveBeenCalled();
     expect(noteVerbs.createNote).not.toHaveBeenCalled();
@@ -528,12 +545,12 @@ describe('BookingSheet — notes written on the way', () => {
       const section = document.querySelector('.note-sec:not(.tsk-sec)') as HTMLElement;
       expect(section).not.toBeNull();
       expect(section.textContent).toContain('קוד הכספת 4417');
-      // ONE way to add, and it is the box below — the section's own `＋ פתק` would open a
-      // second sheet over a form already asking for a save.
-      expect(section.querySelector('.add')).toBeNull();
-      expect(
-        section.compareDocumentPosition(composer()) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
+      // **ONE way to add, and it is the header's `＋ פתק`** (ADR-0192 §2's reversal) — which
+      // reveals the box below rather than opening a second sheet over a form already asking
+      // for a save.
+      expect(document.querySelector('.note-compose-in')).toBeNull();
+      expect(section.querySelector('.add')).not.toBeNull();
+      expect(section.contains(composer())).toBe(true);
     });
 
     it('shows only THIS booking’s notes, not another host’s', () => {
@@ -815,7 +832,7 @@ describe('BookingSheet — a round trip is one save and two bookings', () => {
     next();
     fillOut('2026-07-28', '11:00', '2026-07-28', '18:00');
     next();
-    fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
+    fireEvent.change(composer(), {
       target: { value: 'מושב ליד החלון בשתי הטיסות' },
     });
     save();
@@ -915,7 +932,7 @@ describe('BookingSheet — three steps', () => {
     expect(stepLabel()).toBe(t.index.form.stepDetails);
     expect(screen.getByText(t.index.sheet.codeLabel)).toBeTruthy();
     expect(screen.getByText(t.index.sheet.roomLabel)).toBeTruthy();
-    expect(document.querySelector('.note-compose-in')).toBeTruthy();
+    expect(composer()).toBeTruthy();
     expect(document.querySelector('.wf')).toBeNull();
   });
 
@@ -1126,7 +1143,7 @@ describe('BookingSheet — a stop makes one save a chain of bookings', () => {
     next();
     fillLeg('2026-07-19', '08:50', '2026-07-19', '11:35');
     next();
-    fireEvent.change(document.querySelector('.note-compose-in') as HTMLTextAreaElement, {
+    fireEvent.change(composer(), {
       target: { value: 'הכבודה עוברת ישירות' },
     });
     save();

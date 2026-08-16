@@ -60,7 +60,7 @@ export function DocumentUploadSheet({
   const [type, setType] = useState<DocumentType>();
   const headType = type ?? DOCUMENT_TYPE.OTHER;
   const [title, setTitle] = useState('');
-  const composer = useNoteComposer();
+  const composer = useNoteComposer({ standalone: true });
   // One refusal shape for the whole app (ADR-0150): the file field is marked,
   // nudged and scrolled to, rather than quietly captioned.
   const errors = useFormErrors<'file'>();
