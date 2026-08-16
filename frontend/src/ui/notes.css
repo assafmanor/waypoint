@@ -30,9 +30,16 @@
 
    The negative margin cancels the title flex's `row-gap: var(--space-1)`, which is right
    between a title and a chip and one notch loose under a title whose line-height already
-   carries the separation. */
+   carries the separation. **`* + ` and not a bare child selector**: a body-ONLY note's words
+   are the title line, with no sibling above them and therefore no gap to cancel, so an
+   unscoped rule took 2px off every row on the screen that this change has no business
+   touching (measured: 76.4 → 74.4px). The mockup reported that cost as zero because both of
+   its frames carried the proposed rule — a before/after pair cannot see a regression common
+   to both halves. */
 .wp-listrow-title > .note-body-line {
   flex: 1 0 100%;
+}
+.wp-listrow-title > * + .note-body-line {
   margin-top: -2px;
 }
 

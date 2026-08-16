@@ -70,6 +70,18 @@ Worth writing down because each produced a confident wrong number that did not l
 
 The general form: **when a number surprises you, measure the box.**
 
+## And a fifth, which is about the mockup format itself
+
+Caught after the PR was open, by reading an e2e spec that measures `.wp-listrow-title`'s height.
+
+The proposal's negative margin — there to cancel the title flex's `row-gap` under a title — was written as `.wp-listrow-title > .note-body-line`, which **also matches a body-only note**, where the words _are_ the title line and there is no sibling above them and so no gap to cancel. It was quietly taking 2px off every body-only row on the screen: **76.4 → 74.4px**, on the one note shape this change had no business touching.
+
+**The mockup measured that cost as 0px, and its table was not lying.** Both of its frames — the "today" one and the "בהצעה" one — render body-only notes through the same element, and the file's single PROPOSED block applies to the whole page. So the regression was present in the baseline as well as in the proposal, and the delta between them was genuinely zero.
+
+That is a property of the format, not of this file: **a before/after pair cannot see a regression common to both halves.** The `0px` row was even written as an assertion ("must be 0, actually 0") which made it read as a guard when it was measuring two contaminated numbers against each other. What catches it is measuring against the **shipped** stylesheet rather than against the other frame — which is what the verification harness does, and is why it exists.
+
+Fixed by scoping the margin to the case it is for, with the adjacent-sibling combinator: `.wp-listrow-title > * + .note-body-line`. Body-only rows are back to 76.4px; a titled row keeps its 92.4px.
+
 ## Verification
 
 - `mockups/notes-long-note-row-v1.html` rendered at 360/390 × light/dark, no console errors.
