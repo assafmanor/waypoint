@@ -106,6 +106,33 @@ Where ADR-0188 §4/§5/§7 get built and where the brief's §B survives contact 
 
 `.checklist` + the same rows under a `sec-title`. **Manual tasks only** — an automatic task's deadline is departure, so mid-trip every unmet check would sit there permanently overdue. Capped at 3 with an overflow row into the screen; **absent entirely when nothing is due** (ADR-0045: no empty shell). Depends on nothing but phase 1.
 
+## Phase 3r — the Homes catch up with the screen
+
+**Three gaps the owner found on a device (2026-08-16), grouped as one phase because they are
+one cause: the Homes were built before the screen's rules settled, and never re-read them.**
+None is a design question — the screen already decided each, and these are the surfaces that
+did not follow. Cheap, and worth doing before phase 4 rather than after, since phase 4 adds a
+fourth surface that would inherit the same drift.
+
+**1. Both Homes order tasks differently from the Index, and it is a real divergence.** The
+Index orders through `orderTaskRows` — _urgent (important OR overdue) → the checks → the rest
+in urgency order_ (ADR-0190 §2, the owner's own revision). Trip Home's band does not: it runs
+`tasksDueSoon` → `sortTasks`, which is _overdue → today → later_ with `important` lifting only
+**within** its band. So an important task due in three days sits at the **top of the Index**
+and **below everything due today** on Trip Home. The same tasks, two orders. Plan Home already
+uses `orderTaskRows`; the band does not, and the fix is to stop having two answers.
+
+**2 & 3. Plan Home's completed collapse only ever contains AUTOMATIC tasks.** It is
+`automatic.filter((a) => a.done)` — a completed _manual_ task cannot appear there, and the
+`הצג שהושלמו (N)` count counts only checks. So the section reads as "completed" while
+answering about half the noun, which is the same one-noun failure ADR-0188 §4 and ADR-0190 §1
+have each already corrected on other surfaces. The completed half should be the same
+resolution the open half is.
+
+**Watch when building it:** the band is capped at `TRIP_HOME_TASK_BAND_CAP` and the cap is
+applied _after_ the order, so changing the order changes **which three rows show** — that is
+the point, and it should be measured rather than assumed.
+
 ## Phase 4 — hosts
 
 The five FKs wired: marks on host rows, inline composers, the way in. **The underestimated one** — five hosts × (create, read). Two rule-8 obligations land here: generalise the three host-cascade appliers (see correction 1 — ask if it is not a small extraction), and reuse `lib/note-host-target.ts` by **widening its name**, never copying its table. **Owes the brief's §F designed first** — the mark on a host row, on lines ADR-0152 §6c already measured as full, including whether a task and a note can mark the same row.
