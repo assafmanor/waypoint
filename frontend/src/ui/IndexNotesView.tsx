@@ -297,11 +297,23 @@ function NoteLi({
   const unsynced = useUnsynced(note.id);
   const author = users.find((u) => u.id === note.createdBy)?.displayName;
 
-  // A note with a title AND a body shows the title and DEMOTES the body to the meta line.
-  // Printing both is the same sentence twice — the failure ADR-0151's tile amendment paid
-  // for once already.
+  // **A note with a title AND a body shows both, and the body is a line of its OWN**
+  // (ADR-0153 §4's 2026-08-16 amendment). It used to drop into the meta line, which is
+  // where the owner's two reports came from and they were one defect: `.wp-listrow-meta`
+  // is a shared `ListRow` class with neither a clamp nor a `white-space`, so a CLOSED row
+  // printed the whole body at meta size, and the line breaks the author typed to make a
+  // long note readable collapsed to spaces. §4's rule was never wrong — printing the body
+  // twice is still refused — but "do not repeat it" never meant "put it in the meta line".
+  //
+  // `.note-body-line` is the element a body-only note already uses: it clamps to two, it
+  // honours the composer's newlines, and it unclamps when the row opens. So both shapes of
+  // note now read through one element, and the body's structure survives on every surface
+  // that shows it.
   const titleLine = note.title ? (
-    note.title
+    <>
+      <span>{note.title}</span>
+      {note.body && <span className="note-body-line">{note.body}</span>}
+    </>
   ) : note.body ? (
     <span className="note-body-line">{note.body}</span>
   ) : (
@@ -321,7 +333,6 @@ function NoteLi({
           </span>{' '}
         </>
       )}
-      {note.title && note.body ? `${note.body} · ` : ''}
       {author ? `${author} · ` : ''}
       {noteWhen(note.createdAt, now.getTime())}
     </>
@@ -332,7 +343,7 @@ function NoteLi({
   return (
     <>
       <ListRow
-        className={open ? 'is-open' : undefined}
+        className={'note-row' + (open ? ' is-open' : '')}
         icon={glyph}
         onOpen={onToggle}
         openLabel={noteTitleText(note)}

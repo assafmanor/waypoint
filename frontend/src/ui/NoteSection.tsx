@@ -82,7 +82,17 @@ export function NoteSection({
                   className="note-item-b"
                   onClick={() => setOpenId((current) => (current === note.id ? null : note.id))}
                 >
-                  {noteTitleText(note)}
+                  {/* **A titled note shows its title AND its body** (ADR-0152 §6's 2026-08-16
+                      amendment). `noteTitleText` is `title || body`, so until now a note with
+                      both showed only its title HERE — and since the notes screen printed the
+                      body into a meta line that collapses newlines, a long structured note had
+                      no surface at all that rendered it as written. This one does: a line here
+                      does not clamp, and `.note-item-b` already carries `white-space: pre-wrap`,
+                      so the breaks the author typed to make it readable land whole.
+                      `noteTitleText` still answers the untitled cases, including the url-only
+                      fallback it is the only holder of. */}
+                  {note.title && <span className="note-item-t">{note.title}</span>}
+                  {note.title ? note.body : noteTitleText(note)}
                 </button>
                 <span className="note-item-m">
                   {[
