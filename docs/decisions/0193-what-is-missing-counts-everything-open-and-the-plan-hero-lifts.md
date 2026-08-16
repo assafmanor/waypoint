@@ -185,7 +185,38 @@ The first two are `orderTaskRows`' own first two groups, so the lift and the scr
 
 The card is **content-sized and bounded**, one scroller between a pinned head and no foot — ADR-0148 §1's shape, third consumer. Measured at **543.8px** against a 640px screen, so the common case scrolls inside its own box rather than becoming a screen.
 
-### 5. Violet all the way through, on ONE gradual ramp — which costs a surface token and a NAME for the ink that surface already had
+### 5. Violet all the way through, on ONE gradual ramp
+
+> **AMENDED 2026-08-17 — the ramp follows the THEME** (owner: in light theme _"the gradient
+> should become lighter instead of darker to fit the theme better"_).
+>
+> **`.prep` already did this and the lifted card was the one surface that did not.** Light
+> goes `#5747b4 → #6e59d6` — _lighter_ downward — while dark goes `#332866 → #2a2158`,
+> darker. The lifted card darkened toward near-black in both, which is why it read as a
+> dark-mode artefact sitting in a light theme. `--plan-surface-3` follows the theme now:
+> `#5f4dbf` in light (a touch lighter than `-2`), `#1a1442` in dark. ADR-0158 §4 still holds
+> — the dark value is the darker of the two, so the surface does not brighten on dark.
+>
+> **The light value is a ceiling rather than a taste, and the number is the whole argument.**
+> White-alpha ink at 0.80 clears 4.5:1 only on a ground below **L 0.112**. `--plan-surface`
+> itself is **L 0.153** — so the collapsed hero's own brightest violet is already past the
+> limit, and the card cannot simply ramp to it. `#5f4dbf` is L 0.107, just inside. Measured
+> worst ink in light: **4.65:1**; in dark **9.07:1**.
+>
+> **The middle stop and the px positions are gone**, and that is a simplification the change
+> earns rather than a shortcut. Both existed for a ramp that crossed from bright violet to
+> near-black: px stops kept a row's ground independent of list length, because a percentage
+> ramp put the top rows on the bright end when the card was short. That hazard no longer
+> exists — light spans L 0.098→0.107 and dark 0.031→0.013, so every point on either ramp is
+> inside the band the ink survives. **Percentages are safe only while both ends are**; keep
+> that if the ramp is ever widened again.
+>
+> The overdue ink retunes with it: `#ffc4be` was set against the dark-ward ramp and measures
+> **4.21:1** on the light one. `#ffd2cd` is the lightest salmon that still reads as one —
+> 4.89:1 at the overdue row. Any lighter is white with a pink cast, which stops saying
+> "late".
+
+— which costs a surface token and a NAME for the ink that surface already had
 
 Owner's call in two steps, and the second is what shaped this section: _"Definitely all violet. Maybe add some gradient that makes it become darker or something."_ Then, against the first drawing: _"Much much much more gradual, and like violet to dark violet"_ · _"the gradient should be much more subtle, much more gradual."_
 

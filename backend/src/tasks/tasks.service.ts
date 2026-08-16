@@ -49,6 +49,7 @@ export class TasksService {
               body: input.body,
               dueAt: input.dueAt ? new Date(input.dueAt) : null,
               dueHasTime: input.dueHasTime ?? false,
+              displayTimezone: input.displayTimezone,
               assigneeUserId: input.assigneeUserId,
               important: input.important ?? false,
               derivedKey: input.derivedKey,
@@ -116,6 +117,10 @@ export class TasksService {
               dueAt: input.dueAt ? new Date(input.dueAt) : null,
             }),
             dueHasTime: input.dueHasTime,
+            // `null` un-pins back to derived, which is why the schema types it `nullish`
+            // and why this is a plain assignment: `undefined` leaves it alone, `null`
+            // clears it. Same shape `dueAt` above needs for the same reason.
+            displayTimezone: input.displayTimezone,
             assigneeUserId: input.assigneeUserId,
             important: input.important,
             ...settlement(input.status, actorUserId),

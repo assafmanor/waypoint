@@ -19,7 +19,7 @@
 // mistake that renders an event at a different time than it was typed at — and the chip is
 // read-only, because `Task` has no `displayTimezone` column and §10 says nothing is stored
 // per task. There is a zone to state and nothing to correct.
-import { useId, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import type { CreateTaskInput, Task, User } from '@waypoint/shared';
 import { authoringZone } from '../lib/places';
 import { useTrip } from '../state/trip-state';
@@ -56,6 +56,10 @@ export interface TaskDraft {
   body: string | null;
   dueAt: string | null;
   dueHasTime: boolean;
+  /** The pinned authoring zone, or `null` to un-pin back to derived. Typed `| null` for the
+   *  reason the three fields above are: this is the shape the sparse PATCH needs, and a
+   *  `string | undefined` here is what let an emptied field silently mean "untouched". */
+  displayTimezone: string | null;
   assigneeUserId: string | null;
   important: boolean;
 }
@@ -69,6 +73,7 @@ export function createTaskInput(draft: TaskDraft): CreateTaskInput {
     ...(draft.body !== null && { body: draft.body }),
     ...(draft.dueAt !== null && { dueAt: draft.dueAt }),
     dueHasTime: draft.dueHasTime,
+    ...(draft.displayTimezone !== null && { displayTimezone: draft.displayTimezone }),
     ...(draft.assigneeUserId !== null && { assigneeUserId: draft.assigneeUserId }),
     important: draft.important,
   };
@@ -104,9 +109,15 @@ export function TaskSheet({
   // The deadline is held as the two things a person types — a calendar day and an optional
   // wall-clock — and becomes an instant only on save. Read back through the SAME resolver it
   // was written with, so an edit opens on the time it was typed at (ADR-0107 §2).
-  const initialZone = task?.dueAt
-    ? authoringZone({}, { date: todayInTz(trip.timezone, new Date(task.dueAt)) }, zoneEvidence)
-    : trip.timezone;
+  // **A pinned zone wins over the derivation, on the way in as on the way out** — otherwise
+  // an edit re-derives and re-renders the deadline at a wall-clock the author never typed,
+  // which is the whole reason the pin is stored (ADR-0193's 2026-08-17 amendment).
+  const [override, setOverride] = useState<string | null>(task?.displayTimezone ?? null);
+  const initialZone =
+    task?.displayTimezone ??
+    (task?.dueAt
+      ? authoringZone({}, { date: todayInTz(trip.timezone, new Date(task.dueAt)) }, zoneEvidence)
+      : trip.timezone);
   const [date, setDate] = useState(task?.dueAt ? todayInTz(initialZone, new Date(task.dueAt)) : '');
   const [time, setTime] = useState(
     task?.dueAt && task.dueHasTime ? isoToTimeInput(task.dueAt, initialZone) : '',
@@ -114,7 +125,22 @@ export function TaskSheet({
 
   // Live, because both halves feed it: a date decides which itinerary segment the deadline
   // falls in, and a time decides it near a crossing.
-  const zone = date ? authoringZone({}, { date, time }, zoneEvidence) : trip.timezone;
+  const zone = override ?? (date ? authoringZone({}, { date, time }, zoneEvidence) : trip.timezone);
+
+  /** What the picker offers first: the zones this trip actually touches, most relevant
+   *  first — never the raw IANA set alone.
+   *
+   *  Built from `zoneEvidence`, which the sheet already holds, and NOT from a `places` prop
+   *  the way `EventForm` does. That is not a shortcut: an event has a place of its own, so
+   *  its form reads the place list to offer the zone that place implies; a task has none, so
+   *  the only zones worth surfacing are the trip's own — its primary and the ones its
+   *  itinerary crosses. Reaching for `places` here added a dependency this component does
+   *  not need and broke two suites whose `useTrip` mock had no reason to provide one. */
+  const suggestedZones = useMemo(() => {
+    const zones = [zone, zoneEvidence.primaryZone ?? trip.timezone, trip.timezone];
+    for (const p of zoneEvidence.places ?? []) if (p.timezone) zones.push(p.timezone);
+    return [...new Set(zones.filter(Boolean))];
+  }, [zone, trip.timezone, zoneEvidence]);
 
   const save = () => {
     const trimmed = title.trim();
@@ -133,6 +159,10 @@ export function TaskSheet({
       // never typed, so nothing downstream mistakes the instant for one the user chose.
       dueAt: date ? zonedIso(date, time || DAY_DEADLINE_HHMM, zone) : null,
       dueHasTime: Boolean(date && time),
+      // `null` un-pins back to derived — the same sparse-patch grammar `body` and `dueAt`
+      // use two lines up, and the reason `updateTaskSchema` types this `nullish`. Sent only
+      // when there IS a deadline: a zone pinned to nothing is a value nothing can read.
+      displayTimezone: date ? override : null,
       assigneeUserId: assignee === NOBODY ? null : assignee,
       important,
     });
@@ -232,7 +262,19 @@ export function TaskSheet({
           </div>
           {/* Stated, not correctable — see the header. Only once a time is typed: a
               date-only deadline has no wall-clock a zone could move. */}
-          {date && time && <ZoneChip value={zone} />}
+          {date && time && (
+            <ZoneChip
+              value={zone}
+              // Selectable now (owner, 2026-08-17: the same way as the event and booking
+              // forms). `EventForm` withholds `onChange` once a PLACE decides the zone,
+              // because correcting it there is the honest edit — a task has no place, so
+              // there is nothing that could out-rank the pin and the chip is always
+              // offered.
+              onChange={setOverride}
+              pinned={override != null}
+              suggested={suggestedZones}
+            />
+          )}
         </Field>
 
         <Field label={t.tasks.sheet.assigneeLabel}>
