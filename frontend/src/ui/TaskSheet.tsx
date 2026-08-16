@@ -150,7 +150,17 @@ export function TaskSheet({
 
   return (
     <Sheet title={task ? t.tasks.sheet.editTitle : t.tasks.sheet.createTitle} onClose={onClose}>
-      <div className="task-sheet">
+      {/* **`modal-form` is what makes this sheet reachable** (owner, 2026-08-16: the editor is
+          "cut off from the top"). `Sheet` bottom-anchors its card and caps NOTHING, so a form
+          taller than the viewport grows past the top edge with no scroll to get back — and a
+          phone keyboard is exactly what makes the viewport short enough. Measured at 401px of
+          viewport: the card rendered 545px tall starting at −144, `max-height: none`, nothing
+          scrollable, and the title input at −62.
+
+          `.modal-form` is the shipped answer to precisely this (`form-actions.css`: "the
+          scroll container the sticky action bar pins to") and `EventForm` has used it since
+          U-01. This is a second consumer, not a new mechanism. */}
+      <div className="task-sheet modal-form">
         <Field label={t.tasks.sheet.titleLabel} htmlFor={titleId} {...errors.field('title')}>
           <input
             id={titleId}
