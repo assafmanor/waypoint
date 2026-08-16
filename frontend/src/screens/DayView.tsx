@@ -109,6 +109,7 @@ import { placeLabelOf, type PlaceLabels } from '../lib/place-label';
 import { usePlaceLabels } from '../state/place-labels';
 import { noteCountFor, hostCountForContext, noteCountsByHost } from '../lib/notes';
 import { openTaskCountsByHost } from '../lib/tasks';
+import { useSettledHosts } from '../ui/HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { MaybeCard, MaybeMoreCard } from '../ui/domain/MaybeCard';
@@ -390,7 +391,11 @@ export function DayView() {
   const zoneCtx = dayZoneContext(activeDate, zoneEvidence);
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
-  const taskCounts = useMemo(() => openTaskCountsByHost(tasks), [tasks]);
+  const settledHosts = useSettledHosts();
+  const taskCounts = useMemo(
+    () => openTaskCountsByHost(tasks, settledHosts),
+    [tasks, settledHosts],
+  );
   const docCounts = useMemo(
     () => attachmentCountsByHost(documentAttachments),
     [documentAttachments],

@@ -66,6 +66,7 @@ import { useFormErrors, type FieldProblem } from './primitives/useFormErrors';
 import { NoteComposer, useNoteComposer } from './NoteComposer';
 import { DocumentAttachField, useDocumentAttach, writeStagedAttachments } from './DocumentAttach';
 import { HostNotes } from './HostNotes';
+import { HostTasks } from './HostTasks';
 import { RouteField } from './domain';
 
 /** **The form's own state, as one blob** (ADR-0134 §2). A form is a `Modal` with local
@@ -944,6 +945,15 @@ export function EventForm({
             host={event ? { kind: 'event', id: event.id } : undefined}
           />
 
+          {/* **Tasks on the event form** (ADR-0191 §7). `EventForm` mounted `HostNotes` and a
+              composer and had NOTHING for tasks at all — not a read, not a way in — which is
+              a gap rather than a decision, and it is where the owner's "I'm not sure where
+              tasks are added to events" came from.
+
+              `quiet` because a host form is **not the main add point** (owner's call): the
+              read surfaces are where you normally attach a task, and the form's control is
+              there for the one thought that arrives while you are typing the event. */}
+          {event && <HostTasks host={{ kind: 'event', id: event.id, name: event.title }} quiet />}
           {event && (
             <HostNotes host={{ kind: 'event', id: event.id, name: event.title }} canAdd={false} />
           )}

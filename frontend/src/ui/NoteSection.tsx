@@ -72,29 +72,37 @@ export function NoteSection({
         ) : (
           notes.map((note) => (
             <div className={'note-item' + (openId === note.id ? ' is-open' : '')} key={note.id}>
-              <button
-                type="button"
-                className="note-item-b"
-                onClick={() => setOpenId((current) => (current === note.id ? null : note.id))}
-              >
-                {noteTitleText(note)}
-              </button>
-              <span className="note-item-m">
-                {[
-                  users.find((u) => u.id === note.createdBy)?.displayName,
-                  noteWhen(note.createdAt, now.getTime()),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                {inheritedFrom?.(note) && <span className="note-from">{inheritedFrom(note)}</span>}
+              {/* The shared leading cell (ADR-0191 §5, reversed). Empty here: a note's leading
+                  element is the rule `.note-item-lead::before` paints, where a task's is its
+                  tick. Both texts then start at `--sec-lead`. */}
+              <span className="note-item-lead" aria-hidden="true" />
+              <span className="note-item-main">
+                <button
+                  type="button"
+                  className="note-item-b"
+                  onClick={() => setOpenId((current) => (current === note.id ? null : note.id))}
+                >
+                  {noteTitleText(note)}
+                </button>
+                <span className="note-item-m">
+                  {[
+                    users.find((u) => u.id === note.createdBy)?.displayName,
+                    noteWhen(note.createdAt, now.getTime()),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  {inheritedFrom?.(note) && (
+                    <span className="note-from">{inheritedFrom(note)}</span>
+                  )}
+                </span>
+                {openId === note.id && (
+                  <NoteOpenFoot
+                    url={note.url}
+                    urlIsTheTitle={!note.title && !note.body}
+                    onEdit={() => onEdit(note)}
+                  />
+                )}
               </span>
-              {openId === note.id && (
-                <NoteOpenFoot
-                  url={note.url}
-                  urlIsTheTitle={!note.title && !note.body}
-                  onEdit={() => onEdit(note)}
-                />
-              )}
             </div>
           ))
         )}

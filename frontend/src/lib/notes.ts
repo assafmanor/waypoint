@@ -151,7 +151,13 @@ export function buildNoteHosts(sources: NoteHostSources): Map<string, NoteHostRe
  *  cache, or a peer's delete mid-render. Such a note reads as GENERAL (no chip) rather than
  *  showing an empty chip or a placeholder name, because "we don't know what this is about"
  *  is exactly what a general note looks like and it is the truthful degradation. */
-export function noteHost(note: Note, hosts: Map<string, NoteHostRef>): NoteHostRef | undefined {
+/*  **Widened from `Note` to `HostedRow`** (ADR-0191 §8): it only ever read the five FKs, and a
+ *  task carries the same five — so the tasks screen's host chip is this function rather than a
+ *  copy of it. The same extraction `isHostedBy` and `dropHostedForHostChange` already took. */
+export function noteHost(
+  note: HostedRow,
+  hosts: Map<string, NoteHostRef>,
+): NoteHostRef | undefined {
   for (const [kind, field] of Object.entries(NOTE_HOST_FIELD) as [NoteHostKind, NoteHostKey][]) {
     const id = note[field];
     if (id) return hosts.get(`${kind}:${id}`);

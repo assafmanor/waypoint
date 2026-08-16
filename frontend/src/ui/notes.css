@@ -223,6 +223,13 @@
    `.bk-facts` is the sibling it sits under on a booking. */
 .note-sec {
   margin-top: var(--space-4);
+  /* The leading column BOTH sections' rows are measured from — a note's 2px rule and a task's
+     tick occupy the same cell, which is what makes their texts start at the same x. Declared
+     on the section rather than in `tokens.css`: it is this family's geometry, not the app's.
+     `--sec-tick` is the tick's PAINT; its touch target is an `::after` that reaches 44px
+     regardless, so this number can move without the control falling under ADR-0017's floor. */
+  --sec-lead: 26px;
+  --sec-tick: 20px;
 }
 .note-sec-h {
   display: flex;
@@ -256,10 +263,43 @@
   width: 13px;
   height: 13px;
 }
+/* **ONE ROW SHAPE FOR BOTH SECTIONS ON A SURFACE** (ADR-0191 §5, reversed 2026-08-16 on an
+   owner report: "notes and tasks look totally different and have a different allignment").
+   Phase 4 gave tasks a `ListRow`, whose lead column pushed the task's text 40px past the
+   note's — measured in the running app at x=276 against x=316 on the same 31→330 box. The
+   two sections share this grid instead, so a leading control costs the SAME inset on both
+   and neither text moves relative to the other.
+
+   The lead cell holds a note's 2px rule or a task's tick. `--sec-lead` is the one number:
+   wide enough for the tick, and it is what both texts are measured from. */
 .note-item {
-  border-inline-start: 2px solid var(--line);
-  padding-inline-start: var(--space-3);
+  display: grid;
+  grid-template-columns: var(--sec-lead) 1fr;
+  align-items: start;
   margin-bottom: var(--space-3);
+}
+.note-item-lead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+}
+/* A note's leading element is the rule it always had, now living in the shared cell rather
+   than on the row's own border. `auto` on the start side keeps it against the text, exactly
+   where `border-inline-start` put it. */
+.note-item:not(.tsk-row) .note-item-lead::before {
+  content: '';
+  width: 2px;
+  align-self: stretch;
+  background: var(--line);
+  border-radius: 1px;
+  margin-inline-start: auto;
+}
+/* The row's content cell. It exists so the open foot and the meta line stack under the body
+   rather than beside the lead, which a two-cell grid would otherwise do to every child. */
+.note-item-main {
+  display: block;
+  min-width: 0;
 }
 .note-item-b {
   display: block;

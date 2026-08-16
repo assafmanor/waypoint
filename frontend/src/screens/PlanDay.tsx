@@ -162,6 +162,7 @@ import { MaybeManageSheet } from '../ui/MaybeManageSheet';
 import { SlotFillSheet } from '../ui/domain/SlotFillSheet';
 import { noteCountFor, hostCountForContext, noteCountsByHost } from '../lib/notes';
 import { openTaskCountsByHost } from '../lib/tasks';
+import { useSettledHosts } from '../ui/HostTasks';
 import { attachmentCountForContext, attachmentCountsByHost } from '../lib/attachments';
 import { resolveHostContext, type HostContextIndex } from '../lib/host-context';
 import { PlaceBadge } from '../ui/domain/PlaceBadge';
@@ -300,7 +301,11 @@ export function PlanDay() {
   // Built once per note-list change rather than filtered per tile (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
-  const taskCounts = useMemo(() => openTaskCountsByHost(tasks), [tasks]);
+  const settledHosts = useSettledHosts();
+  const taskCounts = useMemo(
+    () => openTaskCountsByHost(tasks, settledHosts),
+    [tasks, settledHosts],
+  );
   // Its twin for attachments (ADR-0174 §1) — `attachmentCountsByHost` shipped with
   // ADR-0173 and had no call site at all until this row.
   const docCounts = useMemo(
