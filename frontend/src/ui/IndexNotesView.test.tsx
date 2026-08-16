@@ -202,15 +202,41 @@ describe('IndexNotesView (ADR-0153)', () => {
       expect(row.classList.contains('note-body-line')).toBe(true);
     });
 
-    // Printing both is the same sentence twice — ADR-0151's tile amendment paid for this.
-    it('shows a titled note’s TITLE and demotes its body to the meta line', () => {
+    // ADR-0153 §4's 2026-08-16 amendment. The body used to drop into the meta line, which
+    // has neither a clamp nor a `white-space` — so a CLOSED row printed the whole thing at
+    // meta size and swallowed the author's newlines. It is still printed once (ADR-0151's
+    // tile amendment stands), just on the line that already knows how to hold it.
+    it('shows a titled note’s TITLE and its body on the body line, not in the meta', () => {
       show();
       const row = rows().find((r) => within(r as HTMLElement).queryByText(titleAndBody.title!));
       expect(row).toBeTruthy();
+      const body = row!.querySelector('.note-body-line');
+      expect(body?.textContent).toBe(titleAndBody.body!);
+      // The meta is the host chip and the provenance again — the body has left it.
       const meta = row!.querySelector('.wp-listrow-meta');
-      expect(meta?.textContent).toContain(titleAndBody.body!);
-      // …and the body is not ALSO the title line.
-      expect(row!.querySelector('.note-body-line')).toBeNull();
+      expect(meta?.textContent).not.toContain(titleAndBody.body!);
+      expect(meta?.textContent).toContain('לפני');
+      // …and the title is still printed exactly once.
+      expect(within(row as HTMLElement).getAllByText(titleAndBody.title!)).toHaveLength(1);
+    });
+
+    // The owner's second report, and the reason the body had to MOVE rather than be clamped
+    // where it was: line breaks are how a long note is made readable, so they are content.
+    // The assertion is the element the body lands in, not its computed `white-space` — the
+    // `pre-wrap` lives in `notes.css`, and this suite does not load CSS, so asserting the
+    // style here would pass on an empty string and prove nothing. That the body sits in
+    // `.note-body-line` with its newlines intact IS the testable half; the rule on that
+    // class is one line above the clamp and shared with every body-only note on the screen.
+    it('keeps a titled note’s newlines, in the element that honours them', () => {
+      const structured = note('n-multiline', {
+        title: 'הזוהר הצפוני',
+        body: 'החלון הטוב: 22:00–02:00\nלא להסתכל רק על KP',
+      });
+      tripNotes = [structured];
+      show();
+      expect(document.querySelector('.note-body-line')?.textContent).toBe(structured.body!);
+      // The meta line has no `white-space` at all, which is what swallowed them.
+      expect(document.querySelector('.wp-listrow-meta')?.textContent).not.toContain('KP');
     });
 
     it('renders a url-only note’s line as an LTR island, never via dir="ltr"', () => {

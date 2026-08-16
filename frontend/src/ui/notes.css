@@ -21,6 +21,62 @@
   white-space: pre-wrap;
 }
 
+/* …and the SAME element one line down, when the note also has a title (ADR-0153 §4's
+   2026-08-16 amendment). `.wp-listrow-title` is already `flex-wrap: wrap`, so a full-width
+   basis is the whole cost of moving the body out of the meta line — no new class, no new
+   `ListRow` slot, and the clamp, the newlines and the open-state unclamp above all come
+   along because it is the same element. Deliberately NOT a size step: a note's words read
+   the same whether or not somebody gave them a title.
+
+   The negative margin cancels the title flex's `row-gap: var(--space-1)`, which is right
+   between a title and a chip and one notch loose under a title whose line-height already
+   carries the separation. **`* + ` and not a bare child selector**: a body-ONLY note's words
+   are the title line, with no sibling above them and therefore no gap to cancel, so an
+   unscoped rule took 2px off every row on the screen that this change has no business
+   touching (measured: 76.4 → 74.4px). The mockup reported that cost as zero because both of
+   its frames carried the proposed rule — a before/after pair cannot see a regression common
+   to both halves. */
+.wp-listrow-title > .note-body-line {
+  flex: 1 0 100%;
+}
+.wp-listrow-title > * + .note-body-line {
+  margin-top: -2px;
+}
+
+/* **A note row aligns its chrome to the TOP** (ADR-0153 §4's same amendment). `ListRow`
+   centres the row and its trigger, which is right for the fixed two-line rows it was born
+   on (bookings, documents, members) and wrong here, where a row is a title, two clamped
+   lines and a meta — and four times that when it opens: the badge and the `⋯` floated at
+   mid-height, pointing at nothing, which is visible in the owner's screenshot.
+
+   A note's own class rather than a rule in `list-row.css`: bookings, documents and members
+   are fixed at two lines, so changing the shared default would move their `⋯` to fix a
+   screen they are not on. Every note row takes it, not only the tall ones, or the badge
+   would sit at a different height on consecutive rows.
+
+   **The tasks screen is the one row that could now want this too, and deliberately does not
+   have it** (ADR-0191 §8, merged 2026-08-16): a task's meta became two lines — deadline,
+   then host chip and assignee — so its row reaches 95px at 360 and its tick and `⋯` centre
+   26.5px below the title line they act on, which is this rule's own defect one surface over.
+   Not extended here on purpose: that surface shipped hours ago with its own device pass, and
+   whether a TICK should top-align the way a badge does is a question about a control, not a
+   mechanical repeat of this. On the backlog with the measurement.
+
+   The trailing group's inset is derived, not guessed: the kebab's ink is 30px inside a
+   44px box with `margin: -7px`, so its centre lands at `padding + 15`, and the badge's
+   centre sits at `space-3 + 18`.
+
+   `.wp-listrow.note-row` and not a bare `.note-row`: the rule it overrides is
+   `list-row.css`'s own `.wp-listrow`, which is also one class, so a tie would be settled by
+   whichever stylesheet the bundler happened to emit second. Two classes decide it here. */
+.wp-listrow.note-row,
+.note-row .wp-listrow-open {
+  align-items: flex-start;
+}
+.note-row .wp-listrow-right {
+  padding-block-start: calc(var(--space-3) + 3px);
+}
+
 /* A URL-ONLY note. The url is the line, and it is an LTR island inside an RTL row — the
    isolate characters come from `lib/bidi.ts`'s `ltrIsolate`, NOT from `dir="ltr"`, which
    is lint-blocked on anything but an <input> (ADR-0118) and would lay the whole row out
@@ -317,6 +373,13 @@
      here does not clamp, so a two-line note must read as two lines. A `<button>` also
      inherits the UA's `white-space: normal` regardless of the page, so it needs saying. */
   white-space: pre-wrap;
+}
+/* The title of a note that has one, above its body (ADR-0152 §6's 2026-08-16 amendment).
+   Its own block so the body starts a line; the weight is the only other thing it needs,
+   since the button around it already owns the size, the colour and the `pre-wrap`. */
+.note-item-t {
+  display: block;
+  font-weight: 700;
 }
 .note-item-m {
   display: block;

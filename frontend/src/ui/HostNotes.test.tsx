@@ -111,6 +111,33 @@ describe('HostNotes', () => {
     expect(document.querySelector('.note-item-b')?.textContent).toBe('קומה 3\n\nהכניסה מאחור');
   });
 
+  // ADR-0152 §6's 2026-08-16 amendment. This surface rendered `noteTitleText`, which is
+  // `title || body` — so a note with BOTH showed its title and its body appeared nowhere on
+  // any read surface, since the notes screen was pushing it into a meta line that collapsed
+  // it. A line here does not clamp, so this is where a long structured note reads whole.
+  it('shows a titled note’s body under its title, newlines and all', () => {
+    tripNotes = [
+      note({
+        id: 'n1',
+        title: 'הזוהר הצפוני',
+        body: 'החלון הטוב: 22:00–02:00\nלא להסתכל רק על KP',
+        bookingId: 'b1',
+      }),
+    ];
+    open('booking', 'b1');
+    const item = document.querySelector('.note-item-b');
+    expect(item?.querySelector('.note-item-t')?.textContent).toBe('הזוהר הצפוני');
+    expect(item?.textContent).toContain('החלון הטוב: 22:00–02:00\nלא להסתכל רק על KP');
+    // The title is not also printed as the body — the two are one line apart, not twice.
+    expect(item?.textContent?.match(/הזוהר הצפוני/g)).toHaveLength(1);
+  });
+
+  it('shows a note with a title and no body as just its title', () => {
+    tripNotes = [note({ id: 'n1', title: 'מזומן בלבד', bookingId: 'b1' })];
+    open('booking', 'b1');
+    expect(document.querySelector('.note-item-b')?.textContent).toBe('מזומן בלבד');
+  });
+
   it('shows only THIS host’s notes, newest first, with author and when', () => {
     tripNotes = [
       note({ id: 'n1', body: 'ותיק', bookingId: 'b1', createdAt: '2026-07-18T09:00:00Z' }),
