@@ -1429,30 +1429,24 @@
   outline: 2.5px solid var(--plan);
   outline-offset: 2px;
 }
-/* Collapsed "completed" summary: one line of pills (ADR-0061). */
-.chk-done-sum {
+/* **THE TOGGLES' OWN ROW, AT THE FOOT OF THE SECTION** (ADR-0193 §3, re-placed
+   2026-08-16). Both `.chk-toggle`s live here — the far group's and the completed
+   half's — after one round in `.sec-title-end` put two controls in a line whose
+   other job is to name the section.
+
+   This replaces `.chk-done-sum`, the collapsed-completed pill teaser, which is
+   DELETED. Its own comment gave its reason — "so the count-in-label toggle always
+   has something legible to point at while collapsed" — and that premise expired
+   when the toggle became `הצג 3 שהושלמו`, carrying the count and the noun itself.
+   It was also wrong: it listed the automatic checks only, so a completed manual
+   task was invisible in a strip claiming to summarise what was done (owner,
+   2026-08-16). Removing it took `CHECK_ICON`, `summaryLabels` and
+   `completedSummary` with it — they had no other consumer. */
+.chk-foot {
   display: flex;
-  align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 11px 13px;
-  font-size: 12.5px;
-  color: var(--muted);
-  font-weight: 600;
-}
-.chk-done-sum .ok {
-  color: var(--ok);
-  font-weight: 700;
-}
-.chk-done-sum .pill {
-  color: var(--ink);
-  background: var(--paper);
-  border-radius: 999px;
-  padding: 2px 9px;
-  font-weight: 700;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 /* overview stats — three quiet paper tiles; counts in mono */
