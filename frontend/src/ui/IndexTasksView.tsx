@@ -66,6 +66,7 @@ import { TaskSheet, createTaskInput, type TaskDraft } from './TaskSheet';
 import { TaskManageSheet } from './TaskManageSheet';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
+import { TaskTick } from './TaskTick';
 import { ListRow, RowOpenFoot } from './domain';
 import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
 import { RevealList } from './primitives/RevealList';
@@ -469,15 +470,7 @@ function TaskLi({
           undefined
         }
         lead={
-          <button
-            type="button"
-            className="tsk-tick"
-            aria-pressed={task.status === TASK_STATUS.DONE}
-            aria-label={t.tasks.tick(task.title)}
-            onClick={onTick}
-          >
-            <Icon name="check" />
-          </button>
+          <TaskTick done={task.status === TASK_STATUS.DONE} title={task.title} onTick={onTick} />
         }
         onOpen={onToggle}
         openLabel={task.title}

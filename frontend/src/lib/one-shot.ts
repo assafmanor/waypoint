@@ -63,6 +63,20 @@ export const BEAT = {
    *  `styles/beats.css`, with a per-surface plug-in only where a surface cannot take a
    *  plain `animation`. */
   REBUFF: 'is-rebuffing',
+  /** A task being completed: the ink squashes in, overshoots and settles while the ✓ is
+   *  drawn through it (ADR-0195). Keyframes in `ui/tasks.css`, beside the control.
+   *
+   *  **The one beat whose caller uses the RETURN VALUE**, and it is the reason this
+   *  family's `playBeat` reports a duration at all: on every surface that draws a tick,
+   *  completing a task makes its row leave — the tasks screen collapses it through
+   *  `RevealList`, both Home bands unmount it — so a beat played on the row that was
+   *  pressed has nothing to play in unless the departure waits for it. `TaskTick`
+   *  therefore fires `onTick` after this many ms, and at 0 fires straight away.
+   *
+   *  **One direction only.** Un-ticking is a correction, not an achievement, so it plays
+   *  no beat at all: the open state declares its own `transition`, which a `transition`
+   *  being read from the DESTINATION state makes govern the way back and nothing else. */
+  TICK: 'is-ticking',
 } as const;
 
 export type Beat = (typeof BEAT)[keyof typeof BEAT];

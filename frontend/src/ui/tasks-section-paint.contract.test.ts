@@ -26,7 +26,11 @@ import { join } from 'node:path';
 // Vite serves the module graph, so `import.meta.url` is an http URL under vitest — read off
 // the filesystem relative to the project root instead (the same note `tasks-avatar-size` has).
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
-const source = read('src/ui/TaskSection.tsx');
+// `TaskTick` is read alongside the section because ADR-0195 moved the tick's `className`
+// into it — the section no longer spells `tsk-tick-sec` itself, and the claim this file
+// checks travelled with the control rather than disappearing. The same move is why the
+// sweep matters more than before: one component now paints on five surfaces.
+const source = [read('src/ui/TaskSection.tsx'), read('src/ui/TaskTick.tsx')].join('\n');
 // The sheets `TaskSection` imports, and only those: a class it paints from a sheet it does
 // not import would be a dependency the component has not declared. `section-head.css` joined
 // them in ADR-0192 §1, when the header shape the notes, tasks and documents sections had each
@@ -55,10 +59,19 @@ const declared = new Set(
  *  run inside it, split on whitespace. Template expressions contribute their literal halves,
  *  which is exactly how `'note-sec tsk-sec' + (quiet ? ' tsk-sec-quiet' : '')` is read. */
 const emitted = new Set(
-  [...tsxBare.matchAll(/className=(?:"([^"]*)"|\{([\s\S]*?)\}\s*(?=\n|>|\/>))/g)]
-    .flatMap(([, plain, expr]) =>
-      plain != null ? [plain] : [...(expr ?? '').matchAll(/'([^']*)'/g)].map((m) => m[1]),
-    )
+  [
+    ...[...tsxBare.matchAll(/className=(?:"([^"]*)"|\{([\s\S]*?)\}\s*(?=\n|>|\/>))/g)].flatMap(
+      ([, plain, expr]) =>
+        plain != null ? [plain] : [...(expr ?? '').matchAll(/'([^']*)'/g)].map((m) => m[1]),
+    ),
+    // ...plus a class held in a per-variant MAP rather than at the `className`, which is how
+    // `TaskTick` spells its two densities (`Record<TickDensity, string>` — the convention
+    // `frontend/CLAUDE.md` asks for, so that a third density is a compile error rather than a
+    // silent default). Without this the tick's own class names became invisible to the very
+    // sweep that exists because a tick shipped unpainted, which is the failure mode named at
+    // the top of this file arriving by a new route.
+    ...[...tsxBare.matchAll(/^\s*[\w'"-]+:\s*'([a-z][\w-]*)',?$/gm)].map((m) => m[1]),
+  ]
     .flatMap((run) => run.split(/\s+/))
     .filter((c) => /^[a-z][\w-]*$/.test(c)),
 );

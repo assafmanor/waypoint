@@ -63,6 +63,16 @@ one.
   sheet, a new tappable and a new shell screen inherit their motion by existing. What a
   new **large** surface must do is one line: `--press-scale: var(--press-scale-lg)`,
   because the default step is the control one.
+- **A one-shot "that just happened" beat** — `lib/one-shot.ts`'s `BEAT` + `playBeat`, four
+  members and counting (`NUDGE`, `LANDING`, `REBUFF`, `TICK`), never a hand-rolled class
+  toggle: it owns the remove-reflow-add that makes an animation replay, the token-derived
+  duration, and removal by **timer** rather than `animationend` (which never fires when
+  nothing animates, leaving the class on forever). Its keyframes live beside the surface
+  that owns them. **And it returns the duration so a caller can sequence something after
+  it** — `TaskTick` is the worked example (ADR-0195): completing a task makes its row
+  leave, so the departure waits on the beat, and 0 under reduced motion means there is no
+  gap to reason about. If you delay a caller that way, **flush the pending call on
+  unmount** — otherwise a tap inside the beat becomes a press with no write.
 - **A form or chooser with more than one step** — `ui/primitives/FormSteps`
   (ADR-0155). `useFormSteps` owns the step state, the back layer, the `הבא`/`שמירה`
   footer through `FormActions`, and the transition; `FormStepPanel` paints it. Two
@@ -241,6 +251,23 @@ router and the toast), so it can't be rendered bare. Use `wrapNav` from
   the field; the shipped complaint was that the refusal was _"nearly noticeable"_. Note
   the second half, which the caption version hid: a refusal that stops at the FIRST
   problem is a second save attempt for the second missing field.
+- **A `:hover` rule that paints a STATE rather than a hint** (ADR-0195 §4). On a touch
+  device `:hover` **latches** after a tap and clears only when something else is tapped, so
+  every hover rule is also a stuck state — and this app is phone-primary (ADR-0017, "no
+  hover-only affordances"). The tick's hover borrowed `--ok` for its ring and drew the ✓ at
+  `opacity: 0.4`, so a tap left an **open** control wearing a ghost check inside a green
+  circle: the owner's _"still leaves the checkbox selected"_, reported twice, and once
+  investigated and closed as not-reproducing because the session read `aria-pressed` and the
+  fill — both of which were correct the whole time. **A report about a control's appearance
+  after an interaction is not answered by asserting its state.** Three rules follow. A hover
+  hint may never spend a status colour or a state's own glyph. A hint that must exist goes
+  inside `@media (hover: hover) and (pointer: fine)` so it cannot latch (~40 older rules are
+  a backlogged sweep). And on a **stateful** control, prefer deleting the hover to overriding
+  it: the tick's fix is a deletion, because the quieter replacement could not be measured as
+  cheaply as it could be dropped — and it was mouse-only on a phone-primary app either way.
+  If you do override, check the specificity: `.x:hover .icon` and
+  `.x[aria-pressed='true'] .icon` are both (0,3,0), so the later rule wins on a hovered
+  _pressed_ control and silently takes its mark away.
 - A hand-picked `:active` transform, or a duration literal in a `setTimeout` that is
   waiting for an animation. Both existed in quantity: seven different press values
   across 16 rules, and a mode-switch timer whose token reader was private to

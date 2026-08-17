@@ -19,6 +19,7 @@ import { isSettled } from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { Avatar } from './primitives/Avatar';
 import { Icon } from './Icon';
+import { TaskTick } from './TaskTick';
 import { t } from '../i18n/he';
 import './section-head.css';
 import './notes.css';
@@ -94,15 +95,12 @@ export function TaskSection({
                 }
               >
                 <span className="note-item-lead">
-                  <button
-                    type="button"
-                    className="tsk-tick-sec"
-                    aria-pressed={settled}
-                    aria-label={t.tasks.tick(task.title)}
-                    onClick={() => onTick(task)}
-                  >
-                    <Icon name="check" />
-                  </button>
+                  <TaskTick
+                    done={settled}
+                    title={task.title}
+                    onTick={() => onTick(task)}
+                    density="section"
+                  />
                 </span>
                 <span className="note-item-main">
                   <button type="button" className="note-item-b" onClick={() => onOpen(task)}>
