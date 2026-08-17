@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { HOUSEKEEPING_CHANGE, type Change, type User } from '@waypoint/shared';
 import { ChangeFeed } from './ChangeFeed';
+import { t } from '../../i18n/he';
 import {
   appendChangeEntry,
   describeChange,
@@ -214,7 +215,7 @@ describe('ChangeFeed', () => {
         onDismissAll={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'הסתר עדכון' }));
+    fireEvent.click(screen.getByRole('button', { name: t.changeFeed.dismiss }));
     expect(onDismiss).toHaveBeenCalledWith('c1');
     // And the pure helper actually drops it.
     expect(dismissChangeEntry([entryFrom(change({}))], 'c1')).toEqual([]);
@@ -230,7 +231,7 @@ describe('ChangeFeed', () => {
         onDismissAll={onDismissAll}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'נקה את כל העדכונים' }));
+    fireEvent.click(screen.getByRole('button', { name: t.changeFeed.clearAllLabel }));
     expect(onDismissAll).toHaveBeenCalled();
   });
 });

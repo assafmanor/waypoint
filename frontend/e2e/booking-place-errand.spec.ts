@@ -10,9 +10,10 @@
 // the form you left, with the place you picked in it, and nothing saved yet.**
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, ERRAND_FIXTURE, shortLiveTripDates } from './boot';
+import { t } from '../src/i18n/he';
 
 const ADD_LOCATION = 'הוספת מקום';
-const CHOOSE = 'בחירה';
+const CHOOSE = t.map.errand.choose;
 
 test.beforeEach(async ({ page }) => {
   await bootIntoTrip(page, {

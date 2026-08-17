@@ -214,6 +214,46 @@ In mockups emoji do both jobs; in the build they split:
 
 **And once more, dropping a carve-out (2026-08-02 amendment).** The line above used to end "…and empty-state _illustrations_". `Map.tsx` disproved that in the same commit: four `EmptyState`s in one ternary, two drawing `<Icon name="search" />` and two drawing 🗺️/🗓️ — the sibling test again, one file over. **An empty state is chrome the app draws, not content it holds**, so its mark is an icon. What stays emoji is per-entity badges, trip identity, and the warmth in copy. An empty state that owns a whole region passes `size="pane"` to `EmptyState`, which grows the icon (and only the icon) to fill it.
 
+## Voice and register (Hebrew UI copy)
+
+**Three voices, each with a job, and no gendered singular.** Adopted 2026-08-17, and it
+[amends ADR-0138](../decisions/0138-the-row-menu-is-one-surface-and-icons-are-ui.md)'s §6, which had made row-menu copy an imperative:
+
+| where                    | register    | example                               |
+| ------------------------ | ----------- | ------------------------------------- |
+| a control                | verbal noun | `עריכה` · `מחיקה` · `שמירה` · `ניקוי` |
+| a dialog title           | infinitive  | `למחוק את הפתק?` · `לצאת בלי לשמור?`  |
+| a sentence to the reader | plural      | `נסו שוב` · `בדקו את החיבור`          |
+
+Two reasons, and the second is the one no consistency argument covers. `he.ts` had drifted into a
+near 50/50 split — ~60 singular-masculine imperatives against ~46 plural ones, colliding on the
+same screens (`הוסף מסמך` beside `העלו`; `שמור` beside the canonical `שמירה`; one clear action
+spelled three ways). And **a Hebrew imperative singular picks a gender**, so every `ערוך` and
+`שמור` addressed one member of a mixed group of five as masculine. The repair is therefore not
+plural imperatives (`ערכו`/`מחקו` read stiffer than what they replace) but a register carrying no
+grammatical person at all.
+
+Two carve-outs, deliberate — do not "finish" them:
+
+- **A disclosure toggle keeps `הצג`/`הסתר`** — one matched pair for one job (owner, 2026-08-16);
+  `הצגה`/`הסתרה` on a caret row reads like a setting rather than a switch.
+- **A stepper keeps its imperative** (`דחה 15 דק׳`): `דחייה 15 דק׳` is not a thing anyone says.
+- **An act on someone else's state takes the infinitive** (`להפוך למנהל`): the noun forms of
+  those verbs are the formal register, and `מינוי כמנהל` was rejected on exactly that.
+
+**The app's own nouns are fixed too, because seven words for one thing is its own defect.** The
+group is `החבר'ה`; the people in it are `נוסעים` — `משתתפים` reads like a webinar, not a trip. And
+an **invitation is a `לינק`, never a bare `הזמנה`**: that word is a _booking_ everywhere in the
+Index, so the join screen's `טוען הזמנה…` read as "loading booking".
+
+**The one gendered verb left is the change feed**, and the narration forces it: it reports what a
+_named_ person did, so Hebrew demands a grammatical subject. A verbal noun drops the actor and so
+does the passive. Masculine by convention, documented at `changeFeed` in `he.ts`.
+
+The full rule, with the counts that motivated it, is at the top of `frontend/src/i18n/he.ts` —
+which is where a copy change is actually read. Also non-negotiable there, from the root
+`CLAUDE.md`: **no em dashes in UI copy**, ever.
+
 ## Device targets & responsive strategy
 
 **Mobile-first, phone-primary** (ADR-0017). The design is authored for the phone and scales up — never the reverse.

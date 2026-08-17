@@ -1,6 +1,31 @@
 // Hebrew UI copy — the active locale. All user-facing strings live here so logic
 // stays language-agnostic (conventions.md). Interpolated copy is a function;
 // runs that must render left-to-right (times, codes) stay as JSX in the caller.
+//
+// ── THE REGISTER: THREE VOICES, EACH WITH A JOB, AND NO GENDERED SINGULAR ────────
+// Written down 2026-08-17 because the file had drifted into a near 50/50 split — ~60
+// singular-masculine imperatives (`שמור`, `ערוך`, `מחק`, `נקה`, `בחר`) against ~46 plural
+// ones (`נסו`, `בחרו`, `הזמינו`), colliding on the same screens: `הוסף מסמך` beside
+// `העלו`, `index.sheet.save: 'שמור'` beside the canonical `common.save: 'שמירה'`, and
+// three spellings of one clear action. Singular-masculine also *genders* a product whose
+// subject is a mixed group of five, which is the half no consistency argument fixes.
+//
+//   · A CONTROL says a verbal noun            — `עריכה` · `מחיקה` · `שמירה` · `ניקוי`
+//   · A DIALOG TITLE asks in the infinitive   — `למחוק את הפתק?` · `לצאת בלי לשמור?`
+//   · A SENTENCE to the reader is plural      — `נסו שוב` · `בדקו את החיבור`
+//
+// Three exceptions, all deliberate. **Disclosure toggles keep `הצג`/`הסתר`** — one matched
+// pair for one job, picked by the owner on 2026-08-16, and `הצגה`/`הסתרה` on a caret row
+// reads like a setting rather than a switch. **A stepper keeps its imperative**
+// (`actions.delayBy`, `earlierBy`): `דחייה 15 דק׳` is not a thing anyone says. And **an act on
+// someone ELSE's state takes the infinitive** (`settings.promote`), because the noun forms of
+// those verbs are the formal register — `מינוי כמנהל` was rejected on exactly that (owner).
+//
+// The GROUP is `החבר'ה`; the people in it are `נוסעים` (`memberCount`, `rolePeer`). It was
+// seven words for the same five people — חבורה, חבר'ה, חברים, משתתפים, מטיילים, נוסעים,
+// קבוצה — and `משתתפים` in particular reads like a webinar, not a trip. And an INVITATION
+// is a `לינק`, never a bare `הזמנה`: that word is a booking everywhere in the Index, so
+// `טוען הזמנה…` on the join screen read as "loading booking".
 import { NOTE_HOST_FIELD, type BookingType, type DocumentType } from '@waypoint/shared';
 import { countdownText } from '../lib/time';
 import { type OutboxVerb } from '../lib/outbox';
@@ -55,7 +80,7 @@ const PLACE_REF_NAME_LIMIT = 2;
 
 export const t = {
   common: {
-    undo: 'בטל',
+    undo: 'ביטול',
     yes: 'כן',
     no: 'לא',
     now: 'עכשיו',
@@ -80,16 +105,16 @@ export const t = {
     },
     // Unsaved-changes discard confirm (U-05), shown when closing a dirty form.
     discardTitle: 'לצאת בלי לשמור?',
-    discardBody: 'יש שינויים שעדיין לא נשמרו. אם תצא עכשיו הם יאבדו.',
-    discardConfirm: 'צא בלי לשמור',
+    discardBody: 'יש שינויים שלא נשמרו. אם יוצאים עכשיו הם הולכים לאיבוד.',
+    discardConfirm: 'לצאת בלי לשמור',
     discardCancel: 'המשך עריכה',
   },
   // FilePicker (ADR-0086): the two pick tiles + preview clear, shared by every
   // attachment surface so the wording never drifts.
   filePicker: {
     upload: 'העלאת קובץ',
-    capture: 'צלמו עכשיו',
-    remove: 'הסר',
+    capture: 'מצלמה',
+    remove: 'הסרה',
     /** Names the action AND the file, because the card's own filename is the button's
      *  content and an `aria-label` would otherwise replace it. */
     view: (name: string) => `תצוגה מלאה: ${name}`,
@@ -116,7 +141,7 @@ export const t = {
     // the user can do about it. No apology and no detail: the body has to be true
     // of a crash nobody predicted.
     crash: {
-      body: 'רענון יחזיר את האפליקציה לפעולה.',
+      body: 'רענון אחד וזה חוזר לעבוד.',
       action: 'רענון האפליקציה',
     },
   },
@@ -319,7 +344,7 @@ export const t = {
       // claims: everything in `refs` survives without a location, and this does not survive.
       // It says WHERE it is, since the shelf is the one surface the reader has to picture.
       idea: 'גם הרעיון שעל המדף יימחק',
-      confirm: 'מחק',
+      confirm: 'מחיקה',
     },
     // Map-local day scope (ADR-0110 §4): the strip focuses one day; this chip
     // shows every day's places at once.
@@ -364,7 +389,7 @@ export const t = {
       unavailable: 'מרחק לא זמין',
       prompt: {
         title: 'למיין לפי קרבה',
-        body: 'כדי להראות מה קרוב אליכם עכשיו נשתמש במיקום המכשיר. המיקום נשאר במכשיר ואינו משותף עם הקבוצה.',
+        body: 'כדי להראות מה קרוב אליכם עכשיו נשתמש במיקום המכשיר. המיקום נשאר במכשיר ולא נשלח לאף אחד.',
         allow: 'אפשר מיקום',
         notNow: 'לא עכשיו',
       },
@@ -522,7 +547,7 @@ export const t = {
   sync: {
     badge: {
       synced: 'נשמר',
-      pending: 'ממתין לסנכרון',
+      pending: 'מחכה לסנכרון',
       failed: 'לא נשמר',
     },
     // Persistent header affordance — replaces the old timed failed badge. Never
@@ -541,8 +566,8 @@ export const t = {
       deleteMaybeItem: 'מחיקת רעיון',
       updateMaybeItem: 'עדכון רעיון',
       updateTrip: 'עדכון פרטי הטיול',
-      setMemberRole: 'עדכון הרשאות חבר',
-      removeMember: 'הסרת חבר',
+      setMemberRole: 'עדכון הרשאות נוסע',
+      removeMember: 'הסרת נוסע',
       deleteTrip: 'מחיקת הטיול',
       createBooking: 'הוספת הזמנה',
       updateBooking: 'עדכון הזמנה',
@@ -566,12 +591,12 @@ export const t = {
     } satisfies Record<OutboxVerb, string>,
     review: {
       title: 'שינויים שלא נשמרו',
-      intro: 'השינויים האלה נדחו בסנכרון. אפשר לנסות שוב או להשליך.',
+      intro: 'השינויים האלה לא נשמרו בשרת. אפשר לנסות שוב או לזרוק.',
       reason: 'השרת דחה את השינוי',
       retry: 'נסו שוב',
-      discard: 'השליכו',
-      discardAll: 'השליכו הכל',
-      empty: 'אין שינויים שממתינים לטיפול.',
+      discard: 'לזרוק',
+      discardAll: 'לזרוק הכל',
+      empty: 'אין שינויים שמחכים.',
     },
   },
   placeholder: {
@@ -610,11 +635,11 @@ export const t = {
       button: 'חיפוש הזמנות',
       modeTitle: 'חיפוש הזמנות',
       placeholder: 'חפשו לפי שם, קוד אישור או קטגוריה…',
-      clear: 'נקה חיפוש',
+      clear: 'ניקוי',
       backAria: 'סגירת חיפוש',
     },
     pastToggle: {
-      show: (n: number) => `הצג הזמנות מהעבר (${n})`,
+      show: (n: number) => `הצג ${n} מהעבר`,
       hide: 'הסתר הזמנות מהעבר',
     },
     bookingsTitle: 'הזמנות',
@@ -690,7 +715,7 @@ export const t = {
       other: [],
     },
     emptyTitle: 'עוד אין הזמנות שמורות',
-    emptyBody: 'טיסות, לינה ושאר ההזמנות שלכם יופיעו כאן · ידנית או מיובאות אוטומטית מ-Gmail',
+    emptyBody: 'טיסות, לינה ושאר ההזמנות שלכם יופיעו כאן · שתוסיפו או שייכנסו לבד מ-Gmail',
     toast: {
       saved: 'ההזמנה נשמרה',
       savedQueued: 'יישמר כשנחזור לרשת',
@@ -699,15 +724,14 @@ export const t = {
     // Read-only booking detail view (ADR-0053): tap a booking → facts + a visible
     // edit button + a "⋯" menu (edit / delete).
     detail: {
-      // Imperatives, matching the event menus (ADR-0138 §6). These were the
-      // nouns עריכה/מחיקה while the very same actions on an event read ערוך/מחק —
-      // a menu item is something you tell the app to do, so the verb wins.
-      edit: 'ערוך',
+      // Verbal nouns, like every other control in the app (the register rule at the top of
+      // this file, which amended ADR-0138 §6). These were `ערוך`/`מחק` for one release.
+      edit: 'עריכה',
       actions: 'פעולות',
-      delete: 'מחק',
-      /** The verb the row's own `לא משובצת במסלול` was asking for (§7). */
-      schedule: 'שבץ במסלול',
-      reschedule: 'שנה שיבוץ',
+      delete: 'מחיקה',
+      /** The action the row's own `לא משובצת במסלול` was asking for (§7). */
+      schedule: 'שיבוץ במסלול',
+      reschedule: 'שינוי השיבוץ',
       /** The manage sheet's subject line, where the row says the long form. */
       isScheduled: 'משובצת במסלול',
       timing: 'מתי',
@@ -790,12 +814,12 @@ export const t = {
       wifiPassword: 'סיסמה',
       scheduledOn: (label: string) => `משובצת במסלול · ${label}`,
       notScheduled: 'לא משובצת במסלול · תזמון יתווסף בהמשך',
-      save: 'שמור',
-      cancel: 'בטל',
-      delete: 'מחק הזמנה זו',
+      save: 'שמירה',
+      cancel: 'ביטול',
+      delete: 'מחיקת ההזמנה',
     },
     form: {
-      add: 'הוסף הזמנה',
+      add: 'הזמנה חדשה',
       createTitle: 'הזמנה חדשה',
       originLabel: 'מוצא 📍',
       destLabel: 'יעד 📍',
@@ -919,9 +943,9 @@ export const t = {
       linkedTitle: 'ההזמנה משובצת במסלול',
       linkedBody: 'יש אירוע במסלול שמסתמך על ההזמנה. מה לעשות?',
       hardNote: 'האירוע קשיח · מחויבות',
-      both: 'מחק את שניהם',
+      both: 'מחיקת שניהם',
       bothSub: 'ההזמנה והאירוע במסלול יימחקו',
-      unlink: 'בטל שיוך ושמור את האירוע',
+      unlink: 'ביטול השיוך · האירוע נשאר',
       unlinkSub: 'האירוע יישאר במסלול כרשומה ידנית',
       plainTitle: 'למחוק את ההזמנה?',
       plainBody: 'ההזמנה תוסר מהאינדקס.',
@@ -933,8 +957,8 @@ export const t = {
         leg === 'out'
           ? `ה${LEG.out} יישאר בטיול. המחיקה כאן לא נוגעת בו.`
           : `ה${LEG.back} תישאר בטיול. המחיקה כאן לא נוגעת בה.`,
-      confirmDelete: 'מחק',
-      cancel: 'בטל',
+      confirmDelete: 'מחיקה',
+      cancel: 'ביטול',
     },
   },
   // פתקים (ADR-0152 / ADR-0153). `פתק` over the incumbent `הערות` — the group's own
@@ -1050,7 +1074,7 @@ export const t = {
     manage: {
       actions: 'פעולות על הפתק',
       edit: 'עריכה',
-      openHost: 'מעבר למה שהפתק מדבר עליו',
+      openHost: 'מעבר למה שהפתק שייך אליו',
       delete: 'מחיקה',
       deleteTitle: 'למחוק את הפתק?',
       // Says what is NOT harmed: the host outlives its notes, and a delete confirm that
@@ -1095,7 +1119,7 @@ export const t = {
       /** An automatic task's subject line (ADR-0188 §5). It states, once and above the
        *  verbs that remain, why `עריכה` and `מחיקה` are not among them — an absence with a
        *  reason over it is a behaviour; an absence with none is a bug. */
-      derived: 'מתעדכנת מהנתונים של הטיול',
+      derived: 'מתעדכנת לבד לפי הטיול',
     },
     due: {
       // ADR-0171's shipped deadline word, reused rather than re-invented.
@@ -1131,7 +1155,11 @@ export const t = {
       // Done AND dismissed. One word for both, because what the reader wants is "the ones I
       // am finished with" and the row itself says which kind it was.
       settled: 'הושלמו',
-      noResults: 'אין משימות שמתאימות',
+      // **Facet-neutral, and that is the whole requirement.** It was `הכל סגור` for a day,
+      // which is a claim rather than an empty state: with `הושלמו` picked and nothing settled
+      // it said "everything is closed" about a list of open tasks, and under `שלי` it spoke
+      // for other people's rows. One string serves three facets, so it may not describe any.
+      noResults: 'אין כלום כאן',
     },
     empty: {
       title: 'עדיין אין משימות',
@@ -1184,12 +1212,12 @@ export const t = {
   docs: {
     title: 'מסמכים',
     encrypted: 'מוצפן',
-    add: 'הוסף מסמך',
+    add: 'מסמך חדש',
     loading: 'טוען מסמכים…',
     offline: 'המסמכים ייטענו כשנחזור לרשת',
     emptyTitle: 'אין עדיין מסמכים שמורים',
     emptyBody: 'דרכונים, כרטיסים וביטוח · מוצפנים ונשמרים בבטחה',
-    emptyAdd: 'העלה מסמך ראשון',
+    emptyAdd: 'העלאת מסמך ראשון',
     group: {
       passport: 'דרכונים',
       visa: 'ויזות',
@@ -1330,7 +1358,7 @@ export const t = {
       // that nobody would guess — the same service `index.search.placeholder` does with
       // `או קטגוריה`.
       placeholder: 'חפשו לפי שם או סוג…',
-      clear: 'נקה חיפוש',
+      clear: 'ניקוי',
       backAria: 'סגירת חיפוש',
       noResults: 'לא נמצאו מסמכים',
     },
@@ -1343,10 +1371,10 @@ export const t = {
       fileRequired: 'צריך לבחור קובץ',
       titleLabel: 'שם',
       titlePlaceholder: 'שם לזיהוי המסמך',
-      save: 'העלה',
+      save: 'העלאה',
       saving: 'מעלה…',
       queued: 'ממתין להעלאה',
-      cancel: 'בטל',
+      cancel: 'ביטול',
       saved: 'המסמך הועלה',
       failed: 'ההעלאה נכשלה, נסו שוב',
       tooLarge: (mb: number) => `הקובץ גדול מדי · עד ${mb}MB`,
@@ -1358,21 +1386,21 @@ export const t = {
       // system back and Escape, and none of them is labelled.
       loading: 'טוען ומפענח…',
       error: 'לא הצלחנו לפתוח את המסמך',
-      open: 'פתח בכרטיסייה',
+      open: 'פתיחה בכרטיסייה',
       download: 'הורדה',
     },
     // Per-row manage menu + optimistic-action toasts (ADR-0052).
     manage: {
       actions: 'פעולות',
-      // Imperatives, matching every other row menu (ADR-0138 §6).
-      edit: 'ערוך',
-      delete: 'מחק',
+      // Verbal nouns, matching every other row menu (the register rule, top of this file).
+      edit: 'עריכה',
+      delete: 'מחיקה',
       nameField: 'שם',
       save: 'שמירה',
       saved: 'המסמך עודכן',
       deleteTitle: 'למחוק את המסמך?',
-      deleteBody: 'הקובץ מוצפן ונמחק לצמיתות. אי אפשר לשחזר.',
-      deleteConfirm: 'מחק לצמיתות',
+      deleteBody: 'הקובץ נמחק לגמרי. אין דרך לשחזר אותו.',
+      deleteConfirm: 'מחיקה סופית',
       cancel: 'ביטול',
       deleted: 'המסמך נמחק',
       failed: 'הפעולה נכשלה, נסו שוב',
@@ -1445,7 +1473,7 @@ export const t = {
       teaserCountdownUnit: 'דקות',
       featBookings: 'כל ההזמנות, גם אופליין',
       featMap: 'הכל נעוץ על המפה',
-      featSync: 'כל החבורה מסונכרנת',
+      featSync: 'כולם רואים אותו דבר',
       continueWithGoogle: 'המשך עם Google',
       offline: 'צריך חיבור לרשת כדי להתחבר',
       note: 'כל אחד מתחבר עם החשבון האישי שלו.',
@@ -1456,14 +1484,14 @@ export const t = {
       connected: (email: string) => `מחובר · ${email}`,
       offSignal: 'אין שידור',
       boardOffTitle: 'הלוח עוד כבוי',
-      boardOffBody: 'טיול ראשון מדליק אותו - מה עכשיו, מה הבא, וכל ההזמנות של החבורה במקום אחד.',
+      boardOffBody: "טיול ראשון מדליק אותו - מה עכשיו, מה הבא, וכל ההזמנות של החבר'ה במקום אחד.",
       create: 'טיול חדש',
-      createSub: 'אתה זה שמארגן',
-      join: 'הצטרף עם לינק',
-      joinSub: 'קיבלת הזמנה מחבר',
-      joinToast: 'קיבלת לינק מחבר? פשוט פתח אותו - ותוך שנייה אתה בפנים',
+      createSub: 'כשאתם מארגנים',
+      join: 'הצטרפות עם לינק',
+      joinSub: 'קיבלתם לינק מחבר',
+      joinToast: 'קיבלתם לינק מחבר? פשוט פותחים אותו - ותוך שנייה אתם בפנים',
       offline: 'יצירה והצטרפות צריכות חיבור לרשת',
-      teach: 'בחבורה של חמישה, בדרך כלל אחד יוצר את הטיול - וכל השאר נכנסים עם הלינק שלו.',
+      teach: 'בדרך כלל אחד פותח את הטיול, וכל השאר נכנסים עם הלינק שלו.',
     },
     stub: {
       newTrip: 'טיול חדש',
@@ -1511,7 +1539,7 @@ export const t = {
       modePill: 'מצב תכנון',
       emoji: '🎉',
       title: 'יש טיול!',
-      sub: 'עכשיו הכי חשוב - להכניס את החבורה.',
+      sub: "עכשיו הכי חשוב - להכניס את החבר'ה.",
       inviteLabel: 'לינק הזמנה',
       invitePending: 'טוען לינק הזמנה…',
       inviteFailed: 'הלינק יהיה מוכן בהגדרות הטיול',
@@ -1530,18 +1558,19 @@ export const t = {
       skip: 'דילוג',
     },
     join: {
-      loading: 'טוען הזמנה…',
+      loading: 'טוען את הלינק…',
       // The pass's stamp (ADR-0143). Short enough to read inside a rotated stamp on a
       // dark ticket — a sentence would not fit and would not read as a stamp.
       stamp: 'מצטרפים',
       stampRefused: 'פג תוקף',
-      refusedTitle: 'ההזמנה כבר לא בתוקף',
+      refusedTitle: 'הלינק כבר לא בתוקף',
       invalid: 'הלינק הזה כבר לא בתוקף. אפשר לבקש מהחבר שישלח לינק חדש.',
       expired: 'הטיול הזה כבר הסתיים · הלינק כבר לא פעיל.',
-      offline: 'צריך חיבור לרשת כדי לטעון את ההזמנה',
+      offline: 'צריך חיבור לרשת כדי לטעון את הלינק',
       heroTitle: 'הוזמנת לטיול!',
-      ticketBadge: 'כרטיס הזמנה',
-      members: (count: number) => (count === 1 ? 'חבר אחד כבר בפנים' : `${count} חברים כבר בפנים`),
+      ticketBadge: 'הזמנה לטיול',
+      members: (count: number) =>
+        count === 1 ? 'נוסע אחד כבר בפנים' : `${count} נוסעים כבר בפנים`,
       membersSub: 'מחכים רק לך',
       joinButton: 'הצטרפות לטיול',
       joinError: 'ההצטרפות נכשלה · אפשר לנסות שוב',
@@ -1549,7 +1578,7 @@ export const t = {
       // renders the same refused pass, with the same words, as an invalid code — naming
       // the block would disclose a roster decision to someone who is no longer a member.
       // If this line ever comes back, that is the reason it should not.
-      note: 'תוך שנייה אתה בפנים · מתחברים עם החשבון האישי, והכול נפתח מיד',
+      note: 'תוך שנייה אתם בפנים · מתחברים עם החשבון האישי, והכול נפתח מיד',
     },
     switcher: {
       title: 'הטיולים שלך',
@@ -1587,19 +1616,20 @@ export const t = {
       // neighbour above says device — a row that inherited the theme's promise
       // would state the opposite of the truth.
       currencyLabel: 'מטבע',
-      currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · הוא הצד השני של כל המרה בטיול.',
+      currencyHint: 'המטבע נשמר בחשבון ומגיע איתכם לכל מכשיר · לפיו מחושבת כל המרה בטיול.',
       currencyUnset: '-',
       mapStorage: 'מפות אופליין',
       mapStorageSize: 'כל המפות',
       mapStorageClear: 'למחוק הכל',
       mapStorageWorld: 'מפת העולם',
-      mapStorageUnknownTrip: 'טיול שכבר אינו זמין',
+      mapStorageUnknownTrip: 'טיול שכבר לא קיים',
       mapStorageDelete: 'מחיקה',
       mapStorageDeleteTrip: (name: string) => `מחיקת ${name}`,
-      mapStorageHint: 'המפות הן מטמון במכשיר הזה · מחיקה לא מוחקת מקומות או פרטי טיול.',
+      mapStorageHint: 'המפות שמורות רק במכשיר הזה · מחיקה לא נוגעת במקומות או בפרטי הטיול.',
       accountSection: 'החשבון',
       emailLabel: 'אימייל',
-      emailHint: 'האימייל מגיע מהחשבון שאיתו נכנסתם ואינו נערך כאן, כי הוא מזהה את החשבון.',
+      emailHint:
+        'האימייל מגיע מהחשבון שנכנסתם איתו, ואי אפשר לשנות אותו כאן - הוא מה שמזהה את החשבון.',
       saveFailed: 'השינוי לא נשמר. בדקו את החיבור ונסו שוב.',
       // The picture page — two states, so the ramp shows only when the colour is
       // what actually gets drawn (ADR-0133 §6).
@@ -1624,9 +1654,9 @@ export const t = {
         // A rejected pick is almost always "that file isn't a picture" — the size cap
         // is nearly unreachable once the phone re-encodes to a 512px square.
         uploadFailed: 'העלאת התמונה נכשלה. אפשר לנסות תמונה אחרת.',
-        notAnImage: 'הקובץ שנבחר אינו תמונה.',
-        removeHint: 'הסרה כאן היא ״לא להשתמש בה״, ולא מחיקה אצל גוגל, ולכן תמיד יש דרך חזרה.',
-        noPhotoHint: 'אין תמונה בחשבון גוגל שאיתו נכנסתם, ולכן מוצגות האותיות הראשונות.',
+        notAnImage: 'הקובץ שבחרתם הוא לא תמונה.',
+        removeHint: 'הסרה כאן רק מפסיקה להשתמש בה. בגוגל היא נשארת, אז תמיד אפשר לחזור.',
+        noPhotoHint: 'אין תמונה בחשבון הגוגל שנכנסתם איתו, אז מוצגות האותיות הראשונות.',
         uploadHint: 'התמונה נחתכת לריבוע ומוקטנת במכשיר לפני ההעלאה.',
         hueName: {
           plum: 'שזיף',
@@ -1758,12 +1788,16 @@ export const t = {
   // Group change-feed (ADR-0081, review U-09): a quiet strip narrating recent
   // SHARED peer edits. The subject is inlined in each lead; a moved-to clock time
   // is appended separately as a dir="auto" island (never inside these strings).
-  // Verbs are masculine by convention (actor gender is unknown), matching the
-  // settings/toast copy. No em dashes.
+  // **The one place a gendered verb survives the 2026-08-17 register pass**, and it is the
+  // narration that forces it: the feed reports what a NAMED person did, so there is a
+  // grammatical subject and Hebrew makes it pick a gender. The register rule's escapes do
+  // not reach here — a verbal noun drops the actor (`הזזה של האירוע` says nothing about who),
+  // and the passive drops them too. Masculine by convention, actor gender unknown. Revisit
+  // only if `Member` ever carries a pronoun. No em dashes.
   changeFeed: {
     title: 'עדכונים מהקבוצה',
-    clearAll: 'נקה הכל',
-    clearAllLabel: 'נקה את כל העדכונים',
+    clearAll: 'ניקוי הכל',
+    clearAllLabel: 'ניקוי כל העדכונים',
     dismiss: 'הסתר עדכון',
     someone: 'מישהו',
     nouns: {
@@ -1772,7 +1806,7 @@ export const t = {
       place: 'המקום',
       document: 'המסמך',
       note: 'הפתק',
-      member: 'משתתף',
+      member: 'נוסע',
       trip: 'הטיול',
       item: 'הפריט',
     },
@@ -1893,7 +1927,7 @@ export const t = {
        *  is "show that-were-completed (3)". With the count inline it becomes a real phrase:
        *  `הצג 3 שהושלמו`. */
       showCompleted: (n: number) => (n === 1 ? 'הצג אחת שהושלמה' : `הצג ${n} שהושלמו`),
-      hideCompleted: 'הסתר שהושלמו',
+      hideCompleted: 'הסתר',
       /** **The remainder, past the cap** (ADR-0193 §3, amended 2026-08-16). Not `רחוקות`
        *  and no longer a group with a meaning: it is simply what did not fit in the first
        *  `PLAN_TASK_CAP` rows, so the word is the one Trip Home's overflow row already uses.
@@ -1920,13 +1954,13 @@ export const t = {
       buildDay: 'בנו יום',
       // Documents = per-traveller passport rollup (ADR-0061), from the snapshot docs.
       documentsTitle: 'מסמכים ודרכונים',
-      documentsDoneMeta: 'כל המטיילים העלו דרכון',
+      documentsDoneMeta: 'כל הנוסעים העלו דרכון',
       documentsMissingMeta: (have: number, total: number) => `${have} מתוך ${total} העלו דרכון`,
       uploadDocs: 'העלו',
-      groupTitle: 'החבורה',
-      groupDoneMeta: (n: number) => `${n} מטיילים בפנים`,
-      groupMissingTitle: 'עדיין רק אתה',
-      groupMissingMeta: 'הזמינו את החבורה עם לינק',
+      groupTitle: "החבר'ה",
+      groupDoneMeta: (n: number) => `${n} נוסעים בפנים`,
+      groupMissingTitle: 'עדיין לבד פה',
+      groupMissingMeta: "הזמינו את החבר'ה עם לינק",
       invite: 'הזמינו',
     },
     /** **The lifted prep hero** (ADR-0193 §4). One word, because after the owner's
@@ -2055,7 +2089,7 @@ export const t = {
   },
   // Plan-mode Day-by-day — the itinerary builder (screens/PlanDay.tsx).
   planDay: {
-    empty: 'היום ריק · הוסף אירוע או שבץ מהמדף',
+    empty: 'היום ריק · אפשר להוסיף אירוע או לשבץ מהמדף',
     // A finished trip is a structural archive but stays settle-editable
     // (ADR-0044): the header note says so, since the ✓ / הסדרה is still live.
     pastNote: 'טיול שהסתיים · מבנה קפוא, אפשר להסדיר',
@@ -2063,8 +2097,8 @@ export const t = {
     // The archive settle control (ADR-0044): tap ○ on an unresolved soft event
     // to record it — the "we were there / skip" the trip never got.
     settleTitle: (title: string) => `הסדרת «${title}»`,
-    settleUnresolved: 'הסדר: היינו או דלג',
-    addToDay: 'הוסף אירוע',
+    settleUnresolved: 'להסדיר: היינו או דילגנו',
+    addToDay: 'אירוע חדש',
     // `move`/`moveChoose`/`moveHere` were the ⋯ sheet's `הזז` step (ADR-0138 §8) and went
     // with it: the row's own time opens the shared picker now (ADR-0161 §7), and its words
     // are the `slot*` and `seam*` keys above — one vocabulary for a position, however you
@@ -2073,9 +2107,9 @@ export const t = {
     rowActions: 'פעולות',
     // The sheet's own copy moved to `slotFill` below: it serves two headers on two screens
     // now (ADR-0161 §6), so it stopped being Plan mode's.
-    addIdea: 'הוסף רעיון למדף',
+    addIdea: 'הוספת רעיון למדף',
     addIdeaPlaceholder: 'רעיון חדש למדף…',
-    removeIdea: 'הסר רעיון',
+    removeIdea: 'הסרת הרעיון',
     // An empty day has no gaps to drop onto, so the empty state becomes the target
     // while a drag is live (ADR-0116 session-117). It has no slot to offer, so it
     // promises a time chooser rather than a schedule.
@@ -2131,7 +2165,7 @@ export const t = {
     slotOtherDay: 'ליום אחר…',
     slotMoveTitle: (title: string) => `להזיז · ${title}`,
     // "הזז" resolve sheet: choose which soft event to move, then a clean slot.
-    resolve: 'הזז',
+    resolve: 'הזזה',
     resolveTitle: 'פתרו את החפיפה',
     resolveChoose: 'בחרו איזה אירוע גמיש להזיז',
     resolveAnchor: 'עוגן · לא זז',
@@ -2147,11 +2181,11 @@ export const t = {
     replaceTitle: (title: string) => `החלפה · ${title}`,
     /** Under a replacement header: the slot the replacement inherits, whole. */
     replaceSub: (range: string) => `אותה שעה, אותו אורך · ${range}`,
-    empty: 'אין רעיונות במדף · הוסף אירוע חדש',
+    empty: 'אין רעיונות במדף · אפשר להוסיף אירוע חדש',
     // The sheet is capped at the best few; these are the way past the cap and the
     // search that only appears once the pool is big enough to need one.
     search: 'חיפוש ברעיונות',
-    searchClear: 'נקה חיפוש',
+    searchClear: 'ניקוי',
     all: (n: number) => `כל ${n} הרעיונות`,
   },
   event: {
@@ -2164,7 +2198,7 @@ export const t = {
     notMarked: 'עבר · לא סומן',
     didThis: 'היינו',
     skipped: 'דילגנו',
-    nextDay: 'מסתיים למחרת',
+    nextDay: 'מסתיים מחר',
     bookingLabel: 'הזמנה',
     hardWarn: 'קשיח · שינוי מחייב עדכון ההזמנה',
     // The conflicting event's title renders as a NODE between these two halves
@@ -2181,10 +2215,10 @@ export const t = {
     routeFrom: (origin: string) => `מ־${origin}`,
   },
   actions: {
-    restore: 'שחזר',
+    restore: 'שחזור',
     // The done ✓ doubles as a one-tap undo (ADR-0043 revision) — its accessible
     // name / tooltip.
-    undoDone: 'בטל סימון · שחזר',
+    undoDone: 'ביטול הסימון · שחזור',
     navigate: 'ניווט',
     // The view-on-map peer of navigate (directions). Kept to one word so the two
     // location actions ("ניווט · מפה") stay compact in the crowded card row.
@@ -2198,21 +2232,21 @@ export const t = {
     onWay: 'בדרך',
     done: 'סיימנו',
     // THE SETTLE PAIR (ADR-0043/0044/0139), shared by all three of `SettleControl`'s
-    // densities. Both halves are records of what happened, not instructions: the skip
+    // densities. Both halves are records of what happened, not actions: the skip
     // side reuses `event.skipped` ('דילגנו'), because the pair `היינו` / `דלג` mixed a
     // record with an imperative and read as "yes, or move it along".
     wasThere: 'היינו',
     // What the undo takes back, said as what it undoes rather than a bare "בטל".
-    undoSettle: 'ביטול הסימון',
-    // The row-menu / action-row verb, which IS an instruction ("skip this one") — not the
-    // settle pair's other half.
-    skip: 'דלג',
-    swap: 'החלף',
-    scheduleToDay: 'שבץ ליום',
+    undoSettle: 'ביטול סימון',
+    // The row-menu / action-row ACTION ("skip this one") — not the settle pair's other half,
+    // which is the record `דילגנו`. The two stay different words on purpose.
+    skip: 'דילוג',
+    swap: 'החלפה',
+    scheduleToDay: 'שיבוץ ליום',
     scheduled: 'שובץ',
     newEvent: 'אירוע חדש',
-    edit: 'ערוך',
-    delete: 'מחק',
+    edit: 'עריכה',
+    delete: 'מחיקה',
     more: 'פעולות',
   },
   toast: {
@@ -2264,15 +2298,15 @@ export const t = {
     // copy is what follows it — a flight names its route, shortened, with the SVG
     // arrow, like every other surface (ADR-0059 §3 session-101 amendment).
     hardEditTitle: 'לשנות אירוע קשיח?',
-    hardEditBody: 'מחובר להזמנה אמיתית - שינוי כאן מחייב עדכון שלה. ממשיכים?',
+    hardEditBody: 'מחובר להזמנה אמיתית - שינוי כאן ידרוש לעדכן גם אותה. ממשיכים?',
     hardDeleteTitle: 'למחוק אירוע קשיח?',
     hardDeleteBody: 'מחובר להזמנה אמיתית - המחיקה לא מבטלת את ההזמנה עצמה. ממשיכים?',
   },
   iconPicker: {
-    open: 'בחר סמל',
+    open: 'בחירת סמל',
     title: 'בחירת סמל',
     all: 'הכול',
-    searchPlaceholder: 'חפש סמל או מדינה…',
+    searchPlaceholder: 'חיפוש סמל או מדינה…',
     noMatch: 'לא נמצא סמל',
     categoryReadout: (label: string) => `קטגוריה: ${label}`,
     // Browse-group labels — keyed by IconGroup.id in @waypoint/shared's ICON_SET.
@@ -2377,8 +2411,8 @@ export const t = {
     // The word between a start and its duration, now that the clock reads as a
     // sentence rather than two captioned cells (ADR-0177 §1).
     forPrefix: 'למשך',
-    addTime: 'הוסף שעה',
-    addEnd: 'הוסף סיום',
+    addTime: 'הוספת שעה',
+    addEnd: 'הוספת סיום',
     noTime: 'ללא שעה',
     exactStart: 'שעה מדויקת',
     exactEnd: 'סיום מדויק',
@@ -2411,7 +2445,7 @@ export const t = {
     // legitimate mid-planning path would be clicked through (ADR-0109 §6's anti-nag
     // reasoning). So the note names what is lost and gets out of the way.
     noLocationHint:
-      'בלי מיקום אין סימון במפה ואין שורה ברשימה, אין ניווט, אין מרחק ואין דירוג, והשעות ייקראו באזור הזמן של הקטע בטיול ולא של המקום עצמו.',
+      'בלי מיקום אין סימון במפה, אין ניווט ואין מרחק. והשעות ייקראו באזור הזמן של הקטע בטיול, לא של המקום עצמו.',
     searchPlaceholder: 'חיפוש מקום…',
     alreadyInTrip: 'כבר בטיול',
     saveNameOnly: (name: string) => `שמירת "${name}" כשם בלבד`,
@@ -2446,8 +2480,8 @@ export const t = {
     label: 'מתי',
     dateCap: 'תאריך',
     timeCap: 'שעה',
-    addDate: 'הוסף תאריך',
-    addTime: 'הוסף שעה',
+    addDate: 'הוספת תאריך',
+    addTime: 'הוספת שעה',
     exactTime: 'שעה מדויקת',
     durationPrefix: 'משך:',
     crossesDay: 'חוצה יממה',
@@ -2478,7 +2512,7 @@ export const t = {
     back: 'חזרה לטיול',
     details: 'פרטי הטיול',
     edit: 'עריכה',
-    save: 'שמור',
+    save: 'שמירה',
     cancel: 'ביטול',
     nameLabel: 'שם הטיול',
     destinationLabel: 'יעד',
@@ -2502,56 +2536,62 @@ export const t = {
     // app's "no value" placeholder.
     currencyUnset: '-',
     peerManaged: 'רק מנהל יכול לערוך את פרטי הטיול',
-    party: 'חבורה',
-    memberCount: (n: number) => `${n} משתתפים`,
-    you: 'אתה',
+    party: "החבר'ה",
+    memberCount: (n: number) => `${n} נוסעים`,
+    // Renders after a name (`דן · זה אני`), which is why it is a clause and not `אתה`: the
+    // roster is the one surface that has to point at the reader, and every second-person
+    // singular in Hebrew picks a gender the app does not know.
+    you: 'זה אני',
     roleAdmin: 'מנהל',
-    rolePeer: 'משתתף',
+    rolePeer: 'נוסע',
     memberActions: (name: string) => `פעולות על ${name}`,
     // The member surface's detail rows (ADR-0133 §9) — the joined date moved here
     // off the row, which only names who is present.
     member: {
       roleLabel: 'תפקיד',
-      joinedLabel: 'הצטרף',
+      joinedLabel: 'הצטרפות',
     },
-    roster: 'חבורה',
-    rosterOpen: (n: number) => `החבורה, ${n} נוסעים`,
-    rosterFoot: 'הזמנה של אנשים חדשים והלינק לטיול נמצאים בהגדרות הטיול.',
+    roster: "החבר'ה",
+    rosterOpen: (n: number) => `החבר'ה, ${n} נוסעים`,
+    rosterFoot: 'הזמנת אנשים חדשים והלינק לטיול נמצאים בהגדרות הטיול.',
     // The member surface closes rather than cancels: it is a detail card that may
     // carry actions, not a prompt you back out of.
     closeMember: 'סגירה',
-    promote: 'הפוך למנהל',
-    removeMember: 'הסר מהטיול',
-    invite: 'הזמנת חברים',
-    inviteGenerate: 'הצג לינק הזמנה',
+    // **The infinitive, and it is the register rule's third carve-out.** The noun forms are
+    // both unusable: `מינוי` is what a committee does, and `הפיכה למנהל` is not a phrase.
+    // Hebrew's casual way to name an act on someone ELSE's state is the infinitive.
+    promote: 'להפוך למנהל',
+    removeMember: 'הסרה מהטיול',
+    invite: "הזמנת החבר'ה",
+    inviteGenerate: 'הצגת הלינק',
     inviteHint: 'לינק אחד לטיול · פעיל עד סוף הטיול · שתפו בקבוצה',
     inviteCopied: 'הלינק הועתק · שתפו בקבוצה',
-    inviteReset: 'אפס לינק',
+    inviteReset: 'לינק חדש',
     inviteResetHint: 'מבטל את הלינק הקודם ויוצר חדש · למנהל בלבד',
     inviteReset_done: 'נוצר לינק חדש · הקודם בוטל',
     removedTitle: 'הוסרו מהטיול',
     removedHint: 'לא יוכלו לחזור דרך הלינק · אפשר להחזיר אותם',
-    allowBack: 'החזר לטיול',
+    allowBack: 'החזרה לטיול',
     allowedBack: (name: string) => `${name} יכול לחזור דרך הלינק`,
     dangerZone: 'אזור רגיש',
-    leave: 'עזוב את הטיול',
-    leaveAction: 'עזוב',
-    leaveHint: 'תוסר מרשימת המשתתפים · אפשר לחזור דרך לינק תקף',
+    leave: 'יציאה מהטיול',
+    leaveAction: 'יציאה',
+    leaveHint: 'יוצאים מרשימת הנוסעים · אפשר לחזור עם לינק תקף',
     leaveConfirmTitle: 'לעזוב את הטיול?',
-    leaveConfirmBody: (name: string) => `תוסר מ״${name}״. אפשר להצטרף מחדש דרך לינק הזמנה תקף.`,
-    delete: 'מחק את הטיול לכולם',
-    deleteAction: 'מחק',
-    deleteHint: 'מחיקה זמינה למנהל בלבד · מוחקת את הטיול לכל המשתתפים',
+    leaveConfirmBody: (name: string) => `אתם יוצאים מ״${name}״. אפשר לחזור עם לינק תקף.`,
+    delete: 'מחיקת הטיול לכולם',
+    deleteAction: 'מחיקה',
+    deleteHint: 'מחיקה זמינה למנהל בלבד · מוחקת את הטיול לכל הנוסעים',
     deleteConfirmTitle: 'למחוק את הטיול לכולם?',
-    deleteConfirmBody: (name: string) => `״${name}״ יימחק לכל המשתתפים · אין דרך חזרה. ממשיכים?`,
-    removeConfirmTitle: 'להסיר משתתף?',
+    deleteConfirmBody: (name: string) => `״${name}״ יימחק לכל הנוסעים · אין דרך חזרה. ממשיכים?`,
+    removeConfirmTitle: 'להסיר נוסע?',
     removeConfirmBody: (name: string) => `${name} יוסר מהטיול. תמיד אפשר להזמין מחדש.`,
     toast: {
       saved: 'הפרטים נשמרו',
       savedQueued: 'נשמר · יסונכרן כשנחזור לרשת',
-      promoted: 'המשתתף קודם למנהל',
-      promotedQueued: 'קודם למנהל · יסונכרן כשנחזור לרשת',
-      removed: 'המשתתף הוסר',
+      promoted: 'הנוסע הוא מנהל עכשיו',
+      promotedQueued: 'עכשיו מנהל · יסונכרן כשנחזור לרשת',
+      removed: 'הנוסע הוסר',
       left: 'עזבת את הטיול',
       deleted: 'הטיול נמחק',
     },

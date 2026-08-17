@@ -17,6 +17,7 @@
 // has three corner marks to stay clear of rather than one.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+import { t } from '../src/i18n/he';
 
 const WIDTHS = [390, 360]; // ADR-0017's primary band, both ends
 const today = () => new Date().toISOString().slice(0, 10);
@@ -89,7 +90,7 @@ async function boot(page: Page, width: number): Promise<void> {
   await expect(page.locator('nav.nav')).toBeVisible();
 }
 
-const toDays = (page: Page) => page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+const toDays = (page: Page) => page.locator('nav.nav button', { hasText: t.tabs.days }).click();
 
 /** Both tiles' boxes, and every way the pin could be in the way. Waits for both cards first:
  *  the shelf is below the day list, and measuring a strip that has not rendered yet reads as
@@ -209,7 +210,7 @@ for (const width of WIDTHS) {
     });
 
     test('stays clear of the ✕ and the note mark, in Plan mode', async ({ page }) => {
-      await page.getByRole('button', { name: 'תכנון', exact: true }).click();
+      await page.getByRole('button', { name: t.mode.plan, exact: true }).click();
       await toDays(page);
       await expect(page.locator('.builder-side')).toBeVisible({ timeout: 20_000 });
 

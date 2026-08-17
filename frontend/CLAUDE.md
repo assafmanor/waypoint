@@ -427,6 +427,26 @@ new `ui/domain/` or `ui/primitives/` component ships with its own test file
 alongside it (the existing `*.test.tsx` co-location is the pattern, not the
 exception).
 
+**Query by `t.*`, never by a copy literal** (session 258). If the component reads a string
+from `i18n/he.ts`, the test that looks for it on screen reads the **same key** —
+`getByText(t.docs.viewer.error)`, not `getByText('לא הצלחנו לפתוח את המסמך')`. A copy pass
+across `he.ts` cost 11 unit failures and 5 e2e failures with no defect behind any of them,
+which is a tax on improving the Hebrew and nothing else. Applies to **e2e specs too**
+(`import { t } from '../src/i18n/he'`): the 5 e2e failures were one reworded button, and the
+unit suite could not see them because `pnpm test` does not run Playwright.
+
+Two things this rule is not:
+
+- **Not for a label the test itself supplies.** `ListRow`, `ConfirmDialog`, `SearchField`,
+  `TimeField`, `MaybeCard` and `ChoiceDisclosure` take their words as **props**, so their
+  specs pass their own fixtures. Coupling those to an unrelated `t` key that happens to hold
+  the same string is worse than a literal — the test then breaks when a screen it has nothing
+  to do with is reworded. Same for seeded fixture data: `ev('קשיח', …)` is an event _title_.
+- **Not satisfied by a substring regex.** `new RegExp('הזז')` kept passing after the button
+  became `הזזה`, and `queryByText('הפוך למנהל')` kept passing after that verb was reworded —
+  an **absence** assertion against a stale literal is vacuous, and it reports green forever.
+  That is the failure mode worth fearing here, not the loud one.
+
 **A WebGL surface cannot be seen in jsdom, but almost all of its contract can be tested.** The Map
 tab is the worked example (ADR-0121 §13): every decision about what a pin looks
 like lives in pure `lib/` functions tested without a renderer

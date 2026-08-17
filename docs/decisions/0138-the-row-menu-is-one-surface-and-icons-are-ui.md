@@ -380,3 +380,29 @@ Decided in [ADR-0161](0161-a-move-names-a-position-and-an-event-owns-its-length.
 By that test the sheet keeps four rows (`ערוך` · `שכפל` · `העבר למדף` · `מחק`) — the same count it had before ADR-0161, with `הזז` out and `שכפל` in, because a copy is the one verb with no object on the row to hang off.
 
 **§1's actual claims are untouched:** there is still exactly one row-menu component (`RowActionList`), it still partitions danger into its own group, its icons are still SVG and never emoji, and its subject line still names kind and slot. Nothing here reopens the fifth-copy problem §1 solved.
+
+## Amendment (2026-08-17, session 258) — §6 is withdrawn: the register is verbal nouns, and the singular was gendering the app
+
+**§6 is reversed.** It read the change one way — `עריכה`/`מחיקה` → `ערוך`/`מחק`, "a menu item is something you tell the app to do, so the verb wins" — and both halves of that reasoning survive intact. What it did not account for is the register the rest of the app is written in, and what the singular imperative costs in Hebrew specifically.
+
+**The count is the argument.** By 2026-08-17 `frontend/src/i18n/he.ts` held roughly **60** singular-masculine imperative labels against roughly **46** plural ones, and they collided on the same screens: the documents screen said `הוסף מסמך` while Plan Home's documents row said `העלו`; `index.sheet.save` was `שמור` next to the canonical `common.save: 'שמירה'` that U-02 exists to enforce; `map.scheduleToDay` was `שיבוץ ליום` and `actions.scheduleToDay` was `שבץ ליום` for the same action; one clear action was spelled three ways (`נקה חיפוש` / `ניקוי` / `ניקוי הסינון`). §6 could not have prevented that — it named a rule for _menus_ and the imperative spread to primaries, empty states, placeholders and pickers, because nothing said where it stopped.
+
+**And a Hebrew imperative singular picks a gender.** This app's subject is a mixed group of five people travelling together, so every `ערוך` and `שמור` addresses one of them as masculine. No amount of internal consistency fixes that half, which is why the repair is not "make the imperatives plural" (`ערכו`/`מחקו` read stiffer than what they replace) but a register with no grammatical person in it at all.
+
+**The rule that replaces §6** lives at the top of `he.ts`, where a copy change will actually be read, and is summarised in [`design-language.md`](../design/design-language.md)'s **Voice and register** entry:
+
+| where                    | register    | example                               |
+| ------------------------ | ----------- | ------------------------------------- |
+| a control                | verbal noun | `עריכה` · `מחיקה` · `שמירה` · `ניקוי` |
+| a dialog title           | infinitive  | `למחוק את הפתק?` · `לצאת בלי לשמור?`  |
+| a sentence to the reader | plural      | `נסו שוב` · `בדקו את החיבור`          |
+
+Two carve-outs, both deliberate and both named so the next pass does not "finish" them:
+
+- **A disclosure toggle keeps `הצג`/`הסתר`.** One matched pair for one job, picked by the owner on 2026-08-16 for the Plan checklist, and `הצגה`/`הסתרה` on a caret row reads like a setting rather than a switch.
+- **A stepper keeps its imperative** (`actions.delayBy`, `actions.earlierBy`): `דחייה 15 דק׳` is not a thing anyone says.
+- **An act on someone ELSE's state takes the infinitive** — `settings.promote` is `להפוך למנהל`. The owner rejected the noun form on sight (_"`מינוי כמנהל` sounds very formal"_), and it is: `מינוי` is what a committee does, and `הפיכה למנהל` is not a phrase anyone says. Hebrew's casual way to name an act on another person's state is the infinitive, and the same call reworded the two toasts beside it (`מונה למנהל` → `הוא מנהל עכשיו`), which had inherited the same root.
+
+**What §6 got right and is kept:** the menu's actions and the same actions elsewhere must read as one vocabulary. That is now true in the other direction — `actions.edit`, `index.detail.edit` and `docs.manage.edit` are all `עריכה`, and they match `common.save`/`cancel`/`delete`, the `map.make.edit`/`del.action` pair, and every `notes.manage`/`tasks.manage` row, which were nouns the whole time. §1–§5 and §7–§9 are untouched; nothing here reopens the fifth-copy problem or the emoji guard.
+
+**The one gendered verb left in the app is the change feed**, and it is the narration that forces it: the feed reports what a _named_ person did, so there is a grammatical subject. A verbal noun drops the actor (`הזזה של האירוע` says nothing about who), and so does the passive. It stays masculine-by-convention, documented at `changeFeed` in `he.ts`, and is worth revisiting only if `Member` ever carries a pronoun.
