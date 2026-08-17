@@ -39,7 +39,7 @@
 // that mints one.
 import type { AutomaticTask } from '../lib/automatic-tasks';
 import { ListRow } from './domain';
-import { Icon } from './Icon';
+import { TaskTick } from './TaskTick';
 import { t } from '../i18n/he';
 import './tasks.css';
 
@@ -59,17 +59,7 @@ export function AutomaticTaskRow({
   return (
     <ListRow
       className={auto.done ? 'tsk-auto tsk-settled' : 'tsk-auto'}
-      lead={
-        <button
-          type="button"
-          className="tsk-tick"
-          aria-pressed={auto.done}
-          aria-label={t.tasks.tick(auto.title)}
-          onClick={onTick}
-        >
-          <Icon name="check" />
-        </button>
-      }
+      lead={<TaskTick done={auto.done} title={auto.title} onTick={onTick} />}
       onOpen={onAct}
       openLabel={auto.title}
       title={<span>{auto.title}</span>}

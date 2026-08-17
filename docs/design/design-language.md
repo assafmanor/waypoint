@@ -307,6 +307,10 @@ action.
 Note the distinction from press feedback: a press answers the **tap**, a settle answers the
 **outcome**. A control can be pressed without its answer changing.
 
+**A settle can be asymmetric, and usually should be** (ADR-0195). A task's tick is completed with a beat — `BEAT.TICK`, the ink squashing in, overshooting and settling while the ✓ is drawn — and **un-ticked with nothing but a 140ms drain on `--ease-exit`**. Finishing something is an achievement; taking it back is a correction, and a mechanism that plays the same motion both ways says they are the same event. Express it by declaring the quiet half's `transition` on the **destination** state — that is what makes the asymmetry one rule instead of a flag, and it leaves the beat a pure entrance.
+
+**And two numbers worth knowing before reaching for an easing on something small:** `--ease-arrive` overshoots **0.073px on a 26px disc**, and a stroke drawn under `--ease-standard` is **61% complete at 60ms of 240**. The ramp's curves were tuned on sheets and cards; at control size, liveliness has to be written as keyframes with interior stops (and then `linear`, so the offsets _are_ the timing). Measured in `mockups/a-tick-that-is-seen-v1.html`, whose filmstrip freezes a beat at sampled times — the technique to reuse when a motion decision needs to be _looked at_ rather than described.
+
 ### A shell route arrives with a direction (ADR-0140)
 
 Forward and back must not look the same, or the motion carries no information. The direction rides `location.state` (stamped by a back that moves) — never read from history, which ADR-0090 forbids. Forward arrives from the inline-**end** edge (the platform push, mirrored: LTR from the right, RTL from the left); back from inline-start. Because `translateX` has no logical form, the sign comes from the one `--dir` token, so both directions share one set of keyframes instead of a mirrored copy each.

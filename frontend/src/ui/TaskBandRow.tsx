@@ -12,6 +12,7 @@ import { ltrIsolate } from '../lib/bidi';
 import { ListRow } from './domain';
 import { Avatar } from './primitives/Avatar';
 import { Icon } from './Icon';
+import { TaskTick } from './TaskTick';
 import { t } from '../i18n/he';
 import './tasks.css';
 
@@ -42,17 +43,7 @@ export function TaskBandRow({
   return (
     <ListRow
       className={settled ? 'tsk-settled' : undefined}
-      lead={
-        <button
-          type="button"
-          className="tsk-tick"
-          aria-pressed={settled}
-          aria-label={t.tasks.tick(task.title)}
-          onClick={onTick}
-        >
-          <Icon name="check" />
-        </button>
-      }
+      lead={<TaskTick done={settled} title={task.title} onTick={onTick} />}
       onOpen={onOpen}
       openLabel={task.title}
       title={

@@ -236,3 +236,41 @@ hiding a multiplier.
 And the second tester is not a thumb but a trip: a to-do list is pressed dozens of
 times, and the beat that delights on the third press is the beat that is noticed
 on the thirtieth.
+
+## Built, same day — [ADR-0195](../decisions/0195-a-tick-is-answered-once-and-the-row-waits-for-it.md)
+
+> I approve, write the ADR and build it, same pr
+
+Shipped: `BEAT.TICK` in `lib/one-shot.ts`; the keyframes, the un-tick transition and the
+hover deletion in `ui/tasks.css`; `ui/TaskTick.tsx` replacing four hand-copied buttons;
+`TaskTick.test.tsx`. 235 files / 3961 tests green.
+
+**Four call sites, not three.** The design note said three; `TaskSection`'s
+`.tsk-tick-sec` is the fourth, and it is the one that would have been forgotten — it is the
+only one that is not a `ListRow` lead. Counting them again at build time is what found it.
+
+**The one thing the build changed about the design, and it is a deletion.** §6 drew the
+hover repair as a quieter hint gated on `@media (hover: hover) and (pointer: fine)`. It
+shipped as **no hover rule at all**, because it could not be verified as cheaply as it could
+be dropped: the rule parsed, the media query matched, `el.matches()` confirmed the selector,
+and the computed `::before` colour under `:hover` kept reporting the base value across six
+probes (an isolated reproduction of the same selector pair _did_ update, so the disagreement
+was never resolved). A rule nobody can measure is the same risk as a `className` with no rule
+behind it, which this repo has shipped twice. It was mouse-only on a phone-primary app
+anyway, so the tick loses nothing a phone ever had.
+
+What was verified instead, in a real touch context and in the shipped sheet: an open tick
+paints **identically** at rest, under a mouse hover, and after a real tap with `:hover`
+latched — ring `--line`, mark `opacity: 0`. That is the report, closed and measured.
+
+**And two readings from the shipped sheet worth keeping**, both of which looked like bugs and
+were not:
+
+- The beat's disc reads `--card` **while the animation runs** — `wp-tick-land`'s own `from`.
+  It settles to `--ok`. A computed style read during an animation is the animation's value,
+  not the rule's.
+- `transition-duration` on the **button** is `0s` in both states, because the un-tick
+  transition lives on `::before`. Read the pseudo, or a working rule looks dead.
+
+**Left as it was:** the resting ring's 1.21:1 / 1.33:1, on the backlog. The beat cannot help
+it, and it is now the most valuable thing left in this area.

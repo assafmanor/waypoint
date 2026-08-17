@@ -88,14 +88,33 @@
   height: calc(var(--tick-ink) * 0.58);
   opacity: 0;
 }
-.tsk-tick:hover::before,
-.tsk-tick-sec:hover::before {
-  border-color: var(--ok);
-}
-.tsk-tick:hover .icon,
-.tsk-tick-sec:hover .icon {
-  opacity: 0.4;
-}
+/* **THE HOVER DOES NOT ASSERT THE DONE STATE** (ADR-0195 §3, and it replaces a pair that
+   borrowed `--ok` for the ring and drew the ✓ at `opacity: 0.4`).
+
+   On a touch device `:hover` LATCHES after a tap and clears only when something else is
+   tapped — probed in a real browser, where `:focus-visible` turned out to be matched by
+   neither a click nor a tap, so the focus ring below is innocent and unchanged. The old
+   pair therefore left an OPEN control wearing a ghost ✓ inside a green ring, which is the
+   owner's _"still leaves the checkbox selected (with a small outline)"_ and the reason the
+   2026-08-16 report "did not reproduce": that session read `aria-pressed` and the fill,
+   both of which were correct the whole time. A control's paint was lying about its state.
+
+   **So the repair is a DELETION and there is no rule here.** The first build wrote a
+   quieter hint in its place — a ring lifted to `--muted`, gated on
+   `@media (hover: hover) and (pointer: fine)` so it could not latch — and it went out
+   because it could not be verified as cheaply as it could be dropped: six browser probes
+   disagreed about whether a hovered pseudo-element's colour can be read back at all, and a
+   rule nobody can measure is a rule this repo has shipped unpainted before. It was also
+   mouse-only on a phone-primary app (ADR-0017), which is what makes deleting it a real
+   answer rather than a retreat. The tick keeps `cursor: pointer`, its ring, its
+   `:focus-visible` and the app-wide press scale.
+
+   What survives from that attempt, because it is the part with 40 other call sites: on a
+   touch device EVERY `:hover` rule is also a stuck state, and `@media (hover: hover) and
+   (pointer: fine)` is the guard for the ones that must keep a hint. The sweep is on
+   `docs/backlog.md`. Verified here in a real touch context: after a tap the hover is
+   latched (`:hover` matches) and the control paints exactly its resting state — ring
+   `--line`, mark `opacity: 0`. */
 .tsk-tick:focus-visible,
 .tsk-tick-sec:focus-visible {
   outline: 2.5px solid var(--teal);
@@ -119,6 +138,110 @@
 .tsk-tick[aria-pressed='true'] .icon,
 .tsk-tick-sec[aria-pressed='true'] .icon {
   opacity: 1;
+}
+
+/* ══ THE BEAT — `BEAT.TICK`, played once by `playBeat` from `TaskTick` (ADR-0195).
+   `lib/one-shot.ts` is the family and its four properties all hold here: one shot applied
+   imperatively, the duration from a token so the CSS and `motionDurationMs` cannot
+   disagree, symmetric so no `--dir`, and `linear` with the beat written as INTERIOR STOPS.
+
+   That last one is measured rather than inherited. `--ease-arrive` is the app's only
+   overshooting curve and it overshoots **0.073px on a 26px disc** — a fifth of a device
+   pixel, because "a nudge past the mark, not a bounce" was written for a sheet arriving.
+   And a ✓ drawn under `--ease-standard` is **61% complete at 60ms of 240** and then crawls:
+   a decelerate is right for an object arriving and wrong for a pen moving. So the liveliness
+   is in the keyframes and the offsets ARE the timing (`mockups/a-tick-that-is-seen-v1.html`,
+   whose filmstrip is where both numbers were sampled).
+
+   **The paint lands before the data does.** `is-ticking` carries the done paint itself,
+   because the hold means `aria-pressed` is still `false` for the beat's duration — the row
+   has not been told yet. It also makes the animation's endpoints unambiguous instead of
+   depending on when React commits.
+
+   Nothing here moves layout: both transforms are on the ::before and the mark, never on the
+   `<button>`. That is also cascade rather than taste — an animation outranks author normal
+   declarations, so a `transform` on the button would beat `tokens.css`'s app-wide
+   `:active { transform: scale(var(--press-scale)) }` and take the press acknowledgement
+   away with the finger still down. */
+.tsk-tick.is-ticking,
+.tsk-tick-sec.is-ticking {
+  color: var(--on-fill);
+}
+.tsk-tick.is-ticking::before,
+.tsk-tick-sec.is-ticking::before {
+  background: var(--ok);
+  border-color: var(--ok);
+  animation:
+    wp-tick-land var(--t-quick) var(--ease-standard),
+    wp-tick-pop var(--t-base) linear;
+}
+.tsk-tick.is-ticking .icon,
+.tsk-tick-sec.is-ticking .icon {
+  opacity: 1;
+  animation: wp-tick-pop var(--t-base) linear;
+}
+.tsk-tick.is-ticking .icon path,
+.tsk-tick-sec.is-ticking .icon path {
+  /* The dash LENGTH here and the OFFSET in the keyframe, never the other way round: under
+     `prefers-reduced-motion` `App.css` kills every animation, and a static
+     `stroke-dashoffset` would then leave a completed task with NO ✓ at all, in a green
+     circle, permanently — with nothing able to fail, since jsdom loads no stylesheet. This
+     way a beat that never runs simply leaves the mark drawn. 21 covers the path's 20.23
+     user units (`getTotalLength()`), with the round cap inside it. */
+  stroke-dasharray: 21;
+  animation: wp-tick-draw var(--t-base) linear;
+}
+@keyframes wp-tick-land {
+  /* `background-color`, not the `background` shorthand — a shorthand's discrete parts snap
+     instead of ramping. */
+  from {
+    background-color: var(--card);
+    border-color: var(--line);
+  }
+}
+@keyframes wp-tick-pop {
+  0% {
+    transform: scale(0.55);
+  }
+  55% {
+    transform: scale(1.14);
+  }
+  78% {
+    transform: scale(0.965);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes wp-tick-draw {
+  from {
+    stroke-dashoffset: 21;
+  }
+}
+
+/* ══ AND THE WAY BACK IS NOT THE WAY IN (ADR-0195 §2; owner: _"unticking shouldn't use the
+   same animation if any, it should be much more minimal"_).
+
+   Un-ticking is a CORRECTION, not an achievement: no beat, no hold, no keyframe — the fill
+   drains and the mark fades over `--t-quick` on `--ease-exit`, the curve the app already
+   uses for a glow going out.
+
+   **Declared on the OPEN state, which is what makes the asymmetry one rule instead of a
+   flag**: a `transition` is read from the DESTINATION state's computed style, so this
+   governs done→open and is simply absent on open→done, where the keyframes above do the
+   work. Nothing has to know which direction it is going, and the beat stays a pure
+   entrance. (Measured 0.14s here against 0s on the pressed state — and read off the
+   `::before`, since reading `transition-duration` from the button reports 0s for both and
+   makes a working rule look broken.) */
+.tsk-tick:not([aria-pressed='true'])::before,
+.tsk-tick-sec:not([aria-pressed='true'])::before {
+  transition:
+    background-color var(--t-quick) var(--ease-exit),
+    border-color var(--t-quick) var(--ease-exit);
+}
+.tsk-tick:not([aria-pressed='true']) .icon,
+.tsk-tick-sec:not([aria-pressed='true']) .icon {
+  transition: opacity var(--t-quick) var(--ease-exit);
 }
 
 /* THE DEADLINE, in the meta line. `--amber-deep` is amber's paper variant and a due time IS
