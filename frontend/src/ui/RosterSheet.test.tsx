@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Membership, User } from '@waypoint/shared';
 import { RosterSheet } from './RosterSheet';
+import { t } from '../i18n/he';
 
 vi.mock('../state/nav-state', () => ({ useOverlay: () => {} }));
 
@@ -63,13 +64,14 @@ describe('RosterSheet', () => {
 
   it('marks which one is you', () => {
     renderRoster();
-    expect(screen.getByText(/אתה/)).toBeTruthy();
+    // Shares a text node with the `·` separator, so the assertion is on the container.
+    expect(document.body.textContent).toContain(t.settings.you);
   });
 
   it('states each role', () => {
     renderRoster();
-    expect(screen.getAllByText('מנהל').length).toBe(2);
-    expect(screen.getAllByText('משתתף').length).toBe(3);
+    expect(screen.getAllByText(t.settings.roleAdmin).length).toBe(2);
+    expect(screen.getAllByText(t.settings.rolePeer).length).toBe(3);
   });
 
   it('does NOT put the joined date on the row — that is the member surface', () => {
@@ -82,7 +84,7 @@ describe('RosterSheet', () => {
     renderRoster();
     fireEvent.click(screen.getByText('נועם').closest('button')!);
     expect(screen.getByText('תפקיד')).toBeTruthy();
-    expect(screen.getByText('הצטרף')).toBeTruthy();
+    expect(screen.getByText(t.settings.member.joinedLabel)).toBeTruthy();
     // The app's one numeric date format — zero-padded, like the trip-date ranges.
     expect(screen.getByText('14.03')).toBeTruthy();
   });

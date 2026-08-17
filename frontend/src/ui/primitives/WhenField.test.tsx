@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { wrapNav } from '../../test/nav-harness';
 import { WhenField } from './WhenField';
+import { t } from '../../i18n/he';
 
 const spanProps = {
   variant: 'span' as const,
@@ -119,7 +120,7 @@ describe('WhenField — span variant', () => {
     const onChange = vi.fn();
     render(wrapNav(<WhenField {...spanProps} start="2026-07-26" end="" onChange={onChange} />));
     // Open the departure time panel (the first leg).
-    fireEvent.click(screen.getAllByText('הוסף שעה')[0]);
+    fireEvent.click(screen.getAllByText(t.whenField.addTime)[0]);
     expect(document.querySelector('.tp-panel')).toBeTruthy();
     // Pick 09:00 from the list → combines with the seeded date and closes the panel.
     const list = document.querySelector('.tp-list') as HTMLElement;
@@ -149,7 +150,7 @@ describe('WhenField — span variant', () => {
           />,
         ),
       );
-      const list = openEndTimes('הוסף שעה');
+      const list = openEndTimes(t.whenField.addTime);
       expect(within(list).queryByText('15:15')).toBeNull();
       expect(within(list).queryByText('15:30')).toBeNull();
       expect(within(list).getByText('15:45')).toBeTruthy();
@@ -169,7 +170,7 @@ describe('WhenField — span variant', () => {
           />,
         ),
       );
-      const list = openEndTimes('הוסף שעה');
+      const list = openEndTimes(t.whenField.addTime);
       expect(within(list).getByText('00:00')).toBeTruthy();
       expect(within(list).getByText('06:15')).toBeTruthy();
       expect(document.querySelector('.tp-time-input')?.getAttribute('min')).toBeNull();
@@ -179,7 +180,7 @@ describe('WhenField — span variant', () => {
       render(
         wrapNav(<WhenField {...spanProps} start="2026-07-26T15:30" end="" onChange={() => {}} />),
       );
-      const list = openEndTimes('הוסף שעה');
+      const list = openEndTimes(t.whenField.addTime);
       expect(within(list).getByText('00:00')).toBeTruthy();
     });
 
@@ -207,7 +208,7 @@ describe('WhenField — span variant', () => {
         <WhenField {...spanProps} start="" end="" defaultDate="2026-07-26" onChange={onChange} />,
       ),
     );
-    fireEvent.click(screen.getAllByText('הוסף שעה')[0]);
+    fireEvent.click(screen.getAllByText(t.whenField.addTime)[0]);
     const list = document.querySelector('.tp-list') as HTMLElement;
     fireEvent.click(within(list).getByText('08:30'));
     expect(onChange).toHaveBeenCalledWith({ start: '2026-07-26T08:30', end: '' });

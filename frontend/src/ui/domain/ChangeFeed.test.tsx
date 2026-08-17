@@ -3,6 +3,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { HOUSEKEEPING_CHANGE, type Change, type User } from '@waypoint/shared';
 import { ChangeFeed } from './ChangeFeed';
+import { t } from '../../i18n/he';
 import {
   appendChangeEntry,
   describeChange,
@@ -230,7 +231,7 @@ describe('ChangeFeed', () => {
         onDismissAll={onDismissAll}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'נקה את כל העדכונים' }));
+    fireEvent.click(screen.getByRole('button', { name: t.changeFeed.clearAllLabel }));
     expect(onDismissAll).toHaveBeenCalled();
   });
 });

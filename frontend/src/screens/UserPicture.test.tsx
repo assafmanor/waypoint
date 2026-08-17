@@ -5,6 +5,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Me } from '@waypoint/shared';
+import { t } from '../i18n/he';
 
 const patchMe = vi.fn();
 const setAvatar = vi.fn();
@@ -89,7 +90,8 @@ describe('UserPicture — a photo is in use', () => {
   it('says removal does not delete anything at Google', () => {
     me = withPhoto();
     render(<UserPicture />);
-    expect(screen.getByText(/לא מחיקה אצל גוגל/)).toBeTruthy();
+    // Two hints share one container, so neither sentence is an element of its own.
+    expect(document.body.textContent).toContain(t.shell.account.picture.removeHint);
   });
 });
 
