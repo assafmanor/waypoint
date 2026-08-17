@@ -7,7 +7,7 @@
 // no open-in-place, no sync column, no kebab. A band is a window onto the list, so the verbs
 // that need room live where the list does.
 import type { Task, User } from '@waypoint/shared';
-import { taskDue, type TaskClock } from '../lib/tasks';
+import { isSettled, taskDue, type TaskClock } from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { ListRow } from './domain';
 import { Avatar } from './primitives/Avatar';
@@ -32,14 +32,21 @@ export function TaskBandRow({
     ? users.find((u) => u.id === task.assigneeUserId)
     : undefined;
   const due = taskDue(task, clock);
+  // **The row says whether it is done** (owner, 2026-08-17: on Plan Home's `הושלמו` drawer a
+  // completed manual task drew an EMPTY circle beside the checks' green ticks). It was
+  // `aria-pressed={false}` and no `tsk-settled`, which held only because the band that
+  // extracted this row shows open tasks exclusively — Plan Home hands it settled ones too.
+  // `AutomaticTaskRow` and `IndexTasksView` both already draw it this way.
+  const settled = isSettled(task);
 
   return (
     <ListRow
+      className={settled ? 'tsk-settled' : undefined}
       lead={
         <button
           type="button"
           className="tsk-tick"
-          aria-pressed={false}
+          aria-pressed={settled}
           aria-label={t.tasks.tick(task.title)}
           onClick={onTick}
         >

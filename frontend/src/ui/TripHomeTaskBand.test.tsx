@@ -140,6 +140,21 @@ describe('TripHomeTaskBand', () => {
     expect(screen.queryByText(t.tasks.sheet.nobody)).toBeNull();
   });
 
+  // **A settled task draws a TICKED circle** (owner, 2026-08-17). This band only ever hands
+  // over open tasks, which is why the row shipped with `aria-pressed={false}` hardcoded — but
+  // Plan Home's `הושלמו` drawer renders the same row, so a completed manual task sat there
+  // with an empty circle beside the checks' green ticks. The row is asserted here because
+  // this is where the row is tested, not because this band shows one.
+  it('reports a settled task as ticked and struck', () => {
+    show([task('bought', { status: TASK_STATUS.DONE })]);
+    expect(document.querySelector('.tsk-tick')!.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.wp-listrow')!.classList.contains('tsk-settled')).toBe(true);
+    cleanup();
+    show([task('open')]);
+    expect(document.querySelector('.tsk-tick')!.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('.wp-listrow')!.classList.contains('tsk-settled')).toBe(false);
+  });
+
   // The point of the move, as a shape rather than a class: the meta line holds the deadline
   // and nothing else, which is what stops it wrapping to a third line.
   it('leaves the deadline alone on the meta line', () => {
