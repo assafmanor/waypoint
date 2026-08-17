@@ -27,6 +27,8 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { setSimulatedNow } from '../lib/useClock';
+import { BEAT } from '../lib/one-shot';
+import type { CheckId } from '../lib/readiness';
 import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
 import { PLAN_TASK_CAP } from '../constants';
@@ -78,6 +80,17 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   ...over,
 });
 
+/** **A trip with nothing left to prepare** — the state ADR-0193 §4 read as unreachable, and
+ *  the only one in which the hero is not a control. Satisfying the five checks from real data
+ *  would take a round-trip pair of placed flights, a bed for every night, an event on every
+ *  date and two passports; a ticked overlay row per check reaches the same resolution
+ *  (`automaticTasks`: a human answer wins in both directions) without pinning this test to
+ *  `computeReadiness`' inputs, which are not its subject. */
+const allChecksAnswered = (): Task[] =>
+  (['flights', 'lodging', 'itinerary', 'documents', 'group'] satisfies CheckId[]).map((key) =>
+    task(key, { derivedKey: key, status: TASK_STATUS.DONE }),
+  );
+
 let tasks: Task[] = [];
 
 vi.mock('../state/trip-state', () => ({
@@ -104,6 +117,9 @@ vi.mock('../state/map-scope-state', () => ({
 }));
 
 const prep = () => document.querySelector('.prep')!;
+/** The OPEN list's card. The completed drawer is a `.checklist` too, so a bare
+ *  `.checklist .tsk-auto` counts the ticked checks as though they were still live. */
+const openCard = () => document.querySelector('.checklist')!;
 const show = () => render(wrapNav(<PlanHome onNavigate={() => {}} />));
 
 describe('PlanHome — the list counts everything open', () => {
@@ -138,13 +154,11 @@ describe('PlanHome — the list counts everything open', () => {
   // The empty state itself — a block, not the 11px hint it used to be, and inside the card
   // so the section keeps one silhouette. Only reachable when the checks are satisfied too.
   it('shows the empty state as a block when genuinely nothing is open', () => {
-    tasks = [task('a', { status: TASK_STATUS.DONE })];
+    tasks = [...allChecksAnswered(), task('a', { status: TASK_STATUS.DONE })];
     show();
-    const rows = document.querySelectorAll('.checklist .wp-listrow');
-    if (rows.length === 0) {
-      expect(screen.getByText(t.planHome.checklist.emptyTitle)).toBeTruthy();
-      expect(document.querySelector('.checklist .fb-empty')).toBeTruthy();
-    }
+    expect(openCard().querySelectorAll('.wp-listrow')).toHaveLength(0);
+    expect(screen.getByText(t.planHome.checklist.emptyTitle)).toBeTruthy();
+    expect(openCard().querySelector('.fb-empty')).toBeTruthy();
   });
 
   // An undated task is a row like any other now — no window, no fold of its own. Before the
@@ -192,14 +206,12 @@ describe('PlanHome — the list counts everything open', () => {
   });
 
   // Absent at zero — there is no "0 משימות פתוחות" state (ADR-0045 in one line). With the
-  // checks counted, "nothing open" now means the checks are satisfied too, which is what the
-  // `allDone` fixture below already sets up.
+  // checks counted, "nothing open" means the checks are satisfied too, which is what
+  // `allChecksAnswered` sets up.
   it('carries no task readout when nothing at all is open', () => {
-    tasks = [];
+    tasks = allChecksAnswered();
     show();
-    const liveChecks = document.querySelectorAll('.checklist .tsk-auto').length;
-    if (liveChecks === 0) expect(prep().querySelector('.prep-tasks')).toBeNull();
-    else expect(prep().querySelector('.prep-tasks')).toBeTruthy();
+    expect(prep().querySelector('.prep-tasks')).toBeNull();
   });
 });
 
@@ -327,11 +339,46 @@ describe('PlanHome — the hero lifts', () => {
   // back to being the `<div>` it always was rather than announcing a control that would do
   // nothing on activation (ADR-0150 §8 from the other direction).
   it('is not a control when there is no run-up to open', () => {
-    tasks = [];
+    tasks = allChecksAnswered();
     show();
-    // Only meaningful once the derived checks are all satisfied too; when they are not, the
-    // checks themselves are the run-up and the hero is correctly pressable.
-    const liveChecks = document.querySelectorAll('.checklist .tsk-auto').length;
-    if (liveChecks === 0) expect(prep().tagName).toBe('DIV');
+    expect(openCard().querySelectorAll('.tsk-auto')).toHaveLength(0);
+    expect(prep().tagName).toBe('DIV');
+  });
+
+  // **THE EMPTY PRESS IS STILL ANSWERED** (owner, 2026-08-17). ADR-0193 §4 retired §H's
+  // rebuff on the reasoning that there is no state where the card is pressable and empty —
+  // the state exists, it is a trip with nothing left to prepare, and a tap there did nothing
+  // at all. Same beat, same shared rule, as the Trip board (§Q).
+  it('answers a press with the rebuff beat when there is nothing to lift', () => {
+    vi.useFakeTimers();
+    try {
+      tasks = allChecksAnswered();
+      show();
+      expect(prep().className).not.toContain(BEAT.REBUFF);
+      fireEvent.click(prep());
+      expect(prep().className).toContain(BEAT.REBUFF);
+      // Nothing opened: the beat is the whole answer.
+      expect(document.querySelector('.prep-lifted')).toBeNull();
+      // It is the RISE, not the form-refusal shake — pressing something that was never a
+      // control is not an error.
+      expect(prep().className).not.toContain(BEAT.NUDGE);
+      // jsdom cannot read `--t-base`, so `motionDurationMs` answers 0 and the removal is the
+      // next task (`lib/one-shot.ts`) — which is what lets a second press be felt again.
+      vi.advanceTimersByTime(1);
+      expect(prep().className).not.toContain(BEAT.REBUFF);
+      fireEvent.click(prep());
+      expect(prep().className).toContain(BEAT.REBUFF);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // …and it must not fire on the way into the run-up, which is the whole of the other state.
+  it('does not rebuff a hero that has something to lift', () => {
+    tasks = [task('a', { title: 'להוציא ביטוח' })];
+    show();
+    fireEvent.click(prep());
+    expect(document.querySelector('.prep-lifted')).toBeTruthy();
+    expect(document.querySelector(`.${BEAT.REBUFF}`)).toBeNull();
   });
 });

@@ -277,8 +277,10 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
 
   /** **A press that produces nothing reads as a dead surface** (ADR-0160 §9's own rule, and
    *  the reason §H put a rebuff here). So the hero is a control only while it has something
-   *  to open. The rebuff is gone with the condition it answered: there is no state now where
-   *  the card is pressable and empty. */
+   *  to open — and when it has nothing, the press is still ANSWERED with the beat rather
+   *  than swallowed (owner, 2026-08-17, restoring what ADR-0193 §4 retired: it read the
+   *  empty state as unreachable, and it is reachable the moment a trip is actually ready).
+   *  This is the Trip board's own shape one screen over (§Q). */
   const liftable = allRows.length > 0;
 
   /** The one verb per check (ADR-0061 §1: the CTA does the thing). The COPY moved to
@@ -356,8 +358,8 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
           `Board`'s own shape, one screen over: a `<button>` when there is a run-up to open,
           the `<div>` it has always been when there is not. A pressable card with nothing
           behind it is the dead tap ADR-0160 §9 exists to prevent, and announcing a control
-          that does nothing on activation is ADR-0150 §8 from the other side. The rebuff §H
-          added is gone with the condition it answered.
+          that does nothing on activation is ADR-0150 §8 from the other side. The `<div>` is
+          not dead, though: it plays §H's rebuff, the same way the board's does.
 
           **NOTHING INTERACTIVE MAY EVER GO INSIDE THIS ELEMENT.** Chrome closes a
           `<button>` at a nested one and reparents everything after it (ADR-0160 §4,
@@ -429,7 +431,9 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
             {inner}
           </button>
         ) : (
-          <div className="prep">{inner}</div>
+          <div className="prep" onClick={(e) => playBeat(e.currentTarget, BEAT.REBUFF)}>
+            {inner}
+          </div>
         );
       })()}
 
