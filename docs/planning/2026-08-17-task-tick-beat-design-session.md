@@ -120,6 +120,73 @@ The beat sits on `::before` and the mark.
 **Rejected: `animationend` as what removes the class.** Already rejected once
 inside `lib/one-shot.ts`; quoted in the mockup so it is not written a second time.
 
+## Round two — the owner took ה, and corrected two things
+
+> Looks very good and I take your recommendation. Two issues: Unticking shouldn't
+> use the same animation if any, it should be much more minimal I think.
+> Ticking/unticking still leaves the checkbox selected (with a small outline) — we
+> should get rid of it
+
+Both correct, and the second closes a report the app had already failed to
+reproduce once.
+
+### Un-ticking gets no beat at all
+
+The first draft had it exactly wrong: it reused `is-ticking`, which on an open
+control plays the **open state's entrance** — the pop, in reverse. Un-ticking is a
+**correction, not an achievement**. It now gets no beat, no hold and no keyframe:
+the fill drains and the mark fades over `--t-quick` on `--ease-exit`, the curve the
+app already uses for a glow extinguishing.
+
+**And the asymmetry is one rule rather than a flag, because a transition is read
+from the DESTINATION state's computed style.** Declared on the _open_ state, it
+governs done→open and is simply absent on open→done, where the beat's keyframes do
+the work — so nothing has to know which direction it is going, and the beat stays a
+pure entrance. Measured: **0.14s on the open state's disc, 0s on the pressed
+state's**. (First measured wrong, worth knowing: reading `transition-duration` off
+the _button_ reports `0s` for both, because the transition is declared on
+`::before` — the rule looked broken and was not.)
+
+### The lingering outline is `:hover`, and `:focus-visible` is innocent
+
+Two candidates, so it was **probed in a real browser** rather than reasoned about:
+
+- `:focus-visible` is matched by **neither** a mouse click **nor** a tap. The focus
+  ring is not involved and stays exactly as it is — a keyboard user needs it.
+- `:hover` **persists after a tap**: true after the first, still true after the
+  second, cleared only by tapping something else.
+
+And the shipped rules make that stuck state say something **false**:
+`.tsk-tick:hover .icon` is `opacity: 0.4` and `:hover::before` borrows `--ok`, so an
+**open** tick sits there wearing a ghost ✓ inside a green ring. §6 renders it beside
+two untouched rows in the same card and it is indistinguishable from done at a
+glance.
+
+**This is the 2026-08-16 report that "did not reproduce"** — _"when clicking again
+it still stays marked (not ticked, just an outline)"_. That session drove taps and
+read `aria-pressed` and the fill, both of which were correct the whole time, which
+is precisely why it found nothing. **The general lesson, since it will recur: a
+report about a control's appearance after an interaction is not answered by
+asserting its state.** The state was right and the paint was lying.
+
+Repair, two parts:
+
+1. The hover stops borrowing the done state — a ring that lifts towards the ink,
+   never `--ok`, and never the mark. On a phone there is no hover to acknowledge
+   anything, so that hint was always mouse-only (ADR-0017).
+2. Gated on `@media (hover: hover) and (pointer: fine)` so it cannot stick at all.
+   **This is the app's first such query**: ~40 unguarded `:hover` rules, zero
+   `@media (hover:`. The sweep is a separate backlogged pass — not a thing to take
+   silently inside a motion change (rule 8's "ask before the larger change"). The
+   tick is done here because its hover is the one that borrows a **status** colour
+   and the state's own glyph; most others lift a background a few percent, so a
+   latched one merely lingers as a highlight.
+
+One specificity trap recorded, because the obvious spelling of the fix is wrong:
+`.tsk-tick:hover .icon` and the shipped `.tsk-tick[aria-pressed='true'] .icon` are
+**both (0,3,0)**, so an unscoped override sitting later in the sheet wins on a
+hovered **done** tick and takes its ✓ away. Hence the two `:not([aria-pressed='true'])`s.
+
 ## A shipped defect the render exposed, and it is not about motion
 
 **The OPEN tick's ring measures 1.21:1 in light and 1.33:1 in dark** against the

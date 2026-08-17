@@ -80,6 +80,39 @@
      Both numbers are in the measurement table, sampled live rather than quoted.
 
      ─────────────────────────────────────────────────────────────────────────
+     WHAT THE SECOND ROUND CHANGED, both owner reports, both correct, and the
+     second one closes a report the app had already failed to reproduce once.
+
+     1. _"Unticking shouldn't use the same animation if any, it should be much
+        more minimal I think."_ The first draft had it exactly wrong: it reused
+        `is-ticking`, which on an open control plays the OPEN state's entrance —
+        the pop, in reverse. Un-ticking is a CORRECTION, not an achievement, so
+        it now gets no beat, no hold and no keyframe: the fill drains and the
+        mark fades over `--t-quick` on `--ease-exit`. **And the asymmetry is one
+        rule rather than a flag**, because a transition is read from the
+        DESTINATION state — declared on the open state it governs done→open and
+        is simply absent going the other way. Measured: 0.14s on the open state's
+        disc, 0s on the pressed state's.
+
+     2. _"Ticking/unticking still leaves the checkbox selected (with a small
+        outline) — we should get rid of it."_ **Probed rather than guessed, and
+        one of the two candidates is innocent:** `:focus-visible` is matched by
+        NEITHER a mouse click NOR a tap, so the focus ring is not involved and
+        stays (a keyboard user needs it). What persists is **`:hover`** — true
+        after the first tap, still true after the second, cleared only by tapping
+        elsewhere. And the shipped hover rules make that stuck state say
+        something FALSE: `:hover .icon` is `opacity: 0.4` and `:hover::before`
+        borrows `--ok`, so an OPEN tick sits there wearing a ghost ✓ inside a
+        green ring — §6 renders it beside two untouched rows and it is
+        indistinguishable from done at a glance.
+
+        **This is the 2026-08-16 report that "did not reproduce"** (backlog:
+        _"when clicking again it still stays marked (not ticked, just an
+        outline)"_). That session drove taps and read `aria-pressed` and the fill
+        — both correct the whole time, which is exactly why it found nothing: the
+        artefact is a hover style on the glyph, not a broken toggle.
+
+     ─────────────────────────────────────────────────────────────────────────
      AND A SHIPPED DEFECT THE RENDER EXPOSED, which is not about the beat and is
      the more urgent of the two. THE OPEN TICK'S RING MEASURES 1.21:1 IN LIGHT
      AND 1.33:1 IN DARK against the 3:1 floor a graphic control owes — it is
@@ -126,7 +159,8 @@
        §2 seven candidate beats — three quiet, four loud     → ADR §2
        §3 one shot, latched — why it is `playBeat`            → ADR §3
        §4 the row waits for the beat                         → ADR §4
-       §5 un-ticking, and reduced motion                     → ADR §5
+       §5 un-ticking is not the way in, and reduced motion   → ADR §5
+       §6 what a tap leaves behind, and it is not the focus  → ADR §6
 
      Interactive: theme (בהיר · כהה) · width (360×640 · 390×844) · which option
      §4 and §5 play · the HOLD in ms, which is a feel call and therefore a
@@ -10333,6 +10367,91 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         }
       }
 
+      /* ══ THE WAY BACK IS NOT THE WAY IN (owner, 2026-08-17: _"unticking
+         shouldn't use the same animation if any, it should be much more minimal
+         I think"_ — and the first draft of this file had it exactly wrong, since
+         `is-ticking` on an open control played the open state's entrance, i.e.
+         the pop in reverse).
+
+         Un-ticking is a CORRECTION, not an achievement. It gets no beat, no
+         hold, and no keyframe: the fill drains and the mark fades over
+         `--t-quick` on `--ease-exit`, the curve the app already uses for a glow
+         extinguishing. Leaving is briefer than arriving (design-language), and
+         here it is also quieter by a whole mechanism.
+
+         AND THE ASYMMETRY IS ONE RULE RATHER THAN A FLAG, because a transition
+         is read from the DESTINATION state's computed style: declared on the
+         OPEN state, it governs done→open and is simply absent on open→done,
+         where the beat's keyframes do the work. Nothing has to know which
+         direction it is going — which is also why the beat can stay a pure
+         entrance. (A transition cannot be frozen the way an animation can, so
+         §5 shows this one live; that asymmetry in the TOOL is a fair mirror of
+         the asymmetry in the motion.) */
+      .tsk-tick:not([aria-pressed='true'])::before,
+      .tsk-tick-sec:not([aria-pressed='true'])::before {
+        transition:
+          background-color var(--t-quick) var(--ease-exit),
+          border-color var(--t-quick) var(--ease-exit);
+      }
+      .tsk-tick:not([aria-pressed='true']) .icon,
+      .tsk-tick-sec:not([aria-pressed='true']) .icon {
+        transition: opacity var(--t-quick) var(--ease-exit);
+      }
+
+      /* ══ AND THE HOVER STOPS ASSERTING THE DONE STATE (owner, same round:
+         _"ticking/unticking still leaves the checkbox selected (with a small
+         outline) — we should get rid of it"_).
+
+         PROBED IN A REAL BROWSER, because there were two candidates and only one
+         is guilty. `:focus-visible` is matched by NEITHER a mouse click NOR a
+         tap, so the focus ring is innocent and stays exactly as it is — a
+         keyboard user needs it. What persists is **`:hover`**: true after the
+         first tap, still true after the second, and cleared only by tapping
+         something else. That is the platform's sticky-hover behaviour, and the
+         shipped rules make it say something false — `:hover .icon` is
+         `opacity: 0.4`, so an OPEN tick sits there wearing a ghost ✓, and
+         `:hover::before` borrows `--ok`, the done colour, for its ring.
+
+         So the report is real, the toggle was never broken, and this is why the
+         2026-08-16 session could not reproduce it: it drove taps and read
+         `aria-pressed` and the fill, which were both correct the whole time.
+
+         TWO CHANGES, and the second is the general one:
+
+           1. The hint stops borrowing the done state. A hover may lift the ring
+              towards the ink; it may not paint `--ok` and it may not draw the
+              mark. On a phone there is no hover to acknowledge anything, so that
+              hint was always mouse-only (ADR-0017) and cost a false state
+              everywhere else.
+           2. It is gated on `@media (hover: hover) and (pointer: fine)`, so it
+              cannot stick at all. **This is the app's FIRST such query** — there
+              are ~40 unguarded `:hover` rules and zero `@media (hover:` today.
+              Sweeping them is a separate pass on the backlog, not a thing to
+              take silently inside a motion change (rule 8's "ask before the
+              larger change"); the tick is done here because its hover is the one
+              that borrows a STATUS colour and the state's own glyph. */
+      /* Undoes the shipped pair rather than editing it in place — the diff the
+         ADR takes is "delete those two rules, write these". Scoped to the OPEN
+         state, and that is not tidiness: `.tsk-tick:hover .icon` and the shipped
+         `.tsk-tick[aria-pressed='true'] .icon` are BOTH (0,3,0), so an unscoped
+         override sitting later in the sheet would win on a hovered DONE tick and
+         take its ✓ away. The specificity is the whole reason this reads as two
+         `:not()`s instead of two plain selectors. */
+      .tsk-tick:not([aria-pressed='true']):hover::before,
+      .tsk-tick-sec:not([aria-pressed='true']):hover::before {
+        border-color: var(--line);
+      }
+      .tsk-tick:not([aria-pressed='true']):hover .icon,
+      .tsk-tick-sec:not([aria-pressed='true']):hover .icon {
+        opacity: 0;
+      }
+      @media (hover: hover) and (pointer: fine) {
+        .tsk-tick:not([aria-pressed='true']):hover::before,
+        .tsk-tick-sec:not([aria-pressed='true']):hover::before {
+          border-color: var(--muted);
+        }
+      }
+
       /* ── ב · המשיכה — THE RECOMMENDATION. The ✓ is drawn, because that is what
             the shipped glyph is: `Icon`'s `check` is a two-segment stroked path
             with round caps (`M5 12.6l4.7 4.7L19 7.4`), so drawing it is the
@@ -10942,6 +11061,18 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         animation: none !important;
         transition: none !important;
       }
+      /* §6's stuck hover, as a class. `:hover` cannot be held for a screenshot,
+         so these are the two SHIPPED declarations copied verbatim from
+         `tasks.css` — a simulation, and labelled as one; the probe in the header
+         comment is what establishes that a tap really leaves them on. The
+         `.mk-was-tapped` scope is what lets the proposed frame beside it show
+         the same tap with nothing left behind. */
+      .mk-hovered:not([aria-pressed='true'])::before {
+        border-color: var(--ok);
+      }
+      .mk-hovered:not([aria-pressed='true']) .icon {
+        opacity: 0.4;
+      }
       /* A live tick, sitting alone rather than in a row, for §2's press. */
       .mk-solo {
         display: grid;
@@ -11141,13 +11272,22 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       <section class="case">
         <h2>§5 · ביטול הסימון · ותנועה מופחתת</h2>
         <p class="note">
-          <b>ביטול לא מצייר אחורה.</b> יציאה קצרה מכניסה (design-language: overlays arrive and
-          leave), והחשבון כאן חזק יותר מהעדפה · <b>משיכה הפוכה היא הישג הפוך</b>, כלומר תנועה
-          שאומרת "משהו נמחק", ואילו ביטול סימון רק מחזיר את השאלה לרשימה. אז: המילוי מתרוקן
-          ב-<code>--t-quick</code>, ה-✓ נמוג, ואף אחד לא מנוגן במגירה שממנה השורה יצאה. בפועל זו
-          <b>אותה מחלקה</b> · <code>is-ticking</code> על מצב פתוח מנגן את הכניסה של הפתוח, כי
-          המילוי והריק הם שני קצות אותו ערוץ.
+          <b>ביטול לא מקבל ביט בכלל · והטיוטה הראשונה של הקובץ הזה טעתה בזה בדיוק.</b> הדיווח:
+          "ביטול לא צריך את אותה אנימציה, אם בכלל · צריך משהו מינימלי בהרבה" · והוא צודק מעבר
+          לטעם, כי <code>is-ticking</code> על פקד פתוח ניגן את <b>הכניסה של המצב הפתוח</b>, כלומר
+          את הקפיצה בהיפוך. ביטול סימון הוא <b>תיקון, לא הישג</b>: אין ביט, אין המתנה, אין פריים ·
+          המילוי מתרוקן וה-✓ נמוג ב-<code>--t-quick</code> על <code>--ease-exit</code>, העקומה
+          שהאפליקציה כבר משתמשת בה לכיבוי של זוהר. יציאה קצרה מכניסה, וכאן היא גם שקטה במכניזם
+          שלם.
         </p>
+        <p class="note">
+          <b>והא-סימטריה היא כלל אחד ולא דגל</b> · <code>transition</code> נקרא ממצב ה<b>יעד</b>,
+          אז כשהוא מוצהר על המצב <b>הפתוח</b> הוא שולט בדרך חזרה ופשוט לא קיים בדרך הלוך, שם
+          הפריימים של הביט עושים את העבודה. שום קוד לא צריך לדעת לאיזה כיוון הולכים · וזו גם הסיבה
+          שהביט יכול להישאר כניסה טהורה. אי אפשר להקפיא <code>transition</code> כמו אנימציה, ולכן
+          הריבוע כאן חי ולא סרט · הא-סימטריה בכלי היא מראה נאמנה לא-סימטריה בתנועה.
+        </p>
+        <div class="pair" id="s5live"></div>
         <p class="note">
           <b>והמלכודת שהסעיף הזה מצייר כדי שלא תיכתב.</b> אורך הקו של ה-✓ חייב לשבת
           <b>בפריים</b>, לא בכלל הסטטי: <code>App.css</code> מכבה <code>animation</code> בכל
@@ -11158,6 +11298,35 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           רצה משאירה סימן מצויר.
         </p>
         <div class="mk-strip" id="s5"></div>
+      </section>
+
+      <!-- ══════════════════════════ §6 ══════════════════════════ -->
+      <section class="case">
+        <h2>§6 · מה נשאר על הסימון אחרי נגיעה · ולמה זה לא הפוקוס</h2>
+        <p class="note">
+          הדיווח: "סימון וביטול משאירים את התיבה מסומנת (עם קו דק) · צריך להיפטר מזה". שני חשודים,
+          ורק אחד אשם, וזה <b>נבדק בדפדפן אמיתי ולא הוסק</b>:
+          <code>:focus-visible</code>
+          לא נתפס <b>לא</b> בלחיצת עכבר ו<b>לא</b> בנגיעה · אז טבעת הפוקוס חפה מפשע ונשארת בדיוק
+          כמו שהיא, כי מי שמנווט במקלדת צריך אותה. מה שכן נשאר זה <b><code>:hover</code></b> · דלוק
+          אחרי הנגיעה הראשונה, עדיין דלוק אחרי השנייה, ומתנקה רק כשנוגעים במשהו אחר. זו התנהגות
+          הפלטפורמה, והכללים שנשלחו הופכים אותה לאמירה <b>שקרית</b>:
+          <code>:hover .icon</code> הוא <code>opacity: 0.4</code>, כלומר סימון <b>פתוח</b> יושב עם
+          ✓ רפאים בתוכו, ו-<code>:hover::before</code> שואל את <code>--ok</code> · צבע ה"בוצע" ·
+          לטבעת שלו.
+        </p>
+        <div class="pair" id="s6"></div>
+        <p class="note">
+          <b>אז הדיווח אמיתי, המתג לא היה שבור אף פעם, וזו הסיבה שהמעבר של 16.8 לא הצליח לשחזר:</b>
+          הוא הריץ נגיעות וקרא <code>aria-pressed</code> ואת המילוי, ושניהם היו נכונים כל הזמן ·
+          הארטיפקט הוא סגנון <b>hover</b> על הגליף. <b>שני שינויים</b> · הרמז מפסיק לשאול את מצב
+          ה"בוצע" (טבעת שמתחזקת לכיוון הדיו · לא <code>--ok</code>, ולא ה-✓), והוא נעטף
+          ב-<code>@media (hover: hover) and (pointer: fine)</code> כדי שלא יוכל להידבק בכלל. זו
+          <b>השאילתה הראשונה מסוגה באפליקציה</b> · יש בה כ-40 כללי <code>:hover</code> ואפס
+          <code>@media (hover:</code>, ומטאטא אותם זו מעבר נפרד בבקלוג ולא משהו שנלקח בשקט בתוך
+          שינוי תנועה. הסימון נעשה כאן כי ה-hover שלו הוא היחיד ששואל צבע <b>סטטוס</b> ואת הגליף של
+          המצב עצמו.
+        </p>
       </section>
 
       <div class="panel">
@@ -11231,6 +11400,23 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             <b>ח · הרפאים · המחיר שלה שונה מכל השאר, ולכן הוא רשום בנפרד.</b> היא היחידה שמוסיפה
             <code>&lt;Icon name="check"&gt;</code> שני לכל סימון בכל שורה, לתמיד, כדי שפלרטוט של
             240ms יוכל לנגן. זה לא פוסל אותה · זה מה שצריך להיאמר בקול לפני שהיא נבחרת.
+          </li>
+          <li>
+            <b>ביטול סימון · ללא ביט, ובכלל ללא פריים.</b> הוא תיקון ולא הישג, אז המילוי מתרוקן
+            וה-✓ נמוג ב-140ms על <code>--ease-exit</code> · ואין המתנה, כי אין ביט לחכות לו. הכלל
+            שנבחר הוא <code>transition</code> על המצב ה<b>פתוח</b> ולא דגל בקוד, כי transition
+            נקרא ממצב היעד · נמדד 0.14s על הדיסקה הפתוחה מול 0s על המסומנת. <b>נדחה:</b> משיכה
+            הפוכה של ה-✓ · זה הישג מנוגן לאחור, ומה שקרה בפועל זה שהשאלה חזרה לרשימה.
+          </li>
+          <li>
+            <b>ה-hover של הסימון מפסיק לשאול את מצב ה"בוצע", ונעטף ב-<code>@media (hover: hover)</code>.</b>
+            נגיעה משאירה <code>:hover</code> דלוק עד שנוגעים במשהו אחר · <b>נבדק</b>, ובאותה בדיקה
+            <code>:focus-visible</code> לא נתפס לא בלחיצה ולא בנגיעה, אז טבעת הפוקוס נשארת בדיוק
+            כמו שהיא. הכללים כפי שנשלחו הופכים את ההידבקות לאמירה שקרית · ✓ ב-40% שקיפות וטבעת
+            ב-<code>--ok</code> על פקד <b>פתוח</b>. <b>וזה הדיווח מ-16.8 ש"לא שוחזר"</b>: המעבר ההוא
+            קרא <code>aria-pressed</code> ואת המילוי, ושניהם היו נכונים · הארטיפקט הוא סגנון hover
+            על הגליף. השאילתה הזו היא הראשונה מסוגה באפליקציה, וכ-40 כללי hover אחרים ממתינים למעבר
+            נפרד בבקלוג · לא לשינוי תנועה.
           </li>
           <li>
             <b>מחוץ להצעה, ודחוף ממנה · הטבעת של סימון פתוח מודדת 1.21:1 בבהיר ו-1.33:1 בכהה</b>,
@@ -11471,19 +11657,42 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
           col('<span class="tag plain">מסך המשימות</span>', screen(CURRENT.opt)),
         ].join('');
 
-        // §5 — the un-tick, and the reduced-motion trap beside its safe twin.
-        document.querySelector('#s5').innerHTML = [
-          strip('ביטול סימון', 'המילוי מתרוקן', {
-            pressed: false,
-            opt: CURRENT.opt,
-            beat: true,
-          }),
-          `<div class="mk-strip-row mk-rm">
+        // §5 — the un-tick is a TRANSITION, which cannot be frozen, so it is
+        // live only; then the reduced-motion trap beside its safe twin.
+        document.querySelector('#s5live').innerHTML = [
+          `<div class="col">
+            <span class="tag after">סימון · ביט והמתנה</span>
+            <div class="mk-solo" data-live="${CURRENT.opt}">${tick({ opt: CURRENT.opt, label: 'סימון' })}</div>
+            <p class="mk-hint">לחצו · ואז שוב</p>
+          </div>`,
+          `<div class="col">
+            <span class="tag plain">ביטול · 140ms ו--ease-exit</span>
+            <div class="mk-solo" data-live="${CURRENT.opt}">${tick({ pressed: true, opt: CURRENT.opt, label: 'ביטול' })}</div>
+            <p class="mk-hint">כבר מסומן · לחצו לביטול</p>
+          </div>`,
+        ].join('');
+        document.querySelector('#s5').innerHTML = `<div class="mk-strip-row mk-rm">
             <span class="mk-strip-name">מלכודת<span>תנועה מופחתת</span></span>
             <span class="mk-cell">${tick({ pressed: true, extra: 'mk-trap', beat: true })}<span class="t">rm</span></span>
             <span class="mk-strip-name" style="flex-basis:auto">הצורה הבטוחה<span>אותו מצב</span></span>
             <span class="mk-cell">${tick({ pressed: true, opt: 'mk-draw', beat: true })}<span class="t">rm</span></span>
-          </div>`,
+          </div>`;
+
+        // §6 — what a tap leaves behind, on an open tick. The left frame carries
+        // the two shipped hover declarations as a class, because `:hover` cannot
+        // be held for a screenshot; the right frame is the same tap with the
+        // proposal in force, i.e. nothing left behind.
+        const tapped = (stuck) =>
+          `<div class="index"><div class="listcard">${TASKS.slice(0, 3)
+            .map((task, i) =>
+              revealed(
+                row(task, i === 0 && stuck ? { extra: 'mk-hovered' } : {}),
+              ),
+            )
+            .join('')}</div></div>`;
+        document.querySelector('#s6').innerHTML = [
+          col('<span class="tag before">היום · אחרי נגיעה בשורה הראשונה</span>', tapped(true)),
+          col('<span class="tag after">בהצעה · אותה נגיעה</span>', tapped(false)),
         ].join('');
 
         // Off-frame probes, so the two numbers that decided the loud half stay
@@ -11524,13 +11733,14 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
       /** Every live tick on the page: press → flip the state, play the beat,
        *  and (in a list) let the row leave AFTER it, on the hold. */
       function wireLive() {
+        // THE BEAT PLAYS IN ONE DIRECTION ONLY. Un-ticking gets the transition
+        // the open state declares for itself and nothing else — no beat, and
+        // therefore no hold either, since there is no beat to wait for.
         document.querySelectorAll('.mk-solo .tsk-tick').forEach((el) => {
           el.addEventListener('click', () => {
-            el.setAttribute(
-              'aria-pressed',
-              el.getAttribute('aria-pressed') === 'true' ? 'false' : 'true',
-            );
-            playBeat(el);
+            const pressed = el.getAttribute('aria-pressed') === 'true';
+            el.setAttribute('aria-pressed', String(!pressed));
+            if (!pressed) playBeat(el);
           });
         });
 
@@ -11540,7 +11750,7 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             el.setAttribute('aria-pressed', String(!pressed));
             const listrow = el.closest('.wp-listrow');
             listrow.classList.toggle('tsk-settled', !pressed);
-            const ms = playBeat(el);
+            const ms = pressed ? 0 : playBeat(el);
             if (!pressed) {
               // The row's departure is SEQUENCED on the beat's own duration —
               // the return value, not a second timer with a literal in it. The
@@ -11602,6 +11812,10 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
         const cs = (sel, prop) => {
           const el = document.querySelector(sel);
           return el ? getComputedStyle(el).getPropertyValue(prop).trim() : '—';
+        };
+        const pseudoCs = (sel, prop) => {
+          const el = document.querySelector(sel);
+          return el ? getComputedStyle(el, '::before').getPropertyValue(prop).trim() : '—';
         };
         const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -11743,6 +11957,24 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
             'ניגוד הטבעת הפתוחה על הכרטיס',
             `${ringOnCard}:1`,
             'קיים · לא מהביט · רצפת סימן גרפי 3:1',
+          ],
+          [
+            'transition על הדיסקה · פתוח מול מסומן',
+            // On the `::before`, which is where it is declared — reading it off
+            // the button reports `0s` for both and looks like a broken rule.
+            `⁦${pseudoCs('#s6 .col:last-child .tsk-tick', 'transition-duration')} · ${pseudoCs(
+              '#s1b .index .tsk-tick[aria-pressed="true"]',
+              'transition-duration',
+            )}⁩`,
+            'נקרא ממצב היעד · לכן ביטול מתמסמס והלוך לא',
+          ],
+          [
+            'ה-✓ על סימון פתוח אחרי נגיעה',
+            `⁦${cs('#s6 .col:first-child .mk-hovered .icon', 'opacity')} → ${cs(
+              '#s6 .col:last-child .tsk-tick .icon',
+              'opacity',
+            )}⁩`,
+            'hover דביק · ✓ רפאים בתוך עיגול פתוח',
           ],
         ];
         document.querySelector('#meas tbody').innerHTML = rows
