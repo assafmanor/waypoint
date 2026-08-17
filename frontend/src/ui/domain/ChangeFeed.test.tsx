@@ -215,7 +215,7 @@ describe('ChangeFeed', () => {
         onDismissAll={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'הסתר עדכון' }));
+    fireEvent.click(screen.getByRole('button', { name: t.changeFeed.dismiss }));
     expect(onDismiss).toHaveBeenCalledWith('c1');
     // And the pure helper actually drops it.
     expect(dismissChangeEntry([entryFrom(change({}))], 'c1')).toEqual([]);

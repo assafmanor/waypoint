@@ -13,9 +13,10 @@
 //     well as a code and a mark, which is the true worst case for that line.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+import { t } from '../src/i18n/he';
 
 const PHONE = { width: 390, height: 844 };
-const DAYS_TAB = 'יום-יום';
+const DAYS_TAB = t.tabs.days;
 
 /** **The clock is pinned, and this file is why the harness grew the option.** Its fixtures
  *  are times "today", so what they MEAN — passed, now, upcoming — was decided by the hour
@@ -306,7 +307,7 @@ async function openPlanShelf(page: Page, notes: unknown[]): Promise<void> {
   await bootIntoTrip(page, { now: NOW(), dates: shortLiveTripDates(), maybeItems: [idea], notes });
   await page.setViewportSize(PHONE);
   await page.goto('/');
-  await page.getByRole('button', { name: 'תכנון', exact: true }).click();
+  await page.getByRole('button', { name: t.mode.plan, exact: true }).click();
   await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
   await page.locator('nav.nav button', { hasText: DAYS_TAB }).click();
   await expect(page.locator('.wp-maybecard').first()).toBeVisible({ timeout: 20_000 });

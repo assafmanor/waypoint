@@ -25,6 +25,7 @@ import { test, expect, type Page, type CDPSession } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
 import { dispatchTouch, type TouchPoint } from './touch';
 import { pngBytes } from './png';
+import { t } from '../src/i18n/he';
 
 // A real phone, touch-capable — `hasTouch` is what makes the browser deliver the gesture at all.
 test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
@@ -111,7 +112,7 @@ async function openFullPicture(page: Page): Promise<void> {
   await page.locator('nav.nav button', { hasText: 'מפה' }).click();
   await expect(page.locator('.map-screen')).toBeVisible();
   await page.locator('.map-list .place').first().click();
-  await page.getByRole('button', { name: 'עוד', exact: true }).click();
+  await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
   await page.locator('.map-hero').click();
   await expect(page.locator('.doc-viewer-img')).toBeVisible();
   // A decoded image before any measurement: a broken one has a box that measures perfectly.

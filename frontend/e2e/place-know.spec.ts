@@ -15,6 +15,7 @@
 // floors are all real here.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+import { t } from '../src/i18n/he';
 
 const WIDTHS = [390, 360]; // ADR-0017's primary band, both ends
 const today = () => new Date().toISOString().slice(0, 10);
@@ -334,7 +335,7 @@ test('a place we know nothing about draws no block, and still offers עוד בג
   await blank.click();
   await expect(blank).toHaveClass(/selected/);
   await expect(blank.locator('.map-sum')).toHaveCount(0);
-  const google = blank.getByRole('link', { name: 'עוד בגוגל' });
+  const google = blank.getByRole('link', { name: t.map.know.moreOnGoogle });
   await expect(google).toBeVisible();
   // A different question from `נווט`, which the row still carries — and it opens away from us.
   await expect(google).toHaveAttribute('target', '_blank');
@@ -423,7 +424,7 @@ test.describe('the selected card scrolls to its top @390', () => {
     const row = knownRow(page);
     await row.click();
     await expect(page.locator('.map-sum')).toBeVisible();
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     await expect(page.locator('.map-hero')).toBeVisible();
 
     await expect(async () => {
@@ -449,7 +450,7 @@ test.describe('the research card @390', () => {
     // Collapsed: two clamped lines, the notes section, the references, the footer's three verbs.
     expect(before.prose.h).toBeLessThanOrEqual(Math.round(2 * before.lineHeight) + 1);
 
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     const hero = page.locator('.map-hero');
     await expect(hero).toBeVisible();
 
@@ -491,7 +492,7 @@ test.describe('the research card @390', () => {
   // bug was making the element LTR, which orphaned it to the opposite edge.
   test('keeps the credit on the card’s own edge', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     const edges = await page.evaluate(() => {
       const row = document.querySelector('.map-list .place.selected') as HTMLElement;
       const credit = row.querySelector('.map-credit') as HTMLElement;
@@ -523,7 +524,7 @@ test.describe('the research card @390', () => {
   // see it: this is two boxes' centres, which is why it is measured here.
   test('centres the way back against the Google exit beside it', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     const m = await page.evaluate(() => {
       const row = document.querySelector('.map-list .place.selected') as HTMLElement;
       const foot = row.querySelector('.map-backrow') as HTMLElement;
@@ -543,8 +544,8 @@ test.describe('the research card @390', () => {
 
   test('comes back to the itinerary detail', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
-    await page.getByRole('button', { name: 'חזרה לפרטי המקום', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.back, exact: true }).click();
     await expect(page.locator('.map-hero')).toHaveCount(0);
     await expect(page.locator('.map-list .place.selected .note-sec:not(.tsk-sec)')).toBeVisible();
   });
@@ -553,7 +554,7 @@ test.describe('the research card @390', () => {
   // viewer, which is ADR-0062's one permitted zoom.
   test('opens the full picture from the hero, credited', async ({ page }) => {
     await selectKnown(page);
-    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: t.map.know.more, exact: true }).click();
     await page.locator('.map-hero').click();
     await expect(page.locator('.doc-viewer')).toBeVisible();
     await expect(page.locator('.doc-viewer-caption')).toContainText('CC BY-SA 4.0');

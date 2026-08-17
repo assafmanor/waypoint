@@ -108,7 +108,7 @@ async function boot(page: Page): Promise<void> {
   });
   await page.goto('/');
   await expect(page.locator('nav.nav')).toBeVisible();
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
 }
 
 const tile = (page: Page) => page.locator('.wp-maybecard.compact', { hasText: 'אודן קאשימה' });
@@ -122,7 +122,7 @@ test.describe('a dateless idea on day 1', () => {
     await expect(meta).toBeVisible();
     // The day, relative (ADR-0085's phrasing), and how far — but NOT the stop's name, which
     // wraps this line and costs the tile 8px, so it waits for the sheet.
-    await expect(meta).not.toContainText('נוסף לאחרונה');
+    await expect(meta).not.toContainText(t.day.why.recentlyAdded);
     await expect(meta).not.toContainText('מוזיאון אדו');
     await expect(meta).toContainText('מ׳');
   });
@@ -187,7 +187,7 @@ test('an idea with no place is offered no day, because nothing was measured', as
   });
   await page.goto('/');
   await expect(page.locator('nav.nav')).toBeVisible();
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
 
   await tile(page).click();
   await expect(page.getByRole('dialog')).toBeVisible();

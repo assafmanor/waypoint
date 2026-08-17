@@ -122,8 +122,8 @@ describe('UserPicture — no photo in use', () => {
   it('offers no way back when there is no photo to come back to, and says why', () => {
     me = makeMe({ googleAvatarUrl: null });
     render(<UserPicture />);
-    expect(screen.queryByText('שימוש בתמונה מגוגל')).toBeNull();
-    expect(screen.getByText(/אין תמונה בחשבון גוגל/)).toBeTruthy();
+    expect(screen.queryByText(t.shell.account.picture.useGoogle)).toBeNull();
+    expect(document.body.textContent).toContain(t.shell.account.picture.noPhotoHint);
   });
 
   it('treats `google` with no URL as no photo — a revoked photo still shows the ramp', () => {
@@ -214,15 +214,15 @@ describe('UserPicture — upload', () => {
     // hint printed "and so the initials are shown" directly under a visible face.
     me = makeMe({ avatarChoice: 'upload', uploadedAvatarUrl: '/users/u-me/avatar/k-1' });
     render(<UserPicture />);
-    expect(screen.queryByText(/מוצגות האותיות הראשונות/)).toBeNull();
+    expect(document.body.textContent).not.toContain(t.shell.account.picture.noPhotoHint);
     // The crop/resize note stays — it describes what the upload control does.
-    expect(screen.getByText(/נחתכת לריבוע/)).toBeTruthy();
+    expect(document.body.textContent).toContain(t.shell.account.picture.uploadHint);
   });
 
   it('still explains the initials when they ARE what is drawn', () => {
     me = makeMe({ googleAvatarUrl: null });
     render(<UserPicture />);
-    expect(screen.getByText(/מוצגות האותיות הראשונות/)).toBeTruthy();
+    expect(document.body.textContent).toContain(t.shell.account.picture.noPhotoHint);
   });
 
   it('treats `upload` with no stored blob as no photo, so the page cannot strand', () => {
@@ -236,7 +236,9 @@ describe('UserPicture — upload', () => {
     toAvatarBlob.mockRejectedValue(new Error('avatar: encode failed'));
     render(<UserPicture />);
     pick('notes.txt', 'text/plain');
-    await waitFor(() => expect(screen.getByText(/אינו תמונה/)).toBeTruthy());
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(t.shell.account.picture.notAnImage),
+    );
     expect(setAvatar).not.toHaveBeenCalled();
   });
 

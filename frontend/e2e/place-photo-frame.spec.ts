@@ -31,6 +31,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
 import { pngBytes } from './png';
+import { t } from '../src/i18n/he';
 
 /* Wide on purpose — 3:2, inside the measured 0.54–1.78 aspect range (ADR-0166 §11.4) — because
    a square source would make `object-fit: cover` untestable: the one thing the badge must
@@ -384,7 +385,7 @@ test.describe('a place row whose badge frames a photo @390', () => {
   // The Map is day-scoped, so both scopes are genuinely different renders (`frontend/CLAUDE.md`:
   // assert across both). All-days is also the crowded one — every place in the trip at once.
   test('frames the photo in all-days scope too', async ({ page }) => {
-    await page.getByRole('button', { name: new RegExp('כל הימים') }).click();
+    await page.getByRole('button', { name: new RegExp(t.map.allDays) }).click();
     const rows = await measure(page);
     const framed = photoRow(rows);
     expect(framed.img).toEqual(framed.badge);

@@ -32,6 +32,7 @@ import {
   DRAG_EDGE_SCROLL_ZONE_PX,
   DRAG_GHOST_LIFT_PX,
 } from '../src/constants';
+import { t } from '../src/i18n/he';
 
 // Phone-sized and touch-capable: the drag is a touch gesture on a ~390px screen
 // (ADR-0017), and `hasTouch` is what makes the browser arbitrate scroll-vs-drag
@@ -230,9 +231,9 @@ async function bodyBands(page: Page) {
  *  builder — so the mode toggle comes first, then the day tab. Both screens are
  *  lazy chunks, hence waiting on the builder rather than the click. */
 async function openPlanDayBuilder(page: Page) {
-  await page.getByRole('button', { name: 'תכנון', exact: true }).click();
+  await page.getByRole('button', { name: t.mode.plan, exact: true }).click();
   await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
   // Generous: the day builder is a lazy chunk, and under the dev server several
   // parallel workers asking for it at once can take a while to transform.
   // `.builder-side` and not `.shelf`: a shelf strip only exists when it has content or

@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentViewer, MediaViewer } from './MediaViewer';
 import { wrapNav } from '../test/nav-harness';
 import { DOC_DECODE_TIMEOUT_MS } from '../constants';
+import { t } from '../i18n/he';
 
 vi.mock('../lib/api', () => ({
   fetchDocumentContent: vi.fn(async () => new Blob(['x'], { type: 'image/jpeg' })),
@@ -200,7 +201,7 @@ describe('a read that never answers ends in a retryable error, not an endless sp
     await waitFor(() => expect(document.querySelector('.fb-error')).not.toBeNull());
     expect(spinner()).toBeNull();
     // ADR-0078's shell, not a bespoke `<p>` — and announced, which the caption never was.
-    expect(screen.getByRole('alert').textContent).toBe('לא הצלחנו לפתוח את המסמך');
+    expect(screen.getByRole('alert').textContent).toBe(t.docs.viewer.error);
     expect(screen.getByRole('button', { name: /נסו שוב/ })).toBeTruthy();
   });
 

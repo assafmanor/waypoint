@@ -12,10 +12,11 @@
 //     of an untranslated bubble, and `submit` runs at all.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoCreate, bootIntoTrip, shortLiveTripDates } from './boot';
+import { t } from '../src/i18n/he';
 
 const form = (page: Page) => page.getByRole('dialog').first();
 
-const PLAN_MODE = 'תכנון';
+const PLAN_MODE = t.mode.plan;
 const NEW_EVENT = 'אירוע חדש';
 const SAVE = 'שמירה';
 
@@ -24,7 +25,7 @@ const MISS = 'rgb(194, 88, 78)';
 
 async function openEventForm(page: Page) {
   await page.getByRole('button', { name: PLAN_MODE, exact: true }).click();
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
   await expect(page).toHaveURL(/[?&]tab=days/);
   await page.getByText(NEW_EVENT).first().click();
   await expect(form(page)).toBeVisible();
@@ -45,7 +46,7 @@ test.describe('a form refuses at the field', () => {
 
     const field = form(page).locator('.field', { has: page.locator('input.title-input') });
     await expect(field).toHaveAttribute('data-invalid', '');
-    await expect(field.locator('.field-error')).toHaveText('חסרה כותרת');
+    await expect(field.locator('.field-error')).toHaveText(t.eventForm.titleRequired);
 
     // The refusal put focus here — which is exactly the state the teal focus rule
     // would have won in.

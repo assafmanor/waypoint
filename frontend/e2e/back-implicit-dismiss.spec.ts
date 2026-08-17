@@ -13,6 +13,7 @@
 // the panel gone AND whatever hosts it still open.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, ERRAND_FIXTURE, shortLiveTripDates, tripPlaces } from './boot';
+import { t } from '../src/i18n/he';
 
 // Fire the platform system-back the way the OS does — a history traversal — rather than
 // page.goBack(), whose navigation-commit wait fights the interceptor's preventDefault();
@@ -26,13 +27,13 @@ async function systemBack(page: Page) {
  *  `.first()` picks the obscured one. */
 const form = (page: Page) => page.getByRole('dialog').first();
 
-const PLAN_MODE = 'תכנון';
+const PLAN_MODE = t.mode.plan;
 const NEW_EVENT = 'אירוע חדש';
 
 /** Plan mode's day builder, with the event form open — the host for both popovers below. */
 async function openEventForm(page: Page) {
   await page.getByRole('button', { name: PLAN_MODE, exact: true }).click();
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
   await expect(page).toHaveURL(/[?&]tab=days/);
   await page.getByText(NEW_EVENT).first().click();
   await expect(form(page)).toBeVisible();

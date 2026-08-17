@@ -83,7 +83,7 @@ describe('RosterSheet', () => {
   it('opens the member surface on a row tap, with the joined date there', () => {
     renderRoster();
     fireEvent.click(screen.getByText('נועם').closest('button')!);
-    expect(screen.getByText('תפקיד')).toBeTruthy();
+    expect(screen.getByText(t.settings.member.roleLabel)).toBeTruthy();
     expect(screen.getByText(t.settings.member.joinedLabel)).toBeTruthy();
     // The app's one numeric date format — zero-padded, like the trip-date ranges.
     expect(screen.getByText('14.03')).toBeTruthy();
@@ -92,8 +92,10 @@ describe('RosterSheet', () => {
   it('offers no admin verbs — management stays where its confirm + block list live', () => {
     renderRoster();
     fireEvent.click(screen.getByText('נועם').closest('button')!);
-    expect(screen.queryByText('הפוך למנהל')).toBeNull();
-    expect(screen.queryByText('הסר מהטיול')).toBeNull();
+    // Read from `t`, or the absence goes VACUOUS the moment the copy is reworded — which is
+    // exactly what happened on 2026-08-17: both verbs changed and both assertions still passed.
+    expect(screen.queryByText(t.settings.promote)).toBeNull();
+    expect(screen.queryByText(t.settings.removeMember)).toBeNull();
   });
 
   it('never shows a co-member their email', () => {
@@ -117,7 +119,7 @@ describe('RosterSheet', () => {
       renderRoster({ onOpenAccount });
       fireEvent.click(screen.getByText('אסף').closest('button')!);
       expect(onOpenAccount).toHaveBeenCalled();
-      expect(screen.queryByText('תפקיד')).toBeNull();
+      expect(screen.queryByText(t.settings.member.roleLabel)).toBeNull();
     });
 
     it('leaves everyone else opening the member surface exactly as before', () => {
@@ -125,7 +127,7 @@ describe('RosterSheet', () => {
       renderRoster({ onOpenAccount });
       fireEvent.click(screen.getByText('נועם').closest('button')!);
       expect(onOpenAccount).not.toHaveBeenCalled();
-      expect(screen.getByText('תפקיד')).toBeTruthy();
+      expect(screen.getByText(t.settings.member.roleLabel)).toBeTruthy();
     });
   });
 

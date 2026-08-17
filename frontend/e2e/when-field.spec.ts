@@ -18,15 +18,16 @@
 //     because it was one, and a class name is not evidence that a rule applies.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoCreate, bootIntoTrip, shortLiveTripDates } from './boot';
+import { t } from '../src/i18n/he';
 
 const form = (page: Page) => page.getByRole('dialog').first();
 
-const PLAN_MODE = 'תכנון';
+const PLAN_MODE = t.mode.plan;
 const NEW_EVENT = 'אירוע חדש';
 
 async function openEventForm(page: Page) {
   await page.getByRole('button', { name: PLAN_MODE, exact: true }).click();
-  await page.locator('nav.nav button', { hasText: 'יום-יום' }).click();
+  await page.locator('nav.nav button', { hasText: t.tabs.days }).click();
   await expect(page).toHaveURL(/[?&]tab=days/);
   await page.getByText(NEW_EVENT).first().click();
   await expect(form(page)).toBeVisible();

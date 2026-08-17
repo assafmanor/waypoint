@@ -13,6 +13,7 @@
 // boards on screen at once — so the first test here is a count, not a measurement.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
+import { t } from '../src/i18n/he';
 
 const PHONE = { width: 390, height: 844 };
 const NOW = () => todayAt('15:00');
@@ -355,7 +356,7 @@ test.describe('the lifted hero (ADR-0160)', () => {
       ],
     });
     await page.goto('/');
-    await page.getByRole('button', { name: 'תכנון', exact: true }).click();
+    await page.getByRole('button', { name: t.mode.plan, exact: true }).click();
     await expect(page.locator('.app')).toHaveAttribute('data-mode', 'plan');
     // `.prep-dates`, not `.prep`. `PlanHome` is lazy-loaded and `HomeSkeleton` renders its
     // own placeholder `.prep` in the meantime — which has no handler, so a spec that clicks
