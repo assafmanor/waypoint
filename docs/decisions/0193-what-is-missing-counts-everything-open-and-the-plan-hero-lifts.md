@@ -40,7 +40,7 @@ Reading the code before drawing anything moved four of the five sections.
 
 > **AMENDED 2026-08-18 — "everything open" counts every open OBLIGATION, and a checklist is
 > ONE obligation** ([ADR-0196](0196-a-task-can-hold-a-checklist-and-the-exclusion-is-paid-once.md),
-> design only — nothing about this is built yet). Sub-tasks give a task children, and this
+> built 2026-08-18). Sub-tasks give a task children, and this
 > section's promise is the number they could silently break: without a rule, a task with five
 > steps would make `משימות פתוחות` read **6** where a person sees one thing to do.
 >

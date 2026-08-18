@@ -2,7 +2,7 @@
 date: 2026-08-18
 kind: design session
 surface: tasks — sub-tasks, and the brief's §C
-status: designed, not built
+status: designed 2026-08-18, built the same day (see planning/2026-08-18-sub-tasks-built.md)
 mockup: mockups/a-task-that-holds-a-checklist-v1.html
 adr: docs/decisions/0196-a-task-can-hold-a-checklist-and-the-exclusion-is-paid-once.md
 ---
