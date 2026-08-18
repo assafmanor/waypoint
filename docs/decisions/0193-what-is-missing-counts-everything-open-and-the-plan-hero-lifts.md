@@ -1,6 +1,6 @@
 # 0193 — "What is missing" counts everything open, and the plan hero lifts
 
-**Status:** Accepted and **BUILT** (2026-08-16), then **§2, §3 and §4 amended the same day** across three rounds of owner reports against the built screen — read the banner at the head of each before it. §3 has been placed twice: the toggle went to the section head, then to the section's foot. §5 was separately corrected by the running app; see "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
+**Status:** Accepted and **BUILT** (2026-08-16), then **§2, §3 and §4 amended the same day** across three rounds of owner reports against the built screen — and **§2 amended once more on 2026-08-18** by [ADR-0196](0196-a-task-can-hold-a-checklist-and-the-exclusion-is-paid-once.md), which says whether a sub-task counts (it does not) while that feature is still design — read the banner at the head of each before it. §3 has been placed twice: the toggle went to the section head, then to the section's foot. §5 was separately corrected by the running app; see "What the running app changed" at the end before touching the ramp. Every contrast figure below is measured: first off the mockup's rendered DOM, then again in the real app, and where the two disagreed the app won.
 **Date:** 2026-08-16
 **Design references:** [`mockups/what-is-missing-when-there-is-nothing-missing-v1.html`](../../mockups/what-is-missing-when-there-is-nothing-missing-v1.html) — §3's cap, §6's empty state and the two controls (2026-08-16, third round) · [`mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html`](../../mockups/the-plan-hero-lifts-and-the-checklist-counts-everything-v1.html) — §1 the sentence that lies · §2 the hero's second number · §3 the inline list and its collapse · §4 what the lift opens onto · §5 the skin. **Promoted by this ADR.**
 
@@ -37,6 +37,25 @@ Reading the code before drawing anything moved four of the five sections.
 `הכול מוכן 🎉` is then gated on there being nothing open **at all**: no live check, no open task, dated or not. It is deliberately **not deleted**. The mockup carries a third trip state (`באמת סגור`) for one reason — to make the deletion visible as what it would be, giving up the only moment the screen says something good. The sentence was never wrong; it was said in the wrong place.
 
 ### 2. Two numbers with two names, and a second bar is rejected
+
+> **AMENDED 2026-08-18 — "everything open" counts every open OBLIGATION, and a checklist is
+> ONE obligation** ([ADR-0196](0196-a-task-can-hold-a-checklist-and-the-exclusion-is-paid-once.md),
+> design only — nothing about this is built yet). Sub-tasks give a task children, and this
+> section's promise is the number they could silently break: without a rule, a task with five
+> steps would make `משימות פתוחות` read **6** where a person sees one thing to do.
+>
+> **Children do NOT count**, on this section's own rejected-alternative argument, unchanged.
+> One denominator was refused here because _"the denominator grows every time somebody writes
+> a task, so **recording what you have to do reads as losing ground**"_ — and writing down the
+> steps of a task you already owed is exactly that, one level down. So `taskPreview.open`,
+> `resolvedReadinessPct`, `tasksDueSoon`, `openManualTasks` and the Index tile all keep
+> counting **parents**, and a parent counts as open until its last child is ticked.
+>
+> **And the rule is held up by construction rather than by memory**, which is the part worth
+> knowing: ADR-0196 §2 splits children out at the state boundary, so `taskPreview` never sees
+> one and needs no clause. That is deliberately the opposite of how this section's PREVIOUS
+> amendment had to be made — that one was a repair, made because `isManual` is remembered at
+> each call site and one surface forgot.
 
 > **AMENDED 2026-08-16 — the second number counts the CHECKS too** (owner: _"in the hero it
 > says משימות פתוחות X which doesn't include the automatic tasks"_). It was `openTasks.length`,
