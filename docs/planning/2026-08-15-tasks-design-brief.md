@@ -1,7 +1,7 @@
 # Tasks (משימות) — design brief: what is settled, what the design session owes
 
 **Date:** 2026-08-15
-**Status:** PM session complete; **design session complete for §A, §B and §D** (2026-08-15, session 271 — [ADR-0188](../decisions/0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md), [`mockups/tasks-row-and-refusals-v1.html`](../../mockups/tasks-row-and-refusals-v1.html)). §1–§14 are settled with owner sign-off in-session, **with one amendment to §2** recorded in place below. **§C, §E and §F remain open** and are a stated hand-off rather than an unscheduled question.
+**Status:** PM session complete; **design session complete for §A, §B and §D** (2026-08-15, session 271 — [ADR-0188](../decisions/0188-a-tasks-tick-is-a-sibling-and-the-leading-element-says-who-owns-the-outcome.md), [`mockups/tasks-row-and-refusals-v1.html`](../../mockups/tasks-row-and-refusals-v1.html)). §1–§14 are settled with owner sign-off in-session, **with one amendment to §2** recorded in place below. **§C, §E and §F were left open** and are all closed now: **§E** by [ADR-0160 §U](../decisions/0160-the-hero-lifts-and-shows-a-horizon.md) (2026-08-16), **§F** by [ADR-0191](../decisions/0191-a-task-marks-its-host-and-lives-in-a-section-the-host-already-has.md) (2026-08-16), and **§C** by [ADR-0196](../decisions/0196-a-task-can-hold-a-checklist-and-the-exclusion-is-paid-once.md) (2026-08-18, design only — it answers §C together with sub-tasks, because a parent's `2/5` and `completedBy`'s are one question). No section of this brief is open.
 **Precedent this brief mirrors:** [`2026-08-01-notes-design-brief.md`](2026-08-01-notes-design-brief.md), which fed [ADR-0152](../decisions/0152-a-note-is-one-entity-with-an-optional-host.md) / [ADR-0153](../decisions/0153-the-notes-surface-the-mark-and-no-mode-gate.md).
 
 ## Why this brief exists
@@ -230,6 +230,8 @@ A task row's leading element is its **completion control**, which makes it the f
 Two of those are **refusals on a row that looks like every other row**. This is the sharpest risk in the feature and the thing a mockup settles and prose cannot. It is the design session's first job.
 
 ## C. An `everyone` task, partially complete
+
+**CLOSED 2026-08-18 by [ADR-0196](../decisions/0196-a-task-can-hold-a-checklist-and-the-exclusion-is-paid-once.md) §7** — design only, nothing built. The answer, in one sentence: the same **arc and count** a sub-task parent uses, where **the arc is the group's progress and the ✓ inside it is your own answer** — two channels of one circle, so it reads to you first and to the organiser second with no second identity system, exactly as this section requires. The collapsed row is deliberately indistinguishable from a parent's, because it answers the same question ("how much is left"); the **open region** is what says whether the row is waiting on items or on people, at a measured 134px against 134px for five either way. The question was answered together with sub-tasks rather than beside them, on this brief's own reasoning that the two `n/m` reads are one problem.
 
 What does "3 of 5 packed" look like on a row, in a list, and to the person who has not packed? The per-person state must be legible to _you_ first and to the organiser second, without a second identity system per row (the reason ADR-0153 §4 dropped the author's avatar).
 

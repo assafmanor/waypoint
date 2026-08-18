@@ -134,7 +134,7 @@ Measured after: title **215px**, row height **61px** — level with the manual r
 
 ### 8. What this ADR does not decide
 
-- **The brief's §C** — an `everyone` task partially complete (phase 6). Cheap to build and it wants drawing first; nothing here forecloses it.
+- ~~**The brief's §C** — an `everyone` task partially complete (phase 6). Cheap to build and it wants drawing first; nothing here forecloses it.~~ **Drawn 2026-08-18 by [ADR-0196](0196-a-task-can-hold-a-checklist-and-the-exclusion-is-paid-once.md) §7** (design only), together with sub-tasks because the two `n/m` reads are one question. That ADR also argues with §4's reversal at exactly one point — a parent's leading element is a **read** — and honours the rule inside it: the reversal is about a difference the reader cannot see the cause of, and a task with a checklist prints its cause in the differing element.
 - **The brief's §E** — the hero slot (phase 5). It depends on hosts, and it lands as an amendment to ADR-0160 §3 and §13 rather than slipping past them.
 - **The brief's §F** — the mark on a host row (phase 4), including whether a task and a note can mark the same already-full line.
 - **The Index tile and the screen's facet axis**, which the brief's §13 settled as product decisions and this session had no reason to reopen.
