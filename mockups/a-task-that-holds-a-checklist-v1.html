@@ -36,6 +36,44 @@
        `ENTITY_TYPE.TASK` is not in that map — so a deleted parent's children would survive
        in the client's Dexie snapshot and in memory, orphaned, until the next cold sync.
 
+     • **A THIRD, and it is a defect in a shipped PRIMITIVE rather than in this drawing.**
+       The owner asked that adding a sub-task scroll _"so that the new sub task (and the
+       buttons below it) are in view"_ — and adding the scroll exposed why it could not work:
+       `.form-actions` is `position: sticky; inset-block-end: 0` **inside** `.modal-form`'s
+       own scrollport, and nothing in the app declares `scroll-padding` anywhere except the
+       Map's inline peek. So `scrollIntoView({ block: 'nearest' })` in ANY sheet-form parks its
+       target flush with the scrollport's bottom edge, which is underneath the bar. A/B'd live
+       in this file at two depths: **+15px** of clearance with `scroll-padding-block-end`,
+       **−53px** without it — the composer landing entirely under a 55px bar, the same number
+       at three added steps and at six, so it is structural rather than incidental. Latent
+       today for `EventForm`, `BookingSheet`, `DocumentUploadSheet` and `TaskSheet`;
+       `useFormErrors` escapes it only by passing `block: 'center'`. `.body` needs none of it —
+       `.nav` is a SIBLING of that scrollport, not inside it.
+
+       **And the first attempt at that A/B reported "no difference"**, because it wrote the
+       override onto the element and `paint()` rebuilds the DOM before the scroll runs. A
+       comparison that rebuilds its own subject measures nothing; it is a stylesheet now.
+
+     • **TWO MORE, from §7–§9's own first render, and the owner reported the first of them
+       before the file was re-read** (_"there's some css issues with line alignment (the + and
+       the text field for instance, the specific sub task editing)"_). Both are shipped-CSS
+       traps rather than mistakes in the drawing:
+
+         **`App.css` and `field.css` BOTH define `.field`, and only one of them is reset.**
+         `App.css:1037` is `.field { margin-top: 18px }` — a form's gap from the birth form —
+         and `field.css` sets `display`/`gap` and never touches the margin. Inside a grid row
+         that is not a gap, it is a shove: the composer's box measured **18px** shorter than
+         its own cell and sat **9px below** the `＋` beside it, in all three places the
+         composer appears. Zeroed at `.tsk-kid-compose .field` only.
+
+         **A primitive that styles BY ELEMENT has to be out-specified, not merely followed.**
+         `field.css`'s `.field input` is (0,1,1) and a bare `.tsk-kid-in` is (0,1,0), so
+         `border: 0` lost and the row painted a rounded box **inside** a rounded box. Same
+         class of defect ADR-0195's build log records for `.tsk-tick:hover .icon`. Fixed as
+         `.field .tsk-kid-in`. Measured after both: the `＋`, the box and the assignee chip
+         share one centreline to **0px**, and the box's edge sits **0px** off the step text's
+         column.
+
      • **Two defects this file produced by being rendered, both invisible in source.** A
        percentage in a **radial-gradient colour stop** resolves against the gradient's ray
        rather than the box, so the arc's first draft (`calc(50% - 2.5px)` under
@@ -44,6 +82,15 @@
        which `App.css` already ships as a global `display: flex` — the count became a
        block-level flex box, dropped to its own line, and took the parent row from **61px to
        89px**. Both are in the proposal block with the reason beside them.
+
+     • **ADR-0191 §7's refusal of a title-only composer INVERTS for a child, on its own
+       argument.** That section refused a `NoteComposer`-shaped box for a task because a
+       task's **deadline** is what puts it on the Home band and makes it overdue, so a
+       title-only box "systematically produces the weak kind" — and notes have no equivalent
+       weak kind because _"a note IS its body"_. A sub-task has no deadline **by refusal**
+       (§8), so a step genuinely IS its title: the property that made the inline composer
+       right for a note holds here, and the property that made it wrong for a task does not.
+       The composer is therefore reuse with a reason rather than reuse by resemblance.
 
      • **The tick's second density already exists and already clears the touch floor.**
        `.tsk-tick-sec` is 20px of paint inside a 44px target via a negative margin
@@ -59,12 +106,27 @@
        §4 the small surfaces        → ADR §6
        §5 §C, and the one read      → ADR §7
        §6 the refusals              → ADR §8, §9
+       §7 how a checklist is made   → ADR §10
+       §8 editing and removing      → ADR §11
+       §9 the editor, and staging   → ADR §12
+
+     ─────────────────────────────────────────────────────────────────────────
+     §7–§9 were ADDED 2026-08-18 on the owner's reading of the first version:
+     _"The mockup is missing one critical part of the design: how do you create
+     sub tasks? How do you decide whether a task is one step or has multiple sub
+     tasks? How do you edit them? Add/remove etc."_ — correct, and the first
+     version drew authoring as a label in a foot. They are LIVE rather than
+     drawn: the question is about a flow, and a still frame of a composer answers
+     it about as well as a photograph of a keyboard answers "how does typing
+     feel".
 
      ─────────────────────────────────────────────────────────────────────────
      Interactive: theme (בהיר · כהה), screen (360×640 · 390×844), §1's two readings,
-     §2's parent state (0/5 · 2/5 · 5/5), and §5's own tick — the one control here that is a
-     control, so that "legible to me first" can be pressed rather than asserted.
-     Measurements at the foot are read from THIS page's rendered DOM. -->
+     §2's parent state (0/5 · 2/5 · 5/5), the deadline/count separator, §5's own tick in both
+     frames — so that "legible to me first" can be pressed rather than asserted — and the
+     whole of §7–§9, which share one live checklist: type and press Enter to add a step, tap a
+     step's words to edit it in place, press the face to cycle who owes it, press ✕ to remove
+     it. Measurements at the foot are read from THIS page's rendered DOM. -->
 <html lang="he" dir="rtl" data-theme="light">
   <head>
     <meta charset="UTF-8" />
@@ -80,7 +142,7 @@
     <!-- ══ THE APP'S REAL STYLESHEETS, in the app's own import order ══
          Regenerate with:
              node mockups/tools/inline-app-css.mjs mockups/a-task-that-holds-a-checklist-v1.html -->
-    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/avatar.css, ui/domain/list-row.css, ui/domain/row-open.css, ui/section-head.css, ui/notes.css, ui/tasks.css -->
+    <!-- APP-CSS: styles/tokens.css, App.css, screens.css, ui/primitives/field.css, ui/primitives/modal.css, ui/primitives/value-token.css, ui/primitives/choice-grid.css, ui/primitives/toggle-chip.css, ui/primitives/form-actions.css, ui/primitives/avatar.css, ui/domain/list-row.css, ui/domain/row-open.css, ui/section-head.css, ui/notes.css, ui/tasks.css -->
     <style data-app-css>
 /* GENERATED by mockups/tools/inline-app-css.mjs from the manifest above.
    Do not edit below this line — change the app css, then re-run the tool. */
@@ -8396,6 +8458,972 @@ body.wp-dragging .bld-seam.drop-over .bld-seam-lbl {
   }
 }
 
+/* ═══ ui/primitives/field.css — generated, do not edit here ═══ */
+/* One field shell (U-05). Token-based (Wave-0), logical properties only for RTL.
+   Neutral chrome: the control border/background stay neutral; a focused control
+   picks up teal (design-language: teal = location, but reused app-wide as the
+   input focus hue), and the error slot uses --miss. */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field-label {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* `.df` is NOT in these lists any more (ADR-0177 §5). Every `DateField` in the app is a
+   `ValueToken` now — all six call sites pass `tokenClass('date')` — so a host painting a
+   box around one only ever painted something the token immediately undrew. Leaving them
+   is what forced `value-token.css` to carry defensive overrides. */
+.field input,
+.field textarea,
+.field select {
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.field textarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--teal);
+}
+
+.field-error {
+  margin: 0;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--miss);
+}
+
+/* The hint slot — the error slot's quiet peer. Muted and regular-weight, so a note
+   about an empty field cannot be mistaken for something blocking the save. */
+.field-hint {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* ═══ ui/primitives/modal.css — generated, do not edit here ═══ */
+/* The single overlay primitive (ADR-0079). Three variants share one scrim +
+   focus/close machinery (Modal.tsx); only shape/position differ. Built on the
+   Wave-0 non-color tokens (radius/elevation/spacing, ADR-0082) and logical
+   properties so RTL needs no left/right. Neutral chrome only — never amber/teal
+   (unlike the legacy .confirm-card, which is deliberately amber for the
+   hard-edit guard); semantic hues stay reserved for meaning, not chrome.
+   The old sheet, confirm, and event-form class families remain in screens.css
+   until their consumers fold onto this primitive (Wave 2). */
+
+/* ── Arrival & departure (ADR-0140) ─────────────────────────────────────────
+   The scrim and the card animate on SEPARATE channels, and both animate in BOTH
+   directions. Before this the whole overlay carried one `opacity` keyframe, so
+   scrim and card cross-faded as a single flat image and the card never travelled —
+   a bottom sheet with no direction reads as a screenshot swap rather than as
+   something that came from the bottom of the screen. And there was no exit at all:
+   `Modal` unmounted its portal on the frame `onClose` ran, so every sheet, dialog,
+   picker and the search overlay SNAPPED shut. Enter-slow / exit-instant is the
+   single loudest "unfinished" tell an app can have, and it was app-wide.
+
+   `animation`, not `transition`, on purpose: an animation fires on mount with no
+   need to paint a closed state first and flip it a frame later, so there is no
+   double-rAF and no first-frame flash.
+
+   Exit is deliberately BRISKER than entrance (`--t-quick` vs `--t-base`): you have
+   already decided to leave, and matching the two makes dismissal feel sluggish.
+   The `.toast` in screens.css is the in-repo precedent for animating both ways off
+   a class — this is that shape, generalized into the primitive so all ~20 overlay
+   call sites inherit it (ADR-0096).
+
+   ── EVERY EXIT HAS ITS OWN @keyframes NAME, AND MUST (ADR-0140's 2026-08-02
+   amendment) ───────────────────────────────────────────────────────────────────
+   This block used to read "`.is-closing` swaps in the reverse pair", with one
+   keyframe per channel played `reverse` to leave — argued as the thing that stops
+   an exit drifting out of sync with its entrance by being written twice. It does
+   stop that. It also meant NONE OF THESE EXITS EVER RAN.
+
+   The same `animation-name` is the same animation: changing only duration, easing
+   and direction retargets the running one rather than starting a new one, so it
+   keeps its current time. By the time anyone closes an overlay that current time is
+   far past the new `--t-quick` duration, the animation is therefore already
+   complete, and `fill: both` paints the REVERSED END STATE on the first frame.
+   Measured on a sheet: open for >=200ms and it is at `translateY(100%)` with the
+   scrim at 0 the instant `.is-closing` lands. It only animated if you closed within
+   ~140ms of opening — which is exactly the window ADR-0140's build log was sampling
+   in when it verified these durations "mid-flight", and why this survived review.
+
+   So the cost is real and is accepted: two names per channel is two things to keep
+   true, and it is the only way either of them runs. If you add a variant, add BOTH
+   halves — `modal-x-in` and `modal-x-out` — and never write `reverse` here.
+   `styles/exit-animations.contract.test.ts` fails the build if this is broken again;
+   jsdom has no CSS engine, so no rendering test can catch it. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  /* Peer of the legacy .sheet-/.confirm-overlays (also z-index 20): a nested,
+     body-portalled prompt paints above by DOM order, not a higher z-index. */
+  z-index: 20;
+}
+/* The scrim is a pseudo-element rather than the overlay's own background, because
+   the overlay is the CARD's ancestor: fading the overlay fades the card with it,
+   which is exactly the coupling being removed here. The backdrop click stays on
+   `.modal-overlay` itself, so hit-testing is unchanged. */
+.modal-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 35, 61, 0.45);
+  animation: modal-scrim-in var(--t-base) var(--ease-standard) both;
+}
+.modal-overlay.is-closing::before {
+  animation: modal-scrim-out var(--t-quick) var(--ease-exit) both;
+}
+/* Paints above the scrim pseudo (which is drawn as the first child) and gives the
+   card its own compositing box for the transform. */
+.modal-card {
+  position: relative;
+}
+/* While the exit plays, the overlay is on screen but no longer a target — the
+   decision to close is already made, and a tap landing on a leaving sheet would
+   act on a surface the user has dismissed. */
+.modal-overlay.is-closing {
+  pointer-events: none;
+}
+
+/* sheet — bottom-anchored, full-width, rounded top (phone-first, ADR-0017). */
+.modal-overlay[data-variant='sheet'] {
+  align-items: flex-end;
+}
+/* dialog — centered, constrained, gutter so it never touches the screen edge. */
+.modal-overlay[data-variant='dialog'] {
+  align-items: center;
+  padding: var(--space-6);
+}
+/* full — a full-viewport screen, not a floating card over dimmed content
+   (ADR-0101): opaque (matches the app's own page background) since it
+   REPLACES the trip header + bottom nav rather than sitting above them, and
+   there's nothing "outside" it to see or tap-dismiss to (see Modal.tsx's
+   backdrop-click gate). Used today by `SearchOverlay`; reusable for any
+   future full-screen mode. */
+.modal-overlay[data-variant='full']::before {
+  background: var(--screen);
+}
+
+/* Each variant arrives the way its SHAPE implies — the point of the split is that
+   there is something shape-specific to say, which one shared fade could not.
+   Entrances use `--ease-arrive` so the card settles rather than stopping dead;
+   exits use `--ease-exit`, which must never overshoot. */
+
+/* sheet — rises from the edge it came from. */
+.modal-overlay[data-variant='sheet'] .modal-card {
+  animation: modal-sheet-in var(--t-base) var(--ease-arrive) both;
+}
+.modal-overlay[data-variant='sheet'].is-closing .modal-card {
+  animation: modal-sheet-out var(--t-quick) var(--ease-exit) both;
+}
+/* dialog — has no edge to come from, so it is summoned in place. A confirm that
+   slid in from somewhere would imply a location it does not have. */
+.modal-overlay[data-variant='dialog'] .modal-card {
+  animation: modal-dialog-in var(--t-base) var(--ease-arrive) both;
+}
+.modal-overlay[data-variant='dialog'].is-closing .modal-card {
+  animation: modal-dialog-out var(--t-quick) var(--ease-exit) both;
+}
+/* full — REPLACES a screen, so it arrives like one: from the inline-end edge, the
+   same grammar as the shell's forward push, off the same `--dir` sign. */
+.modal-overlay[data-variant='full'] .modal-card {
+  animation: modal-full-in var(--t-base) var(--ease-standard) both;
+}
+.modal-overlay[data-variant='full'].is-closing .modal-card {
+  animation: modal-full-out var(--t-quick) var(--ease-exit) both;
+}
+
+.modal-card {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--elevation-floating);
+  /* Focus lands here (tabIndex -1); it is not keyboard-tabbable, so no ring. */
+  outline: none;
+}
+
+.modal-overlay[data-variant='sheet'] .modal-card {
+  max-width: 480px;
+  border-start-start-radius: var(--radius-16);
+  border-start-end-radius: var(--radius-16);
+  padding: var(--space-4);
+  /* Clear the home indicator on the bottom-anchored variant. */
+  padding-block-end: calc(var(--space-4) + var(--safe-bottom));
+}
+
+.modal-overlay[data-variant='dialog'] .modal-card {
+  max-width: 340px;
+  border-radius: var(--radius-16);
+  padding: var(--space-4);
+}
+
+.modal-overlay[data-variant='full'] .modal-card {
+  height: 100%;
+  max-width: none;
+  /* The card fills 100% of the overlay, so it's what's actually visible —
+     override the base rule's white `--card` fill with the same page-grey the
+     overlay itself uses, or the overlay's own background would never show. */
+  background: var(--screen);
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-title {
+  font-weight: 700;
+  font-size: var(--text-h3);
+  line-height: var(--leading-snug);
+  color: var(--ink);
+  margin-block-end: var(--space-3);
+}
+
+/* Two keyframes per channel: an `-in` and an `-out`. The `-out` is the `-in`
+   inverted BY HAND, which is the cost the block at the top of this file accepts —
+   `reverse` expresses the same thing and does not run. Keep each pair in sync. */
+@keyframes modal-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes modal-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes modal-full-in {
+  from {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* The exits. Each is its `-in` read bottom-to-top; nothing here is a new decision. */
+@keyframes modal-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes modal-sheet-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes modal-dialog-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes modal-full-out {
+  from {
+    transform: none;
+  }
+  to {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+}
+
+/* ── lift — the promoted hero (ADR-0160) ─────────────────────────────────────
+   CENTRED and CONTENT-SIZED, which is what makes it none of the three above: a
+   sheet is bottom-anchored, a full replaces the screen, and a dialog is centred but
+   width-constrained and paper. The lifted hero is as tall as it has something to
+   say (§8, owner's call).
+
+   **Centred, not top-anchored** — owner's correction on a device, 2026-08-03: _"I
+   was imagining the hero to lift to the center of the screen, not to the top"_.
+   ADR-0160 §5 said the box travels to the top of the screen, which is what the
+   mockup's measurement argued for (it was the only way to stop the anchored
+   character needing a scroller at 360×640). Read on a real phone, a centred lift is
+   the one that looks like the object came toward you: a top-anchored card reads as a
+   panel that arrived from somewhere, which is the sheet grammar §2 rejects.
+
+   It still covers the chrome whenever it is tall enough to, so §5's consequence
+   holds for the cases that motivated it; a short hero now leaves the chrome visible
+   above it, which is the honest reading of content-sizing.
+
+   **This variant has no entrance or exit of its own, and that is deliberate.** Every
+   other overlay's motion is CSS keyed on `.is-closing`; the lifted hero's is a
+   measured FLIP in `lib/useLiftFlight.ts`, because the box it travels from is a
+   different element on the page underneath and no stylesheet can know where that is.
+   The placeholder fade that stood here through phase 3 is GONE rather than kept as a
+   companion: a promoted object that also fades is two boards cross-dissolving, which
+   is precisely the overlay grammar §1 rejects, and it was reported as exactly that
+   on a phone. Under reduced motion nothing animates and the lifted state is simply
+   correct as a static state, which is the requirement anyway (ADR-0140 §5). */
+.modal-overlay[data-variant='lift'] {
+  align-items: center;
+  /* Viewport-relative, not a bare percentage, and shared as a custom property rather than
+     repeated: `.modal-card` has no `height` of its own here (only this `max-height`), and a
+     percentage `max-height`/`height` on a DESCENDANT of a box with no *specified* height
+     computes to `none` regardless of what that box's own max-height renders at (CSS2.1
+     §10.5) — which is exactly why the hero inside used to grow straight past this cap
+     instead of scrolling within it (ADR-0160 §T). Naming it once is what keeps the card and
+     the hero it wraps from independently computing "the room" and drifting. */
+  --lift-max-h: calc(100vh - 18px);
+  --lift-max-h: calc(100dvh - 18px);
+}
+.modal-overlay[data-variant='lift'] .modal-card {
+  margin: 8px;
+  width: calc(100% - 16px);
+  max-width: none;
+  max-height: var(--lift-max-h);
+  background: none;
+  /* `border: 0` and not just `border-radius: 0`, and the pair is the whole point: the base
+     `.modal-card` carries `1px solid var(--line)`, so resetting only the radius left a
+     SQUARE stroke boxing in the rounded hero, 1px outside it on every side. Reported from a
+     phone. The card is a transparent shell in this variant — the hero inside owns every
+     visible edge — so each paint property the base rule sets has to be given back here, and
+     this one was missed because a border with no radius reads as someone else's outline. */
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  overflow: visible;
+}
+
+/* ═══ ui/primitives/value-token.css — generated, do not edit here ═══ */
+/* ValueToken (ADR-0177 §2) — "a value you can change", inline.
+
+   Generalised from `button.bld-time` (ADR-0161 §7), whose geometry this is: a
+   hairline chip at radius 9, no hue of its own, and the touch target as an inset
+   overlay rather than a height. Logical properties only (RTL).
+
+   Nothing here is per-host. A host picks a tone and the prose around it; it does not
+   get to change the box, which is what stopped the five chromes ADR-0177 §1 counted. */
+
+.vt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: start;
+  min-inline-size: 0;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+}
+
+/* THE TARGET GROWS, THE LINE DOES NOT (ADR-0161 §7, measured there before it was a
+   rule: `min-height: 44px` took that row from 58px to 75px). The overlay reaches into
+   the line's own vertical padding, which nothing else occupies — so every form gets
+   ADR-0017's 44px floor without a single block growing. `.wf-line`'s `row-gap` is set
+   to clear two of these, so stacked tokens never trade taps. */
+.vt::after {
+  content: '';
+  position: absolute;
+  inset: -7px -2px;
+}
+
+.vt:active {
+  transform: scale(var(--press-scale));
+}
+.vt:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.vt:disabled::after {
+  content: none;
+}
+
+/* Open and focused wear the same mark, because they are the same state to the reader:
+   this is the value the panel on screen belongs to. Amber, since what opens is a
+   picker for a value in a form — matching `.tp-field.open`, which this replaces. */
+.vt.open,
+.vt:focus-within {
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.08);
+}
+.vt:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+/* ── tones: the ONLY thing a host varies ─────────────────────────────────────── */
+
+/* Amber = the clock (ADR-0028's budget, spent once so it means one thing). */
+.vt-time {
+  font-family: var(--font-mono);
+  color: var(--amber-deep);
+  letter-spacing: 0.01em;
+}
+
+/* A date is a calendar fact, not a commitment — ink. `DateField` wears this class on
+   its own wrapper (ADR-0176: the wrapper is the box), so these rules must also undo
+   the chrome the wrapper would otherwise inherit from a host's `.field`/`.set-fld`
+   rules — which ADR-0177 §5 deletes, and which the build initially left standing, so this
+   file carried `.field .vt-date` / `.set-fld .vt-date` overrides against rules that should
+   not have existed. Both are gone now, and so are the overrides.
+
+   `.df.vt-date`, not `.vt-date` alone: `date-field.css`'s own `.df` box rules tie on
+   specificity and neither sheet's load order is knowable from the source (both are lazy
+   chunks). `inline-size` is stated because a stretched token is invisible in review and
+   obvious only once drawn — it is what made the booking span measure TALLER than the
+   boxes it replaced. */
+.df.vt-date {
+  inline-size: auto;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--soft-line);
+  border-radius: 9px;
+  padding: 4px 8px;
+}
+.df.vt-date:focus-within {
+  outline: none;
+  border-color: var(--amber);
+  background: rgba(233, 166, 60, 0.08);
+}
+/* The face is the token's text; its `min-block-size` (there to hold a line for an
+   empty native control) would otherwise make a date token taller than its neighbours. */
+.vt-date .df-face {
+  min-block-size: 0;
+}
+/* One calendar affordance, not two: the platform's indicator appears only while the
+   input is opaque, so the cell would gain an element mid-tap (ADR-0177 §5). */
+.vt-date .df-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* **A DATE GROWS ITS INPUT, NOT AN OVERLAY** — and getting this wrong made every date
+   in the app unopenable. The `::after` target above is painted after its siblings and
+   takes pointer events, which is harmless over a `<button>` (the button under it is
+   what handles the press anyway) and fatal over a date, whose real control is the
+   native `<input>` INSIDE the token (ADR-0176). The overlay simply swallowed every tap.
+
+   So a date drops the pseudo-element and reaches the same 44px with the input itself:
+   same target, and it is the control rather than a decoration sitting on one. Nothing
+   here can be "cleaned up" into the shared `::after` without breaking the field again. */
+.vt-date::after {
+  content: none;
+}
+/* `.df.vt-date`, one class heavier than `date-field.css`'s `.df .df-input { inset: 0 }`,
+   which it must out-specify rather than merely follow: both sheets are lazy chunks and
+   neither's load order is knowable from the source (the same trap that hid App.css's
+   dead mono rule). Written at (0,3,0) the growth holds whichever lands last — and when
+   it did NOT, the click still worked and only the 44px floor quietly went missing, which
+   is exactly the kind of half-failure a measured assertion catches and an eye does not. */
+.df.vt-date .df-input {
+  /* -8px, ADR-0161 §7's own number, so the two reaches are one lineage rather than two
+     guesses. -7px measured 43.75px against ADR-0017's 44px floor — a quarter-pixel short,
+     which is exactly the sort of miss that survives review and fails a measurement. */
+  inset: -8px -2px;
+  inline-size: auto;
+  block-size: auto;
+}
+
+/* A value that is a word rather than a figure — a duration ("שעה"), where the app
+   already phrases the number. Body font, because JetBrains Mono has no Hebrew and
+   would fall back to something with different metrics. */
+.vt-word {
+  font-family: var(--font-body);
+}
+
+/* An absence, and it invites rather than sits blank. Dashed is the app's existing
+   "nothing here yet" mark (`button.bld-time.empty`). */
+.vt-empty,
+.vt-empty .df-empty {
+  color: var(--muted);
+  font-weight: 600;
+}
+.vt-empty {
+  border-style: dashed;
+}
+
+/* ═══ ui/primitives/choice-grid.css — generated, do not edit here ═══ */
+/* ChoiceGrid — icon/label single-select cards. Ported from the shipped
+   `.bs-typesel`/`.bs-typecard` document + booking selectors in screens.css, under
+   component-scoped classes, spacing/radius/type from the Wave-0 tokens where they
+   map. Selected = neutral --cta ring + faint ink fill (never a semantic hue). */
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--choice-cols, 4), 1fr);
+  gap: var(--space-2);
+}
+
+.choice-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  padding: var(--space-3) var(--space-1);
+  cursor: pointer;
+}
+.choice-card:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+}
+.choice-card:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.choice-card-ic {
+  font-size: var(--text-h3);
+  line-height: 1;
+}
+.choice-card-lbl {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.choice-card.on {
+  border-color: var(--cta);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.choice-card.on .choice-card-lbl {
+  color: var(--ink);
+}
+
+/* pills layout — a horizontally-scrollable row (ADR-0098: the Index category
+   filter, too many options for a fixed grid on a narrow phone). Selected state
+   stays the same neutral rule as the grid cards: ink fill, never a semantic hue. */
+.choice-grid.pills {
+  display: flex;
+  overflow-x: auto;
+  gap: var(--space-2);
+  padding-block-end: 2px;
+  scrollbar-width: none;
+  /* scroll-snap-type + scroll-snap-align (below) align the row's resting
+     scroll position to a chip boundary at the leading edge — without it the
+     row can rest at any offset, bisecting the chip nearest the container
+     edge. (Where the row rests on FIRST LOAD is no longer this rule's job:
+     the selected pill centres itself, see `.choice-pill.on` below.)
+     It can't fix the TRAILING edge (the
+     container width is never an exact multiple of chip widths, so a peek is
+     inherent); a mask-image fade handles that so the peek reads as a "scroll
+     for more" affordance instead of a hard cutoff (ADR-0100 §6). The gradient
+     direction is physical (`to right`), correct in both directions since RTL
+     only reorders flex children, not `mask-image`'s own coordinate space. */
+  scroll-snap-type: x mandatory;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 14px,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+.choice-grid.pills::-webkit-scrollbar {
+  height: 0;
+}
+.choice-pill {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-999);
+  padding: 6px 12px;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+/* compact pills — glyph + count, no word (ADR-0122 §2). The chip loses the padding
+   the word needed; its accessible name comes from the button's `aria-label`, not from
+   what is drawn. */
+.choice-grid.pills.compact .choice-pill {
+  padding: 6px 10px;
+}
+/* The event/idea category selector (ADR-0109 §11) wants a slightly larger tap
+   target than the compact Index filter chips that share `.choice-pill`; scoped
+   to the `.category-pills` wrapper so the Index chips stay as designed (ADR-0100).
+   **Second host since 2026-08-13: the document-type picker** (`DocumentTypePills`,
+   ADR-0052 §6's amendment). Eight types were drawn as a 3-column card grid, which is
+   three rows and 202px, against 38px here — so the picker joined the row that already
+   carried nine options rather than growing a shape of its own. Nothing was added for
+   it: a second consumer of this wrapper is the whole change.
+   Known and deliberately unresolved (ADR-0052 §6, 2026-08-13): the pill measures 36px
+   against ADR-0017's 44px floor, here AND on the shipped category selector. Room is not
+   the obstacle — at 44px the document row is 46px and still needs no scrolling — the
+   obstacle is that raising it moves three shipped surfaces, one of which
+   (`MapPlaceForm`) has a card height that is arithmetic (ADR-0148 §1). */
+.category-pills .choice-pill {
+  font-size: var(--text-secondary);
+  padding: 8px 14px;
+  gap: 6px;
+}
+
+.choice-pill-count {
+  font-family: var(--font-mono);
+  opacity: 0.75;
+}
+.choice-pill.on .choice-pill-count {
+  opacity: 0.85;
+}
+.choice-pill:active {
+  transform: scale(var(--press-scale));
+}
+.choice-pill:focus-visible {
+  outline: none;
+  border-color: var(--cta);
+}
+.choice-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.choice-pill.on {
+  background: var(--cta);
+  border-color: var(--ink);
+  color: var(--cta-text);
+}
+
+/* The selected pill is a CENTRE snap point, not a start one — and this line is what makes
+   `lib/useCenterSelected` work on this row at all. The snap above is `mandatory`, so the
+   browser must rest at a snap position: with every pill start-aligned, our centred offset
+   was immediately re-snapped back to the nearest chip boundary and the centring was
+   undone. Declaring the selected pill's own snap position AS the centred one makes the two
+   rules agree — and user scrolling still snaps to chip boundaries everywhere else. */
+.choice-pill.on {
+  scroll-snap-align: center;
+}
+
+/* Selection settles, same reasoning as `.wp-chip.on` (ADR-0140's Journey 4): the press
+   scale answers the tap, this answers the outcome. The card gets the gentler amount — it
+   is a large surface, and the ratio is what should read as constant (ADR-0140 §2). */
+.choice-pill.on {
+  animation: choice-settle var(--t-quick) var(--ease-arrive);
+}
+.choice-card.on {
+  animation: choice-settle-lg var(--t-quick) var(--ease-arrive);
+}
+@keyframes choice-settle {
+  50% {
+    transform: scale(1.05);
+  }
+}
+@keyframes choice-settle-lg {
+  50% {
+    transform: scale(1.015);
+  }
+}
+
+/* ═══ ui/primitives/toggle-chip.css — generated, do not edit here ═══ */
+/* The pressed chip (`ui/primitives/ToggleChip`), extracted in session 185 from the four
+   hand-rolled copies in `map.css`. Everything here is APPEARANCE; where a chip sits and
+   how it enters/leaves stays with the screen that places it, through `className`. */
+.wp-chip {
+  /* Never a flex item that grows: in the Map's rows the strip owns the sizing, and in a
+     `.field` — which is a COLUMN — an `inline-flex` child would stretch to the column's
+     width and the pill would read as a disabled INPUT rather than a control (measured in
+     session 184). `width: fit-content` settles both without an `align-self`, which would
+     have top-aligned every chip in the Map's centred rows. */
+  flex: 0 0 auto;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* The touch floor (ADR-0017), for a chip that is its surface's primary control rather
+   than one of a strip — the form's `יש הזמנה` row. A filter chip stays at chip size. */
+.wp-chip.touch {
+  min-height: 44px;
+  padding-inline: 16px;
+  font-size: 13px;
+}
+
+/* Provisional while off (ADR-0110 §2) — the `אולי` facet is a maybe about maybes, and the
+   dash says so before the label does. It goes solid when the facet is on. */
+.wp-chip.provisional:not(.on) {
+  border-style: dashed;
+  border-color: var(--soft-line);
+}
+
+/* ── the tones ────────────────────────────────────────────────────────────────
+   Each names its own on-state, rather than one shared fill plus per-tone patches: the
+   accent FILLS and the cta TINTS, and that is a real difference between a chip over a
+   canvas and a chip in a form, not a knob. */
+
+/* The surface's own selection accent, set per-mode by whichever screen mounts the chip
+   (`.map-screen`/`.index` define it; ink in Trip, plan violet in Plan). The fallback is
+   what makes the primitive safe anywhere else — a Modal's portal has no such ancestor. */
+.wp-chip.accent.on {
+  background: var(--idx-accent, var(--ink));
+  border-color: var(--idx-accent, var(--ink));
+  color: var(--idx-accent-text, var(--on-fill));
+}
+
+/* The neutral primary, tinted rather than filled. Amber is time and commitment and plan
+   violet is Plan mode (ADR-0028, root rule 4) — and "this is booked" is emphatically not
+   the commitment axis, which is the whole point of ADR-0136 §4. */
+.wp-chip.cta.on {
+  border-color: var(--cta);
+  background: color-mix(in srgb, var(--cta) 10%, transparent);
+  color: var(--cta);
+}
+
+/* Teal is LOCATION, throughout and only (ADR-0109 §6-7 / ADR-0028): it reads teal even
+   when off, because what it is about does not change with its state. */
+.wp-chip.teal {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 10%, transparent);
+}
+.wp-chip.teal.on {
+  background: var(--teal);
+  color: var(--cta-text);
+}
+
+/* Present but no longer claiming it can do anything — near-me after a location refusal,
+   with the banner beside it carrying the explanation and the retry. Last, and it wins over
+   the on-state on purpose: the intent may still be set, and "cannot act on it" is the
+   fact worth showing. */
+.wp-chip.muted,
+.wp-chip.muted.on {
+  border-style: dashed;
+  border-color: var(--soft-line);
+  color: var(--muted);
+  background: transparent;
+}
+
+.wp-chip-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+/* Against a filled chip the count rides its own text colour rather than a hardcoded
+   white, so it holds up in every tone and in dark mode. */
+.wp-chip.on .wp-chip-count {
+  color: color-mix(in srgb, currentColor 80%, transparent);
+}
+
+/* The chip settles when it becomes selected (ADR-0140's Journey 4). The press scale
+   already answers the tap; this answers the OUTCOME, which is a different fact — a chip
+   can be pressed and not become selected (tapping the one already on). Keyed on the
+   selected state, so it fires exactly when the answer changes. */
+.wp-chip.on {
+  animation: chip-settle var(--t-quick) var(--ease-arrive);
+}
+@keyframes chip-settle {
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+/* ═══ ui/primitives/form-actions.css — generated, do not edit here ═══ */
+/* A form body inside a Modal sheet: the scroll container the sticky action bar
+   pins to (U-01/U-02). Capped height keeps a long form within the sheet; the
+   RTL left-edge scrollbar is hidden (it reads as a stray line). */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 75vh;
+  max-height: 75dvh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* **A FOCUSED FIELD'S BORDER WAS BEING CLIPPED ON BOTH ENDS** (owner, 2026-08-16: _"selected
+     field outline is cut off"_, and reproduced in the running app before it was touched).
+     `overflow-y: auto` makes this a scroll container, which computes `overflow-x` to `auto`
+     as well and clips at the padding box — and a field is exactly as wide as that box, so the
+     teal `:focus-visible` border's outer edge lands ON the clip boundary and the two VERTICAL
+     sides vanish while the horizontal ones survive. That asymmetry is the tell, and it is why
+     it reads as "cut off" rather than as a missing ring.
+
+     Nothing overflows (`scrollWidth === clientWidth` measured), so this is not a sizing bug
+     and widening nothing fixes it: the cure is to stop the field sitting flush against the
+     clip edge. The negative margin gives the padding straight back, so no field moves and no
+     form's width changes — the only difference is that there is now slack for a border to be
+     drawn into. Here rather than at a call site because every sheet-form in the app is this
+     class, and `EventForm`'s fields sit exactly as flush as `TaskSheet`'s.
+
+     **4px, and `overflow-clip-margin` is NOT available here — which is worth writing down,
+     because it is the obvious reach and it silently does nothing.** A first pass shipped 2px;
+     the owner's phone still showed the vertical strokes lighter than the horizontal ones
+     (_"fully closed but narrower on the left and right compared to the top and bottom"_), so
+     the next instinct is `overflow-x: clip` + `overflow-clip-margin` to push the clip edge
+     outward. It cannot work on this element: CSS Overflow 3 says that when one axis is
+     `clip` and the other is not `visible`/`clip`, the `clip` **computes to `hidden`** — and
+     `overflow-clip-margin` applies to `clip` only. Measured here: `overflow-x` reports
+     `hidden` and the margin is inert. A scrolling form can therefore only buy slack with
+     padding, so this is padding.
+
+     **What padding cannot fix, and is the likely remainder:** a 1px border on an element whose
+     inline edges land on FRACTIONAL device pixels is antialiased across two of them and reads
+     lighter than the block edges, which sit on whole ones. That is a rounding artifact of the
+     device's ratio, not a clip, and it wants a device screenshot taken AFTER this change
+     before anything else is done about it. */
+  padding-inline: 4px;
+  margin-inline: -4px;
+}
+.modal-form::-webkit-scrollbar {
+  display: none;
+}
+
+/* One form action bar (U-02). Sticky to the bottom of its scroll container so
+   the primary stays reachable while a long form scrolls; the card background
+   masks fields sliding under it. Token-based, logical properties only (RTL). */
+
+.form-actions {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-3);
+  padding-block-start: var(--space-3);
+  background: var(--card);
+}
+
+.form-actions button {
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  border-radius: var(--radius-12);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+/* Primary spans the row; the ghost secondary is a small trailing pill. */
+.fa-primary {
+  flex: 1;
+  border: none;
+  background: var(--cta);
+  color: var(--cta-text);
+}
+.fa-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* A second way FORWARD (`alternate`): outlined in the CTA's ink rather than filled, so the
+   bar still has exactly one filled button and the eye still knows which one continues the
+   flow. Sized like the secondary, because it is a peer of it and not of the primary. */
+.fa-alternate {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--cta);
+  border: 1px solid var(--cta);
+}
+.fa-alternate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.fa-secondary {
+  flex: 0 0 auto;
+  padding-inline: var(--space-5);
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--soft-line);
+}
+
+/* Destructive: de-emphasized text button on its own row, never a filled CTA. */
+.fa-destructive {
+  align-self: center;
+  margin-block-start: var(--space-1);
+  font: inherit;
+  font-weight: 700;
+  font-size: var(--text-secondary);
+  color: var(--miss);
+  background: transparent;
+  border: none;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.form-actions button:focus-visible,
+.fa-destructive:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+
 /* ═══ ui/primitives/avatar.css — generated, do not edit here ═══ */
 /* The Avatar primitive (ADR-0133 §3). Geometry only — the hue arrives as an inline
    `var(--id-*)` from the component, so a stored ramp key follows the dark remap.
@@ -10015,6 +11043,152 @@ button.wp-av:focus-visible {
       .tsk-kids .note-item {
         margin-bottom: 6px;
       }
+      /* ── **THE SHEET SCROLLS PAST ITS OWN ACTION BAR, AND IT NEVER DID** (owner: adding a
+         sub-task should scroll _"so that the new sub task (and the buttons below it) are in
+         view"_ — and _"if needed even change the primitive"_. It is needed, and this is the
+         primitive).
+
+         `.form-actions` is `position: sticky; inset-block-end: 0` INSIDE `.modal-form`'s
+         scrollport, and nothing in the app declares `scroll-padding` anywhere except the Map's
+         inline peek. So `scrollIntoView({ block: 'nearest' })` in any sheet-form parks its
+         target flush with the scrollport's bottom edge — which is **underneath** the bar. That
+         is latent today for every consumer (`EventForm`, `BookingSheet`, `DocumentUploadSheet`,
+         `TaskSheet`); `useFormErrors` only escapes it by passing `block: 'center'`.
+
+         One declaration on the container fixes it for all of them, and the token is what keeps
+         the pair honest: the bar's height and the padding that clears it are one number, named
+         once, with the measurement table printing both so a future change to the bar cannot
+         drift away from it silently.
+
+         **`.body` needs none of this** and the check is worth recording: `.nav` is sticky too,
+         but it is a SIBLING of `.body` rather than inside its scrollport, so nothing there ever
+         lands under it. The sheet is the only case. */
+      :root {
+        --form-actions-h: 68px;
+      }
+      .modal-form {
+        scroll-padding-block-end: var(--form-actions-h);
+      }
+
+      /* ── THE COMPOSER ROW — the checklist's LAST row, in the same grid as the children, so
+         the `＋` sits in the very column the ticks are in. `.field` + a plain `<input>` does
+         the box (`field.css` gives border, radius and padding and sets no `min-height` on an
+         input — only on a textarea), which is why this is four rules and not a control.
+
+         **An INPUT, not `NoteComposer`'s textarea, and Enter COMMITS here.** That is the
+         opposite of ADR-0152 §6b's rule for a note, and it is the same reasoning: a note is
+         prose, so the key that ends a line inside one cannot end the note. A step is one
+         line — it has no inside — so Enter has nothing else to do, and the box stays open and
+         focused for the next one, because a checklist is written in a burst. */
+      /* `.note-item` is `align-items: start`, which is right for a 20px tick beside a line of
+         text and wrong beside a 40px input box — the first render put the `＋` a row above the
+         box it belongs to. The composer row is the one member of this grid whose two cells are
+         different heights. */
+      .tsk-kid-compose {
+        align-items: center;
+      }
+      .tsk-kid-compose .note-item-lead {
+        color: var(--muted);
+      }
+      .tsk-kid-compose .note-item-lead .icon {
+        width: 15px;
+        height: 15px;
+      }
+      /* **THE BOX IS THE ROW, NOT THE INPUT** — and the first render is the argument. With
+         the border left on the `<input>` (where `field.css` puts it), the assignee chip and
+         the ✕ sat OUTSIDE the rounded box, floating against the card with nothing to align
+         to: measured, the field spanned 285→543 and the input only 317→543, so the two
+         controls hung in the 32px left over. `.note-compose-row` is the shipped precedent and
+         it gets away with a control beside the box because that control has a box of its own
+         (`.note-compose-add`, 38px, bordered). These two are 26px and bare, so they belong
+         inside. One border, one radius, one focus ring, three controls in it. */
+      .tsk-kid-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-12);
+        background: var(--card);
+        padding-inline: var(--space-2);
+      }
+      /* The focus hue moves out with the border. Same declaration `field.css` makes on the
+         input itself — one level up, because that is where the border now is. */
+      .tsk-kid-row:focus-within {
+        border-color: var(--teal);
+      }
+      /* **`.field .tsk-kid-in`, not `.tsk-kid-in`** — a specificity trap the render caught
+         and source could not: `field.css`'s `.field input` is (0,1,1) and a bare
+         `.tsk-kid-in` is (0,1,0), so the input kept its own border and background and the
+         row painted a rounded box **inside** a rounded box. Same class of defect ADR-0195's
+         build log records for `.tsk-tick:hover .icon`, and the same lesson: when a primitive
+         styles by element, an override has to out-specify it rather than merely follow it. */
+      .field .tsk-kid-in {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-size: 13px;
+        border: 0;
+        background: none;
+        padding-inline: 0;
+      }
+      .field .tsk-kid-in:focus-visible {
+        outline: none;
+      }
+      /* **`App.css` AND `field.css` BOTH DEFINE `.field`, AND ONLY ONE OF THEM IS RESET.**
+         `App.css:1037` is `.field { margin-top: 18px }` — a form's gap, from the birth form —
+         and `field.css` sets `display`/`gap` and never touches the margin, so every `.field`
+         in the app carries it. Inside a grid row that is not a gap, it is a shove: the
+         composer's box measured 18px shorter than its own cell and sat **9px below** the `＋`
+         beside it, which is the misalignment reported on the first render. Zeroed here only,
+         where the shell is a row rather than a form field. */
+      .tsk-kid-compose .field {
+        margin-top: 0;
+      }
+      /* The two controls beside the input: who owes this step, and remove it. 26px of paint
+         with a 44px `::after` reach — `row-open.css`'s own recipe, which holds a 44px target
+         under an 11.5px control without the line taking 44px of the block (ADR-0017). */
+      .tsk-kid-who,
+      .tsk-kid-x {
+        position: relative;
+        flex: 0 0 auto;
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        background: none;
+        padding: 0;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .tsk-kid-who::after,
+      .tsk-kid-x::after {
+        content: '';
+        position: absolute;
+        inset: 50% auto auto 50%;
+        transform: translate(50%, -50%);
+        width: 44px;
+        height: 44px;
+      }
+      .tsk-kid-x .icon {
+        width: 15px;
+        height: 15px;
+      }
+      /* Nobody yet: the same dashed person-shaped absence `.tsk-who-any` already draws in the
+         editor (ADR-0189 §2), at this row's size rather than the editor's 38px. */
+      .tsk-kid-who .tsk-who-any {
+        width: 22px;
+        height: 22px;
+      }
+      .tsk-kid-who .tsk-who-any .icon {
+        width: 12px;
+        height: 12px;
+      }
+      .tsk-kid-who .wp-av {
+        width: 22px;
+        height: 22px;
+        font-size: 10px;
+      }
+
       /* A person row's face is a LEADING mark beside the name, where a child task's face is
          the trailing slot the title row already owns. Different jobs: one identifies the row,
          the other says who owes it. */
@@ -10205,6 +11379,29 @@ button.wp-av:focus-visible {
       /* MOCKUP-ONLY OVERRIDE, labelled rather than written into the generated block:
          `.app` is `height: 100dvh` in the shipped sheet, which inside a frame would make
          every screen the height of this page. Nothing else about `.app` is touched. */
+      /* MOCKUP-ONLY OVERRIDE, labelled: `Modal` portals its overlay to `document.body` and
+         pins it with `position: fixed`, which inside a frame would cover the page. §9 renders
+         the sheet's own tree (`.modal-card` + `.modal-title` + `.modal-form`) inline instead.
+         Nothing about the card itself is touched — only that it is not floating. */
+      .mk-sheet {
+        padding: 10px;
+      }
+      .mk-sheet .modal-card {
+        position: static;
+        max-height: none;
+      }
+      /* **`.modal-form`'s cap is `75dvh`, and `dvh` is the PAGE here** — so in a mockup the
+         form would either not clip at all or clip at three quarters of this document, and
+         neither is what a phone does. Restated as 75% of the FRAME (0.75 × 640) so the
+         scroll and the sticky action bar behave as they do in the app. This is the only
+         number in §9 that is simulated rather than read, and it is the reason the measurement
+         table reports what falls below the fold. */
+      .mk-sheet .modal-form {
+        max-height: 480px;
+      }
+      .tsk-kids-form {
+        padding-inline: 0;
+      }
       .phone .app {
         height: auto;
         min-height: 0;
@@ -10274,6 +11471,15 @@ button.wp-av:focus-visible {
         <span class="lbl">מפריד</span>
         <button type="button" data-sep="0" aria-pressed="true">רווח</button>
         <button type="button" data-sep="1">·</button>
+        <span class="sep"></span>
+        <span class="lbl">בעורך</span>
+        <!-- Not a variant: it performs a real commit in §9, so the measurement below reports
+             where the composer LANDED rather than where it rests. -->
+        <button type="button" id="demoadd">הוסיפו תת משימה</button>
+        <!-- The A/B for the primitive change. Off, the composer lands UNDER the sticky action
+             bar — which is what every sheet-form in the app does today. -->
+        <button type="button" data-pad="1" aria-pressed="true">⁦scroll-padding⁩</button>
+        <button type="button" data-pad="0">בלעדיו</button>
       </div>
 
       <!-- ══════════════════════════ §1 ══════════════════════════ -->
@@ -10368,6 +11574,93 @@ button.wp-av:focus-visible {
         <div class="pair" id="s6"></div>
       </section>
 
+      <!-- ══════════════════════════ §7 ══════════════════════════ -->
+      <section class="case">
+        <h2>§7 · איך רשימה נוצרת · ואין מצב שצריך להחליט עליו</h2>
+        <p class="note">
+          <b>אין פקד «הפוך לרשימה» ואין דגל.</b> משימה <b>הופכת</b> להורה כשהיא מקבלת את
+          המשימה הראשונה שבתוכה, ומפסיקה להיות כזו כשנמחקת האחרונה · שתיהן
+          <code>subtasks.get(id)?.length</code>, כלומר בדיוק הגזירה שכבר קיימת. אף אחד לא יודע
+          מראש אם ל«יציאה לשדה» יש חמישה חלקים · מגלים את זה שלושה ימים אחר כך, ואז צריך שיהיה
+          איפה לכתוב אותם.
+        </p>
+        <p class="note">
+          לכן <code>＋ משימה</code> יושב ברגל של <b>כל</b> שורה פתוחה, גם כשאין עדיין אף אחת ·
+          המסגרת השמאלית. אחרת שום דבר לא היה יכול לקבל את הראשונה שלו. הוא פותח
+          <b>שורת הרכבה בתוך הרשימה עצמה</b>, לא טופס · <code>useNoteComposer</code> בצורה שכבר
+          נשלחה, עם <code>input</code> במקום <code>textarea</code>. <b>Enter מוסיף</b>, והתיבה
+          נשארת פתוחה וממוקדת · חמישה שלבים הם חמש הקלדות ולא חמישה סבבים דרך גיליון. נסו:
+          הקלידו ולחצו Enter.
+        </p>
+        <div class="pair" id="s7"></div>
+      </section>
+
+      <!-- ══════════════════════════ §8 ══════════════════════════ -->
+      <section class="case">
+        <h2>§8 · עריכה והסרה · שורת ההרכבה היא כל העורך של שלב</h2>
+        <p class="note">
+          לשלב יש בדיוק שני שדות · כותרת ומשויך. לכן אין לו גיליון משלו · פתיחת
+          <code>TaskSheet</code> על שלב הייתה מציגה דדליין, דגל חשוב ומארח שכולם מסורבים לו
+          (§6), וזה בדיוק מה ש-ADR-0188 §5 קורא לו «פקד מושבת שמבטיח הפעלה שלא תגיע».
+        </p>
+        <p class="note">
+          <b>נגיעה בטקסט של שלב מחזירה אותו לשורת ההרכבה, במקום.</b> זה
+          <code>reopen(index)</code> של <code>NoteComposer</code> מילה במילה · «טעות הקלדה
+          עולה עריכה, לא מחיקה והקלדה מחדש». ובאותה שורה יושבים גם <b>מי חייב את זה</b> ו-<b
+            >הסרה</b
+          > · שלושה פקדים בשורה אחת, ולכן <b>שורת הקריאה לא משתנה בכלל</b> ורשת שתי-העמודות של
+          <code>.note-item</code> נשארת כפי שהיא · הפתקים לידה משלמים אפס.
+        </p>
+        <p class="note">
+          <b>אין סידור מחדש בגרסה הזו.</b> סדר הכתיבה הוא הסדר · רשימה של עד 20 שורות שנכתבת
+          ברצף כבר נמצאת בסדר שבו חשבו עליה, וידית גרירה על שורה של 26.8px היא בעיית יעד ולא
+          פיצ׳ר.
+        </p>
+        <div class="pair" id="s8"></div>
+      </section>
+
+      <!-- ══════════════════════════ §9 ══════════════════════════ -->
+      <section class="case">
+        <h2>§9 · בעורך · אותה רשימה, ובזמן יצירה היא מוחזקת</h2>
+        <p class="note">
+          הדרך המהירה היא אזור הפתיחה; <b>העורך הוא הדרך המלאה</b>, והוא גם היחיד שמגיעים אליו
+          מכל משטח · ממקטע של מארח, מרצועה, מהמסך. הסדר של הטופס נקרא מ-<code>TaskSheet.tsx</code>
+          ולא שוחזר מהזיכרון (הגרסה הראשונה של הסעיף הזה המציאה טופס בן שני שדות, והבעלים שלח
+          צילום של האמיתי): <code>מה צריך לעשות</code> · <code>עד מתי</code> ·
+          <code>מי אחראי</code> · <b>הרשימה</b> · <code>פרטים</code> · <code>חשוב</code>.
+        </p>
+        <p class="note">
+          <b>הרשימה נכנסת אחרי «מי אחראי» ולפני «פרטים», ולא ראשונה.</b> לרוב המשימות אין
+          שלבים, ושדה בגובה משתנה בין הכותרת לבין שני השדות שכל משימה כן משתמשת בהם דוחף אותם
+          מתחת לקפל בטלפון. ולפני «פרטים» ולא אחריו, כי שניהם עונים על «מה כרוך בלסגור את זה»
+          · אחד <b>מובנה</b> ואחד פרוזה, וזה שמובנה הוא זה שכדאי להושיט אליו יד קודם.
+        </p>
+        <p class="note">
+          <b>ומצב ריק הוא פקד שנפתח, לא תיבה פתוחה</b> · הכלל הזה מגיע מהטופס עצמו:
+          <code>עד מתי</code> נח כ-<code>הוספת תאריך</code>, ו-<code>＋ פתק</code> עושה בדיוק
+          את זה לתיבת הפתקים (ADR-0192 §2). תיבה פתוחה תמיד הייתה מוסיפה קופסה לכל עורך משימה
+          באפליקציה בשביל יכולת שרוב המשימות לא משתמשות בה.
+        </p>
+        <p class="note">
+          <b>ומילה אחת בקוד קיים חייבת לפרוש.</b> ה-placeholder של שדה הכותרת הוא
+          <code dir="rtl">משהו אחד שצריך לעשות</code>, ו-<code>he.ts</code> אומר למה במפורש:
+          «<code>אחד</code> מרוויח את מקומו · זה הגבול של המודל עצמו, <b>כי משימה שמחזיקה
+          רשימה היא פיצ׳ר נפרד שאף אחד לא בנה</b>». זה בדיוק הפיצ׳ר הזה.
+        </p>
+        <p class="note">
+          <b>ביצירה אין עדיין id, אז השלבים מוחזקים</b> · וזה לא מנגנון חדש אלא ה<b
+            >צרכן הרביעי</b
+          >
+          של דפוס שהאפליקציה כבר מריצה שלוש פעמים (<code>useNoteComposer().pending()</code>,
+          הבחירות המוחזקות של <code>DocumentAttachField</code>, ו-<code>useTaskStaging</code>
+          של ADR-0191 §7a). גם כלל הסדר שלהם נשמר בדיוק: הכתיבה יוצאת <b>אחרי</b> ההורה, באותה
+          קבוצת שינוי, כי ה-outbox הוא FIFO ושלב שיצא ראשון יגיע לשרת שלא רואה את ההורה שלו.
+          <code>writeStagedTasks</code> כבר מקבל <code>where</code> · מה שהוא צריך זה הרחבת
+          טיפוס אחת, לא hook חמישי.
+        </p>
+        <div class="pair" id="s9"></div>
+      </section>
+
       <div class="panel">
         <h2>מדידה · נקראת מה-DOM החי</h2>
         <p>
@@ -10455,6 +11748,8 @@ button.wp-av:focus-visible {
           'M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z M8.5 12l2.5 2.5 4.5-5',
         hotel:
           'M2.8 19.6v-7.2a1.8 1.8 0 0 1 1.8-1.8h14.8a1.8 1.8 0 0 1 1.8 1.8v7.2 M4.6 10.6V6.8a1.8 1.8 0 0 1 1.8-1.8h11.2a1.8 1.8 0 0 1 1.8 1.8v3.8 M2.8 16h18.4',
+        close: 'M6 6l12 12 M18 6L6 18',
+        user: 'M12 12.6a4.1 4.1 0 1 0 0-8.2 4.1 4.1 0 0 0 0 8.2Z M4.4 20.2a7.9 7.9 0 0 1 15.2 0',
       };
       const FILLED = new Set(['star']);
       const icon = (name, cls = '') =>
@@ -10486,7 +11781,7 @@ button.wp-av:focus-visible {
       /* ══ THE LEAD. One function for all three readings, because they are one control:
             a leaf's tick (a button), a parent's ring (a read), and an `everyone` task's
             tick-with-an-arc (a button that also carries the group's number). */
-      function lead({ density = 'row', frac = null, done = false, pressable = true, label }) {
+      function leadCtl({ density = 'row', frac = null, done = false, pressable = true, label }) {
         const cls = density === 'row' ? 'tsk-tick' : 'tsk-tick-sec';
         const arc = frac === null ? '' : ' tsk-arc';
         const style = frac === null ? '' : ` style="--tsk-frac:${frac}"`;
@@ -10550,7 +11845,7 @@ button.wp-av:focus-visible {
           ? `${avatar(k.who, 'tsk-who-row')}<span class="visually-hidden">משויך: ${AV[k.who].n}</span>`
           : '';
         return `<div class="note-item tsk-row${k.done ? ' tsk-settled' : ''}">
-          <span class="note-item-lead">${lead({
+          <span class="note-item-lead">${leadCtl({
             density: 'section',
             done: k.done,
             label: `סימון · ${k.title}`,
@@ -10602,7 +11897,7 @@ button.wp-av:focus-visible {
             title: r.title,
             due: r.due,
             open,
-            lead: lead({
+            lead: leadCtl({
               frac: f,
               done: n === r.kids.length,
               pressable: false,
@@ -10614,7 +11909,7 @@ button.wp-av:focus-visible {
         if (r.everyone) {
           return listRow({
             title: r.title,
-            lead: lead({
+            lead: leadCtl({
               frac: r.doneBy / r.of,
               done: r.mineDone,
               label: `סימון · ${r.title} · ${r.doneBy} מתוך ${r.of} סימנו`,
@@ -10624,7 +11919,7 @@ button.wp-av:focus-visible {
         }
         return listRow({
           ...r,
-          lead: lead({ done: false, label: `סימון · ${r.title}` }),
+          lead: leadCtl({ done: false, label: `סימון · ${r.title}` }),
         });
       }
 
@@ -10637,7 +11932,7 @@ button.wp-av:focus-visible {
           listRow({
             title: ROOTS[1].title,
             due: ROOTS[1].due,
-            lead: lead({ done: false, label: 'סימון' }),
+            lead: leadCtl({ done: false, label: 'סימון' }),
           }),
           rootRow(ROOTS[3]),
           ...KIDS.map((k) =>
@@ -10645,7 +11940,7 @@ button.wp-av:focus-visible {
               title: k.title,
               who: k.who,
               settled: k.done,
-              lead: lead({ done: k.done, label: `סימון · ${k.title}` }),
+              lead: leadCtl({ done: k.done, label: `סימון · ${k.title}` }),
             }),
           ),
           rootRow(ROOTS[2]),
@@ -10716,7 +12011,7 @@ button.wp-av:focus-visible {
             <button type="button" class="add">${icon('plus')} משימה</button></div>
           <div class="note-sec-list tsk-sec-list">
             ${secRow('יציאה לשדה', {
-              lead: lead({
+              lead: leadCtl({
                 density: 'section',
                 frac: kidsDone / KIDS.length,
                 pressable: false,
@@ -10725,7 +12020,7 @@ button.wp-av:focus-visible {
               meta: `<span class="tsk-count">${lri(`${kidsDone}/${KIDS.length}`)}</span>`,
             })}
             ${secRow('לשלוח את מספר הטיסה לריוקאן', {
-              lead: lead({ density: 'section', done: false, label: 'סימון' }),
+              lead: leadCtl({ density: 'section', done: false, label: 'סימון' }),
               who: 'yael',
             })}
           </div></div></div></div>`;
@@ -10757,7 +12052,7 @@ button.wp-av:focus-visible {
            "Dana is done with" rather than "Dana packed". The green tick is the whole
            statement, which is also why this row needs no second one. */
         return `<div class="note-item tsk-row">
-          <span class="note-item-lead">${lead({
+          <span class="note-item-lead">${leadCtl({
             density: 'section',
             done,
             pressable: isMe,
@@ -10783,12 +12078,201 @@ button.wp-av:focus-visible {
         );
       }
 
+      /* ══════════════════════════════════════════════════════════════════════
+         §7–§9 · THE AUTHORING HALF. Live, because the question the owner asked
+         ("how do you create/edit/add/remove") is a question about a FLOW, and a
+         still frame of a composer answers it about as well as a screenshot of a
+         keyboard answers "how does typing feel". Type into the box and press
+         Enter; tap a step's words to edit it; press ✕ to remove it.
+         ══════════════════════════════════════════════════════════════════════ */
+      let kids = KIDS.map((k) => ({ ...k }));
+      /** null = the composer is showing and empty; a number = that step is being edited in
+          the composer, in its own place in the list. */
+      let editIndex = null;
+      let draft = '';
+      let draftWho = null;
+      /** Whether the composer is revealed at all — `＋ משימה` in the foot is what reveals it,
+          exactly as `＋ פתק` reveals the notes box (ADR-0192 §2's reversal). */
+      let composeOpen = true;
+
+      /** The composer row: the `＋` in the ticks' own column, then the input, then the two
+          controls that make it the step's whole editor. */
+      function composeRow() {
+        const who = draftWho
+          ? avatar(draftWho, '')
+          : `<span class="tsk-who-any">${icon('user')}</span>`;
+        // **The lead says which row this is.** `＋` on the ADD row, because that is what it
+        // does; but a step being EDITED keeps its own tick — it is still a step, it can still
+        // be ticked while you fix the typo, and a `＋` there would claim the row is new.
+        const editing = editIndex !== null;
+        const lead =
+          editing
+            ? `<span class="note-item-lead">${leadCtl({
+                density: 'section',
+                done: kids[editIndex].done,
+                label: `סימון · ${kids[editIndex].title}`,
+              })}</span>`
+            : `<span class="note-item-lead" aria-hidden="true">${icon('plus')}</span>`;
+        return `<div class="note-item tsk-row tsk-kid-compose">
+          ${lead}
+          <span class="note-item-main">
+            <div class="field">
+              <div class="tsk-kid-row">
+                <input class="tsk-kid-in" id="kidin" value="${draft.replace(/"/g, '&quot;')}"
+                  placeholder="${
+                    editIndex === null && kids.length ? 'תת משימה נוספת' : 'תת משימה ראשונה'
+                  }" />
+                <button type="button" class="tsk-kid-who" id="kidwho" aria-label="מי חייב את זה">${who}</button>
+                ${
+                  editIndex === null
+                    ? ''
+                    : `<button type="button" class="tsk-kid-x" id="kidx" aria-label="הסרת המשימה">${icon(
+                        'close',
+                      )}</button>`
+                }
+              </div>
+            </div>
+          </span>
+        </div>`;
+      }
+
+      /** The checklist as §7/§8 draw it: the steps, with the one being edited replaced in
+          place by the composer, and the composer as the last row when nothing is being
+          edited. */
+      function kidList() {
+        const rows = kids.map((k, i) => (i === editIndex ? composeRow() : kidRow(k)));
+        if (editIndex === null && composeOpen) rows.push(composeRow());
+        return `<div class="tsk-kids">${rows.join('')}</div>`;
+      }
+
+      const kidFoot = (withAdd) => `<div class="row-open-foot">
+          ${
+            withAdd
+              ? `<button type="button" class="row-open-act" id="kidadd">${icon(
+                  'plus',
+                )} תת משימה</button>`
+              : ''
+          }
+          <span class="row-open-sp"></span>
+          <button type="button" class="row-open-act">עריכה</button>
+        </div>`;
+
+      /** §7 left: a task with NO steps yet, opened. This frame is the discoverability
+          answer — if `＋ משימה` only appeared on tasks that already had steps, nothing could
+          ever get its first one. */
+      function s7Empty() {
+        return card(
+          rootRow(ROOTS[3]) +
+            listRow({
+              title: 'לבדוק ביטוח נסיעות',
+              open: true,
+              lead: leadCtl({ done: false, label: 'סימון · לבדוק ביטוח נסיעות' }),
+            }) +
+            kidFoot(true),
+        );
+      }
+      /** §7 right, and §8: the same parent with its steps and the live composer. */
+      function s7Live() {
+        const done = kids.filter((k) => k.done).length;
+        return card(
+          listRow({
+            title: ROOTS[1].title,
+            due: ROOTS[1].due,
+            open: true,
+            count: `${done}/${kids.length}`,
+            lead: leadCtl({
+              frac: kids.length ? done / kids.length : 0,
+              done: kids.length > 0 && done === kids.length,
+              pressable: false,
+              label: `הושלמו ${done} מתוך ${kids.length}`,
+            }),
+          }) +
+            kidList() +
+            kidFoot(!composeOpen),
+        );
+      }
+
+      /** §9 — `TaskSheet`, and this is the REAL tree rather than a sketch of one: the field
+          order, the labels, the placeholders and every control below are read off
+          `ui/TaskSheet.tsx` and `i18n/he.ts`, because the first draft of this section invented
+          a two-field form and the owner sent a photograph of the actual one. Fields, in the
+          shipped order: `מה צריך לעשות` · `עד מתי · לא חובה` · `מי אחראי` · [THE NEW ONE] ·
+          `פרטים · לא חובה` · the `חשוב` chip · `FormActions`.
+
+          The sheet renders inline rather than portalled — see the labelled override. */
+      function s9(withKids) {
+        const done = kids.filter((k) => k.done).length;
+        const checklist = withKids
+          ? `<div class="tsk-kids tsk-kids-form">${
+              kids.map((k) => kidRow(k)).join('') + composeRow()
+            }</div>`
+          : // **THE EMPTY STATE IS A REVEAL CONTROL, NOT AN OPEN BOX** — and the form itself
+            // is where that rule comes from: `עד מתי` rests as `הוספת תאריך`, a control that
+            // reveals rather than a field standing open. `＋ פתק` does the same for the notes
+            // composer (ADR-0192 §2). An always-open composer here would be a box on every
+            // task editor in the app for a feature most tasks never use.
+            // **The same control `עד מתי` rests as**, deliberately: two optional fields on
+            // one form should have one empty state, and `ValueToken`'s placeholder form is
+            // what the other one is. Whether the build literally reuses `ValueToken` (whose
+            // stated subject is "a value shown as text that opens a picker", ADR-0177 — and
+            // an empty optional field is exactly the case `הוספת תאריך` already stretches it
+            // to) or gives this field a two-line class of its own is a build call; what is
+            // decided here is that it must not be a permanently-open box.
+            `<button type="button" class="vt" id="kidreveal">＋ תת משימה</button>`;
+        return `<div class="app" data-mode="trip"><div class="mk-sheet"><div class="modal-card">
+          <div class="modal-title">משימה חדשה</div>
+          <div class="task-sheet modal-form">
+            <div class="field">
+              <label class="field-label">מה צריך לעשות</label>
+              <input value="" placeholder="${
+                withKids ? 'משהו שצריך לעשות' : 'משהו אחד שצריך לעשות'
+              }" />
+            </div>
+            <div class="field">
+              <span class="field-label">עד מתי · לא חובה</span>
+              <div class="tsk-when"><button type="button" class="vt vt-date">הוספת תאריך</button></div>
+            </div>
+            <div class="field">
+              <span class="field-label">מי אחראי</span>
+              <div class="tsk-who"><div class="choice-grid pills" role="radiogroup">
+                <button type="button" class="choice-pill on" role="radio" aria-checked="true"><span class="choice-lead"><span class="tsk-who-any">${icon(
+                  'user',
+                )}</span></span><span class="choice-l">לא משויך</span></button>
+                <button type="button" class="choice-pill" role="radio" aria-checked="false"><span class="choice-lead">${avatar(
+                  'dana',
+                  'wp-av-sm',
+                )}</span><span class="choice-l">דנה</span></button>
+              </div></div>
+            </div>
+            <div class="field">
+              <span class="field-label">תתי משימות · לא חובה${
+                withKids ? ` · ⁦${done}/${kids.length}⁩` : ''
+              }</span>
+              ${checklist}
+            </div>
+            <div class="field">
+              <label class="field-label">פרטים · לא חובה</label>
+              <textarea rows="3" placeholder="משהו שכדאי לדעת כדי לסגור את זה"></textarea>
+            </div>
+            <div class="field">
+              <button type="button" class="wp-chip cta touch tsk-flag">${icon(
+                'star',
+              )} חשוב</button>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="fa-secondary">ביטול</button>
+              <button type="button" class="fa-primary">שמירה</button>
+            </div>
+          </div>
+        </div></div></div>`;
+      }
+
       /* ══ §6 — the refusals, drawn as what they COST rather than asserted. The left
             frame gives a child everything a root task carries; the right is the child as
             specified. The number the table reads is the title column at 360. */
       function s6() {
         const loaded = (k) => `<div class="note-item tsk-row">
-            <span class="note-item-lead">${lead({
+            <span class="note-item-lead">${leadCtl({
               density: 'section',
               done: k.done,
               label: `סימון · ${k.title}`,
@@ -10846,6 +12330,20 @@ button.wp-av:focus-visible {
           col('<span class="tag before">אם לילד היה הכול</span>', six.loaded),
           col('<span class="tag after">הילד כפי שהוגדר</span>', six.plain),
         ].join('');
+        document.querySelector('#s7').innerHTML = [
+          col('<span class="tag plain">בלי שלבים · עדיין</span>', s7Empty()),
+          col('<span class="tag plain">חיה · הקלידו ו-Enter</span>', s7Live()),
+        ].join('');
+        document.querySelector('#s8').innerHTML = col(
+          '<span class="tag plain">געו בטקסט של שלב</span>',
+          s7Live(),
+        );
+        document.querySelector('#s9').innerHTML = [
+          col('<span class="tag plain">בלי שלבים · פקד שנפתח</span>', s9(false)),
+          col('<span class="tag plain">עם שלבים</span>', s9(true)),
+        ].join('');
+        wireCompose();
+
         // §5's two ticks are the live controls on the page — the collapsed row's and the
         // reader's own row inside the open one. Both write the same fact.
         [
@@ -10860,6 +12358,117 @@ button.wp-av:focus-visible {
           });
         });
       }
+      /** Every composer on the page is the same control, so it is wired once. The input the
+          user is actually in keeps focus and caret across the repaint — without that,
+          type-Enter-type-Enter loses the box after the first step, which is the whole
+          interaction §7 is claiming works. */
+      /** **Scroll only if it is needed, and only the composer.** `block: 'nearest'` is a
+       *  no-op while the row is fully visible, which is what stops every Enter from yanking a
+       *  form that did not move — the difference between "seamless" and "twitchy".
+       *
+       *  **The composer rather than the new row**, because the caret is here and the next
+       *  keystroke goes here: park this and the row just committed is directly above it. And
+       *  because the input never blurs (the commit clears its value, it does not re-focus it),
+       *  the browser issues no caret scroll of its own, so there is exactly one movement.
+       *
+       *  `prefersReducedMotion()` guards the behaviour — `lib/motion.ts`'s own helper, the
+       *  guarded form `Map.tsx`, `DayView.tsx` and `useFormErrors` already use. Worth knowing
+       *  that `EventForm`, `BookingSheet` and `DocumentUploadSheet` pass a bare
+       *  `behavior: 'smooth'` and do not; that is three call sites out of six, and a sweep
+       *  rather than this feature's business. */
+      /** The gap between the composer and the action bar, sampled AFTER the scroll settles —
+       *  null until a step has actually been added, because the resting form has never been
+       *  scrolled and reporting that number would read as a failure of a mechanism that had
+       *  not run. */
+      let landedGap = null;
+      function keepComposerInView(scope) {
+        const row = (scope || document).querySelector('.tsk-kid-compose');
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        row?.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+        // A smooth scroll is still in flight on the next frame, so the sample waits for it.
+        // `scrollend` is not in every engine; a timeout past `--t-slow` is the portable read.
+        window.setTimeout(() => {
+          const box = document.querySelector('#s9 .col:last-child .tsk-kid-compose');
+          const bar = document.querySelector('#s9 .col:last-child .form-actions');
+          if (box && bar) landedGap = bar.getBoundingClientRect().top - box.getBoundingClientRect().bottom;
+          measure();
+        }, 600);
+      }
+
+      function wireCompose() {
+        const active = document.activeElement?.id === 'kidin';
+        document.querySelectorAll('#s7 .tsk-kids, #s8 .tsk-kids, #s9 .tsk-kids').forEach((list) => {
+          const input = list.querySelector('.tsk-kid-in');
+          if (input) {
+            input.addEventListener('input', (e) => {
+              draft = e.target.value;
+            });
+            input.addEventListener('keydown', (e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              const value = draft.trim();
+              if (!value) return;
+              if (editIndex === null) kids.push({ title: value, who: draftWho, done: false });
+              else kids[editIndex] = { ...kids[editIndex], title: value, who: draftWho };
+              draft = '';
+              draftWho = null;
+              editIndex = null;
+              paint();
+              measure();
+              // **AFTER LAYOUT, NOT IN THE HANDLER.** The new row changes the box the
+              // composer sits in, so a scroll issued before the repaint measures the old one
+              // and lands short. In the app this is a `useLayoutEffect` keyed on the step
+              // count — after the DOM has the row and before paint, so the composer is never
+              // seen under the bar for a frame.
+              keepComposerInView(list);
+              document.querySelector('#s7 .col:last-child .tsk-kid-in')?.focus();
+            });
+          }
+          // Tapping a step's words returns it to the composer, in its own place.
+          list.querySelectorAll('.note-item:not(.tsk-kid-compose) .note-item-b').forEach((b, i) => {
+            b.addEventListener('click', () => {
+              const index = kids.findIndex((k) => k.title === b.textContent.trim());
+              editIndex = index === -1 ? i : index;
+              draft = kids[editIndex].title;
+              draftWho = kids[editIndex].who ?? null;
+              paint();
+              measure();
+            });
+          });
+          list.querySelector('#kidx')?.addEventListener('click', () => {
+            if (editIndex === null) return;
+            kids.splice(editIndex, 1);
+            editIndex = null;
+            draft = '';
+            draftWho = null;
+            paint();
+            measure();
+          });
+          // The roster, cycled — a picker sheet is not this file's subject, and cycling is
+          // enough to show the slot is a control and what "nobody" looks like in it.
+          list.querySelector('#kidwho')?.addEventListener('click', () => {
+            const order = [null, 'dana', 'noa', 'omri', 'yael', 'gil'];
+            draftWho = order[(order.indexOf(draftWho) + 1) % order.length];
+            paint();
+            measure();
+          });
+        });
+        // `＋ משימה` in the foot is what reveals the box (ADR-0192 §2's reversal, one surface
+        // over) — and it is present on a task with no steps, which is the discoverability half.
+        document.querySelectorAll('#kidadd').forEach((b) =>
+          b.addEventListener('click', () => {
+            composeOpen = true;
+            paint();
+            measure();
+          }),
+        );
+        if (active) {
+          const el = document.querySelector('#s7 .col:last-child .tsk-kid-in');
+          el?.focus();
+          el?.setSelectionRange(el.value.length, el.value.length);
+        }
+      }
+
       const phone = (inner) => `<div class="phone">${inner}</div>`;
       const col = (tag, inner) => `<div class="col">${tag}${phone(inner)}</div>`;
       paint();
@@ -10884,6 +12493,31 @@ button.wp-av:focus-visible {
           measure();
         }),
       );
+      // The demo commit: adds a step to §9's live list and lets the scroll run for real.
+      document.querySelector('#demoadd')?.addEventListener('click', () => {
+        kids.push({ title: `תת משימה ${kids.length + 1}`, who: null, done: false });
+        paint();
+        measure();
+        keepComposerInView(document.querySelector('#s9 .col:last-child'));
+      });
+
+      // The A/B, as a stylesheet rather than an inline style: `paint()` rebuilds §9's DOM,
+      // so anything written onto the element itself is wiped before the scroll runs. That is
+      // how the first attempt at this comparison reported "no difference" for a change that
+      // moves the landing by 68px.
+      const padOff = document.createElement('style');
+      padOff.textContent = '.modal-form { scroll-padding-block-end: 0 !important; }';
+      const padBtns = [...document.querySelectorAll('.controls button[data-pad]')];
+      padBtns.forEach((b) =>
+        b.addEventListener('click', () => {
+          press(padBtns, b);
+          if (b.dataset.pad === '0') document.head.appendChild(padOff);
+          else padOff.remove();
+          landedGap = null;
+          measure();
+        }),
+      );
+
       const sepBtns = [...document.querySelectorAll('.controls button[data-sep]')];
       sepBtns.forEach((b) =>
         b.addEventListener('click', () => {
@@ -10975,6 +12609,104 @@ button.wp-av:focus-visible {
           '§C · אזור פתיחה של אנשים מול של ילדים',
           `${px(ppl?.height)} · ${px(kidsBlock?.height)}`,
           'חמש שורות משני הצדדים · אותה צורה',
+        ]);
+
+        // ── §7–§9, the authoring half.
+        const addFoot = r('#s7 .col:first-child .row-open-foot');
+        const addBtn = r('#s7 .col:first-child #kidadd');
+        rows.push([
+          'רגל של שורה פתוחה, עם ⁦＋ משימה⁩ ובלעדיו',
+          `${px(addFoot?.height)} · ⁦${px(addBtn?.width)}⁩ רוחב`,
+          'המחיר על כל שורה פתוחה, גם בלי שלבים',
+        ]);
+
+        const composeRowBox = r('#s7 .col:last-child .tsk-kid-compose');
+        const kidReadRow = r('#s7 .col:last-child .note-item:not(.tsk-kid-compose)');
+        rows.push([
+          'שורת ההרכבה מול שורת שלב רגילה',
+          `${px(composeRowBox?.height)} · ${px(kidReadRow?.height)}`,
+          'ההפרש הוא מה שהשורה קופצת כשנוגעים בה',
+        ]);
+
+        // **THE ROW'S OWN CENTRELINE**, which is the report this section was rewritten on:
+        // the `＋`, the box and the two controls inside it must share one. Read as offsets
+        // from the lead cell rather than as four numbers nobody can compare.
+        const cy = (sel) => {
+          const b = r(sel, document.querySelector('#s7 .col:last-child'));
+          return b ? b.top + b.height / 2 : null;
+        };
+        const base = cy('.tsk-kid-compose .note-item-lead');
+        const off = (sel) => {
+          const v = cy(sel);
+          return v == null || base == null ? '-' : `${Math.round((v - base) * 10) / 10}`;
+        };
+        rows.push([
+          'קו המרכז · ⁦＋⁩ · תיבה · משויך, מול תא ההובלה',
+          `⁦${off('.tsk-kid-compose .note-item-lead .icon')} · ${off('.tsk-kid-compose .field')} · ${off(
+            '.tsk-kid-who',
+          )}⁩`,
+          'הכול 0 · היה 9px לפני התיקון של `margin-top`',
+        ]);
+
+        const boxEdge = r('#s7 .col:last-child .tsk-kid-compose .field');
+        const textEdge = r('#s7 .col:last-child .note-item:not(.tsk-kid-compose) .tsk-title-txt');
+        rows.push([
+          'קצה התיבה מול קצה הטקסט של שלב',
+          boxEdge && textEdge ? `⁦${Math.round((boxEdge.right - textEdge.right) * 10) / 10}px⁩` : '-',
+          'התיבה יושבת בדיוק על עמודת הטקסט',
+        ]);
+
+        const kidIn = r('#s7 .col:last-child .tsk-kid-in');
+        const whoBtn = document.querySelector('#s7 .col:last-child .tsk-kid-who');
+        const whoReach = whoBtn && getComputedStyle(whoBtn, '::after');
+        rows.push([
+          'תיבת ההקלדה · והישג היד של פקדי השורה',
+          `${px(kidIn?.height)} · ${whoReach ? whoReach.width + ' × ' + whoReach.height : '-'}`,
+          'רצפת 44px · ADR-0017 · המתכון של `row-open.css`',
+        ]);
+
+        const formList = r('#s9 .tsk-kids-form');
+        rows.push([
+          'שדה הרשימה בעורך · חמישה שלבים ותיבה',
+          px(formList?.height),
+          'מול 172px של אזור הפתיחה במסך',
+        ]);
+
+        // **What the field COSTS the form.** `.modal-form` caps at 75dvh with a sticky action
+        // bar, so a long checklist does not break the sheet — it pushes `פרטים` and `חשוב`
+        // below the fold. That is the trade the placement in §9 is making, so it is measured
+        // rather than described.
+        const scroller = document.querySelector('#s9 .col:last-child .modal-form');
+        const scrollerEmpty = document.querySelector('#s9 .col:first-child .modal-form');
+        const over = (el) => (el ? Math.max(0, el.scrollHeight - el.clientHeight) : null);
+        // **THE TOKEN AGAINST THE BAR IT IS SUPPOSED TO CLEAR.** Two numbers that must stay a
+        // pair: if the bar ever grows past the token, `scroll-padding-block-end` stops
+        // clearing it and a composer parks underneath it again — silently, since nothing else
+        // would change. Printed side by side so the pair is checkable rather than trusted.
+        const barBox = r('#s9 .col:last-child .form-actions');
+        const tokenH = parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue('--form-actions-h'),
+        );
+        rows.push([
+          'פס הפעולות מול ⁦`--form-actions-h`⁩',
+          `⁦${px(barBox?.height)} · ${px(tokenH)}⁩`,
+          barBox && tokenH >= barBox.height ? 'הטוקן מכסה · יש מרווח' : 'הטוקן קטן מדי · יתפוס',
+        ]);
+
+        // Did the composer actually land ABOVE the bar after a step was added? Measured as
+        // the gap between the two, which is the only thing "seamless" can mean here.
+        rows.push([
+          'אחרי הוספה · הרווח בין שורת ההרכבה לפס',
+          landedGap == null
+            ? 'לא נמדד · לחצו «הוסיפו תת משימה»'
+            : `⁦${Math.round(landedGap * 10) / 10}px⁩`,
+          'עם הטוקן ⁦+15⁩ · בלעדיו ⁦−53⁩, כלומר מתחת לפס',
+        ]);
+
+        rows.push([
+          'מתחת לקפל בעורך · בלי שלבים מול עם חמישה',
+          `⁦${px(over(scrollerEmpty))} · ${px(over(scroller))}⁩`,
+          '`.modal-form` נגלל ופס הפעולות דביק · לא נשבר',
         ]);
 
         const bandRow = r('#s4 .checklist .wp-listrow:nth-child(2)');

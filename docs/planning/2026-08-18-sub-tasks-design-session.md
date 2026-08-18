@@ -117,6 +117,99 @@ parent's children **can** be, so a parent needs no overlay at all. A bulk verb o
 tick was drawn and rejected on harm rather than cost: everything is LWW (ADR-0012), so a bulk
 un-tick erases ticks four other people wrote, in one press, with no warning.
 
+## Round two — the authoring half, which the first version left as a label
+
+The owner's reading of the first version:
+
+> The mockup is missing one critical part of the design: how do you create sub tasks? How do
+> you decide whether a task is one step or has multiple sub tasks? How do you edit them?
+> Add/remove etc.
+
+Correct: the first version drew the read side completely and left `＋ משימה` as a word in a
+foot. Mockup §7–§9 and ADR §10–§12 are the answer, and they are **live** rather than drawn —
+the question is about a flow, and a still frame of a composer answers it about as well as a
+photograph of a keyboard answers "how does typing feel".
+
+**There is no mode to decide.** A task becomes a parent when it gets its first step and stops
+being one when the last is deleted — both `subtasks.get(id)?.length`. Nobody classifies a task
+before they know whether it has parts, and a stored flag would permit a checklist with no
+steps. So `＋ משימה` sits in **every** open row's foot, including a task with none, because
+otherwise nothing could get its first one.
+
+**The composer is `useNoteComposer` at a second host, and the reuse has an argument rather than
+a resemblance.** ADR-0191 §7 refused a title-only composer for a _task_ because a task's
+deadline is what puts it on a Home band, so a title-only box "systematically produces the weak
+kind". A step has no deadline **by refusal**, so a step genuinely is its title — the property
+that made the composer right for a note, holding here and not there. **Enter commits**, which
+is deliberately the opposite of ADR-0152 §6b's rule for a note, on that rule's own reasoning: a
+note is prose and has an inside, a step is one line and has none.
+
+**The composer row is also the step's whole editor** — tap a step's words and it returns to the
+box in its own place (`reopen(index)`, verbatim), with the assignee chip and the `✕` beside it.
+Three controls in one row is what keeps the **read** row unchanged, which is the load-bearing
+part: `.note-item` stays a two-column grid and the notes section sharing it pays nothing.
+
+**On a create the steps stage** — the fourth consumer of a pattern the app runs three times, and
+`writeStagedTasks` needs one type widening rather than a fifth hook.
+
+**And §9 was drawn twice.** The first version invented a two-field editor; the owner replied
+with a photograph of the real one. Redrawn off `TaskSheet.tsx` and `he.ts`, the shipped order is
+`מה צריך לעשות` · `עד מתי` · `מי אחראי` · `פרטים` · `חשוב` · `FormActions`, and **the checklist
+goes fourth** — not first, because most tasks have no steps and a variable-height field would
+push the fields every task uses below the fold; and before `פרטים` rather than after, because
+both answer "what does closing this involve" and the structured one should be the one you reach
+for. **The empty state is a reveal control**, which is this form's own idiom: `עד מתי` rests as
+`הוספת תאריך`. Measured: with five steps, 300px falls below `.modal-form`'s fold against 157px
+with none — the sheet already scrolled, and the sticky action bar keeps `שמירה` reachable.
+
+**One shipped string retires and the code says so itself.** `titlePlaceholder` is
+`משהו אחד שצריך לעשות`, and `he.ts` explains the word `אחד`: _"it is the model's own bound,
+since a task holding a checklist is a separate feature nobody has built"_. This is that feature.
+
+### Round three — the word, and a primitive change
+
+**`תתי משימות`, the owner's call**, replacing the first draft's `משימות בפנים`. It reverses this
+session's own "one noun all the way down, including the word", and the reversal is right about
+the half it touches: brief §2's rule is about the **entity** — one table, one row shape, one
+tick, one sort — and it cannot name a **field inside a task's own editor**, where `משימות` is
+ambiguous with the task being edited. The label, the add control (`＋ תת משימה`) and the
+composer's placeholder all take the word.
+
+**And "scroll the new sub-task into view" turned out to need a fix in a shipped primitive**
+(owner: _"if needed even change the primitive"_ — it was needed). `.form-actions` is
+`position: sticky; inset-block-end: 0` **inside** `.modal-form`'s own scrollport, and nothing in
+the app declares `scroll-padding` anywhere except the Map's inline peek — so
+`scrollIntoView({ block: 'nearest' })` in **any** sheet-form parks its target flush with the
+scrollport's bottom edge, which is under the bar. A/B'd live at two depths: **+15px** of
+clearance with `scroll-padding-block-end: var(--form-actions-h)`, **−53px** without, the
+composer landing entirely beneath a 55px bar, same number at three added steps and at six.
+Latent today for `EventForm`, `BookingSheet`, `DocumentUploadSheet` and `TaskSheet`.
+
+`.body` needs none of it: `.nav` is a **sibling** of that scrollport rather than inside it, so
+the sheet is the app's only case.
+
+**And the first attempt at that A/B reported "no difference"** — it wrote the override onto the
+element, and `paint()` rebuilds the DOM before the scroll runs. A comparison that rebuilds its
+own subject measures nothing. It is a stylesheet now, and a control in the file so a reader can
+press it.
+
+### Two shipped-CSS traps the authoring render exposed
+
+The owner reported the first before the file was re-read: _"there's some css issues with line
+alignment (the + and the text field for instance, the specific sub task editing)"_.
+
+- **`App.css` and `field.css` both define `.field`, and only one is reset.** `App.css:1037`
+  carries `margin-top: 18px` — a form's gap — and `field.css` never touches it. Inside a grid
+  row that is a shove, not a gap: the composer's box measured 18px shorter than its own cell
+  and sat **9px below** the `＋`, in all three places the composer appears.
+- **A primitive that styles by element has to be out-specified.** `field.css`'s `.field input`
+  is (0,1,1) and a bare `.tsk-kid-in` is (0,1,0), so `border: 0` lost and the row painted a
+  rounded box **inside** a rounded box. Same class as ADR-0195's `.tsk-tick:hover .icon`.
+
+Measured after both: the `＋`, the box and the assignee chip share one centreline to **0px**,
+the box's edge sits **0px** off the step text's column, and the composer row fell from 55px to
+**35px** against a step's 20px.
+
 ## Left open, deliberately
 
 - **The phase.** This is not scheduled against the tasks build plan's six phases, and it
@@ -126,3 +219,7 @@ un-tick erases ticks four other people wrote, in one press, with no warning.
 - **Two feel questions for the device pass:** whether a 2.5px arc at 26px reads as a fraction
   under a thumb, and whether the count alone carries a parent at `0/n` — where the ring is the
   same **1.21:1 / 1.33:1** hairline already on the backlog.
+- **Reordering steps.** Creation order is the order. A drag handle on a 26.8px row inside an
+  open region is a target problem, so it is named rather than left to arrive quietly.
+- **The `.field` collision** (two sheets, one class, no reset) is a drift worth one backlog
+  line and is not this feature's to fix.
