@@ -322,7 +322,10 @@ test.describe('the lifted hero (ADR-0160)', () => {
   // opened nothing — its depth was the checklist rendered directly beneath it. §H also wrote
   // its own revisit condition ("when Plan's hero summarises something it does not show
   // inline"), and ADR-0193 §3 creates it by folding the far and undated tasks behind one
-  // row. So the rebuff is retired from this surface and the press opens the run-up.
+  // row. So a press with a run-up opens it, and the rebuff is what answers a press WITHOUT
+  // one — the ready trip, restored 2026-08-17 and covered by `PlanHome.lift.test.tsx`; the
+  // beat's keyframes are proven running by the Trip-board test below, which plays the same
+  // shared rule.
   //
   // In a browser for the reason §4 is in a browser at all: **the no-nested-control rule is
   // a claim about Chrome's PARSER**, and jsdom does not reproduce it. A `<button>` inside a

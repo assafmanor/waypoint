@@ -1265,11 +1265,11 @@
 .prep.is-lifted {
   visibility: hidden;
 }
-/* **A tap on the prep hero is answered, and answered with nothing more than a beat**
-   (ADR-0160 §9's rebuff, §H). Plan's hero does not lift and should not: its depth IS the
-   checklist rendered directly beneath it, so a lifted copy would show you what you are
-   already looking at. But a press that produces no response at all reads as a dead
-   surface, so the surface acknowledges the touch and stays where it is.
+/* **A tap on the prep hero with nothing to lift is answered, and answered with nothing more
+   than a beat** (ADR-0160 §9's rebuff, §H). The hero LIFTS now (ADR-0193 §4), so this is the
+   empty case only — a ready trip, where the run-up it would open onto is empty. A press that
+   produces no response at all reads as a dead surface, so the surface acknowledges the touch
+   and stays where it is.
 
    The motion itself is no longer declared here: the Trip board answers an empty press the
    same way now (ADR-0160 §Q), so the beat is one shared rule in `styles/beats.css` and this
