@@ -547,6 +547,16 @@ export const taskSchema = z.object({
   settledAt: z.string().optional(),
   settledBy: idSchema.optional(),
   derivedKey: taskDerivedKeySchema.optional(),
+  /** **The task this one is a step of** (ADR-0196 §1). Set = this row is a sub-task, and the
+   *  schemas refuse everything a step may not carry: a host FK, a deadline, `important`,
+   *  `body`, `derivedKey` and a child of its own. Absent = a top-level task, which is every
+   *  task written before this.
+   *
+   *  **Depth is one level and it is enforced at both edges**, which is the decision that
+   *  keeps the rest of the feature finite. Nothing here records whether a task IS a parent:
+   *  that is `subtasks.get(id)?.length` on the client, so a "checklist" with no steps cannot
+   *  exist and no flag can go stale against the rows. */
+  parentTaskId: idSchema.optional(),
   // The typed host union: AT MOST ONE is set, `onDelete: Cascade`, same discipline and
   // same five columns as `Note` above (ADR-0152 §2). Nothing reads them until phase 4;
   // they ship in the first migration because a nullable column is free today and a

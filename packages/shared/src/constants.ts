@@ -197,6 +197,16 @@ export const TASK_DERIVED_KEY = {
   GROUP: 'group',
 } as const satisfies Record<string, TaskDerivedKey>;
 
+/** **How many steps one task may hold** (ADR-0196 §1). Refused at the editor with a
+ *  sentence rather than silently truncated.
+ *
+ *  Twenty, from a measurement rather than a feeling: a step row costs **26.8px**, so twenty
+ *  is 536px — the whole of a 640px viewport, and the point past which the unbounded-`Sheet`
+ *  item on the backlog stops being theoretical. Here rather than in the frontend because the
+ *  server refuses the twenty-first too: a cap only the client knows is a cap the outbox can
+ *  replay past. */
+export const TASK_SUBTASK_CAP = 20;
+
 /** Where a note came from (ADR-0152 §1). One value in v1 — §9 registers no strategy. */
 export const NOTE_SOURCE = {
   MEMBER: 'member',

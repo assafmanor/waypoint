@@ -30,7 +30,14 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 // into it — the section no longer spells `tsk-tick-sec` itself, and the claim this file
 // checks travelled with the control rather than disappearing. The same move is why the
 // sweep matters more than before: one component now paints on five surfaces.
-const source = [read('src/ui/TaskSection.tsx'), read('src/ui/TaskTick.tsx')].join('\n');
+const source = [
+  read('src/ui/TaskSection.tsx'),
+  read('src/ui/TaskTick.tsx'),
+  // `SubtaskList` joins them for exactly the reason the file exists: it is a fourth surface
+  // painting from these same two sheets, and a step's composer is the newest place a class
+  // name is a claim nobody would notice failing (ADR-0196 §11).
+  read('src/ui/SubtaskList.tsx'),
+].join('\n');
 // The sheets `TaskSection` imports, and only those: a class it paints from a sheet it does
 // not import would be a dependency the component has not declared. `section-head.css` joined
 // them in ADR-0192 §1, when the header shape the notes, tasks and documents sections had each
@@ -70,7 +77,23 @@ const emitted = new Set(
     // silent default). Without this the tick's own class names became invisible to the very
     // sweep that exists because a tick shipped unpainted, which is the failure mode named at
     // the top of this file arriving by a new route.
-    ...[...tsxBare.matchAll(/^\s*[\w'"-]+:\s*'([a-z][\w-]*)',?$/gm)].map((m) => m[1]),
+    //
+    // **Scoped to the `Record<…>` declaration rather than to any `key: 'value'` line**, and
+    // that is a repair rather than tidiness: the loose version also read
+    // `block: 'nearest'` out of a `scrollIntoView` options object and reported `nearest` as an
+    // unpainted class. A sweep that cries wolf is one somebody starts adding entries to the
+    // allowlist for.
+    ...[...tsxBare.matchAll(/Record<[^>]*>\s*=\s*\{([\s\S]*?)\};/g)].flatMap((m) =>
+      [...m[1].matchAll(/'([a-z][\w-]*)'/g)].map((v) => v[1]),
+    ),
+    // ...and a class run inside a TEMPLATE literal, which is how `TaskTick` spells the
+    // parent's read (`` `${DENSITY_CLASS[density]} tsk-arc tsk-ring` ``). The quoted-run
+    // parser above sees only `'…'`, so without this the two newest classes in the file were
+    // invisible to the sweep — the same "arriving by a new route" failure the note above
+    // records, one syntax over.
+    ...[...tsxBare.matchAll(/className=\{`([^`]*)`\}/g)].map((m) =>
+      m[1].replace(/\$\{[^}]*\}/g, ' '),
+    ),
   ]
     .flatMap((run) => run.split(/\s+/))
     .filter((c) => /^[a-z][\w-]*$/.test(c)),

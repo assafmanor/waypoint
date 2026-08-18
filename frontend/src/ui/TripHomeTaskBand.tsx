@@ -17,7 +17,7 @@
 // null rather than an empty card with a reassuring sentence in it.
 import type { Task, User } from '@waypoint/shared';
 import { TRIP_HOME_TASK_BAND_CAP } from '../constants';
-import { taskBand, TASK_BAND, type TaskClock } from '../lib/tasks';
+import { subtaskProgress, taskBand, TASK_BAND, type TaskClock } from '../lib/tasks';
 import { TaskBandRow } from './TaskBandRow';
 import { NavArrow } from './NavArrow';
 import { t } from '../i18n/he';
@@ -26,6 +26,7 @@ import './tasks.css';
 export function TripHomeTaskBand({
   due,
   users,
+  subtasks,
   clock,
   onTick,
   onOpen,
@@ -35,6 +36,10 @@ export function TripHomeTaskBand({
    *  stays presentational, like every other `ui/`-shaped component. */
   due: Task[];
   users: User[];
+  /** **A checklist's progress reaches the band as the same two elements** (ADR-0196 §6).
+   *  Handed in rather than read here, like every other derivation this component takes: the
+   *  host owns the data so this stays presentational. */
+  subtasks: Map<string, Task[]>;
   clock: TaskClock;
   onTick: (task: Task) => void;
   onOpen: (task: Task) => void;
@@ -65,6 +70,7 @@ export function TripHomeTaskBand({
             task={task}
             users={users}
             clock={clock}
+            progress={subtaskProgress(subtasks.get(task.id))}
             onTick={() => onTick(task)}
             onOpen={() => onOpen(task)}
           />

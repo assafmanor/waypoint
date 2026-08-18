@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
-import { TASK_STATUS } from '@waypoint/shared';
+import { TASK_STATUS, TASK_SUBTASK_CAP } from '@waypoint/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChangeService } from '../sync/change.service';
 import { SyncGateway } from '../sync/sync.gateway';
@@ -234,5 +234,123 @@ describe('TasksService', () => {
     await prisma.event.delete({ where: { id: event.id } });
 
     expect(await prisma.task.findUnique({ where: { id: task.id } })).toBeNull();
+  });
+
+  // ── Sub-tasks (ADR-0196) ──────────────────────────────────────────────────────────────
+  // Three rules the schema cannot enforce, because each needs the PARENT row loaded: it is in
+  // this trip, it is not itself a step, and it is not already full. A client-only version of
+  // any of them is one the offline outbox replays past.
+  describe('sub-tasks', () => {
+    const parentOf = async (tripId: string) =>
+      service.create(tripId, DEV_USER, { title: 'יציאה לשדה' });
+
+    it('creates a step under its parent and reports the link back', async () => {
+      const tripId = await newTrip();
+      const parent = await parentOf(tripId);
+
+      const step = await service.create(tripId, DEV_USER, {
+        title: 'להזמין מונית',
+        parentTaskId: parent.id,
+      });
+
+      expect(step.parentTaskId).toBe(parent.id);
+    });
+
+    it('refuses a parent from another trip', async () => {
+      const tripId = await newTrip();
+      const otherTrip = await newTrip();
+      const parent = await parentOf(otherTrip);
+
+      await expect(
+        service.create(tripId, DEV_USER, { title: 'x', parentTaskId: parent.id }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    // **The depth cap.** A self-relation cannot express "not more than one deep", so this is
+    // the only place it holds.
+    it('refuses a step of a step', async () => {
+      const tripId = await newTrip();
+      const parent = await parentOf(tripId);
+      const step = await service.create(tripId, DEV_USER, {
+        title: 'להזמין מונית',
+        parentTaskId: parent.id,
+      });
+
+      await expect(
+        service.create(tripId, DEV_USER, { title: 'עמוק מדי', parentTaskId: step.id }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('refuses the step past the cap', async () => {
+      const tripId = await newTrip();
+      const parent = await parentOf(tripId);
+      for (let i = 0; i < TASK_SUBTASK_CAP; i++) {
+        await service.create(tripId, DEV_USER, { title: `שלב ${i}`, parentTaskId: parent.id });
+      }
+
+      await expect(
+        service.create(tripId, DEV_USER, { title: 'אחת יותר מדי', parentTaskId: parent.id }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    // A sparse patch does not say whether its target is a step, so this refusal can only be
+    // made here, against the loaded row.
+    it('refuses a patch that would give a step a deadline', async () => {
+      const tripId = await newTrip();
+      const parent = await parentOf(tripId);
+      const step = await service.create(tripId, DEV_USER, {
+        title: 'להזמין מונית',
+        parentTaskId: parent.id,
+      });
+
+      await expect(
+        service.update(tripId, step.id, { dueAt: '2027-02-02T18:00:00.000Z' }, DEV_USER),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('still lets a step be renamed, reassigned and ticked', async () => {
+      const tripId = await newTrip();
+      const parent = await parentOf(tripId);
+      const step = await service.create(tripId, DEV_USER, {
+        title: 'להזמין מונית',
+        parentTaskId: parent.id,
+      });
+
+      const renamed = await service.update(
+        tripId,
+        step.id,
+        { title: 'להזמין מונית ל-04:30' },
+        DEV_USER,
+      );
+      expect(renamed.title).toBe('להזמין מונית ל-04:30');
+      const ticked = await service.update(tripId, step.id, { status: TASK_STATUS.DONE }, DEV_USER);
+      expect(ticked.status).toBe(TASK_STATUS.DONE);
+      const assigned = await service.update(
+        tripId,
+        step.id,
+        { assigneeUserId: DEV_USER },
+        DEV_USER,
+      );
+      expect(assigned.assigneeUserId).toBe(DEV_USER);
+    });
+
+    // The DB half of the client cascade: deleting a parent removes its steps in one statement,
+    // and writes no `Change` rows for them — which is exactly why the client owes its own
+    // applier (`dropTasksForHostChange`).
+    it('takes its steps with it when the parent is deleted', async () => {
+      const tripId = await newTrip();
+      const parent = await parentOf(tripId);
+      const step = await service.create(tripId, DEV_USER, {
+        title: 'להזמין מונית',
+        parentTaskId: parent.id,
+      });
+
+      await service.remove(tripId, parent.id, DEV_USER);
+
+      expect(await prisma.task.findUnique({ where: { id: step.id } })).toBeNull();
+      expect(
+        await prisma.change.findFirst({ where: { tripId, entityId: step.id, action: 'delete' } }),
+      ).toBeNull();
+    });
   });
 });

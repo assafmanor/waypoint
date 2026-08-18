@@ -7,8 +7,16 @@
 // callers, `.tsk-who-row`'s assignee reaching one of two rows).
 //
 // It owns the beat and the hold, and nothing else: no state, no data, no copy of its own.
-import { useEffect, useRef } from 'react';
+//
+// **AND A PARENT'S LEAD IS A READ, drawn by this same component** (ADR-0196 §3). A task
+// holding a checklist has no completion of its own to press — it closes when its last step
+// does — so its leading element is the same 44px box, the same 12px hit radius and the same
+// ✓, with the ring FILLED to the fraction and no press at all. One component rather than two,
+// for the reason the two densities are one component: a second spelling of a tick is how two
+// ticks start disagreeing about what "done" looks like.
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { BEAT, playBeat } from '../lib/one-shot';
+import type { SubtaskProgress } from '../lib/tasks';
 import { Icon } from './Icon';
 import { t } from '../i18n/he';
 import './tasks.css';
@@ -28,6 +36,7 @@ export function TaskTick({
   title,
   onTick,
   density = 'row',
+  progress,
 }: {
   done: boolean;
   /** The task's title, for the accessible name — a bare ✓ says nothing about which row it
@@ -35,6 +44,10 @@ export function TaskTick({
   title: string;
   onTick: () => void;
   density?: TickDensity;
+  /** **Present with `total > 0` turns this into a READ** (ADR-0196 §3) — the checklist's
+   *  progress, drawn as an arc on the ring it already has. `total: 0` is not a parent and
+   *  renders the ordinary control, which is why no surface needs a second test. */
+  progress?: SubtaskProgress;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   /** A tick whose beat is still playing and whose `onTick` has not run yet. */
@@ -71,6 +84,24 @@ export function TaskTick({
       }, ms),
     };
   };
+
+  // **A parent, and therefore a read.** `role="img"` with the count as its name: a screen
+  // reader gets "2 of 5 done" where a sighted reader gets the arc, and neither is offered a
+  // press that has nothing to do. The row's own tap opens it, where the steps are.
+  if (progress && progress.total > 0) {
+    const full = progress.done === progress.total;
+    return (
+      <span
+        className={`${DENSITY_CLASS[density]} tsk-arc tsk-ring`}
+        role="img"
+        aria-label={t.tasks.progress(progress.done, progress.total)}
+        data-done={full}
+        style={{ '--tsk-frac': progress.done / progress.total } as CSSProperties}
+      >
+        <Icon name="check" />
+      </span>
+    );
+  }
 
   return (
     <button

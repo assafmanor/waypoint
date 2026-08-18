@@ -42,6 +42,22 @@
      before anything else is done about it. */
   padding-inline: 4px;
   margin-inline: -4px;
+  /* **SO `scrollIntoView` DOES NOT PARK ITS TARGET UNDER THE ACTION BAR** (ADR-0196 §13).
+     `.form-actions` below is `position: sticky; inset-block-end: 0` INSIDE this scrollport,
+     and nothing in the app declared `scroll-padding` anywhere except the Map's inline peek —
+     so `block: 'nearest'` aligned a target flush with the scrollport's bottom edge, which is
+     underneath the bar. Measured with a sub-task composer scrolling itself back into view:
+     **−53px** of clearance without this and **+15px** with it, at three added steps and at
+     six, so it is structural rather than incidental.
+
+     Latent for every consumer of this class, not only tasks: `EventForm`, `BookingSheet`,
+     `DocumentUploadSheet` and `TaskSheet` all scroll inside it. `useFormErrors` escapes only
+     because it passes `block: 'center'`.
+
+     `.body` needs none of this and the check is worth recording: `.nav` is sticky too, but it
+     is a SIBLING of that scrollport rather than inside it, so nothing there can land under
+     it. This is the app's only case. */
+  scroll-padding-block-end: var(--form-actions-h);
 }
 .modal-form::-webkit-scrollbar {
   display: none;

@@ -300,6 +300,13 @@
   --space-5: 20px;
   --space-6: 24px;
 
+  /* **The height a sheet form's sticky action bar occupies**, so the scroll container it pins
+     to can keep `scrollIntoView` from parking anything underneath it (ADR-0196 §13,
+     `form-actions.css`). A pair that must stay true: the bar measures ~55px and this covers it
+     with slack, and if the bar ever grows past this the clearance stops working silently —
+     which is why both numbers are asserted together in `form-actions.contract.test.ts`. */
+  --form-actions-h: 68px;
+
   /* Type ramp (design-language "Type ramp"). Assistant unless the call site
      sets --font-head (Secular One for display/h1/h2/h3). Values are the
      documented steps; off-ramp sizes in legacy CSS converge onto these. */

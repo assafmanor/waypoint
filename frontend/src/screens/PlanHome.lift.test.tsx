@@ -33,6 +33,7 @@ import { wrapNav } from '../test/nav-harness';
 import { t } from '../i18n/he';
 import { PLAN_TASK_CAP } from '../constants';
 import { PlanHome } from './PlanHome';
+import { splitSubtasks } from '../lib/tasks';
 
 // Pinned: the hero renders a COUNTDOWN and every band is a comparison against the clock,
 // so an unpinned one would mean something different every day this ran.
@@ -102,7 +103,8 @@ vi.mock('../state/trip-state', () => ({
     documents: [],
     users: [{ id: 'u1', displayName: 'אסף' }],
     setActiveDate: () => {},
-    tasks,
+    tasks: splitSubtasks(tasks).roots,
+    subtasks: splitSubtasks(tasks).byParent,
     zoneCrossings: [],
     taskVerbs: {
       createTask: async () => {},

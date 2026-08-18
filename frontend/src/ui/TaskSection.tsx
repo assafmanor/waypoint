@@ -14,7 +14,7 @@
 // vocabulary. This surface is where you see what was done about this booking; the tasks SCREEN
 // is where the settled collapse lives.
 import type { Task, User } from '@waypoint/shared';
-import { taskDue, tickedStatus, type TaskClock } from '../lib/tasks';
+import { subtaskProgress, taskDue, tickedStatus, type TaskClock } from '../lib/tasks';
 import { isSettled } from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { Avatar } from './primitives/Avatar';
@@ -28,6 +28,7 @@ import './tasks.css';
 export function TaskSection({
   tasks,
   users,
+  subtasks,
   clock,
   hostSettled,
   quiet,
@@ -38,6 +39,11 @@ export function TaskSection({
   /** This host's tasks, already filtered and ordered (`tasksForHost`). */
   tasks: Task[];
   users: User[];
+  /** **A checklist's progress, as the same two elements every other surface uses** (ADR-0196
+   *  §6). A host's section has no room for the steps themselves — it is two or three rows
+   *  beside a note section — so the arc and the count are the whole statement, and the count
+   *  is what brings back the meta line a bare task row does not print at all. */
+  subtasks: Map<string, Task[]>;
   clock: TaskClock;
   /** **Whether the HOST itself is done or skipped** (ADR-0191 §6). Its tasks then read as
    *  settled here and stop counting everywhere else — the mark, the Home bands and the Index
@@ -85,6 +91,7 @@ export function TaskSection({
               : undefined;
             const due = taskDue(task, clock);
             const settled = isSettled(task);
+            const progress = subtaskProgress(subtasks.get(task.id));
             return (
               <div
                 key={task.id}
@@ -100,6 +107,7 @@ export function TaskSection({
                     title={task.title}
                     onTick={() => onTick(task)}
                     density="section"
+                    progress={progress}
                   />
                 </span>
                 <span className="note-item-main">
@@ -140,13 +148,20 @@ export function TaskSection({
                   {/* The section says only what there is to say (owner: _"tasks should be
                       more minimal"_). With the owner on the title row this line is the
                       deadline or nothing at all. */}
-                  {due && (
+                  {(due || progress.total > 0) && (
                     <span className="note-item-m">
-                      <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
-                        <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
-                        {/* The numeric run is its own LTR island (ADR-0118). */}
-                        {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
-                      </span>
+                      {due && (
+                        <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+                          <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
+                          {/* The numeric run is its own LTR island (ADR-0118). */}
+                          {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+                        </span>
+                      )}
+                      {progress.total > 0 && (
+                        <span className="tsk-count">
+                          {ltrIsolate(`${progress.done}/${progress.total}`)}
+                        </span>
+                      )}
                     </span>
                   )}
                 </span>

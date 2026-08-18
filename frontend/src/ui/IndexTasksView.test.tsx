@@ -9,6 +9,7 @@ import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { TASK_STATUS, type Task } from '@waypoint/shared';
+import { splitSubtasks } from '../lib/tasks';
 
 // jsdom has no layout engine, so the refusal's bring-into-view has nothing to call.
 Element.prototype.scrollIntoView = vi.fn();
@@ -89,7 +90,11 @@ vi.mock('../state/trip-state', () => ({
     places: [],
     documents: [],
     setActiveDate: () => {},
-    tasks: tripTasks,
+    // The real split, so the mock hands out exactly what the provider does: roots with each
+    // parent's status resolved, plus the steps keyed by parent (ADR-0196 §2). A hand-written
+    // map would drift from `splitSubtasks` the first time its rules changed.
+    tasks: splitSubtasks(tripTasks).roots,
+    subtasks: splitSubtasks(tripTasks).byParent,
     users: [
       { id: 'u1', displayName: 'אסף' },
       { id: 'u2', displayName: 'דנה' },

@@ -91,7 +91,7 @@ import {
 } from '../lib/cache';
 import { generateId } from '../lib/id';
 import { buildNoteHosts, dropNotesForHostChange, type NoteHostRef } from '../lib/notes';
-import { dropTasksForHostChange } from '../lib/tasks';
+import { dropTasksForHostChange, splitSubtasks } from '../lib/tasks';
 import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
 import { PlaceLabelsProvider } from './place-labels';
@@ -629,10 +629,20 @@ interface TripContextValue {
   /** The trip's notes, newest first (ADR-0152/0153). One list for general and hosted
    *  notes alike — what a note is about is a field on the row, not a separate store. */
   notes: Note[];
-  /** The trip's tasks (tasks brief §5). One list for general and hosted tasks alike, and
-   *  **unsorted** — the screen's order is `overdue → due today → due later → undated`, which
-   *  is a derivation against a clock rather than a property of the list. */
+  /** The trip's **top-level** tasks (tasks brief §5, ADR-0196 §2). One list for general and
+   *  hosted tasks alike, and **unsorted** — the screen's order is
+   *  `overdue → due today → due later → undated`, which is a derivation against a clock
+   *  rather than a property of the list.
+   *
+   *  **Sub-tasks are NOT in here, and each parent's `status` is already resolved from its
+   *  steps.** That is the whole of ADR-0196's exclusion, paid once: every derivation in
+   *  `lib/tasks.ts` reads this list and is therefore correct about children without knowing
+   *  they exist, and the next derivation written is correct by default. A surface that wants
+   *  a parent's steps asks `subtasks` below. */
   tasks: Task[];
+  /** `parentTaskId` → its steps, in creation order (ADR-0196 §2). Two surfaces read it: the
+   *  tasks screen's open region, and the editor's checklist field. */
+  subtasks: Map<string, Task[]>;
   /** **Which documents are attached to which host** (ADR-0173 §1). The links only — the
    *  DOCUMENTS are `documents` above, and resolving one against the other is what keeps an
    *  attachment from widening visibility (§6): a link whose document this reader cannot see
@@ -826,6 +836,14 @@ function TripReady({
   // optimistic write both reflect live through the one applier below.
   const [notes, setNotes] = useState<Note[]>(snapshot.notes);
   const [tasks, setTasks] = useState<Task[]>(snapshot.tasks);
+  /** **The one place children are split off** (ADR-0196 §2). The raw `tasks` array above stays
+   *  whole — the verbs patch it, the cache mirrors it, and the sync appliers need every row —
+   *  and what leaves this provider is the split: top-level tasks with each parent's status
+   *  resolved, plus the steps keyed by parent.
+   *
+   *  Filtering inside each of `lib/tasks.ts`'s derivations instead would be twenty-odd places
+   *  that must remember, plus every derivation written afterwards. Here it is one. */
+  const taskTree = useMemo(() => splitSubtasks(tasks), [tasks]);
 
   // The document↔host links (ADR-0173), a reactive list beside the notes for the same
   // reason: a peer's attach and our own optimistic one both reflect live through the one
@@ -1827,7 +1845,8 @@ function TripReady({
       noteHosts,
       documents,
       notes,
-      tasks,
+      tasks: taskTree.roots,
+      subtasks: taskTree.byParent,
       documentAttachments,
       enrichments,
       fxRates,
@@ -1863,7 +1882,7 @@ function TripReady({
       noteHosts,
       documents,
       notes,
-      tasks,
+      taskTree,
       documentAttachments,
       enrichments,
       fxRates,

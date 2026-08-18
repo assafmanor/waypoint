@@ -538,14 +538,14 @@ model Note {
 // A task is an obligation with a deadline and optionally a doer (tasks brief §1). Notes'
 // sibling structurally — same host block, same cascade discipline (ADR-0152 §2).
 model Task {
-  id             String     @id @default(cuid())
-  tripId         String
-  title          String
-  body           String?
+  id              String     @id @default(cuid())
+  tripId          String
+  title           String
+  body            String?
   // The deadline as a UTC instant. `dueHasTime` is not derivable from it: a deadline of
   // "Thursday" and one of "Thursday 00:00" are the same instant and different obligations.
-  dueAt          DateTime?
-  dueHasTime     Boolean    @default(false)
+  dueAt           DateTime?
+  dueHasTime      Boolean    @default(false)
   // The zone the deadline was TYPED in (2026-08-17, reversing brief §10's "nothing is
   // stored per task"). Null = derived through ADR-0107's resolver, which is every task
   // written before this. Deriving is right until somebody can CHOOSE, and then a resolver
@@ -555,28 +555,38 @@ model Task {
   // Null = the group's ("one of us"). A plain column rather than a User relation, like
   // `Event.updatedBy`: the trip's roster is what resolves a name, and a FK here would owe
   // a cascade answer for a case (the assignee's account is deleted) nobody has asked.
-  assigneeUserId String?
-  important      Boolean    @default(false)
-  status         TaskStatus @default(open)
-  settledAt      DateTime?
-  settledBy      String?
+  assigneeUserId  String?
+  important       Boolean    @default(false)
+  status          TaskStatus @default(open)
+  settledAt       DateTime?
+  settledBy       String?
   // Which readiness check this row overlays (brief §4). A String and NOT a Prisma enum on
   // purpose: the five ids belong to `computeReadiness`, so a sixth check must be a code
   // change and never a migration. The closed set is enforced by the shared zod schema at
   // both edges (ADR-0023), the same way the host union below is.
-  derivedKey     String?
+  derivedKey      String?
+  // **The task this one is a step of** (ADR-0196 §1). Null = a top-level task, which is
+  // every task written before this. `onDelete: Cascade` on the relation below, so deleting a
+  // parent takes its steps with it in one statement — and, exactly like the five host FKs,
+  // that cascade writes NO `Change` rows, which is why the client owes its own applier
+  // (`dropTasksForHostChange`, ADR-0152 §2 extended by ADR-0157 §3).
+  //
+  // Depth is capped at one level and the SERVER enforces it: `TasksService.create` refuses a
+  // parent that is itself a step. A self-relation cannot express that, and a client-only cap
+  // is one the outbox can replay past.
+  parentTaskId    String?
   // At most one is set — the same closed union `Note` carries, enforced the same way.
   // Nothing reads these until phase 4; they are here in the first migration because a
   // nullable column is free today and a second migration on a live synced entity is not.
-  eventId        String?
-  bookingId      String?
-  placeId        String?
-  maybeItemId    String?
-  documentId     String?
-  createdBy      String
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  updatedBy      String
+  eventId         String?
+  bookingId       String?
+  placeId         String?
+  maybeItemId     String?
+  documentId      String?
+  createdBy       String
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  updatedBy       String
 
   trip      Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
   user      User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
@@ -585,6 +595,9 @@ model Task {
   place     Place?     @relation(fields: [placeId], references: [id], onDelete: Cascade)
   maybeItem MaybeItem? @relation(fields: [maybeItemId], references: [id], onDelete: Cascade)
   document  Document?  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  // The self-relation. Named, because Prisma needs a name to tell the two sides apart.
+  parent    Task?      @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks  Task[]     @relation("TaskSubtasks")
 
   @@index([tripId])
   @@index([eventId])
@@ -592,6 +605,7 @@ model Task {
   @@index([placeId])
   @@index([maybeItemId])
   @@index([documentId])
+  @@index([parentTaskId])
 }
 
 // The sync/undo/feed substrate; seq is a strictly-increasing cursor (ADR-0019).

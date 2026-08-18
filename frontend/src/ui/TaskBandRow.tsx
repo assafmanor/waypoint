@@ -7,7 +7,7 @@
 // no open-in-place, no sync column, no kebab. A band is a window onto the list, so the verbs
 // that need room live where the list does.
 import type { Task, User } from '@waypoint/shared';
-import { isSettled, taskDue, type TaskClock } from '../lib/tasks';
+import { isSettled, taskDue, type SubtaskProgress, type TaskClock } from '../lib/tasks';
 import { ltrIsolate } from '../lib/bidi';
 import { ListRow } from './domain';
 import { Avatar } from './primitives/Avatar';
@@ -20,12 +20,18 @@ export function TaskBandRow({
   task,
   users,
   clock,
+  progress,
   onTick,
   onOpen,
 }: {
   task: Task;
   users: User[];
   clock: TaskClock;
+  /** **A checklist reads here as the same two elements it reads as everywhere** (ADR-0196
+   *  §6): the arc in the lead and `2/5` beside the deadline. This band is where the design is
+   *  actually tested — there is no room for five rows, so the two elements are all there is,
+   *  and the row's height does not move. */
+  progress?: SubtaskProgress;
   onTick: () => void;
   onOpen: () => void;
 }) {
@@ -43,7 +49,7 @@ export function TaskBandRow({
   return (
     <ListRow
       className={settled ? 'tsk-settled' : undefined}
-      lead={<TaskTick done={settled} title={task.title} onTick={onTick} />}
+      lead={<TaskTick done={settled} title={task.title} onTick={onTick} progress={progress} />}
       onOpen={onOpen}
       openLabel={task.title}
       title={
@@ -86,12 +92,19 @@ export function TaskBandRow({
         </>
       }
       meta={
-        due && (
-          <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
-            <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
-            {/* The numeric run is its own LTR island — `ltrIsolate`, never `dir="ltr"` on
-                a non-input (ADR-0118). */}
-            {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+        (due || (progress?.total ?? 0) > 0) && (
+          <span className="tsk-meta-when">
+            {due && (
+              <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
+                <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
+                {/* The numeric run is its own LTR island — `ltrIsolate`, never `dir="ltr"` on
+                    a non-input (ADR-0118). */}
+                {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
+              </span>
+            )}
+            {progress && progress.total > 0 && (
+              <span className="tsk-count">{ltrIsolate(`${progress.done}/${progress.total}`)}</span>
+            )}
           </span>
         )
       }

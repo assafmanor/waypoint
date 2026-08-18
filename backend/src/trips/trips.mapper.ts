@@ -187,6 +187,7 @@ export const toTaskDto = (t: Task): SharedTask => ({
   settledAt: t.settledAt?.toISOString(),
   settledBy: t.settledBy ?? undefined,
   derivedKey: (t.derivedKey as TaskDerivedKey | null) ?? undefined,
+  parentTaskId: t.parentTaskId ?? undefined,
   eventId: t.eventId ?? undefined,
   bookingId: t.bookingId ?? undefined,
   placeId: t.placeId ?? undefined,

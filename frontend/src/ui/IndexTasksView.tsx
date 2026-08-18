@@ -33,7 +33,6 @@ import { useAutomaticTasks } from '../lib/useAutomaticTasks';
 import {
   AUTOMATIC_TASK_ACTION,
   draftOverlay,
-  isLive,
   isManual,
   tickedAutomaticStatus,
   type AutomaticTask,
@@ -46,7 +45,7 @@ import {
   countTasksByFacet,
   isSettled,
   orderTaskRows,
-  sortTasks,
+  subtaskProgress,
   TASK_FACET,
   taskDue,
   taskRowKey,
@@ -56,13 +55,14 @@ import {
   type TaskFacet,
   type TaskRow,
 } from '../lib/tasks';
+import { SubtaskList, type SubtaskDraft } from './SubtaskList';
 // The host chip and its icon table are the NOTES screen's, reused whole (ADR-0191 §8):
 // `noteHost` reads only the five FKs both entities carry, so it was widened to `HostedRow`
 // rather than copied — the same extraction `isHostedBy` already took in phase 4.
 import { noteHost, type NoteHostRef } from '../lib/notes';
 import { NOTE_HOST_ICON } from '../constants';
 import { EntitySyncBadge, useUnsynced } from './EntitySyncBadge';
-import { TaskSheet, createTaskInput, type TaskDraft } from './TaskSheet';
+import { TaskSheet, createTaskInput, writeSubtasks, type TaskDraft } from './TaskSheet';
 import { TaskManageSheet } from './TaskManageSheet';
 import { IndexBackRow } from './IndexBackRow';
 import { Icon } from './Icon';
@@ -74,6 +74,10 @@ import { EmptyState } from './feedback';
 import { t } from '../i18n/he';
 import './tasks.css';
 
+/** A stable empty array, so a task with no steps hands `TaskLi` the SAME reference every
+ *  render — a fresh `[]` would make the memoized row diff on every clock tick. */
+const EMPTY_STEPS: Task[] = [];
+
 export function IndexTasksView({
   onClose,
   onOpenDocuments,
@@ -84,7 +88,8 @@ export function IndexTasksView({
    *  §3). */
   onOpenDocuments: () => void;
 }) {
-  const { trip, tasks, users, zoneCrossings, taskVerbs, setActiveDate, noteHosts } = useTrip();
+  const { trip, tasks, subtasks, users, zoneCrossings, taskVerbs, setActiveDate, noteHosts } =
+    useTrip();
   const { me } = useAuth();
   const now = useClock();
   const navigate = useNavigate();
@@ -119,7 +124,11 @@ export function IndexTasksView({
 
   // Counted off the SAME rows the list is built from, so a chip cannot promise a number the
   // list does not deliver.
-  const counts = useMemo(() => countTasksByFacet(rows, meId), [rows, meId]);
+  // **The child index reaches the facet, and only the facet** (ADR-0196's audit). `שלי` has to
+  // match a parent whose STEP is mine, or the one filter whose job is "what do I owe" hides
+  // work from the person filtering. Every other derivation on this screen reads the roots and
+  // is correct about children without being told they exist.
+  const counts = useMemo(() => countTasksByFacet(rows, meId, subtasks), [rows, meId, subtasks]);
 
   // A chip whose last task was settled (or unassigned out from under a still-selected
   // filter) falls back to "all" rather than filtering against an empty set — derived, not a
@@ -143,7 +152,9 @@ export function IndexTasksView({
   // Through `revealRows`, never a bare `.filter()` — a row is hidden in place so the list
   // animates instead of jumping, which is the one-off that cost the Map two releases
   // (ADR-0120). Hence `countVisible`, not `.length`.
-  const visible = revealRows(rows, (row) => taskRowMatchesFacet(row, activeFacet, meId)).rows;
+  const visible = revealRows(rows, (row) =>
+    taskRowMatchesFacet(row, activeFacet, meId, subtasks),
+  ).rows;
   const matchCount = countVisible(visible);
 
   const facetOptions: Choice<TaskFacet>[] = [
@@ -178,7 +189,14 @@ export function IndexTasksView({
     if (editing) void taskVerbs.updateTask(editing.id, draft);
     // A task written HERE is always general — there is no host picker in phase 1, exactly
     // as ADR-0153 §5 settled it for notes.
-    else void taskVerbs.createTask(createTaskInput(draft));
+    // A create writes the parent first and its staged steps after — the outbox is FIFO, so a
+    // step queued first would reach a server that cannot see its parent (ADR-0196 §12).
+    else
+      void taskVerbs
+        .createTask(createTaskInput(draft))
+        .then(
+          (created) => created && writeSubtasks(taskVerbs.createTask, created.id, draft.subtasks),
+        );
   };
 
   const assigneeName = (task: Task) =>
@@ -229,6 +247,12 @@ export function IndexTasksView({
   const manageAutomatic = (auto: AutomaticTask) =>
     setManage(auto.task ?? draftOverlay(auto, trip.id));
 
+  /** **A step is created, renamed and removed through the same three verbs a task is** — one
+   *  table, so one write path (ADR-0196 §1). The parent rides the create from here rather than
+   *  being spelled at the composer, which is what keeps `SubtaskList` presentational. */
+  const addStep = (parent: Task, draft: SubtaskDraft) =>
+    void taskVerbs.createTask({ ...draft, parentTaskId: parent.id });
+
   const renderRow = (row: TaskRow) =>
     row.kind === 'auto' ? (
       <AutomaticTaskRow
@@ -243,7 +267,13 @@ export function IndexTasksView({
         host={noteHost(row.task, noteHosts)}
         due={taskDue(row.task, clock)}
         assignee={assigneeOf(row.task)}
+        steps={subtasks.get(row.task.id) ?? EMPTY_STEPS}
+        users={users}
         onTick={() => void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })}
+        onAddStep={(draft) => addStep(row.task, draft)}
+        onRenameStep={(step, draft) => void taskVerbs.updateTask(step.id, draft)}
+        onTickStep={(step) => void taskVerbs.updateTask(step.id, { status: tickedStatus(step) })}
+        onRemoveStep={(step) => void taskVerbs.deleteTask(step.id)}
         open={openId === row.task.id}
         onToggle={() => setOpenId((current) => (current === row.task.id ? null : row.task.id))}
         onEdit={() => setSheet(row.task)}
@@ -384,7 +414,13 @@ function TaskLi({
   host,
   due,
   assignee,
+  steps,
+  users,
   onTick,
+  onAddStep,
+  onRenameStep,
+  onTickStep,
+  onRemoveStep,
   open,
   onToggle,
   onEdit,
@@ -397,7 +433,16 @@ function TaskLi({
   due: ReturnType<typeof taskDue>;
   /** The person, not their name — the row renders `Avatar` (ADR-0190 §6). */
   assignee?: User;
+  /** This task's steps, in creation order (ADR-0196). Empty is the common case and is what
+   *  makes the row an ordinary one: `total: 0` is not a parent, so nothing here needs a
+   *  second test for "is this a checklist". */
+  steps: Task[];
+  users: User[];
   onTick: () => void;
+  onAddStep: (draft: SubtaskDraft) => void;
+  onRenameStep: (step: Task, draft: SubtaskDraft) => void;
+  onTickStep: (step: Task) => void;
+  onRemoveStep: (step: Task) => void;
   /** Expanded: the body is printed under the row and the foot is under that. */
   open: boolean;
   onToggle: () => void;
@@ -406,6 +451,11 @@ function TaskLi({
 }) {
   const unsynced = useUnsynced(task.id);
   const settled = isSettled(task);
+  const progress = subtaskProgress(steps);
+  // The composer is revealed by the foot's `＋`, exactly as `＋ פתק` reveals the notes box
+  // (ADR-0192 §2) — and it opens by itself on a task that already has steps, because there
+  // the invitation is the list rather than a control.
+  const [composing, setComposing] = useState(false);
 
   // **TWO LINES: the deadline owns the first, the chip the second** (ADR-0191 §8, the owner's
   // proposal). Moving the assignee to the title row removed the longest of three elements and
@@ -441,8 +491,12 @@ function TaskLi({
     </span>
   );
 
-  const meta = (
-    <>
+  /** **The count shares line one with the deadline** rather than opening a third line, so an
+   *  undated parent keeps ONE line — which is what `.tsk-due`'s own `display: block` was
+   *  bought for (ADR-0191 §8). Neutral: a quantity is not a status and not a deadline, so it
+   *  spends nothing from the colour budget. */
+  const when = (due || progress.total > 0) && (
+    <span className="tsk-meta-when">
       {due && (
         <span className={due.late ? 'tsk-due late' : 'tsk-due'}>
           <Icon name="clock" /> {due.late ? t.tasks.due.late : t.tasks.due.by}{' '}
@@ -453,14 +507,24 @@ function TaskLi({
           {due.time ? ltrIsolate(`${due.day} ${due.time}`) : due.day}
         </span>
       )}
+      {progress.total > 0 && (
+        <span className="tsk-count">{ltrIsolate(`${progress.done}/${progress.total}`)}</span>
+      )}
+    </span>
+  );
+
+  const meta = (
+    <>
+      {when}
       {metaAbout}
     </>
   );
 
   // **Not "always" any more.** It was, because the owner-state was reported here and every
   // task has one — that moved to the title row, so a task with no deadline, no host and no
-  // body now genuinely has nothing to say on a second line, and says nothing.
-  const hasMeta = Boolean(due || host || (task.body && !open));
+  // body now genuinely has nothing to say on a second line, and says nothing. A checklist's
+  // count joins the list of things that can bring the line back.
+  const hasMeta = Boolean(due || host || progress.total > 0 || (task.body && !open));
 
   return (
     <>
@@ -470,9 +534,21 @@ function TaskLi({
           undefined
         }
         lead={
-          <TaskTick done={task.status === TASK_STATUS.DONE} title={task.title} onTick={onTick} />
+          // **A parent's lead is a READ** (ADR-0196 §3): same box, same circle, same ✓, with
+          // the ring filled to the fraction and no press — a task holding a checklist has no
+          // completion of its own to offer, it closes when its last step does. `progress`
+          // with `total: 0` is every ordinary task and renders the control unchanged.
+          <TaskTick
+            done={task.status === TASK_STATUS.DONE}
+            title={task.title}
+            onTick={onTick}
+            progress={progress}
+          />
         }
-        onOpen={onToggle}
+        onOpen={() => {
+          if (open) setComposing(false);
+          onToggle();
+        }}
         openLabel={task.title}
         title={
           <>
@@ -530,14 +606,37 @@ function TaskLi({
               {task.body}
             </div>
           )}
+          {/* **THE CHECKLIST** (ADR-0196 §5/§10), between the words and the verbs — the steps
+              are what the task is made of, so they read after it says what it is and before
+              the row offers to edit it. Rendered whenever there is something to show or the
+              composer has been revealed; a task with neither is an ordinary open row. */}
+          {(steps.length > 0 || composing) && (
+            <SubtaskList
+              steps={steps}
+              users={users}
+              open={composing}
+              onAdd={onAddStep}
+              onRename={onRenameStep}
+              onTick={onTickStep}
+              onRemove={onRemoveStep}
+            />
+          )}
           {/* **NO LEAD** (owner, 2026-08-16: _"no need to show the assignee name in the
               expanded task, we already have the assignee avatar"_). ADR-0189 §4 gave the foot
               the assignee because that was the row's only statement of it — the face was still
               a name in the meta line then. Once the face moved to the title row it became the
               same fact twice, three lines apart, and the second copy is the one to drop: the
               face is on screen while the row is open, and an unassigned task's empty slot is
-              already unambiguous (ADR-0191 §8). What is left is the verb, where it always was. */}
-          <RowOpenFoot editLabel={t.tasks.manage.edit} onEdit={onEdit} />
+              already unambiguous (ADR-0191 §8). What is left is the verb, where it always was.
+              **Plus the way in to a checklist**, which is offered on every open row including
+              one with no steps — otherwise nothing could get its first (§10). It hides once
+              the composer is showing: one control, not two six pixels apart. */}
+          <RowOpenFoot
+            addLabel={composing ? undefined : t.tasks.subtasks.add}
+            onAdd={composing ? undefined : () => setComposing(true)}
+            editLabel={t.tasks.manage.edit}
+            onEdit={onEdit}
+          />
         </>
       )}
     </>
