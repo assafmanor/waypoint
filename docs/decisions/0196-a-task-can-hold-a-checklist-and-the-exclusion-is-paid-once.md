@@ -430,3 +430,24 @@ Two changes, because the two halves are separate mistakes:
 - **The client fails in the safe direction.** `isSettled` now states what settled _is_ (`done` or `dismissed`) rather than what it is not. The forms are identical for a well-formed row — there are three statuses — and differ only on a row carrying none, where "work still to do" is the answer that cannot silently lose work.
 
 **The general form of this is not fixed here and is on the backlog.** Six other services still send `after: input` on a create, and `applyControlChangeToList`'s own comment blesses it: _"A peer's plain create arrives without server-only fields until the next resync — the Index reads only type/title/code/place, so it renders fine."_ That was true of the surfaces it was written for. A task's `status` **is** the row, so it was the first entity where a defaulted field carries meaning — and the next one will not announce itself either.
+
+## Build log addendum (2026-08-19, fourth round) — the composer committed into its own controls
+
+> Owner: _"Removing a sub task doesn't always work, if there's text or something it won't remove it."_ and _"assigning a sub task ui doesn't work most of the time. You click on the little unassigned icon and instead of opening the options it just opens another sub task."_
+
+**Two reports, one bug, and the second sentence names it exactly.** §11's composer commits on blur, and a tap on `✕` or on the assignee chip blurs the box **first**. So the pending words were written before the press landed:
+
+- on the chip, `commit()` in add mode wrote a whole new step — _"it just opens another sub task"_, literally;
+- on `✕`, `commit()` ran `reset()`, which returns the row to a read row and **unmounts the control being pressed**, so the click reached nothing and the step stayed.
+
+With an empty box neither happens, which is the _"doesn't ALWAYS work"_.
+
+**Three guards, because one mechanism does not cover the three ways focus leaves the box.** They are not redundancy:
+
+- **`preventDefault` on the two controls' `pointerdown`.** Focus never moves, so there is no blur to guard — and it is the only one of the three that works on **iOS**, where a tapped `<button>` does not take focus and `relatedTarget` is therefore `null`. This app is phone-primary (ADR-0017), so that is the case that matters.
+- **`relatedTarget` inside the composer**, for a keyboard Tab from the box to `✕`: no pointer event fires there, and committing would unmount the control being tabbed to.
+- **`picking`**, because the picker is a `Modal` that takes focus when it opens. Without it the box blurs into the overlay a frame after the chip's press and commits anyway.
+
+**What this says about ADR-0196 §11.** _"The composer row IS the step's editor"_ put a commit-on-blur box in a row with two other controls, and the ADR recorded the blur rule (`useNoteComposer().pending()`'s promise) without noticing that its neighbours are inside the blur's reach. `NoteComposer` has no such neighbours and no `onBlur` at all — its host reads `pending()` at save — so there was no prior art to copy and no guard to inherit. A commit-on-blur field with siblings needs to say what "leaving" means before it can say what leaving does.
+
+**And two notes on testing it,** since both cost a run. jsdom fires no focus at all on `fireEvent.click`, so the unit suite can pin the three guards and never the gesture — the browser case is the whole point here. In that browser case the composer's own `scrollIntoView({ behavior: 'smooth' })` (§13) makes `✕` a moving target that Playwright's scroll-into-view never resolves, **even under `force`**, which skips actionability but still scrolls: the spec asks the browser for `prefers-reduced-motion` instead, which the app already reads.

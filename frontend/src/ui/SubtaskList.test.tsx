@@ -236,6 +236,66 @@ describe('a step is edited in the composer, in its own place', () => {
   });
 });
 
+// **The two controls beside the box must not make the box commit** (owner, 2026-08-19:
+// _"removing a sub task doesn't always work, if there's text … assigning a sub task ui doesn't
+// work most of the time … instead of opening the options it just opens another sub task"_).
+//
+// One bug, two symptoms. The box commits on blur and a tap on either control blurs it first,
+// so the pending words were written before the press landed — a whole new step from the chip,
+// and on `✕` a `reset()` that returned the row to a read row and unmounted the control being
+// pressed. jsdom cannot reproduce the browser's focus order, so what is pinned here is the
+// three guards; the gesture itself is an e2e case.
+describe('the box does not commit into its own controls', () => {
+  const controls = () => [
+    screen.getByLabelText(t.tasks.subtasks.assign),
+    screen.getByLabelText(t.tasks.subtasks.remove),
+  ];
+
+  it('keeps the caret rather than letting a press move it', () => {
+    show([step('s1', { title: 'צק-אין' })]);
+    fireEvent.click(screen.getByText('צק-אין'));
+    for (const control of controls()) {
+      // The only guard that works on iOS, where a tapped button never takes focus and
+      // `relatedTarget` is therefore null.
+      const prevented = !fireEvent.pointerDown(control, { cancelable: true, bubbles: true });
+      expect(prevented).toBe(true);
+    }
+  });
+
+  it('does not commit when the caret moves to a control in the same row', () => {
+    const on = show([step('s1', { title: 'צק-אין' })]);
+    fireEvent.click(screen.getByText('צק-אין'));
+    type('צק-אין אונליין');
+    // A keyboard Tab reaches `✕` with no pointer event at all, and committing there would
+    // unmount the control being tabbed to.
+    fireEvent.blur(box(), { relatedTarget: screen.getByLabelText(t.tasks.subtasks.remove) });
+    expect(on.onRename).not.toHaveBeenCalled();
+    expect(on.onAdd).not.toHaveBeenCalled();
+  });
+
+  it('does not commit into the picker it just opened', () => {
+    const on = show([]);
+    type('לשלם על החניה');
+    fireEvent.click(screen.getByLabelText(t.tasks.subtasks.assign));
+    // The picker is a Modal and takes focus a frame later; without the guard this blur wrote
+    // the step, which is the reported "it just opens another sub task".
+    fireEvent.blur(box(), { relatedTarget: null });
+    expect(on.onAdd).not.toHaveBeenCalled();
+  });
+
+  // …and the guard is not a licence to drop what was typed: leaving for anywhere ELSE still
+  // commits, which is the promise `useNoteComposer().pending()` makes.
+  it('still commits when the caret leaves the row entirely', () => {
+    const on = show([]);
+    type('לשלם על החניה');
+    fireEvent.blur(box(), { relatedTarget: document.body });
+    expect(on.onAdd).toHaveBeenCalledWith({
+      title: 'לשלם על החניה',
+      assigneeUserId: undefined,
+    });
+  });
+});
+
 describe('a step reads as a step', () => {
   it('ticks through the same control the screen uses', () => {
     const on = show([step('s1', { title: 'להדפיס' })]);

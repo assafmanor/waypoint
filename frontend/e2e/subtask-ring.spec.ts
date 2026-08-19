@@ -147,6 +147,10 @@ async function acceptTaskWrites(page: Page) {
   await page.route(
     (u) => /\/trips\/t1\/tasks\/[^/]+$/.test(u.pathname),
     async (route) => {
+      // **Match by METHOD too.** A DELETE hits this same path and carries no body, so reading
+      // `postDataJSON().status` threw inside the handler — the request then never resolved and
+      // the assertion downstream reported `undefined` rather than a failure anyone could read.
+      if (route.request().method() === 'DELETE') return route.fulfill({ status: 204, body: '' });
       const id = route.request().url().split('/').pop()!;
       const patch = route.request().postDataJSON() as Record<string, unknown>;
       const before = TASKS.find((x) => x.id === id)!;
@@ -298,4 +302,66 @@ test('the editor can add to a checklist that already exists', async ({ page }) =
   // The box clears and stays for the next one: a checklist is written in a burst.
   await expect(box).toHaveValue('');
   await expect(sheet.locator('.tsk-kids .note-item')).toHaveCount(7);
+});
+
+// **THE TWO CONTROLS BESIDE THE BOX, PRESSED WITH WORDS STILL IN IT** (owner, 2026-08-19:
+// _"removing a sub task doesn't always work, if there's text … assigning a sub task ui doesn't
+// work most of the time … instead of opening the options it just opens another sub task"_).
+//
+// One bug with two faces, and only a real browser has the focus order that produces it: the
+// box commits on blur, and a tap on either control blurs it first. jsdom fires no focus at all
+// on `fireEvent.click`, so the unit suite can pin the guards and not the gesture.
+/** Reduced motion, so the composer's own scroll is not a moving target. Committing a step
+ *  scrolls the box back into view with `behavior: 'smooth'` (ADR-0196 §13), and a control that
+ *  is still travelling never satisfies Playwright's scroll-into-view — not even under `force`,
+ *  which skips the actionability checks but still scrolls. The app reads `prefersReducedMotion`
+ *  for exactly this, so asking the browser for it makes the scroll instant rather than mocking
+ *  anything. `force` itself is here for the reason the row's own press uses it in this file:
+ *  the reveal list never reports two identical frames. */
+async function openStepsOf(page: Page, title: string) {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await bootIntoTrip(page, { tasks: TASKS });
+  await acceptTaskWrites(page);
+  await openTasksScreen(page);
+  await page.locator('.wp-listrow-open', { hasText: title }).click();
+}
+
+test('the assignee chip opens the picker rather than writing the words in the box', async ({
+  page,
+}) => {
+  await openStepsOf(page, 'יציאה לשדה');
+  const writes: string[] = [];
+  page.on('request', (r) => r.method() !== 'GET' && writes.push(r.method()));
+
+  await page.getByRole('button', { name: t.tasks.subtasks.add }).click();
+  const box = page.getByLabel(t.tasks.subtasks.add);
+  await box.fill('לסגור את הדלת');
+  await page.getByLabel(t.tasks.subtasks.assign).click({ force: true });
+
+  // The picker is what opens. Before the fix the box blurred into the press, committed, and a
+  // whole new step appeared instead — the owner's "it just opens another sub task".
+  await expect(page.locator('.modal-card')).toBeVisible();
+  expect(writes).toEqual([]);
+  // …and the words are still in the box, waiting for the assignee to be chosen.
+  await expect(box).toHaveValue('לסגור את הדלת');
+});
+
+test('✕ removes the step even with words in the box, and writes no rename', async ({ page }) => {
+  await openStepsOf(page, 'יציאה לשדה');
+  const writes: string[] = [];
+  page.on('request', (r) => r.method() !== 'GET' && writes.push(r.method()));
+
+  // Tapping a step's words returns it to the composer, which is where `✕` lives.
+  await page.getByText('צק-אין אונליין').click({ force: true });
+  await page.getByLabel(t.tasks.subtasks.add).fill('צק-אין אונליין ועוד משהו');
+  await page.getByLabel(t.tasks.subtasks.remove).click({ force: true });
+
+  // The step is gone — before the fix the pending words committed first, `reset()` returned the
+  // row to a read row, and the `✕` unmounted before the click could land on it.
+  await expect(page.getByText('צק-אין אונליין')).toHaveCount(0);
+  // Four left and NO composer: removing ran `reset()`, which closes the editor, and on this
+  // surface the composer only shows while the foot's `＋` has revealed it.
+  await expect(page.locator('.tsk-kids .note-item')).toHaveCount(4);
+  // One DELETE and nothing else — the rename it was about to write never happened.
+  expect(writes).toEqual(['DELETE']);
 });
