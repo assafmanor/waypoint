@@ -32,7 +32,13 @@
 // than a delete and a retype), with the assignee chip and the ✕ beside it. Three controls in
 // one row is what keeps the READ row unchanged and `.note-item` a two-column grid — so the
 // notes section sharing that grid pays nothing.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { TASK_SUBTASK_CAP, type Task, type User } from '@waypoint/shared';
 import { isSettled } from '../lib/tasks';
 import { prefersReducedMotion } from '../lib/motion';
@@ -169,6 +175,30 @@ export function SubtaskList({
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  /** **The two controls beside the box must not make the box commit** (owner, 2026-08-19:
+   *  _"removing a sub task doesn't always work, if there's text … assigning a sub task ui
+   *  doesn't work most of the time … instead of opening the options it just opens another sub
+   *  task"_). Both reports are one bug, and the second sentence names it exactly.
+   *
+   *  The box commits on blur, and a tap on `✕` or on the assignee chip blurs it FIRST. So the
+   *  pending words were committed before the press landed: on the chip that wrote a whole new
+   *  step (hence "it just opens another sub task"), and on `✕` the commit ran `reset()`, which
+   *  returns the row to a read row — unmounting the `✕` mid-gesture, so the click reached
+   *  nothing and the step stayed. With an empty box neither happens, which is the "doesn't
+   *  ALWAYS work".
+   *
+   *  Three guards, because one mechanism does not cover the three ways focus leaves:
+   *
+   *  - `keepsFocus` on both controls. Preventing the pointer's default stops the focus moving
+   *    at all, so there is no blur to guard — and it is the only one of the three that works
+   *    on iOS, where a tapped `<button>` never takes focus and `relatedTarget` is therefore
+   *    `null`. This app is phone-primary (ADR-0017), so that is the case that matters.
+   *  - `relatedTarget` inside the composer, which covers a keyboard Tab from the box to `✕`:
+   *    no pointer event fires there, and committing would unmount the control being tabbed to.
+   *  - `picking`, because the picker is a `Modal` that takes focus when it opens. Without it
+   *    the box blurs into the overlay a frame after the chip's press and commits anyway. */
+  const keepsFocus = (e: ReactPointerEvent) => e.preventDefault();
+
   const whoPerson = who ? users.find((u) => u.id === who) : undefined;
   // Computed here rather than as a ternary inside `className`, so the class-name sweep
   // (`tasks-section-paint.contract.test.ts`) reads two class runs and not the word it is
@@ -215,13 +245,19 @@ export function SubtaskList({
               }}
               // Leaving the box with words in it commits them rather than dropping them —
               // `useNoteComposer().pending()`'s promise, which is what makes `＋` optional
-              // there and Enter optional here.
-              onBlur={commit}
+              // there and Enter optional here. **Unless the focus is going to this row's own
+              // controls**, which is `keepsFocus` above.
+              onBlur={(e) => {
+                if (picking) return;
+                if (composeRef.current?.contains(e.relatedTarget)) return;
+                commit();
+              }}
             />
             <button
               type="button"
               className="tsk-kid-who"
               aria-label={t.tasks.subtasks.assign}
+              onPointerDown={keepsFocus}
               onClick={() => setPicking(true)}
             >
               {/* Resolved rather than assumed: an assignee whose account has left the trip
@@ -239,6 +275,7 @@ export function SubtaskList({
                 type="button"
                 className="tsk-kid-x"
                 aria-label={t.tasks.subtasks.remove}
+                onPointerDown={keepsFocus}
                 onClick={() => {
                   onRemove(editing);
                   reset();
