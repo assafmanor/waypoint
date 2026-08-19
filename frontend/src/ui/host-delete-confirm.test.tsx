@@ -76,6 +76,7 @@ vi.mock('../state/trip-state', () => ({
       createTask: async () => undefined,
       updateTask: async () => {},
       deleteTask: async () => {},
+      tickTask: async () => {},
     },
     // The one context index every note surface resolves through (ADR-0172 §1);
     // built from this file's own fixtures so pairing is real rather than stubbed.

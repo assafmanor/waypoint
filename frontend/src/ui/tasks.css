@@ -272,14 +272,16 @@
   );
   mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
 }
-/* A PARENT'S LEAD IS A READ, so it is a `<span role="img">` and says so with the cursor.
-   Everything else about it — the 44px box, the hit radius, the circle, the ✓ — is
-   `.tsk-tick` unchanged, which is the point. */
-.tsk-ring {
-  cursor: default;
-}
-/* Full = done, and then it is the ordinary done tick with nothing extra: the arc has become
-   the fill and the ✓ is the fill's own mark. One state, not two. */
+/* **A PARENT'S LEAD IS THE ORDINARY TICK** (ADR-0196 §3, reversed 2026-08-19: _"you should
+   be able to tick the parent task to mark all as complete"_). It was a `<span role="img">`
+   with `cursor: default` while the design said a parent had nothing to press; it is a
+   `<button>` again, so it inherits the cursor, the press scale, the focus ring and the ✓
+   from `.tsk-tick` and this class adds only the arc's marker.
+
+   Full is therefore painted by `[aria-pressed='true']` above, exactly as on a leaf: the arc
+   has become the fill and the ✓ is the fill's own mark. `data-done` stays because the e2e
+   spec and the arc's own reading key on it, and because it says "every step", which is not
+   the same sentence as "this row was ticked". */
 .tsk-ring[data-done='true']::before {
   background: var(--ok);
   border-color: var(--ok);
@@ -309,14 +311,29 @@
 
 /* THE STEPS, in the open region the row already has (ADR-0189 §3). The rows are
    `.note-item.tsk-row` — the host section's shipped row — so all this declares is the two
-   variables `.note-sec` declares, and the indent that makes a step read as INSIDE its parent:
-   14px of card inset plus the parent's 44px lead slot, so a step's tick starts where the
-   parent's TITLE starts. */
+   variables `.note-sec` declares, and the indent that makes a step read as INSIDE its parent.
+
+   **The indent lands on the parent's TITLE, and 58px did not** (owner, 2026-08-19: _"is the
+   line difference between the title and the first sub task good? the tab before the sub
+   tasks?"_). 58px was written as "14px of card inset + the 44px lead", and both halves were
+   wrong: `.wp-listrow-lead` is flush to the card and IS the 44px, `.wp-listrow-open` adds its
+   own 10px, and the tick's paint sits 3px inside its 26px cell. Measured in the running app
+   at 390: the parent's title started at x=319 and a step's tick painted to x=312 — an
+   arbitrary 7px, aligned to nothing, which is what reads as a stray tab.
+
+   So the number is DERIVED rather than picked, and it aligns the thing that carries the
+   meaning: `--kid-title-x` is where the parent's title starts (44px lead + 10px button
+   inset), and subtracting the lead cell puts a STEP'S TEXT on that same x. The ticks then
+   step outboard toward the ring, which is the hierarchy. Aligning the step's TICK there
+   instead was rendered beside this and rejected: it leaves the texts in two columns, and
+   ADR-0191 §5's own reversal ("notes and tasks look totally different and have a different
+   allignment") is about exactly that. */
 .tsk-kids {
   --sec-lead: 26px;
   --sec-tick: 20px;
+  --kid-title-x: 54px;
   padding-block: 2px;
-  padding-inline: 58px 14px;
+  padding-inline: calc(var(--kid-title-x) - var(--sec-lead)) 14px;
 }
 .tsk-kids .note-item {
   margin-bottom: 6px;
@@ -441,7 +458,7 @@
    rather than about anything typed. */
 .tsk-kids-full {
   color: var(--miss-deep);
-  padding-inline: 58px 14px;
+  padding-inline: calc(var(--kid-title-x, 54px) - var(--sec-lead, 26px)) 14px;
 }
 .tsk-kids-form + .tsk-kids-full {
   padding-inline: 0;

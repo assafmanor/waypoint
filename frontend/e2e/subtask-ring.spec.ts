@@ -11,9 +11,15 @@
 //     resolves to nothing (the exact failure mode above, one control over);
 //  2. the parent's row is the same height as the leaf beside it — the whole "one noun at one
 //     scale" claim, and the reason the count went to the meta line rather than into the ring;
-//  3. the lead offers no press. A parent's completion is derived, so a button there would be
-//     an inert control in the row's most prominent position — the thing ADR-0188 §4's
-//     reversal exists to prevent.
+//  3. the lead IS a press, and it answers for the whole checklist (§3, reversed 2026-08-19).
+//     It was first drawn as a read, on the argument that a derived completion has nothing to
+//     press; the owner's reply is that a checklist has an obvious bulk verb and the ring is
+//     where a hand reaches for it.
+//
+// And a fourth, which is geometry and therefore lives only here: a step's text starts at the
+// same x as its parent's TITLE. The first build indented the checklist by a number written as
+// "14px of card inset + the 44px lead" and landed 7px short of anything, which is what the
+// owner saw as a stray tab.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, TRIP_ID } from './boot';
 import { t } from '../src/i18n/he';
@@ -91,18 +97,19 @@ test('a parent reads as an arc and a count, and costs the row nothing', async ({
   const plainRow = page.locator('.wp-listrow', { hasText: 'להחליף כסף' });
   await expect(parentRow).toBeVisible();
 
-  // 1 — the lead is a READ. No button in the lead slot at all, so there is no press with
-  // nothing to do.
+  // 1 — the lead is a CONTROL, and its name says both what a press does and where the
+  // checklist stands, because the arc is the only other place that says the latter.
   const lead = parentRow.locator('.wp-listrow-lead');
-  await expect(lead.getByRole('img')).toHaveAttribute('aria-label', t.tasks.progress(2, 5));
-  await expect(lead.locator('button')).toHaveCount(0);
-  // …while the ordinary task beside it still has its control.
+  const ring = lead.getByRole('button');
+  await expect(ring).toHaveAttribute('aria-label', t.tasks.subtasks.tickAll('יציאה לשדה', 2, 5));
+  await expect(ring).toHaveAttribute('aria-pressed', 'false');
+  // …and the ordinary task beside it still has its own, unchanged.
   await expect(plainRow.locator('.wp-listrow-lead button')).toHaveCount(1);
 
   // 2 — the arc is really drawn. `conic-gradient` on the `::after`, masked to a band: a class
   // that resolved to nothing would report `none` here, which is precisely how a tick once
   // shipped unpainted.
-  const arc = await lead.getByRole('img').evaluate((el) => {
+  const arc = await ring.evaluate((el) => {
     const after = getComputedStyle(el, '::after');
     return { background: after.backgroundImage, mask: after.maskImage || after.webkitMaskImage };
   });
@@ -117,6 +124,78 @@ test('a parent reads as an arc and a count, and costs the row nothing', async ({
 
   // The count says the same thing the arc does, in the line that exists on every surface.
   await expect(parentRow.locator('.tsk-count')).toHaveText(/2\/5/);
+});
+
+/** The harness mocks the snapshot, not the writes — so without this a PATCH fails and the
+ *  optimistic tick rolls straight back, which the first run of the spec below watched happen
+ *  (2/5 → 3/5 → 2/5). Echoing the patch is also what makes the reconcile real rather than
+ *  skipped. */
+async function acceptTaskPatches(page: Page) {
+  await page.route(
+    (u) => /\/trips\/t1\/tasks\/[^/]+$/.test(u.pathname),
+    async (route) => {
+      const id = route.request().url().split('/').pop()!;
+      const patch = route.request().postDataJSON() as Record<string, unknown>;
+      const before = TASKS.find((x) => x.id === id)!;
+      const settling = patch.status === 'done';
+      await route.fulfill({
+        json: {
+          ...before,
+          ...patch,
+          settledAt: settling ? '2026-08-19T09:00:00.000Z' : null,
+          settledBy: settling ? 'u1' : null,
+          updatedAt: '2026-08-19T09:00:00.000Z',
+          updatedBy: 'u1',
+        },
+      });
+    },
+  );
+}
+
+test('a press on the ring settles the whole checklist', async ({ page }) => {
+  await bootIntoTrip(page, { tasks: TASKS });
+  await acceptTaskPatches(page);
+  await openTasksScreen(page);
+
+  const parentRow = page.locator('.wp-listrow', { hasText: 'יציאה לשדה' });
+  await parentRow.locator('.wp-listrow-lead button').click();
+
+  // One press wrote several rows, so it is confirmed once and undoable once. Asserted FIRST
+  // because it is the transient half: the toast retires itself after `TOAST_DURATION_MS`.
+  //
+  // **THREE, not five.** Two of this parent's steps were already settled, and the toast
+  // reports what the press WROTE rather than what the checklist now totals — which is the
+  // same number the undo will put back. The first draft of this line asserted 5 and the
+  // browser said 3, which is the distinction worth keeping.
+  await expect(page.locator('.toast')).toContainText(t.tasks.subtasks.allTicked(3));
+  await expect(page.locator('.toast .undo')).toBeVisible();
+
+  // Every step is settled, so the parent's DERIVED status is done and the count says so. The
+  // steps are the rows that were written; the parent's own row was not, which is what keeps a
+  // stored `done` from ever going stale.
+  await expect(parentRow.locator('.tsk-count')).toHaveText(/5\/5/);
+  await expect(parentRow.locator('.wp-listrow-lead button')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+});
+
+test("a step's text starts where its parent's title does", async ({ page }) => {
+  await bootIntoTrip(page, { tasks: TASKS });
+  await openTasksScreen(page);
+  await page.locator('.wp-listrow-open', { hasText: 'יציאה לשדה' }).click();
+  await expect(page.locator('.tsk-kids .note-item').first()).toBeVisible();
+
+  // **The indent has to land on something, and jsdom cannot see that it does.** Measured in
+  // the running app at 390 before the fix: title at x=319, step tick painting to x=312 — an
+  // arbitrary 7px. The step's TEXT is what carries the meaning, so that is what is aligned;
+  // the ticks then step outboard toward the ring, which is the hierarchy.
+  const edges = await page.evaluate(() => {
+    const title = document.querySelector('.wp-listrow .tsk-title-txt')?.getBoundingClientRect();
+    const stepText = document.querySelector('.tsk-kids .note-item-b')?.getBoundingClientRect();
+    return { title: title?.right ?? 0, step: stepText?.right ?? 0 };
+  });
+  expect(Math.abs(edges.title - edges.step)).toBeLessThanOrEqual(1);
 });
 
 test('opening a parent shows its steps, each with a real 44px tick', async ({ page }) => {

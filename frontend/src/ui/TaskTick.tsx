@@ -8,12 +8,14 @@
 //
 // It owns the beat and the hold, and nothing else: no state, no data, no copy of its own.
 //
-// **AND A PARENT'S LEAD IS A READ, drawn by this same component** (ADR-0196 §3). A task
-// holding a checklist has no completion of its own to press — it closes when its last step
-// does — so its leading element is the same 44px box, the same 12px hit radius and the same
-// ✓, with the ring FILLED to the fraction and no press at all. One component rather than two,
-// for the reason the two densities are one component: a second spelling of a tick is how two
-// ticks start disagreeing about what "done" looks like.
+// **AND A PARENT'S LEAD IS THE SAME TICK, WEARING ITS PROGRESS** (ADR-0196 §3, reversed
+// 2026-08-19 on the owner's _"you should be able to tick the parent task to mark all as
+// complete"_). §3 first drew it as a READ — a parent has no completion of its own, so a press
+// there looked like a control with nothing to do. What that missed is that a checklist has an
+// obvious bulk verb and the ring is exactly where a hand reaches for it. So it is the same
+// 44px box, the same hit radius and the same ✓, with the ring FILLED to the fraction, and the
+// press settles every open step (or reopens them once they are all settled). The caller
+// decides what that means: `taskVerbs.tickTask` is the one place that knows.
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { BEAT, playBeat } from '../lib/one-shot';
 import type { SubtaskProgress } from '../lib/tasks';
@@ -44,9 +46,10 @@ export function TaskTick({
   title: string;
   onTick: () => void;
   density?: TickDensity;
-  /** **Present with `total > 0` turns this into a READ** (ADR-0196 §3) — the checklist's
-   *  progress, drawn as an arc on the ring it already has. `total: 0` is not a parent and
-   *  renders the ordinary control, which is why no surface needs a second test. */
+  /** **Present with `total > 0` makes this a PARENT'S tick** (ADR-0196 §3) — the checklist's
+   *  progress, drawn as an arc on the ring it already has, and a press that answers for every
+   *  step. `total: 0` is not a parent and renders the ordinary control, which is why no
+   *  surface needs a second test. */
   progress?: SubtaskProgress;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
@@ -68,9 +71,15 @@ export function TaskTick({
     [],
   );
 
+  // **What "done" means here.** A leaf answers for itself; a parent answers for its steps, so
+  // its fullness is the fraction rather than its own row — which is also the state the press
+  // reverses, and therefore what decides whether the beat plays.
+  const parent = progress && progress.total > 0 ? progress : undefined;
+  const full = parent ? parent.done === parent.total : done;
+
   const press = () => {
     // Un-ticking is answered by the open state's own transition, not by a beat (§2).
-    if (done || !ref.current) return onTick();
+    if (full || !ref.current) return onTick();
     const ms = playBeat(ref.current, BEAT.TICK);
     // 0 under reduced motion and wherever `tokens.css` is unreadable — including every
     // jsdom test, which is why the specs on all four surfaces still see a synchronous
@@ -85,31 +94,20 @@ export function TaskTick({
     };
   };
 
-  // **A parent, and therefore a read.** `role="img"` with the count as its name: a screen
-  // reader gets "2 of 5 done" where a sighted reader gets the arc, and neither is offered a
-  // press that has nothing to do. The row's own tap opens it, where the steps are.
-  if (progress && progress.total > 0) {
-    const full = progress.done === progress.total;
-    return (
-      <span
-        className={`${DENSITY_CLASS[density]} tsk-arc tsk-ring`}
-        role="img"
-        aria-label={t.tasks.progress(progress.done, progress.total)}
-        data-done={full}
-        style={{ '--tsk-frac': progress.done / progress.total } as CSSProperties}
-      >
-        <Icon name="check" />
-      </span>
-    );
-  }
-
+  // **A parent wears the arc and keeps the press.** The fraction rides in the accessible
+  // name, so a reader who cannot see the ring is told the same thing the ring says — and the
+  // name says what the press DOES, which on a parent is every step at once.
   return (
     <button
       ref={ref}
       type="button"
-      className={DENSITY_CLASS[density]}
-      aria-pressed={done}
-      aria-label={t.tasks.tick(title)}
+      className={parent ? `${DENSITY_CLASS[density]} tsk-arc tsk-ring` : DENSITY_CLASS[density]}
+      aria-pressed={full}
+      aria-label={
+        parent ? t.tasks.subtasks.tickAll(title, parent.done, parent.total) : t.tasks.tick(title)
+      }
+      data-done={parent ? full : undefined}
+      style={parent ? ({ '--tsk-frac': parent.done / parent.total } as CSSProperties) : undefined}
       onClick={press}
     >
       <Icon name="check" />

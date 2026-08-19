@@ -91,7 +91,7 @@ import {
 } from '../lib/cache';
 import { generateId } from '../lib/id';
 import { buildNoteHosts, dropNotesForHostChange, type NoteHostRef } from '../lib/notes';
-import { dropTasksForHostChange, splitSubtasks } from '../lib/tasks';
+import { dropTasksForHostChange, planSubtaskTick, splitSubtasks, tickedStatus } from '../lib/tasks';
 import { attachmentsForHost, dropAttachmentsForHostChange } from '../lib/attachments';
 import { derivedPlaceLabel, type PlaceLabels } from '../lib/place-label';
 import { PlaceLabelsProvider } from './place-labels';
@@ -548,6 +548,13 @@ export interface TaskVerbs {
   createTask: (input: CreateTaskInput) => Promise<Task | undefined>;
   updateTask: (taskId: string, input: UpdateTaskInput) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
+  /** **What a tick means, in ONE place** (ADR-0196 §3, reversed 2026-08-19 on the owner's
+   *  _"you should be able to tick the parent task to mark all as complete"_). A leaf task
+   *  settles itself; a parent has no completion of its own, so its tick settles its steps —
+   *  and once they are all settled, reopens them. It lives here rather than at the six
+   *  surfaces that draw a tick, because "unless it holds a checklist" is a clause six call
+   *  sites would each have to remember, which is exactly how ADR-0193 §2's count went wrong. */
+  tickTask: (task: Task) => Promise<void>;
 }
 
 /** Attachment write verbs (ADR-0173). Optimistic + reconcile/rollback and queued offline,
@@ -1728,6 +1735,37 @@ function TripReady({
   // `tasks` list.
   const taskVerbs = useMemo<TaskVerbs>(() => {
     const stamp = () => new Date(getNow()).toISOString();
+    const updateTask = async (taskId: string, input: UpdateTaskInput): Promise<void> => {
+      const previous = tasks;
+      setTasks((prev) =>
+        prev.map((x) =>
+          x.id === taskId
+            ? {
+                ...x,
+                // **Only the submitted keys**, which is the optimistic half of the sparse
+                // patch the server applies: a tick sends `{ status }`, so a spread of the
+                // whole input would be the one thing that erases the row's own words.
+                ...taskPatch(input),
+                ...optimisticSettlement(input.status, authorId, stamp),
+                updatedAt: stamp(),
+                updatedBy: authorId,
+              }
+            : x,
+        ),
+      );
+      try {
+        const canonical = await restOrQueue(
+          tripId,
+          { verb: OUTBOX_VERB.UPDATE_TASK, taskId, input },
+          () => apiUpdateTask(tripId, taskId, input),
+        );
+        if (canonical) setTasks((prev) => prev.map((x) => (x.id === taskId ? canonical : x)));
+      } catch (err) {
+        setTasks(previous);
+        toast(CONTROL_ICON.warn, t.toast.writeFailed);
+        throw err;
+      }
+    };
     return {
       createTask: async (input) => {
         const id = input.id ?? generateId();
@@ -1761,36 +1799,31 @@ function TripReady({
           throw err;
         }
       },
-      updateTask: async (taskId, input) => {
-        const previous = tasks;
-        setTasks((prev) =>
-          prev.map((x) =>
-            x.id === taskId
-              ? {
-                  ...x,
-                  // **Only the submitted keys**, which is the optimistic half of the sparse
-                  // patch the server applies: a tick sends `{ status }`, so a spread of the
-                  // whole input would be the one thing that erases the row's own words.
-                  ...taskPatch(input),
-                  ...optimisticSettlement(input.status, authorId, stamp),
-                  updatedAt: stamp(),
-                  updatedBy: authorId,
-                }
-              : x,
-          ),
+      updateTask,
+      /** The parent case is HERE and nowhere else — see `TaskVerbs.tickTask`. */
+      tickTask: async (task) => {
+        const steps = taskTree.byParent.get(task.id) ?? [];
+        if (steps.length === 0) return updateTask(task.id, { status: tickedStatus(task) });
+        const plan = planSubtaskTick(steps);
+        if (plan.steps.length === 0) return;
+        // Sequential rather than concurrent: the outbox is FIFO and every step is its own op,
+        // which is the shape `EventForm`'s multi-write verb already uses — one press behind
+        // one toast and one undo (ADR-0012's LWW ceiling is why the undo has to be there).
+        for (const step of plan.steps) await updateTask(step.id, { status: plan.status });
+        const settling = plan.status === TASK_STATUS.DONE;
+        toast(
+          settling ? CONTROL_ICON.done : CONTROL_ICON.restore,
+          settling
+            ? t.tasks.subtasks.allTicked(plan.steps.length)
+            : t.tasks.subtasks.allReopened(plan.steps.length),
+          () => {
+            // **Statuses, not attributions.** `updateTask` sends `{ status }` and the server
+            // stamps `settledBy`/`settledAt`, so an undone reopen comes back settled by
+            // whoever pressed undo. Named in ADR-0196's amendment rather than hidden: it is
+            // the residue of the harm that ADR first rejected the bulk verb on.
+            for (const step of plan.steps) void updateTask(step.id, { status: step.status });
+          },
         );
-        try {
-          const canonical = await restOrQueue(
-            tripId,
-            { verb: OUTBOX_VERB.UPDATE_TASK, taskId, input },
-            () => apiUpdateTask(tripId, taskId, input),
-          );
-          if (canonical) setTasks((prev) => prev.map((x) => (x.id === taskId ? canonical : x)));
-        } catch (err) {
-          setTasks(previous);
-          toast(CONTROL_ICON.warn, t.toast.writeFailed);
-          throw err;
-        }
       },
       deleteTask: async (taskId) => {
         const previous = tasks;
@@ -1806,7 +1839,7 @@ function TripReady({
         }
       },
     };
-  }, [tripId, tasks, toast, authorId]);
+  }, [tripId, tasks, taskTree, toast, authorId]);
 
   // Attachments (ADR-0173). The same three moves as the note verbs above, over the
   // `documentAttachments` list — and only two verbs, because a link has no content to edit.

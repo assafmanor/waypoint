@@ -117,6 +117,7 @@ vi.mock('../state/trip-state', () => ({
       createTask: async () => undefined,
       updateTask: async () => {},
       deleteTask: async () => {},
+      tickTask: async () => {},
     },
     trip: { id: 't1', name: 'טוקיו', timezone: 'Asia/Tokyo' },
     notes: tripNotes,

@@ -46,7 +46,12 @@ const tripState = {
   // the trip's notes and members straight from here.
   notes: [] as unknown[],
   tasks: [],
-  taskVerbs: { createTask: async () => {}, updateTask: async () => {}, deleteTask: async () => {} },
+  taskVerbs: {
+    createTask: async () => {},
+    updateTask: async () => {},
+    deleteTask: async () => {},
+    tickTask: async () => {},
+  },
   users: [] as unknown[],
   // Documents attached on the way (ADR-0173 §5): the slot reads the trip's documents and
   // links, and the form queues its staged links BEHIND their host like the notes above.

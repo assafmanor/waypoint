@@ -50,7 +50,6 @@ import {
   taskDue,
   taskRowKey,
   taskRowMatchesFacet,
-  tickedStatus,
   type TaskClock,
   type TaskFacet,
   type TaskRow,
@@ -269,10 +268,10 @@ export function IndexTasksView({
         assignee={assigneeOf(row.task)}
         steps={subtasks.get(row.task.id) ?? EMPTY_STEPS}
         users={users}
-        onTick={() => void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })}
+        onTick={() => void taskVerbs.tickTask(row.task)}
         onAddStep={(draft) => addStep(row.task, draft)}
         onRenameStep={(step, draft) => void taskVerbs.updateTask(step.id, draft)}
-        onTickStep={(step) => void taskVerbs.updateTask(step.id, { status: tickedStatus(step) })}
+        onTickStep={(step) => void taskVerbs.tickTask(step)}
         onRemoveStep={(step) => void taskVerbs.deleteTask(step.id)}
         open={openId === row.task.id}
         onToggle={() => setOpenId((current) => (current === row.task.id ? null : row.task.id))}

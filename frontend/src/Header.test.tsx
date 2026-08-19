@@ -54,6 +54,7 @@ vi.mock('./state/trip-state', () => ({
       createTask: async () => undefined,
       updateTask: async () => {},
       deleteTask: async () => {},
+      tickTask: async () => {},
     },
     trip: TRIP,
     users,

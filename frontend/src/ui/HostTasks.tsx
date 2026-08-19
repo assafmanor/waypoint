@@ -15,13 +15,7 @@ import { useMemo, useState } from 'react';
 import { TASK_STATUS, type CreateTaskInput, type Task, type TaskHostKey } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
 import { useClock } from '../lib/useClock';
-import {
-  settledHostKeys,
-  tasksForHost,
-  taskHostInput,
-  tickedStatus,
-  type TaskClock,
-} from '../lib/tasks';
+import { settledHostKeys, tasksForHost, taskHostInput, type TaskClock } from '../lib/tasks';
 import type { NoteHostKind } from '../lib/notes';
 import { TaskSection } from './TaskSection';
 import { TaskSheet, createTaskInput, writeSubtasks, type TaskDraft } from './TaskSheet';
@@ -191,9 +185,7 @@ export function HostTasks({
         onAdd={() => setSheet('create')}
         // A staged task has nothing to tick: it does not exist yet, and completing something
         // you have not saved is a state with nowhere to live.
-        onTick={(task) =>
-          hostId ? void taskVerbs.updateTask(task.id, { status: tickedStatus(task) }) : undefined
-        }
+        onTick={(task) => (hostId ? void taskVerbs.tickTask(task) : undefined)}
         onOpen={(task) => setSheet(hostId ? task : Number(task.id.split(':')[1]))}
       />
       {sheet !== null && (

@@ -15,6 +15,13 @@ env:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    # **A hung step must fail, not sit** (2026-08-19). `e2e (dev)` stalled inside
+    # `playwright install --with-deps chromium` and, with no timeout, held the PR's check
+    # `in_progress` for 90 minutes on its way to the 360-minute default — a stuck leg reads
+    # exactly like a slow one, so nobody knows to re-run it. Both jobs run in well under
+    # 10 minutes (ci ~3.5, e2e preview ~5.5, the longer of that matrix's two legs), so this
+    # is roughly triple the real ceiling: generous for a slow runner, decisive for a hang.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -76,6 +83,7 @@ jobs:
   # build, so it would make every run depend on a vendor host being up.
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

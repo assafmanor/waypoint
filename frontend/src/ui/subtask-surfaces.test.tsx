@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
-// **What a task holding a checklist says on the surfaces that render it** (ADR-0196 §3/§6).
+// **What a task holding a checklist says on the surfaces that render it** (ADR-0196 §3/§6,
+// §3 reversed 2026-08-19).
 //
-// The decision under test is that a parent's lead is a **read** rather than a control, and
-// that the same two elements — the arc and the count — carry it on the screen, on a Home band
-// and in a host's section alike. That is the claim the small surfaces make expensive: there is
-// no room for the steps themselves, so if the two elements do not say it, nothing does.
+// The decision under test is that a parent's lead is the ORDINARY tick wearing its progress —
+// the arc reads the fraction and the press answers for every step at once — and that the same
+// two elements, the arc and the count, carry it on the screen, on a Home band and in a host's
+// section alike. That is the claim the small surfaces make expensive: there is no room for the
+// steps themselves, so if the two elements do not say it, nothing does.
 //
-// It is also the assertion that would have caught the shape of bug this feature is most
-// exposed to: a parent offering a press that has nothing to do.
+// The first version of this file asserted the opposite (`queryByRole('button')` null), which
+// is why the reversal is written here rather than only in the ADR: the spec was the decision's
+// only enforcement, so it is the spec that has to change with it.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { TASK_STATUS, type Task, type User } from '@waypoint/shared';
@@ -43,48 +46,47 @@ const task = (over: Partial<Task> & { id: string }): Task =>
     ...over,
   }) as Task;
 
-describe("a parent's leading element is a read, not a control", () => {
-  it('renders no button, so there is no press with nothing to do', () => {
-    render(
-      <TaskTick
-        done={false}
-        title="יציאה לשדה"
-        onTick={vi.fn()}
-        progress={{ done: 2, total: 5 }}
-      />,
-    );
-    expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.getByRole('img').getAttribute('aria-label')).toBe(t.tasks.progress(2, 5));
+const parentTick = (over: Partial<{ done: number; total: number }> = {}, onTick = vi.fn()) => {
+  const progress = { done: 2, total: 5, ...over };
+  render(
+    <TaskTick
+      done={progress.done === progress.total}
+      title="יציאה לשדה"
+      onTick={onTick}
+      progress={progress}
+    />,
+  );
+  return screen.getByRole('button');
+};
+
+describe("a parent's leading element ticks its whole checklist", () => {
+  it('is a control, and its name says what the press does and where it stands', () => {
+    const tick = parentTick();
+    expect(tick.getAttribute('aria-label')).toBe(t.tasks.subtasks.tickAll('יציאה לשדה', 2, 5));
+    expect(tick.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  // The whole point of the reversal: the press exists and it reaches the caller, which is the
+  // one place (`taskVerbs.tickTask`) that knows a parent writes its STEPS rather than itself.
+  it('presses through to the caller', () => {
+    const onTick = vi.fn();
+    fireEvent.click(parentTick({}, onTick));
+    expect(onTick).toHaveBeenCalled();
   });
 
   it('keeps the tick’s own box, so the row does not change shape', () => {
-    render(
-      <TaskTick
-        done={false}
-        title="יציאה לשדה"
-        onTick={vi.fn()}
-        progress={{ done: 2, total: 5 }}
-      />,
-    );
     // The same class the control wears — the arc is a layer on it, not a second control.
-    expect(screen.getByRole('img').className).toContain('tsk-tick');
+    expect(parentTick().className).toContain('tsk-tick');
   });
 
   it('carries the fraction the arc is drawn from', () => {
-    render(
-      <TaskTick
-        done={false}
-        title="יציאה לשדה"
-        onTick={vi.fn()}
-        progress={{ done: 1, total: 4 }}
-      />,
-    );
-    expect(screen.getByRole('img').getAttribute('style')).toContain('0.25');
+    expect(parentTick({ done: 1, total: 4 }).getAttribute('style')).toContain('0.25');
   });
 
-  it('reads as done when every step is', () => {
-    render(<TaskTick done title="יציאה לשדה" onTick={vi.fn()} progress={{ done: 3, total: 3 }} />);
-    expect(screen.getByRole('img').getAttribute('data-done')).toBe('true');
+  it('reads as done when every step is, and offers the way back', () => {
+    const tick = parentTick({ done: 3, total: 3 });
+    expect(tick.getAttribute('data-done')).toBe('true');
+    expect(tick.getAttribute('aria-pressed')).toBe('true');
   });
 
   // `total: 0` is not a parent — this is what keeps every ordinary task's tick a control
