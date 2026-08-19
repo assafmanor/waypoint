@@ -365,3 +365,62 @@ test('✕ removes the step even with words in the box, and writes no rename', as
   // One DELETE and nothing else — the rename it was about to write never happened.
   expect(writes).toEqual(['DELETE']);
 });
+
+// **THE CHIP'S OWN CENTRE MUST BE THE CHIP** (owner, 2026-08-19: _"on an already created sub
+// task you can't reassign … when clicking on the assignee it instead registers as a delete sub
+// task and simply removes it"_).
+//
+// The 44px `::after` reach was displaced instead of centred — `left: 50%` with
+// `translate(50%)` starts the box at the control's centre and pushes it 22px further — so each
+// target sat on its neighbour. Measured before the fix at 390: the chip painted at x 72–98 and
+// `elementFromPoint` at its centre returned `.tsk-kid-x`. Only a browser computes that.
+test('the two controls beside the box own their own targets', async ({ page }) => {
+  await openStepsOf(page, 'יציאה לשדה');
+  await page.getByText('צק-אין אונליין').click({ force: true });
+  await expect(page.getByLabel(t.tasks.subtasks.remove)).toBeVisible();
+
+  const hits = await page.evaluate(() => {
+    const at = (el: Element) => {
+      const b = el.getBoundingClientRect();
+      const found = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      return (found as HTMLElement | null)?.className ?? '';
+    };
+    const box = (el: Element) => {
+      const a = getComputedStyle(el, '::after');
+      return { h: a.height, w: el.getBoundingClientRect().width };
+    };
+    const who = document.querySelector('.tsk-kid-who')!;
+    const x = document.querySelector('.tsk-kid-x')!;
+    return { who: at(who), x: at(x), whoBox: box(who), xBox: box(x) };
+  });
+
+  expect(hits.who).toContain('tsk-kid-who');
+  expect(hits.x).toContain('tsk-kid-x');
+  // …and each still meets ADR-0017's floor in the axis the 26px row is short in.
+  expect(parseFloat(hits.whoBox.h)).toBeGreaterThanOrEqual(44);
+  expect(parseFloat(hits.xBox.h)).toBeGreaterThanOrEqual(44);
+});
+
+// **`ביטול` UNDOES THE CHECKLIST TOO** (owner, 2026-08-19: _"edits to sub tasks take effect
+// even if you canceled the edit … you might've removed a sub task when editing but then
+// changed your mind and canceled, but the sub task was removed anyway"_).
+test('a step removed in the editor and then cancelled is still there', async ({ page }) => {
+  await openStepsOf(page, 'יציאה לשדה');
+  const writes: string[] = [];
+  page.on('request', (r) => r.method() !== 'GET' && writes.push(r.method()));
+
+  await page.getByRole('button', { name: t.tasks.manage.edit }).click();
+  const sheet = page.locator('.task-sheet');
+  await expect(sheet).toBeVisible();
+
+  // Take one out, then change your mind.
+  await sheet.getByText('צק-אין אונליין').click({ force: true });
+  await sheet.getByLabel(t.tasks.subtasks.remove).click({ force: true });
+  await expect(sheet.getByText('צק-אין אונליין')).toHaveCount(0);
+  await page.getByRole('button', { name: t.tasks.sheet.cancel }).click({ force: true });
+
+  // The row's own list still has all five, and nothing was ever sent.
+  await expect(page.locator('.tsk-kids .note-item')).toHaveCount(5);
+  await expect(page.getByText('צק-אין אונליין')).toHaveCount(1);
+  expect(writes).toEqual([]);
+});

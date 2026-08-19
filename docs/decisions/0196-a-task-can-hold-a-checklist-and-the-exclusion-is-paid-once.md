@@ -451,3 +451,30 @@ With an empty box neither happens, which is the _"doesn't ALWAYS work"_.
 **What this says about ADR-0196 §11.** _"The composer row IS the step's editor"_ put a commit-on-blur box in a row with two other controls, and the ADR recorded the blur rule (`useNoteComposer().pending()`'s promise) without noticing that its neighbours are inside the blur's reach. `NoteComposer` has no such neighbours and no `onBlur` at all — its host reads `pending()` at save — so there was no prior art to copy and no guard to inherit. A commit-on-blur field with siblings needs to say what "leaving" means before it can say what leaving does.
 
 **And two notes on testing it,** since both cost a run. jsdom fires no focus at all on `fireEvent.click`, so the unit suite can pin the three guards and never the gesture — the browser case is the whole point here. In that browser case the composer's own `scrollIntoView({ behavior: 'smooth' })` (§13) makes `✕` a moving target that Playwright's scroll-into-view never resolves, **even under `force`**, which skips actionability but still scrolls: the spec asks the browser for `prefers-reduced-motion` instead, which the app already reads.
+
+## Build log addendum (2026-08-19, fifth round) — a target on its neighbour, and a draft that wasn't one
+
+> Owner: _"on an already created sub task you can't reassign (change assignee). When clicking on the assignee it instead registers as a delete sub task and simply removes it."_ and _"When editing a task, edits to sub tasks take effect even if you canceled the edit and didn't save the task edits."_
+
+### The chip's 44px target sat on the ✕
+
+Measured in the running app at 390 before the fix: the chip painted at **x 72–98**, and `document.elementFromPoint` at **its own centre** returned `.tsk-kid-x`. Pressing the assignee really did press remove.
+
+Two mistakes in five lines of CSS, both invisible in source:
+
+- **The overlay was displaced, not centred.** `inset: 50% auto auto 50%` with `transform: translate(50%, -50%)` starts the box at the control's centre and then pushes it 22px further along, so each control's target sat 22–66px to the _side_ of the control it belongs to. Centring wants `translate(-50%, …)`; the value here reads like a copy from a rule anchored with `right` rather than `left`.
+- **It was given a width at all.** The recipe it cites — `row-open.css`'s — reaches 44px in the **block** axis only (`inset: 50% 0 auto 0`), keeping the control's own width. That is not an accident of that rule, it is what stops two controls 6px apart from swallowing each other. A 44px-wide target on a 26px control with a 6px gap overlaps its neighbour by 12px **by construction**, before any displacement.
+
+Both restored: 26 wide × 44 tall each, plus 10px between the two so a fingertip landing between them resolves to one rather than to whichever paints on top. The row is 26px tall, so the block axis is where ADR-0017's floor actually bites.
+
+**It only ever showed on an existing step**, because `✕` is the neighbour and it renders only while a step is being edited. The add row has the chip alone, which is why every earlier test of the chip passed.
+
+### The checklist was the one field `ביטול` did not undo
+
+§12 wrote a step through the moment it was typed on an edit, reasoning that the parent already has an id so there is nothing to wait for. **True about the id and wrong about the form.** Cancel is a promise about everything the sheet holds, and a field that has already written is not a draft — so a step you removed and then thought better of was gone anyway.
+
+Now both modes stage. The sheet holds `StepDraft[]` — an existing row keeps its id, a new one has none — seeded **once** from trip state, and the save computes a **diff** (`planSteps`): drop what left the list, patch what changed, add what has no id. Ticking a step in the sheet is staged too, or cancel would not undo that either; and with the whole list a draft, a create can offer the tick as well, which §12 had refused because "completing something unsaved is a state with nowhere to live".
+
+Seeded once is deliberate and is the trade this makes: a peer's change to a step mid-edit does not reach back into a form someone is typing in, exactly as it does not for the title.
+
+**What this says about §12.** Its sentence _"on an EDIT the steps are trip state and write immediately — the same immediacy the tick has"_ read as symmetry and was a category error: the tick lives on a **row**, which has no cancel, and the checklist lives in a **form**, which does. Immediacy is a property of the surface, not of the field.

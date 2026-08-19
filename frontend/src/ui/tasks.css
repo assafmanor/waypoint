@@ -408,7 +408,22 @@
 }
 /* The two controls beside the input: who owes this step, and remove it. 26px of paint with a
    44px `::after` reach — `row-open.css`'s own recipe, which holds a 44px target under a small
-   control without the line taking 44px of the block (ADR-0017). */
+   control without the line taking 44px of the block (ADR-0017).
+
+   **AND THE FIRST COPY OF IT REACHED SIDEWAYS, ONTO ITS NEIGHBOUR** (owner, 2026-08-19: _"on
+   an already created sub task you can't reassign … when clicking on the assignee it instead
+   registers as a delete sub task and simply removes it"_). Measured in the running app at 390:
+   the chip painted at x 72–98 and `elementFromPoint` at its own centre returned `.tsk-kid-x`.
+
+   Two mistakes in five lines. The overlay was **displaced** rather than centred — `left: 50%`
+   with `translate(50%)` starts the box at the control's centre and then pushes it 22px further
+   right, so each target sat 22–66px to the side of the control it belongs to. And it was given
+   a **width** at all: the recipe it cites reaches 44px in the BLOCK axis only (`inset: 50% 0
+   auto 0`), keeping the control's own width, which is exactly what stops two controls 6px
+   apart from swallowing each other. Both are restored here.
+
+   It only ever showed on an existing step, because `✕` is the neighbour and it renders only
+   while a step is being edited — the add row has the chip alone and worked. */
 .tsk-kid-who,
 .tsk-kid-x {
   position: relative;
@@ -427,10 +442,16 @@
 .tsk-kid-x::after {
   content: '';
   position: absolute;
-  inset: 50% auto auto 50%;
-  transform: translate(50%, -50%);
-  width: 44px;
+  inset: 50% 0 auto 0;
+  transform: translateY(-50%);
   height: 44px;
+}
+/* The row is 26px tall, so the block axis is where the floor bites and where the reach above
+   goes. Across, the two controls stay their own width and take a little more air between them
+   than the 6px the row gives everything else — enough that a fingertip landing between them
+   resolves to one of them rather than to whichever is on top. */
+.tsk-kid-who {
+  margin-inline-end: 10px;
 }
 .tsk-kid-x .icon {
   width: 15px;
