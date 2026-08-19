@@ -419,7 +419,13 @@ test('a step removed in the editor and then cancelled is still there', async ({ 
   await expect(sheet.getByText('צק-אין אונליין')).toHaveCount(0);
   await page.getByRole('button', { name: t.tasks.sheet.cancel }).click({ force: true });
 
-  // The row's own list still has all five, and nothing was ever sent.
+  // **Leaving with an unsaved change asks first now** — the checklist is a draft, so removing
+  // a step is exactly the kind of edit the discard guard exists for.
+  await expect(page.getByText(t.common.discardTitle)).toBeVisible();
+  await page.getByRole('button', { name: t.common.discardConfirm }).click({ force: true });
+
+  // The sheet is gone, the row's own list still has all five, and nothing was ever sent.
+  await expect(sheet).toHaveCount(0);
   await expect(page.locator('.tsk-kids .note-item')).toHaveCount(5);
   await expect(page.getByText('צק-אין אונליין')).toHaveCount(1);
   expect(writes).toEqual([]);

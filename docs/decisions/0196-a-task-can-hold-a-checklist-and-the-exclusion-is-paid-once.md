@@ -478,3 +478,19 @@ Now both modes stage. The sheet holds `StepDraft[]` — an existing row keeps it
 Seeded once is deliberate and is the trade this makes: a peer's change to a step mid-edit does not reach back into a form someone is typing in, exactly as it does not for the title.
 
 **What this says about §12.** Its sentence _"on an EDIT the steps are trip state and write immediately — the same immediacy the tick has"_ read as symmetry and was a category error: the tick lives on a **row**, which has no cancel, and the checklist lives in a **form**, which does. Immediacy is a property of the surface, not of the field.
+
+## Build log addendum (2026-08-19, sixth round) — the editor asks before discarding
+
+> Owner: _"We need to add the 'are you sure' for canceling a task create/edit when there are changes. Be wary of popping this up when not needed, read issues that we had with other kinds of entities regarding that."_
+
+`TaskSheet` was the one authoring form without the guard. It now uses the shipped one — `useUnsavedGuard(dirty)` on both close paths (`Sheet`'s `onClose`, which is also the backdrop, Escape and system back, and the `ביטול` action), rendering the shared `tone="danger"` `ConfirmDialog` with `t.common.discard*`. No new mechanism, no new words.
+
+**The warning is the interesting half, and the issue it refers to is on the record.** [ADR-0136](0136-an-event-can-also-be-booked.md)'s session-188 follow-up: `EventForm`'s `dirty` read `booked.touched`, which was a fair reading of "the human turned this on" while the flag could only mean that — and the same amendment redefined it as _the category may no longer move this_, true from the first render of every existing event. So **every** edit of **every** event opened dirty and the confirm fired on a form nobody had typed in; worst in Plan mode, where a tap on a row **is** the edit form and backing out of one costs a dialog. `BookingSheet` states the resulting rule as _"`iconTouched`/`kindTouched` are not state the user typed, so they are not part of dirtiness"_.
+
+So three things here, in the order they matter:
+
+- **Values only, diffed against a baseline captured ONCE** — `BookingSheet`'s "the same blob the fields were seeded from, so what did this open with has exactly one answer". This form has no derived field and reads no `touched` flag, and the comment beside the baseline says so, because the next field added is where that would go wrong.
+- **`composing` is deliberately not in it.** Revealing the composer is not an edit, and this form has a control whose entire job is to reveal it — pressing `＋ תת משימה`, thinking better of it and leaving must be silent. That is the false positive this form was most exposed to.
+- **The steps are diffed by the same `planSteps` the save runs**, so "is this dirty" and "what would be written" cannot drift apart.
+
+**And capturing the baseline found a real bug in the previous round's staging.** The save was diffing against `subtasks.get(task.id)` — **live** trip state — so a step a peer added while the sheet was open read as a step this draft had removed, and saving anything at all would have **deleted it**. Diffing against what the form opened with leaves it alone. Both halves are pinned by tests that fail against the live-state version.

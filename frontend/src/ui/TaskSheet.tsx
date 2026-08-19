@@ -93,6 +93,8 @@ import { assigneeFromChoice, choiceFromAssignee, useAssigneeOptions } from './as
 import { ToggleChip } from './primitives/ToggleChip';
 import { Icon } from './Icon';
 import { useFormErrors } from './primitives/useFormErrors';
+import { ConfirmDialog } from './primitives/ConfirmDialog';
+import { useUnsavedGuard } from '../lib/useUnsavedGuard';
 import { t } from '../i18n/he';
 import './tasks.css';
 
@@ -234,6 +236,55 @@ export function TaskSheet({
     task?.dueAt && task.dueHasTime ? isoToTimeInput(task.dueAt, initialZone) : '',
   );
 
+  /** **What this form opened with, captured ONCE** — so "did the user change anything?" has
+   *  exactly one answer, and it is the answer `BookingSheet` already states for its own dirty
+   *  check: diff against the same blob the fields were seeded from.
+   *
+   *  **The trap this repo has already paid for is diffing against a FLAG instead of a value**
+   *  ([ADR-0136](…)'s session-188 follow-up). `EventForm` read `booked.touched`, which a later
+   *  amendment redefined as "the category may no longer move this" — true from the first
+   *  render of every existing event — so every edit opened dirty and the discard confirm fired
+   *  on a form nobody had typed in, worst in Plan mode where a tap on a row IS the edit form.
+   *  Nothing here reads a `touched` flag, and nothing here should: this form has no derived
+   *  field, so every entry below is a value the user can see.
+   *
+   *  **And the steps baseline is load-bearing twice.** `subtasks` is live trip state, so a peer
+   *  adding a step mid-edit changes it under the form. Diffing the save against the live list
+   *  would then read that step as one this draft removed and DELETE it; diffing against what
+   *  the form opened with leaves it alone, which is also what stops the same arrival from
+   *  making an untouched form dirty. */
+  const [initial] = useState(() => ({
+    title: task?.title ?? '',
+    body: task?.body ?? '',
+    important: task?.important ?? false,
+    assignee: choiceFromAssignee(task?.assigneeUserId),
+    override: task?.displayTimezone ?? null,
+    date: task?.dueAt ? todayInTz(initialZone, new Date(task.dueAt)) : '',
+    time: task?.dueAt && task.dueHasTime ? isoToTimeInput(task.dueAt, initialZone) : '',
+    steps: task ? (subtasks.get(task.id) ?? []) : [],
+  }));
+
+  /** **Only values, and only ones the user can see changing.** `composing` is not here on
+   *  purpose: revealing the composer is not an edit, and a confirm on the way out of a form
+   *  where someone pressed `＋ תת משימה` and then thought better of it is the false positive
+   *  this whole check has to avoid. The steps are diffed by the same `planSteps` the save runs,
+   *  so "dirty" and "what would be written" cannot disagree. */
+  const stepPlan = planSteps(initial.steps, steps);
+  const dirty =
+    title !== initial.title ||
+    body !== initial.body ||
+    important !== initial.important ||
+    assignee !== initial.assignee ||
+    override !== initial.override ||
+    date !== initial.date ||
+    time !== initial.time ||
+    stepPlan.add.length > 0 ||
+    stepPlan.edit.length > 0 ||
+    stepPlan.drop.length > 0;
+
+  const { guardedClose, prompting, confirmDiscard, cancelDiscard } = useUnsavedGuard(dirty);
+  const requestClose = () => guardedClose(onClose);
+
   // Live, because both halves feed it: a date decides which itinerary segment the deadline
   // falls in, and a time decides it near a crossing.
   const zone = override ?? (date ? authoringZone({}, { date, time }, zoneEvidence) : trip.timezone);
@@ -303,10 +354,10 @@ export function TaskSheet({
     // the plan's `add` rides the draft out and the host writes it after the parent resolves
     // (the outbox is FIFO — a step queued first would reach a server that cannot see it).
     if (task) {
-      const plan = planSteps(subtasks.get(task.id) ?? [], steps);
-      for (const id of plan.drop) void taskVerbs.deleteTask(id);
-      for (const { id, patch } of plan.edit) void taskVerbs.updateTask(id, patch);
-      for (const draft of plan.add) void taskVerbs.createTask({ ...draft, parentTaskId: task.id });
+      for (const id of stepPlan.drop) void taskVerbs.deleteTask(id);
+      for (const { id, patch } of stepPlan.edit) void taskVerbs.updateTask(id, patch);
+      for (const draft of stepPlan.add)
+        void taskVerbs.createTask({ ...draft, parentTaskId: task.id });
     }
     onSave({
       // On a create this is what the host writes after the parent, inside the same change
@@ -345,8 +396,12 @@ export function TaskSheet({
   const assigneeOptions = useAssigneeOptions();
 
   return (
-    <Sheet title={task ? t.tasks.sheet.editTitle : t.tasks.sheet.createTitle} onClose={onClose}>
-      {/* **`modal-form` is what makes this sheet reachable** (owner, 2026-08-16: the editor is
+    <>
+      <Sheet
+        title={task ? t.tasks.sheet.editTitle : t.tasks.sheet.createTitle}
+        onClose={requestClose}
+      >
+        {/* **`modal-form` is what makes this sheet reachable** (owner, 2026-08-16: the editor is
           "cut off from the top"). `Sheet` bottom-anchors its card and caps NOTHING, so a form
           taller than the viewport grows past the top edge with no scroll to get back — and a
           phone keyboard is exactly what makes the viewport short enough. Measured at 401px of
@@ -356,127 +411,127 @@ export function TaskSheet({
           `.modal-form` is the shipped answer to precisely this (`form-actions.css`: "the
           scroll container the sticky action bar pins to") and `EventForm` has used it since
           U-01. This is a second consumer, not a new mechanism. */}
-      <div className="task-sheet modal-form">
-        <Field label={t.tasks.sheet.titleLabel} htmlFor={titleId} {...errors.field('title')}>
-          <input
-            id={titleId}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={t.tasks.sheet.titlePlaceholder}
-          />
-        </Field>
+        <div className="task-sheet modal-form">
+          <Field label={t.tasks.sheet.titleLabel} htmlFor={titleId} {...errors.field('title')}>
+            <input
+              id={titleId}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={t.tasks.sheet.titlePlaceholder}
+            />
+          </Field>
 
-        {/* An undated task is legitimate (brief §5), so the resting state of this row is
+          {/* An undated task is legitimate (brief §5), so the resting state of this row is
             empty and inviting rather than pre-filled with today. The time token only exists
             once a day does — an hour with no day is not a deadline. */}
-        <Field label={t.tasks.sheet.dueLabel}>
-          <div className="tsk-when">
-            <DateField
-              className="vt vt-date"
-              format="named"
-              value={date}
-              onChange={setDate}
-              placeholder={t.tasks.sheet.addDate}
-            />
-            {date && (
-              <TimeField
-                value={time}
-                onChange={setTime}
-                label={t.tasks.sheet.timeLabel}
-                placeholder={t.tasks.sheet.addTime}
-                onClear={() => setTime('')}
+          <Field label={t.tasks.sheet.dueLabel}>
+            <div className="tsk-when">
+              <DateField
+                className="vt vt-date"
+                format="named"
+                value={date}
+                onChange={setDate}
+                placeholder={t.tasks.sheet.addDate}
+              />
+              {date && (
+                <TimeField
+                  value={time}
+                  onChange={setTime}
+                  label={t.tasks.sheet.timeLabel}
+                  placeholder={t.tasks.sheet.addTime}
+                  onClear={() => setTime('')}
+                />
+              )}
+              {date && (
+                <button
+                  type="button"
+                  className="tsk-when-clear"
+                  onClick={() => {
+                    setDate('');
+                    setTime('');
+                  }}
+                >
+                  {t.tasks.sheet.clearDue}
+                </button>
+              )}
+            </div>
+            {/* Stated, not correctable — see the header. Only once a time is typed: a
+              date-only deadline has no wall-clock a zone could move. */}
+            {date && time && (
+              <ZoneChip
+                value={zone}
+                // Selectable now (owner, 2026-08-17: the same way as the event and booking
+                // forms). `EventForm` withholds `onChange` once a PLACE decides the zone,
+                // because correcting it there is the honest edit — a task has no place, so
+                // there is nothing that could out-rank the pin and the chip is always
+                // offered.
+                onChange={setOverride}
+                pinned={override != null}
+                suggested={suggestedZones}
               />
             )}
-            {date && (
-              <button
-                type="button"
-                className="tsk-when-clear"
-                onClick={() => {
-                  setDate('');
-                  setTime('');
-                }}
-              >
-                {t.tasks.sheet.clearDue}
-              </button>
-            )}
-          </div>
-          {/* Stated, not correctable — see the header. Only once a time is typed: a
-              date-only deadline has no wall-clock a zone could move. */}
-          {date && time && (
-            <ZoneChip
-              value={zone}
-              // Selectable now (owner, 2026-08-17: the same way as the event and booking
-              // forms). `EventForm` withholds `onChange` once a PLACE decides the zone,
-              // because correcting it there is the honest edit — a task has no place, so
-              // there is nothing that could out-rank the pin and the chip is always
-              // offered.
-              onChange={setOverride}
-              pinned={override != null}
-              suggested={suggestedZones}
-            />
-          )}
-        </Field>
+          </Field>
 
-        <Field label={t.tasks.sheet.assigneeLabel}>
-          {/* The density wrapper is how a NEW host meets the 44px floor without moving the
+          <Field label={t.tasks.sheet.assigneeLabel}>
+            {/* The density wrapper is how a NEW host meets the 44px floor without moving the
               three shipped surfaces that share `.choice-pill` — `choice-grid.css` records
               that deferral in place, and `.category-pills` is the same pattern. */}
-          <div className="tsk-who">
-            <ChoiceGrid
-              options={assigneeOptions}
-              value={assignee}
-              onChange={setAssignee}
-              layout="pills"
-              ariaLabel={t.tasks.sheet.assigneeLabel}
-            />
-          </div>
-        </Field>
+            <div className="tsk-who">
+              <ChoiceGrid
+                options={assigneeOptions}
+                value={assignee}
+                onChange={setAssignee}
+                layout="pills"
+                ariaLabel={t.tasks.sheet.assigneeLabel}
+              />
+            </div>
+          </Field>
 
-        {/* **THE CHECKLIST, FOURTH** (ADR-0196 §12). Its empty state is a control that
+          {/* **THE CHECKLIST, FOURTH** (ADR-0196 §12). Its empty state is a control that
             reveals rather than a box standing open — this form's own idiom, where `עד מתי`
             rests as `הוספת תאריך`. */}
-        <Field
-          label={
-            stepRows.length
-              ? `${t.tasks.sheet.subtasksLabel} · ${ltrIsolate(`${stepsDone}/${stepRows.length}`)}`
-              : t.tasks.sheet.subtasksLabel
-          }
-        >
-          {stepRows.length > 0 || composing ? (
-            <SubtaskList
-              steps={stepRows}
-              users={users}
-              // The reveal decides the empty field only. Once there ARE steps the field is
-              // already a list, so the composer costs it nothing and a checklist is written
-              // in a burst rather than one reveal per step.
-              open={composing || stepRows.length > 0}
-              variant="form"
-              onAdd={addStep}
-              onRename={renameStep}
-              // Staged like every other edit in this sheet, so `ביטול` undoes a tick too.
-              // Offered on a create as well now: with the whole list a draft, a step ticked
-              // before its parent exists is no longer a state with nowhere to live.
-              onTick={tickStep}
-              onRemove={removeStep}
+          <Field
+            label={
+              stepRows.length
+                ? `${t.tasks.sheet.subtasksLabel} · ${ltrIsolate(`${stepsDone}/${stepRows.length}`)}`
+                : t.tasks.sheet.subtasksLabel
+            }
+          >
+            {stepRows.length > 0 || composing ? (
+              <SubtaskList
+                steps={stepRows}
+                users={users}
+                // The reveal decides the empty field only. Once there ARE steps the field is
+                // already a list, so the composer costs it nothing and a checklist is written
+                // in a burst rather than one reveal per step.
+                open={composing || stepRows.length > 0}
+                variant="form"
+                onAdd={addStep}
+                onRename={renameStep}
+                // Staged like every other edit in this sheet, so `ביטול` undoes a tick too.
+                // Offered on a create as well now: with the whole list a draft, a step ticked
+                // before its parent exists is no longer a state with nowhere to live.
+                onTick={tickStep}
+                onRemove={removeStep}
+              />
+            ) : (
+              <button type="button" className="vt" onClick={() => setComposing(true)}>
+                ＋ {t.tasks.subtasks.add}
+              </button>
+            )}
+          </Field>
+
+          <Field label={t.tasks.sheet.bodyLabel} htmlFor={bodyId}>
+            <textarea
+              id={bodyId}
+              rows={3}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={t.tasks.sheet.bodyPlaceholder}
             />
-          ) : (
-            <button type="button" className="vt" onClick={() => setComposing(true)}>
-              ＋ {t.tasks.subtasks.add}
-            </button>
-          )}
-        </Field>
+          </Field>
 
-        <Field label={t.tasks.sheet.bodyLabel} htmlFor={bodyId}>
-          <textarea
-            id={bodyId}
-            rows={3}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder={t.tasks.sheet.bodyPlaceholder}
-          />
-        </Field>
-
-        {/* One flag, not a three-tier enum, and it spends no colour — rule 4 has none left
+          {/* One flag, not a three-tier enum, and it spends no colour — rule 4 has none left
             (brief §7). The prominence it buys is in the SORT, where `important` lifts a task
             within its urgency band and never across it.
 
@@ -489,24 +544,40 @@ export function TaskSheet({
 
             NO `field-label`: the button says `חשוב`, and a label above it saying the same
             word is that word twice for 20px. */}
-        <div className="field">
-          <ToggleChip
-            on={important}
-            tone="cta"
-            size="touch"
-            className="tsk-flag"
-            onClick={() => setImportant(!important)}
-          >
-            <Icon name="star" />
-            {t.tasks.sheet.importantLabel}
-          </ToggleChip>
-        </div>
+          <div className="field">
+            <ToggleChip
+              on={important}
+              tone="cta"
+              size="touch"
+              className="tsk-flag"
+              onClick={() => setImportant(!important)}
+            >
+              <Icon name="star" />
+              {t.tasks.sheet.importantLabel}
+            </ToggleChip>
+          </div>
 
-        <FormActions
-          primary={{ label: t.tasks.sheet.save, onClick: save }}
-          secondary={{ label: t.tasks.sheet.cancel, onClick: onClose }}
+          <FormActions
+            primary={{ label: t.tasks.sheet.save, onClick: save }}
+            secondary={{ label: t.tasks.sheet.cancel, onClick: requestClose }}
+          />
+        </div>
+      </Sheet>
+
+      {/* The shipped discard confirm, verbatim — `tone="danger"`, the shared `t.common.discard*`
+          copy, and `useUnsavedGuard` deciding when. A third form does not get its own words for
+          this (ADR-0079's one-primitive rule). */}
+      {prompting && (
+        <ConfirmDialog
+          tone="danger"
+          title={t.common.discardTitle}
+          body={t.common.discardBody}
+          confirmLabel={t.common.discardConfirm}
+          cancelLabel={t.common.discardCancel}
+          onConfirm={confirmDiscard}
+          onCancel={cancelDiscard}
         />
-      </div>
-    </Sheet>
+      )}
+    </>
   );
 }
