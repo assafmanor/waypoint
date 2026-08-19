@@ -83,7 +83,9 @@ jobs:
   # build, so it would make every run depend on a vendor host being up.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Higher than `ci`'s because this job may spend up to 12 minutes on the two browser-install
+    # attempts above before a single test runs. Still a hang-catcher, not a budget.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -104,19 +106,26 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @waypoint/shared build
-      # **A stalled browser install retries instead of eating the leg** (2026-08-19, twice in
-      # one day). `--with-deps` runs `apt-get` and then fetches Chromium, and both are network:
-      # when one stalls the step produces no output and no error, so the leg sat `in_progress`
-      # until the job cap killed it — and a stuck leg is indistinguishable from a slow one
-      # while it runs. Successful installs here take under 3.5 minutes, so 5 is generous and
-      # two attempts stay inside the 20-minute job cap with the tests still to run.
-      - name: Install Chromium (retried — the install stalls, not the tests)
+      # **The browser install is the flaky step, and `apt` is the flaky half of it** (2026-08-19,
+      # three times in one day). `--with-deps` runs `apt-get update` before fetching Chromium,
+      # and the runner's `azure.archive.ubuntu.com` mirror stalls: the log shows minutes of
+      # `Ign:` retries before it falls back to `archive.ubuntu.com`. With no timeout the leg sat
+      # until the job cap killed it; with a naive `timeout` + retry it got worse, because
+      # `timeout` signals only its direct child — the orphaned `apt-get` kept the lock and the
+      # second attempt died instantly on `Could not get lock /var/lib/apt/lists/lock`.
+      #
+      # So the retry drops `--with-deps` rather than repeating it. The system libraries either
+      # landed in the first attempt or ship with the runner image; what has never failed is
+      # fetching the browser itself. The leftover `apt-get` is killed first either way, because
+      # that is what made attempt two unwinnable.
+      - name: Install Chromium (apt is the flaky half; the retry skips it)
         run: |
-          for attempt in 1 2; do
-            if timeout 300 pnpm --filter @waypoint/frontend exec playwright install --with-deps chromium; then
-              exit 0
-            fi
-            echo "::warning::playwright install attempt $attempt stalled or failed; retrying"
-          done
-          exit 1
+          if timeout 420 pnpm --filter @waypoint/frontend exec playwright install --with-deps chromium; then
+            exit 0
+          fi
+          echo "::warning::playwright install --with-deps stalled or failed; retrying without apt"
+          sudo pkill -9 -f apt-get || true
+          sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock || true
+          sleep 10
+          timeout 300 pnpm --filter @waypoint/frontend exec playwright install chromium
       - run: pnpm --filter @waypoint/frontend e2e
