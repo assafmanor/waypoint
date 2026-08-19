@@ -36,13 +36,24 @@ export class TasksService {
     await this.assertParent(tripId, input.parentTaskId);
     const id = input.id ?? randomUUID();
     try {
-      const { entity } = await this.changes.mutate({
+      // `mutate<PrismaTask>` explicitly: with two unannotated closures the compiler has
+      // nothing to infer `T` from and both land on `unknown` — the trap `ChangePayload`'s
+      // own comment records.
+      const { entity } = await this.changes.mutate<PrismaTask>({
         tripId,
         actorUserId,
         entityType: ENTITY_TYPE.TASK,
         entityId: id,
         action: 'create',
-        after: input,
+        // **The ROW, not the input** (owner, 2026-08-19: a peer's fresh sub-task arrived
+        // ticked). A peer merges `after` over whatever it already holds, and on a create it
+        // holds nothing — so an `after` that is the INPUT delivers a row missing every field
+        // the server defaults. For a task that includes `status`, and `isSettled` read the
+        // absence as settled: the step rendered struck through with a green ✓, counted as done
+        // in its parent's fraction, and vanished from `שלי`, until a reload replaced it with
+        // the real row. `mutate` already takes a function of the applied entity for exactly
+        // this; `bookings.service` already sends a DTO the same way.
+        after: (entity) => toTaskDto(entity),
         apply: (tx) =>
           tx.task.create({
             data: {

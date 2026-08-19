@@ -85,7 +85,21 @@ export function taskBand(task: Task, clock: TaskClock): TaskBand {
   return todayInTz(readerZone, new Date(dueMs)) === today ? TASK_BAND.TODAY : TASK_BAND.LATER;
 }
 
-export const isSettled = (task: Task): boolean => task.status !== TASK_STATUS.OPEN;
+/** **Settled is stated, not inferred from "not open"** (owner, 2026-08-19: a peer's fresh
+ *  sub-task arrived ticked).
+ *
+ *  The two forms are identical for a well-formed row — there are three statuses — and they
+ *  part company on a row that carries none, which is exactly what a peer's create used to
+ *  deliver: `applyControlChangeToList` merges `Change.after` over what it already holds, and
+ *  on a create it holds nothing. `!== OPEN` then answered **true** for every one of this
+ *  file's twenty-two call sites at once: the step drew struck through with a green ✓, counted
+ *  as done in its parent's fraction, and dropped out of `שלי`.
+ *
+ *  The server now sends the whole row (`tasks.service`'s create), which is the real fix. This
+ *  is the direction the client should fail in anyway: a row it cannot read is work still to
+ *  do, never work quietly marked finished. */
+export const isSettled = (task: Task): boolean =>
+  task.status === TASK_STATUS.DONE || task.status === TASK_STATUS.DISMISSED;
 
 // ── SUB-TASKS (ADR-0196) ────────────────────────────────────────────────────────────────
 // **The whole feature is one split, paid once.** Everything below this comment exists so

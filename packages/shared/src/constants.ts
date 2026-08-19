@@ -200,12 +200,14 @@ export const TASK_DERIVED_KEY = {
 /** **How many steps one task may hold** (ADR-0196 §1). Refused at the editor with a
  *  sentence rather than silently truncated.
  *
- *  Twenty, from a measurement rather than a feeling: a step row costs **26.8px**, so twenty
- *  is 536px — the whole of a 640px viewport, and the point past which the unbounded-`Sheet`
- *  item on the backlog stops being theoretical. Here rather than in the frontend because the
- *  server refuses the twenty-first too: a cap only the client knows is a cap the outbox can
- *  replay past. */
-export const TASK_SUBTASK_CAP = 20;
+ *  **Thirty** (owner's call, 2026-08-19, raised from twenty). The original number came from a
+ *  measurement — a step row costs **26.8px**, so twenty is 536px, the whole of a 640px
+ *  viewport — and that measurement answered the wrong question: how many steps fit on one
+ *  screen, not how many a packing list has. A real one runs past twenty, and the open region
+ *  scrolls. What the cap is actually for is the runaway case, which is far above either
+ *  figure. Here rather than in the frontend because the server refuses the thirty-first too:
+ *  a cap only the client knows is a cap the outbox can replay past. */
+export const TASK_SUBTASK_CAP = 30;
 
 /** Where a note came from (ADR-0152 §1). One value in v1 — §9 registers no strategy. */
 export const NOTE_SOURCE = {

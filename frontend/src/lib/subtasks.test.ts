@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { CHANGE_ACTION, ENTITY_TYPE, TASK_STATUS, type Task } from '@waypoint/shared';
 import {
   dropTasksForHostChange,
+  isSettled,
   isSubtask,
   planSubtaskTick,
   splitSubtasks,
@@ -206,5 +207,34 @@ describe("planSubtaskTick — a parent's tick is a verb over its steps", () => {
 
   it('writes nothing when there is nothing to write', () => {
     expect(planSubtaskTick([]).steps).toEqual([]);
+  });
+});
+
+describe("a peer's step arrives before the whole row does", () => {
+  // **The shape `applyControlChangeToList` produces on a CREATE** (owner, 2026-08-19: a
+  // sub-task added by someone else "appear[s] as ticked … after restart they appear unticked
+  // as expected"). `Change.after` is merged over what the client already holds, and on a
+  // create it holds nothing — so before the server was fixed to send the whole row, a peer's
+  // step landed carrying only what the author typed.
+  const partial = { id: 's1', tripId: 'trip', title: 'מטענים', parentTaskId: 'p' } as Task;
+
+  // `!== TASK_STATUS.OPEN` answered TRUE here, and `isSettled` has twenty-two call sites.
+  it('is not settled merely because nothing says it is open', () => {
+    expect(isSettled(partial)).toBe(false);
+  });
+
+  it('does not count towards its parent’s fraction', () => {
+    expect(subtaskProgress([partial, step('s2')])).toEqual({ done: 0, total: 2 });
+  });
+
+  // The one with teeth: the LAST step arriving status-less would otherwise close the parent.
+  it('does not close its parent', () => {
+    const [root] = splitSubtasks([parent, done('s1'), partial]).roots;
+    expect(root.status).toBe(TASK_STATUS.OPEN);
+  });
+
+  it('is still work I owe when it is mine', () => {
+    const mine = new Map([['p', [{ ...partial, assigneeUserId: 'me' } as Task]]]);
+    expect(taskMatchesFacet(parent, TASK_FACET.MINE, 'me', mine)).toBe(true);
   });
 });
