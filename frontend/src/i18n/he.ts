@@ -1219,6 +1219,14 @@ export const t = {
       assign: 'מי אחראי לתת המשימה',
       /** Refused at the cap rather than silently truncated (`TASK_SUBTASK_CAP`). */
       full: (n: number) => `אפשר עד ${n} תתי משימות במשימה אחת`,
+      /** **The parent's own tick** (ADR-0196 §3, reversed 2026-08-19). It is a control again,
+       *  so it is named for what pressing it does — and the fraction stays in the name,
+       *  because for a reader who cannot see the arc the name is the only place it was. */
+      tickAll: (title: string, done: number, total: number) =>
+        `סימון כל תתי המשימות של «${title}» · הושלמו ${done} מתוך ${total}`,
+      /** One press writes several rows, so it is confirmed once and undoable once. */
+      allTicked: (n: number) => (n === 1 ? 'תת משימה אחת סומנה' : `${n} תתי משימות סומנו`),
+      allReopened: (n: number) => (n === 1 ? 'תת משימה אחת הוחזרה' : `${n} תתי משימות הוחזרו`),
     },
     manage: {
       actions: 'פעולות על המשימה',

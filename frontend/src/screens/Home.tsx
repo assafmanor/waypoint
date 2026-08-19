@@ -39,7 +39,7 @@ import {
 } from '../ui/domain';
 import { useClock } from '../lib/useClock';
 import { hotelWifi, nextCodedBooking } from '../lib/home-quick';
-import { orderTaskRows, tasksDueSoon, tickedStatus, type TaskClock } from '../lib/tasks';
+import { orderTaskRows, tasksDueSoon, type TaskClock } from '../lib/tasks';
 import { TripHomeTaskBand } from '../ui/TripHomeTaskBand';
 import {
   dayZoneContext,
@@ -803,7 +803,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
         users={users}
         subtasks={subtasks}
         clock={taskClock}
-        onTick={(task) => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
+        onTick={(task) => void taskVerbs.tickTask(task)}
         // Both land on the tasks SCREEN, not the Index landing — through the same
         // `focus` deep-link the quick tiles above already use (ADR-0050), so back
         // resolves exactly as it does from every other tile.

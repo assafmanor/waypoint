@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { TASK_STATUS, type Task } from '@waypoint/shared';
-import { splitSubtasks } from '../lib/tasks';
+import { splitSubtasks, tickedStatus } from '../lib/tasks';
 
 const NOW = new Date('2026-08-15T09:00:00.000Z');
 
@@ -54,6 +54,10 @@ vi.mock('../state/trip-state', () => ({
       createTask: async (input: unknown) => void created.push(input),
       updateTask: async (id: string, input: unknown) => void updated.push({ id, input }),
       deleteTask: async () => {},
+      // A leaf's tick is unchanged by ADR-0196 §3's reversal, so the stand-in is the verb's
+      // own leaf branch: what this spec tests is the surface's wiring, not the verb.
+      tickTask: async (task: Task) =>
+        void updated.push({ id: task.id, input: { status: tickedStatus(task) } }),
     },
   }),
 }));

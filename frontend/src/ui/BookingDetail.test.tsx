@@ -66,6 +66,7 @@ vi.mock('../state/trip-state', () => ({
       createTask: async () => undefined,
       updateTask: async () => {},
       deleteTask: async () => {},
+      tickTask: async () => {},
     },
     documents: [],
     // The attachment link list every documents surface reads (ADR-0173/0174).

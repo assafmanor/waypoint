@@ -30,6 +30,7 @@ vi.mock('../state/trip-state', () => ({
       createTask: async () => undefined,
       updateTask: async () => {},
       deleteTask: async () => {},
+      tickTask: async () => {},
     },
     // Built from this file's own fixtures, so the pairing is real rather than stubbed —
     // which is the whole point of the booked-event case below.

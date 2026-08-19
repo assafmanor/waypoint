@@ -11,6 +11,7 @@ import { CHANGE_ACTION, ENTITY_TYPE, TASK_STATUS, type Task } from '@waypoint/sh
 import {
   dropTasksForHostChange,
   isSubtask,
+  planSubtaskTick,
   splitSubtasks,
   subtaskProgress,
   TASK_FACET,
@@ -172,5 +173,38 @@ describe('a deleted parent takes its steps with it, in the client', () => {
       entityId: 'e1',
     });
     expect(next.map((r) => r.id)).toEqual(['b']);
+  });
+});
+
+describe("planSubtaskTick — a parent's tick is a verb over its steps", () => {
+  // The reversal (2026-08-19, owner: "you should be able to tick the parent task to mark all
+  // as complete"). §3 had drawn the parent's lead as a read; what it missed is that a
+  // checklist has an obvious bulk verb and the ring is where a hand reaches for it.
+  it('settles every step that is still open, and only those', () => {
+    const plan = planSubtaskTick([done('s1'), step('s2'), step('s3')]);
+    expect(plan.status).toBe(TASK_STATUS.DONE);
+    expect(plan.steps.map((x) => x.id)).toEqual(['s2', 's3']);
+  });
+
+  it('reopens them once every one is settled — the same control, both ways', () => {
+    const plan = planSubtaskTick([done('s1'), done('s2')]);
+    expect(plan.status).toBe(TASK_STATUS.OPEN);
+    expect(plan.steps.map((x) => x.id)).toEqual(['s1', 's2']);
+  });
+
+  // `dismissed` is the one human answer no derivation produces (the predicate
+  // `automatic-tasks.ts` ships). A bulk verb that swept it up would erase a decision, so it
+  // is untouched going out AND coming back — which is also what keeps the parent's derived
+  // status stable across a press.
+  it('never touches a dismissed step, in either direction', () => {
+    const off = step('s2', { status: TASK_STATUS.DISMISSED });
+    expect(planSubtaskTick([step('s1'), off]).steps.map((x) => x.id)).toEqual(['s1']);
+    const reopen = planSubtaskTick([done('s1'), off]);
+    expect(reopen.status).toBe(TASK_STATUS.OPEN);
+    expect(reopen.steps.map((x) => x.id)).toEqual(['s1']);
+  });
+
+  it('writes nothing when there is nothing to write', () => {
+    expect(planSubtaskTick([]).steps).toEqual([]);
   });
 });

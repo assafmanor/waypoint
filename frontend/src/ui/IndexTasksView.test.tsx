@@ -9,7 +9,7 @@ import { type ReactNode } from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { TASK_STATUS, type Task } from '@waypoint/shared';
-import { splitSubtasks } from '../lib/tasks';
+import { splitSubtasks, tickedStatus } from '../lib/tasks';
 
 // jsdom has no layout engine, so the refusal's bring-into-view has nothing to call.
 Element.prototype.scrollIntoView = vi.fn();
@@ -112,6 +112,10 @@ vi.mock('../state/trip-state', () => ({
       createTask: async (input: unknown) => void created.push(input),
       updateTask: async (id: string, input: unknown) => void updated.push({ id, input }),
       deleteTask: async (id: string) => void deleted.push(id),
+      // A leaf's tick is unchanged by ADR-0196 §3's reversal, so the stand-in is the verb's
+      // own leaf branch: what this spec tests is the surface's wiring, not the verb.
+      tickTask: async (task: Task) =>
+        void updated.push({ id: task.id, input: { status: tickedStatus(task) } }),
     },
   }),
 }));

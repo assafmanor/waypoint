@@ -39,7 +39,6 @@ import {
   taskRowKey,
   type TaskRow,
   taskPreview,
-  tickedStatus,
   type TaskClock,
 } from '../lib/tasks';
 import { toHeroTask } from '../lib/hero-task';
@@ -354,7 +353,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         users={users}
         clock={taskClock}
         progress={subtaskProgress(subtasks.get(row.task.id))}
-        onTick={() => void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })}
+        onTick={() => void taskVerbs.tickTask(row.task)}
         onOpen={openTasksScreen}
       />
     );
@@ -539,7 +538,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
                 users={users}
                 clock={taskClock}
                 progress={subtaskProgress(subtasks.get(task.id))}
-                onTick={() => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
+                onTick={() => void taskVerbs.tickTask(task)}
                 onOpen={openTasksScreen}
               />
             ))}

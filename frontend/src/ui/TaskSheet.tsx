@@ -22,7 +22,6 @@
 import { useId, useMemo, useState } from 'react';
 import { TASK_STATUS, type CreateTaskInput, type Task } from '@waypoint/shared';
 import { ltrIsolate } from '../lib/bidi';
-import { tickedStatus } from '../lib/tasks';
 import { SubtaskList, type SubtaskDraft } from './SubtaskList';
 
 /** The id prefix a staged step carries before its parent exists. Never collides with a real
@@ -371,11 +370,7 @@ export function TaskSheet({
               onRename={renameStep}
               // A staged step cannot be ticked: it does not exist yet, and completing
               // something unsaved is a state with nowhere to live (`HostTasks`' own rule).
-              onTick={
-                task
-                  ? (step) => void taskVerbs.updateTask(step.id, { status: tickedStatus(step) })
-                  : undefined
-              }
+              onTick={task ? (step) => void taskVerbs.tickTask(step) : undefined}
               onRemove={removeStep}
             />
           ) : (

@@ -167,6 +167,29 @@ export function subtaskProgress(steps: Task[] | undefined): SubtaskProgress {
   return { done: list.filter(isSettled).length, total: list.length };
 }
 
+/** **What a parent's tick writes** (ADR-0196 §3, reversed 2026-08-19 on the owner's report
+ *  _"you should be able to tick the parent task to mark all as complete"_).
+ *
+ *  A parent has no completion of its own — its status is derived — so its tick is a verb over
+ *  the STEPS: settle everything still open, and once everything is settled, reopen it. Pure
+ *  and returned as a plan rather than performed, because the harm the ADR rejected this on is
+ *  in the second direction, and a caller that can see the plan can put one undo behind it.
+ *
+ *  **A `dismissed` step is never touched in either direction.** It is the one human answer no
+ *  derivation produces (the predicate `automatic-tasks.ts` ships), so a bulk verb that swept
+ *  it up would be erasing a decision rather than recording one. */
+export interface SubtaskTickPlan {
+  status: TaskStatus;
+  steps: Task[];
+}
+
+export function planSubtaskTick(steps: Task[]): SubtaskTickPlan {
+  const reopening = steps.every(isSettled);
+  const status = reopening ? TASK_STATUS.OPEN : TASK_STATUS.DONE;
+  const from = reopening ? TASK_STATUS.DONE : TASK_STATUS.OPEN;
+  return { status, steps: steps.filter((step) => step.status === from) };
+}
+
 /** **The screen's order** (brief §13): `overdue → due today → due later → undated`, with
  *  `important` lifting WITHIN its band and never across it — an important task due next
  *  week must not outrank an overdue one. Inside a band the earlier deadline leads, and

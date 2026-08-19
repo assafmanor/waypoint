@@ -21,6 +21,7 @@ vi.mock('../state/trip-state', () => ({
       createTask: async () => undefined,
       updateTask: async () => {},
       deleteTask: async () => {},
+      tickTask: async () => {},
     },
     hostContexts: buildHostContextIndex([], []),
     // Note hosts resolve through trip-state's one index; this file asserts nothing
