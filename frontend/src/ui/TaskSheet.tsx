@@ -20,13 +20,64 @@
 // read-only, because `Task` has no `displayTimezone` column and §10 says nothing is stored
 // per task. There is a zone to state and nothing to correct.
 import { useId, useMemo, useState } from 'react';
-import { TASK_STATUS, type CreateTaskInput, type Task } from '@waypoint/shared';
+import {
+  TASK_STATUS,
+  type CreateTaskInput,
+  type Task,
+  type TaskStatus,
+  type UpdateTaskInput,
+} from '@waypoint/shared';
 import { ltrIsolate } from '../lib/bidi';
 import { SubtaskList, type SubtaskDraft } from './SubtaskList';
 
 /** The id prefix a staged step carries before its parent exists. Never collides with a real
  *  id, and the index after it is how the list addresses a draft it cannot address by id. */
 const STAGED_STEP = 'staged-step:';
+
+/** **A step as the FORM holds it.** An existing row keeps its id, which is what the save's
+ *  diff is computed against; one typed in this session has none until it is written. */
+export interface StepDraft extends SubtaskDraft {
+  id?: string;
+  status?: TaskStatus;
+}
+
+const stepDraft = (step: Task): StepDraft => ({
+  id: step.id,
+  title: step.title,
+  assigneeUserId: step.assigneeUserId,
+  status: step.status,
+});
+
+/** What the save has to do to turn the original list into the edited one. Computed in the
+ *  sheet, which is the only place that holds both. */
+export interface StepPlan {
+  add: SubtaskDraft[];
+  edit: Array<{ id: string; patch: UpdateTaskInput }>;
+  drop: string[];
+}
+
+export function planSteps(before: Task[], after: StepDraft[]): StepPlan {
+  const kept = new Set(after.map((d) => d.id).filter(Boolean));
+  const was = new Map(before.map((step) => [step.id, step]));
+  const edit: StepPlan['edit'] = [];
+  const add: SubtaskDraft[] = [];
+  for (const draft of after) {
+    const original = draft.id ? was.get(draft.id) : undefined;
+    if (!original) {
+      add.push({ title: draft.title, assigneeUserId: draft.assigneeUserId });
+      continue;
+    }
+    const patch: UpdateTaskInput = {};
+    if (draft.title !== original.title) patch.title = draft.title;
+    // `null` clears, `undefined` leaves alone — `updateTaskSchema`'s own grammar, and the
+    // difference between un-assigning a step and not touching who owes it.
+    if (draft.assigneeUserId !== original.assigneeUserId)
+      patch.assigneeUserId = draft.assigneeUserId ?? null;
+    if (draft.status && draft.status !== original.status) patch.status = draft.status;
+    if (Object.keys(patch).length > 0) edit.push({ id: original.id, patch });
+  }
+  return { add, edit, drop: before.filter((s) => !kept.has(s.id)).map((s) => s.id) };
+}
 import { authoringZone } from '../lib/places';
 import { useTrip } from '../state/trip-state';
 import { isoToTimeInput, todayInTz, zonedIso } from '../lib/time';
@@ -142,9 +193,18 @@ export function TaskSheet({
    *  Before `פרטים` rather than after, because both answer "what does closing this involve" —
    *  one structured and one prose, and the structured one should be the one you reach for.
    *
-   *  On an EDIT the steps are trip state and write immediately. On a CREATE there is no id to
-   *  hang them on, so they are held here and ride the draft out. */
-  const [staged, setStaged] = useState<SubtaskDraft[]>([]);
+   *  **Both modes STAGE** (owner, 2026-08-19: _"edits to sub tasks take effect even if you
+   *  canceled the edit … you might've removed a sub task when editing but then changed your
+   *  mind and canceled, but the sub task was removed anyway"_). §12 wrote them straight through
+   *  on an edit, reasoning that the parent already has an id so there is nothing to wait for —
+   *  true about the id, wrong about the form. `ביטול` is a promise about everything the sheet
+   *  holds, and a field that has already written is not a draft.
+   *
+   *  Seeded ONCE on purpose: a peer's change to a step mid-edit does not reach back into a
+   *  form someone is typing in, exactly as it does not for the title. */
+  const [steps, setSteps] = useState<StepDraft[]>(() =>
+    task ? (subtasks.get(task.id) ?? []).map(stepDraft) : [],
+  );
   /** Revealed by `＋ תת משימה`, exactly as `＋ פתק` reveals the notes box (ADR-0192 §2) — an
    *  always-open composer would put a box on every task editor for a field most tasks leave
    *  empty. **Open by itself once there are steps**, where the list IS the invitation: this
@@ -193,41 +253,44 @@ export function TaskSheet({
     return [...new Set(zones.filter(Boolean))];
   }, [zone, trip.timezone, zoneEvidence]);
 
-  /** **The steps this field shows.** On an edit they are trip state; on a create they are the
-   *  staged drafts, given local ids so the list can key and address them — the same trick
-   *  `HostTasks` uses for a task staged on a host create. */
-  const steps: Task[] = task
-    ? (subtasks.get(task.id) ?? [])
-    : staged.map(
-        (draft, index) =>
-          ({
-            ...draft,
-            id: `${STAGED_STEP}${index}`,
-            tripId: trip.id,
-            important: false,
-            dueHasTime: false,
-            status: TASK_STATUS.OPEN,
-            createdBy: '',
-            createdAt: '',
-            updatedAt: '',
-            updatedBy: '',
-          }) as Task,
-      );
-  const stepsDone = steps.filter((step) => step.status !== TASK_STATUS.OPEN).length;
-  const stagedIndex = (step: Task) => Number(step.id.slice(STAGED_STEP.length));
+  /** The rows `SubtaskList` renders. An existing step keeps its real id — that is what the
+   *  save's diff is computed against — and one typed here gets a local id so the list can key
+   *  and address it, the same trick `HostTasks` uses for a task staged on a host create. */
+  const stepRows: Task[] = steps.map(
+    (draft, index) =>
+      ({
+        ...draft,
+        id: draft.id ?? `${STAGED_STEP}${index}`,
+        tripId: trip.id,
+        parentTaskId: task?.id,
+        important: false,
+        dueHasTime: false,
+        status: draft.status ?? TASK_STATUS.OPEN,
+        createdBy: '',
+        createdAt: '',
+        updatedAt: '',
+        updatedBy: '',
+      }) as Task,
+  );
+  const stepsDone = steps.filter((s) => s.status && s.status !== TASK_STATUS.OPEN).length;
+  /** By position, which is what makes a step with no id addressable and keeps both modes on
+   *  one path. */
+  const indexOf = (step: Task) => stepRows.findIndex((row) => row.id === step.id);
 
-  const addStep = (draft: SubtaskDraft) => {
-    if (task) void taskVerbs.createTask({ ...draft, parentTaskId: task.id });
-    else setStaged((current) => [...current, draft]);
-  };
-  const renameStep = (step: Task, draft: SubtaskDraft) => {
-    if (task) void taskVerbs.updateTask(step.id, draft);
-    else setStaged((current) => current.map((d, i) => (i === stagedIndex(step) ? draft : d)));
-  };
-  const removeStep = (step: Task) => {
-    if (task) void taskVerbs.deleteTask(step.id);
-    else setStaged((current) => current.filter((_, i) => i !== stagedIndex(step)));
-  };
+  const addStep = (draft: SubtaskDraft) => setSteps((current) => [...current, draft]);
+  const renameStep = (step: Task, draft: SubtaskDraft) =>
+    setSteps((current) => current.map((d, i) => (i === indexOf(step) ? { ...d, ...draft } : d)));
+  const removeStep = (step: Task) =>
+    setSteps((current) => current.filter((_, i) => i !== indexOf(step)));
+  /** Ticking is a staged edit too, or `ביטול` would not undo that either. */
+  const tickStep = (step: Task) =>
+    setSteps((current) =>
+      current.map((d, i) =>
+        i === indexOf(step)
+          ? { ...d, status: d.status === TASK_STATUS.DONE ? TASK_STATUS.OPEN : TASK_STATUS.DONE }
+          : d,
+      ),
+    );
 
   const save = () => {
     const trimmed = title.trim();
@@ -235,10 +298,22 @@ export function TaskSheet({
       errors.report([{ field: 'title', message: t.tasks.sheet.needsTitle }]);
       return;
     }
+    // **The steps flush HERE, on save and only on save.** On an edit the parent already
+    // exists, so its steps can be written straight away; on a create there is no id yet, so
+    // the plan's `add` rides the draft out and the host writes it after the parent resolves
+    // (the outbox is FIFO — a step queued first would reach a server that cannot see it).
+    if (task) {
+      const plan = planSteps(subtasks.get(task.id) ?? [], steps);
+      for (const id of plan.drop) void taskVerbs.deleteTask(id);
+      for (const { id, patch } of plan.edit) void taskVerbs.updateTask(id, patch);
+      for (const draft of plan.add) void taskVerbs.createTask({ ...draft, parentTaskId: task.id });
+    }
     onSave({
-      // Absent on an edit: those steps are already written. On a create this is what the host
-      // writes after the parent, inside the same change group.
-      subtasks: task ? undefined : staged,
+      // On a create this is what the host writes after the parent, inside the same change
+      // group. Absent on an edit, where the flush above has already gone out.
+      subtasks: task
+        ? undefined
+        : steps.map((d) => ({ title: d.title, assigneeUserId: d.assigneeUserId })),
       title: trimmed,
       // `null`, not `undefined`, and that is the whole of the fix above: an emptied box is a
       // decision to clear, and the sparse patch cannot tell it from an untouched field.
@@ -362,25 +437,26 @@ export function TaskSheet({
             rests as `הוספת תאריך`. */}
         <Field
           label={
-            steps.length
-              ? `${t.tasks.sheet.subtasksLabel} · ${ltrIsolate(`${stepsDone}/${steps.length}`)}`
+            stepRows.length
+              ? `${t.tasks.sheet.subtasksLabel} · ${ltrIsolate(`${stepsDone}/${stepRows.length}`)}`
               : t.tasks.sheet.subtasksLabel
           }
         >
-          {steps.length > 0 || composing ? (
+          {stepRows.length > 0 || composing ? (
             <SubtaskList
-              steps={steps}
+              steps={stepRows}
               users={users}
               // The reveal decides the empty field only. Once there ARE steps the field is
               // already a list, so the composer costs it nothing and a checklist is written
               // in a burst rather than one reveal per step.
-              open={composing || steps.length > 0}
+              open={composing || stepRows.length > 0}
               variant="form"
               onAdd={addStep}
               onRename={renameStep}
-              // A staged step cannot be ticked: it does not exist yet, and completing
-              // something unsaved is a state with nowhere to live (`HostTasks`' own rule).
-              onTick={task ? (step) => void taskVerbs.tickTask(step) : undefined}
+              // Staged like every other edit in this sheet, so `ביטול` undoes a tick too.
+              // Offered on a create as well now: with the whole list a draft, a step ticked
+              // before its parent exists is no longer a state with nowhere to live.
+              onTick={tickStep}
               onRemove={removeStep}
             />
           ) : (
