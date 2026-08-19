@@ -128,25 +128,50 @@ test('a parent reads as an arc and a count, and costs the row nothing', async ({
 
 /** The harness mocks the snapshot, not the writes — so without this a PATCH fails and the
  *  optimistic tick rolls straight back, which the first run of the spec below watched happen
- *  (2/5 → 3/5 → 2/5). Echoing the patch is also what makes the reconcile real rather than
- *  skipped. */
-async function acceptTaskPatches(page: Page) {
+ *  (2/5 → 3/5 → 2/5). Echoing the write is also what makes the reconcile real rather than
+ *  skipped: an assertion against an optimistic row that the server then rejects is an
+ *  assertion about nothing. */
+const STAMP = '2026-08-19T09:00:00.000Z';
+/** **Absent, not `null`** — the shape `toTaskDto` sends, which is not the shape the row holds.
+ *  `taskSchema`'s optionals are `.optional()` and not `.nullable()`, so `settledAt: null` fails
+ *  the client's parse and the write rolls back exactly as a 404 would: a mock echoing the
+ *  DATABASE rather than the DTO tests nothing and looks like a product bug. */
+const stamped = (row: Record<string, unknown>, settling: boolean) => ({
+  ...row,
+  ...(settling ? { settledAt: STAMP, settledBy: 'u1' } : {}),
+  updatedAt: STAMP,
+  updatedBy: 'u1',
+});
+
+async function acceptTaskWrites(page: Page) {
   await page.route(
     (u) => /\/trips\/t1\/tasks\/[^/]+$/.test(u.pathname),
     async (route) => {
       const id = route.request().url().split('/').pop()!;
       const patch = route.request().postDataJSON() as Record<string, unknown>;
       const before = TASKS.find((x) => x.id === id)!;
-      const settling = patch.status === 'done';
+      // Reopening drops the settlement rather than nulling it, same as the DTO.
+      const { settledAt: _a, settledBy: _b, ...rest } = { ...before, ...patch };
+      await route.fulfill({ json: stamped(rest, patch.status === 'done') });
+    },
+  );
+  await page.route(
+    (u) => u.pathname === '/trips/t1/tasks',
+    async (route) => {
+      const input = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({
-        json: {
-          ...before,
-          ...patch,
-          settledAt: settling ? '2026-08-19T09:00:00.000Z' : null,
-          settledBy: settling ? 'u1' : null,
-          updatedAt: '2026-08-19T09:00:00.000Z',
-          updatedBy: 'u1',
-        },
+        json: stamped(
+          {
+            tripId: TRIP_ID,
+            dueHasTime: false,
+            important: false,
+            status: 'open',
+            createdBy: 'u1',
+            createdAt: STAMP,
+            ...input,
+          },
+          false,
+        ),
       });
     },
   );
@@ -154,7 +179,7 @@ async function acceptTaskPatches(page: Page) {
 
 test('a press on the ring settles the whole checklist', async ({ page }) => {
   await bootIntoTrip(page, { tasks: TASKS });
-  await acceptTaskPatches(page);
+  await acceptTaskWrites(page);
   await openTasksScreen(page);
 
   const parentRow = page.locator('.wp-listrow', { hasText: 'יציאה לשדה' });
@@ -232,4 +257,45 @@ test('a task with no steps still offers the way in to its first', async ({ page 
   await add.click();
   // …and it reveals the composer rather than opening a form.
   await expect(page.locator('.tsk-kid-compose input')).toBeFocused();
+});
+
+// **THE EDITOR OFFERS THE COMPOSER ON A TASK THAT ALREADY HAS STEPS** (ADR-0196 §12; owner,
+// 2026-08-19: _"task editing doesn't have the option to add or remove sub tasks"_).
+//
+// The field was documented from the start as opening by itself once there are steps, and it
+// passed only the reveal flag — whose control lives in the EMPTY branch. So a task with a
+// checklist rendered a read-only list and there was no control anywhere to bring the box back.
+// Nothing could fail: the sheet has no component spec, and the class-name and paint tests read
+// CSS rather than which props a host passes.
+test('the editor can add to a checklist that already exists', async ({ page }) => {
+  await bootIntoTrip(page, { tasks: TASKS });
+  await acceptTaskWrites(page);
+  await openTasksScreen(page);
+
+  await page.locator('.wp-listrow-open', { hasText: 'יציאה לשדה' }).click();
+  await page.getByRole('button', { name: t.tasks.manage.edit }).click();
+
+  const sheet = page.locator('.task-sheet');
+  await expect(sheet).toBeVisible();
+  // The five steps are there to read…
+  await expect(sheet.locator('.tsk-kids .note-item')).toHaveCount(6); // 5 steps + the composer
+  // …and the box to add a sixth is there without pressing anything.
+  const box = sheet.getByLabel(t.tasks.subtasks.add);
+  await expect(box).toBeVisible();
+
+  // It must NOT have taken the caret: the box is showing because the field is a list, not
+  // because anyone asked for it, and stealing focus here opens the phone's keyboard on every
+  // edit of a task with a checklist.
+  await expect(box).not.toBeFocused();
+
+  // **A title no fixture already carries.** The first draft typed `לשלם על החניה`, which is
+  // one of the five steps above — the assertion then matched two elements and read for a
+  // while like a double write. A fixture that collides with the value under test is a bug
+  // report about the app that is really a bug in the spec.
+  await box.fill('לסגור את הדלת');
+  await box.press('Enter');
+  await expect(sheet.getByText('לסגור את הדלת')).toBeVisible();
+  // The box clears and stays for the next one: a checklist is written in a burst.
+  await expect(box).toHaveValue('');
+  await expect(sheet.locator('.tsk-kids .note-item')).toHaveCount(7);
 });

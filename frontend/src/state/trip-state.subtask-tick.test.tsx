@@ -97,11 +97,18 @@ const snapshotOf = (tasks: Task[]): TripSnapshot => ({
 });
 
 let tick: ((task: Task) => Promise<void>) | null = null;
+let create: ((input: Record<string, unknown>) => Promise<unknown>) | null = null;
 
 function Probe() {
-  const { tasks, taskVerbs } = useTrip();
+  const { tasks, subtasks, taskVerbs } = useTrip();
   tick = taskVerbs.tickTask;
-  return <div data-testid="ids">{tasks.map((x) => `${x.id}:${x.status}`).join(',')}</div>;
+  create = taskVerbs.createTask as typeof create;
+  return (
+    <>
+      <div data-testid="ids">{tasks.map((x) => `${x.id}:${x.status}`).join(',')}</div>
+      <div data-testid="kids">{(subtasks.get('p') ?? []).map((x) => x.id).join(',')}</div>
+    </>
+  );
 }
 
 const mount = async (tasks: Task[]) => {
@@ -188,5 +195,20 @@ describe('one press, one toast, one undo', () => {
     await press(parent);
     expect(h.ops).toEqual([]);
     expect(h.toasts).toEqual([]);
+  });
+});
+
+// **One create leaves ONE row, and it lands under its parent.** Written while chasing a step
+// that looked like it had been written twice; it had not (the spec's fixture already carried
+// that title), but the question is worth an assertion since nothing else here holds the
+// boundary and the optimistic append to the same flat list.
+describe('a created step lands once, under its parent', () => {
+  it('appends it to the parent’s steps and to nothing else', async () => {
+    await mount([parent]);
+    await act(async () => {
+      await create?.({ id: 'step-000000009', title: 'לשלם על החניה', parentTaskId: 'p' });
+    });
+    expect(screen.getByTestId('ids').textContent).toBe('p:open');
+    expect(screen.getByTestId('kids').textContent).toBe('step-000000009');
   });
 });
