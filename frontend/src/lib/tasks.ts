@@ -9,6 +9,8 @@
 // the calendar day rolls for the traveller who is reading it. Nothing here holds a zone of
 // its own, and no surface may reach for `trip.timezone` instead.
 import {
+  CHANGE_ACTION,
+  ENTITY_TYPE,
   EVENT_STATUS,
   TASK_HOST_FIELD,
   TASK_STATUS,
@@ -85,6 +87,86 @@ export function taskBand(task: Task, clock: TaskClock): TaskBand {
 
 export const isSettled = (task: Task): boolean => task.status !== TASK_STATUS.OPEN;
 
+// ── SUB-TASKS (ADR-0196) ────────────────────────────────────────────────────────────────
+// **The whole feature is one split, paid once.** Everything below this comment exists so
+// that the twenty-odd derivations above and after it never have to know children exist.
+//
+// The alternative — a `!task.parentTaskId` guard at each call site — is `isManual`'s second
+// edition, and the app has already shipped that bug: six derivations here carry `isManual`
+// by hand, and ADR-0193 §2 was amended because ONE surface forgot it and the Plan hero
+// answered "how many are open" with a different number than the Index tile. A boundary makes
+// the next derivation right by default instead of wrong by default.
+
+export const isSubtask = (task: Task): boolean => task.parentTaskId != null;
+
+/** A trip's tasks, split into what the surfaces iterate and what a parent opens onto. */
+export interface TaskTree {
+  /** Top-level tasks ONLY, each parent's `status` already resolved from its steps. This is
+   *  what `useTrip().tasks` hands out, so every list derivation is correct unchanged. */
+  roots: Task[];
+  /** `parentTaskId` → its steps, in creation order. A checklist is authored, not ranked:
+   *  `sortTasks`' urgency ladder has nothing to say about a row with no deadline. */
+  byParent: Map<string, Task[]>;
+}
+
+/** **A parent's status is DERIVED, and the predicate is one the app already ships.** Brief
+ *  §4's sentence for a readiness check transfers verbatim: *the derivation answers unless the
+ *  row says `dismissed`*.
+ *
+ *  - `dismissed` is a human decision no derivation can produce ("this whole thing is off"),
+ *    so it is stored and it wins.
+ *  - Otherwise a parent is `done` exactly when every step is settled, and `open` otherwise.
+ *    Nothing is written, so nothing can go stale — which is the reason the backlog line chose
+ *    derived over stored in the first place.
+ *  - A stored `done` on a row that later gains a step is therefore **ignored rather than
+ *    repaired**: no migration, no write, no window where the two disagree.
+ *
+ *  `settledAt`/`settledBy` come from the last step settled, so "who finished this" still
+ *  answers on a parent. */
+function resolveParent(parent: Task, steps: Task[]): Task {
+  if (steps.length === 0) return parent;
+  if (parent.status === TASK_STATUS.DISMISSED) return parent;
+  const done = steps.every(isSettled);
+  const last = done
+    ? steps.reduce((a, b) => ((a.settledAt ?? '') >= (b.settledAt ?? '') ? a : b))
+    : undefined;
+  return {
+    ...parent,
+    status: done ? TASK_STATUS.DONE : TASK_STATUS.OPEN,
+    settledAt: done ? last?.settledAt : undefined,
+    settledBy: done ? last?.settledBy : undefined,
+  };
+}
+
+/** **The boundary.** Called once where the trip's tasks enter the app (`trip-state`), never
+ *  per surface. Order is preserved so nothing downstream sees a list reshuffle. */
+export function splitSubtasks(tasks: Task[]): TaskTree {
+  const byParent = new Map<string, Task[]>();
+  for (const task of tasks) {
+    if (!task.parentTaskId) continue;
+    const steps = byParent.get(task.parentTaskId);
+    if (steps) steps.push(task);
+    else byParent.set(task.parentTaskId, [task]);
+  }
+  const roots = tasks
+    .filter((task) => !task.parentTaskId)
+    .map((task) => resolveParent(task, byParent.get(task.id) ?? []));
+  return { roots, byParent };
+}
+
+/** How many steps a task has, and how many are settled — the row's `2/5` and the arc's
+ *  fraction, from one call so the two cannot disagree. `total: 0` means "not a parent",
+ *  which is what every surface tests rather than a stored flag. */
+export interface SubtaskProgress {
+  done: number;
+  total: number;
+}
+
+export function subtaskProgress(steps: Task[] | undefined): SubtaskProgress {
+  const list = steps ?? [];
+  return { done: list.filter(isSettled).length, total: list.length };
+}
+
 /** **The screen's order** (brief §13): `overdue → due today → due later → undated`, with
  *  `important` lifting WITHIN its band and never across it — an important task due next
  *  week must not outrank an overdue one. Inside a band the earlier deadline leads, and
@@ -155,27 +237,56 @@ export function orderTaskRows(
  *  it asks `assigneeUserId === meId`, and an untouched check has no row to carry one.
  *  Delegate a check and it appears there like anything else — which is the point of
  *  `derivedKey` being an overlay rather than a second table. */
-export function taskRowMatchesFacet(row: TaskRow, facet: TaskFacet, meId: string): boolean {
-  if (row.kind !== 'auto') return taskMatchesFacet(row.task, facet, meId);
+export function taskRowMatchesFacet(
+  row: TaskRow,
+  facet: TaskFacet,
+  meId: string,
+  byParent?: Map<string, Task[]>,
+): boolean {
+  if (row.kind !== 'auto') return taskMatchesFacet(row.task, facet, meId, byParent);
   if (facet === TASK_FACET.SETTLED) return isAutomaticSettled(row.auto);
   if (facet === TASK_FACET.MINE) return row.auto.task?.assigneeUserId === meId;
   return isLive(row.auto);
 }
-/** The manual half of the predicate above. */
-export function taskMatchesFacet(task: Task, facet: TaskFacet, meId: string): boolean {
+/** The manual half of the predicate above.
+ *
+ *  **`byParent` is the ONE place the boundary split is not the whole answer** (ADR-0196's
+ *  audit). `שלי` asks "what do I owe", and a parent that is unassigned but whose third step
+ *  is Dana's is work Dana owes — filtering on the parent's own `assigneeUserId` alone would
+ *  hide it from the one filter whose entire job is to find it. So a parent matches `שלי` when
+ *  IT or ANY of its steps is mine.
+ *
+ *  Optional, and that is deliberate rather than lazy: the two Home bands and the hero call
+ *  this with no children in scope, and passing an index they do not have would be ceremony.
+ *  Absent means "no steps to consider", which is exactly true there. */
+export function taskMatchesFacet(
+  task: Task,
+  facet: TaskFacet,
+  meId: string,
+  byParent?: Map<string, Task[]>,
+): boolean {
   if (facet === TASK_FACET.SETTLED) return isSettled(task);
   // Settled tasks collapse out of both open facets (brief §13) — a done task IS finished,
   // deliberately the opposite of ADR-0153 §3's "no past-collapse" for notes.
   if (isSettled(task)) return false;
-  if (facet === TASK_FACET.MINE) return task.assigneeUserId === meId;
+  if (facet === TASK_FACET.MINE) {
+    if (task.assigneeUserId === meId) return true;
+    return (byParent?.get(task.id) ?? []).some(
+      (step) => step.assigneeUserId === meId && !isSettled(step),
+    );
+  }
   return true;
 }
 
 /** How many rows each chip would show, for the count in its label. Takes the same rows the
  *  list is built from, so a chip cannot promise a number the list does not deliver. */
-export function countTasksByFacet(rows: TaskRow[], meId: string): Record<TaskFacet, number> {
+export function countTasksByFacet(
+  rows: TaskRow[],
+  meId: string,
+  byParent?: Map<string, Task[]>,
+): Record<TaskFacet, number> {
   const count = (facet: TaskFacet) =>
-    rows.filter((row) => taskRowMatchesFacet(row, facet, meId)).length;
+    rows.filter((row) => taskRowMatchesFacet(row, facet, meId, byParent)).length;
   return {
     [TASK_FACET.ALL]: count(TASK_FACET.ALL),
     [TASK_FACET.MINE]: count(TASK_FACET.MINE),
@@ -429,7 +540,22 @@ export function openTaskCountsByHost(
 export const taskCountFor = (counts: Map<string, number>, kind: NoteHostKind, id: string): number =>
   counts.get(`${kind}:${id}`) ?? 0;
 
-/** The host cascade for tasks — the generalised applier, not a fifth copy of it. */
+/** The host cascade for tasks — the generalised applier, not a fifth copy of it.
+ *
+ *  **Plus the one case a host cascade cannot express: a deleted PARENT** (ADR-0196). The
+ *  shared applier guards on `change.entityType in NOTE_HOST_FIELD`, and `ENTITY_TYPE.TASK` is
+ *  not in that map — nor should it be, since widening it would make a NOTE droppable by a
+ *  task delete to save one branch here. The DB cascade removes the steps server-side and
+ *  writes no `Change` rows for them (ADR-0152 §2), so without this a deleted parent's steps
+ *  sit orphaned in memory and in Dexie until the next cold sync.
+ *
+ *  This wrapper already exists and already IS the task-shaped call site, so the branch lands
+ *  here rather than in a sixth applier. */
 export function dropTasksForHostChange(tasks: Task[], change: HostChange): Task[] {
-  return dropHostedForHostChange(tasks, change);
+  const kept = dropHostedForHostChange(tasks, change);
+  if (change.action !== CHANGE_ACTION.DELETE || change.entityType !== ENTITY_TYPE.TASK) {
+    return kept;
+  }
+  const withoutSteps = kept.filter((task) => task.parentTaskId !== change.entityId);
+  return withoutSteps.length === kept.length ? kept : withoutSteps;
 }

@@ -154,6 +154,10 @@ export interface HeroLiftTask {
    *  visually-hidden span, because `Avatar`'s non-interactive form is `aria-hidden` and the row
    *  would otherwise say nothing at all about who owes this. */
   assignee?: { person: AvatarPerson; name: string };
+  /** **`2/5`, when this task holds a checklist** (ADR-0196 §6). Already isolated, like `due`'s
+   *  text: the hero is a READ (brief §13), and a count is a read — so it joins the line the
+   *  deadline is on rather than becoming a fourth affordance §U0's rule would have to admit. */
+  count?: string;
 }
 
 /** `אחר כך` — one line, and ADR-0160 §12's condition is the SHAPE: a title and a
@@ -371,9 +375,14 @@ export function HeroTaskRows({ tasks, more }: { tasks: HeroLiftTask[]; more?: nu
                 </>
               )}
             </span>
-            {task.due && (
-              <span className={task.due.late ? 'hero-task-due late' : 'hero-task-due'}>
-                <Icon name="clock" /> {task.due.text}
+            {(task.due || task.count) && (
+              <span className={task.due?.late ? 'hero-task-due late' : 'hero-task-due'}>
+                {task.due && (
+                  <>
+                    <Icon name="clock" /> {task.due.text}
+                  </>
+                )}
+                {task.count && <span className="tsk-count">{task.count}</span>}
               </span>
             )}
             {/* Same line, same ink, NO clock — see `meta` on the type. */}

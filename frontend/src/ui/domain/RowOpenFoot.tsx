@@ -16,6 +16,8 @@ import './row-open.css';
 
 export function RowOpenFoot({
   lead,
+  addLabel,
+  onAdd,
   editLabel,
   onEdit,
 }: {
@@ -28,12 +30,26 @@ export function RowOpenFoot({
    *  lines under it is the same fact twice. The spacer keeps the verb at the trailing edge
    *  either way. */
   lead?: ReactNode;
+  /** **A second verb on the leading side** (ADR-0196 §10) — `＋ תת משימה` on the tasks screen,
+   *  and it is offered on every open row including one with no steps yet. If it appeared only
+   *  on tasks that already had a checklist, nothing could ever get its first step.
+   *
+   *  Leading rather than beside the edit, because the spacer's job is to keep the row's own
+   *  verb at the trailing edge: a second control there would put the primary verb in a strip
+   *  rather than at the end of the line. */
+  addLabel?: string;
+  onAdd?: () => void;
   editLabel: string;
   onEdit: () => void;
 }) {
   return (
     <div className="row-open-foot">
       {lead}
+      {onAdd && addLabel && (
+        <button type="button" className="row-open-act" onClick={onAdd}>
+          <Icon name="plus" /> {addLabel}
+        </button>
+      )}
       <span className="row-open-sp" />
       <button type="button" className="row-open-act" onClick={onEdit}>
         <Icon name="edit" /> {editLabel}

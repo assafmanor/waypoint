@@ -10,13 +10,21 @@
 // A pure formatter, not a component: it takes the clock and the roster and returns data.
 // Both heroes stay presentational, which is what `HeroLift`'s own header promises.
 import type { Task, User } from '@waypoint/shared';
-import { taskDue, type TaskClock } from './tasks';
+import { subtaskProgress, taskDue, type TaskClock } from './tasks';
 import { ltrIsolate } from './bidi';
 import { t } from '../i18n/he';
 import type { HeroLiftTask } from '../ui/domain/HeroLift';
 
-export function toHeroTask(task: Task, clock: TaskClock, users: User[]): HeroLiftTask {
+export function toHeroTask(
+  task: Task,
+  clock: TaskClock,
+  users: User[],
+  steps?: Task[],
+): HeroLiftTask {
   const due = taskDue(task, clock);
+  // A checklist's `2/5`, formatted here for the same reason the deadline is: one formatter,
+  // so a task cannot read `2/5` on the screen and something else in the hero (ADR-0196 §6).
+  const progress = subtaskProgress(steps);
   const assignee = task.assigneeUserId
     ? users.find((u) => u.id === task.assigneeUserId)
     : undefined;
@@ -35,5 +43,6 @@ export function toHeroTask(task: Task, clock: TaskClock, users: User[]): HeroLif
       person: assignee,
       name: `${t.tasks.sheet.assigneeLabel}: ${assignee.displayName}`,
     },
+    count: progress.total > 0 ? ltrIsolate(`${progress.done}/${progress.total}`) : undefined,
   };
 }

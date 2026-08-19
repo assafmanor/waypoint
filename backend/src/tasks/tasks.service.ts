@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Task as PrismaTask } from '@prisma/client';
 import {
   ENTITY_TYPE,
   TASK_STATUS,
+  TASK_SUBTASK_CAP,
+  subtaskPatchRefuses,
   type CreateTaskInput,
   type Task,
   type UpdateTaskInput,
@@ -31,6 +33,7 @@ export class TasksService {
   async create(tripId: string, actorUserId: string, input: CreateTaskInput): Promise<Task> {
     await assertEntityRefsInTrip(this.prisma, tripId, input);
     await assertMemberInTrip(this.prisma, tripId, input.assigneeUserId);
+    await this.assertParent(tripId, input.parentTaskId);
     const id = input.id ?? randomUUID();
     try {
       const { entity } = await this.changes.mutate({
@@ -53,6 +56,7 @@ export class TasksService {
               assigneeUserId: input.assigneeUserId,
               important: input.important ?? false,
               derivedKey: input.derivedKey,
+              parentTaskId: input.parentTaskId,
               // Set only when the create IS the settling act — dismissing a readiness check
               // that had no row until this press (brief §4). `open` for every manual task.
               status: input.status ?? TASK_STATUS.OPEN,
@@ -92,6 +96,12 @@ export class TasksService {
     actorUserId: string,
   ): Promise<Task> {
     const before = await this.requireTask(tripId, taskId);
+    // **A step is its title, its assignee and its status** (ADR-0196 §8). The schema cannot
+    // enforce this: a sparse patch does not say whether its target is a step, so only here,
+    // where the row is loaded, can a deadline or a host arriving on one be refused.
+    if (before.parentTaskId && subtaskPatchRefuses(input)) {
+      throw new BadRequestException('A sub-task carries only a title and an assignee');
+    }
     await assertEntityRefsInTrip(this.prisma, tripId, input);
     await assertMemberInTrip(this.prisma, tripId, input.assigneeUserId);
     const { entity } = await this.changes.mutate({
@@ -150,6 +160,31 @@ export class TasksService {
       before: toTaskDto(before),
       apply: (tx) => tx.task.delete({ where: { id: taskId } }),
     });
+  }
+
+  /** **The three things a parent must be** (ADR-0196 §1), answered in one query because they
+   *  are one row's worth of facts: it is in this trip, it is not itself a step (the depth
+   *  cap), and it is not already full.
+   *
+   *  Not folded into `assertEntityRefsInTrip`, and the reason is that it asks a different
+   *  question: that util answers "does this ref exist in the trip", which is one of the three
+   *  here. Putting the other two behind it would make a generic guard carry a rule about one
+   *  entity's shape — and it would still need this query, so the sharing would buy nothing.
+   *
+   *  **The cap is enforced server-side or it is not enforced.** A client-only limit is one an
+   *  offline outbox replays past, and a checklist that grew to 40 while a phone was in a
+   *  tunnel is not a state any surface is drawn for. */
+  private async assertParent(tripId: string, parentTaskId: string | undefined): Promise<void> {
+    if (!parentTaskId) return;
+    const parent = await this.prisma.task.findFirst({
+      where: { id: parentTaskId, tripId },
+      select: { id: true, parentTaskId: true, _count: { select: { subtasks: true } } },
+    });
+    if (!parent) throw new BadRequestException(`Unknown task for this trip: ${parentTaskId}`);
+    if (parent.parentTaskId) throw new BadRequestException('A sub-task cannot have sub-tasks');
+    if (parent._count.subtasks >= TASK_SUBTASK_CAP) {
+      throw new BadRequestException(`A task holds at most ${TASK_SUBTASK_CAP} sub-tasks`);
+    }
   }
 
   private async requireTask(tripId: string, taskId: string): Promise<PrismaTask> {

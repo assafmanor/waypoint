@@ -537,6 +537,44 @@ const taskHostCount = (data: Partial<Record<TaskHostKey, unknown>>): number =>
 
 const hasTitle = (data: { title?: string | null }): boolean => !!data.title?.trim();
 
+/** **What a SUB-TASK may not carry** (ADR-0196 §1/§8), refused at both edges rather than
+ *  trusted to a form. Each entry has its own reason in that ADR, and one of them pays for the
+ *  rest: a step with no deadline cannot be urgent, cannot be overdue, and therefore has
+ *  nothing to say on any surface ordered by urgency — which is what makes nineteen of the
+ *  twenty-three task derivations correct about children *vacuously* instead of by remembering.
+ *
+ *  `parentTaskId` itself is in the list, and that is the depth cap: a step may not be a
+ *  parent. `assignedToAll` is not here only because it is not built yet (brief §6, phase 6) —
+ *  when it lands it joins this array, and §1's third refusal (a task is a checklist or an
+ *  `everyone` task, never both) becomes its own `.refine`. */
+const SUBTASK_REFUSED_KEYS = [
+  'parentTaskId',
+  'dueAt',
+  'dueHasTime',
+  'displayTimezone',
+  'important',
+  'body',
+  'derivedKey',
+  ...TASK_HOST_KEYS,
+] as const;
+
+/** **Carries a VALUE, not merely a key.** `null`/`undefined` is an absent field; `false` and
+ *  `''` are a form sending its own defaults, and refusing those would reject a perfectly good
+ *  step for the values nobody chose — `important: false` and `dueHasTime: false` are exactly
+ *  what `TaskSheet` fills in. The suite caught this on the accept case that sits beside the
+ *  refusals. */
+const carries = (value: unknown): boolean => value != null && value !== false && value !== '';
+
+/** True when this input is a step AND carries something a step may not. Written over the
+ *  SUBMITTED keys so a sparse patch is judged on what it actually sends: a tick on a step
+ *  sends `status` alone and must not be refused for the fields it never mentioned. */
+const subtaskCarriesRefused = (
+  data: Record<string, unknown>,
+  parentTaskId: string | null | undefined,
+): boolean =>
+  parentTaskId != null &&
+  SUBTASK_REFUSED_KEYS.some((key) => key !== 'parentTaskId' && carries(data[key]));
+
 export const createTaskSchema = z
   .object({
     id: entityIdSchema.optional(),
@@ -553,6 +591,9 @@ export const createTaskSchema = z
     /** Set only when the row overlays a readiness check (brief §4) — a human dismissing,
      *  assigning or flagging a derivation is what mints it. */
     derivedKey: taskDerivedKeySchema.optional(),
+    /** **The task this one is a step of** (ADR-0196 §1). See the refusal below for what a
+     *  step may not carry alongside it. */
+    parentTaskId: entityIdSchema.optional(),
     /** **Present so that the act which MINTS an overlay row can be the dismissal itself.**
      *  A check nobody has touched has no row, and "a dismissal is a human decision and
      *  cannot be derived" (brief §4) — so dismissing one is a create, not an update, and
@@ -570,6 +611,13 @@ export const createTaskSchema = z
   .refine((data) => taskHostCount(data) <= 1, {
     message: 'a task has at most one host',
     path: ['eventId'],
+  })
+  // **A step is its title and its assignee, and nothing else** (ADR-0196 §8). Marked on
+  // `parentTaskId` because that is the field which makes the rest refusable — a form that
+  // got here sent a step, and the cure is to send a top-level task instead.
+  .refine((data) => !subtaskCarriesRefused(data, data.parentTaskId), {
+    message: 'a sub-task carries only a title and an assignee',
+    path: ['parentTaskId'],
   });
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 
@@ -601,6 +649,12 @@ export const updateTaskSchema = z
     placeId: entityIdSchema.nullish(),
     maybeItemId: entityIdSchema.nullish(),
     documentId: entityIdSchema.nullish(),
+    // **No `parentTaskId`, deliberately.** A step's parent is set at create and never
+    // changes: there is no move-between-checklists verb and no promote-to-task verb in v1,
+    // so an editable field here would be surface nothing sends. Removing a step is
+    // `deleteTask`. And the refusal it would gate cannot live here anyway — a sparse patch
+    // does not say whether its target is a step, so only the server, which loads the row,
+    // can enforce what a step may not carry (`TasksService.update`).
   })
   .refine((data) => data.title === undefined || hasTitle(data), {
     message: 'a task needs a title',
@@ -611,6 +665,17 @@ export const updateTaskSchema = z
     path: ['eventId'],
   });
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+
+/** **What a patch may touch on a STEP** (ADR-0196 §8) — the server's half of the refusal
+ *  above, exported so `TasksService.update` and its spec read the same list. A sparse patch
+ *  cannot say whether its target is a step, so this is checked against the loaded row.
+ *
+ *  A step is its title, its assignee and its status: rename it, hand it to someone, tick it.
+ *  Everything else is the parent's. */
+export const subtaskPatchRefuses = (input: UpdateTaskInput): boolean =>
+  SUBTASK_REFUSED_KEYS.some(
+    (key) => key !== 'parentTaskId' && carries((input as Record<string, unknown>)[key]),
+  );
 
 // --- Document attachments (ADR-0173) --------------------------------------------------
 // The link between an existing document and a booking or an event. There is no update

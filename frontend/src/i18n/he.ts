@@ -1099,6 +1099,9 @@ export const t = {
     add: 'משימה חדשה',
     /** The tick's accessible name — a bare ✓ says nothing about which row it closes. */
     tick: (title: string) => `סימון «${title}» כהושלמה`,
+    /** **A parent's leading element is a READ** (ADR-0196 §3), so it is named rather than
+     *  labelled as a control: a sighted reader gets the arc, a screen reader gets this. */
+    progress: (done: number, total: number) => `הושלמו ${done} מתוך ${total}`,
     /** The mark on a host's row (ADR-0191). Named for a screen reader the way `NoteMark`
      *  and `DocumentMark` are, so it is not a mystery glyph. It counts OPEN tasks. */
     mark: (n: number) => (n === 1 ? 'משימה פתוחה אחת' : `${n} משימות פתוחות`),
@@ -1192,6 +1195,30 @@ export const t = {
       importantLabel: 'חשוב',
       save: 'שמירה',
       cancel: 'ביטול',
+      /** **The checklist field, fourth in the form** (ADR-0196 §12) — after `מי אחראי` and
+       *  before `פרטים`. `· לא חובה` because the form marks its optional fields that way and
+       *  most tasks have no steps. */
+      subtasksLabel: 'תתי משימות · לא חובה',
+    },
+    /** **A task's own checklist** (ADR-0196). The word is `תת משימה` / `תתי משימות`, the
+     *  owner's call over the first draft's `משימות בפנים`: the ENTITY stays one noun (one
+     *  table, one row shape, one tick, one sort), and what that rule cannot do is name a
+     *  field inside a task's own editor, where `משימות` is ambiguous with the task being
+     *  edited. */
+    subtasks: {
+      /** The way in, in every open row's foot and in the editor's empty field. Present even
+       *  on a task with no steps — otherwise nothing could get its first one. */
+      add: 'תת משימה',
+      /** The composer's box. Says what goes in it, never a sample step — the rule the notes
+       *  form settled and this one follows. */
+      first: 'תת משימה ראשונה',
+      another: 'תת משימה נוספת',
+      remove: 'הסרת תת המשימה',
+      /** Who owes this step. The chip is a control, so it is named for a reader who cannot
+       *  see the face in it. */
+      assign: 'מי אחראי לתת המשימה',
+      /** Refused at the cap rather than silently truncated (`TASK_SUBTASK_CAP`). */
+      full: (n: number) => `אפשר עד ${n} תתי משימות במשימה אחת`,
     },
     manage: {
       actions: 'פעולות על המשימה',

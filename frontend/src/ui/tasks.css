@@ -244,6 +244,209 @@
   transition: opacity var(--t-quick) var(--ease-exit);
 }
 
+/* ══ A TASK THAT HOLDS A CHECKLIST (ADR-0196) ═════════════════════════════════════════════
+
+   THE ARC. `.tsk-tick`'s `::before` is the ring and is untouched; this is a second layer in
+   the same grid cell, masked to a 2.5px band. `--tsk-frac` is the only thing a row sets.
+
+   `--ok` and nothing else: "how much of this is done" is a STATUS, which is the one
+   mini-palette rule 4 leaves open (ADR-0028). No amber, no teal, no plan violet. */
+.tsk-arc::after {
+  content: '';
+  grid-area: 1 / 1;
+  width: var(--tick-ink);
+  height: var(--tick-ink);
+  border-radius: 50%;
+  /* Clockwise from 12 o'clock in both directions. A ring reads as a clock and a clock does
+     not mirror; what RTL owns on this row is the lead COLUMN, not the sweep. */
+  background: conic-gradient(var(--ok) calc(var(--tsk-frac, 0) * 360deg), transparent 0);
+  /* **`calc(100% - 2.5px)`, NOT `calc(50% - …)`** — a percentage in a radial-gradient COLOUR
+     STOP resolves against the gradient's own ray, not against the box, so under
+     `closest-side` on a 26px circle 100% is 13px and 50% is 6.5px. The first draft drew a
+     9px band with a 4px hole, i.e. a pie chart — and a pie at 4/5 is indistinguishable from
+     done. Invisible in source; caught by rendering it. */
+  -webkit-mask: radial-gradient(
+    closest-side,
+    transparent calc(100% - 2.5px),
+    #000 calc(100% - 2.5px)
+  );
+  mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px));
+}
+/* A PARENT'S LEAD IS A READ, so it is a `<span role="img">` and says so with the cursor.
+   Everything else about it — the 44px box, the hit radius, the circle, the ✓ — is
+   `.tsk-tick` unchanged, which is the point. */
+.tsk-ring {
+  cursor: default;
+}
+/* Full = done, and then it is the ordinary done tick with nothing extra: the arc has become
+   the fill and the ✓ is the fill's own mark. One state, not two. */
+.tsk-ring[data-done='true']::before {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+.tsk-ring[data-done='true'] .icon {
+  opacity: 1;
+  color: var(--on-fill);
+}
+
+/* THE COUNT, in the meta line. Neutral `--muted`: it is a quantity, not a status and not a
+   deadline, so it spends nothing. It shares line one with the deadline rather than opening a
+   third line — an undated parent therefore keeps ONE line, which is what `.tsk-due`'s own
+   `display: block` was bought for (ADR-0191 §8). */
+.wp-listrow-meta > .tsk-meta-when {
+  display: block;
+}
+.tsk-count {
+  font-weight: 700;
+  color: var(--muted);
+}
+/* No `·` between them: `.tsk-sep` is inked `--line`, the app's HAIRLINE, which at 11.5px is
+   barely a mark. The ink change plus this gap is what separates the two facts and stops
+   `04:30` and `2/5` reading as one numeric run. */
+.tsk-due + .tsk-count {
+  margin-inline-start: 7px;
+}
+
+/* THE STEPS, in the open region the row already has (ADR-0189 §3). The rows are
+   `.note-item.tsk-row` — the host section's shipped row — so all this declares is the two
+   variables `.note-sec` declares, and the indent that makes a step read as INSIDE its parent:
+   14px of card inset plus the parent's 44px lead slot, so a step's tick starts where the
+   parent's TITLE starts. */
+.tsk-kids {
+  --sec-lead: 26px;
+  --sec-tick: 20px;
+  padding-block: 2px;
+  padding-inline: 58px 14px;
+}
+.tsk-kids .note-item {
+  margin-bottom: 6px;
+}
+/* Inside the editor the field is already inset, so the steps align to the field rather than
+   to a card. */
+.tsk-kids-form {
+  padding-inline: 0;
+}
+
+/* THE COMPOSER ROW — the checklist's last row, in the same grid as the steps, so the `＋`
+   sits in the very column the ticks are in.
+
+   **An `<input>`, not `NoteComposer`'s `<textarea>`, and Enter COMMITS here.** That is the
+   opposite of ADR-0152 §6b's rule for a note, on that rule's own reasoning: a note is prose,
+   so the key that ends a line inside one cannot end the note; a step is one line and has no
+   inside, so Enter has nothing else to do. */
+.tsk-kid-compose {
+  /* `.note-item` is `align-items: start`, which is right for a 20px tick beside a line of
+     text and wrong beside an input box — this row is the one member of that grid whose two
+     cells are different heights. */
+  align-items: center;
+}
+.tsk-kid-compose .note-item-lead {
+  color: var(--muted);
+}
+.tsk-kid-compose .note-item-lead .icon {
+  width: 15px;
+  height: 15px;
+}
+/* **`App.css` AND `field.css` BOTH DEFINE `.field`, AND ONLY ONE OF THEM IS RESET.**
+   `App.css` sets `margin-top: 18px` — a form's gap, from the birth form — and `field.css`
+   sets `display`/`gap` and never touches the margin, so every `.field` in the app carries it.
+   Inside a grid row that is not a gap, it is a shove: it put this box 9px below the `＋`
+   beside it. Zeroed here only, where the shell is a row rather than a form field. */
+.tsk-kid-compose .field {
+  margin-top: 0;
+}
+/* **THE BOX IS THE ROW, NOT THE INPUT.** With the border left where `field.css` puts it, the
+   assignee chip and the ✕ sat OUTSIDE the rounded box with nothing to align to.
+   `.note-compose-row` gets away with a control beside its box because that control has a box
+   of its own (`.note-compose-add`, 38px, bordered); these two are 26px and bare, so they
+   belong inside. One border, one radius, one focus ring, three controls in it. */
+.tsk-kid-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-12);
+  background: var(--card);
+  padding-inline: var(--space-2);
+}
+/* The focus hue moves out with the border — the same declaration `field.css` makes on the
+   input itself, one level up, because that is where the border now is. */
+.tsk-kid-row:focus-within {
+  border-color: var(--teal);
+}
+/* **`.field .tsk-kid-in`, not `.tsk-kid-in`** — `field.css`'s `.field input` is (0,1,1) and a
+   bare class is (0,1,0), so `border: 0` loses and the row paints a rounded box INSIDE a
+   rounded box. When a primitive styles by element, an override has to out-specify it rather
+   than merely follow it (ADR-0195's build log records the same trap one control over). */
+.field .tsk-kid-in {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  border: 0;
+  background: none;
+  padding-inline: 0;
+}
+.field .tsk-kid-in:focus-visible {
+  outline: none;
+}
+/* The two controls beside the input: who owes this step, and remove it. 26px of paint with a
+   44px `::after` reach — `row-open.css`'s own recipe, which holds a 44px target under a small
+   control without the line taking 44px of the block (ADR-0017). */
+.tsk-kid-who,
+.tsk-kid-x {
+  position: relative;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--muted);
+}
+.tsk-kid-who::after,
+.tsk-kid-x::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(50%, -50%);
+  width: 44px;
+  height: 44px;
+}
+.tsk-kid-x .icon {
+  width: 15px;
+  height: 15px;
+}
+/* Nobody yet: the same dashed person-shaped absence `.tsk-who-any` already draws in the
+   editor (ADR-0189 §2), at this row's size rather than the editor's 38px. */
+.tsk-kid-who .tsk-who-any {
+  width: 22px;
+  height: 22px;
+}
+.tsk-kid-who .tsk-who-any .icon {
+  width: 12px;
+  height: 12px;
+}
+.tsk-kid-who .wp-av {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+
+/* The cap's refusal, under the list it refused. `--miss-deep` because a refusal is a status
+   and this is the ink variant — the fill fails AA as text, the same reason `.tsk-due.late`
+   uses it. Not a `field-error`: nothing here is a field, and the message is about the list
+   rather than about anything typed. */
+.tsk-kids-full {
+  color: var(--miss-deep);
+  padding-inline: 58px 14px;
+}
+.tsk-kids-form + .tsk-kids-full {
+  padding-inline: 0;
+}
+
 /* THE DEADLINE, in the meta line. `--amber-deep` is amber's paper variant and a due time IS
    time and commitment, so this is inside rule 4 rather than an exception to it. Overdue is
    a STATUS, so it takes `--miss-deep` (the ink variant — the fill fails AA as text). The

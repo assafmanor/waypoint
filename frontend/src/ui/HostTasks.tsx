@@ -24,7 +24,7 @@ import {
 } from '../lib/tasks';
 import type { NoteHostKind } from '../lib/notes';
 import { TaskSection } from './TaskSection';
-import { TaskSheet, createTaskInput, type TaskDraft } from './TaskSheet';
+import { TaskSheet, createTaskInput, writeSubtasks, type TaskDraft } from './TaskSheet';
 
 /** **Which hosts are closed** (ADR-0191 §6), built once from trip state so no screen assembles
  *  it itself — the same reason `useTaskClock` exists below. Memoized on the events array,
@@ -87,7 +87,16 @@ export async function writeStagedTasks(
   createTask: (input: CreateTaskInput) => Promise<unknown>,
   where: Partial<Record<TaskHostKey, string>>,
 ): Promise<void> {
-  for (const draft of staging.pending()) await createTask({ ...createTaskInput(draft), ...where });
+  // Two levels of staging in one save, and the order is the same rule twice: the host first,
+  // then each task, then that task's own steps (ADR-0196 §12). `createTask` resolves to the
+  // canonical row, which is where a step's `parentTaskId` comes from.
+  for (const draft of staging.pending()) {
+    const created = (await createTask({
+      ...createTaskInput(draft),
+      ...where,
+    })) as { id: string } | undefined;
+    if (created?.id) await writeSubtasks(createTask, created.id, draft.subtasks);
+  }
 }
 
 /** The staged draft a `number` sheet refers to, back as a `Task` the editor can read. */
@@ -111,7 +120,7 @@ export function HostTasks({
   /** Required when `host.id` is absent; ignored when it is not. */
   staging?: TaskStaging;
 }) {
-  const { tasks, users, taskVerbs } = useTrip();
+  const { tasks, subtasks, users, taskVerbs } = useTrip();
   const now = useClock();
   const clock = useTaskClock(now);
   const settledHosts = useSettledHosts();
@@ -163,7 +172,11 @@ export function HostTasks({
     else if (!hostId) staging?.add(draft);
     // The host rides the create, from the lookup rather than spelled here.
     else
-      void taskVerbs.createTask({ ...createTaskInput(draft), ...taskHostInput(host.kind, hostId) });
+      void taskVerbs
+        .createTask({ ...createTaskInput(draft), ...taskHostInput(host.kind, hostId) })
+        .then(
+          (created) => created && writeSubtasks(taskVerbs.createTask, created.id, draft.subtasks),
+        );
   };
 
   return (
@@ -171,6 +184,7 @@ export function HostTasks({
       <TaskSection
         tasks={rows}
         users={users}
+        subtasks={subtasks}
         clock={clock}
         hostSettled={hostId ? settledHosts.has(`${host.kind}:${hostId}`) : false}
         quiet={quiet}

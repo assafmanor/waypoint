@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { TASK_STATUS, type Task } from '@waypoint/shared';
+import { splitSubtasks } from '../lib/tasks';
 
 const NOW = new Date('2026-08-15T09:00:00.000Z');
 
@@ -36,7 +37,8 @@ vi.mock('../state/trip-state', () => ({
       startDate: '2026-08-15',
       endDate: '2026-08-20',
     },
-    tasks: tripTasks,
+    tasks: splitSubtasks(tripTasks).roots,
+    subtasks: splitSubtasks(tripTasks).byParent,
     events: [],
     users: [{ id: 'u1', displayName: 'אסף' }],
     members: [{ userId: 'u1' }],

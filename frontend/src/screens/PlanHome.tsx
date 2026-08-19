@@ -35,6 +35,7 @@ import {
   openManualTasks,
   orderTaskRows,
   sortTasks,
+  subtaskProgress,
   taskRowKey,
   type TaskRow,
   taskPreview,
@@ -73,8 +74,17 @@ const dayNumberOf = (date: string, startDate: string) =>
   ) + 1;
 
 export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { trip, events, bookings, users, setActiveDate, taskVerbs, tasks, zoneCrossings } =
-    useTrip();
+  const {
+    trip,
+    events,
+    bookings,
+    users,
+    setActiveDate,
+    taskVerbs,
+    tasks,
+    subtasks,
+    zoneCrossings,
+  } = useTrip();
   const now = useClock();
   const navigate = useNavigate();
   const { readiness, automatic, applyVerb } = useAutomaticTasks();
@@ -267,7 +277,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
    *  same cap the inline list uses, since it is the same question about the same list. */
   const liftTasks = shownRows.map((row) =>
     row.kind === 'task'
-      ? toHeroTask(row.task, taskClock, users)
+      ? toHeroTask(row.task, taskClock, users, subtasks.get(row.task.id))
       : // A check is a task all the way through (ADR-0190 §1 as amended), so it renders as
         // one here too. Its second line goes in `meta`, NOT in `due`: a check has no `dueAt`
         // and never can, and `due` draws a clock — which made every check read as though
@@ -343,6 +353,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         task={row.task}
         users={users}
         clock={taskClock}
+        progress={subtaskProgress(subtasks.get(row.task.id))}
         onTick={() => void taskVerbs.updateTask(row.task.id, { status: tickedStatus(row.task) })}
         onOpen={openTasksScreen}
       />
@@ -527,6 +538,7 @@ export function PlanHome({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
                 task={task}
                 users={users}
                 clock={taskClock}
+                progress={subtaskProgress(subtasks.get(task.id))}
                 onTick={() => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
                 onOpen={openTasksScreen}
               />

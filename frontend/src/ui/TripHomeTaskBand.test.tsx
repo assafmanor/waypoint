@@ -43,11 +43,16 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({
   ...over,
 });
 
-const show = (due: Task[], handlers: Partial<Record<string, () => void>> = {}) =>
+const show = (
+  due: Task[],
+  handlers: Partial<Record<string, () => void>> = {},
+  subtasks: Map<string, Task[]> = new Map(),
+) =>
   render(
     <TripHomeTaskBand
       due={due}
       users={users}
+      subtasks={subtasks}
       clock={CLOCK}
       onTick={handlers.onTick ?? (() => {})}
       onOpen={handlers.onOpen ?? (() => {})}

@@ -20,7 +20,14 @@
 // read-only, because `Task` has no `displayTimezone` column and §10 says nothing is stored
 // per task. There is a zone to state and nothing to correct.
 import { useId, useMemo, useState } from 'react';
-import type { CreateTaskInput, Task, User } from '@waypoint/shared';
+import { TASK_STATUS, type CreateTaskInput, type Task } from '@waypoint/shared';
+import { ltrIsolate } from '../lib/bidi';
+import { tickedStatus } from '../lib/tasks';
+import { SubtaskList, type SubtaskDraft } from './SubtaskList';
+
+/** The id prefix a staged step carries before its parent exists. Never collides with a real
+ *  id, and the index after it is how the list addresses a draft it cannot address by id. */
+const STAGED_STEP = 'staged-step:';
 import { authoringZone } from '../lib/places';
 import { useTrip } from '../state/trip-state';
 import { isoToTimeInput, todayInTz, zonedIso } from '../lib/time';
@@ -31,8 +38,8 @@ import { FormActions } from './primitives/FormActions';
 import { DateField } from './primitives/DateField';
 import { TimeField } from './primitives/TimeField';
 import { ZoneChip } from './primitives/ZoneChip';
-import { ChoiceGrid, type Choice } from './primitives/ChoiceGrid';
-import { Avatar } from './primitives/Avatar';
+import { ChoiceGrid } from './primitives/ChoiceGrid';
+import { assigneeFromChoice, choiceFromAssignee, useAssigneeOptions } from './assignee-options';
 import { ToggleChip } from './primitives/ToggleChip';
 import { Icon } from './Icon';
 import { useFormErrors } from './primitives/useFormErrors';
@@ -52,6 +59,18 @@ import './tasks.css';
  *  So the draft states every field it owns, and a create — which has nothing to clear —
  *  drops the nulls through `createTaskInput`. */
 export interface TaskDraft {
+  /** **Steps typed on a CREATE, held until the parent exists** (ADR-0196 §12). A create has no
+   *  id to hang `parentTaskId` on, which is a reason to STAGE rather than a reason to have no
+   *  way in — the fourth consumer of a pattern the app already runs three times
+   *  (`useNoteComposer().pending()`, `DocumentAttachField`'s staged picks, `useTaskStaging`).
+   *
+   *  Their ordering rule carries over verbatim and is what makes it correct: the steps' writes
+   *  go out AFTER the parent's, because the outbox is FIFO and a step queued first would reach
+   *  a server that cannot see its parent. `writeSubtasks` below is that write.
+   *
+   *  Absent on an EDIT, where the parent already has an id and each step writes as it is
+   *  typed — the same immediacy the tick has. */
+  subtasks?: SubtaskDraft[];
   title: string;
   body: string | null;
   dueAt: string | null;
@@ -79,12 +98,25 @@ export function createTaskInput(draft: TaskDraft): CreateTaskInput {
   };
 }
 
+/** **The staged steps, written onto the task that was just created** (ADR-0196 §12).
+ *
+ *  Mirrors `writeStagedTasks`, and rides its ordering rule for the same reason: this runs
+ *  AFTER the parent's own create resolves, because the outbox is FIFO and a step queued first
+ *  would reach a server that cannot see its parent. Sequential rather than `Promise.all` for
+ *  the same reason — the steps' own order is the order they were typed in, and a checklist is
+ *  authored, not ranked.
+ *
+ *  A no-op on an edit, where `subtasks` is absent because each step wrote as it was typed. */
+export async function writeSubtasks(
+  createTask: (input: CreateTaskInput) => Promise<unknown>,
+  parentTaskId: string,
+  drafts: SubtaskDraft[] | undefined,
+): Promise<void> {
+  for (const draft of drafts ?? []) await createTask({ ...draft, parentTaskId });
+}
+
 /** The one field that can be refused. */
 type TaskField = 'title';
-
-/** `ChoiceGrid` is single-select over strings, so "nobody" needs a value rather than an
- *  absence. It never collides with a user id. */
-const NOBODY = 'nobody';
 
 export function TaskSheet({
   task,
@@ -96,7 +128,7 @@ export function TaskSheet({
   onSave: (draft: TaskDraft) => void;
   onClose: () => void;
 }) {
-  const { trip, users, members, zoneEvidence } = useTrip();
+  const { trip, users, subtasks, taskVerbs, zoneEvidence } = useTrip();
   const titleId = useId();
   const bodyId = useId();
   const errors = useFormErrors<TaskField>();
@@ -104,7 +136,20 @@ export function TaskSheet({
   const [title, setTitle] = useState(task?.title ?? '');
   const [body, setBody] = useState(task?.body ?? '');
   const [important, setImportant] = useState(task?.important ?? false);
-  const [assignee, setAssignee] = useState<string>(task?.assigneeUserId ?? NOBODY);
+  const [assignee, setAssignee] = useState<string>(choiceFromAssignee(task?.assigneeUserId));
+  /** **The checklist field** (ADR-0196 §12), fourth in the form — after `מי אחראי` and before
+   *  `פרטים`. Not first: most tasks have no steps, and a variable-height field between the
+   *  title and the two fields every task DOES use would push them below the fold on a phone.
+   *  Before `פרטים` rather than after, because both answer "what does closing this involve" —
+   *  one structured and one prose, and the structured one should be the one you reach for.
+   *
+   *  On an EDIT the steps are trip state and write immediately. On a CREATE there is no id to
+   *  hang them on, so they are held here and ride the draft out. */
+  const [staged, setStaged] = useState<SubtaskDraft[]>([]);
+  /** Revealed by `＋ תת משימה`, exactly as `＋ פתק` reveals the notes box (ADR-0192 §2) — an
+   *  always-open composer would put a box on every task editor for a field most tasks leave
+   *  empty. Open by itself once there are steps, where the list IS the invitation. */
+  const [composing, setComposing] = useState(false);
 
   // The deadline is held as the two things a person types — a calendar day and an optional
   // wall-clock — and becomes an instant only on save. Read back through the SAME resolver it
@@ -142,6 +187,42 @@ export function TaskSheet({
     return [...new Set(zones.filter(Boolean))];
   }, [zone, trip.timezone, zoneEvidence]);
 
+  /** **The steps this field shows.** On an edit they are trip state; on a create they are the
+   *  staged drafts, given local ids so the list can key and address them — the same trick
+   *  `HostTasks` uses for a task staged on a host create. */
+  const steps: Task[] = task
+    ? (subtasks.get(task.id) ?? [])
+    : staged.map(
+        (draft, index) =>
+          ({
+            ...draft,
+            id: `${STAGED_STEP}${index}`,
+            tripId: trip.id,
+            important: false,
+            dueHasTime: false,
+            status: TASK_STATUS.OPEN,
+            createdBy: '',
+            createdAt: '',
+            updatedAt: '',
+            updatedBy: '',
+          }) as Task,
+      );
+  const stepsDone = steps.filter((step) => step.status !== TASK_STATUS.OPEN).length;
+  const stagedIndex = (step: Task) => Number(step.id.slice(STAGED_STEP.length));
+
+  const addStep = (draft: SubtaskDraft) => {
+    if (task) void taskVerbs.createTask({ ...draft, parentTaskId: task.id });
+    else setStaged((current) => [...current, draft]);
+  };
+  const renameStep = (step: Task, draft: SubtaskDraft) => {
+    if (task) void taskVerbs.updateTask(step.id, draft);
+    else setStaged((current) => current.map((d, i) => (i === stagedIndex(step) ? draft : d)));
+  };
+  const removeStep = (step: Task) => {
+    if (task) void taskVerbs.deleteTask(step.id);
+    else setStaged((current) => current.filter((_, i) => i !== stagedIndex(step)));
+  };
+
   const save = () => {
     const trimmed = title.trim();
     if (!trimmed) {
@@ -149,6 +230,9 @@ export function TaskSheet({
       return;
     }
     onSave({
+      // Absent on an edit: those steps are already written. On a create this is what the host
+      // writes after the parent, inside the same change group.
+      subtasks: task ? undefined : staged,
       title: trimmed,
       // `null`, not `undefined`, and that is the whole of the fix above: an emptied box is a
       // decision to clear, and the sparse patch cannot tell it from an untouched field.
@@ -163,7 +247,7 @@ export function TaskSheet({
       // use two lines up, and the reason `updateTaskSchema` types this `nullish`. Sent only
       // when there IS a deadline: a zone pinned to nothing is a value nothing can read.
       displayTimezone: date ? override : null,
-      assigneeUserId: assignee === NOBODY ? null : assignee,
+      assigneeUserId: assigneeFromChoice(assignee) ?? null,
       important,
     });
   };
@@ -173,36 +257,11 @@ export function TaskSheet({
   // claiming one — a presumed `של כולנו` could be false, a presumed `לא משויך` cannot. Only
   // trip members can be named, and the server refuses anyone else (`assertMemberInTrip`).
   //
-  // **A PERSON where the glyph goes** (ADR-0189 §2). The row is `ChoiceGrid layout="pills"`
-  // unchanged — scroll, snap, edge mask, `useCenterSelected` centring and radiogroup ARIA all
-  // arrive from the primitive — and the only new thing in it is `Choice.lead`. Phase 1 spent
-  // the app's FILTER grammar on this axis, and a filter narrows what you see where this
-  // decides who owes the outcome. `Avatar` is the one renderer for a person (ADR-0133 §3), so
-  // nothing here draws a circle.
-  const assigneeOptions: Choice<string>[] = [
-    {
-      value: NOBODY,
-      icon: '',
-      // A person-shaped ABSENCE, not a differently-shaped chip beside the people: the same
-      // circle with the group glyph, dashed while unchosen. A different shape would say
-      // "this is a different kind of answer" about the same question's default one.
-      lead: (
-        <span className="tsk-who-any">
-          <Icon name="members" />
-        </span>
-      ),
-      label: t.tasks.sheet.nobody,
-    },
-    ...members
-      .map((m) => users.find((u: User) => u.id === m.userId))
-      .filter((u): u is User => u !== undefined)
-      .map((u) => ({
-        value: u.id,
-        icon: '',
-        lead: <Avatar person={u} size="sm" />,
-        label: u.displayName,
-      })),
-  ];
+  // **The list itself moved to `ui/assignee-options.tsx`** when a sub-task's composer became
+  // its second host (ADR-0196 §11): the same options, the same person-where-the-glyph-goes
+  // rendering (ADR-0189 §2), built once. `Avatar` is still the one renderer for a person
+  // (ADR-0133 §3), so nothing draws a circle here or there.
+  const assigneeOptions = useAssigneeOptions();
 
   return (
     <Sheet title={task ? t.tasks.sheet.editTitle : t.tasks.sheet.createTitle} onClose={onClose}>
@@ -290,6 +349,40 @@ export function TaskSheet({
               ariaLabel={t.tasks.sheet.assigneeLabel}
             />
           </div>
+        </Field>
+
+        {/* **THE CHECKLIST, FOURTH** (ADR-0196 §12). Its empty state is a control that
+            reveals rather than a box standing open — this form's own idiom, where `עד מתי`
+            rests as `הוספת תאריך`. */}
+        <Field
+          label={
+            steps.length
+              ? `${t.tasks.sheet.subtasksLabel} · ${ltrIsolate(`${stepsDone}/${steps.length}`)}`
+              : t.tasks.sheet.subtasksLabel
+          }
+        >
+          {steps.length > 0 || composing ? (
+            <SubtaskList
+              steps={steps}
+              users={users}
+              open={composing}
+              variant="form"
+              onAdd={addStep}
+              onRename={renameStep}
+              // A staged step cannot be ticked: it does not exist yet, and completing
+              // something unsaved is a state with nowhere to live (`HostTasks`' own rule).
+              onTick={
+                task
+                  ? (step) => void taskVerbs.updateTask(step.id, { status: tickedStatus(step) })
+                  : undefined
+              }
+              onRemove={removeStep}
+            />
+          ) : (
+            <button type="button" className="vt" onClick={() => setComposing(true)}>
+              ＋ {t.tasks.subtasks.add}
+            </button>
+          )}
         </Field>
 
         <Field label={t.tasks.sheet.bodyLabel} htmlFor={bodyId}>

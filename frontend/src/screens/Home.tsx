@@ -124,6 +124,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
     fxRates,
     refreshFx,
     tasks,
+    subtasks,
     users,
     zoneCrossings,
     taskVerbs,
@@ -349,7 +350,8 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
    *
    *  **Lives in `lib/hero-task.ts` since ADR-0193 §4**, because the lifted PLAN hero renders
    *  the same row and two formatters for one row is what drifts. */
-  const heroTask = (task: Task): HeroLiftTask => toHeroTask(task, taskClock, users);
+  const heroTask = (task: Task): HeroLiftTask =>
+    toHeroTask(task, taskClock, users, subtasks.get(task.id));
 
   /** A horizon point, made view-ready: titles become nodes, times are formatted in
    *  the point's OWN zone (ADR-0107 §2-3), and the hand-offs become callbacks the
@@ -799,6 +801,7 @@ export function Home({ onNavigate }: { onNavigate?: (tab: TabId) => void }) {
       <TripHomeTaskBand
         due={dueTasks}
         users={users}
+        subtasks={subtasks}
         clock={taskClock}
         onTick={(task) => void taskVerbs.updateTask(task.id, { status: tickedStatus(task) })}
         // Both land on the tasks SCREEN, not the Index landing — through the same
