@@ -64,6 +64,42 @@ describe('TasksService', () => {
     expect(change).toMatchObject({ entityType: 'task', action: 'create' });
   });
 
+  // **A create's `after` is the ROW, not the input** (owner, 2026-08-19: a peer's fresh
+  // sub-task "appear[s] as ticked … after restart they appear unticked as expected").
+  //
+  // A client merges `after` over what it already holds, and on a create it holds nothing — so
+  // an `after` that is the caller's input arrives missing every field the server defaults.
+  // `status` is the one that bit: the frontend read its absence as settled, so the step drew
+  // struck through with a green ✓ and counted as done in its parent's fraction until a reload
+  // replaced it with the real row.
+  it('broadcasts the whole row on a create, not the caller’s input', async () => {
+    const tripId = await newTrip();
+    const task = await service.create(tripId, DEV_USER, { title: 'לארוז' });
+
+    const change = await prisma.change.findFirst({ where: { tripId, entityId: task.id } });
+    const after = change?.after as Record<string, unknown>;
+    // The field the report is about, and the three around it that a peer's row is equally
+    // silent about when `after` is the input.
+    expect(after.status).toBe(TASK_STATUS.OPEN);
+    expect(after.important).toBe(false);
+    expect(after.dueHasTime).toBe(false);
+    expect(after.createdBy).toBe(DEV_USER);
+  });
+
+  it('broadcasts a whole row for a SUB-task too, which is where it was noticed', async () => {
+    const tripId = await newTrip();
+    const parent = await service.create(tripId, DEV_USER, { title: 'לארוז' });
+    const step = await service.create(tripId, DEV_USER, {
+      title: 'מטענים',
+      parentTaskId: parent.id,
+    });
+
+    const change = await prisma.change.findFirst({ where: { tripId, entityId: step.id } });
+    const after = change?.after as Record<string, unknown>;
+    expect(after.status).toBe(TASK_STATUS.OPEN);
+    expect(after.parentTaskId).toBe(parent.id);
+  });
+
   it('keeps a date-only deadline distinct from a timed one', async () => {
     const tripId = await newTrip();
 

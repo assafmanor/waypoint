@@ -37,7 +37,7 @@ A sub-task is a `Task` carrying `parentTaskId`. No second entity, no second noun
 - **A task carrying `parentTaskId` may not carry a host FK, `dueAt`, `dueHasTime`, `displayTimezone`, `important`, `derivedKey`, `body` or `assignedToAll`.** §8 gives each of these its reason. Its host is its parent's.
 - **A task may not be both a parent and `assignedToAll`.** §7's ring would otherwise have two denominators.
 
-**A cap of 20 children**, refused at the editor with a sentence rather than silently truncated. Measured: the open region costs **26.8px per child row**, so twenty is **536px** — the whole of a 640px viewport, and the point past which the unbounded-`Sheet` item already on the backlog stops being theoretical. The number is a constant, not a design.
+~~**A cap of 20 children**~~ **A cap of 30** (owner's call, 2026-08-19), refused at the editor with a sentence rather than silently truncated. Twenty came from a measurement — the open region costs **26.8px per child row**, so twenty is **536px**, the whole of a 640px viewport — and the measurement answered the wrong question: how many steps fit on one screen, not how many a packing list has. A real one runs past twenty and the region scrolls. What the cap is for is the runaway case, which is well above either figure. It stays a constant rather than a design, which is why moving it is one line and no ADR.
 
 ### 2. The exclusion is paid ONCE, at the state boundary — and the parent's status resolves there too
 
@@ -415,3 +415,18 @@ Three things that fell out of it, each worth more than the one-line change:
 - **`open` at mount now means two different things, and the focus has to follow the one a person caused.** `SubtaskList` focused the box on any mount-already-open, deliberately — that was the previous round's fix for the way in to a _first_ step, where the mount **is** the reveal. With the editor holding the composer open by itself, the same rule would open the phone's keyboard on every edit of a task with a checklist: `frontend/CLAUDE.md`'s "a shared component inheriting a default that answers a different question", one component further on. The rule that covers both, and needs nothing from the host: **a mount counts as a reveal only when there are no steps yet** — with none, `open` can only mean a press; with some, it may not.
 - **Nothing could have failed.** `TaskSheet` has no component spec, and the two tests that read it (`task-sheet-reachable`, the paint contract) parse CSS and class names, not which props a host passes. The gap is now covered from both ends: `SubtaskList.test.tsx` owns the reveal-versus-present rule, and an e2e case opens the editor on a task with five steps and adds a sixth.
 - **Two facts about writing that e2e**, both of which cost a run each. A route mock must echo the **DTO** and not the row — `taskSchema`'s optionals are `.optional()` and not `.nullable()`, so a mocked `settledAt: null` fails the client's parse and the write rolls back exactly as a 404 does, which reads as a product bug. And a fixture must not collide with the value under test: the first draft typed a step title the fixture already carried, so the assertion matched two elements and looked for a while like a double write. One POST in the request log is what ended that.
+
+## Build log addendum (2026-08-19, third round) — a peer's step arrived ticked
+
+> Owner: _"when receiving a new sub task from WS added by another member, the sub tasks appear as ticked. After restart they appear unticked as expected."_
+
+**A create's `Change.after` was the caller's INPUT, and a client merges `after` over what it already holds — which on a create is nothing.** So a peer's step landed carrying only what the author typed (`{ id, title, parentTaskId }`), missing every field the server defaults. `status` is the one that bit.
+
+`isSettled` read `status !== 'open'`, so `undefined` answered **settled**, and it answered that for all twenty-two of its call sites at once: the step drew struck through with a green ✓, counted as done in its parent's fraction, and dropped out of `שלי`. The reload "fixing" it is the tell — a snapshot carries the real row.
+
+Two changes, because the two halves are separate mistakes:
+
+- **The server sends the row** (`tasks.service`'s create: `after: (entity) => toTaskDto(entity)`). `ChangeService.mutate` has taken a function of the applied entity all along and `bookings.service` already sends a DTO this way; nothing new was needed. It wants `mutate<PrismaTask>` spelled out, for the reason `ChangePayload`'s own comment gives: two unannotated closures leave `T` as `unknown`.
+- **The client fails in the safe direction.** `isSettled` now states what settled _is_ (`done` or `dismissed`) rather than what it is not. The forms are identical for a well-formed row — there are three statuses — and differ only on a row carrying none, where "work still to do" is the answer that cannot silently lose work.
+
+**The general form of this is not fixed here and is on the backlog.** Six other services still send `after: input` on a create, and `applyControlChangeToList`'s own comment blesses it: _"A peer's plain create arrives without server-only fields until the next resync — the Index reads only type/title/code/place, so it renders fine."_ That was true of the surfaces it was written for. A task's `status` **is** the row, so it was the first entity where a defaulted field carries meaning — and the next one will not announce itself either.
