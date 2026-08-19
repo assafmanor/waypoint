@@ -104,5 +104,19 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @waypoint/shared build
-      - run: pnpm --filter @waypoint/frontend exec playwright install --with-deps chromium
+      # **A stalled browser install retries instead of eating the leg** (2026-08-19, twice in
+      # one day). `--with-deps` runs `apt-get` and then fetches Chromium, and both are network:
+      # when one stalls the step produces no output and no error, so the leg sat `in_progress`
+      # until the job cap killed it — and a stuck leg is indistinguishable from a slow one
+      # while it runs. Successful installs here take under 3.5 minutes, so 5 is generous and
+      # two attempts stay inside the 20-minute job cap with the tests still to run.
+      - name: Install Chromium (retried — the install stalls, not the tests)
+        run: |
+          for attempt in 1 2; do
+            if timeout 300 pnpm --filter @waypoint/frontend exec playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::playwright install attempt $attempt stalled or failed; retrying"
+          done
+          exit 1
       - run: pnpm --filter @waypoint/frontend e2e
