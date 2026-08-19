@@ -147,7 +147,14 @@ export function TaskSheet({
   const [staged, setStaged] = useState<SubtaskDraft[]>([]);
   /** Revealed by `＋ תת משימה`, exactly as `＋ פתק` reveals the notes box (ADR-0192 §2) — an
    *  always-open composer would put a box on every task editor for a field most tasks leave
-   *  empty. Open by itself once there are steps, where the list IS the invitation. */
+   *  empty. **Open by itself once there are steps**, where the list IS the invitation: this
+   *  state only decides the EMPTY case, and `open` below is what the composer actually reads.
+   *
+   *  That second sentence was written here from the start and was not what the code did
+   *  (owner, 2026-08-19: _"task editing doesn't have the option to add or remove sub tasks"_).
+   *  `open={composing}` alone meant a task that already had steps rendered a read-only list
+   *  and no way in — the `＋` control lives in the empty branch, so once there were steps
+   *  there was no control anywhere to set this. */
   const [composing, setComposing] = useState(false);
 
   // The deadline is held as the two things a person types — a calendar day and an optional
@@ -364,7 +371,10 @@ export function TaskSheet({
             <SubtaskList
               steps={steps}
               users={users}
-              open={composing}
+              // The reveal decides the empty field only. Once there ARE steps the field is
+              // already a list, so the composer costs it nothing and a checklist is written
+              // in a burst rather than one reveal per step.
+              open={composing || steps.length > 0}
               variant="form"
               onAdd={addStep}
               onRename={renameStep}

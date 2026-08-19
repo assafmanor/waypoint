@@ -142,6 +142,64 @@ describe('adding a step', () => {
   });
 });
 
+// **The composer is offered, and it does not grab the caret when it was not asked for**
+// (owner, 2026-08-19: _"task editing doesn't have the option to add or remove sub tasks"_).
+//
+// The editor keeps the composer open by itself once a task HAS steps, which is what the field
+// was documented to do and did not. That makes `open` at mount mean two different things, and
+// the focus has to follow the one the person actually caused: with no steps the box can only
+// be showing because someone pressed for it, with steps it may just be the field being a list.
+describe('the box is revealed, or merely present', () => {
+  it('takes the caret when the way in to a FIRST step is pressed', () => {
+    show([]);
+    expect(document.activeElement).toBe(box());
+  });
+
+  it('does NOT take it when a task that already has steps is opened', () => {
+    show([step('s1'), step('s2')]);
+    expect(document.activeElement).not.toBe(box());
+  });
+
+  // …but it is there, which is the whole report: a list with no way to add to it.
+  it('is offered anyway, so a checklist can grow', () => {
+    const on = show([step('s1')]);
+    type('לשלם על החניה');
+    enter();
+    expect(on.onAdd).toHaveBeenCalledWith({
+      title: 'לשלם על החניה',
+      assigneeUserId: undefined,
+    });
+  });
+
+  it('takes the caret when it is revealed after the fact', () => {
+    const { rerender } = render(
+      wrapNav(
+        <SubtaskList
+          steps={[step('s1')]}
+          users={users}
+          open={false}
+          onAdd={vi.fn()}
+          onRename={vi.fn()}
+          onRemove={vi.fn()}
+        />,
+      ),
+    );
+    rerender(
+      wrapNav(
+        <SubtaskList
+          steps={[step('s1')]}
+          users={users}
+          open
+          onAdd={vi.fn()}
+          onRename={vi.fn()}
+          onRemove={vi.fn()}
+        />,
+      ),
+    );
+    expect(document.activeElement).toBe(box());
+  });
+});
+
 describe('a step is edited in the composer, in its own place', () => {
   it('returns its words to the box when its words are tapped', () => {
     show([step('s1', { title: 'צק-אין' })]);

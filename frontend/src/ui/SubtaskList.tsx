@@ -98,13 +98,23 @@ export function SubtaskList({
   // Focus when the box is REVEALED, never when it is merely present — the distinction
   // `NoteComposer` records, and the reason `autoFocus` is not used.
   //
-  // **Starting at `false` even when `open` is already true, and that is the difference from
-  // `NoteComposer`'s copy of this effect.** That component is mounted by surfaces which open
-  // with the box showing, so a mount must not focus. This one is only ever mounted open by a
-  // press: a task with no steps renders no list at all until `＋ תת משימה` is pressed, so the
-  // mount IS the reveal. Without this the way in to a FIRST step left the caret nowhere — the
-  // e2e spec caught it, because jsdom has no focus to lose.
-  const wasOpen = useRef(false);
+  // **A mount counts as a reveal only when there are no steps yet**, and the two halves of
+  // that have each been a bug.
+  //
+  // Starting at `open` was the first: a task with no steps renders no list at all until
+  // `＋ תת משימה` is pressed, so that mount IS the reveal, and treating it as "merely present"
+  // left the caret nowhere on the way in to a FIRST step. The e2e spec caught it, because
+  // jsdom has no focus to lose.
+  //
+  // Starting at `false` unconditionally would be the second, now that the editor keeps the
+  // composer open by itself once a task HAS steps (ADR-0196 §12): there the box is showing
+  // because the field is a list, not because anyone asked for it, so focusing it would open
+  // the keyboard on every edit of a task with a checklist — `IconPicker`'s `autoFocus` landing
+  // somewhere new, which `frontend/CLAUDE.md` records as its own anti-pattern.
+  //
+  // With no steps, `open` can only mean a press. With steps, it may not. That is the rule, and
+  // it needs nothing from the host.
+  const wasOpen = useRef(open && steps.length > 0);
   useEffect(() => {
     if (open && !wasOpen.current) inputRef.current?.focus();
     wasOpen.current = open;
