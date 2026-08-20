@@ -18,26 +18,32 @@
 // check's notice, the camera's first `moveend`, a permission answer — and enumerating them is
 // the wrong shape of fix.
 //
-// So this watches instead. Per frame, for a bounded window:
+// So this watches instead. Per frame, for a bounded window, and it is two rules:
 //
-//   • **no element yet** → keep looking (the row may be a frame behind a widening list, or a
-//     snapshot behind a cold boot);
-//   • **the scroller is moving** → leave it alone, that is our own eased scroll in flight;
-//   • **it has stopped and the geometry changed** → aim again;
-//   • **it has stopped and nothing changed** → aim once more, exactly once. This is the whole
-//     trick: an aim that was clamped leaves no trace, so the only way to find out is to ask
-//     again, and asking when the element is already where it belongs costs nothing (the
-//     browser computes the same offset and does not scroll).
+//   • **while the scroller is moving, leave it alone** — that is our own eased scroll, and
+//     re-aiming into a live one is how a correction becomes a crawl;
+//   • **while it is at rest, keep asking.** At rest does not mean landed: a clamped aim leaves
+//     no trace, and an aim can move nothing at all while a surface is still sizing itself. An
+//     ask with nothing to do costs a layout read and no scroll; an ask that can finally act is
+//     the whole point.
+//
+// The first version of this asked exactly ONCE and then waited for the geometry to change,
+// which is a bet that something else will move — and on a slow machine nothing does. Plan
+// mode's day surface is a lazy chunk that mounts ~5s in under 6× CPU throttling, and its
+// arrival's first two asks left `scrollTop` at 0 while the scrollport was still growing. It
+// passed on every machine fast enough not to notice, which is the same shape as the defect
+// above.
 //
 // **It never fights a finger.** A `pointerdown`, a touch, a wheel or a key ends the watch on
 // the spot: past the first aim this is a correction, and a correction that overrules the
 // person scrolling is worse than a landing that is 30px off.
 //
 // Deliberately a frame loop rather than a `ResizeObserver` pair on the scroller and its
-// content: the cost is two rects a frame on a screen that already re-renders on the clock, and
-// one mechanism that reads the same three numbers every frame is easier to reason about than
-// two that fire at different times. What the window costs is bounded and what it buys is every
-// cause at once.
+// content: what it reads per frame is one `scrollTop` and one ancestor walk, on screens that
+// already re-render on the clock — and a loop that asks the same question every frame is easier
+// to reason about than two observers firing at different times. What the window costs is
+// bounded; what it buys is every cause of a short landing at once, including the ones nobody
+// has hit yet.
 import { prefersReducedMotion } from './motion';
 import { scrollerFor } from './scrollable';
 import { LANDING_WATCH_MS } from '../constants';
@@ -76,54 +82,38 @@ export function landAtTop(
     el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 
   const deadline = performance.now() + windowMs;
-  /** Have we aimed at all; and have we already asked again since the last movement. */
+  /** Whether the one-shot aim has gone out — only meaningful while nothing scrolls yet. */
   let aimed = false;
-  let asked = false;
-  /** What the CONTENT looked like at the last aim — scroll-independent on purpose, so our own
-   *  scrolling never reads as the surface changing. `null` until there is a scroller to read it
-   *  from, which is a real state and not an edge case: a list that does not overflow yet has
-   *  nothing to scroll, and one that overflows a moment later has to be aimed at again. */
-  let geometry: string | null = null;
-  let scrolled: number | undefined;
+  /** The offset the scroller was last seen resting at; `undefined` until we have seen it. */
+  let resting: number | undefined;
 
   const step = () => {
     if (!watching) return;
     const el = find();
     const scroller = el instanceof HTMLElement ? scrollerFor(el, 'block') : null;
-    const reading =
-      el && scroller
-        ? `${scroller.scrollHeight}|${scroller.clientHeight}|${Math.round(
-            el.getBoundingClientRect().top -
-              scroller.getBoundingClientRect().top +
-              scroller.scrollTop,
-          )}`
-        : null;
-    if (el && !aimed) {
-      // The aim the moment there is something to aim at, scroller or not — a list that does not
-      // overflow needs no scrolling, and this keeps the one-shot contract for the surfaces that
-      // never do (the graceful-absence path's short list).
-      aimed = true;
-      geometry = reading;
-      scrolled = scroller?.scrollTop;
-      aim(el);
-    } else if (el && scroller && reading) {
-      if (geometry === null) {
-        // It overflows NOW and did not when we aimed, so that aim moved nothing.
-        geometry = reading;
-        scrolled = scroller.scrollTop;
-        asked = false;
+    if (el && !scroller) {
+      // **Nothing overflows yet**, which is a real state and not an edge case: a list that has
+      // not filled its box has nothing to scroll, and one that fills it a moment later gets
+      // aimed at by the branch below. One aim here keeps the one-shot contract for the surfaces
+      // that never do overflow (the graceful-absence path's short list).
+      if (!aimed) {
+        aimed = true;
         aim(el);
-      } else if (scroller.scrollTop !== scrolled) {
-        // Moving — ours, and it may still be heading somewhere that has since become
-        // reachable, so the ask below is re-armed for when it stops.
-        scrolled = scroller.scrollTop;
-        asked = false;
-      } else if (reading !== geometry) {
-        geometry = reading;
-        asked = false;
-        aim(el);
-      } else if (!asked) {
-        asked = true;
+      }
+    } else if (el && scroller) {
+      if (resting !== undefined && scroller.scrollTop !== resting) {
+        // **Moving — and it is ours.** Leave it alone: re-aiming into a live scroll is how a
+        // correction becomes a crawl, each call restarting an ease that never arrives.
+        resting = scroller.scrollTop;
+      } else {
+        // **At rest, which does not mean landed.** An aim can move nothing at all — measured on
+        // a 6×-throttled Plan day, the arrival's first two asks left `scrollTop` at 0 while the
+        // surface was still sizing itself, and the scroll only took hold once the scrollport had
+        // finished growing 300ms later. So the ask repeats for as long as the scroller is still:
+        // one that has nothing to do costs a layout read and no scroll, and one that CAN act is
+        // the whole of this fix. The moment it acts, the branch above takes over.
+        resting = scroller.scrollTop;
+        aimed = true;
         aim(el);
       }
     }

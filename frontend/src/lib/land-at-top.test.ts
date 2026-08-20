@@ -75,39 +75,55 @@ describe('landAtTop', () => {
     expect(aims(el)).toBe(1);
   });
 
-  it('leaves a moving scroller alone, then asks again exactly once', () => {
+  it('leaves a moving scroller alone, and keeps asking while it is at rest', () => {
     const box = scroller();
     const el = row(box, 500);
     landAtTop(() => el);
     pump(); // the first aim
     expect(aims(el)).toBe(1);
     // Our own eased scroll, in flight: two frames of movement, and neither is an occasion to
-    // re-aim — this is the Zeno trap the "is it moving" test exists to avoid.
+    // re-aim — re-aiming into a live scroll is the Zeno trap that makes a correction crawl.
     box.scrollTop = 120;
     pump();
     box.scrollTop = 240;
     pump();
     expect(aims(el)).toBe(1);
-    // Stopped. **One** more ask, because a clamped aim leaves no trace and asking is the only
-    // way to find out — and then silence, however long the watch runs.
+    // Stopped — which does NOT mean landed. An aim can move nothing at all while a surface is
+    // still sizing itself (measured on a throttled Plan day: two asks, `scrollTop` still 0,
+    // and the scroll only took hold 300ms later), so the ask repeats for as long as the
+    // scroller is still. That is what makes this robust to a slow mount rather than to one
+    // named cause.
     pump();
     expect(aims(el)).toBe(2);
-    pump(20);
-    expect(aims(el)).toBe(2);
+    pump(3);
+    expect(aims(el)).toBe(5);
   });
 
-  it('aims again when the surface moves under a settled landing', () => {
+  it('goes quiet again the moment an ask actually moves the scroller', () => {
+    const box = scroller();
+    const el = row(box, 500);
+    landAtTop(() => el);
+    pump(2);
+    const before = aims(el);
+    box.scrollTop = 300; // the ask took hold
+    pump();
+    expect(aims(el)).toBe(before); // …so this frame says nothing
+  });
+
+  it('is still aiming after a notice arrives above the row', () => {
     const box = scroller();
     const el = row(box, 8);
     landAtTop(() => el);
-    pump(3); // aim, then the one ask
-    expect(aims(el)).toBe(2);
+    pump(3);
+    const before = aims(el);
     // A notice arrives above the row: the content grew and the row is 96px lower. This is the
-    // reported case — the map was still loading, and this is what "still loading" does.
+    // reported case — the map was still loading, and this is what "still loading" does. The
+    // scroller has not moved, so the watch is still asking, and the next ask carries the new
+    // geometry.
     Object.defineProperty(box, 'scrollHeight', { value: 996, writable: true });
     el.dataset.top = '104';
     pump();
-    expect(aims(el)).toBe(3);
+    expect(aims(el)).toBe(before + 1);
   });
 
   // The state the Map's own unit tests depend on, and the one a list that grows into a
@@ -126,6 +142,9 @@ describe('landAtTop', () => {
     Object.defineProperty(box, 'scrollHeight', { value: 900, writable: true }); // now it does
     pump();
     expect(aims(el)).toBe(2);
+    // …and from here it is the at-rest rule's business, not the one-shot's.
+    pump();
+    expect(aims(el)).toBe(3);
   });
 
   it('stops the moment a hand touches the list, and never aims again', () => {

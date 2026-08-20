@@ -15,6 +15,14 @@
 //
 // Measured here rather than in the unit suite for the reason every landing spec in this repo
 // is: jsdom has no layout and no scrolling, so it can only see that a scroll was ASKED for.
+//
+// **The Plan case failed on CI and passed here, and how to reproduce that is worth writing
+// down**: a slow machine, i.e. `Emulation.setCPUThrottlingRate` at 6 over a CDP session. Plan's
+// day surface is a lazy chunk and mounts ~5s in under that, and the aim it then makes can move
+// NOTHING while the surface is still sizing itself — which is the hole the watcher's
+// "keep asking while the scroller is at rest" rule closes (`lib/land-at-top.ts`, pinned in its
+// own unit test). Not throttled here: the runner is already the slow machine, and a spec that
+// spends 15s to assert what a unit test can state is a flake with a long runtime.
 import { test, expect, type Page } from '@playwright/test';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
 import { t } from '../src/i18n/he';
