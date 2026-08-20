@@ -5,6 +5,13 @@
    muted for soft; amber `now` ring; the done record is --ok green, never amber
    (ADR-0028). */
 
+/* **The gap above a card an arrival landed on** (2026-08-20): `?event=` brings this card to
+   the top of the day, and `block: 'start'` puts its margin box against the scroller's edge —
+   flush there it reads as clipped. Same property, same 8px, same reasoning as the Map row's
+   (`map.css`'s `.place`), which is where this rule was first written down. */
+.wp-event {
+  scroll-margin-top: 8px;
+}
 .wp-event {
   background: var(--card);
   border: 1px solid var(--line);

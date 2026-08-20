@@ -55,6 +55,11 @@ export interface EventCardProps {
   unsynced?: boolean;
   /** A read-only past day (ADR-0029): create/edit/move locked; settle stays. */
   readOnly?: boolean;
+  /** **How the DOM names this card**, so something sent to one event can find it — the
+   *  `?event=` arrival lands on the row this stamps (`EVENT_ROW_ATTR`, `state/nav-state`).
+   *  Spread rather than a bare id prop, so the host owns the attribute's spelling and this
+   *  layer stays free of a second copy of it. */
+  anchor?: Record<string, string>;
   isOpen: boolean;
   onToggle: () => void;
   startsAt?: string;
@@ -165,6 +170,7 @@ export function EventCard(props: EventCardProps) {
     sync,
     unsynced,
     readOnly = false,
+    anchor,
     isOpen,
     onToggle,
     startsAt,
@@ -317,7 +323,7 @@ export function EventCard(props: EventCardProps) {
   // Settle variant: a calm, non-expanding card + the inline settle strip.
   if (showSettle) {
     return (
-      <div className={cls}>
+      <div className={cls} {...anchor}>
         <div className="wp-event-face static">
           <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
             {icon}
@@ -389,7 +395,7 @@ export function EventCard(props: EventCardProps) {
   );
 
   return (
-    <div className={cls}>
+    <div className={cls} {...anchor}>
       <button type="button" className="wp-event-face" onClick={onToggle} aria-expanded={isOpen}>
         <PlaceBadge className="wp-event-badge" onShowOnMap={onShowOnMap}>
           {icon}

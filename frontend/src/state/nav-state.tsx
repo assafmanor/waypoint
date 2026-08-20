@@ -72,6 +72,41 @@ export const BOOKING_PARAM = 'booking';
 export const DOCUMENT_PARAM = 'doc';
 export const EVENT_PARAM = 'event';
 export const IDEA_PARAM = 'idea';
+/**
+ * **`?event=`'s other half: what the surface stamps on the row it names** (2026-08-20).
+ *
+ * The param says which card to open; landing on it means FINDING it, and both day surfaces
+ * now answer to the same attribute — Trip's `EventCard` and Plan's builder row (whose own
+ * `data-bld-id` this replaces, so the drag's `closest()` and the arrival ask one question).
+ * Two surfaces reading one selector is the point: a place's reference sends you to a day
+ * without knowing which mode will draw it.
+ */
+export const EVENT_ROW_ATTR = 'data-event';
+export const eventRowSelector = (id: string): string => `[${EVENT_ROW_ATTR}="${id}"]`;
+
+/**
+ * **A one-shot id in the URL, taken and spent** (2026-08-20).
+ *
+ * Three surfaces run this discipline — the Index for `?booking=`/`?doc=`, both day surfaces
+ * for `?event=`/`?idea=` — and the third copy is what makes it a function: read it, act on
+ * it, and delete it, so a back or a reload does not re-open what you have since closed.
+ *
+ * It returns the value **on the render it arrives**, before its own effect has spent it, which
+ * two callers need for different reasons: an effect keyed on it acts once (and once more with
+ * `null`, which every caller already guards), and a decision taken AT MOUNT — the Day view's
+ * "land on now", which must stand down when the arrival names a card — can see it at all.
+ */
+export function useArrivalParam(name: string): string | null {
+  const [params, setParams] = useSearchParams();
+  const value = params.get(name);
+  useEffect(() => {
+    if (value === null) return;
+    const next = new URLSearchParams(params);
+    next.delete(name);
+    setParams(next, { replace: true });
+  }, [name, value, params, setParams]);
+  return value;
+}
 /** Which of the Index's sub-screens to open on arrival. `docs` is ADR-0050's; `bookings`
  *  joins it for the errand return below, and needs no id — the point is only to MOUNT the
  *  screen, not to open anything on top of it. */

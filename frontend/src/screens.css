@@ -1667,7 +1667,12 @@
 
    `minmax(0, 1fr)` is the `min-width: 0` the flex version carried on `.bld-main`,
    said once and in the place that owns the width. */
+/* **The gap above a row an arrival landed on** (2026-08-20) — the same property and the same
+   reason as the Map row's (`map.css`'s `.place`): `block: 'start'` aligns the margin box with
+   the scroller's edge, and flush against it a card reads as clipped rather than as placed. It
+   belongs to the row's own box, so no screen passes a number. */
 .bld {
+  scroll-margin-top: 8px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;

@@ -193,3 +193,37 @@ test('an arrival from another day lands on its row too', async ({ page }) => {
   await expect(page.locator('.map-screen')).toBeVisible();
   await expectLandedOn(page, 'pl-later');
 });
+
+// ── THE LANDING SURVIVES A SURFACE THAT IS STILL ARRIVING (owner, 2026-08-20) ──────────
+// _"Seems to be working except, and this is important cause it's a common case, when the map is
+// not loaded yet. Then it doesn't scroll correctly."_
+//
+// With the map still loading, everything is still arriving: measured on a 4×-throttled cold
+// load, the sheet's scroll extent grew 303 → 359 → 615 → 641px over the first second and then
+// to 666 a **further second later**, when the offline-map notice above the split took 25px off
+// the scrollport. The reveal-only wait this replaces had stopped watching long before that.
+//
+// **The late change is injected here, and that is deliberate.** The app's own producers of one
+// — the archive cache check, a geolocation answer, the camera's first settle, a ghost row —
+// all land on timings a spec cannot drive without stubbing the very thing under test, and two
+// of them do not exist in a hermetic run at all. What the app sees is identical: something
+// above the row appeared while the row was already placed. The `.map-sheet-scroll` insertion
+// mirrors `geoNotice`/`areaNotice`, which are that scroller's own first children.
+test('a late arrival above the row does not leave the landing wrong', async ({ page }) => {
+  await boot(page);
+  await toDays(page);
+  await page.locator('.wp-maybecard-ic[role="button"]').first().click();
+  await expect(page.locator('.map-screen')).toBeVisible();
+  await expectLandedOn(page, 'pl-idea');
+
+  // …and now a notice arrives above the list, 96px of it, the way one does when a storage
+  // check or a permission answer comes back late.
+  await page.evaluate(() => {
+    const scroller = document.querySelector('.map-sheet-scroll') as HTMLElement;
+    const late = document.createElement('div');
+    late.style.height = '96px';
+    late.setAttribute('data-late', '');
+    scroller.insertBefore(late, scroller.firstChild);
+  });
+  await expectLandedOn(page, 'pl-idea');
+});
