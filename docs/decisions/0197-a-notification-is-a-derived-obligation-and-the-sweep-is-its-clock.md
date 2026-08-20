@@ -85,12 +85,50 @@ Each tick: find candidate obligations in a bounded window, resolve each to the i
 
 **A missed tick is dropped, not delivered late.** Each kind declares a `staleAfter` (0198's table). A "leave for the airport" is worthless twenty minutes late; "a task is overdue" is still true tomorrow but is the morning digest's job by then, not a stale point send. Downtime therefore loses sends rather than replaying a burst — the same posture as ADR-0180's "surplus work is dropped, never queued", and the opposite of what a durable queue would give us, which is a redeploy that fires eleven notifications at once.
 
-**What is genuinely lost by not having a queue**, recorded so it is not rediscovered as a surprise: retry-with-backoff on a transient push-service failure (we drop and let the next tick or the digest carry it), and fan-out throughput. Both are volume properties. **Redis and BullMQ therefore stay reserved** — the backlog's line is unchanged, not consumed — and the switch is behind one `NotificationSender` interface, so activating it later is a provider swap and not a redesign. The threshold that would trigger it: a tick that cannot finish inside its interval, or a delivery-failure rate that makes dropping visible.
+**What is genuinely lost by not having a queue**, recorded so it is not rediscovered as a surprise: retry-with-backoff on a transient push-service failure (we drop, and the next tick or the morning digest carries it), and fan-out throughput. Both are volume properties, and §3.1 is where they get thresholds instead of adjectives.
+
+### 3.1 What a queue would replace, and when it becomes the right call
+
+The distinction that makes this a later swap rather than a later rewrite — and it is a distinction, not a hedge:
+
+> **A queue of "deliver this now" jobs is fine. A queue of "fire this at 18:00" jobs is the thing §3 rejects.**
+
+The first carries a **stateless unit of work** — an endpoint, an encrypted payload, a retry policy — that depends on no entity and cannot go stale, because the decision was already made. The second carries a **prediction about the future** that six edit paths can silently invalidate. So the sweep keeps the decision forever, and only the delivery is ever handed off.
+
+Two seams, and I was vague about which one I meant:
+
+```ts
+// Seam A — the transport. Exists in phase 1, because tests need a fake.
+export interface NotificationSender {
+  send(target: SubscriptionTarget, payload: NotificationPayload): Promise<SendOutcome>;
+}
+// WebPushSender (prod) · RecordingSender (specs) · a future EmailSender (§1)
+
+// Seam B — the dispatch. This is the one BullMQ would take over.
+export interface NotificationDispatcher {
+  dispatch(due: readonly DueSend[]): Promise<void>;
+}
+// DirectDispatcher: bounded-concurrency Promise.all over NotificationSender (today)
+// QueueDispatcher:  one job per DueSend; workers call the SAME NotificationSender
+```
+
+The sweep produces `DueSend[]` — already resolved, already deduped by the ledger insert — and hands it to a dispatcher. Swapping in BullMQ means writing `QueueDispatcher`, wiring a worker, and changing one provider binding. **The ledger, the derivation, the zone resolution, the quiet-hours rule and the catalogue are all untouched by that change**, which is the whole reason it can wait.
+
+**The thresholds, in the order they are likely to arrive:**
+
+1. **A second scheduled workload appears.** Gmail import is the candidate `docker-compose.yml` has always named, and it is the workload a queue is genuinely for: fan-out, third-party rate limits, retries, and work that is expensive to redo. At two consumers the fixed cost of Redis amortises, and notifications should ride it then rather than keep a private mechanism.
+2. **A tick cannot finish inside its interval.** Measurable, not felt: log per-tick wall time from day one, and the trigger is sustained **> 30 s** against a 60 s interval. The arithmetic, so the number is not folklore: one Web Push POST is ~100–200 ms, at concurrency 20 that is ~4,000 sends inside 30 s.
+3. **Sustained non-`410` delivery failures.** `404`/`410` are a subscription's normal death (§10) and need no retry. Anything else, above roughly **1 %** of sends over a day, is the point where "drop it" becomes visible as reminders that never came — and retry-with-backoff is precisely what the queue buys.
+4. **Several backend instances plus a delivery-load reason to spread the work.** Correctness already survives multiple instances (the ledger claim, §3), so this is about not having every instance walk the whole candidate set — an efficiency trigger, not a bug.
+
+**And the burst that will hit threshold 2 first is not the trip data — it is the digest.** `task.digest` fires at a fixed local hour, so every user sharing a timezone lands in the _same minute_, while `task.due` and `event.hard.soon` scatter across the day by construction. That makes the first mitigation cheaper than a queue and worth knowing before reaching for one: **spread the digest over a few minutes** by deriving a stable per-user offset (a hash of the user id into a 0–9 minute window), which multiplies the ceiling by ten for one line and no infrastructure. Reach for the queue when that is no longer enough.
 
 Two more reasons the queue is not the cheap option here, contra the costing:
 
 - **The compose Redis has no volume**, so delayed jobs die on restart. Making them durable is work BullMQ would _add_, not save.
-- The candidate query is small: one indexed scan per tick over trips inside their access window (ADR-0040), which at this app's scale (ADR-0065 — many trips, ~5 people each) is the same shape of read every snapshot already does.
+- The candidate query is small: one indexed scan per tick, which at this app's scale (ADR-0065 — many trips, ~5 people each) is the same shape of read every snapshot already does.
+
+**The sweep's scope is every trip that has not ENDED — pre-trip explicitly included** (owner, 2026-08-20: _"we should be able to send reminders for due tasks even before the trip"_). This is worth stating because the obvious phrasing, "trips inside their access window", reads as ADR-0040's **Trip-mode** window and would have excluded exactly the case that matters most: ADR-0040 governs which **mode** a trip is in, not whether it is live data, and pre-trip is ordinary editable Plan mode where most task deadlines are actually written. So the filter is `endDate >= today`, not "is the board showing". A finished trip is the read-only archive (ADR-0040 §2) and is the only thing excluded.
 
 ### 4. What is awake: an in-process ticker in the one service
 
@@ -109,6 +147,8 @@ A `NotificationScheduler` provider in the single Nest service (ADR-0031, ADR-016
 **The 03:00 bug is the one that gets notifications disabled permanently**, and this app moves people across zones mid-trip by design. So the rule is not "be careful": it is that **the sender resolves the zone through exactly the function the screen does** — ADR-0107's `currentZone(instant, crossings, primaryZone)`, and for a task ADR-0194's `dueZone`, which honours a pinned `Task.displayTimezone` before deriving. One derivation, so a reminder cannot name a time the app does not show.
 
 **This is the epic's biggest hidden cost and it is a move, not a rewrite.** Those functions are in `frontend/src/lib/places.ts` (`currentZone`, `zoneCrossings`, `segmentZoneAt`, `ZoneCrossing`) and `frontend/src/lib/tasks.ts` (`dueZone`, `taskBand`, `TaskClock`). They are pure and clock-injected already, so **they move to `packages/shared`** and the frontend re-exports or imports them from there. That is root rule 3 catching up with reality — this logic was always shape-and-semantics, not screen — and it is what makes the send time and the printed time the same fact rather than two implementations that agree today.
+
+**Pre-trip, the same derivation already answers "home", and the nuance is worth one paragraph** because a reader checking `currentZone`'s doc comment will find the opposite. That comment says Plan mode deliberately does _not_ read it — planning is framed in the trip's **primary** zone (ADR-0107 §4). True for the clock, the now-line and the day grid; **not** true for a task deadline, which ADR-0194 deliberately routed through `dueZone` on every surface, `taskDue` included. And `segmentZoneAt` returns `crossings[0].fromZone` for any instant before the first crossing — the **departure origin**, i.e. home. So a deadline written before the trip prints and fires in the zone the person is standing in, and the row and the notification agree with no special case. Verified by reading both functions, not assumed: the one thing that would break the agreement is a _pinned_ zone, and a pin wins in both places because both call `dueZone`.
 
 **Quiet hours are part of the aim, not a filter bolted after it.** No send between **22:00 and 07:00** in the recipient's current zone, with one exception: a notification **about** something inside that window may fire inside it (a 05:30 airport departure has to ring at 04:00, or the feature is decorative). Each kind therefore declares `timeCritical: boolean`; a non-critical send whose aim lands in quiet hours is **deferred to 07:00 local, keeping its original `fireKey`**, so it arrives once and the ledger still recognises it. The boundaries are constants, not preferences (0198 §6).
 

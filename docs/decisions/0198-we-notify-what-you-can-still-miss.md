@@ -32,7 +32,8 @@ Corollaries that fall out for free, none of which need code:
 - **A hotel's middle night, a multi-day hire's middle day: nothing.** ADR-0164's measurement already says so.
 - **A sub-task cannot be notified** — ADR-0196 refuses it a deadline, so it is un-notifiable by construction rather than by a guard. (Its parent can be.)
 - **A settled or dismissed row is not notified**, and a task settled between the sweep's read and the send is dropped at the last check.
-- **A past trip (ADR-0040) sends nothing.** Membership and the access window are read at send time (ADR-0197 §2.4).
+- **A past trip (ADR-0040) sends nothing.** Membership is read at send time (ADR-0197 §2.4), and the sweep's filter is `endDate >= today`.
+- **A trip that has not started sends everything in phase A** (owner, 2026-08-20: _"we should be able to send reminders for due tasks even before the trip, we don't want to miss any upcoming"_). Nothing in this catalogue is gated on Trip mode, and it would be backwards if it were: **pre-trip is where task deadlines actually live** — the visa appointment, the passport photos, the currency, the check-in — and it is the window where forgetting still costs something recoverable. ADR-0040 decides which **mode** a trip is in, not whether its obligations are real. Phase B's rows are simply silent before departure because there is nothing timed yet, which is a property of the data and not a rule.
 
 ### 2. The catalogue
 
@@ -47,7 +48,8 @@ Every row: what fires it, how far ahead, who gets it, whether it may break quiet
 | `task.assigned` | on assignment, when the actor is not the assignee               | the assignee                                                                  | no                            | 6 h        |
 
 - **An undated task is never notified.** No deadline, no obligation instant, nothing to be late for.
-- **`dueHasTime: false` does not fire `task.due`** — "Thursday" is not a moment, and the schema keeps that distinction deliberately (`dueAt` alone cannot tell "Thursday" from "Thursday 00:00"). Undated-with-a-day tasks are the digest's business.
+- **`dueHasTime: false` does not fire `task.due`** — "Thursday" is not a moment, and the schema keeps that distinction deliberately (`dueAt` alone cannot tell "Thursday" from "Thursday 00:00"). **A dated-no-time task is the digest's job, and this is the pre-trip case, not an edge one**: most of what a person writes weeks out is a day without an hour. So the digest is the mechanism that makes the owner's requirement true, and it is worth being explicit that it counts them rather than leaving it implied.
+- **The digest names today and tomorrow**, in that order, and that one addition is what closes "we don't want to miss any upcoming" without a second send: a deadline three days out is not silent, it is simply not urgent yet, and the morning it becomes tomorrow's problem it is named in a send that was already going out. A look-ahead of one day and not three — a list of everything eventually due is the backlog, and the app has surfaces for that.
 - **No overdue nag.** A second send saying the same thing is the pattern that trains people to swipe notifications away, and the digest already reports it the next morning. Recorded as rejected so it is not proposed as a "small addition".
 - **`task.assigned` is the one social send in the catalogue**, and it earns its place by being _addressed_: someone put your name on something. ADR-0081's rejection was of ambient awareness, which this is not. Dedup on the assignee, so passing a task back and forth does not multiply.
 
@@ -117,11 +119,22 @@ Each of these is a real idea, rejected with the condition that would reopen it �
 
 ### 5. Volume: a budget with a number in it
 
-**At most 4 sends per person per day during a trip, at most 1 per day before it.** Enforced at send time off `NotificationSend`'s `(userId, sentAt)` index (ADR-0197 §10), and when the cap binds, the survivors are chosen by the urgency the app already ranks with — `timeCritical` first, then ADR-0193/`sortTasks`' ladder (overdue, today, later). A dropped send is dropped, not deferred: it would arrive as a lie about the time.
+**The cap is per source, not per trip phase — we ration what WE decided to say, never what YOU asked to be reminded of.** That is the rule; the numbers follow from it:
+
+| source                                                             | cap                                                               | why                                                                                                                                     |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **someone typed the deadline** (`task.due`, `task.assigned`)       | **6 / person / day**                                              | a person set this time on purpose; suppressing it is us overruling them. 6 is a safety ceiling against a pathological day, not a budget |
+| **the app decided to speak** (`readiness.nudge`, `group.imminent`) | **1 / person / day**                                              | this is the one that nags, so this is the one that is rationed                                                                          |
+| **the digest** (`task.digest`)                                     | **1 / person / day**, and it does not count against the row above | it exists to _replace_ sends, so charging it like a nudge would be backwards                                                            |
+| **`timeCritical`** (`event.hard.soon`, `span.edge.soon`)           | **uncapped**                                                      | a flight does not wait for a quota                                                                                                      |
+
+**An earlier draft of this ADR said "4 per day in trip, 1 per day before it", and that was wrong in the direction that matters** (owner, 2026-08-20). A pre-trip day with two real deadlines would have dropped one, and it would have dropped it by a rule about _where the traveller is standing_ rather than about _what they owe_ — which is the same conflation ADR-0040 §3 already warns against. Pre-trip is not a quieter phase, it is the phase where the tasks are.
+
+Enforced at send time off `NotificationSend`'s `(userId, sentAt)` index (ADR-0197 §10). When a cap binds, the survivors are chosen by the urgency the app already ranks with — `timeCritical` first, then ADR-0193/`sortTasks`' ladder (overdue, today, later). A dropped send is dropped, not deferred: it would arrive as a lie about the time.
 
 **The arithmetic below is computed from the rules, not measured** — and the measurement is not available, which is itself a finding: `backend/prisma/seed.mjs` has **no dated tasks at all** (`grep -c dueAt` → 0), so nothing in the repo can currently exercise a single row of this catalogue. **The build's first task is therefore to give the seed a dated, assigned, partly-overdue task set and a flight, then count what one simulated trip day actually produces.** ADR-0180 §7 made the same move for a currency provider, for the same reason: a number from a document is not evidence.
 
-The computed shape of a typical trip day: one `task.digest` at 08:00, zero-to-two `task.due`, one `event.hard.soon` if the day has a hard commitment, occasionally one `span.edge.soon` on a checkout day. That is 2–4, which is why the cap is 4 and not 10 — the cap should bind only on a day that is genuinely unusual, and if it binds often the catalogue is wrong, not the cap.
+The computed shape of a typical **trip** day: one `task.digest` at 08:00, zero-to-two `task.due`, one `event.hard.soon` if the day has a hard commitment, occasionally one `span.edge.soon` on a checkout day. Of a typical **pre-trip** day: usually **nothing at all**, because most weeks contain no deadline; one digest and a `task.due` on the days that do; one `readiness.nudge` on three days in the whole run-up. So the caps above should bind almost never — and if they bind often, the catalogue is wrong, not the caps.
 
 ### 6. Preferences: three switches, and quiet hours are not one of them
 
@@ -169,5 +182,7 @@ Hebrew, no em dashes, `·` as the separator (root `CLAUDE.md`), under a new `not
 - **Notify soft events too, behind a preference.** Rejected: it makes the preference the thing that protects the user from us, and a default-off switch nobody finds is just dead code. ADR-0011 is a better filter than a checkbox.
 - **One `task.due` per task with no digest.** Rejected on the count: five people with three dated tasks each on a travel morning is a burst, and the burst is what gets the permission revoked. The digest is one send that answers the same question.
 - **A daily countdown before the trip** (T-14 through T-1). Rejected: nine sends to say the same sentence, and the readiness surface already shows it continuously. Three milestones is the compromise, and even those are conditional on something being open.
+- **A quieter pre-trip budget** (the earlier draft's 1/day). Rejected on §5's argument: it rations the sends a person asked for by a rule about which phase the trip is in, and pre-trip is precisely where the deadlines are. What it was really trying to protect against is the readiness nudge repeating, and that is now capped where it belongs.
+- **Treating "Thursday" as "Thursday 09:00"** so a dated-no-time task fires its own `task.due`. Rejected: it invents an hour the person did not type, which is the exact mistake ADR-0194 was written to stop on the display side, and the digest already carries the same information at a defensible hour.
 - **Per-trip preferences** rather than per-user. Rejected as premature (ADR-0065's grow-later posture cuts both ways): a person who wants different treatment for two simultaneous trips is a case nobody has, and `Membership` already carries one preference (`calendarSyncEnabled`) that nothing reads.
 - **Send the change feed, filtered by nothing.** ADR-0081 rejected the toast; this ADR does not reopen it, it narrows it to §D's batched, imminent-only slice and admits that slice may not be worth building.
