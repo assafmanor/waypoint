@@ -44,6 +44,7 @@ const openSheet = (ideas: RankedIdea[], onPickIdea = vi.fn(), mode: Mode = 'plan
         mode={mode}
         date={GAP.date}
         ideas={ideas}
+        glyph={(m) => m.icon ?? ''}
         onPickIdea={onPickIdea}
         onNewEvent={() => {}}
         onClose={() => {}}
@@ -153,6 +154,7 @@ describe('SlotFillSheet', () => {
             mode="trip"
             date={DAY}
             ideas={pool(2)}
+            glyph={(m) => m.icon ?? ''}
             onPickIdea={vi.fn()}
             onNewEvent={() => {}}
             onClose={() => {}}

@@ -29,6 +29,19 @@ export const MS_PER_MINUTE = 60_000;
  *  handful of no-op frames and then stop. */
 export const ROW_SCROLL_WAIT_FRAMES = 10;
 
+/** How many frames `showRowInList` will wait for the list to STOP MOVING before it aims a
+ *  second time (2026-08-20). The first aim goes out immediately; this bounds the correction,
+ *  which is owed because `scrollIntoView` clamps its destination to the scroll extent that
+ *  exists at the call — and a row still revealing from `0fr` has not contributed its height to
+ *  it yet (see `revealsRunning`).
+ *
+ *  The number is the reveal's own arithmetic and not a feel call: `--t-base` (240ms) plus the
+ *  longest stagger a row can carry (`FILTER_STAGGER_MAX_MS`, 220ms) is ~28 frames at 60Hz, and
+ *  a slower device gets MORE time per frame rather than less. Bounded for the same reason the
+ *  wait above is: a list that never settles must cost a handful of no-op frames and then aim
+ *  anyway. Under reduced motion nothing transitions, so nothing here is ever spent. */
+export const ROW_SCROLL_SETTLE_FRAMES = 36;
+
 /** Where the API lives. Empty in production, where the app is served same-origin, so
  *  every consumer must treat it as a prefix rather than a base to `new URL()` against.
  *

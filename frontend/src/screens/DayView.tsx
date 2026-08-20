@@ -66,6 +66,8 @@ import {
 } from '../lib/time';
 import {
   dayStops,
+  ideaCategory,
+  ideaGlyph,
   poolStrip,
   proposedDay,
   rankIdeas,
@@ -265,7 +267,7 @@ export function DayView() {
    *  Plan mode's picker, so the two modes cannot disagree about where an idea should go. */
   const scheduleDefaults = (item: MaybeItem) => {
     const zone = authoringZone({ placeId: item.placeId }, { date: activeDate }, zoneEvidence);
-    const minutes = typicalMinutesFor(item.category);
+    const minutes = typicalMinutesFor(ideaCategory(item, places));
     const position = firstPositionFitting(dayPositions(dayEvents, activeDate, zone), minutes);
     return position ? blockFor(position.free, minutes) : nextSlot(dayEvents, activeDate, zone);
   };
@@ -715,7 +717,7 @@ export function DayView() {
                   <MaybeCard
                     key={m.id}
                     compact
-                    icon={m.icon}
+                    icon={ideaGlyph(m, places)}
                     title={m.title}
                     meta={stopReasonText(forDayReasons.get(m.id))}
                     notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
@@ -760,7 +762,7 @@ export function DayView() {
                   <MaybeCard
                     key={m.id}
                     compact
-                    icon={m.icon}
+                    icon={ideaGlyph(m, places)}
                     title={m.title}
                     meta={tileReasonText(reason, activeDate)}
                     notes={noteCountFor(noteCounts, 'maybeItem', m.id)}
@@ -852,6 +854,7 @@ export function DayView() {
             bookings,
             places,
           })}
+          glyph={(m) => ideaGlyph(m, places)}
           onPickIdea={(m) => {
             verbs.replace(replaceTarget, m);
             setReplaceTarget(null);
@@ -883,8 +886,9 @@ export function DayView() {
           mode="trip"
           date={gapTarget.fill.date}
           ideas={shelfForSlot(shelf, gapTarget.fill, trip.timezone, { events, bookings, places })}
+          glyph={(m) => ideaGlyph(m, places)}
           onPickIdea={(m) => {
-            const block = ideaBlock(m.category, gapTarget);
+            const block = ideaBlock(ideaCategory(m, places), gapTarget);
             verbs.schedule(m, {
               date: block.date,
               title: m.title,

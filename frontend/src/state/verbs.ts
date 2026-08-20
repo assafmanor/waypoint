@@ -56,6 +56,7 @@ import {
 import { generateId } from '../lib/id';
 import { getNow } from '../lib/useClock';
 import { eventDisplayZones } from '../lib/places';
+import { ideaCategory, ideaGlyph } from '../lib/shelf';
 import { soleIdeaFor, type PlaceLink } from '../lib/place-refs';
 import { attachmentsForHost } from '../lib/attachments';
 import { coerceClearedFields } from '../lib/cache';
@@ -1211,6 +1212,7 @@ export function useVerbs() {
     trip,
     events,
     maybeItems,
+    places,
     ripple,
     activeDate,
     setActiveDate,
@@ -1285,6 +1287,19 @@ export function useVerbs() {
   const authorId = me?.user.id ?? trip.updatedBy;
   const undo = () => void applyUndo(deps);
 
+  /** **The idea as it READS, for the two verbs that turn one into an event** (2026-08-20).
+   *  `buildScheduleEvent` copies the idea's glyph and category onto the event, and an idea
+   *  added from the map carries neither: the pills are on the PLACE (ADR-0165), so a `food`
+   *  place became a `💡`, uncategorised event on the day. Resolved here, once, so the event
+   *  inherits exactly what the shelf tile was showing (`ideaGlyph`/`ideaCategory`) — and
+   *  `buildScheduleEvent` stays the pure builder it is, with `fields` (the form's answer)
+   *  still outranking both. */
+  const asScheduled = (m: MaybeItem): MaybeItem => ({
+    ...m,
+    icon: ideaGlyph(m, places),
+    category: ideaCategory(m, places),
+  });
+
   /** **The idea an event becomes when it leaves the day.** Two verbs make one now — `park`
    *  and `החלף` (ADR-0161 §6) — and a parked event is the same thing either way, so the
    *  shape is here rather than twice at the call sites. `targetDate` overrides the day it
@@ -1349,7 +1364,7 @@ export function useVerbs() {
     // Trip-mode one-tap quick-schedule onto today at a default slot (Tier-1).
     schedule: (m: MaybeItem, fields?: ScheduleFields) => {
       const now = new Date(getNow()).toISOString();
-      const event = buildScheduleEvent(trip, activeDate, m, now, authorId, fields);
+      const event = buildScheduleEvent(trip, activeDate, asScheduled(m), now, authorId, fields);
       // Resolves to the event it built — the same reason `create` returns its promise: a
       // caller writing notes on the way has to queue them BEHIND their host (ADR-0152 §6b).
       const done = applySchedule(deps, event, m.id).then(() => event);
@@ -1441,7 +1456,7 @@ export function useVerbs() {
      *  decision — see `applyReplace`. */
     replace: (displaced: TripEvent, m: MaybeItem) => {
       const now = new Date(getNow()).toISOString();
-      const event = buildScheduleEvent(trip, displaced.date, m, now, authorId, {
+      const event = buildScheduleEvent(trip, displaced.date, asScheduled(m), now, authorId, {
         date: displaced.date,
         title: m.title,
         // Soft, always: what a replacement inherits is the SLOT, not the commitment. A hard

@@ -1293,6 +1293,26 @@ describe('EventForm (folded into Modal, U-01)', () => {
       expect(iconChip().textContent).toBe(iconForCategory('nature'));
     });
 
+    // ── The idea's category and glyph are its PLACE's (owner, 2026-08-20) ────────────
+    // "Maybe items added from the map don't inherit the place category and icon": the pills
+    // are on the place (ADR-0165) and the idea the same gesture created carries nothing, so
+    // scheduling one opened this form uncategorised with a bare 📌.
+    it('opens on the category and glyph of the idea’s place', () => {
+      tripState.places = [{ ...PLACE_B, category: 'food' }];
+      const idea = { id: 'm1', tripId: 't1', title: 'רעיון', icon: '💡', placeId: PLACE_B.id };
+      render(wrapNav(<EventForm maybeItem={idea as never} onClose={() => {}} />));
+      const group = screen.getByRole('radiogroup', { name: t.eventForm.categoryLabel });
+      expect(
+        within(group)
+          .getByRole('radio', { name: t.iconPicker.categories.food })
+          .getAttribute('aria-checked'),
+      ).toBe('true');
+      expect(iconChip().textContent).toBe(iconForCategory('food'));
+      // …and a glyph the CATEGORY derived is still not a pick, so the category keeps moving it.
+      pickCategory('nature');
+      expect(iconChip().textContent).toBe(iconForCategory('nature'));
+    });
+
     it('carries the icon latch across the errand once a glyph is actually picked', () => {
       render(
         wrapNav(

@@ -55,6 +55,12 @@ So the form reports `categoryTouched` beside `iconTouched`, and the host writes 
 - **A search result and a rename** go through `applyAuthored`, which is one `updatePlace` with a diff — so accepting everything as offered still costs nothing.
 - **The idea keeps its own category too.** `landPlace`'s `addMaybe` is unchanged: an idea's category is its own field, it drives the shelf's badge, and the two are free to diverge later. What changed is that the place no longer depends on the idea to remember.
 
+**Amended 2026-08-20** (owner: _"maybe items added from the map don't inherit the place category and icon"_). The bullet above is where this ADR was wrong, and the sentence that gave it away is _"it drives the shelf's badge"_: `addMaybe` receives a category only when the same gesture happened to author one, and on the two add paths the pills open on **nothing** — so accepting a name as offered (the common add) leaves the idea with no category and the shelf's placeholder `💡`, beside a pin the place itself colours and glyphs correctly. Scheduling it then produced an uncategorised event, because `buildScheduleEvent` copies the idea's two fields onto the day.
+
+So an idea's category and glyph are **resolved, not read**: `ideaCategory` / `ideaGlyph` (`lib/shelf.ts`) answer with the idea's own value, else its place's, and the glyph runs the app's icon chain at the rungs an idea occupies — `chosenIcon(idea.icon) ?? chosenIcon(place.icon) ?? iconForCategory(category) ?? 💡`. "The two are free to diverge" survives exactly as stated: an idea's own answer still wins wherever it has one. What no longer happens is an absence being taken for an answer.
+
+Derived rather than copied at creation, for §3's own reason one entity over: a stored copy freezes the idea at whatever the place said that day, and it would leave every idea already on a shelf behind — including the ones this report is about. The consumers are the shelf tile, the block a dragged idea gets (`ideaBlock`/`typicalMinutesFor`), the note badge in the idea's own sheet, `EventForm`'s opening category and glyph, and the two verbs that turn an idea into an event (`schedule`, `החלף`).
+
 ### 5. What this does not do
 
 - **There is no way back to "no category".** The pills are single-select with no clear, exactly as they were, and `undefined` from the form means "nothing chosen", never "clear it". A place miscategorised is re-categorised.

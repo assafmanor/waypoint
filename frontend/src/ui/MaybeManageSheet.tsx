@@ -15,6 +15,7 @@
 // `✕`), so the capability boundary ADR-0116 §4 drew is untouched.
 import type { MaybeItem } from '@waypoint/shared';
 import { useTrip } from '../state/trip-state';
+import { ideaCategory } from '../lib/shelf';
 import { RowManageSheet, type RowAction } from './domain';
 import { HostNotes } from './HostNotes';
 import { HostTasks } from './HostTasks';
@@ -48,7 +49,7 @@ export function MaybeManageSheet({
   onRemove?: () => void;
   onClose: () => void;
 }) {
-  const { users } = useTrip();
+  const { users, places } = useTrip();
   const author = users.find((u) => u.id === item.createdBy)?.displayName;
 
   const actions: RowAction[] = [
@@ -76,7 +77,14 @@ export function MaybeManageSheet({
       {why && <div className="idea-why">{why}</div>}
       <HostTasks host={{ kind: 'maybeItem', id: item.id, name: item.title }} />
       <HostNotes
-        host={{ kind: 'maybeItem', id: item.id, name: item.title, category: item.category }}
+        // The category this idea READS as — its own, else its place's (`ideaCategory`), so a
+        // note on a map-added idea gets the badge its tile and its pin already show.
+        host={{
+          kind: 'maybeItem',
+          id: item.id,
+          name: item.title,
+          category: ideaCategory(item, places),
+        }}
       />
     </RowManageSheet>
   );
