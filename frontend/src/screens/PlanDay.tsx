@@ -16,6 +16,7 @@
 // either side of one are both.
 import {
   Fragment,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -34,6 +35,8 @@ import {
   type TripEvent,
 } from '@waypoint/shared';
 import { useTrip, byStart } from '../state/trip-state';
+import { EVENT_PARAM, EVENT_ROW_ATTR, eventRowSelector, useArrivalParam } from '../state/nav-state';
+import { landAtTop } from '../lib/land-at-top';
 import { useDragState } from '../state/drag-state';
 import { useSpringLoadedDay } from '../lib/useSpringLoadedDay';
 import { useVerbs } from '../state/verbs';
@@ -300,6 +303,21 @@ export function PlanDay() {
   // The idea's own surface (ADR-0116's 2026-08-01 amendment): a tap opens this, the hold
   // still drags. `שיבוץ ליום` inside it reaches `openSchedule` below.
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
+  // **ARRIVING AT ONE ROW** (owner, 2026-08-20: _"going from a place to the event … doesn't
+  // scroll correctly. Check plan day and trip day"_). A place's reference row sends you to the
+  // event's day with `?event=<id>`, and this is the half that makes that land: the row is
+  // brought to the top of the day, watched while the surface settles (`lib/land-at-top.ts`).
+  //
+  // **It does not OPEN anything, and that is a posture difference rather than half a build**
+  // (ADR-0159 §1). Trip's card expands in place, so an arrival there expands it; Plan's row
+  // opens a detail SHEET over the day, and a modal raised by a navigation would hide the very
+  // day you were sent to. So Plan lands the row and leaves the tap to the person.
+  const arrivingEvent = useArrivalParam(EVENT_PARAM);
+  useEffect(() => {
+    if (!arrivingEvent) return;
+    return landAtTop(() => document.querySelector(eventRowSelector(arrivingEvent)));
+  }, [arrivingEvent]);
+
   // Built once per note-list change rather than filtered per tile (ADR-0152 §6c).
   const noteCounts = useMemo(() => noteCountsByHost(notes), [notes]);
   // The third mark's tally (ADR-0191 §2) — OPEN tasks only, unlike the two beside it.
@@ -459,7 +477,9 @@ export function PlanDay() {
     const d = live.current.drag;
     if (!d) return;
     const el = document.elementFromPoint(point.clientX, point.clientY);
-    const overId = (el?.closest('[data-bld-id]') as HTMLElement | null)?.dataset.bldId ?? null;
+    const overId =
+      (el?.closest(`[${EVENT_ROW_ATTR}]`) as HTMLElement | null)?.getAttribute(EVENT_ROW_ATTR) ??
+      null;
     const overRow = overId && overId !== d.id && softIndex.has(overId) ? overId : null;
     const overShelf = shelfAt(el);
     const overDate = dayPillAt(el);
@@ -2055,7 +2075,7 @@ export function BuilderRow({
     // could only arm on contact from a dedicated handle before; a press-and-hold can
     // arm from anywhere without eating the row's tap, so the row gets that width back
     // and the gesture matches the shelf's exactly.
-    <div className={cls} data-bld-id={event.id} {...dragProps}>
+    <div className={cls} {...{ [EVENT_ROW_ATTR]: event.id }} {...dragProps}>
       {/* The badge is the way to the map, and it survives `readOnly` — a finished
           trip is a browsable archive (ADR-0040) and looking at a place changes
           nothing. */}

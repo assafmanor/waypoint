@@ -15,39 +15,9 @@ import type { Revealed } from '../../lib/filter-reveal';
 import { FLIP_KEY_ATTR, useFlipRows } from '../../lib/useFlipRows';
 import './reveal-list.css';
 
-/** The class every row wrapper carries — exported because the query below is about it, and a
- *  caller that needs to ask "is this list still moving" must not hand-write the selector. */
-export const REVEAL_ROW_CLASS = 'wp-reveal';
-
-/**
- * **Is any row inside `scope` still animating its own height?** — i.e. is the list's LAYOUT
- * still changing (2026-08-20).
- *
- * It exists for one caller and one defect, and the defect is worth stating because nothing
- * about it is visible in a rect: `scrollIntoView` computes its destination **once, clamped to
- * the scroll extent that exists at that moment**. A row revealing from `0fr` has not yet
- * contributed its own height to that extent, so a scroll aimed at it while the reveal runs is
- * silently truncated — the list stops short by roughly the height of whatever was still
- * arriving, and nothing re-fires. Measured on the Map: extent 328px at the call, 666px once
- * the row was open, and the scroll stopped at 303 of the 624 it needed.
- *
- * Both phases of the motion count as moving, which is the reason this reads the animations
- * rather than the boxes: a row inside its `transition-delay` (`revealDelayMs`'s stagger) has
- * height 0 and is not changing yet, so any "has it stopped growing" test reports it settled
- * one frame before it starts. A pending CSS transition is `running`, so this does not.
- *
- * Scoped to the wrappers themselves, never `getAnimations({ subtree: true })`: rows hold
- * decorative infinite animations (the Map's `map-row-now` pulse), and a subtree read would
- * report a list that never settles. `getAnimations` is absent in jsdom, where there is no
- * motion to wait for either — so "not moving" is the right answer there, not a crash.
- */
-export function revealsRunning(scope: ParentNode): boolean {
-  return [...scope.querySelectorAll(`.${REVEAL_ROW_CLASS}`)].some(
-    (el) =>
-      typeof el.getAnimations === 'function' &&
-      el.getAnimations().some((a) => a.playState === 'running'),
-  );
-}
+/** The class every row wrapper carries. Named because `reveal-list.css` and the collapse it
+ *  describes are one fact in two files, and a second string literal for it is how they drift. */
+const REVEAL_ROW_CLASS = 'wp-reveal';
 
 export function RevealRow({
   visible,

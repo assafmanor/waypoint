@@ -25,6 +25,7 @@ import {
   useShowPlaceOnMap,
 } from '../state/map-scope-state';
 import { prefersReducedMotion } from '../lib/motion';
+import { landAtTop } from '../lib/land-at-top';
 import {
   authoringZone,
   ideaShowOnMap,
@@ -45,8 +46,13 @@ import {
   type ZoneContext,
   type ZoneEvidence,
 } from '../lib/places';
-import { useSearchParams } from 'react-router-dom';
-import { EVENT_PARAM, IDEA_PARAM } from '../state/nav-state';
+import {
+  EVENT_PARAM,
+  EVENT_ROW_ATTR,
+  IDEA_PARAM,
+  eventRowSelector,
+  useArrivalParam,
+} from '../state/nav-state';
 import { useVerbs } from '../state/verbs';
 import { useClock } from '../lib/useClock';
 import {
@@ -291,26 +297,42 @@ export function DayView() {
   // `שיבוץ ליום` inside it is what reaches `scheduleItem` above.
   const [ideaSheet, setIdeaSheet] = useState<MaybeItem | null>(null);
 
-  // **ARRIVING FROM A NOTE** (ADR-0153 §8's way-in amendment). A note about an event or an
-  // idea sends you to that host's day, and the id says which one to open once the day is on
-  // screen — `?event=<id>` expands the card, `?idea=<id>` opens the idea's sheet. The params
-  // are spent on arrival, so a back or a reload does not re-open what you have since closed,
-  // which is the same discipline `Index.tsx` runs for `?booking=`.
-  const [params, setParams] = useSearchParams();
+  // **ARRIVING AT ONE CARD** (ADR-0153 §8's way-in amendment; extended 2026-08-20 to the
+  // Map's place references). A note about an event or an idea — and now a place's reference
+  // row — sends you to that host's day, and the id says which one to open once the day is on
+  // screen: `?event=<id>` expands the card, `?idea=<id>` opens the idea's sheet. Both params
+  // are spent on arrival by `useArrivalParam`, so a back or a reload does not re-open what you
+  // have since closed.
+  const arrivingEvent = useArrivalParam(EVENT_PARAM);
+  const arrivingIdea = useArrivalParam(IDEA_PARAM);
   useEffect(() => {
-    const eventId = params.get(EVENT_PARAM);
-    const ideaId = params.get(IDEA_PARAM);
-    if (!eventId && !ideaId) return;
-    if (eventId) setOpenId(eventId);
-    if (ideaId) {
-      const idea = maybeItems.find((m) => m.id === ideaId);
-      if (idea) setIdeaSheet(idea);
-    }
-    const next = new URLSearchParams(params);
-    next.delete(EVENT_PARAM);
-    next.delete(IDEA_PARAM);
-    setParams(next, { replace: true });
-  }, [params, setParams, maybeItems]);
+    if (arrivingEvent) setOpenId(arrivingEvent);
+  }, [arrivingEvent]);
+  useEffect(() => {
+    if (!arrivingIdea) return;
+    const idea = maybeItems.find((m) => m.id === arrivingIdea);
+    if (idea) setIdeaSheet(idea);
+  }, [arrivingIdea, maybeItems]);
+  // **AND THE CARD IS BROUGHT TO YOU** (owner, 2026-08-20: _"going from a place to the event
+  // (and maybe also booking) doesn't scroll correctly"_). Opening it was never the whole job:
+  // a day is a long scroller and the card you were sent to is wherever it happens to be, so
+  // the arrival expanded something off screen. The same watched landing the Map's own row
+  // gets (`lib/land-at-top.ts`) — and it has to be watched here too, because expanding the
+  // card grows it by its documents, tasks and notes sections after the first aim.
+  useEffect(() => {
+    if (!arrivingEvent) return;
+    return landAtTop(() => document.querySelector(eventRowSelector(arrivingEvent)));
+  }, [arrivingEvent]);
+  /** **Did THIS day-open name a card?** — read by "land on now" below, which must not walk over
+   *  an arrival's landing with an answer to a question nobody asked this time. A ref written
+   *  from an effect declared HERE rather than a dependency down there, and both halves are
+   *  deliberate: effects run in declaration order, so this is already true by the time that one
+   *  looks; and adding the id to its deps would re-run it a render later, when the param has
+   *  been spent — scrolling to now on the strength of the arrival having finished. */
+  const aimedAtCard = useRef(false);
+  useEffect(() => {
+    aimedAtCard.current = arrivingEvent != null;
+  }, [arrivingEvent]);
 
   // The live "now" sits in the zone of the itinerary segment you're in (ADR-0107
   // §4), so "today" rolls at THAT zone's midnight — cross a zone and the calendar
@@ -472,7 +494,7 @@ export function DayView() {
   const nowLineRef = useRef<HTMLDivElement>(null);
   const isToday = dayScope === 'today';
   useEffect(() => {
-    if (!isToday) return;
+    if (!isToday || aimedAtCard.current) return;
     const el = nowLineRef.current;
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
@@ -1078,6 +1100,7 @@ function ItemNode({ item, depth, ctx }: { item: TimeItem; depth: number; ctx: Da
       sync={<EntitySyncBadge id={e.id} />}
       unsynced={unsynced}
       readOnly={ctx.readOnly}
+      anchor={{ [EVENT_ROW_ATTR]: e.id }}
       isOpen={ctx.openId === e.id}
       onToggle={() => ctx.toggle(e.id)}
       startsAt={e.startsAt}

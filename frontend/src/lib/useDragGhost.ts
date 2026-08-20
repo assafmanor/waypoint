@@ -43,7 +43,7 @@ export interface DragSourceBox {
   height: number;
 }
 
-/** Attributes stripped from the clone. Hit-test targets (`data-bld-id`,
+/** Attributes stripped from the clone. Hit-test targets (`data-event`,
  *  `data-shelf-drop`, `data-gap-key`) and ids must not exist twice in the document:
  *  `pointer-events: none` already keeps the clone out of `elementFromPoint`, but a
  *  `querySelector` — in app code or in a test — would still find the copy. */

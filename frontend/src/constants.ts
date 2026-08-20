@@ -20,27 +20,26 @@ export const MS_PER_DAY = 86_400_000;
  *  every second — a memo keyed on this rebuilds 60 times an hour instead of 3,600. */
 export const MS_PER_MINUTE = 60_000;
 
-/** How many frames `showRowInList` will wait for a row that is not in the DOM yet
- *  (2026-08-06). One frame is enough when the row is already rendered, and it is not when the
- *  same gesture WIDENED the list to find it: an arrival from another day calls `setAllDays`
- *  and the scroll, and whether React has committed the wider list by the next frame is a race
- *  — which is exactly the "sometimes it doesn't land there" that was reported. Bounded rather
- *  than open-ended, because a row that never appears (filtered out, deleted) must cost a
- *  handful of no-op frames and then stop. */
-export const ROW_SCROLL_WAIT_FRAMES = 10;
-
-/** How many frames `showRowInList` will wait for the list to STOP MOVING before it aims a
- *  second time (2026-08-20). The first aim goes out immediately; this bounds the correction,
- *  which is owed because `scrollIntoView` clamps its destination to the scroll extent that
- *  exists at the call — and a row still revealing from `0fr` has not contributed its height to
- *  it yet (see `revealsRunning`).
+/**
+ * **How long a landing stays under watch** (`lib/land-at-top.ts`, 2026-08-20).
  *
- *  The number is the reveal's own arithmetic and not a feel call: `--t-base` (240ms) plus the
- *  longest stagger a row can carry (`FILTER_STAGGER_MAX_MS`, 220ms) is ~28 frames at 60Hz, and
- *  a slower device gets MORE time per frame rather than less. Bounded for the same reason the
- *  wait above is: a list that never settles must cost a handful of no-op frames and then aim
- *  anyway. Under reduced motion nothing transitions, so nothing here is ever spent. */
-export const ROW_SCROLL_SETTLE_FRAMES = 36;
+ * It replaces two frame budgets — 10 frames of waiting for a row that was not in the DOM yet
+ * (2026-08-06: an arrival from another day widens the list and the row is a commit behind), and
+ * 36 frames of waiting out that row's reveal (ADR-0168 §3). Both were bounds on ONE cause each,
+ * and the report that retired them is the one neither could see: with the map still loading,
+ * the scroller's extent kept growing for **over a second** after the screen mounted — the row
+ * opening, the list widening, then the offline-map notice above the split taking 25px off the
+ * scrollport a further second later. An aim before the last of those is short.
+ *
+ * **2.5s is that measurement plus headroom, not a feel call.** The last extent change landed at
+ * ~1.8s on a 4×-throttled cold load, and a slower device is slower still; the corrections are
+ * themselves eased scrolls, so a couple of them plus a late change is the span this has to
+ * cover — at 700ms the reveal case alone still fails. It costs nothing in the ordinary case
+ * (two rects a frame, on a screen that already re-renders on the clock), and a person touching
+ * the list ends the watch immediately, so the window is never something the user can be
+ * fighting.
+ */
+export const LANDING_WATCH_MS = 2500;
 
 /** Where the API lives. Empty in production, where the app is served same-origin, so
  *  every consumer must treat it as a prefix rather than a base to `new URL()` against.

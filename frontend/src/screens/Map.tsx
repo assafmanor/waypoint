@@ -118,13 +118,14 @@ import {
 } from '../lib/map-camera';
 import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config';
 import { useMapArchives } from '../lib/useMapArchives';
-import { prefersReducedMotion } from '../lib/motion';
+import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
 import { usePlaceSearch } from '../lib/usePlaceSearch';
 import { useVerbs, type AddMaybeOptions } from '../state/verbs';
 import { stopHeightCss } from '../lib/snap-sheet';
 import { countVisible, revealRows, visibleItems, type Revealed } from '../lib/filter-reveal';
 import { daySelectTarget, useBackLayer, withBookingFormReturn } from '../state/nav-state';
+import { useNoteHostWayIn } from '../state/note-host-nav';
 import { useNavigate } from 'react-router-dom';
 import { formatTime, relativeDayLabel } from '../lib/time';
 import { eventEdgeTransition } from '../lib/transitions';
@@ -154,14 +155,12 @@ import {
   MAP_SHEET_VIEW,
   PLACE_CORPUS,
   PLACE_REFS_CAP,
-  ROW_SCROLL_SETTLE_FRAMES,
-  ROW_SCROLL_WAIT_FRAMES,
   type MapRowDisclosure,
   type MapSheetView,
 } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { AddLocationButton } from '../ui/primitives/PlacePicker';
-import { RevealList, revealsRunning } from '../ui/primitives/RevealList';
+import { RevealList } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { ToggleChip } from '../ui/primitives/ToggleChip';
 import { MapPane, type MapDraftMarker, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
@@ -1488,97 +1487,33 @@ export function MapView() {
   const showRowInList = useRef<(placeId?: string | null, resultId?: string | null) => void>(
     () => {},
   );
-  /** The one frame this may have pending. **At most one scroll is ever in flight**, and both
-   *  reasons are behavioural rather than tidiness: two transitions in quick succession (tap a row,
-   *  then change the stop) would otherwise fire two scrolls, the first aimed at a target the
-   *  second has already replaced; and a frame that outlives the screen would scroll a row that is
-   *  no longer on it. */
-  const pendingScroll = useRef<number | undefined>(undefined);
-  useEffect(() => () => cancelAnimationFrame(pendingScroll.current ?? 0), []);
+  /** The landing this may have in flight. **At most one, ever**, and both reasons are
+   *  behavioural rather than tidiness: two transitions in quick succession (tap a row, then
+   *  change the stop) would otherwise leave two watchers aiming at different rows, and one that
+   *  outlived the screen would scroll a row that is no longer on it. */
+  const pendingLanding = useRef<() => void>(() => {});
+  useEffect(() => () => pendingLanding.current(), []);
   showRowInList.current = (placeId, resultId) => {
-    // Deferred a frame so a row that has just grown is measured at its real height, and so a stop
-    // change has committed the sheet's new box before we scroll inside it.
+    pendingLanding.current();
+    // **THE AIM IS WATCHED, NOT FIRED AND FORGOTTEN** (`lib/land-at-top.ts`, which carries the
+    // whole reasoning and the measurements). Three things this screen used to own are its now:
+    // the deferred frame, waiting for a row that the same gesture's `setAllDays` has not
+    // committed yet, and re-aiming once the extent the row needs actually exists.
     //
-    // **AND IT WAITS FOR A ROW THAT IS NOT THERE YET** (owner, 2026-08-06: _"when clicking on the
-    // icon to go to the map, it sometimes doesn't go to the map list row. I can see that it's
-    // expanded, but it just doesn't land there."_). One frame is enough when the row is already
-    // rendered — which is why it worked most of the time — and it is not when the same gesture
-    // widened the list to find it: an arrival from another day calls `setAllDays` and this in one
-    // pass, and whether React has committed the wider list by the next frame is a race. So it
-    // retries for a bounded handful of frames rather than scrolling to nothing once.
-    cancelAnimationFrame(pendingScroll.current ?? 0);
-    let framesLeft = ROW_SCROLL_WAIT_FRAMES;
-    let settleFrames = ROW_SCROLL_SETTLE_FRAMES;
-    /** Aimed once already, and whether the list was still moving when we did. */
-    let aimed = false;
-    let waited = false;
-    const findAndScroll = () => {
-      // The sheet where there IS one, the document otherwise — because the graceful-absence path
-      // renders this list straight into the shell's scrolling body with no sheet at all (§8).
-      // Scoping to a null ref there meant a selected card could open below the fold and nothing
-      // moved, which is the same defect this function exists for.
-      //
-      // **That path is reached by being OFFLINE now, and by nothing else** (ADR-0186 §8): a
-      // missing Maps key used to be its other cause, and there is no build configuration left to
-      // be missing. Worth naming, because the two layouts put this list in different scrollers and
-      // `scrollIntoView` acts on whichever one it is in — `e2e/place-know.spec.ts` measured the
-      // wrong box for exactly that reason until Phase 2 made the split e2e's default.
+    // The scope is the sheet where there IS one, the document otherwise — because the
+    // graceful-absence path renders this list straight into the shell's scrolling body with no
+    // sheet at all (§8), and the two layouts put the list in different scrollers.
+    // **That path is reached by being OFFLINE now, and by nothing else** (ADR-0186 §8): a
+    // missing Maps key used to be its other cause, and there is no build configuration left to
+    // be missing. Worth naming, because `e2e/place-know.spec.ts` measured the wrong box for
+    // exactly that reason until Phase 2 made the split e2e's default.
+    pendingLanding.current = landAtTop(() => {
       const scope: ParentNode = sheetRef.current ?? document;
-      const row =
-        (placeId ? scope?.querySelector(`[data-place="${placeId}"]`) : null) ??
-        (resultId ? scope?.querySelector(`[data-result="${resultId}"]`) : null);
-      // The gap above the card is `scroll-margin-top` on `.place` (map.css), not a number here:
-      // it is a property of the row's own box, and CSS is where the sheet's edges already live.
-      //
-      // **AND IT ANIMATES** (owner, 2026-08-06: _"it's a little confusing when it doesn't do the
-      // animation"_ — ADR-0168 §3). The offset was right and the arrival was instant, so the list
-      // was simply somewhere else the next frame and nothing said a row had been brought to you.
-      // Reduced motion drops the easing and keeps the move, which is this app's one rule about
-      // animation everywhere else (ADR-0098 §4) — and `motion.ts` is where that question is
-      // answered, never a media query written out again here.
-      const aim = (target: Element) =>
-        target.scrollIntoView({
-          block: 'start',
-          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-        });
-      if (!row) {
-        // Not rendered yet — try again next frame, up to the budget. `pendingScroll` still holds
-        // at most one frame, so the "one scroll in flight" rule above is unchanged.
-        if (framesLeft-- > 0) pendingScroll.current = requestAnimationFrame(findAndScroll);
-        return;
-      }
-      if (!aimed) {
-        aim(row);
-        aimed = true;
-      }
-      // **AND IT AIMS AGAIN ONCE THE LIST HAS STOPPED MOVING** (owner, 2026-08-20: _"when
-      // you're referred from a maybe/event/booking to the map, the map list doesn't scroll
-      // correctly to the place listing"_).
-      //
-      // The aim above is not wrong, it is **clamped**: `scrollIntoView` computes its
-      // destination once, against the scroll extent that exists at that moment. An arrival
-      // from a shelf idea (or from any place outside the day it lands on) widens the list —
-      // `setAllDays` — and the row it is aiming at is therefore a row *revealing* from `0fr`,
-      // which has not yet contributed its own height to that extent. Measured at 390×844: the
-      // scroll needed 624px, the extent was 328px at the call, and Chromium truncated the
-      // animation at 303 and never revisited it. The row ended one row-height below the fold,
-      // which is exactly what was reported — and the previous fix (wait for the row to EXIST)
-      // could not see it, because the row did exist.
-      //
-      // So the reveal is waited out and the aim is repeated. Two properties make this the
-      // cheap version rather than a delay: the first aim still leaves immediately, so the list
-      // starts moving on the frame it always did; and where nothing was animating (a row tap
-      // on a list already at rest — the common case) `waited` stays false and this is
-      // byte-for-byte the single call it has always been. Re-aiming into a scroll that is
-      // still running retargets it, and a re-aim at a row already flush is a no-op.
-      if (revealsRunning(scope) && settleFrames-- > 0) {
-        waited = true;
-        pendingScroll.current = requestAnimationFrame(findAndScroll);
-        return;
-      }
-      if (waited) aim(row);
-    };
-    pendingScroll.current = requestAnimationFrame(findAndScroll);
+      return (
+        (placeId ? scope.querySelector(`[data-place="${placeId}"]`) : null) ??
+        (resultId ? scope.querySelector(`[data-result="${resultId}"]`) : null)
+      );
+    });
   };
 
   // Tapping the canvas background clears the selection — the map idiom, and the place
@@ -2484,6 +2419,12 @@ export function MapView() {
       (ref) => ref.kind !== PLACE_REF_KIND.idea,
     );
 
+  /** **The way in to what a reference is about**, shared with the note surfaces
+   *  (`useNoteHostWayIn`): the day plus the id that opens and lands the one card. Held at the
+   *  component level because it is a hook — `refEntriesFor` below is a plain function called
+   *  per row. */
+  const wayIn = useNoteHostWayIn(today);
+
   const refEntriesFor = (usage: PlaceUsage, opts: { forceDay?: boolean } = {}): RefEntry[] => {
     const { onDate } = metaCtx(opts);
     const goToDay = (date: string) => {
@@ -2541,9 +2482,20 @@ export function MapView() {
           day: dayLabel(ref.date),
           time: ref.at != null && zone ? formatTime(new Date(ref.at), zone) : undefined,
           at: ref.at,
+          // **AND THE EVENT'S OWN CARD IS WHAT IT OPENS** (owner, 2026-08-20: _"going from a
+          // place to the event … doesn't scroll correctly"_). It used to land on the DAY and
+          // stop there: on a full day that leaves you looking at whatever the day opens on,
+          // with nothing saying which of its rows you came for. `wayIn.goTo` is the channel
+          // that already answers this for a note's host — the day, plus `?event=`, which both
+          // day surfaces now open and land on — so this is a second caller rather than a
+          // second rule (the booking below is unchanged: its detail opens HERE, without
+          // leaving the place you are standing on).
           onOpen: booking
             ? () => setDetailBooking(booking)
-            : () => goToDay(ref.date ?? event?.date ?? today),
+            : event
+              ? () =>
+                  wayIn.goTo({ kind: 'event', id: event.id, name: event.title, date: event.date })
+              : () => goToDay(ref.date ?? today),
           settle: event && {
             outcome: settled,
             asking: !settled && !!usageDay && isDayUsagePast(usageDay, nowMs, today),

@@ -309,7 +309,7 @@ test.describe('a plain tap on an idea (ADR-0116 §5a)', () => {
     await expect(page.getByRole('dialog')).toBeVisible();
     // No event was written and no idea consumed: the tap is a read, and the day's rows are
     // the same ones. (The gap chips are what a scheduled idea would have displaced.)
-    await expect(page.locator('[data-bld-id]')).toHaveCount(EVENTS.length);
+    await expect(page.locator('[data-event]')).toHaveCount(EVENTS.length);
     expect(await page.locator(`${POOL_STRIP} .wp-maybecard`).count()).toBe(before);
   });
 });
@@ -537,9 +537,9 @@ test.describe('a day with a wide gap between two events', () => {
   // head — before the first row, where no chip has ever been.
   test('a row dropped on a seam moves into that position', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = page.locator('[data-bld-id="ev-2"]');
+    const row = page.locator('[data-event="ev-2"]');
     const timeBefore = await row.locator('.bld-time').innerText();
-    const start = (await boxOf(page, '[data-bld-id="ev-2"]'))!;
+    const start = (await boxOf(page, '[data-event="ev-2"]'))!;
 
     await touch(cdp, 'touchStart', start.x + start.width / 2, start.y + 8);
     await expect(page.locator('.bld.dragging')).toBeVisible();
@@ -595,10 +595,10 @@ test.describe('a drag lifted inside an edge band', () => {
     // Park a middle row at the very top of the scroller: its own position is then
     // inside the top band, with plenty of list above it for a runaway to be visible.
     await page
-      .locator('[data-bld-id="ev-5"]')
+      .locator('[data-event="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await settleChrome(page);
-    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const row = (await page.locator('[data-event="ev-5"]').boundingBox())!;
     const bands = await bodyBands(page);
     const body = await boxOf(page, '.body');
     expect(row.y, 'the row really is in the top band').toBeLessThan(
@@ -633,11 +633,11 @@ test.describe('a drag lifted inside an edge band', () => {
     // A row parked a little way INTO the top band, so there is room to push further
     // toward the edge without leaving `.body` for the header chrome.
     await page
-      .locator('[data-bld-id="ev-5"]')
+      .locator('[data-event="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await page.locator('.body').evaluate((el) => (el.scrollTop -= 50));
     await settleChrome(page);
-    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const row = (await page.locator('[data-event="ev-5"]').boundingBox())!;
     const body = await boxOf(page, '.body');
     const from = row.y + 8;
     expect(from, 'lifted inside the top band').toBeLessThan(body.y + DRAG_EDGE_SCROLL_ZONE_PX);
@@ -662,10 +662,10 @@ test.describe('a drag lifted inside an edge band', () => {
   test('still reaches the far edge straight away', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
     await page
-      .locator('[data-bld-id="ev-5"]')
+      .locator('[data-event="ev-5"]')
       .evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await settleChrome(page);
-    const row = (await page.locator('[data-bld-id="ev-5"]').boundingBox())!;
+    const row = (await page.locator('[data-event="ev-5"]').boundingBox())!;
     const bands = await bodyBands(page);
     const before = await scrollTop(page);
 
@@ -723,7 +723,7 @@ test.describe('a skipped event on the shelf', () => {
     // It leaves the shelf and joins the day's rows — the shelf only holds skipped
     // events, so its absence there IS the restore.
     await expect(page.locator('.wp-maybecard.skipped-card')).toHaveCount(0);
-    await expect(page.locator('[data-bld-id="ev-skip"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-skip"]')).toBeVisible();
   });
 });
 
@@ -801,14 +801,14 @@ test.describe("a day's edge gaps", () => {
   // it exists already, so there is nothing to choose in a form.
   test('a row dropped there moves in front of the first event', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-2"]');
+    const row = await centre(page, '[data-event="ev-2"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
     await holdOver(cdp, page, '.gap[data-gap-start="08:00"]');
     await touch(cdp, 'touchEnd');
 
-    await expect(page.locator('[data-bld-id="ev-2"] .bld-time')).toContainText('08:00');
+    await expect(page.locator('[data-event="ev-2"] .bld-time')).toContainText('08:00');
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 });
@@ -824,7 +824,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // different as a shelf card and a builder row.
   test('lifts a clone of the row that follows the finger', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
     const ghost = page.locator('.wp-dragghost');
 
     await expect(ghost).toHaveCount(0);
@@ -833,7 +833,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     // It really is the row: same title, and the row's own width rather than a chip's.
     await expect(ghost.locator('.bld-ttl')).toHaveText('בוקר');
     const lifted = (await ghost.boundingBox())!;
-    const source = (await page.locator('[data-bld-id="ev-1"]').boundingBox())!;
+    const source = (await page.locator('[data-event="ev-1"]').boundingBox())!;
     expect(Math.abs(lifted.width - source.width)).toBeLessThan(2);
 
     await touch(cdp, 'touchMove', row.x, row.y - 120);
@@ -843,7 +843,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     // The clone must not answer hit-tests, or the drop target would always be itself.
     await expect(ghost).toHaveCSS('pointer-events', 'none');
     // …and it carries no duplicate of the row's hit-test attribute.
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(1);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(1);
 
     await touch(cdp, 'touchEnd');
     await expect(ghost).toHaveCount(0);
@@ -853,7 +853,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // would otherwise be nothing to aim at, and the two groups mean different days.
   test("dropped on the day's group, the row parks as an idea for that day", async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await expect(page.locator('.shelf')).toHaveCount(0);
     await touch(cdp, 'touchStart', row.x, row.y);
@@ -864,19 +864,19 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await touch(cdp, 'touchEnd');
 
     // Off the day, onto the shelf — and into the day's group, not the pool.
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(0);
     await expect(page.locator('[data-shelf-drop="day"] .wp-maybecard')).toHaveText(/בוקר/);
   });
 
   test('dropped on the pool, it parks as someday instead', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await holdOver(cdp, page, '[data-shelf-drop="pool"]');
     await touch(cdp, 'touchEnd');
 
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(0);
     await expect(page.locator('[data-shelf-drop="pool"] .wp-maybecard')).toHaveText(/בוקר/);
   });
 
@@ -895,7 +895,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await expect(page.locator('.bld-grip')).toHaveCount(0);
     await expect(page.locator('button.bld-time').first()).toBeVisible();
 
-    const box = await boxOf(page, '[data-bld-id="ev-1"]');
+    const box = await boxOf(page, '[data-event="ev-1"]');
     const spots = [
       { name: 'leading edge', x: box.x + 6, y: box.y + box.height / 2 },
       { name: 'title', x: box.x + box.width * 0.4, y: box.y + box.height / 2 },
@@ -914,7 +914,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // gesture listens on the window rather than through pointer capture.
   test('dwelling on another day pill switches the day mid-drag', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
     const before = await dayParam(page);
 
     await touch(cdp, 'touchStart', row.x, row.y);
@@ -926,12 +926,12 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await expect(page.locator(`[data-day-pill="${TOMORROW}"]`)).toHaveClass(/drop-over/);
     await expect.poll(() => dayParam(page), { timeout: 3000 }).toBe(TOMORROW);
     // The row it started on belongs to the old day and is gone; the drag is not.
-    await expect(page.locator('[data-bld-id="ev-1"]')).toHaveCount(0);
+    await expect(page.locator('[data-event="ev-1"]')).toHaveCount(0);
     await expect(page.locator('.wp-dragghost')).toBeVisible();
 
     // Released on the pill, the event moves to that day.
     await touch(cdp, 'touchEnd');
-    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-1"]')).toBeVisible();
     expect(await dayParam(page)).toBe(TOMORROW);
     expect(before).not.toBe(TOMORROW);
   });
@@ -941,7 +941,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // as what it already is.
   test('carried onto an empty day, it lands as an event and not as an idea', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
@@ -954,8 +954,8 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await holdOver(cdp, page, '.builder-empty');
     await touch(cdp, 'touchEnd');
 
-    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
-    await expect(page.locator('[data-bld-id="ev-1"] .bld-time')).toContainText('07:00');
+    await expect(page.locator('[data-event="ev-1"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-1"] .bld-time')).toContainText('07:00');
     // Not on the shelf: that is what dropping it on a shelf group would have meant.
     await expect(page.locator('.wp-maybecard')).toHaveCount(0);
     expect(await dayParam(page)).toBe(TOMORROW);
@@ -965,7 +965,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // happen, and a day change is `replace` navigation with no back step to undo it.
   test('a drop on nothing returns to the day the drag started on', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
 
     await touch(cdp, 'touchStart', row.x, row.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
@@ -978,7 +978,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
     await touch(cdp, 'touchEnd');
 
     await expect.poll(() => dayParam(page)).toBe(null);
-    await expect(page.locator('[data-bld-id="ev-1"]')).toBeVisible();
+    await expect(page.locator('[data-event="ev-1"]')).toBeVisible();
   });
 
   // The reported bug: after the dwell switches days, the first move DOWN into the day
@@ -987,7 +987,7 @@ test.describe('a builder row, dragged by a hold from anywhere on it', () => {
   // question this pins is whether the gesture survives losing its own target.
   test('survives the day switch and can still be dropped in the new day', async ({ page }) => {
     const cdp = await page.context().newCDPSession(page);
-    const row = await centre(page, '[data-bld-id="ev-1"]');
+    const row = await centre(page, '[data-event="ev-1"]');
     const ghost = page.locator('.wp-dragghost');
 
     await touch(cdp, 'touchStart', row.x, row.y);
@@ -1056,7 +1056,7 @@ test.describe('a second gesture on the same element', () => {
     await page.locator('.body').evaluate((el) => (el.scrollTop = el.scrollHeight));
     const bands = await bodyBands(page);
 
-    const first = await centre(page, '[data-bld-id="ev-1"]');
+    const first = await centre(page, '[data-event="ev-1"]');
     await touch(cdp, 'touchStart', first.x, first.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
     await touch(cdp, 'touchEnd');
@@ -1064,7 +1064,7 @@ test.describe('a second gesture on the same element', () => {
 
     await page.locator('.body').evaluate((el) => (el.scrollTop = el.scrollHeight));
     const before = await scrollTop(page);
-    const again = await centre(page, '[data-bld-id="ev-1"]');
+    const again = await centre(page, '[data-event="ev-1"]');
     await touch(cdp, 'touchStart', again.x, again.y);
     await expect(page.locator('.bld.dragging')).toBeVisible();
     await touch(cdp, 'touchMove', again.x, bands.topBand);
