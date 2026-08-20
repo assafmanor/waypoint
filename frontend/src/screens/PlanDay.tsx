@@ -85,6 +85,8 @@ import {
 } from '../lib/gaps';
 import {
   dayStops,
+  ideaCategory,
+  ideaGlyph,
   proposedDay,
   poolStrip,
   rankIdeas,
@@ -706,7 +708,7 @@ export function PlanDay() {
       <MaybeCard
         key={m.id}
         compact
-        icon={m.icon}
+        icon={ideaGlyph(m, places)}
         title={m.title}
         // A pool card carries its ranking reason; the day's own group carries the
         // distance or nothing (ADR-0116 §2, ADR-0151 §8).
@@ -1203,11 +1205,12 @@ export function PlanDay() {
           mode="plan"
           date={gapChoice.fill.date}
           ideas={shelfForSlot(shelf, gapChoice.fill, tz, { events, bookings, places })}
+          glyph={(m) => ideaGlyph(m, places)}
           onPickIdea={(m) => {
             // The idea's own category decides how long it gets, capped by this position's room
             // (ADR-0161 §5) — a meal is an hour and a half, a hike three hours, and the flat
             // hour every create used to get was neither.
-            const block = ideaBlock(m.category, gapChoice);
+            const block = ideaBlock(ideaCategory(m, places), gapChoice);
             verbs.schedule(m, {
               date: block.date,
               title: m.title,
@@ -1262,7 +1265,10 @@ export function PlanDay() {
               const position = dayPositions(dayEvents, activeDate, tz).find(
                 (p) => p.key === option.key,
               );
-              openSchedule(item, position ? ideaBlock(item.category, position.free) : option.fill);
+              openSchedule(
+                item,
+                position ? ideaBlock(ideaCategory(item, places), position.free) : option.fill,
+              );
             }}
             // The form with the day's next opening, which is what this path offered before —
             // kept as the escape rather than removed, for when the position is not the point.

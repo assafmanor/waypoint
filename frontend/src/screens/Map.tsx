@@ -154,13 +154,14 @@ import {
   MAP_SHEET_VIEW,
   PLACE_CORPUS,
   PLACE_REFS_CAP,
+  ROW_SCROLL_SETTLE_FRAMES,
   ROW_SCROLL_WAIT_FRAMES,
   type MapRowDisclosure,
   type MapSheetView,
 } from '../constants';
 import { ChoiceGrid, type Choice } from '../ui/primitives/ChoiceGrid';
 import { AddLocationButton } from '../ui/primitives/PlacePicker';
-import { RevealList } from '../ui/primitives/RevealList';
+import { RevealList, revealsRunning } from '../ui/primitives/RevealList';
 import { SnapSheet } from '../ui/primitives/SnapSheet';
 import { ToggleChip } from '../ui/primitives/ToggleChip';
 import { MapPane, type MapDraftMarker, type MapPin, type MapResultPin } from '../ui/domain/MapPane';
@@ -1507,6 +1508,10 @@ export function MapView() {
     // retries for a bounded handful of frames rather than scrolling to nothing once.
     cancelAnimationFrame(pendingScroll.current ?? 0);
     let framesLeft = ROW_SCROLL_WAIT_FRAMES;
+    let settleFrames = ROW_SCROLL_SETTLE_FRAMES;
+    /** Aimed once already, and whether the list was still moving when we did. */
+    let aimed = false;
+    let waited = false;
     const findAndScroll = () => {
       // The sheet where there IS one, the document otherwise — because the graceful-absence path
       // renders this list straight into the shell's scrolling body with no sheet at all (§8).
@@ -1531,13 +1536,47 @@ export function MapView() {
       // Reduced motion drops the easing and keeps the move, which is this app's one rule about
       // animation everywhere else (ADR-0098 §4) — and `motion.ts` is where that question is
       // answered, never a media query written out again here.
+      const aim = (target: Element) =>
+        target.scrollIntoView({
+          block: 'start',
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        });
       if (!row) {
         // Not rendered yet — try again next frame, up to the budget. `pendingScroll` still holds
         // at most one frame, so the "one scroll in flight" rule above is unchanged.
         if (framesLeft-- > 0) pendingScroll.current = requestAnimationFrame(findAndScroll);
         return;
       }
-      row.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      if (!aimed) {
+        aim(row);
+        aimed = true;
+      }
+      // **AND IT AIMS AGAIN ONCE THE LIST HAS STOPPED MOVING** (owner, 2026-08-20: _"when
+      // you're referred from a maybe/event/booking to the map, the map list doesn't scroll
+      // correctly to the place listing"_).
+      //
+      // The aim above is not wrong, it is **clamped**: `scrollIntoView` computes its
+      // destination once, against the scroll extent that exists at that moment. An arrival
+      // from a shelf idea (or from any place outside the day it lands on) widens the list —
+      // `setAllDays` — and the row it is aiming at is therefore a row *revealing* from `0fr`,
+      // which has not yet contributed its own height to that extent. Measured at 390×844: the
+      // scroll needed 624px, the extent was 328px at the call, and Chromium truncated the
+      // animation at 303 and never revisited it. The row ended one row-height below the fold,
+      // which is exactly what was reported — and the previous fix (wait for the row to EXIST)
+      // could not see it, because the row did exist.
+      //
+      // So the reveal is waited out and the aim is repeated. Two properties make this the
+      // cheap version rather than a delay: the first aim still leaves immediately, so the list
+      // starts moving on the frame it always did; and where nothing was animating (a row tap
+      // on a list already at rest — the common case) `waited` stays false and this is
+      // byte-for-byte the single call it has always been. Re-aiming into a scroll that is
+      // still running retargets it, and a re-aim at a row already flush is a no-op.
+      if (revealsRunning(scope) && settleFrames-- > 0) {
+        waited = true;
+        pendingScroll.current = requestAnimationFrame(findAndScroll);
+        return;
+      }
+      if (waited) aim(row);
     };
     pendingScroll.current = requestAnimationFrame(findAndScroll);
   };

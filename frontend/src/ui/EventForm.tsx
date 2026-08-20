@@ -31,6 +31,7 @@ import {
   placeDerivedTitle,
   placeTimezone,
 } from '../lib/places';
+import { ideaCategory, ideaGlyph } from '../lib/shelf';
 import { useAuth } from '../state/auth-state';
 import { useVerbs } from '../state/verbs';
 import { useStartPlaceErrand } from '../state/map-scope-state';
@@ -203,7 +204,12 @@ export function EventForm({
     ? isoToTimeInput(event.endsAt, initialZone)
     : (defaults?.end ?? '');
   const initialKind: TripEvent['kind'] = event?.kind ?? EVENT_KIND.SOFT;
-  const initialCategory = event?.category ?? maybeItem?.category;
+  // **An idea's category is the one it READS as** (2026-08-20) — its own, else its place's,
+  // through the one resolver the shelf tile shows it with (`ideaGlyph`'s sibling). Reading the
+  // column alone is how a place picked as `food` on the map arrived here uncategorised: the
+  // pills are on the PLACE, and the idea the same gesture created carries nothing.
+  const initialCategory =
+    event?.category ?? (maybeItem ? ideaCategory(maybeItem, places) : undefined);
   // `defaults.placeId` is the Map's way in (ADR-0135 §1): you are standing on the place, so it
   // arrives pre-filled. Lowest priority of the three — an existing event's own place wins, and
   // so does the idea's, since either is a statement about THIS thing rather than a prefill.
@@ -220,7 +226,13 @@ export function EventForm({
   // the category would have picked anyway — or types the place's own name as the title —
   // reads as not having chosen, and the derivation keeps following. Nothing is lost when it
   // does, because what it re-derives is the value they picked.
-  const storedIcon = chosenIcon(event?.icon ?? maybeItem?.icon);
+  // The idea's glyph is resolved the same way, so the badge opens on what its tile showed.
+  // `chosenIcon` still decides whether that counts as a PICK: a glyph the category derived
+  // equals `derivedIcon` below and so reads as untouched, which is what keeps the category
+  // moving it — where a glyph a human put on the place does not, correctly.
+  const storedIcon = chosenIcon(
+    event?.icon ?? (maybeItem ? ideaGlyph(maybeItem, places) : undefined),
+  );
   const initialIcon = storedIcon ?? DEFAULT_EVENT_ICON;
   // Against the CATEGORY's glyph, which is the derivation this form actually runs on a
   // category change. A booked transport event badged with its finer booking-type glyph

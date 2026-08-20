@@ -35,6 +35,7 @@ export function SlotFillSheet({
   mode,
   date,
   ideas,
+  glyph,
   onPickIdea,
   onNewEvent,
   onClose,
@@ -53,6 +54,13 @@ export function SlotFillSheet({
   date: string;
   /** Already ranked against this slot's own neighbours, each with its reason. */
   ideas: RankedIdea[];
+  /** **The glyph a row shows**, resolved by the host (`ideaGlyph`) rather than read off the
+   *  idea here: an idea's own icon is only the first rung of the chain — its place's pick and
+   *  its category are the next two — and this layer takes all data via props, so it cannot
+   *  look a place up. Required, not defaulted to `item.icon`: a host that forgot it would
+   *  quietly show the shelf's `💡` beside a categorised pin, which is the defect
+   *  ADR-0165 §4's amendment is about. */
+  glyph: (item: MaybeItem) => string;
   onPickIdea: (m: MaybeItem) => void;
   onNewEvent: () => void;
   onClose: () => void;
@@ -90,7 +98,7 @@ export function SlotFillSheet({
           getKey={({ item }) => item.id}
           renderRow={({ item: m, reason }) => (
             <button className="slotfill-row" onClick={() => onPickIdea(m)}>
-              <span className="slotfill-ic">{m.icon}</span>
+              <span className="slotfill-ic">{glyph(m)}</span>
               <span className="slotfill-main">
                 <span className="slotfill-t">{m.title}</span>
                 {/* The ranking REASON, never a score and never a star: it says which

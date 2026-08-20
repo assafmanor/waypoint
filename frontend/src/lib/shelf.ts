@@ -8,11 +8,13 @@
 import {
   EVENT_KIND,
   EVENT_STATUS,
+  iconForCategory,
   SUGGESTION_PLACEMENT,
   SUGGESTION_REASON,
   SUGGESTION_REF,
   suggestFor,
   type Booking,
+  type EventCategory,
   type MaybeItem,
   type Place,
   type Suggestion,
@@ -24,6 +26,7 @@ import { eventPlaceId } from './places';
 import { formatDistance } from './distance';
 import { relativeDayLabel, zonedIso } from './time';
 import type { GapDefaults } from './gaps';
+import { chosenIcon, DEFAULT_MAYBE_ICON } from '../constants';
 import { t } from '../i18n/he';
 
 export interface ShelfGroups {
@@ -125,6 +128,61 @@ export function slotStops(
     (e) => startOf(e) - slot.toMs,
   );
   return [before, after].flatMap((c) => (c ? [c.stop] : []));
+}
+
+/** The place an idea carries, or `undefined` — every resolution below needs it and none of
+ *  them needs coordinates, which is what separates this from `ideaShowOnMap`'s lookup. */
+const ideaPlace = (item: { placeId?: string }, places: Place[]): Place | undefined =>
+  item.placeId ? places.find((p) => p.id === item.placeId) : undefined;
+
+/**
+ * **The category an idea READS as: its own, else its place's** (owner, 2026-08-20: _"maybe
+ * items added from the map don't inherit the place category and icon"_).
+ *
+ * The same precedence `noteCategory` already applies one entity over — a note's own category,
+ * else its host's — and it is owed here for the reason that report names: **the map is where
+ * ideas come from.** Every place added outside an errand becomes an idea (ADR-0131 §11), the
+ * category is picked on the PLACE (`MapPlaceForm`'s pills, ADR-0165), and `verbs.addMaybe`
+ * only ever received one when the same gesture happened to author one — so an idea whose pin
+ * is a red restaurant sat on the shelf as an uncategorised 💡, and scheduling it produced an
+ * uncategorised event.
+ *
+ * Derived rather than copied onto the row at creation, which is the same call `chosenIcon`
+ * and `noteCategory` make: a stored copy freezes the idea at whatever the place said that
+ * day, and a place that is categorised LATER (or renamed through `MapPlaceForm`) would leave
+ * every idea already on the shelf behind.
+ */
+export function ideaCategory(
+  item: { category?: EventCategory | null; placeId?: string },
+  places: Place[],
+): EventCategory | undefined {
+  return item.category ?? ideaPlace(item, places)?.category ?? undefined;
+}
+
+/**
+ * **The glyph an idea shows**, on the shelf tile and on whatever it becomes when scheduled.
+ *
+ * The app's icon chain, at the rungs an idea occupies (`lib/map-pins.ts`'s `placeGlyph`
+ * writes the same chain out for a place): a pick at the nearest scope wins, so the idea's own
+ * glyph beats the place's, the place's beats the category's, and the category's beats the
+ * fallback. Through `chosenIcon` at both stored rungs, because a placeholder is not a pick —
+ * which is the whole of this fix on the icon side: the shelf's own `💡` was shadowing a
+ * category that says what the thing is.
+ *
+ * The tail is `DEFAULT_MAYBE_ICON` and not `placeGlyph`'s `📍`: an idea nobody has
+ * categorised is still an idea, and that is what the shelf's quick-add hands out.
+ */
+export function ideaGlyph(
+  item: { icon?: string; category?: EventCategory | null; placeId?: string },
+  places: Place[],
+): string {
+  const place = ideaPlace(item, places);
+  const category = item.category ?? place?.category;
+  return (
+    chosenIcon(item.icon) ??
+    chosenIcon(place?.icon ?? undefined) ??
+    (category ? iconForCategory(category) : DEFAULT_MAYBE_ICON)
+  );
 }
 
 /** An idea and why it sits where it does. `reason` is the strategy's, rendered by

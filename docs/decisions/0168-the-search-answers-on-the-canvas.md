@@ -88,6 +88,16 @@ The offset was already right — ADR-0135 §8 plus the 2026-08-05 owner call for
 
 **And the ring tap had a second, quieter copy of that job**, aligning to `center` with its own `requestAnimationFrame` — so a ring tap and a pin tap put the same card in two different places, and only one of them animated. It goes through `showRowInList` now, which is where the deferred frame, the single-flight guard and the `start` alignment already live (rule 8: the one-off gets generalised, not duplicated).
 
+**Amended 2026-08-20 — the animated scroll is CLAMPED, so it aims twice** (owner: _"when you're referred from a maybe/event/booking to the map, the map list doesn't scroll correctly to the place listing. The listing should be scrolled so that it appears opened on top. It doesn't"_).
+
+`scrollIntoView` computes its destination **once, against the scroll extent that exists at the call** — and an arrival is exactly the case where that extent is short. A place outside the day it lands on widens the list (`setAllDays`), so the row being aimed at is a row _revealing_ from `0fr`: it has not yet contributed its own height to the scrollable extent, and Chromium truncates the animation there and never revisits it. Measured at 390×844 from a dateless shelf idea: the scroll needed 624px, the extent was 328px at the call, the animation stopped at **303**, and the row settled one row-height below the fold.
+
+Two earlier fixes could not see this, and both were right about their own halves: the 2026-08-06 retry waits for the row to **exist**, which it does — one frame after the widening, at height 0 — and every rect involved reads healthy, which is `frontend/CLAUDE.md`'s _"reading a rect and calling it visibility"_ in its scroll form.
+
+So `showRowInList` aims immediately, then waits out the reveal and **aims again**. The wait is `revealsRunning` (`ui/primitives/RevealList`), which asks the row wrappers whether any of their own animations is running rather than watching boxes: a row inside its `revealDelayMs` stagger has height 0 and is not changing yet, so a "has it stopped growing" test reports it settled one frame before it starts. Two properties keep this from being a delay: the first aim still leaves on the frame it always did, and where nothing is animating — a row tap on a list at rest, the common case — there is no second call at all. Bounded by `ROW_SCROLL_SETTLE_FRAMES`, whose number is the reveal's own arithmetic (`--t-base` + `FILTER_STAGGER_MAX_MS`) rather than a feel call.
+
+Measured in `e2e/place-arrival-scroll.spec.ts`, and it has to be: the whole defect is where a real scroller ended up, which jsdom cannot express — a unit test can only assert that `scrollIntoView` was called, which it always was.
+
 ### 4. A second tap closes what the first opened — and "the same thing again" has to mean it
 
 Two reports, one rule. A tap on a row's body now has three readings, and **the order is the rule: the innermost state closes first.**

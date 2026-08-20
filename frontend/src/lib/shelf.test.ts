@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SUGGESTION_REASON,
   EVENT_KIND,
+  iconForCategory,
   EVENT_SOURCE,
   EVENT_STATUS,
   type MaybeItem,
@@ -10,6 +11,8 @@ import {
 } from '@waypoint/shared';
 import {
   dayStops,
+  ideaCategory,
+  ideaGlyph,
   poolStrip,
   rankIdeas,
   proposedDay,
@@ -22,7 +25,7 @@ import {
   tileReasonText,
 } from './shelf';
 import { withoutBidiControls } from './bidi';
-import { SHELF_POOL_CAP } from '../constants';
+import { DEFAULT_MAYBE_ICON, SHELF_POOL_CAP } from '../constants';
 
 const DAY = '2026-07-20';
 
@@ -490,5 +493,48 @@ describe('the reason, in Hebrew', () => {
     } as MaybeItem);
     expect(stopReasonText(aimed.reason)).toBeUndefined();
     expect(stopReasonText(undefined)).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// **What an idea READS as** (owner, 2026-08-20: _"maybe items added from the map don't
+// inherit the place category and icon"_). The map is where ideas come from — every place
+// added outside an errand becomes one — and the category is picked on the PLACE, so the
+// idea it created carried nothing and showed the shelf's own `💡`.
+
+describe('ideaCategory / ideaGlyph', () => {
+  const bare = (over: Partial<MaybeItem>): MaybeItem =>
+    ({ id: 'm', tripId: 't', title: 'רעיון', consumed: false, ...over }) as MaybeItem;
+  const categorised = { ...place('p-food', 'רמן נאגי'), category: 'food' } as Place;
+  const picked = { ...categorised, icon: '🍜' } as Place;
+
+  it('falls back to the place, and to the shelf default when nothing knows anything', () => {
+    const places = [categorised];
+    expect(ideaCategory(bare({ placeId: 'p-food' }), places)).toBe('food');
+    expect(ideaGlyph(bare({ placeId: 'p-food' }), places)).toBe(iconForCategory('food'));
+    expect(ideaCategory(bare({}), places)).toBeUndefined();
+    expect(ideaGlyph(bare({}), places)).toBe(DEFAULT_MAYBE_ICON);
+  });
+
+  it("a placeholder glyph does not shadow the place's category", () => {
+    // The whole icon half of the report: `verbs.addMaybe` stores `💡` when no glyph was
+    // PICKED, and reading the column alone let that default outrank a category that says
+    // what the thing is — the `chosenIcon` rule, one entity over.
+    const item = bare({ placeId: 'p-food', icon: DEFAULT_MAYBE_ICON });
+    expect(ideaGlyph(item, [categorised])).toBe(iconForCategory('food'));
+  });
+
+  it('prefers a pick at the nearest scope: the idea, then the place, then the category', () => {
+    expect(ideaGlyph(bare({ placeId: 'p-food', icon: '🍣' }), [picked])).toBe('🍣');
+    expect(ideaGlyph(bare({ placeId: 'p-food' }), [picked])).toBe('🍜');
+    expect(ideaGlyph(bare({ placeId: 'p-food' }), [categorised])).toBe(iconForCategory('food'));
+  });
+
+  it("the idea's own category wins, and a missing place changes nothing", () => {
+    expect(ideaCategory(bare({ placeId: 'p-food', category: 'sightseeing' }), [categorised])).toBe(
+      'sightseeing',
+    );
+    expect(ideaCategory(bare({ placeId: 'p-gone' }), [categorised])).toBeUndefined();
+    expect(ideaGlyph(bare({ placeId: 'p-gone' }), [categorised])).toBe(DEFAULT_MAYBE_ICON);
   });
 });

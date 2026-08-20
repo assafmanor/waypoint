@@ -16,6 +16,7 @@
 // The crowded case is Plan mode's tile, which carries the `✕` AND the note mark, so the pin
 // has three corner marks to stay clear of rather than one.
 import { test, expect, type Page } from '@playwright/test';
+import { iconForCategory } from '@waypoint/shared';
 import { bootIntoTrip, shortLiveTripDates, todayAt, TRIP_ID } from './boot';
 import { t } from '../src/i18n/he';
 
@@ -245,4 +246,42 @@ test('the tap does not also open the idea sheet behind it', async ({ page }) => 
   // The badge sits inside a card that is itself a button, so the tap must not do both
   // (`PlaceBadge` stops propagation for exactly this).
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+// **AND THE GLYPH INSIDE THAT BADGE IS THE PLACE'S** (owner, 2026-08-20: _"maybe items added
+// from the map don't inherit the place category and icon"_ — ADR-0165 §4's amendment).
+//
+// The fixtures above carry a glyph and a category of their own, which is the case that always
+// worked. This is the one the map actually produces: `verbs.addMaybe` stores the shelf's `💡`
+// when nothing was picked, and the pills that said `food` wrote to the PLACE — so the tile sat
+// there as a lightbulb beside a pin the same gesture had coloured and glyphed correctly.
+//
+// Here rather than in the unit suite because the tile's glyph is the reported artefact and this
+// file is where the tile is measured; `lib/shelf.test.ts` pins the resolution itself.
+test('the tile shows the glyph its place resolves, not the shelf placeholder', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await bootIntoTrip(page, {
+    events: [anchor],
+    // The map's own output: no glyph picked, no category on the idea, both on the place.
+    maybeItems: [
+      {
+        id: 'm-map',
+        tripId: TRIP_ID,
+        title: 'המקום מהמפה',
+        icon: '💡',
+        placeId: place.id,
+        consumed: false,
+        createdBy: 'u1',
+        ...stamps,
+      },
+    ],
+    places: [{ ...place, category: 'food' }],
+    now: todayAt('02:00'),
+    dates: shortLiveTripDates(),
+  });
+  await page.goto('/');
+  await expect(page.locator('nav.nav')).toBeVisible();
+  await toDays(page);
+  const badge = page.locator('.wp-maybecard.compact .wp-maybecard-ic').first();
+  await expect(badge).toHaveText(iconForCategory('food'));
 });
