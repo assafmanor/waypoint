@@ -1,0 +1,22 @@
+{
+  // The service worker is a SECOND TypeScript program, not a stylistic choice:
+  // `ServiceWorkerGlobalScope`, `ExtendableEvent` and `PushEvent` live only in
+  // TypeScript's `WebWorker` lib, whose globals collide with `DOM` (both declare
+  // `self`, `fetch`, `caches`, `EventTarget`…), so one program cannot hold both.
+  //
+  // `pnpm typecheck` runs this as a second pass. That matters more here than it
+  // looks: a worker excluded from the app's program and from no other check is a
+  // file nothing type-checks, which is exactly the silent degradation ADR-0197 §8
+  // says this phase must not ship.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "declaration": false,
+    "types": []
+  },
+  "include": ["src/sw.ts"]
+}

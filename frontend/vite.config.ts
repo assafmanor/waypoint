@@ -3,9 +3,6 @@ import { fileURLToPath } from 'node:url';
 import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-// Relative source import: the app-graph alias below doesn't apply to this
-// config file, and shared's dist may not be built yet when dev starts.
-import { SERVER_ROUTE_PATTERN } from '../packages/shared/src/server-routes';
 // The product name, defined once for the wordmarks, the <title> and the manifest
 // (ADR-0170). Deliberately import-free, so reading it here costs no app graph.
 import { APP_NAME, APP_TITLE } from './src/app-name';
@@ -96,30 +93,39 @@ export default defineConfig(() => {
         // one registration and it has callbacks. Left unset on purpose — pinning it
         // to `false` here would mean NO registration at all if that import ever went.
         //
-        // **`'prompt'` and `skipWaiting: false` are one change, not two** (ADR-0185).
-        // The plugin forces both Workbox flags ON under `autoUpdate` and does not
-        // force them off under `'prompt'`, so leaving `skipWaiting: true` below
-        // would keep the new SW self-activating and the `waiting` event this mode's
-        // whole flow hangs off would never fire — a mode with no trigger, and no
-        // error anywhere. It is also what makes the swap ATOMIC, which is the point:
-        // a waiting SW leaves the old precache intact, so the open page keeps a
-        // complete, self-consistent build instead of running old JS against a
-        // precache that has already dropped every chunk it has not loaded yet.
-        // That mixed state is what blanked the app after a deploy.
+        // **`'prompt'` is what makes the swap ATOMIC** (ADR-0185 §1). A waiting SW
+        // leaves the old precache intact, so the open page keeps a complete,
+        // self-consistent build instead of running old JS against a precache that has
+        // already dropped every chunk it has not loaded yet. That mixed state is what
+        // blanked the app after a deploy. Its other half — not calling
+        // `self.skipWaiting()`, and answering a SKIP_WAITING message instead — used to
+        // be `workbox.skipWaiting: false` here and is now four lines of `src/sw.ts`,
+        // because `injectManifest` has no template to configure.
         registerType: 'prompt',
+        // **The worker is ours** (ADR-0197 §8): a `push` listener cannot be added to a
+        // generated one, so `generateSW` becomes `injectManifest` and everything the
+        // template used to emit — the SKIP_WAITING listener, `clientsClaim`,
+        // `cleanupOutdatedCaches`, the navigation fallback and its denylist, the
+        // glyph rule — lives in `src/sw.ts`. Read that file's header before changing
+        // anything here; a line lost in this move degrades the PWA silently.
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.ts',
         // Static assets outside the Vite graph that the SW should precache.
         includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
-        workbox: {
-          // The swap is the app's to time, not the browser's: `useAppUpdate` posts
-          // SKIP_WAITING itself once a reload costs nothing, and the generated
-          // worker only listens for that message in this branch (workbox-build's
-          // sw-template emits the listener ONLY when this is false).
-          skipWaiting: false,
-          // Kept ON, and it is not the other half of the pair: with no previous SW
-          // there is no old build to be inconsistent with, so this is purely "the
-          // first visit is offline-capable without a second load". On an update the
-          // claim rides `skipWaiting` instead, which is now ours to call.
-          clientsClaim: true,
+        // Under `injectManifest` this block is manifest GENERATION only — which files
+        // are precached. How the worker behaves is `src/sw.ts`.
+        injectManifest: {
+          // **`iife`, not the default `es`.** In a production build the plugin registers
+          // the worker as `type: 'classic'` (it hard-codes that outside dev, see its
+          // `dist/index.js` `__TYPE__` replacement), so an ES-module worker parses only
+          // as long as the bundle happens to emit no top-level `import`/`export`/`await`.
+          // Today it emits none and both formats work — verified by building each and
+          // diffing — so this is not a fix for a live bug; it closes the trap, because
+          // the day one appears the failure is a worker that never installs, with a
+          // green build and no error anywhere. `iife` cannot express the syntax that
+          // would break, which is the only guarantee worth having here.
+          rollupFormat: 'iife',
           // The self-hosted fonts (F-11) do NOT precache on their own. Being in
           // the Vite graph gets them hashed into dist/assets/, which is not the
           // same thing: workbox-build's default globPatterns is
@@ -131,28 +137,6 @@ export default defineConfig(() => {
           // (`includeAssets` is not the knob: it globs `public/`, and these are
           // build outputs.)
           globPatterns: ['**/*.{js,wasm,css,html,woff2}'],
-          // Backend-owned navigations (OAuth redirect, /health) must hit the
-          // network — the default fallback serves the cached shell for ALL paths.
-          navigateFallbackDenylist: [SERVER_ROUTE_PATTERN],
-          // **The basemap's glyphs, cached but deliberately NOT precached**
-          // (ADR-0186 §3/§5). A GL renderer fetches pre-rendered SDF glyphs per
-          // 256-codepoint range, and `public/map-glyphs/` holds all 768 of them —
-          // 11.1 MB, which is exactly the automatic-download-on-roaming §5 was
-          // written against, so it is not put in the install manifest. Ranges
-          // arrive as labels need them and then survive offline; Phase 3's
-          // archive download warms the rest by fetching them under §5's gate,
-          // which needs no cache name of its own because this rule catches it.
-          //
-          // Ceiling worth naming: CacheFirst never revalidates, so re-vendoring
-          // different glyph bytes needs a new path (or a cacheName bump), not a
-          // redeploy. They are Noto releases — this will not happen often.
-          runtimeCaching: [
-            {
-              urlPattern: /\/map-glyphs\/.*\.pbf$/,
-              handler: 'CacheFirst',
-              options: { cacheName: 'map-glyphs' },
-            },
-          ],
         },
         manifest: {
           name: APP_TITLE,
