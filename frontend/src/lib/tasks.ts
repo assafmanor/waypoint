@@ -22,7 +22,18 @@ import { TASK_BAND_LOOKAHEAD_DAYS } from '../constants';
 import { isAutomaticSettled, isLive, isManual, type AutomaticTask } from './automatic-tasks';
 import { inContext, type HostContext } from './host-context';
 import { dropHostedForHostChange, isHostedBy, type HostChange, type NoteHostKind } from './notes';
-import { currentZone, type ZoneCrossing } from './places';
+// Imported for this file's own use AND re-exported below — `sortTasks` and the counts read
+// `taskBand`, so a bare `export … from` would leave them unresolved here.
+import {
+  currentZone,
+  dueZone,
+  TASK_BAND,
+  taskBand,
+  type TaskBand,
+  type TaskClock,
+} from '@waypoint/shared';
+
+export { dueZone, TASK_BAND, taskBand, type TaskBand, type TaskClock };
 import { addDays, formatTime, relativeDayLabel, todayInTz } from './time';
 
 /** The facet axis (brief §13). ONE axis, because `ChoiceGrid` is single-select — ownership
@@ -35,55 +46,15 @@ export const TASK_FACET = {
 } as const;
 export type TaskFacet = (typeof TASK_FACET)[keyof typeof TASK_FACET];
 
-/** Where a task sits on the urgency ladder. Ordered by value, so the sort is a subtraction
- *  and the bands cannot be compared in the wrong direction by accident. */
-export const TASK_BAND = {
-  OVERDUE: 0,
-  TODAY: 1,
-  LATER: 2,
-  UNDATED: 3,
-} as const;
-export type TaskBand = (typeof TASK_BAND)[keyof typeof TASK_BAND];
-
-/** Everything a due date has to be read against. One object rather than four arguments,
- *  the shape `ZoneEvidence` already uses next door. */
-export interface TaskClock {
-  nowMs: number;
-  crossings: ZoneCrossing[];
-  primaryZone: string;
-}
-
-/** **The zone a deadline means** — the PINNED one when there is one, else ADR-0107's
- *  resolver with `dueAt` in place of `now` (brief §10, amended 2026-08-17).
- *
- *  Deriving it was right while nobody could choose it: a deadline read in the zone you will
- *  be standing in when it falls due, which is what a traveller means by "Thursday 18:00".
- *  Once the form can PIN a zone that stops being true — type 09:00 with Tokyo picked and the
- *  resolver renders 03:00 somewhere else, a wall-clock nobody typed. So a pin wins, and its
- *  absence still derives, which is every task written before this.
- *
- *  **This function is the whole audit.** Both surfaces that ask what zone a deadline means
- *  come through here — `taskDue` (what a row prints) and `tasksDueSoon` (the band's window)
- *  — so pinning is honoured everywhere by changing one derivation rather than each caller.
- *  Counted before the change, not assumed. */
-export function dueZone(task: Pick<Task, 'dueAt' | 'displayTimezone'>, clock: TaskClock): string {
-  if (task.displayTimezone) return task.displayTimezone;
-  return currentZone(Date.parse(task.dueAt!), clock.crossings, clock.primaryZone);
-}
-
-/** Which band a task is in. **Overdue is measured against the instant, "today" against the
- *  calendar day** — and the two use different zones on purpose: whether a deadline has
- *  passed is an absolute fact, while "today" is the reader's day, which is the zone they
- *  are standing in now. A task due at 23:00 in Tokyo while you are still in Tel Aviv is
- *  not yet overdue and is not on your today. */
-export function taskBand(task: Task, clock: TaskClock): TaskBand {
-  if (!task.dueAt) return TASK_BAND.UNDATED;
-  const dueMs = Date.parse(task.dueAt);
-  if (dueMs < clock.nowMs) return TASK_BAND.OVERDUE;
-  const readerZone = currentZone(clock.nowMs, clock.crossings, clock.primaryZone);
-  const today = todayInTz(readerZone, new Date(clock.nowMs));
-  return todayInTz(readerZone, new Date(dueMs)) === today ? TASK_BAND.TODAY : TASK_BAND.LATER;
-}
+// ── THE DEADLINE'S TIME MODEL MOVED TO `@waypoint/shared` (ADR-0197 §5, phase 2) ────────
+//
+// `TASK_BAND`, `TaskBand`, `TaskClock`, `dueZone` and `taskBand` are now
+// `shared/src/task-time.ts`, so the sweep that fires a task reminder reads a deadline the
+// same way the row printing it does. Everything else in this file — the facets, the sort,
+// the sub-task tree, the counts — stayed, because no server surface asks those questions.
+//
+// **Re-exported here** (`TaskClock` alone is threaded through 17 files), so consumers keep
+// their import. One definition, over there.
 
 /** **Settled is stated, not inferred from "not open"** (owner, 2026-08-19: a peer's fresh
  *  sub-task arrived ticked).

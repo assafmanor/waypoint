@@ -46,8 +46,24 @@ clock.
   boundary (`instant` vs `day`) instead of comparing against `now` itself,
   precisely so it stays clock-free and unit-testable — the caller (which owns
   `now` + timezone) resolves it. Don't add a function here that reads
-  `Date.now()`, `Intl`, or anything else environment-dependent; that's a
-  frontend/backend concern.
+  `Date.now()`, the ambient locale, or the ambient time zone.
+
+  **`Intl` is not itself the line, and the rule used to say it was** (amended
+  2026-08-21, notifications phase 2). What matters is whether the answer depends
+  on anything the caller did not pass: `new Intl.DateTimeFormat('en-CA', { timeZone })`
+  with the zone as an **argument** is deterministic in its inputs and belongs here
+  as much as any other pure function — `schemas.ts` had been validating zone
+  strings that way since long before the rule was written, and `zones.ts`'s
+  `todayInTz` is the same shape. What stays out is `Intl` reading the
+  **environment**: no ambient `timeZone`, no ambient locale (`APP_LOCALE` is the
+  frontend's, and product formatting is its concern — see "UI copy" above).
+
+  The reason this mattered enough to amend rather than work around: ADR-0197 §5
+  needs a notification's send time and a row's printed time to be the **same
+  derivation**, and "which calendar day is this, in that zone" is unavoidably an
+  `Intl` question. Two implementations that agree today is how you get a
+  reminder that fires on the wrong day.
+
 - **Frontend-only or backend-only vocabulary "just in case it's needed later."**
   ADR-0095 deliberately keeps `OUTBOX_VERB`, `TRIP_ACTION`, `SYNC_STATE`,
   `HTTP_METHOD` co-located with the frontend type each feeds, not lifted here —
