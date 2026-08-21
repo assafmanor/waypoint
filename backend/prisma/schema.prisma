@@ -139,6 +139,7 @@ model User {
   tasks               Task[]
   documentAttachments DocumentAttachment[]
   pushSubscriptions   PushSubscription[]
+  notificationSends   NotificationSend[]
 }
 
 // Provider identity + that provider's OAuth material, one per (user, provider). ADR-0020.
@@ -297,6 +298,10 @@ model Event {
   documentAttachments DocumentAttachment[]
 
   @@index([tripId, date])
+  /// The same reason as `Task`'s: a kind asking "which hard commitments start soon, anywhere"
+  /// is a range scan on this, and every other index here leads with `tripId`, which a
+  /// cross-trip query cannot use.
+  @@index([startsAt])
 }
 
 model Booking {
@@ -607,6 +612,11 @@ model Task {
   @@index([maybeItemId])
   @@index([documentId])
   @@index([parentTaskId])
+  /// **The notification sweep's index** (ADR-0197 §3). The sweep asks "which deadlines fall
+  /// in this narrow window, across every trip" — one range scan, not a walk over trips — and
+  /// without this it is a full table scan every minute forever. `status` leads because it is
+  /// the selective half: most rows are settled and can never be due again.
+  @@index([status, dueAt])
 }
 
 // The sync/undo/feed substrate; seq is a strictly-increasing cursor (ADR-0019).
@@ -749,4 +759,44 @@ model PushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// **What was already sent** (ADR-0197 §3), and the whole of the epic's exactly-once
+/// mechanism. Control plane, like `PushSubscription` above.
+///
+/// This table records the PAST, which is the half that cannot go stale — the deliberate
+/// alternative to a queue of future jobs, which would be a second copy of a schedule
+/// Postgres already holds (`Task.dueAt`, `Event.startsAt`) that every edit path would have
+/// to keep honest.
+///
+/// The unique key IS the mechanism: the sweep inserts the row and sends inside one
+/// transaction, so a unique violation means another tick — or another backend instance —
+/// already has it. No leader election, no advisory lock, and nothing that assumes one
+/// process.
+model NotificationSend {
+  id String @id @default(cuid())
+
+  userId String
+
+  /// ADR-0198's catalogue id (`task.due`, `event.hard.soon`, …). A String and NOT a Prisma
+  /// enum, the same call `Task.derivedKey` makes: the kinds belong to the code that derives
+  /// them, so a sixth kind is a code change and never a migration.
+  kind String
+
+  /// The task / event / trip the send is about.
+  subjectId String
+
+  /// **The instant the send was AIMED at**, bucketed to the minute — and this is the field
+  /// that makes edits behave. Dedup on (whom, what, WHICH INSTANT) rather than (whom, what):
+  /// a deadline moved from 18:00 to 20:00 is a new key, so it re-arms; a title edited is the
+  /// same key, so nothing re-sends.
+  fireKey String
+
+  sentAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, subjectId, fireKey])
+  /// Also what enforces ADR-0198 §5's per-day cap, which is a count of this user's recent rows.
+  @@index([userId, sentAt])
 }

@@ -40,9 +40,15 @@ export const toMin = (hhmm: string) => {
 };
 export const toHHMM = (min: number) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 
-export function todayInTz(timeZone: string, at: Date): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
-}
+// `todayInTz` moved to `@waypoint/shared`'s `zones.ts` (ADR-0197 §5, phase 2) — the zone
+// model needs it and the server now reads that model. Re-exported here because 14 files
+// import it from `lib/time`, and one definition with a familiar path beats a second copy:
+// two implementations of "which calendar day is this, over there" is precisely how a
+// notification comes to fire on a different day than the row it is about.
+// Imported for this file's own use (three call sites below) as well as re-exported.
+import { todayInTz } from '@waypoint/shared';
+
+export { todayInTz };
 
 /** Add whole days to a YYYY-MM-DD date string. */
 export function addDays(date: string, delta: number): string {

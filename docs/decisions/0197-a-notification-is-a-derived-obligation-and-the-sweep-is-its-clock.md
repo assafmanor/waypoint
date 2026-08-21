@@ -117,7 +117,27 @@ The sweep produces `DueSend[]` — already resolved, already deduped by the ledg
 **The thresholds, in the order they are likely to arrive:**
 
 1. **A second scheduled workload appears.** Gmail import is the candidate `docker-compose.yml` has always named, and it is the workload a queue is genuinely for: fan-out, third-party rate limits, retries, and work that is expensive to redo. At two consumers the fixed cost of Redis amortises, and notifications should ride it then rather than keep a private mechanism.
-2. **A tick cannot finish inside its interval.** Measurable, not felt: log per-tick wall time from day one, and the trigger is sustained **> 30 s** against a 60 s interval. The arithmetic, so the number is not folklore: one Web Push POST is ~100–200 ms, at concurrency 20 that is ~4,000 sends inside 30 s.
+2. **A tick cannot finish inside its interval.** Measurable, not felt: log per-tick wall time from day one, and the trigger is sustained **> 30 s** against a 60 s interval.
+
+   **AMENDED 2026-08-21 (phase 3): the sends were the wrong quantity to count.** This
+   threshold was written as "~4,000 sends inside 30 s" — one Web Push POST at ~100–200 ms,
+   at concurrency 20 — and that arithmetic is fine and was measuring the wrong thing. The
+   first sweep looped over live trips and loaded each one's events, bookings and places to
+   derive zones: `1 + 3T` sequential queries per tick, **paid whether or not anything was
+   due**. Computed against that shape: fine at 100 trips, past this very threshold at ~1,000,
+   and over the 60-second interval outright at ~5,000 — with **zero** sends in every case.
+   The cost scaled with **trips** when it must scale with **things due**, and on a
+   notification sweep almost every tick has nothing to do.
+
+   Phase 3 inverted the loop instead of raising the number: a kind runs one indexed range
+   query across every trip at once (`Task(status, dueAt)`, `Event(startsAt)` — neither column
+   was indexed before), zone context is resolved only for the trips those queries returned
+   and memoized per tick, and the daily caps are one grouped query rather than one count per
+   candidate. An idle tick is now one index scan per kind returning nothing. **So the
+   threshold stands as written and now measures what it says it measures** — but a future
+   reader should know it was briefly guarding the wrong axis, because the mistake is easy to
+   repeat: the expensive thing in a sweep is rarely the sending.
+
 3. **Sustained non-`410` delivery failures.** `404`/`410` are a subscription's normal death (§10) and need no retry. Anything else, above roughly **1 %** of sends over a day, is the point where "drop it" becomes visible as reminders that never came — and retry-with-backoff is precisely what the queue buys.
 4. **Several backend instances plus a delivery-load reason to spread the work.** Correctness already survives multiple instances (the ledger claim, §3), so this is about not having every instance walk the whole candidate set — an efficiency trigger, not a bug.
 
@@ -203,6 +223,12 @@ Two service-worker rules that are not ours to negotiate:
 - **The ledger and the dispatcher are NOT built.** §3's `NotificationSend` and §3.1's `NotificationDispatcher` land with the sweep that reads and feeds them. An interface with one caller and no second implementation is the speculative abstraction §3.1 was careful not to ask for yet.
 
 And what the build measured rather than assumed: `webpush.generateVAPIDKeys()` really does emit 65 bytes public / 32 private in the base64url alphabet (so §1's swap check is calibrated, not guessed), and **the worker draws a notification for every push** — verified in Chromium by a new `scripts/push-handler-check.mjs`, which delivers straight to the registered worker over CDP and reads back what it drew, so it needs neither a push service nor a keypair. Phase 0's atomic swap re-verified with the new listeners in place.
+
+**PHASES 2 AND 3 BUILT 2026-08-21** ([session note](../planning/2026-08-21-notifications-phases-2-3-built.md)).
+
+Phase 2 moved §5's derivations into `packages/shared` — `zones.ts` (the ADR-0107 model) and `task-time.ts` (`dueZone`, `taskBand`) — so a send time and a printed time are one derivation rather than two that agree today. Counted before moving: the zone functions had 2–5 call sites each and moved outright, while `todayInTz` (14 files) and `TaskClock` (17) are **re-exported** from their old paths, because churning 31 files to relocate a definition is cost without a reader. It also collapsed a duplicate the move created: `todayInTz` briefly existed in both packages, which is exactly the drift this repo has several ADRs about. And it **amended `packages/shared/CLAUDE.md`**, whose rule said no `Intl` in shared: the real line is _nothing ambient_ — `Intl.DateTimeFormat` with the zone as an **argument** is deterministic, and `schemas.ts` had been validating zone strings that way since long before the rule was written.
+
+Phase 3 added the clock: the `NotificationSend` ledger, the sweep, quiet hours, the per-source caps, `NotificationDispatcher` (§3.1's seam B, which now has a caller and so is no longer speculative), and a 60-second in-process ticker that **starts no timer while no kind is registered**. §3.1's threshold-2 amendment above is the part worth reading twice.
 
 ### 9. The lock screen renders the string, so ADR-0118 does not reach it
 

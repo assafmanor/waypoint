@@ -13,6 +13,28 @@ import {
   type PlacePrediction,
   type TripEvent,
 } from '@waypoint/shared';
+
+// Imported for this file's own use AND re-exported below: a bare `export … from` would not
+// bring them into scope here, and several derivations in this file read them.
+import {
+  bookingEndZones,
+  bookingZoneOverrides,
+  currentZone,
+  placeTimezone,
+  segmentZoneAt,
+  tripZoneCrossings,
+  type ZoneCrossing,
+} from '@waypoint/shared';
+
+export {
+  bookingEndZones,
+  bookingZoneOverrides,
+  currentZone,
+  placeTimezone,
+  segmentZoneAt,
+  tripZoneCrossings,
+  type ZoneCrossing,
+};
 import { ltrIsolate } from './bidi';
 import type { PlaceLabels } from './place-label';
 import {
@@ -219,103 +241,17 @@ export function bookingRoute(
 // zone naturally lives). Pure + clock-free — callers own `now`. The now/next
 // engine and stored instants are untouched; this is display/authoring only.
 
-/** A zone-crossing transport event: the timeline splits into zone segments at
- *  its departure instant. Only transport whose origin and destination zones are
- *  both known **and differ** makes a crossing — a same-zone or coordless hop
- *  doesn't reorient anything. */
-export interface ZoneCrossing {
-  at: number; // departure instant (ms) — the boundary between the two segments
-  fromZone: string;
-  toZone: string;
-}
-
-/** IANA zone cached on a place row (undefined for a coordless Place-lite). The
- *  public name for form authoring, where a time field is entered in its
- *  endpoint's own zone (ADR-0107 §2): a departure in `fromPlace`, an arrival in
- *  `toPlace`, a single-place booking/event in its place. */
-export function placeTimezone(places: Place[], placeId?: string): string | undefined {
-  if (!placeId) return undefined;
-  return places.find((p) => p.id === placeId)?.timezone;
-}
-
-/** A booking's per-end zone overrides, resolved by the same authority rule as its
- *  place fields (ADR-0107 §6-7 session-99 amendment): transport pins its origin's
- *  zone on `start` and its destination's on `end`; a single-place booking uses only
- *  `start`, which then drives both ends. Undefined = nothing pinned. */
-export function bookingZoneOverrides(booking: Booking | undefined): {
-  start?: string;
-  end?: string;
-} {
-  if (!booking) return {};
-  const start = booking.startDisplayTimezone;
-  const end = isTransport(booking) ? booking.endDisplayTimezone : start;
-  return { start, end };
-}
-
-/** What zone each end of a booking is in **as far as we know**: the user's pinned
- *  override, else the endpoint place's cached zone, else undefined (a coordless
- *  Place-lite with nothing pinned — the caller falls back to the segment/primary).
- *  The one answer both the crossing detection and the event resolver read, so a
- *  pinned zone partitions the itinerary exactly like a real place does. */
-export function bookingEndZones(booking: Booking, places: Place[]): { from?: string; to?: string } {
-  const pinned = bookingZoneOverrides(booking);
-  return isTransport(booking)
-    ? {
-        from: pinned.start ?? placeTimezone(places, booking.fromPlaceId),
-        to: pinned.end ?? placeTimezone(places, booking.toPlaceId),
-      }
-    : (() => {
-        const zone = pinned.start ?? placeTimezone(places, booking.placeId);
-        return { from: zone, to: zone };
-      })();
-}
-
-/** The trip's zone-crossings in departure order (ADR-0107 §3). Everything before
- *  the first crossing sits in its origin zone (the home zone, known once the
- *  outbound flight's `fromPlace` is entered); each later segment takes the
- *  preceding crossing's destination zone. */
-export function tripZoneCrossings(
-  events: TripEvent[],
-  bookings: Booking[],
-  places: Place[],
-): ZoneCrossing[] {
-  const crossings: ZoneCrossing[] = [];
-  for (const event of events) {
-    if (!event.bookingId || !event.startsAt) continue;
-    const booking = bookings.find((b) => b.id === event.bookingId);
-    if (!booking || !isTransport(booking)) continue;
-    const { from: fromZone, to: toZone } = bookingEndZones(booking, places);
-    if (!fromZone || !toZone || fromZone === toZone) continue;
-    crossings.push({ at: Date.parse(event.startsAt), fromZone, toZone });
-  }
-  return crossings.sort((a, b) => a.at - b.at);
-}
-
-/** The itinerary-segment zone at an instant (ADR-0107 §3 step 2), or undefined
- *  when no transport anchors the timeline (caller falls back to the trip primary
- *  zone). Before the first crossing → its origin zone; at/after a crossing's
- *  departure → its destination zone (so a mid-flight instant reads the
- *  destination, ADR-0107 §8). */
-export function segmentZoneAt(instantMs: number, crossings: ZoneCrossing[]): string | undefined {
-  if (crossings.length === 0) return undefined;
-  if (instantMs < crossings[0].at) return crossings[0].fromZone;
-  let zone = crossings[0].toZone;
-  for (const crossing of crossings) {
-    if (instantMs >= crossing.at) zone = crossing.toZone;
-    else break;
-  }
-  return zone;
-}
-
-/** The zone the live "now" sits in (ADR-0107 §4): the itinerary segment holding
- *  `nowMs`, falling back to the trip primary zone when no crossing anchors the
- *  timeline. Trip mode reads the clock, the now-line and "today" through this, so
- *  they track which side of a crossing you're on — via the itinerary, never GPS.
- *  Plan mode deliberately does NOT use it: planning is framed in the trip primary
- *  zone (§4). */
-export function currentZone(nowMs: number, crossings: ZoneCrossing[], primaryZone: string): string {
-  return segmentZoneAt(nowMs, crossings) ?? primaryZone;
-}
+// ── THE ZONE MODEL MOVED TO `@waypoint/shared` (ADR-0197 §5, phase 2) ──────────────────
+//
+// `ZoneCrossing`, `placeTimezone`, `bookingZoneOverrides`, `bookingEndZones`,
+// `tripZoneCrossings`, `segmentZoneAt` and `currentZone` are now `shared/src/zones.ts`,
+// because the notification sweep asks the same question from the server and the answer has
+// to come from the same code — a send time and a printed time that disagree is the 03:00
+// notification.
+//
+// **Re-exported here, and this file is not a second definition.** Every consumer keeps
+// importing from `lib/places`, which is where they have always looked; `zones.ts` is the
+// one implementation. When you need to change the behaviour, change it there.
 
 /** Everything the zone questions resolve against. Bundled because "which zone is
  *  this day in" now reads the day's own events, not only the transport crossings
