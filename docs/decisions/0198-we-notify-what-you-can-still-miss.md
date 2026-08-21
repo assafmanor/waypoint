@@ -148,7 +148,7 @@ Plus the platform's own on/off, which is the permission itself and lives on the 
 
 **Quiet hours are constants, not preferences** (22:00–07:00, ADR-0197 §5). A per-user pair of times is three more fields, a validation surface and a zone question, to serve a disagreement nobody has voiced — and the one case that would need it, an early flight, is already handled by `timeCritical` overriding the window entirely. **Per-device preferences** (a work phone that wants only obligations) are likewise deferred: the subscription is per device but the preference is per person, and at ~5 people per trip nobody has asked for the difference.
 
-**Amended 2026-08-21 (phase 1b's mockup): TWO switches, not three, and they arrive with the kind they gate.** `notifyGroup` is not drawn at all until phase D is decided — and this ADR itself leans against building D — because a preference for a feature that may never arrive is a promise, not a control. The other two are real switches over inert kinds until phases 4 and 5 register them, which this screen's own history already ruled on: [ADR-0133](0133-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md) §7 rejected a theme toggle on the grounds that _"a switch that does nothing is worse than a thin page"_ and let it back in only once the remap made it real. So **the preferences card ships with the kind it gates** — `notifyTasks` with phase 4, `notifyObligations` with phase 5 — while the device card (permission, subscription, the device list) ships as soon as it is built, because subscribing is a real action with a provable effect. The `User` fields, `PATCH /me` and `updateMeSchema` are unchanged — the amendment is about when the switches appear, not about what they are.
+**Amended 2026-08-21 (phase 1b's mockup): TWO switches, not three, and they arrive with the kind they gate.** `notifyGroup` is not drawn at all until phase D is decided — and this ADR itself leans against building D — because a preference for a feature that may never arrive is a promise, not a control. The other two are real switches over inert kinds until phases 4 and 5 register them, which this screen's own history already ruled on: [ADR-0133](0133-the-user-is-a-surface-identity-ramp-and-a-reachable-roster.md) §7 rejected a theme toggle on the grounds that _"a switch that does nothing is worse than a thin page"_ and let it back in only once the remap made it real. So **the preferences card ships with the kind it gates** — `notifyTasks` with phase 4, `notifyObligations` with phase 5 — while the device card (permission, subscription, the device list) ships as soon as it is built, because subscribing is a real action with a provable effect. The `User` fields, `PATCH /me` and `updateMeSchema` are unchanged — the amendment is about when the switches appear, not about what they are. **Both are now on the card** (`notifyTasks` with phase A, `notifyObligations` with phase B), which is the whole of what this screen offers until phase D is decided.
 
 **No in-app duplicate of a push.** Every one of these obligations already has a home on a screen — the board, the glance rail's `נותרו היום`, the task bands, the readiness checks. A notification is a **way in** to a surface that already exists, never a second inbox, which is ADR-0004's rule reaching a channel it was not written about.
 
@@ -194,6 +194,34 @@ It stays **addressed** — which is what earns this send its place against ADR-0
 **The digest is the kind whose trigger is a wall clock**, and it stays inside the inverted loop by asking in this order: which trips have an open dated task at all (one indexed scan), then zones for only those, then which of them are at 08:00. So it costs what the trips with something to report cost, never what all trips cost.
 
 **Still owed: the lock-screen device pass** this section requires before phase A is called done. It cannot be done from a sandbox — both platforms, both a Hebrew string ending in a time and one ending in a name.
+
+## PHASE B BUILT (2026-08-21) — [session note](../planning/2026-08-21-notifications-phase-b-built.md)
+
+`event.hard.soon`, `span.edge.soon` and `trip.tomorrow` are registered, `notifyObligations` is a column and the second switch it gates is on the settings card. Six kinds now; §2's phases A and B are complete.
+
+**§2's row for `span.edge.soon` reads "`startWindowEnd` when there is a window", and that shorthand is only true on the START side.** ADR-0184 gives an edge two bounds, and which of them is the deadline is not symmetric: at the start, `startsAt` is when the desk opens and `startWindowEnd` is when you have to be there **by**, so the window bound is the obligation. At the end it is the other way round — `endWindowStart` is the **earliest** you may leave and `endsAt` is the time you must be out by — so the closing instant is `endsAt` and `endWindowStart` is not a deadline at all. The kind therefore reads three of the four bounds and deliberately ignores the fourth; the code says so, because a reader counting fields would otherwise "finish" it.
+
+**The two edges are keyed apart (`subjectId: '<eventId>:start' | ':end'`), and that is not belt-and-braces.** A stay's check-in and check-out are days apart, so their aimed-at minutes differ anyway — but only by luck of the data. Keying on the event id alone would let one edge's ledger row suppress the other's for any span whose ends happen to land in the same minute bucket, and the subject is the honest discriminator.
+
+**`event.hard.soon` and `span.edge.soon` split on `isAmbient`, which is ADR-0164's own line.** A point commitment is the first kind's, an ambient span's two edges are the second's, and no row is both — without that exclusion a hotel check-in fires twice, an hour apart, from two kinds that each think they own it.
+
+**`trip.tomorrow` reads 19:00 at HOME, not at the destination.** The zone comes from `currentZone(now, …)`, which before the first crossing is where the traveller is standing — and the evening before you fly, that is home. Using the trip's own zone would put a long-haul departure's "you travel tomorrow" in the middle of the night.
+
+**And the measurement §5 asked for was finally possible, because the seed now has a flight and a stay.** Counting every one-minute tick of three representative days against the seeded trip (5 members), as **distinct ledger claims per person**:
+
+| day                                         | sends                                       |
+| ------------------------------------------- | ------------------------------------------- |
+| trip day 3 (a day with a hard 19:30 dinner) | 1 digest, 1 `task.due`, 1 `event.hard.soon` |
+| the check-out day                           | 1 digest, 1 `span.edge.soon`                |
+| a pre-trip day                              | **nothing at all**                          |
+
+Which is §5's computed shape, now measured rather than reasoned — and the caps bind nowhere.
+
+**The measurement also found a phase-A defect that no test could see, and it is the one worth carrying forward.** `task.digest` reported `aimedAtMs: nowMs` under an `hourInZone(…) === 8` gate. The gate passes for **all sixty minutes** of that hour, so every tick minted a new `fireKey`: 60 distinct ledger claims per person per morning, of which 59 were refused not by the ledger but by the **1/day cap**. Nothing wrong ever reached a phone, and the code comment beside it asserted the opposite ("one bucket per morning") — so the only way to see it was to count. Fixed by `hourStartInZone` in `send-policy.ts`, which buckets the tick to the top of the **local** hour (exact in `+05:45`, where flooring to a UTC hour would not be), and `trip.tomorrow` — written with the same shape — was fixed before it ever shipped. The general rule: **a kind triggered by a wall clock must key on the hour it fires for, not on the tick that noticed.** A cap silently doing the ledger's job is what §5 means when it says that if the caps bind often, the catalogue is wrong.
+
+**`notifyLeadMinutesFor` is the reader, not `CATEGORY_TIME_PROFILE.x.notifyLeadMinutes`.** §3 added the field; the accessor goes beside `typicalMinutesFor` so a kind reads the event's **refined** profile (ADR-0063's per-mode overrides) rather than the category's raw row, and an uncategorised event answers 0 without a call site testing for null.
+
+**`task-audience.ts` became `trip-audience.ts`** — every line of it was already trip-scoped (the live window, the roster, the zone), and phase B's kinds need exactly those three answers. Root rule 8: generalise the one-off rather than write an `event-audience` beside it that could disagree about what "live" means.
 
 ## Consequences
 

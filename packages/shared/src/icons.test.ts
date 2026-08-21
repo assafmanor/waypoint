@@ -23,6 +23,7 @@ import {
   windowBoundOf,
   isJourney,
   isMultiDay,
+  notifyLeadMinutesFor,
   searchVibeIcons,
   typicalMinutesFor,
 } from './icons';
@@ -66,6 +67,8 @@ describe('CATEGORY_TIME_PROFILE', () => {
       midSpan: { kind: 'journey', liveKey: 'transitLive', labelKey: 'transitLabel' },
       durationUnit: 'hours',
       typicalMinutes: 60,
+      // ADR-0198 §3: an airport is the one place where two hours is not paranoid.
+      notifyLeadMinutes: 120,
     });
     expect(CATEGORY_TIME_PROFILE.lodging).toEqual({
       bracketed: true,
@@ -74,7 +77,55 @@ describe('CATEGORY_TIME_PROFILE', () => {
       midSpan: { kind: 'held', liveKey: 'stayLive', labelKey: 'stayLabel' },
       durationUnit: 'nights',
       typicalMinutes: 60,
+      // A check-in you are late for is a phone call, not a lost ticket.
+      notifyLeadMinutes: 60,
     });
+  });
+
+  /**
+   * **The notification lead table** (ADR-0198 §3), pinned as a whole rather than per category.
+   *
+   * It is on this profile and not in a second lookup beside it (root rule 8), so the test that
+   * matters is that every category has an answer and that the answer is the intended one — a
+   * tenth category added without a lead would read `undefined` and notify at the wrong time
+   * rather than failing to compile.
+   */
+  it('gives every category a notification lead, and silence is the default', () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(CATEGORY_TIME_PROFILE).map(([key, profile]) => [
+          key,
+          profile.notifyLeadMinutes,
+        ]),
+      ),
+    ).toEqual({
+      transport: 120,
+      lodging: 60,
+      activity: 60,
+      services: 60,
+      food: 30,
+      // Rarely hard, and when they are the day surfaces carry them.
+      sightseeing: 0,
+      nature: 0,
+      shopping: 0,
+      other: 0,
+    });
+  });
+
+  it('notifies an UNCATEGORISED event not at all', () => {
+    // ADR-0038 allows a null category, and the honest answer for one is silence rather than a
+    // guess at how far ahead somebody wanted to know.
+    expect(notifyLeadMinutesFor({ category: null, icon: null })).toBe(0);
+    expect(notifyLeadMinutesFor({ category: undefined, icon: undefined })).toBe(0);
+  });
+
+  it('reads the event’s own REFINED profile, so a mode could override its lead', () => {
+    // Nothing overrides it today; the seam is the point — a flight already overrides its
+    // transition words through the same table, and the alternative is a second lookup keyed
+    // by glyph that can disagree with this one.
+    expect(notifyLeadMinutesFor({ category: 'transport', icon: '✈️' })).toBe(120);
+    expect(notifyLeadMinutesFor({ category: 'transport', icon: '🚗' })).toBe(120);
+    expect(notifyLeadMinutesFor({ category: 'food', icon: null })).toBe(30);
   });
 
   // `toMatchObject`, not `toEqual`, and the change is the point: since ADR-0161 §5 these

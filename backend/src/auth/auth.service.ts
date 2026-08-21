@@ -179,7 +179,7 @@ export class AuthService {
       // The category preferences (ADR-0198 §6). Here rather than on `user`, because that
       // shape is also every co-member's roster row and a preference is nobody else's
       // business.
-      notify: { tasks: user.notifyTasks },
+      notify: { tasks: user.notifyTasks, obligations: user.notifyObligations },
     };
   }
 
@@ -202,6 +202,9 @@ export class AuthService {
           preferredCurrency: patch.preferredCurrency,
         }),
         ...(patch.notifyTasks !== undefined && { notifyTasks: patch.notifyTasks }),
+        ...(patch.notifyObligations !== undefined && {
+          notifyObligations: patch.notifyObligations,
+        }),
       },
     });
     return this.getMe(userId);

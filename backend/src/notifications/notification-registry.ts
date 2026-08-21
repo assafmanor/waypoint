@@ -7,14 +7,20 @@
 // half-initialised module. Keeping the interface ignorant of its implementers also lets the
 // sweep's spec mock this file alone, which is a two-line module with nothing else in it.
 import type { NotificationKind } from './notification-kind';
+import { eventSoonKind } from './kinds/event-soon.kind';
+import { spanEdgeKind } from './kinds/span-edge.kind';
 import { taskAssignedKind } from './kinds/task-assigned.kind';
 import { taskDigestKind } from './kinds/task-digest.kind';
 import { taskDueKind } from './kinds/task-due.kind';
+import { tripTomorrowKind } from './kinds/trip-tomorrow.kind';
 
-/** ADR-0198's phase A. Phases B, C and D append here and nothing else changes — which was
- *  phase 3's claim, made while this array was empty. */
+/** ADR-0198's phases A and B. Phases C and D append here and nothing else changes — which was
+ *  phase 3's claim, made while this array was empty, and it has now survived two phases. */
 export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   taskDueKind,
   taskDigestKind,
   taskAssignedKind,
+  eventSoonKind,
+  spanEdgeKind,
+  tripTomorrowKind,
 ];

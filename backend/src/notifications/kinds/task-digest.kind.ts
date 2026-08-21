@@ -19,7 +19,7 @@
 // zones for only those trips, then which of them are at 08:00. So the cost scales with trips
 // that have something to report, never with trips.
 import { currentZone, NOTIFICATION_KIND, todayInTz } from '@waypoint/shared';
-import { hourInZone } from '../send-policy';
+import { hourInZone, hourStartInZone } from '../send-policy';
 import {
   DEDUP,
   NOTIFY_PREF,
@@ -28,7 +28,7 @@ import {
   type NotificationKind,
 } from '../notification-kind';
 import { taskDigestPayload } from '../notify-copy';
-import { notifiableTaskWhere, taskAudience, type TaskRow } from './task-audience';
+import { notifiableTaskWhere, tripAudience, type TaskRow } from './trip-audience';
 import { TASK_SELECT } from './task-due.kind';
 
 /** The local hour the digest is aimed at. A fixed hour rather than a preference, for the same
@@ -60,7 +60,7 @@ export const taskDigestKind: NotificationKind = {
     })) as TaskRow[];
     if (tasks.length === 0) return [];
 
-    const audience = await taskAudience(prisma, tasks, nowMs);
+    const audience = await tripAudience(prisma, tasks, nowMs);
     const byTrip = new Map<string, TaskRow[]>();
     for (const task of tasks) {
       if (!audience.isLive(task.tripId)) continue;
@@ -76,6 +76,7 @@ export const taskDigestKind: NotificationKind = {
       // which before the first crossing is home, and that is the pre-trip case (ADR-0197 §5).
       const zone = currentZone(nowMs, zones.crossings, zones.primaryZone);
       if (hourInZone(nowMs, zone) !== DIGEST_HOUR) continue;
+      const hourStart = hourStartInZone(nowMs, zone);
 
       const today = todayInTz(zone, new Date(nowMs));
       const tomorrow = todayInTz(zone, new Date(nowMs + 24 * 60 * 60 * 1000));
@@ -98,10 +99,13 @@ export const taskDigestKind: NotificationKind = {
           tripId,
           kind: NOTIFICATION_KIND.TASK_DIGEST,
           subjectId: tripId,
-          // **The aimed-at instant is this minute**, which is 08:00 in the reader's zone by
-          // the check above — so `fireKey` is one bucket per morning per trip and the digest
-          // cannot go out twice however many ticks fall inside `staleAfterMs`.
-          aimedAtMs: nowMs,
+          // **The aimed-at instant is 08:00 itself, not the tick that noticed it.** The
+          // check above passes for all sixty minutes of the hour, so `nowMs` here — which is
+          // what phase A shipped — gave every tick its own `fireKey`: measured against the
+          // seed, 60 distinct ledger claims per person per morning, 59 of them refused by the
+          // 1/day cap rather than by the ledger. Keying on the hour is what actually makes
+          // this one bucket per morning per trip (ADR-0197 §10).
+          aimedAtMs: hourStart,
           payload: taskDigestPayload({
             tripId,
             titles: dueToday.map((task) => task.title),

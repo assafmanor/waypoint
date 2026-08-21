@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { NOTIFICATION_KIND } from '@waypoint/shared';
 import {
   clockLabel,
+  eventSoonPayload,
+  spanEdgePayload,
+  spanEdgeWord,
   taskAssignedPayload,
   taskDigestPayload,
   taskDuePayload,
   taskUrl,
+  tripTomorrowPayload,
+  untilLabel,
 } from './notify-copy';
 
 const utc = (iso: string) => Date.parse(iso);
@@ -163,5 +168,104 @@ describe('taskAssignedPayload', () => {
       dueLabel: null,
     });
     expect(p.body).toBe('צילום דרכונים');
+  });
+});
+
+describe('untilLabel — Hebrew’s dual is not a rounding detail', () => {
+  it('says the WORD for two hours, not the number', () => {
+    // `2 שעות` is not what a person says, and on a lock screen at 03:30 it reads as a
+    // translation rather than a sentence.
+    expect(untilLabel(120)).toBe('בעוד שעתיים');
+    expect(untilLabel(60)).toBe('בעוד שעה');
+    expect(untilLabel(180)).toBe('בעוד 3 שעות');
+  });
+
+  it('stays in minutes below the hour', () => {
+    expect(untilLabel(30)).toBe('בעוד 30 דק׳');
+    expect(untilLabel(59)).toBe('בעוד 59 דק׳');
+  });
+
+  it('has something to say for right now', () => {
+    expect(untilLabel(0)).toBe('עוד רגע');
+  });
+});
+
+describe('the phase-B payloads', () => {
+  const soon = eventSoonPayload({
+    tripId: 't1',
+    dateKey: '2026-08-21',
+    title: 'טיסה TLV → NRT',
+    leadMinutes: 120,
+    startsAtMs: Date.parse('2026-08-21T03:20:00Z'),
+    zone: 'Asia/Jerusalem',
+  });
+
+  it('leads with the COUNTDOWN, because that is what makes it urgent', () => {
+    // The reverse of phase A, and deliberately: these two kinds are the catalogue's only
+    // `timeCritical` rows, so the string has to work read half-asleep from a lock screen.
+    expect(soon.title).toBe('טיסה TLV → NRT בעוד שעתיים');
+    expect(soon.body).toBe('06:20');
+    expect(soon.kind).toBe(NOTIFICATION_KIND.EVENT_HARD_SOON);
+  });
+
+  it('opens the DAY, not a second inbox', () => {
+    expect(soon.url).toBe('/trips/t1/day/2026-08-21');
+  });
+
+  it('gives a span edge its own word and its deadline', () => {
+    const edge = spanEdgePayload({
+      tripId: 't1',
+      dateKey: '2026-08-25',
+      edgeWord: 'צ׳ק-אאוט',
+      subject: 'Hotel Nikko',
+      atMs: Date.parse('2026-08-25T08:00:00Z'),
+      zone: 'Asia/Tokyo',
+    });
+    expect(edge.title).toBe('צ׳ק-אאוט עד 17:00');
+    expect(edge.body).toBe('Hotel Nikko');
+  });
+
+  it('falls back to a NOUN rather than printing a key at somebody', () => {
+    // A person seeing `checkOut` on a lock screen is worse than a person seeing a vague word.
+    expect(spanEdgeWord(undefined)).toBe('שלב בטיול');
+    expect(spanEdgeWord('nonsense')).toBe('שלב בטיול');
+    expect(spanEdgeWord('carDropoff')).toBe('החזרת הרכב');
+  });
+
+  it('names the trip and its first timed thing the evening before', () => {
+    const tomorrow = tripTomorrowPayload({
+      tripId: 't1',
+      dateKey: '2026-08-22',
+      tripName: 'יפן ׳26',
+      firstThing: {
+        title: 'טיסה TLV → NRT',
+        atMs: Date.parse('2026-08-22T03:20:00Z'),
+        zone: 'Asia/Jerusalem',
+      },
+    });
+    expect(tomorrow.title).toBe('נוסעים מחר');
+    expect(tomorrow.body).toBe('יפן ׳26 · טיסה TLV → NRT ב-06:20');
+  });
+
+  it('says just the trip when day 1 has nothing on a clock', () => {
+    const tomorrow = tripTomorrowPayload({
+      tripId: 't1',
+      dateKey: '2026-08-22',
+      tripName: 'יפן ׳26',
+      firstThing: null,
+    });
+    // Common rather than exceptional, so there is no dangling separator to trip over.
+    expect(tomorrow.body).toBe('יפן ׳26');
+  });
+
+  it('spends no em dash anywhere', () => {
+    // Root CLAUDE.md, and it matters most here: the OS draws these strings, so none of
+    // ADR-0118's bidi machinery reaches them.
+    for (const p of [
+      soon,
+      tripTomorrowPayload({ tripId: 't', dateKey: 'd', tripName: 'n', firstThing: null }),
+    ]) {
+      expect(p.title + p.body).not.toContain('—');
+    }
   });
 });

@@ -142,3 +142,132 @@ export function taskAssignedPayload(input: {
     url: taskUrl(input.tripId),
   };
 }
+
+// ── PHASE B — the trip's own commitments (ADR-0198 §2) ─────────────────────────────────────
+//
+// Two of these are the catalogue's only `timeCritical` rows, which changes what the words are
+// for: a 03:30 notification about a 05:30 flight has to be readable in one glance from a lock
+// screen, half asleep. So the title carries the COUNTDOWN and the body carries the identity —
+// the reverse of phase A, where the obligation is the title because the hour is the qualifier.
+
+/** Where tapping an event notification goes: the day it belongs to (ADR-0004 — a notification
+ *  is a way IN to a surface that already exists). */
+export function eventUrl(tripId: string, dateKey: string): string {
+  return `/trips/${tripId}/day/${dateKey}`;
+}
+
+/** How long until something, as a lock screen should read it. Hebrew's dual is what makes this
+ *  more than a number: `שעתיים` is a word, not `2 שעות`, and getting it wrong is the kind of
+ *  thing a person notices immediately. */
+export function untilLabel(minutes: number): string {
+  if (minutes < 1) return 'עוד רגע';
+  if (minutes < 60) return `בעוד ${minutes} דק׳`;
+  const hours = Math.round(minutes / 60);
+  if (hours === 1) return 'בעוד שעה';
+  if (hours === 2) return 'בעוד שעתיים';
+  return `בעוד ${hours} שעות`;
+}
+
+/**
+ * `event.hard.soon` — a hard commitment, its category's lead ahead of it.
+ *
+ * The title is the countdown because that is the fact that makes it urgent; the body is what
+ * and where, with the hour last so a truncated line still says which thing it is about.
+ */
+export function eventSoonPayload(input: {
+  tripId: string;
+  dateKey: string;
+  title: string;
+  leadMinutes: number;
+  startsAtMs: number;
+  zone: string;
+}): PushPayload {
+  return {
+    kind: NOTIFICATION_KIND.EVENT_HARD_SOON,
+    title: `${input.title} ${untilLabel(input.leadMinutes)}`,
+    body: `${clockLabel(input.startsAtMs, input.zone)}`,
+    url: eventUrl(input.tripId, input.dateKey),
+  };
+}
+
+/**
+ * **The word for a span's own edge.**
+ *
+ * The KEY is derivable on the server — `CATEGORY_TIME_PROFILE.transitions`, refined by
+ * `ICON_TIME_PROFILE`, is shared code — but the Hebrew is not: `i18n/he.ts` owns the app's
+ * words and `packages/shared/CLAUDE.md` is explicit that UI copy does not move there.
+ *
+ * **So these are the notification's OWN words, and that is a claim rather than a shortcut.**
+ * A lock screen is a different register from a rail marker, which ADR-0198 §7 already
+ * establishes for every other string in this file — the digest's `3 דברים לסגור היום` appears
+ * nowhere in the app either. Today six of these coincide with `t.…transition`'s, and the
+ * honest statement is that the coincidence is not enforced: re-word the rail and this does not
+ * follow. If that ever matters, the fix is the same one §7.1 describes for a second locale —
+ * the words become data the server can look up, not a copy that has to be kept in step by
+ * hand.
+ *
+ * Keyed on the shared `transitions` keys so a mode that refines its wording
+ * (`ICON_TIME_PROFILE`) is picked up here for free, and an unknown key falls back rather than
+ * printing a key name at somebody.
+ */
+const SPAN_EDGE_WORD: Record<string, string> = {
+  checkIn: 'צ׳ק-אין',
+  checkOut: 'צ׳ק-אאוט',
+  departure: 'יציאה',
+  arrival: 'הגעה',
+  flightDeparture: 'המראה',
+  flightArrival: 'נחיתה',
+  carPickup: 'איסוף הרכב',
+  carDropoff: 'החזרת הרכב',
+};
+
+/** The edge's own word, or a neutral one. `שלב` rather than the key, because a person seeing
+ *  `checkOut` on a lock screen is worse than a person seeing a vague noun. */
+export function spanEdgeWord(transitionKey: string | undefined): string {
+  return (transitionKey && SPAN_EDGE_WORD[transitionKey]) || 'שלב בטיול';
+}
+
+/**
+ * `span.edge.soon` — a check-in, check-out, pick-up or return, an hour out.
+ *
+ * The caller passes the word (`spanEdgeWord` above); this stays a formatter.
+ */
+export function spanEdgePayload(input: {
+  tripId: string;
+  dateKey: string;
+  edgeWord: string;
+  subject: string;
+  atMs: number;
+  zone: string;
+}): PushPayload {
+  return {
+    kind: NOTIFICATION_KIND.SPAN_EDGE_SOON,
+    title: `${input.edgeWord} עד ${clockLabel(input.atMs, input.zone)}`,
+    body: input.subject,
+    url: eventUrl(input.tripId, input.dateKey),
+  };
+}
+
+/**
+ * `trip.tomorrow` — 19:00 the evening before day 1.
+ *
+ * The one row that fires before the trip has anything timed in it, so it names the trip and
+ * the first thing on it. `firstThing` is null when day 1 has nothing timed, which is common
+ * enough to be the normal case rather than an edge one.
+ */
+export function tripTomorrowPayload(input: {
+  tripId: string;
+  dateKey: string;
+  tripName: string;
+  firstThing: { title: string; atMs: number; zone: string } | null;
+}): PushPayload {
+  const { firstThing } = input;
+  return {
+    kind: NOTIFICATION_KIND.TRIP_TOMORROW,
+    title: 'נוסעים מחר',
+    body: firstThing
+      ? `${input.tripName} · ${firstThing.title} ב-${clockLabel(firstThing.atMs, firstThing.zone)}`
+      : input.tripName,
+    url: eventUrl(input.tripId, input.dateKey),
+  };
+}

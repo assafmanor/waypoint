@@ -65,16 +65,26 @@ const BLOCKED: Record<
   },
 };
 
+/** The category switches, in catalogue order. A list rather than two hand-written rows, so
+ *  phase C's is one entry and not a third copy of the same six lines. */
+const CATEGORIES = [
+  { key: 'notifyTasks', label: t.shell.account.notifyTasksLabel },
+  { key: 'notifyObligations', label: t.shell.account.notifyObligationsLabel },
+] as const satisfies readonly { key: keyof NotifyPatch; label: string }[];
+
+type NotifyPatch = { notifyTasks?: boolean; notifyObligations?: boolean };
+
 export function NotificationSettings({
   vapidPublicKey,
-  notifyTasks,
+  prefs,
   onPatchPrefs,
 }: {
   vapidPublicKey: string | null;
-  notifyTasks: boolean;
+  /** The account's switches, as `/me` reports them. */
+  prefs: { notifyTasks: boolean; notifyObligations: boolean };
   /** Rejects on failure so this component can show its own banner-less failure line without
    *  owning the account patch. */
-  onPatchPrefs: (patch: { notifyTasks: boolean }) => Promise<void>;
+  onPatchPrefs: (patch: NotifyPatch) => Promise<void>;
 }) {
   const [subscribed, setSubscribed] = useState<boolean | null>(null);
   const [devices, setDevices] = useState<PushDevice[]>([]);
@@ -117,10 +127,10 @@ export function NotificationSettings({
     }
   };
 
-  const togglePref = async (next: boolean) => {
+  const togglePref = async (key: keyof NotifyPatch, next: boolean) => {
     setFailed(false);
     try {
-      await onPatchPrefs({ notifyTasks: next });
+      await onPatchPrefs({ [key]: next });
     } catch {
       setFailed(true);
     }
@@ -169,15 +179,17 @@ export function NotificationSettings({
       {!blocker && subscribed === true && (
         <>
           <div className="set-card">
-            <div className="id-row">
-              <span className="lab">{t.shell.account.notifyTasksLabel}</span>
-              <span className="val" />
-              <Switch
-                checked={notifyTasks}
-                onChange={(next) => void togglePref(next)}
-                ariaLabel={t.shell.account.notifyTasksLabel}
-              />
-            </div>
+            {CATEGORIES.map((category) => (
+              <div className="id-row" key={category.key}>
+                <span className="lab">{category.label}</span>
+                <span className="val" />
+                <Switch
+                  checked={prefs[category.key]}
+                  onChange={(next) => void togglePref(category.key, next)}
+                  ariaLabel={category.label}
+                />
+              </div>
+            ))}
           </div>
           <div className="set-hint-block">{t.shell.account.notifyPrefsHint}</div>
         </>

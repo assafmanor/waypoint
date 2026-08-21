@@ -1689,9 +1689,11 @@ export const t = {
       notifyFailed: 'לא הצלחנו להפעיל התראות במכשיר הזה. אפשר לנסות שוב.',
       notifyOff: '-',
       notifyBlockedValue: 'כבוי בדפדפן',
-      // The categories card. ONE switch, for phase A — a preference for a phase that may
-      // never ship is a promise, not a control (ADR-0198 §6, amended).
+      // The categories card. TWO switches, for phases A and B — and `notifyGroup` still
+      // absent, because a preference for a phase that may never ship is a promise and not a
+      // control (ADR-0198 §6, amended).
       notifyTasksLabel: 'משימות ותזכורות',
+      notifyObligationsLabel: 'טיסות, לינה וזמנים',
       notifyPrefsHint: 'הבחירה נשמרת בחשבון ומגיעה איתכם לכל מכשיר.',
       // The device list, which renders only when there IS another device.
       notifyDevices: 'המכשירים שלי',

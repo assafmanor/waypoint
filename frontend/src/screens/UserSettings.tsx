@@ -246,7 +246,12 @@ export default function UserSettings() {
             is the only section nothing in it was chosen. */}
         <NotificationSettings
           vapidPublicKey={me.push?.vapidPublicKey ?? null}
-          notifyTasks={me.notify?.tasks ?? true}
+          prefs={{
+            // An absent `notify` is a cached `/me` from an older build; ON matches the column
+            // default, and the safe direction here is "as the server has it".
+            notifyTasks: me.notify?.tasks ?? true,
+            notifyObligations: me.notify?.obligations ?? true,
+          }}
           onPatchPrefs={patchMe}
         />
 

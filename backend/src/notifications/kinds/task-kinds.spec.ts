@@ -237,6 +237,20 @@ describe('task.digest', () => {
     expect(await taskDigestKind.due(input(later.prisma, at8 + 2 * HOUR))).toEqual([]);
   });
 
+  it('aims at 08:00 itself, so every minute of the hour is ONE ledger claim', async () => {
+    // The defect the phase-B measurement found: the hour gate passes for sixty ticks, and
+    // phase A reported `nowMs`, so each of them minted a new `fireKey` and only the 1/day cap
+    // stopped sixty digests. Nine ticks spread across the hour, one aimed-at instant.
+    const aims = new Set<number>();
+    for (const offset of [0, 1, 7, 13, 29, 30, 44, 58, 59]) {
+      const { prisma } = fakePrisma({ tasks: [row({ dueAt: dueToday, dueHasTime: false })] });
+      const sends = await taskDigestKind.due(input(prisma, at8 + offset * 60_000));
+      expect(sends).toHaveLength(2);
+      for (const send of sends) aims.add(send.aimedAtMs);
+    }
+    expect([...aims]).toEqual([at8]);
+  });
+
   it('reads that hour in the traveller’s zone, not the server’s', async () => {
     const { prisma } = fakePrisma({ tasks: [row({ dueAt: dueToday, dueHasTime: false })] });
     // 05:00 UTC is 08:00 in Tel Aviv and 14:00 in Tokyo.
