@@ -94,7 +94,18 @@ export class WebPushSender implements NotificationSender {
 
     // Imported lazily so the library is not loaded by a process that never sends — and so
     // the module graph of a spec that stubs this sender stays free of it.
-    const webpush = await import('web-push');
+    //
+    // **`.default` is not optional and its absence cost every send in production.**
+    // `web-push` is CommonJS, and a dynamic `import()` of a CJS module hands back a Module
+    // namespace whose named exports are whatever `cjs-module-lexer` could detect
+    // statically. For this library that is `WebPushError` and `supportedContentEncodings`
+    // and **not** `sendNotification` — so `webpush.sendNotification` was `undefined`, every
+    // send threw `is not a function`, and because that throw carries no `statusCode` it was
+    // logged as an ordinary status-less failure for as long as the feature existed. The
+    // fallback keeps a real ESM build (or a spec's own shape) working if the named export
+    // ever appears.
+    const mod = await import('web-push');
+    const webpush = mod.default ?? mod;
     try {
       await webpush.sendNotification(
         { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },

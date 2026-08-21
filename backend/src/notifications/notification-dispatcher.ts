@@ -13,9 +13,16 @@ import type { DueSend } from './notification-kind';
 import { NotificationsService } from './notifications.service';
 
 export interface NotificationDispatcher {
-  /** Deliver everything in the list. Already deduped by the caller's ledger insert, so a
-   *  dispatcher never decides whether something should be sent — only how it gets there. */
-  dispatch(due: readonly DueSend[]): Promise<void>;
+  /**
+   * Deliver everything in the list. Already deduped by the caller's ledger insert, so a
+   * dispatcher never decides whether something should be sent — only how it gets there.
+   *
+   * **Returns the sends that reached NO device**, which is what lets the sweep hand a claim
+   * back (ADR-0197 §10's amendment). This is not the dispatcher deciding anything: it is
+   * reporting what the transport already told it, and "nobody got this" is a fact only the
+   * dispatcher is in a position to know.
+   */
+  dispatch(due: readonly DueSend[]): Promise<readonly DueSend[]>;
 }
 
 /** DI token — Nest cannot inject a TypeScript interface. */
@@ -40,15 +47,23 @@ export class DirectDispatcher implements NotificationDispatcher {
 
   constructor(private readonly notifications: NotificationsService) {}
 
-  async dispatch(due: readonly DueSend[]): Promise<void> {
+  async dispatch(due: readonly DueSend[]): Promise<readonly DueSend[]> {
+    const undelivered: DueSend[] = [];
     for (const send of due) {
       try {
-        await this.notifications.sendToUser(send.userId, send.payload);
+        const report = await this.notifications.sendToUser(send.userId, send.payload);
+        // **Had devices, none of them took it.** `attempted === 0` is deliberately NOT
+        // undelivered: a person with no registered device has nothing a retry could reach,
+        // so handing that claim back would re-derive the same candidate every tick until it
+        // went stale, for nobody.
+        if (report.attempted > 0 && report.sent === 0) undelivered.push(send);
       } catch (error) {
         // Logged with the kind, never the payload: the payload is what a lock screen shows,
         // so it is content, and content does not belong in a server log.
         this.log.warn(`dispatch failed for ${send.kind}: ${String(error)}`);
+        undelivered.push(send);
       }
     }
+    return undelivered;
   }
 }
