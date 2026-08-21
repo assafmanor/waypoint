@@ -1,6 +1,6 @@
 # 2026-08-21 — A hard event answers the hold
 
-**Designed, not built.** [ADR-0199](../decisions/0199-a-hard-event-answers-the-hold.md) + [`mockups/a-hard-event-answers-the-hold-v1.html`](../../mockups/a-hard-event-answers-the-hold-v1.html). The build is on the backlog with its four pieces itemised.
+**Designed and built, same day.** [ADR-0199](../decisions/0199-a-hard-event-answers-the-hold.md) + [`mockups/a-hard-event-answers-the-hold-v1.html`](../../mockups/a-hard-event-answers-the-hold-v1.html). The design was put to the owner first and approved unchanged, so what shipped is the mockup's defaults.
 
 ## The ask, and the thing that turned it into one question
 
@@ -32,3 +32,15 @@ Worth noting how it surfaced: the measurement row was first written as "chip hei
 ## What is deliberately not in scope
 
 Trip mode gets §4 only. `EventCard` is not draggable in any mode, so there is no drag attempt to answer there — the beat is surface-agnostic and joins by playing if a Trip-mode reorder ever ships. Folding `.wp-maybecard` into the one selection rule is a small widening of the ask and is strictly more correct (a read-only shelf card should not select either); it also removes the copy that would otherwise have been the fourth.
+
+## What the build changed about the design
+
+Two things, and both are corrections to the ADR rather than to the decision.
+
+**The click swallow is not an e2e-only fact.** The draft said it was invisible to jsdom and belonged in `e2e/`. It is not: `fireEvent.click` after the release asserts it directly. Writing it as a unit test is also what surfaced the part that mattered more than the assertion — **when** the swallow is armed. Arming it at the refusal would have reproduced the bug `frontend/CLAUDE.md` already records once (the canvas's swallow armed at the drop, with the finger still down, expiring in `DRAG_CLICK_SWALLOW_MS` before the release's click arrived). It is armed at the release instead, and there is a test that rests the finger for three times that window.
+
+What is genuinely browser-only turned out to be narrower and different: whether the beat **runs** — jsdom has no CSS engine, so `motionDurationMs` answers 0 there and every unit assertion takes the no-animation branch by construction — and whether text **selects**, `user-select` being a rendering property with no jsdom selection model behind it. `e2e/hard-row-hold.spec.ts` asks exactly those two, through CDP touch because `page.touchscreen` can only tap and this is entirely about the 500 ms in between.
+
+**Three guards were checked by mutation, and one test was a lie until it was.** Deleting `move`'s `if (refused.current) return;` fails one unit test; deleting the `.is-pinned` animation fails one e2e; deleting the `user-select` rule fails two. Worth the five minutes: the repo has paid before for assertions that stayed green after the thing they were about was removed.
+
+The lie was in the screen-level spec. `document.querySelector('.bld')` was answering with a **leftover row from an earlier describe in the same file** — a soft row `A` — so an assertion about a hard row's beat was reading an element that had nothing to do with it. It failed for the right reason eventually, but it would just as easily have passed for the wrong one. Queries there are scoped to the render's own container now. The general form is worth keeping: **in a file with more than one describe, a document-wide query is a query against whatever ran last.**
