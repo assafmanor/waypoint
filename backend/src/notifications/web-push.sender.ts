@@ -35,6 +35,35 @@ function statusOf(error: unknown): number | undefined {
   return typeof status === 'number' ? status : undefined;
 }
 
+/**
+ * **Why a send failed, when there is no status to name it by.**
+ *
+ * A no-status rejection never reached the push service — `web-push` refused before the
+ * request (a malformed subscription key, a VAPID complaint) or the socket did (DNS, TLS,
+ * timeout). In every one of those cases the library's own message IS the diagnosis, and
+ * dropping it is what turned a real production failure into "push send failed (no status)"
+ * with nothing to act on.
+ *
+ * **Two rules keep this inside the file's own privacy promise.** The endpoint is a bearer
+ * capability, so it is subtracted from the text rather than trusted not to appear —
+ * `WebPushError` carries an `endpoint` property and a future message could interpolate it.
+ * And the text is capped, because a library is free to put a whole response body in there.
+ */
+function reasonOf(error: unknown, endpoint: string): string {
+  if (typeof error !== 'object' || error === null) return String(error).slice(0, REASON_MAX_CHARS);
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  const parts = [
+    typeof code === 'string' ? code : undefined,
+    typeof message === 'string' ? message : undefined,
+  ].filter(Boolean);
+  const text = parts.length > 0 ? parts.join(': ') : (error.constructor?.name ?? 'unknown');
+  // Subtract the capability, don't hope for its absence.
+  return text.split(endpoint).join('[endpoint]').slice(0, REASON_MAX_CHARS);
+}
+
+/** Enough for a library message and a Node error code, short of a response body. */
+const REASON_MAX_CHARS = 200;
+
 /** The host of an endpoint, for a log line that identifies the push service and nothing
  *  else. Answers `'?'` rather than throwing on an unparseable value — a log line is not
  *  worth an exception. */
@@ -76,8 +105,12 @@ export class WebPushSender implements NotificationSender {
     } catch (error) {
       const status = statusOf(error);
       if (status !== undefined && GONE_STATUSES.has(status)) return SEND_OUTCOME.GONE;
+      // A status names itself; without one the reason is the only thing that can.
       this.log.warn(
-        `push send failed (${status ?? 'no status'}) to ${endpointHost(target.endpoint)}`,
+        status !== undefined
+          ? `push send failed (${status}) to ${endpointHost(target.endpoint)}`
+          : `push send failed (no status) to ${endpointHost(target.endpoint)}: ` +
+              reasonOf(error, target.endpoint),
       );
       return SEND_OUTCOME.FAILED;
     }
