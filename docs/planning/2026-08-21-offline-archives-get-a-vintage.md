@@ -30,7 +30,32 @@ Both exist because "prefer fresher" is easy to say and expensive to implement na
 1. **A device replaces a copy only when it is a vintage behind AND older than the window.** Without the age half, a download late in one window is chased by the next window days later — 80 MB for a few days of OSM edits. With it, a refresh lands at most once per window and usually less.
 2. **A refresh never asks and never spends metered bytes.** §5's one-time prompt is earned by a _missing_ archive: that is the difference between having a map on the plane and not. A stale archive already works, so where metering cannot be known (Safari has no `navigator.connection`) what is on the device stays, silently. A prompt offering to re-download 80 MB of a map you already have is a nag with a progress bar.
 
-And the property that makes both safe: the refresh reuses the **same URL**, so the old bytes answer every read until the new ones are completely stored. §6 rule 5's spirit, restated — you cannot lose your map to a refresh.
+And the property that makes both safe: the refresh reuses the **same URL**, so the old bytes answer every read until the new ones are completely stored, and `makeRoom` treats the write as a replacement rather than an addition. §6 rule 5's spirit, restated — you cannot lose your map to a refresh, and you cannot end up holding two.
+
+## What asking "are you purging the stale ones?" actually found
+
+On the device the answer was yes — same key, replaced in place, one entry before and after. The **failure** path was not, and it is a bug this change introduced: `byte-cache.ts`'s `put` writes the meta first and, if the byte write throws, **deleted** the meta. That rollback was correct while every put was a first write (there was nothing to strand). A refresh is the first put that lands on an existing key — so a dropped connection mid-refresh left the OLD 42.7 MB with no meta, and `read` needs both halves: the device would report "no archive", re-download what it was still holding, and the orphaned bytes would sit outside `entries()`, outside the byte budget and outside eviction's reach. Indefinitely, short of a `clear()`.
+
+The fix is for the rollback to restore what it found rather than assume there was nothing — and if even that write fails, to drop the bytes with it rather than leak them. Two specs pin it, and the replace one was run against the old code first to be sure it was not vacuous.
+
+## The near-miss, which is the most reusable thing here
+
+`mapCapabilitySchema` shipped with `archiveVintage` **required** inside an object that is itself
+optional — and that stopped the app booting. `GET /me` is not only fetched: it is cached in
+`localStorage` and re-parsed on a cold load (`readCachedMe`), and it is stubbed by every e2e
+fixture. So the payload a _previous_ build wrote is a live input. A required new field made
+`meSchema.parse` throw on a `/me` carrying only `liveBuild` — `fetchMe` rejected, the cached
+identity failed with it, and the app dropped to /login. Offline, that is a person signed out on a
+plane.
+
+Nothing in the unit suites could see it, because every fixture in the repo had been written
+against the new shape; CI reported it as **231 e2e tests timing out**, which is what "the app
+does not render" looks like from the outside. The rule is now in the schema's own comment and in
+`entities.test.ts`, which parses the older payloads and fails against the required version: **a
+field added inside an optional capability object has to be optional too.** `push` and `notify`
+carry the same trap for whoever extends them next.
+
+The other half of the question is **server-side, where nothing is purged at all**: `isExtractKeyFor` has no caller outside its own spec, so superseded archives accumulate — already per region signature, and now per vintage too. That needs a key listing `storage.ts` does not have, so it is a backlog line with its shape stated rather than a sweep hurried into a bug fix.
 
 ## Verified
 

@@ -1033,8 +1033,20 @@ window.** Retention still owns _whether we keep a map_; this owns _how old that 
 - **A stale archive keeps rendering until a replacement is stored**, which is rule 5's spirit rather
   than a new idea: the refresh reuses the same URL, so the old bytes answer every read until the new
   ones are complete. You cannot lose your map to a refresh.
-- **The old vintage is left where it is server-side.** It is what any device still holding it reads,
-  and it costs one archive; the byte budget on the device is what actually bounds this, unchanged.
+- **On the device a refresh REPLACES, it does not accumulate.** The URL is unchanged, so
+  `makeRoom` treats it as a replacement (the old entry's bytes come off the total and it is
+  excluded from eviction) and the `put` overwrites the same key. One entry per archive, before and
+  after — the manage row's size does not double. And a failed replace now restores the meta it
+  overwrote rather than deleting it: the old rollback was written when every put was a first write,
+  and against a replace it stranded the previous archive's bytes with nothing describing them —
+  invisible to `entries()`, uncounted by the budget, unreachable by eviction.
+- **Server-side, nothing is purged, and that is now a growth axis rather than a footnote.** A
+  superseded archive stays in the bucket: `isExtractKeyFor` was written "for eviction" and has no
+  caller outside its own spec. That was already true per region signature; the vintage adds a
+  second axis, so the bucket grows by roughly one archive per trip per window. Serving the previous
+  vintage is _wanted_ (devices still holding it read it) — keeping every vintage before it is not.
+  A sweep needs a key listing the byte sink does not have (`storage.ts` is get/put/delete only), so
+  it is named on the backlog rather than half-built here.
 
 ### What it costs, stated rather than discovered later
 
