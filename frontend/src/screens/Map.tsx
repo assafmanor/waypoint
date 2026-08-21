@@ -117,6 +117,7 @@ import {
   type MapBounds,
 } from '../lib/map-camera';
 import { mapColorScheme, mapPaneAvailable, mapTileUrls } from '../lib/map-config';
+import { useMaybeAuth } from '../state/auth-state';
 import { useMapArchives } from '../lib/useMapArchives';
 import { landAtTop } from '../lib/land-at-top';
 import { observeResize } from '../lib/observe-resize';
@@ -605,7 +606,16 @@ export function MapView() {
   // z0–6, which draws a flat landmass at `MAP_ZOOM.PLACE` (corrected 2026-08-14; see
   // `mapTileUrls`). Keyed on the id so switching trips re-reads, which is the one thing that
   // legitimately rebuilds the canvas.
-  const remoteTileUrls = useMemo(() => mapTileUrls(trip?.id), [trip?.id]);
+  // **Which live planet build to read comes from the SERVER** (ADR-0187 §1 amendment). The id
+  // names an upstream object upstream deletes after about a week, so a constant in the bundle is
+  // a URL with an expiry date — and when it expired, every detail tile 404'd and the map lost
+  // every label, road and border while the world layer kept drawing fills. `null` (a server with
+  // no live source, or a `/me` cached before this field) falls back to the world archive.
+  const liveMapBuild = useMaybeAuth()?.me?.map?.liveBuild ?? null;
+  const remoteTileUrls = useMemo(
+    () => mapTileUrls(trip?.id, liveMapBuild),
+    [liveMapBuild, trip?.id],
+  );
   const tripEnded = useMemo(
     () => !!trip?.endDate && Date.parse(`${trip.endDate}T23:59:59.999Z`) < nowMs,
     [nowMs, trip?.endDate],

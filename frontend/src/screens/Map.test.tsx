@@ -167,7 +167,12 @@ vi.mock('../lib/useMapArchives', () => ({
   }),
 }));
 vi.mock('../state/verbs', () => ({ useVerbs: () => verbs }));
-vi.mock('../state/auth-state', () => ({ useAuth: () => ({ me: { user: { id: 'u1' } } }) }));
+vi.mock('../state/auth-state', () => {
+  // `/me` carries which live planet build the server is serving (ADR-0187 §1 amendment) —
+  // the Map screen reads it from here rather than from a build id pinned in the bundle.
+  const me = { user: { id: 'u1' }, map: { liveBuild: '20260821' } };
+  return { useAuth: () => ({ me }), useMaybeAuth: () => ({ me }) };
+});
 vi.mock('../lib/outbox', () => ({
   useIsOffline: () => isOffline,
   // A place's notes are written inside one change group, behind their host (ADR-0152 §6b).

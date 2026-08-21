@@ -52,8 +52,21 @@ const events = [
 ];
 
 /** Protomaps' daily planet build, read by byte range. 127.88 GiB at the far end and a handful of
- *  requests at this one — which is the whole property PMTiles has and ADR-0186 §3 is built on. */
-const PLANET = 'https://build.protomaps.com/20260813.pmtiles';
+ *  requests at this one — which is the whole property PMTiles has and ADR-0186 §3 is built on.
+ *
+ *  **Resolved, never written down** (the 2026-08-21 bug, from the far side of the wire): upstream
+ *  keeps about a week of dailies, so a date pinned here rots exactly the way the shipped one did —
+ *  and this test would then only ever prove that a 404 renders nothing. */
+async function planetUrl(): Promise<string> {
+  const day = 24 * 60 * 60 * 1000;
+  for (let i = 0; i < 8; i += 1) {
+    const build = new Date(Date.now() - i * day).toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `https://build.protomaps.com/${build}.pmtiles`;
+    const res = await fetch(url, { headers: { Range: 'bytes=0-6' } }).catch(() => null);
+    if (res?.status === 206) return url;
+  }
+  throw new Error('no readable daily planet build upstream');
+}
 
 async function openMap(page: import('@playwright/test').Page) {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -189,9 +202,10 @@ test('the ground draws from a real archive', async ({ page }, testInfo) => {
   // pointing only the world at a real archive would leave the detail source dead and test the
   // wrong shape. The planet build stands in for both: a z0–15 archive is what a trip extract is a
   // slice of, so this is the layer stack the app actually ships.
+  const planet = await planetUrl();
   for (const pattern of ['**/map/world.pmtiles', '**/map/planet-*.pmtiles']) {
     await page.route(pattern, async (route) => {
-      const upstream = await route.fetch({ url: PLANET });
+      const upstream = await route.fetch({ url: planet });
       await route.fulfill({ response: upstream });
     });
   }
