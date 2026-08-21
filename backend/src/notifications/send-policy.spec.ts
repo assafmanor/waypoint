@@ -6,6 +6,7 @@ import {
   dailySource,
   fireKeyFor,
   hourInZone,
+  hourStartInZone,
   isQuietHour,
   isStale,
   QUIET_HOURS_END,
@@ -37,6 +38,36 @@ describe('hourInZone', () => {
     // New York is -04 in August and -05 in January. An offset constant would get one wrong.
     expect(hourInZone(utc('2026-08-21T12:00:00Z'), 'America/New_York')).toBe(8);
     expect(hourInZone(utc('2026-01-21T12:00:00Z'), 'America/New_York')).toBe(7);
+  });
+});
+
+describe('hourStartInZone', () => {
+  it('returns the top of the LOCAL hour, whatever minute the tick fell on', () => {
+    const eight = utc('2026-08-21T05:00:00Z'); // 08:00 in Tel Aviv
+    for (const offset of [0, 1, 29, 59]) {
+      expect(hourStartInZone(eight + offset * 60_000, 'Asia/Jerusalem')).toBe(eight);
+    }
+  });
+
+  it('drops seconds and milliseconds too, so a tick’s jitter cannot split the bucket', () => {
+    const eight = utc('2026-08-21T05:00:00Z');
+    expect(hourStartInZone(eight + 37_412, 'Asia/Jerusalem')).toBe(eight);
+  });
+
+  it('is exact in a zone whose offset is NOT a whole hour', () => {
+    // Kathmandu is +05:45. Flooring the instant to a UTC hour would land 45 minutes early,
+    // which is the whole reason this reads the local minute instead.
+    const at = utc('2026-08-21T02:20:00Z'); // 08:05 in Kathmandu
+    expect(hourInZone(at, 'Asia/Kathmandu')).toBe(8);
+    expect(hourStartInZone(at, 'Asia/Kathmandu')).toBe(utc('2026-08-21T02:15:00Z'));
+  });
+
+  it('agrees with hourInZone on the instant it returns', () => {
+    // The property that matters: bucketing must not move the send into a different hour.
+    const at = utc('2026-08-21T16:59:59Z');
+    for (const zone of ['UTC', 'Asia/Tokyo', 'America/New_York', 'Asia/Kathmandu']) {
+      expect(hourInZone(hourStartInZone(at, zone), zone)).toBe(hourInZone(at, zone));
+    }
   });
 });
 

@@ -13,7 +13,7 @@ import {
   type TripZones,
 } from '../notification-kind';
 import { taskDuePayload } from '../notify-copy';
-import { notifiableTaskWhere, taskAudience, type TaskRow } from './task-audience';
+import { notifiableTaskWhere, tripAudience, type TaskRow } from './trip-audience';
 
 /** Three hours. A deadline is worth telling you about for the rest of the afternoon; a tick
  *  lost to a redeploy should not deliver it tomorrow morning (ADR-0197 §3). */
@@ -42,7 +42,7 @@ export const taskDueKind: NotificationKind = {
     })) as TaskRow[];
     if (tasks.length === 0) return [];
 
-    const audience = await taskAudience(prisma, tasks, nowMs);
+    const audience = await tripAudience(prisma, tasks, nowMs);
     const sends: DueSend[] = [];
     for (const task of tasks) {
       if (!audience.isLive(task.tripId)) continue;

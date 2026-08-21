@@ -28,7 +28,7 @@ import {
   type NotificationKind,
 } from '../notification-kind';
 import { clockLabel, taskAssignedPayload } from '../notify-copy';
-import { notifiableTaskWhere, taskAudience, type TaskRow } from './task-audience';
+import { notifiableTaskWhere, tripAudience, type TaskRow } from './trip-audience';
 import { TASK_SELECT } from './task-due.kind';
 
 /** Six hours. Longer than the deadline kinds because there is no moment being missed — being
@@ -56,7 +56,7 @@ export const taskAssignedKind: NotificationKind = {
     })) as TaskRow[];
     if (tasks.length === 0) return [];
 
-    const audience = await taskAudience(prisma, tasks, nowMs);
+    const audience = await tripAudience(prisma, tasks, nowMs);
     const assignerNames = await namesFor(prisma, tasks);
     const sends: DueSend[] = [];
     for (const task of tasks) {

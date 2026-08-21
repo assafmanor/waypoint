@@ -132,10 +132,15 @@ model User {
   // own permission, which nothing here can grant. A person who has allowed notifications
   // and then finds task reminders switched off would be looking at a switch that lied.
   //
-  // Only phase A's switch exists. `notifyObligations` arrives with phase B and
-  // `notifyGroup` only if phase D is ever built (ADR-0198 §6, amended 2026-08-21) — an
-  // unused column would be a preference for a feature that may never come.
+  // Phases A and B. `notifyGroup` arrives only if phase D is ever built (ADR-0198 §6,
+  // amended 2026-08-21) — an unused column would be a preference for a feature that may
+  // never come.
   notifyTasks       Boolean  @default(true)
+  // Phase B: hard events, span edges, and the evening-before send. A separate switch from
+  // `notifyTasks` because they are different registers — one is what a person wrote down,
+  // the other is what the itinerary already committed them to. Somebody may well want the
+  // flight and not the chores.
+  notifyObligations Boolean  @default(true)
 
   createdAt DateTime @default(now())
 

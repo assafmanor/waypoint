@@ -684,12 +684,15 @@ export type PushDevice = z.infer<typeof pushDeviceSchema>;
  * off. It is account state (it follows a person to a new phone, unlike the per-device
  * subscription), and it is nobody else's business.
  *
- * One field, for phase A. `obligations` arrives with phase B and `group` only if phase D is
- * ever built — a field for a phase that may never ship is a preference for a feature that
- * does not exist.
+ * Two fields, for phases A and B. `group` arrives only if phase D is ever built — a field for
+ * a phase that may never ship is a preference for a feature that does not exist.
  */
 export const notifyPrefsSchema = z.object({
   tasks: z.boolean(),
+  /** Phase B: the trip's own commitments — hard events, span edges, and the evening-before
+   *  send. A separate switch from `tasks` because they are different registers: one is what
+   *  a person wrote down, the other is what the itinerary already committed them to. */
+  obligations: z.boolean(),
 });
 export type NotifyPrefs = z.infer<typeof notifyPrefsSchema>;
 

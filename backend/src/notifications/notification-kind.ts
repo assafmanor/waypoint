@@ -108,6 +108,7 @@ export type Dedup = (typeof DEDUP)[keyof typeof DEDUP];
  */
 export const NOTIFY_PREF = {
   TASKS: 'notifyTasks',
+  OBLIGATIONS: 'notifyObligations',
 } as const;
 export type NotifyPref = (typeof NOTIFY_PREF)[keyof typeof NOTIFY_PREF];
 

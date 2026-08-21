@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../prisma/prisma.service';
-import { notifiableTaskWhere, taskAudience } from './task-audience';
+import { notifiableTaskWhere, tripAudience } from './trip-audience';
 
 const utc = (iso: string) => Date.parse(iso);
 const DAY = 24 * 60 * 60 * 1000;
@@ -46,11 +46,11 @@ describe('notifiableTaskWhere', () => {
   });
 });
 
-describe('taskAudience', () => {
+describe('tripAudience', () => {
   it('resolves the whole tick in TWO queries, whatever the number of tasks', async () => {
     // The N+1 this helper exists to prevent — the same one `spentToday` was rewritten for.
     const { prisma, queries } = fake(TRIPS, MEMBERS);
-    await taskAudience(
+    await tripAudience(
       prisma,
       Array.from({ length: 50 }, () => ({ tripId: 'trip-1' })),
       NOW,
@@ -60,7 +60,7 @@ describe('taskAudience', () => {
 
   it('asks nothing at all when there are no tasks', async () => {
     const { prisma, queries } = fake(TRIPS, MEMBERS);
-    const audience = await taskAudience(prisma, [], NOW);
+    const audience = await tripAudience(prisma, [], NOW);
     expect(queries).toEqual([]);
     // And answers safely rather than throwing: no trip is live, nobody is a recipient.
     expect(audience.isLive('trip-1')).toBe(false);
@@ -69,7 +69,7 @@ describe('taskAudience', () => {
 
   it('deduplicates the trip ids it asks about', async () => {
     const { prisma } = fake(TRIPS, MEMBERS);
-    const audience = await taskAudience(
+    const audience = await tripAudience(
       prisma,
       [{ tripId: 'trip-1' }, { tripId: 'trip-1' }, { tripId: 'trip-2' }],
       NOW,
@@ -86,7 +86,7 @@ describe('taskAudience', () => {
         [{ id: 't', endDate: new Date(utc('2027-06-01T00:00:00Z')), timezone: 'UTC' }],
         [{ tripId: 't', userId: 'u' }],
       );
-      const audience = await taskAudience(prisma, [{ tripId: 't' }], NOW);
+      const audience = await tripAudience(prisma, [{ tripId: 't' }], NOW);
       expect(audience.isLive('t')).toBe(true);
     });
 
@@ -99,16 +99,16 @@ describe('taskAudience', () => {
         [{ id: 't', endDate, timezone: 'UTC' }],
         [{ tripId: 't', userId: 'u' }],
       );
-      const audience = await taskAudience(prisma, [{ tripId: 't' }], utc('2026-08-21T22:00:00Z'));
+      const audience = await tripAudience(prisma, [{ tripId: 't' }], utc('2026-08-21T22:00:00Z'));
       expect(audience.isLive('t')).toBe(true);
 
-      const after = await taskAudience(prisma, [{ tripId: 't' }], endDate.getTime() + DAY + 60_000);
+      const after = await tripAudience(prisma, [{ tripId: 't' }], endDate.getTime() + DAY + 60_000);
       expect(after.isLive('t')).toBe(false);
     });
 
     it('treats a trip the query did not return as not live', async () => {
       const { prisma } = fake([], []);
-      const audience = await taskAudience(prisma, [{ tripId: 'ghost' }], NOW);
+      const audience = await tripAudience(prisma, [{ tripId: 'ghost' }], NOW);
       expect(audience.isLive('ghost')).toBe(false);
     });
   });
@@ -117,7 +117,7 @@ describe('taskAudience', () => {
     it('is the whole group when the task is nobody’s in particular', async () => {
       // "One of us" is a promise the group made, so the group hears it (ADR-0198 §2).
       const { prisma } = fake(TRIPS, MEMBERS);
-      const audience = await taskAudience(prisma, [{ tripId: 'trip-1' }], NOW);
+      const audience = await tripAudience(prisma, [{ tripId: 'trip-1' }], NOW);
       expect(audience.recipients({ tripId: 'trip-1', assigneeUserId: null }).sort()).toEqual([
         'u-assaf',
         'u-noam',
@@ -126,7 +126,7 @@ describe('taskAudience', () => {
 
     it('is the assignee alone when there is one', async () => {
       const { prisma } = fake(TRIPS, MEMBERS);
-      const audience = await taskAudience(prisma, [{ tripId: 'trip-1' }], NOW);
+      const audience = await tripAudience(prisma, [{ tripId: 'trip-1' }], NOW);
       expect(audience.recipients({ tripId: 'trip-1', assigneeUserId: 'u-noam' })).toEqual([
         'u-noam',
       ]);
@@ -137,14 +137,14 @@ describe('taskAudience', () => {
       // cancellation step (ADR-0197 §2.4) — and an addressed send with nobody at the address
       // is not a send to everybody.
       const { prisma } = fake(TRIPS, MEMBERS);
-      const audience = await taskAudience(prisma, [{ tripId: 'trip-1' }], NOW);
+      const audience = await tripAudience(prisma, [{ tripId: 'trip-1' }], NOW);
       expect(audience.recipients({ tripId: 'trip-1', assigneeUserId: 'u-gone' })).toEqual([]);
     });
   });
 
   it('answers members and the primary zone per trip', async () => {
     const { prisma } = fake(TRIPS, MEMBERS);
-    const audience = await taskAudience(prisma, [{ tripId: 'trip-1' }, { tripId: 'trip-2' }], NOW);
+    const audience = await tripAudience(prisma, [{ tripId: 'trip-1' }, { tripId: 'trip-2' }], NOW);
     expect(audience.members('trip-1').sort()).toEqual(['u-assaf', 'u-noam']);
     expect(audience.members('trip-2')).toEqual(['u-assaf']);
     expect(audience.primaryZone('trip-2')).toBe('Asia/Tokyo');

@@ -282,9 +282,14 @@ export class NotificationSweepService {
     if (userIds.length === 0) return new Map();
     const rows = await this.prisma.user.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, notifyTasks: true },
+      select: { id: true, notifyTasks: true, notifyObligations: true },
     });
-    return new Map(rows.map((row) => [row.id, { notifyTasks: row.notifyTasks }]));
+    return new Map(
+      rows.map((row) => [
+        row.id,
+        { notifyTasks: row.notifyTasks, notifyObligations: row.notifyObligations },
+      ]),
+    );
   }
 
   /**

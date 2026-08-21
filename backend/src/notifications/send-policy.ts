@@ -44,6 +44,32 @@ export function hourInZone(instantMs: number, zone: string): number {
   return Number(formatted) % 24;
 }
 
+/**
+ * **The instant the local hour containing `instantMs` began** — the aimed-at key for a kind
+ * whose trigger is a WALL CLOCK rather than a stored deadline.
+ *
+ * Measured against the seed, 2026-08-21: `task.digest` reported `aimedAtMs: nowMs` under an
+ * `hourInZone(...) === 8` gate, so it re-derived every minute of 08:00 with a **new** fireKey
+ * each time — 60 distinct ledger claims per person per day, of which 59 survived only to be
+ * refused by the 1/day cap. Nothing wrong reached a phone, but the ledger was not doing the
+ * one job it exists for (ADR-0197 §10) and the cap was silently acting as the dedup, which
+ * ADR-0198 §5 explicitly reads as the catalogue being wrong rather than the cap working.
+ *
+ * Every IANA offset is a whole number of minutes, so subtracting the local minutes/seconds
+ * from the instant lands exactly on the top of the local hour — including in a `+05:45` zone,
+ * where flooring to a UTC hour would not.
+ */
+export function hourStartInZone(instantMs: number, zone: string): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: zone,
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(instantMs));
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? '0');
+  return instantMs - value('minute') * 60_000 - value('second') * 1000 - (instantMs % 1000);
+}
+
 /** True when the wall clock at `instantMs`, read in `zone`, is inside the quiet window. The
  *  window wraps midnight, which is why this is an OR rather than a range check. */
 export function isQuietHour(instantMs: number, zone: string): boolean {

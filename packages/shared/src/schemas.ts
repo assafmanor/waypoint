@@ -792,6 +792,7 @@ export const updateMeSchema = z
     // A plain boolean, NOT nullable: there is no "unchosen" state to clear back to
     // (ADR-0198 §6). The device's permission is the opt-in; this only narrows it.
     notifyTasks: z.boolean().optional(),
+    notifyObligations: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'patch must change at least one field' });
 export type UpdateMeInput = z.infer<typeof updateMeSchema>;

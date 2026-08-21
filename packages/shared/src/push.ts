@@ -31,6 +31,17 @@ export const NOTIFICATION_KIND = {
   /** The catalogue's one social send, and it earns its place by being ADDRESSED: somebody
    *  put your name on something. */
   TASK_ASSIGNED: 'task.assigned',
+  /** **Phase B** (ADR-0198 §2) — the trip's own commitments, and the first `timeCritical`
+   *  rows in the catalogue. A hard event at `startsAt` minus its category's lead: the reason
+   *  quiet hours can be broken at all, because a 05:30 departure has to ring at 03:30. */
+  EVENT_HARD_SOON: 'event.hard.soon',
+  /** An ambient span's own EDGE — a check-in, a check-out, a pick-up, a return (ADR-0164).
+   *  Aims at the closing window bound where ADR-0184 gives one, because a check-in that
+   *  reads 17:00-21:00 is a deadline at 21:00 and not an appointment at 17:00. */
+  SPAN_EDGE_SOON: 'span.edge.soon',
+  /** 19:00 the evening before day 1. The one row in the catalogue that fires before the trip
+   *  has anything timed in it. */
+  TRIP_TOMORROW: 'trip.tomorrow',
 } as const;
 export type NotificationKind = (typeof NOTIFICATION_KIND)[keyof typeof NOTIFICATION_KIND];
 

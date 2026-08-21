@@ -115,6 +115,7 @@ const EVENTS = [
     id: 'ev-daytour',
     title: 'סיור יום בטוקיו',
     icon: '🗺️',
+    category: 'sightseeing',
     kind: 'soft',
     status: 'done',
     startsAt: at('10:00'),
@@ -126,6 +127,7 @@ const EVENTS = [
     id: 'ev-tsukiji',
     title: 'שוק צוקיג׳י',
     icon: '🐟',
+    category: 'food',
     kind: 'soft',
     status: 'done',
     startsAt: at('10:00'),
@@ -137,6 +139,7 @@ const EVENTS = [
     id: 'ev-senso',
     title: 'מקדש סנסו-ג׳י',
     icon: '⛩️',
+    category: 'sightseeing',
     kind: 'soft',
     status: 'done',
     startsAt: at('14:30'),
@@ -148,6 +151,7 @@ const EVENTS = [
     id: 'ev-shinjuku',
     title: 'זמן חופשי · שינג׳וקו',
     icon: '🚶',
+    category: 'other',
     kind: 'soft',
     status: 'planned',
     startsAt: at('16:30'),
@@ -159,6 +163,11 @@ const EVENTS = [
     id: 'ev-ichiran',
     title: 'Ichiran Ramen',
     icon: '🍜',
+    // **The category is what `event.hard.soon` reads**, through `CATEGORY_TIME_PROFILE`'s
+    // `notifyLeadMinutes` (ADR-0198 §3): `food` is 30 minutes, and an event with no category
+    // at all is not notified ahead of time. Every event here was categoryless before phase B,
+    // which made the whole kind invisible against the seed.
+    category: 'food',
     kind: 'hard',
     status: 'planned',
     startsAt: at('19:30'),
@@ -166,10 +175,56 @@ const EVENTS = [
     bookingId: 'bk-ichiran',
     sortOrder: 4,
   },
+  // **The hotel span, and it is the only ambient row in the seed** — so it is the only thing
+  // `span.edge.soon` can fire for. `endDate` set and later than `date` is what makes it
+  // ambient (ADR-0018/0054), which is also what keeps it OUT of `event.hard.soon`: a check-in
+  // fired by both kinds an hour apart is the double-count ADR-0164 §3 exists to prevent.
+  //
+  // `startWindowEnd` is ADR-0184's flexible edge, and it is the interesting half: reception
+  // opens at 15:00 and the room is held until 22:00, so the thing you can actually MISS is
+  // 22:00 and that is what the edge aims at. `endWindowStart` is the mirror on the way out —
+  // the earliest you may check out — which is a floor and not a deadline, so nothing fires
+  // for it.
+  {
+    id: 'ev-hotel-stay',
+    title: 'Shinjuku Granbell',
+    icon: '🏨',
+    category: 'lodging',
+    kind: 'hard',
+    status: 'planned',
+    date: date(addDays(DAY, -2)),
+    endDate: date(addDays(DAY, 5)),
+    startsAt: `${addDays(DAY, -2)}T15:00:00${TZ}`,
+    startWindowEnd: `${addDays(DAY, -2)}T22:00:00${TZ}`,
+    endsAt: `${addDays(DAY, 5)}T11:00:00${TZ}`,
+    endWindowStart: `${addDays(DAY, 5)}T07:00:00${TZ}`,
+    bookingId: 'bk-hotel',
+    sortOrder: 0,
+  },
+  // The outbound flight. `transport` carries the catalogue's longest lead — two hours, because
+  // an airport is the one place where that is not paranoid — and the ✈️ glyph is what refines
+  // its wording to take-off/landing through `ICON_TIME_PROFILE`.
+  //
+  // Single-day on purpose: a flight with an `endDate` would be ambient and belong to
+  // `span.edge.soon` instead, which is true of a red-eye and is a different fixture.
+  {
+    id: 'ev-flight-out',
+    title: 'טיסה TLV → NRT',
+    icon: '✈️',
+    category: 'transport',
+    kind: 'hard',
+    status: 'planned',
+    date: date(addDays(DAY, -2)),
+    startsAt: `${addDays(DAY, -2)}T06:20:00+03:00`,
+    endsAt: `${addDays(DAY, -2)}T22:15:00${TZ}`,
+    bookingId: 'bk-flight',
+    sortOrder: 1,
+  },
   {
     id: 'ev-goldengai',
     title: 'גולדן גאי',
     icon: '🍶',
+    category: 'food',
     kind: 'soft',
     status: 'planned',
     startsAt: at('21:30'),
@@ -183,6 +238,7 @@ const EVENTS = [
     id: 'ev-cocktail',
     title: 'בר קוקטיילים',
     icon: '🍸',
+    category: 'food',
     kind: 'soft',
     status: 'planned',
     startsAt: at('22:00'),
@@ -194,6 +250,7 @@ const EVENTS = [
     id: 'ev-walkback',
     title: 'חזרה למלון · הליכה',
     icon: '🌙',
+    category: 'other',
     kind: 'soft',
     status: 'planned',
     startsAt: at('22:45'),
@@ -201,7 +258,16 @@ const EVENTS = [
     placeId: 'pl-shinjuku',
     sortOrder: 7,
   },
-].map((e) => ({ ...e, tripId: TRIP.id, date: date(DAY), source: 'manual', updatedBy: ME }));
+  // `date` defaults to today so the one-day demo rows roll with a reseed — but an event that
+  // states its OWN day keeps it, which the hotel span and the outbound flight both do. Written
+  // as a fallback rather than an override because the override silently ate them.
+].map((e) => ({
+  ...e,
+  tripId: TRIP.id,
+  date: e.date ?? date(DAY),
+  source: 'manual',
+  updatedBy: ME,
+}));
 
 // **The tasks, and the reason they are the notification epic's blocker rather than a chore.**
 //

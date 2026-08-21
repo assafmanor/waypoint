@@ -220,6 +220,16 @@ export interface CategoryTimeProfile {
    *  live badge (`בטיסה`) and the slot label (`כרגע · בדרך`). Same rule as
    *  `transitions` — a mode states whatever it disagrees with, and every time-aware
    *  surface picks it up with no per-screen branching. */
+  /**
+   * **How far ahead a hard event of this category is notified** (ADR-0198 §3), in minutes.
+   * `0` means this category is not notified ahead of time at all.
+   *
+   * One field on the table every time-aware surface already reads, rather than a second
+   * lookup beside it (root rule 8) — so a tenth category, or a per-MODE override through
+   * `ICON_TIME_PROFILE` the way a flight already overrides its transition words, is a
+   * one-line addition and not a table that can disagree with this one.
+   */
+  notifyLeadMinutes: number;
   midSpan?: {
     kind: 'journey' | 'held';
     /** The live badge while you are inside it (`בטיסה` / `בדרך` / `הרכב אצלנו`). */
@@ -258,6 +268,10 @@ const ORDINARY_PROFILE: CategoryTimeProfile = {
   ambientWhenMultiDay: false,
   durationUnit: 'auto',
   typicalMinutes: TYPICAL_MINUTES_DEFAULT,
+  // **The default is silence.** `sightseeing`, `nature`, `shopping` and `other` are rarely
+  // hard, and when they are the day surfaces carry them — so an uncategorised event
+  // (ADR-0038) inherits "no advance notification" rather than a guess (ADR-0198 §3).
+  notifyLeadMinutes: 0,
 };
 
 export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> = {
@@ -269,6 +283,8 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   transport: {
     bracketed: true,
     ambientWhenMultiDay: true,
+    // Two hours. An airport is the one place where that is not paranoid (ADR-0198 §3).
+    notifyLeadMinutes: 120,
     transitions: { startKey: 'departure', endKey: 'arrival' },
     // Every mode that CARRIES you is a journey, and the generic word for its middle is
     // the generic one — `בטיסה` belongs to ✈️ below, not to the category, which is why a
@@ -280,6 +296,8 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   lodging: {
     bracketed: true,
     ambientWhenMultiDay: true,
+    // A check-in you are late for is a phone call, not a lost ticket.
+    notifyLeadMinutes: 60,
     transitions: { startKey: 'checkIn', endKey: 'checkOut' },
     // A multi-day stay is ambient and never reaches this (its middle is the stay strip,
     // ADR-0059 §2). A SAME-DAY one does, and it is a held span rather than a journey:
@@ -291,12 +309,16 @@ export const CATEGORY_TIME_PROFILE: Record<EventCategory, CategoryTimeProfile> =
   // The categories that actually differ. Values are the owner's to re-tune and carry no
   // reasoning beyond "a meal is not a hike": a sit-down meal runs to an hour and a half, a
   // museum or a hike to two or three hours, an errand to an hour.
-  food: { ...ORDINARY_PROFILE, typicalMinutes: 90 },
+  // `notifyLeadMinutes` where it is not the ordinary silence (ADR-0198 §3): a reservation
+  // half an hour out, a booked slot with a person waiting an hour out.
+  food: { ...ORDINARY_PROFILE, typicalMinutes: 90, notifyLeadMinutes: 30 },
   sightseeing: { ...ORDINARY_PROFILE, typicalMinutes: 120 },
   nature: { ...ORDINARY_PROFILE, typicalMinutes: 180 },
-  activity: { ...ORDINARY_PROFILE, typicalMinutes: 120 },
+  activity: { ...ORDINARY_PROFILE, typicalMinutes: 120, notifyLeadMinutes: 60 },
   shopping: { ...ORDINARY_PROFILE, typicalMinutes: 90 },
-  services: ORDINARY_PROFILE,
+  // No longer the shared `ORDINARY_PROFILE` object: `services` is a booked slot somebody is
+  // waiting at, so it differs from `other` in exactly one field now.
+  services: { ...ORDINARY_PROFILE, notifyLeadMinutes: 60 },
   other: ORDINARY_PROFILE,
 };
 
@@ -353,6 +375,18 @@ const timeProfileFor = (event: Pick<TripEvent, 'category' | 'icon'>): CategoryTi
   const refinement = event.icon != null ? ICON_TIME_PROFILE[event.icon] : undefined;
   return refinement ? { ...base, ...refinement } : base;
 };
+
+/**
+ * **How far ahead this event is notified**, in minutes — `0` for never (ADR-0198 §3).
+ *
+ * Reads the event's own **refined** profile rather than its category's, so a mode that
+ * disagrees can say so in `ICON_TIME_PROFILE` and every reader picks it up, exactly as a
+ * flight already overrides its transition words. Nothing overrides it today; the seam is the
+ * point, because the alternative is a second table keyed by glyph that can disagree with this
+ * one.
+ */
+export const notifyLeadMinutesFor = (event: Pick<TripEvent, 'category' | 'icon'>): number =>
+  timeProfileFor(event).notifyLeadMinutes;
 
 /** The two i18n transition keys for a bracketed event's ends, or `undefined`
  *  when its category isn't bracketed. Resolves finer than category so wording is

@@ -68,7 +68,12 @@ async function show(props: Partial<Parameters<typeof NotificationSettings>[0]> =
   const patch = vi.fn().mockResolvedValue(undefined);
   await act(async () => {
     render(
-      <NotificationSettings vapidPublicKey={VAPID} notifyTasks onPatchPrefs={patch} {...props} />,
+      <NotificationSettings
+        vapidPublicKey={VAPID}
+        prefs={{ notifyTasks: true, notifyObligations: true }}
+        onPatchPrefs={patch}
+        {...props}
+      />,
     );
   });
   return { patch };
@@ -207,7 +212,13 @@ describe('the preferences card', () => {
     subscription.value = { endpoint: 'https://push/1' };
     const patch = vi.fn().mockRejectedValue(new Error('offline'));
     await act(async () => {
-      render(<NotificationSettings vapidPublicKey={VAPID} notifyTasks onPatchPrefs={patch} />);
+      render(
+        <NotificationSettings
+          vapidPublicKey={VAPID}
+          prefs={{ notifyTasks: true, notifyObligations: true }}
+          onPatchPrefs={patch}
+        />,
+      );
     });
     await act(async () => {
       screen.getByRole('switch', { name: t.shell.account.notifyTasksLabel }).click();
@@ -223,12 +234,25 @@ describe('the preferences card', () => {
     ).toBe('true');
   });
 
-  it('offers ONE switch, not three', async () => {
-    // `notifyObligations` arrives with phase B and `notifyGroup` only if phase D is ever
-    // built — a preference for a feature that may never come is a promise, not a control.
+  it('offers TWO categories, not three', async () => {
+    // Phases A and B. `notifyGroup` arrives only if phase D is ever built — a preference for
+    // a feature that may never come is a promise, not a control (ADR-0198 §6).
     subscription.value = { endpoint: 'https://push/1' };
     await show();
-    expect(switches()).toHaveLength(2); // the device, and tasks
+    expect(switches()).toHaveLength(3); // the device, tasks, obligations
+    expect(
+      screen.getByRole('switch', { name: t.shell.account.notifyObligationsLabel }),
+    ).toBeTruthy();
+  });
+
+  it('patches only the switch that was touched', async () => {
+    // One key per press, so flipping obligations cannot silently rewrite tasks.
+    subscription.value = { endpoint: 'https://push/1' };
+    const { patch } = await show();
+    await act(async () => {
+      screen.getByRole('switch', { name: t.shell.account.notifyObligationsLabel }).click();
+    });
+    expect(patch).toHaveBeenCalledWith({ notifyObligations: false });
   });
 });
 
