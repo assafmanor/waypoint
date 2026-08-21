@@ -15,6 +15,7 @@ import {
   type MapRegion,
 } from './map-region';
 import { buildExtract } from './pmtiles-extract';
+import { resolveLivePlanetBuild } from './planet';
 
 /** The shared coarse layer every trip falls back to, so nowhere is ever blank — including
  *  the ground between a trip's areas and any place it does not cover at all (§4).
@@ -137,7 +138,15 @@ export class MapService implements OnModuleInit {
    * swallowed: a tile archive is a cache (§6), and refusing to boot over one would take the
    * whole app down for the one screen that can degrade.
    */
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    // **Resolve the live build BEFORE the server can answer anything, and await it.** One probe
+    // round (~a few hundred ms, bounded), and it buys two things a fire-and-forget would not:
+    // the world cut below reads a URL that exists, and the first `/me` after a deploy states a
+    // real build id instead of `null` — which the client would answer by drawing the coarse
+    // world as its detail source for that whole session (ADR-0187 §1 amendment, 2026-08-21).
+    const build = await resolveLivePlanetBuild().catch(() => null);
+    if (build) this.logger.log(`live map source is planet build ${build}`);
+    else this.logger.warn('no upstream planet build is readable; the live map source is off');
     void this.worldIfReady().catch((error: unknown) => {
       this.logger.warn(`could not pre-warm the world layer: ${String(error)}`);
     });

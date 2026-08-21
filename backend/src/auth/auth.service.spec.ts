@@ -9,6 +9,10 @@ import { AuthService } from './auth.service';
 import * as googleClient from './google-oauth.client';
 import { verifyAccessToken } from './token.util';
 
+// The live map build is the server's answer, not a constant, so `/me` reads it from
+// `map/planet.ts` (ADR-0187 §1 amendment). Stubbed: nothing here should touch upstream.
+vi.mock('../map/planet', () => ({ livePlanetBuild: () => '20260821' }));
+
 vi.mock('./google-oauth.client', async () => {
   const actual = await vi.importActual<typeof googleClient>('./google-oauth.client');
   return {
@@ -151,5 +155,10 @@ describe('AuthService', () => {
     const me = await service.getMe(user.id);
     expect(me.user.id).toBe(user.id);
     expect(me.memberships).toEqual([]);
+    // What this server can do about the map: which live planet build it is serving. The client
+    // builds its detail URL from this rather than from a build id compiled into the bundle —
+    // upstream deletes a daily after about a week, and a pinned one took every label off the
+    // online map (ADR-0187 §1 amendment).
+    expect(me.map).toEqual({ liveBuild: '20260821' });
   });
 });

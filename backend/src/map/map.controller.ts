@@ -10,7 +10,7 @@ import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { MembershipGuard } from '../trips/membership.guard';
 import { MAP_BUILD_RETRY_SECONDS, MapService } from './map.service';
-import { planetBuildId, readPlanetRange } from './planet';
+import { isServablePlanetBuild, readPlanetRange } from './planet';
 import { resolveClosedRange, sendRange } from './range';
 
 /** The archive's own media type. `nosniff` rides along for the same reason documents get
@@ -70,9 +70,12 @@ export class MapController {
    *
    * - **The build id is in the path and is checked**, so a client can never name the upstream
    *   object it wants. Without that this is an open proxy; with it the only reachable bytes are
-   *   the archive this server already reads for extracts. A stale bundle asking for yesterday's
-   *   build gets a 404 and falls back, which is the loud version of the alternative — directory
-   *   pages that silently no longer describe the archive.
+   *   dailies of the archive this server already reads, inside upstream's own retention window
+   *   (`isServablePlanetBuild`). **Not "today's build only", which is the 2026-08-21 fix**: an
+   *   id is at most as fresh as the client's last `/me` and the bytes it names are immutable, so
+   *   refusing yesterday's would blank a map that is reading a perfectly good archive. An id
+   *   upstream has actually collected still gets a 404, which is the loud version of the
+   *   alternative — directory pages that silently no longer describe the archive.
    * - **A range is required.** Every `pmtiles` read sends one; a request without one is asking
    *   for 128 GiB, which is never what a tile read wanted.
    * - **Immutable caching**, because a build id names bytes that cannot change. This is what
@@ -80,7 +83,7 @@ export class MapController {
    */
   @Get('map/planet-:build.pmtiles')
   async planet(@Param('build') build: string, @Res() res: Response): Promise<void> {
-    if (build !== planetBuildId()) {
+    if (!(await isServablePlanetBuild(build))) {
       res.status(HttpStatus.NOT_FOUND).json({ message: 'unknown planet build' });
       return;
     }
@@ -92,7 +95,7 @@ export class MapController {
       return;
     }
     try {
-      const { body, total } = await readPlanetRange(range);
+      const { body, total } = await readPlanetRange(build, range);
       res.setHeader('Content-Type', PMTILES_MIME);
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Accept-Ranges', 'bytes');

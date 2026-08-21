@@ -21,6 +21,11 @@ vi.mock('../common/storage', () => ({
 const buildExtract = vi.fn<() => Promise<Buffer>>();
 vi.mock('./pmtiles-extract', () => ({ buildExtract: () => buildExtract() }));
 
+/** The boot warm resolves which planet build to cut from before it cuts (ADR-0187 §1
+ *  amendment). Stubbed so nothing here reaches upstream. */
+const resolveLivePlanetBuild = vi.fn<() => Promise<string | null>>();
+vi.mock('./planet', () => ({ resolveLivePlanetBuild: () => resolveLivePlanetBuild() }));
+
 import { MapService, WORLD_KEY } from './map.service';
 
 /** `worldIfReady` touches no database, so the one dependency is a stub rather than a fake. */
@@ -43,6 +48,8 @@ beforeEach(() => {
   getObject.mockReset();
   putObject.mockReset();
   buildExtract.mockReset();
+  resolveLivePlanetBuild.mockReset();
+  resolveLivePlanetBuild.mockResolvedValue('20260821');
   putObject.mockResolvedValue(undefined);
 });
 
@@ -100,16 +107,27 @@ describe('MapService.worldIfReady', () => {
   it('pre-warms at boot rather than on someone’s first map', async () => {
     getObject.mockRejectedValue(new Error('not stored'));
     pendingBuild();
-    service().onModuleInit();
+    await service().onModuleInit();
     await vi.waitFor(() => expect(buildExtract).toHaveBeenCalledTimes(1));
+  });
+
+  // The build is resolved BEFORE the cut, and awaited: a cut needs a source URL that exists, and
+  // the first `/me` after a deploy has to be able to state a real build id (ADR-0187 §1
+  // amendment). A world layer cut from a collected daily is the 2026-08-21 bug, one layer down.
+  it('resolves the live planet build before cutting anything from it', async () => {
+    getObject.mockRejectedValue(new Error('not stored'));
+    pendingBuild();
+    await service().onModuleInit();
+    expect(resolveLivePlanetBuild).toHaveBeenCalledTimes(1);
   });
 
   it('does not take the app down when the boot warm fails', async () => {
     getObject.mockRejectedValue(new Error('not stored'));
     buildExtract.mockRejectedValue(new Error('no CA store'));
+    resolveLivePlanetBuild.mockRejectedValue(new Error('upstream unreachable'));
     // A tile archive is a cache (§6); refusing to boot over one would take down the whole app for
-    // the one screen that can degrade.
-    expect(() => service().onModuleInit()).not.toThrow();
+    // the one screen that can degrade — and that now covers an unreachable upstream too.
+    await expect(service().onModuleInit()).resolves.toBeUndefined();
   });
 });
 

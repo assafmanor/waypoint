@@ -696,6 +696,27 @@ export const notifyPrefsSchema = z.object({
 });
 export type NotifyPrefs = z.infer<typeof notifyPrefsSchema>;
 
+/**
+ * **Which planet build the live map source is serving right now** (ADR-0187 §1 amendment,
+ * 2026-08-21).
+ *
+ * On `/me` for the same two reasons `push` is, and the first one is the bug it fixes: the id
+ * names an upstream object whose lifetime is about a week, so the server — the only side that
+ * knows what it can actually read — has to be the one that states it. A build id compiled into
+ * the client is a URL that expires, and it expired silently.
+ *
+ * The second reason is timing: the answer has to be in hand before the FIRST TILE, and `/me` has
+ * already landed by the time the Map tab mounts.
+ *
+ * `null` is a real state, not an error — no live source resolved (upstream unreachable at boot,
+ * or a mirror misconfigured). The client answers it by drawing the coarse world layer as its
+ * detail source, which is the same fallback a plane already uses: coarse, but never blank.
+ */
+export const mapCapabilitySchema = z.object({
+  liveBuild: z.string().nullable(),
+});
+export type MapCapability = z.infer<typeof mapCapabilitySchema>;
+
 /** `GET /me` response shape — not its own persisted entity (ADR-0020). */
 export const meSchema = z.object({
   user: userSchema,
@@ -707,5 +728,9 @@ export const meSchema = z.object({
    *  reader that finds it absent should treat the preferences as ON, matching the column
    *  default — the safe direction here is "as the server has it", not "off". */
   notify: notifyPrefsSchema.optional(),
+  /** Optional for the same reason the two above are — and here the absent case is also the
+   *  CACHED one: a `/me` stored before this field says nothing about the live source, and a
+   *  reader that finds it missing falls back to the world layer rather than guessing a date. */
+  map: mapCapabilitySchema.optional(),
 });
 export type Me = z.infer<typeof meSchema>;

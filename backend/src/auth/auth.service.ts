@@ -4,6 +4,7 @@ import { ERROR_CODE, isAllowedAvatarMimeType, type Me, type UpdateMeInput } from
 import { decryptAtRest, encryptAtRest } from '../common/crypto.util';
 import { requireEnv, TOKEN_ENCRYPTION_KEY } from '../common/env';
 import { sniffImageMimeType } from '../common/image-sniff';
+import { livePlanetBuild } from '../map/planet';
 import { deleteObject, getObject, putObject } from '../common/storage';
 import { vapidPublicKeyOrNull } from '../notifications/vapid';
 import { PrismaService } from '../prisma/prisma.service';
@@ -180,6 +181,11 @@ export class AuthService {
       // shape is also every co-member's roster row and a preference is nobody else's
       // business.
       notify: { tasks: user.notifyTasks, obligations: user.notifyObligations },
+      // **Which planet build the live map source is serving** (ADR-0187 §1 amendment). Read
+      // here for the same reason `vapidPublicKey` is: only the server knows what it can
+      // actually read, and the client needs the answer before its first tile. Synchronous and
+      // cached — `/me` never waits on somebody else's bucket.
+      map: { liveBuild: livePlanetBuild() },
     };
   }
 
