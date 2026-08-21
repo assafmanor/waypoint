@@ -754,6 +754,38 @@ export const SNAP_DRAG_SLOP_PX = 4;
  *  mouse, so it belongs to Phase 3's device pass along with `MAP_ZOOM`. */
 export const SNAP_FLICK_PX_PER_MS = 0.5;
 
+/** **Stepping a full surface one page with a swipe** (ADR-0200, `lib/useSwipePager.ts`).
+ *  Six numbers, and the first three are the arbitration rather than the feel:
+ *
+ *  - `SLOP_PX` — how far the finger goes before the gesture is ours at all. The whole day
+ *    surface is the target and it is nothing but controls (cards that expand, rows that
+ *    hold-drag, ticks), so the floor `SNAP_DRAG_SLOP_PX` sets for a 51px region has to be
+ *    much higher here: 4px would swallow a tap on every one of them.
+ *  - `AXIS_RATIO` — how much more horizontal than vertical the travel must be. The surface
+ *    lives inside the body's vertical scroller, so the two gestures share a start point and
+ *    only their direction separates them. Above the ratio it is a page step; below it the
+ *    browser keeps the pan.
+ *  - `DECIDE_PX` — how far the finger travels before that ratio is asked, and it is UNDER
+ *    Chrome's own ~8px touch slop deliberately. The browser claims a touch for scrolling at
+ *    its slop in whatever direction, so the axis has to be answered before then or the
+ *    gesture is cancelled out from under us (measured — see `useSwipePager`'s `touchMove`).
+ *    Low enough to beat the slop, high enough that a still finger's jitter decides nothing.
+ *  - `COMMIT_SHARE` — the share of the surface's width that commits, so the gesture asks
+ *    the same effort of a 360px phone and a 640px desktop column.
+ *  - `EDGE_RESIST` / `EDGE_MAX_PX` — the rebuff. With nowhere to go the surface still
+ *    follows the finger, at a fraction of it and no further than the cap: it strains,
+ *    is arrested, and is pulled back to level on release. Same statement `BEAT.PINNED`
+ *    makes about a row that cannot be dragged (ADR-0199 §2), made continuously by the
+ *    gesture itself rather than played at it — which is why there is no beat here. */
+export const SWIPE_PAGER = {
+  SLOP_PX: 24,
+  AXIS_RATIO: 1.4,
+  DECIDE_PX: 6,
+  COMMIT_SHARE: 0.22,
+  EDGE_RESIST: 0.28,
+  EDGE_MAX_PX: 40,
+} as const;
+
 /** Camera zoom bounds (ADR-0121 §7, re-tuned and reorganised by ADR-0127).
  *
  *  **`PLACE` is one number answering one question — "how close is close enough to
