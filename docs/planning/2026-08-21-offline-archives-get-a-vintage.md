@@ -61,6 +61,28 @@ The other half of the question is **server-side, where nothing is purged at all*
 
 Backend against real upstream: boot logged `live map source is planet build 20260821 (v7)` and cut `map_world-z6_v7.pmtiles`; `/me` answered `{ liveBuild: '20260821', archiveVintage: 'v7' }`. Specs cover the window arithmetic (one value per window, rolls with the window, takes the build's date, falls back for a mirror), the service (serves the stored archive while its vintage is current; on a roll, cuts to the **new** key and leaves the old one alone), and the device's four decisions: current vintage → nothing; superseded and old → replaced quietly with the new label; superseded but three days old → **not** replaced; superseded on an unknown connection → not replaced and not prompted. 1002 backend + 4156 frontend tests pass.
 
+## The e2e failure that was not a regression, and how that was settled
+
+`event-arrival-scroll.spec.ts` failed on CI on this branch — the Plan-day landing, 877px from
+where it belongs — while main passed it. One run each looked damning, and one run each was worth
+nothing: the spec is timed against a scroller settling, and its own header says it fails on a slow
+machine (`Emulation.setCPUThrottlingRate` at 6). It passes 6/6 here unloaded, on this branch.
+
+What settled it was two CI runs of the **same tree**: `c237d25` and its amend `a2706a4` differ by
+one markdown paragraph in this file, and nothing else. The first suite was green; the second failed
+that spec. Identical code, both verdicts — so the failure is load, not this change.
+
+Kept anyway, on its own merits: the presence check used to open the archives
+(`readLocalMapArchive` materialises the whole `Blob` — 42.7 MB of world layer to answer "is there
+one, and which vintage") and now reads the byte cache's metadata entries, `setLocal` writes only
+when the answer changed, and `renderUrls` keys on presence rather than the meta object. That is
+main-thread work removed from the Map's mount, which is what the arrival landing after a tap on
+the Map is timed against — cheaper than what it replaced, whatever the flake was doing.
+
+**The transferable bit is the method, not the finding:** when a load-sensitive spec fails on one
+branch, compare two runs of one tree before believing the diff. Otherwise n=1 against n=1 reads as
+causation and sends a session hunting a bug that is not there — which it did here, for a while.
+
 ## Named rather than skipped
 
 **Nothing tells a person how old their map is.** §5's manage surface lists size, not age. That row is where an _asked-for_ refresh would belong if silent-on-wifi turns out not to be enough, and it is on the backlog rather than guessed at here.
