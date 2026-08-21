@@ -7,6 +7,7 @@
 // half-initialised module. Keeping the interface ignorant of its implementers also lets the
 // sweep's spec mock this file alone, which is a two-line module with nothing else in it.
 import type { NotificationKind } from './notification-kind';
+import type { DeliveryOptions } from './notification-sender';
 import { eventSoonKind } from './kinds/event-soon.kind';
 import { readinessNudgeKind } from './kinds/readiness-nudge.kind';
 import { spanEdgeKind } from './kinds/span-edge.kind';
@@ -26,3 +27,30 @@ export const NOTIFICATION_KINDS: readonly NotificationKind[] = [
   tripTomorrowKind,
   readinessNudgeKind,
 ];
+
+/**
+ * **The transport policy for a kind, by id** — `timeCritical` becomes RFC 8030's `Urgency`
+ * and `staleAfterMs` becomes the `TTL`.
+ *
+ * Derived rather than declared a second time: both facts are already on the kind, and a
+ * per-kind table of urgencies would be a copy that could disagree with the flag the sweep
+ * enforces. Looked up by id because the dispatcher holds a `DueSend`, which carries the id
+ * and not the object.
+ *
+ * An unknown id (the dev-only `test` send) gets the conservative pair: ordinary urgency and a
+ * short life, because a message nobody can name should not outlive the moment it was sent.
+ */
+export function deliveryFor(kindId: string): DeliveryOptions {
+  const kind = NOTIFICATION_KINDS.find((candidate) => candidate.id === kindId);
+  if (!kind) return { urgency: 'normal', ttlSeconds: UNKNOWN_KIND_TTL_SECONDS };
+  return {
+    urgency: kind.timeCritical ? 'high' : 'normal',
+    // Rounded UP: a TTL a second shorter than the staleness window could expire a send the
+    // sweep would still have considered current.
+    ttlSeconds: Math.ceil(kind.staleAfterMs / 1000),
+  };
+}
+
+/** Fifteen minutes. Long enough for a test send to survive a locked phone, short enough that
+ *  it cannot arrive tomorrow. */
+const UNKNOWN_KIND_TTL_SECONDS = 15 * 60;

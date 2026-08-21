@@ -33,8 +33,38 @@ export const SEND_OUTCOME = {
 } as const;
 export type SendOutcome = (typeof SEND_OUTCOME)[keyof typeof SEND_OUTCOME];
 
+/**
+ * **How the PUSH SERVICE should treat this message** — the two transport knobs RFC 8030
+ * defines, both derived from policy a kind already declares.
+ *
+ * They exist because leaving them unset was a real, reported failure: `web-push`'s default
+ * TTL is **four weeks**, so a device that was unreachable when a send went out received
+ * "your flight is in two hours" whenever it next reconnected. The sweep already refuses to
+ * re-derive a candidate past `staleAfterMs`; the push service was holding the same send for
+ * 672 hours because nobody told it not to.
+ */
+export interface DeliveryOptions {
+  /**
+   * RFC 8030 §5.3. `high` is the row for "incoming call or time-sensitive alert" and is the
+   * one delivered to a device on low battery — which is exactly what `timeCritical` means, so
+   * the mapping is a rename rather than a judgement.
+   */
+  urgency: 'normal' | 'high';
+  /**
+   * How long the push service may hold this if the device is unreachable. **The kind's own
+   * `staleAfterMs`**, because a send our sweep would refuse to make is not one a push service
+   * should deliver on our behalf: past that point the notification is a lie about the time,
+   * and expiring it is the honest outcome.
+   */
+  ttlSeconds: number;
+}
+
 export interface NotificationSender {
-  send(target: SubscriptionTarget, payload: PushPayload): Promise<SendOutcome>;
+  send(
+    target: SubscriptionTarget,
+    payload: PushPayload,
+    delivery: DeliveryOptions,
+  ): Promise<SendOutcome>;
 }
 
 /** DI token — Nest cannot inject a TypeScript interface. A `Symbol`, matching `FX_PROVIDER`. */
